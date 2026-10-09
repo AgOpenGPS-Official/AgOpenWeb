@@ -87,7 +87,8 @@ So a bridge needs no module identity; it needs to do two things:
 
 **Bridge contract** (goes into the HAT/ESP32 firmware docs and `Docs/GPS_RECEIVERS.md`):
 
-1. *Receiver → app:* send to UDP 9999 on the app's subnet, broadcast or unicast. Each
+1. *Receiver → app:* send to UDP 9999 on the app's subnet, broadcast or unicast — or to
+   2211 (GPS1) / 2222 (GPS2), Ace's convention, which the app listens on too. Each
    datagram holds one or more **whole** NMEA lines, `$…*hh\r\n`, never a partial line.
    Preferred: one line per datagram, sent as soon as the line is complete (the AiO
    passthrough does this). Lines not starting with `$` (Unicore `#` logs, binary) may be
@@ -99,6 +100,40 @@ So a bridge needs no module identity; it needs to do two things:
 A bridge that splits lines across datagrams is tolerated (the splitter below), but it is a
 bug in the bridge, not a feature of the app.
 
+## Prior art: Brian's Ace (2023)
+
+[farmerbriantee/Ace](https://github.com/farmerbriantee/Ace), last commit March 2023: "a new
+way to run AOG where the modules are small, and everything is on the udp network." Read from
+`Hardware/Ace`, `Hardware/AceSteer` and `Hardware/PGN_ACE.xlsx`:
+
+| Module | Address / port | Role |
+|---|---|---|
+| GPS1 (main antenna) | `.11`, NMEA to UDP **2211**; u-center over TCP 3311 | dumb NMEA source; **"Hello = na"** — no identity |
+| GPS2 (dual antenna) | `.22`, UDP **2222**; TCP 3322 | the heading receiver (`RELPOSNED` planned, not finished) |
+| Nav (Teensy 4.1 + BNO085 + WAS, PoE) | `.121` | listens on 2211/2222, pairs the GGA with the IMU 40 ms after the GGA, builds `$PANDA` → 9999; sends the WAS straight to the steer module (PGN 249, 100 Hz); answers hello as IMU (121) |
+| AceSteer / EncSteer | `.126` | steer-only; PID on the board; WAS from Nav; 254/252 in, 253 out |
+
+Port scheme, in his words: "22XX = GPS, 2211 = GPS1, 2222 = GPS2, 2233 = RTCM3 — easy to
+remember." The Nav firmware refuses every other module PGN. AgIO stays the hub.
+
+What this plan takes from it:
+
+- **The same two principles**, independently arrived at: the receiver is an identity-less
+  UDP source, and GPS+IMU pairing happens on a device with controlled timing (his Nav, our
+  AiO / HAT daemon), never on the PC.
+- **The 22xx ports.** The app listens on **2211 (GPS1) and 2222 (GPS2)** as well as 9999, so
+  an Ace-style board or any bridge built to that convention works unchanged, and a second
+  receiver has a name. RTCM is already 2233.
+- **An Ace Nav module is a supported source today** (it emits `$PANDA`) and is the template
+  for the HAT daemon's GPS half: NMEA over UDP in, `$PANDA` out, pairing done there.
+- **F9P-pair dual via UBX `RELPOSNED`** (his GPS2 / DualWithIMU board) moves from "out of
+  scope until someone asks" to a named Phase 4 candidate: a binary member that joins the
+  `GGA` epoch with heading and roll from the baseline.
+
+Not taken: the fixed-IP table (a convention to document, not enforce), the Nav→Steer WAS
+PGN 249 (only needed when the WAS ADC and the motor driver are on different boards), and
+u-center TCP passthrough (a bridge feature; nothing for the app).
+
 ## What arrives, and how
 
 | Receiver | Sentences per epoch | Reaches the app via |
@@ -108,7 +143,8 @@ bug in the bridge, not a feature of the app.
 | Bynav / Unicore UM982 via AiO passthrough | `$KSXT`, or `GGA`+`VTG`+`HPR` | UDP, one per datagram (seen on the bench, #288) |
 | UM982 / F9P via HAT daemon, Teensy or ESP32 bridge | `GGA`+`VTG`+`HPR` (or `$KSXT`) | UDP; the bridge contract says whole lines |
 | Septentrio mosaic-H (Ethernet / USB-net) | `GGA`+`VTG`+`HDT`+`$PTNL,AVR` (or `$PSSN,HRP`) | UDP; one or several per datagram |
-| u-blox F9P pair via bridge | `GGA`+`VTG`+`HDT` (+`RELPOSNED` binary) | out of scope until someone asks |
+| u-blox F9P pair via bridge (Ace GPS1/GPS2) | `GGA`+`VTG` + UBX `RELPOSNED` (binary) | UDP 2211 / 2222; Phase 4 |
+| Ace Nav module | `$PANDA` | UDP 9999; supported today |
 
 Field references, checked against the vendor documents:
 
@@ -227,8 +263,9 @@ the port) for a bench with a USB receiver and no board. Captures wanted: UM982/T
 config export, pcap with cold start / stationary / turns / RTK loss / heading loss, one
 `AVR` line pasted). Fixtures live under `Tests/AgOpenWeb.Services.Tests/Fixtures/nmea/`.
 
-**Phase 1 — line splitter + monitor.** `NmeaLineSplitter`, the monitor's per-type slots and
-per-fix rate, rejection reasons. No new sentences yet; `$PANDA`/`$PAOGI`/`$KSXT` must behave
+**Phase 1 — line splitter + monitor + ports.** `NmeaLineSplitter`, the monitor's per-type
+slots and per-fix rate, rejection reasons; `UdpCommunicationService` also binds 2211 and
+2222 and tags the source GPS1/GPS2 for Network IO. No new sentences yet; `$PANDA`/`$PAOGI`/`$KSXT` must behave
 exactly as before (existing tests are the proof). Ships on its own.
 
 **Phase 2 — epoch assembler, Unicore set.** `GGA`/`GNS` + `VTG` + `HPR` (and `THS`). Bench
@@ -239,9 +276,9 @@ test, and the "receiver reconfigured" test. Network IO shows the family.
 captures. Decide then whether to keep AgIO's Kalman smoothing on `AVR` roll (it is
 smoothing, not a bug; default off, since Unicore's `SMOOTH` showed receivers do their own).
 
-**Phase 4 — the long tail, by demand.** `$GPHPD` one-shot, `GNTRA` (UB482), SkyTraq `PSTI`,
-F9P `HDT`-only pairs. Each is a decoder or an assembler member and a fixture; none changes
-the structure.
+**Phase 4 — the long tail, by demand.** UBX `RELPOSNED` from an F9P pair on 2222 (Ace's
+GPS2; binary, joins the `GGA` epoch), `$GPHPD` one-shot, `GNTRA` (UB482), SkyTraq `PSTI`.
+Each is a decoder or an assembler member and a fixture; none changes the structure.
 
 **Docs, with Phase 2:** `Docs/GPS_RECEIVERS.md` — the bridge contract, supported sentence
 sets, how each receiver reaches the app, per-receiver configuration recipes (the reviewed Bynav config: `HEADING FIXLENGTH`,
