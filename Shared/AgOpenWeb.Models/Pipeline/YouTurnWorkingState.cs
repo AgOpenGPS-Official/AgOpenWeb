@@ -37,6 +37,9 @@ public class YouTurnWorkingState
     // Turn path
     public List<Vec3>? TurnPath { get; set; }
     public int PathIndex { get; set; }
+    // Where TurnPath leaves the current pass (the arc's first point); null when the path has
+    // no entry leg. The approach alarm and the too-close rule measure against it.
+    public Vec3? ArcStart { get; set; }
 
     // Direction
     public bool IsTurnLeft { get; set; }
@@ -106,6 +109,7 @@ public class YouTurnWorkingState
         IsTriggered = false;
         IsExecuting = false;
         TurnPath = null;
+        ArcStart = null;
         PathIndex = 0;
         PreviousDistToTurnEnd = double.MaxValue;
         DistanceToHeadland = double.MaxValue;
@@ -128,6 +132,7 @@ public class YouTurnWorkingState
         IsExecuting = false;
         IsTriggered = false;
         TurnPath = null;
+        ArcStart = null;
         LastTurnWasLeft = IsTurnLeft;
         HasCompletedFirstTurn = true;
         YouTurnCounter = 0;

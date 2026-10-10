@@ -53,6 +53,10 @@ public partial class YouTurnCreationService
         /// auto-engaged — the operator should be warned to take over.
         /// </summary>
         public bool ClearanceBlocked { get; init; }
+
+        /// <summary>Where the path leaves the current pass (see <see cref="YouTurnCreationOutput.ArcStart"/>);
+        /// null for a fallback path, which has no entry leg.</summary>
+        public Vec3? ArcStart { get; init; }
     }
 
     /// <summary>
@@ -225,7 +229,7 @@ public partial class YouTurnCreationService
 
                 _logger.LogDebug("[YouTurn] Path created with {Count} points, net={Net:F0}° cumulative={Cum:F0}° (setback {S:F2}m)",
                     path.Count, netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI, extraSetback);
-                return new TurnPathResult(path, UsedFallback: false);
+                return new TurnPathResult(path, UsedFallback: false) { ArcStart = output.ArcStart };
             }
 
             // Creation failed outright.

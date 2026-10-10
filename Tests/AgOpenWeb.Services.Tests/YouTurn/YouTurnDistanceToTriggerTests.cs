@@ -50,7 +50,7 @@ public class YouTurnDistanceToTriggerTests
         {
             Assert.That(turn.DistanceToTrigger, Is.EqualTo(10.0).Within(0.01),
                 "Tick must publish the Euclidean distance from current pivot to TurnPath[0]");
-            Assert.That(turn.IsTriggered, Is.False, "10 m is far past the 2 m trigger threshold");
+            Assert.That(turn.IsTriggered, Is.False, "10 m short of the path, the tractor is not on it yet");
             Assert.That(turn.IsExecuting, Is.False);
         });
     }
@@ -76,7 +76,7 @@ public class YouTurnDistanceToTriggerTests
         {
             Assert.That(turn.DistanceToTrigger, Is.EqualTo(0.0).Within(0.01),
                 "At the trigger point, the published distance must be ~0");
-            Assert.That(turn.IsTriggered, Is.True, "Within the proximity threshold, the trigger must fire");
+            Assert.That(turn.IsTriggered, Is.True, "On the path and heading along it, the trigger must fire");
             Assert.That(turn.IsExecuting, Is.True);
         });
     }
@@ -294,13 +294,15 @@ public class YouTurnDistanceToTriggerTests
     /// (start of the arc); the rest of the geometry is irrelevant for the
     /// distance-to-trigger publication path.
     /// </summary>
+    // A short path heading north from the start point, along the AB line the tractor drives
+    // (#306: the trigger needs the tractor ON the path and heading along it).
     private static List<Vec3> BuildTurnPath(double turnStartEasting, double turnStartNorthing)
     {
         return new List<Vec3>
         {
             new(turnStartEasting, turnStartNorthing, 0),
-            new(turnStartEasting + 1, turnStartNorthing + 1, 0),
-            new(turnStartEasting + 2, turnStartNorthing + 2, 0),
+            new(turnStartEasting, turnStartNorthing + 1, 0),
+            new(turnStartEasting, turnStartNorthing + 2, 0),
         };
     }
 }

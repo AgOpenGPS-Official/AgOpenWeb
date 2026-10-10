@@ -69,6 +69,7 @@ namespace AgOpenWeb.Services.YouTurn
         private int semiCircleIndex = -1;
         private bool isOutOfBounds = false;
         private bool isOutSameCurve = false;
+        private Vec3? arcStart;
         private int youTurnPhase = 0;
 
         /// <summary>
@@ -98,6 +99,7 @@ namespace AgOpenWeb.Services.YouTurn
             youTurnPhase = 0;
             isOutOfBounds = false;
             isOutSameCurve = false;
+            arcStart = null;
 
             // Lateral span of the arc = the pass spacing. NO ToolOffset compensation:
             // AgOpenGPS shifts the arc by ±2*ToolOffset because its steering applies the
@@ -136,6 +138,7 @@ namespace AgOpenWeb.Services.YouTurn
                 output.DistancePivotToTurnLine = Distance(ytList[0], input.PivotPosition);
                 output.InClosestTurnPoint = inClosestTurnPt.ClosePt;
                 output.OutClosestTurnPoint = outClosestTurnPt.ClosePt;
+                output.ArcStart = arcStart;
             }
             else
             {
@@ -1288,6 +1291,7 @@ namespace AgOpenWeb.Services.YouTurn
             bool sameWay = input.IsHeadingSameWay;
 
             // Entry leg: walk the current pass inward from the arc start for legLength METRES.
+            arcStart = ytList[0];
             WalkLegByDistance(input.GuidancePoints, ytList[0], inClosestTurnPt.CurveIndex,
                 sameWay ? -1 : 1, legLength, insertFront: true);
 

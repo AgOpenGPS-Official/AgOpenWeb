@@ -57,8 +57,11 @@ public sealed class YouTurnStateMachine
     // ~20 degrees. Wider tolerances risk creating turns while mid-turn when heading swings.
     private static readonly double AlignmentTolerance = Math.PI / 9;
 
-    // Trigger when the tractor is within this far of the pre-computed turn start point.
-    private const double TriggerProximityMeters = 2.0;
+    // A tractor this close to the planned path, heading along it, is on the path and the
+    // turn starts (#306). The entry leg is the current pass itself, so the tractor joins it
+    // wherever it is when the turn is armed; an exact rendezvous with the path's first point
+    // was never needed.
+    private const double OnPathLateralMeters = 1.5;
 
     // Completion thresholds.
     // ClosestApproachThreshold: if the tractor was this close to the end
@@ -217,14 +220,23 @@ public sealed class YouTurnStateMachine
                 HandleNormalCreation(in ctx, track, abHeading, currentPosition, headingRadians, guidance, turn, effects);
         }
         // ── TURN TRIGGER ────────────────────────────────────────────────
-        else if (turn.TurnPath != null && turn.TurnPath.Count > 2 && !turn.IsTriggered && !turn.IsExecuting)
+        // The planned path begins with an entry leg that IS the current pass, so the tractor
+        // is on the path as soon as it is on that leg and takes the turn from wherever it
+        // joins (#306). The old rule, within 2 m of the path's first point, never fired when
+        // the turn was armed late and the leg already began behind the tractor; the path then
+        // stayed on screen while the tractor drove into the headland with no warning.
+        if (turn.TurnPath != null && turn.TurnPath.Count > 2 && !turn.IsTriggered && !turn.IsExecuting)
         {
             var turnStart = turn.TurnPath[0];
             double distToTurnStart = Math.Sqrt(
                 (currentPosition.Easting - turnStart.Easting) * (currentPosition.Easting - turnStart.Easting) +
                 (currentPosition.Northing - turnStart.Northing) * (currentPosition.Northing - turnStart.Northing));
+            var arcStart = turn.ArcStart ?? turnStart;
+            double distToArcStart = Math.Sqrt(
+                (currentPosition.Easting - arcStart.Easting) * (currentPosition.Easting - arcStart.Easting) +
+                (currentPosition.Northing - arcStart.Northing) * (currentPosition.Northing - arcStart.Northing));
 
-            // Publish the pivot→trigger distance for the UI countdown widget as ARC LENGTH
+            // Publish the pivot→path-start distance for the UI countdown widget as ARC LENGTH
             // ALONG THE TRACK, not straight-line. On a curve that wraps a field end, the turn
             // start can be far to the east while the tractor drives west around the wrap toward
             // it — a Euclidean distance would COUNT UP as it drives away in a straight line, when
@@ -234,32 +246,63 @@ public sealed class YouTurnStateMachine
                 ? ArcLengthAlongTrack(track.Points, currentPosition, turnStart)
                 : distToTurnStart;
 
-            // Alarm once as the tractor comes within 20 m of the turn. AgOpenGPS tests a
-            // 18–20 m band, which a fast approach steps straight over between fixes — the
-            // alarm then sounded on roughly every other turn (#150).
-            if (distToTurnStart <= 20.0 && !_approachAlarmed)
+            // Alarm once as the tractor comes within 20 m of the arc, where the path leaves
+            // the pass. AgOpenGPS tests a 18–20 m band, which a fast approach steps straight
+            // over between fixes — the alarm then sounded on roughly every other turn (#150).
+            if (distToArcStart <= 20.0 && !_approachAlarmed)
             {
                 _approachAlarmed = true;
                 effects.ApproachAlarmSound = true;
             }
 
-            // Trigger on physical proximity (straight-line): the tractor must actually reach the
-            // turn start, regardless of how the arc-length display reads.
-            if (distToTurnStart <= TriggerProximityMeters)
+            if (IsOnPath(turn.TurnPath, currentPosition, headingRadians))
             {
                 turn.IsTriggered = true;
                 turn.IsExecuting = true;
                 effects.StatusMessage = "YouTurn triggered!";
-                _logger.LogDebug("[YouTurn] Triggered at {Dist:F2}m from turn start", distToTurnStart);
+                _logger.LogDebug("[YouTurn] Triggered on the path, {Dist:F1}m from the arc", distToArcStart);
             }
-        }
-        // ── TURN RESET (drove past turn start into headland without triggering) ─
-        else if (turn.TurnPath != null && !turn.IsTriggered && isInHeadlandZone)
-        {
-            _logger.LogDebug("[YouTurn] Entered headland without triggering - resetting turn");
-            DiscardPlannedTurn(turn);
-            effects.SyncTurnPathToMap = true;
-            effects.SyncNextTrackToMap = true;
+            else if (isAlignedWithABLine && IsHeadingAlong(turn.TurnPath, headingRadians)
+                     && IsBehind(arcStart, currentPosition, headingRadians))
+            {
+                // The arc already begins behind the tractor, so this path cannot be joined.
+                // Turn from here instead, the way a manual turn does; when there is no room
+                // for that either, say so, because the operator has to turn by hand now.
+                var fromHere = _creation.CreateManualArcPath(
+                    currentPosition, abHeading, turn.IsTurnLeft,
+                    ctx.Boundary, guidance, ctx.UTurnSkipRows, turn.NextTrack);
+                if (fromHere.Count > 2)
+                {
+                    turn.TurnPath = fromHere;
+                    turn.ArcStart = null;
+                    turn.YouTurnCounter = 0;
+                    turn.IsTriggered = true;
+                    turn.IsExecuting = true;
+                    effects.StatusMessage = "YouTurn started from here: the planned arc was already behind the tractor";
+                    _logger.LogDebug("[YouTurn] Arc start {Dist:F1}m behind the tractor - turning from here ({Count} points)",
+                        distToArcStart, fromHere.Count);
+                }
+                else
+                {
+                    _logger.LogDebug("[YouTurn] Arc start {Dist:F1}m behind the tractor and no room to turn from here - turn missed",
+                        distToArcStart);
+                    DiscardPlannedTurn(turn);
+                    effects.TurnCreationFailedSound = true;
+                    effects.StatusMessage = "U-turn missed: too close to the headland to turn. Take over manually.";
+                }
+                effects.SyncTurnPathToMap = true;
+                effects.SyncNextTrackToMap = true;
+            }
+            else if (isInHeadlandZone)
+            {
+                // Drove into the headland without ever joining the path: the turn is missed.
+                _logger.LogDebug("[YouTurn] Entered the headland without joining the path - turn missed");
+                DiscardPlannedTurn(turn);
+                effects.TurnCreationFailedSound = true;
+                effects.StatusMessage = "U-turn missed: entered the headland off the turn path. Take over manually.";
+                effects.SyncTurnPathToMap = true;
+                effects.SyncNextTrackToMap = true;
+            }
         }
 
         // ── TURN COMPLETION ─────────────────────────────────────────────
@@ -625,6 +668,57 @@ public sealed class YouTurnStateMachine
 
     // ── Private helpers ─────────────────────────────────────────────────
 
+    /// <summary>
+    /// True when the tractor is on the path: within <see cref="OnPathLateralMeters"/> of its
+    /// nearest segment and heading along that segment (within <see cref="AlignmentTolerance"/>).
+    /// The heading test keeps the exit leg, which runs the other way on the next pass, and an
+    /// omega's crossing legs from counting. No allocation; the path is a few hundred points.
+    /// </summary>
+    internal static bool IsOnPath(List<Vec3> path, Position position, double headingRadians)
+    {
+        double px = position.Easting, py = position.Northing;
+        double bestD2 = double.MaxValue;
+        int best = -1;
+        for (int i = 0; i < path.Count - 1; i++)
+        {
+            double ax = path[i].Easting, ay = path[i].Northing;
+            double dx = path[i + 1].Easting - ax, dy = path[i + 1].Northing - ay;
+            double len2 = dx * dx + dy * dy;
+            if (len2 < 1e-9) continue;
+            double t = ((px - ax) * dx + (py - ay) * dy) / len2;
+            if (t < 0) t = 0; else if (t > 1) t = 1;
+            double ex = ax + t * dx - px, ey = ay + t * dy - py;
+            double d2 = ex * ex + ey * ey;
+            if (d2 < bestD2) { bestD2 = d2; best = i; }
+        }
+        if (best < 0 || bestD2 > OnPathLateralMeters * OnPathLateralMeters) return false;
+
+        double segHeading = Math.Atan2(path[best + 1].Easting - path[best].Easting,
+                                       path[best + 1].Northing - path[best].Northing);
+        double diff = headingRadians - segHeading;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        return Math.Abs(diff) < AlignmentTolerance;
+    }
+
+    /// <summary>True when the tractor drives the way the path sets off (its first segment), within 90°.
+    /// A tractor going back down the pass is not a candidate for a turn planned at the far end.</summary>
+    internal static bool IsHeadingAlong(List<Vec3> path, double headingRadians)
+    {
+        double segHeading = Math.Atan2(path[1].Easting - path[0].Easting, path[1].Northing - path[0].Northing);
+        double diff = headingRadians - segHeading;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        return Math.Abs(diff) < Math.PI / 2;
+    }
+
+    /// <summary>True when <paramref name="point"/> lies behind the tractor along its heading.</summary>
+    internal static bool IsBehind(Vec3 point, Position position, double headingRadians)
+    {
+        double dx = point.Easting - position.Easting, dy = point.Northing - position.Northing;
+        return dx * Math.Sin(headingRadians) + dy * Math.Cos(headingRadians) < 0;
+    }
+
     private void HandleSnakeCreation(
         in TickContext ctx,
         Models.Track.Track track,
@@ -842,6 +936,7 @@ public sealed class YouTurnStateMachine
         _approachAlarmed = false;
 
         turn.TurnPath = result.Path;
+        turn.ArcStart = result.ArcStart;
         turn.YouTurnCounter = 0;
         if (!result.UsedFallback && effects.StatusMessage == null)
             effects.StatusMessage = $"YouTurn path created ({result.Path.Count} points)";

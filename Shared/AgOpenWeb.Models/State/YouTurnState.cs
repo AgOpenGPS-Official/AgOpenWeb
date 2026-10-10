@@ -63,6 +63,14 @@ public class YouTurnState : ObservableObject
         set => SetProperty(ref _pathIndex, value);
     }
 
+    // Where TurnPath leaves the current pass (the arc's first point); null without an entry leg.
+    private Vec3? _arcStart;
+    public Vec3? ArcStart
+    {
+        get => _arcStart;
+        set => SetProperty(ref _arcStart, value);
+    }
+
     // Direction
     private bool _isTurnLeft;
     public bool IsTurnLeft
@@ -225,6 +233,7 @@ public class YouTurnState : ObservableObject
         IsTriggered = false;
         IsExecuting = false;
         TurnPath = null;
+        ArcStart = null;
         PathIndex = 0;
         DistanceToHeadland = double.MaxValue;
         DistanceToTrigger = 0;
@@ -246,6 +255,7 @@ public class YouTurnState : ObservableObject
         IsExecuting = false;
         IsTriggered = false;
         TurnPath = null;
+        ArcStart = null;
         LastTurnWasLeft = IsTurnLeft;
         HasCompletedFirstTurn = true;
         YouTurnCounter = 0;
