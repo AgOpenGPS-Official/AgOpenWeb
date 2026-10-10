@@ -376,6 +376,16 @@ const transport = RemoteTransport.create({
   },
   onCoverageInit(init) {
     const cs = init.cellSize;
+    // An empty reset grid means the field closed: drop the raster and the perimeter.
+    if (init.reset && (init.width <= 0 || init.height <= 0)) {
+      if (cov) {
+        if (cov.skImg) cov.skImg.delete();
+        if (cov.surface) cov.surface.delete();
+        if (cov.covPaint) cov.covPaint.delete();
+      }
+      cov = null; covCells = 0; coverageEdges = null;
+      return;
+    }
     // Grid GROWTH at the same cell size (host bounds-expansion, reset=false): the added ground is
     // empty, so the host resends nothing. Keep the coverage we already have, re-anchor it into the
     // larger grid, and carry on with incremental deltas — no rescan, no repaint, no flicker. A

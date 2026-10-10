@@ -311,6 +311,17 @@ public sealed class MapBroadcaster : IAsyncDisposable
                             await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(delta), ct).ConfigureAwait(false);
                         }
                     }
+                    else if (_coverageInitSent && !_snapshotInFlight)
+                    {
+                        // The grid is gone (field closed → ClearFieldBounds). Nothing above runs
+                        // without a grid, so say so explicitly or the clients keep drawing the
+                        // closed field's coverage and perimeter until the next field's init.
+                        _coverageInitSent = false;
+                        _coverageReload = false;
+                        _lastCellSize = 0;
+                        _coverageProjector.ResetSent();
+                        await _ws.BroadcastAsync(WireCodec.EncodeCoverageClear(), ct).ConfigureAwait(false);
+                    }
                 }
                 catch { /* tolerate transient coverage-layer races */ }
 

@@ -2084,6 +2084,12 @@ public partial class MainViewModel : ObservableObject
         // Clear U-turn state
         ClearYouTurnState();
 
+        // Clear tram lines and the field's tram systems (saved above). Field open clears them
+        // too, but between close and the next open the map was still drawing the old lines.
+        _tramLineService.Clear();
+        _tramSystemLineRanges.Clear();
+        ConfigStore.Tram.Systems.Clear();
+
         // Clear flags (without saving — IsFieldOpen is already false) so they don't carry
         // over into the next field (#107)
         LoadFlagsFromField(null);
