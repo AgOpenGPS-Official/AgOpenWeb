@@ -24,7 +24,8 @@ SO_REUSEPORT is on, which it is here, so sharing usually works — but a capture
 beside the running app is the honest one for a bug report anyway.
 
 Captures go under Tests/AgOpenWeb.Services.Tests/Fixtures/nmea/ when they become test
-fixtures (see Plans/GPS_RECEIVER_SENTENCES_PLAN.md, Phase 0).
+fixtures (see Plans/GPS_RECEIVER_SENTENCES_PLAN.md, Phase 0), and Tools/nmea-replay.py
+puts any of them back on the wire with the original timing.
 """
 import argparse
 import select

@@ -141,3 +141,23 @@ family needs.
 Nothing to set up: the board builds `$PANDA` (with its IMU) or `$PAOGI` (dual antenna) and
 sends one per epoch to 9999. With "GPS-UDP passthrough" on, the board forwards the
 receiver's own sentences instead, and the app decodes those as above.
+
+## Captures and replay
+
+`Tools/nmea-capture.py` records what arrives on the GPS ports, one datagram per line with
+its arrival time, which is what a bug report or a new receiver family needs.
+`Tools/nmea-replay.py` sends a capture back onto the network, each datagram at the moment
+it arrived in the original, so the app sees the reporter's stream with its chunking and
+gaps intact. The test fixtures are captures in the same format:
+
+```
+Tools/nmea-replay.py Tests/AgOpenWeb.Services.Tests/Fixtures/nmea/um982-gga-vtg-hpr.txt --loop
+```
+
+`--to host:port` aims it at another host, `--speed 4` runs it faster, `--speed 0` sends
+without pauses. The Source row shows the replaying machine, and the age column shows the
+capture's correction ages, not today's.
+
+A receiver family is supported from a capture, not from its manual alone: the manual gives
+the field table, the capture gives the output order, the chunking, the empty-field habits
+and what the receiver prints without a fix. Families with no capture yet wait for one.
