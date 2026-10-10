@@ -1995,8 +1995,15 @@ document.getElementById('ln-fieldtools').addEventListener('pointerdown', e => {
   const anyOpen = ['fieldtools', 'offsetfix'].some(id => document.getElementById(id).classList.contains('open'));
   if (anyOpen) lnCloseAll(); else lnOpen('fieldtools', 'ln-fieldtools');
 });
+// Field Tools work on the open field; without one, say so instead of asking (#305).
+function requireField() {
+  if (scene && scene.hasField) return true;
+  showToast(tr('Open a field first'));
+  return false;
+}
 document.getElementById('ft-deleteapplied').addEventListener('pointerdown', e => {
   e.stopPropagation();
+  if (!requireField()) return;
   showConfirm(tr('Delete Applied Area'),
     tr('Delete all applied area coverage? This cannot be undone.'),
     () => transport.send('field.deleteApplied'));
@@ -2032,7 +2039,7 @@ document.getElementById('rp-resume').addEventListener('pointerdown', e => { e.st
 document.getElementById('rp-reverse').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('recpath.reverse'); });
 // Boundary recording menu.
 document.getElementById('ft-boundary').addEventListener('pointerdown', e => {
-  e.stopPropagation(); transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu);
+  e.stopPropagation(); if (!requireField()) return; transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu);
 });
 document.getElementById('bm-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('fieldtools', 'ln-fieldtools'); });
 
@@ -2042,7 +2049,7 @@ document.getElementById('bm-back').addEventListener('pointerdown', e => { e.stop
 let fbTab = 'tracks';   // active FB tab
 let fbSel = -1;         // selected track index in the Tracks tab
 document.getElementById('ft-fieldbuilder').addEventListener('pointerdown', e => {
-  e.stopPropagation(); fbTab = 'tracks'; fbSel = -1; lnOpen('fieldbuilder', 'ln-fieldtools', renderFieldBuilder);
+  e.stopPropagation(); if (!requireField()) return; fbTab = 'tracks'; fbSel = -1; lnOpen('fieldbuilder', 'ln-fieldtools', renderFieldBuilder);
 });
 document.getElementById('fieldbuilder').addEventListener('pointerdown', e => e.stopPropagation()); // panel taps don't pan the map (NO_SCRIM)
 document.querySelector('#fieldbuilder .fb-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('fieldtools', 'ln-fieldtools'); });

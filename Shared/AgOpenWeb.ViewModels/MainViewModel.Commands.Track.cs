@@ -52,6 +52,12 @@ public partial class MainViewModel
 
     public void DeleteAppliedAreaConfirmed()
     {
+        if (!IsFieldOpen)
+        {
+            ReportFailure("Open a field first");
+            return;
+        }
+
         _coverageMapService.ClearAll();
 
         // AgOpenGPS "delete all contours and sections": the contour strips go too, and the

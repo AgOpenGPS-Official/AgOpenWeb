@@ -39,6 +39,7 @@ public record YouTurnSnapshot
     // Turn path
     public IReadOnlyList<Vec3>? TurnPath { get; init; }
     public int PathIndex { get; init; }
+    public Vec3? ArcStart { get; init; }
 
     // Direction
     public bool IsTurnLeft { get; init; }

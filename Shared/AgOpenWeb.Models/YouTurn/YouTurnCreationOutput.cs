@@ -69,5 +69,11 @@ namespace AgOpenWeb.Models.YouTurn
         /// Closest point on turn line where turn ends.
         /// </summary>
         public Vec3 OutClosestTurnPoint { get; set; }
+
+        /// <summary>
+        /// Where the path leaves the current pass: the first point of the arc, before the
+        /// entry leg was prepended. Null when the path has no entry leg.
+        /// </summary>
+        public Vec3? ArcStart { get; set; }
     }
 }
