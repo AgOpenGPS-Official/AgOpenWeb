@@ -121,6 +121,21 @@ INSPVAXA 0.1
 
 Through the AiO passthrough or any bridge; the `#` frame passes unchanged.
 
+### A receiver on a USB or serial port, no board
+
+`Tools/serial-to-udp.py` is the reference bridge: it reads the port, sends each whole line
+as one datagram to the app's GPS port, and writes what arrives on 2233 back to the port.
+With the app on the same machine:
+
+```
+pip install pyserial
+Tools/serial-to-udp.py /dev/tty.usbserial-1420 --baud 115200
+```
+
+Add `--to 192.168.5.255:9999` when the app runs on another host. `Tools/nmea-capture.py`
+beside it records what the receiver prints, which is what a bug report or a new receiver
+family needs.
+
 ### An AiO board
 
 Nothing to set up: the board builds `$PANDA` (with its IMU) or `$PAOGI` (dual antenna) and
