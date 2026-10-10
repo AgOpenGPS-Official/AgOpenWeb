@@ -34,6 +34,7 @@ public class MainViewModelBuilder
     public IModuleCommunicationService ModuleCommunicationService { get; set; } = Substitute.For<IModuleCommunicationService>();
     public IConfigurationService ConfigurationService { get; set; } = Substitute.For<IConfigurationService>();
     public IFieldService FieldService { get; } = Substitute.For<IFieldService>();
+    public AgOpenWeb.Services.Interfaces.ITramLineService TramLineService { get; } = Substitute.For<AgOpenWeb.Services.Interfaces.ITramLineService>();
     public AgOpenWeb.Services.Pipeline.PipelineIntents Intents { get; } = new();
 
     public MainViewModelBuilder()
@@ -87,7 +88,7 @@ public class MainViewModelBuilder
             audioService: Substitute.For<IAudioService>(),
             elevationLogService: Substitute.For<IElevationLogService>(),
             jobService: Substitute.For<IJobService>(),
-            tramLineService: Substitute.For<AgOpenWeb.Services.Interfaces.ITramLineService>(),
+            tramLineService: TramLineService,
             gpsPipelineService: GpsPipelineService,
             intents: Intents,
             logger: NullLogger<MainViewModel>.Instance,

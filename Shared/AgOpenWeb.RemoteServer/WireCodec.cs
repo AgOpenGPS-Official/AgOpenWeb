@@ -803,6 +803,11 @@ public static class WireCodec
         return ms.ToArray();
     }
 
+    /// <summary>No coverage grid any more (field closed): a reset init with an empty grid.
+    /// The client drops its raster and perimeter (transport.js / app.js onCoverageInit).</summary>
+    public static byte[] EncodeCoverageClear() =>
+        EncodeCoverageInit(new CoverageInitDto(0, 0, 0, 0, 0), reset: true);
+
     public static byte[] EncodeCoverageCells(CoverageCellsDto c)
     {
         var cells = c.Cells;
