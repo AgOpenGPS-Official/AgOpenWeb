@@ -30,6 +30,14 @@ public sealed class RemoteServerHost
 
     /// <summary>Number of connected browser clients — drives the launcher's live status.</summary>
     public int ClientCount => _ws?.ClientCount ?? 0;
+    public Func<Guid, Func<bool>, string, CancellationToken, Task<string>>? ModuleRequestHandler
+    {
+        get => _moduleRequestHandler;
+        set { _moduleRequestHandler=value;if(_ws!=null)_ws.ModuleRequestHandler=value; }
+    }
+    private Func<Guid, Func<bool>, string, CancellationToken, Task<string>>? _moduleRequestHandler;
+    public Action<Guid>? ModuleDisconnected { get; set; }
+    public Func<Task>? ModulesStopping { get; set; }
 
     /// <summary>
     /// Broadcast a one-shot alert sound to every connected client. The host never
@@ -217,6 +225,8 @@ public sealed class RemoteServerHost
             vehicleProfiles, persist, ntrip);
         var coverageProjector = new CoverageProjector(coverage);
         _ws = new WebSocketHub(authority);
+        _ws.ModuleRequestHandler = _moduleRequestHandler;
+        _ws.Disconnected = id => ModuleDisconnected?.Invoke(id);
         _broadcaster = new MapBroadcaster(_ws, sceneProjector, coverage, coverageProjector, authority);
 
         // Hook the WS hub for inbound commands + apply any providers/handlers set
@@ -256,6 +266,13 @@ public sealed class RemoteServerHost
         var noStore = new[] { ("Cache-Control", "no-store") };
         server.MapGet("/", () => SimpleWebServer.Response.Text(ReadAsset("index.html"), "text/html", noStore));
         server.MapGet("/app.js", () => SimpleWebServer.Response.Text(ReadAsset("app.js"), "text/javascript", noStore));
+        server.MapGetPrefix("/assistants/", file =>
+        {
+            if (!System.Text.RegularExpressions.Regex.IsMatch(file, @"\A[a-z-]+\.(js|css)\z"))
+                return SimpleWebServer.Response.NotFound;
+            try { return SimpleWebServer.Response.Text(ReadAsset("assistants."+file), file.EndsWith(".css", StringComparison.Ordinal)?"text/css":"text/javascript", noStore); }
+            catch (FileNotFoundException) { return SimpleWebServer.Response.NotFound; }
+        });
         server.MapGet("/transport.js", () => SimpleWebServer.Response.Text(ReadAsset("transport.js"), "text/javascript", noStore));
         // Translations (#143): the loader, and one JSON file per language (en.json is the
         // source Weblate reads). Filename-only (no path traversal); unknown names 404.
@@ -349,9 +366,9 @@ public sealed class RemoteServerHost
 
     public async Task StopAsync()
     {
-        if (_server is null) return;
         if (_broadcaster is not null) await _broadcaster.DisposeAsync().ConfigureAwait(false);
-        await _server.StopAsync().ConfigureAwait(false);
+        if (_server is not null) await _server.StopAsync().ConfigureAwait(false);
+        if (ModulesStopping is {} stop) await stop().ConfigureAwait(false);
         _server = null;
     }
 

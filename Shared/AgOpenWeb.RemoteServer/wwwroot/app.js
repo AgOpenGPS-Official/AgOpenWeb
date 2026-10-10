@@ -6134,3 +6134,6 @@ function skFrame() {
   requestAnimationFrame(skFrame);
 }
 skFrame();
+
+window.FieldAssistantTransport={send:cmd=>transport.send(cmd),hasControl:()=>iHoldControl,ready:()=>connState==='connected',language:()=>I18n.language,translate:(key,params)=>I18n.t(key,params)};
+import('./assistants/index.js').then(m=>m.install()).catch(error=>console.error('Field assistants',error));
