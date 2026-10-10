@@ -445,7 +445,7 @@ service, zero allocation on both paths, and the bench capture replayed. `Docs/GP
 written. Bench-confirmed on the T1-FD (GGA+VTG+HPR at 10 Hz, age populated, heading and
 roll from HPR). Not yet: the GPS log does not record which members were present per fix;
 UM981 pending a capture (the v26 firmware's INSPVAXA decoder reads the velocities one field early, past the
-undulation — worth fixing there).
+undulation — reported as Firmware_Teensy_AiO_26 #44).
 
 **Phase 2b — board IMU as a latest-reading source.** The attitude sentence from a HAT/AiO
 build, distinguished by talker ID: heading goes to `ImuHeading`/`ImuValid`, not to the dual
