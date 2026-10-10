@@ -2071,8 +2071,10 @@ public partial class MainViewModel : ObservableObject
         // Clear headland
         LoadHeadlandFromField(null);
 
-        // Clear background
+        // Clear background. The web client draws whatever State.Field.Imagery says, so
+        // null it here or the closed field's picture stays on screen until the next open.
         _mapService.ClearBackground();
+        State.Field.Imagery = null;
 
         // Clear tracks (State.Field.Tracks mirrors SavedTracks via the ctor subscription)
         SavedTracks.Clear();
