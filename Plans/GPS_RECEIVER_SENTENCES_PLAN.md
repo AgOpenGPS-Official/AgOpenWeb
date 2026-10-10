@@ -415,6 +415,8 @@ the port) for a bench with a USB receiver and no board. Captures wanted: UM982/T
 the issue (wiring, config export, pcap with cold start / stationary / turns / RTK loss /
 heading loss, one `AVR` line pasted); a UM981 `INSPVAXA` run. Fixtures live under
 `Tests/AgOpenWeb.Services.Tests/Fixtures/nmea/`, read by `NmeaCapture`.
+`Tools/nmea-replay.py` puts a capture (or a fixture) back on the wire with its original
+timing, so a reporter's capture is a bench reproduction — *written 2026-10-09*.
 
 **Phase 1 — line splitter + monitor + ports.** *Done (2026-10-09).* `NmeaLineSplitter`
 (`Services/Gps`) cuts every GPS datagram into whole lines in front of the parser: one line per
@@ -451,7 +453,11 @@ heading; taken under the 50 ms staleness bound. Done together with the first fir
 emits it; the fixture comes from that board. This is what lets the HAT daemon skip `$PANDA`
 altogether — and it has no timing rules to get right.
 
-**Phase 3 — Septentrio set.** `HDT` + `$PTNL,AVR` (both layouts) and `$PSSN,HRP`, from the
+**Phase 3 — Septentrio set.** *Waits for captures (decision 2026-10-09): families are
+built from captures, not synthesised from the manuals; the spec settles the field table
+but not the output order, the chunking, the empty-field habits or what the receiver prints
+without a fix. Work resumes when someone with the hardware helps with captures.*
+`HDT` + `$PTNL,AVR` (both layouts) and `$PSSN,HRP`, from the
 captures. Decide then whether to keep AgIO's Kalman smoothing on `AVR` roll (it is
 smoothing, not a bug; default off, since Unicore's `SMOOTH` showed receivers do their own).
 
