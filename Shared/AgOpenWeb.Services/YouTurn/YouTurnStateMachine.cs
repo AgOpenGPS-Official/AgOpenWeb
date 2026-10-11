@@ -293,10 +293,14 @@ public sealed class YouTurnStateMachine
                 effects.SyncTurnPathToMap = true;
                 effects.SyncNextTrackToMap = true;
             }
-            else if (isInHeadlandZone)
+            else if (isInHeadlandZone && IsPastStart(turn.TurnPath, currentPosition))
             {
-                // Drove into the headland without ever joining the path: the turn is missed.
-                _logger.LogDebug("[YouTurn] Entered the headland without joining the path - turn missed");
+                // In the headland, past where the path begins, and never on it: the turn is
+                // missed. Not while the path's first point is still ahead: the planner lays
+                // the turn out from the boundary, and where the field's headland line is
+                // drawn further in than that, the path begins inside the headland. The
+                // tractor then enters the headland on its pass before it reaches the path.
+                _logger.LogDebug("[YouTurn] In the headland past the path's start without joining it - turn missed");
                 DiscardPlannedTurn(turn);
                 effects.TurnCreationFailedSound = true;
                 effects.StatusMessage = "U-turn missed: entered the headland off the turn path. Take over manually.";
@@ -710,6 +714,14 @@ public sealed class YouTurnStateMachine
         while (diff > Math.PI) diff -= 2 * Math.PI;
         while (diff < -Math.PI) diff += 2 * Math.PI;
         return Math.Abs(diff) < Math.PI / 2;
+    }
+
+    /// <summary>True when the tractor is level with or beyond the path's first point, measured
+    /// along the way the path sets off. Until then the path is still ahead of it.</summary>
+    internal static bool IsPastStart(List<Vec3> path, Position position)
+    {
+        double dx = path[1].Easting - path[0].Easting, dy = path[1].Northing - path[0].Northing;
+        return (position.Easting - path[0].Easting) * dx + (position.Northing - path[0].Northing) * dy >= 0;
     }
 
     /// <summary>True when <paramref name="point"/> lies behind the tractor along its heading.</summary>
