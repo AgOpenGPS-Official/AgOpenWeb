@@ -72,4 +72,35 @@ public class GpsLostTests
 
         b.SectionControlService.Received(1).SetAllSections(SectionButtonState.Off);
     }
+
+    // #316: a section switched on by its own button or hotkey, with neither master on.
+    [Test]
+    public void ASectionOnByItsOwnButton_IsSwitchedOffToo()
+    {
+        var b = new MainViewModelBuilder();
+        var vm = b.Build();
+        var states = new[] { new SectionControlState { Index = 0 }, new SectionControlState { Index = 1 } };
+        states[1].ButtonState = SectionButtonState.On;
+        states[1].IsOn = true;
+        b.SectionControlService.SectionStates.Returns(states);
+        Assume.That(vm.IsSectionMasterOn || vm.IsManualSectionMode, Is.False);
+
+        vm.UpdateGpsLost(false, T0);
+        vm.UpdateGpsLost(false, T0.AddMilliseconds(MainViewModel.GpsLostAfterMs));
+
+        b.SectionControlService.Received(1).SetAllSections(SectionButtonState.Off);
+    }
+
+    [Test]
+    public void NothingOn_NothingToSwitchOff()
+    {
+        var b = new MainViewModelBuilder();
+        var vm = b.Build();
+        b.SectionControlService.SectionStates.Returns(new[] { new SectionControlState { Index = 0 } });
+
+        vm.UpdateGpsLost(false, T0);
+        vm.UpdateGpsLost(false, T0.AddMilliseconds(MainViewModel.GpsLostAfterMs));
+
+        b.SectionControlService.DidNotReceive().SetAllSections(Arg.Any<SectionButtonState>());
+    }
 }
