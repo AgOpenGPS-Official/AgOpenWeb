@@ -996,7 +996,8 @@ public class SectionControlService : ISectionControlService
         // service) — otherwise the next Update() tick sees IsOn already false
         // and skips the StopMapping call, leaving coverage painting forever.
         // Auto is left for Update() to determine based on boundaries/coverage.
-        if (state == SectionButtonState.On)
+        // Only a configured section goes on (#317).
+        if (state == SectionButtonState.On && sectionIndex < NumSections)
             _sectionStates[sectionIndex].IsOn = true;
         else if (state == SectionButtonState.Off)
             UpdateSectionOff(sectionIndex);
@@ -1012,6 +1013,7 @@ public class SectionControlService : ISectionControlService
 
     public void SetAllSections(SectionButtonState state)
     {
+        int numSections = NumSections;
         for (int i = 0; i < _sectionStates.Length; i++)
         {
             _sectionStates[i].ButtonState = state;
@@ -1019,7 +1021,9 @@ public class SectionControlService : ISectionControlService
             // Mirror SetSectionState: sync IsOn / IsMappingOn for manual
             // states. Off must route through UpdateSectionOff so coverage
             // mapping is torn down. See SetSectionState for the why.
-            if (state == SectionButtonState.On)
+            // Every button takes the state, as in AgOpenGPS, but only the configured
+            // sections go on: the rest must not reach the module as on bits (#317).
+            if (state == SectionButtonState.On && i < numSections)
                 _sectionStates[i].IsOn = true;
             else if (state == SectionButtonState.Off)
                 UpdateSectionOff(i);
@@ -1089,18 +1093,23 @@ public class SectionControlService : ISectionControlService
             currentPos += sectionWidth;
         }
 
-        // Clear positions for unused sections
+        // Clear positions for unused sections, and switch them off: a section that was
+        // on when the section count was reduced must not stay on in the PGNs (#317).
         for (int i = numSections; i < _sectionStates.Length; i++)
         {
             _sectionStates[i].PositionLeft = 0;
             _sectionStates[i].PositionRight = 0;
+            if (_sectionStates[i].IsOn || _sectionStates[i].IsMappingOn)
+                UpdateSectionOff(i);
         }
     }
 
     public ushort GetSectionBits()
     {
+        // Configured sections only; unused bits stay 0 on the wire, as in AgOpenGPS (#317).
         ushort bits = 0;
-        for (int i = 0; i < 16; i++)
+        int count = Math.Min(16, NumSections);
+        for (int i = 0; i < count; i++)
         {
             if (_sectionStates[i].IsOn)
             {
@@ -1118,7 +1127,7 @@ public class SectionControlService : ISectionControlService
     public ulong GetSectionBits64()
     {
         ulong bits = 0;
-        int count = Math.Min(_sectionStates.Length, ToolConfig.MaxSections);
+        int count = Math.Min(Math.Min(_sectionStates.Length, ToolConfig.MaxSections), NumSections);
         for (int i = 0; i < count; i++)
         {
             if (_sectionStates[i].IsOn)
