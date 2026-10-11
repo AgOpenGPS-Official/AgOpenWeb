@@ -82,4 +82,49 @@ public class AutoSteerControlTickTests
         // 5 ticks × 2 PGNs each = 10 sends.
         _udp.Received(10).SendToModules(Arg.Any<byte[]>());
     }
+
+    // #311: the control loop hands over the section bits itself, so they go out with
+    // the same tick's PGNs instead of waiting for the next GPS cycle.
+    [Test]
+    public void SectionBitsSetOnATick_GoOutWithThatTick()
+    {
+        var sent = new List<byte[]>();
+        _udp.When(u => u.SendToModules(Arg.Any<byte[]>()))
+            .Do(c => sent.Add((byte[])c.Arg<byte[]>().Clone()));
+
+        _autoSteer.SetMachineState(sectionBits: 0, isInUTurn: true, hydLiftState: 2);
+        _autoSteer.SendPgnsForControlTick();
+        Assert.That(SectionBits(sent, 0xFE), Is.EqualTo(0));
+        Assert.That(SectionBits(sent, 0xEF), Is.EqualTo(0));
+
+        sent.Clear();
+        _autoSteer.SetSectionBits(0x8005);
+        _autoSteer.SendPgnsForControlTick();
+        Assert.That(SectionBits(sent, 0xFE), Is.EqualTo(0x8005), "PGN 254");
+        Assert.That(SectionBits(sent, 0xEF), Is.EqualTo(0x8005), "PGN 239");
+        var machine = sent.Single(p => p[3] == 0xEF);
+        Assert.That(machine[5], Is.EqualTo(1), "U-turn state stays as the GPS cycle left it");
+        Assert.That(machine[7], Is.EqualTo(2), "so does the hydraulic lift state");
+    }
+
+    [Test]
+    public void SectionBitsSetOnATick_ReachPgn229_WithMoreThan16Sections()
+    {
+        ConfigurationStore.Instance.NumSections = 20;
+        var sent = new List<byte[]>();
+        _udp.When(u => u.SendToModules(Arg.Any<byte[]>()))
+            .Do(c => sent.Add((byte[])c.Arg<byte[]>().Clone()));
+
+        _autoSteer.SetSectionBits(1UL << 18);
+        _autoSteer.SendPgnsForControlTick();
+
+        var pgn229 = sent.Single(p => p[3] == 0xE5);
+        Assert.That(pgn229[5 + 2], Is.EqualTo(0x04), "section 19 is bit 2 of the third data byte");
+    }
+
+    private static int SectionBits(List<byte[]> sent, byte pgn)
+    {
+        var p = sent.Single(x => x[3] == pgn);
+        return p[11] | (p[12] << 8);
+    }
 }

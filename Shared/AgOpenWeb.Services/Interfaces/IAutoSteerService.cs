@@ -200,6 +200,13 @@ public interface IAutoSteerService
     /// </summary>
     void SetMachineState(ulong sectionBits, bool isInUTurn, byte hydLiftState = 0);
 
+    /// <summary>
+    /// Update only the section bits carried by PGN 254, 239 and 229. Called by the
+    /// host control loop on every tick, right after section control ran, so a section
+    /// edge decided between two GPS fixes goes out with that tick's PGNs (#311).
+    /// </summary>
+    void SetSectionBits(ulong sectionBits);
+
     // ═══════════════════════════════════════════════════════════════════════
     // Module Feedback (PGN 253, 250)
     // ═══════════════════════════════════════════════════════════════════════

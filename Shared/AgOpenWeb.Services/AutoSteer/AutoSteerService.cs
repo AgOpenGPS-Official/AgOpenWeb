@@ -493,6 +493,8 @@ public class AutoSteerService : IAutoSteerService
         _state.HydLiftState = hydLiftState;
     }
 
+    public void SetSectionBits(ulong sectionBits) => _state.SectionStates = sectionBits;
+
     /// <summary>
     /// Set the current track for guidance.
     /// Called by MainViewModel when active track changes.

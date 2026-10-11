@@ -64,6 +64,23 @@ public class CodePathContinuityTests
             string.Join("\n  ", violations));
     }
 
+    // ── Section bits follow the control loop ──────────────────────────────
+
+    [Test]
+    public void ControlTick_HandsSectionBitsToTheSender_BeforeItSends()
+    {
+        var src = File.ReadAllText(Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.ViewModels", "MainViewModel.cs"));
+        int start = src.IndexOf("void OnControlLoopTicked(", StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThan(0), "MainViewModel.OnControlLoopTicked not found; update this test");
+        var body = src.Substring(start, src.IndexOf("\n    }", start, StringComparison.Ordinal) - start);
+        int set = body.IndexOf("_autoSteerService.SetSectionBits(", StringComparison.Ordinal);
+        int send = body.IndexOf("_autoSteerService.SendPgnsForControlTick(", StringComparison.Ordinal);
+        Assert.That(set >= 0 && send > set,
+            "The 100 Hz control tick must call IAutoSteerService.SetSectionBits before " +
+            "SendPgnsForControlTick. Without it PGN 254/239/229 repeat the section bits of the " +
+            "last GPS cycle, and a section edge waits up to one GPS period (#311).");
+    }
+
     // ── The web client ────────────────────────────────────────────────────
 
     private static readonly string[] ClientScripts = { "app.js", "transport.js", "i18n.js" };
