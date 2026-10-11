@@ -3879,6 +3879,7 @@ if (rnRoot) {
   wireRn('rn-contourlock', 'contour.lock'); // #110
   wireRn('rn-manual', 'section.manual');
   wireRn('rn-auto', 'section.master');
+  wireRn('rn-isobus', 'isobus.sectionControl'); // #312
   wireRn('rn-youturn', 'youturn.toggle');
   wireRn('rn-steer', 'autosteer.toggle');
 }
@@ -4562,6 +4563,31 @@ function renderSectionBar() {
   for (const b of sectionBar.querySelectorAll('button[data-zone]')) // zone colour = its last section
     b.style.background = SECTION_COLORS[secs[+b.dataset.last]] || SECTION_COLORS[0];
   sectionBar.classList.toggle('locked', !iHoldControl); // dim when we can't actuate
+  renderIsobusSections();
+}
+// Under the section buttons: what the ISOBUS implement reports for its own sections
+// (PGN 240), so a section that didn't follow its command shows (#312). One cell per
+// implement section, which need not be the app's section count.
+function renderIsobusSections() {
+  const iso = statusBar && statusBar.isobus;
+  let row = sectionBar.querySelector('.sec-iso');
+  if (!iso || !iso.sections) { if (row) row.remove(); return; }
+  if (!row || +row.dataset.n !== iso.reported.length) {
+    if (row) row.remove();
+    row = document.createElement('div');
+    row.className = 'sec-iso'; row.dataset.n = iso.reported.length;
+    const label = document.createElement('span');
+    label.className = 'sec-iso-label'; label.textContent = 'ISOBUS';
+    const cells = document.createElement('div');
+    cells.className = 'sec-iso-cells';
+    for (let i = 0; i < iso.reported.length; i++) {
+      const c = document.createElement('div'); c.className = 'sec-iso-cell'; cells.appendChild(c);
+    }
+    row.appendChild(label); row.appendChild(cells);
+    sectionBar.appendChild(row);
+  }
+  const cells = row.querySelectorAll('.sec-iso-cell');
+  for (let i = 0; i < cells.length; i++) cells[i].classList.toggle('on', !!iso.reported[i]);
 }
 // Bottom nav (Phase 8). Swap icons only on change; reflect Tick toggle state.
 function bnIcon(img, name) { const p = '/icons/' + name; if (img && !img.src.endsWith(p)) img.src = p; }
@@ -4600,6 +4626,7 @@ const RN = {
   contourI: document.getElementById('rn-contour-i'), manualI: document.getElementById('rn-manual-i'),
   contourLock: document.getElementById('rn-contourlock'), contourLockI: document.getElementById('rn-contourlock-i'),
   autoI: document.getElementById('rn-auto-i'), youturnI: document.getElementById('rn-youturn-i'),
+  isobus: document.getElementById('rn-isobus'), isobusI: document.getElementById('rn-isobus-i'),
   steerI: document.getElementById('rn-steer-i'), readonly: document.getElementById('rn-readonly'),
 };
 // Swap an icon only when it actually changes (no per-frame churn).
@@ -4621,6 +4648,18 @@ function renderRightNav() {
   rnIcon(RN.manualI, op.sectionManual ? 'ManualOn.png' : 'ManualOff.png');
   rnIcon(RN.autoI, op.sectionAuto ? 'SectionMasterOn.png' : 'SectionMasterOff.png');
   rnIcon(RN.youturnI, op.youturn ? 'YouTurnYes.png' : 'YouTurnNo.png');
+  // ISOBUS task controller (#312): the button is there while its heartbeat is heard, like
+  // AgOpenGPS. Idle = no implement with sections; otherwise section control on / off.
+  const iso = statusBar && statusBar.isobus;
+  RN.isobus.style.display = iso ? '' : 'none';
+  if (iso) {
+    rnIcon(RN.isobusI, !iso.sections ? 'IsobusSectionControlIdle.png'
+      : iso.sectionControl ? 'IsobusSectionControlOn.png' : 'IsobusSectionControlOff.png');
+    const tip = !iso.sections ? tr('ISOBUS: no implement')
+      : iso.sectionControl ? tr('ISOBUS section control on ({n} sections)', { n: iso.sections })
+      : tr('ISOBUS section control off ({n} sections)', { n: iso.sections });
+    if (RN.isobus.title !== tip) RN.isobus.title = tip;
+  }
   // U-turn direction + distance-to-trigger now render on-screen (see renderUTurnIndicator).
   // AutoSteer 3-state icon: grey (no track) / off-ready / on-engaged.
   rnIcon(RN.steerI, !op.autoSteerAvail ? 'AutoSteerGray.png' : op.autoSteer ? 'AutoSteerOn.png' : 'AutoSteerOff.png');

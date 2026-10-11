@@ -1082,6 +1082,25 @@ Port = 5122<br>
 <br>
 <br>
 
+## ISOBUS task controller
+
+Spoken with [AOG-TaskController](https://github.com/AgOpenGPS-Official/AOG-TaskController)
+(standalone, or built into the AOW HAT daemon); its `docs/PROTOCOL.md` is the reference.
+The sections themselves reach it in PGN 254 (16) or PGN 229 (64).
+
+| PGN Name | Src | PGN | Dec | Len | Byte 5 | Byte 6 | Byte 7.. | Last |
+|---|---|---|---|---|---|---|---|---|
+| Section heartbeat, from the task controller every 100 ms | 80 | F0 | 240 | 2 + ceil(n / 8) | bit 0: section control enabled; bits 1-3: implements connected | n = the implement's section count (0 = alive, no implement) | the implement's reported section states, section 1 in bit 0 of byte 7 | CRC |
+| Section control mode, to the task controller | 7F | F1 | 241 | 1 | 1 = automatic, 0 = manual | | | CRC |
+
+AgOpenWeb shows the ISOBUS button while a heartbeat arrived in the last second. Tapping it
+sends PGN 241 with the opposite of the reported mode, repeated every 0.5 s until the
+heartbeat shows it (3 s at most), and once more when a restarted task controller comes
+back with the other setting.
+
+<br>
+<br>
+
 ## Nudge by machine
 
 <table>

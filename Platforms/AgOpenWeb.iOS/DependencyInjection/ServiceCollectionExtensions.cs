@@ -112,6 +112,9 @@ public static class ServiceCollectionExtensions
         // AutoSteer pipeline service (zero-copy GPS→PGN path)
         services.AddSingleton<IAutoSteerService, AutoSteerService>();
 
+        // ISOBUS task controller link: PGN 240 heartbeat in, PGN 241 section control out
+        services.AddSingleton<IIsobusTaskControllerService, AgOpenWeb.Services.Isobus.IsobusTaskControllerService>();
+
         // Smart WAS calibration (statistical WAS zero analyzer)
         services.AddSingleton<ISmartWasCalibrationService, SmartWasCalibrationService>();
 
