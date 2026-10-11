@@ -329,6 +329,23 @@ public static class PgnBuilder
     /// Calculate CRC as sum of bytes (matching PgnMessage.CalculateCRC)
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    /// <summary>
+    /// Build PGN 241 (0xF1) for the ISOBUS task controller: section control mode, one
+    /// data byte, 1 = automatic (the task controller drives the implement's sections),
+    /// 0 = manual (#312). AgOpenGPS CISOBUS.RequestSectionControlEnabled, with the CRC.
+    /// </summary>
+    public static byte[] BuildIsobusSectionControlPgn(bool enabled)
+    {
+        var buf = new byte[7];
+        buf[0] = HEADER1;
+        buf[1] = HEADER2;
+        buf[2] = SOURCE;
+        buf[3] = PgnNumbers.ISOBUS_SECTION_CONTROL;
+        buf[4] = 1;
+        buf[5] = (byte)(enabled ? 1 : 0);
+        return WithCrc(buf);
+    }
+
     private static byte CalculateCrc(byte[] data, int start, int length)
     {
         byte crc = 0;

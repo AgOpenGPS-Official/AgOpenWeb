@@ -132,6 +132,18 @@ public static class PgnNumbers
     public const byte HARDWARE_MESSAGE = 221;
 
     /// <summary>
+    /// ISOBUS task controller heartbeat and reported section states (0xF0 = 240), from
+    /// source 0x80 (#312).
+    /// </summary>
+    public const byte ISOBUS_HEARTBEAT = 240;
+
+    /// <summary>
+    /// Section control mode TO the ISOBUS task controller (0xF1 = 241): 1 = automatic,
+    /// 0 = manual (#312).
+    /// </summary>
+    public const byte ISOBUS_SECTION_CONTROL = 241;
+
+    /// <summary>
     /// Hello/ping from AutoSteer module (0x7E = 126)
     /// </summary>
     public const byte HELLO_FROM_AUTOSTEER = 126;

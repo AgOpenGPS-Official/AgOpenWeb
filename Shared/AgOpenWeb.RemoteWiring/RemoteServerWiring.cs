@@ -87,6 +87,10 @@ public static partial class RemoteServerWiring
                                     if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var zi))
                                         vm.ToggleZone(zi);
                                     return;
+                                case "isobus.sectionControl": // Tier-2 (gated); toggle the implement's section control (#312)
+                                    services.GetRequiredService<AgOpenWeb.Services.Interfaces.IIsobusTaskControllerService>()
+                                        .ToggleSectionControl();
+                                    return;
                                 case "section.toggle": // Tier-2 (gated); cycle one section
                                     if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var si)
                                         && vm.ToggleSectionCommand?.CanExecute(si) == true)
@@ -673,6 +677,7 @@ public static partial class RemoteServerWiring
                     // fresh control authority (Phase 2 safety gate).
                     server.IsRestrictedCommand = id =>
                         id.StartsWith("section.") || id.StartsWith("autosteer.")
+                        || id.StartsWith("isobus.") // switches the implement's section control
                         || id.StartsWith("youturn.") || id.StartsWith("contour.")
                         || (id.StartsWith("track.") && !UngatedTrackIds.Contains(id)) // see below
                         || (id.StartsWith("headland.") && !UngatedHeadlandIds.Contains(id))
@@ -834,6 +839,16 @@ public static partial class RemoteServerWiring
                     // IMU-corrected heading, straight from the heading stage.
                     var headingFusion = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IGpsHeadingFusionService>();
                     server.HeadingChartProvider = () => (headingFusion.GpsHeadingDeg, headingFusion.ImuCorrectedDeg);
+
+                    // ISOBUS task controller (#312): its heartbeat for the status frame.
+                    var isobusSvc = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IIsobusTaskControllerService>();
+                    server.IsobusProvider = () =>
+                    {
+                        var st = isobusSvc.Status;
+                        return st.IsAlive
+                            ? new AgOpenWeb.RemoteServer.IsobusDto(st.SectionControlEnabled, st.SectionCount, st.ClientCount, st.ReportedSections)
+                            : null;
+                    };
 
                     // GPS source (#157): the incoming sentence for the GPS detail card, and
                     // "Dual GPS on but no dual heading" while real GPS is live ($PANDA with

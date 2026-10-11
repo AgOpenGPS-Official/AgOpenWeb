@@ -296,7 +296,14 @@ public record StatusDto(
     SystemDataDto? SystemData = null,
     // No position sentences for a couple of seconds: the host has switched autosteer and
     // the sections off, and the client shows the warning over the map until data is back.
-    bool GpsLost = false);
+    bool GpsLost = false,
+    // ISOBUS task controller (#312); null while none is heard.
+    IsobusDto? Isobus = null);
+
+/// <summary>The ISOBUS task controller's heartbeat (PGN 240): whether section control is
+/// enabled on the implement, the implement's section count (0 = no implement), how many
+/// implements are connected, and the implement's own section states (section 1 in bit 0).</summary>
+public record IsobusDto(bool SectionControl, int Sections, int Clients, ulong Reported);
 
 /// <summary>GPS values for the System Data card that ride no other frame: attitude, the
 /// heading sources before fusion, the sentence rate and counters, and the latest raw

@@ -284,6 +284,12 @@
     #sectionbar .sec-row { display: flex; gap: 3px; }
     #sectionbar .sec-btn { width: 46px; height: 38px; border: 2px solid var(--bg-sunken); border-radius: 0;
       color: #202020; font: 700 13px system-ui, sans-serif; cursor: pointer; padding: 0; }
+    /* What the ISOBUS implement reports for its own sections, under the buttons (#312). */
+    #sectionbar .sec-iso { display: flex; align-items: center; gap: 6px; align-self: stretch; }
+    #sectionbar .sec-iso-label { color: var(--text-muted); font: 600 10px system-ui, sans-serif; }
+    #sectionbar .sec-iso-cells { display: flex; gap: 2px; flex: 1; }
+    #sectionbar .sec-iso-cell { flex: 1 1 0; min-width: 3px; height: 8px; background: #5a5a5a; }
+    #sectionbar .sec-iso-cell.on { background: #39FF6A; }
     /* Bottom nav (Phase 8) — field-tools toolbar + Flags/AB-line flyouts. */
     #bottomnav { position: relative; display: none; pointer-events: auto;
       -webkit-user-select: none; user-select: none; }
@@ -2600,6 +2606,7 @@
     <button id="rn-contourlock" class="rn-btn" style="display:none"><img id="rn-contourlock-i" class="rn-ic" alt="Contour lock"></button>
     <button id="rn-manual" class="rn-btn"><img id="rn-manual-i" class="rn-ic" alt="Manual"></button>
     <button id="rn-auto" class="rn-btn"><img id="rn-auto-i" class="rn-ic" alt="Sections"></button>
+    <button id="rn-isobus" class="rn-btn" style="display:none"><img id="rn-isobus-i" class="rn-ic" alt="ISOBUS section control"></button>
     <button id="rn-youturn" class="rn-btn"><img id="rn-youturn-i" class="rn-ic" alt="U-Turn"></button>
     <button id="rn-steer" class="rn-btn"><img id="rn-steer-i" class="rn-ic" alt="AutoSteer"></button>
     <div id="rn-readonly"></div>

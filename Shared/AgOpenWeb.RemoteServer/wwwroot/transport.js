@@ -175,6 +175,17 @@ window.RemoteTransport = {
           }
           // GPS data lost (append-only): the host's debounced flag.
           const gpsLost = !!u8();
+          // ISOBUS task controller (append-only, #312); null while none is heard.
+          // reported = the implement's own section states, one boolean per section.
+          let isobus = null;
+          if (u8()) {
+            const sectionControl = !!u8(), sections = u8(), clients = u8();
+            const lo = dv.getUint32(o, true), hi = dv.getUint32(o + 4, true); o += 8;
+            const reported = [];
+            for (let i = 0; i < sections && i < 64; i++)
+              reported.push(((i < 32 ? lo >>> i : hi >>> (i - 32)) & 1) === 1);
+            isobus = { sectionControl, sections, clients, reported };
+          }
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -186,7 +197,7 @@ window.RemoteTransport = {
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripEnabled, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
-            gpsLost,
+            gpsLost, isobus,
           });
           break;
         }

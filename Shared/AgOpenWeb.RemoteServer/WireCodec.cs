@@ -719,6 +719,18 @@ public static class WireCodec
         }
         // GPS data lost (append-only): the host's debounced flag, so client and host agree.
         w.Write((byte)(s.GpsLost ? 1 : 0));
+        // ISOBUS task controller (append-only, #312): [u8 present] then u8 section control,
+        // u8 sections, u8 clients, u32 reported low, u32 reported high.
+        var iso = s.Isobus;
+        w.Write((byte)(iso != null ? 1 : 0));
+        if (iso != null)
+        {
+            w.Write((byte)(iso.SectionControl ? 1 : 0));
+            w.Write((byte)Math.Clamp(iso.Sections, 0, 255));
+            w.Write((byte)Math.Clamp(iso.Clients, 0, 255));
+            w.Write((uint)(iso.Reported & 0xFFFFFFFF));
+            w.Write((uint)(iso.Reported >> 32));
+        }
         return ms.ToArray();
     }
 

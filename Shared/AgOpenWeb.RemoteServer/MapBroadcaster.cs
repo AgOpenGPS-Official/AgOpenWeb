@@ -35,6 +35,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private Task? _loop;
 
     private int _statusTick;
+    private IsobusDto? _lastIsobus;
     private int _perimTick; // throttles the crisp-edge perimeter broadcast to ~2 Hz
     // Set by the host (App.axaml.cs) — projects the live SteerWizardViewModel to a
     // WizardDto, or null when the remote wizard isn't open. Sent every tick while open
@@ -338,9 +339,13 @@ public sealed class MapBroadcaster : IAsyncDisposable
 
                 // Status bar changes slowly (fix/age/modules) — send at ~2 Hz, not
                 // every 10 Hz tick. Speed (which updates fast) rides the Tick.
-                if (++_statusTick >= 5)
+                // The ISOBUS implement's reported sections sit beside the section buttons,
+                // so a change there goes out with this tick (#312).
+                var isobus = _projector.IsobusProvider?.Invoke();
+                if (++_statusTick >= 5 || !Equals(isobus, _lastIsobus))
                 {
                     _statusTick = 0;
+                    _lastIsobus = isobus;
                     await _ws.BroadcastAsync(WireCodec.EncodeStatus(_projector.BuildStatus()), ct)
                         .ConfigureAwait(false);
                 }
