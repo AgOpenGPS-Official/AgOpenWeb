@@ -613,6 +613,53 @@ public class SectionControlServiceTests
         Assert.That(_service.GetSectionBits(), Is.EqualTo(0));
     }
 
+    // #317: only the configured sections reach the wire. SetUp configures 3.
+    [Test]
+    public void SetAllSectionsOn_SetsOnlyTheConfiguredSectionBits()
+    {
+        _service.SetAllSections(SectionButtonState.On);
+
+        Assert.That(_service.GetSectionBits(), Is.EqualTo(0b111));
+        Assert.That(_service.GetSectionBits64(), Is.EqualTo(0b111UL));
+        Assert.That(_service.SectionStates[3].IsOn, Is.False, "section 4 isn't configured");
+        Assert.That(_service.SectionStates[3].ButtonState, Is.EqualTo(SectionButtonState.On),
+            "every button takes the state, as in AgOpenGPS");
+    }
+
+    [Test]
+    public void SetAllSectionsOn_MoreThan16Sections_BitsStopAtTheSectionCount()
+    {
+        ConfigurationStore.Instance.NumSections = 20;
+
+        _service.SetAllSections(SectionButtonState.On);
+
+        Assert.That(_service.GetSectionBits(), Is.EqualTo(0xFFFF));
+        Assert.That(_service.GetSectionBits64(), Is.EqualTo((1UL << 20) - 1));
+    }
+
+    [Test]
+    public void SectionCountReduced_SectionsBeyondItGoOff()
+    {
+        ConfigurationStore.Instance.NumSections = 8;
+        _service.SetAllSections(SectionButtonState.On);
+        Assume.That(_service.GetSectionBits(), Is.EqualTo(0xFF));
+
+        ConfigurationStore.Instance.NumSections = 2;
+
+        Assert.That(_service.GetSectionBits(), Is.EqualTo(0b11));
+        Assert.That(_service.SectionStates[5].IsOn, Is.False);
+        Assert.That(_service.SectionStates[5].IsMappingOn, Is.False);
+    }
+
+    [Test]
+    public void SetSectionStateOn_BeyondTheSectionCount_DoesNotSwitchItOn()
+    {
+        _service.SetSectionState(5, SectionButtonState.On);
+
+        Assert.That(_service.SectionStates[5].IsOn, Is.False);
+        Assert.That(_service.GetSectionBits64(), Is.Zero);
+    }
+
     #endregion
 
     #region Section Positions
