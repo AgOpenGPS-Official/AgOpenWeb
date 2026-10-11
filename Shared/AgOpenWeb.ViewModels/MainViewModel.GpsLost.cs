@@ -53,12 +53,21 @@ public partial class MainViewModel
             _audioService.Play(SoundEffect.AutoSteerOff);
         }
 
-        if (IsSectionMasterOn || IsManualSectionMode)
+        // Also a section switched on by its own button or hotkey with neither master on (#316).
+        if (IsSectionMasterOn || IsManualSectionMode || AnySectionNotOff())
         {
             IsSectionMasterOn = false;
             IsManualSectionMode = false;
             _sectionControlService.SetAllSections(SectionButtonState.Off);
             _audioService.Play(SoundEffect.SectionOff);
         }
+    }
+
+    private bool AnySectionNotOff()
+    {
+        var states = _sectionControlService.SectionStates;
+        for (int i = 0; i < states.Count; i++)
+            if (states[i].ButtonState != SectionButtonState.Off || states[i].IsOn) return true;
+        return false;
     }
 }
