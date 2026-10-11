@@ -4,6 +4,7 @@
 // Licensed under GNU GPL v3. See LICENSE.md.
 
 using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Models.Timing;
 using AgOpenWeb.Services.Gps;
 
 namespace AgOpenWeb.Services.Tests.Gps;
@@ -473,5 +474,99 @@ public class GpsHeadingFusionServiceTests
 
         Assert.That(h, Is.EqualTo(30).Within(1e-9));
         Assert.That(_service.IsReverse, Is.False);
+    }
+
+    // ── #313: when the missing dual heading is shown to the operator ──────────
+
+    // One fix every 100 ms for the given time, standing still.
+    private void Fixes(TestClock clock, double seconds, int fixQuality, bool hasDualHeading)
+    {
+        for (int i = 0; i < (int)Math.Round(seconds * 10); i++)
+        {
+            clock.Advance(TimeSpan.FromMilliseconds(100));
+            _service.FuseHeading(30, 0, false, 0, 0, 0, hasDualHeading);
+            _service.UpdateDualHeadingWarning(fixQuality);
+        }
+    }
+
+    private TestClock DualOnWithTestClock()
+    {
+        ConfigurationStore.Instance.Connections.IsDualGps = true;
+        var clock = new TestClock(new DateTime(2026, 10, 11, 15, 0, 0));
+        Clock.Set(clock);
+        return clock;
+    }
+
+    [TearDown]
+    public void ResetClock() => Clock.Reset();
+
+    [Test]
+    public void DualHeadingWarning_NotWhileTheReceiverStartsUp()
+    {
+        var clock = DualOnWithTestClock();
+
+        // The reporter's cold start: 10.7 s with no position, heading 0.2 s after the first fix.
+        Fixes(clock, 10.7, fixQuality: 0, hasDualHeading: false);
+        Assert.That(_service.IsDualHeadingMissing, Is.True, "the fallback itself is unchanged");
+        Assert.That(_service.IsDualHeadingWarning, Is.False, "no position: no heading is expected");
+
+        Fixes(clock, 0.2, fixQuality: 1, hasDualHeading: false);
+        Assert.That(_service.IsDualHeadingWarning, Is.False, "inside the grace period");
+
+        Fixes(clock, 30, fixQuality: 4, hasDualHeading: true);
+        Assert.That(_service.IsDualHeadingWarning, Is.False);
+    }
+
+    [Test]
+    public void DualHeadingWarning_AfterTheGrace_WhenTheHeadingNeverComes()
+    {
+        var clock = DualOnWithTestClock();
+        Fixes(clock, 5, fixQuality: 0, hasDualHeading: false);
+
+        Fixes(clock, 9.5, fixQuality: 1, hasDualHeading: false);
+        Assert.That(_service.IsDualHeadingWarning, Is.False);
+        Fixes(clock, 1, fixQuality: 1, hasDualHeading: false);
+        Assert.That(_service.IsDualHeadingWarning, Is.True, "$PANDA with Dual on still warns");
+    }
+
+    [Test]
+    public void DualHeadingWarning_AtOnce_WhenTheHeadingIsLost()
+    {
+        var clock = DualOnWithTestClock();
+        Fixes(clock, 5, fixQuality: 4, hasDualHeading: true);
+
+        Fixes(clock, 0.1, fixQuality: 4, hasDualHeading: false);
+        Assert.That(_service.IsDualHeadingWarning, Is.True, "second antenna gone");
+
+        Fixes(clock, 0.1, fixQuality: 4, hasDualHeading: true);
+        Assert.That(_service.IsDualHeadingWarning, Is.False, "and back");
+    }
+
+    [Test]
+    public void DualHeadingWarning_ModulePowerCycle_StartsTheGraceAgain()
+    {
+        var clock = DualOnWithTestClock();
+        Fixes(clock, 5, fixQuality: 4, hasDualHeading: true);
+
+        // Module off for a minute, then its start-up: no position, then a fix without heading.
+        clock.Advance(TimeSpan.FromSeconds(60));
+        Fixes(clock, 3, fixQuality: 0, hasDualHeading: false);
+        Fixes(clock, 2, fixQuality: 1, hasDualHeading: false);
+        Assert.That(_service.IsDualHeadingWarning, Is.False, "the heading seen before the power cycle doesn't count");
+
+        // The same when the first sentences after the gap already carry a position.
+        Fixes(clock, 5, fixQuality: 4, hasDualHeading: true);
+        clock.Advance(TimeSpan.FromSeconds(60));
+        Fixes(clock, 2, fixQuality: 1, hasDualHeading: false);
+        Assert.That(_service.IsDualHeadingWarning, Is.False);
+    }
+
+    [Test]
+    public void DualHeadingWarning_NeverWithDualOff()
+    {
+        var clock = DualOnWithTestClock();
+        ConfigurationStore.Instance.Connections.IsDualGps = false;
+        Fixes(clock, 30, fixQuality: 4, hasDualHeading: false);
+        Assert.That(_service.IsDualHeadingWarning, Is.False);
     }
 }

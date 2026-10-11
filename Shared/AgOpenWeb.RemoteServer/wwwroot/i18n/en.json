@@ -243,7 +243,7 @@
   "Drive to record a curve": "Drive to record a curve",
   "Dual antenna": "Dual antenna",
   "Dual GPS": "Dual GPS",
-  "Dual GPS is on, but the receiver isn't sending a dual-antenna heading ($PANDA). Using single-antenna heading.": "Dual GPS is on, but the receiver isn't sending a dual-antenna heading ($PANDA). Using single-antenna heading.",
+  "Dual GPS is on, but the receiver isn't sending a dual-antenna heading. Using single-antenna heading.": "Dual GPS is on, but the receiver isn't sending a dual-antenna heading. Using single-antenna heading.",
   "e.g., Local Base Station": "e.g., Local Base Station",
   "e.g., North 40": "e.g., North 40",
   "e.g., North 40 copy": "e.g., North 40 copy",

@@ -787,6 +787,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double fusedHeading = _headingFusion.FuseHeading(
             pos.Heading, data.ImuHeading, data.ImuValid,
             pos.Speed, posEasting, posNorthing, data.HasDualHeading);
+        _headingFusion.UpdateDualHeadingWarning(data.FixQuality);
         pos = pos with { Heading = fusedHeading };
         // Reverse (#125): guidance, U-turn and hydraulic lift need to know, and the
         // heading above already faces the way the vehicle points.

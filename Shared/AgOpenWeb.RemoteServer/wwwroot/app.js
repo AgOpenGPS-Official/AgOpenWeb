@@ -507,11 +507,12 @@ function showHardwareMessage(text, seconds, warning) {
   clearTimeout(hwMsgTimer);
   if (seconds > 0) hwMsgTimer = setTimeout(() => el.classList.remove('show'), seconds * 1000);
 }
-// Dual GPS on, but the receiver sends $PANDA (single antenna + IMU) — no antenna heading,
-// so the host uses the single-antenna heading (#157). Toast once each time it starts;
-// take it down if a $PAOGI fix clears it while still showing.
+// Dual GPS on, but the receiver sends no antenna heading ($PANDA, $GNTHS void, HPR
+// quality 0), so the host uses the single-antenna heading (#157). The host holds the flag
+// back while the receiver starts up (#313). Toast once each time it starts; take it down
+// if a fix with a heading clears it while still showing.
 const DUAL_HEADING_MISSING_MSG =
-  tr("Dual GPS is on, but the receiver isn't sending a dual-antenna heading ($PANDA). Using single-antenna heading.");
+  tr("Dual GPS is on, but the receiver isn't sending a dual-antenna heading. Using single-antenna heading.");
 let dualHeadingMissingShown = false;
 function syncDualHeadingWarning(s) {
   const missing = !!s.dualHeadingMissing;
