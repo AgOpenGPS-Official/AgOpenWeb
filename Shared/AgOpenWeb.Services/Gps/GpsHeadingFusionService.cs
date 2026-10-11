@@ -5,6 +5,7 @@
 
 using System;
 using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Models.Timing;
 using AgOpenWeb.Services.Interfaces;
 
 namespace AgOpenWeb.Services.Gps;
@@ -94,6 +95,49 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     /// <summary>True while Dual GPS is on but the fixes carry no dual-antenna
     /// heading ($PANDA), so the single-antenna heading is used instead (#157).</summary>
     public bool IsDualHeadingMissing { get; private set; }
+
+    /// <summary>How long after the first position a receiver gets to resolve its
+    /// dual-antenna heading before <see cref="IsDualHeadingWarning"/> is raised (#313).</summary>
+    public static readonly TimeSpan DualHeadingGrace = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan WarningDataGap = TimeSpan.FromSeconds(2);
+
+    private bool _dualHeadingSeen;        // since the receiver last had no position
+    private DateTime? _positionSince;     // first fix with a position and no dual heading
+    private DateTime _lastWarningUpdate;
+
+    /// <summary>True when <see cref="IsDualHeadingMissing"/> is worth telling the
+    /// operator about (#313): the receiver has a position, and its dual heading
+    /// either was there and went away, or hasn't come within
+    /// <see cref="DualHeadingGrace"/>. A receiver starting up has no position and so
+    /// no heading yet; that is not a fault.</summary>
+    public bool IsDualHeadingWarning { get; private set; }
+
+    public void UpdateDualHeadingWarning(int fixQuality)
+    {
+        DateTime now = Clock.Current.Now;
+        // No position, or the data stopped (module powered off): the receiver starts over.
+        if (fixQuality <= 0 || now - _lastWarningUpdate > WarningDataGap)
+        {
+            _dualHeadingSeen = false;
+            _positionSince = null;
+        }
+        _lastWarningUpdate = now;
+
+        if (!IsDualHeadingMissing)
+        {
+            if (fixQuality > 0) _dualHeadingSeen = true;
+            _positionSince = null;
+            IsDualHeadingWarning = false;
+            return;
+        }
+        if (fixQuality <= 0)
+        {
+            IsDualHeadingWarning = false;
+            return;
+        }
+        _positionSince ??= now;
+        IsDualHeadingWarning = _dualHeadingSeen || now - _positionSince.Value >= DualHeadingGrace;
+    }
 
     public double FuseHeading(double gpsHeading, double imuHeading, bool imuValid,
                               double speedMs, double easting, double northing,

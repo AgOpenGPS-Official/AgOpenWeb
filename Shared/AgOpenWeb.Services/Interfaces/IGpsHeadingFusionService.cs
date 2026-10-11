@@ -56,6 +56,16 @@ public interface IGpsHeadingFusionService
     /// heading ($PANDA), so the single-antenna heading is used (#157).</summary>
     bool IsDualHeadingMissing { get; }
 
+    /// <summary>True when the missing dual heading should be shown to the operator
+    /// (#313): the receiver has a position, and the heading was lost or hasn't come
+    /// within a short grace period. Not while the receiver is still starting up.</summary>
+    bool IsDualHeadingWarning { get; }
+
+    /// <summary>Update <see cref="IsDualHeadingWarning"/> for the fix just passed to
+    /// <see cref="FuseHeading"/>; <paramref name="fixQuality"/> is the GGA quality
+    /// (0 = no position).</summary>
+    void UpdateDualHeadingWarning(int fixQuality);
+
     /// <summary>
     /// Discard fix-to-fix history. Call on field close or GPS reconnect.
     /// </summary>

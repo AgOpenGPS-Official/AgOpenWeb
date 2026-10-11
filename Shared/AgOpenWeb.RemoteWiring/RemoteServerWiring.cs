@@ -854,7 +854,7 @@ public static partial class RemoteServerWiring
                             AgOpenWeb.Models.GpsSentenceType.Simulator => "SIM",
                             _ => "",
                         };
-                        return (sentence, headingFusion.IsDualHeadingMissing && gpsSvc.IsGpsLive);
+                        return (sentence, headingFusion.IsDualHeadingWarning && gpsSvc.IsGpsLive);
                     };
 
                     // System Data card (Network IO → GPS): like AgIO's and AgOpenGPS's

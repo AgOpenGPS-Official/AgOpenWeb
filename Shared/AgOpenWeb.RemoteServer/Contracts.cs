@@ -284,8 +284,9 @@ public record StatusDto(
     bool DevOverlay,
     double GpsToPgnLatencyMs,
     // GPS source (#157): the incoming sentence ("PANDA", "PAOGI", "SIM"; "" before any
-    // fix) for the GPS detail card, and DualHeadingMissing — Dual GPS is on but the
-    // receiver sends $PANDA (no antenna heading), so the single-antenna heading is used.
+    // fix) for the GPS detail card, and DualHeadingMissing — Dual GPS is on and the
+    // receiver has a position but no antenna heading, so the single-antenna heading is
+    // used. Not raised while the receiver is starting up (#313).
     string GpsSentence,
     bool DualHeadingMissing,
     // What the NTRIP caster is sending, for the Network IO panel (RTCM plan, Phase 5);
