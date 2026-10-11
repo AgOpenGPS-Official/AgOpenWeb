@@ -1246,7 +1246,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // path (MainViewModel.UpdateToolPositionProperties). Moved here so
         // SetMachineState's three fields (section bits, U-turn state,
         // hyd-lift state) are all written by the cycle, before the PGN
-        // build in (9) reads them.
+        // build in (9) reads them. Between cycles the control loop keeps the
+        // section bits current itself (SetSectionBits, #311).
         byte hydLiftState = ComputeHydLiftState(toolPos, toolHeading, pos.Speed, headlandLine, boundary, headlandOn);
         _autoSteerService.SetMachineState(
             _sectionControlService.GetSectionBits64(),

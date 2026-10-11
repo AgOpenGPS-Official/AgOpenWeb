@@ -631,7 +631,8 @@ public partial class MainViewModel : ObservableObject
     /// <summary>
     /// Host control loop tick handler (#313). Runs at 100 Hz on the loop's
     /// own thread. Reads the latest GPS-anchored pose from the estimator,
-    /// updates tool position + section state machine, then sends PGN 254 +
+    /// updates tool position + section state machine, hands the section bits
+    /// to the sender, then sends PGN 254 +
     /// PGN 239 so the firmware autosteer task — which also runs at 100 Hz
     /// — sees fresh data every cycle.
     /// </summary>
@@ -654,6 +655,10 @@ public partial class MainViewModel : ObservableObject
                 p.Heading,
                 p.SpeedMps);
         }
+        // Hand this tick's section bits to the sender (#311). The GPS cycle writes them
+        // too, but only once per fix; an edge decided here, or a section button tapped
+        // between fixes, must not wait for the next one.
+        _autoSteerService.SetSectionBits(_sectionControlService.GetSectionBits64());
         _autoSteerService.SendPgnsForControlTick();
     }
 
