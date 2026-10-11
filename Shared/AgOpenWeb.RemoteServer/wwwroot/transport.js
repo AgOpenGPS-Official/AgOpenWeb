@@ -186,6 +186,12 @@ window.RemoteTransport = {
               reported.push(((i < 32 ? lo >>> i : hi >>> (i - 32)) & 1) === 1);
             isobus = { sectionControl, sections, clients, reported };
           }
+          // Field data card (append-only, #321); null with no field open. m² and m.
+          let fieldData = null;
+          if (u8()) {
+            const f64 = () => { const v = dv.getFloat64(o, true); o += 8; return v; };
+            fieldData = { boundaryAreaSqM: f64(), actualAreaSqM: f64(), tripAreaSqM: f64(), tripDistanceM: f64() };
+          }
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -197,7 +203,7 @@ window.RemoteTransport = {
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripEnabled, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
-            gpsLost, isobus,
+            gpsLost, isobus, fieldData,
           });
           break;
         }

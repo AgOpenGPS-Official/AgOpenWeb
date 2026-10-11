@@ -337,4 +337,42 @@ public class CoverageTileTests
             i += run;
         }
     }
+
+    // #321: the field data card's Actual area is the ground covered at least once.
+    [Test]
+    public void ActualAreaCovered_CountsAnOverlappedPassOnce()
+    {
+        var svc = new CoverageMapService(_store);
+        svc.SetFieldBounds(-100, 100, -100, 100);
+
+        PaintStrip(svc, 10, 16, 10, 30);          // 6 m x 20 m
+        double once = svc.ActualAreaCovered;
+        Assert.That(once, Is.EqualTo(120).Within(4), "about the strip; cell edges cost a little");
+        Assert.That(svc.TotalWorkedArea, Is.EqualTo(120).Within(1e-6));
+
+        PaintStrip(svc, 10, 16, 10, 30);          // the same ground again
+        Assert.That(svc.TotalWorkedArea, Is.EqualTo(240).Within(1e-6), "worked counts every pass");
+        Assert.That(svc.ActualAreaCovered, Is.EqualTo(once), "actual doesn't");
+
+        PaintStrip(svc, 13, 19, 10, 30);          // half over the first pass
+        Assert.That(svc.ActualAreaCovered, Is.EqualTo(180).Within(5));
+    }
+
+    [Test]
+    public void ActualAreaCovered_SurvivesSaveAndReopen_AndIsClearedWithTheCoverage()
+    {
+        var svc = new CoverageMapService(_store);
+        svc.SetFieldBounds(-100, 100, -100, 100);
+        PaintStrip(svc, 10, 16, 10, 30);
+        PaintStrip(svc, 10, 16, 10, 30);
+        double actual = svc.ActualAreaCovered;
+        svc.SaveToFile(_jobDir);
+
+        var reopened = Reopen();
+        Assert.That(reopened.ActualAreaCovered, Is.EqualTo(actual));
+        Assert.That(reopened.TotalWorkedArea, Is.EqualTo(240).Within(1e-6));
+
+        reopened.ClearAll();
+        Assert.That(reopened.ActualAreaCovered, Is.Zero);
+    }
 }

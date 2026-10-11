@@ -4398,11 +4398,13 @@ SB.fixBtn.addEventListener('pointerdown', e => {
   e.stopPropagation();
   const show = SB.gpsCard.style.display !== 'block';
   SB.gpsCard.style.display = show ? 'block' : 'none';
+  if (show) document.getElementById('sb-fieldcard').style.display = 'none'; // one card at a time
   if (show) SB.modPop.style.display = 'none';
 });
 addEventListener('pointerdown', () => {
   if (SB.modPop) SB.modPop.style.display = 'none';
   if (SB.gpsCard) SB.gpsCard.style.display = 'none';
+  document.getElementById('sb-fieldcard').style.display = 'none';
   // Close bottom-nav flyouts on any outside click (clicks inside #bottomnav
   // stopPropagation, so they don't reach here).
   const ff = document.getElementById('bn-flyout-flags'), af = document.getElementById('bn-flyout-ab');
@@ -4414,6 +4416,58 @@ addEventListener('pointerdown', () => {
   // not this global handler — so a panel dismiss no longer also pans the map.
 });
 
+// Field data card (#321), after AgOpenGPS FormFieldData: tap the rotating field line under
+// the fix readout. Total / Remaining / Time left / Actual remaining need a boundary.
+// Worked counts every pass (overlap included); Actual is the ground covered at least once.
+const FC = {
+  card: document.getElementById('sb-fieldcard'), reset: document.getElementById('fc-reset'),
+  name: document.getElementById('fc-name'), total: document.getElementById('fc-total'),
+  worked: document.getElementById('fc-worked'), remain: document.getElementById('fc-remain'),
+  time: document.getElementById('fc-time'), overlap: document.getElementById('fc-overlap'),
+  actual: document.getElementById('fc-actual'), actRemain: document.getElementById('fc-actremain'),
+  rate: document.getElementById('fc-rate'), tripArea: document.getElementById('fc-triparea'),
+  tripDist: document.getElementById('fc-tripdist'),
+};
+SB.rot.addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (!scene || !scene.hasField) return;
+  const show = FC.card.style.display !== 'block';
+  FC.card.style.display = show ? 'block' : 'none';
+  if (show) { SB.gpsCard.style.display = 'none'; renderFieldCard(); }
+});
+FC.card.addEventListener('pointerdown', e => e.stopPropagation());
+FC.reset.addEventListener('pointerdown', e => { e.preventDefault(); transport.send('fielddata.resetTrip'); });
+function renderFieldCard() {
+  if (FC.card.style.display !== 'block') return;
+  const s = statusBar, fd = s && s.fieldData;
+  if (!fd || !scene || !scene.hasField) { FC.card.style.display = 'none'; return; }
+  const total = fd.boundaryAreaSqM, worked = s.workedAreaSqM || 0;
+  // A cell on the tool's edge can count as covered a little before the strip area
+  // catches up, so keep Actual within Worked.
+  const actual = Math.min(fd.actualAreaSqM, worked);
+  const speedKmh = (lastTick ? lastTick.speed : 0) * 3.6;
+  const haPerHr = speedKmh * toolWidthM() / 10;
+  for (const r of FC.card.querySelectorAll('.fc-bnd')) r.classList.toggle('fc-hide', !(total > 0));
+  FC.name.textContent = scene.fieldName + (s.jobName ? '  ·  ' + s.jobName : '');
+  FC.worked.textContent = fmtArea(worked);
+  FC.overlap.textContent = (worked > 0 ? (1 - actual / worked) * 100 : 0).toFixed(1) + '%';
+  FC.actual.textContent = fmtArea(actual);
+  FC.rate.textContent = fmtRate(haPerHr);
+  FC.tripArea.textContent = fmtArea(fd.tripAreaSqM);
+  FC.tripDist.textContent = fmtUnit(fd.tripDistanceM, 'm', 0);
+  if (total > 0) {
+    const left = Math.max(0, total - worked);
+    FC.total.textContent = fmtArea(total);
+    FC.remain.textContent = fmtArea(left) + '  (' + (left * 100 / total).toFixed(1) + '%)';
+    FC.actRemain.textContent = fmtArea(Math.max(0, total - actual));
+    // AgOpenGPS: no estimate below 2 km/h.
+    if (speedKmh > 2 && haPerHr > 0) {
+      const mins = Math.round(left / 10000 / haPerHr * 60);
+      FC.time.textContent = Math.floor(mins / 60) + ':' + String(mins % 60).padStart(2, '0');
+    } else FC.time.textContent = '∞';
+  }
+}
+
 function renderStatusBar() {
   const s = statusBar;
   if (!s) { SB.bar.style.display = 'none'; if (SB.diagRow) SB.diagRow.style.display = 'none'; return; }
@@ -4424,6 +4478,7 @@ function renderStatusBar() {
   SB.fix.textContent = s.fixText || '—';
   SB.age.textContent = tr('Age {age}', { age: Number.isFinite(s.age) ? s.age.toFixed(1) : '—' }); // NaN: the sentence has no age ($KSXT)
   SB.rot.textContent = rotatingLineText();
+  renderFieldCard();
   // Speed from the live tick (m/s), formatted per the host's unit preference.
   const mps = lastTick ? lastTick.speed : 0;
   SB.speed.textContent = toDisplayUnit(mps * 3.6, 'kmh').toFixed(1);

@@ -731,6 +731,17 @@ public static class WireCodec
             w.Write((uint)(iso.Reported & 0xFFFFFFFF));
             w.Write((uint)(iso.Reported >> 32));
         }
+        // Field data card (append-only, #321): [u8 present] then f64 boundary area,
+        // actual area, trip area (m²), trip distance (m).
+        var fd = s.FieldData;
+        w.Write((byte)(fd != null ? 1 : 0));
+        if (fd != null)
+        {
+            w.Write(fd.BoundaryAreaSqM);
+            w.Write(fd.ActualAreaSqM);
+            w.Write(fd.TripAreaSqM);
+            w.Write(fd.TripDistanceM);
+        }
         return ms.ToArray();
     }
 

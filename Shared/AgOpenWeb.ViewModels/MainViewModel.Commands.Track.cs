@@ -59,6 +59,7 @@ public partial class MainViewModel
         }
 
         _coverageMapService.ClearAll();
+        RestartTripDistance(); // AgOpenGPS zeroes distanceUser with the applied area (#321)
 
         // AgOpenGPS "delete all contours and sections": the contour strips go too, and the
         // field's saved contours are deleted (AgOpenGPS FileCreateContour) (#110).
