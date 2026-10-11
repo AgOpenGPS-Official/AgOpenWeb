@@ -159,6 +159,7 @@ thread" stand-in, `IUiDispatcher`), coordinates services, and is driven only thr
 | `MainViewModel.Ntrip.cs` | NTRIP connection management |
 | `MainViewModel.Simulator.cs` | GPS simulator state |
 | `MainViewModel.ViewSettings.cs` | Display/view settings |
+| `MainViewModel.FieldData.cs` | Field data card: trip distance, boundary area |
 | `MainViewModel.*.Remote.cs` | Web-client-only flows (field builder edits, headland, KML, tram) |
 
 ### ConfigurationStore

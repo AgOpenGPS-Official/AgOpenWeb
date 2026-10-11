@@ -4064,6 +4064,7 @@ public partial class MainViewModel : ObservableObject
                 // CanExecute when the field is opened or closed.
                 DeleteAppliedAreaCommand?.NotifyCanExecuteChanged();
                 OnPropertyChanged(nameof(IsSectionBarVisible));
+                if (value) RestartTripDistance(); // a field's trip distance starts at its opening (#321)
             }
         }
     }

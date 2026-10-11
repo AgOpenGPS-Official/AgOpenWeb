@@ -138,6 +138,21 @@
     #sb-gpscard .gc-row { display: flex; justify-content: space-between; gap: 16px; padding: 1px 0; }
     #sb-gpscard .gc-k { color: var(--text-muted); font-size: 12px; }
     #sb-gpscard .gc-v { color: var(--text-2); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    /* Field data card (#321): same look, toggled by the rotating field line under the fix. */
+    #sb-rot { cursor: pointer; }
+    #sb-fieldcard { display: none; position: absolute; top: calc(100% + 8px); left: 0; min-width: 230px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 10; font-weight: 500; }
+    #sb-fieldcard .gc-ll { color: #3498DB; font-size: 13px; font-weight: 700; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+    #sb-fieldcard .gc-rule { height: 1px; background: var(--border); margin: 5px 0; }
+    #sb-fieldcard .gc-row { display: flex; justify-content: space-between; gap: 16px; padding: 1px 0; }
+    #sb-fieldcard .gc-row.fc-hide { display: none; }
+    #sb-fieldcard .gc-k { color: var(--text-muted); font-size: 12px; }
+    #sb-fieldcard .gc-v { color: var(--text-2); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    #fc-reset { margin-top: 6px; width: 100%; text-align: center; height: 34px; border: 1px solid var(--border); border-radius: 8px;
+      background: rgba(var(--ov),0.06); color: var(--text-2); font: 600 12px system-ui, sans-serif; cursor: pointer; }
+    #fc-reset:hover { background: rgba(var(--ov),0.14); }
     /* Lightbar readout (arrow + cm, pass number on a second line) — DOM overlay so it
        renders identically under both the 2D and Skia map renderers (CanvasKit has no
        bundled font). Sits just below the LED strip. */
@@ -1216,7 +1231,7 @@
         </button>
         <span id="sb-age" class="sb-sec"></span>
       </div>
-      <div id="sb-rot" class="sb-rot">—</div>
+      <div id="sb-rot" class="sb-rot" title="Field data">—</div>
       <!-- GPS-detail card (Phase 5): toggled by the fix dot. Nested in .sb-left so it
            anchors under the fix readout now that the readout lives on the right. -->
       <div id="sb-gpscard">
@@ -1233,6 +1248,26 @@
         <div class="gc-row"><span class="gc-k">Heading:</span><span class="gc-v" id="gc-hdg">—</span></div>
         <div class="gc-row"><span class="gc-k">IMU Roll:</span><span class="gc-v" id="gc-roll">—</span></div>
         <div class="gc-row"><span class="gc-k">FPS:</span><span class="gc-v" id="gc-fps">—</span></div>
+      </div>
+      <!-- Field data card (#321): toggled by the rotating field line. AgOpenGPS FormFieldData.
+           The fc-bnd rows need a boundary. -->
+      <div id="sb-fieldcard">
+        <div class="gc-ll" id="fc-name">—</div>
+        <div class="gc-rule"></div>
+        <div class="gc-row fc-bnd"><span class="gc-k">Total:</span><span class="gc-v" id="fc-total">—</span></div>
+        <div class="gc-row"><span class="gc-k">Worked:</span><span class="gc-v" id="fc-worked">—</span></div>
+        <div class="gc-row fc-bnd"><span class="gc-k">Remaining:</span><span class="gc-v" id="fc-remain">—</span></div>
+        <div class="gc-row fc-bnd"><span class="gc-k">Time left:</span><span class="gc-v" id="fc-time">—</span></div>
+        <div class="gc-rule"></div>
+        <div class="gc-row"><span class="gc-k">Overlap:</span><span class="gc-v" id="fc-overlap">—</span></div>
+        <div class="gc-row"><span class="gc-k">Actual:</span><span class="gc-v" id="fc-actual">—</span></div>
+        <div class="gc-row fc-bnd"><span class="gc-k">Actual remaining:</span><span class="gc-v" id="fc-actremain">—</span></div>
+        <div class="gc-rule"></div>
+        <div class="gc-row"><span class="gc-k">Rate:</span><span class="gc-v" id="fc-rate">—</span></div>
+        <div class="gc-rule"></div>
+        <div class="gc-row"><span class="gc-k">Trip area:</span><span class="gc-v" id="fc-triparea">—</span></div>
+        <div class="gc-row"><span class="gc-k">Trip distance:</span><span class="gc-v" id="fc-tripdist">—</span></div>
+        <button id="fc-reset">Reset trip</button>
       </div>
     </div>
     <button id="sb-fs" title="Fullscreen (hide browser bars)">⛶</button>

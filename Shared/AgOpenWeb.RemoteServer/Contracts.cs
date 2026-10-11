@@ -298,7 +298,14 @@ public record StatusDto(
     // the sections off, and the client shows the warning over the map until data is back.
     bool GpsLost = false,
     // ISOBUS task controller (#312); null while none is heard.
-    IsobusDto? Isobus = null);
+    IsobusDto? Isobus = null,
+    // Field data card (#321); null with no field open.
+    FieldDataDto? FieldData = null);
+
+/// <summary>What the field data card shows beyond the worked area the status frame already
+/// carries: the boundary area less inner boundaries (0 = no boundary), the ground covered
+/// at least once (overlap counted once), and the trip area and distance. m² and m.</summary>
+public record FieldDataDto(double BoundaryAreaSqM, double ActualAreaSqM, double TripAreaSqM, double TripDistanceM);
 
 /// <summary>The ISOBUS task controller's heartbeat (PGN 240): whether section control is
 /// enabled on the implement, the implement's section count (0 = no implement), how many

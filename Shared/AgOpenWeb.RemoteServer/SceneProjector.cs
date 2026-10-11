@@ -46,6 +46,8 @@ public sealed class SceneProjector
     public System.Func<(string Sentence, bool DualHeadingMissing)>? GpsSourceProvider { get; set; }
     // ISOBUS task controller heartbeat (#312). Host-supplied; null while none is heard.
     public System.Func<IsobusDto?>? IsobusProvider { get; set; }
+    // Field data card (#321). Host-supplied; null with no field open.
+    public System.Func<FieldDataDto?>? FieldDataProvider { get; set; }
     // System Data card (Network IO → GPS): attitude, heading sources, sentence rate and the
     // latest raw sentences. Host-supplied; null before any GPS data.
     public System.Func<SystemDataDto?>? SystemDataProvider { get; set; }
@@ -430,7 +432,8 @@ public sealed class SceneProjector
             BuildNtripRtcm(),
             SystemDataProvider?.Invoke(),
             _state.Connections.IsGpsLost,
-            IsobusProvider?.Invoke());
+            IsobusProvider?.Invoke(),
+            FieldDataProvider?.Invoke());
     }
 
     // Read live for every status frame, so "seconds since the last one" keeps counting

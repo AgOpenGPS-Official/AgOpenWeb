@@ -38,6 +38,11 @@ public interface ICoverageMapService
     double TotalWorkedAreaUser { get; }
 
     /// <summary>
+    /// Ground covered at least once, in square meters: overlap counts once (#321).
+    /// </summary>
+    double ActualAreaCovered { get; }
+
+    /// <summary>
     /// Number of coverage patches
     /// </summary>
     int PatchCount { get; }

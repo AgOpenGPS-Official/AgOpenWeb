@@ -131,6 +131,15 @@ public class CoverageMapService : ICoverageMapService
 
     public double TotalWorkedArea => _totalWorkedArea;
     public double TotalWorkedAreaUser => _totalWorkedAreaUser;
+
+    // Cells of the detection grid covered at least once, all zones. Kept beside
+    // _cellCountPerZone as one number another thread can read.
+    private long _coveredCells;
+
+    /// <summary>Ground covered at least once, m²: the covered cells of the detection grid,
+    /// so overlap counts once (AgOpenGPS actualAreaCovered) (#321).</summary>
+    public double ActualAreaCovered =>
+        System.Threading.Interlocked.Read(ref _coveredCells) * BITMAP_CELL_SIZE * BITMAP_CELL_SIZE;
     public int PatchCount => (int)GetTotalCellCount(); // Total covered cells across all zones
     public bool IsAnyZoneMapping => _activeSections.Count > 0;
     public int ActiveSectionCount => _activeSections.Count;
@@ -712,6 +721,7 @@ public class CoverageMapService : ICoverageMapService
         if (!_cellCountPerZone.TryGetValue(zone, out long count))
             count = 0;
         _cellCountPerZone[zone] = count + 1;
+        System.Threading.Interlocked.Increment(ref _coveredCells);
 
         return true;
     }
@@ -1138,6 +1148,7 @@ public class CoverageMapService : ICoverageMapService
             if (_detectionBits != null)
                 Array.Clear(_detectionBits, 0, _detectionBits.Length);
             _cellCountPerZone.Clear();
+            System.Threading.Interlocked.Exchange(ref _coveredCells, 0);
 
             // Reset bounds
             _minCellE = int.MaxValue;
@@ -1512,6 +1523,7 @@ public class CoverageMapService : ICoverageMapService
         _displayWidth = 0;
         _displayHeight = 0;
         _cellCountPerZone.Clear();
+        System.Threading.Interlocked.Exchange(ref _coveredCells, 0);
         // Keep _detectionBits and _displayPixels alive — SetFieldBounds
         // reuses them when LongLength matches (the reuse fix at lines
         // 981-996). Nulling here silently defeats the reuse on every
@@ -1959,6 +1971,7 @@ public class CoverageMapService : ICoverageMapService
             _totalWorkedAreaUser = area;
             _cellCountPerZone.Clear();
             _cellCountPerZone[0] = setBits;
+            System.Threading.Interlocked.Exchange(ref _coveredCells, setBits);
             _boundsValid = setBits > 0;
             if (_boundsValid)
             {
@@ -2297,6 +2310,7 @@ public class CoverageMapService : ICoverageMapService
             _totalWorkedArea = area;
             _totalWorkedAreaUser = area;
             _cellCountPerZone[0] = setBits;
+            System.Threading.Interlocked.Exchange(ref _coveredCells, setBits);
             _boundsValid = setBits > 0;
 
             if (_boundsValid)

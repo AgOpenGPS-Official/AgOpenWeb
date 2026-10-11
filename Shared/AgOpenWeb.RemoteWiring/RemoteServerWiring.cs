@@ -87,6 +87,9 @@ public static partial class RemoteServerWiring
                                     if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var zi))
                                         vm.ToggleZone(zi);
                                     return;
+                                case "fielddata.resetTrip": // Tier-1; the card's trip Reset (#321)
+                                    vm.ResetTrip();
+                                    return;
                                 case "isobus.sectionControl": // Tier-2 (gated); toggle the implement's section control (#312)
                                     services.GetRequiredService<AgOpenWeb.Services.Interfaces.IIsobusTaskControllerService>()
                                         .ToggleSectionControl();
@@ -839,6 +842,13 @@ public static partial class RemoteServerWiring
                     // IMU-corrected heading, straight from the heading stage.
                     var headingFusion = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IGpsHeadingFusionService>();
                     server.HeadingChartProvider = () => (headingFusion.GpsHeadingDeg, headingFusion.ImuCorrectedDeg);
+
+                    // Field data card (#321): boundary area, actual area and the trip counters.
+                    var fieldDataCoverage = services.GetRequiredService<AgOpenWeb.Services.Interfaces.ICoverageMapService>();
+                    server.FieldDataProvider = () => vm.IsFieldOpen
+                        ? new AgOpenWeb.RemoteServer.FieldDataDto(vm.FieldBoundaryAreaSqM,
+                            fieldDataCoverage.ActualAreaCovered, fieldDataCoverage.TotalWorkedAreaUser, vm.TripDistanceMeters)
+                        : null;
 
                     // ISOBUS task controller (#312): its heartbeat for the status frame.
                     var isobusSvc = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IIsobusTaskControllerService>();

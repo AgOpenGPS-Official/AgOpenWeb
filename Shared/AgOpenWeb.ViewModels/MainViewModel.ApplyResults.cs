@@ -55,6 +55,9 @@ public partial class MainViewModel
         // For values not yet on State.Vehicle (RollDegrees), cache here.
         _latestRollDegrees = result.RollDegrees;
 
+        // Field data card: trip distance (#321).
+        if (result.GpsValid) AccumulateTripDistance(result.Easting, result.Northing);
+
         // Sole writer to State.Vehicle — Phase B completion. Was previously
         // also written from MainViewModel.HandleGpsUiUpdates on the
         // _gpsService.GpsDataUpdated callback path (Rule 2 violation).
