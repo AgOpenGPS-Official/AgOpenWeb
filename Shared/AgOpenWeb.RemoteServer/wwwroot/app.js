@@ -6039,13 +6039,16 @@ function drawCoverageSk(canvas) {
 // Crisp worked-area edge — the server-fed vector perimeter (only segments that don't adjoin
 // another pass), stroked in the coverage colour over the raster so the soft alpha-AA feather
 // is replaced by a sharp boundary. Bounded by perimeter length, so cost is ~flat regardless
-// of field size. Stroke width ≈ 0.6 m (covers the feather). Polylines are broken at the near
-// plane per vertex (see below). Reloaded fields have no perimeter (graceful fall back to feather).
+// of field size. Stroke width 0.6 m (covers the feather): the host sends the line 0.3 m inside
+// the swept edge (EDGE_STROKE_WIDTH in CoverageMapService), so the stroke ends at the edge of the
+// tool, and the caps are butt so it doesn't run past the ends of a pass either (#325). Polylines
+// are broken at the near plane per vertex (see below). Reloaded fields have no perimeter
+// (graceful fall back to feather).
 function drawCoverageEdgeSk(canvas) {
   if (EDGE_OFF || !coverageEdges || !coverageEdges.length) return;
   const p = SKP.covEdge || (SKP.covEdge = (() => {
     const q = new CK.Paint(); q.setStyle(CK.PaintStyle.Stroke); q.setAntiAlias(true);
-    q.setStrokeCap(CK.StrokeCap.Round); q.setStrokeJoin(CK.StrokeJoin.Round); return q;
+    q.setStrokeCap(CK.StrokeCap.Butt); q.setStrokeJoin(CK.StrokeJoin.Round); return q;
   })());
   const c = covEdgeRgb;
   p.setColor(CK.Color((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, 1));

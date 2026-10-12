@@ -203,6 +203,7 @@ public class CoverageMapService : ICoverageMapService
     private int _edgePointCount;
     private const double EDGE_GATE = 2.0;          // metres between committed edge vertex pairs
     private const int EDGE_MAX_POINTS = 200_000;   // safety cap on total accumulated points
+    private const double EDGE_STROKE_WIDTH = 0.6;  // metres; the stroke in app.js drawCoverageEdgeSk
 
     private void ClearEdges()
     {
@@ -419,7 +420,16 @@ public class CoverageMapService : ICoverageMapService
             double len = Math.Sqrt(ox * ox + oy * oy);
             bool perim = len > 1e-6 &&
                 !IsPointCovered(edge[i].Easting + ox / len * 0.2, edge[i].Northing + oy / len * 0.2);
-            if (perim) { (cur ??= new List<Vec2>()).Add(edge[i]); }
+            if (perim)
+            {
+                // The client strokes this line EDGE_STROKE_WIDTH wide, centred on it. Move it
+                // in by half that, so the stroke ends at the swept edge instead of painting
+                // past the end of the tool (#325). A section narrower than the stroke keeps
+                // its line in the middle.
+                double inset = Math.Min(EDGE_STROKE_WIDTH * 0.5, len * 0.5);
+                (cur ??= new List<Vec2>()).Add(new Vec2(
+                    edge[i].Easting - ox / len * inset, edge[i].Northing - oy / len * inset));
+            }
             else if (cur != null) { if (cur.Count >= 2) result.Add(cur); cur = null; }
         }
         if (cur != null && cur.Count >= 2) result.Add(cur);
