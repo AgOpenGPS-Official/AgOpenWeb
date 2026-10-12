@@ -71,7 +71,7 @@ public class GuidancePipelineIntegrationTests
 
             var output = _guidance.CalculateGuidance(input);
             state = output.State;
-            _sim.Tick(output.SteerAngle);
+            _sim.Tick(output.SteerAngle, GpsSimulationService.StepSeconds); // one whole step
             lastXte = Math.Abs(output.CrossTrackError);
         }
 
@@ -115,7 +115,7 @@ public class GuidancePipelineIntegrationTests
 
             var output = _guidance.CalculateGuidance(input);
             state = output.State;
-            _sim.Tick(output.SteerAngle);
+            _sim.Tick(output.SteerAngle, GpsSimulationService.StepSeconds); // one whole step
             lastXte = Math.Abs(output.CrossTrackError);
         }
 
@@ -165,7 +165,7 @@ public class GuidancePipelineIntegrationTests
 
             var output = _guidance.CalculateGuidance(input);
             state = output.State;
-            _sim.Tick(output.SteerAngle);
+            _sim.Tick(output.SteerAngle, GpsSimulationService.StepSeconds); // one whole step
             if (Math.Abs(output.CrossTrackError) < 2.0) onTrackCount++;
         }
 
