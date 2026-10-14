@@ -144,13 +144,9 @@ public static class ProfileJsonServiceV1
                 // #343: previously not persisted.
                 MinLookAheadDistance = store.Guidance.MinLookAheadDistance,
                 StanleyIntegralDistanceAwayTriggerAB = store.Guidance.StanleyIntegralDistanceAwayTriggerAB,
-                DeadZoneHeading = store.Guidance.DeadZoneHeading,
-                DeadZoneDelay = store.Guidance.DeadZoneDelay,
                 TramPasses = store.Guidance.TramPasses,
                 TramDisplay = store.Guidance.TramDisplay,
                 TramLine = store.Guidance.TramLine,
-                HydLiftLookAheadDistanceLeft = store.Guidance.HydLiftLookAheadDistanceLeft,
-                HydLiftLookAheadDistanceRight = store.Guidance.HydLiftLookAheadDistanceRight,
             },
             Tool = new ToolDto
             {
@@ -198,7 +194,6 @@ public static class ProfileJsonServiceV1
                 TurnRadius = store.Guidance.UTurnRadius,
                 ExtensionLength = store.Guidance.UTurnExtension,
                 DistanceFromBoundary = store.Guidance.UTurnDistanceFromBoundary,
-                SkipWidth = store.Guidance.UTurnSkipWidth,
                 Style = store.Guidance.UTurnStyle,
                 Smoothing = store.Guidance.UTurnSmoothing,
             },
@@ -248,19 +243,14 @@ public static class ProfileJsonServiceV1
         // #343: previously not persisted — defaults match GuidanceConfig initializers.
         store.Guidance.MinLookAheadDistance = dto.Guidance?.MinLookAheadDistance ?? 2.0;
         store.Guidance.StanleyIntegralDistanceAwayTriggerAB = dto.Guidance?.StanleyIntegralDistanceAwayTriggerAB ?? 0.3;
-        store.Guidance.DeadZoneHeading = dto.Guidance?.DeadZoneHeading ?? 0.5;
-        store.Guidance.DeadZoneDelay = dto.Guidance?.DeadZoneDelay ?? 10;
         store.Guidance.TramPasses = dto.Guidance?.TramPasses ?? 3;
         store.Guidance.TramDisplay = dto.Guidance?.TramDisplay ?? true;
         store.Guidance.TramLine = dto.Guidance?.TramLine ?? 1;
-        store.Guidance.HydLiftLookAheadDistanceLeft = dto.Guidance?.HydLiftLookAheadDistanceLeft ?? 1.0;
-        store.Guidance.HydLiftLookAheadDistanceRight = dto.Guidance?.HydLiftLookAheadDistanceRight ?? 1.0;
 
         // U-Turn settings
         store.Guidance.UTurnRadius = dto.YouTurn?.TurnRadius ?? 8.0;
         store.Guidance.UTurnExtension = dto.YouTurn?.ExtensionLength ?? 20.0;
         store.Guidance.UTurnDistanceFromBoundary = dto.YouTurn?.DistanceFromBoundary ?? 2.0;
-        store.Guidance.UTurnSkipWidth = dto.YouTurn?.SkipWidth ?? 1;
         store.Guidance.UTurnStyle = dto.YouTurn?.Style ?? (int)Models.YouTurn.YouTurnType.SagittaStyle;
         store.Guidance.UTurnSmoothing = dto.YouTurn?.Smoothing ?? 14;
 
@@ -403,13 +393,9 @@ public static class ProfileJsonServiceV1
         // #343: nullable so older profiles take ApplyDtoToStore defaults.
         public double? MinLookAheadDistance { get; set; }
         public double? StanleyIntegralDistanceAwayTriggerAB { get; set; }
-        public double? DeadZoneHeading { get; set; }
-        public int? DeadZoneDelay { get; set; }
         public int? TramPasses { get; set; }
         public bool? TramDisplay { get; set; }
         public int? TramLine { get; set; }
-        public double? HydLiftLookAheadDistanceLeft { get; set; }
-        public double? HydLiftLookAheadDistanceRight { get; set; }
     }
 
     internal class ToolDto
@@ -464,7 +450,6 @@ public static class ProfileJsonServiceV1
         public double TurnRadius { get; set; }
         public double ExtensionLength { get; set; }
         public double DistanceFromBoundary { get; set; }
-        public int SkipWidth { get; set; }
         public int Style { get; set; }
         public int Smoothing { get; set; }
     }

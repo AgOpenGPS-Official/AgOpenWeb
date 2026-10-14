@@ -227,7 +227,6 @@ public class VehicleProfileService : IVehicleProfileService
         store.Guidance.StanleyIntegralGainAB = 0.0;
         store.Guidance.PurePursuitIntegralGain = 0.0;
         store.Guidance.UTurnCompensation = 1.0;
-        store.Guidance.UTurnSkipWidth = 1;
 
         store.Tool.Width = 6.0;
         store.Tool.Overlap = 0.0;
@@ -307,7 +306,6 @@ public class VehicleProfileService : IVehicleProfileService
         store.Guidance.UTurnRadius = GetDouble(settings, "set_youTurnRadius", 8.0);
         store.Guidance.UTurnExtension = GetDouble(settings, "set_youTurnExtensionLength", 20.0);
         store.Guidance.UTurnDistanceFromBoundary = GetDouble(settings, "set_youTurnDistanceFromBoundary", 2.0);
-        store.Guidance.UTurnSkipWidth = GetInt(settings, "set_youSkipWidth", 1);
         store.Guidance.UTurnStyle = GetInt(settings, "set_uTurnStyle", (int)Models.YouTurn.YouTurnType.SagittaStyle);
         store.Guidance.UTurnSmoothing = GetInt(settings, "setAS_uTurnSmoothing", 14);
 
