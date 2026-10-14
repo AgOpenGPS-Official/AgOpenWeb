@@ -963,7 +963,6 @@ public partial class ConfigurationViewModel : ObservableObject
     public ICommand EditUTurnRadiusCommand { get; private set; } = null!;
     public ICommand EditUTurnExtensionCommand { get; private set; } = null!;
     public ICommand EditUTurnDistanceCommand { get; private set; } = null!;
-    public ICommand EditUTurnSkipWidthCommand { get; private set; } = null!;
     public ICommand EditUTurnSmoothingCommand { get; private set; } = null!;
 
     // U-Turn style selector (0 = Sagitta [default], 1 = K-style). Dubins/Omega is
@@ -1393,11 +1392,6 @@ public partial class ConfigurationViewModel : ObservableObject
             ShowNumericInput("Distance from Boundary", Guidance.UTurnDistanceFromBoundary,
                 v => Guidance.UTurnDistanceFromBoundary = v,
                 "m", integerOnly: false, allowNegative: true, min: -10, max: 10));
-
-        EditUTurnSkipWidthCommand = new RelayCommand(() =>
-            ShowNumericInput("Skip Width", Guidance.UTurnSkipWidth,
-                v => Guidance.UTurnSkipWidth = (int)v,
-                "", integerOnly: true, allowNegative: false, min: 1, max: 10));
 
         EditUTurnSmoothingCommand = new RelayCommand(() =>
             ShowNumericInput("Smoothing", Guidance.UTurnSmoothing,

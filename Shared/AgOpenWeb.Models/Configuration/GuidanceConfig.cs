@@ -131,21 +131,6 @@ public class GuidanceConfig : ObservableObject
         set => SetProperty(ref _stanleyIntegralDistanceAwayTriggerAB, value);
     }
 
-    // Dead zone
-    private double _deadZoneHeading = 0.5;
-    public double DeadZoneHeading
-    {
-        get => _deadZoneHeading;
-        set => SetProperty(ref _deadZoneHeading, value);
-    }
-
-    private int _deadZoneDelay = 10;
-    public int DeadZoneDelay
-    {
-        get => _deadZoneDelay;
-        set => SetProperty(ref _deadZoneDelay, value);
-    }
-
     // U-Turn settings (merged from YouTurnConfiguration)
     private double _uTurnRadius = 8.0;
     public double UTurnRadius
@@ -166,13 +151,6 @@ public class GuidanceConfig : ObservableObject
     {
         get => _uTurnDistanceFromBoundary;
         set => SetProperty(ref _uTurnDistanceFromBoundary, value);
-    }
-
-    private int _uTurnSkipWidth = 1;
-    public int UTurnSkipWidth
-    {
-        get => _uTurnSkipWidth;
-        set => SetProperty(ref _uTurnSkipWidth, Math.Max(1, value));
     }
 
     // Sagitta (offset-semicircle) by default — matches Twol, which dropped Dubins
@@ -221,20 +199,5 @@ public class GuidanceConfig : ObservableObject
     {
         get => _tramLine;
         set => SetProperty(ref _tramLine, Math.Max(1, value));
-    }
-
-    // Hydraulic lift look-ahead distances
-    private double _hydLiftLookAheadDistanceLeft = 1.0;
-    public double HydLiftLookAheadDistanceLeft
-    {
-        get => _hydLiftLookAheadDistanceLeft;
-        set => SetProperty(ref _hydLiftLookAheadDistanceLeft, value);
-    }
-
-    private double _hydLiftLookAheadDistanceRight = 1.0;
-    public double HydLiftLookAheadDistanceRight
-    {
-        get => _hydLiftLookAheadDistanceRight;
-        set => SetProperty(ref _hydLiftLookAheadDistanceRight, value);
     }
 }

@@ -223,13 +223,9 @@ public class ProfileJsonServiceV1Tests
         SetupTestStore("GuidanceFields");
         _store.Guidance.MinLookAheadDistance = 3.5;
         _store.Guidance.StanleyIntegralDistanceAwayTriggerAB = 0.45;
-        _store.Guidance.DeadZoneHeading = 0.8;
-        _store.Guidance.DeadZoneDelay = 25;
         _store.Guidance.TramPasses = 7;
         _store.Guidance.TramDisplay = false;
         _store.Guidance.TramLine = 4;
-        _store.Guidance.HydLiftLookAheadDistanceLeft = 2.5;
-        _store.Guidance.HydLiftLookAheadDistanceRight = 1.75;
 
         ProfileJsonServiceV1.Save(_tempDir, "GuidanceFields", _store);
         var loadStore = new ConfigurationStore();
@@ -237,13 +233,9 @@ public class ProfileJsonServiceV1Tests
 
         Assert.That(loadStore.Guidance.MinLookAheadDistance, Is.EqualTo(3.5).Within(1e-6));
         Assert.That(loadStore.Guidance.StanleyIntegralDistanceAwayTriggerAB, Is.EqualTo(0.45).Within(1e-6));
-        Assert.That(loadStore.Guidance.DeadZoneHeading, Is.EqualTo(0.8).Within(1e-6));
-        Assert.That(loadStore.Guidance.DeadZoneDelay, Is.EqualTo(25));
         Assert.That(loadStore.Guidance.TramPasses, Is.EqualTo(7));
         Assert.That(loadStore.Guidance.TramDisplay, Is.False);
         Assert.That(loadStore.Guidance.TramLine, Is.EqualTo(4));
-        Assert.That(loadStore.Guidance.HydLiftLookAheadDistanceLeft, Is.EqualTo(2.5).Within(1e-6));
-        Assert.That(loadStore.Guidance.HydLiftLookAheadDistanceRight, Is.EqualTo(1.75).Within(1e-6));
     }
 
     [Test]
@@ -291,7 +283,6 @@ public class ProfileJsonServiceV1Tests
         Assert.That(loadStore.Tool.CoverageMargin, Is.EqualTo(5.0).Within(1e-6));
         Assert.That(loadStore.Tool.Zones, Is.EqualTo(2));
         Assert.That(loadStore.Guidance.MinLookAheadDistance, Is.EqualTo(2.0).Within(1e-6));
-        Assert.That(loadStore.Guidance.DeadZoneDelay, Is.EqualTo(10));
     }
 
     [Test]
@@ -301,7 +292,6 @@ public class ProfileJsonServiceV1Tests
         _store.Guidance.UTurnRadius = 10.0;
         _store.Guidance.UTurnExtension = 25.0;
         _store.Guidance.UTurnDistanceFromBoundary = 3.0;
-        _store.Guidance.UTurnSkipWidth = 2;
         _store.Guidance.UTurnStyle = 1;
         _store.Guidance.UTurnSmoothing = 20;
 
@@ -312,7 +302,6 @@ public class ProfileJsonServiceV1Tests
         Assert.That(loadStore.Guidance.UTurnRadius, Is.EqualTo(10.0).Within(1e-6));
         Assert.That(loadStore.Guidance.UTurnExtension, Is.EqualTo(25.0).Within(1e-6));
         Assert.That(loadStore.Guidance.UTurnDistanceFromBoundary, Is.EqualTo(3.0).Within(1e-6));
-        Assert.That(loadStore.Guidance.UTurnSkipWidth, Is.EqualTo(2));
         Assert.That(loadStore.Guidance.UTurnStyle, Is.EqualTo(1));
         Assert.That(loadStore.Guidance.UTurnSmoothing, Is.EqualTo(20));
     }
