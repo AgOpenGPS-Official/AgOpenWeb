@@ -227,12 +227,7 @@ public class VehicleProfileService : IVehicleProfileService
         store.Guidance.StanleyIntegralGainAB = 0.0;
         store.Guidance.PurePursuitIntegralGain = 0.0;
         store.Guidance.UTurnCompensation = 1.0;
-        store.Guidance.UTurnRadius = 8.0;
-        store.Guidance.UTurnExtension = 20.0;
-        store.Guidance.UTurnDistanceFromBoundary = 2.0;
         store.Guidance.UTurnSkipWidth = 1;
-        store.Guidance.UTurnStyle = (int)Models.YouTurn.YouTurnType.SagittaStyle; // Sagitta default (Twol parity; no Dubins loop)
-        store.Guidance.UTurnSmoothing = 14;
 
         store.Tool.Width = 6.0;
         store.Tool.Overlap = 0.0;

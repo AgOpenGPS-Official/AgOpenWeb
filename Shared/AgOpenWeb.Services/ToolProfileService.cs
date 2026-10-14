@@ -145,6 +145,18 @@ public class ToolProfileService : IToolProfileService
         store.Machine.User4Value = dm.User4Value;
         store.Machine.ResetPinAssignments();
 
+        // U-Turn and Tram tabs: likewise from the defaults.
+        var dg = new GuidanceConfig();
+        store.Guidance.UTurnRadius = dg.UTurnRadius;
+        store.Guidance.UTurnExtension = dg.UTurnExtension;
+        store.Guidance.UTurnDistanceFromBoundary = dg.UTurnDistanceFromBoundary;
+        store.Guidance.UTurnStyle = dg.UTurnStyle; // Sagitta (Twol parity; no Dubins loop)
+        store.Guidance.UTurnSmoothing = dg.UTurnSmoothing;
+        store.Tram.TramWidth = new TramConfig().TramWidth;
+        store.Guidance.TramPasses = dg.TramPasses;
+        store.Guidance.TramDisplay = dg.TramDisplay;
+        store.Guidance.TramLine = dg.TramLine;
+
         store.ActiveToolProfileName = profileName;
         store.ActiveToolProfilePath = Path.Combine(ToolsDirectory, $"{profileName}.json");
 
