@@ -10,13 +10,14 @@ using AgOpenWeb.Models.Configuration;
 namespace AgOpenWeb.Services.Tram;
 
 /// <summary>
-/// Per-field persistence of the scalar tram settings on
-/// <see cref="TramConfig"/> (TramConfig.json in the field directory). Tram is
-/// field-scoped, so these load when a field opens and save when it closes —
-/// alongside the tram <c>Systems</c> (TramSystems.json) and the tram-line
-/// geometry. <c>Passes</c> and <c>DisplayMode</c> are intentionally NOT written
-/// here: they mirror <c>ConfigStore.Guidance</c> (vehicle-profile config) via
-/// the existing Guidance↔Tram sync, and double-sourcing them would fight that.
+/// Per-field persistence of the tram state that belongs to a field
+/// (TramConfig.json in the field directory): these load when a field opens and
+/// save when it closes, alongside the tram <c>Systems</c> (TramSystems.json).
+/// What the Tool panel's Tram tab edits is NOT written here: tram width, pass
+/// count, display and first pass follow the implement and are saved with the
+/// tool profile (#330). <c>Passes</c>, <c>DisplayMode</c> and <c>StartPass</c>
+/// mirror <c>ConfigStore.Guidance</c> via the Guidance↔Tram sync, and
+/// double-sourcing them would fight that.
 /// </summary>
 public static class TramConfigFileService
 {
@@ -31,8 +32,6 @@ public static class TramConfigFileService
 
     private sealed class TramConfigDto
     {
-        public double TramWidth { get; set; } = 12.0;
-        public int StartPass { get; set; }
         public bool IsOuterInverted { get; set; }
         public double Alpha { get; set; } = 0.8;
         public bool IsDisplayTramControl { get; set; } = true;
@@ -45,8 +44,6 @@ public static class TramConfigFileService
         {
             var dto = new TramConfigDto
             {
-                TramWidth = tram.TramWidth,
-                StartPass = tram.StartPass,
                 IsOuterInverted = tram.IsOuterInverted,
                 Alpha = tram.Alpha,
                 IsDisplayTramControl = tram.IsDisplayTramControl,
@@ -88,8 +85,6 @@ public static class TramConfigFileService
             dto = new TramConfigDto();
         }
 
-        tram.TramWidth = dto.TramWidth;
-        tram.StartPass = dto.StartPass;
         tram.IsOuterInverted = dto.IsOuterInverted;
         tram.Alpha = dto.Alpha;
         tram.IsDisplayTramControl = dto.IsDisplayTramControl;

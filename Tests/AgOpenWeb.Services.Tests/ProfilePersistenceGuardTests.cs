@@ -30,7 +30,7 @@ public class ProfilePersistenceGuardTests
         ["Simulator"] = "AppSettings / PersistentAppState",
         ["Hotkeys"] = "AppSettings.HotkeyBindings",
         ["AutoSteer"] = "<vehicle>.autosteer file (ConfigurationService.SaveAutoSteerConfig)",
-        ["Tram"] = "the field's tram file (TramConfigFileService); pass count is Guidance.TramPasses",
+        ["Tram"] = "the field's tram file (TramConfigFileService); the Tool panel's Tram tab (width, and passes / display / first pass via Guidance) is in the tool profile",
     };
 
     /// <summary>Single settings not in a profile, and why.</summary>

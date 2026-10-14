@@ -14,10 +14,11 @@ using AgOpenWeb.Services.Storage;
 namespace AgOpenWeb.Services.Profile;
 
 /// <summary>
-/// v2 tool profile serializer. Persists the Tool config + Sections array.
-/// All other config groups (Vehicle, Guidance, YouTurn, General) live in
-/// the parallel vehicle profile (<see cref="VehicleProfileJsonService"/>);
-/// see issue #346 / Plans/VEHICLE_TOOL_SPLIT_PLAN.md.
+/// v2 tool profile serializer. Persists what the Tool configuration panel edits: the
+/// Tool config + Sections array, the Machine tab, the U-Turn tab and the Tram tab.
+/// The other config groups (Vehicle, Guidance, General) live in the parallel vehicle
+/// profile (<see cref="VehicleProfileJsonService"/>); see issue #346 /
+/// Plans/VEHICLE_TOOL_SPLIT_PLAN.md.
 /// </summary>
 public static class ToolProfileJsonService
 {
@@ -172,6 +173,21 @@ public static class ToolProfileJsonService
                 User4Value = store.Machine.User4Value,
                 PinAssignments = store.Machine.PinAssignments.Select(f => (int)f).ToArray(),
             },
+            YouTurn = new YouTurnDto
+            {
+                TurnRadius = store.Guidance.UTurnRadius,
+                ExtensionLength = store.Guidance.UTurnExtension,
+                DistanceFromBoundary = store.Guidance.UTurnDistanceFromBoundary,
+                Style = store.Guidance.UTurnStyle,
+                Smoothing = store.Guidance.UTurnSmoothing,
+            },
+            Tram = new TramDto
+            {
+                Width = store.Tram.TramWidth,
+                Passes = store.Guidance.TramPasses,
+                Display = store.Guidance.TramDisplay,
+                Line = store.Guidance.TramLine,
+            },
         };
     }
 
@@ -274,6 +290,21 @@ public static class ToolProfileJsonService
                     ? (PinFunction)mach.PinAssignments[i] : PinFunction.None;
         store.Machine.PinAssignments = pins;
 
+        // U-Turn and Tram tabs of the tool configuration (#330): the turn a rig can make
+        // and its tram spacing follow the implement, not the tractor. As with Machine, a
+        // file without the section gets the defaults, not the previous tool's values.
+        var dg = new GuidanceConfig();
+        store.Guidance.UTurnRadius = dto.YouTurn?.TurnRadius ?? dg.UTurnRadius;
+        store.Guidance.UTurnExtension = dto.YouTurn?.ExtensionLength ?? dg.UTurnExtension;
+        store.Guidance.UTurnDistanceFromBoundary = dto.YouTurn?.DistanceFromBoundary ?? dg.UTurnDistanceFromBoundary;
+        store.Guidance.UTurnStyle = dto.YouTurn?.Style ?? dg.UTurnStyle;
+        store.Guidance.UTurnSmoothing = dto.YouTurn?.Smoothing ?? dg.UTurnSmoothing;
+
+        store.Tram.TramWidth = dto.Tram?.Width ?? new TramConfig().TramWidth;
+        store.Guidance.TramPasses = dto.Tram?.Passes ?? dg.TramPasses;
+        store.Guidance.TramDisplay = dto.Tram?.Display ?? dg.TramDisplay;
+        store.Guidance.TramLine = dto.Tram?.Line ?? dg.TramLine;
+
         // Profile metadata
         store.ActiveToolProfileName = profileName;
         store.ActiveToolProfilePath = filePath;
@@ -287,6 +318,8 @@ public static class ToolProfileJsonService
         public ToolDto? Tool { get; set; }
         public SectionsDto? Sections { get; set; }
         public MachineDto? Machine { get; set; }
+        public YouTurnDto? YouTurn { get; set; }
+        public TramDto? Tram { get; set; }
     }
 
     internal class ToolDto
@@ -331,6 +364,23 @@ public static class ToolProfileJsonService
         public int Count { get; set; }
         public double[] Positions { get; set; } = Array.Empty<double>();
         public double[]? Widths { get; set; }
+    }
+
+    internal class YouTurnDto
+    {
+        public double? TurnRadius { get; set; }
+        public double? ExtensionLength { get; set; }
+        public double? DistanceFromBoundary { get; set; }
+        public int? Style { get; set; }
+        public int? Smoothing { get; set; }
+    }
+
+    internal class TramDto
+    {
+        public double? Width { get; set; }
+        public int? Passes { get; set; }
+        public bool? Display { get; set; }
+        public int? Line { get; set; }
     }
 
     internal class MachineDto
