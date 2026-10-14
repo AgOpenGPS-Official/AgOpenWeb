@@ -87,6 +87,10 @@ def main() -> int:
     start = time.monotonic()
     counts = {'text': 0, 'pgn': 0, 'other': 0}
     sources = set()
+    # A running count on one line, so it's plain the capture is receiving (or isn't).
+    # Only on a terminal: redirected stderr gets the summary alone.
+    live = sys.stderr.isatty()
+    last_status = -1.0
     print(f'listening on {", ".join(str(p) for p in socks.values())}; writing {args.out}', file=sys.stderr)
     try:
         with open(args.out, 'w', encoding='ascii') as f:
@@ -111,9 +115,16 @@ def main() -> int:
                         f.write(f'{now:.4f}\t{ip}:{port}\tother {len(data)} bytes {data[:16].hex(" ")}\n')
                 if counts['text'] and counts['text'] % 100 == 0:
                     f.flush()
+                if live and now - last_status >= 0.5:
+                    last_status = now
+                    sys.stderr.write(f'\r{now:7.1f} s  text {counts["text"]}  PGN {counts["pgn"]}  '
+                                     f'other {counts["other"]}  sources {len(sources)}\x1b[K')
+                    sys.stderr.flush()
     except KeyboardInterrupt:
         pass
 
+    if live:
+        sys.stderr.write('\r\x1b[K')
     elapsed = time.monotonic() - start
     print(f'{elapsed:.1f} s: {counts["text"]} text datagrams written, '
           f'{counts["pgn"]} PGNs and {counts["other"]} other datagrams skipped', file=sys.stderr)
