@@ -952,6 +952,13 @@
     .dlg-wide { max-width: 460px; min-width: 420px; }
     .dlg-sub { color: var(--text-muted); font: 700 13px system-ui, sans-serif; text-align: center; margin: 12px 0 6px; }
     .dlg-modes { display: flex; gap: 10px; justify-content: center; }
+    .qab-heading { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 8px;
+      color: var(--text-muted); font: 600 13px system-ui, sans-serif; }
+    .qab-heading .cfg-num { width: 80px; }
+    .ll-pt { margin-top: 10px; }
+    .ll-hdr { display: flex; align-items: center; justify-content: space-between; font: 700 14px system-ui, sans-serif; }
+    .ll-hdr .ll-fill { padding: 6px 10px; font-size: 12px; }
+    .ll-err { color: #e74c3c; font: 600 13px system-ui, sans-serif; min-height: 18px; margin-top: 8px; }
     .dlg-mode { flex: 1; min-height: 84px; display: flex; flex-direction: column; align-items: center;
       justify-content: center; gap: 6px; border-radius: 8px; border: 1px solid var(--border);
       background: rgba(var(--ov),0.05); color: var(--text-2); font: 600 12px system-ui, sans-serif; cursor: pointer; }
@@ -2843,6 +2850,11 @@
         <button class="dlg-mode" data-qab="driveAB" title="Drive from A to B"><img src="/icons/ABTrackAB.png" alt=""><span>Drive AB</span></button>
         <button class="dlg-mode" data-qab="recordCurve" title="Drive to record a curve"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
       </div>
+      <!-- A+ heading (#335, AgOpenGPS Quick AB nudHeading): empty = the vehicle's heading,
+           shown as the placeholder; a typed value makes A+ use it instead. -->
+      <label class="qab-heading">A+ heading
+        <input id="qab-aplus-heading" class="cfg-num" type="number" step="0.1" min="0" max="360" inputmode="decimal">°
+      </label>
       <div class="dlg-sub">From Field Boundary</div>
       <div class="dlg-modes">
         <button class="dlg-mode" data-qab="boundaryEdge" title="AB line along the longest boundary edge"><span class="dlg-bigtxt">AB</span><span>Longest Edge</span></button>
@@ -2854,7 +2866,41 @@
         <button class="dlg-mode" data-qab="drawStraight" title="Tap 2 points on the map for a straight AB line"><img src="/icons/ABTrackAB.png" alt=""><span>Straight</span></button>
         <button class="dlg-mode" data-qab="drawCurve" title="Tap points on the map for a curve, then Finish"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
       </div>
+      <!-- AgOpenGPS Build Tracks "Lat/Lon + Heading" and "Lat/Lon" (#335). -->
+      <div class="dlg-sub">By Coordinates</div>
+      <div class="dlg-modes">
+        <button class="dlg-mode" data-qab="latLonHeading" title="AB line from a latitude/longitude and a heading"><span class="dlg-bigtxt">A+</span><span>Lat/Lon + Heading</span></button>
+        <button class="dlg-mode" data-qab="latLonAB" title="AB line through two latitude/longitude points"><span class="dlg-bigtxt">AB</span><span>Lat/Lon A, B</span></button>
+      </div>
       <div class="dlg-buttons"><button id="dlg-qab-cancel" class="dlg-btn dlg-cancel">Cancel</button></div>
+    </div>
+    <!-- Coordinates line (#335): A + heading, or A + B. The fill buttons put in the
+         vehicle's position. -->
+    <div id="dlg-latlonab" class="dlg-card">
+      <div class="dlg-title" id="ll-title"></div>
+      <div class="ll-pt">
+        <div class="ll-hdr"><span>A</span><button class="dlg-btn ll-fill" data-ll-fill="a">Use current position</button></div>
+        <label class="dlg-label" for="ll-lat-a">Latitude (−90 to 90)</label>
+        <input id="ll-lat-a" class="dlg-input num-field" type="text" placeholder="0.00000000">
+        <label class="dlg-label" for="ll-lon-a">Longitude (−180 to 180)</label>
+        <input id="ll-lon-a" class="dlg-input num-field" type="text" placeholder="0.00000000">
+      </div>
+      <div class="ll-pt" id="ll-heading-row">
+        <label class="dlg-label" for="ll-heading">Heading (degrees true)</label>
+        <input id="ll-heading" class="dlg-input num-field" type="text" placeholder="0.0">
+      </div>
+      <div class="ll-pt" id="ll-b-row">
+        <div class="ll-hdr"><span>B</span><button class="dlg-btn ll-fill" data-ll-fill="b">Use current position</button></div>
+        <label class="dlg-label" for="ll-lat-b">Latitude (−90 to 90)</label>
+        <input id="ll-lat-b" class="dlg-input num-field" type="text" placeholder="0.00000000">
+        <label class="dlg-label" for="ll-lon-b">Longitude (−180 to 180)</label>
+        <input id="ll-lon-b" class="dlg-input num-field" type="text" placeholder="0.00000000">
+      </div>
+      <div class="ll-err" id="ll-err"></div>
+      <div class="dlg-buttons">
+        <button id="ll-cancel" class="dlg-btn dlg-cancel">Cancel</button>
+        <button id="ll-ok" class="dlg-btn dlg-ok">Create</button>
+      </div>
     </div>
     <!-- Tracks manager (mirrors native TracksDialogPanel) — list + toolbar. -->
     <div id="dlg-tracks" class="dlg-card dlg-wide">

@@ -1241,6 +1241,53 @@ function openSimCoords() {
   dlgLat.focus();
 }
 document.getElementById('dlg-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
+// Coordinates line (#335, AgOpenGPS Build Tracks "Lat/Lon + Heading" / "Lat/Lon"): A is
+// pre-filled with the vehicle's position, as AgOpenGPS does; the host converts through the
+// field's local plane and reports anything it refuses.
+let llMode = 'latLonHeading';
+const llEl = id => document.getElementById(id);
+function llFill(pt) {
+  if (!statusBar || statusBar.lat == null || (!statusBar.lat && !statusBar.lon)) return;
+  llEl('ll-lat-' + pt).value = statusBar.lat.toFixed(8);
+  llEl('ll-lon-' + pt).value = statusBar.lon.toFixed(8);
+}
+function openLatLonLine(mode) {
+  llMode = mode;
+  const ab = mode === 'latLonAB';
+  llEl('ll-title').textContent = ab ? tr('AB Line from Two Points') : tr('AB Line from Point and Heading');
+  llEl('ll-heading-row').hidden = ab;
+  llEl('ll-b-row').hidden = !ab;
+  for (const id of ['ll-lat-a', 'll-lon-a', 'll-heading', 'll-lat-b', 'll-lon-b']) llEl(id).value = '';
+  llEl('ll-err').textContent = '';
+  llFill('a');
+  openDialog('dlg-latlonab');
+}
+document.querySelectorAll('[data-ll-fill]').forEach(b => b.addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation(); llFill(b.dataset.llFill);
+}));
+llEl('ll-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
+llEl('ll-ok').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); // commit the edit
+  const num = id => { const v = llEl(id).value.trim(); return v === '' ? NaN : +v; };
+  const okLat = v => Number.isFinite(v) && Math.abs(v) <= 90, okLon = v => Number.isFinite(v) && Math.abs(v) <= 180;
+  const latA = num('ll-lat-a'), lonA = num('ll-lon-a');
+  let err = !okLat(latA) || !okLon(lonA) ? tr('Point A needs a latitude (−90 to 90) and longitude (−180 to 180)') : '';
+  let cmd = '';
+  if (!err && llMode === 'latLonAB') {
+    const latB = num('ll-lat-b'), lonB = num('ll-lon-b');
+    if (!okLat(latB) || !okLon(lonB)) err = tr('Point B needs a latitude (−90 to 90) and longitude (−180 to 180)');
+    else cmd = 'track.latLonAB|' + [latA, lonA, latB, lonB].join(',');
+  } else if (!err) {
+    const h = num('ll-heading');
+    if (!Number.isFinite(h)) err = tr('Enter a heading in degrees');
+    else cmd = 'track.latLonHeading|' + [latA, lonA, h].join(',');
+  }
+  if (err) { llEl('ll-err').textContent = err; return; }
+  closeDialog();
+  transport.send(cmd);
+});
+
 document.getElementById('dlg-ok').addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation();
   // Commit any in-progress field edit before reading: type=text inputs can hold uncommitted
@@ -1796,7 +1843,20 @@ document.getElementById('maptap-cancel').addEventListener('pointerdown', e => { 
 // ---- AB flyout launchers → the three creation/management dialogs ----
 function abFlyoutClose() { bnAb.classList.remove('open'); document.getElementById('bn-abmenu').classList.remove('menuopen'); }
 document.getElementById('bn-tracks').addEventListener('pointerdown', e => { e.stopPropagation(); abFlyoutClose(); openTracksManager(); });
-document.getElementById('bn-quickab').addEventListener('pointerdown', e => { e.stopPropagation(); abFlyoutClose(); openDialog('dlg-quickab'); });
+document.getElementById('bn-quickab').addEventListener('pointerdown', e => { e.stopPropagation(); abFlyoutClose(); qabHeadingReset(); openDialog('dlg-quickab'); });
+// A+ heading box (#335): empty each time the dialog opens, the vehicle's heading as its
+// placeholder (refreshed on focus); a typed value goes with track.aPlus.
+const qabHeading = document.getElementById('qab-aplus-heading');
+function vehicleHeadingDeg() {
+  const h = tick && tick.pose && tick.pose.heading;
+  return typeof h === 'number' ? ((h * 180 / Math.PI) % 360 + 360) % 360 : null;
+}
+function qabHeadingReset() {
+  qabHeading.value = '';
+  const d = vehicleHeadingDeg();
+  qabHeading.placeholder = d === null ? '' : d.toFixed(1);
+}
+qabHeading.addEventListener('focus', () => { const d = vehicleHeadingDeg(); if (d !== null) qabHeading.placeholder = d.toFixed(1); });
 // Quick-AB selector buttons.
 // Quick AB — the single creation hub: GPS-driven, from-boundary, and draw-on-map modes.
 document.getElementById('dlg-quickab').querySelectorAll('[data-qab]').forEach(b => b.addEventListener('pointerdown', e => {
@@ -1808,8 +1868,12 @@ document.getElementById('dlg-quickab').querySelectorAll('[data-qab]').forEach(b 
     // on the wire). flashHint after a tick so it isn't cleared by the dialog close.
     const p = tick && tick.pose;
     if (!p || (!p.e && !p.n)) setTimeout(() => flashHint(tr('A+ needs a GPS position — start the simulator or GPS')), 0);
-    else transport.send('track.aPlus');
+    else {
+      const v = qabHeading.value.trim();
+      transport.send('track.aPlus' + (v !== '' && isFinite(+v) ? '|' + (+v) : ''));
+    }
   }
+  else if (m === 'latLonHeading' || m === 'latLonAB') openLatLonLine(m);
   else if (m === 'driveAB') startDriveAB();
   else if (m === 'recordCurve') startRecordCurve();
   else if (m === 'boundaryEdge') transport.send('track.createFromBoundary');

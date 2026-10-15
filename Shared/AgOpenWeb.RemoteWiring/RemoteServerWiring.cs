@@ -51,7 +51,7 @@ public static partial class RemoteServerWiring
                             var num = System.Globalization.NumberStyles.Float;
                             // Starting a line or path turns contour off first, like AgOpenGPS's
                             // track / AB+ / draw / record / path Go buttons (#110).
-                            if (vm.IsContourModeOn && cmd is "track.activate" or "track.aPlus" or "track.drawStraight"
+                            if (vm.IsContourModeOn && cmd is "track.activate" or "track.aPlus" or "track.latLonHeading" or "track.latLonAB" or "track.drawStraight"
                                     or "track.drawCurve" or "track.recordCurve" or "track.driveAB" or "recpath.play")
                                 vm.ToggleContourModeCommand?.Execute(null);
 
@@ -190,6 +190,23 @@ public static partial class RemoteServerWiring
                                     var ri = arg.IndexOf(',');
                                     if (ri > 0 && int.TryParse(arg[..ri], out var rti))
                                         vm.RenameTrackAt(rti, arg[(ri + 1)..]);
+                                    return;
+                                }
+                                case "track.aPlus": // Quick AB. arg = heading in degrees, or empty for
+                                    // the vehicle's heading (#335). Ungated, like the other creators.
+                                    vm.CreateAPlusLine(double.TryParse(arg, num, inv, out var apd) ? apd : null);
+                                    return;
+                                case "track.latLonHeading": // Quick AB. arg = "lat,lon,heading" (#335)
+                                case "track.latLonAB":      // Quick AB. arg = "latA,lonA,latB,lonB" (#335)
+                                {
+                                    var llParts = arg.Split(',');
+                                    var ll = new double[llParts.Length];
+                                    for (int i = 0; i < llParts.Length; i++)
+                                        if (!double.TryParse(llParts[i], num, inv, out ll[i])) return;
+                                    if (cmd == "track.latLonHeading" && ll.Length == 3)
+                                        vm.CreateLatLonHeadingLine(ll[0], ll[1], ll[2]);
+                                    else if (cmd == "track.latLonAB" && ll.Length == 4)
+                                        vm.CreateLatLonABLine(ll[0], ll[1], ll[2], ll[3]);
                                     return;
                                 }
                                 case "track.select": // Tracks manager / Field Builder — tap a row:
@@ -628,7 +645,6 @@ public static partial class RemoteServerWiring
                                 "track.drawFinish" => vm.FinishDrawCurveCommand,
                                 "track.drawUndo" => vm.UndoLastDrawnPointCommand,
                                 "track.drawCancel" => vm.CancelABCreationCommand,
-                                "track.aPlus" => vm.StartAPlusLineCommand,
                                 "track.boundaryCurve" => vm.CreateCurveFromBoundaryCommand,
                                 "track.allEdges" => vm.CreateTracksFromAllEdgesCommand,
 
