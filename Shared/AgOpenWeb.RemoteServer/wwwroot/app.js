@@ -1796,7 +1796,20 @@ document.getElementById('maptap-cancel').addEventListener('pointerdown', e => { 
 // ---- AB flyout launchers → the three creation/management dialogs ----
 function abFlyoutClose() { bnAb.classList.remove('open'); document.getElementById('bn-abmenu').classList.remove('menuopen'); }
 document.getElementById('bn-tracks').addEventListener('pointerdown', e => { e.stopPropagation(); abFlyoutClose(); openTracksManager(); });
-document.getElementById('bn-quickab').addEventListener('pointerdown', e => { e.stopPropagation(); abFlyoutClose(); openDialog('dlg-quickab'); });
+document.getElementById('bn-quickab').addEventListener('pointerdown', e => { e.stopPropagation(); abFlyoutClose(); qabHeadingReset(); openDialog('dlg-quickab'); });
+// A+ heading box (#335): empty each time the dialog opens, the vehicle's heading as its
+// placeholder (refreshed on focus); a typed value goes with track.aPlus.
+const qabHeading = document.getElementById('qab-aplus-heading');
+function vehicleHeadingDeg() {
+  const h = tick && tick.pose && tick.pose.heading;
+  return typeof h === 'number' ? ((h * 180 / Math.PI) % 360 + 360) % 360 : null;
+}
+function qabHeadingReset() {
+  qabHeading.value = '';
+  const d = vehicleHeadingDeg();
+  qabHeading.placeholder = d === null ? '' : d.toFixed(1);
+}
+qabHeading.addEventListener('focus', () => { const d = vehicleHeadingDeg(); if (d !== null) qabHeading.placeholder = d.toFixed(1); });
 // Quick-AB selector buttons.
 // Quick AB — the single creation hub: GPS-driven, from-boundary, and draw-on-map modes.
 document.getElementById('dlg-quickab').querySelectorAll('[data-qab]').forEach(b => b.addEventListener('pointerdown', e => {
@@ -1808,7 +1821,10 @@ document.getElementById('dlg-quickab').querySelectorAll('[data-qab]').forEach(b 
     // on the wire). flashHint after a tick so it isn't cleared by the dialog close.
     const p = tick && tick.pose;
     if (!p || (!p.e && !p.n)) setTimeout(() => flashHint(tr('A+ needs a GPS position — start the simulator or GPS')), 0);
-    else transport.send('track.aPlus');
+    else {
+      const v = qabHeading.value.trim();
+      transport.send('track.aPlus' + (v !== '' && isFinite(+v) ? '|' + (+v) : ''));
+    }
   }
   else if (m === 'driveAB') startDriveAB();
   else if (m === 'recordCurve') startRecordCurve();

@@ -192,6 +192,10 @@ public static partial class RemoteServerWiring
                                         vm.RenameTrackAt(rti, arg[(ri + 1)..]);
                                     return;
                                 }
+                                case "track.aPlus": // Quick AB. arg = heading in degrees, or empty for
+                                    // the vehicle's heading (#335). Ungated, like the other creators.
+                                    vm.CreateAPlusLine(double.TryParse(arg, num, inv, out var apd) ? apd : null);
+                                    return;
                                 case "track.select": // Tracks manager / Field Builder — tap a row:
                                 {                    // that track becomes active (#148). arg = index.
                                     if (int.TryParse(arg, out var tsi)) vm.SelectTrackAt(tsi);
@@ -628,7 +632,6 @@ public static partial class RemoteServerWiring
                                 "track.drawFinish" => vm.FinishDrawCurveCommand,
                                 "track.drawUndo" => vm.UndoLastDrawnPointCommand,
                                 "track.drawCancel" => vm.CancelABCreationCommand,
-                                "track.aPlus" => vm.StartAPlusLineCommand,
                                 "track.boundaryCurve" => vm.CreateCurveFromBoundaryCommand,
                                 "track.allEdges" => vm.CreateTracksFromAllEdgesCommand,
 

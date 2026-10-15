@@ -316,34 +316,7 @@ public partial class MainViewModel
             OnPropertyChanged(nameof(ABCreationInstructions));
         });
 
-        StartAPlusLineCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-
-            if (Easting == 0 && Northing == 0)
-            {
-                ReportFailure("No GPS position - cannot create A+ line");
-                return;
-            }
-
-            double headingRad = Heading * Math.PI / 180.0;
-            var pointA = new Vec3(Easting, Northing, headingRad);
-            // Project Point B 100m ahead along current heading
-            var pointB = new Vec3(
-                Easting + Math.Sin(headingRad) * 100.0,
-                Northing + Math.Cos(headingRad) * 100.0,
-                headingRad);
-
-            var track = Track.FromABLine($"A+ {DateTime.Now:HH:mm}", pointA, pointB);
-            SavedTracks.Add(track);
-            SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
-                                // previous track's live pass/nudge isn't written onto the new one
-            SelectedTrack = track;
-            _mapService.SetActiveTrack(track);
-
-            CurrentABCreationMode = ABCreationMode.None;
-            StatusMessage = $"A+ line '{track.Name}' created at heading {Heading:F1}";
-        });
+        StartAPlusLineCommand = new RelayCommand(() => CreateAPlusLine(null));
 
         StartDriveABCommand = new RelayCommand(() =>
         {
@@ -1762,6 +1735,41 @@ public partial class MainViewModel
         SelectedTrack = next;
         SyncGuidanceStateToPipeline();
         StatusMessage = $"Active track: {next.Name}";
+    }
+
+    /// <summary>
+    /// A+ line: point A at the vehicle, at the vehicle's heading or at
+    /// <paramref name="headingDeg"/> (degrees true, as typed in the Quick AB dialog; AgOpenGPS
+    /// FormQuickAB nudHeading) (#335).
+    /// </summary>
+    public void CreateAPlusLine(double? headingDeg)
+    {
+        State.UI.CloseDialog();
+
+        if (Easting == 0 && Northing == 0)
+        {
+            ReportFailure("No GPS position - cannot create A+ line");
+            return;
+        }
+
+        double deg = headingDeg is double h && double.IsFinite(h) ? (h % 360 + 360) % 360 : Heading;
+        double headingRad = deg * Math.PI / 180.0;
+        var pointA = new Vec3(Easting, Northing, headingRad);
+        // Project Point B 100m ahead along the heading
+        var pointB = new Vec3(
+            Easting + Math.Sin(headingRad) * 100.0,
+            Northing + Math.Cos(headingRad) * 100.0,
+            headingRad);
+
+        var track = Track.FromABLine($"A+ {DateTime.Now:HH:mm}", pointA, pointB);
+        SavedTracks.Add(track);
+        SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
+                            // previous track's live pass/nudge isn't written onto the new one
+        SelectedTrack = track;
+        _mapService.SetActiveTrack(track);
+
+        CurrentABCreationMode = ABCreationMode.None;
+        StatusMessage = $"A+ line '{track.Name}' created at heading {deg:F1}";
     }
 
     /// <summary>Reverse a track's direction (Swap A/B). For the active track the pass

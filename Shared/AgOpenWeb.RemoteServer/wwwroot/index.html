@@ -952,6 +952,9 @@
     .dlg-wide { max-width: 460px; min-width: 420px; }
     .dlg-sub { color: var(--text-muted); font: 700 13px system-ui, sans-serif; text-align: center; margin: 12px 0 6px; }
     .dlg-modes { display: flex; gap: 10px; justify-content: center; }
+    .qab-heading { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 8px;
+      color: var(--text-muted); font: 600 13px system-ui, sans-serif; }
+    .qab-heading .cfg-num { width: 80px; }
     .dlg-mode { flex: 1; min-height: 84px; display: flex; flex-direction: column; align-items: center;
       justify-content: center; gap: 6px; border-radius: 8px; border: 1px solid var(--border);
       background: rgba(var(--ov),0.05); color: var(--text-2); font: 600 12px system-ui, sans-serif; cursor: pointer; }
@@ -2843,6 +2846,11 @@
         <button class="dlg-mode" data-qab="driveAB" title="Drive from A to B"><img src="/icons/ABTrackAB.png" alt=""><span>Drive AB</span></button>
         <button class="dlg-mode" data-qab="recordCurve" title="Drive to record a curve"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
       </div>
+      <!-- A+ heading (#335, AgOpenGPS Quick AB nudHeading): empty = the vehicle's heading,
+           shown as the placeholder; a typed value makes A+ use it instead. -->
+      <label class="qab-heading">A+ heading
+        <input id="qab-aplus-heading" class="cfg-num" type="number" step="0.1" min="0" max="360" inputmode="decimal">°
+      </label>
       <div class="dlg-sub">From Field Boundary</div>
       <div class="dlg-modes">
         <button class="dlg-mode" data-qab="boundaryEdge" title="AB line along the longest boundary edge"><span class="dlg-bigtxt">AB</span><span>Longest Edge</span></button>
