@@ -75,6 +75,34 @@ public class UdpGpsPortsTests
         }
     }
 
+    /// <summary>A program listening where AgIO does (GPS_Out) receives PGN 100 (#337).</summary>
+    [Test]
+    public async Task SendToLoopback_reaches_a_listener_on_AgIOs_port()
+    {
+        using var listener = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        listener.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        try { listener.Bind(new IPEndPoint(IPAddress.Any, 17777)); }
+        catch (SocketException) { Assert.Ignore("port 17777 is held by another process on this machine"); }
+        listener.ReceiveTimeout = 2000;
+
+        var udp = new UdpCommunicationService(new Loopback());
+        await udp.StartAsync();
+        try
+        {
+            var pgn = PgnBuilder.BuildCorrectedPositionPgn(43.7128, -74.006, 90);
+            udp.SendToLoopback(pgn);
+
+            var buffer = new byte[64];
+            int n = listener.Receive(buffer);
+            Assert.That(buffer[..n], Is.EqualTo(pgn));
+        }
+        finally
+        {
+            await udp.StopAsync();
+            udp.Dispose();
+        }
+    }
+
     [TestCase(UdpCommunicationService.Gps1Port, GpsSource.Gps1)]
     [TestCase(UdpCommunicationService.Gps2Port, GpsSource.Gps2)]
     [TestCase(UdpCommunicationService.ModulePort, GpsSource.ModulePort)]

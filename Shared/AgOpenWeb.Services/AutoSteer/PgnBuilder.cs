@@ -45,6 +45,7 @@ public static class PgnBuilder
     public const byte PGN_MACHINE_PINS = 0xEC;   // 236 - Machine Pin Config
     public const byte PGN_STEER_DATA = 0xFD;     // 253 - Steer Data FROM Module
     public const byte PGN_SENSOR_DATA = 0xFA;    // 250 - Sensor Data FROM Module
+    public const byte PGN_CORRECTED_POSITION = 0x64; // 100 - Corrected position (seed monitors, rate control)
 
     // Buffer sizes: header(2) + source(1) + pgn(1) + length(1) + data(N) + crc(1)
     public const int AUTOSTEER_PGN_SIZE = 14;       // 5 header + 8 data + 1 crc
@@ -54,6 +55,7 @@ public static class PgnBuilder
     public const int STEER_CONFIG_PGN_SIZE = 11;    // 5 header + 5 data + 1 crc
     public const int MACHINE_CONFIG_PGN_SIZE = 14;  // 5 header + 8 data + 1 crc
     public const int MACHINE_PINS_PGN_SIZE = 30;    // 5 header + 24 data + 1 crc
+    public const int CORRECTED_POSITION_PGN_SIZE = 30; // 5 header + 24 data + 1 crc
 
     // Thread-local buffers to avoid allocation
     [ThreadStatic]
@@ -70,6 +72,9 @@ public static class PgnBuilder
 
     [ThreadStatic]
     private static byte[]? _steerConfigBuffer;
+
+    [ThreadStatic]
+    private static byte[]? _correctedPositionBuffer;
 
     /// <summary>
     /// Build PGN 254 (Steer Data) from VehicleState.
@@ -255,6 +260,34 @@ public static class PgnBuilder
         byte speed = (byte)Math.Clamp((int)(state.SpeedKmh * 10), 0, 255);
         buf[13] = speed;
         buf[14] = speed;
+
+        return WithCrc(buf);
+    }
+
+    /// <summary>
+    /// Build PGN 100 (0x64) — corrected position, AgOpenGPS's 24-byte layout
+    /// (Position.designer.cs "Corrected Position"). Seed monitors, rate controllers
+    /// and GPS_Out read it.
+    ///
+    /// Bytes 5–12:  longitude, double (little-endian)
+    /// Bytes 13–20: latitude, double
+    /// Bytes 21–28: heading, degrees, double
+    /// Byte 29:     CRC
+    /// </summary>
+    public static byte[] BuildCorrectedPositionPgn(double latitude, double longitude, double headingDegrees)
+    {
+        _correctedPositionBuffer ??= new byte[CORRECTED_POSITION_PGN_SIZE];
+        var buf = _correctedPositionBuffer;
+
+        buf[0] = HEADER1;
+        buf[1] = HEADER2;
+        buf[2] = SOURCE;
+        buf[3] = PGN_CORRECTED_POSITION;
+        buf[4] = 24;  // Data length
+
+        System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(buf.AsSpan(5, 8), longitude);
+        System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(buf.AsSpan(13, 8), latitude);
+        System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(buf.AsSpan(21, 8), headingDegrees);
 
         return WithCrc(buf);
     }
