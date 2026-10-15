@@ -744,6 +744,8 @@ public static class WireCodec
         }
         // Network IO: PGN 100 sent (append-only, #337).
         w.Write((byte)(s.SendCorrectedPosition ? 1 : 0));
+        // Network IO: the subnet the scan came from (append-only, #334).
+        WriteStr(w, s.ScanReplySubnet);
         return ms.ToArray();
     }
 

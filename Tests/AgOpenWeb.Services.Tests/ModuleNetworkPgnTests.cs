@@ -146,6 +146,18 @@ public class ModuleNetworkPgnTests
         Assert.That(subnet, Is.EqualTo("192.168.5"));
     }
 
+    [Test]
+    public void TryParseScanReply_Bytes9To11_AreTheScannersSubnet()
+    {
+        // AgOpenGPS firmware: bytes 9–11 are the subnet the scan came from (rem_ip), here a
+        // phone hotspot, while the module itself is still on 192.168.5 (#334).
+        var reply = new byte[] { 0x80, 0x81, 126, 203, 7, 192, 168, 5, 126, 192, 168, 43, 0x17 };
+
+        Assert.That(PgnBuilder.TryParseScanReply(reply, out _, out var ip, out var scanSubnet), Is.True);
+        Assert.That(ip, Is.EqualTo("192.168.5.126"));
+        Assert.That(scanSubnet, Is.EqualTo("192.168.43"));
+    }
+
     [TestCase((byte)126, "192.168.5.126")]
     [TestCase((byte)123, "192.168.5.123")]
     [TestCase((byte)121, "192.168.5.121")]

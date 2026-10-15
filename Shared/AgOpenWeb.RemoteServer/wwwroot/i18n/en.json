@@ -804,6 +804,8 @@
   "Testing connection...": "Testing connection...",
   "Texture Moves": "Texture Moves",
   "The field is created at this position.": "The field is created at this position.",
+  "The modules are on {m}.x, this device is on {h}.x. Send moves the modules to {h}.x.": "The modules are on {m}.x, this device is on {h}.x. Send moves the modules to {h}.x.",
+  "The modules are on {m}.x, which isn't one of this device's networks.": "The modules are on {m}.x, which isn't one of this device's networks.",
   "the operator": "the operator",
   "The simulator is supplying the position; no sentence is being received.": "The simulator is supplying the position; no sentence is being received.",
   "This mount point does not send RTCM 3. Its data is forwarded as it comes.": "This mount point does not send RTCM 3. Its data is forwarded as it comes.",
