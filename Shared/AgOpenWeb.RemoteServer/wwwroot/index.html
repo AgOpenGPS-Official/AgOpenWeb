@@ -2643,6 +2643,11 @@
   <div id="rightnav">
     <button id="rn-contour" class="rn-btn"><img id="rn-contour-i" class="rn-ic" alt="Contour"></button>
     <button id="rn-contourlock" class="rn-btn" style="display:none"><img id="rn-contourlock-i" class="rn-ic" alt="Contour lock"></button>
+    <!-- Track picking, as AgOpenGPS's right panel (#336): shown with two or more visible
+         tracks and an active one, out of contour mode. -->
+    <button id="rn-cycle" class="rn-btn" style="display:none" title="Next track"><img class="rn-ic" src="/icons/ABLineCycle.png" alt="Next track"></button>
+    <button id="rn-cycleback" class="rn-btn" style="display:none" title="Previous track"><img class="rn-ic" src="/icons/ABLineCycleBk.png" alt="Previous track"></button>
+    <button id="rn-autotrack" class="rn-btn" style="display:none" title="Auto track: pick the closest track"><img id="rn-autotrack-i" class="rn-ic" alt="Auto track"></button>
     <button id="rn-manual" class="rn-btn"><img id="rn-manual-i" class="rn-ic" alt="Manual"></button>
     <button id="rn-auto" class="rn-btn"><img id="rn-auto-i" class="rn-ic" alt="Sections"></button>
     <button id="rn-isobus" class="rn-btn" style="display:none"><img id="rn-isobus-i" class="rn-ic" alt="ISOBUS section control"></button>
@@ -2718,18 +2723,17 @@
       </div>
       <div id="bn-flyout-ab" class="bn-flyout">
         <!-- Mirrors native BottomNavigationPanel AB flyout. Row 1: Tracks manager /
-             Auto-track / Quick-AB (the single creation hub — GPS-driven, from-boundary,
-             and draw-on-map all live in its dialog). Then the active-track ops
-             (cycle/smooth/delete, A/B end length, nudge), shown only with an active track
-             (.bn-abdep). Length and nudge are unrelated, so a divider separates them (#93). -->
+             Quick-AB (the single creation hub — GPS-driven, from-boundary, and draw-on-map
+             all live in its dialog). Then the active-track ops (smooth/delete, A/B end
+             length, nudge), shown only with an active track (.bn-abdep). Length and nudge
+             are unrelated, so a divider separates them (#93). Cycle and auto track are on
+             the right panel, as in AgOpenGPS (#336). -->
         <div class="bn-flyrow">
           <button class="bn-btn" id="bn-tracks" title="Tracks — manage AB lines"><img class="bn-ic" src="/icons/ABTracks.png" alt="Tracks"></button>
           <button class="bn-btn" id="bn-quickab" title="Quick AB line creator"><img class="bn-ic" src="/icons/ABTrackAPlus.png" alt="Quick AB"></button>
-          <button class="bn-btn" id="bn-autotrack" data-cmd="track.autoTrack" data-t2 title="Auto track select (closest track)">AT</button>
         </div>
         <div class="bn-flysep bn-abdep"></div>
         <div class="bn-flyrow bn-abdep">
-          <button class="bn-btn" data-cmd="track.cycle" data-t2 title="Cycle AB lines"><img class="bn-ic" src="/icons/ABLineCycle.png" alt="Cycle"></button>
           <button class="bn-btn" data-cmd="track.smooth" data-t2 title="Smooth AB curve"><img class="bn-ic" src="/icons/ABSmooth.png" alt="Smooth"></button>
           <button class="bn-btn" id="bn-delcontours" data-t2 title="Delete contour paths"><img class="bn-ic" src="/icons/TrashContourRef.png" alt="Delete contours"></button>
         </div>

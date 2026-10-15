@@ -614,6 +614,7 @@ public static partial class RemoteServerWiring
                                 "track.shrinkA" => vm.ShrinkTrackACommand,
                                 "track.shrinkB" => vm.ShrinkTrackBCommand,
                                 "track.cycle" => vm.CycleABLinesCommand,
+                                "track.cycleBack" => vm.CycleABLinesBackCommand,
                                 "track.smooth" => vm.SmoothABLineCommand,
                                 "track.deleteContours" => vm.DeleteContoursCommand,
                                 "track.autoTrack" => vm.ToggleAutoTrackCommand,
