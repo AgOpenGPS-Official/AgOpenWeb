@@ -2829,9 +2829,23 @@ function renderNetworkIo() {
   setMod('nio-imu-cfg', 'nio-imu-dot', 'nio-imu-ip', s.imuConf, s.imuOk, s.imuIp);
   // Seed the subnet octets from the detected /24 when it changes (a PGN 203 reply),
   // unless the operator is editing that box — mirrors the native ModuleSubnet binding.
-  if (s.moduleSubnet && s.moduleSubnet !== _lastModuleSubnet) {
-    _lastModuleSubnet = s.moduleSubnet;
-    const p = s.moduleSubnet.split('.');
+  // A module on a subnet this device isn't on (a phone hotspot, #334) can answer a scan
+  // but its data never arrives: with this device on exactly one network, seed that
+  // network's /24 instead, so Send moves the modules here in one tap.
+  const hostNets = [...new Set((s.hostIps || '').split('\n')
+    .filter(ip => /^\d+\.\d+\.\d+\.\d+$/.test(ip) && !ip.startsWith('127.') && !ip.startsWith('169.254.'))
+    .map(ip => ip.split('.').slice(0, 3).join('.')))];
+  const elsewhere = !!s.moduleSubnet && hostNets.length > 0 && !hostNets.includes(s.moduleSubnet);
+  const seed = elsewhere && hostNets.length === 1 ? hostNets[0] : s.moduleSubnet;
+  const mismatch = document.getElementById('nio-subnet-mismatch');
+  mismatch.hidden = !elsewhere;
+  if (elsewhere) mismatch.textContent = hostNets.length === 1
+    ? tr('The modules are on {m}.x, this device is on {h}.x. Send moves the modules to {h}.x.', { m: s.moduleSubnet, h: hostNets[0] })
+    : tr('The modules are on {m}.x, which isn\'t one of this device\'s networks.', { m: s.moduleSubnet });
+  const seedKey = (s.moduleSubnet || '') + '|' + (seed || '');
+  if (s.moduleSubnet && seedKey !== _lastModuleSubnet) {
+    _lastModuleSubnet = seedKey;
+    const p = seed.split('.');
     if (p.length === 3) {
       if (document.activeElement !== nioO1) nioO1.value = p[0];
       if (document.activeElement !== nioO2) nioO2.value = p[1];
