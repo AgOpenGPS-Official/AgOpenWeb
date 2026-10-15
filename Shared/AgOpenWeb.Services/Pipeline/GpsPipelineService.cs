@@ -1264,7 +1264,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // ── (9b) PGN 100 corrected position ─────────────────────────────
         // AgOpenGPS sends pn.fix: the antenna with antenna offset, roll and drift applied
         // but not moved back to the pivot. Undo the fore/aft step of the transform above.
-        if (headingPlane != null && data.FixQuality > 0)
+        // Off unless ticked on the Network IO card.
+        if (_configStore.Connections.SendCorrectedPosition && headingPlane != null && data.FixQuality > 0)
         {
             double fixE = driftedEasting + Math.Sin(headingRad) * _configStore.Vehicle.AntennaPivot;
             double fixN = driftedNorthing + Math.Cos(headingRad) * _configStore.Vehicle.AntennaPivot;

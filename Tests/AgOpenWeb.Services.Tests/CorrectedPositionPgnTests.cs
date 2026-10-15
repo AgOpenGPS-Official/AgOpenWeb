@@ -25,7 +25,7 @@ using NSubstitute;
 namespace AgOpenWeb.Services.Tests;
 
 /// <summary>
-/// PGN 100 (corrected position, #337): AgOpenGPS's 24-byte layout, sent once per fix to
+/// PGN 100 (corrected position, #337): AgOpenGPS's 24-byte layout, sent once per fix, when ticked on Network IO, to
 /// the module subnet and to AgIO's loopback port, carrying the antenna position with
 /// antenna offset and roll applied but not moved back to the pivot (AgOpenGPS pn.fix).
 /// </summary>
@@ -70,6 +70,7 @@ public class CorrectedPositionPgnPipelineTests
         _config.Tool.Width = 6;
         _config.NumSections = 1;
         _config.Tool.SetSectionWidth(0, 600);
+        _config.Connections.SendCorrectedPosition = true;
 
         _toModules.Clear();
         _toLoopback.Clear();
@@ -180,6 +181,17 @@ public class CorrectedPositionPgnPipelineTests
         var p = Local(_toModules[^1]);
         Assert.That(p.Easting, Is.EqualTo(0).Within(0.005));
         Assert.That(p.Northing, Is.EqualTo(0.5 + 3.0 * Math.Sin(10 * Math.PI / 180)).Within(0.005));
+    }
+
+    [Test]
+    public void OptionOff_NothingSent()
+    {
+        _config.Connections.SendCorrectedPosition = false;
+
+        _gps.UpdateGpsData(Fix(heading: 90, roll: 0));
+
+        Assert.That(_toModules, Is.Empty);
+        Assert.That(_toLoopback, Is.Empty);
     }
 
     [Test]

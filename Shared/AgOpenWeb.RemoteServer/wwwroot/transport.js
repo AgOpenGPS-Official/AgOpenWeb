@@ -192,6 +192,8 @@ window.RemoteTransport = {
             const f64 = () => { const v = dv.getFloat64(o, true); o += 8; return v; };
             fieldData = { boundaryAreaSqM: f64(), actualAreaSqM: f64(), tripAreaSqM: f64(), tripDistanceM: f64() };
           }
+          // Network IO: PGN 100 sent (append-only, #337).
+          const sendCorrectedPosition = !!u8();
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -203,7 +205,7 @@ window.RemoteTransport = {
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripEnabled, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
-            gpsLost, isobus, fieldData,
+            gpsLost, isobus, fieldData, sendCorrectedPosition,
           });
           break;
         }

@@ -527,6 +527,7 @@ public class ConfigurationService(
         store.Connections.AgShareApiKey = settings.AgShareApiKey;
         store.Connections.AgShareEnabled = settings.AgShareEnabled;
         store.Connections.RtcmBroadcast = settings.RtcmBroadcast;
+        store.Connections.SendCorrectedPosition = settings.SendCorrectedPosition;
         store.Connections.NtripEnabled = settings.NtripEnabled;
         store.Connections.GpsUpdateRate = settings.GpsUpdateRate;
         store.Connections.UseRtk = settings.UseRtk;
@@ -599,6 +600,7 @@ public class ConfigurationService(
         settings.AgShareApiKey = store.Connections.AgShareApiKey;
         settings.AgShareEnabled = store.Connections.AgShareEnabled;
         settings.RtcmBroadcast = store.Connections.RtcmBroadcast;
+        settings.SendCorrectedPosition = store.Connections.SendCorrectedPosition;
         settings.NtripEnabled = store.Connections.NtripEnabled;
         settings.GpsUpdateRate = store.Connections.GpsUpdateRate;
         settings.UseRtk = store.Connections.UseRtk;

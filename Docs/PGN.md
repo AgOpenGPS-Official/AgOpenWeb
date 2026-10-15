@@ -1103,7 +1103,8 @@ back with the other setting.
 
 ## Corrected position
 
-For seed monitors, rate controllers and GPS_Out. Sent on every fix to the module subnet
+For seed monitors, rate controllers and GPS_Out. Off by default: tick "Send corrected
+position" on the Network IO card. Then it is sent on every fix to the module subnet
 broadcast (port 8888) and to AgIO's loopback port, 127.255.255.255:17777 (127.0.0.1 on
 macOS and iOS, which don't deliver a loopback broadcast), the same as AgOpenGPS with AgIO.
 The position is the antenna with antenna offset, roll and drift applied, not moved back

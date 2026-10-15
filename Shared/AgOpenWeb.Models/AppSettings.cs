@@ -149,6 +149,9 @@ namespace AgOpenWeb.Models
         /// GPS module when its address is known).</summary>
         public bool RtcmBroadcast { get; set; } = false;
 
+        /// <summary>Send PGN 100 (corrected position) for seed monitors and rate controllers.</summary>
+        public bool SendCorrectedPosition { get; set; } = false;
+
         /// <summary>NTRIP on/off (Network IO). Off: the app does not connect to a caster.</summary>
         public bool NtripEnabled { get; set; } = true;
 

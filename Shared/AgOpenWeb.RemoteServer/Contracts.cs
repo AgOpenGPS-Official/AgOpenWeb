@@ -300,7 +300,9 @@ public record StatusDto(
     // ISOBUS task controller (#312); null while none is heard.
     IsobusDto? Isobus = null,
     // Field data card (#321); null with no field open.
-    FieldDataDto? FieldData = null);
+    FieldDataDto? FieldData = null,
+    // Network IO: PGN 100 (corrected position) is sent (#337).
+    bool SendCorrectedPosition = false);
 
 /// <summary>What the field data card shows beyond the worked area the status frame already
 /// carries: the boundary area less inner boundaries (0 = no boundary), the ground covered
