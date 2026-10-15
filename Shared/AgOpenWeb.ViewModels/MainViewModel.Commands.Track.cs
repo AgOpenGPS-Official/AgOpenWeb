@@ -15,6 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 using System;
+using System.Globalization;
 using System.Linq;
 
 using AgOpenWeb.Models;
@@ -1752,16 +1753,81 @@ public partial class MainViewModel
             return;
         }
 
-        double deg = headingDeg is double h && double.IsFinite(h) ? (h % 360 + 360) % 360 : Heading;
-        double headingRad = deg * Math.PI / 180.0;
-        var pointA = new Vec3(Easting, Northing, headingRad);
-        // Project Point B 100m ahead along the heading
-        var pointB = new Vec3(
-            Easting + Math.Sin(headingRad) * 100.0,
-            Northing + Math.Cos(headingRad) * 100.0,
-            headingRad);
+        double deg = headingDeg is double h && double.IsFinite(h) ? WrapDegrees(h) : Heading;
+        var track = AddABTrack($"A+ {DateTime.Now:HH:mm}", Easting, Northing, deg);
+        StatusMessage = $"A+ line '{track.Name}' created at heading {deg:F1}";
+    }
 
-        var track = Track.FromABLine($"A+ {DateTime.Now:HH:mm}", pointA, pointB);
+    /// <summary>
+    /// AB line from typed coordinates (AgOpenGPS Build Tracks "Lat/Lon + Heading"): A at
+    /// the given point, along <paramref name="headingDeg"/> (degrees true) (#335).
+    /// </summary>
+    public void CreateLatLonHeadingLine(double lat, double lon, double headingDeg)
+    {
+        State.UI.CloseDialog();
+        if (!double.IsFinite(headingDeg)) { ReportFailure("Invalid heading"); return; }
+        if (!TryLatLonToLocal(lat, lon, out var a)) return;
+
+        double deg = WrapDegrees(headingDeg);
+        var track = AddABTrack(string.Create(CultureInfo.InvariantCulture, $"A+ {deg:0.#}°"), a.Easting, a.Northing, deg);
+        StatusMessage = $"Line '{track.Name}' created";
+    }
+
+    /// <summary>
+    /// AB line through two typed points (AgOpenGPS Build Tracks "Lat/Lon"); the heading
+    /// runs from A to B (#335).
+    /// </summary>
+    public void CreateLatLonABLine(double latA, double lonA, double latB, double lonB)
+    {
+        State.UI.CloseDialog();
+        if (!TryLatLonToLocal(latA, lonA, out var a) || !TryLatLonToLocal(latB, lonB, out var b)) return;
+        double de = b.Easting - a.Easting, dn = b.Northing - a.Northing;
+        if (de * de + dn * dn < 1.0)
+        {
+            ReportFailure("A and B must be at least 1 m apart");
+            return;
+        }
+
+        double deg = WrapDegrees(Math.Atan2(de, dn) * 180.0 / Math.PI);
+        var track = AddABTrack(string.Create(CultureInfo.InvariantCulture, $"AB {deg:0.#}°"), a.Easting, a.Northing, deg);
+        StatusMessage = $"Line '{track.Name}' created";
+    }
+
+    private static double WrapDegrees(double deg) => (deg % 360 + 360) % 360;
+
+    /// <summary>A typed point in the open field's local plane, the frame guidance runs in.</summary>
+    private bool TryLatLonToLocal(double lat, double lon, out GeoCoord local)
+    {
+        local = default;
+        if (!double.IsFinite(lat) || lat < -90 || lat > 90)
+        {
+            ReportFailure("Invalid latitude (must be -90 to 90)");
+            return false;
+        }
+        if (!double.IsFinite(lon) || lon < -180 || lon > 180)
+        {
+            ReportFailure("Invalid longitude (must be -180 to 180)");
+            return false;
+        }
+        var plane = State.Field.LocalPlane;
+        if (plane == null)
+        {
+            ReportFailure("Open a field first");
+            return false;
+        }
+        local = plane.ConvertWgs84ToGeoCoord(new Wgs84(lat, lon));
+        return true;
+    }
+
+    /// <summary>Add a straight track from (e, n) along <paramref name="deg"/>, make it the active one.</summary>
+    private Track AddABTrack(string name, double e, double n, double deg)
+    {
+        double headingRad = deg * Math.PI / 180.0;
+        var pointA = new Vec3(e, n, headingRad);
+        // Point B 100 m ahead along the heading
+        var pointB = new Vec3(e + Math.Sin(headingRad) * 100.0, n + Math.Cos(headingRad) * 100.0, headingRad);
+
+        var track = Track.FromABLine(name, pointA, pointB);
         SavedTracks.Add(track);
         SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
                             // previous track's live pass/nudge isn't written onto the new one
@@ -1769,7 +1835,7 @@ public partial class MainViewModel
         _mapService.SetActiveTrack(track);
 
         CurrentABCreationMode = ABCreationMode.None;
-        StatusMessage = $"A+ line '{track.Name}' created at heading {deg:F1}";
+        return track;
     }
 
     /// <summary>Reverse a track's direction (Swap A/B). For the active track the pass
