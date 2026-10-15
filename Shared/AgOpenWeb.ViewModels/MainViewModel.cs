@@ -4246,6 +4246,7 @@ public partial class MainViewModel : ObservableObject
     public ICommand? StartCurveRecordingCommand { get; private set; }
     public ICommand? FinishCurveRecordingCommand { get; private set; }
     public ICommand? CycleABLinesCommand { get; private set; }
+    public ICommand? CycleABLinesBackCommand { get; private set; }
     public ICommand? SmoothABLineCommand { get; private set; }
     public ICommand? NudgeLeftCommand { get; private set; }
     public ICommand? NudgeRightCommand { get; private set; }

@@ -3871,6 +3871,7 @@ function rnSend(cmd) { if (iHoldControl) transport.send(cmd); }
 // NB: use a direct lookup here, not the RN object — RN is a `const` defined later
 // in the render section, so referencing it here would hit the temporal dead zone
 // and throw at load (stuck "connecting…").
+let rnCycleAt = 0, rnLastTrack = null; // last cycle tap (ms), track name seen then
 const rnRoot = document.getElementById('rightnav');
 if (rnRoot) {
   rnRoot.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
@@ -3879,6 +3880,12 @@ if (rnRoot) {
   const wireRn = (id, cmd) => { const el = document.getElementById(id); if (el) el.addEventListener('pointerdown', e => { e.preventDefault(); rnSend(cmd); }); };
   wireRn('rn-contour', 'contour.toggle');
   wireRn('rn-contourlock', 'contour.lock'); // #110
+  // Track picking (#336). After a cycle tap, renderRightNav flashes the new track's name.
+  wireRn('rn-cycle', 'track.cycle');
+  wireRn('rn-cycleback', 'track.cycleBack');
+  for (const id of ['rn-cycle', 'rn-cycleback'])
+    document.getElementById(id).addEventListener('pointerdown', () => { if (iHoldControl) rnCycleAt = Date.now(); });
+  wireRn('rn-autotrack', 'track.autoTrack');
   wireRn('rn-manual', 'section.manual');
   wireRn('rn-auto', 'section.master');
   wireRn('rn-isobus', 'isobus.sectionControl'); // #312
@@ -4672,7 +4679,6 @@ function renderBottomNav() {
   bnIcon(document.getElementById('bn-secheadland-ic'), t.sectionInHeadland ? 'HeadlandSectionOff.png' : 'HeadlandSectionOn.png');
   bnIcon(document.getElementById('bn-headland-ic'), t.headlandOn ? 'HeadlandOn.png' : 'HeadlandOff.png');
   bnIcon(document.getElementById('bn-tram-ic'), TRAM_ICONS[t.tramMode || 0]);
-  document.getElementById('bn-autotrack').classList.toggle('active', !!t.autoTrack);
   bottomNav.classList.toggle('locked', !iHoldControl);
 }
 
@@ -4684,6 +4690,8 @@ const RN = {
   contourLock: document.getElementById('rn-contourlock'), contourLockI: document.getElementById('rn-contourlock-i'),
   autoI: document.getElementById('rn-auto-i'), youturnI: document.getElementById('rn-youturn-i'),
   isobus: document.getElementById('rn-isobus'), isobusI: document.getElementById('rn-isobus-i'),
+  cycle: document.getElementById('rn-cycle'), cycleBack: document.getElementById('rn-cycleback'),
+  autoTrack: document.getElementById('rn-autotrack'), autoTrackI: document.getElementById('rn-autotrack-i'),
   steerI: document.getElementById('rn-steer-i'), readonly: document.getElementById('rn-readonly'),
 };
 // Swap an icon only when it actually changes (no per-frame churn).
@@ -4702,6 +4710,21 @@ function renderRightNav() {
   RN.contourLock.style.display = op.contour ? '' : 'none';
   rnIcon(RN.contourLockI, scene.contourLocked ? 'ColorLocked.png' : 'ColorUnlocked.png');
   RN.youturnI.parentElement.style.display = op.contour ? 'none' : '';
+  // Track picking (#336), AgOpenGPS's rule: two or more visible tracks, one active, no contour.
+  const tl = scene.trackList || [];
+  const visible = tl.filter(t => t.visible);
+  const activeName = tick.activeTrackName || '';
+  const showPick = visible.length > 1 && !!activeName && !op.contour;
+  for (const b of [RN.cycle, RN.cycleBack, RN.autoTrack]) b.style.display = showPick ? '' : 'none';
+  rnIcon(RN.autoTrackI, tick.tools && tick.tools.autoTrack ? 'AutoTrack.png' : 'AutoTrackOff.png');
+  // Name and "n/total" after a cycle tap, like AgOpenGPS's guidance-line label.
+  if (activeName !== rnLastTrack) {
+    if (rnLastTrack !== null && Date.now() - rnCycleAt < 2000) {
+      const n = visible.findIndex(t => t.name === activeName) + 1;
+      flashHint(n > 0 ? activeName + '  ' + n + '/' + visible.length : activeName);
+    }
+    rnLastTrack = activeName;
+  }
   rnIcon(RN.manualI, op.sectionManual ? 'ManualOn.png' : 'ManualOff.png');
   rnIcon(RN.autoI, op.sectionAuto ? 'SectionMasterOn.png' : 'SectionMasterOff.png');
   rnIcon(RN.youturnI, op.youturn ? 'YouTurnYes.png' : 'YouTurnNo.png');

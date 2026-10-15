@@ -674,20 +674,8 @@ public partial class MainViewModel
             StatusMessage = "AB line/curve creation cancelled";
         });
 
-        CycleABLinesCommand = new RelayCommand(() =>
-        {
-            if (SavedTracks.Count == 0)
-            {
-                ReportFailure("No tracks to cycle");
-                return;
-            }
-
-            IsAutoTrackEnabled = false; // a track picked by hand wins (AgOpenGPS btnCycleLines)
-            int currentIndex = SelectedTrack != null ? SavedTracks.IndexOf(SelectedTrack) : -1;
-            int nextIndex = (currentIndex + 1) % SavedTracks.Count;
-            SelectedTrack = SavedTracks[nextIndex];
-            StatusMessage = $"Active track: {SelectedTrack.Name}";
-        });
+        CycleABLinesCommand = new RelayCommand(() => CycleTrack(+1));
+        CycleABLinesBackCommand = new RelayCommand(() => CycleTrack(-1));
 
         SmoothABLineCommand = new RelayCommand(() =>
         {
@@ -1736,6 +1724,46 @@ public partial class MainViewModel
     /// nearest-segment index and PP integral refer to the old point list — then refresh
     /// the map and persist.
     /// </summary>
+    /// <summary>
+    /// Cycle Lines forward (+1) or back (−1), as AgOpenGPS btnCycleLines / btnCycleLinesBk:
+    /// the next visible track, auto track off (a track picked by hand wins), and AutoSteer
+    /// and auto U-turn off when the track changes, so the vehicle doesn't swing onto the
+    /// new line by itself (#336).
+    /// </summary>
+    private void CycleTrack(int step)
+    {
+        if (SavedTracks.Count == 0)
+        {
+            ReportFailure("No tracks to cycle");
+            return;
+        }
+
+        IsAutoTrackEnabled = false;
+        int count = SavedTracks.Count;
+        int current = SelectedTrack != null ? SavedTracks.IndexOf(SelectedTrack) : -1;
+        int start = current < 0 ? (step > 0 ? -1 : 0) : current;
+        Track? next = null;
+        for (int i = 1; i <= count; i++)
+        {
+            var t = SavedTracks[((start + step * i) % count + count) % count];
+            if (t.IsVisible) { next = t; break; }
+        }
+        if (next == null || ReferenceEquals(next, SelectedTrack)) return;
+
+        if (IsAutoSteerEngaged)
+        {
+            IsAutoSteerEngaged = false;
+            _autoSteerService.Disengage();
+            _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
+            ReportFailure("Guidance stopped: track changed");
+        }
+        if (IsYouTurnEnabled) IsYouTurnEnabled = false;
+
+        SelectedTrack = next;
+        SyncGuidanceStateToPipeline();
+        StatusMessage = $"Active track: {next.Name}";
+    }
+
     /// <summary>Reverse a track's direction (Swap A/B). For the active track the pass
     /// number and nudge flip too so the guidance line stays where it physically is.</summary>
     private void SwapTrackAB(Track track)
