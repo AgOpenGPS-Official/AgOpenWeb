@@ -434,7 +434,8 @@ public sealed class SceneProjector
             _state.Connections.IsGpsLost,
             IsobusProvider?.Invoke(),
             FieldDataProvider?.Invoke(),
-            cfg.SendCorrectedPosition);
+            cfg.SendCorrectedPosition,
+            c.ScanReplySubnet ?? "");
     }
 
     // Read live for every status frame, so "seconds since the last one" keeps counting

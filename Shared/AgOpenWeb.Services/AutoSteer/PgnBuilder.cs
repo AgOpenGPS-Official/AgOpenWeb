@@ -449,14 +449,17 @@ public static class PgnBuilder
 
     /// <summary>
     /// Parse a PGN 203 scan reply (13 bytes): module id at [2], full module IP at
-    /// [5..8], subnet (3 octets) at [9..11]. Returns false if not a well-formed
-    /// scan reply. Pure so it can be unit-tested without sockets.
+    /// [5..8], and at [9..11] the first three octets of the address the scan came
+    /// from (AgOpenGPS firmware: <c>rem_ip</c>), which AgIO's Auto Set offers as the
+    /// subnet to move the modules to. Some firmware (AiO v26) repeats the module's own
+    /// subnet there instead. Returns false if not a well-formed scan reply. Pure so it
+    /// can be unit-tested without sockets.
     /// </summary>
-    public static bool TryParseScanReply(byte[] data, out byte moduleId, out string ip, out string subnet)
+    public static bool TryParseScanReply(byte[] data, out byte moduleId, out string ip, out string scanSubnet)
     {
         moduleId = 0;
         ip = string.Empty;
-        subnet = string.Empty;
+        scanSubnet = string.Empty;
 
         if (data == null || data.Length < 12) return false;
         if (data[0] != HEADER1 || data[1] != HEADER2) return false;
@@ -464,7 +467,7 @@ public static class PgnBuilder
 
         moduleId = data[2];
         ip = $"{data[5]}.{data[6]}.{data[7]}.{data[8]}";
-        subnet = $"{data[9]}.{data[10]}.{data[11]}";
+        scanSubnet = $"{data[9]}.{data[10]}.{data[11]}";
         return true;
     }
 

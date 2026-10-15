@@ -1001,6 +1001,7 @@ public partial class MainViewModel : ObservableObject
                 // The subnet is only known after a scan reply.
                 State.Connections.GpsIpAddress = _udpService.GetModuleIpAddress(ModuleType.GPS);
                 State.Connections.ModuleSubnet = _udpService.GetModuleSubnet();
+                State.Connections.ScanReplySubnet = _udpService.GetScanReplySubnet();
 
                 // Legacy property updates (for existing bindings - will be removed in Phase 5)
                 IsAutoSteerDataOk = steerOk;

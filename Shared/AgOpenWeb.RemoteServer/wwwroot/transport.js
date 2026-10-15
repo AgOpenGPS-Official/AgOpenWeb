@@ -194,6 +194,8 @@ window.RemoteTransport = {
           }
           // Network IO: PGN 100 sent (append-only, #337).
           const sendCorrectedPosition = !!u8();
+          // Network IO: the subnet the scan came from (append-only, #334).
+          const scanReplySubnet = str();
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -205,7 +207,7 @@ window.RemoteTransport = {
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripEnabled, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
-            gpsLost, isobus, fieldData, sendCorrectedPosition,
+            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet,
           });
           break;
         }

@@ -224,6 +224,15 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _moduleSubnet, value);
     }
 
+    // Bytes 9–11 of the last scan reply: the subnet the scan came from (AgOpenGPS
+    // firmware), offered as the subnet to move the modules to (#334).
+    private string? _scanReplySubnet;
+    public string? ScanReplySubnet
+    {
+        get => _scanReplySubnet;
+        set => SetProperty(ref _scanReplySubnet, value);
+    }
+
     // Overall status
     public bool IsFullyConnected =>
         IsGpsConnected && IsAutoSteerConnected && IsMachineConnected;

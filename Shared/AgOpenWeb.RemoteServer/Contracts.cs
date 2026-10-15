@@ -302,7 +302,9 @@ public record StatusDto(
     // Field data card (#321); null with no field open.
     FieldDataDto? FieldData = null,
     // Network IO: PGN 100 (corrected position) is sent (#337).
-    bool SendCorrectedPosition = false);
+    bool SendCorrectedPosition = false,
+    // Bytes 9–11 of the last scan reply: the subnet the scan came from (#334); "" = none.
+    string ScanReplySubnet = "");
 
 /// <summary>What the field data card shows beyond the worked area the status frame already
 /// carries: the boundary area less inner boundaries (0 = no boundary), the ground covered

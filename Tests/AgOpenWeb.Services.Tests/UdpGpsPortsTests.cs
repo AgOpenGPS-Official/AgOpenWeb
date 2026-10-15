@@ -103,6 +103,41 @@ public class UdpGpsPortsTests
         }
     }
 
+    /// <summary>The module's subnet comes from its IP; bytes 9–11 are where the scan came from (#334).</summary>
+    [Test]
+    public async Task ScanReply_ModuleSubnetFromIp_ScanSubnetFromBytes9To11()
+    {
+        try
+        {
+            using var probe = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+            probe.Bind(new IPEndPoint(IPAddress.Any, UdpCommunicationService.ModulePort));
+        }
+        catch (SocketException)
+        {
+            Assert.Ignore("port 9999 is held by another process on this machine");
+        }
+
+        var udp = new UdpCommunicationService(new Loopback());
+        await udp.StartAsync();
+        try
+        {
+            var reply = new byte[] { 0x80, 0x81, 126, 203, 7, 192, 168, 5, 126, 192, 168, 43, 0 };
+            using var sender = new UdpClient();
+            for (int attempt = 0; attempt < 20 && udp.GetScanReplySubnet() == null; attempt++)
+            {
+                sender.Send(reply, reply.Length, new IPEndPoint(IPAddress.Loopback, UdpCommunicationService.ModulePort));
+                for (int wait = 0; wait < 20 && udp.GetScanReplySubnet() == null; wait++) await Task.Delay(25);
+            }
+            Assert.That(udp.GetModuleSubnet(), Is.EqualTo("192.168.5"));
+            Assert.That(udp.GetScanReplySubnet(), Is.EqualTo("192.168.43"));
+        }
+        finally
+        {
+            await udp.StopAsync();
+            udp.Dispose();
+        }
+    }
+
     [TestCase(UdpCommunicationService.Gps1Port, GpsSource.Gps1)]
     [TestCase(UdpCommunicationService.Gps2Port, GpsSource.Gps2)]
     [TestCase(UdpCommunicationService.ModulePort, GpsSource.ModulePort)]
