@@ -742,6 +742,8 @@ public static class WireCodec
             w.Write(fd.TripAreaSqM);
             w.Write(fd.TripDistanceM);
         }
+        // Network IO: PGN 100 sent (append-only, #337).
+        w.Write((byte)(s.SendCorrectedPosition ? 1 : 0));
         return ms.ToArray();
     }
 

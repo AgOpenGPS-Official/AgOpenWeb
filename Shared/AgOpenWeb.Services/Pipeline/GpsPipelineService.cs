@@ -1261,6 +1261,18 @@ public sealed class GpsPipelineService : IGpsPipelineService
             data.SatellitesInUse, data.Hdop,
             driftedEasting, driftedNorthing);
 
+        // ── (9b) PGN 100 corrected position ─────────────────────────────
+        // AgOpenGPS sends pn.fix: the antenna with antenna offset, roll and drift applied
+        // but not moved back to the pivot. Undo the fore/aft step of the transform above.
+        // Off unless ticked on the Network IO card.
+        if (_configStore.Connections.SendCorrectedPosition && headingPlane != null && data.FixQuality > 0)
+        {
+            double fixE = driftedEasting + Math.Sin(headingRad) * _configStore.Vehicle.AntennaPivot;
+            double fixN = driftedNorthing + Math.Cos(headingRad) * _configStore.Vehicle.AntennaPivot;
+            var fix = headingPlane.ConvertGeoCoordToWgs84(new GeoCoord(fixN, fixE));
+            _autoSteerService.SendCorrectedPosition(fix.Latitude, fix.Longitude, pos.Heading);
+        }
+
         // ── (10) Headland proximity ─────────────────────────────────────
         double? headlandDist = null;
         bool headlandWarning = false;

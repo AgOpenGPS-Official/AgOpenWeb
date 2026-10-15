@@ -99,6 +99,15 @@ public class ConnectionConfig : ObservableObject
         set => SetProperty(ref _rtcmBroadcast, value);
     }
 
+    // PGN 100, corrected position (Network IO, #337): sent on every fix to the module subnet
+    // and to AgIO's loopback port, for seed monitors, rate controllers and GPS_Out.
+    private bool _sendCorrectedPosition;
+    public bool SendCorrectedPosition
+    {
+        get => _sendCorrectedPosition;
+        set => SetProperty(ref _sendCorrectedPosition, value);
+    }
+
     // NTRIP on/off (Network IO). Off: no connection to a caster at all, for work where
     // there is no mobile coverage and the connection would only keep retrying.
     private bool _ntripEnabled = true;

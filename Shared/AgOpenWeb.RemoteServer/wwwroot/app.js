@@ -2789,6 +2789,8 @@ function renderNetworkIo() {
   if (document.activeElement !== bc) bc.checked = !!s.rtcmBroadcast;
   const nen = document.getElementById('nio-ntrip-on');
   if (document.activeElement !== nen) nen.checked = !!s.ntripEnabled;
+  const p100 = document.getElementById('nio-pgn100');
+  if (document.activeElement !== p100) p100.checked = !!s.sendCorrectedPosition;
   renderNtripRtcm(s);
   nioSubnetBtn.classList.toggle('disabled', !iHoldControl);
 }

@@ -433,7 +433,8 @@ public sealed class SceneProjector
             SystemDataProvider?.Invoke(),
             _state.Connections.IsGpsLost,
             IsobusProvider?.Invoke(),
-            FieldDataProvider?.Invoke());
+            FieldDataProvider?.Invoke(),
+            cfg.SendCorrectedPosition);
     }
 
     // Read live for every status frame, so "seconds since the last one" keeps counting

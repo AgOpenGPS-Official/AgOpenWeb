@@ -70,6 +70,13 @@ public interface IUdpCommunicationService
     void SendToModules(byte[] data);
 
     /// <summary>
+    /// Send data to programs on this machine that listen where AgIO does
+    /// (127.255.255.255:17777), e.g. GPS_Out. AgIO isn't running beside AgOpenWeb,
+    /// so these programs get the packet straight from us.
+    /// </summary>
+    void SendToLoopback(byte[] data);
+
+    /// <summary>
     /// Send hello/ping packet to check module connections
     /// PGN 200 (0xC8) - communication check
     /// </summary>

@@ -657,6 +657,15 @@ public class AutoSteerService : IAutoSteerService
         _cycleCount++;
     }
 
+    /// <inheritdoc />
+    public void SendCorrectedPosition(double latitude, double longitude, double headingDegrees)
+    {
+        if (!_isEnabled) return;
+        var pgn = PgnBuilder.BuildCorrectedPositionPgn(latitude, longitude, headingDegrees);
+        _udpService.SendToModules(pgn);
+        _udpService.SendToLoopback(pgn);
+    }
+
     /// <summary>
     /// Mirror the parsed VehicleState fields onto a fresh GpsData and fire
     /// GpsService.UpdateGpsData — this is what kicks off the cycle worker.
