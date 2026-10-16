@@ -10,7 +10,9 @@
 // and the ASP.NET DI container to direct construction.
 
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
 using SkiaSharp;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Services;
@@ -70,18 +72,60 @@ public sealed class RemoteServerHost
         new() { Timeout = TimeSpan.FromSeconds(10) };
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> _tileCache = new();
 
+    private static readonly HashSet<string> KnownPlaceholderHashes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "c13269481c73de6e18589f9fbc3bdf7e"
+    };
+
+    private static bool IsPlaceholderTile(byte[] bytes)
+    {
+        using var md5 = MD5.Create();
+        var hash = md5.ComputeHash(bytes);
+        var hex = Convert.ToHexString(hash);
+        return KnownPlaceholderHashes.Contains(hex);
+    }
+
     public static async System.Threading.Tasks.Task<byte[]?> FetchSatTileAsync(string quadkey)
     {
-        if (_tileCache.TryGetValue(quadkey, out var cached)) return cached;
+        if (_tileCache.TryGetValue(quadkey, out var cached))
+            return cached.Length == 0 ? null : cached;
         try
         {
-            var bytes = await _tileHttp.GetByteArrayAsync(
-                $"https://ecn.t0.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587").ConfigureAwait(false);
-            if (_tileCache.Count > 1024) _tileCache.Clear();
-            _tileCache[quadkey] = bytes;
+            var url = $"https://ecn.t0.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587&n=z";
+            using var response = await _tileHttp.GetAsync(url).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                CacheTile(quadkey, Array.Empty<byte>());
+                return null;
+            }
+
+            if (response.Headers.TryGetValues("X-VE-Tile-Info", out var tileInfo) &&
+                tileInfo.Any(v => v.Equals("no-tile", StringComparison.OrdinalIgnoreCase)))
+            {
+                CacheTile(quadkey, Array.Empty<byte>());
+                return null;
+            }
+
+            var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+            if (bytes is null || bytes.Length < 1000 || IsPlaceholderTile(bytes))
+            {
+                CacheTile(quadkey, Array.Empty<byte>());
+                return null;
+            }
+
+            CacheTile(quadkey, bytes);
             return bytes;
         }
-        catch { return null; }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void CacheTile(string quadkey, byte[] bytes)
+    {
+        if (_tileCache.Count > 2048) _tileCache.Clear();
+        _tileCache[quadkey] = bytes;
     }
 
     /// <summary>Host-supplied projector for the live Steer Wizard — returns a WizardDto
