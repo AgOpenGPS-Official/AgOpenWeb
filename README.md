@@ -12,8 +12,7 @@ Cross-platform agricultural GPS guidance — a rewrite of [AgOpenGPS](https://gi
 ## Download & run
 
 Get the [**Nightly**](../../releases/tag/nightly) build. It is rebuilt from `develop` daily and
-on demand, and it is the build to use and report issues against. The older numbered builds on the
-[Releases](../../releases) page are out of date. Everything is a self-contained app (no .NET install needed). Pick the set that matches how you'll run it — in
+on demand, and it is the build to use and report issues against. Everything is a self-contained app (no .NET install needed). Pick the set that matches how you'll run it — in
 every mode the host also serves `http://<host>:5174` on the LAN, so cab phones/tablets connect
 in a browser.
 

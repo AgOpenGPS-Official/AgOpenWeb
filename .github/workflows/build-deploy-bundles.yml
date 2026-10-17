@@ -18,7 +18,8 @@ name: Build Deployment Bundles
 # Windows bundle cross-publishes win-x64 from a Linux runner — no Windows runner needed.
 #
 # Triggers:
-#   - push of a v* tag: build + publish the tagged Release for that tag.
+#   - push of a v* tag: build + publish the tagged Release for that tag, as a prerelease so it
+#     never shows as "Latest" (the nightly is the build to use).
 #   - schedule (daily): build + refresh the rolling "nightly" prerelease from the default branch.
 #   - workflow_dispatch: build on demand, then by the `publish` input:
 #       nightly (default) — refresh the rolling "nightly" prerelease now, so beta testers get
@@ -308,9 +309,11 @@ jobs:
             fi
             echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
             echo "name=AgOpenWeb ${TAG}" >> "$GITHUB_OUTPUT"
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            # Numbered builds are prereleases too: GitHub's "Latest" would otherwise send people
+            # to a build older than the nightly.
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
             echo "nightly=false" >> "$GITHUB_OUTPUT"
-            echo "banner=> Testing the newest fixes? The [Nightly](${REPO_URL}/releases/tag/nightly) is rebuilt from \`${DEFAULT_BRANCH}\` daily and on demand." >> "$GITHUB_OUTPUT"
+            echo "banner=> **Use the [Nightly](${REPO_URL}/releases/tag/nightly)** — it is rebuilt from \`${DEFAULT_BRANCH}\` daily and on demand, and is the build to report issues against." >> "$GITHUB_OUTPUT"
           fi
 
       - name: List bundles

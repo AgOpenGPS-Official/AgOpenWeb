@@ -393,7 +393,8 @@ Two GitHub Actions workflows, split by purpose:
   compile-check of each platform head (Desktop, Android, iOS). No packaging, no releases.
 - **`build-deploy-bundles.yml`** — the single packaging + release publisher. Runs the
   `deploy/{linux,windows,macos}/package.sh` scripts + builds the signed Android APK on clean runners:
-  - on a **`v*` tag** (or manual dispatch with a tag) → publishes one complete Release with every
+  - on a **`v*` tag** (or manual dispatch with a tag) → publishes one complete Release, marked
+    prerelease so it never shows as "Latest" (the nightly is the build users run), with every
     artifact: Linux daemon (x64/arm64) + desktop launcher (x64/arm64) tarballs, Windows zip
     (launcher + service installer), macOS `.dmg`, and the Android APK;
   - on a **daily schedule** → refreshes a rolling `nightly` prerelease with the same artifacts;
