@@ -103,6 +103,12 @@ def collect():
     html = HtmlStrings()
     html.feed((WWW / "index.html").read_text(encoding="utf-8"))
     strings = html.found | js_strings((WWW / "app.js").read_text(encoding="utf-8"))
+    for module in (WWW / "assistants").glob("*.js"):
+        src = module.read_text(encoding="utf-8")
+        strings.update(js_strings(src))
+        for value in re.findall(r"(?:text|button|heading)\(\s*'([^']+)'|text\s*:\s*'([^']+)'", src):
+            text = next(x for x in value if x)
+            if translatable(text): strings.add(norm(text))
     return {s: s for s in sorted(strings, key=lambda s: (s.lower(), s))}
 
 

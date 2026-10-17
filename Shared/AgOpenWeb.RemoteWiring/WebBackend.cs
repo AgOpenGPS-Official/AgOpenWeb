@@ -60,7 +60,11 @@ public sealed class WebBackend
 
         // Start the embedded browser server, then wire its command handler + projectors.
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
-        await server.StartAsync(
+        var assistants=new FieldAssistantsRuntime(sp,vm);
+        server.ModuleRequestHandler=assistants.Registry.HandleAsync;
+        server.ModuleDisconnected=assistants.Registry.Drop;
+        server.ModulesStopping=assistants.StopAsync;
+        try { await server.StartAsync(
             sp.GetRequiredService<ApplicationState>(),
             sp.GetRequiredService<ICoverageMapService>(),
             sp.GetRequiredService<ISectionControlService>(),
@@ -76,7 +80,8 @@ public sealed class WebBackend
             sp.GetRequiredService<ISettingsService>(),
             sp.GetRequiredService<IVehicleProfileService>(),
             sp.GetRequiredService<IPersistentStateService>(),
-            sp.GetService<INtripClientService>()).ConfigureAwait(false);
+            sp.GetService<INtripClientService>()).ConfigureAwait(false); }
+        catch { await assistants.StopAsync().ConfigureAwait(false); throw; }
 
         // Wire on the host loop so the command handler runs serialized with the render-pull /
         // status timers, exactly as the Avalonia UI thread did in the old windowed build.
