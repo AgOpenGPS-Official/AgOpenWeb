@@ -1,12 +1,13 @@
 name: Bug report check
 
-# Checks each bug report for the filled-in form and an attached Bug Report Dump. When
-# something is missing it labels the issue `needs-info` and posts one reminder (edited in
-# place on later checks, never repeated). Once the report is complete the label comes off
-# and the reminder says so. Maintainers' own issues are skipped.
+# Checks each bug report for an attached Bug Report Dump. The dump is required and is enough
+# on its own: it holds the version, platform, the user's notes and the logs. Without one the
+# issue is labeled `needs-info` and gets one reminder (edited in place on later checks, never
+# repeated). Once a dump is attached the label comes off and the reminder says so.
+# Maintainers' issues are skipped.
 #
-# Runs again when the issue is edited, labeled `bug` later (a blank issue), or someone
-# comments, so a dump attached in a comment counts.
+# Runs again when the issue is edited, labeled `bug` later, or someone comments, so a dump
+# attached in a comment counts.
 
 on:
   issues:
@@ -36,7 +37,6 @@ jobs:
             const MARKER = '<!-- bug-report-check -->';
             const LABEL = 'needs-info';
             const NIGHTLY = 'https://github.com/AgOpenGPS-Official/AgOpenWeb/releases/tag/nightly';
-            const NEW_ISSUE = `https://github.com/${context.repo.owner}/${context.repo.repo}/issues/new?template=bug_report.yml`;
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
 
@@ -49,59 +49,31 @@ jobs:
               .filter(c => c.user.type !== 'Bot' && !(c.body || '').includes(MARKER))
               .map(c => c.body || '').join('\n');
 
-            // Form sections: GitHub renders each field as "### <label>" then its value,
-            // or "_No response_" when left empty.
-            function section(label) {
-              const re = new RegExp('^###\\s+' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$', 'm');
-              const m = re.exec(body);
-              if (!m) return null;
-              const rest = body.slice(m.index + m[0].length);
-              const next = rest.search(/^###\s/m);
-              return (next < 0 ? rest : rest.slice(0, next)).trim();
-            }
-            const filled = v => v != null && v !== '' && v !== '_No response_' &&
-              v.replace(/^\s*\d+\.\s*$/gm, '').trim() !== '';
-
-            const missing = [];
-            const usedForm = section('What happened') !== null && section('Bug Report Dump') !== null;
-            if (!usedForm) {
-              missing.push(`the bug report form was not used. Please open the report again with the [Bug report form](${NEW_ISSUE}), or copy its fields into this issue`);
-            } else {
-              for (const [label, what] of [
-                ['Nightly build', 'which **Nightly build** you are running (the date in its title)'],
-                ['What happened', '**what happened**'],
-                ['Steps to reproduce', 'the **steps to reproduce** it'],
-                ['What you expected to happen', '**what you expected** to happen'],
-              ]) if (!filled(section(label))) missing.push(what);
-            }
-
             // The dump: an attached .zip, or a link to a file-sharing site for a large one.
             const dumpRe = /https?:\/\/\S+?\.zip\b|https?:\/\/(?:drive\.google\.com|docs\.google\.com|(?:www\.)?dropbox\.com|1drv\.ms|onedrive\.live\.com|[\w-]+\.sharepoint\.com|(?:www\.)?wetransfer\.com|we\.tl)\//i;
             const hasDump = dumpRe.test(body) || dumpRe.test(humanText);
-            if (!hasDump)
-              missing.push('the **Bug Report Dump**: in the app, main menu → **Bug Report Dump**, then drag the `bugreport_….zip` into this issue (or a comment). If it is over 25 MB, upload it to Google Drive, Dropbox or OneDrive and paste the link');
 
             const existing = comments.find(c => c.user.type === 'Bot' && (c.body || '').includes(MARKER));
             const hasLabel = issue.labels.some(l => (typeof l === 'string' ? l : l.name) === LABEL);
 
-            if (missing.length) {
+            if (!hasDump) {
               const text = [
                 MARKER,
-                `Thanks for the report, @${issue.user.login}. Bug reports need the form filled in and a Bug Report Dump attached, and this one is missing:`,
+                `Thanks for the report, @${issue.user.login}. Please attach a **Bug Report Dump**. It holds the version, platform, your notes, a screenshot and the logs, so with it nothing else is needed.`,
                 '',
-                ...missing.map(m => `- ${m}`),
+                `1. Use the latest [Nightly build](${NIGHTLY}) and get the problem to happen again.`,
+                '2. In the app: main menu → **Bug Report Dump**, type what happened, press **Create Bug Report**, then **Download**.',
+                '3. Drag the `bugreport_….zip` into this issue or a comment. If it is over 25 MB, upload it to Google Drive, Dropbox or OneDrive and paste the link.',
                 '',
-                `Please also check the problem still happens on the latest [Nightly build](${NIGHTLY}).`,
-                '',
-                'Edit the issue or add a comment and this check runs again. Reports that stay incomplete will be closed.',
+                'This check runs again when you edit the issue or add a comment. Reports without a dump will be closed.',
               ].join('\n');
               if (!hasLabel) await github.rest.issues.addLabels({ owner, repo, issue_number, labels: [LABEL] });
               if (!existing) await github.rest.issues.createComment({ owner, repo, issue_number, body: text });
               else if (existing.body !== text) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: text });
-              core.notice(`#${issue_number} incomplete: ${missing.length} item(s) missing`);
+              core.notice(`#${issue_number}: no dump`);
             } else {
               if (hasLabel) await github.rest.issues.removeLabel({ owner, repo, issue_number, name: LABEL });
               if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id,
-                body: `${MARKER}\n✅ Thanks, the report is complete: form filled in and dump attached.` });
-              core.notice(`#${issue_number} complete`);
+                body: `${MARKER}\n✅ Thanks, the dump is attached.` });
+              core.notice(`#${issue_number}: dump attached`);
             }
