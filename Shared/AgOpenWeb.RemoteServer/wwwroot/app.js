@@ -309,7 +309,11 @@ const PERSP_FOV = 0.7;                     // rad, matches native SkiaMapControl
 const transport = RemoteTransport.create({
   onScene(s) {
     scene = s;
-    originLat = s.originLat; originLon = s.originLon; // for the satellite underlay geo math
+    if (originLat !== s.originLat || originLon !== s.originLon) {
+      originLat = s.originLat; originLon = s.originLon; // for the satellite underlay geo math
+      satMaxZoom = 20;
+      satTiles.clear();
+    }
     if (isFollowMode() && (!tick || !tick.pose) && s.boundaries.length && s.boundaries[0].length) {
       const r = s.boundaries[0];
       camE = r.reduce((a, p) => a + p.e, 0) / r.length;
@@ -5953,19 +5957,26 @@ function tileQuadkey(x, y, z) {
   return qk;
 }
 // Pick the Bing zoom whose ground resolution ≈ the screen resolution (1 tile px ≈ 1 css px).
+let satMaxZoom = 20;
 function satZoom() {
   const z = Math.log2(156543.03392 * Math.cos(originLat * Math.PI / 180) * pxPerM);
-  return Math.max(2, Math.min(20, Math.round(z)));
+  return Math.max(2, Math.min(satMaxZoom, Math.round(z)));
 }
-const satTiles = new Map(); // "z/x/y" → { img, skImg }
+const satTiles = new Map(); // "z/x/y" → { img, skImg, failed }
 function getSatTile(x, y, z) {
   const key = z + '/' + x + '/' + y;
   let t = satTiles.get(key);
   if (!t) {
-    t = { img: null, skImg: null };
+    t = { img: null, skImg: null, failed: false };
     satTiles.set(key, t);
     const im = new Image();
     im.onload = () => { t.img = im; };
+    im.onerror = () => {
+      t.failed = true;
+      if (z <= satMaxZoom) {
+        satMaxZoom = Math.max(2, z - 1);
+      }
+    };
     im.src = '/sattile/' + tileQuadkey(x, y, z);
     if (satTiles.size > 500) { const k = satTiles.keys().next().value; const ev = satTiles.get(k); if (ev && ev.skImg) ev.skImg.delete(); satTiles.delete(k); }
   }
@@ -5986,10 +5997,24 @@ function drawSatelliteSk(canvas) {
   if ((xMax - xMin) > 40 || (yMax - yMin) > 40 || xMax < xMin || yMax < yMin) return; // sanity
   for (let tx = xMin; tx <= xMax; tx++) for (let ty = yMin; ty <= yMax; ty++) {
     const t = getSatTile(tx, ty, z);
-    if (!t.skImg) continue;
-    const eW = lonToE(tileXToLon(tx, z)), eE = lonToE(tileXToLon(tx + 1, z));
-    const nN = latToN(tileYToLat(ty, z)), nS = latToN(tileYToLat(ty + 1, z));
-    drawImageWorldSk(canvas, t.skImg, eW, nS, eE, nN, CK.FilterMode.Linear);
+    if (t.skImg) {
+      const eW = lonToE(tileXToLon(tx, z)), eE = lonToE(tileXToLon(tx + 1, z));
+      const nN = latToN(tileYToLat(ty, z)), nS = latToN(tileYToLat(ty + 1, z));
+      drawImageWorldSk(canvas, t.skImg, eW, nS, eE, nN, CK.FilterMode.Linear);
+    } else {
+      // Fallback: draw loaded parent tile from lower zoom if available so there is no gap
+      for (let pz = z - 1; pz >= Math.max(2, z - 3); pz--) {
+        const shift = z - pz;
+        const ptx = tx >> shift, pty = ty >> shift;
+        const pt = satTiles.get(pz + '/' + ptx + '/' + pty);
+        if (pt && pt.skImg) {
+          const peW = lonToE(tileXToLon(ptx, pz)), peE = lonToE(tileXToLon(ptx + 1, pz));
+          const pnN = latToN(tileYToLat(pty, pz)), pnS = latToN(tileYToLat(pty + 1, pz));
+          drawImageWorldSk(canvas, pt.skImg, peW, pnS, peE, pnN, CK.FilterMode.Linear);
+          break;
+        }
+      }
+    }
   }
 }
 // Coverage offscreen → SkImage, re-snapshotted only when the cell grid changed
