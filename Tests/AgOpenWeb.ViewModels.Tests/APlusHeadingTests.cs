@@ -44,8 +44,11 @@ public class APlusHeadingTests
         vm.CreateAPlusLine(87.5);
 
         Assert.That(LineHeadingDeg(vm), Is.EqualTo(87.5).Within(1e-9));
-        Assert.That(vm.SelectedTrack!.Points[0].Easting, Is.EqualTo(500));
-        Assert.That(vm.SelectedTrack!.Points[0].Northing, Is.EqualTo(1000));
+        // A is abreast of the vehicle (moved sideways to the first pass, #345): no
+        // component along the heading
+        var a = vm.SelectedTrack!.Points[0];
+        double h = 87.5 * Math.PI / 180;
+        Assert.That((a.Easting - 500) * Math.Sin(h) + (a.Northing - 1000) * Math.Cos(h), Is.EqualTo(0).Within(1e-9));
     }
 
     [Test]

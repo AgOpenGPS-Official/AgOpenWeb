@@ -324,7 +324,7 @@ public partial class MainViewModel
     /// <summary>
     /// Add a point to the curve being recorded, with minimum spacing filtering.
     /// </summary>
-    private void AddCurvePoint(double easting, double northing, double headingDegrees)
+    internal void AddCurvePoint(double easting, double northing, double headingDegrees)
     {
         double headingRadians = headingDegrees * Math.PI / 180.0;
 
