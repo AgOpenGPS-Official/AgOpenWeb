@@ -125,7 +125,9 @@ public class ConfigurationService(
                       : t.IsToolTrailing ? "Trailing"
                       : "—";
         return
-            $"Width: {Len(t.Width, isMetric)}\n" +
+            // The sections' total, as guidance and coverage use; Tool.Width is a stored
+            // default the section editor never updates (#345).
+            $"Width: {Len(store.ActualToolWidth, isMetric)}\n" +
             $"Overlap: {Len(t.Overlap, isMetric)}\n" +
             $"Offset: {Len(t.Offset, isMetric)}\n" +
             $"Sections: {store.NumSections}\n" +
