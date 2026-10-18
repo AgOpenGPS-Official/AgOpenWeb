@@ -374,8 +374,12 @@ public partial class MainViewModel
                 existingTrack.IsActive = false;
             }
 
+            // A driven curve is the edge of the work: move it to the first pass (#345)
+            var refPoints = Models.Guidance.CurveProcessing.CreateOffsetCurve(
+                Models.Guidance.CurveProcessing.CalculateHeadings(new List<Vec3>(_recordedCurvePoints)), RefSideOffset());
+
             // Extend curve ends past boundary for U-turn detection
-            var extendedPoints = ExtendCurvePastBoundary(_recordedCurvePoints);
+            var extendedPoints = ExtendCurvePastBoundary(refPoints);
 
             // Create the curve track
             var newTrack = Track.FromCurve(
@@ -597,10 +601,15 @@ public partial class MainViewModel
                     var heading = CalculateHeading(PendingPointA, pointToSet);
                     var headingRadians = heading * Math.PI / 180.0;
 
+                    // A driven line is the edge of the work: move it to the first pass (#345)
+                    double refDist = CurrentABCreationMode == ABCreationMode.DriveAB ? RefSideOffset() : 0;
+                    var (aE, aN) = ShiftRight(PendingPointA.Easting, PendingPointA.Northing, headingRadians, refDist);
+                    var (bE, bN) = ShiftRight(pointToSet.Easting, pointToSet.Northing, headingRadians, refDist);
+
                     // Extend AB Line points past boundary for proper U-turn detection
                     var (extendedA, extendedB) = ExtendABLinePastBoundary(
-                        new Vec3(PendingPointA.Easting, PendingPointA.Northing, headingRadians),
-                        new Vec3(pointToSet.Easting, pointToSet.Northing, headingRadians));
+                        new Vec3(aE, aN, headingRadians),
+                        new Vec3(bE, bN, headingRadians));
 
                     var newTrack = Track.FromABLine(
                         $"AB_{heading:F1} {DateTime.Now:HH:mm:ss}",
@@ -1743,6 +1752,24 @@ public partial class MainViewModel
     /// <paramref name="headingDeg"/> (degrees true, as typed in the Quick AB dialog; AgOpenGPS
     /// FormQuickAB nudHeading) (#335).
     /// </summary>
+    /// <summary>
+    /// Which side of a driven line (A+, Drive AB, recorded curve) the first pass lies on,
+    /// AgOpenGPS's "ref side" (#345). The driven line is the edge of the work; the track is
+    /// saved half a working width to this side, plus the tool offset. Drawn lines aren't moved.
+    /// </summary>
+    public bool TrackRefSideRight { get; set; } = true;
+
+    /// <summary>Distance (m, + = right of heading) a driven line moves to become the first
+    /// pass: AgOpenGPS FormBuildTracks/FormQuickAB <c>(width - overlap) * ±0.5 + offset</c>.</summary>
+    private double RefSideOffset()
+    {
+        double half = (ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap) * 0.5;
+        return (TrackRefSideRight ? half : -half) + ConfigStore.Tool.Offset;
+    }
+
+    private static (double E, double N) ShiftRight(double e, double n, double headingRad, double dist) =>
+        (e + Math.Sin(headingRad + GeometryMath.PIBy2) * dist, n + Math.Cos(headingRad + GeometryMath.PIBy2) * dist);
+
     public void CreateAPlusLine(double? headingDeg)
     {
         State.UI.CloseDialog();
@@ -1754,7 +1781,8 @@ public partial class MainViewModel
         }
 
         double deg = headingDeg is double h && double.IsFinite(h) ? WrapDegrees(h) : Heading;
-        var track = AddABTrack($"A+ {DateTime.Now:HH:mm}", Easting, Northing, deg);
+        var (e, n) = ShiftRight(Easting, Northing, deg * Math.PI / 180.0, RefSideOffset());
+        var track = AddABTrack($"A+ {DateTime.Now:HH:mm}", e, n, deg);
         StatusMessage = $"A+ line '{track.Name}' created at heading {deg:F1}";
     }
 

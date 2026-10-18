@@ -196,6 +196,10 @@ public static partial class RemoteServerWiring
                                     // the vehicle's heading (#335). Ungated, like the other creators.
                                     vm.CreateAPlusLine(double.TryParse(arg, num, inv, out var apd) ? apd : null);
                                     return;
+                                case "track.refSide": // Quick AB. arg = left|right: the side of a driven
+                                    // line its first pass lies on; sent before A+ / Drive AB / Curve (#345)
+                                    vm.TrackRefSideRight = arg != "left";
+                                    return;
                                 case "track.latLonHeading": // Quick AB. arg = "lat,lon,heading" (#335)
                                 case "track.latLonAB":      // Quick AB. arg = "latA,lonA,latB,lonB" (#335)
                                 {
