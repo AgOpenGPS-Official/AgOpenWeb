@@ -1,0 +1,79 @@
+name: Bug report check
+
+# Checks each bug report for an attached Bug Report Dump. The dump is required and is enough
+# on its own: it holds the version, platform, the user's notes and the logs. Without one the
+# issue is labeled `needs-info` and gets one reminder (edited in place on later checks, never
+# repeated). Once a dump is attached the label comes off and the reminder says so.
+# Maintainers' issues are skipped.
+#
+# Runs again when the issue is edited, labeled `bug` later, or someone comments, so a dump
+# attached in a comment counts.
+
+on:
+  issues:
+    types: [opened, edited, reopened, labeled]
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  issues: write
+
+concurrency:
+  group: bug-report-check-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: >-
+      github.event.issue.pull_request == null &&
+      github.event.issue.state == 'open' &&
+      contains(github.event.issue.labels.*.name, 'bug') &&
+      !contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const MARKER = '<!-- bug-report-check -->';
+            const LABEL = 'needs-info';
+            const NIGHTLY = 'https://github.com/AgOpenGPS-Official/AgOpenWeb/releases/tag/nightly';
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+
+            // The issue as it is now (the payload of a labeled/comment event can be stale).
+            const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number });
+            const body = issue.body || '';
+            const comments = await github.paginate(github.rest.issues.listComments,
+              { owner, repo, issue_number, per_page: 100 });
+            const humanText = comments
+              .filter(c => c.user.type !== 'Bot' && !(c.body || '').includes(MARKER))
+              .map(c => c.body || '').join('\n');
+
+            // The dump: an attached .zip, or a link to a file-sharing site for a large one.
+            const dumpRe = /https?:\/\/\S+?\.zip\b|https?:\/\/(?:drive\.google\.com|docs\.google\.com|(?:www\.)?dropbox\.com|1drv\.ms|onedrive\.live\.com|[\w-]+\.sharepoint\.com|(?:www\.)?wetransfer\.com|we\.tl)\//i;
+            const hasDump = dumpRe.test(body) || dumpRe.test(humanText);
+
+            const existing = comments.find(c => c.user.type === 'Bot' && (c.body || '').includes(MARKER));
+            const hasLabel = issue.labels.some(l => (typeof l === 'string' ? l : l.name) === LABEL);
+
+            if (!hasDump) {
+              const text = [
+                MARKER,
+                `Thanks for the report, @${issue.user.login}. Please attach a **Bug Report Dump**. It holds the version, platform, your notes, a screenshot and the logs, so with it nothing else is needed.`,
+                '',
+                `1. Use the latest [Nightly build](${NIGHTLY}) and get the problem to happen again.`,
+                '2. In the app: main menu → **Bug Report Dump**, type what happened, press **Create Bug Report**, then **Download**.',
+                '3. Drag the `bugreport_….zip` into this issue or a comment. If it is over 25 MB, upload it to Google Drive, Dropbox or OneDrive and paste the link.',
+                '',
+                'This check runs again when you edit the issue or add a comment. Reports without a dump will be closed.',
+              ].join('\n');
+              if (!hasLabel) await github.rest.issues.addLabels({ owner, repo, issue_number, labels: [LABEL] });
+              if (!existing) await github.rest.issues.createComment({ owner, repo, issue_number, body: text });
+              else if (existing.body !== text) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: text });
+              core.notice(`#${issue_number}: no dump`);
+            } else {
+              if (hasLabel) await github.rest.issues.removeLabel({ owner, repo, issue_number, name: LABEL });
+              if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id,
+                body: `${MARKER}\n✅ Thanks, the dump is attached.` });
+              core.notice(`#${issue_number}: dump attached`);
+            }

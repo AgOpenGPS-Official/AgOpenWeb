@@ -2596,6 +2596,8 @@
     <button class="cfg-act cfg-actwide fj-primary" id="br-submit" style="margin-top:10px">Create Bug Report</button>
     <div class="sa-hint" id="br-status" style="margin-top:6px"></div>
     <button class="cfg-act cfg-actwide" id="br-download" style="margin-top:6px;display:none">Download</button>
+    <button class="cfg-act cfg-actwide" id="br-github" style="margin-top:6px;display:none">Report on GitHub</button>
+    <div class="sa-hint" id="br-github-hint" style="margin-top:6px;display:none">Opens a GitHub bug report with the title, description and version filled in. Drag the downloaded zip into its Bug Report Dump box, and that's all it needs.</div>
   </div>
   <!-- Smart WAS Calibration — chain sub-panel of AutoSteer (watch-the-tractor:
        opts OUT of the light-dismiss scrim so you can pan/zoom to watch the tractor
@@ -2856,6 +2858,11 @@
       <label class="qab-heading">A+ heading
         <input id="qab-aplus-heading" class="cfg-num" type="number" step="0.1" min="0" max="360" inputmode="decimal">°
       </label>
+      <!-- Ref side (#345, AgOpenGPS isRefRightSide): the driven line is the edge of the work;
+           the track is saved half a working width to this side. Right each time it opens. -->
+      <div class="qab-heading">First pass
+        <div class="ln-seg" id="qab-refside"><button class="ln-segbtn" data-side="left">Left</button><button class="ln-segbtn active" data-side="right">Right</button></div>
+      </div>
       <div class="dlg-sub">From Field Boundary</div>
       <div class="dlg-modes">
         <button class="dlg-mode" data-qab="boundaryEdge" title="AB line along the longest boundary edge"><span class="dlg-bigtxt">AB</span><span>Longest Edge</span></button>

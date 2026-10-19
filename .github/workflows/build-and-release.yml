@@ -39,8 +39,9 @@ jobs:
         run: python3 Tools/i18n-extract.py --check
 
       # Language files are translated on Weblate; a PR edits only the English source.
+      # Weblate's own PRs (from its fork, as the weblate user) are how they arrive.
       - name: Check language files are untouched
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'weblate'
         run: |
           git fetch --no-tags --depth=1 origin ${{ github.event.pull_request.base.sha }}
           changed=$(git diff --name-only ${{ github.event.pull_request.base.sha }} HEAD -- 'Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/*.json' | grep -v '/en\.json$' || true)

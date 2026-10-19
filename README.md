@@ -3,13 +3,16 @@
 [![CI](https://github.com/AgOpenGPS-Official/AgOpenWeb/actions/workflows/build-and-release.yml/badge.svg?branch=develop)](https://github.com/AgOpenGPS-Official/AgOpenWeb/actions/workflows/build-and-release.yml)
 [![Translation status](https://hosted.weblate.org/widget/agopengps/agopenweb/svg-badge.svg)](https://hosted.weblate.org/projects/agopengps/agopenweb/)
 
+[![Nightly build](https://img.shields.io/github/release-date-pre/AgOpenGPS-Official/AgOpenWeb?label=nightly%20build&style=for-the-badge&color=brightgreen)](https://github.com/AgOpenGPS-Official/AgOpenWeb/releases/tag/nightly)
+
+> **⬇️ Download the [Nightly build](https://github.com/AgOpenGPS-Official/AgOpenWeb/releases/tag/nightly). It is rebuilt from `develop` every day and has all the latest fixes. Please install it, and check the problem still happens on it, before you open an issue.**
+
 Cross-platform agricultural GPS guidance — a rewrite of [AgOpenGPS](https://github.com/farmerbriantee/AgOpenGPS) using HTML/JS, .NET 10, and C#. The UI is a web page served up by the backend host and shown in each platform's own web view.
 
 ## Download & run
 
-Grab a versioned build from the [**Releases**](../../releases) page, or the
-[**Nightly**](../../releases/tag/nightly) for the newest fixes (rebuilt from `develop` daily and
-on demand; beta testers should use this one). Everything is a self-contained app (no .NET install needed). Pick the set that matches how you'll run it — in
+Get the [**Nightly**](../../releases/tag/nightly) build. It is rebuilt from `develop` daily and
+on demand, and it is the build to use and report issues against. Everything is a self-contained app (no .NET install needed). Pick the set that matches how you'll run it — in
 every mode the host also serves `http://<host>:5174` on the LAN, so cab phones/tablets connect
 in a browser.
 

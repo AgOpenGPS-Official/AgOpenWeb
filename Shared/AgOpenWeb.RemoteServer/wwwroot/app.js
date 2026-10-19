@@ -1847,7 +1847,7 @@ document.getElementById('maptap-cancel').addEventListener('pointerdown', e => { 
 // ---- AB flyout launchers → the three creation/management dialogs ----
 function abFlyoutClose() { bnAb.classList.remove('open'); document.getElementById('bn-abmenu').classList.remove('menuopen'); }
 document.getElementById('bn-tracks').addEventListener('pointerdown', e => { e.stopPropagation(); abFlyoutClose(); openTracksManager(); });
-document.getElementById('bn-quickab').addEventListener('pointerdown', e => { e.stopPropagation(); abFlyoutClose(); qabHeadingReset(); openDialog('dlg-quickab'); });
+document.getElementById('bn-quickab').addEventListener('pointerdown', e => { e.stopPropagation(); abFlyoutClose(); qabHeadingReset(); qabSetSide('right'); openDialog('dlg-quickab'); });
 // A+ heading box (#335): empty each time the dialog opens, the vehicle's heading as its
 // placeholder (refreshed on focus); a typed value goes with track.aPlus.
 const qabHeading = document.getElementById('qab-aplus-heading');
@@ -1861,11 +1861,22 @@ function qabHeadingReset() {
   qabHeading.placeholder = d === null ? '' : d.toFixed(1);
 }
 qabHeading.addEventListener('focus', () => { const d = vehicleHeadingDeg(); if (d !== null) qabHeading.placeholder = d.toFixed(1); });
+// First-pass side for the driven modes (#345): Right each time the dialog opens, like
+// AgOpenGPS; sent just before A+ / Drive AB / Curve so the host moves the line to that side.
+const qabRefSide = document.getElementById('qab-refside');
+let qabSide = 'right';
+function qabSetSide(s) {
+  qabSide = s;
+  for (const b of qabRefSide.children) b.classList.toggle('active', b.dataset.side === s);
+}
+for (const b of qabRefSide.children)
+  b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); qabSetSide(b.dataset.side); });
 // Quick-AB selector buttons.
 // Quick AB — the single creation hub: GPS-driven, from-boundary, and draw-on-map modes.
 document.getElementById('dlg-quickab').querySelectorAll('[data-qab]').forEach(b => b.addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation(); closeDialog();
   const m = b.dataset.qab;
+  if (m === 'aPlus' || m === 'driveAB' || m === 'recordCurve') transport.send('track.refSide|' + qabSide);
   if (m === 'aPlus') {
     // A+ builds an AB line from the vehicle's current position + heading. It needs a GPS
     // fix; the host bails silently without one, so give feedback here (StatusMessage isn't
@@ -2179,7 +2190,7 @@ for (const b of document.querySelectorAll('#fb-addtrack .fb-addbtn'))
     showFbTab('tracks');
     if (m === 'ab') startDrawTrack('straight');        // map-tap draw (FB stays open, NO_SCRIM)
     else if (m === 'curve') startDrawTrack('curve');
-    else if (m === 'aplus') transport.send('track.aPlus');
+    else if (m === 'aplus') { transport.send('track.refSide|right'); transport.send('track.aPlus'); }
     else if (m === 'bedge') transport.send('track.createFromBoundary');
     else if (m === 'bcurve') transport.send('track.boundaryCurve');
     else if (m === 'ball') transport.send('track.allEdges');
@@ -3562,11 +3573,24 @@ function renderBugReport() {
   document.getElementById('br-status').textContent = s;
   const m = /(bugreport_[^\/\\]+\.zip)$/.exec(s);
   brFile = m ? m[1] : null;
-  document.getElementById('br-download').style.display = brFile ? '' : 'none';
+  for (const id of ['br-download', 'br-github', 'br-github-hint'])
+    document.getElementById(id).style.display = brFile ? '' : 'none';
 }
 document.getElementById('br-download').addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (brFile) openExternal(location.origin + '/bugreports/' + encodeURIComponent(brFile));
+});
+// GitHub's bug form, prefilled through its field ids (.github/ISSUE_TEMPLATE/bug_report.yml).
+// A URL can't carry the zip, so the user drags in the one Download saved.
+document.getElementById('br-github').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const q = new URLSearchParams({ template: 'bug_report.yml' });
+  const title = document.getElementById('br-title').value.trim();
+  const desc = document.getElementById('br-desc').value.trim();
+  if (title) q.set('title', title);
+  if (desc) q.set('description', desc.slice(0, 3000)); // keep the URL within browser limits
+  if (appInfo && appInfo.version) q.set('version', appInfo.version + (appInfo.gitHash ? ' · ' + appInfo.gitHash : ''));
+  openExternal('https://github.com/AgOpenGPS-Official/AgOpenWeb/issues/new?' + q);
 });
 document.getElementById('br-submit').addEventListener('pointerdown', e => {
   e.stopPropagation();

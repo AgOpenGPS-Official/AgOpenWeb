@@ -255,7 +255,7 @@ namespace AgOpenWeb.Models.Guidance
         /// Use this instead of manually offsetting and calling CalculateHeadings.
         /// </summary>
         /// <param name="originalPoints">Original curve points with headings</param>
-        /// <param name="offsetDistance">Perpendicular offset distance (positive = left of heading)</param>
+        /// <param name="offsetDistance">Perpendicular offset distance (positive = right of heading)</param>
         /// <returns>Clean offset curve without self-intersections</returns>
         public static List<Vec3> CreateOffsetCurve(IReadOnlyList<Vec3> originalPoints, double offsetDistance)
         {
@@ -336,7 +336,7 @@ namespace AgOpenWeb.Models.Guidance
         /// of ANY original curve point, it indicates self-intersection and the point is skipped.
         /// </summary>
         /// <param name="originalPoints">Original curve points with headings</param>
-        /// <param name="offsetDistance">Perpendicular offset distance (positive = left of heading)</param>
+        /// <param name="offsetDistance">Perpendicular offset distance (positive = right of heading)</param>
         /// <returns>Tuple of (cleaned curve, percentage of points removed due to self-intersection)</returns>
         public static (List<Vec3> Points, double PercentRemoved) CreateOffsetCurveWithInfo(
             IReadOnlyList<Vec3> originalPoints, double offsetDistance)

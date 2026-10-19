@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a bug (any language welcome). Attach a Bug Report Dump and you're done.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **The quick way: attach a Bug Report Dump, and that's all we need.**
+        1. Use the latest [Nightly build](https://github.com/AgOpenGPS-Official/AgOpenWeb/releases/tag/nightly).
+        2. Right after the problem happens, open main menu → **Bug Report Dump**, type a title and what happened, and press **Create Bug Report**. The dump holds the version, platform, settings, the field, a screenshot and the last 5 minutes of GPS data.
+        3. Press **Download**, then **Report on GitHub**: this page opens already filled in. Drag the downloaded `bugreport_….zip` into the box below.
+
+        Reports without a dump are not accepted.
+
+        Write in any language. You don't need to use English: the maintainers translate every report. Please keep log text, error messages and menu names exactly as they appear. Don't translate them.
+  - type: textarea
+    id: dump
+    attributes:
+      label: Bug Report Dump
+      description: Drag the `bugreport_….zip` into this box. If it is larger than 25 MB, upload it somewhere (Google Drive, Dropbox, OneDrive, WeTransfer) and paste the link.
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened
+      description: Optional with a dump if you described it in the app.
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **Optional: the dump already has these**
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - macOS
+        - Linux (desktop window)
+        - Linux (headless)
+        - Android
+        - iOS / iPadOS
+  - type: input
+    id: version
+    attributes:
+      label: Nightly build
+      description: The version and commit from main menu → About, or the date in the nightly's title.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or anything else
