@@ -351,6 +351,7 @@ bench scripts: `Tools/rtcm-bench`.
 - Use dependency injection for services
 - Use shared `GeometryMath` utilities instead of duplicating distance/angle calculations
 - Anything written to disk or a wire uses `CultureInfo.InvariantCulture` (see `CONTRIBUTING.md`)
+- New `.cs`/`.js`/`.py`/`.sh` files start with the Apache 2.0 header (`// SPDX-License-Identifier: Apache-2.0`, see `CONTRIBUTING.md`); `Tools/license-headers.py` adds it, CI checks it
 
 ## Testing
 
@@ -371,7 +372,7 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.RemoteServer.Tests` - web host: Bing tile replies, boundary imagery capture
 - `AgOpenWeb.IntegrationTests` - test-support library (fake settings etc.); not a standalone test run
 
-CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current.
+CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, and `Tools/license-headers.py --check` for the licence headers.
 
 ## U-Turn System
 
