@@ -57,7 +57,11 @@ permissions:
   contents: read    # build jobs only read; the release job grants itself write
 
 env:
-  DOTNET_VERSION: '10.0.x'
+  # Pinned: workload set 10.0.402.1 names an iOS manifest (27.1.10018) that is not
+  # on NuGet yet, so 'dotnet workload install android' fails. Back to 10.0.x and drop
+  # ANDROID_WORKLOAD_VERSION once that is published.
+  DOTNET_VERSION: '10.0.401'
+  ANDROID_WORKLOAD_VERSION: '10.0.401.1'
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
@@ -179,7 +183,7 @@ jobs:
       - name: Install Android workload
         run: |
           for i in 1 2 3; do
-            dotnet workload install android && break
+            dotnet workload install android --version "$ANDROID_WORKLOAD_VERSION" && break
             echo "Attempt $i failed, retrying in 10s..."
             sleep 10
           done
