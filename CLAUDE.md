@@ -57,6 +57,7 @@ AgOpenWeb3/
 │   ├── AgOpenWeb.Models.Tests/     # Geometry, coordinate conversion
 │   ├── AgOpenWeb.Services.Tests/   # NMEA parsing, guidance, coverage, pipeline
 │   ├── AgOpenWeb.ViewModels.Tests/ # ViewModel/control-brain logic
+│   ├── AgOpenWeb.RemoteServer.Tests/ # Web host: satellite tiles, imagery capture
 │   └── AgOpenWeb.IntegrationTests/ # Test-support lib: fake settings etc. (used by Services.Tests)
 │
 ├── Tools/                              # Dev scripts (i18n-extract.py, unpack-dump.sh, ...)
@@ -107,7 +108,7 @@ dotnet build Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj
 dotnet build AgOpenWeb.sln
 
 # Run tests
-dotnet test Tests/AgOpenWeb.Models.Tests/ ; dotnet test Tests/AgOpenWeb.Services.Tests/ ; dotnet test Tests/AgOpenWeb.ViewModels.Tests/
+dotnet test Tests/AgOpenWeb.Models.Tests/ ; dotnet test Tests/AgOpenWeb.Services.Tests/ ; dotnet test Tests/AgOpenWeb.ViewModels.Tests/ ; dotnet test Tests/AgOpenWeb.RemoteServer.Tests/
 ```
 
 ## Key Design Decisions
@@ -357,6 +358,7 @@ bench scripts: `Tools/rtcm-bench`.
 dotnet test Tests/AgOpenWeb.Models.Tests/
 dotnet test Tests/AgOpenWeb.Services.Tests/
 dotnet test Tests/AgOpenWeb.ViewModels.Tests/
+dotnet test Tests/AgOpenWeb.RemoteServer.Tests/
 
 # Legacy guidance algorithm test harness
 dotnet run --project TestRunner/TestRunner.csproj
@@ -366,6 +368,7 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.Models.Tests` - GeometryMath, GeoConversion, boundary/curve utilities
 - `AgOpenWeb.Services.Tests` - NMEA parsing, TrackGuidanceService, coverage, pipeline, U-turn (uses the virtual UDP modules in `Simulators/AgOpenWeb.VirtualModules`)
 - `AgOpenWeb.ViewModels.Tests` - ViewModel / control-brain logic
+- `AgOpenWeb.RemoteServer.Tests` - web host: Bing tile replies, boundary imagery capture
 - `AgOpenWeb.IntegrationTests` - test-support library (fake settings etc.); not a standalone test run
 
 CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current.

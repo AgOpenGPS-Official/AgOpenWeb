@@ -10,7 +10,6 @@
 // and the ASP.NET DI container to direct construction.
 
 using System.Collections.Concurrent;
-using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
 using SkiaSharp;
@@ -72,60 +71,54 @@ public sealed class RemoteServerHost
         new() { Timeout = TimeSpan.FromSeconds(10) };
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> _tileCache = new();
 
-    private static readonly HashSet<string> KnownPlaceholderHashes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "c13269481c73de6e18589f9fbc3bdf7e"
-    };
+    /// <summary>What Bing said about one tile.</summary>
+    internal enum TileReply { Tile, NoTile, Failed }
 
-    private static bool IsPlaceholderTile(byte[] bytes)
+    // MD5 of the 1033-byte "no imagery" JPEG Bing serves (HTTP 200) where it has no tile,
+    // in case a reply ignores &n=z (which asks for an empty body instead).
+    private const string PlaceholderTileMd5 = "C13269481C73DE6E18589F9FBC3BDF7E";
+
+    /// <summary>
+    /// Sort a tile reply. Bing answers a missing tile with 200 plus <c>X-VE-Tile-Info: no-tile</c>
+    /// and an empty body (or the placeholder JPEG). Anything that isn't a 200 is a failure
+    /// (rate limit, gateway, a weak cab link) — worth asking again, never "no tile".
+    /// </summary>
+    internal static TileReply ClassifyTileReply(bool success, bool noTileHeader, byte[]? body)
     {
-        using var md5 = MD5.Create();
-        var hash = md5.ComputeHash(bytes);
-        var hex = Convert.ToHexString(hash);
-        return KnownPlaceholderHashes.Contains(hex);
+        if (!success || body is null) return TileReply.Failed;
+        if (noTileHeader || body.Length == 0) return TileReply.NoTile;
+        return Convert.ToHexString(MD5.HashData(body)) == PlaceholderTileMd5 ? TileReply.NoTile : TileReply.Tile;
     }
 
-    public static async System.Threading.Tasks.Task<byte[]?> FetchSatTileAsync(string quadkey)
+    /// <summary>A Bing aerial tile, or null where Bing has none or the fetch failed.</summary>
+    public static async System.Threading.Tasks.Task<byte[]?> FetchSatTileAsync(string quadkey) =>
+        (await FetchSatTileReplyAsync(quadkey).ConfigureAwait(false)).Bytes;
+
+    /// <summary>
+    /// Fetch a Bing aerial tile through the cache. Tiles and "no tile" answers are cached
+    /// ("no tile" as an empty entry); failures are not, so the next request tries again.
+    /// </summary>
+    internal static async System.Threading.Tasks.Task<(TileReply Reply, byte[]? Bytes)> FetchSatTileReplyAsync(string quadkey)
     {
         if (_tileCache.TryGetValue(quadkey, out var cached))
-            return cached.Length == 0 ? null : cached;
+            return cached.Length == 0 ? (TileReply.NoTile, null) : (TileReply.Tile, cached);
+        TileReply reply;
+        byte[]? bytes = null;
         try
         {
-            var url = $"https://ecn.t0.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587&n=z";
-            using var response = await _tileHttp.GetAsync(url).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-            {
-                CacheTile(quadkey, Array.Empty<byte>());
-                return null;
-            }
-
-            if (response.Headers.TryGetValues("X-VE-Tile-Info", out var tileInfo) &&
-                tileInfo.Any(v => v.Equals("no-tile", StringComparison.OrdinalIgnoreCase)))
-            {
-                CacheTile(quadkey, Array.Empty<byte>());
-                return null;
-            }
-
-            var bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
-            if (bytes is null || bytes.Length < 1000 || IsPlaceholderTile(bytes))
-            {
-                CacheTile(quadkey, Array.Empty<byte>());
-                return null;
-            }
-
-            CacheTile(quadkey, bytes);
-            return bytes;
+            using var response = await _tileHttp.GetAsync(
+                $"https://ecn.t0.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587&n=z").ConfigureAwait(false);
+            bool noTile = response.Headers.TryGetValues("X-VE-Tile-Info", out var info)
+                && info.Any(v => v.Equals("no-tile", StringComparison.OrdinalIgnoreCase));
+            if (response.IsSuccessStatusCode)
+                bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+            reply = ClassifyTileReply(response.IsSuccessStatusCode, noTile, bytes);
         }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static void CacheTile(string quadkey, byte[] bytes)
-    {
-        if (_tileCache.Count > 2048) _tileCache.Clear();
-        _tileCache[quadkey] = bytes;
+        catch { return (TileReply.Failed, null); }
+        if (reply == TileReply.Failed) return (reply, null);
+        if (_tileCache.Count > 1024) _tileCache.Clear();
+        _tileCache[quadkey] = reply == TileReply.Tile ? bytes! : Array.Empty<byte>();
+        return reply == TileReply.Tile ? (reply, bytes) : (reply, null);
     }
 
     /// <summary>Host-supplied projector for the live Steer Wizard — returns a WizardDto
@@ -383,8 +376,11 @@ public sealed class RemoteServerHost
             bool valid = quadkey.Length is > 0 and <= 23;
             foreach (var c in quadkey) if (c is < '0' or > '3') { valid = false; break; }
             if (!valid) return SimpleWebServer.Response.NotFound;
-            var bytes = await FetchSatTileAsync(quadkey).ConfigureAwait(false);
-            if (bytes is null) return SimpleWebServer.Response.NotFound;
+            // 404 = Bing has no tile here (the client falls back to a coarser one);
+            // 502 = the fetch failed (the client asks again later).
+            var (reply, bytes) = await FetchSatTileReplyAsync(quadkey).ConfigureAwait(false);
+            if (reply == TileReply.NoTile) return SimpleWebServer.Response.NotFound;
+            if (bytes is null) return new SimpleWebServer.Response(502, "text/plain", "tile fetch failed"u8.ToArray());
             return SimpleWebServer.Response.Bytes(bytes, "image/jpeg",
                 new[] { ("Cache-Control", "public, max-age=604800") }); // a week
         });
