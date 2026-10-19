@@ -27,39 +27,64 @@ public static class BoundaryImageryCapture
     /// exits, so a native crash takes down only the child. <paramref name="outPath"/> lets
     /// the parent name the file it then reads back; null = a temp file (legacy callers).
     /// </summary>
-    public static async Task<string?> CaptureAsync(
+    public static Task<string?> CaptureAsync(
         double mercMinX, double mercMaxX, double mercMinY, double mercMaxY, string? outPath = null)
+        => CaptureAsync(mercMinX, mercMaxX, mercMinY, mercMaxY, outPath, RemoteServerHost.FetchSatTileAsync);
+
+    // How many zoom levels coarser a missing tile may be filled from.
+    private const int MaxFillLevels = 6;
+
+    /// <summary><paramref name="fetchTile"/>: quadkey → tile bytes, or null where there is none.</summary>
+    internal static async Task<string?> CaptureAsync(
+        double mercMinX, double mercMaxX, double mercMinY, double mercMaxY, string? outPath,
+        Func<string, Task<byte[]?>> fetchTile)
     {
         double mercWidth = mercMaxX - mercMinX, mercHeight = mercMaxY - mercMinY;
         if (mercWidth <= 0 || mercHeight <= 0) return null;
 
-        // Pick the finest Bing zoom whose output stays within the pixel cap (memory ceiling).
+        // The finest Bing zoom whose output stays within the pixel cap (memory ceiling).
         const int maxPixels = 4096;
-        int zoom = 1;
-        double resolution = WorldSize / 256.0; // m/px at z0
+        int maxZoom = 1;
         for (int z = 20; z >= 1; z--)
         {
             double res = WorldSize / (256.0 * (1 << z));
-            if (Math.Max(mercWidth, mercHeight) / res <= maxPixels) { zoom = z; resolution = res; break; }
+            if (Math.Max(mercWidth, mercHeight) / res <= maxPixels) { maxZoom = z; break; }
         }
 
+        // Bing has no tile past its coverage there (rural areas often stop at z19 or
+        // below), so step down until the field's centre tile exists.
+        double centerX = (mercMinX + mercMaxX) / 2, centerY = (mercMinY + mercMaxY) / 2;
+        int zoom = 0;
+        for (int z = maxZoom; z >= 1 && zoom == 0; z--)
+            if (await fetchTile(Quadkey(TileX(centerX, z), TileY(centerY, z), z)).ConfigureAwait(false) is not null)
+                zoom = z;
+        if (zoom == 0) return null;
+
+        double resolution = WorldSize / (256.0 * (1 << zoom));
         int outW = Math.Max((int)Math.Ceiling(mercWidth / resolution), 1);
         int outH = Math.Max((int)Math.Ceiling(mercHeight / resolution), 1);
         double tileMerc = WorldSize / (1 << zoom);
 
-        int txMin = (int)Math.Floor((mercMinX + WorldSize / 2) / tileMerc);
-        int txMax = (int)Math.Floor((mercMaxX + WorldSize / 2) / tileMerc);
-        int tyMin = (int)Math.Floor((WorldSize / 2 - mercMaxY) / tileMerc); // tile y grows southward
-        int tyMax = (int)Math.Floor((WorldSize / 2 - mercMinY) / tileMerc);
+        int txMin = TileX(mercMinX, zoom), txMax = TileX(mercMaxX, zoom);
+        int tyMin = TileY(mercMaxY, zoom), tyMax = TileY(mercMinY, zoom); // tile y grows southward
         if ((txMax - txMin) > 64 || (tyMax - tyMin) > 64) return null; // sanity
 
-        // Fetch all tiles concurrently (cached in RemoteServerHost).
-        var jobs = new List<Task<(int tx, int ty, byte[]? bytes)>>();
+        // Fetch all tiles concurrently (cached in RemoteServerHost). Where Bing has no tile
+        // (the edge of its finer coverage), take the nearest coarser ancestor instead.
+        var jobs = new List<Task<(int tx, int ty, int z, byte[]? bytes)>>();
         for (int tx = txMin; tx <= txMax; tx++)
             for (int ty = tyMin; ty <= tyMax; ty++)
             {
                 int cx = tx, cy = ty;
-                jobs.Add(Task.Run(async () => (cx, cy, await RemoteServerHost.FetchSatTileAsync(Quadkey(cx, cy, zoom)))));
+                jobs.Add(Task.Run(async () =>
+                {
+                    for (int up = 0; up <= MaxFillLevels && zoom - up >= 1; up++)
+                    {
+                        var bytes = await fetchTile(Quadkey(cx >> up, cy >> up, zoom - up)).ConfigureAwait(false);
+                        if (bytes is not null) return (cx, cy, zoom - up, bytes);
+                    }
+                    return (cx, cy, zoom, (byte[]?)null);
+                }));
             }
         var results = await Task.WhenAll(jobs);
 
@@ -69,11 +94,15 @@ public static class BoundaryImageryCapture
         using (var paint = new SKPaint { FilterQuality = SKFilterQuality.High })
         {
             canvas.Clear(SKColors.Black);
-            foreach (var (tx, ty, bytes) in results)
+            foreach (var (tx, ty, z, bytes) in results)
             {
-                if (bytes is null || bytes.Length < 1000) continue; // skip placeholders/empties
+                if (bytes is null) continue;
                 using var tile = SKBitmap.Decode(bytes);
                 if (tile is null) continue;
+                // This tile's square of an ancestor tile (all of it when z == zoom).
+                int up = zoom - z, n = 1 << up;
+                float side = (float)tile.Width / n;
+                var src = SKRect.Create((tx & (n - 1)) * side, (ty & (n - 1)) * side, side, side);
                 double tMinX = -WorldSize / 2 + tx * tileMerc, tMaxX = tMinX + tileMerc;
                 double tMaxY = WorldSize / 2 - ty * tileMerc, tMinY = tMaxY - tileMerc;
                 var dst = new SKRect(
@@ -81,7 +110,7 @@ public static class BoundaryImageryCapture
                     (float)((mercMaxY - tMaxY) / resolution),  // pixel y inverted vs Mercator y
                     (float)((tMaxX - mercMinX) / resolution),
                     (float)((mercMaxY - tMinY) / resolution));
-                canvas.DrawBitmap(tile, dst, paint);
+                canvas.DrawBitmap(tile, src, dst, paint);
                 drawn++;
             }
         }
@@ -105,7 +134,10 @@ public static class BoundaryImageryCapture
         return path;
     }
 
-    private static string Quadkey(int x, int y, int z)
+    private static int TileX(double mercX, int z) => (int)Math.Floor((mercX + WorldSize / 2) / (WorldSize / (1 << z)));
+    private static int TileY(double mercY, int z) => (int)Math.Floor((WorldSize / 2 - mercY) / (WorldSize / (1 << z)));
+
+    internal static string Quadkey(int x, int y, int z)
     {
         var sb = new StringBuilder(z);
         for (int i = z; i > 0; i--)

@@ -228,6 +228,7 @@ public sealed class SimpleWebServer
         404 => "Not Found",
         405 => "Method Not Allowed",
         431 => "Request Header Fields Too Large",
+        502 => "Bad Gateway",
         _ => "OK",
     };
 

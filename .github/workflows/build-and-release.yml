@@ -67,6 +67,9 @@ jobs:
       - name: Run ViewModels Tests
         run: dotnet test Tests/AgOpenWeb.ViewModels.Tests/ --verbosity normal
 
+      - name: Run RemoteServer Tests
+        run: dotnet test Tests/AgOpenWeb.RemoteServer.Tests/ --verbosity normal
+
       - name: Run Guidance Algorithm Tests
         run: dotnet run --project TestRunner/TestRunner.csproj
 

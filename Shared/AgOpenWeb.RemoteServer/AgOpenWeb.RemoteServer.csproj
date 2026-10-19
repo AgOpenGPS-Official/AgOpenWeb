@@ -29,6 +29,10 @@
     <ProjectReference Include="..\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="AgOpenWeb.RemoteServer.Tests" />
+  </ItemGroup>
+
   <!-- Client assets shipped inside the assembly (no content-root/copy plumbing). -->
   <ItemGroup>
     <EmbeddedResource Include="wwwroot\**" />
