@@ -261,9 +261,9 @@ public class AutoSteerService : IAutoSteerService
     // (invert, zero), for fixes whose GPS sentence carries no roll: AgOpenGPS ahrs.imuRoll
     // (#353). Written on the UDP receive thread, read where a fix is published.
     private double _imuRoll;
-    private const long NoImuRoll = long.MinValue / 2; // "never", without overflow below
+    private const long NoImuRoll = long.MinValue / 2; // "never", without overflow below (roll and heading)
     private long _imuRollAtMs = NoImuRoll;
-    /// <summary>IMU roll older than this is dropped (the module stopped sending it).</summary>
+    /// <summary>IMU roll or heading older than this is dropped (the module stopped sending it).</summary>
     internal const long ImuRollStaleMs = 1000;
 
     /// <summary>The roll a fix carries: the sentence's own, else a fresh IMU roll, else 0.</summary>
@@ -279,6 +279,24 @@ public class AutoSteerService : IAutoSteerService
         NmeaParserServiceFast.ApplyAhrsRollCalibration(ref rawRoll, _configStore);
         Volatile.Write(ref _imuRoll, rawRoll);
         Volatile.Write(ref _imuRollAtMs, Environment.TickCount64);
+    }
+
+    // Heading from the same IMUs, for fixes whose sentence has no IMU heading: the heading
+    // fusion blends it with fix-to-fix as it does a $PANDA IMU heading (AgOpenGPS
+    // ahrs.imuHeading). Same thread and staleness as the roll above.
+    private double _imuHeading;
+    private long _imuHeadingAtMs = NoImuRoll;
+
+    private bool TryFreshImuHeading(out double headingDegrees)
+    {
+        headingDegrees = Volatile.Read(ref _imuHeading);
+        return Environment.TickCount64 - Volatile.Read(ref _imuHeadingAtMs) <= ImuRollStaleMs;
+    }
+
+    private void SetImuHeading(double headingDegrees)
+    {
+        Volatile.Write(ref _imuHeading, headingDegrees);
+        Volatile.Write(ref _imuHeadingAtMs, Environment.TickCount64);
     }
 
     /// <summary>Latest sensor data from module (PGN 250).</summary>
@@ -307,13 +325,19 @@ public class AutoSteerService : IAutoSteerService
                 break;
 
             case PgnNumbers.IMU_DATA: // 211 - external IMU
-                if (PgnBuilder.TryParseImuData(e.Data, out _, out double roll))
+                if (PgnBuilder.TryParseImuData(e.Data, out double heading, out double roll))
+                {
+                    SetImuHeading(heading);
                     SetImuRoll(roll);
+                }
                 break;
 
             case PgnNumbers.IMU_DISCONNECT: // 212 - external IMU gone
                 if (e.Data.Length > 5 && e.Data[5] == 1)
+                {
                     Volatile.Write(ref _imuRollAtMs, NoImuRoll);
+                    Volatile.Write(ref _imuHeadingAtMs, NoImuRoll);
+                }
                 break;
 
             case PgnNumbers.HARDWARE_MESSAGE: // 221 - text to show on screen
@@ -366,6 +390,7 @@ public class AutoSteerService : IAutoSteerService
         _state.SteerSwitchActive = steerData.SteerSwitchActive;
         _state.WorkSwitchActive = steerData.WorkSwitchActive;
         if (steerData.HasImuRoll) SetImuRoll(steerData.ImuRoll);
+        if (steerData.HasImuHeading) SetImuHeading(steerData.ImuHeading);
 
         // Speed and cross-track error are this service's own receive-thread state (set by
         // ProcessSimulatedPosition and the guidance step), so the gate reads no UI mirror.
@@ -711,6 +736,15 @@ public class AutoSteerService : IAutoSteerService
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PublishGpsData()
     {
+        // No IMU heading in the sentence: a fresh one from the steer module or IMU module.
+        bool imuValid = _state.ImuValid;
+        double imuHeading = _state.ImuHeading;
+        if (!imuValid && TryFreshImuHeading(out double moduleHeading))
+        {
+            imuValid = true;
+            imuHeading = moduleHeading;
+        }
+
         var gpsData = new GpsData
         {
             CurrentPosition = new Position
@@ -728,8 +762,8 @@ public class AutoSteerService : IAutoSteerService
             ImuRoll = FixRoll(),
             ImuPitch = _state.Pitch,
             ImuYawRate = _state.YawRate,
-            ImuHeading = _state.ImuHeading,
-            ImuValid = _state.ImuValid,
+            ImuHeading = imuHeading,
+            ImuValid = imuValid,
             HasDualHeading = _state.HasDualHeading,
             SentenceType = _state.SentenceType,
             Timestamp = DateTime.UtcNow,

@@ -627,7 +627,7 @@ public static class PgnBuilder
     /// Format: [0x80, 0x81, Source, 0xFD, 8, AngleLo, AngleHi, HeadingLo, HeadingHi, RollLo, RollHi, Switches, PWM, CRC]
     ///
     /// Byte 5-6:  Actual steer angle * 100 (signed int16, little-endian)
-    /// Byte 7-8:  Heading from IMU * 0.1 (signed int16, little-endian)
+    /// Byte 7-8:  Heading from IMU * 0.1 (signed int16, little-endian); 9999 = no IMU
     /// Byte 9-10: Roll from IMU * 0.1 (signed int16, little-endian); 8888 = no IMU
     /// Byte 11:   Switch status byte
     ///            bit 0: Work switch (INVERTED: 0=ON, 1=OFF)
@@ -662,10 +662,11 @@ public static class PgnBuilder
         short angleRaw = (short)(data[5] | (data[6] << 8));
         double actualSteerAngle = angleRaw / 100.0;
 
-        // Parse IMU heading (signed int16, heading * 0.1) - deprecated, GNSS supplies this now
-        // Little-endian: low byte first
+        // Parse IMU heading (signed int16, heading * 0.1; 9999 = no IMU). AgOpenGPS uses it
+        // when the GPS sentence carries no IMU heading. Little-endian: low byte first
         short headingRaw = (short)(data[7] | (data[8] << 8));
         double imuHeading = headingRaw * 0.1;
+        bool hasImuHeading = headingRaw != 9999;
 
         // Parse IMU roll (signed int16, roll * 0.1; 8888 = no IMU). AgOpenGPS uses it
         // when the GPS sentence carries no roll (#353). Little-endian: low byte first
@@ -696,7 +697,8 @@ public static class PgnBuilder
             remoteButton,
             vwasFusionActive,
             pwmDisplay,
-            hasImuRoll);
+            hasImuRoll,
+            hasImuHeading);
 
         return true;
     }
