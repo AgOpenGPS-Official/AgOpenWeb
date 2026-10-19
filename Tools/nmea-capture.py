@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 """Capture what a GPS receiver or bridge sends over UDP, datagram by datagram.
 
 Listens on the GPS ports (9999, and Ace's 2211/2222) and writes every datagram that

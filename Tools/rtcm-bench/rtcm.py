@@ -1,3 +1,7 @@
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 """RTCM 3 framing shared by the bench scripts (same rules as RtcmFramer in the app)."""
 
 _TABLE = []

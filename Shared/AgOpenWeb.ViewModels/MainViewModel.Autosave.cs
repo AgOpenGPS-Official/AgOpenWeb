@@ -1,6 +1,7 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
+// SPDX-License-Identifier: Apache-2.0
+
 // Periodic autosave for in-progress field state. Today only the coverage
 // map is persisted on the timer — that's the highest-value data because
 // it's what drives the "this row is done" map paint and the operator

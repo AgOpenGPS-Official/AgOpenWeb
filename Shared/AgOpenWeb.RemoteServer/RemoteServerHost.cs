@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Embeds a minimal web host inside the running app and streams the map feed over a
 // raw binary WebSocket (no SignalR). The host passes in the live ApplicationState
 // (the DI singleton the pipeline writes to) and the other services it needs.

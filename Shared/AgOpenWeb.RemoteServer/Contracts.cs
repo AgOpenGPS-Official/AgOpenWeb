@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Phase 1 wire contract (deliberate, not VM-mirroring). Field-local meters;
 // the host sends the field origin once in the Scene, everything else is x=E, y=N.
 // Camera is NOT here — it's client-owned (REMOTE_WEB_UI_SPLIT.md §5 rule 3).

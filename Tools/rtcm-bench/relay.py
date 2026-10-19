@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 """TCP relay between AgOpenWeb and an NTRIP caster that misbehaves on a schedule.
 
     relay.py CASTER_HOST CASTER_PORT SCHEDULE_JSON LOG [LISTEN_PORT=2102]

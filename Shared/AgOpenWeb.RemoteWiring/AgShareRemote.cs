@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 // Host-side AgShare orchestration for the remote (web) Field Operations panel. The native
 // AgShare logic lives in the dialog code-behind (View layer, deleted at headless cutover),

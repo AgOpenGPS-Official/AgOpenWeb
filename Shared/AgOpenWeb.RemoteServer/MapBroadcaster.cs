@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Background broadcaster. The Scene + Tick feed runs on a 10 Hz PeriodicTimer;
 // coverage is event-driven off CoverageUpdated (snapshot on (re)init, deltas
 // after). PeriodicTimer (not DispatcherTimer) — off the UI thread, no Avalonia dep.

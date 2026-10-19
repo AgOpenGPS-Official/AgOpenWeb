@@ -1,21 +1,3 @@
-<!--
-AgOpenWeb
-Copyright (C) 2024-2025 AgOpenWeb Contributors
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
--->
-
 # Contributing to AgOpenWeb
 
 Thank you for your interest in contributing to AgOpenWeb! This document lists features that need implementation and provides guidance for contributors.
@@ -176,6 +158,18 @@ UI strings live in `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/en.json` (generat
 4. **Show new state** by adding it to the DTO in `RemoteServer/Contracts.cs`, filling it in `SceneProjector`, encoding it in `WireCodec.cs` and decoding it in the same order in `wwwroot/transport.js`, then rendering it in `app.js`.
 
 5. **Strings:** run `Tools/i18n-extract.py` so `en.json` includes any new text (CI checks this).
+
+## Licence headers
+
+AgOpenWeb is licensed under the Apache License 2.0 ([LICENSE.md](LICENSE.md)). Every `.cs`, `.js`, `.py` and `.sh` file starts with this header, in the file's comment syntax (after the `#!` line in a script):
+
+```csharp
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+```
+
+Don't copy the header from a file nearby, and don't add another licence's notice. `Tools/license-headers.py` adds the header to new files; CI runs it with `--check` and fails on a missing or changed header, or on another licence named in a source file or document. Code under a different licence (such as `wwwroot/vendor`) needs a maintainer's agreement first.
 
 ## Questions?
 

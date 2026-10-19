@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Remote actuation authority (Phase 2 safety layer). A single client may hold
 // "control" at a time; only the fresh holder's Tier-2 (live actuation) commands
 // are honored by the hub. Presence must be refreshed (heartbeat) within the

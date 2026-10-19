@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Raw-WebSocket fan-out hub — the SignalR replacement. Holds the set of
 // connected clients and broadcasts pre-encoded binary frames (WireCodec) to all
 // of them. Each client has its own send gate so the broadcaster loop and the

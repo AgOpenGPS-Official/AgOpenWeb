@@ -85,4 +85,4 @@ To help translate the UI, no code is needed: join in on [Weblate](https://hosted
 
 ## License
 
-[GNU General Public License v3.0](LICENSE.md)
+[Apache License 2.0](LICENSE.md)

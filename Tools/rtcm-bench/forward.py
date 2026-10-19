@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 """Stand-in RTCM forwarder: caster -> UDP 2233, paced like the app, with datagram loss.
 
     forward.py CASTER_HOST CASTER_PORT MOUNT CREDS_FILE DEST_IP SCHEDULE_JSON LOG

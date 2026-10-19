@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Renderer — consumes plain Scene + Tick objects via the transport interface.
 // It has NO knowledge of SignalR or the wire format (see transport.js); swapping
 // the transport at Phase 2 leaves this file untouched. Canvas2D for now; the

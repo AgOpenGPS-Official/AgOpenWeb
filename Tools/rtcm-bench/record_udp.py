@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 """Record every UDP datagram arriving on a port, with its arrival time.
 
     record_udp.py PORT OUT.bin

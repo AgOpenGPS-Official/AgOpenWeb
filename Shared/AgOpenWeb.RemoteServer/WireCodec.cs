@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Binary wire codec for the map feed. Replaces SignalR/JSON with compact
 // little-endian frames (BinaryWriter is little-endian on every platform; the
 // client decodes with DataView littleEndian=true). One frame = [u8 type][payload].

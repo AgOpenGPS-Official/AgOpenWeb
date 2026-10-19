@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Projects the live ApplicationState (the pipeline's single source of truth)
 // into the wire contract. This is the litmus test in action: the data the map
 // needs is filled from the pipeline/state, never from view-state.

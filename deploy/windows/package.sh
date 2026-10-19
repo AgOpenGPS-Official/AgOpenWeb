@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # AgOpenWeb — build a deployable Windows bundle (all-in-one WebView launcher).
 #
 # Cross-publishes the self-contained Desktop exe on a build machine (dev Mac / Linux / CI)
