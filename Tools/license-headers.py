@@ -41,7 +41,7 @@ COPYRIGHT = re.compile(r"Copyright \(C\) (\d{4}(?:-\d{4})?) " + re.escape(HOLDER
 FOREIGN = re.compile(
     r"General Public License|\b[AL]?GPL(?:-?v?\d(?:\.\d)?)?\b|Mozilla Public License"
     r"|\bMIT License\b|\bBSD[- ]\d-Clause\b|Creative Commons|\bUnlicense\b"
-    r"|SPDX-License-Identifier:(?! Apache-2\.0$)")
+    r"|SPDX-License-Identifier:(?! Apache-2\.0\b(?!\s+(?:OR|AND|WITH)\b))")
 
 
 def tracked():

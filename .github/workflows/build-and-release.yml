@@ -42,6 +42,10 @@ jobs:
       - name: Check translation source is up to date
         run: python3 Tools/i18n-extract.py --check
 
+      # Apache 2.0 header in every source file; no other licence named anywhere.
+      - name: Check licence headers
+        run: python3 Tools/license-headers.py --check
+
       # Language files are translated on Weblate; a PR edits only the English source.
       # Weblate's own PRs (from its fork, as the weblate user) are how they arrive.
       - name: Check language files are untouched
