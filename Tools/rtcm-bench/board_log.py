@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 """Follow an AiO v26 board's log over its web API and print the lines that match.
 
     board_log.py BOARD_IP SECONDS [PATTERN="RTCM:"]

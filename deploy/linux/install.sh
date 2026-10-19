@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # AgOpenWeb — Linux systemd installer (Phase 10 appliance deployment).
 #
 # Publishes the self-contained headless host, installs it to /opt/agopenweb, creates

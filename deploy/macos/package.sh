@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # Packages the macOS arm64 all-in-one launcher as a .dmg containing AgOpenWeb.app.
 # The .app double-clicks straight into the WebView launcher (Program.cs defaults macOS
 # → launcher; daemons pass --headless). Self-contained — no .NET install needed on the

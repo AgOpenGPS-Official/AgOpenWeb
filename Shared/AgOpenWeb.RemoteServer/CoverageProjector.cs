@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Projects the coverage display layer (RGB cells) into the wire contract.
 //
 // Deltas come from the service's incremental drain (GetNewCoverageBitmapCellsServer),

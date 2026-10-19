@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # AgOpenWeb — build a deployable Linux bundle (Phase 10 appliance deployment).
 #
 # Cross-publishes the self-contained headless host on a build machine (e.g. the dev

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 """Regenerate the web client's English source strings (wwwroot/i18n/en.json).
 
 The key of every entry is the English text itself (see Docs/TRANSLATIONS.md). Strings

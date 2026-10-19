@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 using AgOpenWeb.Models;
 using AgOpenWeb.Services.AutoSteer;
 using NUnit.Framework;

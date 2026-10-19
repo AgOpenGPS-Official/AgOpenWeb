@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Minimal embedded HTTP/1.1 + WebSocket server on a raw TcpListener — the Kestrel
 // replacement. ASP.NET Core has no iOS runtime pack (publish fails with NETSDK1082),
 // so the embedded host cannot use Kestrel on mobile. This engine is pure BCL

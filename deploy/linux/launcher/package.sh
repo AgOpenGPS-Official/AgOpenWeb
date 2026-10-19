@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # AgOpenWeb — build a deployable Linux DESKTOP launcher bundle.
 #
 # The desktop twin of the Windows/macOS launcher: a single maximized window that starts

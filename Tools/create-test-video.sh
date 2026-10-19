@@ -1,4 +1,8 @@
 #!/bin/bash
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # Create MP4 video from integration test GIF output
 # Usage: ./create-test-video.sh [input.gif] [output.mp4]
 set -e

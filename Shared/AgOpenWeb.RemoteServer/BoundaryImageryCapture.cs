@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Phase MT — Draw boundary on map. Host-side aerial capture: fetch the Bing tiles
 // covering a drawn boundary's Web-Mercator bounds and composite them into a single PNG
 // that becomes the field background. Mirrors the native BoundaryMapDialog's

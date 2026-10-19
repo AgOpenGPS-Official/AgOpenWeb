@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # AgOpenWeb — Linux desktop launcher installer (per-user, no sudo).
 #
 # Copies the extracted bundle into ~/.local/share/agopenweb and registers an application-menu

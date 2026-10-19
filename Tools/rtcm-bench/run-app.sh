@@ -1,4 +1,8 @@
 #!/bin/sh
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # Run the headless app through the relay against a real caster and record everything.
 #
 #   run-app.sh RUN_DIR SCHEDULE_JSON SECONDS

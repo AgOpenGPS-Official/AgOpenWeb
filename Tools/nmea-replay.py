@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 """Replay a Tools/nmea-capture.py file onto the network, datagram by datagram.
 
 Sends each text datagram of a capture to the app's GPS port at the moment it arrived in

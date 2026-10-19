@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 """Drive a headless AgOpenWeb from a browser: point NTRIP at the relay, open a field, wait.
 
     drive.py SECONDS MOUNT CREDS_FILE [RELAY_PORT=2102] [FIELD=RtcmBench]

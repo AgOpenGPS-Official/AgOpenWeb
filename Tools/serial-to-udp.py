@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 """Serial-to-UDP bridge for a GPS receiver on a USB or serial port.
 
 The reference implementation of the bridge contract in Docs/GPS_RECEIVERS.md, for a bench

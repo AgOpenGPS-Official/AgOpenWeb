@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Helpers for RemoteServerWiring.Wire — moved verbatim from the Desktop App class so
 // every host (Desktop/headless/iOS/Android) shares one web-command→VM/service mapping.
 using System;

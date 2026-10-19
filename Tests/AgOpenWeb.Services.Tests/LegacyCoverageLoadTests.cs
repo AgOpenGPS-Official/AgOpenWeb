@@ -1,6 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-// Licensed under GNU GPL v3.
+// SPDX-License-Identifier: Apache-2.0
 
 using System.IO;
 using AgOpenWeb.Models.Configuration;
