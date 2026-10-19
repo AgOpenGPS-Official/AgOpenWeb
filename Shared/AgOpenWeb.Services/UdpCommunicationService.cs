@@ -586,6 +586,11 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 System.Diagnostics.Debug.WriteLine($"IMU HELLO received at {now:HH:mm:ss.fff}");
                 break;
 
+            case PgnNumbers.IMU_DATA: // 211 - external IMU roll/heading (#353)
+                _lastDataFromIMU = now;
+                _imuIp = remoteIp;
+                break;
+
             case PgnNumbers.ISOBUS_HEARTBEAT: // 240 - task controller; IsobusTaskControllerService reads it
                 break;
 

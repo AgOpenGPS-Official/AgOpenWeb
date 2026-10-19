@@ -22,7 +22,7 @@ namespace AgOpenWeb.Models;
 /// </summary>
 /// <param name="ActualSteerAngle">Actual wheel angle in degrees (from WAS sensor)</param>
 /// <param name="ImuHeading">Heading from IMU in degrees (0-360) - deprecated, GNSS supplies this now</param>
-/// <param name="ImuRoll">Roll angle from IMU in degrees - deprecated, GNSS supplies this now</param>
+/// <param name="ImuRoll">Roll from the module's IMU in degrees, uncalibrated</param>
 /// <param name="WorkSwitchActive">Work switch is engaged (ON)</param>
 /// <param name="SteerSwitchActive">Raw PGN 253 byte 11 bit 1, AgOpenGPS <c>steerSwitchHigh</c>:
 /// set when the module is NOT steering (switch off, button, sensor kickout, not armed).
@@ -30,6 +30,7 @@ namespace AgOpenWeb.Models;
 /// <param name="RemoteButtonPressed">Remote steer button is pressed</param>
 /// <param name="VwasFusionActive">Virtual WAS fusion is active</param>
 /// <param name="PwmDisplay">Current PWM output magnitude (0-255)</param>
+/// <param name="HasImuRoll">The module has an IMU: roll is not AgOpenGPS's 8888 "none"</param>
 public readonly record struct SteerModuleData(
     double ActualSteerAngle,
     double ImuHeading,
@@ -38,7 +39,8 @@ public readonly record struct SteerModuleData(
     bool SteerSwitchActive,
     bool RemoteButtonPressed,
     bool VwasFusionActive,
-    byte PwmDisplay)
+    byte PwmDisplay,
+    bool HasImuRoll = false)
 {
     /// <summary>
     /// Indicates valid data was received (used to check parse success).

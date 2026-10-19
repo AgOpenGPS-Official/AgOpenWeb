@@ -126,6 +126,15 @@ public class PgnMessage
 public static class PgnNumbers
 {
     /// <summary>
+    /// External IMU data (0xD3 = 211): heading ×10, roll ×10, angular velocity, all int16 LE
+    /// from byte 5 (AgOpenGPS UDPComm case 0xD3) (#353).
+    /// </summary>
+    public const byte IMU_DATA = 211;
+
+    /// <summary>External IMU disconnected (0xD4 = 212): byte 5 = 1 (AgOpenGPS case 0xD4) (#353).</summary>
+    public const byte IMU_DISCONNECT = 212;
+
+    /// <summary>
     /// Hardware message from a module (0xDD = 221): text shown on screen for N seconds
     /// (AgOpenGPS UDPComm case 221) (#110).
     /// </summary>

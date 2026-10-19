@@ -391,10 +391,12 @@ public class NmeaParserServiceFast
         {
             state.Roll = rawRoll * 0.1;
             ApplyAhrsRollCalibration(ref state.Roll, configStore);
+            state.RollValid = true;
         }
         else
         {
             state.Roll = 0;
+            state.RollValid = false;
         }
 
         DecodeAogAttitudeFields(data, commas, ref state);
@@ -433,10 +435,12 @@ public class NmeaParserServiceFast
         {
             Utf8Parser.TryParse(rollField, out state.Roll, out _);
             ApplyAhrsRollCalibration(ref state.Roll, configStore);
+            state.RollValid = true;
         }
         else
         {
             state.Roll = 0;
+            state.RollValid = false;
         }
 
         DecodeAogAttitudeFields(data, commas, ref state);
@@ -596,10 +600,12 @@ public class NmeaParserServiceFast
             && Utf8Parser.TryParse(rollField, out state.Roll, out _))
         {
             ApplyAhrsRollCalibration(ref state.Roll, configStore);
+            state.RollValid = true;
         }
         else
         {
             state.Roll = 0;
+            state.RollValid = false;
         }
 
         // Satellites
@@ -895,8 +901,12 @@ public class NmeaParserServiceFast
         state.ImuValid = false;
 
         state.Roll = 0;
+        state.RollValid = false;
         if (Utf8Parser.TryParse(GetField(body, commas, INS_ROLL), out state.Roll, out _))
+        {
             ApplyAhrsRollCalibration(ref state.Roll, configStore);
+            state.RollValid = true;
+        }
         state.Pitch = 0;
         Utf8Parser.TryParse(GetField(body, commas, INS_PITCH), out state.Pitch, out _);
         state.YawRate = 0;

@@ -250,15 +250,18 @@ public sealed class NmeaEpochAssembler
 
         // Roll only from a fixed heading solution; otherwise it is noise (as $KSXT).
         state.Roll = 0;
+        state.RollValid = false;
         if (receiverHeading && _receiverHeading.RollValid)
         {
             state.Roll = _receiverHeading.RollDeg;
             NmeaParserServiceFast.ApplyAhrsRollCalibration(ref state.Roll, configStore);
+            state.RollValid = true;
         }
         else if (imuHeading && _imuHeading.RollValid)
         {
             state.Roll = _imuHeading.RollDeg;
             NmeaParserServiceFast.ApplyAhrsRollCalibration(ref state.Roll, configStore);
+            state.RollValid = true;
         }
         state.Pitch = 0;
         state.YawRate = 0;

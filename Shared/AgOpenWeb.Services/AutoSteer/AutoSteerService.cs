@@ -257,6 +257,30 @@ public class AutoSteerService : IAutoSteerService
     /// <summary>Latest steer data from module (PGN 253).</summary>
     public SteerModuleData LastSteerData => _lastSteerData;
 
+    // Roll from the steer module's IMU (PGN 253) or an external IMU (PGN 211), calibrated
+    // (invert, zero), for fixes whose GPS sentence carries no roll: AgOpenGPS ahrs.imuRoll
+    // (#353). Written on the UDP receive thread, read where a fix is published.
+    private double _imuRoll;
+    private const long NoImuRoll = long.MinValue / 2; // "never", without overflow below
+    private long _imuRollAtMs = NoImuRoll;
+    /// <summary>IMU roll older than this is dropped (the module stopped sending it).</summary>
+    internal const long ImuRollStaleMs = 1000;
+
+    /// <summary>The roll a fix carries: the sentence's own, else a fresh IMU roll, else 0.</summary>
+    private double FixRoll()
+    {
+        if (_state.RollValid) return _state.Roll;
+        return Environment.TickCount64 - Volatile.Read(ref _imuRollAtMs) <= ImuRollStaleMs
+            ? Volatile.Read(ref _imuRoll) : 0;
+    }
+
+    private void SetImuRoll(double rawRoll)
+    {
+        NmeaParserServiceFast.ApplyAhrsRollCalibration(ref rawRoll, _configStore);
+        Volatile.Write(ref _imuRoll, rawRoll);
+        Volatile.Write(ref _imuRollAtMs, Environment.TickCount64);
+    }
+
     /// <summary>Latest sensor data from module (PGN 250).</summary>
     public SensorModuleData LastSensorData => _lastSensorData;
 
@@ -280,6 +304,16 @@ public class AutoSteerService : IAutoSteerService
 
             case PgnNumbers.SENSOR_DATA: // 250 - Sensor Data from module
                 ProcessSensorData(e.Data);
+                break;
+
+            case PgnNumbers.IMU_DATA: // 211 - external IMU
+                if (PgnBuilder.TryParseImuData(e.Data, out _, out double roll))
+                    SetImuRoll(roll);
+                break;
+
+            case PgnNumbers.IMU_DISCONNECT: // 212 - external IMU gone
+                if (e.Data.Length > 5 && e.Data[5] == 1)
+                    Volatile.Write(ref _imuRollAtMs, NoImuRoll);
                 break;
 
             case PgnNumbers.HARDWARE_MESSAGE: // 221 - text to show on screen
@@ -331,6 +365,7 @@ public class AutoSteerService : IAutoSteerService
         _state.ActualSteerAngle = steerData.ActualSteerAngle;
         _state.SteerSwitchActive = steerData.SteerSwitchActive;
         _state.WorkSwitchActive = steerData.WorkSwitchActive;
+        if (steerData.HasImuRoll) SetImuRoll(steerData.ImuRoll);
 
         // Speed and cross-track error are this service's own receive-thread state (set by
         // ProcessSimulatedPosition and the guidance step), so the gate reads no UI mirror.
@@ -690,7 +725,7 @@ public class AutoSteerService : IAutoSteerService
             SatellitesInUse = _state.Satellites,
             Hdop = _state.Hdop,
             DifferentialAge = _state.DifferentialAge,
-            ImuRoll = _state.Roll,
+            ImuRoll = FixRoll(),
             ImuPitch = _state.Pitch,
             ImuYawRate = _state.YawRate,
             ImuHeading = _state.ImuHeading,
@@ -877,7 +912,7 @@ public class AutoSteerService : IAutoSteerService
             Satellites = _state.Satellites,
             Hdop = _state.Hdop,
             DifferentialAge = _state.DifferentialAge,
-            Roll = _state.Roll,
+            Roll = FixRoll(),
             Pitch = _state.Pitch,
             YawRate = _state.YawRate,
             Easting = _state.Easting,

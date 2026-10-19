@@ -68,6 +68,12 @@ public struct VehicleState
     /// <summary>Roll angle in degrees (positive = right side down)</summary>
     public double Roll;
 
+    /// <summary>
+    /// True when the latest GPS sentence carried roll. Without it, roll comes from the
+    /// steer module's IMU (PGN 253) or an external IMU (PGN 211), as in AgOpenGPS (#353).
+    /// </summary>
+    public bool RollValid;
+
     /// <summary>Pitch angle in degrees (positive = nose up)</summary>
     public double Pitch;
 
