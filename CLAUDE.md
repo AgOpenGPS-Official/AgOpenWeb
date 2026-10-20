@@ -372,7 +372,7 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.RemoteServer.Tests` - web host: Bing tile replies, boundary imagery capture
 - `AgOpenWeb.IntegrationTests` - test-support library (fake settings etc.); not a standalone test run
 
-CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, and `Tools/license-headers.py --check` for the licence headers.
+CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/license-headers.py --check` for the licence headers, and `Tools/i18n-limits.py --check` (job `translations-fit`) so every translated label fits the English layout.
 
 ## U-Turn System
 
