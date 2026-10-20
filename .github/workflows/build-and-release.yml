@@ -83,9 +83,11 @@ jobs:
 
   # Every translated label must fit the English layout (Docs/TRANSLATIONS.md): the app runs
   # headless and Tools/i18n-limits.py --check measures each translation in place. Roboto
-  # stands in for the system font, as on the Android tablets; the baseline was made so.
+  # stands in for the system font, as on the Android tablets. The container fixes the fonts,
+  # so a local run in the same image measures the same (the baseline was made that way).
   translations-fit:
     runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright/python:v1.64.0-noble
     steps:
       - uses: actions/checkout@v4
 
@@ -96,9 +98,8 @@ jobs:
 
       - name: Install Playwright and Roboto
         run: |
+          apt-get update -qq && apt-get install -y -qq fonts-roboto libicu74 curl
           pip install playwright==1.64.0
-          python3 -m playwright install --with-deps chromium
-          sudo apt-get install -y fonts-roboto
           mkdir -p ~/.config/fontconfig
           cat > ~/.config/fontconfig/fonts.conf <<'EOF'
           <?xml version="1.0"?>
@@ -110,15 +111,17 @@ jobs:
           EOF
           fc-cache -f
 
-      - name: Start the app headless
-        run: |
-          dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -p:DesktopOnly=true
-          AGOPENWEB_DATA="$RUNNER_TEMP/aow" Platforms/AgOpenWeb.Desktop/bin/Debug/net10.0/AgOpenWeb.Desktop --headless > "$RUNNER_TEMP/app.log" 2>&1 &
-          for i in $(seq 60); do curl -sf -o /dev/null http://localhost:5174/ && exit 0; sleep 1; done
-          cat "$RUNNER_TEMP/app.log"; exit 1
+      - name: Build Desktop
+        run: dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -p:DesktopOnly=true
 
+      # One step: the headless app lives only as long as the step that started it.
       - name: Check translations fit
-        run: python3 Tools/i18n-limits.py --check
+        shell: bash
+        run: |
+          AGOPENWEB_DATA="$RUNNER_TEMP/aow" Platforms/AgOpenWeb.Desktop/bin/Debug/net10.0/AgOpenWeb.Desktop --headless > "$RUNNER_TEMP/app.log" 2>&1 &
+          for i in $(seq 60); do curl -sf -o /dev/null http://localhost:5174/ && break; sleep 1; done
+          curl -sf -o /dev/null http://localhost:5174/ || { cat "$RUNNER_TEMP/app.log"; exit 1; }
+          python3 Tools/i18n-limits.py --check
 
   # Compile-check each platform head (no packaging — build-deploy-bundles.yml does the publishes).
   # The Desktop and Android heads compile on every PR so a broken head is caught before
