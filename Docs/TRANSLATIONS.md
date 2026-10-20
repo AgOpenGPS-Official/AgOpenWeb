@@ -55,6 +55,14 @@ CI runs `Tools/i18n-extract.py --check` and fails if `en.json` is out of date.
 Changing the wording of an English string creates a new key, so its translations start
 again (Weblate's translation memory will suggest the old ones).
 
+## Translate the meaning
+
+Use the word your language has for what the control does, not a word-for-word copy of
+the English. The English names stay as AgOpenGPS users know them, even where they say
+little on their own ("Svenn Arrow", "Offset Fix"); a translation is free to say what they
+do instead: German has "Richtungspfeil" and "Feld verschieben". Write questions about the
+English as a comment on the string in Weblate, not in the translation.
+
 ## Length: translations fit the English layout
 
 The layout is made for the English text and doesn't change for a language: a button
