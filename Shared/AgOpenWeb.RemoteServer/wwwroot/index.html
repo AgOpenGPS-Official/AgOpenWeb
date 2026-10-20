@@ -663,6 +663,7 @@
     .agu-bd.ok { color: #39FF6A; } .agu-bd.no { color: #ff7a6b; }
     /* ===== File / Application Menu ===== */
     .fm-panel { width: 340px; }
+    #bugreport.fm-panel { width: 510px; } /* room to describe the problem */
     .fm-wide { width: 560px; }
     /* View All Settings fills the tablet viewport so every setting shows for a screenshot. */
     .fm-full { width: calc(100vw - 110px); height: calc(100vh - 84px); box-sizing: border-box; }
@@ -2593,7 +2594,7 @@
     <div class="cfg-label" style="margin-top:8px">Title</div>
     <input class="cfg-num fj-tx" id="br-title" placeholder="Short summary">
     <div class="cfg-label" style="margin-top:8px">Description</div>
-    <textarea class="fj-notes" id="br-desc" style="height:90px"></textarea>
+    <textarea class="fj-notes" id="br-desc" style="height:135px"></textarea>
     <button class="cfg-act cfg-actwide fj-primary" id="br-submit" style="margin-top:10px">Create Bug Report</button>
     <div class="sa-hint" id="br-status" style="margin-top:6px"></div>
     <div id="br-sendbox" style="display:none">
