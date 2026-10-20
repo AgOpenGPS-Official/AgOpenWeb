@@ -1,0 +1,33 @@
+# The public Worker: POST /v1/reports from the app, plus the daily cron (pending issues,
+# storage pruning). Secrets: wrangler secret put GITHUB_APP_ID / GITHUB_APP_KEY.
+name = "agopenweb-bugreports"
+main = "src/reports.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[[r2_buckets]]
+binding = "DUMPS"
+bucket_name = "agopenweb-bugreports"
+
+[triggers]
+crons = ["17 3 * * *"]
+
+# Per IP: 2 reports a minute (the binding only counts over 10 s or 60 s; the daily caps
+# below are counted from the bucket).
+[[ratelimits]]
+name = "RATE_LIMIT"
+namespace_id = "1001"
+simple = { limit = 2, period = 60 }
+
+[vars]
+GITHUB_REPO = "AgOpenGPS-Official/AgOpenWeb"
+DUMPS_URL = "https://agopenweb-dumps.CHANGE-ME.workers.dev"
+MAX_BYTES = "52428800"
+DAILY_CAP = "100"
+PER_IP_DAILY = "10"
+PRUNE_AT_BYTES = "9000000000"
+PRUNE_TO_BYTES = "8000000000"
+TRACKING_ISSUE = ""
+
+[observability]
+enabled = true

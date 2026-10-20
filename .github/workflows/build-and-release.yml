@@ -66,6 +66,10 @@ jobs:
             node --check "Shared/AgOpenWeb.RemoteServer/wwwroot/$f"
           done
 
+      # The bug report Workers (Tools/bugreport-worker): plain node --test, no packages needed.
+      - name: Bug report Worker tests
+        run: node --test Tools/bugreport-worker/test/
+
       - name: Run Model Tests
         run: dotnet test Tests/AgOpenWeb.Models.Tests/ --verbosity normal
 
