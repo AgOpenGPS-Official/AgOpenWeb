@@ -5,10 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        **The quick way: attach a Bug Report Dump, and that's all we need.**
-        1. Use the latest [Nightly build](https://github.com/AgOpenGPS-Official/AgOpenWeb/releases/tag/nightly).
-        2. Right after the problem happens, open main menu → **Bug Report Dump**, type a title and what happened, and press **Create Bug Report**. The dump holds the version, platform, settings, the field, a screenshot and the last 5 minutes of GPS data.
-        3. Press **Download**, then **Report on GitHub**: this page opens already filled in. Drag the downloaded `bugreport_….zip` into the box below.
+        **The quick way doesn't need this form:** in the latest [Nightly build](https://github.com/AgOpenGPS-Official/AgOpenWeb/releases/tag/nightly), right after the problem happens, open main menu → **Bug Report Dump**, type a title and what happened, press **Create Bug Report**, then **Send Report**. The issue is opened for you.
+
+        **To report here instead:** make the dump the same way, press **Download**, and drag the downloaded `bugreport_….zip` into the box below.
 
         Reports without a dump are not accepted.
 

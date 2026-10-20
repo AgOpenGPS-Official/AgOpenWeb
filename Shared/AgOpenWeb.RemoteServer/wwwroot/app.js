@@ -3573,7 +3573,7 @@ function renderBugReport() {
   document.getElementById('br-status').textContent = s;
   const m = /(bugreport_[^\/\\]+\.zip)$/.exec(s);
   brFile = m ? m[1] : null;
-  for (const id of ['br-sendbox', 'br-download', 'br-github', 'br-github-hint'])
+  for (const id of ['br-sendbox', 'br-download'])
     document.getElementById(id).style.display = brFile ? '' : 'none';
   // Send Report state, as BugReportRemote codes it: sending, queued, sent|n|url, accepted, rejected|msg.
   const ss = appInfo ? (appInfo.bugReportSendStatus || '') : '';
@@ -3609,18 +3609,6 @@ document.getElementById('br-openissue').addEventListener('pointerdown', e => {
 document.getElementById('br-download').addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (brFile) openExternal(location.origin + '/bugreports/' + encodeURIComponent(brFile));
-});
-// GitHub's bug form, prefilled through its field ids (.github/ISSUE_TEMPLATE/bug_report.yml).
-// A URL can't carry the zip, so the user drags in the one Download saved.
-document.getElementById('br-github').addEventListener('pointerdown', e => {
-  e.stopPropagation();
-  const q = new URLSearchParams({ template: 'bug_report.yml' });
-  const title = document.getElementById('br-title').value.trim();
-  const desc = document.getElementById('br-desc').value.trim();
-  if (title) q.set('title', title);
-  if (desc) q.set('description', desc.slice(0, 3000)); // keep the URL within browser limits
-  if (appInfo && appInfo.version) q.set('version', appInfo.version + (appInfo.gitHash ? ' · ' + appInfo.gitHash : ''));
-  openExternal('https://github.com/AgOpenGPS-Official/AgOpenWeb/issues/new?' + q);
 });
 document.getElementById('br-submit').addEventListener('pointerdown', e => {
   e.stopPropagation();
