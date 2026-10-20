@@ -700,7 +700,7 @@
   "Send corrected position": "Send corrected position",
   "Send corrections to every device on the module subnet, not only to the GPS module": "Send corrections to every device on the module subnet, not only to the GPS module",
   "Send Subnet to Modules": "Send Subnet to Modules",
-  "Send the corrected position (PGN 100) on every fix, for seed monitors, rate controllers and GPS_Out": "Send the corrected position (PGN 100) on every fix, for seed monitors, rate controllers and GPS_Out",
+  "Send the position on every fix (PGN 100, and PGN 214 with speed, heading and fix quality), for seed monitors, rate controllers and GPS_Out": "Send the position on every fix (PGN 100, and PGN 214 with speed, heading and fix quality), for seed monitors, rate controllers and GPS_Out",
   "Send+Save": "Send+Save",
   "Sentence:": "Sentence:",
   "Sentences from the GPS module": "Sentences from the GPS module",

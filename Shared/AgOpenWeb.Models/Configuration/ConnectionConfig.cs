@@ -88,7 +88,8 @@ public class ConnectionConfig : ObservableObject
     }
 
     // PGN 100, corrected position (Network IO, #337): sent on every fix to the module subnet
-    // and to AgIO's loopback port, for seed monitors, rate controllers and GPS_Out.
+    // and to AgIO's loopback port, for seed monitors, rate controllers and GPS_Out. With it,
+    // PGN 214 (speed, heading, fix quality) to AgIO's GPS loopback port for GPS_Out (#364).
     private bool _sendCorrectedPosition;
     public bool SendCorrectedPosition
     {

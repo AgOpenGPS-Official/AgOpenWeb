@@ -34,6 +34,8 @@ public static class PgnBuilder
     public const byte PGN_STEER_DATA = 0xFD;     // 253 - Steer Data FROM Module
     public const byte PGN_SENSOR_DATA = 0xFA;    // 250 - Sensor Data FROM Module
     public const byte PGN_CORRECTED_POSITION = 0x64; // 100 - Corrected position (seed monitors, rate control)
+    public const byte PGN_GPS_DATA = 0xD6;       // 214 - AgIO's GPS data (GPS_Out)
+    public const byte SOURCE_GPS = 0x7C;         // AgIO sends PGN 214 as the GPS module
 
     // Buffer sizes: header(2) + source(1) + pgn(1) + length(1) + data(N) + crc(1)
     public const int AUTOSTEER_PGN_SIZE = 14;       // 5 header + 8 data + 1 crc
@@ -44,6 +46,7 @@ public static class PgnBuilder
     public const int MACHINE_CONFIG_PGN_SIZE = 14;  // 5 header + 8 data + 1 crc
     public const int MACHINE_PINS_PGN_SIZE = 30;    // 5 header + 24 data + 1 crc
     public const int CORRECTED_POSITION_PGN_SIZE = 30; // 5 header + 24 data + 1 crc
+    public const int GPS_DATA_PGN_SIZE = 57;        // 5 header + 51 data + 1 crc
 
     // Thread-local buffers to avoid allocation
     [ThreadStatic]
@@ -63,6 +66,9 @@ public static class PgnBuilder
 
     [ThreadStatic]
     private static byte[]? _correctedPositionBuffer;
+
+    [ThreadStatic]
+    private static byte[]? _gpsDataBuffer;
 
     /// <summary>
     /// Build PGN 254 (Steer Data) from VehicleState.
@@ -278,6 +284,68 @@ public static class PgnBuilder
         System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(buf.AsSpan(21, 8), headingDegrees);
 
         return WithCrc(buf);
+    }
+
+    /// <summary>
+    /// Build PGN 214 (0xD6) — the receiver's data as AgIO sends it to AgOpenGPS and
+    /// GPS_Out after parsing the NMEA (AgIO NMEA.Designer.cs). GPS_Out builds its GGA, VTG,
+    /// RMC and ZDA sentences from it (#364). A field the sentence doesn't carry holds its
+    /// type's MaxValue, as in AgIO.
+    ///
+    /// Bytes 5–12:  longitude, double
+    /// Bytes 13–20: latitude, double
+    /// Bytes 21–24: dual-antenna heading, float ($PAOGI, $KSXT, INS, the simulator)
+    /// Bytes 25–28: single-antenna heading, float (course over ground; not $PANDA)
+    /// Bytes 29–32: speed, km/h, float
+    /// Bytes 33–36: roll, degrees, float (not $PANDA: its roll is the IMU roll below)
+    /// Bytes 37–40: altitude, m, float
+    /// Bytes 41–42: satellites, ushort
+    /// Byte 43:     fix quality
+    /// Bytes 44–45: HDOP × 100, ushort
+    /// Bytes 46–47: differential age × 100, ushort
+    /// Bytes 48–55: $PANDA's IMU heading × 10 (ushort), roll × 10, pitch, yaw rate (short),
+    ///              as the sentence carries them
+    /// Byte 56:     CRC
+    /// </summary>
+    public static byte[] BuildGpsDataPgn(GpsData data)
+    {
+        _gpsDataBuffer ??= new byte[GPS_DATA_PGN_SIZE];
+        var buf = _gpsDataBuffer;
+        var pos = data.CurrentPosition;
+        bool panda = data.SentenceType == GpsSentenceType.Panda;
+        bool imu = panda && data.ImuValid;
+
+        buf[0] = HEADER1;
+        buf[1] = HEADER2;
+        buf[2] = SOURCE_GPS;
+        buf[3] = PGN_GPS_DATA;
+        buf[4] = GPS_DATA_PGN_SIZE - 6;
+
+        var s = buf.AsSpan();
+        System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(s.Slice(5, 8), pos.Longitude);
+        System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(s.Slice(13, 8), pos.Latitude);
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(s.Slice(21, 4),
+            data.HasDualHeading ? (float)pos.Heading : float.MaxValue);
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(s.Slice(25, 4),
+            !data.HasDualHeading && !panda ? (float)pos.Heading : float.MaxValue);
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(s.Slice(29, 4), (float)(pos.Speed * 3.6));
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(s.Slice(33, 4),
+            panda ? float.MaxValue : (float)data.ImuRoll);
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(s.Slice(37, 4), (float)pos.Altitude);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(s.Slice(41, 2), UShort(data.SatellitesInUse));
+        buf[43] = (byte)Math.Clamp(data.FixQuality, 0, 255);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(s.Slice(44, 2), UShort(data.Hdop * 100));
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(s.Slice(46, 2), UShort(data.DifferentialAge * 100));
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(s.Slice(48, 2),
+            imu ? UShort(data.ImuHeading * 10) : ushort.MaxValue);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(s.Slice(50, 2), imu ? Short(data.ImuRoll * 10) : short.MaxValue);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(s.Slice(52, 2), panda ? Short(data.ImuPitch) : short.MaxValue);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(s.Slice(54, 2), panda ? Short(data.ImuYawRate) : short.MaxValue);
+
+        return WithCrc(buf);
+
+        static ushort UShort(double v) => (ushort)Math.Clamp(Math.Round(v), 0, ushort.MaxValue - 1);
+        static short Short(double v) => (short)Math.Clamp(Math.Round(v), short.MinValue, short.MaxValue - 1);
     }
 
     /// <summary>

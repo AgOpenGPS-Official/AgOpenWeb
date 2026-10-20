@@ -1260,10 +1260,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
             data.SatellitesInUse, data.Hdop,
             driftedEasting, driftedNorthing);
 
-        // ── (9b) PGN 100 corrected position ─────────────────────────────
+        // ── (9b) PGN 100 corrected position, PGN 214 GPS data ───────────
         // AgOpenGPS sends pn.fix: the antenna with antenna offset, roll and drift applied
         // but not moved back to the pivot. Undo the fore/aft step of the transform above.
-        // Off unless ticked on the Network IO card.
+        // PGN 214 is the fix as it came in, which AgIO sends after parsing each sentence;
+        // GPS_Out takes speed, heading and fix quality from it (#364). AgIO only has real
+        // receivers; it goes out for the simulator too, so GPS_Out works in sim.
+        // Both off unless ticked on the Network IO card.
+        if (_configStore.Connections.SendCorrectedPosition)
+            _autoSteerService.SendGpsData(data);
         if (_configStore.Connections.SendCorrectedPosition && headingPlane != null && data.FixQuality > 0)
         {
             double fixE = driftedEasting + Math.Sin(headingRad) * _configStore.Vehicle.AntennaPivot;
