@@ -29,6 +29,9 @@ namespace AgOpenWeb.Android;
     Theme = "@style/MyTheme.NoActionBar",
     Icon = "@drawable/icon",
     MainLauncher = true,
+    // One copy, however it's started (an adb or shortcut launch, Samsung split screen or
+    // pop-up): a second would load its own page and contend for control.
+    LaunchMode = LaunchMode.SingleTask,
     // Handled here, so none of these restarts the Activity (and reloads the page).
     ConfigurationChanges = ConfigChanges.Orientation | ConfigChanges.ScreenSize | ConfigChanges.UiMode
         | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize
