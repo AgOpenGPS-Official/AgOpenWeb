@@ -8,9 +8,10 @@ using NUnit.Framework;
 namespace AgOpenWeb.ViewModels.Tests;
 
 /// <summary>
-/// #345, AgOpenGPS ref side (FormQuickAB / FormBuildTracks isRefRightSide): a driven line
-/// (A+, Drive AB, recorded curve) is the edge of the work, so the track is saved
-/// (width - overlap) / 2 + offset to the chosen side, right by default.
+/// #345, AgOpenGPS ref side (FormQuickAB / FormBuildTracks isRefRightSide): a driven line's
+/// (A+, Drive AB, recorded curve) reference goes to the implement's edge, (width - overlap)
+/// / 2 + offset to the chosen side, right by default. The reference line is the edge between
+/// passes (PassGeometry), so a pass then runs where the tractor drove.
 /// </summary>
 [TestFixture]
 [NonParallelizable] // ConfigurationStore is a singleton

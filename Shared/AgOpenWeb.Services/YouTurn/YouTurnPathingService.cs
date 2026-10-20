@@ -79,8 +79,8 @@ public sealed class YouTurnPathingService
 
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         // Include the nudge so the cyan next-track line matches the U-turn exit leg and the
-        // line the tractor steers after completion exactly (all use base*pathsAway + nudge).
-        double nextDistAway = widthMinusOverlap * nextPathsAway + guidance.NudgeOffset;
+        // line the tractor steers after completion exactly (all use PassGeometry.Offset).
+        double nextDistAway = PassGeometry.Offset(referenceTrack, nextPathsAway, widthMinusOverlap, guidance.NudgeOffset);
 
         // Authoritative perpendicular width for the U-turn arc — direction lives in IsTurnLeft.
         turn.NextTrackTurnOffset = Math.Abs(pathsToMove * widthMinusOverlap);
@@ -190,7 +190,7 @@ public sealed class YouTurnPathingService
     {
 
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double nextDistAway = widthMinusOverlap * nextPathsAway;
+        double nextDistAway = PassGeometry.Offset(currentTrack, nextPathsAway, widthMinusOverlap);
 
         // Curves: sample the ACTUAL offset curve, not the straight A→B chord. An irregular
         // boundary curve's chord can sit well off the real line, so the chord test picks the
@@ -279,7 +279,7 @@ public sealed class YouTurnPathingService
 
         for (int p = 0; p <= 200; p++)
         {
-            double offsetDist = widthMinusOverlap * p;
+            double offsetDist = PassGeometry.Offset(referenceTrack, p, widthMinusOverlap);
             double testE = midE + Math.Sin(perpAngle) * offsetDist;
             double testN = midN + Math.Cos(perpAngle) * offsetDist;
             if (!IsPointInsideCultivatedArea(testE, testN, boundary, headlandLine)) break;
@@ -288,7 +288,7 @@ public sealed class YouTurnPathingService
 
         for (int p = -1; p >= -200; p--)
         {
-            double offsetDist = widthMinusOverlap * p;
+            double offsetDist = PassGeometry.Offset(referenceTrack, p, widthMinusOverlap);
             double testE = midE + Math.Sin(perpAngle) * offsetDist;
             double testN = midN + Math.Cos(perpAngle) * offsetDist;
             if (!IsPointInsideCultivatedArea(testE, testN, boundary, headlandLine)) break;

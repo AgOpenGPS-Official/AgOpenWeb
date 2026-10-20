@@ -362,7 +362,7 @@ public partial class MainViewModel
                 existingTrack.IsActive = false;
             }
 
-            // A driven curve is the edge of the work: move it to the first pass (#345)
+            // A driven curve is a pass: move the reference to the implement's edge (#345)
             var refPoints = Models.Guidance.CurveProcessing.CreateOffsetCurve(
                 Models.Guidance.CurveProcessing.CalculateHeadings(new List<Vec3>(_recordedCurvePoints)), RefSideOffset());
 
@@ -589,7 +589,7 @@ public partial class MainViewModel
                     var heading = CalculateHeading(PendingPointA, pointToSet);
                     var headingRadians = heading * Math.PI / 180.0;
 
-                    // A driven line is the edge of the work: move it to the first pass (#345)
+                    // A driven line is a pass: move the reference to the implement's edge (#345)
                     double refDist = CurrentABCreationMode == ABCreationMode.DriveAB ? RefSideOffset() : 0;
                     var (aE, aN) = ShiftRight(PendingPointA.Easting, PendingPointA.Northing, headingRadians, refDist);
                     var (bE, bN) = ShiftRight(pointToSet.Easting, pointToSet.Northing, headingRadians, refDist);
@@ -1335,29 +1335,14 @@ public partial class MainViewModel
 
             var pts = boundary.Points;
 
-            // Offset the boundary inward by half the tool width so the guidance line
-            // sits half-an-implement inside the fence: following it rides the tool's
-            // OUTER edge along the boundary with the whole implement in the field. The
-            // raw boundary edge would put the vehicle (and line) on the fence, hanging
-            // half the sections out of bounds on the first pass (#422).
-            double halfTool = ConfigStore.ActualToolWidth / 2.0;
-            var boundaryVec2 = new System.Collections.Generic.List<Models.Base.Vec2>(pts.Count);
+            // The fence itself is the reference line, as in AgOpenGPS: passes lie half a
+            // width either side of it (PassGeometry), so the one inside the field keeps the
+            // whole implement in (#422) and the nearest-pass pick takes it.
+            var curvePoints = new System.Collections.Generic.List<Models.Base.Vec3>(pts.Count + 1);
             for (int i = 0; i < pts.Count; i++)
-                boundaryVec2.Add(new Models.Base.Vec2(pts[i].Easting, pts[i].Northing));
-
-            var offset = halfTool > 0.05
-                ? _polygonOffsetService.CreateInwardOffset(boundaryVec2, halfTool)
-                : null;
-
-            // Fall back to the raw boundary if the offset failed (e.g. tool wider than
-            // the field can accommodate at that point).
-            var ring = (offset != null && offset.Count >= 3) ? offset : boundaryVec2;
-
-            var curvePoints = new System.Collections.Generic.List<Models.Base.Vec3>(ring.Count + 1);
-            for (int i = 0; i < ring.Count; i++)
-                curvePoints.Add(new Models.Base.Vec3(ring[i].Easting, ring[i].Northing, 0));
+                curvePoints.Add(new Models.Base.Vec3(pts[i].Easting, pts[i].Northing, 0));
             // Close the loop
-            curvePoints.Add(new Models.Base.Vec3(ring[0].Easting, ring[0].Northing, 0));
+            curvePoints.Add(new Models.Base.Vec3(pts[0].Easting, pts[0].Northing, 0));
 
             // Recompute per-point headings in the curve-segment convention
             // (atan2(dEast,dNorth)). Guidance's "which way is forward" test keys
@@ -1381,7 +1366,7 @@ public partial class MainViewModel
             SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
                                 // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
-            StatusMessage = $"Created boundary curve ({curvePoints.Count} points, {halfTool:F1} m inside fence)";
+            StatusMessage = $"Created boundary curve ({curvePoints.Count} points)";
         });
 
         CreateTracksFromAllEdgesCommand = new RelayCommand(() =>
@@ -1741,14 +1726,16 @@ public partial class MainViewModel
     /// FormQuickAB nudHeading) (#335).
     /// </summary>
     /// <summary>
-    /// Which side of a driven line (A+, Drive AB, recorded curve) the first pass lies on,
-    /// AgOpenGPS's "ref side" (#345). The driven line is the edge of the work; the track is
-    /// saved half a working width to this side, plus the tool offset. Drawn lines aren't moved.
+    /// Which edge of the implement a driven line's (A+, Drive AB, recorded curve) reference
+    /// goes to, AgOpenGPS's "ref side" (#345). The reference line is the edge between passes
+    /// (<see cref="Models.Track.PassGeometry"/>), so the track is saved half a working width to
+    /// this side, plus the tool offset, and a pass runs where the tractor drove. Drawn, typed
+    /// and boundary lines aren't moved: the line itself is the edge, as in AgOpenGPS.
     /// </summary>
     public bool TrackRefSideRight { get; set; } = true;
 
-    /// <summary>Distance (m, + = right of heading) a driven line moves to become the first
-    /// pass: AgOpenGPS FormBuildTracks/FormQuickAB <c>(width - overlap) * ±0.5 + offset</c>.</summary>
+    /// <summary>Distance (m, + = right of heading) a driven line moves to the implement's edge:
+    /// AgOpenGPS FormBuildTracks/FormQuickAB <c>(width - overlap) * ±0.5 + offset</c>.</summary>
     private double RefSideOffset()
     {
         double half = (ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap) * 0.5;
@@ -1872,17 +1859,22 @@ public partial class MainViewModel
         }
         track.Points = reversed;
 
-        // "Right of the line" flips with the direction, so negate the pass number and
+        // "Right of the line" flips with the direction, so mirror the pass number and
         // nudge to keep the guidance line where it physically is (an engaged tractor on
-        // pass 3 right must not jump to pass 3 left). The negated pair goes to the pipeline
-        // with the re-pushed track (SetActiveTrack); the cycle's next snapshot mirrors it.
+        // pass 3 right must not jump to pass 3 left). Pass n is (n + ½) widths out
+        // (PassGeometry), so its mirror is pass -n - 1; on a boundary-follow track, -n.
+        // The pair goes to the pipeline with the re-pushed track (SetActiveTrack); the
+        // cycle's next snapshot mirrors it.
+        int mirror = track.NoPassOffset ? 0 : -1;
+        double width = ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap;
         bool isActive = track == SelectedTrack;
         if (isActive)
         {
-            _pendingInitialPathsAway = -State.Guidance.HowManyPathsAway;
+            _pendingInitialPathsAway = -State.Guidance.HowManyPathsAway + mirror;
             _pendingInitialNudgeOffset = -State.Guidance.NudgeOffset;
         }
-        track.NudgeDistance = -track.NudgeDistance;
+        // NudgeDistance = pass × width + nudge, the same pair as stored on the track
+        track.NudgeDistance = -track.NudgeDistance + mirror * width;
 
         // The mirror still holds the pre-swap pair until that snapshot lands, so the save
         // keeps the NudgeDistance just set rather than recomputing it from the mirror.

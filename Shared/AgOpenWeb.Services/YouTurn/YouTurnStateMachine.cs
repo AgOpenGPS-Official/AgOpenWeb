@@ -763,7 +763,7 @@ public sealed class YouTurnStateMachine
     {
         var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double nextDistAway = widthMinusOverlap * nextPath;
+        double nextDistAway = Models.Track.PassGeometry.Offset(track, nextPath, widthMinusOverlap);
         int pathDiff = nextPath - guidance.HowManyPathsAway;
 
         // The planned path dictates pathDiff (snake / alternative), not the regular skip logic.

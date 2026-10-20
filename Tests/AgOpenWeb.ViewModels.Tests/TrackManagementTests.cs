@@ -192,9 +192,10 @@ public class TrackManagementTests
             Assert.That(vm.State.Guidance.NudgeOffset, Is.EqualTo(0.2).Within(1e-9));
         });
         // "Right" flips with the direction → the pipeline gets the swapped track with the
-        // negated pass / nudge, so the line stays where it physically is (SetActiveTrack
-        // also drops its guidance state); the next cycle mirrors them.
-        builder.GpsPipelineService.Received().SetActiveTrack(track, -3,
+        // mirrored pass / nudge, so the line stays where it physically is (SetActiveTrack
+        // also drops its guidance state); the next cycle mirrors them. Pass n is (n + ½)
+        // widths out (PassGeometry), so pass 3 right is pass -4 the other way.
+        builder.GpsPipelineService.Received().SetActiveTrack(track, -4,
             Arg.Is<double>(d => Math.Abs(d + 0.2) < 1e-9), Arg.Any<bool>());
     }
 }

@@ -9,6 +9,7 @@ using System.Linq;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Models.Guidance;
 using AgOpenWeb.Models.Pipeline;
 using AgOpenWeb.Services.Geometry;
 using AgOpenWeb.Services.YouTurn;
@@ -157,9 +158,12 @@ public class CurveTurnRobustnessTests
 
         var (boundary, headland, crossY) = MakeField(shape);
         var (pts, phi, veh) = MakeTrack(angle, ab, crossY);
+        // pts is pass 0; the reference is the edge between passes, half the 8 m tool to its
+        // left (PassGeometry).
+        var refPts = CurveProcessing.CalculateHeadings(CurveProcessing.CreateOffsetCurve(pts, -4.0));
         var track = ab
-            ? Models.Track.Track.FromABLine("ab", pts[0], pts[1])
-            : Models.Track.Track.FromCurve("c", pts);
+            ? Models.Track.Track.FromABLine("ab", refPts[0], refPts[^1])
+            : Models.Track.Track.FromCurve("c", refPts);
 
         var guidance = new GuidanceWorkingState { IsHeadingSameWay = true, HowManyPathsAway = 0 };
         var turn = new YouTurnWorkingState { IsTurnLeft = true };
