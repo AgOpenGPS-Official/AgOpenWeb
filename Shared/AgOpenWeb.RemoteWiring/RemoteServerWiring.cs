@@ -31,6 +31,10 @@ public static partial class RemoteServerWiring
         // this dispatcher (set once; it's a process singleton).
         AgShareRemote.Ui = dispatcher;
 
+        // Send Report: the outbox retries reports queued while offline, from now on.
+        BugReportRemote.Start(services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>(), dispatcher,
+            services.GetRequiredService<IUiTimerFactory>());
+
         // Alert sounds play on the CLIENT, not the host (a headless box has no speaker).
         // The gating-aware WebClientAudioService raises an effect; forward it to clients.
         if (services.GetService<IAudioService>() is AgOpenWeb.Services.Audio.WebClientAudioService audio)
@@ -577,7 +581,7 @@ public static partial class RemoteServerWiring
                                     if (vm.SetLanguageCommand?.CanExecute(arg) == true) vm.SetLanguageCommand.Execute(arg);
                                     return;
                                 case "app.resetSettings": case "app.setHotkey":
-                                case "app.resetHotkeys": case "app.bugReport":
+                                case "app.resetHotkeys": case "app.bugReport": case "app.bugReport.send":
                                     ApplyAppCommand(services, cmd, arg);
                                     return;
                             }
