@@ -66,11 +66,13 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     // AgIO's loopback port: AgOpenGPS sends PGNs to the loopback broadcast so every program
     // bound to 17777 gets a copy. Apple platforms accept a loopback broadcast but never
     // deliver it, so there it goes to 127.0.0.1 (one listener).
-    private static readonly IPEndPoint _agIoLoopbackEndpoint = new(
+    private static readonly IPAddress _loopbackTarget =
         OperatingSystem.IsMacOS() || OperatingSystem.IsIOS() || OperatingSystem.IsMacCatalyst()
             ? IPAddress.Loopback
-            : IPAddress.Parse("127.255.255.255"),
-        17777);
+            : IPAddress.Parse("127.255.255.255");
+    private static readonly IPEndPoint _agIoLoopbackEndpoint = new(_loopbackTarget, 17777);
+    // Where AgIO sends its parsed GPS data (PGN 214) for AgOpenGPS; GPS_Out listens there too.
+    private static readonly IPEndPoint _agIoGpsLoopbackEndpoint = new(_loopbackTarget, 15555);
     private const int ModuleTimeoutSeconds = 5;
     private const int DiscoveryRefreshSeconds = 30;
 
@@ -264,6 +266,12 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     {
         if (!IsConnected || _udpSocket == null) return;
         SendPacket(data, _agIoLoopbackEndpoint);
+    }
+
+    public void SendGpsDataToLoopback(byte[] data)
+    {
+        if (!IsConnected || _udpSocket == null) return;
+        SendPacket(data, _agIoGpsLoopbackEndpoint);
     }
 
     private void SendPacket(byte[] data, IPEndPoint endpoint)

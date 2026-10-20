@@ -48,6 +48,81 @@ public class CorrectedPositionPgnLayoutTests
     }
 }
 
+/// <summary>
+/// PGN 214 (#364): AgIO's GPS data, the 57-byte layout GPS_Out parses (PGN54908.cs) to
+/// build its NMEA sentences. Fields a sentence doesn't carry hold MaxValue, as in AgIO.
+/// </summary>
+[TestFixture]
+public class GpsDataPgnLayoutTests
+{
+    private static float F(byte[] p, int at) => BinaryPrimitives.ReadSingleLittleEndian(p.AsSpan(at, 4));
+    private static ushort U(byte[] p, int at) => BinaryPrimitives.ReadUInt16LittleEndian(p.AsSpan(at, 2));
+    private static short S(byte[] p, int at) => BinaryPrimitives.ReadInt16LittleEndian(p.AsSpan(at, 2));
+
+    private static GpsData Data(GpsSentenceType type, bool dual) => new()
+    {
+        CurrentPosition = new Position
+        {
+            Latitude = 51.1565491, Longitude = -100.7603537, Altitude = 512.25,
+            Heading = 271.5, Speed = 2.5, // m/s
+        },
+        FixQuality = 4, SatellitesInUse = 17, Hdop = 0.64, DifferentialAge = 1.2,
+        ImuRoll = -3.5, ImuPitch = 12, ImuYawRate = -7, ImuHeading = 271.5, ImuValid = true,
+        HasDualHeading = dual, SentenceType = type,
+    };
+
+    [Test]
+    public void Simulator_FillsWhatGpsOutShows()
+    {
+        var p = PgnBuilder.BuildGpsDataPgn(Data(GpsSentenceType.Simulator, dual: true));
+
+        Assert.That(p.Length, Is.EqualTo(57));
+        Assert.That(p[..5], Is.EqualTo(new byte[] { 0x80, 0x81, 0x7C, 0xD6, 0x33 }));
+        Assert.That(BinaryPrimitives.ReadDoubleLittleEndian(p.AsSpan(5, 8)), Is.EqualTo(-100.7603537));
+        Assert.That(BinaryPrimitives.ReadDoubleLittleEndian(p.AsSpan(13, 8)), Is.EqualTo(51.1565491));
+        Assert.That(F(p, 21), Is.EqualTo(271.5f), "dual heading: the sim stands in for a dual antenna");
+        Assert.That(F(p, 25), Is.EqualTo(float.MaxValue));
+        Assert.That(F(p, 29), Is.EqualTo(9.0f).Within(1e-4), "km/h");
+        Assert.That(F(p, 33), Is.EqualTo(-3.5f));
+        Assert.That(F(p, 37), Is.EqualTo(512.25f));
+        Assert.That(U(p, 41), Is.EqualTo(17));
+        Assert.That(p[43], Is.EqualTo(4));
+        Assert.That(U(p, 44), Is.EqualTo(64));
+        Assert.That(U(p, 46), Is.EqualTo(120));
+        Assert.That(U(p, 48), Is.EqualTo(ushort.MaxValue), "no IMU block outside $PANDA");
+        Assert.That(S(p, 50), Is.EqualTo(short.MaxValue));
+
+        // GPS_Out's GoodCRC: the byte sum from index 2 up to the CRC.
+        int sum = 0;
+        for (int i = 2; i < p.Length - 1; i++) sum += p[i];
+        Assert.That(p[^1], Is.EqualTo((byte)sum));
+    }
+
+    [Test]
+    public void Panda_HeadingAndRollGoToTheImuFields()
+    {
+        // AgIO: $PANDA's heading is the IMU heading and its roll the IMU roll, both × 10.
+        var p = PgnBuilder.BuildGpsDataPgn(Data(GpsSentenceType.Panda, dual: false));
+
+        Assert.That(F(p, 21), Is.EqualTo(float.MaxValue));
+        Assert.That(F(p, 25), Is.EqualTo(float.MaxValue));
+        Assert.That(F(p, 33), Is.EqualTo(float.MaxValue));
+        Assert.That(U(p, 48), Is.EqualTo(2715));
+        Assert.That(S(p, 50), Is.EqualTo(-35));
+        Assert.That(S(p, 52), Is.EqualTo(12));
+        Assert.That(S(p, 54), Is.EqualTo(-7));
+    }
+
+    [Test]
+    public void SingleAntennaNmea_HeadingIsCourseOverGround()
+    {
+        var p = PgnBuilder.BuildGpsDataPgn(Data(GpsSentenceType.NmeaEpoch, dual: false));
+
+        Assert.That(F(p, 21), Is.EqualTo(float.MaxValue));
+        Assert.That(F(p, 25), Is.EqualTo(271.5f));
+    }
+}
+
 [TestFixture]
 [NonParallelizable] // ConfigurationStore is a singleton.
 public class CorrectedPositionPgnPipelineTests
@@ -60,6 +135,7 @@ public class CorrectedPositionPgnPipelineTests
     private ConfigurationStore _config = null!;
     private readonly List<byte[]> _toModules = new();
     private readonly List<byte[]> _toLoopback = new();
+    private readonly List<byte[]> _toGpsLoopback = new();
 
     [SetUp]
     public void SetUp()
@@ -73,11 +149,14 @@ public class CorrectedPositionPgnPipelineTests
 
         _toModules.Clear();
         _toLoopback.Clear();
+        _toGpsLoopback.Clear();
         var udp = Substitute.For<IUdpCommunicationService>();
         udp.When(u => u.SendToModules(Arg.Any<byte[]>()))
             .Do(c => { var d = c.Arg<byte[]>(); if (d[3] == 0x64) _toModules.Add((byte[])d.Clone()); });
         udp.When(u => u.SendToLoopback(Arg.Any<byte[]>()))
             .Do(c => _toLoopback.Add((byte[])c.Arg<byte[]>().Clone()));
+        udp.When(u => u.SendGpsDataToLoopback(Arg.Any<byte[]>()))
+            .Do(c => _toGpsLoopback.Add((byte[])c.Arg<byte[]>().Clone()));
 
         _gps = new GpsService();
         _gps.Start();
@@ -191,14 +270,40 @@ public class CorrectedPositionPgnPipelineTests
 
         Assert.That(_toModules, Is.Empty);
         Assert.That(_toLoopback, Is.Empty);
+        Assert.That(_toGpsLoopback, Is.Empty);
     }
 
     [Test]
-    public void NoFix_NothingSent()
+    public void NoFix_NoCorrectedPosition_ButGpsDataShowsIt()
     {
+        // GPS_Out shows the fix quality, so PGN 214 goes out without a fix too (AgIO does).
         _gps.UpdateGpsData(Fix(heading: 90, roll: 0, fixQuality: 0));
 
         Assert.That(_toModules, Is.Empty);
         Assert.That(_toLoopback, Is.Empty);
+        Assert.That(_toGpsLoopback, Has.Count.EqualTo(1));
+        Assert.That(_toGpsLoopback[0][43], Is.EqualTo(0));
+    }
+
+    [Test]
+    public void GpsData_SentOncePerFix_AsItCameIn()
+    {
+        // #364: the simulator's fix, speed and heading reach GPS_Out.
+        var fix = Fix(heading: 90, roll: 0);
+        fix.CurrentPosition = fix.CurrentPosition with { Speed = 2.5 };
+        fix.SatellitesInUse = 12;
+        fix.HasDualHeading = true;
+        fix.SentenceType = GpsSentenceType.Simulator;
+
+        _gps.UpdateGpsData(fix);
+        _gps.UpdateGpsData(fix);
+
+        Assert.That(_toGpsLoopback, Has.Count.EqualTo(2));
+        var p = _toGpsLoopback[1];
+        Assert.That(p[3], Is.EqualTo(0xD6));
+        Assert.That(BinaryPrimitives.ReadSingleLittleEndian(p.AsSpan(21, 4)), Is.EqualTo(90f));
+        Assert.That(BinaryPrimitives.ReadSingleLittleEndian(p.AsSpan(29, 4)), Is.EqualTo(9f).Within(1e-4));
+        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(p.AsSpan(41, 2)), Is.EqualTo(12));
+        Assert.That(p[43], Is.EqualTo(4));
     }
 }

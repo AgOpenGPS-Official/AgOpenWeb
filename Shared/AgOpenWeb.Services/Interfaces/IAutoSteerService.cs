@@ -98,6 +98,12 @@ public interface IAutoSteerService
     void SendCorrectedPosition(double latitude, double longitude, double headingDegrees);
 
     /// <summary>
+    /// Send PGN 214, the fix as the receiver (or the simulator) gave it, to AgIO's GPS
+    /// loopback port, as AgIO does after parsing each sentence. GPS_Out needs it (#364).
+    /// </summary>
+    void SendGpsData(GpsData data);
+
+    /// <summary>
     /// Update guidance results from external calculation (e.g. ViewModel guidance).
     /// Used so chart data reflects the actual steering behavior.
     /// </summary>

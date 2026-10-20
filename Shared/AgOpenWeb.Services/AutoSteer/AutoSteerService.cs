@@ -714,6 +714,12 @@ public class AutoSteerService : IAutoSteerService
         _udpService.SendToLoopback(pgn);
     }
 
+    public void SendGpsData(GpsData data)
+    {
+        if (!_isEnabled) return;
+        _udpService.SendGpsDataToLoopback(PgnBuilder.BuildGpsDataPgn(data));
+    }
+
     /// <summary>
     /// Mirror the parsed VehicleState fields onto a fresh GpsData and fire
     /// GpsService.UpdateGpsData — this is what kicks off the cycle worker.

@@ -65,6 +65,12 @@ public interface IUdpCommunicationService
     void SendToLoopback(byte[] data);
 
     /// <summary>
+    /// Send PGN 214 (the receiver's data) where AgIO sends it for AgOpenGPS
+    /// (127.255.255.255:15555); GPS_Out reads speed, heading and fix quality from it.
+    /// </summary>
+    void SendGpsDataToLoopback(byte[] data);
+
+    /// <summary>
     /// Send hello/ping packet to check module connections
     /// PGN 200 (0xC8) - communication check
     /// </summary>
