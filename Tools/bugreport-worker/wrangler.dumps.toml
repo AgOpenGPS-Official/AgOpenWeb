@@ -1,0 +1,17 @@
+# The maintainer Worker: GET /v1/dumps/... behind Cloudflare Access (enable Access on its
+# workers.dev address in the dashboard, then set ACCESS_TEAM and ACCESS_AUD below).
+name = "agopenweb-dumps"
+main = "src/dumps.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[[r2_buckets]]
+binding = "DUMPS"
+bucket_name = "agopenweb-bugreports"
+
+[vars]
+ACCESS_TEAM = ""
+ACCESS_AUD = ""
+
+[observability]
+enabled = true
