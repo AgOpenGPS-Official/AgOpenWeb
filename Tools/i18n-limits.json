@@ -2798,5 +2798,19 @@
   "places": [
    "steer wizard #wz-next"
   ]
+ },
+ "Next Boundary Dist": {
+  "limit": 19,
+  "fit": 19,
+  "places": [
+   "screenalerts button.sa-tgl"
+  ]
+ },
+ "Place on Map": {
+  "limit": 13,
+  "fit": 13,
+  "places": [
+   "dlg-flags #flag-placemap"
+  ]
  }
 }
