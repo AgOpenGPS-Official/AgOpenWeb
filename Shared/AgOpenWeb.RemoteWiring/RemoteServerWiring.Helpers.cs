@@ -582,6 +582,7 @@ public static partial class RemoteServerWiring
                 var desc = t.ElementAtOrDefault(1) ?? "";
                 var state = services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>();
                 state.BugReportStatus = "Creating bug report…";
+                BugReportRemote.NewReport(null);
                 try
                 {
                     var dir = System.IO.Path.Combine(
@@ -597,10 +598,14 @@ public static partial class RemoteServerWiring
                         ntripRtcmReport: AgOpenWeb.Services.NtripRtcmReport.Build(
                             services.GetService<INtripClientService>(), services.GetService<IGpsService>()));
                     state.BugReportStatus = "Saved: " + zip;
+                    BugReportRemote.NewReport(zip);
                 }
                 catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; }
                 return;
             }
+            case "app.bugReport.send": // arg = zip name \t GitHub user \t title \t description
+                BugReportRemote.Send(arg, services.GetRequiredService<ISettingsService>().Settings.Language ?? "");
+                return;
         }
     }
 

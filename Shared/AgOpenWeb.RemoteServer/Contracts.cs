@@ -577,7 +577,8 @@ public record AppInfoDto(
     IReadOnlyList<AppDirDto> Directories,
     IReadOnlyList<AppHotkeyDto> Hotkeys,
     IReadOnlyList<AppLogDto> Logs,
-    string BugReportStatus);
+    string BugReportStatus,
+    string BugReportSendStatus);
 
 /// <summary>Field Tools read-frame. Grows per sub-increment (append-only). Import
 /// Tracks: the other fields on disk that have saved tracks (current field excluded).

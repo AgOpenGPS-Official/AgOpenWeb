@@ -3573,9 +3573,39 @@ function renderBugReport() {
   document.getElementById('br-status').textContent = s;
   const m = /(bugreport_[^\/\\]+\.zip)$/.exec(s);
   brFile = m ? m[1] : null;
-  for (const id of ['br-download', 'br-github', 'br-github-hint'])
+  for (const id of ['br-sendbox', 'br-download', 'br-github', 'br-github-hint'])
     document.getElementById(id).style.display = brFile ? '' : 'none';
+  // Send Report state, as BugReportRemote codes it: sending, queued, sent|n|url, accepted, rejected|msg.
+  const ss = appInfo ? (appInfo.bugReportSendStatus || '') : '';
+  const bar = ss.indexOf('|'), kind = bar < 0 ? ss : ss.slice(0, bar), rest = bar < 0 ? '' : ss.slice(bar + 1);
+  const issueUrl = kind === 'sent' ? rest.slice(rest.indexOf('|') + 1) : '';
+  document.getElementById('br-sendstatus').textContent =
+    kind === 'sending' ? tr('Sending…')
+    : kind === 'queued' ? tr('No connection: the report sends by itself when the device is back online.')
+    : kind === 'sent' ? tr('Sent as issue #{n}. Thank you!', { n: rest.split('|')[0] })
+    : kind === 'accepted' ? tr('Sent. Thank you! The GitHub issue opens shortly.')
+    : kind === 'rejected' ? tr('Not sent: {reason}', { reason: rest })
+    : '';
+  brIssueUrl = issueUrl || null;
+  document.getElementById('br-openissue').style.display = brIssueUrl ? '' : 'none';
+  document.getElementById('br-send').disabled = ['sending', 'queued', 'sent', 'accepted'].includes(kind);
 }
+let brIssueUrl = null;
+try { document.getElementById('br-ghuser').value = localStorage.getItem('agopenweb.bugReportGitHub') || ''; } catch (_) { }
+document.getElementById('br-send').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (!brFile) return;
+  const one = id => document.getElementById(id).value.replace(/\t/g, ' ').trim();
+  const gh = one('br-ghuser').replace(/^@/, '');
+  try { localStorage.setItem('agopenweb.bugReportGitHub', gh); } catch (_) { }
+  document.getElementById('br-sendstatus').textContent = tr('Sending…');
+  document.getElementById('br-send').disabled = true;
+  transport.send('app.bugReport.send|' + [brFile, gh, one('br-title'), document.getElementById('br-desc').value].join('\t'));
+});
+document.getElementById('br-openissue').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (brIssueUrl) openExternal(brIssueUrl);
+});
 document.getElementById('br-download').addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (brFile) openExternal(location.origin + '/bugreports/' + encodeURIComponent(brFile));

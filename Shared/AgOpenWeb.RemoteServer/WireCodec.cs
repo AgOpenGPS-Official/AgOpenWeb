@@ -169,6 +169,7 @@ public static class WireCodec
         w.Write(a.Logs.Count);
         foreach (var lg in a.Logs) { WriteStr(w, lg.Time); w.Write(lg.Level); WriteStr(w, lg.Message); }
         WriteStr(w, a.BugReportStatus);
+        WriteStr(w, a.BugReportSendStatus);
         return ms.ToArray();
     }
 

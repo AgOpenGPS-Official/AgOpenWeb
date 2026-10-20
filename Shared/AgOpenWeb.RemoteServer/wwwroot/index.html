@@ -421,6 +421,7 @@
     .cfg-act { padding: 8px 10px; border: 0; border-radius: 6px; background: rgba(var(--ov),0.10);
       color: var(--text); cursor: pointer; font: 600 12px system-ui, sans-serif; flex: 1; }
     .cfg-act:hover { background: rgba(var(--ov),0.18); }
+    .cfg-act:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
     .ln-seg .cfg-act.active, .ln-seg .cfg-act.active:hover { background: #1f6fb2; color: #fff; }
     .cfg-actwide { width: 100%; flex: none; }
     .cfg-slider { width: 100%; accent-color: #4A90D9; }
@@ -2595,6 +2596,14 @@
     <textarea class="fj-notes" id="br-desc" style="height:90px"></textarea>
     <button class="cfg-act cfg-actwide fj-primary" id="br-submit" style="margin-top:10px">Create Bug Report</button>
     <div class="sa-hint" id="br-status" style="margin-top:6px"></div>
+    <div id="br-sendbox" style="display:none">
+      <div class="sa-hint" style="margin-top:8px">Send Report sends this report to the AgOpenWeb maintainers: the description, the settings (passwords removed), the open field with its location and boundary, the job's coverage and the last 5 minutes of GPS data. The GitHub issue it opens shows only the title, description and app version.</div>
+      <div class="cfg-label" style="margin-top:8px">GitHub username (optional, to get replies)</div>
+      <input class="cfg-num fj-tx" id="br-ghuser" autocapitalize="off" autocomplete="off" spellcheck="false">
+      <button class="cfg-act cfg-actwide fj-primary" id="br-send" style="margin-top:8px">Send Report</button>
+      <div class="sa-hint" id="br-sendstatus" style="margin-top:6px"></div>
+      <button class="cfg-act cfg-actwide" id="br-openissue" style="margin-top:6px;display:none">Open Issue</button>
+    </div>
     <button class="cfg-act cfg-actwide" id="br-download" style="margin-top:6px;display:none">Download</button>
     <button class="cfg-act cfg-actwide" id="br-github" style="margin-top:6px;display:none">Report on GitHub</button>
     <div class="sa-hint" id="br-github-hint" style="margin-top:6px;display:none">Opens a GitHub bug report with the title, description and version filled in. Drag the downloaded zip into its Bug Report Dump box, and that's all it needs.</div>

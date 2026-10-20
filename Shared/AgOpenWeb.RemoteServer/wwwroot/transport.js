@@ -260,8 +260,8 @@ window.RemoteTransport = {
           for (let k = 0; k < hc; k++) hotkeys[k] = { action: str(), key: str(), label: str() };
           const gc = i32(); const logs = new Array(gc);
           for (let k = 0; k < gc; k++) logs[k] = { time: str(), level: i32(), message: str() };
-          const bugReportStatus = str();
-          handlers.onAppInfo && handlers.onAppInfo({ version, gitHash, currentLanguage, languages, directories, hotkeys, logs, bugReportStatus });
+          const bugReportStatus = str(), bugReportSendStatus = str();
+          handlers.onAppInfo && handlers.onAppInfo({ version, gitHash, currentLanguage, languages, directories, hotkeys, logs, bugReportStatus, bugReportSendStatus });
           break;
         }
         case TYPE.FIELD_TOOLS: {

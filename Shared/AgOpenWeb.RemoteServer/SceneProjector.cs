@@ -700,7 +700,7 @@ public sealed class SceneProjector
                 (int)e.Level, e.Message))
             .ToList();
 
-        return new AppInfoDto(version, git, current, langs, dirs, hotkeys, logs, _state.BugReportStatus ?? "");
+        return new AppInfoDto(version, git, current, langs, dirs, hotkeys, logs, _state.BugReportStatus ?? "", _state.BugReportSendStatus ?? "");
     }
 
     private static AppDirDto DirInfo(string name, string path) =>
@@ -728,6 +728,7 @@ public sealed class SceneProjector
         h = h * 31 + snap.Count;
         if (snap.Count > 0) h = h * 31 + snap[snap.Count - 1].Timestamp.Ticks.GetHashCode();
         h = h * 31 + (_state.BugReportStatus?.GetHashCode() ?? 0);
+        h = h * 31 + (_state.BugReportSendStatus?.GetHashCode() ?? 0);
         return h;
     }
 
