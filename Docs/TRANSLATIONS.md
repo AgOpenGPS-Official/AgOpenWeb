@@ -11,6 +11,9 @@ Weblate; nobody edits the language files by hand.
 | `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/<code>.json` | One language (`de.json`, `pt-BR.json`, `zh-Hans.json`). Written by Weblate. |
 | `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n.js` | The loader. |
 | `Tools/i18n-extract.py` | Regenerates `en.json` from `index.html` and `app.js`. |
+| `Tools/i18n-limits.py` | Length limits for labels (Weblate) and the CI check that translations fit. |
+| `Tools/i18n-limits.json` | Each label's limit in characters, and the screen that sets it. |
+| `Tools/i18n-fit-baseline.json` | Translations known not to fit, waiting for the translator. |
 
 **The key of every string is its English text.** `en.json` maps each string to itself;
 a language file maps the same keys to translations. A missing or empty entry shows
@@ -51,6 +54,37 @@ CI runs `Tools/i18n-extract.py --check` and fails if `en.json` is out of date.
 
 Changing the wording of an English string creates a new key, so its translations start
 again (Weblate's translation memory will suggest the old ones).
+
+## Length: translations fit the English layout
+
+The layout is made for the English text and doesn't change for a language: a button
+doesn't wrap and a row doesn't push its neighbours aside because a translation is longer.
+A translation that doesn't fit has to be shortened (a shorter word or an abbreviation).
+
+- **Weblate shows a limit.** Each label and button has a `max-length` flag, so
+  translators see "at most N characters" and get a warning when they go over. Find the
+  ones over their limit with the search `check:max-length`. The check warns only; it isn't
+  enforced, so an approved translation over its limit still reaches the app.
+- **CI measures the pixels.** The `translations-fit` job opens every screen in English
+  and puts each translation in place of its label: the text must stay on one line in its
+  box, and nothing else may move, shrink or leave the screen. Characters only approximate
+  width, so this is the check that counts. A translation that fails and isn't in
+  `Tools/i18n-fit-baseline.json` fails the job, naming the screen and the limit.
+- **The baseline** lists translations approved before the limits existed. When the
+  translator shortens one, CI warns that it fits now: take it out of the file.
+
+Help text and other sentences (more than one line, or longer than 40 characters) have no
+limit; their boxes grow. Neither does text the check can't reach (toasts, list rows,
+later wizard steps).
+
+After adding or moving labels, measure the limits again and send them to Weblate (the
+app running headless, as for any check in the running app):
+
+```bash
+Tools/i18n-limits.py            # rewrites Tools/i18n-limits.json
+Tools/i18n-limits.py --push     # max-length flags on Weblate (needs a Weblate token)
+Tools/i18n-limits.py --check    # the CI check, locally
+```
 
 ## Not translated yet
 

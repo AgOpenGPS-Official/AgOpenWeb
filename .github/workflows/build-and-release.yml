@@ -81,6 +81,48 @@ jobs:
       - name: Run Guidance Algorithm Tests
         run: dotnet run --project TestRunner/TestRunner.csproj
 
+  # Every translated label must fit the English layout (Docs/TRANSLATIONS.md): the app runs
+  # headless and Tools/i18n-limits.py --check measures each translation in place. Roboto
+  # stands in for the system font, as on the Android tablets. The container fixes the fonts,
+  # so a local run in the same image measures the same (the baseline was made that way).
+  translations-fit:
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright/python:v1.64.0-noble
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install Playwright and Roboto
+        run: |
+          apt-get update -qq && apt-get install -y -qq fonts-roboto libicu74 curl
+          pip install playwright==1.64.0
+          mkdir -p ~/.config/fontconfig
+          cat > ~/.config/fontconfig/fonts.conf <<'EOF'
+          <?xml version="1.0"?>
+          <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+          <fontconfig>
+            <alias binding="strong"><family>system-ui</family><prefer><family>Roboto</family></prefer></alias>
+            <alias binding="strong"><family>sans-serif</family><prefer><family>Roboto</family></prefer></alias>
+          </fontconfig>
+          EOF
+          fc-cache -f
+
+      - name: Build Desktop
+        run: dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -p:DesktopOnly=true
+
+      # One step: the headless app lives only as long as the step that started it.
+      - name: Check translations fit
+        shell: bash
+        run: |
+          AGOPENWEB_DATA="$RUNNER_TEMP/aow" Platforms/AgOpenWeb.Desktop/bin/Debug/net10.0/AgOpenWeb.Desktop --headless > "$RUNNER_TEMP/app.log" 2>&1 &
+          for i in $(seq 60); do curl -sf -o /dev/null http://localhost:5174/ && break; sleep 1; done
+          curl -sf -o /dev/null http://localhost:5174/ || { cat "$RUNNER_TEMP/app.log"; exit 1; }
+          python3 Tools/i18n-limits.py --check
+
   # Compile-check each platform head (no packaging — build-deploy-bundles.yml does the publishes).
   # The Desktop and Android heads compile on every PR so a broken head is caught before
   # merge; iOS needs a macOS runner and compiles after merge.

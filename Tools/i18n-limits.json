@@ -1,0 +1,2816 @@
+{
+ "Operator": {
+  "limit": 73,
+  "fit": 73,
+  "places": [
+   "main screen #sb-roletext"
+  ]
+ },
+ "Modules": {
+  "limit": 55,
+  "fit": 55,
+  "places": [
+   "networkio div.cfg-label",
+   "main screen #sb-modbtn"
+  ]
+ },
+ "HDG": {
+  "limit": 105,
+  "fit": 105,
+  "places": [
+   "main screen #sb-hdglabel"
+  ]
+ },
+ "No field": {
+  "limit": 109,
+  "fit": 109,
+  "places": [
+   "main screen #sb-rot"
+  ]
+ },
+ "SIM": {
+  "limit": 93,
+  "fit": 93,
+  "places": [
+   "main screen #sim-launch"
+  ]
+ },
+ "Screen & Alerts": {
+  "limit": 59,
+  "fit": 59,
+  "places": [
+   "screenalerts span.ln-hdr-title"
+  ]
+ },
+ "Display": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "screenalerts div.cfg-label",
+   "toolcfg / tab 4 label",
+   "toolcfg / tab 5 label",
+   "toolcfg / tab 6 label",
+   "toolcfg / tab 7 label",
+   "toolcfg / tab 8 label",
+   "toolcfg / tab 9 label",
+   "toolcfg / tab 10 label",
+   "toolcfg / tab 11 label",
+   "toolcfg / tab 12 label",
+   "toolcfg / tab 13 label"
+  ]
+ },
+ "Grid": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "screenalerts button.sa-tgl"
+  ]
+ },
+ "Field Texture": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "screenalerts button.sa-tgl"
+  ]
+ },
+ "Texture Moves": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "screenalerts button.sa-tgl"
+  ]
+ },
+ "Svenn Arrow": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "screenalerts button.sa-tgl"
+  ]
+ },
+ "Smoothing": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "screenalerts button.sa-tgl",
+   "toolcfg / tab 2 label"
+  ]
+ },
+ "Auto Day/Night": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "screenalerts button.sa-tgl"
+  ]
+ },
+ "AiO Board Msgs": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "screenalerts button.sa-tgl"
+  ]
+ },
+ "Day/Night Theme": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "screenalerts button.sa-act"
+  ]
+ },
+ "Extra Guides": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "screenalerts button.sa-tgl"
+  ]
+ },
+ "Quality:": {
+  "limit": 19,
+  "fit": 19,
+  "places": [
+   "screenalerts button.sa-act"
+  ]
+ },
+ "On-Screen Buttons": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "screenalerts div.cfg-label"
+  ]
+ },
+ "U-Turn": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "screenalerts button.sa-tgl",
+   "screenalerts button.sa-tgl",
+   "toolcfg button.cfg-tab",
+   "toolcfg / tab 1 button.cfg-tab",
+   "toolcfg / tab 2 button.cfg-tab",
+   "toolcfg / tab 3 button.cfg-tab",
+   "toolcfg / tab 4 button.cfg-tab",
+   "toolcfg / tab 5 button.cfg-tab",
+   "toolcfg / tab 6 button.cfg-tab",
+   "toolcfg / tab 7 button.cfg-tab",
+   "toolcfg / tab 8 button.cfg-tab",
+   "toolcfg / tab 9 button.cfg-tab",
+   "toolcfg / tab 10 button.cfg-tab",
+   "toolcfg / tab 11 button.cfg-tab",
+   "toolcfg / tab 12 button.cfg-tab",
+   "toolcfg / tab 13 button.cfg-tab"
+  ]
+ },
+ "Lateral": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "screenalerts button.sa-tgl"
+  ]
+ },
+ "Alerts & Sounds": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "screenalerts div.cfg-label"
+  ]
+ },
+ "Auto Steer": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "screenalerts button.sa-tgl"
+  ]
+ },
+ "Hydraulic": {
+  "limit": 17,
+  "fit": 18,
+  "places": [
+   "screenalerts button.sa-tgl"
+  ]
+ },
+ "Sections": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "screenalerts button.sa-tgl",
+   "toolcfg button.cfg-tab",
+   "toolcfg / tab 1 button.cfg-tab"
+  ]
+ },
+ "Tools": {
+  "limit": 39,
+  "fit": 39,
+  "places": [
+   "tools span.ln-hdr-title"
+  ]
+ },
+ "Utilities": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "tools div.cfg-label"
+  ]
+ },
+ "Steer Wizard": {
+  "limit": 21,
+  "fit": 22,
+  "places": [
+   "tools #tl-wizard"
+  ]
+ },
+ "Log Viewer": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "tools #tl-logviewer",
+   "filemenu #fm-logviewer",
+   "logviewer span.ln-hdr-title"
+  ]
+ },
+ "Roll Correction": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "tools #tl-rollcorr",
+   "rollcorr span.ln-hdr-title"
+  ]
+ },
+ "Diagnostic Charts": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "tools div.cfg-label"
+  ]
+ },
+ "Steer Chart": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "tools #tl-steerchart"
+  ]
+ },
+ "Heading Chart": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "tools #tl-headingchart"
+  ]
+ },
+ "XTE Chart": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "tools #tl-xtechart"
+  ]
+ },
+ "Invert roll": {
+  "limit": 50,
+  "fit": 50,
+  "places": [
+   "rollcorr span",
+   "vehiclecfg / tab 3 label"
+  ]
+ },
+ "Off": {
+  "limit": 3,
+  "fit": 3,
+  "places": [
+   "vehiclecfg / tab 2 button.cfg-tgl",
+   "vehiclecfg / tab 2 button.cfg-tgl",
+   "rollcorr #rc-invert",
+   "vehiclecfg / tab 2 button.cfg-tgl",
+   "vehiclecfg / tab 2 button.cfg-tgl",
+   "vehiclecfg / tab 2 button.cfg-tgl",
+   "vehiclecfg / tab 3 button.cfg-tgl",
+   "toolcfg / tab 3 button.cfg-tgl",
+   "toolcfg / tab 3 button.cfg-tgl",
+   "toolcfg / tab 4 button.cfg-tgl",
+   "toolcfg / tab 5 button.cfg-tgl",
+   "toolcfg / tab 6 button.cfg-tgl",
+   "toolcfg / tab 7 button.cfg-tgl",
+   "toolcfg / tab 8 button.cfg-tgl",
+   "toolcfg / tab 9 button.cfg-tgl",
+   "toolcfg / tab 10 button.cfg-tgl",
+   "toolcfg / tab 11 button.cfg-tgl",
+   "toolcfg / tab 12 button.cfg-tgl",
+   "toolcfg / tab 13 button.cfg-tgl"
+  ]
+ },
+ "Zero Roll": {
+  "limit": 36,
+  "fit": 36,
+  "places": [
+   "rollcorr #rc-zero",
+   "rollcorr span"
+  ]
+ },
+ "Roll Zero Offset": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "rollcorr span"
+  ]
+ },
+ "Field Tools": {
+  "limit": 39,
+  "fit": 39,
+  "places": [
+   "fieldtools span.ln-hdr-title"
+  ]
+ },
+ "Field Builder": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "fieldtools #ft-fieldbuilder",
+   "fieldbuilder span.ln-hdr-title"
+  ]
+ },
+ "Boundary": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "fieldtools #ft-boundary",
+   "boundarymenu span"
+  ]
+ },
+ "Delete Applied Area": {
+  "limit": 21,
+  "fit": 22,
+  "places": [
+   "fieldtools #ft-deleteapplied"
+  ]
+ },
+ "Import Tracks": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "fieldtools #ft-importtracks"
+  ]
+ },
+ "Recorded Path": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "fieldtools #ft-recpath",
+   "recpath span.ln-hdr-title"
+  ]
+ },
+ "Offset Fix": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "fieldtools #ft-offsetfix"
+  ]
+ },
+ "Tracks": {
+  "limit": 14,
+  "fit": 14,
+  "places": [
+   "fieldbuilder button.fb-tab"
+  ]
+ },
+ "Headland": {
+  "limit": 14,
+  "fit": 14,
+  "places": [
+   "fieldbuilder button.fb-tab",
+   "fromexisting #fe-headland"
+  ]
+ },
+ "Tram": {
+  "limit": 14,
+  "fit": 14,
+  "places": [
+   "fieldbuilder button.fb-tab",
+   "toolcfg button.cfg-tab",
+   "toolcfg / tab 1 button.cfg-tab",
+   "toolcfg / tab 2 button.cfg-tab",
+   "toolcfg / tab 3 button.cfg-tab",
+   "toolcfg / tab 4 button.cfg-tab",
+   "toolcfg / tab 5 button.cfg-tab",
+   "toolcfg / tab 6 button.cfg-tab",
+   "toolcfg / tab 7 button.cfg-tab",
+   "toolcfg / tab 8 button.cfg-tab",
+   "toolcfg / tab 9 button.cfg-tab",
+   "toolcfg / tab 10 button.cfg-tab",
+   "toolcfg / tab 11 button.cfg-tab",
+   "toolcfg / tab 12 button.cfg-tab",
+   "toolcfg / tab 13 button.cfg-tab"
+  ]
+ },
+ "＋ Add": {
+  "limit": 6,
+  "fit": 7,
+  "places": [
+   "fieldbuilder #fb-trk-add"
+  ]
+ },
+ "✎ Edit": {
+  "limit": 6,
+  "fit": 7,
+  "places": [
+   "fieldbuilder #fb-trk-edit"
+  ]
+ },
+ "Rename": {
+  "limit": 5,
+  "fit": 7,
+  "places": [
+   "fieldbuilder #fb-trk-rename",
+   "vehtoolhub button.hub-cbtn",
+   "vehtoolhub button.hub-cbtn"
+  ]
+ },
+ "Delete": {
+  "limit": 7,
+  "fit": 7,
+  "places": [
+   "fieldbuilder #fb-trk-delete",
+   "vehtoolhub button.hub-cbtn",
+   "vehtoolhub button.hub-cbtn"
+  ]
+ },
+ "GPS Offset Fix": {
+  "limit": 35,
+  "fit": 35,
+  "places": [
+   "offsetfix span.ln-hdr-title"
+  ]
+ },
+ "1 cm per click": {
+  "limit": 83,
+  "fit": 83,
+  "places": [
+   "offsetfix div.of-hint"
+  ]
+ },
+ "Import Tracks From Field": {
+  "limit": 37,
+  "fit": 37,
+  "places": [
+   "importtracks span.ln-hdr-title"
+  ]
+ },
+ "Record": {
+  "limit": 8,
+  "fit": 8,
+  "places": [
+   "recpath #rp-tab-rec"
+  ]
+ },
+ "Playback": {
+  "limit": 8,
+  "fit": 6,
+  "places": [
+   "recpath #rp-tab-play"
+  ]
+ },
+ "No path loaded": {
+  "limit": 74,
+  "fit": 74,
+  "places": [
+   "recpath #rp-info"
+  ]
+ },
+ "Start or Delete Boundary": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "boundarymenu span.ln-hdr-title"
+  ]
+ },
+ "Area": {
+  "limit": 7,
+  "fit": 7,
+  "places": [
+   "fieldsandjobs span",
+   "boundarymenu span"
+  ]
+ },
+ "Drive Thru": {
+  "limit": 20,
+  "fit": 20,
+  "places": [
+   "boundarymenu span"
+  ]
+ },
+ "Hard": {
+  "limit": 15,
+  "fit": 15,
+  "places": [
+   "boundarymenu span"
+  ]
+ },
+ "Stop Record Pause Boundary": {
+  "limit": 142,
+  "fit": 142,
+  "places": [
+   "boundaryplayer span.ln-hdr-title"
+  ]
+ },
+ "Recording Offset": {
+  "limit": 171,
+  "fit": 171,
+  "places": [
+   "boundaryplayer span.bp-offlbl"
+  ]
+ },
+ "Points:": {
+  "limit": 119,
+  "fit": 119,
+  "places": [
+   "boundaryplayer span.bp-statlbl"
+  ]
+ },
+ "Area:": {
+  "limit": 119,
+  "fit": 119,
+  "places": [
+   "boundaryplayer span.bp-statlbl"
+  ]
+ },
+ "Import KML Boundary": {
+  "limit": 35,
+  "fit": 35,
+  "places": [
+   "kmlboundary span.ln-hdr-title"
+  ]
+ },
+ "Vehicle & Tool": {
+  "limit": 145,
+  "fit": 145,
+  "places": [
+   "vehtoolhub span.ln-hdr-title"
+  ]
+ },
+ "Vehicle": {
+  "limit": 77,
+  "fit": 77,
+  "places": [
+   "vehtoolhub div.hub-colhdr",
+   "vehiclecfg button.cfg-tab",
+   "vehiclecfg / tab 1 button.cfg-tab",
+   "vehiclecfg / tab 2 button.cfg-tab",
+   "vehiclecfg / tab 3 button.cfg-tab"
+  ]
+ },
+ "Configure Vehicle…": {
+  "limit": 85,
+  "fit": 85,
+  "places": [
+   "vehtoolhub #vth-vehconfig"
+  ]
+ },
+ "New": {
+  "limit": 9,
+  "fit": 9,
+  "places": [
+   "vehtoolhub button.hub-cbtn",
+   "vehtoolhub button.hub-cbtn"
+  ]
+ },
+ "Reset": {
+  "limit": 9,
+  "fit": 9,
+  "places": [
+   "vehtoolhub button.hub-cbtn",
+   "vehtoolhub button.hub-cbtn",
+   "smartwas #sw-reset"
+  ]
+ },
+ "Tool": {
+  "limit": 77,
+  "fit": 77,
+  "places": [
+   "vehtoolhub div.hub-colhdr",
+   "toolcfg button.cfg-tab",
+   "toolcfg / tab 1 button.cfg-tab",
+   "toolcfg / tab 2 button.cfg-tab",
+   "toolcfg / tab 3 button.cfg-tab",
+   "toolcfg / tab 4 button.cfg-tab",
+   "toolcfg / tab 5 button.cfg-tab",
+   "toolcfg / tab 6 button.cfg-tab",
+   "toolcfg / tab 7 button.cfg-tab",
+   "toolcfg / tab 8 button.cfg-tab",
+   "toolcfg / tab 9 button.cfg-tab",
+   "toolcfg / tab 10 button.cfg-tab",
+   "toolcfg / tab 11 button.cfg-tab",
+   "toolcfg / tab 12 button.cfg-tab",
+   "toolcfg / tab 13 button.cfg-tab"
+  ]
+ },
+ "Configure Tool…": {
+  "limit": 85,
+  "fit": 85,
+  "places": [
+   "vehtoolhub #vth-toolconfig"
+  ]
+ },
+ "Load Selected": {
+  "limit": 158,
+  "fit": 158,
+  "places": [
+   "vehtoolhub #vth-load"
+  ]
+ },
+ "Vehicle Configuration": {
+  "limit": 118,
+  "fit": 118,
+  "places": [
+   "vehiclecfg span.ln-hdr-title",
+   "vehiclecfg / tab 1 span.ln-hdr-title",
+   "vehiclecfg / tab 2 span.ln-hdr-title",
+   "vehiclecfg / tab 3 span.ln-hdr-title"
+  ]
+ },
+ "GPS": {
+  "limit": 35,
+  "fit": 35,
+  "places": [
+   "networkio span.nio-mod",
+   "vehiclecfg button.cfg-tab",
+   "vehiclecfg / tab 1 button.cfg-tab",
+   "vehiclecfg / tab 2 button.cfg-tab",
+   "vehiclecfg / tab 3 button.cfg-tab"
+  ]
+ },
+ "Roll": {
+  "limit": 27,
+  "fit": 27,
+  "places": [
+   "systemdata span.sd-k",
+   "vehiclecfg button.cfg-tab",
+   "vehiclecfg / tab 1 button.cfg-tab",
+   "vehiclecfg / tab 2 button.cfg-tab",
+   "vehiclecfg / tab 3 button.cfg-tab"
+  ]
+ },
+ "Vehicle type": {
+  "limit": 162,
+  "fit": 162,
+  "places": [
+   "vehiclecfg div.cfg-label",
+   "vehiclecfg / tab 1 div.cfg-label"
+  ]
+ },
+ "Tractor": {
+  "limit": 50,
+  "fit": 50,
+  "places": [
+   "vehiclecfg span",
+   "vehiclecfg / tab 1 span"
+  ]
+ },
+ "Harvester": {
+  "limit": 50,
+  "fit": 50,
+  "places": [
+   "vehiclecfg span",
+   "vehiclecfg / tab 1 span"
+  ]
+ },
+ "Articulated": {
+  "limit": 50,
+  "fit": 50,
+  "places": [
+   "vehiclecfg span",
+   "vehiclecfg / tab 1 span"
+  ]
+ },
+ "Hitch / Wheelbase / Track": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "vehiclecfg div.cfg-label",
+   "vehiclecfg / tab 1 div.cfg-label"
+  ]
+ },
+ "Wheelbase": {
+  "limit": 37,
+  "fit": 37,
+  "places": [
+   "vehiclecfg label",
+   "vehiclecfg / tab 1 label"
+  ]
+ },
+ "Track width": {
+  "limit": 37,
+  "fit": 37,
+  "places": [
+   "vehiclecfg label",
+   "vehiclecfg / tab 1 label"
+  ]
+ },
+ "Antenna": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "vehiclecfg div.cfg-label",
+   "vehiclecfg / tab 1 div.cfg-label"
+  ]
+ },
+ "Antenna pivot": {
+  "limit": 37,
+  "fit": 37,
+  "places": [
+   "vehiclecfg label",
+   "vehiclecfg / tab 1 label"
+  ]
+ },
+ "Antenna height": {
+  "limit": 37,
+  "fit": 37,
+  "places": [
+   "vehiclecfg label",
+   "vehiclecfg / tab 1 label"
+  ]
+ },
+ "Antenna offset": {
+  "limit": 31,
+  "fit": 31,
+  "places": [
+   "vehiclecfg label",
+   "vehiclecfg / tab 1 label"
+  ]
+ },
+ "Left": {
+  "limit": 4,
+  "fit": 3,
+  "places": [
+   "vehiclecfg button.cfg-act",
+   "vehiclecfg / tab 1 button.cfg-act",
+   "dlg-quickab button.ln-segbtn"
+  ]
+ },
+ "Center": {
+  "limit": 6,
+  "fit": 6,
+  "places": [
+   "vehiclecfg button.cfg-act",
+   "vehiclecfg / tab 1 button.cfg-act"
+  ]
+ },
+ "Right": {
+  "limit": 5,
+  "fit": 4,
+  "places": [
+   "vehiclecfg button.cfg-act",
+   "vehiclecfg / tab 1 button.cfg-act",
+   "dlg-quickab button.ln-segbtn"
+  ]
+ },
+ "Save Profile": {
+  "limit": 138,
+  "fit": 138,
+  "places": [
+   "vehiclecfg #vc-save",
+   "vehiclecfg / tab 1 #vc-save",
+   "vehiclecfg / tab 2 #vc-save",
+   "vehiclecfg / tab 3 #vc-save",
+   "toolcfg #tc-save",
+   "toolcfg / tab 1 #tc-save",
+   "toolcfg / tab 2 #tc-save",
+   "toolcfg / tab 3 #tc-save",
+   "toolcfg / tab 4 #tc-save",
+   "toolcfg / tab 5 #tc-save",
+   "toolcfg / tab 6 #tc-save",
+   "toolcfg / tab 7 #tc-save",
+   "toolcfg / tab 8 #tc-save",
+   "toolcfg / tab 9 #tc-save",
+   "toolcfg / tab 10 #tc-save",
+   "toolcfg / tab 11 #tc-save",
+   "toolcfg / tab 12 #tc-save",
+   "toolcfg / tab 13 #tc-save",
+   "ntripeditor #nte-save"
+  ]
+ },
+ "Dual antenna": {
+  "limit": 29,
+  "fit": 29,
+  "places": [
+   "systemdata span.sd-k",
+   "vehiclecfg / tab 2 div.cfg-label"
+  ]
+ },
+ "Dual GPS": {
+  "limit": 64,
+  "fit": 64,
+  "places": [
+   "vehiclecfg / tab 2 label"
+  ]
+ },
+ "Heading offset (°)": {
+  "limit": 64,
+  "fit": 64,
+  "places": [
+   "vehiclecfg / tab 2 label"
+  ]
+ },
+ "Reverse dist": {
+  "limit": 60,
+  "fit": 60,
+  "places": [
+   "vehiclecfg / tab 2 label"
+  ]
+ },
+ "Auto dual fix": {
+  "limit": 64,
+  "fit": 64,
+  "places": [
+   "vehiclecfg / tab 2 label"
+  ]
+ },
+ "Switch speed": {
+  "limit": 59,
+  "fit": 59,
+  "places": [
+   "vehiclecfg / tab 2 label"
+  ]
+ },
+ "Single antenna": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "vehiclecfg / tab 2 div.cfg-label"
+  ]
+ },
+ "Min GPS step": {
+  "limit": 60,
+  "fit": 60,
+  "places": [
+   "vehiclecfg / tab 2 label"
+  ]
+ },
+ "Fix-to-fix dist": {
+  "limit": 60,
+  "fit": 60,
+  "places": [
+   "vehiclecfg / tab 2 label"
+  ]
+ },
+ "Reverse detection": {
+  "limit": 64,
+  "fit": 64,
+  "places": [
+   "vehiclecfg / tab 2 label"
+  ]
+ },
+ "Heading fusion": {
+  "limit": 50,
+  "fit": 50,
+  "places": [
+   "vehiclecfg / tab 2 label"
+  ]
+ },
+ "RTK": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "vehiclecfg / tab 2 div.cfg-label"
+  ]
+ },
+ "RTK lost alarm": {
+  "limit": 68,
+  "fit": 68,
+  "places": [
+   "vehiclecfg / tab 2 label"
+  ]
+ },
+ "Alarm stops AutoSteer": {
+  "limit": 68,
+  "fit": 68,
+  "places": [
+   "vehiclecfg / tab 2 label"
+  ]
+ },
+ "Roll zero (°)": {
+  "limit": 136,
+  "fit": 136,
+  "places": [
+   "vehiclecfg / tab 3 label"
+  ]
+ },
+ "Zero Now": {
+  "limit": 13,
+  "fit": 13,
+  "places": [
+   "vehiclecfg / tab 3 #vc-rollzero"
+  ]
+ },
+ "Remove Offset": {
+  "limit": 13,
+  "fit": 1,
+  "places": [
+   "vehiclecfg / tab 3 button.cfg-act"
+  ]
+ },
+ "Roll filter": {
+  "limit": 136,
+  "fit": 136,
+  "places": [
+   "vehiclecfg / tab 3 label"
+  ]
+ },
+ "Tool Configuration": {
+  "limit": 118,
+  "fit": 118,
+  "places": [
+   "toolcfg span.ln-hdr-title",
+   "toolcfg / tab 1 span.ln-hdr-title",
+   "toolcfg / tab 2 span.ln-hdr-title",
+   "toolcfg / tab 3 span.ln-hdr-title",
+   "toolcfg / tab 4 span.ln-hdr-title",
+   "toolcfg / tab 5 span.ln-hdr-title",
+   "toolcfg / tab 6 span.ln-hdr-title",
+   "toolcfg / tab 7 span.ln-hdr-title",
+   "toolcfg / tab 8 span.ln-hdr-title",
+   "toolcfg / tab 9 span.ln-hdr-title",
+   "toolcfg / tab 10 span.ln-hdr-title",
+   "toolcfg / tab 11 span.ln-hdr-title",
+   "toolcfg / tab 12 span.ln-hdr-title",
+   "toolcfg / tab 13 span.ln-hdr-title"
+  ]
+ },
+ "Machine": {
+  "limit": 35,
+  "fit": 35,
+  "places": [
+   "networkio span.nio-mod",
+   "toolcfg button.cfg-tab",
+   "toolcfg / tab 1 button.cfg-tab",
+   "toolcfg / tab 2 button.cfg-tab",
+   "toolcfg / tab 3 button.cfg-tab",
+   "toolcfg / tab 4 button.cfg-tab",
+   "toolcfg / tab 5 button.cfg-tab",
+   "toolcfg / tab 6 button.cfg-tab",
+   "toolcfg / tab 7 button.cfg-tab",
+   "toolcfg / tab 8 button.cfg-tab",
+   "toolcfg / tab 9 button.cfg-tab",
+   "toolcfg / tab 10 button.cfg-tab",
+   "toolcfg / tab 11 button.cfg-tab",
+   "toolcfg / tab 12 button.cfg-tab",
+   "toolcfg / tab 13 button.cfg-tab"
+  ]
+ },
+ "Type": {
+  "limit": 13,
+  "fit": 13,
+  "places": [
+   "dlg-tracks span",
+   "toolcfg button.cfg-tab",
+   "toolcfg / tab 1 button.cfg-tab"
+  ]
+ },
+ "Hitch": {
+  "limit": 88,
+  "fit": 88,
+  "places": [
+   "toolcfg button.cfg-tab",
+   "toolcfg / tab 1 button.cfg-tab"
+  ]
+ },
+ "Timing": {
+  "limit": 91,
+  "fit": 91,
+  "places": [
+   "toolcfg button.cfg-tab",
+   "toolcfg / tab 1 button.cfg-tab"
+  ]
+ },
+ "Offset": {
+  "limit": 40,
+  "fit": 40,
+  "places": [
+   "smartwas span.k",
+   "toolcfg button.cfg-tab",
+   "toolcfg / tab 1 button.cfg-tab"
+  ]
+ },
+ "Pivot": {
+  "limit": 88,
+  "fit": 88,
+  "places": [
+   "toolcfg button.cfg-tab",
+   "toolcfg / tab 1 button.cfg-tab"
+  ]
+ },
+ "Switches": {
+  "limit": 93,
+  "fit": 93,
+  "places": [
+   "toolcfg button.cfg-tab",
+   "toolcfg / tab 1 button.cfg-tab"
+  ]
+ },
+ "Front Fixed": {
+  "limit": 50,
+  "fit": 50,
+  "places": [
+   "toolcfg span",
+   "toolcfg / tab 1 span"
+  ]
+ },
+ "Rear Fixed": {
+  "limit": 50,
+  "fit": 50,
+  "places": [
+   "toolcfg span",
+   "toolcfg / tab 1 span"
+  ]
+ },
+ "TBT": {
+  "limit": 50,
+  "fit": 50,
+  "places": [
+   "toolcfg span",
+   "toolcfg / tab 1 span"
+  ]
+ },
+ "Trailing": {
+  "limit": 50,
+  "fit": 50,
+  "places": [
+   "toolcfg span",
+   "toolcfg / tab 1 span"
+  ]
+ },
+ "Turn style": {
+  "limit": 162,
+  "fit": 162,
+  "places": [
+   "toolcfg / tab 2 div.cfg-label"
+  ]
+ },
+ "Sagitta": {
+  "limit": 78,
+  "fit": 78,
+  "places": [
+   "toolcfg / tab 2 button.cfg-typebtn"
+  ]
+ },
+ "K-turn": {
+  "limit": 78,
+  "fit": 78,
+  "places": [
+   "toolcfg / tab 2 button.cfg-typebtn"
+  ]
+ },
+ "Extension": {
+  "limit": 39,
+  "fit": 39,
+  "places": [
+   "toolcfg / tab 2 label"
+  ]
+ },
+ "Radius": {
+  "limit": 39,
+  "fit": 39,
+  "places": [
+   "toolcfg / tab 2 label"
+  ]
+ },
+ "Distance from boundary": {
+  "limit": 39,
+  "fit": 39,
+  "places": [
+   "toolcfg / tab 2 label"
+  ]
+ },
+ "Module": {
+  "limit": 136,
+  "fit": 136,
+  "places": [
+   "toolcfg / tab 3 button.cfg-tab"
+  ]
+ },
+ "Pin Config": {
+  "limit": 139,
+  "fit": 139,
+  "places": [
+   "toolcfg / tab 3 button.cfg-tab"
+  ]
+ },
+ "Hydraulic lift": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "toolcfg / tab 3 div.cfg-label"
+  ]
+ },
+ "Enable": {
+  "limit": 68,
+  "fit": 68,
+  "places": [
+   "toolcfg / tab 3 label"
+  ]
+ },
+ "Raise time": {
+  "limit": 36,
+  "fit": 36,
+  "places": [
+   "toolcfg / tab 3 label"
+  ]
+ },
+ "Lower time": {
+  "limit": 36,
+  "fit": 36,
+  "places": [
+   "toolcfg / tab 3 label"
+  ]
+ },
+ "Look ahead": {
+  "limit": 64,
+  "fit": 64,
+  "places": [
+   "toolcfg / tab 3 label"
+  ]
+ },
+ "Invert relay": {
+  "limit": 64,
+  "fit": 64,
+  "places": [
+   "toolcfg / tab 3 label"
+  ]
+ },
+ "User values": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "toolcfg / tab 3 div.cfg-label"
+  ]
+ },
+ "User 1": {
+  "limit": 64,
+  "fit": 64,
+  "places": [
+   "toolcfg / tab 3 label"
+  ]
+ },
+ "User 2": {
+  "limit": 64,
+  "fit": 64,
+  "places": [
+   "toolcfg / tab 3 label"
+  ]
+ },
+ "User 3": {
+  "limit": 64,
+  "fit": 64,
+  "places": [
+   "toolcfg / tab 3 label"
+  ]
+ },
+ "User 4": {
+  "limit": 64,
+  "fit": 64,
+  "places": [
+   "toolcfg / tab 3 label"
+  ]
+ },
+ "Passes": {
+  "limit": 118,
+  "fit": 118,
+  "places": [
+   "toolcfg / tab 4 label",
+   "toolcfg / tab 5 label",
+   "toolcfg / tab 6 label",
+   "toolcfg / tab 7 label",
+   "toolcfg / tab 8 label",
+   "toolcfg / tab 9 label",
+   "toolcfg / tab 10 label",
+   "toolcfg / tab 11 label",
+   "toolcfg / tab 12 label",
+   "toolcfg / tab 13 label"
+  ]
+ },
+ "Tram width": {
+  "limit": 114,
+  "fit": 114,
+  "places": [
+   "toolcfg / tab 4 label",
+   "toolcfg / tab 5 label",
+   "toolcfg / tab 6 label",
+   "toolcfg / tab 7 label",
+   "toolcfg / tab 8 label",
+   "toolcfg / tab 9 label",
+   "toolcfg / tab 10 label",
+   "toolcfg / tab 11 label",
+   "toolcfg / tab 12 label",
+   "toolcfg / tab 13 label"
+  ]
+ },
+ "First tram pass": {
+  "limit": 143,
+  "fit": 143,
+  "places": [
+   "toolcfg / tab 4 label",
+   "toolcfg / tab 5 label",
+   "toolcfg / tab 6 label",
+   "toolcfg / tab 7 label",
+   "toolcfg / tab 8 label",
+   "toolcfg / tab 9 label",
+   "toolcfg / tab 10 label",
+   "toolcfg / tab 11 label",
+   "toolcfg / tab 12 label",
+   "toolcfg / tab 13 label"
+  ]
+ },
+ "Auto Steer Configuration": {
+  "limit": 48,
+  "fit": 48,
+  "places": [
+   "autosteercfg span.as-title2",
+   "autosteercfg / tab 1 span.as-title2",
+   "autosteercfg / tab 2 span.as-title2",
+   "autosteercfg / tab 3 span.as-title2",
+   "autosteercfg / tab 4 span.as-title2",
+   "autosteercfg / tab 5 span.as-title2",
+   "autosteercfg / tab 6 span.as-title2",
+   "autosteercfg / tab 7 span.as-title2",
+   "autosteercfg / tab 8 span.as-title2",
+   "autosteercfg / tab 9 span.as-title2"
+  ]
+ },
+ "Pure Pursuit": {
+  "limit": 47,
+  "fit": 47,
+  "places": [
+   "autosteercfg #as-modetitle",
+   "autosteercfg / tab 1 #as-modetitle"
+  ]
+ },
+ "Fast": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "autosteercfg span.lblfast",
+   "autosteercfg / tab 1 span.lblfast"
+  ]
+ },
+ "Steer Response": {
+  "limit": 14,
+  "fit": 13,
+  "places": [
+   "autosteercfg span.lblmid",
+   "autosteercfg / tab 1 span.lblmid"
+  ]
+ },
+ "Slow": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "autosteercfg span.lblslow",
+   "autosteercfg / tab 1 span.lblslow"
+  ]
+ },
+ "Aggressiveness": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg div.as-caphdr",
+   "autosteercfg / tab 1 div.as-caphdr"
+  ]
+ },
+ "Overshoot Reduction": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg div.as-caphdr",
+   "autosteercfg / tab 1 div.as-caphdr"
+  ]
+ },
+ "Integral": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg div.as-caphdr",
+   "autosteercfg / tab 1 div.as-caphdr"
+  ]
+ },
+ "Set:": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "autosteercfg span.as-stat",
+   "autosteercfg / tab 1 span.as-stat",
+   "autosteercfg / tab 2 span.as-stat",
+   "autosteercfg / tab 3 span.as-stat",
+   "autosteercfg / tab 4 span.as-stat",
+   "autosteercfg / tab 5 span.as-stat",
+   "autosteercfg / tab 6 span.as-stat",
+   "autosteercfg / tab 7 span.as-stat",
+   "autosteercfg / tab 8 span.as-stat",
+   "autosteercfg / tab 9 span.as-stat"
+  ]
+ },
+ "Act:": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "autosteercfg span.as-stat",
+   "autosteercfg / tab 1 span.as-stat",
+   "autosteercfg / tab 2 span.as-stat",
+   "autosteercfg / tab 3 span.as-stat",
+   "autosteercfg / tab 4 span.as-stat",
+   "autosteercfg / tab 5 span.as-stat",
+   "autosteercfg / tab 6 span.as-stat",
+   "autosteercfg / tab 7 span.as-stat",
+   "autosteercfg / tab 8 span.as-stat",
+   "autosteercfg / tab 9 span.as-stat"
+  ]
+ },
+ "Err:": {
+  "limit": 21,
+  "fit": 21,
+  "places": [
+   "autosteercfg span.as-stat",
+   "autosteercfg / tab 1 span.as-stat",
+   "autosteercfg / tab 2 span.as-stat",
+   "autosteercfg / tab 3 span.as-stat",
+   "autosteercfg / tab 4 span.as-stat",
+   "autosteercfg / tab 5 span.as-stat",
+   "autosteercfg / tab 6 span.as-stat",
+   "autosteercfg / tab 7 span.as-stat",
+   "autosteercfg / tab 8 span.as-stat",
+   "autosteercfg / tab 9 span.as-stat"
+  ]
+ },
+ "▶ Full": {
+  "limit": 11,
+  "fit": 22,
+  "places": [
+   "autosteercfg #as-expand",
+   "autosteercfg / tab 1 #as-expand",
+   "autosteercfg / tab 2 #as-expand",
+   "autosteercfg / tab 3 #as-expand",
+   "autosteercfg / tab 4 #as-expand",
+   "autosteercfg / tab 5 #as-expand",
+   "autosteercfg / tab 6 #as-expand",
+   "autosteercfg / tab 7 #as-expand",
+   "autosteercfg / tab 8 #as-expand",
+   "autosteercfg / tab 9 #as-expand"
+  ]
+ },
+ "WAS Offset": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg / tab 2 div.as-caphdr"
+  ]
+ },
+ "Zero WAS": {
+  "limit": 45,
+  "fit": 45,
+  "places": [
+   "autosteercfg / tab 2 button.cfg-act"
+  ]
+ },
+ "Counts Per Degree": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg / tab 2 div.as-caphdr"
+  ]
+ },
+ "Ackermann": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg / tab 2 div.as-caphdr"
+  ]
+ },
+ "Max Steer Angle": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg / tab 2 div.as-caphdr"
+  ]
+ },
+ "Deadzone Heading (°)": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg / tab 3 div.as-caphdr"
+  ]
+ },
+ "On Delay (counts)": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg / tab 3 div.as-caphdr"
+  ]
+ },
+ "Look-ahead Speed Factor": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg / tab 3 div.as-caphdr"
+  ]
+ },
+ "Acquire Factor": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg / tab 3 div.as-caphdr"
+  ]
+ },
+ "Proportional Gain": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg / tab 4 div.as-caphdr",
+   "autosteercfg / tab 5 div.as-caphdr",
+   "autosteercfg / tab 6 div.as-caphdr",
+   "autosteercfg / tab 7 div.as-caphdr",
+   "autosteercfg / tab 8 div.as-caphdr",
+   "autosteercfg / tab 9 div.as-caphdr"
+  ]
+ },
+ "Max Limit (high PWM)": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg / tab 4 div.as-caphdr",
+   "autosteercfg / tab 5 div.as-caphdr",
+   "autosteercfg / tab 6 div.as-caphdr",
+   "autosteercfg / tab 7 div.as-caphdr",
+   "autosteercfg / tab 8 div.as-caphdr",
+   "autosteercfg / tab 9 div.as-caphdr"
+  ]
+ },
+ "Minimum To Move (low PWM)": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "autosteercfg / tab 4 div.as-caphdr",
+   "autosteercfg / tab 5 div.as-caphdr",
+   "autosteercfg / tab 6 div.as-caphdr",
+   "autosteercfg / tab 7 div.as-caphdr",
+   "autosteercfg / tab 8 div.as-caphdr",
+   "autosteercfg / tab 9 div.as-caphdr"
+  ]
+ },
+ "Network IO": {
+  "limit": 37,
+  "fit": 37,
+  "places": [
+   "networkio span.ln-hdr-title"
+  ]
+ },
+ "AutoSteer": {
+  "limit": 35,
+  "fit": 35,
+  "places": [
+   "networkio span.nio-mod",
+   "steer wizard div.t"
+  ]
+ },
+ "IMU": {
+  "limit": 27,
+  "fit": 27,
+  "places": [
+   "systemdata span.sd-k",
+   "networkio span.nio-mod"
+  ]
+ },
+ "Scan for Modules": {
+  "limit": 51,
+  "fit": 51,
+  "places": [
+   "networkio #nio-scan"
+  ]
+ },
+ "Subnet": {
+  "limit": 55,
+  "fit": 55,
+  "places": [
+   "networkio div.cfg-label"
+  ]
+ },
+ "Send Subnet to Modules": {
+  "limit": 51,
+  "fit": 51,
+  "places": [
+   "networkio #nio-subnet"
+  ]
+ },
+ "Host IPs": {
+  "limit": 55,
+  "fit": 55,
+  "places": [
+   "networkio div.cfg-label"
+  ]
+ },
+ "Send corrected position": {
+  "limit": 47,
+  "fit": 47,
+  "places": [
+   "networkio span.nio-mod"
+  ]
+ },
+ "NTRIP": {
+  "limit": 30,
+  "fit": 30,
+  "places": [
+   "networkio span.nio-mod"
+  ]
+ },
+ "Not Connected": {
+  "limit": 40,
+  "fit": 40,
+  "places": [
+   "networkio #nio-ntrip-status"
+  ]
+ },
+ "Broadcast corrections": {
+  "limit": 47,
+  "fit": 47,
+  "places": [
+   "networkio span.nio-mod"
+  ]
+ },
+ "NTRIP on": {
+  "limit": 47,
+  "fit": 47,
+  "places": [
+   "networkio span.nio-mod"
+  ]
+ },
+ "NTRIP Profiles": {
+  "limit": 51,
+  "fit": 51,
+  "places": [
+   "networkio #nio-ntprofiles",
+   "ntripprofiles span.ln-hdr-title",
+   "appsettings div.as-dirname"
+  ]
+ },
+ "System Data": {
+  "limit": 44,
+  "fit": 44,
+  "places": [
+   "systemdata span.ln-hdr-title"
+  ]
+ },
+ "Position": {
+  "limit": 68,
+  "fit": 68,
+  "places": [
+   "systemdata div.cfg-label"
+  ]
+ },
+ "Latitude": {
+  "limit": 16,
+  "fit": 16,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Longitude": {
+  "limit": 15,
+  "fit": 15,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Easting": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Northing": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Altitude": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Quality": {
+  "limit": 68,
+  "fit": 68,
+  "places": [
+   "systemdata div.cfg-label"
+  ]
+ },
+ "Fix": {
+  "limit": 20,
+  "fit": 20,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Satellites": {
+  "limit": 28,
+  "fit": 28,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "HDOP": {
+  "limit": 25,
+  "fit": 25,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Correction age": {
+  "limit": 25,
+  "fit": 25,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "GPS rate": {
+  "limit": 29,
+  "fit": 29,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Missed sentences": {
+  "limit": 29,
+  "fit": 29,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Not accepted": {
+  "limit": 29,
+  "fit": 29,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Lines joined": {
+  "limit": 29,
+  "fit": 29,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Bytes dropped": {
+  "limit": 29,
+  "fit": 29,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Incomplete epochs": {
+  "limit": 29,
+  "fit": 29,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Source": {
+  "limit": 29,
+  "fit": 29,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Motion": {
+  "limit": 68,
+  "fit": 68,
+  "places": [
+   "systemdata div.cfg-label"
+  ]
+ },
+ "Speed": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Pitch": {
+  "limit": 27,
+  "fit": 27,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Yaw rate": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Heading": {
+  "limit": 68,
+  "fit": 68,
+  "places": [
+   "systemdata div.cfg-label"
+  ]
+ },
+ "Fix to fix": {
+  "limit": 27,
+  "fit": 27,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "In use": {
+  "limit": 27,
+  "fit": 27,
+  "places": [
+   "systemdata span.sd-k"
+  ]
+ },
+ "Sentences from the GPS module": {
+  "limit": 68,
+  "fit": 68,
+  "places": [
+   "systemdata div.cfg-label"
+  ]
+ },
+ "Profile Name": {
+  "limit": 45,
+  "fit": 45,
+  "places": [
+   "ntripprofiles span"
+  ]
+ },
+ "Caster": {
+  "limit": 25,
+  "fit": 25,
+  "places": [
+   "ntripprofiles span"
+  ]
+ },
+ "Default": {
+  "limit": 9,
+  "fit": 9,
+  "places": [
+   "ntripprofiles span"
+  ]
+ },
+ "Edit NTRIP Profile": {
+  "limit": 55,
+  "fit": 55,
+  "places": [
+   "ntripeditor #nte-title"
+  ]
+ },
+ "Name": {
+  "limit": 24,
+  "fit": 24,
+  "places": [
+   "fieldsandjobs span",
+   "ntripeditor label"
+  ]
+ },
+ "Host": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "ntripeditor label"
+  ]
+ },
+ "Port": {
+  "limit": 39,
+  "fit": 39,
+  "places": [
+   "ntripeditor label"
+  ]
+ },
+ "Mount": {
+  "limit": 39,
+  "fit": 39,
+  "places": [
+   "ntripeditor label"
+  ]
+ },
+ "User": {
+  "limit": 39,
+  "fit": 39,
+  "places": [
+   "ntripeditor label"
+  ]
+ },
+ "Pass": {
+  "limit": 39,
+  "fit": 39,
+  "places": [
+   "ntripeditor label"
+  ]
+ },
+ "Test Connection": {
+  "limit": 226,
+  "fit": 226,
+  "places": [
+   "ntripeditor #nte-test",
+   "agsettings #ag-test"
+  ]
+ },
+ "Associated Fields": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "ntripeditor div.cfg-label"
+  ]
+ },
+ "Smart WAS Calibration": {
+  "limit": 46,
+  "fit": 46,
+  "places": [
+   "smartwas span.ln-hdr-title"
+  ]
+ },
+ "Status:": {
+  "limit": 59,
+  "fit": 59,
+  "places": [
+   "smartwas div.sw-status"
+  ]
+ },
+ "Stopped": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "smartwas #sw-status"
+  ]
+ },
+ "Statistics": {
+  "limit": 64,
+  "fit": 64,
+  "places": [
+   "smartwas div.sw-cardtitle"
+  ]
+ },
+ "Samples": {
+  "limit": 47,
+  "fit": 47,
+  "places": [
+   "smartwas span.k"
+  ]
+ },
+ "Mean": {
+  "limit": 56,
+  "fit": 56,
+  "places": [
+   "smartwas span.k"
+  ]
+ },
+ "Median": {
+  "limit": 56,
+  "fit": 56,
+  "places": [
+   "smartwas span.k"
+  ]
+ },
+ "Std Dev": {
+  "limit": 56,
+  "fit": 56,
+  "places": [
+   "smartwas span.k"
+  ]
+ },
+ "Recommendation": {
+  "limit": 64,
+  "fit": 64,
+  "places": [
+   "smartwas div.sw-cardtitle"
+  ]
+ },
+ "Confidence": {
+  "limit": 60,
+  "fit": 60,
+  "places": [
+   "smartwas span.k"
+  ]
+ },
+ "Start": {
+  "limit": 12,
+  "fit": 12,
+  "places": [
+   "smartwas #sw-start"
+  ]
+ },
+ "Stop": {
+  "limit": 12,
+  "fit": 12,
+  "places": [
+   "smartwas #sw-stop"
+  ]
+ },
+ "Apply": {
+  "limit": 12,
+  "fit": 12,
+  "places": [
+   "smartwas #sw-apply"
+  ]
+ },
+ "Field Operations": {
+  "limit": 41,
+  "fit": 41,
+  "places": [
+   "fieldops span.ln-hdr-title"
+  ]
+ },
+ "Fields and Jobs": {
+  "limit": 17,
+  "fit": 18,
+  "places": [
+   "fieldops #fo-fields",
+   "fieldsandjobs span.ln-hdr-title"
+  ]
+ },
+ "Resume Last Job": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "fieldops #fo-resumelast"
+  ]
+ },
+ "Resume Job": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "fieldops #fo-resumejob",
+   "resumejob span.ln-hdr-title"
+  ]
+ },
+ "Drive In": {
+  "limit": 16,
+  "fit": 18,
+  "places": [
+   "fieldops #fo-drivein"
+  ]
+ },
+ "Close": {
+  "limit": 10,
+  "fit": 10,
+  "places": [
+   "dlg-flags #flag-close",
+   "fieldops #fo-close",
+   "dlg-tracks #dlg-tracks-close"
+  ]
+ },
+ "AgShare": {
+  "limit": 60,
+  "fit": 60,
+  "places": [
+   "fieldops div.cfg-label"
+  ]
+ },
+ "AgShare Upload": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "fieldops #fo-agupload",
+   "agupload span.ln-hdr-title"
+  ]
+ },
+ "AgShare Download": {
+  "limit": 17,
+  "fit": 18,
+  "places": [
+   "fieldops #fo-agdownload",
+   "agdownload span.ln-hdr-title"
+  ]
+ },
+ "AgShare API": {
+  "limit": 18,
+  "fit": 18,
+  "places": [
+   "fieldops #fo-agapi",
+   "agsettings span.ln-hdr-title"
+  ]
+ },
+ "Fields": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "fieldsandjobs div.cfg-label",
+   "appsettings div.as-dirname"
+  ]
+ },
+ "Dist": {
+  "limit": 7,
+  "fit": 7,
+  "places": [
+   "fieldsandjobs span"
+  ]
+ },
+ "Open Field Only": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "fieldsandjobs #fj-openonly"
+  ]
+ },
+ "Delete Field": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "fieldsandjobs #fj-deletefield"
+  ]
+ },
+ "Creation": {
+  "limit": 24,
+  "fit": 24,
+  "places": [
+   "fieldsandjobs div.cfg-label"
+  ]
+ },
+ "New Field": {
+  "limit": 15,
+  "fit": 15,
+  "places": [
+   "fieldsandjobs #fj-newfield",
+   "newfield span.ln-hdr-title"
+  ]
+ },
+ "From Existing": {
+  "limit": 15,
+  "fit": 15,
+  "places": [
+   "fieldsandjobs #fj-fromexisting",
+   "fromexisting span.ln-hdr-title"
+  ]
+ },
+ "From ISO-XML": {
+  "limit": 15,
+  "fit": 15,
+  "places": [
+   "fieldsandjobs #fj-iso",
+   "isoimport span.ln-hdr-title"
+  ]
+ },
+ "From KML": {
+  "limit": 15,
+  "fit": 15,
+  "places": [
+   "fieldsandjobs #fj-kml",
+   "kmlimport span.ln-hdr-title"
+  ]
+ },
+ "Field name": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "newfield div.cfg-label"
+  ]
+ },
+ "Origin (current GPS)": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "newfield div.cfg-label"
+  ]
+ },
+ "The field is created at this position.": {
+  "limit": 60,
+  "fit": 60,
+  "places": [
+   "newfield #nf-poshint"
+  ]
+ },
+ "Create Field": {
+  "limit": 50,
+  "fit": 50,
+  "places": [
+   "newfield #nf-create",
+   "fromexisting #fe-create",
+   "isoimport #iso-create",
+   "kmlimport #kml-create"
+  ]
+ },
+ "Source field": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "fromexisting div.cfg-label"
+  ]
+ },
+ "New field name": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "fromexisting div.cfg-label",
+   "isoimport div.cfg-label",
+   "kmlimport div.cfg-label"
+  ]
+ },
+ "Copy": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "fromexisting div.cfg-label"
+  ]
+ },
+ "Flags": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "fromexisting #fe-flags",
+   "dlg-flags div.dlg-title"
+  ]
+ },
+ "Mapping": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "fromexisting #fe-mapping"
+  ]
+ },
+ "Lines": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "fromexisting #fe-lines"
+  ]
+ },
+ "KML file (Documents/AgOpenWeb/Import)": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "kmlimport div.cfg-label"
+  ]
+ },
+ "Recent jobs (all fields)": {
+  "limit": 60,
+  "fit": 60,
+  "places": [
+   "resumejob div.cfg-label"
+  ]
+ },
+ "Server URL": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "agsettings div.cfg-label"
+  ]
+ },
+ "API Key": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "agsettings div.cfg-label"
+  ]
+ },
+ "Enabled": {
+  "limit": 50,
+  "fit": 50,
+  "places": [
+   "agsettings #ag-enabled"
+  ]
+ },
+ "Select All": {
+  "limit": 168,
+  "fit": 168,
+  "places": [
+   "agupload #agu-selall"
+  ]
+ },
+ "Deselect All": {
+  "limit": 171,
+  "fit": 171,
+  "places": [
+   "agupload #agu-selnone"
+  ]
+ },
+ "Public": {
+  "limit": 27,
+  "fit": 27,
+  "places": [
+   "agupload #agu-public"
+  ]
+ },
+ "Upload Selected": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "agupload #agu-upload"
+  ]
+ },
+ "Refresh": {
+  "limit": 36,
+  "fit": 36,
+  "places": [
+   "agdownload #agd-refresh"
+  ]
+ },
+ "Force Overwrite": {
+  "limit": 44,
+  "fit": 44,
+  "places": [
+   "agdownload #agd-force"
+  ]
+ },
+ "Download Selected": {
+  "limit": 22,
+  "fit": 25,
+  "places": [
+   "agdownload #agd-download"
+  ]
+ },
+ "Download All": {
+  "limit": 25,
+  "fit": 25,
+  "places": [
+   "agdownload #agd-downloadall"
+  ]
+ },
+ "File / Application Menu": {
+  "limit": 39,
+  "fit": 39,
+  "places": [
+   "filemenu span.ln-hdr-title"
+  ]
+ },
+ "General": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "filemenu div.cfg-label"
+  ]
+ },
+ "Language": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "filemenu #fm-language",
+   "language span.ln-hdr-title"
+  ]
+ },
+ "Reset All Settings": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "filemenu #fm-reset"
+  ]
+ },
+ "App Configuration": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "filemenu div.cfg-label"
+  ]
+ },
+ "App Settings": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "filemenu #fm-appsettings",
+   "appsettings span.ln-hdr-title"
+  ]
+ },
+ "View All Settings": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "filemenu #fm-viewsettings",
+   "viewsettings span.ln-hdr-title"
+  ]
+ },
+ "Hotkeys": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "filemenu #fm-hotkeys",
+   "hotkeys span.ln-hdr-title"
+  ]
+ },
+ "Simulator": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "filemenu #fm-simulator",
+   "filemenu div.cfg-label"
+  ]
+ },
+ "Help & Info": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "filemenu div.cfg-label"
+  ]
+ },
+ "Help": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "filemenu #fm-help",
+   "help span.ln-hdr-title"
+  ]
+ },
+ "About": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "filemenu #fm-about",
+   "about span.ln-hdr-title"
+  ]
+ },
+ "Bug Report Dump": {
+  "limit": 22,
+  "fit": 22,
+  "places": [
+   "filemenu #fm-bugreport",
+   "bugreport span.ln-hdr-title"
+  ]
+ },
+ "Units": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "appsettings div.cfg-label"
+  ]
+ },
+ "Metric": {
+  "limit": 56,
+  "fit": 56,
+  "places": [
+   "appsettings #as-metric"
+  ]
+ },
+ "Imperial": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "appsettings #as-imperial"
+  ]
+ },
+ "System": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "appsettings div.cfg-label"
+  ]
+ },
+ "On-screen Kbd": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "appsettings button.sa-tgl"
+  ]
+ },
+ "Start Fullscreen": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "appsettings button.sa-tgl"
+  ]
+ },
+ "Elevation Log": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "appsettings button.sa-tgl"
+  ]
+ },
+ "App Directories": {
+  "limit": 79,
+  "fit": 79,
+  "places": [
+   "appsettings div.cfg-label"
+  ]
+ },
+ "All": {
+  "limit": 7,
+  "fit": 7,
+  "places": [
+   "dlg-quickab span.dlg-bigtxt",
+   "logviewer button.log-filt"
+  ]
+ },
+ "Debug": {
+  "limit": 16,
+  "fit": 16,
+  "places": [
+   "logviewer button.log-filt"
+  ]
+ },
+ "Info": {
+  "limit": 16,
+  "fit": 16,
+  "places": [
+   "logviewer button.log-filt"
+  ]
+ },
+ "Warn": {
+  "limit": 16,
+  "fit": 16,
+  "places": [
+   "logviewer button.log-filt"
+  ]
+ },
+ "Error": {
+  "limit": 16,
+  "fit": 16,
+  "places": [
+   "logviewer button.log-filt"
+  ]
+ },
+ "Reset to Defaults": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "hotkeys #hk-reset"
+  ]
+ },
+ "GitHub Repository": {
+  "limit": 48,
+  "fit": 48,
+  "places": [
+   "help button.fo-btn"
+  ]
+ },
+ "Discussions / Forum": {
+  "limit": 48,
+  "fit": 48,
+  "places": [
+   "help button.fo-btn"
+  ]
+ },
+ "Check for Updates": {
+  "limit": 48,
+  "fit": 48,
+  "places": [
+   "help button.fo-btn"
+  ]
+ },
+ "YouTube Tutorials": {
+  "limit": 48,
+  "fit": 48,
+  "places": [
+   "help button.fo-btn"
+  ]
+ },
+ "AgOpenWeb": {
+  "limit": 34,
+  "fit": 34,
+  "places": [
+   "about div.ab-title"
+  ]
+ },
+ "Cross-Platform Agricultural GPS Guidance": {
+  "limit": 59,
+  "fit": 59,
+  "places": [
+   "about div.ab-desc"
+  ]
+ },
+ "Based on AgOpenGPS by Brian Tee": {
+  "limit": 59,
+  "fit": 59,
+  "places": [
+   "about div.ab-desc"
+  ]
+ },
+ "Title": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "bugreport div.cfg-label"
+  ]
+ },
+ "Description": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "bugreport div.cfg-label"
+  ]
+ },
+ "Create Bug Report": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "bugreport #br-submit"
+  ]
+ },
+ "Enter GPS Coordinates": {
+  "limit": 42,
+  "fit": 42,
+  "places": [
+   "dlg-simcoords div.dlg-title"
+  ]
+ },
+ "Latitude (−90 to 90)": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "dlg-latlonab label.dlg-label",
+   "dlg-simcoords label.dlg-label",
+   "dlg-latlonab label.dlg-label"
+  ]
+ },
+ "Longitude (−180 to 180)": {
+  "limit": 21,
+  "fit": 23,
+  "places": [
+   "dlg-latlonab label.dlg-label",
+   "dlg-simcoords label.dlg-label",
+   "dlg-latlonab label.dlg-label"
+  ]
+ },
+ "Cancel": {
+  "limit": 13,
+  "fit": 13,
+  "places": [
+   "dlg-unsavedcov #ucov-cancel",
+   "dlg-simcoords #dlg-cancel",
+   "dlg-drivepick #dp-cancel",
+   "dlg-confirm #dlgc-cancel",
+   "dlg-quickab #dlg-qab-cancel",
+   "dlg-latlonab #ll-cancel",
+   "steer wizard #wz-cancel"
+  ]
+ },
+ "OK": {
+  "limit": 19,
+  "fit": 19,
+  "places": [
+   "dlg-simcoords #dlg-ok"
+  ]
+ },
+ "Fields Nearby": {
+  "limit": 42,
+  "fit": 42,
+  "places": [
+   "dlg-drivepick div.dlg-title"
+  ]
+ },
+ "Confirm": {
+  "limit": 19,
+  "fit": 19,
+  "places": [
+   "dlg-confirm #dlgc-ok",
+   "dlg-confirm #dlgc-title"
+  ]
+ },
+ "Unsaved Coverage": {
+  "limit": 42,
+  "fit": 42,
+  "places": [
+   "dlg-unsavedcov div.dlg-title"
+  ]
+ },
+ "Discard": {
+  "limit": 13,
+  "fit": 13,
+  "places": [
+   "dlg-unsavedcov #ucov-discard"
+  ]
+ },
+ "Save to Job": {
+  "limit": 13,
+  "fit": 13,
+  "places": [
+   "dlg-unsavedcov #ucov-save"
+  ]
+ },
+ "Quick AB Line": {
+  "limit": 42,
+  "fit": 42,
+  "places": [
+   "dlg-quickab div.dlg-title"
+  ]
+ },
+ "By Driving": {
+  "limit": 59,
+  "fit": 59,
+  "places": [
+   "dlg-quickab div.dlg-sub"
+  ]
+ },
+ "Drive AB": {
+  "limit": 12,
+  "fit": 12,
+  "places": [
+   "dlg-quickab span"
+  ]
+ },
+ "Curve": {
+  "limit": 12,
+  "fit": 12,
+  "places": [
+   "dlg-quickab span",
+   "dlg-quickab span"
+  ]
+ },
+ "A+ heading": {
+  "limit": 42,
+  "fit": 42,
+  "places": [
+   "dlg-quickab label.qab-heading"
+  ]
+ },
+ "First pass": {
+  "limit": 36,
+  "fit": 36,
+  "places": [
+   "dlg-quickab div.qab-heading"
+  ]
+ },
+ "From Field Boundary": {
+  "limit": 59,
+  "fit": 59,
+  "places": [
+   "dlg-quickab div.dlg-sub"
+  ]
+ },
+ "AB": {
+  "limit": 7,
+  "fit": 7,
+  "places": [
+   "dlg-quickab span.dlg-bigtxt",
+   "dlg-quickab span.dlg-bigtxt"
+  ]
+ },
+ "Longest Edge": {
+  "limit": 12,
+  "fit": 12,
+  "places": [
+   "dlg-quickab span"
+  ]
+ },
+ "Bnd. Curve": {
+  "limit": 12,
+  "fit": 12,
+  "places": [
+   "dlg-quickab span"
+  ]
+ },
+ "All Edges": {
+  "limit": 12,
+  "fit": 12,
+  "places": [
+   "dlg-quickab span"
+  ]
+ },
+ "Draw on Map": {
+  "limit": 59,
+  "fit": 59,
+  "places": [
+   "dlg-quickab div.dlg-sub"
+  ]
+ },
+ "Straight": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "dlg-quickab span"
+  ]
+ },
+ "By Coordinates": {
+  "limit": 59,
+  "fit": 59,
+  "places": [
+   "dlg-quickab div.dlg-sub"
+  ]
+ },
+ "Lat/Lon + Heading": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "dlg-quickab span"
+  ]
+ },
+ "Lat/Lon A, B": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "dlg-quickab span"
+  ]
+ },
+ "Use current position": {
+  "limit": 57,
+  "fit": 57,
+  "places": [
+   "dlg-latlonab button.dlg-btn",
+   "dlg-latlonab button.dlg-btn"
+  ]
+ },
+ "Heading (degrees true)": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "dlg-latlonab label.dlg-label"
+  ]
+ },
+ "Create": {
+  "limit": 23,
+  "fit": 23,
+  "places": [
+   "dlg-latlonab #ll-ok"
+  ]
+ },
+ "AB Line Tracks": {
+  "limit": 53,
+  "fit": 53,
+  "places": [
+   "dlg-tracks div.dlg-title"
+  ]
+ },
+ "Track": {
+  "limit": 47,
+  "fit": 47,
+  "places": [
+   "dlg-tracks span"
+  ]
+ },
+ "Active": {
+  "limit": 9,
+  "fit": 9,
+  "places": [
+   "dlg-tracks span"
+  ]
+ },
+ "Place Here": {
+  "limit": 10,
+  "fit": 10,
+  "places": [
+   "dlg-flags #flag-placehere"
+  ]
+ },
+ "AutoSteer Configuration Wizard": {
+  "limit": 139,
+  "fit": 139,
+  "places": [
+   "steer wizard span.wz-title"
+  ]
+ },
+ "Configuration Wizard": {
+  "limit": 183,
+  "fit": 183,
+  "places": [
+   "steer wizard div.s"
+  ]
+ },
+ "WAS:": {
+  "limit": 132,
+  "fit": 132,
+  "places": [
+   "steer wizard span"
+  ]
+ },
+ "Roll:": {
+  "limit": 130,
+  "fit": 130,
+  "places": [
+   "steer wizard span"
+  ]
+ },
+ "GPS:": {
+  "limit": 131,
+  "fit": 131,
+  "places": [
+   "steer wizard span"
+  ]
+ },
+ "Speed:": {
+  "limit": 132,
+  "fit": 132,
+  "places": [
+   "steer wizard span"
+  ]
+ },
+ "PWM:": {
+  "limit": 132,
+  "fit": 132,
+  "places": [
+   "steer wizard span"
+  ]
+ },
+ "Back": {
+  "limit": 142,
+  "fit": 142,
+  "places": [
+   "steer wizard #wz-back"
+  ]
+ },
+ "Next": {
+  "limit": 142,
+  "fit": 142,
+  "places": [
+   "steer wizard #wz-next"
+  ]
+ },
+ "Next Boundary Dist": {
+  "limit": 19,
+  "fit": 19,
+  "places": [
+   "screenalerts button.sa-tgl"
+  ]
+ },
+ "Place on Map": {
+  "limit": 13,
+  "fit": 13,
+  "places": [
+   "dlg-flags #flag-placemap"
+  ]
+ }
+}
