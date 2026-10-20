@@ -439,10 +439,18 @@ public partial class MainViewModel
 
             Track newTrack;
 
+            // A drawn line is the edge of the work, like a driven one: the first pass (#345)
+            double refDist = RefSideOffset();
+
             // If only 2 points, create a straight AB line
             if (_drawnCurvePoints.Count == 2)
             {
-                var (extendedA, extendedB) = ExtendABLinePastBoundary(_drawnCurvePoints[0], _drawnCurvePoints[1]);
+                var p0 = _drawnCurvePoints[0];
+                var p1 = _drawnCurvePoints[1];
+                double h = Math.Atan2(p1.Easting - p0.Easting, p1.Northing - p0.Northing);
+                var (aE, aN) = ShiftRight(p0.Easting, p0.Northing, h, refDist);
+                var (bE, bN) = ShiftRight(p1.Easting, p1.Northing, h, refDist);
+                var (extendedA, extendedB) = ExtendABLinePastBoundary(new Vec3(aE, aN, h), new Vec3(bE, bN, h));
                 newTrack = Track.FromABLine(
                     $"AB_{extendedA.Heading * 180.0 / Math.PI:F1} {DateTime.Now:HH:mm:ss}",
                     extendedA,
@@ -454,7 +462,8 @@ public partial class MainViewModel
             {
                 // 3+ points - smooth the curve using Catmull-Rom spline, then extend past boundary
                 var smoothedPoints = Models.Guidance.CurveProcessing.SmoothWithCatmullRom(_drawnCurvePoints, pointsPerSegment: 10);
-                smoothedPoints = Models.Guidance.CurveProcessing.CalculateHeadings(smoothedPoints);
+                smoothedPoints = Models.Guidance.CurveProcessing.CreateOffsetCurve(
+                    Models.Guidance.CurveProcessing.CalculateHeadings(smoothedPoints), refDist);
                 var extendedPoints = ExtendCurvePastBoundary(smoothedPoints);
                 newTrack = Track.FromCurve(
                     $"DrawnCurve {DateTime.Now:HH:mm:ss}",
@@ -589,8 +598,8 @@ public partial class MainViewModel
                     var heading = CalculateHeading(PendingPointA, pointToSet);
                     var headingRadians = heading * Math.PI / 180.0;
 
-                    // A driven line is the edge of the work: move it to the first pass (#345)
-                    double refDist = CurrentABCreationMode == ABCreationMode.DriveAB ? RefSideOffset() : 0;
+                    // A driven or drawn line is the edge of the work: move it to the first pass (#345)
+                    double refDist = RefSideOffset();
                     var (aE, aN) = ShiftRight(PendingPointA.Easting, PendingPointA.Northing, headingRadians, refDist);
                     var (bE, bN) = ShiftRight(pointToSet.Easting, pointToSet.Northing, headingRadians, refDist);
 
@@ -1246,17 +1255,7 @@ public partial class MainViewModel
 
             var p1 = pts[bestIdx];
             var p2 = pts[(bestIdx + 1) % pts.Count];
-            double heading = Math.Atan2(p2.Easting - p1.Easting, p2.Northing - p1.Northing);
-
-            // Extend 50m past both ends for full field coverage
-            var a = new Models.Base.Vec3(
-                p1.Easting - Math.Sin(heading) * 50,
-                p1.Northing - Math.Cos(heading) * 50,
-                heading);
-            var b = new Models.Base.Vec3(
-                p2.Easting + Math.Sin(heading) * 50,
-                p2.Northing + Math.Cos(heading) * 50,
-                heading);
+            var (a, b) = EdgeFirstPass(p1.Easting, p1.Northing, p2.Easting, p2.Northing, BoundaryInsideIsRight(pts));
 
             var track = new Models.Track.Track
             {
@@ -1414,6 +1413,7 @@ public partial class MainViewModel
                 if (Math.Abs(turn) > CornerTurnThreshold) corners.Add(i);
             }
 
+            bool insideRight = BoundaryInsideIsRight(pts);
             int created = 0;
             if (corners.Count >= 2)
             {
@@ -1426,9 +1426,7 @@ public partial class MainViewModel
                     double dist = Math.Sqrt(dx * dx + dy * dy);
                     if (dist < 5.0) continue;
 
-                    double heading = Math.Atan2(dx, dy);
-                    var a = new Models.Base.Vec3(pa.Easting - Math.Sin(heading) * 50, pa.Northing - Math.Cos(heading) * 50, heading);
-                    var b = new Models.Base.Vec3(pb.Easting + Math.Sin(heading) * 50, pb.Northing + Math.Cos(heading) * 50, heading);
+                    var (a, b) = EdgeFirstPass(pa.Easting, pa.Northing, pb.Easting, pb.Northing, insideRight);
                     SavedTracks.Add(new Models.Track.Track
                     {
                         Name = $"Edge {created + 1} ({dist:F0}m)",
@@ -1741,18 +1739,48 @@ public partial class MainViewModel
     /// FormQuickAB nudHeading) (#335).
     /// </summary>
     /// <summary>
-    /// Which side of a driven line (A+, Drive AB, recorded curve) the first pass lies on,
-    /// AgOpenGPS's "ref side" (#345). The driven line is the edge of the work; the track is
-    /// saved half a working width to this side, plus the tool offset. Drawn lines aren't moved.
+    /// Which side of a new line the first pass lies on, AgOpenGPS's "ref side" (#345). The
+    /// line as driven, drawn or typed is the edge of the work; the track is saved half a
+    /// working width to this side, plus the tool offset. Lines from the boundary always go
+    /// inward instead (<see cref="EdgeFirstPass"/>).
     /// </summary>
     public bool TrackRefSideRight { get; set; } = true;
 
     /// <summary>Distance (m, + = right of heading) a driven line moves to become the first
     /// pass: AgOpenGPS FormBuildTracks/FormQuickAB <c>(width - overlap) * ±0.5 + offset</c>.</summary>
-    private double RefSideOffset()
+    private double RefSideOffset() => RefSideOffset(TrackRefSideRight);
+
+    private double RefSideOffset(bool right)
     {
         double half = (ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap) * 0.5;
-        return (TrackRefSideRight ? half : -half) + ConfigStore.Tool.Offset;
+        return (right ? half : -half) + ConfigStore.Tool.Offset;
+    }
+
+    /// <summary>True when the boundary runs clockwise, so the field is to the right of each
+    /// edge as walked in point order (signed area, E/N).</summary>
+    private static bool BoundaryInsideIsRight(IReadOnlyList<Models.BoundaryPoint> pts)
+    {
+        double area2 = 0;
+        for (int i = 0; i < pts.Count; i++)
+        {
+            var p = pts[i];
+            var q = pts[(i + 1) % pts.Count];
+            area2 += p.Easting * q.Northing - q.Easting * p.Northing;
+        }
+        return area2 < 0;
+    }
+
+    /// <summary>The first pass along a boundary edge p→q: moved inward half a working width
+    /// (plus the tool offset) so the implement stays inside the fence (#345, as the boundary
+    /// curve does, #422), and extended 50 m past both ends.</summary>
+    private (Vec3 A, Vec3 B) EdgeFirstPass(double pE, double pN, double qE, double qN, bool insideRight)
+    {
+        double heading = Math.Atan2(qE - pE, qN - pN);
+        double dist = RefSideOffset(insideRight);
+        var (aE, aN) = ShiftRight(pE, pN, heading, dist);
+        var (bE, bN) = ShiftRight(qE, qN, heading, dist);
+        return (new Vec3(aE - Math.Sin(heading) * 50, aN - Math.Cos(heading) * 50, heading),
+                new Vec3(bE + Math.Sin(heading) * 50, bN + Math.Cos(heading) * 50, heading));
     }
 
     private static (double E, double N) ShiftRight(double e, double n, double headingRad, double dist) =>
@@ -1785,7 +1813,8 @@ public partial class MainViewModel
         if (!TryLatLonToLocal(lat, lon, out var a)) return;
 
         double deg = WrapDegrees(headingDeg);
-        var track = AddABTrack(string.Create(CultureInfo.InvariantCulture, $"A+ {deg:0.#}°"), a.Easting, a.Northing, deg);
+        var (e, n) = ShiftRight(a.Easting, a.Northing, deg * Math.PI / 180.0, RefSideOffset());
+        var track = AddABTrack(string.Create(CultureInfo.InvariantCulture, $"A+ {deg:0.#}°"), e, n, deg);
         StatusMessage = $"Line '{track.Name}' created";
     }
 
@@ -1805,7 +1834,8 @@ public partial class MainViewModel
         }
 
         double deg = WrapDegrees(Math.Atan2(de, dn) * 180.0 / Math.PI);
-        var track = AddABTrack(string.Create(CultureInfo.InvariantCulture, $"AB {deg:0.#}°"), a.Easting, a.Northing, deg);
+        var (e, n) = ShiftRight(a.Easting, a.Northing, deg * Math.PI / 180.0, RefSideOffset());
+        var track = AddABTrack(string.Create(CultureInfo.InvariantCulture, $"AB {deg:0.#}°"), e, n, deg);
         StatusMessage = $"Line '{track.Name}' created";
     }
 

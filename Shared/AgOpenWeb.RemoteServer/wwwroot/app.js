@@ -1876,7 +1876,7 @@ for (const b of qabRefSide.children)
 document.getElementById('dlg-quickab').querySelectorAll('[data-qab]').forEach(b => b.addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation(); closeDialog();
   const m = b.dataset.qab;
-  if (m === 'aPlus' || m === 'driveAB' || m === 'recordCurve') transport.send('track.refSide|' + qabSide);
+  transport.send('track.refSide|' + qabSide); // every new line starts at the first pass (#345)
   if (m === 'aPlus') {
     // A+ builds an AB line from the vehicle's current position + heading. It needs a GPS
     // fix; the host bails silently without one, so give feedback here (StatusMessage isn't

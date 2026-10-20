@@ -90,9 +90,10 @@ public class APlusHeadingTests
 
         vm.CreateLatLonHeadingLine(52.001, 5.002, 33.3);
 
+        // A is abreast of the typed point (moved sideways to the first pass, #345)
         var a = vm.SelectedTrack!.Points[0];
-        Assert.That(a.Easting, Is.EqualTo(expectedA.Easting).Within(1e-9));
-        Assert.That(a.Northing, Is.EqualTo(expectedA.Northing).Within(1e-9));
+        double h = 33.3 * Math.PI / 180;
+        Assert.That((a.Easting - expectedA.Easting) * Math.Sin(h) + (a.Northing - expectedA.Northing) * Math.Cos(h), Is.EqualTo(0).Within(1e-9));
         Assert.That(LineHeadingDeg(vm), Is.EqualTo(33.3).Within(1e-9));
         Assert.That(vm.SelectedTrack!.Name, Is.EqualTo("A+ 33.3°"));
     }
@@ -108,8 +109,10 @@ public class APlusHeadingTests
 
         vm.CreateLatLonABLine(52.0, 5.0, 52.001, 5.001);
 
-        Assert.That(vm.SelectedTrack!.Points[0].Easting, Is.EqualTo(a.Easting).Within(1e-9));
-        Assert.That(vm.SelectedTrack!.Points[0].Northing, Is.EqualTo(a.Northing).Within(1e-9));
+        // A is abreast of the typed A (moved sideways to the first pass, #345)
+        var p0 = vm.SelectedTrack!.Points[0];
+        double h = expected * Math.PI / 180;
+        Assert.That((p0.Easting - a.Easting) * Math.Sin(h) + (p0.Northing - a.Northing) * Math.Cos(h), Is.EqualTo(0).Within(1e-9));
         Assert.That(LineHeadingDeg(vm), Is.EqualTo(expected).Within(1e-9));
         Assert.That(vm.SelectedTrack!.Name, Does.StartWith("AB "));
     }
