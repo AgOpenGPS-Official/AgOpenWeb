@@ -83,35 +83,63 @@ public partial class MainViewModel
         foreach (var p in boundary.Points) rawVec2.Add(new Models.Base.Vec2(p.Easting, p.Northing));
         var offset = insetDistance > 0.05 ? _polygonOffsetService.CreateInwardOffset(rawVec2, insetDistance) : null;
         var ring = (offset != null && offset.Count >= 3) ? offset : rawVec2;
+        if (ring.Count > 3 && ring[0].Easting == ring[^1].Easting && ring[0].Northing == ring[^1].Northing)
+            ring = ring.GetRange(0, ring.Count - 1); // a closing duplicate would be a zero-length side
         int n = ring.Count;
 
-        int NearestIndex(double e, double north)
+        // Where a tap lands on the ring: the side (vertex i → i+1) and the point on it. A tap
+        // anywhere along a side counts, not just at a corner, so a boundary with few vertices
+        // (a rectangle) can still give a segment of one side.
+        (int side, double t, Models.Base.Vec2 pt) Project(double e, double north)
         {
-            int best = 0; double bd = double.MaxValue;
+            (int, double, Models.Base.Vec2) best = (0, 0, ring[0]); double bd = double.MaxValue;
             for (int i = 0; i < n; i++)
             {
-                double dx = ring[i].Easting - e, dy = ring[i].Northing - north;
-                double d = dx * dx + dy * dy;
-                if (d < bd) { bd = d; best = i; }
+                var a = ring[i]; var b = ring[(i + 1) % n];
+                double dx = b.Easting - a.Easting, dy = b.Northing - a.Northing, l2 = dx * dx + dy * dy;
+                double t = l2 > 0 ? Math.Clamp(((e - a.Easting) * dx + (north - a.Northing) * dy) / l2, 0, 1) : 0;
+                var q = new Models.Base.Vec2(a.Easting + t * dx, a.Northing + t * dy);
+                double d = (q.Easting - e) * (q.Easting - e) + (q.Northing - north) * (q.Northing - north);
+                if (d < bd) { bd = d; best = (i, t, q); }
             }
             return best;
         }
 
-        int ai = NearestIndex(aE, aN);
-        int bi = NearestIndex(bE, bN);
-        if (ai == bi) { StatusMessage = "Pick two different points on the boundary"; return; }
+        var pa = Project(aE, aN);
+        var pb = Project(bE, bN);
+        if (GeometryMath.Distance(pa.pt, pb.pt) < 1.0) { ReportFailure("Pick two different points on the boundary"); return; }
 
-        // Walk the SHORTER arc A→B around the closed ring (mirrors FormABDraw's wrap check).
-        int forward = (bi - ai + n) % n;
-        int step = forward <= n - forward ? 1 : -1;
-        var seg = new System.Collections.Generic.List<Models.Base.Vec3>();
-        for (int i = ai; ; i = (i + step + n) % n)
+        // A → B around the ring either way, keeping the shorter (mirrors FormABDraw's wrap check).
+        System.Collections.Generic.List<Models.Base.Vec2> Walk(int dir)
         {
-            seg.Add(new Models.Base.Vec3(ring[i].Easting, ring[i].Northing, 0));
-            if (i == bi) break;
+            var path = new System.Collections.Generic.List<Models.Base.Vec2> { pa.pt };
+            bool sameSide = pa.side == pb.side && (dir > 0 ? pa.t <= pb.t : pb.t <= pa.t);
+            if (!sameSide)
+            {
+                int k = dir > 0 ? (pa.side + 1) % n : pa.side;
+                int last = dir > 0 ? pb.side : (pb.side + 1) % n;
+                while (true)
+                {
+                    path.Add(ring[k]);
+                    if (k == last) break;
+                    k = (k + dir + n) % n;
+                }
+            }
+            path.Add(pb.pt);
+            return path;
         }
-
-        if (seg.Count < 3) { StatusMessage = "Segment too short for a curve"; return; }
+        double Length(System.Collections.Generic.List<Models.Base.Vec2> path)
+        {
+            double len = 0;
+            for (int i = 1; i < path.Count; i++) len += GeometryMath.Distance(path[i - 1], path[i]);
+            return len;
+        }
+        var fwd = Walk(1); var back = Walk(-1);
+        var arc = Length(fwd) <= Length(back) ? fwd : back;
+        var seg = new System.Collections.Generic.List<Models.Base.Vec3>(arc.Count + 1);
+        foreach (var p in arc) seg.Add(new Models.Base.Vec3(p.Easting, p.Northing, 0));
+        if (seg.Count == 2) // both taps on one side: a straight run, still a curve track
+            seg.Insert(1, new Models.Base.Vec3((seg[0].Easting + seg[1].Easting) / 2, (seg[0].Northing + seg[1].Northing) / 2, 0));
 
         // Round the boundary's sharp corners so the tractor can actually drive it (Chaikin
         // corner-cutting), then heading per point (guidance's forward test keys off it).

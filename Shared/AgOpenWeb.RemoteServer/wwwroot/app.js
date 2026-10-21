@@ -1591,24 +1591,15 @@ function startRecordCurve() {              // GPS: record by driving — Set Sta
   hintEl.classList.add('show'); setAbHint();
 }
 // "Bnd. Curve" — tap point A then point B on the boundary; the host walks the shorter arc
-// between them and builds a curve following the boundary. Points snap to the nearest boundary
-// vertex for display; the host re-snaps authoritatively.
-function nearestBoundaryPt(e, n) {
-  let best = null, bd = Infinity;
-  const bs = scene && scene.boundaries;
-  if (bs) for (const ring of bs) for (const p of ring) {
-    const dx = p.e - e, dy = p.n - n, d = dx * dx + dy * dy;
-    if (d < bd) { bd = d; best = p; }
-  }
-  return best ? { e: best.e, n: best.n } : { e, n };
-}
+// between them and builds a curve following the boundary. Each tap lands on the fence where
+// it's nearest (a corner when one is close) for display; the host projects it again.
 function startBoundaryCurve() {
   abFlow = 'boundaryCurve'; drawPts = [];
   showAbBar(false, false, false);          // draw toolbar shows just Cancel
   startMapTap({ hint: tr('Tap point A on the boundary'), onTap: boundaryCurveTap });
 }
 function boundaryCurveTap(e, n) {
-  drawPts.push(nearestBoundaryPt(e, n));   // snap A/B to the nearest boundary vertex (dot shown)
+  drawPts.push(snapToFence(e, n, Infinity)); // A/B on the fence (dot shown)
   if (drawPts.length < 2) { hintEl.textContent = tr('Tap point B on the boundary'); return; }
   const a = drawPts[0], b = drawPts[1];
   transport.send('track.boundaryCurveSeg|' + a.e.toFixed(3) + ',' + a.n.toFixed(3) + ',' + b.e.toFixed(3) + ',' + b.n.toFixed(3));
@@ -1620,12 +1611,12 @@ function boundaryCurveTap(e, n) {
 // lies on it and its first pass is half a width inside. Measured on screen, so the reach
 // is the same at any zoom or tilt.
 const FENCE_SNAP_PX = 24;
-function snapToFence(e, n) {
+function snapToFence(e, n, reach = FENCE_SNAP_PX) {
   const bs = scene && scene.boundaries;
   if (!bs) return { e, n };
   const t = w2s(e, n);
   const px = (q) => { const s = w2s(q.e, q.n); return Math.hypot(s[0] - t[0], s[1] - t[1]); };
-  let corner = null, cd = FENCE_SNAP_PX, edge = null, ed = FENCE_SNAP_PX;
+  let corner = null, cd = FENCE_SNAP_PX, edge = null, ed = reach;
   for (const ring of bs) for (let i = 0; i < ring.length; i++) {
     const a = ring[i], b = ring[(i + 1) % ring.length];
     const d = px(a);
