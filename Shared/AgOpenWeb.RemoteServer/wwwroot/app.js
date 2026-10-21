@@ -421,7 +421,7 @@ const transport = RemoteTransport.create({
     cov.pending.push({ cells: msg.cells, t: performance.now() });
   },
   onCoverageEdge(polylines) { coverageEdges = polylines; }, // crisp worked-area perimeter (~2 Hz)
-  onStatusBar(s) { statusBar = s; syncUnits(); if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); syncDualHeadingWarning(s); syncGpsLost(s); },
+  onStatusBar(s) { statusBar = s; renderSprayerBar(); syncUnits(); if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); syncDualHeadingWarning(s); syncGpsLost(s); },
   onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
@@ -563,6 +563,7 @@ const Sounds = (() => {
     'SectionOff', // 9 SectionOff
     'Headland',   // 10 Headland
     'Alarm10',    // 11 YouTurnApproach
+    'Alarm10',    // 12 SprayerAlarm
   ];
   const cache = new Map();   // name -> HTMLAudioElement (fallback path)
   let unlocked = false;
@@ -4822,6 +4823,49 @@ function renderIsobusSections() {
   }
   const cells = row.querySelectorAll('.sec-iso-cell');
   for (let i = 0; i < cells.length; i++) cells[i].classList.toggle('on', !!iso.reported[i]);
+}
+// Sprayer readout (PGN 160 from the machine module): pressure, flow, L/ha and the sections
+// the module has open, checked by the host against the nozzles of those sections. The
+// alarm turns the strip red; the host sounds it. Shown while the module is heard.
+const sprayerBar = document.getElementById('sprayerbar');
+const SPRAYER_ALARMS = [ // SprayerAlarms bits, in order
+  [1, tr('Low pressure')], [2, tr('High pressure')], [4, tr('Flow too low')], [8, tr('Flow too high')],
+  [16, tr('Flow with the sections off')], [32, tr('No data from the sprayer')],
+];
+function renderSprayerBar() {
+  const sp = statusBar && statusBar.sprayer;
+  sprayerBar.classList.toggle('open', !!sp);
+  if (!sp) return;
+  const nCells = Math.max(1, Math.min(8, (config && config.tool && config.tool.numSections) || 5));
+  if (+sprayerBar.dataset.n !== nCells) {
+    sprayerBar.dataset.n = nCells;
+    sprayerBar.innerHTML = '<div class="spr-row"><span class="spr-val" translate="no"></span><div class="spr-cells"></div></div>'
+      + '<div class="spr-row"><span class="spr-note"></span></div><div class="spr-msg"></div>';
+    const val = sprayerBar.querySelector('.spr-val'); // value + unit pairs; units are symbols, not text
+    for (const [cls, unit] of [['spr-p', ' bar  '], ['spr-f', ' L/min  '], ['spr-r', ' L/ha']]) {
+      const b = document.createElement('b'); b.className = cls; val.appendChild(b);
+      val.appendChild(document.createTextNode(unit));
+    }
+    const cells = sprayerBar.querySelector('.spr-cells');
+    for (let i = 0; i < nCells; i++) { const c = document.createElement('div'); c.className = 'spr-cell'; cells.appendChild(c); }
+  }
+  const cells = sprayerBar.querySelectorAll('.spr-cell');
+  for (let i = 0; i < cells.length; i++) cells[i].classList.toggle('on', ((sp.sections >> i) & 1) === 1);
+  // L/ha = L/min ÷ (m/s × m) × 10000 m²/ha ÷ 60 s/min; not while (nearly) stopped.
+  const speed = lastTick ? lastTick.speed : 0;
+  const lha = sp.openWidthM > 0 && speed > 0.3 ? sp.flowLpm / (speed * sp.openWidthM) * 10000 / 60 : NaN;
+  sprayerBar.querySelector('.spr-p').textContent = sp.pressureBar.toFixed(1);
+  sprayerBar.querySelector('.spr-f').textContent = sp.flowLpm.toFixed(1);
+  sprayerBar.querySelector('.spr-r').textContent = Number.isFinite(lha) ? Math.round(lha) : '—';
+  const note = [];
+  if (Number.isFinite(sp.expectedFlowLpm) && sp.sections)
+    note.push(tr('expected {f} L/min ({n} nozzles)', { f: sp.expectedFlowLpm.toFixed(1), n: sp.openNozzles }));
+  note.push(sp.totalLitres.toFixed(0) + ' L');
+  if (!sp.masterOn) note.push(tr('master off'));
+  sprayerBar.querySelector('.spr-note').textContent = note.join(' · ');
+  const msgs = SPRAYER_ALARMS.filter(([bit]) => sp.alarms & bit).map(([, text]) => text);
+  sprayerBar.querySelector('.spr-msg').textContent = msgs.join(' · ');
+  sprayerBar.classList.toggle('alarm', msgs.length > 0);
 }
 // Bottom nav (Phase 8). Swap icons only on change; reflect Tick toggle state.
 function bnIcon(img, name) { const p = '/icons/' + name; if (img && !img.src.endsWith(p)) img.src = p; }

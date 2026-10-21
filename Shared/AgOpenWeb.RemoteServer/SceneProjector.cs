@@ -50,6 +50,7 @@ public sealed class SceneProjector
     public System.Func<(string Sentence, bool DualHeadingMissing)>? GpsSourceProvider { get; set; }
     // ISOBUS task controller heartbeat (#312). Host-supplied; null while none is heard.
     public System.Func<IsobusDto?>? IsobusProvider { get; set; }
+    public System.Func<SprayerDto?>? SprayerProvider { get; set; }
     // Field data card (#321). Host-supplied; null with no field open.
     public System.Func<FieldDataDto?>? FieldDataProvider { get; set; }
     // System Data card (Network IO → GPS): attitude, heading sources, sentence rate and the
@@ -439,7 +440,8 @@ public sealed class SceneProjector
             IsobusProvider?.Invoke(),
             FieldDataProvider?.Invoke(),
             cfg.SendCorrectedPosition,
-            c.ScanReplySubnet ?? "");
+            c.ScanReplySubnet ?? "",
+            SprayerProvider?.Invoke());
     }
 
     // Read live for every status frame, so "seconds since the last one" keeps counting
@@ -789,7 +791,9 @@ public sealed class SceneProjector
             // Line = the field's actual start pass (tram settings live with the field), 1-based.
             new TramConfigDto(g.TramPasses, g.TramDisplay, _config.Tram.StartPass + 1, _config.Tram.TramWidth),
             new MachineConfigDto(m.HydraulicLiftEnabled, m.RaiseTime, m.LookAhead, m.LowerTime, m.InvertRelay,
-                m.User1Value, m.User2Value, m.User3Value, m.User4Value, pins),
+                m.User1Value, m.User2Value, m.User3Value, m.User4Value, pins,
+                m.SprayerNozzleSpacing, m.SprayerNozzleFlow, m.SprayerReferencePressure,
+                m.SprayerMinPressure, m.SprayerMaxPressure, m.SprayerFlowTolerance),
             BuildDisplay(), BuildAutoSteer());
     }
 
@@ -897,6 +901,9 @@ public sealed class SceneProjector
         h = h * 31 + _config.Tram.StartPass * 19 + _config.Tram.TramWidth.GetHashCode(); // #110
         h = h * 31 + (mc.HydraulicLiftEnabled ? 1 : 0) + mc.RaiseTime * 7 + mc.LowerTime * 11 + (mc.InvertRelay ? 64 : 0)
               + mc.User1Value + mc.User2Value * 3 + mc.User3Value * 5 + mc.User4Value * 7;
+        h = h * 31 + mc.SprayerNozzleSpacing.GetHashCode() + mc.SprayerNozzleFlow.GetHashCode() * 3
+              + mc.SprayerReferencePressure.GetHashCode() * 5 + mc.SprayerMinPressure.GetHashCode() * 7
+              + mc.SprayerMaxPressure.GetHashCode() * 11 + mc.SprayerFlowTolerance * 13;
         for (int i = 0; i < 24; i++) h = h * 31 + (int)mc.GetPinAssignment(i);
         // Screen & Alerts (Display).
         var dp = _config.Display;

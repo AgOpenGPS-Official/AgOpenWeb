@@ -106,6 +106,58 @@ public class MachineConfig : ObservableObject
         set => SetProperty(ref _user4Value, value);
     }
 
+    // Sprayer readout (SprayerService): what the machine module's PGN 160 is checked against.
+    // The nozzles of a section are its width over the nozzle spacing.
+
+    private double _sprayerNozzleSpacing = 0.5;
+    /// <summary>Distance between nozzles on the boom, m. 0 = no flow check.</summary>
+    public double SprayerNozzleSpacing
+    {
+        get => _sprayerNozzleSpacing;
+        set => SetProperty(ref _sprayerNozzleSpacing, value);
+    }
+
+    private double _sprayerNozzleFlow = 1.6;
+    /// <summary>One nozzle's flow at <see cref="SprayerReferencePressure"/>, L/min (the
+    /// nozzle chart; ISO red 04 = 1.6 L/min at 3 bar). 0 = no flow check.</summary>
+    public double SprayerNozzleFlow
+    {
+        get => _sprayerNozzleFlow;
+        set => SetProperty(ref _sprayerNozzleFlow, value);
+    }
+
+    private double _sprayerReferencePressure = 3.0;
+    /// <summary>The pressure the nozzle flow is given at, bar.</summary>
+    public double SprayerReferencePressure
+    {
+        get => _sprayerReferencePressure;
+        set => SetProperty(ref _sprayerReferencePressure, value);
+    }
+
+    private double _sprayerMinPressure = 1.0;
+    /// <summary>Alarm below this pressure while a section sprays, bar. 0 = off.</summary>
+    public double SprayerMinPressure
+    {
+        get => _sprayerMinPressure;
+        set => SetProperty(ref _sprayerMinPressure, value);
+    }
+
+    private double _sprayerMaxPressure = 6.0;
+    /// <summary>Alarm above this pressure, bar. 0 = off.</summary>
+    public double SprayerMaxPressure
+    {
+        get => _sprayerMaxPressure;
+        set => SetProperty(ref _sprayerMaxPressure, value);
+    }
+
+    private int _sprayerFlowTolerance = 20;
+    /// <summary>How far the measured flow may be from the expected one, %.</summary>
+    public int SprayerFlowTolerance
+    {
+        get => _sprayerFlowTolerance;
+        set => SetProperty(ref _sprayerFlowTolerance, value);
+    }
+
     // Pin Assignments (24 pins)
     // Default: Pins 1-6 = Section 1-6, rest = None
     private PinFunction[] _pinAssignments = new PinFunction[24]

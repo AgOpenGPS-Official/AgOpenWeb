@@ -1083,6 +1083,25 @@ back with the other setting.
 <br>
 <br>
 
+## Sprayer readout
+
+From a sprayer's machine module once a second, to port 9999 (the module subnet broadcast).
+AgOpenWeb shows it in a strip above the section buttons and checks it against the nozzles
+of the sections the module has open (Tool → Machine → Sprayer). Little-endian.
+
+| PGN Name | Src | PGN | Dec | Len | Bytes 5-6 | Bytes 7-8 | Bytes 9-12 | Byte 13 | Byte 14 | Last |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Sprayer data, from the machine module | 7B | A0 | 160 | 10 | pressure, bar × 100 | flow, L/min × 100 | total since start, L × 10 | master switch, 1 = on | sections open, section 1 in bit 0 | CRC |
+
+Nozzles of a section = its width over the nozzle spacing. Expected flow = open nozzles ×
+nozzle flow × √(pressure ÷ reference pressure). An alarm comes on after 3 messages in a
+row (low or high pressure, flow outside the tolerance, flow with every section closed),
+and the flow is not checked for 3 messages after the sections change. It sounds when it
+comes on and every 10 s while on. No message for 3 s shows "No data from the sprayer".
+
+<br>
+<br>
+
 ## Corrected position
 
 For seed monitors, rate controllers and GPS_Out. Off by default: tick "Send corrected

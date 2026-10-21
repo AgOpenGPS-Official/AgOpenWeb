@@ -135,6 +135,12 @@ public static class PgnNumbers
     public const byte ISOBUS_HEARTBEAT = 240;
 
     /// <summary>
+    /// Sprayer data from the machine module (0xA0 = 160): pressure, flow, total litres,
+    /// master switch and the sections its relays have open (renatorgr Pulverizador_Nano).
+    /// </summary>
+    public const byte SPRAYER_DATA = 160;
+
+    /// <summary>
     /// Section control mode TO the ISOBUS task controller (0xF1 = 241): 1 = automatic,
     /// 0 = manual (#312).
     /// </summary>

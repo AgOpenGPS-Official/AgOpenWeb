@@ -200,6 +200,14 @@ window.RemoteTransport = {
           const sendCorrectedPosition = !!u8();
           // Network IO: the subnet the scan came from (append-only, #334).
           const scanReplySubnet = str();
+          // Sprayer readout (append-only): PGN 160 from the machine module; null until heard.
+          // alarms = SprayerAlarms bits; expectedFlowLpm NaN = no flow check.
+          let sprayer = null;
+          if (u8()) {
+            const f64 = () => { const v = dv.getFloat64(o, true); o += 8; return v; };
+            sprayer = { pressureBar: f32(), flowLpm: f32(), totalLitres: f64(), masterOn: !!u8(), sections: u8(),
+                        openNozzles: u8(), openWidthM: f32(), expectedFlowLpm: f32(), alarms: u8() };
+          }
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -211,7 +219,7 @@ window.RemoteTransport = {
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripEnabled, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
-            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet,
+            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet, sprayer,
           });
           break;
         }
@@ -325,6 +333,8 @@ window.RemoteTransport = {
           const machine = {
             hydraulicLiftEnabled: !!u8(), raiseTime: i32(), lookAhead: f64(), lowerTime: i32(), invertRelay: !!u8(),
             user1: i32(), user2: i32(), user3: i32(), user4: i32(), pinAssignments: rdI32(),
+            sprayerNozzleSpacing: f64(), sprayerNozzleFlow: f64(), sprayerReferencePressure: f64(),
+            sprayerMinPressure: f64(), sprayerMaxPressure: f64(), sprayerFlowTolerance: i32(),
           };
           const display = {
             gridVisible: !!u8(), fieldTextureVisible: !!u8(), fieldTextureMoveable: !!u8(), svennArrowVisible: !!u8(),
