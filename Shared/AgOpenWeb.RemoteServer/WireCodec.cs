@@ -369,6 +369,7 @@ public static class WireCodec
         DB(d.KeyboardEnabled); DB(d.StartFullscreen); DB(d.ElevationLogEnabled);
         w.Write(d.DisplayResolutionMultiplier); // f64 — web imagery LOD (quality)
         DB(d.IsDayMode); // day/night theme — web switches its full palette + map colours
+        w.Write(d.UiScale); // i32 — UI size, percent
 
         // AutoSteer config tab (full 9-tab surface). Append-only; field order mirrors
         // AutoSteerConfigDto exactly so transport.js decodes it positionally.

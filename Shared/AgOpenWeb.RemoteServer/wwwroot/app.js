@@ -422,7 +422,7 @@ const transport = RemoteTransport.create({
   },
   onCoverageEdge(polylines) { coverageEdges = polylines; }, // crisp worked-area perimeter (~2 Hz)
   onStatusBar(s) { statusBar = s; syncUnits(); if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); syncDualHeadingWarning(s); syncGpsLost(s); },
-  onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); },
+  onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); applyUiScale(c && c.display && c.display.uiScale); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
   onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
@@ -701,6 +701,29 @@ function applyMapTheme() {
   SKP.gridMinor.setColor(ckColor(GRID_MINOR[k]));
   SKP.gridMajor.setColor(ckColor(GRID_MAJOR[k]));
 }
+// UI size (Screen & Alerts): the controls are zoomed by CSS (--ui-zoom), the map is not.
+// Anything that turns screen pixels into a zoomed element's left/top divides by uiZoom.
+let uiZoom = 1;
+function applyUiScale(pct) {
+  const z = pct >= 100 && pct <= 200 ? pct / 100 : 1;
+  if (z === uiZoom) return;
+  uiZoom = z;
+  document.documentElement.style.setProperty('--ui-zoom', String(z));
+  placeLowerRight();
+}
+// The right nav grows down from the top and the gauge + camera pad sit at the bottom
+// right. When they meet (a big UI size, a short screen, many track buttons) the cluster
+// moves left, beside the nav, rather than under it.
+function placeLowerRight() {
+  const rn = document.getElementById('rightnav'), lr = document.getElementById('lowerright');
+  if (!rn || !lr) return;
+  lr.style.right = '';
+  const a = rn.getBoundingClientRect(), b = lr.getBoundingClientRect();
+  if (a.height > 0 && a.bottom > b.top && a.left < b.right)
+    lr.style.right = `calc(14px + var(--sar) + ${a.width / uiZoom}px)`;
+}
+if (window.ResizeObserver) new ResizeObserver(placeLowerRight).observe(document.getElementById('rightnav'));
+addEventListener('resize', placeLowerRight);
 function applyTheme(isDay) {
   mapIsDay = !!isDay;
   document.documentElement.setAttribute('data-theme', mapIsDay ? 'day' : 'night');
@@ -2489,6 +2512,9 @@ for (const b of saPanel.querySelectorAll('.sa-tgl'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
 for (const b of saPanel.querySelectorAll('.sa-act'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
+// On click, not pointerdown: the panel resizes under the finger once the new size applies.
+for (const b of saPanel.querySelectorAll('.sa-scale'))
+  b.addEventListener('click', e => { e.stopPropagation(); cfgSend('display.uiScale', b.dataset.scale); });
 const saExtra = document.getElementById('sa-extracount');
 saExtra.addEventListener('change', () => { const v = parseInt(saExtra.value); if (Number.isFinite(v)) cfgSend('display.extraGuidelinesCount', v); });
 function populateScreenAlerts() {
@@ -2497,6 +2523,7 @@ function populateScreenAlerts() {
   for (const b of saPanel.querySelectorAll('.sa-tgl')) b.classList.toggle('active', !!d[b.dataset.key.split('.')[1]]);
   if (document.activeElement !== saExtra) saExtra.value = d.extraGuidelinesCount;
   document.getElementById('sa-quality').textContent = d.resolutionLabel || '—';
+  for (const b of saPanel.querySelectorAll('.sa-scale')) b.classList.toggle('active', +b.dataset.scale === (d.uiScale || 100));
 }
 // Vehicle config panel — full native VehicleConfigDialog surface (Vehicle/GPS/Roll).
 // Generic config controls keyed by data-key="<section>.<field>"; reused by later
@@ -5325,14 +5352,16 @@ function renderBoundaryPlayer() {
       if (e.target.classList.contains('chart-x')) return;
       e.stopPropagation();
       const r = card.getBoundingClientRect();
-      drag = true; sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+      // getBoundingClientRect and clientX are screen pixels; left/top are in the card's
+      // own (zoomed) pixels.
+      drag = true; sx = e.clientX; sy = e.clientY; ox = r.left / uiZoom; oy = r.top / uiZoom;
       card.style.left = ox + 'px'; card.style.top = oy + 'px'; card.style.right = 'auto';
       try { hdr.setPointerCapture(e.pointerId); } catch (_) {}
     });
     hdr.addEventListener('pointermove', e => {
       if (!drag) return;
-      card.style.left = (ox + e.clientX - sx) + 'px';
-      card.style.top = (oy + e.clientY - sy) + 'px';
+      card.style.left = (ox + (e.clientX - sx) / uiZoom) + 'px';
+      card.style.top = (oy + (e.clientY - sy) / uiZoom) + 'px';
     });
     const end = e => { drag = false; try { hdr.releasePointerCapture(e.pointerId); } catch (_) {} };
     hdr.addEventListener('pointerup', end);
