@@ -92,6 +92,10 @@ namespace AgOpenWeb.Models.YouTurn
         /// </summary>
         public double NudgeDistance { get; set; }
 
+        /// <summary>Reference line to pass 0's centre: half a width, or 0 for a
+        /// boundary-follow track (PassGeometry.EdgeOffset).</summary>
+        public double PassEdgeOffset { get; set; }
+
         /// <summary>
         /// Track mode (for determining if this is a special mode like waterPivot).
         /// </summary>

@@ -1581,7 +1581,7 @@ function startDrawTrack(mode) {           // map-tap straight/curve (ungated —
   startMapTap({ hint: abHint(), onTap: drawTap });
 }
 function startDriveAB() {                  // GPS: set A then B at the vehicle (ungated)
-  abFlow = 'driveAB'; driveStep = 0; drawPts = []; // drawPts holds the dropped A/B markers
+  abFlow = 'driveAB'; driveStep = 0; drawPts = []; driveRaw = []; // drawPts holds the dropped A/B markers
   transport.send('track.driveAB');
   showAbBar(true, false, false);
   document.getElementById('draw-setpoint').textContent = tr('Set Point A');
@@ -1596,43 +1596,78 @@ function startRecordCurve() {              // GPS: record by driving — Set Sta
   hintEl.classList.add('show'); setAbHint();
 }
 // "Bnd. Curve" — tap point A then point B on the boundary; the host walks the shorter arc
-// between them and builds a curve following the boundary. Points snap to the nearest boundary
-// vertex for display; the host re-snaps authoritatively.
-function nearestBoundaryPt(e, n) {
-  let best = null, bd = Infinity;
-  const bs = scene && scene.boundaries;
-  if (bs) for (const ring of bs) for (const p of ring) {
-    const dx = p.e - e, dy = p.n - n, d = dx * dx + dy * dy;
-    if (d < bd) { bd = d; best = p; }
-  }
-  return best ? { e: best.e, n: best.n } : { e, n };
-}
+// between them and builds a curve following the boundary. Each tap lands on the fence where
+// it's nearest (a corner when one is close) for display; the host projects it again.
 function startBoundaryCurve() {
   abFlow = 'boundaryCurve'; drawPts = [];
   showAbBar(false, false, false);          // draw toolbar shows just Cancel
   startMapTap({ hint: tr('Tap point A on the boundary'), onTap: boundaryCurveTap });
 }
 function boundaryCurveTap(e, n) {
-  drawPts.push(nearestBoundaryPt(e, n));   // snap A/B to the nearest boundary vertex (dot shown)
+  drawPts.push(snapToFence(e, n, Infinity)); // A/B on the fence (dot shown)
   if (drawPts.length < 2) { hintEl.textContent = tr('Tap point B on the boundary'); return; }
   const a = drawPts[0], b = drawPts[1];
   transport.send('track.boundaryCurveSeg|' + a.e.toFixed(3) + ',' + a.n.toFixed(3) + ',' + b.e.toFixed(3) + ',' + b.n.toFixed(3));
   endAbFlow();
 }
+// A drawn line is the edge between passes (PassGeometry), as in AgOpenGPS's FormABDraw,
+// whose taps all land on fence points. A tap near the fence snaps onto it (a corner when
+// one is close, else the nearest point on the fence), so a line drawn along the boundary
+// lies on it and its first pass is half a width inside. Measured on screen, so the reach
+// is the same at any zoom or tilt.
+const FENCE_SNAP_PX = 24;
+function snapToFence(e, n, reach = FENCE_SNAP_PX) {
+  const bs = scene && scene.boundaries;
+  if (!bs) return { e, n };
+  const t = w2s(e, n);
+  const px = (q) => { const s = w2s(q.e, q.n); return Math.hypot(s[0] - t[0], s[1] - t[1]); };
+  let corner = null, cd = FENCE_SNAP_PX, edge = null, ed = reach;
+  for (const ring of bs) for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length];
+    const d = px(a);
+    if (d < cd) { cd = d; corner = a; }
+    const dx = b.e - a.e, dn = b.n - a.n, len2 = dx * dx + dn * dn;
+    if (len2 === 0) continue;
+    const u = Math.max(0, Math.min(1, ((e - a.e) * dx + (n - a.n) * dn) / len2));
+    const q = { e: a.e + u * dx, n: a.n + u * dn }, dq = px(q);
+    if (dq < ed) { ed = dq; edge = q; }
+  }
+  const p = corner || edge;
+  return p ? { e: p.e, n: p.n } : { e, n };
+}
 function drawTap(e, n) {                    // map-tap point captured (straight/curve)
+  ({ e, n } = snapToFence(e, n));
   drawPts.push({ e, n });
   transport.send('track.drawPoint|' + e.toFixed(3) + ',' + n.toFixed(3));
   // Straight = exactly 2 points; the host auto-creates the line on the 2nd, so we're done.
   if (abFlow === 'straight' && drawPts.length >= 2) { endAbFlow(); return; }
   setAbHint();
 }
+// A driven line's reference goes to the implement's edge on the First pass side (the host's
+// RefSideOffset), so the A/B markers and path dots go there too, not under the tractor.
+let driveRaw = [];       // Drive-AB A/B at the vehicle, to re-place both on the A→B heading
+function refEdgePt(e, n, h) {
+  const t = config && config.tool;
+  const half = (toolWidthM() - ((t && t.overlap) || 0)) * 0.5;
+  const d = (qabSide === 'right' ? half : -half) + ((t && t.offset) || 0);
+  return { e: e + Math.sin(h + Math.PI / 2) * d, n: n + Math.cos(h + Math.PI / 2) * d };
+}
+function poseEdgePt() { const p = tick.pose; return refEdgePt(p.e, p.n, p.heading || 0); }
 function abSetPoint() {                     // Set-point button — drives Drive-AB and record-curve
   const btn = document.getElementById('draw-setpoint');
   if (abFlow === 'driveAB') {
     if (driveStep > 1) return;             // guard a double-B while B lingers
     transport.send('track.setABGps');      // SetABPoint uses live GPS in DriveAB mode
-    // Drop an A/B marker at the vehicle so the operator sees where each point landed.
-    if (tick && tick.pose) drawPts.push({ e: tick.pose.e, n: tick.pose.n });
+    // Drop an A/B marker where the line will lie. B fixes the heading the host shifts by
+    // (A→B), so both markers are placed again on it.
+    if (tick && tick.pose) {
+      driveRaw.push({ e: tick.pose.e, n: tick.pose.n });
+      if (driveRaw.length >= 2) {
+        const a = driveRaw[0], b = driveRaw[driveRaw.length - 1];
+        const h = Math.atan2(b.e - a.e, b.n - a.n);
+        drawPts = driveRaw.slice(0, 2).map(p => refEdgePt(p.e, p.n, h));
+      } else drawPts.push(poseEdgePt());
+    }
     if (driveStep === 0) { driveStep = 1; btn.textContent = tr('Set Point B'); setAbHint(); }
     else {                                  // B set → host created the line; show B a beat, then clear
       driveStep = 2;
@@ -1644,13 +1679,13 @@ function abSetPoint() {                     // Set-point button — drives Drive
       transport.send('track.recordCurve');
       driveStep = 1; btn.textContent = tr('Set Point B');
       if (tick && tick.pose) {
-        drawPts.push({ e: tick.pose.e, n: tick.pose.n });   // labeled "A" endpoint dot (orange)
+        drawPts.push(poseEdgePt());                          // labeled "A" endpoint dot (orange)
         _lastCurveMark = { e: tick.pose.e, n: tick.pose.n }; // seed green-dot spacing; no dot at A itself
       }
       setAbHint();
     } else {                                // Set Point B → drop the B endpoint + finish
       driveStep = 2;
-      if (tick && tick.pose) drawPts.push({ e: tick.pose.e, n: tick.pose.n }); // labeled "B" endpoint dot (blue)
+      if (tick && tick.pose) drawPts.push(poseEdgePt());    // labeled "B" endpoint dot (blue)
       transport.send('track.finishCurve');  // host builds the curve from its recorded points
       setTimeout(() => { if (abFlow === 'recordCurve') endAbFlow(); }, 700);   // show B a beat, then clear
     }
@@ -1674,7 +1709,7 @@ function abCancel() {
   endAbFlow();
 }
 function endAbFlow() {
-  abFlow = null; drawMode = null; drawPts = []; driveStep = 0;
+  abFlow = null; drawMode = null; drawPts = []; driveRaw = []; driveStep = 0;
   curveMarks = []; _lastCurveMark = null; // clear record-curve path dots
   drawBar.classList.remove('show');
   endMapTap();
@@ -1687,7 +1722,7 @@ function sampleCurveMark() {
   const p = tick.pose;
   if (_lastCurveMark && Math.hypot(p.e - _lastCurveMark.e, p.n - _lastCurveMark.n) < 1.5) return;
   _lastCurveMark = { e: p.e, n: p.n };
-  curveMarks.push(_lastCurveMark);
+  curveMarks.push(poseEdgePt());
 }
 function drawCurveMarksSk(canvas) {
   if (!curveMarks.length) return;
@@ -5338,6 +5373,18 @@ function toolWidthM() {
 //      px (canvas.scale(dpr)), reusing w2s. Coverage/imagery/tool/lightbar TODO. ----
 // CanvasKit 0.41: Path is immutable (no moveTo/reset) — build via MakeFromCmds
 // (flat [VERB,x,y,...]) for polylines; drawLine for single segments.
+// True when line `a` lies on polyline `b`: its middle point is within 5 cm of it.
+function onPolyline(a, b) {
+  if (!a || a.length < 2 || !b || b.length < 2) return false;
+  const m = a.length === 2
+    ? { e: (a[0].e + a[1].e) / 2, n: (a[0].n + a[1].n) / 2 } : a[a.length >> 1];
+  for (let i = 0; i + 1 < b.length; i++) {
+    const p = b[i], q = b[i + 1], de = q.e - p.e, dn = q.n - p.n, l2 = de * de + dn * dn;
+    const u = l2 ? Math.max(0, Math.min(1, ((m.e - p.e) * de + (m.n - p.n) * dn) / l2)) : 0;
+    if (Math.hypot(m.e - p.e - u * de, m.n - p.n - u * dn) < 0.05) return true;
+  }
+  return false;
+}
 function strokePtsSk(canvas, pts, close, paint) {
   if (!pts || pts.length < 2) return;
   strokePtsSk3D(canvas, pts, close, paint);
@@ -6382,10 +6429,11 @@ function renderSkia(canvas, rp) {
     drawContourRefSk(canvas);
     if (scene.nextTrack) strokePtsSk(canvas, scene.nextTrack, false, SKP.next);
     if (scene.uTurnPath) strokePtsSk(canvas, scene.uTurnPath, false, SKP.uturn);
-    // Purple reference (extended across the field) — drawn ONLY when the tractor is offset from
-    // it (pass ≠ 0). On the reference pass it coincides with the magenta guidance, so we show
-    // just the one line. Matches the host's baseTrack = nearestPass!=0?track:null intent.
-    const _onRef = !tick || !tick.op || (tick.op.passNumber | 0) === 0;
+    // Purple reference (extended across the field). The reference is the edge between passes
+    // (PassGeometry), so pass 0 lies half a width from it; only a track driven on the line
+    // itself (boundary-follow) puts the magenta guidance on top of it, and then just the one
+    // line shows. Matches the host's baseTrack = (display track is the reference) ? null : track.
+    const _onRef = scene.guidanceLine && scene.tracks.some(t => onPolyline(scene.guidanceLine, t.points));
     if (!_onRef) for (const tr of scene.tracks)
       strokePtsSk(canvas, extendAbLine(tr.points), false, SKP.reference);
     // Magenta current pass, extended across the field. The host's DisplayLine is only ~track

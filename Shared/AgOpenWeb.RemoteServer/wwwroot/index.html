@@ -957,6 +957,10 @@
     .qab-heading { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 8px;
       color: var(--text-muted); font: 600 13px system-ui, sans-serif; }
     .qab-heading .cfg-num { width: 80px; }
+    .qab-side { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px; color: var(--text-muted); font: 600 12px system-ui, sans-serif; }
+    .ln-seg-v { flex-direction: column; }
+    .ln-seg-v .ln-segbtn { padding: 6px 14px; }
     .ll-pt { margin-top: 10px; }
     .ll-hdr { display: flex; align-items: center; justify-content: space-between; font: 700 14px system-ui, sans-serif; }
     .ll-hdr .ll-fill { padding: 6px 10px; font-size: 12px; }
@@ -2860,17 +2864,19 @@
         <button class="dlg-mode" data-qab="aPlus" title="AB line from current position &amp; heading"><img src="/icons/ABTrackAPlus.png" alt=""><span>A+</span></button>
         <button class="dlg-mode" data-qab="driveAB" title="Drive from A to B"><img src="/icons/ABTrackAB.png" alt=""><span>Drive AB</span></button>
         <button class="dlg-mode" data-qab="recordCurve" title="Drive to record a curve"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
+        <!-- Ref side (#345, AgOpenGPS isRefRightSide): a driven line's reference goes to this
+             edge of the implement; the reference line is the edge between passes, so a pass
+             runs where the tractor drove. Only the driven modes use it, so it sits in their
+             row (drawn and boundary lines are an edge already). Right each time it opens. -->
+        <div class="qab-side">First pass
+          <div class="ln-seg ln-seg-v" id="qab-refside"><button class="ln-segbtn" data-side="left">Left</button><button class="ln-segbtn active" data-side="right">Right</button></div>
+        </div>
       </div>
       <!-- A+ heading (#335, AgOpenGPS Quick AB nudHeading): empty = the vehicle's heading,
            shown as the placeholder; a typed value makes A+ use it instead. -->
       <label class="qab-heading">A+ heading
         <input id="qab-aplus-heading" class="cfg-num" type="number" step="0.1" min="0" max="360" inputmode="decimal">°
       </label>
-      <!-- Ref side (#345, AgOpenGPS isRefRightSide): the driven line is the edge of the work;
-           the track is saved half a working width to this side. Right each time it opens. -->
-      <div class="qab-heading">First pass
-        <div class="ln-seg" id="qab-refside"><button class="ln-segbtn" data-side="left">Left</button><button class="ln-segbtn active" data-side="right">Right</button></div>
-      </div>
       <div class="dlg-sub">From Field Boundary</div>
       <div class="dlg-modes">
         <button class="dlg-mode" data-qab="boundaryEdge" title="AB line along the longest boundary edge"><span class="dlg-bigtxt">AB</span><span>Longest Edge</span></button>

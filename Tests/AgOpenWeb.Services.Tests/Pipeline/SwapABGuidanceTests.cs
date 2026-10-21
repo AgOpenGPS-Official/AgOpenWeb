@@ -94,12 +94,13 @@ public class SwapABGuidanceTests
 
     private GpsCycleResult Last => _results[^1];
 
-    // A north-running line 0.5 m right of the vehicle (heading north, 3 m/s).
+    // A north-running reference line whose pass 0 (half the 6 m tool to its right) is 0.5 m
+    // right of the vehicle (heading north, 3 m/s).
     private static List<Vec3> NorthLine(bool curve)
     {
         var pts = new List<Vec3>();
         int n = curve ? 21 : 2;
-        for (int i = 0; i < n; i++) pts.Add(new Vec3(0.5, -100 + 200.0 * i / (n - 1), 0));
+        for (int i = 0; i < n; i++) pts.Add(new Vec3(-2.5, -100 + 200.0 * i / (n - 1), 0));
         return pts;
     }
 
@@ -112,7 +113,7 @@ public class SwapABGuidanceTests
         return r;
     }
 
-    private double Steer(List<Vec3> pts, bool stanley)
+    private double Steer(List<Vec3> pts, bool stanley, int pass = 0)
     {
         ConfigurationStore.Instance.Guidance.IsPurePursuit = !stanley;
         var track = new Models.Track.Track
@@ -120,7 +121,7 @@ public class SwapABGuidanceTests
             Name = "T", Points = pts,
             Type = pts.Count == 2 ? Models.Track.TrackType.ABLine : Models.Track.TrackType.Curve,
         };
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0, isOnBoundary: false);
         _pipeline.SetAutoSteerEngaged(true);
         _gpsService.UpdateGpsData(new GpsData
         {
@@ -141,7 +142,9 @@ public class SwapABGuidanceTests
         line = Models.Guidance.CurveProcessing.CalculateHeadings(line);
 
         double before = Steer(line, stanley);
-        double after = Steer(Swapped(line), stanley);
+        // Pass 0 lies half a width right of A→B; reversed, the same line is pass -1
+        // (PassGeometry; MainViewModel.SwapTrackAB maps the pass the same way).
+        double after = Steer(Swapped(line), stanley, pass: -1);
         TestContext.Out.WriteLine($"curve={curve} stanley={stanley}: before={before:F2}° after={after:F2}°");
 
         Assert.That(Math.Abs(before), Is.GreaterThan(0.1), "0.5 m off the line must produce a steer command");

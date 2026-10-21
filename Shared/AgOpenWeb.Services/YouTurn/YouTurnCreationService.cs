@@ -328,7 +328,7 @@ namespace AgOpenWeb.Services.YouTurn
             // Offset the BASE reference by the SAME formula every other consumer uses for a
             // pass — current pass, displayed line, STEERING line
             // (GpsPipelineService.CalculateTrackGuidance) and the pass driven after the turn:
-            //   widthMinusOverlap * pathsAway + nudge.
+            //   widthMinusOverlap * pathsAway + edge offset + nudge (PassGeometry).
             // One definition, no per-turn measurement, so the exit leg is byte-aligned with
             // the cyan line and the line the tractor actually steers after completion.
             //
@@ -341,7 +341,7 @@ namespace AgOpenWeb.Services.YouTurn
             int passDelta = (input.IsTurnLeft ^ input.IsHeadingSameWay)
                 ? (input.RowSkipsWidth + 1)
                 : -(input.RowSkipsWidth + 1);
-            double distAway = widthMinusOverlap * (input.HowManyPathsAway + passDelta) + input.NudgeDistance;
+            double distAway = widthMinusOverlap * (input.HowManyPathsAway + passDelta) + input.PassEdgeOffset + input.NudgeDistance;
 
             // Create the next line
             nextCurve = BuildNewOffsetCurveList(input, distAway);
@@ -667,7 +667,7 @@ namespace AgOpenWeb.Services.YouTurn
                     double widthMinusOverlap = input.ToolWidth - input.ToolOverlap;
                     double distAway = widthMinusOverlap * (input.HowManyPathsAway + ((input.IsTurnLeft ^ input.IsHeadingSameWay) ? input.RowSkipsWidth : -input.RowSkipsWidth))
                         + (input.IsHeadingSameWay ? input.ToolOffset : -input.ToolOffset) + input.NudgeDistance;
-                    distAway += (0.5 * widthMinusOverlap);
+                    distAway += input.PassEdgeOffset;
 
                     nextCurve = BuildNewOffsetCurveList(input, distAway);
 

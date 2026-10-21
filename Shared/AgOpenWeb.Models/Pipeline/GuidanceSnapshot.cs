@@ -67,15 +67,15 @@ public record GuidanceSnapshot
 
     /// <summary>
     /// The offset track the tractor is following (i.e., the visible magenta
-    /// line on the map). Equal to <see cref="ActiveTrack"/> when
-    /// <see cref="HowManyPathsAway"/> is 0, otherwise a fresh offset curve.
+    /// line on the map): the reference moved to the pass (Track.PassGeometry). Equal to
+    /// <see cref="ActiveTrack"/> only when that offset is zero (a boundary-follow track on
+    /// pass 0), otherwise a fresh offset curve.
     /// </summary>
     public Track.Track? DisplayTrack { get; init; }
 
     /// <summary>
     /// The reference (unshifted) track that <see cref="DisplayTrack"/> was
-    /// offset from, or <c>null</c> when the tractor is on pass 0 and
-    /// DisplayTrack already equals the base.
+    /// offset from, or <c>null</c> when DisplayTrack already equals the base.
     /// </summary>
     public Track.Track? BaseTrack { get; init; }
 

@@ -81,6 +81,11 @@ public class CurveTurnAlignmentTests
         return pts;
     }
 
+    // The track whose pass 0 is this curve: the reference is the edge between passes, half
+    // the 8 m tool to its left (PassGeometry).
+    private static Models.Track.Track PassTrack(List<Vec3> pass) =>
+        Models.Track.Track.FromCurve("c", CurveProcessing.CalculateHeadings(CurveProcessing.CreateOffsetCurve(pass, -4.0)));
+
     private static Boundary Square() => new()
     {
         OuterBoundary = new BoundaryPolygon
@@ -140,7 +145,7 @@ public class CurveTurnAlignmentTests
     public void NorthEnd_CurveCrossesBoundary_RunsCurvePath_NotFallback()
     {
         var curve = CurvePoints(-100, 100);
-        var track = Models.Track.Track.FromCurve("c", curve);
+        var track = PassTrack(curve);
 
         // vehicle near the north headland, on the curve, heading north (same way)
         var near = curve.First(p => p.Northing >= 38);
@@ -169,7 +174,7 @@ public class CurveTurnAlignmentTests
     public void SouthEnd_CurveCrossesBoundary_RunsCurvePath_NotFallback()
     {
         var curve = CurvePoints(-100, 100);
-        var track = Models.Track.Track.FromCurve("c", curve);
+        var track = PassTrack(curve);
 
         // vehicle near the south headland, heading south (opposite way)
         var near = curve.First(p => p.Northing >= -38);
@@ -211,7 +216,7 @@ public class CurveTurnAlignmentTests
         ConfigurationStore.Instance.Guidance.UTurnStyle = style;
 
         var curve = CurvePoints(-45, 45);
-        var track = Models.Track.Track.FromCurve("c", curve);
+        var track = PassTrack(curve);
 
         var near = curve.First(p => p.Northing >= 0);
         var pos = new Position { Easting = near.Easting, Northing = near.Northing };
@@ -246,7 +251,7 @@ public class CurveTurnAlignmentTests
     public void NextTrackCurve_IsExtended_ToMeetExitLeg()
     {
         var curve = CurvePoints(-45, 45); // recorded pass spans y in [-45, 45]
-        var track = Models.Track.Track.FromCurve("c", curve);
+        var track = PassTrack(curve);
 
         var pathing = new YouTurnPathingService(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<YouTurnPathingService>.Instance,
@@ -287,7 +292,7 @@ public class CurveTurnAlignmentTests
         ConfigurationStore.Instance.Tool.Offset = toolOffset;
 
         var curve = CurvePoints(-100, 100);
-        var track = Models.Track.Track.FromCurve("c", curve);
+        var track = PassTrack(curve);
 
         var near = curve.First(p => p.Northing >= 38);
         var pos = new Position { Easting = near.Easting, Northing = near.Northing };
@@ -342,13 +347,14 @@ public class CurveTurnAlignmentTests
         ConfigurationStore.Instance.Guidance.UTurnStyle = style;
 
         var curve = CurvePoints(-30, 30); // ends 10 m short of the headland, 20 m short of boundary
+        var track = PassTrack(curve);
         if (endHeadingNoiseDeg != 0.0)
         {
             double noise = endHeadingNoiseDeg * Math.PI / 180.0;
-            curve[0] = new Vec3(curve[0].Easting, curve[0].Northing, curve[0].Heading + noise);
-            curve[^1] = new Vec3(curve[^1].Easting, curve[^1].Northing, curve[^1].Heading + noise);
+            var tp = track.Points;
+            tp[0] = new Vec3(tp[0].Easting, tp[0].Northing, tp[0].Heading + noise);
+            tp[^1] = new Vec3(tp[^1].Easting, tp[^1].Northing, tp[^1].Heading + noise);
         }
-        var track = Models.Track.Track.FromCurve("c", curve);
 
         var near = curve.First(p => p.Northing >= 28);
         var pos = new Position { Easting = near.Easting, Northing = near.Northing };
@@ -358,8 +364,8 @@ public class CurveTurnAlignmentTests
         double width = ConfigurationStore.Instance.ActualToolWidth - ConfigurationStore.Instance.Tool.Overlap;
         bool positiveOffset = turn.IsTurnLeft ^ guidance.IsHeadingSameWay;
         int offsetChange = positiveOffset ? 1 : -1;
-        double nextDistAway = width * (guidance.HowManyPathsAway + offsetChange);
-        var cyan = CurveProcessing.ExtendCurveEnds(CurveProcessing.CreateOffsetCurve(curve, nextDistAway));
+        double nextDistAway = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway + offsetChange, width);
+        var cyan = CurveProcessing.ExtendCurveEnds(CurveProcessing.CreateOffsetCurve(track.Points, nextDistAway));
 
         double heading = sameWay ? near.Heading : near.Heading + Math.PI;
         var result = _creation.CreateTurnPath(
@@ -391,7 +397,7 @@ public class CurveTurnAlignmentTests
         ConfigurationStore.Instance.Guidance.UTurnStyle = style;
 
         var curve = CurvePoints(-45, 45);
-        var track = Models.Track.Track.FromCurve("c", curve);
+        var track = PassTrack(curve);
 
         var near = curve.First(p => p.Northing >= 0);
         var pos = new Position { Easting = near.Easting, Northing = near.Northing };

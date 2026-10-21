@@ -103,9 +103,11 @@ public class DisplayGoalPointTests
         IsValid = true,
     };
 
+    // A north line whose pass 0 runs at this easting: the reference is the edge between
+    // passes, half the 6 m tool to its left (PassGeometry).
     private void SetNorthLine(double easting = 0) =>
         _pipeline.SetActiveTrack(
-            Models.Track.Track.FromABLine("AB", new Vec3(easting, -100, 0), new Vec3(easting, 100, 0)),
+            Models.Track.Track.FromABLine("AB", new Vec3(easting - 3, -100, 0), new Vec3(easting - 3, 100, 0)),
             passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
 
     [Test]

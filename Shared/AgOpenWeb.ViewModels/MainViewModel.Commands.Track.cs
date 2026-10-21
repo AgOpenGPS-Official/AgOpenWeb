@@ -83,35 +83,63 @@ public partial class MainViewModel
         foreach (var p in boundary.Points) rawVec2.Add(new Models.Base.Vec2(p.Easting, p.Northing));
         var offset = insetDistance > 0.05 ? _polygonOffsetService.CreateInwardOffset(rawVec2, insetDistance) : null;
         var ring = (offset != null && offset.Count >= 3) ? offset : rawVec2;
+        if (ring.Count > 3 && ring[0].Easting == ring[^1].Easting && ring[0].Northing == ring[^1].Northing)
+            ring = ring.GetRange(0, ring.Count - 1); // a closing duplicate would be a zero-length side
         int n = ring.Count;
 
-        int NearestIndex(double e, double north)
+        // Where a tap lands on the ring: the side (vertex i → i+1) and the point on it. A tap
+        // anywhere along a side counts, not just at a corner, so a boundary with few vertices
+        // (a rectangle) can still give a segment of one side.
+        (int side, double t, Models.Base.Vec2 pt) Project(double e, double north)
         {
-            int best = 0; double bd = double.MaxValue;
+            (int, double, Models.Base.Vec2) best = (0, 0, ring[0]); double bd = double.MaxValue;
             for (int i = 0; i < n; i++)
             {
-                double dx = ring[i].Easting - e, dy = ring[i].Northing - north;
-                double d = dx * dx + dy * dy;
-                if (d < bd) { bd = d; best = i; }
+                var a = ring[i]; var b = ring[(i + 1) % n];
+                double dx = b.Easting - a.Easting, dy = b.Northing - a.Northing, l2 = dx * dx + dy * dy;
+                double t = l2 > 0 ? Math.Clamp(((e - a.Easting) * dx + (north - a.Northing) * dy) / l2, 0, 1) : 0;
+                var q = new Models.Base.Vec2(a.Easting + t * dx, a.Northing + t * dy);
+                double d = (q.Easting - e) * (q.Easting - e) + (q.Northing - north) * (q.Northing - north);
+                if (d < bd) { bd = d; best = (i, t, q); }
             }
             return best;
         }
 
-        int ai = NearestIndex(aE, aN);
-        int bi = NearestIndex(bE, bN);
-        if (ai == bi) { StatusMessage = "Pick two different points on the boundary"; return; }
+        var pa = Project(aE, aN);
+        var pb = Project(bE, bN);
+        if (GeometryMath.Distance(pa.pt, pb.pt) < 1.0) { ReportFailure("Pick two different points on the boundary"); return; }
 
-        // Walk the SHORTER arc A→B around the closed ring (mirrors FormABDraw's wrap check).
-        int forward = (bi - ai + n) % n;
-        int step = forward <= n - forward ? 1 : -1;
-        var seg = new System.Collections.Generic.List<Models.Base.Vec3>();
-        for (int i = ai; ; i = (i + step + n) % n)
+        // A → B around the ring either way, keeping the shorter (mirrors FormABDraw's wrap check).
+        System.Collections.Generic.List<Models.Base.Vec2> Walk(int dir)
         {
-            seg.Add(new Models.Base.Vec3(ring[i].Easting, ring[i].Northing, 0));
-            if (i == bi) break;
+            var path = new System.Collections.Generic.List<Models.Base.Vec2> { pa.pt };
+            bool sameSide = pa.side == pb.side && (dir > 0 ? pa.t <= pb.t : pb.t <= pa.t);
+            if (!sameSide)
+            {
+                int k = dir > 0 ? (pa.side + 1) % n : pa.side;
+                int last = dir > 0 ? pb.side : (pb.side + 1) % n;
+                while (true)
+                {
+                    path.Add(ring[k]);
+                    if (k == last) break;
+                    k = (k + dir + n) % n;
+                }
+            }
+            path.Add(pb.pt);
+            return path;
         }
-
-        if (seg.Count < 3) { StatusMessage = "Segment too short for a curve"; return; }
+        double Length(System.Collections.Generic.List<Models.Base.Vec2> path)
+        {
+            double len = 0;
+            for (int i = 1; i < path.Count; i++) len += GeometryMath.Distance(path[i - 1], path[i]);
+            return len;
+        }
+        var fwd = Walk(1); var back = Walk(-1);
+        var arc = Length(fwd) <= Length(back) ? fwd : back;
+        var seg = new System.Collections.Generic.List<Models.Base.Vec3>(arc.Count + 1);
+        foreach (var p in arc) seg.Add(new Models.Base.Vec3(p.Easting, p.Northing, 0));
+        if (seg.Count == 2) // both taps on one side: a straight run, still a curve track
+            seg.Insert(1, new Models.Base.Vec3((seg[0].Easting + seg[1].Easting) / 2, (seg[0].Northing + seg[1].Northing) / 2, 0));
 
         // Round the boundary's sharp corners so the tractor can actually drive it (Chaikin
         // corner-cutting), then heading per point (guidance's forward test keys off it).
@@ -362,7 +390,7 @@ public partial class MainViewModel
                 existingTrack.IsActive = false;
             }
 
-            // A driven curve is the edge of the work: move it to the first pass (#345)
+            // A driven curve is a pass: move the reference to the implement's edge (#345)
             var refPoints = Models.Guidance.CurveProcessing.CreateOffsetCurve(
                 Models.Guidance.CurveProcessing.CalculateHeadings(new List<Vec3>(_recordedCurvePoints)), RefSideOffset());
 
@@ -589,7 +617,7 @@ public partial class MainViewModel
                     var heading = CalculateHeading(PendingPointA, pointToSet);
                     var headingRadians = heading * Math.PI / 180.0;
 
-                    // A driven line is the edge of the work: move it to the first pass (#345)
+                    // A driven line is a pass: move the reference to the implement's edge (#345)
                     double refDist = CurrentABCreationMode == ABCreationMode.DriveAB ? RefSideOffset() : 0;
                     var (aE, aN) = ShiftRight(PendingPointA.Easting, PendingPointA.Northing, headingRadians, refDist);
                     var (bE, bN) = ShiftRight(pointToSet.Easting, pointToSet.Northing, headingRadians, refDist);
@@ -1335,29 +1363,14 @@ public partial class MainViewModel
 
             var pts = boundary.Points;
 
-            // Offset the boundary inward by half the tool width so the guidance line
-            // sits half-an-implement inside the fence: following it rides the tool's
-            // OUTER edge along the boundary with the whole implement in the field. The
-            // raw boundary edge would put the vehicle (and line) on the fence, hanging
-            // half the sections out of bounds on the first pass (#422).
-            double halfTool = ConfigStore.ActualToolWidth / 2.0;
-            var boundaryVec2 = new System.Collections.Generic.List<Models.Base.Vec2>(pts.Count);
+            // The fence itself is the reference line, as in AgOpenGPS: passes lie half a
+            // width either side of it (PassGeometry), so the one inside the field keeps the
+            // whole implement in (#422) and the nearest-pass pick takes it.
+            var curvePoints = new System.Collections.Generic.List<Models.Base.Vec3>(pts.Count + 1);
             for (int i = 0; i < pts.Count; i++)
-                boundaryVec2.Add(new Models.Base.Vec2(pts[i].Easting, pts[i].Northing));
-
-            var offset = halfTool > 0.05
-                ? _polygonOffsetService.CreateInwardOffset(boundaryVec2, halfTool)
-                : null;
-
-            // Fall back to the raw boundary if the offset failed (e.g. tool wider than
-            // the field can accommodate at that point).
-            var ring = (offset != null && offset.Count >= 3) ? offset : boundaryVec2;
-
-            var curvePoints = new System.Collections.Generic.List<Models.Base.Vec3>(ring.Count + 1);
-            for (int i = 0; i < ring.Count; i++)
-                curvePoints.Add(new Models.Base.Vec3(ring[i].Easting, ring[i].Northing, 0));
+                curvePoints.Add(new Models.Base.Vec3(pts[i].Easting, pts[i].Northing, 0));
             // Close the loop
-            curvePoints.Add(new Models.Base.Vec3(ring[0].Easting, ring[0].Northing, 0));
+            curvePoints.Add(new Models.Base.Vec3(pts[0].Easting, pts[0].Northing, 0));
 
             // Recompute per-point headings in the curve-segment convention
             // (atan2(dEast,dNorth)). Guidance's "which way is forward" test keys
@@ -1381,7 +1394,7 @@ public partial class MainViewModel
             SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
                                 // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
-            StatusMessage = $"Created boundary curve ({curvePoints.Count} points, {halfTool:F1} m inside fence)";
+            StatusMessage = $"Created boundary curve ({curvePoints.Count} points)";
         });
 
         CreateTracksFromAllEdgesCommand = new RelayCommand(() =>
@@ -1741,14 +1754,16 @@ public partial class MainViewModel
     /// FormQuickAB nudHeading) (#335).
     /// </summary>
     /// <summary>
-    /// Which side of a driven line (A+, Drive AB, recorded curve) the first pass lies on,
-    /// AgOpenGPS's "ref side" (#345). The driven line is the edge of the work; the track is
-    /// saved half a working width to this side, plus the tool offset. Drawn lines aren't moved.
+    /// Which edge of the implement a driven line's (A+, Drive AB, recorded curve) reference
+    /// goes to, AgOpenGPS's "ref side" (#345). The reference line is the edge between passes
+    /// (<see cref="Models.Track.PassGeometry"/>), so the track is saved half a working width to
+    /// this side, plus the tool offset, and a pass runs where the tractor drove. Drawn, typed
+    /// and boundary lines aren't moved: the line itself is the edge, as in AgOpenGPS.
     /// </summary>
     public bool TrackRefSideRight { get; set; } = true;
 
-    /// <summary>Distance (m, + = right of heading) a driven line moves to become the first
-    /// pass: AgOpenGPS FormBuildTracks/FormQuickAB <c>(width - overlap) * ±0.5 + offset</c>.</summary>
+    /// <summary>Distance (m, + = right of heading) a driven line moves to the implement's edge:
+    /// AgOpenGPS FormBuildTracks/FormQuickAB <c>(width - overlap) * ±0.5 + offset</c>.</summary>
     private double RefSideOffset()
     {
         double half = (ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap) * 0.5;
@@ -1872,17 +1887,22 @@ public partial class MainViewModel
         }
         track.Points = reversed;
 
-        // "Right of the line" flips with the direction, so negate the pass number and
+        // "Right of the line" flips with the direction, so mirror the pass number and
         // nudge to keep the guidance line where it physically is (an engaged tractor on
-        // pass 3 right must not jump to pass 3 left). The negated pair goes to the pipeline
-        // with the re-pushed track (SetActiveTrack); the cycle's next snapshot mirrors it.
+        // pass 3 right must not jump to pass 3 left). Pass n is (n + ½) widths out
+        // (PassGeometry), so its mirror is pass -n - 1; on a boundary-follow track, -n.
+        // The pair goes to the pipeline with the re-pushed track (SetActiveTrack); the
+        // cycle's next snapshot mirrors it.
+        int mirror = track.NoPassOffset ? 0 : -1;
+        double width = ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap;
         bool isActive = track == SelectedTrack;
         if (isActive)
         {
-            _pendingInitialPathsAway = -State.Guidance.HowManyPathsAway;
+            _pendingInitialPathsAway = -State.Guidance.HowManyPathsAway + mirror;
             _pendingInitialNudgeOffset = -State.Guidance.NudgeOffset;
         }
-        track.NudgeDistance = -track.NudgeDistance;
+        // NudgeDistance = pass × width + nudge, the same pair as stored on the track
+        track.NudgeDistance = -track.NudgeDistance + mirror * width;
 
         // The mirror still holds the pre-swap pair until that snapshot lands, so the save
         // keeps the NudgeDistance just set rather than recomputing it from the mirror.

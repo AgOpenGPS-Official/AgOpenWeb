@@ -841,10 +841,13 @@ public class AutoSteerUTurnNUnitTests
 
         // No SetBoundary / SetHeadlandLine — the reporter's field had neither.
         const double abEasting = 100.0;
+        // Pass 0 runs at abEasting: the reference is the edge between passes, half a tool
+        // width to its left (PassGeometry).
+        double refE = abEasting - ConfigurationStore.Instance.ActualToolWidth / 2;
         var track = new AgOpenWeb.Models.Track.Track
         {
             Name = "AB_Manual",
-            Points = new List<Vec3> { new Vec3(abEasting, 0, 0), new Vec3(abEasting, 100, 0) },
+            Points = new List<Vec3> { new Vec3(refE, 0, 0), new Vec3(refE, 100, 0) },
             Type = AgOpenWeb.Models.Track.TrackType.ABLine
         };
         SendGpsAt(abEasting, 45, heading: 0, count: 20);
@@ -949,10 +952,13 @@ public class AutoSteerUTurnNUnitTests
         _pipeline.SetLocalPlane(new LocalPlane(new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties()));
 
         const double abEasting = 100.0;
+        // Pass 0 runs at abEasting: the reference is the edge between passes, half a tool
+        // width to its left (PassGeometry).
+        double refE = abEasting - ConfigurationStore.Instance.ActualToolWidth / 2;
         var track = new AgOpenWeb.Models.Track.Track
         {
             Name = "AB_Snap",
-            Points = new List<Vec3> { new Vec3(abEasting, 0, 0), new Vec3(abEasting, 100, 0) },
+            Points = new List<Vec3> { new Vec3(refE, 0, 0), new Vec3(refE, 100, 0) },
             Type = AgOpenWeb.Models.Track.TrackType.ABLine
         };
         double startN = heading < 90 ? 40 : 160;
