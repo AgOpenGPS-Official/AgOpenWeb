@@ -40,6 +40,7 @@ public class MainViewModelBuilder
     public IFieldService FieldService { get; } = Substitute.For<IFieldService>();
     public AgOpenWeb.Services.Interfaces.ITramLineService TramLineService { get; } = Substitute.For<AgOpenWeb.Services.Interfaces.ITramLineService>();
     public AgOpenWeb.Services.Pipeline.PipelineIntents Intents { get; } = new();
+    public AgOpenWeb.Services.Geometry.IPolygonOffsetService PolygonOffsetService { get; set; } = Substitute.For<AgOpenWeb.Services.Geometry.IPolygonOffsetService>();
 
     public MainViewModelBuilder()
     {
@@ -76,7 +77,7 @@ public class MainViewModelBuilder
                 ConfigurationStore.Instance),
             youTurnGuidanceService: new YouTurnGuidanceService(),
             youTurnPathingService: new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, ConfigurationStore.Instance),
-            polygonOffsetService: Substitute.For<AgOpenWeb.Services.Geometry.IPolygonOffsetService>(),
+            polygonOffsetService: PolygonOffsetService,
             turnAreaService: Substitute.For<ITurnAreaService>(),
             vehicleProfileService: VehicleProfileService,
             configurationService: ConfigurationService,
