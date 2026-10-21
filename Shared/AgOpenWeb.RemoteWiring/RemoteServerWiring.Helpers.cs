@@ -206,6 +206,7 @@ public static partial class RemoteServerWiring
             case "display.hardwareMessagesEnabled": disp.HardwareMessagesEnabled = B(); cfg.SaveAppSettings(); return;
             case "display.extraGuidelines": disp.ExtraGuidelines = B(); cfg.SaveAppSettings(); return;
             case "display.extraGuidelinesCount": if (I(out var dg)) { disp.ExtraGuidelinesCount = dg; cfg.SaveAppSettings(); } return;
+            case "display.uiScale": if (I(out var us)) { disp.UiScale = us; cfg.SaveAppSettings(); } return;
             case "display.uTurnButtonVisible": disp.UTurnButtonVisible = B(); cfg.SaveAppSettings(); return;
             case "display.lateralButtonVisible": disp.LateralButtonVisible = B(); cfg.SaveAppSettings(); return;
             case "display.autoSteerSound": disp.AutoSteerSound = B(); cfg.SaveAppSettings(); return;

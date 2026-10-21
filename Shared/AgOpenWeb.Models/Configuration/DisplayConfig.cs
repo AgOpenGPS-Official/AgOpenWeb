@@ -175,6 +175,25 @@ public class DisplayConfig : ObservableObject
         set => SetProperty(ref _extraGuidelinesCount, Math.Clamp(value, 1, 50));
     }
 
+    /// <summary>Scale of the web client's buttons, bars and dialogs, in percent (the map
+    /// itself is not scaled). One of <see cref="UiScaleSteps"/>.</summary>
+    private int _uiScale = 100;
+    public int UiScale
+    {
+        get => _uiScale;
+        set => SetProperty(ref _uiScale, NearestUiScale(value));
+    }
+
+    public static readonly int[] UiScaleSteps = { 100, 115, 130, 150 };
+
+    private static int NearestUiScale(int value)
+    {
+        int best = UiScaleSteps[0];
+        foreach (int s in UiScaleSteps)
+            if (Math.Abs(s - value) < Math.Abs(best - value)) best = s;
+        return best;
+    }
+
     private bool _lineSmoothEnabled = true;
     public bool LineSmoothEnabled
     {
