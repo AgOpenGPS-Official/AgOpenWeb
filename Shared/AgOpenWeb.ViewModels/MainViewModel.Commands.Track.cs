@@ -83,6 +83,11 @@ public partial class MainViewModel
         foreach (var p in boundary.Points) rawVec2.Add(new Models.Base.Vec2(p.Easting, p.Northing));
         var offset = insetDistance > 0.05 ? _polygonOffsetService.CreateInwardOffset(rawVec2, insetDistance) : null;
         var ring = (offset != null && offset.Count >= 3) ? offset : rawVec2;
+        // Round the corners to the U-turn radius (what the operator says the rig can turn), so
+        // the curve cuts a corner no more than the vehicle has to. Rounding by cutting each
+        // corner a share of its sides made arcs hundreds of metres across on long sides.
+        var rounded = _polygonOffsetService.RoundCorners(ring, ConfigStore.Guidance.UTurnRadius);
+        if (rounded != null && rounded.Count >= 3) ring = rounded;
         if (ring.Count > 3 && ring[0].Easting == ring[^1].Easting && ring[0].Northing == ring[^1].Northing)
             ring = ring.GetRange(0, ring.Count - 1); // a closing duplicate would be a zero-length side
         int n = ring.Count;
@@ -141,10 +146,8 @@ public partial class MainViewModel
         if (seg.Count == 2) // both taps on one side: a straight run, still a curve track
             seg.Insert(1, new Models.Base.Vec3((seg[0].Easting + seg[1].Easting) / 2, (seg[0].Northing + seg[1].Northing) / 2, 0));
 
-        // Round the boundary's sharp corners so the tractor can actually drive it (Chaikin
-        // corner-cutting), then heading per point (guidance's forward test keys off it).
-        var smoothed = Models.Guidance.CurveProcessing.ChaikinsSmooth(seg, 3);
-        var headed = Models.Guidance.CurveProcessing.CalculateHeadings(smoothed);
+        // Heading per point (guidance's forward test keys off it).
+        var headed = Models.Guidance.CurveProcessing.CalculateHeadings(seg);
         // Extend both ends past the field boundary along their tangents — exactly like the
         // hand-drawn curve tool (ExtendCurvePastBoundary) and an AB line. Without this the curve
         // stops inside the field and the U-turn generator has no boundary crossing to anchor the
