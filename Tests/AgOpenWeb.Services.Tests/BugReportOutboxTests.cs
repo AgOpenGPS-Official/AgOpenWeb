@@ -134,6 +134,27 @@ public class BugReportOutboxTests
     }
 
     [Test]
+    public async Task NetworkBack_SendsAtOnce_ButNotWithinAMinuteOfTheLastTry()
+    {
+        // #385: out of signal for a while, the report waits out a 30 min backoff; when the
+        // network comes back it goes now. A link that flaps doesn't resend within a minute.
+        for (int i = 0; i < 3; i++) _svc.Replies.Enqueue(Offline);
+        _outbox.Enqueue(Zip, Meta);
+        await _outbox.SendDueAsync();                 // try 1 → wait 1 min
+        _now = _now.AddMinutes(1); await _outbox.SendDueAsync(); // try 2 → wait 5 min
+        _now = _now.AddMinutes(5); await _outbox.SendDueAsync(); // try 3 → wait 30 min
+        Assert.That(_svc.Posts, Has.Count.EqualTo(3));
+
+        _now = _now.AddSeconds(40);
+        Assert.That(await _outbox.SendDueAsync(networkChanged: true), Is.Empty, "tried 40 s ago");
+
+        _now = _now.AddSeconds(30);
+        _svc.Replies.Enqueue(() => Reply(HttpStatusCode.Created, "{\"issue\":8,\"url\":\"u\"}"));
+        Assert.That(await _outbox.SendDueAsync(), Is.Empty, "no change: still waits for its 30 min");
+        Assert.That((await _outbox.SendDueAsync(networkChanged: true)).Single().Result.Issue, Is.EqualTo(8));
+    }
+
+    [Test]
     public async Task Queue_SurvivesARestart()
     {
         _svc.Replies.Enqueue(Offline);

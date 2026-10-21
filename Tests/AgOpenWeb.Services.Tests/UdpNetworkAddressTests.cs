@@ -5,6 +5,7 @@
 using System.Net;
 using AgOpenWeb.Services;
 using AgOpenWeb.Services.Interfaces;
+using AgOpenWeb.Services.Network;
 
 namespace AgOpenWeb.Services.Tests;
 
@@ -70,21 +71,23 @@ public class UdpNetworkAddressTests
     }
 
     [Test]
-    public void ALinkThatComesUpLater_IsBroadcastTo_OnTheAddressChange()
+    public void ALinkThatComesUpLater_IsBroadcastTo_AfterTheNetworkCheck()
     {
         // #385: the app starts before the Ethernet link to the AiO is up.
         var provider = new FakeLocalNetworkInfoProvider(
             new LocalNetworkAddress(IPAddress.Parse("10.0.0.4"), 24, "wlan0"));
-        var service = new UdpCommunicationService(provider);
+        using var watcher = new NetworkWatcher(null, systemEvents: false, TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+        var service = new UdpCommunicationService(provider, networkWatcher: watcher);
+        watcher.Check(NetworkCheckReason.Heartbeat);
         service.RefreshDiscoveryIfDue();
         var aio = new IPEndPoint(IPAddress.Parse("192.168.5.255"), 8888);
         Assert.That(service.DiscoveryEndpoints, Does.Not.Contain(aio));
 
         provider.Addresses.Add(new LocalNetworkAddress(IPAddress.Parse("192.168.5.10"), 24, "eth0"));
         service.RefreshDiscoveryIfDue();
-        Assert.That(service.DiscoveryEndpoints, Does.Not.Contain(aio), "no change event: waits for the 30 s refresh");
+        Assert.That(service.DiscoveryEndpoints, Does.Not.Contain(aio), "nothing asked for a refresh yet");
 
-        service.SimulateNetworkAddressChanged();
+        watcher.Check(NetworkCheckReason.AddressChanged);
         service.RefreshDiscoveryIfDue();
         Assert.That(service.DiscoveryEndpoints, Does.Contain(aio));
     }

@@ -206,6 +206,39 @@ public class NtripHandshakeTests
     }
 
     [Test]
+    public async Task ANetworkChange_EndsTheBackoffWait()
+    {
+        // #385: the network comes up while a retry waits out its backoff; it tries at once.
+        var probe = new TcpListener(IPAddress.Loopback, 0);
+        probe.Start();
+        int port = ((IPEndPoint)probe.LocalEndpoint).Port;
+        probe.Stop();
+
+        using var watcher = new AgOpenWeb.Services.Network.NetworkWatcher(null, systemEvents: false,
+            TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+        var svc = new NtripClientService(NSubstitute.Substitute.For<IGpsService>(),
+            NullLogger<NtripClientService>.Instance, watcher);
+        Assert.ThrowsAsync<SocketException>(() => svc.ConnectAsync(Config(port)));
+        Thread.Sleep(3300); // retries at ~1 s and ~3 s fail; the next is due at ~7 s
+
+        var caster = new TcpListener(IPAddress.Loopback, port);
+        caster.Start();
+        try
+        {
+            var accept = caster.AcceptTcpClientAsync();
+            watcher.Check(AgOpenWeb.Services.Network.NetworkCheckReason.AddressChanged);
+            Assert.That(await Task.WhenAny(accept, Task.Delay(1500)), Is.SameAs(accept), "tried at once");
+            accept.Result.Dispose();
+        }
+        finally
+        {
+            await svc.DisconnectAsync();
+            svc.Dispose();
+            caster.Stop();
+        }
+    }
+
+    [Test]
     public async Task ARetryableRejection_DuringAReconnect_StillRetries()
     {
         using var caster = new FakeCaster(async s => await Send(s, "HTTP/1.1 503 Service Unavailable\r\n\r\n"));
