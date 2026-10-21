@@ -413,8 +413,8 @@ The unit (`Plans`-adjacent `deploy/linux/agopenweb.service`):
 - **`Type=notify` + `WatchdogSec=30`** — the host sends `READY=1` once it is serving
   (systemd marks the unit started only when the browser endpoint is live) and pets
   the watchdog via `sd_notify` (`SystemdWatchdogService`, pinging at half-interval).
-- **`Restart=always`** + **`After=network-online.target`** — the brain returns after
-  a crash, and only starts once module/NTRIP sockets have a real network.
+- **`Restart=always`** — the brain returns after a crash. No `network-online` wait: it
+  starts without a network and finds modules / connects NTRIP once one is up (#385).
 - **dedicated unprivileged `agopenweb` user** in `dialout` (USB-serial GPS/AiO) +
   `can` (SocketCAN); **journald** logging; **`StateDirectory`** for field data/config;
   moderate hardening (tighten per site).

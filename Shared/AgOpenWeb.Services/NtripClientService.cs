@@ -75,7 +75,8 @@ public class NtripClientService : INtripClientService, IDisposable
     private const double WATCHDOG_RECONNECT_SECONDS = 30.0;
 
     // ── Reconnect with backoff ────────────────────────────────────────────
-    // Triggered by any failure (receive error, send error, watchdog stall).
+    // Triggered by any failure (a first connect that fails, receive error, send error,
+    // watchdog stall).
     // Backoff schedule: 1s, 2s, 4s, 8s, 15s — then hold at 15s indefinitely.
     // Small glitches recover quickly; long outages keep retrying without
     // hammering the caster. Each reconnect is a full TCP teardown + new
@@ -120,7 +121,18 @@ public class NtripClientService : INtripClientService, IDisposable
         CancelReconnect(); // a new request replaces any retry loop
         Volatile.Write(ref _wanted, true);
         Interlocked.Exchange(ref _failureStreak, 0);
-        await ConnectCoreAsync(config);
+        try
+        {
+            await ConnectCoreAsync(config);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) // superseded: not ours
+        {
+            // No network yet (a unit that boots before Wi-Fi associates, a tablet out of
+            // signal) or the caster is down: keep trying with the backoff, as after a drop,
+            // instead of giving up until someone reconnects by hand (#385).
+            TriggerReconnect($"connect failed: {ex.Message}");
+            throw;
+        }
     }
 
     /// <summary>

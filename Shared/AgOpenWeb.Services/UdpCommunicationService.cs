@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,6 +63,10 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     private IPEndPoint? _lockedEndpoint;
     private DateTime _lastModuleResponse = DateTime.MinValue;
     private DateTime _lastDiscoveryRefresh = DateTime.MinValue;
+    // Set when an interface gains or loses an address (NetworkChange), so a link that comes
+    // up after the app started (Ethernet to the AiO, Wi-Fi at boot) is broadcast to on the
+    // next send rather than at the next 30 s refresh (#385).
+    private int _addressesChanged;
     private static readonly IPEndPoint _localhostEndpoint = new(IPAddress.Loopback, 8888);
     // AgIO's loopback port: AgOpenGPS sends PGNs to the loopback broadcast so every program
     // bound to 17777 gets a copy. Apple platforms accept a loopback broadcast but never
@@ -182,6 +187,11 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             _discoveryEndpoints = GetBroadcastEndpoints();
             _lockedEndpoint = null;
             _lastDiscoveryRefresh = DateTime.UtcNow;
+            try { NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged; }
+            catch (Exception ex) // not every platform reports changes; the 30 s refresh still runs
+            {
+                _logger.LogDebug("[UDP] no network change events: {Message}", ex.Message);
+            }
 
             IsConnected = true;
 
@@ -203,6 +213,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         if (!IsConnected) return;
 
         _cancellationTokenSource?.Cancel();
+        try { NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged; } catch { /* never subscribed */ }
         foreach (var l in _listeners)
         {
             try { l.Socket.Close(); l.Socket.Dispose(); } catch { /* closing */ }
@@ -215,6 +226,23 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         await Task.CompletedTask;
     }
 
+    private void OnNetworkAddressChanged(object? sender, EventArgs e) => Interlocked.Exchange(ref _addressesChanged, 1);
+
+    /// <summary>Rebuild the broadcast list when an address changed, else every 30 s.</summary>
+    internal void RefreshDiscoveryIfDue()
+    {
+        bool changed = Interlocked.Exchange(ref _addressesChanged, 0) == 1;
+        if (!changed && (DateTime.UtcNow - _lastDiscoveryRefresh).TotalSeconds <= DiscoveryRefreshSeconds)
+            return;
+        _discoveryEndpoints = GetBroadcastEndpoints();
+        _lastDiscoveryRefresh = DateTime.UtcNow;
+        if (changed) LocalIPAddress = GetLocalIPAddress();
+    }
+
+    internal IReadOnlyList<IPEndPoint> DiscoveryEndpoints => _discoveryEndpoints;
+
+    internal void SimulateNetworkAddressChanged() => OnNetworkAddressChanged(null, EventArgs.Empty);
+
     public void SendToModules(byte[] data)
     {
         if (!IsConnected || _udpSocket == null) return;
@@ -226,12 +254,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         long perfT0 = perf ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         long perfA0 = perf ? GC.GetAllocatedBytesForCurrentThread() : 0;
 
-        // Refresh discovery endpoints periodically
-        if ((DateTime.UtcNow - _lastDiscoveryRefresh).TotalSeconds > DiscoveryRefreshSeconds)
-        {
-            _discoveryEndpoints = GetBroadcastEndpoints();
-            _lastDiscoveryRefresh = DateTime.UtcNow;
-        }
+        RefreshDiscoveryIfDue();
 
         // Check for module timeout -> go back to discovery
         if (_lockedEndpoint != null &&

@@ -69,15 +69,35 @@ public class UdpNetworkAddressTests
             Is.EqualTo(new[] { "192.168.5.20", "10.0.0.4" }));
     }
 
+    [Test]
+    public void ALinkThatComesUpLater_IsBroadcastTo_OnTheAddressChange()
+    {
+        // #385: the app starts before the Ethernet link to the AiO is up.
+        var provider = new FakeLocalNetworkInfoProvider(
+            new LocalNetworkAddress(IPAddress.Parse("10.0.0.4"), 24, "wlan0"));
+        var service = new UdpCommunicationService(provider);
+        service.RefreshDiscoveryIfDue();
+        var aio = new IPEndPoint(IPAddress.Parse("192.168.5.255"), 8888);
+        Assert.That(service.DiscoveryEndpoints, Does.Not.Contain(aio));
+
+        provider.Addresses.Add(new LocalNetworkAddress(IPAddress.Parse("192.168.5.10"), 24, "eth0"));
+        service.RefreshDiscoveryIfDue();
+        Assert.That(service.DiscoveryEndpoints, Does.Not.Contain(aio), "no change event: waits for the 30 s refresh");
+
+        service.SimulateNetworkAddressChanged();
+        service.RefreshDiscoveryIfDue();
+        Assert.That(service.DiscoveryEndpoints, Does.Contain(aio));
+    }
+
     private sealed class FakeLocalNetworkInfoProvider : ILocalNetworkInfoProvider
     {
-        private readonly IReadOnlyList<LocalNetworkAddress> _addresses;
+        public List<LocalNetworkAddress> Addresses { get; }
 
         public FakeLocalNetworkInfoProvider(params LocalNetworkAddress[] addresses)
         {
-            _addresses = addresses;
+            Addresses = addresses.ToList();
         }
 
-        public IReadOnlyList<LocalNetworkAddress> GetIPv4Addresses() => _addresses;
+        public IReadOnlyList<LocalNetworkAddress> GetIPv4Addresses() => Addresses.ToList();
     }
 }
