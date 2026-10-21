@@ -308,7 +308,9 @@ public record StatusDto(
     // Network IO: PGN 100 (corrected position) is sent (#337).
     bool SendCorrectedPosition = false,
     // Bytes 9–11 of the last scan reply: the subnet the scan came from (#334); "" = none.
-    string ScanReplySubnet = "");
+    string ScanReplySubnet = "",
+    // Sprayer readout from the machine module (PGN 160); null until it is heard.
+    SprayerDto? Sprayer = null);
 
 /// <summary>What the field data card shows beyond the worked area the status frame already
 /// carries: the boundary area less inner boundaries (0 = no boundary), the ground covered
@@ -319,6 +321,12 @@ public record FieldDataDto(double BoundaryAreaSqM, double ActualAreaSqM, double 
 /// enabled on the implement, the implement's section count (0 = no implement), how many
 /// implements are connected, and the implement's own section states (section 1 in bit 0).</summary>
 public record IsobusDto(bool SectionControl, int Sections, int Clients, ulong Reported);
+
+/// <summary>The sprayer readout (PGN 160 from the machine module): bar, L/min, litres, the
+/// sections the module has open (section 1 in bit 0), the nozzles and width (m) they cover,
+/// the flow they should spray (L/min, NaN = no check) and the alarms on (SprayerAlarms bits).</summary>
+public record SprayerDto(double PressureBar, double FlowLpm, double TotalLitres, bool MasterOn, int Sections,
+    int OpenNozzles, double OpenWidthM, double ExpectedFlowLpm, int Alarms);
 
 /// <summary>GPS values for the System Data card that ride no other frame: attitude, the
 /// heading sources before fusion, the sentence rate and counters, and the latest raw
@@ -438,7 +446,10 @@ public record TramConfigDto(int Passes, bool Display, int Line, double Width);
 /// <summary>Machine Control tab (ConfigStore.Machine). PinAssignments: 24 PinFunction ints.</summary>
 public record MachineConfigDto(
     bool HydraulicLiftEnabled, int RaiseTime, double LookAhead, int LowerTime, bool InvertRelay,
-    int User1, int User2, int User3, int User4, IReadOnlyList<int> PinAssignments);
+    int User1, int User2, int User3, int User4, IReadOnlyList<int> PinAssignments,
+    // Sprayer readout (SprayerService): m, L/min, bar, bar, bar, %.
+    double SprayerNozzleSpacing = 0.5, double SprayerNozzleFlow = 1.6, double SprayerReferencePressure = 3.0,
+    double SprayerMinPressure = 1.0, double SprayerMaxPressure = 6.0, int SprayerFlowTolerance = 20);
 
 /// <summary>Vehicle &amp; Tool picker hub (Phase 9): available profiles (name + preview)
 /// and the active pair. Seeded on connect, re-sent when the list/active/config changes.</summary>

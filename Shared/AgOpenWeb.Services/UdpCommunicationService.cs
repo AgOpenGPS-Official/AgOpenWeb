@@ -590,6 +590,10 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             case PgnNumbers.ISOBUS_HEARTBEAT: // 240 - task controller; IsobusTaskControllerService reads it
                 break;
 
+            case PgnNumbers.SPRAYER_DATA: // 160 - sprayer readings from the machine module; SprayerService reads it
+                _machineIp = remoteIp;
+                break;
+
             default:
                 // Log unknown PGNs to help debug
                 System.Diagnostics.Debug.WriteLine($"Unknown PGN {pgn} (0x{pgn:X2}) received");

@@ -22,7 +22,10 @@ public enum SoundEffect
     Headland,
     /// <summary>Approaching a U-turn, 18–20 m out (AgOpenGPS sndBoundaryAlarm, gated on
     /// the U-turn sound setting) (#110).</summary>
-    YouTurnApproach
+    YouTurnApproach,
+    /// <summary>A sprayer alarm came on: pressure out of range or the flow not what the
+    /// open nozzles should spray (SprayerService).</summary>
+    SprayerAlarm
 }
 
 /// <summary>

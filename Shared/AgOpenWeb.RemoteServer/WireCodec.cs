@@ -353,6 +353,12 @@ public static class WireCodec
         w.Write(m.User1); w.Write(m.User2); w.Write(m.User3); w.Write(m.User4); // i32
         w.Write(m.PinAssignments.Count);
         foreach (var p in m.PinAssignments) w.Write(p);  // i32 (PinFunction)
+        w.Write(m.SprayerNozzleSpacing);      // f64, m
+        w.Write(m.SprayerNozzleFlow);         // f64, L/min
+        w.Write(m.SprayerReferencePressure);  // f64, bar
+        w.Write(m.SprayerMinPressure);        // f64, bar
+        w.Write(m.SprayerMaxPressure);        // f64, bar
+        w.Write(m.SprayerFlowTolerance);      // i32, %
         // Screen & Alerts (Display) tab.
         var d = c.Display;
         void DB(bool b) => w.Write((byte)(b ? 1 : 0));
@@ -751,6 +757,23 @@ public static class WireCodec
         w.Write((byte)(s.SendCorrectedPosition ? 1 : 0));
         // Network IO: the subnet the scan came from (append-only, #334).
         WriteStr(w, s.ScanReplySubnet);
+        // Sprayer readout (append-only): [u8 present] then f32 pressure (bar), f32 flow
+        // (L/min), f64 total (L), u8 master, u8 sections, u8 open nozzles, f32 open width (m),
+        // f32 expected flow (L/min, NaN = no check), u8 alarms.
+        var sp = s.Sprayer;
+        w.Write((byte)(sp != null ? 1 : 0));
+        if (sp != null)
+        {
+            w.Write((float)sp.PressureBar);
+            w.Write((float)sp.FlowLpm);
+            w.Write(sp.TotalLitres);
+            w.Write((byte)(sp.MasterOn ? 1 : 0));
+            w.Write((byte)Math.Clamp(sp.Sections, 0, 255));
+            w.Write((byte)Math.Clamp(sp.OpenNozzles, 0, 255));
+            w.Write((float)sp.OpenWidthM);
+            w.Write((float)sp.ExpectedFlowLpm);
+            w.Write((byte)Math.Clamp(sp.Alarms, 0, 255));
+        }
         return ms.ToArray();
     }
 

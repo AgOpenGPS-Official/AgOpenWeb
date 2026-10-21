@@ -142,6 +142,12 @@ public class ToolProfileService : IToolProfileService
         store.Machine.User2Value = dm.User2Value;
         store.Machine.User3Value = dm.User3Value;
         store.Machine.User4Value = dm.User4Value;
+        store.Machine.SprayerNozzleSpacing = dm.SprayerNozzleSpacing;
+        store.Machine.SprayerNozzleFlow = dm.SprayerNozzleFlow;
+        store.Machine.SprayerReferencePressure = dm.SprayerReferencePressure;
+        store.Machine.SprayerMinPressure = dm.SprayerMinPressure;
+        store.Machine.SprayerMaxPressure = dm.SprayerMaxPressure;
+        store.Machine.SprayerFlowTolerance = dm.SprayerFlowTolerance;
         store.Machine.ResetPinAssignments();
 
         // U-Turn and Tram tabs: likewise from the defaults.

@@ -881,6 +881,13 @@ public static partial class RemoteServerWiring
                             : null;
                     };
 
+                    // Sprayer readout (PGN 160 from the machine module), under the section buttons.
+                    var sprayerSvc = services.GetRequiredService<AgOpenWeb.Services.Interfaces.ISprayerService>();
+                    server.SprayerProvider = () => sprayerSvc.Status is { } sp
+                        ? new AgOpenWeb.RemoteServer.SprayerDto(sp.PressureBar, sp.FlowLpm, sp.TotalLitres, sp.MasterOn,
+                            sp.Sections, sp.OpenNozzles, sp.OpenWidthM, sp.ExpectedFlowLpm, (int)sp.Alarms)
+                        : null;
+
                     // GPS source (#157): the incoming sentence for the GPS detail card, and
                     // "Dual GPS on but no dual heading" while real GPS is live ($PANDA with
                     // Dual on: the heading stage falls back to the single-antenna heading).

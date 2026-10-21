@@ -191,6 +191,15 @@ public sealed class RemoteServerHost
     }
     private Func<IsobusDto?>? _isobusProvider;
 
+    /// <summary>The sprayer readout for the status frame (PGN 160 from the machine module);
+    /// null until the module is heard.</summary>
+    public Func<SprayerDto?>? SprayerProvider
+    {
+        get => _broadcaster?.Projector.SprayerProvider;
+        set { _sprayerProvider = value; if (_broadcaster is not null) _broadcaster.Projector.SprayerProvider = value; }
+    }
+    private Func<SprayerDto?>? _sprayerProvider;
+
     /// <summary>The field data card's numbers for the status frame (#321); null with no
     /// field open.</summary>
     public Func<FieldDataDto?>? FieldDataProvider
@@ -291,6 +300,7 @@ public sealed class RemoteServerHost
         _broadcaster.Projector.HeadingChartProvider = _headingChartProvider;
         _broadcaster.Projector.GpsSourceProvider = _gpsSourceProvider;
         _broadcaster.Projector.IsobusProvider = _isobusProvider;
+        _broadcaster.Projector.SprayerProvider = _sprayerProvider;
         _broadcaster.Projector.FieldDataProvider = _fieldDataProvider;
         _broadcaster.Projector.SystemDataProvider = _systemDataProvider;
         _broadcaster.Projector.TramLinesProvider = _tramLinesProvider;
