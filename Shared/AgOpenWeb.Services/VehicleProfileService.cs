@@ -199,6 +199,9 @@ public class VehicleProfileService : IVehicleProfileService
         store.Vehicle.AntennaHeight = 3.0;
         store.Vehicle.AntennaPivot = 0.0;
         store.Vehicle.AntennaOffset = 0.0;
+        store.Vehicle.ImuPivot = 0.0;
+        store.Vehicle.ImuHeight = 0.0;
+        store.Vehicle.ImuOffset = 0.0;
         store.Vehicle.Wheelbase = 2.5;
         store.Vehicle.TrackWidth = 1.8;
         store.Vehicle.HitchLength = 1.8;

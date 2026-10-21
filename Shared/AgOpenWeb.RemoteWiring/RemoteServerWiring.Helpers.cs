@@ -105,6 +105,9 @@ public static partial class RemoteServerWiring
             case "vehicle.antennaPivot": if (D(out var d4)) veh.AntennaPivot = d4; return;
             case "vehicle.antennaHeight": if (D(out var d5)) veh.AntennaHeight = d5; return;
             case "vehicle.antennaOffset": if (D(out var d6)) veh.AntennaOffset = d6; return;
+            case "vehicle.imuPivot": if (D(out var di1)) veh.ImuPivot = di1; return;
+            case "vehicle.imuHeight": if (D(out var di2)) veh.ImuHeight = di2; return;
+            case "vehicle.imuOffset": if (D(out var di3)) veh.ImuOffset = di3; return;
             case "vehicle.antennaSide": // L/C/R presets (mirror ConfigurationViewModel)
                 if (val == "center") veh.AntennaOffset = 0;
                 else if (val == "left") veh.AntennaOffset = System.Math.Abs(veh.AntennaOffset) < 0.01 ? -0.5 : -System.Math.Abs(veh.AntennaOffset);

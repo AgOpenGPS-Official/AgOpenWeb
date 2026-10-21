@@ -86,6 +86,13 @@ public class AutoSteerService : IAutoSteerService
     private AutoSteerConfig? _subscribedAutoSteer;
     private ToolConfig? _subscribedTool;
     private MachineConfig? _subscribedMachine;
+    private VehicleConfig? _subscribedVehicle;
+
+    // PGN 247 (vehicle geometry) also goes out when the steer module is heard after this
+    // long without PGN 253: a module (or the HAT daemon) that started after the app, or
+    // restarted, gets the geometry it may need to set up its receiver (#387).
+    internal const long SteerModuleSilenceMs = 3000;
+    private long _lastSteerDataMs = long.MinValue / 2;
 
     /// <summary>
     /// Test seam: lets tests shorten the debounce so they don't have
@@ -185,6 +192,9 @@ public class AutoSteerService : IAutoSteerService
         // same way, so edits and profile loads reach the machine module (#110).
         _subscribedMachine = _configStore.Machine;
         _subscribedMachine.PropertyChanged += OnConfigPropertyChanged;
+        // Vehicle geometry (PGN 247): edits and profile loads reach the modules (#387).
+        _subscribedVehicle = _configStore.Vehicle;
+        _subscribedVehicle.PropertyChanged += OnConfigPropertyChanged;
         _configSubscribed = true;
     }
 
@@ -197,6 +207,8 @@ public class AutoSteerService : IAutoSteerService
             _subscribedTool.PropertyChanged -= OnConfigPropertyChanged;
         if (_subscribedMachine != null)
             _subscribedMachine.PropertyChanged -= OnConfigPropertyChanged;
+        if (_subscribedVehicle != null)
+            _subscribedVehicle.PropertyChanged -= OnConfigPropertyChanged;
         _configSubscribed = false;
     }
 
@@ -213,6 +225,9 @@ public class AutoSteerService : IAutoSteerService
         _configEmitTimer.Change(_configEmitDelayMs, Timeout.Infinite);
     }
 
+    private void SendVehicleGeometry() =>
+        _udpService.SendToModules(PgnBuilder.BuildVehicleGeometryPgn(_configStore.Vehicle));
+
     private void EmitSteerConfigPgns()
     {
         if (!_isEnabled) return; // raced past Stop()
@@ -225,6 +240,7 @@ public class AutoSteerService : IAutoSteerService
             // with 251/252 on start and profile load; these were built but never sent (#110).
             SendMachineConfig();
             SendMachinePinConfig();
+            SendVehicleGeometry();
         }
         catch (Exception ex)
         {
@@ -305,6 +321,9 @@ public class AutoSteerService : IAutoSteerService
         switch (e.PGN)
         {
             case PgnNumbers.AUTOSTEER_DATA: // 253 - Steer Data from module
+                long now = Environment.TickCount64;
+                if (now - Interlocked.Exchange(ref _lastSteerDataMs, now) > SteerModuleSilenceMs)
+                    SendVehicleGeometry(); // the module is new or back
                 ProcessSteerData(e.Data);
                 break;
 

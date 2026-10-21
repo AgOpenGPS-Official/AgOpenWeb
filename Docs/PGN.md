@@ -1101,6 +1101,43 @@ Doubles are little-endian. Older AgOpenGPS sent a 16-byte version without the he
 <br>
 <br>
 
+## Vehicle geometry
+
+An AgOpenWeb PGN (#387): what a module may need to know about the vehicle. A steer module
+estimating the wheel angle from the heading rate needs the wheelbase; a receiver with an
+INS (UM981) needs the lever arm from its IMU to the antenna. Sent to the module subnet
+with PGN 251/252: at start, when the vehicle settings or profile change, and when the
+steer module's PGN 253 is heard again after 3 s of silence (a module that started or
+restarted after the app). Modules that don't know it ignore it.
+
+| PGN Name | Src | PGN | Dec | Len |
+|---|---|---|---|---|
+| Vehicle geometry | 7F | F7 | 247 | 19 |
+
+Lengths are in cm, little-endian. Positions are measured from the pivot (the rear axle
+centre): pivot = ahead of it (+) or behind it (−), offset = right of the centerline (+) or
+left of it (−), height = above the ground.
+
+| Byte | Content | Type |
+|---|---|---|
+| 5 | Layout version, 1. Later versions only add fields, at the end | uint8 |
+| 6 | Flags. Bit 0: IMU position entered (else bytes 17-22 are 0, not a position) | uint8 |
+| 7-8 | Wheelbase | uint16 |
+| 9-10 | Track width | uint16 |
+| 11-12 | Antenna height | uint16 |
+| 13-14 | Antenna pivot | int16 |
+| 15-16 | Antenna offset | int16 |
+| 17-18 | IMU pivot | int16 |
+| 19-20 | IMU height | uint16 |
+| 21-22 | IMU offset | int16 |
+| 23 | Max steer angle, degrees | uint8 |
+| 24 | CRC | |
+
+The antenna position is set in Vehicle Configuration → Vehicle, the IMU position in Vehicle Configuration → Roll.
+
+<br>
+<br>
+
 ## Nudge by machine
 
 <table>

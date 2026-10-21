@@ -36,6 +36,7 @@ public static class PgnBuilder
     public const byte PGN_CORRECTED_POSITION = 0x64; // 100 - Corrected position (seed monitors, rate control)
     public const byte PGN_GPS_DATA = 0xD6;       // 214 - AgIO's GPS data (GPS_Out)
     public const byte SOURCE_GPS = 0x7C;         // AgIO sends PGN 214 as the GPS module
+    public const byte PGN_VEHICLE_GEOMETRY = 0xF7; // 247 - Vehicle geometry (AgOpenWeb, #387)
 
     // Buffer sizes: header(2) + source(1) + pgn(1) + length(1) + data(N) + crc(1)
     public const int AUTOSTEER_PGN_SIZE = 14;       // 5 header + 8 data + 1 crc
@@ -47,6 +48,8 @@ public static class PgnBuilder
     public const int MACHINE_PINS_PGN_SIZE = 30;    // 5 header + 24 data + 1 crc
     public const int CORRECTED_POSITION_PGN_SIZE = 30; // 5 header + 24 data + 1 crc
     public const int GPS_DATA_PGN_SIZE = 57;        // 5 header + 51 data + 1 crc
+    public const int VEHICLE_GEOMETRY_PGN_SIZE = 25; // 5 header + 19 data + 1 crc
+    public const byte VEHICLE_GEOMETRY_VERSION = 1;
 
     // Thread-local buffers to avoid allocation
     [ThreadStatic]
@@ -387,6 +390,60 @@ public static class PgnBuilder
         buf[12] = (byte)Math.Clamp(config.User4Value, 0, 255);
 
         return WithCrc(buf);
+    }
+
+    /// <summary>
+    /// Build PGN 247 (0xF7) Vehicle geometry, an AgOpenWeb PGN (#387): what a module needs
+    /// to know about the vehicle — a steer module estimating the wheel angle from the heading
+    /// rate needs the wheelbase, a receiver's INS (UM981) the IMU-to-antenna lever arm. Sent
+    /// with PGN 251/252 and again when the steer module comes back after a silence.
+    ///
+    /// Lengths in cm, little-endian; positions from the pivot (rear axle centre): pivot =
+    /// ahead (+), offset = right (+), height = above the ground.
+    /// Byte 5:      layout version (1); a module reads the fields it knows and skips the rest
+    /// Byte 6:      flags, bit 0: IMU position entered (else bytes 17-22 are 0, not a position)
+    /// Bytes 7-8:   wheelbase, uint16
+    /// Bytes 9-10:  track width, uint16
+    /// Bytes 11-12: antenna height, uint16
+    /// Bytes 13-14: antenna pivot, int16
+    /// Bytes 15-16: antenna offset, int16
+    /// Bytes 17-18: IMU pivot, int16
+    /// Bytes 19-20: IMU height, uint16
+    /// Bytes 21-22: IMU offset, int16
+    /// Byte 23:     max steer angle, degrees
+    /// Byte 24:     CRC
+    /// </summary>
+    public static byte[] BuildVehicleGeometryPgn(VehicleConfig v)
+    {
+        var buf = new byte[VEHICLE_GEOMETRY_PGN_SIZE];
+        buf[0] = HEADER1;
+        buf[1] = HEADER2;
+        buf[2] = SOURCE;
+        buf[3] = PGN_VEHICLE_GEOMETRY;
+        buf[4] = VEHICLE_GEOMETRY_PGN_SIZE - 6;
+
+        buf[5] = VEHICLE_GEOMETRY_VERSION;
+        bool imu = v.ImuPivot != 0 || v.ImuHeight != 0 || v.ImuOffset != 0;
+        buf[6] = imu ? (byte)1 : (byte)0;
+        PutCm(buf, 7, v.Wheelbase, unsigned: true);
+        PutCm(buf, 9, v.TrackWidth, unsigned: true);
+        PutCm(buf, 11, v.AntennaHeight, unsigned: true);
+        PutCm(buf, 13, v.AntennaPivot, unsigned: false);
+        PutCm(buf, 15, v.AntennaOffset, unsigned: false);
+        PutCm(buf, 17, v.ImuPivot, unsigned: false);
+        PutCm(buf, 19, v.ImuHeight, unsigned: true);
+        PutCm(buf, 21, v.ImuOffset, unsigned: false);
+        buf[23] = (byte)Math.Clamp((int)Math.Round(v.MaxSteerAngle), 0, 255);
+
+        return WithCrc(buf);
+    }
+
+    private static void PutCm(byte[] buf, int at, double metres, bool unsigned)
+    {
+        int cm = (int)Math.Round(metres * 100);
+        int value = unsigned ? Math.Clamp(cm, 0, ushort.MaxValue) : Math.Clamp(cm, short.MinValue, short.MaxValue);
+        buf[at] = (byte)(value & 0xFF);
+        buf[at + 1] = (byte)((value >> 8) & 0xFF);
     }
 
     /// <summary>
