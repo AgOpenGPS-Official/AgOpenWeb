@@ -93,6 +93,8 @@ let wizard = null;     // Steer Wizard frame (host-driven); null when not open
 let wizardDirty = false;
 let fps = 0;           // smoothed client render rate (for the GPS-detail card)
 let _fpsFrames = 0, _fpsT0 = 0;
+let _frameLast = 0;    // when the last capped frame was drawn (rAF time, ms)
+let _fpsBadgeT0 = 0;   // throttle (~4 Hz) for the on-map FPS counter's DOM writes
 let _diagT0 = 0;       // throttle (~4 Hz) for the marker-gated diag line's DOM writes
 let linkRttMs = null;  // EMA of server↔client round-trip (ms), from diag.ping/PONG
 // Remote actuation authority (Phase 2 safety layer): our connection id (from the
@@ -3489,6 +3491,10 @@ function renderAppSettings() {
   document.getElementById('as-imperial').classList.toggle('active', !metric);
   const d = config && config.display;
   if (d) for (const b of document.querySelectorAll('#appsettings .as-tgl')) b.classList.toggle('active', !!d[b.dataset.key.split('.')[1]]);
+  const lim = (d && d.mapFpsLimit) || 0;
+  const fl = document.getElementById('as-fpslimit');
+  const flText = tr('Frame Limit: {v}', { v: lim ? String(lim) : tr('Max', {}) });
+  if (fl.textContent !== flText) fl.textContent = flText;
   const dl = document.getElementById('as-dirs'); dl.innerHTML = '';
   for (const dir of (appInfo ? appInfo.directories : [])) {
     const row = document.createElement('div'); row.className = 'as-dir';
@@ -3502,6 +3508,12 @@ for (const b of document.querySelectorAll('#appsettings .ln-segbtn[data-units]')
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('config.set|units:' + b.dataset.units); });
 for (const b of document.querySelectorAll('#appsettings .as-tgl'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
+// Map frame-rate cap cycles Max → 60 → 30 → Max.
+document.getElementById('as-fpslimit').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const lim = (config && config.display && config.display.mapFpsLimit) || 0;
+  cfgSend('display.mapFpsLimit', lim === 0 ? '60' : lim === 60 ? '30' : '0');
+});
 
 // Language picker
 function renderLanguage() {
@@ -6462,8 +6474,18 @@ function renderSkia(canvas, rp) {
 // The single render loop. Window rAF (not surface.requestAnimationFrame) so it
 // survives surface recreation on resize and runs even before CanvasKit finishes
 // loading (DOM overlays update regardless; the GL map draws once skSurface exists).
-function skFrame() {
-  // Client render rate over a ~500 ms window (shown on the GPS-detail card).
+function skFrame(ts) {
+  // Frame cap (App Settings → Frame Limit). rAF still runs at the display rate; frames
+  // that come too soon are skipped whole (map + DOM overlays). _frameLast advances by the
+  // interval, so the average rate holds on any refresh rate (e.g. 60 on a 144 Hz screen);
+  // the small tolerance absorbs rAF jitter when the cap equals the refresh rate.
+  const lim = (config && config.display && config.display.mapFpsLimit) || 0;
+  if (lim > 0 && typeof ts === 'number') {
+    const interval = 1000 / lim, since = ts - _frameLast;
+    if (since < interval - 2) { requestAnimationFrame(skFrame); return; }
+    _frameLast = since > interval * 2 ? ts : _frameLast + interval;
+  }
+  // Client render rate over a ~500 ms window (GPS-detail card, FPS counter).
   const _now = performance.now();
   if (_fpsT0 === 0) _fpsT0 = _now;
   else { _fpsFrames++; const dt = _now - _fpsT0; if (dt >= 500) { fps = _fpsFrames * 1000 / dt; _fpsFrames = 0; _fpsT0 = _now; } }
@@ -6490,6 +6512,17 @@ function skFrame() {
   renderCharts();
   renderRollCorr();
   renderOffsetFix();
+  updateFpsBadge(_now);
   requestAnimationFrame(skFrame);
+}
+// On-map FPS counter (App Settings → FPS Counter); text refreshed at ~4 Hz.
+const _fpsBadge = document.getElementById('fps-badge');
+function updateFpsBadge(now) {
+  const show = !!(config && config.display && config.display.showFps);
+  if (_fpsBadge.classList.contains('show') !== show) _fpsBadge.classList.toggle('show', show);
+  if (!show || now - _fpsBadgeT0 < 250) return;
+  _fpsBadgeT0 = now;
+  const lim = config.display.mapFpsLimit || 0;
+  _fpsBadge.textContent = fps.toFixed(0) + ' FPS' + (lim ? ' / ' + lim : '');
 }
 skFrame();

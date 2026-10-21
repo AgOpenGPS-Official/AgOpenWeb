@@ -191,6 +191,11 @@
       background: rgba(70,10,10,0.9); color: #ffd0d0; font: 700 15px system-ui, sans-serif;
       letter-spacing: 0.05em; pointer-events: none; z-index: 40; }
     #reverse-badge.show { display: block; }
+    /* Map frame-rate counter (App Settings → FPS Counter). Top-left, clear of the left nav. */
+    #fps-badge { position: fixed; top: calc(54px + var(--sat)); left: calc(var(--sal) + 74px); display: none;
+      padding: 3px 8px; border-radius: 6px; background: rgba(0,0,0,0.6); color: #9eff9e;
+      font: 700 13px ui-monospace, monospace; pointer-events: none; z-index: 31; }
+    #fps-badge.show { display: block; }
     /* "Esc to cancel" only on pointer devices with a keyboard; touch cancels via the red
        Cancel button in the draw toolbar (no Esc key on a tablet). */
     @media (pointer: fine) { #maptap-hint::after { content: '  ·  Esc to cancel'; opacity: 0.6; font-weight: 400; } }
@@ -1297,6 +1302,7 @@
   <div id="lb"></div>
   <div id="headland-hud"></div>
   <div id="maptap-hint"></div>
+  <div id="fps-badge" translate="no"></div>
   <div id="reverse-badge" title="Reversing">&#9664; REVERSE</div>
   <button id="maptap-cancel">✕ Cancel</button>
   <div id="maptap-ab">A</div>
@@ -2548,6 +2554,11 @@
       <button class="sa-tgl as-tgl" data-key="display.keyboardEnabled">On-screen Kbd</button>
       <button class="sa-tgl as-tgl" data-key="display.startFullscreen">Start Fullscreen</button>
       <button class="sa-tgl as-tgl" data-key="display.elevationLogEnabled">Elevation Log</button>
+    </div>
+    <div class="cfg-label" style="margin-top:10px">Map Rendering</div>
+    <div class="sa-grid">
+      <button class="sa-act" id="as-fpslimit" title="Cap the map frame rate: Max, 60 or 30 FPS. Lower saves battery and heat."></button>
+      <button class="sa-tgl as-tgl" data-key="display.showFps">FPS Counter</button>
     </div>
     <div class="cfg-label" style="margin-top:10px">App Directories</div>
     <div id="as-dirs" class="as-dirs"></div>

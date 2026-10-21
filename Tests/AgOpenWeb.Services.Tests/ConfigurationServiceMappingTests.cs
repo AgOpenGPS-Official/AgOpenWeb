@@ -66,6 +66,8 @@ public class ConfigurationServiceMappingTests
         d.SvennArrowVisible = true;
         d.StartFullscreen = true;
         d.ElevationLogEnabled = true;
+        d.MapFpsLimit = 30;
+        d.ShowFps = true;
         d.FieldTextureVisible = false;
         d.FieldTextureMoveable = true;
         d.ExtraGuidelines = true;
@@ -102,6 +104,8 @@ public class ConfigurationServiceMappingTests
             Assert.That(r.SvennArrowVisible, Is.True);
             Assert.That(r.StartFullscreen, Is.True);
             Assert.That(r.ElevationLogEnabled, Is.True);
+            Assert.That(r.MapFpsLimit, Is.EqualTo(30));
+            Assert.That(r.ShowFps, Is.True);
             Assert.That(r.FieldTextureVisible, Is.False);
             Assert.That(r.FieldTextureMoveable, Is.True);
             Assert.That(r.ExtraGuidelines, Is.True);
