@@ -1053,13 +1053,14 @@ SIM.launch.addEventListener('pointerdown', e => {
 // phases add more cards into the same host and reuse openDialog/closeDialog.
 const dialogHost = document.getElementById('dialoghost');
 let _confirmCb = null;
+let _confirmBack = null; // reopens the dialog the confirm was asked from, after OK or Cancel
 function openDialog(cardId) {
   for (const c of dialogHost.querySelectorAll('.dlg-card')) c.classList.toggle('open', c.id === cardId);
   dialogHost.classList.add('open');
 }
 function closeDialog() {
   hideKeyboard();
-  dialogHost.classList.remove('open'); _confirmCb = null;
+  dialogHost.classList.remove('open'); _confirmCb = null; _confirmBack = null;
 }
 // Lower the Android soft keyboard via the native bridge (window.agnative, wired by the Android
 // head to InputMethodManager). No-op on iOS/desktop, where blur() already dismisses.
@@ -1087,8 +1088,9 @@ document.addEventListener('focusout', e => {
 // Shared confirm (unified nav model) — replaces browser confirm() + the native
 // ShowConfirmationDialog. Transparent light-dismiss scrim (backdrop tap / Cancel = no
 // action); Confirm runs the callback. Hosted in the dialog host (now a transparent leaf).
-function showConfirm(title, message, onConfirm) {
+function showConfirm(title, message, onConfirm, onBack) {
   _confirmCb = onConfirm || null;
+  _confirmBack = onBack || null;
   document.getElementById('dlgc-title').textContent = title || tr('Confirm');
   document.getElementById('dlgc-msg').textContent = message || '';
   openDialog('dlg-confirm');
@@ -1302,10 +1304,13 @@ document.getElementById('dlg-ok').addEventListener('pointerdown', e => {
     transport.send('sim.setCoords|' + lat + ',' + lon);
   closeDialog();
 });
-document.getElementById('dlgc-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
+document.getElementById('dlgc-cancel').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  const back = _confirmBack; closeDialog(); if (back) back();
+});
 document.getElementById('dlgc-ok').addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation();
-  const cb = _confirmCb; closeDialog(); if (cb) cb();
+  const cb = _confirmCb, back = _confirmBack; closeDialog(); if (cb) cb(); if (back) back();
 });
 
 // ---- unsaved-coverage guard (server-driven) ----
@@ -1984,7 +1989,8 @@ document.getElementById('trk-delete').addEventListener('pointerdown', e => {
   const t = (scene && scene.trackList || [])[trkSel];
   if (!t) { showToast(tr('Select a track first')); return; }
   showConfirm(tr('Delete Track'), tr("Delete '{name}'? This cannot be undone.", { name: t.name }),
-    () => { transport.send('track.delete|' + t.index); trkSel = -1; });
+    () => { transport.send('track.delete|' + t.index); trkSel = -1; },
+    () => { renderTracksList(); openDialog('dlg-tracks'); }); // stay in the manager to delete more
 });
 document.getElementById('trk-swap').addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation();
