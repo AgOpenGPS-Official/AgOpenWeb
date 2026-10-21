@@ -749,23 +749,27 @@ function placeCorner() {
   const clock = document.getElementById('clock'), bar = document.getElementById('bottomstack');
   if (!rn || !lr || !clock || !bar) return;
   lr.style.right = ''; lr.style.bottom = ''; clock.style.bottom = '';
-  const nav = zoomRect(rn);
-  let r = zoomRect(lr);
-  if (nav.height > 0 && nav.bottom > r.top && nav.left < r.right)
-    lr.style.right = `calc(14px + var(--sar) + ${nav.width / uiZoom}px)`;
   const b = zoomRect(bar);
-  if (b.height <= 0) return;
   // Screen pixels from the bottom edge to y, in the zoomed pixels bottom is set in.
   const above = (y, gap) => `${(innerHeight - y) / uiZoom + gap}px`;
-  const meets = q => q.left < b.right && q.right > b.left && q.bottom > b.top;
-  const c = zoomRect(clock);
-  if (meets(c)) clock.style.bottom = above(b.top, 8);
-  r = zoomRect(lr);
-  const c2 = zoomRect(clock);
-  let top = Infinity;
-  if (meets(r)) top = b.top;
-  if (r.left < c2.right && r.right > c2.left && r.bottom > c2.top) top = Math.min(top, c2.top);
-  if (top < Infinity) lr.style.bottom = above(top, 10);
+  const meets = q => b.height > 0 && q.left < b.right && q.right > b.left && q.bottom > b.top;
+  if (meets(zoomRect(clock))) clock.style.bottom = above(b.top, 8);
+  // Lift the gauge + pad clear of the bar and the clock; lifting can carry it into the
+  // nav, and moving it beside the nav can bring it over the bar, so lift again after.
+  const lift = () => {
+    lr.style.bottom = '';
+    const r = zoomRect(lr), c = zoomRect(clock);
+    let top = Infinity;
+    if (meets(r)) top = b.top;
+    if (r.left < c.right && r.right > c.left && r.bottom > c.top) top = Math.min(top, c.top);
+    if (top < Infinity) lr.style.bottom = above(top, 10);
+  };
+  lift();
+  const nav = zoomRect(rn), r = zoomRect(lr);
+  if (nav.height > 0 && nav.bottom > r.top && nav.left < r.right) {
+    lr.style.right = `calc(14px + var(--sar) + ${nav.width / uiZoom}px)`;
+    lift();
+  }
 }
 if (window.ResizeObserver) {
   const ro = new ResizeObserver(placeCorner);
