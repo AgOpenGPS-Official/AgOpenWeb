@@ -5376,6 +5376,18 @@ function toolWidthM() {
 //      px (canvas.scale(dpr)), reusing w2s. Coverage/imagery/tool/lightbar TODO. ----
 // CanvasKit 0.41: Path is immutable (no moveTo/reset) — build via MakeFromCmds
 // (flat [VERB,x,y,...]) for polylines; drawLine for single segments.
+// True when line `a` lies on polyline `b`: its middle point is within 5 cm of it.
+function onPolyline(a, b) {
+  if (!a || a.length < 2 || !b || b.length < 2) return false;
+  const m = a.length === 2
+    ? { e: (a[0].e + a[1].e) / 2, n: (a[0].n + a[1].n) / 2 } : a[a.length >> 1];
+  for (let i = 0; i + 1 < b.length; i++) {
+    const p = b[i], q = b[i + 1], de = q.e - p.e, dn = q.n - p.n, l2 = de * de + dn * dn;
+    const u = l2 ? Math.max(0, Math.min(1, ((m.e - p.e) * de + (m.n - p.n) * dn) / l2)) : 0;
+    if (Math.hypot(m.e - p.e - u * de, m.n - p.n - u * dn) < 0.05) return true;
+  }
+  return false;
+}
 function strokePtsSk(canvas, pts, close, paint) {
   if (!pts || pts.length < 2) return;
   strokePtsSk3D(canvas, pts, close, paint);
@@ -6420,10 +6432,11 @@ function renderSkia(canvas, rp) {
     drawContourRefSk(canvas);
     if (scene.nextTrack) strokePtsSk(canvas, scene.nextTrack, false, SKP.next);
     if (scene.uTurnPath) strokePtsSk(canvas, scene.uTurnPath, false, SKP.uturn);
-    // Purple reference (extended across the field) — drawn ONLY when the tractor is offset from
-    // it (pass ≠ 0). On the reference pass it coincides with the magenta guidance, so we show
-    // just the one line. Matches the host's baseTrack = nearestPass!=0?track:null intent.
-    const _onRef = !tick || !tick.op || (tick.op.passNumber | 0) === 0;
+    // Purple reference (extended across the field). The reference is the edge between passes
+    // (PassGeometry), so pass 0 lies half a width from it; only a track driven on the line
+    // itself (boundary-follow) puts the magenta guidance on top of it, and then just the one
+    // line shows. Matches the host's baseTrack = (display track is the reference) ? null : track.
+    const _onRef = scene.guidanceLine && scene.tracks.some(t => onPolyline(scene.guidanceLine, t.points));
     if (!_onRef) for (const tr of scene.tracks)
       strokePtsSk(canvas, extendAbLine(tr.points), false, SKP.reference);
     // Magenta current pass, extended across the field. The host's DisplayLine is only ~track
