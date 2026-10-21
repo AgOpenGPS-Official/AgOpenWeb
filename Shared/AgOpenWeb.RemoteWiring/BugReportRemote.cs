@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Send Report in the Bug Report panel: queues the dump in the BugReportOutbox and keeps the
-// outbox moving, at start (reports left from last time) and every minute after, on a
-// host-loop timer (the sends themselves run off the loop). The panel
+// outbox moving, at start (reports left from last time) and on every network check (the
+// NetworkWatcher's heartbeat, and at once when the network comes back). The panel
 // shows the latest report's state from ApplicationState.BugReportSendStatus, a code the
 // client words: "sending", "queued", "sent|<issue>|<url>", "accepted", "rejected|<message>".
 
@@ -15,13 +15,13 @@ using AgOpenWeb.Models.State;
 using AgOpenWeb.Services;
 using AgOpenWeb.Services.BugReport;
 using AgOpenWeb.Services.Interfaces;
+using AgOpenWeb.Services.Network;
 
 namespace AgOpenWeb.RemoteWiring;
 
 internal static class BugReportRemote
 {
     private static BugReportOutbox? _outbox;
-    private static IUiTimer? _timer;
     private static ApplicationState? _state;
     private static IUiDispatcher? _ui;
     private static string? _current; // the zip the panel is showing
@@ -29,7 +29,7 @@ internal static class BugReportRemote
     internal static string ReportsDirectory => Path.Combine(AppDataRoot.Documents, "BugReports");
 
     /// <summary>Once, from RemoteServerWiring.Wire.</summary>
-    public static void Start(ApplicationState state, IUiDispatcher ui, IUiTimerFactory timers)
+    public static void Start(ApplicationState state, IUiDispatcher ui, INetworkWatcher? network)
     {
         if (_outbox != null) return;
         _state = state;
@@ -38,10 +38,7 @@ internal static class BugReportRemote
         var url = Environment.GetEnvironmentVariable("AGOPENWEB_BUGREPORT_URL");
         _outbox = new BugReportOutbox(ReportsDirectory,
             endpoint: Uri.TryCreate(url, UriKind.Absolute, out var u) ? u : null);
-        _timer = timers.Create();
-        _timer.Interval = TimeSpan.FromMinutes(1);
-        _timer.Tick += (_, _) => Kick();
-        _timer.Start();
+        network?.Subscribe(NetworkStage.Uploads, reason => Kick(reason == NetworkCheckReason.AddressChanged));
         Kick();
     }
 
@@ -76,7 +73,7 @@ internal static class BugReportRemote
         if (_state != null) _state.BugReportSendStatus = "";
     }
 
-    private static void Kick()
+    private static void Kick(bool networkChanged = false)
     {
         var outbox = _outbox;
         if (outbox == null) return;
@@ -84,7 +81,7 @@ internal static class BugReportRemote
         {
             try
             {
-                foreach (var (zip, r) in await outbox.SendDueAsync().ConfigureAwait(false))
+                foreach (var (zip, r) in await outbox.SendDueAsync(networkChanged: networkChanged).ConfigureAwait(false))
                 {
                     if (zip != _current) continue;
                     var status = r.Outcome switch

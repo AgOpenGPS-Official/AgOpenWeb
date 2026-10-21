@@ -33,7 +33,7 @@ public static partial class RemoteServerWiring
 
         // Send Report: the outbox retries reports queued while offline, from now on.
         BugReportRemote.Start(services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>(), dispatcher,
-            services.GetRequiredService<IUiTimerFactory>());
+            services.GetService<AgOpenWeb.Services.Network.INetworkWatcher>());
 
         // Alert sounds play on the CLIENT, not the host (a headless box has no speaker).
         // The gating-aware WebClientAudioService raises an effect; forward it to clients.

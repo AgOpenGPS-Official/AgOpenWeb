@@ -41,7 +41,8 @@ Browse to `http://<box-ip>:5174`.
   watchdog via `sd_notify` (`SystemdWatchdogService`); a wedged host is killed and
   restarted.
 - **`Restart=always`** — the brain comes back after a crash.
-- **`After=network-online.target`** — modules/NTRIP sockets have a real network.
+- **No wait for the network** — the host starts without one (it would cost ~16 s of boot
+  on Wi-Fi); modules are found and NTRIP connects once a network comes up (#385).
 - **journald logging**, dedicated unprivileged user, and moderate hardening
   (tighten per site — see comments in `agopenweb.service`).
 
