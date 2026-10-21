@@ -709,21 +709,41 @@ function applyUiScale(pct) {
   if (z === uiZoom) return;
   uiZoom = z;
   document.documentElement.style.setProperty('--ui-zoom', String(z));
-  placeLowerRight();
+  placeCorner();
 }
-// The right nav grows down from the top and the gauge + camera pad sit at the bottom
-// right. When they meet (a big UI size, a short screen, many track buttons) the cluster
-// moves left, beside the nav, rather than under it.
-function placeLowerRight() {
+// The right nav grows down from the top, the bottom bar up from the bottom, and the gauge
+// + camera pad and the clock sit in the bottom-right corner between them. When they meet
+// (a big UI size, a short screen, many buttons) the corner moves rather than being
+// covered: the gauge + pad beside the nav, and the clock and gauge + pad above the bar.
+function placeCorner() {
   const rn = document.getElementById('rightnav'), lr = document.getElementById('lowerright');
-  if (!rn || !lr) return;
-  lr.style.right = '';
-  const a = rn.getBoundingClientRect(), b = lr.getBoundingClientRect();
-  if (a.height > 0 && a.bottom > b.top && a.left < b.right)
-    lr.style.right = `calc(14px + var(--sar) + ${a.width / uiZoom}px)`;
+  const clock = document.getElementById('clock'), bar = document.getElementById('bottomstack');
+  if (!rn || !lr || !clock || !bar) return;
+  lr.style.right = ''; lr.style.bottom = ''; clock.style.bottom = '';
+  const nav = rn.getBoundingClientRect();
+  let r = lr.getBoundingClientRect();
+  if (nav.height > 0 && nav.bottom > r.top && nav.left < r.right)
+    lr.style.right = `calc(14px + var(--sar) + ${nav.width / uiZoom}px)`;
+  const b = bar.getBoundingClientRect();
+  if (b.height <= 0) return;
+  // Screen pixels from the bottom edge to y, in the zoomed pixels bottom is set in.
+  const above = (y, gap) => `${(innerHeight - y) / uiZoom + gap}px`;
+  const meets = q => q.left < b.right && q.right > b.left && q.bottom > b.top;
+  const c = clock.getBoundingClientRect();
+  if (meets(c)) clock.style.bottom = above(b.top, 8);
+  r = lr.getBoundingClientRect();
+  const c2 = clock.getBoundingClientRect();
+  let top = Infinity;
+  if (meets(r)) top = b.top;
+  if (r.left < c2.right && r.right > c2.left && r.bottom > c2.top) top = Math.min(top, c2.top);
+  if (top < Infinity) lr.style.bottom = above(top, 10);
 }
-if (window.ResizeObserver) new ResizeObserver(placeLowerRight).observe(document.getElementById('rightnav'));
-addEventListener('resize', placeLowerRight);
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(placeCorner);
+  ro.observe(document.getElementById('rightnav'));
+  ro.observe(document.getElementById('bottomstack'));
+}
+addEventListener('resize', placeCorner);
 function applyTheme(isDay) {
   mapIsDay = !!isDay;
   document.documentElement.setAttribute('data-theme', mapIsDay ? 'day' : 'night');
