@@ -249,6 +249,7 @@ Services use interface-based design in `Shared/AgOpenWeb.Services/Interfaces/`:
 - `IGpsService` - GPS data processing and position updates
 - `IUdpCommunicationService` - UDP communication with AgOpenGPS modules
 - `INtripClientService` - NTRIP caster connections for RTK
+- `INetworkWatcher` - the one place that notices network changes (plus a 30 s heartbeat); UDP discovery, NTRIP retry and the bug report outbox subscribe in that order
 - `IFieldService` - Field loading/saving/management
 - `IBoundaryRecordingService` - Recording field boundaries
 - `IMapService` - Historical map hook; every head registers `NullMapService` (the web client renders)
