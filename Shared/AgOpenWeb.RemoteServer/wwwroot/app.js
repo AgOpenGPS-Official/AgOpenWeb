@@ -1576,7 +1576,7 @@ function startDrawTrack(mode) {           // map-tap straight/curve (ungated —
   startMapTap({ hint: abHint(), onTap: drawTap });
 }
 function startDriveAB() {                  // GPS: set A then B at the vehicle (ungated)
-  abFlow = 'driveAB'; driveStep = 0; drawPts = []; // drawPts holds the dropped A/B markers
+  abFlow = 'driveAB'; driveStep = 0; drawPts = []; driveRaw = []; // drawPts holds the dropped A/B markers
   transport.send('track.driveAB');
   showAbBar(true, false, false);
   document.getElementById('draw-setpoint').textContent = tr('Set Point A');
@@ -1647,13 +1647,31 @@ function drawTap(e, n) {                    // map-tap point captured (straight/
   if (abFlow === 'straight' && drawPts.length >= 2) { endAbFlow(); return; }
   setAbHint();
 }
+// A driven line's reference goes to the implement's edge on the First pass side (the host's
+// RefSideOffset), so the A/B markers and path dots go there too, not under the tractor.
+let driveRaw = [];       // Drive-AB A/B at the vehicle, to re-place both on the A→B heading
+function refEdgePt(e, n, h) {
+  const t = config && config.tool;
+  const half = (toolWidthM() - ((t && t.overlap) || 0)) * 0.5;
+  const d = (qabSide === 'right' ? half : -half) + ((t && t.offset) || 0);
+  return { e: e + Math.sin(h + Math.PI / 2) * d, n: n + Math.cos(h + Math.PI / 2) * d };
+}
+function poseEdgePt() { const p = tick.pose; return refEdgePt(p.e, p.n, p.heading || 0); }
 function abSetPoint() {                     // Set-point button — drives Drive-AB and record-curve
   const btn = document.getElementById('draw-setpoint');
   if (abFlow === 'driveAB') {
     if (driveStep > 1) return;             // guard a double-B while B lingers
     transport.send('track.setABGps');      // SetABPoint uses live GPS in DriveAB mode
-    // Drop an A/B marker at the vehicle so the operator sees where each point landed.
-    if (tick && tick.pose) drawPts.push({ e: tick.pose.e, n: tick.pose.n });
+    // Drop an A/B marker where the line will lie. B fixes the heading the host shifts by
+    // (A→B), so both markers are placed again on it.
+    if (tick && tick.pose) {
+      driveRaw.push({ e: tick.pose.e, n: tick.pose.n });
+      if (driveRaw.length >= 2) {
+        const a = driveRaw[0], b = driveRaw[driveRaw.length - 1];
+        const h = Math.atan2(b.e - a.e, b.n - a.n);
+        drawPts = driveRaw.slice(0, 2).map(p => refEdgePt(p.e, p.n, h));
+      } else drawPts.push(poseEdgePt());
+    }
     if (driveStep === 0) { driveStep = 1; btn.textContent = tr('Set Point B'); setAbHint(); }
     else {                                  // B set → host created the line; show B a beat, then clear
       driveStep = 2;
@@ -1665,13 +1683,13 @@ function abSetPoint() {                     // Set-point button — drives Drive
       transport.send('track.recordCurve');
       driveStep = 1; btn.textContent = tr('Set Point B');
       if (tick && tick.pose) {
-        drawPts.push({ e: tick.pose.e, n: tick.pose.n });   // labeled "A" endpoint dot (orange)
+        drawPts.push(poseEdgePt());                          // labeled "A" endpoint dot (orange)
         _lastCurveMark = { e: tick.pose.e, n: tick.pose.n }; // seed green-dot spacing; no dot at A itself
       }
       setAbHint();
     } else {                                // Set Point B → drop the B endpoint + finish
       driveStep = 2;
-      if (tick && tick.pose) drawPts.push({ e: tick.pose.e, n: tick.pose.n }); // labeled "B" endpoint dot (blue)
+      if (tick && tick.pose) drawPts.push(poseEdgePt());    // labeled "B" endpoint dot (blue)
       transport.send('track.finishCurve');  // host builds the curve from its recorded points
       setTimeout(() => { if (abFlow === 'recordCurve') endAbFlow(); }, 700);   // show B a beat, then clear
     }
@@ -1695,7 +1713,7 @@ function abCancel() {
   endAbFlow();
 }
 function endAbFlow() {
-  abFlow = null; drawMode = null; drawPts = []; driveStep = 0;
+  abFlow = null; drawMode = null; drawPts = []; driveRaw = []; driveStep = 0;
   curveMarks = []; _lastCurveMark = null; // clear record-curve path dots
   drawBar.classList.remove('show');
   endMapTap();
@@ -1708,7 +1726,7 @@ function sampleCurveMark() {
   const p = tick.pose;
   if (_lastCurveMark && Math.hypot(p.e - _lastCurveMark.e, p.n - _lastCurveMark.n) < 1.5) return;
   _lastCurveMark = { e: p.e, n: p.n };
-  curveMarks.push(_lastCurveMark);
+  curveMarks.push(poseEdgePt());
 }
 function drawCurveMarksSk(canvas) {
   if (!curveMarks.length) return;
