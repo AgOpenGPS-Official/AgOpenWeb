@@ -1614,7 +1614,33 @@ function boundaryCurveTap(e, n) {
   transport.send('track.boundaryCurveSeg|' + a.e.toFixed(3) + ',' + a.n.toFixed(3) + ',' + b.e.toFixed(3) + ',' + b.n.toFixed(3));
   endAbFlow();
 }
+// A drawn line is the edge between passes (PassGeometry), as in AgOpenGPS's FormABDraw,
+// whose taps all land on fence points. A tap near the fence snaps onto it (a corner when
+// one is close, else the nearest point on the fence), so a line drawn along the boundary
+// lies on it and its first pass is half a width inside. Measured on screen, so the reach
+// is the same at any zoom or tilt.
+const FENCE_SNAP_PX = 24;
+function snapToFence(e, n) {
+  const bs = scene && scene.boundaries;
+  if (!bs) return { e, n };
+  const t = w2s(e, n);
+  const px = (q) => { const s = w2s(q.e, q.n); return Math.hypot(s[0] - t[0], s[1] - t[1]); };
+  let corner = null, cd = FENCE_SNAP_PX, edge = null, ed = FENCE_SNAP_PX;
+  for (const ring of bs) for (let i = 0; i < ring.length; i++) {
+    const a = ring[i], b = ring[(i + 1) % ring.length];
+    const d = px(a);
+    if (d < cd) { cd = d; corner = a; }
+    const dx = b.e - a.e, dn = b.n - a.n, len2 = dx * dx + dn * dn;
+    if (len2 === 0) continue;
+    const u = Math.max(0, Math.min(1, ((e - a.e) * dx + (n - a.n) * dn) / len2));
+    const q = { e: a.e + u * dx, n: a.n + u * dn }, dq = px(q);
+    if (dq < ed) { ed = dq; edge = q; }
+  }
+  const p = corner || edge;
+  return p ? { e: p.e, n: p.n } : { e, n };
+}
 function drawTap(e, n) {                    // map-tap point captured (straight/curve)
+  ({ e, n } = snapToFence(e, n));
   drawPts.push({ e, n });
   transport.send('track.drawPoint|' + e.toFixed(3) + ',' + n.toFixed(3));
   // Straight = exactly 2 points; the host auto-creates the line on the 2nd, so we're done.
