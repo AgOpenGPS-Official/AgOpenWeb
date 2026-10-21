@@ -703,13 +703,42 @@ function applyMapTheme() {
 }
 // UI size (Screen & Alerts): the controls are zoomed by CSS (--ui-zoom), the map is not.
 // Anything that turns screen pixels into a zoomed element's left/top divides by uiZoom.
+// Engines differ: current Chromium and WebKit give a zoomed element's rects in screen
+// pixels and grow vw/vh with the zoom; older WebKit (iPadOS 17) gives the rects in the
+// element's own pixels. calibrateZoom measures which, so rects are always screen pixels
+// (zoomRect) and --vw/--vh always come out at one viewport percent.
 let uiZoom = 1;
+let rectScale = 1;
 function applyUiScale(pct) {
   const z = pct >= 100 && pct <= 200 ? pct / 100 : 1;
   if (z === uiZoom) return;
   uiZoom = z;
   document.documentElement.style.setProperty('--ui-zoom', String(z));
+  calibrateZoom();
   placeCorner();
+}
+function calibrateZoom() {
+  const root = document.documentElement.style;
+  root.removeProperty('--vw'); root.removeProperty('--vh');
+  rectScale = 1;
+  if (uiZoom === 1) return;
+  const p = document.createElement('div');
+  p.style.cssText = 'position:fixed;left:0;top:0;width:calc(100 * var(--vw));height:1px;visibility:hidden;pointer-events:none';
+  document.body.appendChild(p);
+  const w = p.getBoundingClientRect().width, own = p.offsetWidth;
+  if (w > 0 && own > 0) {
+    // 1 when rects are already screen pixels, else uiZoom (offsetWidth is rounded)
+    rectScale = Math.abs(w / own - uiZoom) < Math.abs(w / own - 1) ? 1 : uiZoom;
+    // vw/vh not grown by the zoom here: one viewport percent is plain vw.
+    if (Math.abs(w * rectScale - innerWidth) > 4) { root.setProperty('--vw', '1vw'); root.setProperty('--vh', '1vh'); }
+  }
+  p.remove();
+}
+// An element's rect in screen pixels, whichever way the engine reports zoomed rects.
+function zoomRect(el) {
+  const r = el.getBoundingClientRect(), k = rectScale;
+  if (k === 1) return r;
+  return { left: r.left * k, right: r.right * k, top: r.top * k, bottom: r.bottom * k, width: r.width * k, height: r.height * k };
 }
 // The right nav grows down from the top, the bottom bar up from the bottom, and the gauge
 // + camera pad and the clock sit in the bottom-right corner between them. When they meet
@@ -720,19 +749,19 @@ function placeCorner() {
   const clock = document.getElementById('clock'), bar = document.getElementById('bottomstack');
   if (!rn || !lr || !clock || !bar) return;
   lr.style.right = ''; lr.style.bottom = ''; clock.style.bottom = '';
-  const nav = rn.getBoundingClientRect();
-  let r = lr.getBoundingClientRect();
+  const nav = zoomRect(rn);
+  let r = zoomRect(lr);
   if (nav.height > 0 && nav.bottom > r.top && nav.left < r.right)
     lr.style.right = `calc(14px + var(--sar) + ${nav.width / uiZoom}px)`;
-  const b = bar.getBoundingClientRect();
+  const b = zoomRect(bar);
   if (b.height <= 0) return;
   // Screen pixels from the bottom edge to y, in the zoomed pixels bottom is set in.
   const above = (y, gap) => `${(innerHeight - y) / uiZoom + gap}px`;
   const meets = q => q.left < b.right && q.right > b.left && q.bottom > b.top;
-  const c = clock.getBoundingClientRect();
+  const c = zoomRect(clock);
   if (meets(c)) clock.style.bottom = above(b.top, 8);
-  r = lr.getBoundingClientRect();
-  const c2 = clock.getBoundingClientRect();
+  r = zoomRect(lr);
+  const c2 = zoomRect(clock);
   let top = Infinity;
   if (meets(r)) top = b.top;
   if (r.left < c2.right && r.right > c2.left && r.bottom > c2.top) top = Math.min(top, c2.top);
@@ -5371,9 +5400,9 @@ function renderBoundaryPlayer() {
     hdr.addEventListener('pointerdown', e => {
       if (e.target.classList.contains('chart-x')) return;
       e.stopPropagation();
-      const r = card.getBoundingClientRect();
-      // getBoundingClientRect and clientX are screen pixels; left/top are in the card's
-      // own (zoomed) pixels.
+      const r = zoomRect(card);
+      // zoomRect and clientX are screen pixels; left/top are in the card's own (zoomed)
+      // pixels.
       drag = true; sx = e.clientX; sy = e.clientY; ox = r.left / uiZoom; oy = r.top / uiZoom;
       card.style.left = ox + 'px'; card.style.top = oy + 'px'; card.style.right = 'auto';
       try { hdr.setPointerCapture(e.pointerId); } catch (_) {}
