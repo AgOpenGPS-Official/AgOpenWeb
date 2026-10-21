@@ -1556,6 +1556,14 @@
         <label>Invert roll</label><button class="cfg-tgl" data-key="roll.isRollInvert">Off</button>
       </div>
       <img src="/icons/ConDa_InvertRoll.png" class="vc-diag-wide" alt="Invert roll">
+      <!-- #387: where the IMU sits, measured like the antenna; sent to the modules in PGN 247
+           for the IMU-to-antenna lever arm. All 0 = not entered. -->
+      <div class="cfg-label" style="margin-top:8px">IMU position</div>
+      <div class="cfg-grid">
+        <label>IMU pivot (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.imuPivot" type="number" step="0.01" inputmode="decimal" title="Ahead of the rear axle (+) or behind it (−)">
+        <label>IMU height (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.imuHeight" type="number" step="0.01" inputmode="decimal" title="Above the ground">
+        <label>IMU offset (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.imuOffset" type="number" step="0.01" inputmode="decimal" title="Right of the centerline (+) or left of it (−)">
+      </div>
     </div>
     <button id="vc-save" class="ln-savebtn">Save Profile</button>
   </div>

@@ -83,6 +83,31 @@ public class VehicleConfig : ObservableObject
         set => SetProperty(ref _antennaOffset, value);
     }
 
+    // IMU position, same axes as the antenna: pivot = ahead of the rear axle (+), height =
+    // above the ground, offset = right of the centreline (+). Sent to the modules in PGN 247
+    // so a receiver's INS (UM981) or the steer firmware gets the IMU-to-antenna lever arm; a
+    // remote IMU is often mounted low, away from the board (#387). All 0 = not entered.
+    private double _imuPivot = 0.0;
+    public double ImuPivot
+    {
+        get => _imuPivot;
+        set => SetProperty(ref _imuPivot, value);
+    }
+
+    private double _imuHeight = 0.0;
+    public double ImuHeight
+    {
+        get => _imuHeight;
+        set => SetProperty(ref _imuHeight, value);
+    }
+
+    private double _imuOffset = 0.0;
+    public double ImuOffset
+    {
+        get => _imuOffset;
+        set => SetProperty(ref _imuOffset, value);
+    }
+
     // Hitch (vehicle): rear axle center -> tractor hitch pin. This is the trailer
     // attach point and is used ONLY by trailing/TBT tools to place the hitch.
     // Rigid front/rear-fixed tools instead use Tool.HitchLength (axle -> implement

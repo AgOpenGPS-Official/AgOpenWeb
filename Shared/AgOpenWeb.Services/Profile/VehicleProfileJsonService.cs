@@ -106,6 +106,9 @@ public static class VehicleProfileJsonService
             AntennaHeight = store.Vehicle.AntennaHeight,
             AntennaPivot = store.Vehicle.AntennaPivot,
             AntennaOffset = store.Vehicle.AntennaOffset,
+            ImuPivot = store.Vehicle.ImuPivot,
+            ImuHeight = store.Vehicle.ImuHeight,
+            ImuOffset = store.Vehicle.ImuOffset,
             Wheelbase = store.Vehicle.Wheelbase,
             TrackWidth = store.Vehicle.TrackWidth,
             Type = (int)store.Vehicle.Type,
@@ -166,6 +169,9 @@ public static class VehicleProfileJsonService
         store.Vehicle.AntennaHeight = dto.Vehicle?.AntennaHeight ?? 3.0;
         store.Vehicle.AntennaPivot = dto.Vehicle?.AntennaPivot ?? 0.0;
         store.Vehicle.AntennaOffset = dto.Vehicle?.AntennaOffset ?? 0.0;
+        store.Vehicle.ImuPivot = dto.Vehicle?.ImuPivot ?? 0.0;
+        store.Vehicle.ImuHeight = dto.Vehicle?.ImuHeight ?? 0.0;
+        store.Vehicle.ImuOffset = dto.Vehicle?.ImuOffset ?? 0.0;
         store.Vehicle.Wheelbase = dto.Vehicle?.Wheelbase ?? 2.5;
         store.Vehicle.TrackWidth = dto.Vehicle?.TrackWidth ?? 1.8;
         store.Vehicle.Type = (VehicleType)(dto.Vehicle?.Type ?? 0);
@@ -242,6 +248,9 @@ public static class VehicleProfileJsonService
         public double AntennaHeight { get; set; }
         public double AntennaPivot { get; set; }
         public double AntennaOffset { get; set; }
+        public double ImuPivot { get; set; }
+        public double ImuHeight { get; set; }
+        public double ImuOffset { get; set; }
         public double Wheelbase { get; set; }
         public double TrackWidth { get; set; }
         public int Type { get; set; }

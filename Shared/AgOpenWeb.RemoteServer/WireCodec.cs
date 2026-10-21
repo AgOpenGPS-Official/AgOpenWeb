@@ -277,6 +277,9 @@ public static class WireCodec
         w.Write(v.AntennaPivot);
         w.Write(v.AntennaHeight);
         w.Write(v.AntennaOffset);
+        w.Write(v.ImuPivot);
+        w.Write(v.ImuHeight);
+        w.Write(v.ImuOffset);
         var g = c.Gps;
         w.Write((byte)(g.IsDualGps ? 1 : 0));
         w.Write(g.DualHeadingOffset);  // f64

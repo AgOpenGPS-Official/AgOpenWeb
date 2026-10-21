@@ -772,7 +772,8 @@ public sealed class SceneProjector
         var pins = new int[24]; for (int i = 0; i < 24; i++) pins[i] = (int)m.GetPinAssignment(i);
         return new ConfigDto(
             new VehicleConfigDto(v.Name, (int)v.Type, v.HitchType, v.HitchLength, v.Wheelbase,
-                v.TrackWidth, v.AntennaPivot, v.AntennaHeight, v.AntennaOffset),
+                v.TrackWidth, v.AntennaPivot, v.AntennaHeight, v.AntennaOffset,
+                v.ImuPivot, v.ImuHeight, v.ImuOffset),
             new GpsConfigDto(c.IsDualGps, c.DualHeadingOffset, c.DualReverseDistance, c.AutoDualFix,
                 c.DualSwitchSpeed, c.MinGpsStep, c.FixToFixDistance, c.HeadingFusionWeight,
                 c.ReverseDetection, c.RtkLostAlarm, c.RtkLostAction),
