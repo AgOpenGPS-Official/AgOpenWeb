@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Timing;
 using AgOpenWeb.Services.Interfaces;
+using AgOpenWeb.Services.Network;
 
 namespace AgOpenWeb.Services;
 
@@ -75,7 +76,8 @@ public class NtripClientService : INtripClientService, IDisposable
     private const double WATCHDOG_RECONNECT_SECONDS = 30.0;
 
     // ── Reconnect with backoff ────────────────────────────────────────────
-    // Triggered by any failure (receive error, send error, watchdog stall).
+    // Triggered by any failure (a first connect that fails, receive error, send error,
+    // watchdog stall).
     // Backoff schedule: 1s, 2s, 4s, 8s, 15s — then hold at 15s indefinitely.
     // Small glitches recover quickly; long outages keep retrying without
     // hammering the caster. Each reconnect is a full TCP teardown + new
@@ -87,6 +89,10 @@ public class NtripClientService : INtripClientService, IDisposable
     // second forever; reset by real RTCM or a new ConnectAsync.
     private int _failureStreak;
     private CancellationTokenSource? _reconnectCts;
+    // Completed by the network watcher when an address changes: the retry waiting out its
+    // backoff tries at once instead (#385). The backoff still spaces retries otherwise.
+    private TaskCompletionSource _networkChanged = NewWake();
+    private static TaskCompletionSource NewWake() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     // Cap header accumulation to prevent memory-exhaustion DoS from a
     // malicious caster — or a MITM on the path — streaming bytes without
@@ -109,10 +115,16 @@ public class NtripClientService : INtripClientService, IDisposable
     private readonly object _sessionLock = new();
     private int _generation;   // bumped by every Teardown; a session only tears down its own
 
-    public NtripClientService(IGpsService gpsService, ILogger<NtripClientService> logger)
+    public NtripClientService(IGpsService gpsService, ILogger<NtripClientService> logger,
+        INetworkWatcher? networkWatcher = null)
     {
         _gpsService = gpsService;
         _logger = logger;
+        networkWatcher?.Subscribe(NetworkStage.Corrections, reason =>
+        {
+            if (reason == NetworkCheckReason.AddressChanged)
+                Interlocked.Exchange(ref _networkChanged, NewWake()).TrySetResult();
+        });
     }
 
     public async Task ConnectAsync(NtripConfiguration config)
@@ -120,7 +132,18 @@ public class NtripClientService : INtripClientService, IDisposable
         CancelReconnect(); // a new request replaces any retry loop
         Volatile.Write(ref _wanted, true);
         Interlocked.Exchange(ref _failureStreak, 0);
-        await ConnectCoreAsync(config);
+        try
+        {
+            await ConnectCoreAsync(config);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) // superseded: not ours
+        {
+            // No network yet (a unit that boots before Wi-Fi associates, a tablet out of
+            // signal) or the caster is down: keep trying with the backoff, as after a drop,
+            // instead of giving up until someone reconnects by hand (#385).
+            TriggerReconnect($"connect failed: {ex.Message}");
+            throw;
+        }
     }
 
     /// <summary>
@@ -821,9 +844,11 @@ public class NtripClientService : INtripClientService, IDisposable
                 _logger.LogInformation(
                     "[NTRIP] reconnect attempt {Attempt} after {Sec}s backoff",
                     attempt + 1, backoffSec);
+                var networkChanged = Volatile.Read(ref _networkChanged).Task;
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(backoffSec), token);
+                    await Task.WhenAny(Task.Delay(TimeSpan.FromSeconds(backoffSec), token), networkChanged);
+                    token.ThrowIfCancellationRequested();
                 }
                 catch (OperationCanceledException) { return; }
 

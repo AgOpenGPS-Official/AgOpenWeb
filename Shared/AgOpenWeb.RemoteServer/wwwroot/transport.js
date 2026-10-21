@@ -307,6 +307,7 @@ window.RemoteTransport = {
           const vehicle = {
             name: str(), type: i32(), hitchType: i32(), hitchLength: f64(), wheelbase: f64(),
             trackWidth: f64(), antennaPivot: f64(), antennaHeight: f64(), antennaOffset: f64(),
+            imuPivot: f64(), imuHeight: f64(), imuOffset: f64(),
           };
           const gps = {
             isDualGps: !!u8(), dualHeadingOffset: f64(), dualReverseDistance: f64(),

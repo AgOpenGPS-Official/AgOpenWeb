@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Linq;
 using System.Threading;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.State;
@@ -226,5 +227,43 @@ public class AutoSteerConfigEmitTests
 
         // PGN 238 byte 5 = raise time (AgOpenGPS CPGN_EE.raiseTime).
         _udp.Received().SendToModules(Arg.Is<byte[]>(b => b.Length > 5 && b[3] == 0xEE && b[5] == 7));
+    }
+
+    // ── #387: vehicle geometry (PGN 247) ────────────────────────────────
+
+    [Test]
+    public void Start_AlsoEmitsVehicleGeometry()
+    {
+        _service.Start();
+
+        _udp.Received(1).SendToModules(Arg.Is<byte[]>(b => b.Length > 4 && b[3] == 0xF7));
+    }
+
+    [Test]
+    public void VehicleChange_ReemitsGeometry_WithTheNewWheelbase()
+    {
+        _service.Start();
+        _udp.ClearReceivedCalls();
+
+        ConfigurationStore.Instance.Vehicle.Wheelbase = 3.2;
+        Thread.Sleep(200);
+
+        // Bytes 7-8: wheelbase in cm, little-endian (320 = 0x0140).
+        _udp.Received().SendToModules(Arg.Is<byte[]>(b => b.Length > 8 && b[3] == 0xF7 && b[7] == 0x40 && b[8] == 0x01));
+    }
+
+    [Test]
+    public void SteerModuleHeard_SendsGeometry_OnlyWhenNewOrBack()
+    {
+        _service.Start();
+        _udp.ClearReceivedCalls();
+
+        var steer = new byte[] { 0x80, 0x81, 0x7E, 0xFD, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        steer[^1] = (byte)(steer[2..^1].Sum(x => x) & 0xFF);
+        void Heard() => _udp.DataReceived += Raise.EventWith(new UdpDataReceivedEventArgs { Data = steer, PGN = 0xFD });
+
+        Heard(); // first PGN 253: the module is new
+        Heard(); // 10 ms later in real life: nothing new
+        _udp.Received(1).SendToModules(Arg.Is<byte[]>(b => b.Length > 4 && b[3] == 0xF7));
     }
 }

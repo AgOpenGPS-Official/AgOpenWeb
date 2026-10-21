@@ -60,6 +60,14 @@ public static class ServiceCollectionExtensions
 
         // Register Services
         services.AddSingleton<ILocalNetworkInfoProvider, SystemLocalNetworkInfoProvider>();
+        // One watcher for network changes; UDP, NTRIP and the bug report outbox subscribe (#385).
+        services.AddSingleton<AgOpenWeb.Services.Network.INetworkWatcher>(sp =>
+        {
+            var watcher = new AgOpenWeb.Services.Network.NetworkWatcher(
+                sp.GetService<Microsoft.Extensions.Logging.ILogger<AgOpenWeb.Services.Network.NetworkWatcher>>());
+            AgOpenWeb.iOS.Services.IOSNetworkEvents.Register(watcher);
+            return watcher;
+        });
         services.AddSingleton<IUdpCommunicationService, UdpCommunicationService>();
 
         // Core services

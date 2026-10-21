@@ -490,7 +490,10 @@ public record VehicleConfigDto(
     double TrackWidth,
     double AntennaPivot,
     double AntennaHeight,
-    double AntennaOffset);
+    double AntennaOffset,
+    double ImuPivot,
+    double ImuHeight,
+    double ImuOffset);
 
 /// <summary>Data Sources → GPS tab (ConfigStore.Connections).</summary>
 public record GpsConfigDto(

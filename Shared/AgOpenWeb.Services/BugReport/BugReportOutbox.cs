@@ -40,6 +40,9 @@ public sealed class BugReportOutbox
     private static readonly TimeSpan[] Backoff =
         { TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(30), TimeSpan.FromHours(1) };
     internal static readonly TimeSpan GiveUpAfter = TimeSpan.FromDays(14);
+    // When the network comes back a report goes at once rather than at its backoff time,
+    // unless it was tried this recently (a link that keeps flapping doesn't resend MBs).
+    internal static readonly TimeSpan MinRetrySpacing = TimeSpan.FromMinutes(1);
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
@@ -71,6 +74,7 @@ public sealed class BugReportOutbox
         public int Attempts { get; set; }
         public DateTime CreatedUtc { get; set; }
         public DateTime NextAttemptUtc { get; set; }
+        public DateTime LastAttemptUtc { get; set; }
     }
 
     /// <summary>Reports still waiting to go.</summary>
@@ -92,8 +96,11 @@ public sealed class BugReportOutbox
     }
 
     /// <summary>Send every queued report that is due. Returns each one's result (zip name →
-    /// result); reports not yet due are left out. One pass at a time.</summary>
-    public async Task<IReadOnlyList<(string Zip, BugReportSendResult Result)>> SendDueAsync(CancellationToken ct = default)
+    /// result); reports not yet due are left out. One pass at a time. With
+    /// <paramref name="networkChanged"/>, a report waiting out its backoff goes now too, unless
+    /// it was tried in the last <see cref="MinRetrySpacing"/>.</summary>
+    public async Task<IReadOnlyList<(string Zip, BugReportSendResult Result)>> SendDueAsync(
+        CancellationToken ct = default, bool networkChanged = false)
     {
         var results = new List<(string, BugReportSendResult)>();
         if (!Directory.Exists(OutboxDir)) return results;
@@ -112,7 +119,10 @@ public sealed class BugReportOutbox
                     continue;
                 }
                 var now = _utcNow();
-                if (e.NextAttemptUtc > now) continue;
+                bool due = e.NextAttemptUtc <= now
+                    || (networkChanged && now - e.LastAttemptUtc >= MinRetrySpacing);
+                if (!due) continue;
+                e.LastAttemptUtc = now;
 
                 var r = await PostAsync(zip, e, ct).ConfigureAwait(false);
                 if (r.Outcome == BugReportOutcome.Retry)

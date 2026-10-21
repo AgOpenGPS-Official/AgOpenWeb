@@ -31,6 +31,13 @@ public interface IPolygonOffsetService
     List<Vec2>? CreateOutwardOffset(List<Vec2> boundaryPoints, double offsetDistance, OffsetJoinType joinType = OffsetJoinType.Round);
 
     /// <summary>
+    /// Round every corner of a closed ring to at least <paramref name="radius"/>, so a vehicle
+    /// that turns no tighter can drive it; straight sides stay where they are. Parts narrower
+    /// than twice the radius drop out. Null if nothing is left.
+    /// </summary>
+    List<Vec2>? RoundCorners(List<Vec2> ring, double radius);
+
+    /// <summary>
     /// Create multiple concentric offset polygons (for multi-pass headlands).
     /// </summary>
     /// <param name="boundaryPoints">Outer boundary points</param>

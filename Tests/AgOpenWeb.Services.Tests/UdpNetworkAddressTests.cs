@@ -5,6 +5,7 @@
 using System.Net;
 using AgOpenWeb.Services;
 using AgOpenWeb.Services.Interfaces;
+using AgOpenWeb.Services.Network;
 
 namespace AgOpenWeb.Services.Tests;
 
@@ -69,15 +70,37 @@ public class UdpNetworkAddressTests
             Is.EqualTo(new[] { "192.168.5.20", "10.0.0.4" }));
     }
 
+    [Test]
+    public void ALinkThatComesUpLater_IsBroadcastTo_AfterTheNetworkCheck()
+    {
+        // #385: the app starts before the Ethernet link to the AiO is up.
+        var provider = new FakeLocalNetworkInfoProvider(
+            new LocalNetworkAddress(IPAddress.Parse("10.0.0.4"), 24, "wlan0"));
+        using var watcher = new NetworkWatcher(null, systemEvents: false, TimeSpan.Zero, Timeout.InfiniteTimeSpan);
+        var service = new UdpCommunicationService(provider, networkWatcher: watcher);
+        watcher.Check(NetworkCheckReason.Heartbeat);
+        service.RefreshDiscoveryIfDue();
+        var aio = new IPEndPoint(IPAddress.Parse("192.168.5.255"), 8888);
+        Assert.That(service.DiscoveryEndpoints, Does.Not.Contain(aio));
+
+        provider.Addresses.Add(new LocalNetworkAddress(IPAddress.Parse("192.168.5.10"), 24, "eth0"));
+        service.RefreshDiscoveryIfDue();
+        Assert.That(service.DiscoveryEndpoints, Does.Not.Contain(aio), "nothing asked for a refresh yet");
+
+        watcher.Check(NetworkCheckReason.AddressChanged);
+        service.RefreshDiscoveryIfDue();
+        Assert.That(service.DiscoveryEndpoints, Does.Contain(aio));
+    }
+
     private sealed class FakeLocalNetworkInfoProvider : ILocalNetworkInfoProvider
     {
-        private readonly IReadOnlyList<LocalNetworkAddress> _addresses;
+        public List<LocalNetworkAddress> Addresses { get; }
 
         public FakeLocalNetworkInfoProvider(params LocalNetworkAddress[] addresses)
         {
-            _addresses = addresses;
+            Addresses = addresses.ToList();
         }
 
-        public IReadOnlyList<LocalNetworkAddress> GetIPv4Addresses() => _addresses;
+        public IReadOnlyList<LocalNetworkAddress> GetIPv4Addresses() => Addresses.ToList();
     }
 }

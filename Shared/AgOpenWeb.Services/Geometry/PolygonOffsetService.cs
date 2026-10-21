@@ -42,6 +42,40 @@ public class PolygonOffsetService : IPolygonOffsetService
     }
 
     /// <summary>
+    /// Round the corners to <paramref name="radius"/> by morphological opening then closing:
+    /// shrink by the radius and grow back with round joins (outside corners become arcs of
+    /// exactly the radius), then grow and shrink back (inside corners too). Only a corner
+    /// moves, by as little as a turn of that radius allows.
+    /// </summary>
+    public List<Vec2>? RoundCorners(List<Vec2> ring, double radius)
+    {
+        if (ring == null || ring.Count < 3) return null;
+        if (radius < 0.05) return new List<Vec2>(ring);
+
+        var path = new Path64(ring.Count);
+        foreach (var pt in ring)
+            path.Add(new Point64((long)(pt.Easting * Scale), (long)(pt.Northing * Scale)));
+        var paths = new Paths64 { path };
+        foreach (double delta in new[] { -radius, radius, radius, -radius })
+        {
+            var offset = new ClipperOffset { ArcTolerance = Scale * 0.02 }; // arcs within 2 cm
+            offset.AddPaths(paths, JoinType.Round, EndType.Polygon);
+            var next = new Paths64();
+            offset.Execute(delta * Scale, next);
+            if (next.Count == 0) return null;
+            paths = next;
+        }
+
+        Path64 largest = paths[0];
+        foreach (var p in paths)
+            if (System.Math.Abs(Clipper.Area(p)) > System.Math.Abs(Clipper.Area(largest))) largest = p;
+        if (largest.Count < 3) return null;
+        var result = new List<Vec2>(largest.Count);
+        foreach (var pt in largest) result.Add(new Vec2(pt.X / Scale, pt.Y / Scale));
+        return result;
+    }
+
+    /// <summary>
     /// Create inward offset using Clipper library directly.
     /// Best for straight-edge boundaries where we want clean, sharp corners.
     /// </summary>

@@ -62,8 +62,38 @@ public class BoundaryCurveSegmentTests
 
         var track = _vm.SelectedTrack;
         Assert.That(track, Is.Not.Null);
-        Assert.That(track!.Points.Any(p => p.Easting < 10 && p.Northing is > 150 and < 185), Is.True, "runs up the west side");
-        Assert.That(track.Points.Any(p => p.Northing > 190 && p.Easting is > 15 and < 50), Is.True, "then along the north side");
+        Assert.That(DistanceToLine(track!.Points, 0, 170), Is.LessThan(0.5), "runs up the west side");
+        Assert.That(DistanceToLine(track.Points, 30, 200), Is.LessThan(0.5), "then along the north side");
+    }
+
+    [Test]
+    public void ACorner_IsRoundedToTheUTurnRadius()
+    {
+        // #422 follow-up: the curve rounds the corner as tightly as the rig can turn, not by a
+        // share of the side lengths (which left big gaps on long sides).
+        var vm = new MainViewModelBuilder { PolygonOffsetService = new AgOpenWeb.Services.Geometry.PolygonOffsetService() }.Build();
+        vm.State.Field.CurrentBoundary = _vm.State.Field.CurrentBoundary;
+        ConfigurationStore.Instance.Guidance.UTurnRadius = 8;
+        double inset = ConfigurationStore.Instance.ActualToolWidth / 2
+            + ConfigurationStore.Instance.Guidance.UTurnDistanceFromBoundary / 2;
+
+        vm.RemoteCreateBoundaryCurveSegment(0, 150, 50, 200); // up the west side, round the NW corner
+
+        var pts = vm.SelectedTrack!.Points;
+        double cornerE = inset, cornerN = 200 - inset;
+        double nearest = pts.Min(p => Math.Sqrt((p.Easting - cornerE) * (p.Easting - cornerE) + (p.Northing - cornerN) * (p.Northing - cornerN)));
+        Assert.That(nearest, Is.EqualTo(8 * (Math.Sqrt(2) - 1)).Within(0.1));
+    }
+
+    private static double DistanceToLine(IReadOnlyList<AgOpenWeb.Models.Base.Vec3> pts, double e, double n)
+    {
+        double best = double.MaxValue;
+        for (int i = 1; i < pts.Count; i++)
+            best = Math.Min(best, AgOpenWeb.Models.Base.GeometryMath.PointToSegmentDistance(
+                new AgOpenWeb.Models.Base.Vec2(e, n),
+                new AgOpenWeb.Models.Base.Vec2(pts[i - 1].Easting, pts[i - 1].Northing),
+                new AgOpenWeb.Models.Base.Vec2(pts[i].Easting, pts[i].Northing)));
+        return best;
     }
 
     [Test]

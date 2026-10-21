@@ -11,10 +11,10 @@
 [Unit]
 Description=AgOpenWeb headless GPS guidance host (browser UI on :5174)
 Documentation=https://github.com/chriskinal/AgOpenWeb
-# The host opens UDP sockets to the AiO / GPS modules and (optionally) an NTRIP
-# caster, so wait for the network to be actually up, not just configured.
-After=network-online.target
-Wants=network-online.target
+# No wait for network-online: the host needs no network to start, and waiting costs
+# ~16 s of boot on a Wi-Fi unit (#385). Its sockets listen on every address, the AiO
+# broadcast list follows interfaces as they come up, and NTRIP retries until the caster
+# is reachable; the UI answers on :5174 as soon as there is a network to reach it over.
 
 [Service]
 # Type=notify: the .NET host (UseSystemd) sends READY=1 once it is serving, so
