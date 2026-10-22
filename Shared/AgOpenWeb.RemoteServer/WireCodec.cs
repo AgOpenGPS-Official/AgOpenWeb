@@ -362,6 +362,7 @@ public static class WireCodec
         w.Write(m.SprayerMinPressure);        // f64, bar
         w.Write(m.SprayerMaxPressure);        // f64, bar
         w.Write(m.SprayerFlowTolerance);      // i32, %
+        w.Write(m.SprayerTargetRate);         // f64, L/ha (0 = no target)
         // Screen & Alerts (Display) tab.
         var d = c.Display;
         void DB(bool b) => w.Write((byte)(b ? 1 : 0));

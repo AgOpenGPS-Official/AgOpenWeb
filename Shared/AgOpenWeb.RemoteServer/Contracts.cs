@@ -449,9 +449,10 @@ public record TramConfigDto(int Passes, bool Display, int Line, double Width);
 public record MachineConfigDto(
     bool HydraulicLiftEnabled, int RaiseTime, double LookAhead, int LowerTime, bool InvertRelay,
     int User1, int User2, int User3, int User4, IReadOnlyList<int> PinAssignments,
-    // Sprayer readout (SprayerService): m, L/min, bar, bar, bar, %.
+    // Sprayer readout (SprayerService): m, L/min, bar, bar, bar, %, L/ha (0 = no target).
     double SprayerNozzleSpacing = 0.5, double SprayerNozzleFlow = 1.6, double SprayerReferencePressure = 3.0,
-    double SprayerMinPressure = 1.0, double SprayerMaxPressure = 6.0, int SprayerFlowTolerance = 20);
+    double SprayerMinPressure = 1.0, double SprayerMaxPressure = 6.0, int SprayerFlowTolerance = 20,
+    double SprayerTargetRate = 0);
 
 /// <summary>Vehicle &amp; Tool picker hub (Phase 9): available profiles (name + preview)
 /// and the active pair. Seeded on connect, re-sent when the list/active/config changes.</summary>

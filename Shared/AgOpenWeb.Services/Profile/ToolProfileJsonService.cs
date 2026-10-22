@@ -176,6 +176,7 @@ public static class ToolProfileJsonService
                 SprayerMinPressure = store.Machine.SprayerMinPressure,
                 SprayerMaxPressure = store.Machine.SprayerMaxPressure,
                 SprayerFlowTolerance = store.Machine.SprayerFlowTolerance,
+                SprayerTargetRate = store.Machine.SprayerTargetRate,
                 PinAssignments = store.Machine.PinAssignments.Select(f => (int)f).ToArray(),
             },
             YouTurn = new YouTurnDto
@@ -294,6 +295,7 @@ public static class ToolProfileJsonService
         store.Machine.SprayerMinPressure = mach?.SprayerMinPressure ?? dm.SprayerMinPressure;
         store.Machine.SprayerMaxPressure = mach?.SprayerMaxPressure ?? dm.SprayerMaxPressure;
         store.Machine.SprayerFlowTolerance = mach?.SprayerFlowTolerance ?? dm.SprayerFlowTolerance;
+        store.Machine.SprayerTargetRate = mach?.SprayerTargetRate ?? dm.SprayerTargetRate;
         var pins = dm.PinAssignments;   // defaults; saved values overlay them
         if (mach?.PinAssignments != null)
             for (int i = 0; i < Math.Min(mach.PinAssignments.Length, pins.Length); i++)
@@ -412,6 +414,7 @@ public static class ToolProfileJsonService
         public double? SprayerMinPressure { get; set; }
         public double? SprayerMaxPressure { get; set; }
         public int? SprayerFlowTolerance { get; set; }
+        public double? SprayerTargetRate { get; set; }
         /// <summary>One <see cref="PinFunction"/> value per relay pin.</summary>
         public int[]? PinAssignments { get; set; }
     }

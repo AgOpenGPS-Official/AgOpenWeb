@@ -4912,6 +4912,38 @@ const SPRAYER_ALARMS = [ // SprayerAlarms bits, in order
   [1, tr('Low pressure')], [2, tr('High pressure')], [4, tr('Flow too low')], [8, tr('Flow too high')],
   [16, tr('Flow with the sections off')], [32, tr('No data from the sprayer')],
 ];
+// Target rate (Machine tab, L/ha; 0 = off): only shown, the valves are on / off and the
+// pressure is set by hand. The actual rate is green within SPRAYER_RATE_TOLERANCE of it,
+// orange outside. The hint is the pressure that gives the target at this speed with the
+// open nozzles: flow grows with the square root of the pressure, so P = Pref × (Q / Qref)²,
+// from the nozzle chart, or from the measured flow and pressure without one. Outside the
+// min / max pressure it gives the speed that hits the target at that limit instead.
+const SPRAYER_RATE_TOLERANCE = 0.10;
+function sprayerTarget(sp, speed) {
+  const m = config && config.machine;
+  const rate = m ? m.sprayerTargetRate : 0;
+  if (!(rate > 0)) return null;
+  const head = tr('target {r} L/ha', { r: Math.round(rate) });
+  if (!(sp.openWidthM > 0) || !(speed > 0.3)) return { rate, text: head };
+  // L/min the open width needs at this speed, and that flow at pressure p.
+  const need = rate * speed * sp.openWidthM * 60 / 10000;
+  const chart = m.sprayerNozzleFlow > 0 && m.sprayerReferencePressure > 0 && sp.openNozzles > 0;
+  let flowAt;
+  if (chart) flowAt = p => sp.openNozzles * m.sprayerNozzleFlow * Math.sqrt(p / m.sprayerReferencePressure);
+  else if (sp.flowLpm > 0.5 && sp.pressureBar > 0) flowAt = p => sp.flowLpm * Math.sqrt(p / sp.pressureBar);
+  else return { rate, text: head };
+  const pNeed = chart ? m.sprayerReferencePressure * (need / (sp.openNozzles * m.sprayerNozzleFlow)) ** 2
+                      : sp.pressureBar * (need / sp.flowLpm) ** 2;
+  // km/h that gives the target at pressure p.
+  const kmhAt = p => flowAt(p) * 10000 / (rate * sp.openWidthM * 60) * 3.6;
+  let hint;
+  if (m.sprayerMaxPressure > 0 && pNeed > m.sprayerMaxPressure)
+    hint = tr('{p} bar needed, slow down to {v} km/h', { p: pNeed.toFixed(1), v: kmhAt(m.sprayerMaxPressure).toFixed(1) });
+  else if (m.sprayerMinPressure > 0 && pNeed < m.sprayerMinPressure)
+    hint = tr('{p} bar needed, speed up to {v} km/h', { p: pNeed.toFixed(1), v: kmhAt(m.sprayerMinPressure).toFixed(1) });
+  else hint = tr('set {p} bar', { p: pNeed.toFixed(1) });
+  return { rate, text: head + ' · ' + hint };
+}
 function renderSprayerBar() {
   const sp = statusBar && statusBar.sprayer;
   sprayerBar.classList.toggle('open', !!sp);
@@ -4936,8 +4968,13 @@ function renderSprayerBar() {
   const lha = sp.openWidthM > 0 && speed > 0.3 ? sp.flowLpm / (speed * sp.openWidthM) * 10000 / 60 : NaN;
   sprayerBar.querySelector('.spr-p').textContent = sp.pressureBar.toFixed(1);
   sprayerBar.querySelector('.spr-f').textContent = sp.flowLpm.toFixed(1);
-  sprayerBar.querySelector('.spr-r').textContent = Number.isFinite(lha) ? Math.round(lha) : '—';
+  const rateEl = sprayerBar.querySelector('.spr-r');
+  rateEl.textContent = Number.isFinite(lha) ? Math.round(lha) : '—';
+  const target = sprayerTarget(sp, speed);
+  rateEl.classList.toggle('on-target', !!target && Number.isFinite(lha) && Math.abs(lha - target.rate) <= target.rate * SPRAYER_RATE_TOLERANCE);
+  rateEl.classList.toggle('off-target', !!target && Number.isFinite(lha) && Math.abs(lha - target.rate) > target.rate * SPRAYER_RATE_TOLERANCE);
   const note = [];
+  if (target) note.push(target.text);
   if (Number.isFinite(sp.expectedFlowLpm) && sp.sections)
     note.push(tr('expected {f} L/min ({n} nozzles)', { f: sp.expectedFlowLpm.toFixed(1), n: sp.openNozzles }));
   note.push(sp.totalLitres.toFixed(0) + ' L');

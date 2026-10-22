@@ -158,6 +158,16 @@ public class MachineConfig : ObservableObject
         set => SetProperty(ref _sprayerFlowTolerance, value);
     }
 
+    private double _sprayerTargetRate;
+    /// <summary>The rate the operator wants, L/ha: the readout compares the actual rate with it
+    /// and says what pressure gives it at the current speed. 0 = off. Only shown, nothing is
+    /// regulated (the sprayer's valves are on / off).</summary>
+    public double SprayerTargetRate
+    {
+        get => _sprayerTargetRate;
+        set => SetProperty(ref _sprayerTargetRate, value);
+    }
+
     // Pin Assignments (24 pins)
     // Default: Pins 1-6 = Section 1-6, rest = None
     private PinFunction[] _pinAssignments = new PinFunction[24]
