@@ -1724,7 +1724,7 @@ function drawTap(e, n) {                    // map-tap point captured (straight/
 let driveRaw = [];       // Drive-AB A/B at the vehicle, to re-place both on the A→B heading
 function refEdgePt(e, n, h) {
   const t = config && config.tool;
-  const half = (toolWidthM() - ((t && t.overlap) || 0)) * 0.5;
+  const half = Math.max(0, toolWidthM() - ((t && t.overlap) || 0)) * 0.5;
   const d = (qabSide === 'right' ? half : -half) + ((t && t.offset) || 0);
   return { e: e + Math.sin(h + Math.PI / 2) * d, n: n + Math.cos(h + Math.PI / 2) * d };
 }
@@ -2343,9 +2343,9 @@ document.getElementById('fb-trk-rename').addEventListener('pointerdown', e => {
 // Boundary = the entire boundary offset inward. The host runs ALL geometry — the client
 // only captures the two taps + the offset and ships them (no headland math in JS).
 let fbHlSel = -1;        // selected segment index in the Headland tab
-function fbDefaultOffset() {  // tool width × 2 (host re-defaults to the same if 0 is sent)
+function fbDefaultOffset() {  // tool width × 2; 0 = no tool width to go by
   const tw = toolWidthM();
-  return tw > 0 ? +(tw * 2).toFixed(1) : 12;
+  return tw > 0 ? +(tw * 2).toFixed(1) : 0;
 }
 function renderFbHeadland() {
   const list = document.getElementById('fb-hllist');
@@ -2380,7 +2380,12 @@ document.getElementById('fb-hl-off').addEventListener('change', e => {
 // editing the metre box directly flips the dropdown to Custom.
 const fbTwSel = document.getElementById('fb-hl-tw');
 const fbNewOff = document.getElementById('fb-hl-newoff');
-function fbApplyTw() { const n = parseInt(fbTwSel.value); if (n > 0) writeUnitInput(fbNewOff, n * toolWidthM()); }
+function fbApplyTw() {
+  const n = parseInt(fbTwSel.value), tw = toolWidthM();
+  if (!(n > 0)) return;
+  if (tw > 0) writeUnitInput(fbNewOff, n * tw);
+  else fbNewOff.value = '';   // no tool width: the operator enters the inset
+}
 fbTwSel.addEventListener('change', e => { e.stopPropagation(); fbApplyTw(); });
 fbNewOff.addEventListener('input', e => { e.stopPropagation(); fbTwSel.value = '0'; });
 document.getElementById('fb-hl-add').addEventListener('pointerdown', e => {
@@ -2395,6 +2400,7 @@ for (const b of document.querySelectorAll('#fb-addhl .fb-addbtn'))
     e.stopPropagation();
     const off = readUnitInput(document.getElementById('fb-hl-newoff'));
     const offset = (Number.isFinite(off) && off > 0) ? off : fbDefaultOffset();
+    if (!(offset > 0)) { showToast(tr('Tool width not set: enter the headland width')); return; }
     const m = b.dataset.fbhl;
     showFbTab('headland');
     if (m === 'whole') transport.send('headland.wholeBoundary|' + offset);
@@ -4565,7 +4571,9 @@ function moduleAggColor(s) {
 }
 // Area/rate formatting — matches MainViewModel.FormatArea / WorkRateDisplay.
 function fmtArea(m2) { return fmtUnit(m2 * 0.0001, 'ha'); }
-function fmtRate(haPerHr) { return fmtUnit(haPerHr, 'ha', 1) + '/hr'; }
+function fmtRate(haPerHr) { return haPerHr == null ? '—' : fmtUnit(haPerHr, 'ha', 1) + '/hr'; }
+// Work rate from speed (m/s) × tool width; null without a tool width (#398).
+function workRateHa(speedMs) { const tw = toolWidthM(); return tw > 0 ? speedMs * 3600 * tw / 10000 : null; }
 // Workable area (m²) from the Scene the client already has: headland polygon if
 // present, else the outer boundary (shoelace) — matches WorkableAreaSqM.
 function shoelace(pts) {
@@ -4599,7 +4607,7 @@ function rotatingLineText() {
     if (!scene || !scene.hasField) return '—';
     const workable = workableAreaSqM(), worked = s.workedAreaSqM || 0;
     const leftPct = workable > 0 ? ((workable - worked) * 100 / workable) : 100;
-    const haPerHr = (lastTick ? lastTick.speed : 0) * 3600 * toolWidthM() / 10000;
+    const haPerHr = workRateHa(lastTick ? lastTick.speed : 0);
     return tr('Done {area}  Left {pct}%  Rate {rate}', { area: fmtArea(worked), pct: leftPct.toFixed(0), rate: fmtRate(haPerHr) });
   }
   const name = tick && tick.activeTrackName; // AB-line page
@@ -4705,7 +4713,7 @@ function renderFieldCard() {
   // catches up, so keep Actual within Worked.
   const actual = Math.min(fd.actualAreaSqM, worked);
   const speedKmh = (lastTick ? lastTick.speed : 0) * 3.6;
-  const haPerHr = speedKmh * toolWidthM() / 10;
+  const haPerHr = workRateHa(lastTick ? lastTick.speed : 0);
   for (const r of FC.card.querySelectorAll('.fc-bnd')) r.classList.toggle('fc-hide', !(total > 0));
   FC.name.textContent = scene.fieldName + (s.jobName ? '  ·  ' + s.jobName : '');
   FC.worked.textContent = fmtArea(worked);
@@ -5448,7 +5456,9 @@ function toolWidthM() {
     for (const s of ts) { if (s.left < lo) lo = s.left; if (s.right > hi) hi = s.right; }
     if (hi > lo) return hi - lo;
   }
-  return 6;
+  // No sections: the host's tool width (#398); 0 when that isn't set either, never a guess.
+  const w = config && config.tool && config.tool.totalWidth;
+  return w > 0 ? w : 0;
 }
 // HUD text (DOM). Built each frame from the latest tick/scene.
 // ---- Skia (CanvasKit) render — Phase A: vector layers at parity. Works in CSS
@@ -5760,7 +5770,7 @@ function drawGridSk(canvas) {
   const minE = Math.max(camE - halfW, -G), maxE = Math.min(camE + halfW, G);
   const minN = Math.max(camN - halfH, -G), maxN = Math.min(camN + halfH, G);
   if (minE >= maxE || minN >= maxN) return;
-  const toolW = toolWidthM();
+  const toolW = toolWidthM() || 1; // no tool width: plain metres
   // Spacing = tool-width × NiceStep125(viewSpan / (toolW·30)) — same as native.
   const spacing = toolW * niceStep125(Math.max(vw, vh) / pxPerM / (toolW * 30));
   const major = k => k % 10 === 0 ? SKP.gridMajor : SKP.gridMinor;
