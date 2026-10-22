@@ -4907,6 +4907,8 @@ function renderIsobusSections() {
 // Sprayer readout (PGN 160 from the machine module): pressure, flow, L/ha and the sections
 // the module has open, checked by the host against the nozzles of those sections. The
 // alarm turns the strip red; the host sounds it. Shown while the module is heard.
+// Each section's square compares what the app asks (its relay bit: manual on, auto on,
+// turning off) with what the module reports, in the section buttons' colours.
 const sprayerBar = document.getElementById('sprayerbar');
 const SPRAYER_ALARMS = [ // SprayerAlarms bits, in order
   [1, tr('Low pressure')], [2, tr('High pressure')], [4, tr('Flow too low')], [8, tr('Flow too high')],
@@ -4951,18 +4953,25 @@ function renderSprayerBar() {
   const nCells = Math.max(1, Math.min(8, (config && config.tool && config.tool.numSections) || 5));
   if (+sprayerBar.dataset.n !== nCells) {
     sprayerBar.dataset.n = nCells;
-    sprayerBar.innerHTML = '<div class="spr-row"><span class="spr-val" translate="no"></span><div class="spr-cells"></div></div>'
-      + '<div class="spr-row"><span class="spr-note"></span></div><div class="spr-msg"></div>';
+    sprayerBar.innerHTML = '<div class="spr-row"><span class="spr-val" translate="no"></span></div>'
+      + '<div class="spr-cells" translate="no"></div><div class="spr-row"><span class="spr-note"></span></div><div class="spr-msg"></div>';
     const val = sprayerBar.querySelector('.spr-val'); // value + unit pairs; units are symbols, not text
     for (const [cls, unit] of [['spr-p', ' bar  '], ['spr-f', ' L/min  '], ['spr-r', ' L/ha']]) {
       const b = document.createElement('b'); b.className = cls; val.appendChild(b);
       val.appendChild(document.createTextNode(unit));
     }
     const cells = sprayerBar.querySelector('.spr-cells');
-    for (let i = 0; i < nCells; i++) { const c = document.createElement('div'); c.className = 'spr-cell'; cells.appendChild(c); }
+    for (let i = 0; i < nCells; i++) {
+      const c = document.createElement('div'); c.className = 'spr-cell'; c.textContent = i + 1; cells.appendChild(c);
+    }
   }
   const cells = sprayerBar.querySelectorAll('.spr-cell');
-  for (let i = 0; i < cells.length; i++) cells[i].classList.toggle('on', ((sp.sections >> i) & 1) === 1);
+  const asked = tick && tick.sections;
+  for (let i = 0; i < cells.length; i++) {
+    const code = asked ? asked[i] : 0;
+    const on = code === 1 || code === 2 || code === 3, open = ((sp.sections >> i) & 1) === 1;
+    cells[i].className = 'spr-cell ' + (on ? (open ? 's-on' : 's-goingon') : (open ? 's-goingoff' : 's-off'));
+  }
   // L/ha = L/min ÷ (m/s × m) × 10000 m²/ha ÷ 60 s/min; not while (nearly) stopped.
   const speed = lastTick ? lastTick.speed : 0;
   const lha = sp.openWidthM > 0 && speed > 0.3 ? sp.flowLpm / (speed * sp.openWidthM) * 10000 / 60 : NaN;
