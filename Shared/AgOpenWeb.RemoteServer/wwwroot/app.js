@@ -968,7 +968,11 @@ addEventListener('pointermove', e => {
   // touch/pen there's no hover to ride, and a tap's micro-move would drop the "big A" under
   // the finger/button and clash with the placed-dot label; touch relies on the dot letters
   // + the "Tap Point A/B" banner instead.
-  if (mapTap && (abFlow === 'straight' || abFlow === 'curve') && e.pointerType === 'mouse') updateAbCursorLabel(e.clientX, e.clientY);
+  // Only over the map itself: over a button or a menu it isn't where the next point goes (#399).
+  if (mapTap && (abFlow === 'straight' || abFlow === 'curve') && e.pointerType === 'mouse') {
+    if (e.target && e.target.id === 'ck') updateAbCursorLabel(e.clientX, e.clientY);
+    else if (abLabelEl) abLabelEl.classList.remove('show');
+  }
   if (editDragIdx >= 0 && editSession) {       // drag the grabbed handle
     const w = s2w(e.clientX, e.clientY);
     if (w) editSession.points[editDragIdx] = editSession.kind === 'headland' ? hlSnap(w.e, w.n) : { e: w.e, n: w.n };
@@ -2134,6 +2138,8 @@ function lnCloseAll() {
   document.getElementById('ln-fieldtools').classList.remove('active');
 }
 function lnOpen(panelId, navBtnId, onOpen) {
+  // Opening a menu leaves an AB line being drawn on the map, like Esc (#399).
+  if (abFlow === 'straight' || abFlow === 'curve') abCancel();
   lnCloseAll();
   document.getElementById(panelId).classList.add('open');
   if (!NO_SCRIM.has(panelId)) lnScrim.classList.add('open'); // transparent light-dismiss
