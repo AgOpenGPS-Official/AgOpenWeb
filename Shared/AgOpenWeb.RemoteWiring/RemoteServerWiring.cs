@@ -697,19 +697,9 @@ public static partial class RemoteServerWiring
                             if (c?.CanExecute(null) == true) c.Execute(null);
                         });
 
-                    // Tier-2 (live actuation) ids — honored only while a client holds
-                    // fresh control authority (Phase 2 safety gate).
-                    server.IsRestrictedCommand = id =>
-                        id.StartsWith("section.") || id.StartsWith("autosteer.")
-                        || id.StartsWith("isobus.") // switches the implement's section control
-                        || id.StartsWith("youturn.") || id.StartsWith("contour.")
-                        || (id.StartsWith("track.") && !UngatedTrackIds.Contains(id)) // see below
-                        || (id.StartsWith("headland.") && !UngatedHeadlandIds.Contains(id))
-                        || id.StartsWith("smartwas.") || id.StartsWith("wizard.action")
-                        || id == "net.subnet" // restarts every module → gate it
-                        || id == "prompt.answer" // a confirm can delete data or restart modules
-                        || id == "recpath.play" // drives the vehicle along the path → actuation
-                        || id == "heading.resetDirection"; // changes the heading the steering uses
+                    // Every command needs fresh control authority except the few an observer
+                    // may send (#397: a second browser watches, it changes nothing).
+                    server.IsRestrictedCommand = id => !ObserverIds.Contains(id);
 
                     // One operator, via the browser. When the control session ends —
                     // release, disconnect, or deadman — the machine must not keep

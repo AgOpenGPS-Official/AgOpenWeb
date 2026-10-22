@@ -436,7 +436,7 @@ const transport = RemoteTransport.create({
     if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
   },
   onWizard(w) { wizard = w; wizardDirty = true; },
-  onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); applyMobileQualityCap(); },
+  onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); },
   onControlState(s) { lastControl = s; updateControlUi(); claimSeatIfFree(); },
   onSound(id) { Sounds.play(id); },
   onPrompt(p) { hostPrompt = p; renderHostPrompt(); },
@@ -658,6 +658,25 @@ function applyMobileQualityCap() {
   mobileQualityCapped = true;
   transport.send('display.capResolution|2.5'); // 2.5 = Medium
 }
+
+// An observer (a browser without control) sees everything and changes nothing (#397): the
+// host drops its commands, so say why when a tap of its own was refused. The host's
+// ObserverIds plus the hub's own control.* / diag.ping are what it may send.
+const OBSERVER_IDS = new Set(['control.acquire', 'control.release', 'control.presence', 'diag.ping', 'boundary.refresh']);
+let _viewOnlyToastT = -Infinity;
+const _send = transport.send;
+transport.send = cmd => {
+  const id = String(cmd).split('|')[0];
+  if (!iHoldControl && !OBSERVER_IDS.has(id)) {
+    const now = performance.now();
+    if (navigator.userActivation && navigator.userActivation.isActive && now - _viewOnlyToastT > 3000) {
+      _viewOnlyToastT = now;
+      showToast(tr('View only: another screen has control'));
+    }
+    return;
+  }
+  _send(cmd);
+};
 
 transport.start();
 
@@ -1038,7 +1057,7 @@ const HOTKEY_CMD = {
   NudgeLeft: 'track.nudgeLeft', NudgeRight: 'track.nudgeRight',
   ManualSection: 'section.manual', AutoSection: 'section.master',
 };
-const HOTKEY_TIER1 = { Flag: 'flag.placeHere' }; // markers — not control-gated (like the button)
+const HOTKEY_TIER1 = { Flag: 'flag.placeHere' }; // markers (still need control, like every command)
 const HOTKEY_UI = {
   FieldMenu: () => document.getElementById('ln-fieldops').dispatchEvent(new PointerEvent('pointerdown')),
   VehicleSettings: () => document.getElementById('ln-vehicle').dispatchEvent(new PointerEvent('pointerdown')),
@@ -1075,8 +1094,7 @@ addEventListener('keydown', e => {
   transport.send(cmd);
 });
 // ---- simulator bar (Phase 6) — mirrors the native SimulatorPanel ----
-// Sim is Tier-1 (hardware-safe), so the bar's commands aren't gated by control
-// authority — anyone driving the sim is fine. Panel *visibility* is client-local
+// Like every command, the bar's need control (an observer changes nothing, #397). Panel *visibility* is client-local
 // (the host's IsSimulatorPanelVisible is a native-only concept); enabled/speed/
 // steer are host state, mirrored back over the Status frame.
 const SIM = {
@@ -1426,7 +1444,7 @@ sectionBar.addEventListener('pointerdown', e => {
 
 // ---- bottom nav (Phase 8) — field-tools toolbar + Flags/AB-line flyouts ----
 // Direct-action field tools. Tier-2 ids (data-t2: track.* / headland.* / youturn.skip*)
-// fire only while we hold control (the host re-gates); the rest are Tier-1. Toggle
+// are dimmed and fire only while we hold control; every other command needs it too (#397). Toggle
 // READ state rides the Tick (tick.tools); AB-dependent buttons key off activeTrackName.
 const bottomNav = document.getElementById('bottomnav');
 const bnFlags = document.getElementById('bn-flyout-flags');
@@ -1650,20 +1668,20 @@ function showAbBar(setPoint, undo, finish) {
   drawBar.querySelector('#draw-finish').style.display = finish ? '' : 'none';
   drawBar.classList.add('show');
 }
-function startDrawTrack(mode) {           // map-tap straight/curve (ungated — creating data)
+function startDrawTrack(mode) {           // map-tap straight/curve
   abFlow = mode; drawMode = mode; drawPts = [];
   transport.send(mode === 'straight' ? 'track.drawStraight' : 'track.drawCurve');
   showAbBar(false, mode === 'curve', mode === 'curve');
   startMapTap({ hint: abHint(), onTap: drawTap });
 }
-function startDriveAB() {                  // GPS: set A then B at the vehicle (ungated)
+function startDriveAB() {                  // GPS: set A then B at the vehicle
   abFlow = 'driveAB'; driveStep = 0; drawPts = []; driveRaw = []; // drawPts holds the dropped A/B markers
   transport.send('track.driveAB');
   showAbBar(true, false, false);
   document.getElementById('draw-setpoint').textContent = tr('Set Point A');
   hintEl.classList.add('show'); setAbHint();
 }
-function startRecordCurve() {              // GPS: record by driving — Set Start → Set End (ungated)
+function startRecordCurve() {              // GPS: record by driving — Set Start → Set End
   abFlow = 'recordCurve'; driveStep = 0; curveMarks = []; _lastCurveMark = null;
   // Recording doesn't begin until "Set Start" (deferred track.recordCurve), so the operator
   // can position at the curve's start first. The set-point button drives the two-step.
@@ -2023,7 +2041,7 @@ let trkSel = -1; // index into scene.trackList, or -1
 function openTracksManager() { trkSel = -1; renderTracksList(); openDialog('dlg-tracks'); }
 function renderTracksList() {
   // Dim the guidance-affecting actions when we're not the operator. Delete/swap/activate
-  // change the active line; import, visibility and rec-path display are data → ungated.
+  // change the active line (every action needs control, #397; these are dimmed).
   for (const id of ['trk-delete', 'trk-swap', 'trk-activate'])
     document.getElementById(id).classList.toggle('disabled', !iHoldControl);
   const list = document.getElementById('trk-list');
@@ -2053,7 +2071,7 @@ function renderTracksList() {
     });
     const cb = row.querySelector('.trk-vis');
     cb.addEventListener('change', e => {
-      e.stopPropagation(); // visibility is display-only → ungated (any browser)
+      e.stopPropagation();
       transport.send('track.setVisible|' + t.index + ',' + (cb.checked ? 1 : 0));
     });
     list.appendChild(row);
@@ -2091,7 +2109,7 @@ document.getElementById('dlg-tracks-close').addEventListener('pointerdown', e =>
 // ---- left nav (Phase 9) — config/settings panels via the config bridge ----
 // Vertical button bar; each button toggles a non-modal panel (only one open at a
 // time). Panels READ from the config frame (or existing frames, e.g. units =
-// Status.isMetric) and WRITE via `config.set|key:value` (Tier-1; the host applies it
+// Status.isMetric) and WRITE via `config.set|key:value` (needs control; the host applies it
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
@@ -2338,7 +2356,7 @@ document.getElementById('fb-trk-rename').addEventListener('pointerdown', e => {
   input.addEventListener('blur', commit);
 });
 // ---- Field Builder Headland tab (stage 2) — segment list + build ----------------------
-// Building is field-data editing (Tier-1, ungated). Line/Curve = tap two boundary points
+// Line/Curve = tap two boundary points
 // on the main map (host snaps + builds the inward offset + the headland polygon); Whole
 // Boundary = the entire boundary offset inward. The host runs ALL geometry — the client
 // only captures the two taps + the offset and ships them (no headland math in JS).
@@ -2431,7 +2449,7 @@ document.getElementById('fb-hl-rename').addEventListener('pointerdown', e => {
 });
 // ---- Field Builder Tram tab (stage 3) — system list + per-system editor --------------
 // Systems live in ConfigStore.Tram.Systems (host SoT); the browser sends field edits and
-// the host regenerates the lines + persists. Tram building is field-data editing (Tier-1).
+// the host regenerates the lines + persists.
 let fbTramSel = -1;
 let fbTramPendingEdit = false; // open the editor on the system we just added (native parity)
 function openTramEditor() {
@@ -2546,7 +2564,7 @@ document.getElementById('bp-leftright').addEventListener('pointerdown', e => { e
 document.getElementById('bp-antennatool').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.toggleAntennaTool'); });
 document.getElementById('bp-stop').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.stop'); transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu); });
 document.getElementById('bp-record').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.toggleRecording'); });
-// Offset Fix D-pad (argless Tier-1 commands).
+// Offset Fix D-pad (argless commands).
 for (const b of document.querySelectorAll('#offsetfix .of-btn'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
 // Manual Easting/Northing entry → absolute set (offset.set|E,N).
@@ -2935,8 +2953,8 @@ function populateSmartWas() {
 }
 
 // ---- Network IO (Phase 9) — modules / scan / subnet / host IPs / NTRIP. Reads ride
-// the Status frame; writes are config.set (module-present, Tier-1), net.scan (Tier-1),
-// net.subnet (Tier-2 gated), and ntrip.* profile CRUD. The NTRIP editor keeps its
+// the Status frame; writes are config.set (module-present), net.scan, net.subnet and
+// ntrip.* profile CRUD, all needing control. The NTRIP editor keeps its
 // editing buffer client-side; Save sends every field at once. ----
 const nioPanel = document.getElementById('networkio');
 nioPanel.addEventListener('pointerdown', e => e.stopPropagation());
@@ -3257,7 +3275,7 @@ document.getElementById('nte-save').addEventListener('pointerdown', e => {
 // ---- Field Operations (Phase 9) — field/job lifecycle. Fly-out launches the
 // Fields-and-Jobs chain panel (fields table + jobs + new-job form) and New Field.
 // Reads ride the FieldOps frame; writes are field.* commands (host-driven via the real
-// StartWorkSessionDialogViewModel). Tier-1 (data management); deletes confirm client-side.
+// StartWorkSessionDialogViewModel); deletes confirm client-side.
 const JOB_STATUS = [tr('In progress'), tr('Done'), tr('Abandoned')];
 let fjSelField = null, fjSelJob = null;
 
@@ -4098,6 +4116,7 @@ function renderRole() {
 }
 function updateControlUi() {
   iHoldControl = lastControl.held && lastControl.holderId === myClientId;
+  if (iHoldControl) applyMobileQualityCap(); // a host-wide setting: sent once we may (#397)
   if (typeof renderHostPrompt === 'function') renderHostPrompt(); // who may answer
   if (typeof updateAsGated === 'function') updateAsGated(); // re-gate AutoSteer actions
   if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); // re-gate Play
@@ -5315,7 +5334,7 @@ function renderImportTracks() {
   }
 }
 
-// Recorded Path: GPS-driven record (Tier-1) + playback (Play is gated). All state
+// Recorded Path: GPS-driven record + playback. All state
 // comes from the host-driven RecordedPath frame; the name field is local input.
 function renderRecPath() {
   const r = recPath || { recFiles: [], isRecording: false, isPlaying: false, hasUnsaved: false, recordedPathInfo: '', resumeModeLabel: 'Start' };
