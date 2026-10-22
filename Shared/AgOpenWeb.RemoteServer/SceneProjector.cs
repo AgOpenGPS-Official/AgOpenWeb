@@ -461,7 +461,7 @@ public sealed class SceneProjector
         var profiles = _ntripProfiles.Profiles
             .Select(p => new NtripProfileDto(
                 p.Id, p.Name, p.CasterHost, p.CasterPort, p.MountPoint,
-                p.Username, p.Password, p.AutoConnectOnFieldLoad, p.IsDefault,
+                p.Username, Secrets.Masked(p.Password), p.AutoConnectOnFieldLoad, p.IsDefault,
                 p.AssociatedFields.ToList()))
             .ToList();
         return new NtripProfilesDto(profiles, _ntripProfiles.GetAvailableFields().ToList());
@@ -637,7 +637,7 @@ public sealed class SceneProjector
         catch { /* fields dir optional */ }
         local.Sort((a, b) => string.Compare(a.Name, b.Name, System.StringComparison.OrdinalIgnoreCase));
         var cloud = ag.CloudFields.Select(f => new AgShareCloudFieldDto(f.Id, f.Name, f.AreaHa)).ToList();
-        return new AgShareDto(c.AgShareServer ?? "", c.AgShareApiKey ?? "", c.AgShareEnabled,
+        return new AgShareDto(c.AgShareServer ?? "", Secrets.Masked(c.AgShareApiKey), c.AgShareEnabled,
             ag.Status ?? "", ag.Busy, local, cloud);
     }
 

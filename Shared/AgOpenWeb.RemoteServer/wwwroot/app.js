@@ -3226,7 +3226,8 @@ document.getElementById('nte-test').addEventListener('pointerdown', e => {
   if (!mount) { st.textContent = tr('Error: Mount point is required'); return; }
   _nteTestActive = true;
   st.textContent = tr('Testing connection...');
-  transport.send('ntrip.test|' + [host, port, mount, user, pass].join('\t'));
+  // pass is the host's mask for a stored password; the id lets the host use that one (#397)
+  transport.send('ntrip.test|' + [host, port, mount, user, pass, (nteBuf && nteBuf.id) || ''].join('\t'));
 });
 document.getElementById('nte-save').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -3483,6 +3484,7 @@ function renderAgSettings() {
   document.getElementById('ag-teststatus').textContent = agShare.status || '';
 }
 document.getElementById('ag-server').addEventListener('change', () => cfgSend('conn.agShareServer', document.getElementById('ag-server').value.trim()));
+// The field holds the host's mask while a key is stored; sending the mask back keeps it (#397).
 document.getElementById('ag-key').addEventListener('change', () => cfgSend('conn.agShareApiKey', document.getElementById('ag-key').value.trim()));
 document.getElementById('ag-enabled').addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend('conn.agShareEnabled', e.currentTarget.classList.contains('active') ? '0' : '1'); });
 document.getElementById('ag-test').addEventListener('pointerdown', e => {

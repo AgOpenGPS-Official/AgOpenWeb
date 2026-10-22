@@ -524,8 +524,9 @@ public record ControlStateDto(bool Held, string HolderId, string HolderName);
 /// <summary>NTRIP profiles read-frame (Phase 9 Network IO) — the saved caster
 /// profiles plus the list of fields they can associate with. Seeded on connect +
 /// re-sent when the profile set changes (fingerprint). The browser edits a
-/// client-side buffer and writes back via ntrip.* commands; passwords ride the wire
-/// (LAN trust model, same as all config) so an edit preserves them.</summary>
+/// client-side buffer and writes back via ntrip.* commands. Passwords never go out:
+/// a set one is sent as <see cref="Secrets.Mask"/>, and the mask coming back in
+/// ntrip.save / ntrip.test means "the stored one" (#397).</summary>
 public record NtripProfilesDto(
     IReadOnlyList<NtripProfileDto> Profiles,
     IReadOnlyList<string> AvailableFields);
@@ -561,6 +562,7 @@ public record JobEntryDto(
 /// state. Settings come from ConfigStore.Connections; Status/Busy/CloudFields are the live
 /// result of the last test/fetch/upload/download (ApplicationState.AgShare). LocalFields are
 /// the upload candidates (every field on disk + whether it has a boundary).</summary>
+/// <remarks>ApiKey is <see cref="Secrets.Mask"/> when one is set, never the key (#397).</remarks>
 public record AgShareDto(
     string ServerUrl, string ApiKey, bool Enabled,
     string Status, bool Busy,
@@ -637,3 +639,13 @@ public record AppDirDto(string Name, string Path, bool Exists);
 public record AppHotkeyDto(string Action, string Key, string Label);
 /// <summary>One log line. Level: 0 Trace,1 Debug,2 Info,3 Warn,4 Error,5 Critical (Microsoft LogLevel).</summary>
 public record AppLogDto(string Time, int Level, string Message);
+
+/// <summary>Credentials stay on the host (#397): every browser on the LAN receives the read
+/// frames, so a stored password or key is sent as a fixed mask, and the mask sent back
+/// means "keep the stored one".</summary>
+public static class Secrets
+{
+    public const string Mask = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+
+    public static string Masked(string? secret) => string.IsNullOrEmpty(secret) ? "" : Mask;
+}
