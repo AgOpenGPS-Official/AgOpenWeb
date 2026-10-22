@@ -502,6 +502,8 @@
   "Missed sentences": "Missed sentences",
   "Mode": "Mode",
   "Module": "Module",
+  "Module did not close section {s}": "Module did not close section {s}",
+  "Module did not open section {s}": "Module did not open section {s}",
   "Modules": "Modules",
   "More than one field is within 0.5 km. Pick the one you're in.": "More than one field is within 0.5 km. Pick the one you're in.",
   "Motion": "Motion",
