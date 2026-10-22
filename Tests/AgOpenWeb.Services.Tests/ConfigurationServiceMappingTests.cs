@@ -82,6 +82,7 @@ public class ConfigurationServiceMappingTests
         d.SectionsSound = false;
         d.HardwareMessagesEnabled = false;
         d.ExtraGuidelinesCount = 15;
+        d.UiScale = 130;
         d.DayStartHour = 8;
         d.NightStartHour = 22;
         d.DisplayResolutionMultiplier = 2.5;
@@ -120,6 +121,7 @@ public class ConfigurationServiceMappingTests
             Assert.That(r.SectionsSound, Is.False);
             Assert.That(r.HardwareMessagesEnabled, Is.False);
             Assert.That(r.ExtraGuidelinesCount, Is.EqualTo(15));
+            Assert.That(r.UiScale, Is.EqualTo(130));
             Assert.That(r.DayStartHour, Is.EqualTo(8));
             Assert.That(r.NightStartHour, Is.EqualTo(22));
             Assert.That(r.DisplayResolutionMultiplier, Is.EqualTo(2.5));

@@ -413,7 +413,9 @@ public record DisplayConfigDto(
     // light/dark palette + map colours on this; the Day/Night Theme button toggles it.
     bool IsDayMode,
     // Client map render cap (0 = uncapped, 60, 30) and the on-map FPS counter.
-    int MapFpsLimit, bool ShowFps);
+    int MapFpsLimit, bool ShowFps,
+    // UI size in percent (100/115/130/150): the client zooms its controls, not the map.
+    int UiScale);
 
 /// <summary>Tool/Implement tab (ConfigStore.Tool + NumSections). Type: 0 front, 1 rear,
 /// 2 TBT, 3 trailing. Arrays fixed-size (16 widths/colours, 9 zone ranges).</summary>

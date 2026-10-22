@@ -18,11 +18,19 @@
        chrome never overlaps our UI. On iPad (no notch) only top/bottom are
        non-zero; left/right are included for robustness on notched devices. */
     :root {
-      --sat: env(safe-area-inset-top, 0px);
-      --sab: env(safe-area-inset-bottom, 0px);
-      --sal: env(safe-area-inset-left, 0px);
-      --sar: env(safe-area-inset-right, 0px);
+      --sat: calc(env(safe-area-inset-top, 0px) / var(--ui-zoom));
+      --sab: calc(env(safe-area-inset-bottom, 0px) / var(--ui-zoom));
+      --sal: calc(env(safe-area-inset-left, 0px) / var(--ui-zoom));
+      --sar: calc(env(safe-area-inset-right, 0px) / var(--ui-zoom));
+      /* UI size (Screen & Alerts): every control is zoomed by this, the map is not.
+         zoom multiplies viewport units and the insets above too, so rules inside the
+         zoomed UI use --vw/--vh (one viewport percent divided back) instead of vw/vh. */
+      --ui-zoom: 1;
+      --vw: calc(1vw / var(--ui-zoom));
+      --vh: calc(1vh / var(--ui-zoom));
     }
+    /* The map canvas and the letters pinned to map points stay unscaled. */
+    body > :not(#ck, #maptap-ab, #ab-dot-labels, script) { zoom: var(--ui-zoom); }
     /* ===== Theme palette =====
        Day/Night theme. The dark (night) values below are the ORIGINAL literals the
        stylesheet used, so night is unchanged; [data-theme="day"] swaps the whole
@@ -99,7 +107,10 @@
     #statusbar .dot.flash { animation: sb-flash 1s steps(1, end) infinite; }
     @keyframes sb-flash { 50% { opacity: 0.15; } }
     #sb-pause { font-size: 12px; color: var(--text-2); }
-    .sb-left { position: relative; display: flex; flex-direction: column; justify-content: center; line-height: 1.25; min-width: 360px; }
+    /* 360px wide so the rotating line doesn't jiggle, but it gives way (the line ellipsizes)
+       before the bar pushes the fullscreen button off a narrow or zoomed screen. */
+    .sb-left { position: relative; display: flex; flex-direction: column; justify-content: center; line-height: 1.25;
+      flex: 0 1 360px; min-width: 0; }
     /* Fullscreen: the OS draws an exit "✕" pill at the top-left (e.g. iPad Safari). The
        status bar is laid out so only the non-tappable Operator indicator sits there — nudge
        it clear of the pill so it stays readable. Fullscreen-only (body.fs-on, toggled on
@@ -125,7 +136,7 @@
     .sb-hdg-wrap { display: flex; flex-direction: column; align-items: center; min-width: 76px; }
     #sb-hdg { color: #E91E90; font-size: 24px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
     #sb-hdglabel { color: var(--text-muted); font-size: 10px; font-weight: 500; margin-top: 1px; }
-    #sb-fs { width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 8px;
+    #sb-fs { flex: none; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 8px;
       background: rgba(var(--ov),0.06); color: var(--text-2); font-size: 18px; cursor: pointer; }
     #sb-fs:hover { background: rgba(var(--ov),0.14); }
     /* GPS-detail card (Phase 5) — popup toggled by the fix dot; mirrors GpsDetailPanel. */
@@ -344,7 +355,10 @@
     /* Left nav (Phase 9) — vertical button bar + non-modal flyout panels. */
     #leftnav { position: fixed; left: var(--sal); top: calc(56px + var(--sat)); display: flex; flex-direction: column;
       gap: 6px; padding: 8px 8px 8px 0; background: var(--float-bg);
-      border: 1px solid var(--border-2); border-left: 0; border-radius: 0 10px 10px 0; z-index: 32; }
+      border: 1px solid var(--border-2); border-left: 0; border-radius: 0 10px 10px 0; z-index: 32;
+      /* At a big UI size the bar can be taller than the screen: it scrolls instead. */
+      max-height: calc(100 * var(--vh) - 90px - var(--sat) - var(--sab)); overflow-y: auto; scrollbar-width: none; }
+    #leftnav::-webkit-scrollbar, #rightnav::-webkit-scrollbar { display: none; }
     /* Transparent light-dismiss scrim behind an open chain panel: map stays visible,
        an outside tap closes the chain and is CONSUMED (no map pan / no background
        actuation) — the blocking safety, minus the dimming. Sits above the map +
@@ -358,7 +372,11 @@
     .ln-btn.active { background: var(--sel); }
     .ln-ic { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
     .ln-panel { position: fixed; left: calc(80px + var(--sal)); top: calc(56px + var(--sat)); display: none; min-width: 220px;
-      max-width: calc(100vw - 96px); color: var(--text);
+      /* Kept inside the screen (left/top offset, 30px padding + border, 16px gutter) and
+         scrolled when taller: at a bigger UI size the dialogs no longer fit as drawn. */
+      max-width: calc(100 * var(--vw) - 126px - var(--sal) - var(--sar));
+      max-height: calc(100 * var(--vh) - 102px - var(--sat) - var(--sab)); overflow-y: auto;
+      color: var(--text);
       background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
       box-shadow: 0 8px 28px rgba(0,0,0,0.5); z-index: 31; }
     /* Lay tall tabs out across the width so they fit a 1200x700 tablet without scroll. */
@@ -385,6 +403,11 @@
       font: 600 12px system-ui, sans-serif; text-align: left; padding: 0 8px;
       display: flex; align-items: center; gap: 6px; }
     .sa-ic { width: 22px; height: 22px; object-fit: contain; flex: none; }
+    .sa-uiscale { grid-template-columns: repeat(4, 1fr); }
+    .sa-scale { height: 40px; border: 1px solid var(--border); border-radius: 6px;
+      background: rgba(var(--ov),0.06); color: var(--text-2); cursor: pointer;
+      font: 600 12px system-ui, sans-serif; }
+    .sa-scale.active { background: #1f6fb2; border-color: #4A90D9; color: #fff; }
     .sa-tgl:hover, .sa-act:hover { background: rgba(var(--ov),0.14); }
     .sa-tgl.active { background: #1f6fb2; border-color: #4A90D9; color: #fff; }
     .sa-act { background: rgba(var(--ov),0.10); }
@@ -394,7 +417,7 @@
     /* #41: grow WIDER not taller so tall tabs fit a 1200x700 landscape tablet without
        scrolling. Capped so it doesn't balloon on a big desktop monitor, and clamped to
        the viewport (minus the left nav) on smaller screens. */
-    .ln-wide { width: min(980px, calc(100vw - 100px)); }
+    .ln-wide { width: min(980px, calc(100 * var(--vw) - 126px - var(--sal) - var(--sar))); }
     .ln-savebtn { margin-top: 14px; width: 100%; height: 40px; border: 0; border-radius: 8px;
       background: #1f6fb2; color: #fff; font: 700 14px system-ui, sans-serif; cursor: pointer; }
     .ln-savebtn:active { background: #195c95; }
@@ -532,13 +555,13 @@
     .sw-grey { background: rgba(var(--ov),0.12); color: var(--text); }
     .sw-green { background: #2e9e4f; } .sw-blue { background: #2f6fb0; }
     /* ===== Network IO panel + NTRIP modals ===== */
-    .nio-panel { width: 360px; max-height: calc(100vh - 72px - var(--sat)); overflow-y: auto; box-sizing: border-box; }
+    .nio-panel { width: 360px; max-height: calc(100 * var(--vh) - 72px - var(--sat)); overflow-y: auto; box-sizing: border-box; }
     .nio-modgrid { display: grid; grid-template-columns: auto auto 1fr auto auto; gap: 7px 8px; align-items: center; margin-bottom: 10px; }
     .nio-more { width: 30px; height: 26px; border: 0; border-radius: 6px; background: rgba(var(--ov),0.10); color: var(--text-2);
       font: 700 18px/1 system-ui, sans-serif; cursor: pointer; padding: 0; }
     .nio-more:hover { background: rgba(var(--ov),0.18); }
     /* System Data — chain sub-panel of Network IO (GPS line → arrow). */
-    .nio-sysdata { width: 440px; max-height: calc(100vh - 72px - var(--sat)); overflow-y: auto; box-sizing: border-box; }
+    .nio-sysdata { width: 440px; max-height: calc(100 * var(--vh) - 72px - var(--sat)); overflow-y: auto; box-sizing: border-box; }
     .sd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 20px; margin-bottom: 12px; }
     .sd-row { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
     .sd-k { color: var(--text-muted); font: 400 12px system-ui, sans-serif; }
@@ -565,7 +588,7 @@
     .nio-aged { color: #ef4444; }
     .nio-rtcm { margin-top: 6px; }
     .nio-rtcm summary { color: var(--text-2); font: 500 12px system-ui, sans-serif; cursor: pointer; }
-    .nio-rtcmscroll { max-height: 30vh; overflow-y: auto; }
+    .nio-rtcmscroll { max-height: calc(30 * var(--vh)); overflow-y: auto; }
     .nio-rtcmtbl { width: 100%; border-collapse: collapse; margin-top: 4px; font: 400 11px system-ui, sans-serif; color: var(--text); }
     .nio-rtcmtbl th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 1px 6px 1px 0; }
     .nio-rtcmtbl td { padding: 1px 6px 1px 0; vertical-align: top; }
@@ -574,7 +597,7 @@
     .nio-ntstatus { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
     /* NTRIP chain sub-panels (ln-panels that replace their parent). */
     .nio-ntmodal { width: 520px; }
-    .nio-ntedit { width: 480px; max-height: calc(100vh - 72px); overflow: auto; }
+    .nio-ntedit { width: 480px; max-height: calc(100 * var(--vh) - 72px); overflow: auto; }
     .nio-nttoolbar { display: flex; align-items: center; gap: 6px; background: rgba(var(--ov),0.05);
       border-radius: 8px; padding: 6px; margin-bottom: 12px; }
     .nio-tbtn { width: 40px; height: 40px; border: 0; border-radius: 6px; background: rgba(var(--ov),0.10);
@@ -671,8 +694,8 @@
     #bugreport.fm-panel { width: 510px; } /* room to describe the problem */
     .fm-wide { width: 560px; }
     /* View All Settings fills the tablet viewport so every setting shows for a screenshot. */
-    .fm-full { width: calc(100vw - 110px); height: calc(100vh - 84px); box-sizing: border-box; }
-    .fm-full .vs-tree { max-height: calc(100vh - 150px); columns: 280px; column-gap: 22px; }
+    .fm-full { width: calc(100 * var(--vw) - 110px); height: calc(100 * var(--vh) - 84px); box-sizing: border-box; }
+    .fm-full .vs-tree { max-height: calc(100 * var(--vh) - 150px); columns: 280px; column-gap: 22px; }
     .vs-section { break-inside: avoid; -webkit-column-break-inside: avoid; margin-bottom: 12px; }
     .as-dirs { display: flex; flex-direction: column; gap: 6px; }
     .as-dir { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
@@ -902,7 +925,7 @@
       font: 700 14px system-ui, sans-serif; }
     .dlg-cancel { background: rgba(var(--ov),0.10); color: var(--text-2); }
     .dlg-ok { background: #1f6fb2; color: #fff; }
-    #dp-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; max-height: 50vh; overflow-y: auto; }
+    #dp-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; max-height: calc(50 * var(--vh)); overflow-y: auto; }
     .dp-row { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center; min-height: 44px;
       padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
     .dp-row:active { background: rgba(74,144,217,0.25); }
@@ -923,7 +946,7 @@
     .dlg-btn:disabled { opacity: 0.4; cursor: default; }
     /* Failure notification (#109): a refused/failed action says why. */
     #toast { position: fixed; bottom: calc(90px + var(--sab, 0px)); left: 50%; transform: translateX(-50%);
-      max-width: min(560px, calc(100vw - 32px)); display: none; padding: 10px 20px; border-radius: 10px;
+      max-width: min(560px, calc(100 * var(--vw) - 32px)); display: none; padding: 10px 20px; border-radius: 10px;
       border: 1px solid rgba(255,190,90,0.7); background: rgba(58,38,8,0.94); color: #ffe2b0;
       font: 600 15px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 70;
       box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
@@ -932,14 +955,14 @@
        the nav and dialogs, no pointer events, so the operator can reach the Modules panel
        or the simulator switch to clear it. */
     #gpslost { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9;
-      width: min(420px, calc(100vw - 32px)); padding: 26px 24px; border-radius: 14px; display: none;
+      width: min(420px, calc(100 * var(--vw) - 32px)); padding: 26px 24px; border-radius: 14px; display: none;
       background: rgba(190,24,24,0.94); border: 2px solid #ff8a8a; color: #fff; text-align: center;
       pointer-events: none; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
     #gpslost.show { display: block; }
     #gpslost .gl-title { font: 800 28px system-ui, sans-serif; letter-spacing: 0.02em; margin-bottom: 10px; }
     #gpslost .gl-body { font: 500 16px/1.4 system-ui, sans-serif; }
     #hwmsg { position: fixed; top: calc(96px + var(--sat, 0px)); left: 50%; transform: translateX(-50%);
-      max-width: min(560px, calc(100vw - 32px)); display: none; padding: 8px 18px; border-radius: 8px;
+      max-width: min(560px, calc(100 * var(--vw) - 32px)); display: none; padding: 8px 18px; border-radius: 8px;
       color: #000; font: 700 16px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 70;
       box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
     #hwmsg.show { display: block; }
@@ -1072,7 +1095,8 @@
     #rightnav { position: fixed; right: var(--sar); top: calc(56px + var(--sat)); display: none; flex-direction: column;
                 gap: 6px; align-items: stretch; padding: 8px; border-radius: 10px 0 0 10px;
                 background: var(--float-bg); border: 1px solid var(--border-2); border-right: 0;
-                box-shadow: 0 6px 20px rgba(0,0,0,0.5); touch-action: manipulation; }
+                box-shadow: 0 6px 20px rgba(0,0,0,0.5); touch-action: manipulation;
+                max-height: calc(100 * var(--vh) - 90px - var(--sat) - var(--sab)); overflow-y: auto; scrollbar-width: none; }
     .rn-btn { width: 56px; height: 56px; border: 0; border-radius: 8px; padding: 8px; box-sizing: border-box;
       background: rgba(var(--ov),0.08); color: var(--text); font: 600 13px system-ui, sans-serif;
       cursor: pointer; display: flex; flex-direction: column; align-items: center;
@@ -1411,6 +1435,13 @@
       <button class="sa-tgl" data-key="display.extraGuidelines"><img class="sa-ic" src="/icons/ConD_ExtraGuides.png" alt="">Extra Guides</button>
       <input id="sa-extracount" class="cfg-num" type="number" step="1" min="1" max="50" title="Extra guide count">
       <button class="sa-act" data-cmd="display.cycleResolution">Quality: <span id="sa-quality">—</span></button>
+    </div>
+    <div class="cfg-label">UI Size</div>
+    <div class="sa-grid sa-uiscale">
+      <button class="sa-scale" data-scale="100">100%</button>
+      <button class="sa-scale" data-scale="115">115%</button>
+      <button class="sa-scale" data-scale="130">130%</button>
+      <button class="sa-scale" data-scale="150">150%</button>
     </div>
     <div class="cfg-label">On-Screen Buttons</div>
     <div class="sa-grid">

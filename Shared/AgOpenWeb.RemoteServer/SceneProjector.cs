@@ -831,7 +831,7 @@ public sealed class SceneProjector
             d.AutoSteerSound, d.UTurnSound, d.HydraulicSound, d.SectionsSound,
             d.KeyboardEnabled, d.StartFullscreen, d.ElevationLogEnabled, rm,
             _persist.State.IsDayMode,
-            d.MapFpsLimit, d.ShowFps);
+            d.MapFpsLimit, d.ShowFps, d.UiScale);
     }
 
     // Profiles read-frame (Phase 9) — the Vehicle & Tool picker hub: available
@@ -911,6 +911,7 @@ public sealed class SceneProjector
         h = h * 31 + db;
         h = h * 31 + dp.ExtraGuidelinesCount * 7 + dp.DisplayResolutionMultiplier.GetHashCode();
         h = h * 31 + dp.MapFpsLimit * 3 + (dp.ShowFps ? 1 : 0);
+        h = h * 31 + dp.UiScale;
         // Day/Night theme lives in PersistentAppState (not ConfigStore.Display), so fold it
         // in here too — otherwise toggling the theme wouldn't re-send the config frame.
         h = h * 31 + (_persist.State.IsDayMode ? 1 : 0);
