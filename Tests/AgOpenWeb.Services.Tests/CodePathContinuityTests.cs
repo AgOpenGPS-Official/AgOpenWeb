@@ -29,6 +29,8 @@ namespace AgOpenWeb.Services.Tests;
 /// formats). A new file name is a format decision, made here on purpose.</item>
 /// <item>JSON is <c>System.Text.Json</c>; <c>Newtonsoft.Json</c> stays inside the AgShare client.</item>
 /// <item>The host-side wiring runs on the host loop; it creates no timers or threads of its own.</item>
+/// <item>Stored credentials (NTRIP passwords, the AgShare key) never go to a client: the
+/// projectors send them only through <c>Secrets.Masked</c> (#397).</item>
 /// </list>
 /// </summary>
 [TestFixture]
@@ -148,6 +150,21 @@ public class CodePathContinuityTests
             if (Path.GetFileName(file) != "WebSocketHub.cs")
                 Assert.That(File.ReadAllText(file), Does.Not.Contain("WebSocketMessageType"),
                     $"{Path.GetFileName(file)} touches the WebSocket directly; only WebSocketHub does.");
+    }
+
+    [Test]
+    public void Credentials_GoOutMasked()
+    {
+        // Every browser on the LAN gets the read frames, signed in or not.
+        var bare = new System.Text.RegularExpressions.Regex(@"\.(Password|AgShareApiKey)\b");
+        // The projectors build the DTOs; WireCodec only encodes what they hold.
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.RemoteServer"), "*Projector.cs"))
+        {
+            foreach (var (line, i) in File.ReadAllLines(file).Select((l, i) => (l, i + 1)))
+                if (bare.IsMatch(line) && !line.Contains("Secrets.Masked(") && !line.Contains("GetHashCode()"))
+                    Assert.Fail($"{Path.GetFileName(file)}:{i} reads a stored credential without Secrets.Masked: " +
+                        $"{line.Trim()}. Send the mask; the wiring takes the mask back as \"unchanged\".");
+        }
     }
 
     [Test]

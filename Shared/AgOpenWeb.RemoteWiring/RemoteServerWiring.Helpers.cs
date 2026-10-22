@@ -83,7 +83,9 @@ public static partial class RemoteServerWiring
             case "conn.machineConfigured": con.IsMachineConfigured = B(); cfg.SaveAppSettings(); return;
             // --- AgShare cloud settings (ConfigStore.Connections). Persist on change. ---
             case "conn.agShareServer": con.AgShareServer = val; cfg.SaveAppSettings(); return;
-            case "conn.agShareApiKey": con.AgShareApiKey = val; cfg.SaveAppSettings(); return;
+            case "conn.agShareApiKey": // the mask = unchanged (the client never has the key)
+                if (val == AgOpenWeb.RemoteServer.Secrets.Mask) return;
+                con.AgShareApiKey = val; cfg.SaveAppSettings(); return;
             case "conn.agShareEnabled": con.AgShareEnabled = B(); cfg.SaveAppSettings(); return;
             case "conn.rtcmBroadcast": con.RtcmBroadcast = B(); cfg.SaveAppSettings(); return;
             case "conn.sendCorrectedPosition": con.SendCorrectedPosition = B(); cfg.SaveAppSettings(); return;
@@ -438,10 +440,12 @@ public static partial class RemoteServerWiring
             case "ntrip.setDefault": // arg = id
                 _ = svc.SetDefaultProfileAsync(arg);
                 return;
-            case "ntrip.test": // arg = host \t port \t mount \t user \t pass
+            case "ntrip.test": // arg = host \t port \t mount \t user \t pass \t id (the mask = id's stored pass)
             {
                 var t = arg.Split('\t');
                 if (t.Length < 3) return;
+                if (t.Length > 4 && t[4] == AgOpenWeb.RemoteServer.Secrets.Mask)
+                    t[4] = svc.Profiles.FirstOrDefault(p => p.Id == t.ElementAtOrDefault(5))?.Password ?? "";
                 int.TryParse(t.ElementAtOrDefault(1), System.Globalization.NumberStyles.Integer, inv, out var tport);
                 if (tport == 0) tport = 2101;
                 state.Connections.NtripTestStatus = "Testing connection...";
@@ -467,7 +471,9 @@ public static partial class RemoteServerWiring
                 var profile = new AgOpenWeb.Models.Ntrip.NtripProfile
                 {
                     Name = f[1], CasterHost = f[2], CasterPort = port, MountPoint = f[4],
-                    Username = f[5], Password = f[6],
+                    Username = f[5],
+                    // The editor only has the mask for a stored password: keep that one.
+                    Password = f[6] == AgOpenWeb.RemoteServer.Secrets.Mask ? existing?.Password ?? "" : f[6],
                     AutoConnectOnFieldLoad = f[7] == "1", IsDefault = f[8] == "1",
                     AssociatedFields = assoc,
                 };
