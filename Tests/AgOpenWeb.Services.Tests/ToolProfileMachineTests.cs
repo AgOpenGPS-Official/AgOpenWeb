@@ -45,6 +45,7 @@ public class ToolProfileMachineTests
         m.SetPinAssignment(1, PinFunction.HydDown);
         m.SetPinAssignment(6, PinFunction.TramLeft);
         m.SetPinAssignment(23, PinFunction.GeoStop);
+        m.SprayerTargetRate = 200;
 
         ToolProfileJsonService.Save(_dir, "Sprayer", src);
         var dst = new ConfigurationStore();
@@ -63,6 +64,7 @@ public class ToolProfileMachineTests
             Assert.That(d.User3Value, Is.EqualTo(33));
             Assert.That(d.User4Value, Is.EqualTo(44));
             Assert.That(d.PinAssignments, Is.EqualTo(m.PinAssignments));
+            Assert.That(d.SprayerTargetRate, Is.EqualTo(200));
         });
     }
 

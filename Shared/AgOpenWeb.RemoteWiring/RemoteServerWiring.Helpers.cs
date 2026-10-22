@@ -199,6 +199,7 @@ public static partial class RemoteServerWiring
             case "machine.sprayerMinPressure": if (D(out var sp4) && sp4 >= 0) mch.SprayerMinPressure = sp4; return;
             case "machine.sprayerMaxPressure": if (D(out var sp5) && sp5 >= 0) mch.SprayerMaxPressure = sp5; return;
             case "machine.sprayerFlowTolerance": if (I(out var sp6) && sp6 > 0) mch.SprayerFlowTolerance = sp6; return;
+            case "machine.sprayerTargetRate": if (D(out var sp7) && sp7 >= 0) mch.SprayerTargetRate = sp7; return;
             case "machine.pin": if (IDX(out var pi, out var pv) && int.TryParse(pv, out var pf)) mch.SetPinAssignment(pi, (AgOpenWeb.Models.Configuration.PinFunction)pf); return;
             case "machine.resetPins": mch.ResetPinAssignments(); return;
             // --- Screen & Alerts (ConfigStore.Display). Device settings → persist now. ---

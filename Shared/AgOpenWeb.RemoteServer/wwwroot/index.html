@@ -326,6 +326,11 @@
     #sprayerbar .spr-row { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
     #sprayerbar .spr-val { white-space: pre; }
     #sprayerbar .spr-val b { font-size: 16px; }
+    #sprayerbar .spr-val b.on-target { color: #39FF6A; }
+    #sprayerbar .spr-val b.off-target { color: #ffb74d; }
+    :root[data-theme="day"] #sprayerbar .spr-val b.on-target { color: #17803a; }
+    :root[data-theme="day"] #sprayerbar .spr-val b.off-target { color: #b45309; }
+    #sprayerbar.alarm .spr-val b.on-target, #sprayerbar.alarm .spr-val b.off-target { color: inherit; }
     #sprayerbar .spr-cells { display: flex; gap: 2px; flex: 1; min-width: 60px; }
     #sprayerbar .spr-cell { flex: 1 1 0; height: 8px; background: #5a5a5a; }
     #sprayerbar .spr-cell.on { background: #39FF6A; }
@@ -1787,6 +1792,7 @@
               <label>Min pressure (bar)</label><input class="cfg-num" data-key="machine.sprayerMinPressure" type="number" step="0.1" min="0" title="0 = off">
               <label>Max pressure (bar)</label><input class="cfg-num" data-key="machine.sprayerMaxPressure" type="number" step="0.1" min="0" title="0 = off">
               <label>Flow tolerance (%)</label><input class="cfg-num" data-key="machine.sprayerFlowTolerance" type="number" step="1" min="1">
+              <label>Target rate (L/ha)</label><input class="cfg-num" data-key="machine.sprayerTargetRate" type="number" step="5" min="0" title="0 = off. The readout compares the actual rate with it and says what pressure gives it at the current speed. Nothing is regulated.">
             </div>
           </div>
         </div>

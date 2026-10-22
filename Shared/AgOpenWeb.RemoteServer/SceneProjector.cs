@@ -794,7 +794,7 @@ public sealed class SceneProjector
             new MachineConfigDto(m.HydraulicLiftEnabled, m.RaiseTime, m.LookAhead, m.LowerTime, m.InvertRelay,
                 m.User1Value, m.User2Value, m.User3Value, m.User4Value, pins,
                 m.SprayerNozzleSpacing, m.SprayerNozzleFlow, m.SprayerReferencePressure,
-                m.SprayerMinPressure, m.SprayerMaxPressure, m.SprayerFlowTolerance),
+                m.SprayerMinPressure, m.SprayerMaxPressure, m.SprayerFlowTolerance, m.SprayerTargetRate),
             BuildDisplay(), BuildAutoSteer());
     }
 
@@ -904,7 +904,8 @@ public sealed class SceneProjector
               + mc.User1Value + mc.User2Value * 3 + mc.User3Value * 5 + mc.User4Value * 7;
         h = h * 31 + mc.SprayerNozzleSpacing.GetHashCode() + mc.SprayerNozzleFlow.GetHashCode() * 3
               + mc.SprayerReferencePressure.GetHashCode() * 5 + mc.SprayerMinPressure.GetHashCode() * 7
-              + mc.SprayerMaxPressure.GetHashCode() * 11 + mc.SprayerFlowTolerance * 13;
+              + mc.SprayerMaxPressure.GetHashCode() * 11 + mc.SprayerFlowTolerance * 13
+              + mc.SprayerTargetRate.GetHashCode() * 17;
         for (int i = 0; i < 24; i++) h = h * 31 + (int)mc.GetPinAssignment(i);
         // Screen & Alerts (Display).
         var dp = _config.Display;

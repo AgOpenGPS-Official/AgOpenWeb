@@ -336,6 +336,7 @@ window.RemoteTransport = {
             user1: i32(), user2: i32(), user3: i32(), user4: i32(), pinAssignments: rdI32(),
             sprayerNozzleSpacing: f64(), sprayerNozzleFlow: f64(), sprayerReferencePressure: f64(),
             sprayerMinPressure: f64(), sprayerMaxPressure: f64(), sprayerFlowTolerance: i32(),
+            sprayerTargetRate: f64(),
           };
           const display = {
             gridVisible: !!u8(), fieldTextureVisible: !!u8(), fieldTextureMoveable: !!u8(), svennArrowVisible: !!u8(),
