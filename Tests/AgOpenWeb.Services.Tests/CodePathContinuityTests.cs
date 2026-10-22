@@ -29,6 +29,8 @@ namespace AgOpenWeb.Services.Tests;
 /// formats). A new file name is a format decision, made here on purpose.</item>
 /// <item>JSON is <c>System.Text.Json</c>; <c>Newtonsoft.Json</c> stays inside the AgShare client.</item>
 /// <item>The host-side wiring runs on the host loop; it creates no timers or threads of its own.</item>
+/// <item>A browser without control is an observer: every command needs control except the
+/// host's <c>ObserverIds</c>, and the client's <c>OBSERVER_IDS</c> is the same list (#397).</item>
 /// <item>Stored credentials (NTRIP passwords, the AgShare key) never go to a client: the
 /// projectors send them only through <c>Secrets.Masked</c> (#397).</item>
 /// </list>
@@ -150,6 +152,31 @@ public class CodePathContinuityTests
             if (Path.GetFileName(file) != "WebSocketHub.cs")
                 Assert.That(File.ReadAllText(file), Does.Not.Contain("WebSocketMessageType"),
                     $"{Path.GetFileName(file)} touches the WebSocket directly; only WebSocketHub does.");
+    }
+
+    [Test]
+    public void Observers_ChangeNothing_ClientAndHostAgree()
+    {
+        var root = RepoRoot();
+        var wiring = File.ReadAllText(Path.Combine(root, "Shared", "AgOpenWeb.RemoteWiring", "RemoteServerWiring.cs"));
+        Assert.That(wiring, Does.Contain("server.IsRestrictedCommand = id => !ObserverIds.Contains(id);"),
+            "Every command needs control except ObserverIds (#397): an observer sees everything " +
+            "and changes nothing. Don't gate by prefix again.");
+
+        var helpers = File.ReadAllText(Path.Combine(root, "Shared", "AgOpenWeb.RemoteWiring", "RemoteServerWiring.Helpers.cs"));
+        var hostBlock = Regex.Match(helpers, @"ObserverIds\s*=\s*new\(\)\s*\{(.*?)\};", RegexOptions.Singleline);
+        Assert.That(hostBlock.Success, "ObserverIds not found in RemoteServerWiring.Helpers.cs");
+        var host = Regex.Matches(hostBlock.Groups[1].Value, @"""([^""]+)""").Select(m => m.Groups[1].Value);
+
+        var app = File.ReadAllText(Path.Combine(root, "Shared", "AgOpenWeb.RemoteServer", "wwwroot", "app.js"));
+        var clientBlock = Regex.Match(app, @"OBSERVER_IDS\s*=\s*new Set\(\[(.*?)\]\)", RegexOptions.Singleline);
+        Assert.That(clientBlock.Success, "OBSERVER_IDS not found in app.js");
+        var client = Regex.Matches(clientBlock.Groups[1].Value, @"'([^']+)'").Select(m => m.Groups[1].Value);
+
+        // The hub answers these itself, before the gate.
+        var hub = new[] { "control.acquire", "control.release", "control.presence", "diag.ping" };
+        Assert.That(client.OrderBy(x => x), Is.EqualTo(host.Concat(hub).OrderBy(x => x)),
+            "app.js OBSERVER_IDS must be the host's ObserverIds plus the hub's control.* and diag.ping.");
     }
 
     [Test]

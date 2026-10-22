@@ -237,8 +237,8 @@ public sealed class RemoteServerHost
     }
     private Action<string, string>? _commandHandler;
 
-    /// <summary>Classifies a command id as Tier-2 (live actuation) — those are
-    /// honored only while the sending client holds fresh control authority.</summary>
+    /// <summary>True for a command id that needs control — honored only while the
+    /// sending client holds fresh control authority.</summary>
     public Func<string, bool>? IsRestrictedCommand
     {
         get => _ws?.IsRestrictedCommand;

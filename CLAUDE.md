@@ -124,9 +124,9 @@ host does the same for the 100 Hz control loop.
 
 ### Control authority
 Several browsers may be connected; only one holds control (`ControlAuthority`, deadman model).
-Commands that actuate (autosteer, sections, U-turn, simulator) are Tier-2 and dropped unless
-the sender holds fresh control; everything else is Tier-1. A client can't take control from a
-live operator, only fill an empty seat.
+Every command is dropped unless the sender holds fresh control: the others are observers, who
+see everything and change nothing (#397). `ObserverIds` lists the few requests an observer may
+send. A client can't take control from a live operator, only fill an empty seat.
 
 ### Host ↔ client commands
 The client sends `id|arg` strings (`transport.send('track.select|0')`). `RemoteServerWiring`
@@ -297,7 +297,7 @@ to the system browser, keep the screen awake, localhost HTTP) is listed in
 ### Adding a web command
 1. In `app.js`, send it: `transport.send('mything.do|' + arg)`.
 2. Route it in `RemoteServerWiring.cs` (or a `config.set` key in `RemoteServerWiring.Helpers.cs`) to a VM method or command.
-3. If it actuates (steering, sections, turns), add it to the Tier-2 list so it needs control.
+3. It needs control automatically; add it to `ObserverIds` only if it changes nothing.
 
 ### Showing new state in the client
 1. Add it to the DTO in `Contracts.cs`, fill it in `SceneProjector` (or the relevant projector).
