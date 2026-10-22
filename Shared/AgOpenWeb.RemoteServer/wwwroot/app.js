@@ -3873,7 +3873,7 @@ function buildWizardContent(w) {
       return head + '<div class="wz-rows">' +
         wzNum(tr('Min steer speed'), tr('Engage above this speed'), 'autosteer.minSteerSpeed', '0.1', 'kmh') +
         wzNum(tr('Max steer speed'), tr('Safety cutoff speed'), 'autosteer.maxSteerSpeed', '0.1', 'kmh') +
-        wzTgl(tr('Turn Sensor'), tr('Steering wheel encoder'), 'autosteer.turnSensorEnabled') +
+        wzTgl(tr('Turn Sensor'), tr('Enable'), 'autosteer.turnSensorEnabled') +
         wzTgl(tr('Pressure sensor'), tr('Hydraulic stall detection'), 'autosteer.pressureSensorEnabled') +
         wzTgl(tr('Current sensor'), tr('Motor current obstruction detection'), 'autosteer.currentSensorEnabled') +
         wzTgl(tr('Steer in reverse'), tr('Allow steering while reversing'), 'autosteer.steerInReverse') +
