@@ -419,7 +419,9 @@ public record DisplayConfigDto(
     double DisplayResolutionMultiplier,
     // Day/Night theme (PersistentAppState.IsDayMode). The web client switches its full
     // light/dark palette + map colours on this; the Day/Night Theme button toggles it.
-    bool IsDayMode);
+    bool IsDayMode,
+    // UI size in percent (100/115/130/150): the client zooms its controls, not the map.
+    int UiScale);
 
 /// <summary>Tool/Implement tab (ConfigStore.Tool + NumSections). Type: 0 front, 1 rear,
 /// 2 TBT, 3 trailing. Arrays fixed-size (16 widths/colours, 9 zone ranges).</summary>
