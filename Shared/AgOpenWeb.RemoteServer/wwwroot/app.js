@@ -422,7 +422,7 @@ const transport = RemoteTransport.create({
   },
   onCoverageEdge(polylines) { coverageEdges = polylines; }, // crisp worked-area perimeter (~2 Hz)
   onStatusBar(s) { statusBar = s; renderSprayerBar(); syncUnits(); if (typeof applySimBarVisible === 'function') applySimBarVisible(); syncUnsavedCov(); syncDualHeadingWarning(s); syncGpsLost(s); },
-  onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); },
+  onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); applyUiScale(c && c.display && c.display.uiScale); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
   onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
@@ -702,6 +702,82 @@ function applyMapTheme() {
   SKP.gridMinor.setColor(ckColor(GRID_MINOR[k]));
   SKP.gridMajor.setColor(ckColor(GRID_MAJOR[k]));
 }
+// UI size (Screen & Alerts): the controls are zoomed by CSS (--ui-zoom), the map is not.
+// Anything that turns screen pixels into a zoomed element's left/top divides by uiZoom.
+// Engines differ: current Chromium and WebKit give a zoomed element's rects in screen
+// pixels and grow vw/vh with the zoom; older WebKit (iPadOS 17) gives the rects in the
+// element's own pixels. calibrateZoom measures which, so rects are always screen pixels
+// (zoomRect) and --vw/--vh always come out at one viewport percent.
+let uiZoom = 1;
+let rectScale = 1;
+function applyUiScale(pct) {
+  const z = pct >= 100 && pct <= 200 ? pct / 100 : 1;
+  if (z === uiZoom) return;
+  uiZoom = z;
+  document.documentElement.style.setProperty('--ui-zoom', String(z));
+  calibrateZoom();
+  placeCorner();
+}
+function calibrateZoom() {
+  const root = document.documentElement.style;
+  root.removeProperty('--vw'); root.removeProperty('--vh');
+  rectScale = 1;
+  if (uiZoom === 1) return;
+  const p = document.createElement('div');
+  p.style.cssText = 'position:fixed;left:0;top:0;width:calc(100 * var(--vw));height:1px;visibility:hidden;pointer-events:none';
+  document.body.appendChild(p);
+  const w = p.getBoundingClientRect().width, own = p.offsetWidth;
+  if (w > 0 && own > 0) {
+    // 1 when rects are already screen pixels, else uiZoom (offsetWidth is rounded)
+    rectScale = Math.abs(w / own - uiZoom) < Math.abs(w / own - 1) ? 1 : uiZoom;
+    // vw/vh not grown by the zoom here: one viewport percent is plain vw.
+    if (Math.abs(w * rectScale - innerWidth) > 4) { root.setProperty('--vw', '1vw'); root.setProperty('--vh', '1vh'); }
+  }
+  p.remove();
+}
+// An element's rect in screen pixels, whichever way the engine reports zoomed rects.
+function zoomRect(el) {
+  const r = el.getBoundingClientRect(), k = rectScale;
+  if (k === 1) return r;
+  return { left: r.left * k, right: r.right * k, top: r.top * k, bottom: r.bottom * k, width: r.width * k, height: r.height * k };
+}
+// The right nav grows down from the top, the bottom bar up from the bottom, and the gauge
+// + camera pad and the clock sit in the bottom-right corner between them. When they meet
+// (a big UI size, a short screen, many buttons) the corner moves rather than being
+// covered: the gauge + pad beside the nav, and the clock and gauge + pad above the bar.
+function placeCorner() {
+  const rn = document.getElementById('rightnav'), lr = document.getElementById('lowerright');
+  const clock = document.getElementById('clock'), bar = document.getElementById('bottomstack');
+  if (!rn || !lr || !clock || !bar) return;
+  lr.style.right = ''; lr.style.bottom = ''; clock.style.bottom = '';
+  const b = zoomRect(bar);
+  // Screen pixels from the bottom edge to y, in the zoomed pixels bottom is set in.
+  const above = (y, gap) => `${(innerHeight - y) / uiZoom + gap}px`;
+  const meets = q => b.height > 0 && q.left < b.right && q.right > b.left && q.bottom > b.top;
+  if (meets(zoomRect(clock))) clock.style.bottom = above(b.top, 8);
+  // Lift the gauge + pad clear of the bar and the clock; lifting can carry it into the
+  // nav, and moving it beside the nav can bring it over the bar, so lift again after.
+  const lift = () => {
+    lr.style.bottom = '';
+    const r = zoomRect(lr), c = zoomRect(clock);
+    let top = Infinity;
+    if (meets(r)) top = b.top;
+    if (r.left < c.right && r.right > c.left && r.bottom > c.top) top = Math.min(top, c.top);
+    if (top < Infinity) lr.style.bottom = above(top, 10);
+  };
+  lift();
+  const nav = zoomRect(rn), r = zoomRect(lr);
+  if (nav.height > 0 && nav.bottom > r.top && nav.left < r.right) {
+    lr.style.right = `calc(14px + var(--sar) + ${nav.width / uiZoom}px)`;
+    lift();
+  }
+}
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(placeCorner);
+  ro.observe(document.getElementById('rightnav'));
+  ro.observe(document.getElementById('bottomstack'));
+}
+addEventListener('resize', placeCorner);
 function applyTheme(isDay) {
   mapIsDay = !!isDay;
   document.documentElement.setAttribute('data-theme', mapIsDay ? 'day' : 'night');
@@ -2490,6 +2566,9 @@ for (const b of saPanel.querySelectorAll('.sa-tgl'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
 for (const b of saPanel.querySelectorAll('.sa-act'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
+// On click, not pointerdown: the panel resizes under the finger once the new size applies.
+for (const b of saPanel.querySelectorAll('.sa-scale'))
+  b.addEventListener('click', e => { e.stopPropagation(); cfgSend('display.uiScale', b.dataset.scale); });
 const saExtra = document.getElementById('sa-extracount');
 saExtra.addEventListener('change', () => { const v = parseInt(saExtra.value); if (Number.isFinite(v)) cfgSend('display.extraGuidelinesCount', v); });
 function populateScreenAlerts() {
@@ -2498,6 +2577,7 @@ function populateScreenAlerts() {
   for (const b of saPanel.querySelectorAll('.sa-tgl')) b.classList.toggle('active', !!d[b.dataset.key.split('.')[1]]);
   if (document.activeElement !== saExtra) saExtra.value = d.extraGuidelinesCount;
   document.getElementById('sa-quality').textContent = d.resolutionLabel || '—';
+  for (const b of saPanel.querySelectorAll('.sa-scale')) b.classList.toggle('active', +b.dataset.scale === (d.uiScale || 100));
 }
 // Vehicle config panel — full native VehicleConfigDialog surface (Vehicle/GPS/Roll).
 // Generic config controls keyed by data-key="<section>.<field>"; reused by later
@@ -5368,15 +5448,17 @@ function renderBoundaryPlayer() {
     hdr.addEventListener('pointerdown', e => {
       if (e.target.classList.contains('chart-x')) return;
       e.stopPropagation();
-      const r = card.getBoundingClientRect();
-      drag = true; sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+      const r = zoomRect(card);
+      // zoomRect and clientX are screen pixels; left/top are in the card's own (zoomed)
+      // pixels.
+      drag = true; sx = e.clientX; sy = e.clientY; ox = r.left / uiZoom; oy = r.top / uiZoom;
       card.style.left = ox + 'px'; card.style.top = oy + 'px'; card.style.right = 'auto';
       try { hdr.setPointerCapture(e.pointerId); } catch (_) {}
     });
     hdr.addEventListener('pointermove', e => {
       if (!drag) return;
-      card.style.left = (ox + e.clientX - sx) + 'px';
-      card.style.top = (oy + e.clientY - sy) + 'px';
+      card.style.left = (ox + (e.clientX - sx) / uiZoom) + 'px';
+      card.style.top = (oy + (e.clientY - sy) / uiZoom) + 'px';
     });
     const end = e => { drag = false; try { hdr.releasePointerCapture(e.pointerId); } catch (_) {} };
     hdr.addEventListener('pointerup', end);

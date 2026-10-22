@@ -474,6 +474,7 @@ public class ConfigurationService(
         store.Display.HeadlandDistanceVisible = settings.HeadlandDistanceVisible;
         store.Display.ExtraGuidelines = settings.ExtraGuidelines;
         store.Display.ExtraGuidelinesCount = settings.ExtraGuidelinesCount;
+        store.Display.UiScale = settings.UiScale;
         store.Display.AutoTrack = settings.AutoTrack;
         store.Display.FieldTextureVisible = settings.FieldTextureVisible;
         if (!settings.HasMigratedTextureMoveable)
@@ -552,6 +553,7 @@ public class ConfigurationService(
         settings.HeadlandDistanceVisible = store.Display.HeadlandDistanceVisible;
         settings.ExtraGuidelines = store.Display.ExtraGuidelines;
         settings.ExtraGuidelinesCount = store.Display.ExtraGuidelinesCount;
+        settings.UiScale = store.Display.UiScale;
         settings.AutoTrack = store.Display.AutoTrack;
         settings.FieldTextureVisible = store.Display.FieldTextureVisible;
         settings.FieldTextureMoveable = store.Display.FieldTextureMoveable;
