@@ -331,6 +331,14 @@
     :root[data-theme="day"] #sprayerbar .spr-val b.on-target { color: #17803a; }
     :root[data-theme="day"] #sprayerbar .spr-val b.off-target { color: #b45309; }
     #sprayerbar.alarm .spr-val b.on-target, #sprayerbar.alarm .spr-val b.off-target { color: inherit; }
+    /* One small square per section, in the section buttons' colours (SECTION_COLORS). */
+    #sprayerbar .spr-cells { display: flex; gap: 3px; }
+    #sprayerbar .spr-cell { flex: none; width: 10px; height: 10px; border-radius: 2px; background: #5a5a5a; }
+    #sprayerbar .spr-cell.s-on { background: rgba(0,242,0,0.85); }
+    #sprayerbar .spr-cell.s-off { background: rgba(242,51,51,0.85); }
+    #sprayerbar .spr-cell.s-goingon { background: rgba(255,165,0,0.9); }
+    #sprayerbar .spr-cell.s-goingoff { background: rgba(0,222,222,0.85); }
+    #sprayerbar.alarm .spr-cell { box-shadow: 0 0 0 1px rgba(255,255,255,0.7); }
     /* A section the module doesn't follow (app asks on, module reports closed, or the reverse). */
     #sprayerbar .spr-warn { color: #ffb74d; font: 700 13px system-ui, sans-serif; }
     #sprayerbar .spr-warn:empty { display: none; }
