@@ -646,6 +646,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // Rebuilt by the state machine on the next turn (HandleSnakeCreation).
             _youTurn.SnakeSequence = null;
             _youTurn.SnakeIndex = -1;
+            // A planned turn aims at the pass the old skip chose: drop it so the next tick
+            // plans for the new one (AgOpenGPS cboxpRowWidth: ResetCreatedYouTurn unless
+            // triggered, #410). A turn already being driven is left alone.
+            if (!_youTurn.IsExecuting) YouTurnStateMachine.DiscardPlannedTurn(_youTurn);
         }
 
         // Boundary-follow curve (NoPassOffset): only SUPPRESS the free-drive nearest-pass snap
