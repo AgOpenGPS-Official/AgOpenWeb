@@ -12,6 +12,7 @@ import worker from '../src/reports.js';
 const dump = readFileSync(new URL('./fixtures/dump.zip', import.meta.url));
 const notDump = readFileSync(new URL('./fixtures/not-a-dump.zip', import.meta.url));
 const emailDump = readFileSync(new URL('./fixtures/dump-email.zip', import.meta.url)); // + contact.txt
+const attachedDump = readFileSync(new URL('./fixtures/dump-attachments.zip', import.meta.url)); // + 2 attachments
 
 class FakeBucket {
   constructor() { this.objects = new Map(); }
@@ -113,6 +114,15 @@ test('an email in the dump is enough, and it never reaches the issue', async () 
   const issue = github.issues[0];
   assert.doesNotMatch(issue.body, /grower@example\.com/);
   assert.match(issue.body, /Sent from the app\.$/);
+});
+
+test('the issue counts the attachments but names none of them', async () => {
+  assert.equal((await post(attachedDump)).status, 201);
+  const body = github.issues[0].body;
+  assert.match(body, /Attachments: 2 \(in the dump\)/);
+  assert.doesNotMatch(body, /screen shot|field-notes/);
+  assert.equal((await post(dump)).status, 201);
+  assert.doesNotMatch(github.issues[1].body, /Attachments:/);
 });
 
 test('GitHub unable to look the user up does not block the report', async () => {

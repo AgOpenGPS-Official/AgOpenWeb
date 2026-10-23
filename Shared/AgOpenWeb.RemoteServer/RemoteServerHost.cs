@@ -394,21 +394,68 @@ public sealed class RemoteServerHost
         // Filename-only (no path traversal), and only the reports the app wrote.
         server.MapGetPrefix("/bugreports/", file =>
         {
-            if (file.Contains('/') || file.Contains('\\') || file.Contains("..")
-                || !file.StartsWith("bugreport_", StringComparison.Ordinal)
-                || !file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                return SimpleWebServer.Response.NotFound;
-            var path = Path.Combine(AgOpenWeb.Services.AppDataRoot.Documents, "BugReports", file);
-            if (!File.Exists(path)) return SimpleWebServer.Response.NotFound;
+            var path = BugReportZip(file);
+            if (path is null) return SimpleWebServer.Response.NotFound;
             return SimpleWebServer.Response.Bytes(File.ReadAllBytes(path), "application/zip",
                 // No filename in the header: the browser takes it from the URL, which carries
                 // non-ASCII titles intact.
                 new[] { ("Content-Disposition", "attachment"), ("Cache-Control", "no-store") });
         });
 
+        // Screenshots and files added to a report (the body is the file). Only the screen
+        // holding control may change a report, like every other change (observers change
+        // nothing, #397); the client sends its connection id. The files stay in the dump.
+        server.MapPost("/bugreports/attach", (int)AgOpenWeb.Services.BugReport.BugReportAttachments.MaxFileBytes + 1024,
+            req => Task.FromResult(ChangeReport(req, authority, (path, name) =>
+                AgOpenWeb.Services.BugReport.BugReportAttachments.Add(path, name, req.Body))));
+        server.MapPost("/bugreports/detach", 0,
+            req => Task.FromResult(ChangeReport(req, authority, (path, name) =>
+                (AgOpenWeb.Services.BugReport.BugReportAttachments.Refusal.None,
+                 AgOpenWeb.Services.BugReport.BugReportAttachments.Remove(path, name)))));
+
         await server.StartAsync().ConfigureAwait(false);
         _broadcaster.Start();
         _server = server;
+    }
+
+    // A bug report the app wrote: filename only (no path traversal), bugreport_*.zip, present.
+    private static string? BugReportZip(string file)
+    {
+        if (file.Contains('/') || file.Contains('\\') || file.Contains("..")
+            || !file.StartsWith("bugreport_", StringComparison.Ordinal)
+            || !file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var path = Path.Combine(AgOpenWeb.Services.AppDataRoot.Documents, "BugReports", file);
+        return File.Exists(path) ? path : null;
+    }
+
+    // POST /bugreports/attach|detach?zip=&name=&client=: gate on control, run the change,
+    // reply {refusal, files:[{name,size}]}. A dump being read by Send at that moment is "busy".
+    private static SimpleWebServer.Response ChangeReport(SimpleWebServer.PostRequest req, ControlAuthority authority,
+        Func<string, string, (AgOpenWeb.Services.BugReport.BugReportAttachments.Refusal,
+            IReadOnlyList<AgOpenWeb.Services.BugReport.BugReportAttachments.Attachment>)> change)
+    {
+        string Q(string k) => req.Query.TryGetValue(k, out var v) ? v : "";
+        if (!Guid.TryParse(Q("client"), out var client) || !authority.HoldsFresh(client))
+            return new SimpleWebServer.Response(403, "text/plain", "view only"u8.ToArray());
+        var path = BugReportZip(Q("zip"));
+        if (path is null || Q("name").Length == 0) return SimpleWebServer.Response.NotFound;
+        object reply;
+        try
+        {
+            var (refusal, files) = change(path, Q("name"));
+            reply = new
+            {
+                refusal = refusal.ToString(),
+                files = files.Select(f => new { name = f.Name, size = f.Size }),
+            };
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            reply = new { refusal = "Busy", files = Array.Empty<object>() };
+        }
+        return SimpleWebServer.Response.Text(System.Text.Json.JsonSerializer.Serialize(reply), "application/json",
+            new[] { ("Cache-Control", "no-store") });
     }
 
     public async Task StopAsync()

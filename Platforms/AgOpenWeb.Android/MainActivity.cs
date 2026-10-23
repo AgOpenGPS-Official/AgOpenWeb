@@ -113,7 +113,8 @@ public class MainActivity : Activity
         s.JavaScriptCanOpenWindowsAutomatically = true;
         web.SetBackgroundColor(global::Android.Graphics.Color.ParseColor("#0b1020"));
         web.SetWebViewClient(new LauncherWebViewClient(LauncherPort, OnLoadFinished));
-        web.SetWebChromeClient(new LauncherWebChromeClient());
+        _chromeClient = new LauncherWebChromeClient(this);
+        web.SetWebChromeClient(_chromeClient);
         // window.agnative.hideKeyboard(). Must be added before the first load.
         web.AddJavascriptInterface(new WebKeyboardBridge(), "agnative");
 
@@ -323,7 +324,17 @@ public class MainActivity : Activity
         }
     }
 
-    protected override void OnResume()
+    private LauncherWebChromeClient? _chromeClient;
+
+    // The system file picker's answer (bug report attachments) goes back to the page.
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+    {
+        base.OnActivityResult(requestCode, resultCode, data);
+        if (requestCode == LauncherWebChromeClient.FileChooserRequest)
+            _chromeClient?.OnFileChosen(resultCode, data);
+    }
+
+        protected override void OnResume()
     {
         base.OnResume();
 

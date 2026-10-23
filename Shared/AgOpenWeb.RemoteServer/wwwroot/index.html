@@ -687,6 +687,10 @@
     /* ===== File / Application Menu ===== */
     .fm-panel { width: 340px; }
     #bugreport.fm-panel { width: 510px; } /* room to describe the problem */
+    .br-filerow { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border);
+      font: 14px system-ui, sans-serif; }
+    .br-filerow .br-fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .br-filerow .br-fsize { opacity: 0.7; font-size: 12px; }
     .fm-wide { width: 560px; }
     /* View All Settings fills the tablet viewport so every setting shows for a screenshot. */
     .fm-full { width: calc(100 * var(--vw) - 110px); height: calc(100 * var(--vh) - 84px); box-sizing: border-box; }
@@ -2649,6 +2653,11 @@
       <div class="cfg-label" style="margin-top:8px">or email</div>
       <input class="cfg-num fj-tx" id="br-email" type="email" autocapitalize="off" autocomplete="email" spellcheck="false">
       <div class="sa-hint" style="margin-top:4px">We need one of the two to reply. An email goes only to the maintainers with the report, never into the public issue, and is deleted with the report.</div>
+      <div class="cfg-label" style="margin-top:8px">Screenshots or files (optional)</div>
+      <div id="br-files"></div>
+      <button class="cfg-act cfg-actwide" id="br-attach" style="margin-top:4px">Add Screenshot or File</button>
+      <input type="file" id="br-file" multiple hidden>
+      <div class="sa-hint" id="br-attachstatus" style="margin-top:4px">Like the rest of the report, attachments go only to the maintainers.</div>
       <button class="cfg-act cfg-actwide fj-primary" id="br-send" style="margin-top:8px">Send Report</button>
       <div class="sa-hint" id="br-need" style="margin-top:6px"></div>
       <div class="sa-hint" id="br-sendstatus" style="margin-top:6px"></div>

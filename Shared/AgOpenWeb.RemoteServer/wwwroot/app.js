@@ -3742,8 +3742,63 @@ function renderBugReport() {
   brIssueUrl = issueUrl || null;
   document.getElementById('br-openissue').style.display = brIssueUrl ? '' : 'none';
   brSendBusy = ['sending', 'queued', 'sent', 'accepted'].includes(kind);
+  if (brFile !== brFilesFor) { brFiles = []; brFilesFor = brFile; renderBrFiles(); }
+  document.getElementById('br-attach').disabled = brSendBusy || brAttaching;
   brUpdateSend();
 }
+// Screenshots and files: each one is posted to the host as it is picked and goes into the
+// dump under attachments/ (BugReportAttachments). Only the screen holding control may add.
+let brFiles = [], brFilesFor = null, brAttaching = false;
+const brSize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+function renderBrFiles() {
+  const box = document.getElementById('br-files'); box.innerHTML = '';
+  for (const f of brFiles) {
+    const row = document.createElement('div'); row.className = 'br-filerow';
+    const nm = document.createElement('span'); nm.className = 'br-fname'; nm.textContent = f.name; nm.translate = false;
+    const sz = document.createElement('span'); sz.className = 'br-fsize'; sz.textContent = brSize(f.size);
+    const x = document.createElement('button'); x.className = 'ln-x'; x.textContent = '✕'; x.title = tr('Remove');
+    x.disabled = brSendBusy;
+    x.addEventListener('pointerdown', e => { e.stopPropagation(); brChangeFiles('detach', f.name, new Uint8Array(0)); });
+    row.append(nm, sz, x); box.appendChild(row);
+  }
+}
+async function brChangeFiles(op, name, body) {
+  const st = document.getElementById('br-attachstatus');
+  const q = new URLSearchParams({ zip: brFile, name, client: myClientId || '' });
+  let res, reply = null;
+  try {
+    res = await fetch('/bugreports/' + op + '?' + q, { method: 'POST', body });
+    if (res.ok) reply = await res.json();
+  } catch (_) { st.textContent = tr('Could not add {name}', { name }); return false; }
+  if (res.status === 403) { st.textContent = tr('View only: another screen has control'); return false; }
+  if (res.status === 413) { st.textContent = tr('{name} is too large (20 MB at most)', { name }); return false; }
+  if (!reply) { st.textContent = tr('Could not add {name}', { name }); return false; }
+  const why = {
+    TooLarge: tr('{name} is too large (20 MB at most)', { name }),
+    TotalTooLarge: tr('Attachments are limited to 25 MB in all'),
+    TooMany: tr('At most 10 attachments'),
+    Empty: tr('{name} is empty', { name }),
+    Busy: tr('The report is being sent; try again in a moment'),
+  }[reply.refusal];
+  if (reply.refusal !== 'Busy') { brFiles = reply.files; renderBrFiles(); }
+  st.textContent = why || tr('Like the rest of the report, attachments go only to the maintainers.');
+  return !why;
+}
+document.getElementById('br-attach').addEventListener('click', e => {
+  e.stopPropagation();
+  if (brFile && !brSendBusy && !brAttaching) document.getElementById('br-file').click();
+});
+document.getElementById('br-file').addEventListener('change', async e => {
+  const picked = [...e.target.files]; e.target.value = '';
+  if (!picked.length || !brFile) return;
+  brAttaching = true; document.getElementById('br-attach').disabled = true;
+  for (const f of picked) {
+    document.getElementById('br-attachstatus').textContent = tr('Adding {name}…', { name: f.name });
+    if (f.size > 20 * 1048576) { document.getElementById('br-attachstatus').textContent = tr('{name} is too large (20 MB at most)', { name: f.name }); break; }
+    if (!await brChangeFiles('attach', f.name, f)) break;
+  }
+  brAttaching = false; document.getElementById('br-attach').disabled = brSendBusy;
+});
 let brIssueUrl = null, brSendBusy = false;
 // Send needs what the bug report service checks too (Tools/bugreport-worker reports.js):
 // a title and description long enough to act on, and a GitHub username or an email to reply
