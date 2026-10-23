@@ -56,7 +56,7 @@ later if it changes often.
 ### `POST /v1/reports`
 
 - Body: the zip (`Content-Type: application/zip`). Metadata in headers or a small JSON part:
-  title, description, app version + git hash, platform, language, optional GitHub username.
+  title, description, app version + git hash, platform, language, GitHub username.
 - Checks, in order, all cheap:
   1. Rate limit per IP (Workers rate-limiting binding): e.g. 5 an hour, 20 a day.
   2. Size: reject over 50 MB (`Content-Length`, then the bytes actually read).
@@ -64,6 +64,12 @@ later if it changes often.
      endpoint takes AgOpenWeb dumps and nothing else.
   4. A global daily cap (a counter in KV or a Durable Object; or simply count today's
      objects) so a flood can't fill the bucket or the issue list.
+  5. Enough to act on (#407, "turn on" with no description and nobody to ask): a title of at
+     least 15 characters, a description of at least 40, and a way to reply: a GitHub
+     username that exists (`GET /users/<name>`; a GitHub outage doesn't block the report)
+     or an email address in the dump's `contact.txt`. The email never goes in the
+     metadata or the issue, only in the maintainer-only dump. The app checks the same
+     before it enables Send.
 - Stores the zip as `dumps/<yyyy>/<mm>/<id>.zip`, `id` a random 128-bit value, with custom
   metadata: issue number (filled after step below), version, platform, upload time.
 - Opens the issue as a **GitHub App** (installed on this repo only, permission Issues: write):
@@ -117,7 +123,11 @@ plan is a config change.
 - New primary button **Send Report**, beside the existing ones. **Download** and
   **Report on GitHub** stay as the fallback (no internet on the device at all, or the
   service is down for good).
-- Optional field: "GitHub username (to get replies)".
+- Fields "GitHub username" and "or email"; one of the two is required (see check 5). A
+  line says the email goes only to the maintainers, never into the public issue, and is
+  deleted with the report. The description box prompts *What were you doing? What
+  happened? What did you expect?*, and a button above the form opens the AgOpenGPS docs
+  (https://docs.agopengps.com/) for questions that aren't bugs.
 - A line saying what is sent, before the button: the description, settings (passwords
   already blanked by `DebugDumpService.RedactSecrets`), the open field with its location and
   boundary, the last 5 minutes of GPS positions and a screenshot. It goes to the AgOpenWeb

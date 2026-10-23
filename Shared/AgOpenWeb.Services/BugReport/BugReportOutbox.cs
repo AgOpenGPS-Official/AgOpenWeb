@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -17,8 +18,10 @@ using AgOpenWeb.Services.Storage;
 
 namespace AgOpenWeb.Services.BugReport;
 
-/// <summary>What the reporter typed, sent beside the dump (the dump has its own copy).</summary>
-public sealed record BugReportMeta(string Title, string Description, string GitHub, string Language);
+/// <summary>What the reporter typed, sent beside the dump (the dump has its own copy). The
+/// email never goes in the metadata: it is written into the dump as contact.txt, which only
+/// the maintainers can download.</summary>
+public sealed record BugReportMeta(string Title, string Description, string GitHub, string Language, string Email = "");
 
 public enum BugReportOutcome { Sent, Retry, Rejected }
 
@@ -80,11 +83,15 @@ public sealed class BugReportOutbox
     /// <summary>Reports still waiting to go.</summary>
     public int Pending => Directory.Exists(OutboxDir) ? Directory.GetFiles(OutboxDir, "*.json").Length : 0;
 
+    /// <summary>The dump entry that carries the reporter's email.</summary>
+    public const string ContactEntry = "contact.txt";
+
     /// <summary>Queue a dump (a zip in the reports directory) to send now.</summary>
     public void Enqueue(string zipName, BugReportMeta meta)
     {
         if (zipName != Path.GetFileName(zipName) || !File.Exists(Path.Combine(_dir, zipName)))
             throw new FileNotFoundException("No such bug report", zipName);
+        WriteContact(Path.Combine(_dir, zipName), meta.Email.Trim());
         Directory.CreateDirectory(OutboxDir);
         var now = _utcNow();
         Save(new Entry
@@ -145,6 +152,16 @@ public sealed class BugReportOutbox
         }
         finally { _gate.Release(); }
         return results;
+    }
+
+    // contact.txt in the dump holds the email as of this send; an empty one removes it.
+    private static void WriteContact(string zipPath, string email)
+    {
+        using var zip = ZipFile.Open(zipPath, ZipArchiveMode.Update);
+        zip.GetEntry(ContactEntry)?.Delete();
+        if (email.Length == 0) return;
+        using var w = new StreamWriter(zip.CreateEntry(ContactEntry).Open());
+        w.Write("Email: " + email + "\n");
     }
 
     // The sidecar, and the backup and scratch copies AtomicJsonFile keeps beside it.

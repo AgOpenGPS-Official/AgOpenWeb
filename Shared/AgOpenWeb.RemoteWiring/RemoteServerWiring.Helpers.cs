@@ -600,7 +600,7 @@ public static partial class RemoteServerWiring
                 catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; }
                 return;
             }
-            case "app.bugReport.send": // arg = zip name \t GitHub user \t title \t description
+            case "app.bugReport.send": // arg = zip name \t GitHub user \t email \t title \t description
                 BugReportRemote.Send(arg, services.GetRequiredService<ISettingsService>().Settings.Language ?? "");
                 return;
         }

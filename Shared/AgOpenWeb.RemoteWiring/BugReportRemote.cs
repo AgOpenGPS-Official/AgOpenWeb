@@ -42,7 +42,7 @@ internal static class BugReportRemote
         Kick();
     }
 
-    /// <summary>arg = zip name \t GitHub user \t title \t description.</summary>
+    /// <summary>arg = zip name \t GitHub user \t email \t title \t description.</summary>
     public static void Send(string arg, string language)
     {
         if (_outbox == null || _state == null) return;
@@ -51,12 +51,13 @@ internal static class BugReportRemote
         try
         {
             _outbox.Enqueue(zip, new BugReportMeta(
-                Title: a.Length > 2 ? a[2] : "",
-                Description: a.Length > 3 ? string.Join("\t", a, 3, a.Length - 3) : "",
+                Title: a.Length > 3 ? a[3] : "",
+                Description: a.Length > 4 ? string.Join("\t", a, 4, a.Length - 4) : "",
                 GitHub: a.Length > 1 ? a[1].Trim() : "",
-                Language: language));
+                Language: language,
+                Email: a.Length > 2 ? a[2].Trim() : ""));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
         {
             _state.BugReportSendStatus = "rejected|" + ex.Message;
             return;
