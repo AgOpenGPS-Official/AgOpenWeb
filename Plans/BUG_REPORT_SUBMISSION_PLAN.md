@@ -128,6 +128,14 @@ plan is a config change.
   deleted with the report. The description box prompts *What were you doing? What
   happened? What did you expect?*, and a button above the form opens the AgOpenGPS docs
   (https://docs.agopengps.com/) for questions that aren't bugs.
+- **Screenshots or files** (#411 follow-up): after Create, *Add Screenshot or File* posts each
+  picked file to the host (`POST /bugreports/attach?zip=&name=&client=`, the body is the file;
+  `/bugreports/detach` removes one). The host adds it to the dump under `attachments/`
+  (`BugReportAttachments`: at most 10 files, 20 MB each, 25 MB in all; names made safe and
+  numbered when they repeat). Only the screen holding control may change a report (#397).
+  Attachments are maintainer-only like the rest of the dump; the issue says only
+  "Attachments: N (in the dump)". Android's WebView has no picker of its own, so the shell
+  answers `onShowFileChooser` with the system one.
 - A line saying what is sent, before the button: the description, settings (passwords
   already blanked by `DebugDumpService.RedactSecrets`), the open field with its location and
   boundary, the last 5 minutes of GPS positions and a screenshot. It goes to the AgOpenWeb

@@ -77,12 +77,14 @@ export function whatsMissing(meta, contact) {
   return null;
 }
 
-export function issueFor(env, meta, sysInfo, key) {
+export function issueFor(env, meta, sysInfo, key, attachments = 0) {
   const link = `${env.DUMPS_URL}/v1/${key}`;
   const facts = [
     ...sysInfo,
     meta.platform ? `Platform: ${meta.platform}` : null,
     meta.language ? `Language: ${meta.language}` : null,
+    // The count only: names and contents stay in the maintainer-only dump.
+    attachments ? `Attachments: ${attachments} (in the dump)` : null,
     `Dump: ${link} (maintainers only)`,
   ].filter(Boolean);
   const lines = [
@@ -149,7 +151,8 @@ async function report(request, env) {
     httpMetadata: { contentType: 'application/zip' }, customMetadata: custom,
   });
 
-  const issue = issueFor(env, meta, sysInfo, key);
+  const attachments = entries.filter(e => e.name.startsWith('attachments/') && !e.name.endsWith('/')).length;
+  const issue = issueFor(env, meta, sysInfo, key, attachments);
   try {
     const made = await createIssue(env, issue);
     await env.DUMPS.put(key, bytes, {
