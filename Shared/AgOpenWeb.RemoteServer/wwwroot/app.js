@@ -4919,18 +4919,20 @@ const SPRAYER_ALARMS = [ // SprayerAlarms bits, in order
 // from the nozzle chart, or from the measured flow and pressure without one. Outside the
 // min / max pressure it gives the speed that hits the target at that limit instead.
 const SPRAYER_RATE_TOLERANCE = 0.10;
-// A section the module doesn't follow: what the app asks (the section's relay bit: manual
-// on, auto on, turning off) against what the module reports open. The module answers once
-// a second, so a difference is only shown once it has lasted SPRAYER_SECTION_LAG_MS.
+// Each section: what the app asks (the section's relay bit: manual on, auto on, turning
+// off) against what the module reports open. A small square per section in the section
+// buttons' colours: green open, red closed, orange asked on but still closed, cyan asked
+// off but still open. The module answers once a second, so the line naming a section it
+// doesn't follow only shows once the difference has lasted SPRAYER_SECTION_LAG_MS.
 const SPRAYER_SECTION_LAG_MS = 2000;
 const sprayerDiffSince = []; // per section: when the two started to differ (0 = they agree)
-function sprayerSectionWarnings(sp) {
-  const n = Math.max(1, Math.min(8, (config && config.tool && config.tool.numSections) || 5));
+function sprayerSections(sp, n) {
   const asked = tick && tick.sections, now = performance.now();
-  const notOpened = [], notClosed = [];
+  const states = [], notOpened = [], notClosed = [];
   for (let i = 0; i < n; i++) {
     const code = asked ? asked[i] : 0;
     const on = code === 1 || code === 2 || code === 3, open = ((sp.sections >> i) & 1) === 1;
+    states.push(on ? (open ? 's-on' : 's-goingon') : (open ? 's-goingoff' : 's-off'));
     if (on === open) { sprayerDiffSince[i] = 0; continue; }
     if (!sprayerDiffSince[i]) sprayerDiffSince[i] = now;
     if (now - sprayerDiffSince[i] >= SPRAYER_SECTION_LAG_MS) (on ? notOpened : notClosed).push(i + 1);
@@ -4938,7 +4940,7 @@ function sprayerSectionWarnings(sp) {
   const warn = [];
   if (notOpened.length) warn.push(tr('Module did not open section {s}', { s: notOpened.join(', ') }));
   if (notClosed.length) warn.push(tr('Module did not close section {s}', { s: notClosed.join(', ') }));
-  return warn;
+  return { states, warn };
 }
 function sprayerTarget(sp, speed) {
   const m = config && config.machine;
@@ -4969,15 +4971,22 @@ function renderSprayerBar() {
   const sp = statusBar && statusBar.sprayer;
   sprayerBar.classList.toggle('open', !!sp);
   if (!sp) return;
-  if (!sprayerBar.firstChild) {
-    sprayerBar.innerHTML = '<div class="spr-row"><span class="spr-val" translate="no"></span></div>'
+  const n = Math.max(1, Math.min(8, (config && config.tool && config.tool.numSections) || 5));
+  if (+sprayerBar.dataset.n !== n) {
+    sprayerBar.dataset.n = n;
+    sprayerBar.innerHTML = '<div class="spr-row"><span class="spr-val" translate="no"></span><div class="spr-cells"></div></div>'
       + '<div class="spr-row"><span class="spr-note"></span></div><div class="spr-warn"></div><div class="spr-msg"></div>';
     const val = sprayerBar.querySelector('.spr-val'); // value + unit pairs; units are symbols, not text
     for (const [cls, unit] of [['spr-p', ' bar  '], ['spr-f', ' L/min  '], ['spr-r', ' L/ha']]) {
       const b = document.createElement('b'); b.className = cls; val.appendChild(b);
       val.appendChild(document.createTextNode(unit));
     }
+    const cells = sprayerBar.querySelector('.spr-cells');
+    for (let i = 0; i < n; i++) { const c = document.createElement('div'); c.className = 'spr-cell'; cells.appendChild(c); }
   }
+  const secs = sprayerSections(sp, n);
+  const cells = sprayerBar.querySelectorAll('.spr-cell');
+  for (let i = 0; i < cells.length; i++) cells[i].className = 'spr-cell ' + secs.states[i];
   // L/ha = L/min ÷ (m/s × m) × 10000 m²/ha ÷ 60 s/min; not while (nearly) stopped.
   const speed = lastTick ? lastTick.speed : 0;
   const lha = sp.openWidthM > 0 && speed > 0.3 ? sp.flowLpm / (speed * sp.openWidthM) * 10000 / 60 : NaN;
@@ -4995,7 +5004,7 @@ function renderSprayerBar() {
   note.push(sp.totalLitres.toFixed(0) + ' L');
   if (!sp.masterOn) note.push(tr('master off'));
   sprayerBar.querySelector('.spr-note').textContent = note.join(' · ');
-  sprayerBar.querySelector('.spr-warn').textContent = sprayerSectionWarnings(sp).join(' · ');
+  sprayerBar.querySelector('.spr-warn').textContent = secs.warn.join(' · ');
   const msgs = SPRAYER_ALARMS.filter(([bit]) => sp.alarms & bit).map(([, text]) => text);
   sprayerBar.querySelector('.spr-msg').textContent = msgs.join(' · ');
   sprayerBar.classList.toggle('alarm', msgs.length > 0);
