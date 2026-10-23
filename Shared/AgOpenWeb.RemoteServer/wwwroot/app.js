@@ -3741,19 +3741,50 @@ function renderBugReport() {
     : '';
   brIssueUrl = issueUrl || null;
   document.getElementById('br-openissue').style.display = brIssueUrl ? '' : 'none';
-  document.getElementById('br-send').disabled = ['sending', 'queued', 'sent', 'accepted'].includes(kind);
+  brSendBusy = ['sending', 'queued', 'sent', 'accepted'].includes(kind);
+  brUpdateSend();
 }
-let brIssueUrl = null;
-try { document.getElementById('br-ghuser').value = localStorage.getItem('agopenweb.bugReportGitHub') || ''; } catch (_) { }
+let brIssueUrl = null, brSendBusy = false;
+// Send needs what the bug report service checks too (Tools/bugreport-worker reports.js):
+// a title and description long enough to act on, and a GitHub username or an email to reply
+// to. Create needs nothing: it captures the moment.
+const BR_MIN_TITLE = 15, BR_MIN_DESC = 40;
+const brOne = id => document.getElementById(id).value.replace(/\t/g, ' ').trim();
+const brChars = s => [...s].length;
+function brMissing() {
+  const t = BR_MIN_TITLE - brChars(brOne('br-title'));
+  if (t > 0) return tr('Title: {n} more characters', { n: t });
+  const d = BR_MIN_DESC - brChars(document.getElementById('br-desc').value.trim());
+  if (d > 0) return tr('Description: {n} more characters', { n: d });
+  const gh = brOne('br-ghuser').replace(/^@/, ''), em = brOne('br-email');
+  if (gh && !/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(gh)) return tr('Not a GitHub username');
+  if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return tr('Not an email address');
+  if (!gh && !em) return tr('Add your GitHub username or email so we can reply');
+  return '';
+}
+function brUpdateSend() {
+  const need = brMissing();
+  document.getElementById('br-need').textContent = brSendBusy ? '' : need;
+  document.getElementById('br-send').disabled = brSendBusy || !!need;
+}
+for (const id of ['br-title', 'br-desc', 'br-ghuser', 'br-email'])
+  document.getElementById(id).addEventListener('input', brUpdateSend);
+try {
+  document.getElementById('br-ghuser').value = localStorage.getItem('agopenweb.bugReportGitHub') || '';
+  document.getElementById('br-email').value = localStorage.getItem('agopenweb.bugReportEmail') || '';
+} catch (_) { }
 document.getElementById('br-send').addEventListener('pointerdown', e => {
   e.stopPropagation();
-  if (!brFile) return;
-  const one = id => document.getElementById(id).value.replace(/\t/g, ' ').trim();
-  const gh = one('br-ghuser').replace(/^@/, '');
-  try { localStorage.setItem('agopenweb.bugReportGitHub', gh); } catch (_) { }
+  if (!brFile || brMissing()) return;
+  const gh = brOne('br-ghuser').replace(/^@/, ''), em = brOne('br-email');
+  try { localStorage.setItem('agopenweb.bugReportGitHub', gh); localStorage.setItem('agopenweb.bugReportEmail', em); } catch (_) { }
   document.getElementById('br-sendstatus').textContent = tr('Sending…');
   document.getElementById('br-send').disabled = true;
-  transport.send('app.bugReport.send|' + [brFile, gh, one('br-title'), document.getElementById('br-desc').value].join('\t'));
+  transport.send('app.bugReport.send|' + [brFile, gh, em, brOne('br-title'), document.getElementById('br-desc').value].join('\t'));
+});
+document.getElementById('br-docs').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  openExternal('https://docs.agopengps.com/');
 });
 document.getElementById('br-openissue').addEventListener('pointerdown', e => {
   e.stopPropagation();

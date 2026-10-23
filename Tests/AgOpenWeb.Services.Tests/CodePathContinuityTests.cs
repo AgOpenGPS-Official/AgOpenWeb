@@ -251,6 +251,7 @@ public class CodePathContinuityTests
         ".AutoSteer.json", ".tool.xml", ".env.xml",
         // Bug report dump
         "gps_data_log.csv", "logs.txt", "system_info.txt", "ntrip_rtcm.txt",
+        "contact.txt", // the reporter's email, maintainers only (#407 follow-up)
         "appsettings_error.txt", "configuration_error.txt", "field_error.txt", "job_error.txt",
         "logs_error.txt", "save_error.txt", "screenshot_error.txt", "state_error.txt",
         "turn_path_error.txt", "gps_data_log_error.txt",

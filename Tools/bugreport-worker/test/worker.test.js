@@ -11,6 +11,7 @@ import worker from '../src/reports.js';
 
 const dump = readFileSync(new URL('./fixtures/dump.zip', import.meta.url));
 const notDump = readFileSync(new URL('./fixtures/not-a-dump.zip', import.meta.url));
+const emailDump = readFileSync(new URL('./fixtures/dump-email.zip', import.meta.url)); // + contact.txt
 
 class FakeBucket {
   constructor() { this.objects = new Map(); }
@@ -38,7 +39,7 @@ beforeEach(() => {
     GITHUB_APP_KEY: privateKey.export({ type: 'pkcs1', format: 'pem' }),
     DUMPS_URL: 'https://dumps.example', PRUNE_AT_BYTES: '1000', PRUNE_TO_BYTES: '500',
   };
-  github = { up: true, issues: [], comments: [], closed: [] };
+  github = { up: true, issues: [], comments: [], closed: [], users: ['crf767'] };
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const reply = (status, body) => new Response(JSON.stringify(body), { status });
@@ -50,6 +51,8 @@ beforeEach(() => {
       github.issues.push({ number: n, ...JSON.parse(init.body) });
       return reply(201, { number: n, html_url: `https://github.com/org/repo/issues/${n}` });
     }
+    const user = /^\/users\/([^/]+)$/.exec(u.pathname);
+    if (user) return github.users.includes(user[1]) ? reply(200, { login: user[1] }) : reply(404, { message: 'Not Found' });
     if (u.pathname === '/repos/org/repo/issues') return reply(200, github.closed.map(number => ({ number })));
     const c = /^\/repos\/org\/repo\/issues\/(\d+)\/comments$/.exec(u.pathname);
     if (c) { github.comments.push({ issue: +c[1], ...JSON.parse(init.body) }); return reply(201, {}); }
@@ -57,7 +60,13 @@ beforeEach(() => {
   };
 });
 
-function post(bytes, meta = { title: 'GPS_Out shows no speed', description: 'Steps…', platform: 'Windows' }) {
+const META = {
+  title: 'GPS_Out shows no speed',
+  description: 'Steps: start the sim, open GPS_Out, the speed field stays empty.',
+  github: 'crf767', platform: 'Windows',
+};
+
+function post(bytes, meta = META) {
   const form = new FormData();
   form.set('meta', JSON.stringify(meta));
   form.set('dump', new Blob([bytes], { type: 'application/zip' }), 'bugreport.zip');
@@ -80,6 +89,36 @@ test('a dump is stored and its issue opened', async () => {
   assert.match(issue.body, /App Version: 1\.0\.0\.0/);
   assert.doesNotMatch(issue.body, /FARM-PC/);
   assert.ok(issue.body.includes('https://dumps.example/v1/' + stored.key));
+  assert.match(issue.body, /by @crf767\./);
+});
+
+test('a report needs a real title, a description and a way to reply', async () => {
+  const turnedAway = async (meta, bytes = dump) => {
+    const res = await post(bytes, { ...META, ...meta });
+    assert.equal(res.status, 400);
+    return (await res.json()).error;
+  };
+  assert.match(await turnedAway({ title: 'turn on' }), /Title too short/);
+  assert.match(await turnedAway({ description: 'it does not work' }), /Description too short/);
+  assert.match(await turnedAway({ github: '' }), /GitHub username or an email/);
+  assert.match(await turnedAway({ github: 'not a name' }), /Not a GitHub username/);
+  assert.match(await turnedAway({ github: 'nobody-here' }), /No GitHub user @nobody-here/);
+  assert.equal(env.DUMPS.objects.size, 0);
+  assert.equal(github.issues.length, 0);
+});
+
+test('an email in the dump is enough, and it never reaches the issue', async () => {
+  const res = await post(emailDump, { ...META, github: '' });
+  assert.equal(res.status, 201);
+  const issue = github.issues[0];
+  assert.doesNotMatch(issue.body, /grower@example\.com/);
+  assert.match(issue.body, /Sent from the app\.$/);
+});
+
+test('GitHub unable to look the user up does not block the report', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => /\/users\//.test(url) ? new Response('{}', { status: 502 }) : realFetch(url, init);
+  assert.equal((await post(dump)).status, 201);
 });
 
 test('anything but an AgOpenWeb dump is turned away and nothing stored', async () => {

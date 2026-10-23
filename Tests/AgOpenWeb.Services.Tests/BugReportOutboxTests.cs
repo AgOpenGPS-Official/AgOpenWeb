@@ -2,6 +2,7 @@
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
@@ -12,7 +13,7 @@ namespace AgOpenWeb.Services.Tests;
 /// <summary>
 /// Send Report: the outbox posts the dump to the bug report service, keeps it when there is no
 /// connection or the service is busy, and drops it once sent or turned away. The reporter's
-/// zip is never touched.
+/// zip stays; the only change to it is contact.txt, the email they gave.
 /// </summary>
 [TestFixture, NonParallelizable]
 public class BugReportOutboxTests
@@ -30,7 +31,8 @@ public class BugReportOutboxTests
     {
         _dir = Path.Combine(Path.GetTempPath(), "brtest_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dir);
-        File.WriteAllBytes(Path.Combine(_dir, Zip), new byte[] { 0x50, 0x4B, 3, 4, 1, 2, 3 });
+        using (var z = ZipFile.Open(Path.Combine(_dir, Zip), ZipArchiveMode.Create))
+            using (var w = new StreamWriter(z.CreateEntry("system_info.txt").Open())) w.Write("App Version: 1.0.0.0\n");
         _now = new DateTime(2026, 10, 20, 9, 0, 0, DateTimeKind.Utc);
         _svc = new FakeService();
         _outbox = new BugReportOutbox(_dir, _svc, new Uri("https://reports.example/v1/reports"), () => _now);
@@ -94,6 +96,32 @@ public class BugReportOutboxTests
             Assert.That(dump, Is.EqualTo(File.ReadAllBytes(Path.Combine(_dir, Zip))));
             Assert.That(type, Is.EqualTo("application/zip"));
         });
+    }
+
+    [Test]
+    public async Task Email_GoesIntoTheDump_NeverIntoTheMetadata()
+    {
+        _svc.Replies.Enqueue(() => Reply(HttpStatusCode.Created, "{\"issue\":1,\"url\":\"u\"}"));
+        _outbox.Enqueue(Zip, Meta with { GitHub = "", Email = " grower@example.com " });
+
+        await _outbox.SendDueAsync();
+
+        var (meta, dump, _) = _svc.Posts.Single();
+        Assert.That(meta, Does.Not.Contain("grower@example.com"));
+        using var z = new ZipArchive(new MemoryStream(dump));
+        using var r = new StreamReader(z.GetEntry(BugReportOutbox.ContactEntry)!.Open());
+        Assert.That(r.ReadToEnd(), Is.EqualTo("Email: grower@example.com\n"));
+        Assert.That(z.GetEntry("system_info.txt"), Is.Not.Null);
+    }
+
+    [Test]
+    public void Email_Cleared_RemovesTheContactFromTheDump()
+    {
+        _outbox.Enqueue(Zip, Meta with { Email = "grower@example.com" });
+        _outbox.Enqueue(Zip, Meta);
+
+        using var z = ZipFile.OpenRead(Path.Combine(_dir, Zip));
+        Assert.That(z.GetEntry(BugReportOutbox.ContactEntry), Is.Null);
     }
 
     [Test]
