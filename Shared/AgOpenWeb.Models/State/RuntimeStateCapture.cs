@@ -59,6 +59,14 @@ public sealed record RuntimeStateCapture(string Json, string? FieldDirectory)
                 state.Guidance.SteerAngle,
                 state.Guidance.HeadingError,
             },
+            // The skip settings pick the U-turn's target pass (#418).
+            FieldTools = new
+            {
+                state.FieldTools.IsHeadlandOn,
+                state.FieldTools.UTurnSkipRows,
+                state.FieldTools.IsUTurnSkipRowsEnabled,
+                state.FieldTools.UTurnSkipMode,
+            },
             UI = new
             {
                 ActiveDialog = state.UI.ActiveDialog.ToString(),
