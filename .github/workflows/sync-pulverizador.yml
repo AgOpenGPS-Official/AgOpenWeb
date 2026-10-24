@@ -1,0 +1,37 @@
+name: Sync pulverizador
+
+# renatorgr fork only. develop stays a copy of AgOpenGPS-Official/develop; pulverizador is
+# develop plus the sprayer changes and is this fork's default branch (the nightly is built
+# from it). Once a day: bring develop up to date with the official repository ("Sync fork"),
+# then open a PR from develop into pulverizador when develop has something new. Merging
+# that PR is the update; a conflict shows on the PR.
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    if: github.repository == 'renatorgr/AgOpenWeb'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Sync develop with the official repository
+        run: gh api -X POST "repos/$REPO/merge-upstream" -f branch=develop --jq .message
+
+      - name: Open a PR from develop into pulverizador
+        run: |
+          ahead=$(gh api "repos/$REPO/compare/pulverizador...develop" --jq .ahead_by)
+          echo "develop has $ahead commit(s) that pulverizador doesn't"
+          [ "$ahead" -gt 0 ] || exit 0
+          open=$(gh pr list -R "$REPO" --base pulverizador --head develop --state open --json number --jq length)
+          [ "$open" -eq 0 ] || { echo "a PR is already open"; exit 0; }
+          gh pr create -R "$REPO" --base pulverizador --head develop \
+            --title "Update pulverizador with the official AgOpenWeb" \
+            --body "The newest changes of AgOpenGPS-Official/develop ($ahead commits), opened by the Sync pulverizador workflow. Merge it to update; if GitHub reports a conflict, it needs resolving first. CI doesn't start on a PR the workflow opens: run CI on pulverizador from the Actions tab after merging."

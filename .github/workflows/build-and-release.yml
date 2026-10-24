@@ -7,9 +7,9 @@ name: CI
 # releases, and the nightly prerelease are produced by build-deploy-bundles.yml.
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, pulverizador]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, pulverizador]
   workflow_dispatch:
 
 concurrency:
