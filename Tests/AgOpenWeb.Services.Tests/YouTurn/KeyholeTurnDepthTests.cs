@@ -8,6 +8,7 @@ using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.Pipeline;
+using AgOpenWeb.Models.YouTurn;
 using AgOpenWeb.Services.Geometry;
 using AgOpenWeb.Services.YouTurn;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -15,9 +16,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace AgOpenWeb.Services.Tests.YouTurn;
 
 /// <summary>
-/// #418: onto a pass closer than twice the radius the turn is a keyhole, and how deep it is
+/// #418: onto a pass closer than twice the radius the turn loops, and how deep the loop is
 /// decides how far before the headland it leaves the pass. Rig from the report: 6 m passes,
-/// 8 m radius, 2 m from the fence (turn line at 98 m, fence at 100 m).
+/// 8 m radius, 2 m from the fence (turn line at 98 m, fence at 100 m). Sagitta (the default)
+/// keeps Brian's one-sided shape; Keyhole centres the loop.
 /// </summary>
 [TestFixture]
 [NonParallelizable] // ConfigurationStore is a singleton.
@@ -26,7 +28,7 @@ public class KeyholeTurnDepthTests
     private const double Width = 6;
     private static double Pass(int n) => n * Width + Width / 2;
 
-    private static List<Vec3> Turn()
+    private static List<Vec3> Turn(YouTurnType style)
     {
         ConfigurationStore.SetInstance(new ConfigurationStore());
         var config = ConfigurationStore.Instance;
@@ -36,6 +38,7 @@ public class KeyholeTurnDepthTests
         config.Tool.SetSectionWidth(0, (int)(Width * 100));
         config.Guidance.UTurnRadius = 8.0;
         config.Guidance.UTurnDistanceFromBoundary = 2;
+        config.Guidance.UTurnStyle = (int)style;
 
         var creation = new YouTurnCreationService(
             NullLogger<YouTurnCreationService>.Instance, new PolygonOffsetService(), config);
@@ -62,10 +65,11 @@ public class KeyholeTurnDepthTests
         return result.Path!;
     }
 
-    [Test]
-    public void Keyhole_stays_inside_the_turn_line_and_lands_on_the_next_pass()
+    [TestCase(YouTurnType.SagittaStyle)]
+    [TestCase(YouTurnType.KeyholeStyle)]
+    public void Stays_inside_the_turn_line_and_lands_on_the_next_pass(YouTurnType style)
     {
-        var path = Turn();
+        var path = Turn(style);
         Assert.Multiple(() =>
         {
             Assert.That(path.Max(p => p.Northing), Is.LessThanOrEqualTo(98.05));
@@ -74,14 +78,27 @@ public class KeyholeTurnDepthTests
         });
     }
 
+    private static (double Leave, double Rejoin) LeaveAndRejoin(List<Vec3> path) => (
+        path.First(p => System.Math.Abs(p.Easting - Pass(1)) > 0.1).Northing,
+        path.Last(p => System.Math.Abs(p.Easting - Pass(2)) > 0.1).Northing);
+
     [Test]
-    public void Keyhole_leaves_the_pass_about_20m_below_the_turn_line()
+    public void Sagitta_keeps_its_one_sided_shape()
     {
-        // The one-sided turn left at 75.0 m and rejoined at 88.9 m; the centred one leaves at
-        // 77.4 m and rejoins level (19.6 m of geometry, plus what smoothing spreads).
-        var path = Turn();
-        double leave = path.First(p => System.Math.Abs(p.Easting - Pass(1)) > 0.1).Northing;
-        double rejoin = path.Last(p => System.Math.Abs(p.Easting - Pass(2)) > 0.1).Northing;
+        // Brian's turn: leaves at 75.0 m, lands on the next pass already heading back at 88.9 m.
+        var (leave, rejoin) = LeaveAndRejoin(Turn(YouTurnType.SagittaStyle));
+        Assert.Multiple(() =>
+        {
+            Assert.That(leave, Is.EqualTo(75.0).Within(0.5));
+            Assert.That(rejoin, Is.EqualTo(88.9).Within(0.5));
+        });
+    }
+
+    [Test]
+    public void Keyhole_leaves_later_and_rejoins_level()
+    {
+        // 19.6 m of geometry against 22.8 m, plus what smoothing spreads: leaves at 77.4 m.
+        var (leave, rejoin) = LeaveAndRejoin(Turn(YouTurnType.KeyholeStyle));
         Assert.Multiple(() =>
         {
             Assert.That(leave, Is.GreaterThan(76.5));

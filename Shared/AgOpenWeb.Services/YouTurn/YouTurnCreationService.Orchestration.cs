@@ -49,13 +49,14 @@ public partial class YouTurnCreationService
 
     /// <summary>
     /// Maps the persisted <see cref="GuidanceConfig.UTurnStyle"/> integer onto the
-    /// creation <see cref="YouTurnType"/>. 0 = Sagitta (default), 1 = K-style.
+    /// creation <see cref="YouTurnType"/>. 0 = Sagitta (default), 1 = K-style, 2 = Keyhole.
     /// Unknown values — including the retired Albin/Dubins style and any old
     /// numbering — fall back to Sagitta.
     /// </summary>
     private static YouTurnType MapTurnStyle(int uTurnStyle) => uTurnStyle switch
     {
         (int)YouTurnType.KStyle => YouTurnType.KStyle,
+        (int)YouTurnType.KeyholeStyle => YouTurnType.KeyholeStyle,
         _ => YouTurnType.SagittaStyle,
     };
 

@@ -29,7 +29,15 @@ namespace AgOpenWeb.Models.YouTurn
         /// K-style turn. A more squared-off / tighter turn pattern (Twol's
         /// alternate-sweep style).
         /// </summary>
-        KStyle = 1
+        KStyle = 1,
+
+        /// <summary>
+        /// Keyhole turn (#418). Like Sagitta for rows closer than twice the turn radius, but
+        /// with the counter-arc mirrored at the end, so the loop is centred between the rows:
+        /// about 3 m shallower on a close row and half the swing past the row being left.
+        /// Wider rows use the same omega fallback as Sagitta.
+        /// </summary>
+        KeyholeStyle = 2
     }
 
     /// <summary>
