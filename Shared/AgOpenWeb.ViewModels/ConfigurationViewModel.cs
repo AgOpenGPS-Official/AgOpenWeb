@@ -953,16 +953,20 @@ public partial class ConfigurationViewModel : ObservableObject
     public ICommand EditUTurnDistanceCommand { get; private set; } = null!;
     public ICommand EditUTurnSmoothingCommand { get; private set; } = null!;
 
-    // U-Turn style selector (0 = Sagitta [default], 1 = K-style). Dubins/Omega is
+    // U-Turn style selector (0 = Sagitta [default], 1 = K-style, 2 = Keyhole). Dubins/Omega is
     // no longer offered — it looped on close rows; Sagitta covers every case.
     public ICommand SetSagittaTurnStyleCommand { get; private set; } = null!;
     public ICommand SetKTurnStyleCommand { get; private set; } = null!;
+    public ICommand SetKeyholeTurnStyleCommand { get; private set; } = null!;
 
     /// <summary>True when the active U-turn style is Sagitta (the default).</summary>
-    public bool IsSagittaTurnStyle => Guidance.UTurnStyle != (int)YouTurnType.KStyle;
+    public bool IsSagittaTurnStyle => Guidance.UTurnStyle is not ((int)YouTurnType.KStyle or (int)YouTurnType.KeyholeStyle);
 
     /// <summary>True when the active U-turn style is K-style.</summary>
     public bool IsKTurnStyle => Guidance.UTurnStyle == (int)YouTurnType.KStyle;
+
+    /// <summary>True when the active U-turn style is Keyhole.</summary>
+    public bool IsKeyholeTurnStyle => Guidance.UTurnStyle == (int)YouTurnType.KeyholeStyle;
 
     // GPS Tab Commands
     public ICommand SetSingleGpsCommand { get; private set; } = null!;
@@ -1388,6 +1392,7 @@ public partial class ConfigurationViewModel : ObservableObject
 
         SetSagittaTurnStyleCommand = new RelayCommand(() => SetTurnStyle((int)YouTurnType.SagittaStyle));
         SetKTurnStyleCommand = new RelayCommand(() => SetTurnStyle((int)YouTurnType.KStyle));
+        SetKeyholeTurnStyleCommand = new RelayCommand(() => SetTurnStyle((int)YouTurnType.KeyholeStyle));
     }
 
     /// <summary>
@@ -1400,6 +1405,7 @@ public partial class ConfigurationViewModel : ObservableObject
         Config.MarkChanged();
         OnPropertyChanged(nameof(IsSagittaTurnStyle));
         OnPropertyChanged(nameof(IsKTurnStyle));
+        OnPropertyChanged(nameof(IsKeyholeTurnStyle));
     }
 
     private void InitializeGpsEditCommands()

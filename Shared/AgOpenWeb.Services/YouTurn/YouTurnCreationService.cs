@@ -153,7 +153,7 @@ namespace AgOpenWeb.Services.YouTurn
             // Dubins omega (CreateCurveOmegaTurn) for the straight-connector case.
             // Dubins is kept ONLY as that internal wide-turn fallback — it is no longer
             // a selectable style, because its shortest-path solution loops on close rows.
-            return CreateCurveSagittaTurn(input, turnOffset);
+            return CreateCurveSagittaTurn(input, turnOffset, keyhole: input.TurnType == YouTurnType.KeyholeStyle);
         }
 
         private bool CreateCurveOmegaTurn(YouTurnCreationInput input, double turnOffset)
@@ -438,7 +438,8 @@ namespace AgOpenWeb.Services.YouTurn
         /// (<see cref="GetOffsetSemicirclePoints"/>) so the path meets the row
         /// tangentially instead of stepping curvature from 0 to 1/R.
         /// </summary>
-        private bool CreateCurveSagittaTurn(YouTurnCreationInput input, double turnOffset)
+        // keyhole: the counter-arc mirrored at the end too (YouTurnType.KeyholeStyle).
+        private bool CreateCurveSagittaTurn(YouTurnCreationInput input, double turnOffset, bool keyhole = false)
         {
             // Keep from making turns constantly - wait 1.5 seconds
             if (input.MakeUTurnCounter < 4)
@@ -503,7 +504,9 @@ namespace AgOpenWeb.Services.YouTurn
                 if (currentPos.Heading >= TWO_PI) currentPos.Heading -= TWO_PI;
                 head = currentPos.Heading;
 
-                ytList = SagittaTurnGeometry.BuildOffsetArc(currentPos, head, isTurningRight, input.TurnRadius, sagittaPullback, Math.PI);
+                ytList = keyhole
+                    ? SagittaTurnGeometry.BuildKeyhole(currentPos, head, isTurningRight, input.TurnRadius, Math.Abs(turnOffset))
+                    : SagittaTurnGeometry.BuildOffsetArc(currentPos, head, isTurningRight, input.TurnRadius, sagittaPullback, Math.PI);
                 if (ytList.Count == 0)
                 {
                     FailCreate();
