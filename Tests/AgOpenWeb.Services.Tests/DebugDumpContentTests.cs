@@ -173,4 +173,36 @@ public class DebugDumpJobContentTests
             Assert.That(cfg.RootElement.GetProperty("ActualToolWidth").GetDouble(), Is.EqualTo(12));
         });
     }
+
+    [Test]
+    public void Dump_carries_the_uturn_settings_and_skip_state()
+    {
+        // #418: the radius alone doesn't say where a turn goes; the skip picks its target pass.
+        var store = new ConfigurationStore();
+        store.Guidance.UTurnRadius = 8;
+        store.Guidance.UTurnExtension = 25;
+        store.Guidance.UTurnDistanceFromBoundary = 3;
+        store.Guidance.UTurnStyle = 1;
+        store.Guidance.UTurnSmoothing = 9;
+        var state = new ApplicationState();
+        state.FieldTools.UTurnSkipRows = 2;
+        state.FieldTools.IsUTurnSkipRowsEnabled = true;
+
+        var zip = DebugDumpService.CreateDump(Settings(), RuntimeStateCapture.From(state), store, outputDirectory: _dir);
+        using var a = ZipFile.OpenRead(zip);
+        using var cfg = JsonDocument.Parse(new StreamReader(a.GetEntry("configuration.json")!.Open()).ReadToEnd());
+        using var rt = JsonDocument.Parse(new StreamReader(a.GetEntry("runtime_state.json")!.Open()).ReadToEnd());
+        var g = cfg.RootElement.GetProperty("Guidance");
+        var ft = rt.RootElement.GetProperty("FieldTools");
+        Assert.Multiple(() =>
+        {
+            Assert.That(g.GetProperty("UTurnRadius").GetDouble(), Is.EqualTo(8));
+            Assert.That(g.GetProperty("UTurnExtension").GetDouble(), Is.EqualTo(25));
+            Assert.That(g.GetProperty("UTurnDistanceFromBoundary").GetDouble(), Is.EqualTo(3));
+            Assert.That(g.GetProperty("UTurnStyle").GetInt32(), Is.EqualTo(1));
+            Assert.That(g.GetProperty("UTurnSmoothing").GetInt32(), Is.EqualTo(9));
+            Assert.That(ft.GetProperty("UTurnSkipRows").GetInt32(), Is.EqualTo(2));
+            Assert.That(ft.GetProperty("IsUTurnSkipRowsEnabled").GetBoolean(), Is.True);
+        });
+    }
 }

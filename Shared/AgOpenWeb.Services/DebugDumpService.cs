@@ -383,7 +383,13 @@ public class DebugDumpService
                 store.Guidance.GoalPointLookAheadHold,
                 store.Guidance.StanleyHeadingErrorGain,
                 store.Guidance.StanleyDistanceErrorGain,
-                store.Guidance.UTurnRadius
+                // Where and how a U-turn is laid out (#418: only the radius was here).
+                store.Guidance.UTurnRadius,
+                store.Guidance.UTurnExtension,
+                store.Guidance.UTurnDistanceFromBoundary,
+                store.Guidance.UTurnStyle,
+                store.Guidance.UTurnSmoothing,
+                store.Guidance.UTurnCompensation
             },
             // GPS / dual-antenna / heading settings (#157: a heading bug report had none of
             // these). ConnectionConfig also holds NTRIP and AgShare credentials — listed
