@@ -125,6 +125,23 @@ public class DisplayConfig : ObservableObject
         set => SetProperty(ref _startFullscreen, value);
     }
 
+    /// <summary>Map render-rate cap in frames per second: 0 = uncapped (display refresh
+    /// rate), else 60 or 30. Lower caps save CPU/GPU and battery on tablets.</summary>
+    private int _mapFpsLimit;
+    public int MapFpsLimit
+    {
+        get => _mapFpsLimit;
+        set => SetProperty(ref _mapFpsLimit, value is 60 or 30 ? value : 0);
+    }
+
+    /// <summary>Show the client's map frame-rate counter over the map.</summary>
+    private bool _showFps;
+    public bool ShowFps
+    {
+        get => _showFps;
+        set => SetProperty(ref _showFps, value);
+    }
+
     private bool _elevationLogEnabled;
     public bool ElevationLogEnabled
     {

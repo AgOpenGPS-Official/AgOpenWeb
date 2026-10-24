@@ -16,6 +16,8 @@ namespace AgOpenWeb.Models
         // application STATE, not config — it now lives in PersistentAppState
         // (appstate.json), not here.
         public bool StartFullscreen { get; set; } = false;
+        public int MapFpsLimit { get; set; } = 0; // 0 = uncapped, else 60 / 30
+        public bool ShowFps { get; set; } = false;
         public bool SvennArrowVisible { get; set; } = false;
         public bool KeyboardEnabled { get; set; } = false;
         public bool HeadlandDistanceVisible { get; set; } = true;
