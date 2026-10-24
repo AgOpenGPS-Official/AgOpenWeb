@@ -474,9 +474,6 @@ namespace AgOpenWeb.Services.YouTurn
             int count = input.IsHeadingSameWay ? -1 : 1;
             int curveIndex = inClosestTurnPt.CurveIndex;
 
-            // Pull the arc back from a full 2R semicircle so it lands exactly on the
-            // next row: landing lateral = 2R - pullback, hence pullback = 2R - turnOffset.
-            double sagittaPullback = input.TurnRadius * 2.0 - Math.Abs(turnOffset);
             bool isTurningRight = !input.IsTurnLeft;
 
             isOutOfBounds = true;
@@ -503,7 +500,7 @@ namespace AgOpenWeb.Services.YouTurn
                 if (currentPos.Heading >= TWO_PI) currentPos.Heading -= TWO_PI;
                 head = currentPos.Heading;
 
-                ytList = SagittaTurnGeometry.BuildOffsetArc(currentPos, head, isTurningRight, input.TurnRadius, sagittaPullback, Math.PI);
+                ytList = SagittaTurnGeometry.BuildKeyhole(currentPos, head, isTurningRight, input.TurnRadius, Math.Abs(turnOffset));
                 if (ytList.Count == 0)
                 {
                     FailCreate();
