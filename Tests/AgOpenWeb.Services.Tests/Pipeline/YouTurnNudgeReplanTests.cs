@@ -27,7 +27,8 @@ namespace AgOpenWeb.Services.Tests.Pipeline;
 /// AgOpenGPS #1173 (RebuildAfterNudge): a U-turn planned but not yet driven was built
 /// for the pre-nudge line, so nudging (or resetting the nudge) must drop it for a
 /// re-plan, including the snake / alternate target pass. A turn already being driven
-/// is left alone, like a snap mid-turn (#50).
+/// is left alone, like a snap mid-turn (#50). Changing the skip count or mode does the
+/// same (AgOpenGPS cboxpRowWidth_SelectedIndexChanged, #410).
 /// </summary>
 [TestFixture]
 [NonParallelizable] // ConfigurationStore is a singleton.
@@ -161,6 +162,48 @@ public class YouTurnNudgeReplanTests
         _intents.RequestGuidanceNudge(0.1);
         _gpsService.UpdateGpsData(ValidFix());
         Assert.That(youTurn.IsExecuting, Is.True);
+        Assert.That(youTurn.TurnPath, Is.Not.Null);
+        Assert.That(youTurn.ReturnPassTargetPath, Is.EqualTo(4));
+    }
+
+    [Test]
+    public void Skip_change_drops_a_planned_turn()
+    {
+        var youTurn = SeedPlannedTurn(executing: false);
+        _pipeline.SetYouTurnConfig(3, false, 0, 0);
+        _gpsService.UpdateGpsData(ValidFix());
+        Assert.Multiple(() =>
+        {
+            Assert.That(youTurn.TurnPath, Is.Null);
+            Assert.That(youTurn.NextTrack, Is.Null);
+            Assert.That(youTurn.ReturnPassTargetPath, Is.Null);
+        });
+    }
+
+    [Test]
+    public void Skip_mode_change_drops_a_planned_turn()
+    {
+        var youTurn = SeedPlannedTurn(executing: false);
+        _pipeline.SetYouTurnConfig(0, false, 0, 0, isAlternateSkipMode: true);
+        _gpsService.UpdateGpsData(ValidFix());
+        Assert.That(youTurn.TurnPath, Is.Null);
+    }
+
+    [Test]
+    public void Same_skip_sent_again_keeps_the_planned_turn()
+    {
+        var youTurn = SeedPlannedTurn(executing: false);
+        _pipeline.SetYouTurnConfig(0, false, 0, 0); // headland edits resend the same skip
+        _gpsService.UpdateGpsData(ValidFix());
+        Assert.That(youTurn.TurnPath, Is.Not.Null);
+    }
+
+    [Test]
+    public void Skip_change_mid_turn_leaves_the_executing_turn_alone()
+    {
+        var youTurn = SeedPlannedTurn(executing: true);
+        _pipeline.SetYouTurnConfig(3, false, 0, 0);
+        _gpsService.UpdateGpsData(ValidFix());
         Assert.That(youTurn.TurnPath, Is.Not.Null);
         Assert.That(youTurn.ReturnPassTargetPath, Is.EqualTo(4));
     }

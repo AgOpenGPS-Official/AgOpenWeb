@@ -3,8 +3,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Remote actuation authority (Phase 2 safety layer). A single client may hold
-// "control" at a time; only the fresh holder's Tier-2 (live actuation) commands
-// are honored by the hub. Presence must be refreshed (heartbeat) within the
+// "control" at a time; only the fresh holder's commands are honored by the hub
+// (everyone else is an observer). Presence must be refreshed (heartbeat) within the
 // deadman window or the hold is revoked. A socket drop or a stale hold fires
 // Revoked → the host runs its failsafe (Phase 3: disengage what the remote
 // actuated). All state behind a lock; touched from the hub (per-connection) and
@@ -38,7 +38,7 @@ public sealed class ControlAuthority
     }
 
     /// <summary>True only when <paramref name="conn"/> holds control AND its presence
-    /// is fresh — the gate the hub applies to every Tier-2 command.</summary>
+    /// is fresh — the gate the hub applies to every restricted command.</summary>
     public bool HoldsFresh(Guid conn)
     {
         lock (_lock)

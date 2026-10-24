@@ -153,7 +153,7 @@ UI strings live in `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/en.json` (generat
    });
    ```
 
-3. **Route it** in `Shared/AgOpenWeb.RemoteWiring/RemoteServerWiring.cs` to a ViewModel command or method (a `config.set` key goes in `RemoteServerWiring.Helpers.cs`). If it actuates anything (steering, sections, turns), it is Tier-2 and must require control.
+3. **Route it** in `Shared/AgOpenWeb.RemoteWiring/RemoteServerWiring.cs` to a ViewModel command or method (a `config.set` key goes in `RemoteServerWiring.Helpers.cs`). Every command needs control: a browser without it is an observer that sees everything and changes nothing. Only a request that changes no setting, data or machine state may go in `ObserverIds` (`RemoteServerWiring.Helpers.cs`).
 
 4. **Show new state** by adding it to the DTO in `RemoteServer/Contracts.cs`, filling it in `SceneProjector`, encoding it in `WireCodec.cs` and decoding it in the same order in `wwwroot/transport.js`, then rendering it in `app.js`.
 

@@ -436,7 +436,7 @@ const transport = RemoteTransport.create({
     if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
   },
   onWizard(w) { wizard = w; wizardDirty = true; },
-  onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); applyMobileQualityCap(); },
+  onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); },
   onControlState(s) { lastControl = s; updateControlUi(); claimSeatIfFree(); },
   onSound(id) { Sounds.play(id); },
   onPrompt(p) { hostPrompt = p; renderHostPrompt(); },
@@ -659,6 +659,25 @@ function applyMobileQualityCap() {
   mobileQualityCapped = true;
   transport.send('display.capResolution|2.5'); // 2.5 = Medium
 }
+
+// An observer (a browser without control) sees everything and changes nothing (#397): the
+// host drops its commands, so say why when a tap of its own was refused. The host's
+// ObserverIds plus the hub's own control.* / diag.ping are what it may send.
+const OBSERVER_IDS = new Set(['control.acquire', 'control.release', 'control.presence', 'diag.ping', 'boundary.refresh']);
+let _viewOnlyToastT = -Infinity;
+const _send = transport.send;
+transport.send = cmd => {
+  const id = String(cmd).split('|')[0];
+  if (!iHoldControl && !OBSERVER_IDS.has(id)) {
+    const now = performance.now();
+    if (navigator.userActivation && navigator.userActivation.isActive && now - _viewOnlyToastT > 3000) {
+      _viewOnlyToastT = now;
+      showToast(tr('View only: another screen has control'));
+    }
+    return;
+  }
+  _send(cmd);
+};
 
 transport.start();
 
@@ -950,7 +969,11 @@ addEventListener('pointermove', e => {
   // touch/pen there's no hover to ride, and a tap's micro-move would drop the "big A" under
   // the finger/button and clash with the placed-dot label; touch relies on the dot letters
   // + the "Tap Point A/B" banner instead.
-  if (mapTap && (abFlow === 'straight' || abFlow === 'curve') && e.pointerType === 'mouse') updateAbCursorLabel(e.clientX, e.clientY);
+  // Only over the map itself: over a button or a menu it isn't where the next point goes (#399).
+  if (mapTap && (abFlow === 'straight' || abFlow === 'curve') && e.pointerType === 'mouse') {
+    if (e.target && e.target.id === 'ck') updateAbCursorLabel(e.clientX, e.clientY);
+    else if (abLabelEl) abLabelEl.classList.remove('show');
+  }
   if (editDragIdx >= 0 && editSession) {       // drag the grabbed handle
     const w = s2w(e.clientX, e.clientY);
     if (w) editSession.points[editDragIdx] = editSession.kind === 'headland' ? hlSnap(w.e, w.n) : { e: w.e, n: w.n };
@@ -1039,7 +1062,7 @@ const HOTKEY_CMD = {
   NudgeLeft: 'track.nudgeLeft', NudgeRight: 'track.nudgeRight',
   ManualSection: 'section.manual', AutoSection: 'section.master',
 };
-const HOTKEY_TIER1 = { Flag: 'flag.placeHere' }; // markers — not control-gated (like the button)
+const HOTKEY_TIER1 = { Flag: 'flag.placeHere' }; // markers (still need control, like every command)
 const HOTKEY_UI = {
   FieldMenu: () => document.getElementById('ln-fieldops').dispatchEvent(new PointerEvent('pointerdown')),
   VehicleSettings: () => document.getElementById('ln-vehicle').dispatchEvent(new PointerEvent('pointerdown')),
@@ -1076,8 +1099,7 @@ addEventListener('keydown', e => {
   transport.send(cmd);
 });
 // ---- simulator bar (Phase 6) — mirrors the native SimulatorPanel ----
-// Sim is Tier-1 (hardware-safe), so the bar's commands aren't gated by control
-// authority — anyone driving the sim is fine. Panel *visibility* is client-local
+// Like every command, the bar's need control (an observer changes nothing, #397). Panel *visibility* is client-local
 // (the host's IsSimulatorPanelVisible is a native-only concept); enabled/speed/
 // steer are host state, mirrored back over the Status frame.
 const SIM = {
@@ -1427,7 +1449,7 @@ sectionBar.addEventListener('pointerdown', e => {
 
 // ---- bottom nav (Phase 8) — field-tools toolbar + Flags/AB-line flyouts ----
 // Direct-action field tools. Tier-2 ids (data-t2: track.* / headland.* / youturn.skip*)
-// fire only while we hold control (the host re-gates); the rest are Tier-1. Toggle
+// are dimmed and fire only while we hold control; every other command needs it too (#397). Toggle
 // READ state rides the Tick (tick.tools); AB-dependent buttons key off activeTrackName.
 const bottomNav = document.getElementById('bottomnav');
 const bnFlags = document.getElementById('bn-flyout-flags');
@@ -1651,20 +1673,20 @@ function showAbBar(setPoint, undo, finish) {
   drawBar.querySelector('#draw-finish').style.display = finish ? '' : 'none';
   drawBar.classList.add('show');
 }
-function startDrawTrack(mode) {           // map-tap straight/curve (ungated — creating data)
+function startDrawTrack(mode) {           // map-tap straight/curve
   abFlow = mode; drawMode = mode; drawPts = [];
   transport.send(mode === 'straight' ? 'track.drawStraight' : 'track.drawCurve');
   showAbBar(false, mode === 'curve', mode === 'curve');
   startMapTap({ hint: abHint(), onTap: drawTap });
 }
-function startDriveAB() {                  // GPS: set A then B at the vehicle (ungated)
+function startDriveAB() {                  // GPS: set A then B at the vehicle
   abFlow = 'driveAB'; driveStep = 0; drawPts = []; driveRaw = []; // drawPts holds the dropped A/B markers
   transport.send('track.driveAB');
   showAbBar(true, false, false);
   document.getElementById('draw-setpoint').textContent = tr('Set Point A');
   hintEl.classList.add('show'); setAbHint();
 }
-function startRecordCurve() {              // GPS: record by driving — Set Start → Set End (ungated)
+function startRecordCurve() {              // GPS: record by driving — Set Start → Set End
   abFlow = 'recordCurve'; driveStep = 0; curveMarks = []; _lastCurveMark = null;
   // Recording doesn't begin until "Set Start" (deferred track.recordCurve), so the operator
   // can position at the curve's start first. The set-point button drives the two-step.
@@ -1725,7 +1747,7 @@ function drawTap(e, n) {                    // map-tap point captured (straight/
 let driveRaw = [];       // Drive-AB A/B at the vehicle, to re-place both on the A→B heading
 function refEdgePt(e, n, h) {
   const t = config && config.tool;
-  const half = (toolWidthM() - ((t && t.overlap) || 0)) * 0.5;
+  const half = Math.max(0, toolWidthM() - ((t && t.overlap) || 0)) * 0.5;
   const d = (qabSide === 'right' ? half : -half) + ((t && t.offset) || 0);
   return { e: e + Math.sin(h + Math.PI / 2) * d, n: n + Math.cos(h + Math.PI / 2) * d };
 }
@@ -2024,7 +2046,7 @@ let trkSel = -1; // index into scene.trackList, or -1
 function openTracksManager() { trkSel = -1; renderTracksList(); openDialog('dlg-tracks'); }
 function renderTracksList() {
   // Dim the guidance-affecting actions when we're not the operator. Delete/swap/activate
-  // change the active line; import, visibility and rec-path display are data → ungated.
+  // change the active line (every action needs control, #397; these are dimmed).
   for (const id of ['trk-delete', 'trk-swap', 'trk-activate'])
     document.getElementById(id).classList.toggle('disabled', !iHoldControl);
   const list = document.getElementById('trk-list');
@@ -2054,7 +2076,7 @@ function renderTracksList() {
     });
     const cb = row.querySelector('.trk-vis');
     cb.addEventListener('change', e => {
-      e.stopPropagation(); // visibility is display-only → ungated (any browser)
+      e.stopPropagation();
       transport.send('track.setVisible|' + t.index + ',' + (cb.checked ? 1 : 0));
     });
     list.appendChild(row);
@@ -2092,7 +2114,7 @@ document.getElementById('dlg-tracks-close').addEventListener('pointerdown', e =>
 // ---- left nav (Phase 9) — config/settings panels via the config bridge ----
 // Vertical button bar; each button toggles a non-modal panel (only one open at a
 // time). Panels READ from the config frame (or existing frames, e.g. units =
-// Status.isMetric) and WRITE via `config.set|key:value` (Tier-1; the host applies it
+// Status.isMetric) and WRITE via `config.set|key:value` (needs control; the host applies it
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
@@ -2117,6 +2139,8 @@ function lnCloseAll() {
   document.getElementById('ln-fieldtools').classList.remove('active');
 }
 function lnOpen(panelId, navBtnId, onOpen) {
+  // Opening a menu leaves an AB line being drawn on the map, like Esc (#399).
+  if (abFlow === 'straight' || abFlow === 'curve') abCancel();
   lnCloseAll();
   document.getElementById(panelId).classList.add('open');
   if (!NO_SCRIM.has(panelId)) lnScrim.classList.add('open'); // transparent light-dismiss
@@ -2339,14 +2363,14 @@ document.getElementById('fb-trk-rename').addEventListener('pointerdown', e => {
   input.addEventListener('blur', commit);
 });
 // ---- Field Builder Headland tab (stage 2) — segment list + build ----------------------
-// Building is field-data editing (Tier-1, ungated). Line/Curve = tap two boundary points
+// Line/Curve = tap two boundary points
 // on the main map (host snaps + builds the inward offset + the headland polygon); Whole
 // Boundary = the entire boundary offset inward. The host runs ALL geometry — the client
 // only captures the two taps + the offset and ships them (no headland math in JS).
 let fbHlSel = -1;        // selected segment index in the Headland tab
-function fbDefaultOffset() {  // tool width × 2 (host re-defaults to the same if 0 is sent)
+function fbDefaultOffset() {  // tool width × 2; 0 = no tool width to go by
   const tw = toolWidthM();
-  return tw > 0 ? +(tw * 2).toFixed(1) : 12;
+  return tw > 0 ? +(tw * 2).toFixed(1) : 0;
 }
 function renderFbHeadland() {
   const list = document.getElementById('fb-hllist');
@@ -2381,7 +2405,12 @@ document.getElementById('fb-hl-off').addEventListener('change', e => {
 // editing the metre box directly flips the dropdown to Custom.
 const fbTwSel = document.getElementById('fb-hl-tw');
 const fbNewOff = document.getElementById('fb-hl-newoff');
-function fbApplyTw() { const n = parseInt(fbTwSel.value); if (n > 0) writeUnitInput(fbNewOff, n * toolWidthM()); }
+function fbApplyTw() {
+  const n = parseInt(fbTwSel.value), tw = toolWidthM();
+  if (!(n > 0)) return;
+  if (tw > 0) writeUnitInput(fbNewOff, n * tw);
+  else fbNewOff.value = '';   // no tool width: the operator enters the inset
+}
 fbTwSel.addEventListener('change', e => { e.stopPropagation(); fbApplyTw(); });
 fbNewOff.addEventListener('input', e => { e.stopPropagation(); fbTwSel.value = '0'; });
 document.getElementById('fb-hl-add').addEventListener('pointerdown', e => {
@@ -2396,6 +2425,7 @@ for (const b of document.querySelectorAll('#fb-addhl .fb-addbtn'))
     e.stopPropagation();
     const off = readUnitInput(document.getElementById('fb-hl-newoff'));
     const offset = (Number.isFinite(off) && off > 0) ? off : fbDefaultOffset();
+    if (!(offset > 0)) { showToast(tr('Tool width not set: enter the headland width')); return; }
     const m = b.dataset.fbhl;
     showFbTab('headland');
     if (m === 'whole') transport.send('headland.wholeBoundary|' + offset);
@@ -2426,7 +2456,7 @@ document.getElementById('fb-hl-rename').addEventListener('pointerdown', e => {
 });
 // ---- Field Builder Tram tab (stage 3) — system list + per-system editor --------------
 // Systems live in ConfigStore.Tram.Systems (host SoT); the browser sends field edits and
-// the host regenerates the lines + persists. Tram building is field-data editing (Tier-1).
+// the host regenerates the lines + persists.
 let fbTramSel = -1;
 let fbTramPendingEdit = false; // open the editor on the system we just added (native parity)
 function openTramEditor() {
@@ -2541,7 +2571,7 @@ document.getElementById('bp-leftright').addEventListener('pointerdown', e => { e
 document.getElementById('bp-antennatool').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.toggleAntennaTool'); });
 document.getElementById('bp-stop').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.stop'); transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu); });
 document.getElementById('bp-record').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.toggleRecording'); });
-// Offset Fix D-pad (argless Tier-1 commands).
+// Offset Fix D-pad (argless commands).
 for (const b of document.querySelectorAll('#offsetfix .of-btn'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
 // Manual Easting/Northing entry → absolute set (offset.set|E,N).
@@ -2930,8 +2960,8 @@ function populateSmartWas() {
 }
 
 // ---- Network IO (Phase 9) — modules / scan / subnet / host IPs / NTRIP. Reads ride
-// the Status frame; writes are config.set (module-present, Tier-1), net.scan (Tier-1),
-// net.subnet (Tier-2 gated), and ntrip.* profile CRUD. The NTRIP editor keeps its
+// the Status frame; writes are config.set (module-present), net.scan, net.subnet and
+// ntrip.* profile CRUD, all needing control. The NTRIP editor keeps its
 // editing buffer client-side; Save sends every field at once. ----
 const nioPanel = document.getElementById('networkio');
 nioPanel.addEventListener('pointerdown', e => e.stopPropagation());
@@ -3227,7 +3257,8 @@ document.getElementById('nte-test').addEventListener('pointerdown', e => {
   if (!mount) { st.textContent = tr('Error: Mount point is required'); return; }
   _nteTestActive = true;
   st.textContent = tr('Testing connection...');
-  transport.send('ntrip.test|' + [host, port, mount, user, pass].join('\t'));
+  // pass is the host's mask for a stored password; the id lets the host use that one (#397)
+  transport.send('ntrip.test|' + [host, port, mount, user, pass, (nteBuf && nteBuf.id) || ''].join('\t'));
 });
 document.getElementById('nte-save').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -3251,7 +3282,7 @@ document.getElementById('nte-save').addEventListener('pointerdown', e => {
 // ---- Field Operations (Phase 9) — field/job lifecycle. Fly-out launches the
 // Fields-and-Jobs chain panel (fields table + jobs + new-job form) and New Field.
 // Reads ride the FieldOps frame; writes are field.* commands (host-driven via the real
-// StartWorkSessionDialogViewModel). Tier-1 (data management); deletes confirm client-side.
+// StartWorkSessionDialogViewModel); deletes confirm client-side.
 const JOB_STATUS = [tr('In progress'), tr('Done'), tr('Abandoned')];
 let fjSelField = null, fjSelJob = null;
 
@@ -3484,6 +3515,7 @@ function renderAgSettings() {
   document.getElementById('ag-teststatus').textContent = agShare.status || '';
 }
 document.getElementById('ag-server').addEventListener('change', () => cfgSend('conn.agShareServer', document.getElementById('ag-server').value.trim()));
+// The field holds the host's mask while a key is stored; sending the mask back keeps it (#397).
 document.getElementById('ag-key').addEventListener('change', () => cfgSend('conn.agShareApiKey', document.getElementById('ag-key').value.trim()));
 document.getElementById('ag-enabled').addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend('conn.agShareEnabled', e.currentTarget.classList.contains('active') ? '0' : '1'); });
 document.getElementById('ag-test').addEventListener('pointerdown', e => {
@@ -3710,19 +3742,105 @@ function renderBugReport() {
     : '';
   brIssueUrl = issueUrl || null;
   document.getElementById('br-openissue').style.display = brIssueUrl ? '' : 'none';
-  document.getElementById('br-send').disabled = ['sending', 'queued', 'sent', 'accepted'].includes(kind);
+  brSendBusy = ['sending', 'queued', 'sent', 'accepted'].includes(kind);
+  if (brFile !== brFilesFor) { brFiles = []; brFilesFor = brFile; renderBrFiles(); }
+  document.getElementById('br-attach').disabled = brSendBusy || brAttaching;
+  brUpdateSend();
 }
-let brIssueUrl = null;
-try { document.getElementById('br-ghuser').value = localStorage.getItem('agopenweb.bugReportGitHub') || ''; } catch (_) { }
+// Screenshots and files: each one is posted to the host as it is picked and goes into the
+// dump under attachments/ (BugReportAttachments). Only the screen holding control may add.
+let brFiles = [], brFilesFor = null, brAttaching = false;
+const brSize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+function renderBrFiles() {
+  const box = document.getElementById('br-files'); box.innerHTML = '';
+  for (const f of brFiles) {
+    const row = document.createElement('div'); row.className = 'br-filerow';
+    const nm = document.createElement('span'); nm.className = 'br-fname'; nm.textContent = f.name; nm.translate = false;
+    const sz = document.createElement('span'); sz.className = 'br-fsize'; sz.textContent = brSize(f.size);
+    const x = document.createElement('button'); x.className = 'ln-x'; x.textContent = '✕'; x.title = tr('Remove');
+    x.disabled = brSendBusy;
+    x.addEventListener('pointerdown', e => { e.stopPropagation(); brChangeFiles('detach', f.name, new Uint8Array(0)); });
+    row.append(nm, sz, x); box.appendChild(row);
+  }
+}
+async function brChangeFiles(op, name, body) {
+  const st = document.getElementById('br-attachstatus');
+  const q = new URLSearchParams({ zip: brFile, name, client: myClientId || '' });
+  let res, reply = null;
+  try {
+    res = await fetch('/bugreports/' + op + '?' + q, { method: 'POST', body });
+    if (res.ok) reply = await res.json();
+  } catch (_) { st.textContent = tr('Could not add {name}', { name }); return false; }
+  if (res.status === 403) { st.textContent = tr('View only: another screen has control'); return false; }
+  if (res.status === 413) { st.textContent = tr('{name} is too large (20 MB at most)', { name }); return false; }
+  if (!reply) { st.textContent = tr('Could not add {name}', { name }); return false; }
+  const why = {
+    TooLarge: tr('{name} is too large (20 MB at most)', { name }),
+    TotalTooLarge: tr('Attachments are limited to 25 MB in all'),
+    TooMany: tr('At most 10 attachments'),
+    Empty: tr('{name} is empty', { name }),
+    Busy: tr('The report is being sent; try again in a moment'),
+  }[reply.refusal];
+  if (reply.refusal !== 'Busy') { brFiles = reply.files; renderBrFiles(); }
+  st.textContent = why || tr('Like the rest of the report, attachments go only to the maintainers.');
+  return !why;
+}
+document.getElementById('br-attach').addEventListener('click', e => {
+  e.stopPropagation();
+  if (brFile && !brSendBusy && !brAttaching) document.getElementById('br-file').click();
+});
+document.getElementById('br-file').addEventListener('change', async e => {
+  const picked = [...e.target.files]; e.target.value = '';
+  if (!picked.length || !brFile) return;
+  brAttaching = true; document.getElementById('br-attach').disabled = true;
+  for (const f of picked) {
+    document.getElementById('br-attachstatus').textContent = tr('Adding {name}…', { name: f.name });
+    if (f.size > 20 * 1048576) { document.getElementById('br-attachstatus').textContent = tr('{name} is too large (20 MB at most)', { name: f.name }); break; }
+    if (!await brChangeFiles('attach', f.name, f)) break;
+  }
+  brAttaching = false; document.getElementById('br-attach').disabled = brSendBusy;
+});
+let brIssueUrl = null, brSendBusy = false;
+// Send needs what the bug report service checks too (Tools/bugreport-worker reports.js):
+// a title and description long enough to act on, and a GitHub username or an email to reply
+// to. Create needs nothing: it captures the moment.
+const BR_MIN_TITLE = 15, BR_MIN_DESC = 40;
+const brOne = id => document.getElementById(id).value.replace(/\t/g, ' ').trim();
+const brChars = s => [...s].length;
+function brMissing() {
+  const t = BR_MIN_TITLE - brChars(brOne('br-title'));
+  if (t > 0) return tr('Title: {n} more characters', { n: t });
+  const d = BR_MIN_DESC - brChars(document.getElementById('br-desc').value.trim());
+  if (d > 0) return tr('Description: {n} more characters', { n: d });
+  const gh = brOne('br-ghuser').replace(/^@/, ''), em = brOne('br-email');
+  if (gh && !/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(gh)) return tr('Not a GitHub username');
+  if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return tr('Not an email address');
+  if (!gh && !em) return tr('Add your GitHub username or email so we can reply');
+  return '';
+}
+function brUpdateSend() {
+  const need = brMissing();
+  document.getElementById('br-need').textContent = brSendBusy ? '' : need;
+  document.getElementById('br-send').disabled = brSendBusy || !!need;
+}
+for (const id of ['br-title', 'br-desc', 'br-ghuser', 'br-email'])
+  document.getElementById(id).addEventListener('input', brUpdateSend);
+try {
+  document.getElementById('br-ghuser').value = localStorage.getItem('agopenweb.bugReportGitHub') || '';
+  document.getElementById('br-email').value = localStorage.getItem('agopenweb.bugReportEmail') || '';
+} catch (_) { }
 document.getElementById('br-send').addEventListener('pointerdown', e => {
   e.stopPropagation();
-  if (!brFile) return;
-  const one = id => document.getElementById(id).value.replace(/\t/g, ' ').trim();
-  const gh = one('br-ghuser').replace(/^@/, '');
-  try { localStorage.setItem('agopenweb.bugReportGitHub', gh); } catch (_) { }
+  if (!brFile || brMissing()) return;
+  const gh = brOne('br-ghuser').replace(/^@/, ''), em = brOne('br-email');
+  try { localStorage.setItem('agopenweb.bugReportGitHub', gh); localStorage.setItem('agopenweb.bugReportEmail', em); } catch (_) { }
   document.getElementById('br-sendstatus').textContent = tr('Sending…');
   document.getElementById('br-send').disabled = true;
-  transport.send('app.bugReport.send|' + [brFile, gh, one('br-title'), document.getElementById('br-desc').value].join('\t'));
+  transport.send('app.bugReport.send|' + [brFile, gh, em, brOne('br-title'), document.getElementById('br-desc').value].join('\t'));
+});
+document.getElementById('br-docs').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  openExternal('https://docs.agopengps.com/');
 });
 document.getElementById('br-openissue').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -4091,6 +4209,7 @@ function renderRole() {
 }
 function updateControlUi() {
   iHoldControl = lastControl.held && lastControl.holderId === myClientId;
+  if (iHoldControl) applyMobileQualityCap(); // a host-wide setting: sent once we may (#397)
   if (typeof renderHostPrompt === 'function') renderHostPrompt(); // who may answer
   if (typeof updateAsGated === 'function') updateAsGated(); // re-gate AutoSteer actions
   if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); // re-gate Play
@@ -4566,7 +4685,9 @@ function moduleAggColor(s) {
 }
 // Area/rate formatting — matches MainViewModel.FormatArea / WorkRateDisplay.
 function fmtArea(m2) { return fmtUnit(m2 * 0.0001, 'ha'); }
-function fmtRate(haPerHr) { return fmtUnit(haPerHr, 'ha', 1) + '/hr'; }
+function fmtRate(haPerHr) { return haPerHr == null ? '—' : fmtUnit(haPerHr, 'ha', 1) + '/hr'; }
+// Work rate from speed (m/s) × tool width; null without a tool width (#398).
+function workRateHa(speedMs) { const tw = toolWidthM(); return tw > 0 ? speedMs * 3600 * tw / 10000 : null; }
 // Workable area (m²) from the Scene the client already has: headland polygon if
 // present, else the outer boundary (shoelace) — matches WorkableAreaSqM.
 function shoelace(pts) {
@@ -4600,7 +4721,7 @@ function rotatingLineText() {
     if (!scene || !scene.hasField) return '—';
     const workable = workableAreaSqM(), worked = s.workedAreaSqM || 0;
     const leftPct = workable > 0 ? ((workable - worked) * 100 / workable) : 100;
-    const haPerHr = (lastTick ? lastTick.speed : 0) * 3600 * toolWidthM() / 10000;
+    const haPerHr = workRateHa(lastTick ? lastTick.speed : 0);
     return tr('Done {area}  Left {pct}%  Rate {rate}', { area: fmtArea(worked), pct: leftPct.toFixed(0), rate: fmtRate(haPerHr) });
   }
   const name = tick && tick.activeTrackName; // AB-line page
@@ -4706,7 +4827,7 @@ function renderFieldCard() {
   // catches up, so keep Actual within Worked.
   const actual = Math.min(fd.actualAreaSqM, worked);
   const speedKmh = (lastTick ? lastTick.speed : 0) * 3.6;
-  const haPerHr = speedKmh * toolWidthM() / 10;
+  const haPerHr = workRateHa(lastTick ? lastTick.speed : 0);
   for (const r of FC.card.querySelectorAll('.fc-bnd')) r.classList.toggle('fc-hide', !(total > 0));
   FC.name.textContent = scene.fieldName + (s.jobName ? '  ·  ' + s.jobName : '');
   FC.worked.textContent = fmtArea(worked);
@@ -5411,7 +5532,7 @@ function renderImportTracks() {
   }
 }
 
-// Recorded Path: GPS-driven record (Tier-1) + playback (Play is gated). All state
+// Recorded Path: GPS-driven record + playback. All state
 // comes from the host-driven RecordedPath frame; the name field is local input.
 function renderRecPath() {
   const r = recPath || { recFiles: [], isRecording: false, isPlaying: false, hasUnsaved: false, recordedPathInfo: '', resumeModeLabel: 'Start' };
@@ -5554,7 +5675,9 @@ function toolWidthM() {
     for (const s of ts) { if (s.left < lo) lo = s.left; if (s.right > hi) hi = s.right; }
     if (hi > lo) return hi - lo;
   }
-  return 6;
+  // No sections: the host's tool width (#398); 0 when that isn't set either, never a guess.
+  const w = config && config.tool && config.tool.totalWidth;
+  return w > 0 ? w : 0;
 }
 // HUD text (DOM). Built each frame from the latest tick/scene.
 // ---- Skia (CanvasKit) render — Phase A: vector layers at parity. Works in CSS
@@ -5866,7 +5989,7 @@ function drawGridSk(canvas) {
   const minE = Math.max(camE - halfW, -G), maxE = Math.min(camE + halfW, G);
   const minN = Math.max(camN - halfH, -G), maxN = Math.min(camN + halfH, G);
   if (minE >= maxE || minN >= maxN) return;
-  const toolW = toolWidthM();
+  const toolW = toolWidthM() || 1; // no tool width: plain metres
   // Spacing = tool-width × NiceStep125(viewSpan / (toolW·30)) — same as native.
   const spacing = toolW * niceStep125(Math.max(vw, vh) / pxPerM / (toolW * 30));
   const major = k => k % 10 === 0 ? SKP.gridMajor : SKP.gridMinor;

@@ -36,11 +36,16 @@ public sealed class SimpleWebServer
             new(200, contentType, body, headers);
         public static readonly Response NotFound = new(404, "text/plain", "not found"u8.ToArray());
         public static readonly Response MethodNotAllowed = new(405, "text/plain", "method not allowed"u8.ToArray());
+        public static readonly Response TooLarge = new(413, "text/plain", "too large"u8.ToArray());
     }
+
+    /// <summary>A POST as a handler sees it: the decoded query string and the raw body.</summary>
+    public sealed record PostRequest(IReadOnlyDictionary<string, string> Query, byte[] Body);
 
     private readonly int _port;
     private readonly Dictionary<string, Func<Task<Response>>> _exact = new(StringComparer.Ordinal);
     private readonly List<(string Prefix, Func<string, Task<Response>> Handler)> _prefix = new();
+    private readonly Dictionary<string, (Func<PostRequest, Task<Response>> Handler, int MaxBody)> _post = new(StringComparer.Ordinal);
     private string? _wsPath;
     private Func<WebSocket, CancellationToken, Task>? _wsHandler;
 
@@ -50,6 +55,7 @@ public sealed class SimpleWebServer
     private const int MaxHeaderBytes = 16 * 1024;
     private const int MaxConcurrentConnections = 64;
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan BodyTimeout = TimeSpan.FromMinutes(2);
     private readonly SemaphoreSlim _connGate = new(MaxConcurrentConnections, MaxConcurrentConnections);
 
     public int Port => _port;
@@ -63,6 +69,10 @@ public sealed class SimpleWebServer
     public void MapGetPrefix(string prefix, Func<string, Task<Response>> handler) => _prefix.Add((prefix, handler));
     public void MapGetPrefix(string prefix, Func<string, Response> handler) =>
         _prefix.Add((prefix, s => Task.FromResult(handler(s))));
+    /// <summary>A POST route taking a raw body (Content-Length) of at most <paramref name="maxBodyBytes"/>;
+    /// a larger one is answered 413 without being read.</summary>
+    public void MapPost(string path, int maxBodyBytes, Func<PostRequest, Task<Response>> handler) =>
+        _post[path] = (handler, maxBodyBytes);
     public void MapWebSocket(string path, Func<WebSocket, CancellationToken, Task> handler)
     {
         _wsPath = path;
@@ -122,6 +132,17 @@ public sealed class SimpleWebServer
                 var req = await ReadRequestHeadAsync(stream, reqCts.Token).ConfigureAwait(false);
                 if (req is null) return; // closed, idle-timed-out, or malformed
 
+                if (req.Method == "POST" && _post.TryGetValue(req.Path, out var post))
+                {
+                    // A body can take longer than the idle wait: a phone video over cab Wi-Fi.
+                    using var bodyCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    bodyCts.CancelAfter(BodyTimeout);
+                    var postResp = await ServePostAsync(stream, req, post.Handler, post.MaxBody, bodyCts.Token).ConfigureAwait(false);
+                    var ok = await WriteResponseAsync(stream, postResp, keepAlive: postResp.Status < 400, ct).ConfigureAwait(false);
+                    if (!ok || postResp.Status >= 400) return;
+                    continue;
+                }
+
                 if (req.Method != "GET")
                 {
                     await WriteResponseAsync(stream, Response.MethodNotAllowed, keepAlive: false, ct).ConfigureAwait(false);
@@ -155,6 +176,26 @@ public sealed class SimpleWebServer
         return Response.NotFound;
     }
 
+    private static async Task<Response> ServePostAsync(Stream stream, Request req,
+        Func<PostRequest, Task<Response>> handler, int maxBody, CancellationToken ct)
+    {
+        if (!req.Headers.TryGetValue("content-length", out var cl)
+            || !int.TryParse(cl, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var len))
+            return new Response(411, "text/plain", "length required"u8.ToArray());
+        if (len > maxBody) return Response.TooLarge;
+        var body = new byte[len];
+        int read = 0;
+        while (read < len)
+        {
+            int n;
+            try { n = await stream.ReadAsync(body.AsMemory(read, len - read), ct).ConfigureAwait(false); }
+            catch { return new Response(400, "text/plain", "incomplete body"u8.ToArray()); }
+            if (n == 0) return new Response(400, "text/plain", "incomplete body"u8.ToArray());
+            read += n;
+        }
+        return await handler(new PostRequest(req.Query, body)).ConfigureAwait(false);
+    }
+
     // ---- HTTP request parsing ----
 
     private sealed class Request
@@ -162,6 +203,7 @@ public sealed class SimpleWebServer
         public required string Method;
         public required string Path;   // path only (query string stripped)
         public required Dictionary<string, string> Headers; // case-insensitive keys
+        public required Dictionary<string, string> Query;   // decoded; the last of a repeated key wins
     }
 
     // Reads the request head one byte at a time up to the blank line. Byte-by-byte is
@@ -192,6 +234,15 @@ public sealed class SimpleWebServer
         var target = first[1];
         var q = target.IndexOf('?');
         var path = q >= 0 ? target[..q] : target;
+        var query = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (q >= 0)
+            foreach (var pair in target[(q + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                int eq = pair.IndexOf('=');
+                string Dec(string x) => Uri.UnescapeDataString(x.Replace('+', ' '));
+                if (eq < 0) query[Dec(pair)] = "";
+                else query[Dec(pair[..eq])] = Dec(pair[(eq + 1)..]);
+            }
 
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 1; i < lines.Length; i++)
@@ -201,7 +252,7 @@ public sealed class SimpleWebServer
             if (c <= 0) continue;
             headers[lines[i][..c].Trim()] = lines[i][(c + 1)..].Trim();
         }
-        return new Request { Method = first[0], Path = path, Headers = headers };
+        return new Request { Method = first[0], Path = path, Headers = headers, Query = query };
     }
 
     private static async Task<bool> WriteResponseAsync(Stream stream, Response r, bool keepAlive, CancellationToken ct)
@@ -229,8 +280,11 @@ public sealed class SimpleWebServer
     {
         200 => "OK",
         400 => "Bad Request",
+        403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        411 => "Length Required",
+        413 => "Content Too Large",
         431 => "Request Header Fields Too Large",
         502 => "Bad Gateway",
         _ => "OK",

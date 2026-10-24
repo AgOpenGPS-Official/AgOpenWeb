@@ -337,10 +337,16 @@ namespace AgOpenWeb.Services.YouTurn
             // point's stored heading; when the recorded curve ends before the headland the arc
             // seats on the tangent extension and a noisy end-point heading skewed the measured
             // offset by metres, plotting the exit leg off the next pass the tractor drives.)
+            //
+            // The pass count comes from the planned turn's width (TurnOffset), not the skip
+            // setting: snake, alternative and skip-worked turns pick their own target pass,
+            // and skip-and-fill forces the skip to at least 1, so an adjacent target used to
+            // get an exit leg two passes over, outside the field (#411).
             double widthMinusOverlap = input.ToolWidth - input.ToolOverlap;
-            int passDelta = (input.IsTurnLeft ^ input.IsHeadingSameWay)
-                ? (input.RowSkipsWidth + 1)
-                : -(input.RowSkipsWidth + 1);
+            int passes = input.TurnOffset > 0 && widthMinusOverlap > 0
+                ? Math.Max(1, (int)Math.Round(input.TurnOffset / widthMinusOverlap))
+                : input.RowSkipsWidth + 1;
+            int passDelta = (input.IsTurnLeft ^ input.IsHeadingSameWay) ? passes : -passes;
             double distAway = widthMinusOverlap * (input.HowManyPathsAway + passDelta) + input.PassEdgeOffset + input.NudgeDistance;
 
             // Create the next line

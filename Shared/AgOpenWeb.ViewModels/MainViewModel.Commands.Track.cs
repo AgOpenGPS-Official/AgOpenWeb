@@ -1409,52 +1409,11 @@ public partial class MainViewModel
                 return;
             }
 
-            var pts = boundary.Points;
-            int n = pts.Count;
-
-            // Boundary points are densified along each straight edge, so one AB line PER POINT
-            // would make dozens on a 4-sided field. Find the CORNERS instead — vertices where the
-            // boundary direction turns sharply — and make one AB line per edge between corners.
-            const double CornerTurnThreshold = 0.35; // ~20°: real corners turn ~90°, edge noise <5°
-            var corners = new System.Collections.Generic.List<int>();
-            for (int i = 0; i < n; i++)
-            {
-                var prev = pts[(i - 1 + n) % n];
-                var cur = pts[i];
-                var nxt = pts[(i + 1) % n];
-                double hIn = Math.Atan2(cur.Easting - prev.Easting, cur.Northing - prev.Northing);
-                double hOut = Math.Atan2(nxt.Easting - cur.Easting, nxt.Northing - cur.Northing);
-                double turn = hOut - hIn;
-                while (turn > Math.PI) turn -= 2 * Math.PI;
-                while (turn < -Math.PI) turn += 2 * Math.PI;
-                if (Math.Abs(turn) > CornerTurnThreshold) corners.Add(i);
-            }
-
-            int created = 0;
-            if (corners.Count >= 2)
-            {
-                // One AB line per edge: from each corner to the next, extended 50 m past both.
-                for (int k = 0; k < corners.Count; k++)
-                {
-                    var pa = pts[corners[k]];
-                    var pb = pts[corners[(k + 1) % corners.Count]];
-                    double dx = pb.Easting - pa.Easting, dy = pb.Northing - pa.Northing;
-                    double dist = Math.Sqrt(dx * dx + dy * dy);
-                    if (dist < 5.0) continue;
-
-                    double heading = Math.Atan2(dx, dy);
-                    var a = new Models.Base.Vec3(pa.Easting - Math.Sin(heading) * 50, pa.Northing - Math.Cos(heading) * 50, heading);
-                    var b = new Models.Base.Vec3(pb.Easting + Math.Sin(heading) * 50, pb.Northing + Math.Cos(heading) * 50, heading);
-                    SavedTracks.Add(new Models.Track.Track
-                    {
-                        Name = $"Edge {created + 1} ({dist:F0}m)",
-                        Points = new System.Collections.Generic.List<Models.Base.Vec3> { a, b },
-                        Type = Models.Track.TrackType.ABLine,
-                        IsVisible = true
-                    });
-                    created++;
-                }
-            }
+            // A straight edge becomes an AB line, a curved one an AB curve (#365).
+            var edges = Models.Track.BoundaryEdgeTracks.Build(boundary.Points);
+            foreach (var t in edges) SavedTracks.Add(t);
+            int created = edges.Count;
+            int curves = edges.Count(t => t.Type == Models.Track.TrackType.Curve);
 
             if (created > 0)
             {
@@ -1462,7 +1421,9 @@ public partial class MainViewModel
                 SelectedTrack = SavedTracks[SavedTracks.Count - 1];
             }
             StatusMessage = created > 0
-                ? $"Created {created} AB lines from boundary edges"
+                ? (curves > 0
+                    ? $"Created {created - curves} AB lines and {curves} curves from boundary edges"
+                    : $"Created {created} AB lines from boundary edges")
                 : "Could not detect distinct boundary edges";
         });
 

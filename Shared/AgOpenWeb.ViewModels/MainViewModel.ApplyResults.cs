@@ -224,9 +224,21 @@ public partial class MainViewModel
             // input, and if we unconditionally wrote g.SteerAngle (=0 when no
             // guidance) every cycle we'd overwrite the user's L/R keypress
             // before the simulator tick consumed it.
+            // The simulator steers by guidance only while autosteer is engaged on a line;
+            // otherwise it goes back to the operator's L/R steer (AgOpenGPS timerSim_Tick:
+            // the guidance angle with the AutoSteer button on, else the steer scroll bar).
+            // Keeping the last guidance angle after a disengage drove the sim in circles (#411).
+            bool simFollowsGuidance = g.HasGuidance && IsAutoSteerEngaged;
+            if (simFollowsGuidance)
+            {
+                if (!_simFollowingGuidance) _simManualSteerAngle = SimulatorSteerAngle;
+                SimulatorSteerAngle = g.SteerAngle;
+            }
+            else if (_simFollowingGuidance)
+                SimulatorSteerAngle = _simManualSteerAngle;
+            _simFollowingGuidance = simFollowsGuidance;
             if (g.HasGuidance)
             {
-                SimulatorSteerAngle = g.SteerAngle;
                 CrossTrackError = g.CrossTrackError * 100;
                 _mapService.SetGuidancePoints(g.GoalPoint.Easting, g.GoalPoint.Northing, isActive: true);
             }

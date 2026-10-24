@@ -14,26 +14,13 @@ namespace AgOpenWeb.RemoteWiring;
 
 public static partial class RemoteServerWiring
 {
-    private static readonly System.Collections.Generic.HashSet<string> UngatedTrackIds = new()
+    // A browser without control is an observer: it sees everything and changes nothing
+    // (#397). Only these ids run for it; the hub handles control.* and diag.ping itself.
+    // Fail-closed: a new id needs control unless it is added here, and only a request
+    // that changes no setting, data or machine state belongs here.
+    internal static readonly System.Collections.Generic.HashSet<string> ObserverIds = new()
     {
-        "track.drawStraight", "track.drawCurve", "track.drawPoint", "track.drawFinish",
-        "track.drawUndo", "track.drawCancel", "track.aPlus", "track.driveAB",
-        "track.latLonHeading", "track.latLonAB", "track.refSide",
-        "track.recordCurve", "track.finishCurve", "track.setABGps",
-        "track.createFromBoundary", "track.boundaryCurve", "track.boundaryCurveSeg", "track.allEdges",
-        "track.setVisible", "track.toggleRecPaths", "track.editSave",
-        "track.rename", // field data, like editSave / headland.rename; was silently dropped for observers (#111)
-    };
-
-    // Field Builder headland *building* is field-data editing (done while reviewing the
-    // field, not live actuation), so it stays ungated like track creation. The live
-    // headland on/off + section-in-headland toggles (headland.toggle / .sectionToggle)
-    // DO change what the machine does, so they remain gated. Fail-closed: a new
-    // headland.* id defaults to gated until added here.
-    private static readonly System.Collections.Generic.HashSet<string> UngatedHeadlandIds = new()
-    {
-        "headland.fromMapPoints", "headland.wholeBoundary", "headland.setOffset",
-        "headland.delete", "headland.deleteAll", "headland.rename", "headland.editSave",
+        "boundary.refresh", // rebuilds the boundary menu list from the open field
     };
 
     /// <summary>Parse a whole-number setting, rounding a decimal ("12.5" → 13) rather than
@@ -83,7 +70,9 @@ public static partial class RemoteServerWiring
             case "conn.machineConfigured": con.IsMachineConfigured = B(); cfg.SaveAppSettings(); return;
             // --- AgShare cloud settings (ConfigStore.Connections). Persist on change. ---
             case "conn.agShareServer": con.AgShareServer = val; cfg.SaveAppSettings(); return;
-            case "conn.agShareApiKey": con.AgShareApiKey = val; cfg.SaveAppSettings(); return;
+            case "conn.agShareApiKey": // the mask = unchanged (the client never has the key)
+                if (val == AgOpenWeb.RemoteServer.Secrets.Mask) return;
+                con.AgShareApiKey = val; cfg.SaveAppSettings(); return;
             case "conn.agShareEnabled": con.AgShareEnabled = B(); cfg.SaveAppSettings(); return;
             case "conn.rtcmBroadcast": con.RtcmBroadcast = B(); cfg.SaveAppSettings(); return;
             case "conn.sendCorrectedPosition": con.SendCorrectedPosition = B(); cfg.SaveAppSettings(); return;
@@ -445,10 +434,12 @@ public static partial class RemoteServerWiring
             case "ntrip.setDefault": // arg = id
                 _ = svc.SetDefaultProfileAsync(arg);
                 return;
-            case "ntrip.test": // arg = host \t port \t mount \t user \t pass
+            case "ntrip.test": // arg = host \t port \t mount \t user \t pass \t id (the mask = id's stored pass)
             {
                 var t = arg.Split('\t');
                 if (t.Length < 3) return;
+                if (t.Length > 4 && t[4] == AgOpenWeb.RemoteServer.Secrets.Mask)
+                    t[4] = svc.Profiles.FirstOrDefault(p => p.Id == t.ElementAtOrDefault(5))?.Password ?? "";
                 int.TryParse(t.ElementAtOrDefault(1), System.Globalization.NumberStyles.Integer, inv, out var tport);
                 if (tport == 0) tport = 2101;
                 state.Connections.NtripTestStatus = "Testing connection...";
@@ -474,7 +465,9 @@ public static partial class RemoteServerWiring
                 var profile = new AgOpenWeb.Models.Ntrip.NtripProfile
                 {
                     Name = f[1], CasterHost = f[2], CasterPort = port, MountPoint = f[4],
-                    Username = f[5], Password = f[6],
+                    Username = f[5],
+                    // The editor only has the mask for a stored password: keep that one.
+                    Password = f[6] == AgOpenWeb.RemoteServer.Secrets.Mask ? existing?.Password ?? "" : f[6],
                     AutoConnectOnFieldLoad = f[7] == "1", IsDefault = f[8] == "1",
                     AssociatedFields = assoc,
                 };
@@ -614,7 +607,7 @@ public static partial class RemoteServerWiring
                 catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; }
                 return;
             }
-            case "app.bugReport.send": // arg = zip name \t GitHub user \t title \t description
+            case "app.bugReport.send": // arg = zip name \t GitHub user \t email \t title \t description
                 BugReportRemote.Send(arg, services.GetRequiredService<ISettingsService>().Settings.Language ?? "");
                 return;
         }
