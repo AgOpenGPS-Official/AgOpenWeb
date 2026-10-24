@@ -26,6 +26,9 @@ public partial class MainViewModel
     // Backing fields for properties
     private bool _isSimulatorEnabled;
     private double _simulatorSteerAngle;
+    // The operator's steer while guidance drives the sim; restored when it stops (#411).
+    private double _simManualSteerAngle;
+    private bool _simFollowingGuidance;
     private double _simulatorSpeedKph;
     private bool _isSimulatorSpeed10x;
 

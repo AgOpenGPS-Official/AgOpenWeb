@@ -718,6 +718,10 @@
     /* ===== File / Application Menu ===== */
     .fm-panel { width: 340px; }
     #bugreport.fm-panel { width: 510px; } /* room to describe the problem */
+    .br-filerow { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border);
+      font: 14px system-ui, sans-serif; }
+    .br-filerow .br-fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .br-filerow .br-fsize { opacity: 0.7; font-size: 12px; }
     .fm-wide { width: 560px; }
     /* View All Settings fills the tablet viewport so every setting shows for a screenshot. */
     .fm-full { width: calc(100 * var(--vw) - 110px); height: calc(100 * var(--vh) - 84px); box-sizing: border-box; }
@@ -1921,7 +1925,7 @@
         <div id="as-turn" class="cfg-body" data-strip="as-right">
           <div class="as-card">
             <div class="as-cardtitle">Turn Sensor</div>
-            <div class="as-togcard"><img src="/icons/ConSt_TurnSensor.png" alt=""><label>Encoder</label><button class="cfg-tgl" data-key="autosteer.turnSensorEnabled">Off</button></div>
+            <div class="as-togcard"><img src="/icons/ConSt_TurnSensor.png" alt=""><label>Enable</label><button class="cfg-tgl" data-key="autosteer.turnSensorEnabled">Off</button></div>
             <div data-show="turnsensor" class="as-valrow" style="margin-top:8px;margin-bottom:0"><span class="as-valbox cfg-ro" data-for="autosteer.turnSensorCounts" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.turnSensorCounts" data-fmt="f0" type="range" min="0" max="255" step="1"></div>
           </div>
           <div class="as-card">
@@ -2675,17 +2679,28 @@
   <div id="bugreport" class="ln-panel fm-panel">
     <div class="ln-hdr"><button class="ln-x fm-back" title="Back">←</button><span class="ln-hdr-title">Bug Report Dump</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="sa-hint">Captures settings, state, field, coverage and the last 5 minutes of GPS data to a zip file. Keep this panel open while driving and press the button the moment a problem shows.</div>
+    <div class="sa-hint" style="margin-top:6px">A question rather than a bug? The AgOpenGPS documentation may already answer it.</div>
+    <button class="cfg-act cfg-actwide" id="br-docs" style="margin-top:4px">Open the AgOpenGPS Docs</button>
     <div class="cfg-label" style="margin-top:8px">Title</div>
     <input class="cfg-num fj-tx" id="br-title" placeholder="Short summary">
     <div class="cfg-label" style="margin-top:8px">Description</div>
-    <textarea class="fj-notes" id="br-desc" style="height:135px"></textarea>
+    <textarea class="fj-notes" id="br-desc" style="height:135px" placeholder="What were you doing? What happened? What did you expect?"></textarea>
     <button class="cfg-act cfg-actwide fj-primary" id="br-submit" style="margin-top:10px">Create Bug Report</button>
     <div class="sa-hint" id="br-status" style="margin-top:6px"></div>
     <div id="br-sendbox" style="display:none">
       <div class="sa-hint" style="margin-top:8px">Send Report sends this report to the AgOpenWeb maintainers.</div>
-      <div class="cfg-label" style="margin-top:8px">GitHub username (optional, to get replies)</div>
+      <div class="cfg-label" style="margin-top:8px">GitHub username</div>
       <input class="cfg-num fj-tx" id="br-ghuser" autocapitalize="off" autocomplete="off" spellcheck="false">
+      <div class="cfg-label" style="margin-top:8px">or email</div>
+      <input class="cfg-num fj-tx" id="br-email" type="email" autocapitalize="off" autocomplete="email" spellcheck="false">
+      <div class="sa-hint" style="margin-top:4px">We need one of the two to reply. An email goes only to the maintainers with the report, never into the public issue, and is deleted with the report.</div>
+      <div class="cfg-label" style="margin-top:8px">Screenshots or files (optional)</div>
+      <div id="br-files"></div>
+      <button class="cfg-act cfg-actwide" id="br-attach" style="margin-top:4px">Add Screenshot or File</button>
+      <input type="file" id="br-file" multiple hidden>
+      <div class="sa-hint" id="br-attachstatus" style="margin-top:4px">Like the rest of the report, attachments go only to the maintainers.</div>
       <button class="cfg-act cfg-actwide fj-primary" id="br-send" style="margin-top:8px">Send Report</button>
+      <div class="sa-hint" id="br-need" style="margin-top:6px"></div>
       <div class="sa-hint" id="br-sendstatus" style="margin-top:6px"></div>
       <button class="cfg-act cfg-actwide" id="br-openissue" style="margin-top:6px;display:none">Open Issue</button>
     </div>
