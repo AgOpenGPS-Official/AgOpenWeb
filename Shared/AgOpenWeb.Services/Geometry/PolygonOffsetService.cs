@@ -777,6 +777,8 @@ public class PolygonOffsetService : IPolygonOffsetService
     {
         bool inside = false;
         int n = polygon.Count;
+        WorkCounters.PolygonTests++;
+        WorkCounters.PolygonEdges += n;
 
         for (int i = 0, j = n - 1; i < n; j = i++)
         {
