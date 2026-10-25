@@ -1288,7 +1288,7 @@ public partial class MainViewModel : ObservableObject
 
     private void OnAutoSteerToggleRequested(object? sender, AutoSteerToggleEventArgs e)
     {
-        _dispatcher.Post(() =>
+        void Toggle()
         {
             // The module arming for a steer-wizard Free Drive test isn't a request to steer:
             // ignore it quietly (ToggleAutoSteerCommand would refuse it anyway, #154).
@@ -1298,7 +1298,19 @@ public partial class MainViewModel : ObservableObject
             // Toggle autosteer when requested by module communication service
             // (e.g., from work switch or steer switch)
             ToggleAutoSteerCommand?.Execute(null);
-        });
+        }
+
+        // UpdateModuleSwitches runs on the host loop, so toggle right away and report the
+        // result: the steer switch → sections check that follows needs it.
+        if (_dispatcher.CheckAccess())
+        {
+            Toggle();
+            e.IsAutoSteerOnAfter = IsAutoSteerEngaged;
+        }
+        else
+        {
+            _dispatcher.Post(Toggle);
+        }
     }
 
     private void OnSectionMasterToggleRequested(object? sender, SectionMasterToggleEventArgs e)
