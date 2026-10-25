@@ -80,16 +80,9 @@ namespace AgOpenWeb.Models
             {
                 var iCoord = this[i];
                 var jCoord = i == 0 ? Last : this[i - 1];
-                if ((iCoord.Easting < testPoint.Easting && jCoord.Easting >= testPoint.Easting)
-                    || (jCoord.Easting < testPoint.Easting && iCoord.Easting >= testPoint.Easting))
-                {
-                    if (iCoord.Northing + (testPoint.Easting - iCoord.Easting)
-                        / (jCoord.Easting - iCoord.Easting) * (jCoord.Northing - iCoord.Northing)
-                        < testPoint.Northing)
-                    {
-                        result = !result;
-                    }
-                }
+                if (Base.GeometryMath.CrossesSouth(iCoord.Easting, iCoord.Northing, jCoord.Easting, jCoord.Northing,
+                        testPoint.Easting, testPoint.Northing))
+                    result = !result;
             }
             return result;
         }

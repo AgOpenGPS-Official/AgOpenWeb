@@ -27,9 +27,9 @@ namespace AgOpenWeb.Services.Tests.Performance;
 [NonParallelizable] // ConfigurationStore is a singleton.
 public class HotPathBudgetTests
 {
-    // GPS cycle. Measured on develop (2026-10-25): 4,416 edges with a headland (two tests
-    // against the 1,400-point headland, one against the 1,600-point boundary), 1,604 with the
-    // boundary only; 2,002 offset points on the 1,000-point curve; 127 KB allocated.
+    // GPS cycle. Measured 2026-10-25: 2,828 edges with a headland (the U-turn zone tests
+    // against the 1,400-point headland line; the boundary goes through its strip index), 16
+    // with the boundary only; 2,002 offset points on the 1,000-point curve; 127 KB allocated.
     private const long FixEdges = 10_000;
     private const long FixCoverageLookups = 2_000;
     private const long FixOffsetCurvePoints = 5_000;
@@ -42,12 +42,10 @@ public class HotPathBudgetTests
     private const long FixPeakEdges = 5_000_000;
     private const long FixPeakAllocatedBytes = 16 * 1024 * 1024;
 
-    // Control tick (tool position + section control). Measured: 25,344 edges a tick mid-field
-    // with a headland (none with the boundary only), and 117,262 within about 56 m of the
-    // field's edge, where BoundaryPolygon.IsPointInside walks the whole boundary for each
-    // section's points (92,000 with the boundary only); 360 coverage lookups. That is already
-    // a lot at 100 Hz; the budget keeps it from growing.
-    private const long TickEdges = 150_000;
+    // Control tick (tool position + section control). Measured 2026-10-25: 216 edges a tick
+    // mid-field, 6,582 near the field's edge (the boundary and headland tests go through strip
+    // indexes; before them it was 25,344 and 117,262), 360 coverage lookups.
+    private const long TickEdges = 20_000;
     private const long TickCoverageLookups = 2_000;
     private const long TickAllocatedBytes = 512 * 1024;
     // The first paint of an empty job allocates the coverage bitmaps (48 MB over a few ticks).

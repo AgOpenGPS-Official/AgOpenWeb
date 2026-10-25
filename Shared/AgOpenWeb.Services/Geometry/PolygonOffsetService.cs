@@ -771,31 +771,6 @@ public class PolygonOffsetService : IPolygonOffsetService
     }
 
     /// <summary>
-    /// Check if a point is inside a polygon using ray casting algorithm.
-    /// </summary>
-    private bool IsPointInPolygon(Vec2 point, List<Vec2> polygon)
-    {
-        bool inside = false;
-        int n = polygon.Count;
-        WorkCounters.PolygonTests++;
-        WorkCounters.PolygonEdges += n;
-
-        for (int i = 0, j = n - 1; i < n; j = i++)
-        {
-            var pi = polygon[i];
-            var pj = polygon[j];
-
-            if ((pi.Northing > point.Northing) != (pj.Northing > point.Northing) &&
-                point.Easting < (pj.Easting - pi.Easting) * (point.Northing - pi.Northing) / (pj.Northing - pi.Northing) + pi.Easting)
-            {
-                inside = !inside;
-            }
-        }
-
-        return inside;
-    }
-
-    /// <summary>
     /// Calculate the signed area of a polygon.
     /// Positive = counter-clockwise, Negative = clockwise
     /// </summary>
