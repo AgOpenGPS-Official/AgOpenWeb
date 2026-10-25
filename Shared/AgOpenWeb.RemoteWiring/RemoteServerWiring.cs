@@ -44,6 +44,10 @@ public static partial class RemoteServerWiring
         // shared by the command-handler and wizard-projector closures below.
         bool wizardActive = false;
 
+                    // The ISOBUS virtual terminal (VT card), when this head has one.
+                    var vt = services.GetService<IVirtualTerminalService>();
+                    if (vt is not null) VirtualTerminalRemote.Start(server, vt);
+
                     server.CommandHandler = (cmd, arg) =>
                         dispatcher.Post(() =>
                         {
@@ -93,6 +97,44 @@ public static partial class RemoteServerWiring
                                 case "isobus.sectionControl": // Tier-2 (gated); toggle the implement's section control (#312)
                                     services.GetRequiredService<AgOpenWeb.Services.Interfaces.IIsobusTaskControllerService>()
                                         .ToggleSectionControl();
+                                    return;
+                                // VT card: the implement's soft keys, buttons and input fields.
+                                // vt.key arg = "s" (soft key) or "b" (button), object id, "p" press,
+                                // "r" release, "a" abort; the terminal repeats a held key.
+                                case "vt.key":
+                                {
+                                    var k = arg.Split(',');
+                                    if (vt is not null && k.Length == 3
+                                        && ushort.TryParse(k[1], System.Globalization.NumberStyles.Integer, inv, out var kid))
+                                        vt.Key(k[0] == "b", kid,
+                                            k[2] == "p" ? VtKeyAction.Press : k[2] == "r" ? VtKeyAction.Release : VtKeyAction.Abort);
+                                    return;
+                                }
+                                case "vt.select": // arg = object id
+                                    if (vt is not null && ushort.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var sid))
+                                        vt.Select(sid);
+                                    return;
+                                case "vt.number": // arg = "id,raw" (number, bool 0/1, list index)
+                                case "vt.string": // arg = "id,text"
+                                {
+                                    var c2 = arg.IndexOf(',');
+                                    if (vt is null || c2 < 0
+                                        || !ushort.TryParse(arg[..c2], System.Globalization.NumberStyles.Integer, inv, out var nid))
+                                        return;
+                                    if (cmd == "vt.string") vt.SetString(nid, arg[(c2 + 1)..]);
+                                    else if (uint.TryParse(arg[(c2 + 1)..], System.Globalization.NumberStyles.Integer, inv, out var raw))
+                                        vt.SetNumber(nid, raw);
+                                    return;
+                                }
+                                case "vt.escape":
+                                    vt?.Escape();
+                                    return;
+                                case "vt.activate": // arg = the implement's NAME, 16 hex digits
+                                    if (vt is not null && ulong.TryParse(arg, System.Globalization.NumberStyles.HexNumber, inv, out var wsName))
+                                        vt.Activate(wsName);
+                                    return;
+                                case "vt.gateway": // arg = "host" or "host:port"; "" turns the terminal off
+                                    vt?.SetGateway(arg);
                                     return;
                                 case "section.toggle": // Tier-2 (gated); cycle one section
                                     if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var si)
@@ -707,6 +749,7 @@ public static partial class RemoteServerWiring
                     // off. (Headless target → control state lives in the browser.)
                     server.AuthorityChangedHandler = (held, name) =>
                     {
+                        vt?.AbortKeys(); // a VT key held by the last holder ends here
                         if (held)
                         {
                             System.Diagnostics.Debug.WriteLine($"[remote] control taken by {name}");

@@ -144,6 +144,10 @@ namespace AgOpenWeb.Models
         /// <summary>NTRIP on/off (Network IO). Off: the app does not connect to a caster.</summary>
         public bool NtripEnabled { get; set; } = true;
 
+        /// <summary>The AOW link gateway the virtual terminal reaches the ISOBUS through:
+        /// "host" or "host:port" (port 2323 when left out). Empty: no terminal.</summary>
+        public string VtGateway { get; set; } = string.Empty;
+
         // Vehicle profile settings
         public string LastUsedVehicleProfile { get; set; } = string.Empty;
         public string LastUsedToolProfile { get; set; } = string.Empty;
