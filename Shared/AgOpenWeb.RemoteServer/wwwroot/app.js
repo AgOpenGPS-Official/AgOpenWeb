@@ -5238,6 +5238,7 @@ const UTI = {
 const UTURN_GLYPH = {
   0: 'M7 34 Q7 20 20 20 Q33 20 33 34',         // Sagitta (default) — flatter rounded arch
   1: 'M9 34 L9 22 A11 11 0 0 1 31 22 L31 34',  // K-turn — squared/tighter inverted-U
+  2: 'M15 34 A9 9 0 1 1 25 34',                 // Keyhole — loop centred over a narrow neck
 };
 function renderUTurnIndicator() {
   if (!UTI.root) return;
