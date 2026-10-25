@@ -33,6 +33,8 @@ namespace AgOpenWeb.Services.Tests;
 /// host's <c>ObserverIds</c>, and the client's <c>OBSERVER_IDS</c> is the same list (#397).</item>
 /// <item>Stored credentials (NTRIP passwords, the AgShare key) never go to a client: the
 /// projectors send them only through <c>Secrets.Masked</c> (#397).</item>
+/// <item>Point-in-polygon has one crossing rule, <c>GeometryMath.CrossesSouth</c>, walked by
+/// <c>GeometryMath.IsPointInPolygon</c> or looked up through <c>PolygonSlabIndex</c>.</item>
 /// </list>
 /// </summary>
 [TestFixture]
@@ -330,6 +332,40 @@ public class CodePathContinuityTests
                 .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
                          && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
             : Enumerable.Empty<string>();
+
+    // ── Geometry ──────────────────────────────────────────────────────────
+
+    [Test]
+    public void PointInPolygon_HasOneImplementation()
+    {
+        // A ray cast flips a flag at each edge it crosses, worked out from eastings and
+        // northings. Copies used to differ on points on an edge, missed speed-ups and were
+        // invisible to the hot-path budgets.
+        var allowed = new[] { "GeometryMath.cs", "PolygonSlabIndex.cs" };
+        var toggle = new Regex(@"\b(\w+)\s*=\s*!\1\s*;");
+        var root = RepoRoot();
+        var offenders = new List<string>();
+        foreach (var dir in new[] { "Shared", "Platforms" })
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, dir), "*.cs", SearchOption.AllDirectories))
+        {
+            if (file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
+                || file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                || allowed.Contains(Path.GetFileName(file)))
+                continue;
+            var lines = File.ReadAllLines(file);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (!toggle.IsMatch(lines[i])) continue;
+                var before = string.Join(" ", lines.Skip(Math.Max(0, i - 6)).Take(Math.Min(6, i))).Replace("//", "");
+                if ((before.Contains("Easting") || before.Contains("Northing")) && before.Contains('/'))
+                    offenders.Add($"{Path.GetRelativePath(root, file)}:{i + 1}");
+            }
+        }
+        Assert.That(offenders, Is.Empty,
+            "Point-in-polygon tests go through GeometryMath.IsPointInPolygon (or a PolygonSlabIndex for one " +
+            "tested every tick, as BoundaryPolygon does), so every caller uses one edge rule and is counted by " +
+            "the hot-path budgets. Hand-written ray casts: " + string.Join(", ", offenders));
+    }
 
     private static string RepoRoot()
     {

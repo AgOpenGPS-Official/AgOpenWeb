@@ -980,7 +980,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // must NEVER leave the outer field boundary. Only skip for on-boundary pass 0.
         bool skipBoundaryCheck = isTrackOnBoundary && passNumber == 0;
         if (autoSteerEngaged && !skipBoundaryCheck
-            && !IsPointInsideBoundary(boundary, driftedEasting, driftedNorthing))
+            && boundary?.OuterBoundary is { IsValid: true } outer
+            && !outer.IsPointInside(driftedEasting, driftedNorthing))
         {
             autoSteerEngaged = false;
             autoSteerDisengaged = true;
@@ -1930,31 +1931,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // ══════════════════════════════════════════════════════════════════════
     // Geometry helpers (pure math, no UI)
     // ══════════════════════════════════════════════════════════════════════
-
-    private static bool IsPointInsideBoundary(Boundary? boundary, double easting, double northing)
-    {
-        if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
-            return true;
-
-        var points = boundary.OuterBoundary.Points;
-        int n = points.Count;
-        WorkCounters.PolygonTests++;
-        WorkCounters.PolygonEdges += n;
-        bool inside = false;
-
-        for (int i = 0, j = n - 1; i < n; j = i++)
-        {
-            var pi = points[i];
-            var pj = points[j];
-
-            if (((pi.Northing > northing) != (pj.Northing > northing)) &&
-                (easting < (pj.Easting - pi.Easting) * (northing - pi.Northing) / (pj.Northing - pi.Northing) + pi.Easting))
-            {
-                inside = !inside;
-            }
-        }
-        return inside;
-    }
 
     private static double FindNearestSegmentHeading(List<Vec3> points, double easting, double northing)
     {
