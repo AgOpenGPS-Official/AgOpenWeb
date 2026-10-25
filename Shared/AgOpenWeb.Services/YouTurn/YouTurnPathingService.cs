@@ -268,32 +268,34 @@ public sealed class YouTurnPathingService
         if (widthMinusOverlap < 0.5) return;
 
         // Walk outwards perpendicular to the reference track to find the pass-number range
-        // that fits inside the cultivated area.
+        // that fits inside the cultivated area (tested at the track's middle).
         var pointA = referenceTrack.Points[0];
         var pointB = referenceTrack.Points[referenceTrack.Points.Count - 1];
         double perpAngle = abHeading + Math.PI / 2;
         double midE = (pointA.Easting + pointB.Easting) / 2;
         double midN = (pointA.Northing + pointB.Northing) / 2;
 
-        int minPath = 0, maxPath = 0;
-
-        for (int p = 0; p <= 200; p++)
+        bool Inside(int pass)
         {
-            double offsetDist = PassGeometry.Offset(referenceTrack, p, widthMinusOverlap);
-            double testE = midE + Math.Sin(perpAngle) * offsetDist;
-            double testN = midN + Math.Cos(perpAngle) * offsetDist;
-            if (!IsPointInsideCultivatedArea(testE, testN, boundary, headlandLine)) break;
-            maxPath = p;
+            double offsetDist = PassGeometry.Offset(referenceTrack, pass, widthMinusOverlap);
+            return IsPointInsideCultivatedArea(
+                midE + Math.Sin(perpAngle) * offsetDist, midN + Math.Cos(perpAngle) * offsetDist,
+                boundary, headlandLine);
         }
 
-        for (int p = -1; p >= -200; p--)
-        {
-            double offsetDist = PassGeometry.Offset(referenceTrack, p, widthMinusOverlap);
-            double testE = midE + Math.Sin(perpAngle) * offsetDist;
-            double testN = midN + Math.Cos(perpAngle) * offsetDist;
-            if (!IsPointInsideCultivatedArea(testE, testN, boundary, headlandLine)) break;
-            minPath = p;
-        }
+        // Start from the nearest pass inside the area. A line drawn on the fence (All Edges,
+        // a boundary edge) has pass 0 half a tool in, inside a headland wider than that: the
+        // range used to stop there at once, so the snake planned no turns.
+        // Twenty passes either way is far more than any headland; with none inside, the plan is
+        // pass 0 alone, as before (planned once, not again on every cycle).
+        int seed = 0;
+        for (int k = 1; k <= 40 && !Inside(seed); k++)
+            seed = (k % 2 == 1) ? (k + 1) / 2 : -(k / 2);
+        if (!Inside(seed)) seed = 0;
+
+        int minPath = seed, maxPath = seed;
+        while (maxPath - seed < 200 && Inside(maxPath + 1)) maxPath++;
+        while (seed - minPath < 200 && Inside(minPath - 1)) minPath--;
 
         var fullSequence = AgOpenWeb.Services.Track.SwathOrderingService.GeneratePathSequence(
             minPath, maxPath, AgOpenWeb.Services.Track.SwathPattern.Snake);

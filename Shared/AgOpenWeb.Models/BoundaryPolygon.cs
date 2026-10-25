@@ -227,6 +227,8 @@ public class BoundaryPolygon
         if (IsOutsideBounds(easting, northing))
             return false;
 
+        WorkCounters.PolygonTests++;
+        WorkCounters.PolygonEdges += Points.Count;
         bool isInside = false;
         int j = Points.Count - 1;
 
@@ -278,8 +280,10 @@ public class BoundaryPolygon
         // Use spatial index to only check nearby segments (within search radius)
         double searchRadius = halfWidth + GRID_CELL_SIZE; // Section width + one cell margin
 
+        WorkCounters.PolygonTests++;
         foreach (int i in GetNearbySegments(sectionCenter.Easting, sectionCenter.Northing, searchRadius))
         {
+            WorkCounters.PolygonEdges++;
             int j = (i + 1) % Points.Count;
 
             // Transform boundary points to local coordinates

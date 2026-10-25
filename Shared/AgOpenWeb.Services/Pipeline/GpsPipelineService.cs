@@ -1942,6 +1942,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
         var points = boundary.OuterBoundary.Points;
         int n = points.Count;
+        WorkCounters.PolygonTests++;
+        WorkCounters.PolygonEdges += n;
         bool inside = false;
 
         for (int i = 0, j = n - 1; i < n; j = i++)
