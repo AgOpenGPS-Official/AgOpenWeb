@@ -336,6 +336,18 @@ the receiver's correction age, warnings and a message table; bug report dumps ca
 `ntrip_rtcm.txt`. Design, bench results and open checks: `Plans/RTCM_FORWARDING_PLAN.md`;
 bench scripts: `Tools/rtcm-bench`.
 
+## ISOBUS virtual terminal (VT card)
+The VT cards show ISOBUS implements' own screens. `Shared/AgOpenWeb.VirtualTerminal`
+(`IVirtualTerminalService`) runs AgIsoStack-dotnet's terminal stack on the implement bus through
+an AOW link gateway (`AppSettings.VtGateway`, port 2323; the HAT's `aow-linkd`): one to four
+terminals (`AppSettings.VtCount`), as displays in one cab, each implement choosing its terminal in
+its own menu, one card each. Their messages and pictures go to the browsers as `Vt` (with the
+terminal) and `VtImage` frames (`VirtualTerminalRemote`), the painter is in `app.js`, and each
+card sends `vt.*` commands naming its terminal. AgIsoStack-dotnet is not published yet, so the
+terminal is built in only on request, Desktop only, and the project is not in the solution:
+`dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -p:AgIsoStackDir=$HOME/Code/AgIsoStack-dotnet`
+(an absolute path). Without it no terminal is registered and the card never shows.
+
 ## Debugging Tips
 
 1. **iOS simulator issues**: Use `xcrun simctl` commands directly if `dotnet build -t:Run` fails

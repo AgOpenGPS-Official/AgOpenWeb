@@ -53,6 +53,24 @@ public sealed class RemoteServerHost
     public void ShowHardwareMessage(string text, int seconds, bool warning)
         => _ = _ws?.BroadcastAsync(WireCodec.EncodeHardwareMessage(text, seconds, warning));
 
+    /// <summary>The VT card's frames for a client that just connected: its link state, the
+    /// pictures and the latest screen. Empty when the build has no terminal.</summary>
+    public Func<IReadOnlyList<byte[]>>? VtSeedProvider
+    {
+        get => _broadcaster?.VtSeedProvider;
+        set { _vtSeedProvider = value; if (_broadcaster is not null) _broadcaster.VtSeedProvider = value; }
+    }
+    private Func<IReadOnlyList<byte[]>>? _vtSeedProvider;
+
+    /// <summary>The VT card's frames to send since the last broadcast tick, in order (drained:
+    /// each call returns them once). Null or empty when there are none.</summary>
+    public Func<IReadOnlyList<byte[]>?>? VtFramesProvider
+    {
+        get => _broadcaster?.VtFramesProvider;
+        set { _vtFramesProvider = value; if (_broadcaster is not null) _broadcaster.VtFramesProvider = value; }
+    }
+    private Func<IReadOnlyList<byte[]>?>? _vtFramesProvider;
+
     /// <summary>Broadcast the Drive In pick list (#109). The browser that pressed Drive In
     /// shows it.</summary>
     public void ShowDrivePick(IReadOnlyList<FieldEntryDto> fields)
@@ -284,6 +302,8 @@ public sealed class RemoteServerHost
         _ws.IsRestrictedCommand = _isRestricted;
         _broadcaster.WizardProvider = _wizardProvider;
         _broadcaster.PromptProvider = _promptProvider;
+        _broadcaster.VtSeedProvider = _vtSeedProvider;
+        _broadcaster.VtFramesProvider = _vtFramesProvider;
         _broadcaster.RecordedPathProvider = _recordedPathProvider;
         _broadcaster.BoundaryProvider = _boundaryProvider;
         _broadcaster.ViewPrefsProvider = _viewPrefsProvider;
