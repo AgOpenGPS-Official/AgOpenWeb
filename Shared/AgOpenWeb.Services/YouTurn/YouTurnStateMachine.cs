@@ -182,8 +182,8 @@ public sealed class YouTurnStateMachine
         // was already rendered (TurnPath != null) but execution hasn't
         // begun, drop the rendered path so the CREATE branch below
         // recomputes it with the new direction this same cycle. The
-        // override flag itself is cleared inside HandleNormalCreation /
-        // HandleSnakeCreation after consumption — leave it set here.
+        // override flag itself is cleared by TakeDirectionSwap in the
+        // Handle*Creation methods — leave it set here.
         // Mid-arc flips are unsafe and stay no-op.
         if (turn.NextUTurnDirectionLeftOverride.HasValue
             && turn.TurnPath != null
@@ -743,7 +743,22 @@ public sealed class YouTurnStateMachine
             return;
         }
 
-        CreateTurnToPath(in ctx, track, abHeading, headingRadians, guidance, turn, effects, nextPath.Value, "Snake");
+        // The operator swapped the direction: turn onto the nearest unworked pass on that side,
+        // as AgOpenGPS's GetNextNotWorkedTrack does. CompleteTurn then plans the snake again
+        // from that pass.
+        int target = nextPath.Value;
+        if (TakeDirectionSwap(turn, guidance, target))
+        {
+            bool positive = target < guidance.HowManyPathsAway;
+            int skip = _pathing.GetNextUnworkedPathSkip(track, guidance.HowManyPathsAway, positive, ctx.UTurnSkipRows + 1);
+            int swapped = guidance.HowManyPathsAway + (positive ? skip : -skip);
+            if (_pathing.IsPathInsideCultivated(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine))
+                target = swapped;
+            else
+                RefuseDirectionSwap(swapped, effects);
+        }
+
+        CreateTurnToPath(in ctx, track, abHeading, headingRadians, guidance, turn, effects, target, "Snake");
     }
 
     /// <summary>
@@ -767,15 +782,9 @@ public sealed class YouTurnStateMachine
         int pathDiff = nextPath - guidance.HowManyPathsAway;
 
         // The planned path dictates pathDiff (snake / alternative), not the regular skip logic.
+        // The callers have already turned it to the operator's side if the direction was swapped.
         bool positiveOffset = pathDiff > 0;
         turn.IsTurnLeft = positiveOffset ^ guidance.IsHeadingSameWay;
-        // Apply the UI's one-shot direction override before the snake geometry is
-        // committed; clear so the next snake step computes its own direction.
-        if (turn.NextUTurnDirectionLeftOverride is { } overrideLeft)
-        {
-            turn.IsTurnLeft = overrideLeft;
-            turn.NextUTurnDirectionLeftOverride = null;
-        }
         turn.WasHeadingSameWayAtTurnStart = guidance.IsHeadingSameWay;
         turn.NextTrackTurnOffset = Math.Abs(pathDiff) * widthMinusOverlap;
 
@@ -840,6 +849,21 @@ public sealed class YouTurnStateMachine
         }
 
         int nextPath = guidance.HowManyPathsAway + turn.AltSign * turn.AltWidth;
+        // The operator swapped the direction: this turn goes to the other side and the pattern
+        // alternates on from there, as AgOpenGPS's flipped isTurnLeft does.
+        if (TakeDirectionSwap(turn, guidance, nextPath))
+        {
+            int swapped = guidance.HowManyPathsAway - turn.AltSign * turn.AltWidth;
+            if (_pathing.IsPathInsideCultivated(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine))
+            {
+                turn.AltSign = -turn.AltSign;
+                nextPath = swapped;
+            }
+            else
+            {
+                RefuseDirectionSwap(swapped, effects);
+            }
+        }
         if (!_pathing.IsPathInsideCultivated(track, abHeading, nextPath, ctx.Boundary, ctx.HeadlandLine))
         {
             effects.StatusMessage = "End of field reached";
@@ -888,15 +912,22 @@ public sealed class YouTurnStateMachine
         // IsTurnLeft depends on which direction has cultivated area and the current heading.
         // positiveDirection ^ IsHeadingSameWay gives the correct turn direction.
         turn.IsTurnLeft = positiveDirection ^ guidance.IsHeadingSameWay;
-        // Apply the UI's one-shot direction override (set by the U-turn direction
-        // toggle while idle), then clear it so it doesn't leak into a later turn.
-        // Mirrors legacy FormGPS.SwapDirection — the user pre-selects which way
-        // the next U-turn should swing while still in the cultivated row.
-        if (turn.NextUTurnDirectionLeftOverride is { } overrideLeft)
+        // The operator swapped the direction (the U-turn arrow, legacy FormGPS.SwapDirection):
+        // turn the other way, when the pass on that side is inside the field.
+        int pathsToMove = ctx.UTurnSkipRows + 1;
+        int plannedPath = guidance.HowManyPathsAway + (positiveDirection ? pathsToMove : -pathsToMove);
+        if (TakeDirectionSwap(turn, guidance, plannedPath))
         {
-            turn.IsTurnLeft = overrideLeft;
-            turn.NextUTurnDirectionLeftOverride = null;
-            _logger.LogDebug("[YouTurn] Applied direction override: turnLeft={Left}", overrideLeft);
+            int swapped = guidance.HowManyPathsAway + (positiveDirection ? -pathsToMove : pathsToMove);
+            if (_pathing.IsPathInsideCultivated(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine))
+            {
+                turn.IsTurnLeft = !turn.IsTurnLeft;
+                _logger.LogDebug("[YouTurn] Direction swapped: turnLeft={Left}", turn.IsTurnLeft);
+            }
+            else
+            {
+                RefuseDirectionSwap(swapped, effects);
+            }
         }
         turn.WasHeadingSameWayAtTurnStart = guidance.IsHeadingSameWay;
 
@@ -907,6 +938,27 @@ public sealed class YouTurnStateMachine
         effects.IsInYouTurnMapFlag = true;
 
         CreatePathAndSync(in ctx, track, headingRadians, abHeading, guidance, turn, effects);
+    }
+
+    /// <summary>
+    /// Take the operator's direction swap (the U-turn arrow) for a turn planned onto
+    /// <paramref name="plannedPath"/>, and clear it so it never reaches a later turn. True
+    /// when the operator asked for the other side; the caller then picks a pass there.
+    /// </summary>
+    private static bool TakeDirectionSwap(YouTurnWorkingState turn, GuidanceWorkingState guidance, int plannedPath)
+    {
+        if (turn.NextUTurnDirectionLeftOverride is not { } overrideLeft) return false;
+        turn.NextUTurnDirectionLeftOverride = null;
+        // Same rule as CreateTurnToPath: a higher pass number lies right of the AB heading.
+        bool plannedLeft = (plannedPath > guidance.HowManyPathsAway) ^ guidance.IsHeadingSameWay;
+        return overrideLeft != plannedLeft;
+    }
+
+    /// <summary>The swapped side has no pass inside the field: keep the planned turn.</summary>
+    private void RefuseDirectionSwap(int swappedPath, YouTurnEffects effects)
+    {
+        _logger.LogDebug("[YouTurn] Direction swap refused: path {Path} is outside the field", swappedPath);
+        effects.StatusMessage = "U-turn direction not changed: no pass on that side inside the field";
     }
 
     private void CreatePathAndSync(
@@ -966,7 +1018,18 @@ public sealed class YouTurnStateMachine
             guidance.HowManyPathsAway = turn.ReturnPassTargetPath.Value;
             turn.ReturnPassTargetPath = null;
             if (ctx.IsAlternateSkipMode) AdvanceAlternate(turn);
-            else _pathing.AdvanceSnakeSequence(turn);
+            else
+            {
+                _pathing.AdvanceSnakeSequence(turn);
+                // A swapped turn (the U-turn arrow) left the planned order: the next turn
+                // plans the snake again from this pass, as a skip change does (#410).
+                if (turn.SnakeSequence is { } seq && turn.SnakeIndex >= 0 && turn.SnakeIndex < seq.Count
+                    && seq[turn.SnakeIndex] != guidance.HowManyPathsAway)
+                {
+                    turn.SnakeSequence = null;
+                    turn.SnakeIndex = -1;
+                }
+            }
         }
         else
         {

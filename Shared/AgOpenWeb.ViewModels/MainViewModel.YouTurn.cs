@@ -240,14 +240,14 @@ public partial class MainViewModel
             return;
         }
 
-        // Current displayed direction:
-        //   - When armed, the arrow binds to State.YouTurn.IsTurnLeft.
-        //   - When idle, it binds to NextUTurnDirectionLeftOverride; null
-        //     means "no preference" — treat as right (false) so the first
-        //     tap produces a left toggle.
-        bool currentDisplayLeft = State.YouTurn.IsTriggered
-            ? State.YouTurn.IsTurnLeft
-            : (NextUTurnDirectionLeftOverride ?? false);
+        // Flip what the arrow shows. The web's U-turn arrow draws
+        // State.YouTurn.IsTurnLeft, the planned turn's side (SceneProjector),
+        // so a tap must start from that, or from a swap the cycle hasn't
+        // taken yet. Reading the override alone (null = right) made every
+        // tap ask for a left turn: the cycle takes the override in the same
+        // tick, the cache drops back to null, and a left turn never changed
+        // (#411).
+        bool currentDisplayLeft = NextUTurnDirectionLeftOverride ?? State.YouTurn.IsTurnLeft;
 
         NextUTurnDirectionLeftOverride = !currentDisplayLeft;
         StatusMessage = NextUTurnDirectionLeftOverride == true
