@@ -435,8 +435,10 @@ window.RemoteTransport = {
           break;
         }
         case TYPE.VT: {
-          // Virtual terminal (VT card): one JSON message, as the terminal wrote it.
-          handlers.onVt && handlers.onVt(JSON.parse(str()));
+          // Virtual terminal (VT cards): the terminal (255: the link, for all of them), then one
+          // JSON message, as the terminal wrote it.
+          const t = u8();
+          handlers.onVt && handlers.onVt(JSON.parse(str()), t === 255 ? -1 : t);
           break;
         }
         case TYPE.VT_IMAGE: {

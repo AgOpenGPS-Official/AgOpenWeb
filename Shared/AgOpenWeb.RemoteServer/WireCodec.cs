@@ -70,14 +70,15 @@ public static class WireCodec
         return ms.ToArray();
     }
 
-    /// <summary>A virtual terminal message for the VT card: one JSON object, relayed as the
-    /// terminal wrote it (screen, edit, workingSets, alarms, audio, ...) or the host's own
-    /// <c>link</c> state.</summary>
-    public static byte[] EncodeVt(string json)
+    /// <summary>A virtual terminal message for a VT card: the terminal it is about (0 to 3; 255
+    /// for the host's own <c>link</c> state), then one JSON object, relayed as the terminal wrote
+    /// it (screen, edit, workingSets, alarms, audio, ...).</summary>
+    public static byte[] EncodeVt(int terminal, string json)
     {
         using var ms = new MemoryStream();
         using var w = new BinaryWriter(ms);
         w.Write(Vt);
+        w.Write((byte)(terminal is >= 0 and < 255 ? terminal : 255));
         WriteStr(w, json);
         return ms.ToArray();
     }

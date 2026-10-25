@@ -443,7 +443,7 @@ const transport = RemoteTransport.create({
   onToast(msg) { showToast(msg); },
   onHardwareMessage(text, seconds, warning) { showHardwareMessage(text, seconds, warning); },
   onDrivePick(fields) { showDrivePick(fields); },
-  onVt(m) { Vt.message(m); },
+  onVt(m, t) { Vt.message(m, t); },
   onVtImage(id, w, h, rgba) { Vt.image(id, w, h, rgba); },
   // Round-trip link probe reply: token is the performance.now() we sent in diag.ping, so
   // RTT = now − token measures the pure server↔client link (one client clock, no skew).
@@ -5523,33 +5523,32 @@ function renderBoundaryPlayer() {
 }
 
 // Drag chart cards by the header (web docks ln-panels, but charts are free overlays
-// like the native FloatingPanel so the operator can move them out of the way).
-(function wireChartDrag() {
-  for (const id of ['chart-steer', 'chart-heading', 'chart-xte', 'vt-card']) {
-    const card = document.getElementById(id);
-    const hdr = card.querySelector('.chart-hdr');
-    let drag = false, sx = 0, sy = 0, ox = 0, oy = 0;
-    card.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
-    hdr.addEventListener('pointerdown', e => {
-      if (e.target.closest('button, select')) return;
-      e.stopPropagation();
-      const r = zoomRect(card);
-      // zoomRect and clientX are screen pixels; left/top are in the card's own (zoomed)
-      // pixels.
-      drag = true; sx = e.clientX; sy = e.clientY; ox = r.left / uiZoom; oy = r.top / uiZoom;
-      card.style.left = ox + 'px'; card.style.top = oy + 'px'; card.style.right = 'auto';
-      try { hdr.setPointerCapture(e.pointerId); } catch (_) {}
-    });
-    hdr.addEventListener('pointermove', e => {
-      if (!drag) return;
-      card.style.left = (ox + (e.clientX - sx) / uiZoom) + 'px';
-      card.style.top = (oy + (e.clientY - sy) / uiZoom) + 'px';
-    });
-    const end = e => { drag = false; try { hdr.releasePointerCapture(e.pointerId); } catch (_) {} };
-    hdr.addEventListener('pointerup', end);
-    hdr.addEventListener('pointercancel', end);
-  }
-})();
+// like the native FloatingPanel so the operator can move them out of the way). The VT cards,
+// made later, use wireCardDrag too.
+function wireCardDrag(card) {
+  const hdr = card.querySelector('.chart-hdr');
+  let drag = false, sx = 0, sy = 0, ox = 0, oy = 0;
+  card.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
+  hdr.addEventListener('pointerdown', e => {
+    if (e.target.closest('button, select')) return;
+    e.stopPropagation();
+    const r = zoomRect(card);
+    // zoomRect and clientX are screen pixels; left/top are in the card's own (zoomed)
+    // pixels.
+    drag = true; sx = e.clientX; sy = e.clientY; ox = r.left / uiZoom; oy = r.top / uiZoom;
+    card.style.left = ox + 'px'; card.style.top = oy + 'px'; card.style.right = 'auto';
+    try { hdr.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  hdr.addEventListener('pointermove', e => {
+    if (!drag) return;
+    card.style.left = (ox + (e.clientX - sx) / uiZoom) + 'px';
+    card.style.top = (oy + (e.clientY - sy) / uiZoom) + 'px';
+  });
+  const end = e => { drag = false; try { hdr.releasePointerCapture(e.pointerId); } catch (_) {} };
+  hdr.addEventListener('pointerup', end);
+  hdr.addEventListener('pointercancel', end);
+}
+for (const id of ['chart-steer', 'chart-heading', 'chart-xte']) wireCardDrag(document.getElementById(id));
 
 // ---- VT painter ----
 // The virtual terminal's draw list (screens, soft keys, list options) painted in Canvas 2D: no
@@ -5783,305 +5782,60 @@ function vtHit(items, x, y) {
   return null;
 }
 
-// Virtual terminal card: an ISOBUS implement's own screen. The host's terminal flattens the
-// implement's object pool into draw lists (screen, soft keys, input editors) that the VT
-// painter above paints; this card shows them and sends the operator's touches back (vt.* commands, which need
-// control). The host repeats a held key and ends it if control goes. Hidden unless the host
-// has a terminal (its first link message says so).
+// Virtual terminal cards: ISOBUS implements' own screens, one card per terminal (the host runs
+// one to four, as displays in one cab; each implement chooses its terminal in its own menu). A
+// terminal flattens its implement's object pool into draw lists (screen, soft keys, input
+// editors) that the VT painter above paints; its card shows them and sends the operator's
+// touches back (vt.* commands naming the terminal, which need control). The host repeats a held
+// key and ends it if control goes. Hidden unless the host has terminals (its first link message
+// says so, with how many).
 const Vt = (() => {
-  const card = document.getElementById('vt-card');
-  const maskCv = document.getElementById('vt-mask'), mctx = maskCv.getContext('2d');
-  const keysEl = document.getElementById('vt-keys'), msgEl = document.getElementById('vt-msg');
-  const editEl = document.getElementById('vt-edit'), wsSel = document.getElementById('vt-ws');
-  const dot = document.getElementById('vt-dot'), navBtn = document.getElementById('ln-vt');
-  const alarmEl = document.getElementById('vt-alarm'), alarmText = document.getElementById('vt-alarm-text');
+  const navBtn = document.getElementById('ln-vt'), tpl = document.getElementById('vt-card-tpl');
   const SIZES = [320, 400, 480, 600];
   const PAGE = 6; // soft keys shown at once (the terminal's PhysicalKeys)
-  let link = null, session = -1, screen = null, edit = null, workingSets = null, alarms = [];
-  let images = new VtImages();
-  let keyPage = 0, showGateway = false, selecting = null, sizeIx = 1;
-  let audioCtx = null, audioTimer = null;
-  try { sizeIx = Math.max(0, SIZES.indexOf(+localStorage.getItem('vt.size'))); if (sizeIx < 0) sizeIx = 1; } catch (_) {}
-  card.style.setProperty('--vt', SIZES[sizeIx] + 'px');
+  let link = null, session = -1, images = new VtImages(); // picture ids are unique across terminals
+  let audioCtx = null;
+  const terms = []; // one per terminal: its card and what it shows
 
-  const open = () => card.style.display !== 'none';
-  function setOpen(on) {
-    card.style.display = on ? '' : 'none';
-    navBtn.classList.toggle('active', on);
-    if (on) render();
+  // The cards to show: the link's count (one while there is no link, for the gateway editor).
+  function setCount(n) {
+    while (terms.length < n) terms.push(makeTerminal(terms.length));
+    while (terms.length > n) terms.pop().remove();
   }
 
-  function message(m) {
-    switch (m.type) {
-      case 'link':
-        if (m.session !== session) { // a new terminal: its pictures and screens start over
-          session = m.session; screen = null; edit = null; workingSets = null; alarms = [];
-          images = new VtImages();
-        }
-        link = m;
-        navBtn.style.display = '';
-        break;
-      case 'screen': screen = m; break;
-      case 'edit': onEdit(m); break;
-      case 'workingSets': workingSets = m; break;
-      case 'alarms': onAlarms(m.list || []); break;
-      case 'audio': playAudio(m); return;
-      default: return; // volume and later additions: nothing to show yet
+  function message(m, t) {
+    if (t < 0) { // the link: for every terminal
+      if (m.type !== 'link') return;
+      if (m.session !== session) { // new terminals: their pictures and screens start over
+        session = m.session; images = new VtImages();
+        for (const term of terms) term.reset();
+      }
+      link = m;
+      navBtn.style.display = '';
+      setCount(m.state === 'off' ? 1 : Math.max(1, Math.min(4, m.count || 1)));
+      render();
+      return;
     }
-    if (open()) render();
-    else renderNav();
+    if (terms[t]) terms[t].message(m);
   }
 
   function image(id, w, h, rgba) { images.add(id, w, h, rgba); }
 
-  // A new alarm reaches the operator with the card closed: the card opens, and an alarm
-  // from an implement that isn't shown offers to show it.
-  function onAlarms(list) {
-    const before = new Set(alarms.map(a => a.ws + ':' + a.mask));
-    alarms = list;
-    if (list.some(a => !before.has(a.ws + ':' + a.mask)) && !open()) setOpen(true);
-  }
-
-  function onEdit(m) {
-    edit = m.o === null ? null : m;
-    // A boolean toggles without an editor, when this browser asked for it.
-    if (edit && edit.kind === 'bool' && selecting === edit.o && iHoldControl) {
-      transport.send('vt.number|' + edit.o + ',' + (edit.value ? 0 : 1));
-      edit = null;
-    }
-    selecting = null;
-  }
-
-  function wsLabel(ws) { return tr('Implement') + ' ' + ws.address + (ws.state === 'transferring' ? ' (' + ws.progress + '%)' : ''); }
-
-  function renderNav() {
-    navBtn.classList.toggle('active', open());
-    const st = link ? link.state : 'off';
-    dot.className = 'vt-dot ' + (st === 'connected' ? 'ok' : st === 'connecting' ? 'wait' : st === 'failed' ? 'bad' : '');
-    dot.title = st === 'connected' ? (link.name || link.gateway) + (link.rtt != null ? ' · ' + link.rtt + ' ms' : '') + (link.bus ? ' · ' + link.bus : '')
-      : st === 'connecting' ? tr('Connecting to {gw}', { gw: link.gateway }) + (link.why ? ' (' + link.why + ')' : '') : '';
-  }
-
   function render() {
-    renderNav();
-    if (!open()) return;
-    // Implement picker: shown with two or more implements.
-    const list = (workingSets && workingSets.list || []).filter(w => w.selectable !== false);
-    wsSel.style.display = list.length > 1 ? '' : 'none';
-    if (list.length > 1) {
-      wsSel.innerHTML = '';
-      for (const w of list) {
-        const o = document.createElement('option');
-        o.value = w.name; o.textContent = wsLabel(w); o.title = w.name;
-        o.selected = workingSets.active === w.name;
-        wsSel.appendChild(o);
-      }
-    }
-    // Alarm from an implement that isn't shown.
-    const away = alarms.find(a => !screen || a.ws !== screen.ws);
-    alarmEl.classList.toggle('show', !!away);
-    if (away) { alarmText.textContent = tr('Alarm') + ': ' + tr('Implement') + ' ' + away.address; alarmEl.dataset.ws = away.ws; }
-
-    const msg = statusMessage();
-    msgEl.style.display = msg ? '' : 'none';
-    if (msg) { if (msgEl.dataset.msg !== msg.key) { msgEl.dataset.msg = msg.key; msgEl.innerHTML = ''; msg.build(msgEl); } }
-    else msgEl.dataset.msg = '';
-    paint();
-    renderEdit();
+    navBtn.classList.toggle('active', terms.some(term => term.open()));
+    for (const term of terms) term.render();
   }
 
-  // What covers the mask instead of a screen, or null when there's a screen to show.
-  function statusMessage() {
-    const text = (t, sub) => el => {
-      const d = document.createElement('div'); d.textContent = t; el.appendChild(d);
-      if (sub) { const s = document.createElement('div'); s.className = 'vt-sub'; s.textContent = sub; el.appendChild(s); }
-    };
-    if (showGateway || !link || link.state === 'off') return { key: 'gw', build: buildGateway };
-    if (link.state === 'failed') return { key: 'failed' + link.why, build: text(tr('The terminal could not start.'), link.why) };
-    if (link.state !== 'connected')
-      return { key: 'conn' + link.why, build: text(tr('Connecting to {gw}', { gw: link.gateway }), link.why) };
-    if (!screen || !screen.ws || !screen.kind) {
-      const ws = workingSets && workingSets.list && workingSets.list[0];
-      if (ws && ws.state === 'transferring') return { key: 'up' + ws.progress, build: text(tr('Loading the implement\'s screens: {p}%', { p: ws.progress })) };
-      if (ws && ws.state === 'parsing') return { key: 'parse', build: text(tr('Loading the implement\'s screens')) };
-      if (ws && ws.state === 'failed') return { key: 'bad', build: text(tr('The implement\'s screens were refused.')) };
-      return { key: 'none', build: text(tr('No implement'), link.name || link.gateway) };
-    }
-    return null;
-  }
-
-  function buildGateway(el) {
-    const d = document.createElement('div'); d.textContent = tr('ISOBUS gateway'); el.appendChild(d);
-    const inp = document.createElement('input');
-    inp.placeholder = '192.168.1.10'; inp.value = link && link.gateway || '';
-    inp.autocapitalize = 'off'; inp.spellcheck = false;
-    el.appendChild(inp);
-    const sub = document.createElement('div'); sub.className = 'vt-sub';
-    sub.textContent = tr('Address of the AOW link gateway on the implement bus (port 2323). Empty: off.');
-    el.appendChild(sub);
-    const row = document.createElement('div'); row.className = 'vt-row';
-    const ok = document.createElement('button'); ok.className = 'fo-btn'; ok.textContent = tr('Connect');
-    ok.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      transport.send('vt.gateway|' + inp.value.trim());
-      showGateway = false; msgEl.dataset.msg = ''; render();
-    });
-    row.appendChild(ok);
-    if (link && link.state !== 'off') {
-      const cancel = document.createElement('button'); cancel.className = 'fo-btn'; cancel.textContent = tr('Cancel');
-      cancel.addEventListener('pointerdown', e => { e.preventDefault(); showGateway = false; render(); });
-      row.appendChild(cancel);
-    }
-    el.appendChild(row);
-  }
-
-  function paint() {
-    if (!screen || !screen.kind) { keysEl.innerHTML = ''; return; }
-    maskCv.width = screen.w; maskCv.height = screen.h;
-    mctx.setTransform(1, 0, 0, 1, 0, 0);
-    vtPaintMask(mctx, screen, images);
-    // Soft keys: a page of PAGE at a time, with a pager when the mask holds more.
-    const keys = screen.keys ? screen.keys.keys : [];
-    const pages = Math.max(1, Math.ceil(keys.length / PAGE));
-    if (keyPage >= pages) keyPage = 0;
-    const want = PAGE + (pages > 1 ? 1 : 0);
-    if (keysEl.childElementCount !== want || keysEl.dataset.pages !== String(pages)) {
-      keysEl.innerHTML = ''; keysEl.dataset.pages = pages;
-      for (let i = 0; i < PAGE; i++) { const c = document.createElement('canvas'); c.dataset.slot = i; keysEl.appendChild(c); wireKey(c); }
-      if (pages > 1) {
-        const b = document.createElement('button'); b.textContent = '⇣';
-        b.addEventListener('pointerdown', e => { e.preventDefault(); keyPage = (keyPage + 1) % pages; paint(); });
-        keysEl.appendChild(b);
-      }
-    }
-    for (let i = 0; i < PAGE; i++) {
-      const c = keysEl.children[i], k = keyPage * PAGE + i;
-      const kw = screen.keys ? screen.keys.w : 80, kh = screen.keys ? screen.keys.h : 80;
-      c.width = kw; c.height = kh;
-      const kc = c.getContext('2d');
-      kc.setTransform(1, 0, 0, 1, 0, 0);
-      if (screen.keys && k < keys.length) vtPaintKey(kc, screen.keys, k, images);
-      else { kc.fillStyle = screen.keys ? screen.keys.bg : '#808080'; kc.fillRect(0, 0, kw, kh); }
-    }
-  }
-
-  // Press, then release or abort: pointer up over the same thing releases; leaving it or a
-  // cancelled touch aborts. A press must always end, so a lost pointer aborts too.
-  function trackPress(el, kind, o, still) {
-    transport.send('vt.key|' + kind + ',' + o + ',p');
-    let done = false;
-    const end = state => {
-      if (done) return; done = true;
-      transport.send('vt.key|' + kind + ',' + o + ',' + state);
-      el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', cancel);
-      el.removeEventListener('pointermove', move); el.removeEventListener('lostpointercapture', cancel);
-    };
-    const up = e => end(still(e) ? 'r' : 'a');
-    const cancel = () => end('a');
-    const move = e => { if (!still(e)) end('a'); };
-    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', cancel);
-    el.addEventListener('pointermove', move); el.addEventListener('lostpointercapture', cancel);
-  }
-
-  function wireKey(c) {
-    c.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      if (!iHoldControl || !screen || !screen.keys) return;
-      const key = screen.keys.keys[keyPage * PAGE + (+c.dataset.slot)];
-      if (!key) return;
-      try { c.setPointerCapture(e.pointerId); } catch (_) {}
-      const r = c.getBoundingClientRect();
-      trackPress(c, 's', key.o, ev => ev.clientX >= r.left && ev.clientX < r.right && ev.clientY >= r.top && ev.clientY < r.bottom);
-    });
-  }
-
-  function maskPoint(e) {
-    const r = maskCv.getBoundingClientRect();
-    return { x: (e.clientX - r.left) * screen.w / r.width, y: (e.clientY - r.top) * screen.h / r.height };
-  }
-
-  maskCv.addEventListener('pointerdown', e => {
-    e.preventDefault();
-    if (!iHoldControl || !screen || !screen.kind) return;
-    const p = maskPoint(e);
-    const hit = vtHit(screen.items, p.x, p.y);
-    if (!hit || !hit.on) return;
-    if (hit.kind === 'input') { selecting = hit.o; transport.send('vt.select|' + hit.o); return; }
-    if (hit.kind !== 'button') return;
-    try { maskCv.setPointerCapture(e.pointerId); } catch (_) {}
-    trackPress(maskCv, 'b', hit.o, ev => {
-      const q = maskPoint(ev);
-      return q.x >= hit.x && q.x < hit.x + hit.w && q.y >= hit.y && q.y < hit.y + hit.h;
-    });
+  // The nav button: closes every card when any is open, else opens them all.
+  navBtn.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    const any = terms.some(term => term.open());
+    for (const term of terms) term.setOpen(!any);
   });
 
-  // The editor for an open input field (only for the browser holding control).
-  function renderEdit() {
-    const show = !!edit && iHoldControl && open() && !(msgEl.style.display !== 'none');
-    editEl.classList.toggle('show', show);
-    if (!show) { editEl.dataset.o = ''; editEl.innerHTML = ''; return; }
-    const key = edit.ws + ':' + edit.o + ':' + edit.kind + ':' + edit.value;
-    if (editEl.dataset.o === key) return;
-    editEl.dataset.o = key; editEl.innerHTML = '';
-    const row = document.createElement('div'); row.className = 'vt-row';
-    const btn = (label, fn) => {
-      const b = document.createElement('button'); b.className = 'fo-btn'; b.textContent = label;
-      b.addEventListener('pointerdown', ev => { ev.preventDefault(); fn(); }); row.appendChild(b);
-    };
-    const esc = () => transport.send('vt.escape');
-    if (edit.kind === 'number') {
-      const inp = document.createElement('input');
-      inp.inputMode = 'decimal'; inp.value = edit.text;
-      const lo = (edit.min + edit.offset) * edit.scale, hi = (edit.max + edit.offset) * edit.scale;
-      const sub = document.createElement('div'); sub.className = 'vt-sub';
-      sub.textContent = Math.min(lo, hi).toFixed(edit.decimals) + ' … ' + Math.max(lo, hi).toFixed(edit.decimals);
-      const enter = () => {
-        const shown = parseFloat(inp.value.replace(',', '.'));
-        if (!isFinite(shown) || !edit.scale) return;
-        const raw = Math.round(shown / edit.scale) - edit.offset;
-        if (raw < edit.min || raw > edit.max) { sub.textContent = tr('Out of range') + ': ' + sub.textContent; return; }
-        transport.send('vt.number|' + edit.o + ',' + raw);
-      };
-      inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') enter(); else if (ev.key === 'Escape') esc(); });
-      editEl.append(inp, sub);
-      btn(tr('OK'), enter); btn(tr('Cancel'), esc);
-      editEl.appendChild(row);
-      setTimeout(() => { inp.focus(); inp.select(); }, 0);
-    } else if (edit.kind === 'string') {
-      const inp = document.createElement('input');
-      inp.value = edit.value; inp.maxLength = edit.length; inp.autocapitalize = 'off'; inp.spellcheck = false;
-      const enter = () => transport.send('vt.string|' + edit.o + ',' + inp.value);
-      inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') enter(); else if (ev.key === 'Escape') esc(); });
-      editEl.appendChild(inp);
-      btn(tr('OK'), enter); btn(tr('Cancel'), esc);
-      editEl.appendChild(row);
-      setTimeout(() => inp.focus(), 0);
-    } else if (edit.kind === 'list') {
-      const opts = document.createElement('div'); opts.className = 'vt-opts';
-      edit.options.forEach((items, i) => {
-        if (!items) return;
-        const c = document.createElement('canvas');
-        c.width = edit.w; c.height = edit.h;
-        if (i === edit.value) c.classList.add('sel');
-        const cx = c.getContext('2d');
-        cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, edit.w, edit.h);
-        vtPaintItems(cx, items, images);
-        c.addEventListener('pointerdown', ev => { ev.preventDefault(); transport.send('vt.number|' + edit.o + ',' + i); });
-        opts.appendChild(c);
-      });
-      editEl.appendChild(opts);
-      btn(tr('Cancel'), esc);
-      editEl.appendChild(row);
-    } else { // bool opened by the implement or another browser
-      btn(edit.value ? tr('Off') : tr('On'), () => transport.send('vt.number|' + edit.o + ',' + (edit.value ? 0 : 1)));
-      btn(tr('Cancel'), esc);
-      editEl.appendChild(row);
-    }
-  }
-
   // Control Audio Signal: the implement's beeps, as tones (activations 0 stops them).
-  function playAudio(m) {
-    clearTimeout(audioTimer);
+  function playAudio(m, term) {
+    clearTimeout(term.audioTimer);
     if (!m.activations) return;
     try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { return; }
     let n = Math.min(m.activations, 20);
@@ -6091,29 +5845,346 @@ const Vt = (() => {
       g.gain.value = 0.2;
       osc.connect(g); g.connect(audioCtx.destination);
       osc.start(); osc.stop(audioCtx.currentTime + Math.max(20, m.on || 200) / 1000);
-      if (--n > 0) audioTimer = setTimeout(beep, Math.max(20, m.on || 200) + Math.max(20, m.off || 100));
+      if (--n > 0) term.audioTimer = setTimeout(beep, Math.max(20, m.on || 200) + Math.max(20, m.off || 100));
     };
     beep();
   }
 
-  navBtn.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); setOpen(!open()); });
-  document.getElementById('vt-x').addEventListener('pointerdown', e => { e.preventDefault(); setOpen(false); });
-  document.getElementById('vt-gear').addEventListener('pointerdown', e => {
-    e.preventDefault();
-    if (!iHoldControl) return;
-    showGateway = !showGateway; msgEl.dataset.msg = ''; render();
-  });
-  document.getElementById('vt-size').addEventListener('pointerdown', e => {
-    e.preventDefault();
-    sizeIx = (sizeIx + 1) % SIZES.length;
+  function makeTerminal(index) {
+    const card = tpl.content.firstElementChild.cloneNode(true);
+    card.id = 'vt-card-' + index;
+    // Each card a little below and right of the one before, so every header can be reached.
+    card.style.top = 'calc(' + (70 + index * 36) + 'px + var(--sat))';
+    card.style.left = 'calc(' + (80 + index * 36) + 'px + var(--sal))';
+    tpl.parentNode.insertBefore(card, tpl); // beside the chart cards
+    wireCardDrag(card);
+    const q = sel => card.querySelector(sel);
+    const maskCv = q('.vt-mask'), mctx = maskCv.getContext('2d');
+    const keysEl = q('.vt-keys'), msgEl = q('.vt-msg'), editEl = q('.vt-edit'), wsSel = q('.vt-ws');
+    const dot = q('.vt-dot'), nameEl = q('.vt-name'), identEl = q('.vt-ident');
+    const alarmEl = q('.vt-alarm'), alarmText = q('.vt-alarm-text');
+    const sizeKey = 'vt.size' + (index ? '.' + index : '');
+    let screen = null, edit = null, workingSets = null, alarms = [];
+    let keyPage = 0, showGateway = false, selecting = null, sizeIx = 1, identTimer = null;
+    try { sizeIx = SIZES.indexOf(+localStorage.getItem(sizeKey)); if (sizeIx < 0) sizeIx = 1; } catch (_) {}
     card.style.setProperty('--vt', SIZES[sizeIx] + 'px');
-    try { localStorage.setItem('vt.size', SIZES[sizeIx]); } catch (_) {}
-  });
-  wsSel.addEventListener('change', () => { if (iHoldControl) transport.send('vt.activate|' + wsSel.value); });
-  document.getElementById('vt-alarm-show').addEventListener('pointerdown', e => {
-    e.preventDefault();
-    if (iHoldControl && alarmEl.dataset.ws) transport.send('vt.activate|' + alarmEl.dataset.ws);
-  });
+    const send = (cmd, arg) => transport.send('vt.' + cmd + '|' + index + (arg !== undefined ? ',' + arg : ''));
+
+    const term = {
+      audioTimer: null,
+      open: () => card.style.display !== 'none',
+      setOpen(on) {
+        card.style.display = on ? '' : 'none';
+        navBtn.classList.toggle('active', terms.some(x => x.open()));
+        if (on) this.render();
+      },
+      reset() { screen = null; edit = null; workingSets = null; alarms = []; },
+      remove() { clearTimeout(term.audioTimer); clearTimeout(identTimer); card.remove(); },
+      message(m) {
+        switch (m.type) {
+          case 'screen': screen = m; break;
+          case 'edit': onEdit(m); break;
+          case 'workingSets': workingSets = m; break;
+          case 'alarms': onAlarms(m.list || []); break;
+          case 'audio': playAudio(m, term); return;
+          case 'identify': identify(); break;
+          default: return; // volume and later additions: nothing to show yet
+        }
+        if (term.open()) term.render();
+        else navBtn.classList.toggle('active', terms.some(x => x.open()));
+      },
+      render,
+    };
+
+    // A new alarm reaches the operator with the card closed: the card opens, and an alarm
+    // from an implement that isn't shown offers to show it.
+    function onAlarms(list) {
+      const before = new Set(alarms.map(a => a.ws + ':' + a.mask));
+      alarms = list;
+      if (list.some(a => !before.has(a.ws + ':' + a.mask)) && !term.open()) term.setOpen(true);
+    }
+
+    // Identify VT: an implement asks every terminal to show its number while the operator picks
+    // one in its menu. The card opens and shows its number for 3 s.
+    function identify() {
+      identEl.textContent = tr('VT {n}', { n: index + 1 });
+      identEl.classList.add('show');
+      clearTimeout(identTimer);
+      identTimer = setTimeout(() => identEl.classList.remove('show'), 3000);
+      if (!term.open()) term.setOpen(true);
+    }
+
+    function onEdit(m) {
+      edit = m.o === null ? null : m;
+      // A boolean toggles without an editor, when this browser asked for it.
+      if (edit && edit.kind === 'bool' && selecting === edit.o && iHoldControl) {
+        send('number', edit.o + ',' + (edit.value ? 0 : 1));
+        edit = null;
+      }
+      selecting = null;
+    }
+
+    function wsLabel(ws) { return tr('Implement') + ' ' + ws.address + (ws.state === 'transferring' ? ' (' + ws.progress + '%)' : ''); }
+
+    function renderHeader() {
+      nameEl.textContent = terms.length > 1 ? tr('VT {n}', { n: index + 1 }) : tr('Virtual Terminal');
+      const st = link ? link.state : 'off';
+      dot.className = 'vt-dot ' + (st === 'connected' ? 'ok' : st === 'connecting' ? 'wait' : st === 'failed' ? 'bad' : '');
+      dot.title = st === 'connected' ? (link.name || link.gateway) + (link.rtt != null ? ' · ' + link.rtt + ' ms' : '') + (link.bus ? ' · ' + link.bus : '')
+        : st === 'connecting' ? tr('Connecting to {gw}', { gw: link.gateway }) + (link.why ? ' (' + link.why + ')' : '') : '';
+    }
+
+    function render() {
+      renderHeader();
+      if (!term.open()) return;
+      // Implement picker: shown with two or more implements on this terminal.
+      const list = (workingSets && workingSets.list || []).filter(w => w.selectable !== false);
+      wsSel.style.display = list.length > 1 ? '' : 'none';
+      if (list.length > 1) {
+        wsSel.innerHTML = '';
+        for (const w of list) {
+          const o = document.createElement('option');
+          o.value = w.name; o.textContent = wsLabel(w); o.title = w.name;
+          o.selected = workingSets.active === w.name;
+          wsSel.appendChild(o);
+        }
+      }
+      // Alarm from an implement that isn't shown.
+      const away = alarms.find(a => !screen || a.ws !== screen.ws);
+      alarmEl.classList.toggle('show', !!away);
+      if (away) { alarmText.textContent = tr('Alarm') + ': ' + tr('Implement') + ' ' + away.address; alarmEl.dataset.ws = away.ws; }
+
+      const msg = statusMessage();
+      msgEl.style.display = msg ? '' : 'none';
+      if (msg) { if (msgEl.dataset.msg !== msg.key) { msgEl.dataset.msg = msg.key; msgEl.innerHTML = ''; msg.build(msgEl); } }
+      else msgEl.dataset.msg = '';
+      paint();
+      renderEdit();
+    }
+
+    // What covers the mask instead of a screen, or null when there's a screen to show. The
+    // gateway editor is on the first card.
+    function statusMessage() {
+      const text = (t, sub) => el => {
+        const d = document.createElement('div'); d.textContent = t; el.appendChild(d);
+        if (sub) { const s = document.createElement('div'); s.className = 'vt-sub'; s.textContent = sub; el.appendChild(s); }
+      };
+      if (showGateway || ((!link || link.state === 'off') && index === 0)) return { key: 'gw', build: buildGateway };
+      if (!link || link.state === 'off') return { key: 'off', build: text(tr('No gateway')) };
+      if (link.state === 'failed') return { key: 'failed' + link.why, build: text(tr('The terminal could not start.'), link.why) };
+      if (link.state !== 'connected')
+        return { key: 'conn' + link.why, build: text(tr('Connecting to {gw}', { gw: link.gateway }), link.why) };
+      if (!screen || !screen.ws || !screen.kind) {
+        const ws = workingSets && workingSets.list && workingSets.list[0];
+        if (ws && ws.state === 'transferring') return { key: 'up' + ws.progress, build: text(tr('Loading the implement\'s screens: {p}%', { p: ws.progress })) };
+        if (ws && ws.state === 'parsing') return { key: 'parse', build: text(tr('Loading the implement\'s screens')) };
+        if (ws && ws.state === 'failed') return { key: 'bad', build: text(tr('The implement\'s screens were refused.')) };
+        return { key: 'none', build: text(tr('No implement'), terms.length > 1 ? tr('Choose this VT in the implement\'s own settings.') : link.name || link.gateway) };
+      }
+      return null;
+    }
+
+    function buildGateway(el) {
+      const d = document.createElement('div'); d.textContent = tr('ISOBUS gateway'); el.appendChild(d);
+      const inp = document.createElement('input');
+      inp.placeholder = '192.168.1.10'; inp.value = link && link.gateway || '';
+      inp.autocapitalize = 'off'; inp.spellcheck = false;
+      el.appendChild(inp);
+      const sub = document.createElement('div'); sub.className = 'vt-sub';
+      sub.textContent = tr('Address of the AOW link gateway on the implement bus (port 2323). Empty: off.');
+      el.appendChild(sub);
+      // How many terminals: one card each, as displays in one cab.
+      const countRow = document.createElement('div'); countRow.className = 'vt-row';
+      const countLabel = document.createElement('span'); countLabel.textContent = tr('Terminals');
+      const count = document.createElement('select'); count.className = 'vt-ws';
+      const have = link && link.count || 1;
+      for (let n = 1; n <= 4; n++) {
+        const o = document.createElement('option'); o.value = n; o.textContent = n; o.selected = n === have;
+        count.appendChild(o);
+      }
+      countRow.append(countLabel, count);
+      el.appendChild(countRow);
+      const row = document.createElement('div'); row.className = 'vt-row';
+      const ok = document.createElement('button'); ok.className = 'fo-btn'; ok.textContent = tr('Connect');
+      ok.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        if (+count.value !== have) transport.send('vt.count|' + count.value);
+        if (+count.value === have || inp.value.trim() !== (link && link.gateway || '')) transport.send('vt.gateway|' + inp.value.trim());
+        showGateway = false; msgEl.dataset.msg = ''; render();
+      });
+      row.appendChild(ok);
+      if (link && link.state !== 'off') {
+        const cancel = document.createElement('button'); cancel.className = 'fo-btn'; cancel.textContent = tr('Cancel');
+        cancel.addEventListener('pointerdown', e => { e.preventDefault(); showGateway = false; render(); });
+        row.appendChild(cancel);
+      }
+      el.appendChild(row);
+    }
+
+    function paint() {
+      if (!screen || !screen.kind) { keysEl.innerHTML = ''; return; }
+      maskCv.width = screen.w; maskCv.height = screen.h;
+      mctx.setTransform(1, 0, 0, 1, 0, 0);
+      vtPaintMask(mctx, screen, images);
+      // Soft keys: a page of PAGE at a time, with a pager when the mask holds more.
+      const keys = screen.keys ? screen.keys.keys : [];
+      const pages = Math.max(1, Math.ceil(keys.length / PAGE));
+      if (keyPage >= pages) keyPage = 0;
+      const want = PAGE + (pages > 1 ? 1 : 0);
+      if (keysEl.childElementCount !== want || keysEl.dataset.pages !== String(pages)) {
+        keysEl.innerHTML = ''; keysEl.dataset.pages = pages;
+        for (let i = 0; i < PAGE; i++) { const c = document.createElement('canvas'); c.dataset.slot = i; keysEl.appendChild(c); wireKey(c); }
+        if (pages > 1) {
+          const b = document.createElement('button'); b.textContent = '⇣';
+          b.addEventListener('pointerdown', e => { e.preventDefault(); keyPage = (keyPage + 1) % pages; paint(); });
+          keysEl.appendChild(b);
+        }
+      }
+      for (let i = 0; i < PAGE; i++) {
+        const c = keysEl.children[i], k = keyPage * PAGE + i;
+        const kw = screen.keys ? screen.keys.w : 80, kh = screen.keys ? screen.keys.h : 80;
+        c.width = kw; c.height = kh;
+        const kc = c.getContext('2d');
+        kc.setTransform(1, 0, 0, 1, 0, 0);
+        if (screen.keys && k < keys.length) vtPaintKey(kc, screen.keys, k, images);
+        else { kc.fillStyle = screen.keys ? screen.keys.bg : '#808080'; kc.fillRect(0, 0, kw, kh); }
+      }
+    }
+
+    // Press, then release or abort: pointer up over the same thing releases; leaving it or a
+    // cancelled touch aborts. A press must always end, so a lost pointer aborts too.
+    function trackPress(el, kind, o, still) {
+      send('key', kind + ',' + o + ',p');
+      let done = false;
+      const end = state => {
+        if (done) return; done = true;
+        send('key', kind + ',' + o + ',' + state);
+        el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', cancel);
+        el.removeEventListener('pointermove', move); el.removeEventListener('lostpointercapture', cancel);
+      };
+      const up = e => end(still(e) ? 'r' : 'a');
+      const cancel = () => end('a');
+      const move = e => { if (!still(e)) end('a'); };
+      el.addEventListener('pointerup', up); el.addEventListener('pointercancel', cancel);
+      el.addEventListener('pointermove', move); el.addEventListener('lostpointercapture', cancel);
+    }
+
+    function wireKey(c) {
+      c.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        if (!iHoldControl || !screen || !screen.keys) return;
+        const key = screen.keys.keys[keyPage * PAGE + (+c.dataset.slot)];
+        if (!key) return;
+        try { c.setPointerCapture(e.pointerId); } catch (_) {}
+        const r = c.getBoundingClientRect();
+        trackPress(c, 's', key.o, ev => ev.clientX >= r.left && ev.clientX < r.right && ev.clientY >= r.top && ev.clientY < r.bottom);
+      });
+    }
+
+    function maskPoint(e) {
+      const r = maskCv.getBoundingClientRect();
+      return { x: (e.clientX - r.left) * screen.w / r.width, y: (e.clientY - r.top) * screen.h / r.height };
+    }
+
+    maskCv.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (!iHoldControl || !screen || !screen.kind) return;
+      const p = maskPoint(e);
+      const hit = vtHit(screen.items, p.x, p.y);
+      if (!hit || !hit.on) return;
+      if (hit.kind === 'input') { selecting = hit.o; send('select', hit.o); return; }
+      if (hit.kind !== 'button') return;
+      try { maskCv.setPointerCapture(e.pointerId); } catch (_) {}
+      trackPress(maskCv, 'b', hit.o, ev => {
+        const q = maskPoint(ev);
+        return q.x >= hit.x && q.x < hit.x + hit.w && q.y >= hit.y && q.y < hit.y + hit.h;
+      });
+    });
+
+    // The editor for an open input field (only for the browser holding control).
+    function renderEdit() {
+      const show = !!edit && iHoldControl && term.open() && !(msgEl.style.display !== 'none');
+      editEl.classList.toggle('show', show);
+      if (!show) { editEl.dataset.o = ''; editEl.innerHTML = ''; return; }
+      const key = edit.ws + ':' + edit.o + ':' + edit.kind + ':' + edit.value;
+      if (editEl.dataset.o === key) return;
+      editEl.dataset.o = key; editEl.innerHTML = '';
+      const row = document.createElement('div'); row.className = 'vt-row';
+      const btn = (label, fn) => {
+        const b = document.createElement('button'); b.className = 'fo-btn'; b.textContent = label;
+        b.addEventListener('pointerdown', ev => { ev.preventDefault(); fn(); }); row.appendChild(b);
+      };
+      const esc = () => send('escape');
+      if (edit.kind === 'number') {
+        const inp = document.createElement('input');
+        inp.inputMode = 'decimal'; inp.value = edit.text;
+        const lo = (edit.min + edit.offset) * edit.scale, hi = (edit.max + edit.offset) * edit.scale;
+        const sub = document.createElement('div'); sub.className = 'vt-sub';
+        sub.textContent = Math.min(lo, hi).toFixed(edit.decimals) + ' … ' + Math.max(lo, hi).toFixed(edit.decimals);
+        const enter = () => {
+          const shown = parseFloat(inp.value.replace(',', '.'));
+          if (!isFinite(shown) || !edit.scale) return;
+          const raw = Math.round(shown / edit.scale) - edit.offset;
+          if (raw < edit.min || raw > edit.max) { sub.textContent = tr('Out of range') + ': ' + sub.textContent; return; }
+          send('number', edit.o + ',' + raw);
+        };
+        inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') enter(); else if (ev.key === 'Escape') esc(); });
+        editEl.append(inp, sub);
+        btn(tr('OK'), enter); btn(tr('Cancel'), esc);
+        editEl.appendChild(row);
+        setTimeout(() => { inp.focus(); inp.select(); }, 0);
+      } else if (edit.kind === 'string') {
+        const inp = document.createElement('input');
+        inp.value = edit.value; inp.maxLength = edit.length; inp.autocapitalize = 'off'; inp.spellcheck = false;
+        const enter = () => send('string', edit.o + ',' + inp.value);
+        inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') enter(); else if (ev.key === 'Escape') esc(); });
+        editEl.appendChild(inp);
+        btn(tr('OK'), enter); btn(tr('Cancel'), esc);
+        editEl.appendChild(row);
+        setTimeout(() => inp.focus(), 0);
+      } else if (edit.kind === 'list') {
+        const opts = document.createElement('div'); opts.className = 'vt-opts';
+        edit.options.forEach((items, i) => {
+          if (!items) return;
+          const c = document.createElement('canvas');
+          c.width = edit.w; c.height = edit.h;
+          if (i === edit.value) c.classList.add('sel');
+          const cx = c.getContext('2d');
+          cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, edit.w, edit.h);
+          vtPaintItems(cx, items, images);
+          c.addEventListener('pointerdown', ev => { ev.preventDefault(); send('number', edit.o + ',' + i); });
+          opts.appendChild(c);
+        });
+        editEl.appendChild(opts);
+        btn(tr('Cancel'), esc);
+        editEl.appendChild(row);
+      } else { // bool opened by the implement or another browser
+        btn(edit.value ? tr('Off') : tr('On'), () => send('number', edit.o + ',' + (edit.value ? 0 : 1)));
+        btn(tr('Cancel'), esc);
+        editEl.appendChild(row);
+      }
+    }
+
+    q('.vt-x').addEventListener('pointerdown', e => { e.preventDefault(); term.setOpen(false); });
+    q('.vt-gear').addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (!iHoldControl) return;
+      showGateway = !showGateway; msgEl.dataset.msg = ''; render();
+    });
+    q('.vt-size').addEventListener('pointerdown', e => {
+      e.preventDefault();
+      sizeIx = (sizeIx + 1) % SIZES.length;
+      card.style.setProperty('--vt', SIZES[sizeIx] + 'px');
+      try { localStorage.setItem(sizeKey, SIZES[sizeIx]); } catch (_) {}
+    });
+    wsSel.addEventListener('change', () => { if (iHoldControl) send('activate', wsSel.value); });
+    q('.vt-alarm-show').addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (iHoldControl && alarmEl.dataset.ws) send('activate', alarmEl.dataset.ws);
+    });
+
+    return term;
+  }
 
   return { message, image, render };
 })();

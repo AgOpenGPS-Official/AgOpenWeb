@@ -1153,16 +1153,16 @@
     /* Virtual terminal card: the ISOBUS implement's own screen (data or alarm mask) with its
        soft key column, painted from the terminal's draw list by /vtpaint.js. Floating and
        draggable like the chart cards; shown only when the host has a terminal. */
-    #vt-card { top: calc(70px + var(--sat)); width: auto; --vt: 400px; }
-    #vt-card .vt-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .vt-card { top: calc(70px + var(--sat)); width: auto; --vt: 400px; }
+    .vt-card .vt-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .vt-dot { width: 10px; height: 10px; border-radius: 50%; background: #888; flex: none; }
     .vt-dot.ok { background: #2ecc71; } .vt-dot.wait { background: #f1c40f; } .vt-dot.bad { background: #e74c3c; }
     .vt-hbtn { background: none; border: 0; color: var(--text-dim); font-size: 14px; cursor: pointer; padding: 0 4px; }
     .vt-hbtn:hover { color: var(--text); }
-    #vt-ws { max-width: 180px; height: 22px; font-size: 12px; background: var(--bg-sunken); color: var(--text-2);
+    .vt-ws { max-width: 180px; height: 22px; font-size: 12px; background: var(--bg-sunken); color: var(--text-2);
       border: 1px solid var(--border); border-radius: 4px; }
     .vt-body { position: relative; display: flex; gap: 4px; padding: 4px; }
-    #vt-mask { display: block; width: var(--vt); height: var(--vt); background: #000; touch-action: none; }
+    .vt-mask { display: block; width: var(--vt); height: var(--vt); background: #000; touch-action: none; }
     .vt-keys { display: flex; flex-direction: column; gap: 4px; width: calc(var(--vt) / 6 - 4px); }
     .vt-keys canvas { display: block; width: 100%; aspect-ratio: 1; touch-action: none; border-radius: 3px; }
     .vt-keys button { height: 28px; border: 1px solid var(--border); border-radius: 4px;
@@ -1188,6 +1188,9 @@
     .vt-opts { display: flex; flex-direction: column; gap: 4px; }
     .vt-opts canvas { display: block; width: 100%; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
     .vt-opts canvas.sel { border-color: #4a90d9; }
+    .vt-ident { position: absolute; inset: 4px; display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.6); color: #fff; font-size: 96px; font-weight: 700; pointer-events: none; }
+    .vt-ident.show { display: flex; }
     .fo-btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
     .tl-chartbtn.active { background: rgba(80,160,255,0.28); border-color: #4a90d9; }
     /* Roll Correction panel. */
@@ -2397,19 +2400,23 @@
   </div>
   <!-- Diagnostic chart cards (floating overlays, drawn by renderCharts each frame).
        Each can be open independently; map stays interactive. Drag by the header. -->
-  <div id="vt-card" class="chart-card" style="display:none">
-    <div class="chart-hdr">
-      <span class="vt-title"><span id="vt-dot" class="vt-dot"></span><span>Virtual Terminal</span><select id="vt-ws" style="display:none"></select></span>
-      <span><button id="vt-size" class="vt-hbtn" title="Size">⤢</button><button id="vt-gear" class="vt-hbtn" title="Gateway">⚙</button><button id="vt-x" class="chart-x" title="Close">✕</button></span>
+  <!-- VT cards: one per terminal, made from this (Vt in app.js). -->
+  <template id="vt-card-tpl">
+    <div class="chart-card vt-card" style="display:none">
+      <div class="chart-hdr">
+        <span class="vt-title"><span class="vt-dot"></span><span class="vt-name">Virtual Terminal</span><select class="vt-ws" style="display:none"></select></span>
+        <span><button class="vt-size vt-hbtn" title="Size">⤢</button><button class="vt-gear vt-hbtn" title="Gateway">⚙</button><button class="vt-x chart-x" title="Close">✕</button></span>
+      </div>
+      <div class="vt-alarm"><span class="vt-alarm-text"></span><button class="vt-alarm-show">Show</button></div>
+      <div class="vt-body">
+        <canvas class="vt-mask" width="480" height="480"></canvas>
+        <div class="vt-keys"></div>
+        <div class="vt-msg"></div>
+        <div class="vt-edit"></div>
+        <div class="vt-ident"></div>
+      </div>
     </div>
-    <div id="vt-alarm" class="vt-alarm"><span id="vt-alarm-text"></span><button id="vt-alarm-show">Show</button></div>
-    <div class="vt-body">
-      <canvas id="vt-mask" width="480" height="480"></canvas>
-      <div id="vt-keys" class="vt-keys"></div>
-      <div id="vt-msg" class="vt-msg"></div>
-      <div id="vt-edit" class="vt-edit"></div>
-    </div>
-  </div>
+  </template>
   <div id="chart-steer" class="chart-card" style="display:none">
     <div class="chart-hdr"><span>Steer</span><button class="chart-x" data-chart="steer" title="Close">✕</button></div>
     <canvas class="chart-cv" width="400" height="150"></canvas>

@@ -98,43 +98,62 @@ public static partial class RemoteServerWiring
                                     services.GetRequiredService<AgOpenWeb.Services.Interfaces.IIsobusTaskControllerService>()
                                         .ToggleSectionControl();
                                     return;
-                                // VT card: the implement's soft keys, buttons and input fields.
-                                // vt.key arg = "s" (soft key) or "b" (button), object id, "p" press,
-                                // "r" release, "a" abort; the terminal repeats a held key.
+                                // VT card: the implement's soft keys, buttons and input fields. Each
+                                // arg starts with the terminal ("0," to "3,"): one card per terminal.
+                                // vt.key arg = "t,s|b,id,p|r|a": soft key or button, object id, press,
+                                // release or abort; the terminal repeats a held key.
                                 case "vt.key":
                                 {
                                     var k = arg.Split(',');
-                                    if (vt is not null && k.Length == 3
-                                        && ushort.TryParse(k[1], System.Globalization.NumberStyles.Integer, inv, out var kid))
-                                        vt.Key(k[0] == "b", kid,
-                                            k[2] == "p" ? VtKeyAction.Press : k[2] == "r" ? VtKeyAction.Release : VtKeyAction.Abort);
+                                    if (vt is not null && k.Length == 4
+                                        && int.TryParse(k[0], System.Globalization.NumberStyles.Integer, inv, out var kt)
+                                        && ushort.TryParse(k[2], System.Globalization.NumberStyles.Integer, inv, out var kid))
+                                        vt.Key(kt, k[1] == "b", kid,
+                                            k[3] == "p" ? VtKeyAction.Press : k[3] == "r" ? VtKeyAction.Release : VtKeyAction.Abort);
                                     return;
                                 }
-                                case "vt.select": // arg = object id
-                                    if (vt is not null && ushort.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var sid))
-                                        vt.Select(sid);
-                                    return;
-                                case "vt.number": // arg = "id,raw" (number, bool 0/1, list index)
-                                case "vt.string": // arg = "id,text"
+                                case "vt.select": // arg = "t,id"
                                 {
-                                    var c2 = arg.IndexOf(',');
-                                    if (vt is null || c2 < 0
-                                        || !ushort.TryParse(arg[..c2], System.Globalization.NumberStyles.Integer, inv, out var nid))
-                                        return;
-                                    if (cmd == "vt.string") vt.SetString(nid, arg[(c2 + 1)..]);
-                                    else if (uint.TryParse(arg[(c2 + 1)..], System.Globalization.NumberStyles.Integer, inv, out var raw))
-                                        vt.SetNumber(nid, raw);
+                                    var k = arg.Split(',');
+                                    if (vt is not null && k.Length == 2
+                                        && int.TryParse(k[0], System.Globalization.NumberStyles.Integer, inv, out var st)
+                                        && ushort.TryParse(k[1], System.Globalization.NumberStyles.Integer, inv, out var sid))
+                                        vt.Select(st, sid);
                                     return;
                                 }
-                                case "vt.escape":
-                                    vt?.Escape();
+                                case "vt.number": // arg = "t,id,raw" (number, bool 0/1, list index)
+                                case "vt.string": // arg = "t,id,text"
+                                {
+                                    var c1 = arg.IndexOf(',');
+                                    var c2 = c1 < 0 ? -1 : arg.IndexOf(',', c1 + 1);
+                                    if (vt is null || c2 < 0
+                                        || !int.TryParse(arg[..c1], System.Globalization.NumberStyles.Integer, inv, out var nt)
+                                        || !ushort.TryParse(arg[(c1 + 1)..c2], System.Globalization.NumberStyles.Integer, inv, out var nid))
+                                        return;
+                                    if (cmd == "vt.string") vt.SetString(nt, nid, arg[(c2 + 1)..]);
+                                    else if (uint.TryParse(arg[(c2 + 1)..], System.Globalization.NumberStyles.Integer, inv, out var raw))
+                                        vt.SetNumber(nt, nid, raw);
                                     return;
-                                case "vt.activate": // arg = the implement's NAME, 16 hex digits
-                                    if (vt is not null && ulong.TryParse(arg, System.Globalization.NumberStyles.HexNumber, inv, out var wsName))
-                                        vt.Activate(wsName);
+                                }
+                                case "vt.escape": // arg = "t"
+                                    if (vt is not null && int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var et))
+                                        vt.Escape(et);
                                     return;
+                                case "vt.activate": // arg = "t,NAME": the implement's NAME, 16 hex digits
+                                {
+                                    var k = arg.Split(',');
+                                    if (vt is not null && k.Length == 2
+                                        && int.TryParse(k[0], System.Globalization.NumberStyles.Integer, inv, out var at)
+                                        && ulong.TryParse(k[1], System.Globalization.NumberStyles.HexNumber, inv, out var wsName))
+                                        vt.Activate(at, wsName);
+                                    return;
+                                }
                                 case "vt.gateway": // arg = "host" or "host:port"; "" turns the terminal off
                                     vt?.SetGateway(arg);
+                                    return;
+                                case "vt.count": // arg = how many terminals, 1 to 4
+                                    if (vt is not null && int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var vc))
+                                        vt.SetCount(vc);
                                     return;
                                 case "section.toggle": // Tier-2 (gated); cycle one section
                                     if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var si)

@@ -148,6 +148,10 @@ namespace AgOpenWeb.Models
         /// "host" or "host:port" (port 2323 when left out). Empty: no terminal.</summary>
         public string VtGateway { get; set; } = string.Empty;
 
+        /// <summary>How many virtual terminals, 1 to 4: as displays in one cab, each implement
+        /// choosing one (in its own menu). One VT card each.</summary>
+        public int VtCount { get; set; } = 1;
+
         // Vehicle profile settings
         public string LastUsedVehicleProfile { get; set; } = string.Empty;
         public string LastUsedToolProfile { get; set; } = string.Empty;
