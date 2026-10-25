@@ -263,8 +263,10 @@
       display: flex; align-items: center; gap: 14px; z-index: 20; pointer-events: none;
       filter: drop-shadow(0 1px 3px rgba(0,0,0,0.85)); }
     #uturn-indicator[hidden] { display: none; }
+    /* Padding widens the tap target towards AgOpenGPS's 160x60 zone; the negative margin
+       keeps the layout as it was. */
     .uti-distbox { display: flex; flex-direction: column; align-items: center; gap: 3px;
-      pointer-events: auto; cursor: pointer; }
+      padding: 10px 24px; margin: -10px -24px; pointer-events: auto; cursor: pointer; }
     .uti-arrow { width: 60px; height: 24px; display: block; }
     .uti-arrow.left { transform: scaleX(-1); }
     #uti-distval { color: #EDF7E8; font: 700 16px ui-monospace, monospace; text-shadow: 0 1px 2px #000; white-space: nowrap; }
