@@ -267,4 +267,62 @@ public class YouTurnDirectionToggleTests
             .DidNotReceive()
             .SetNextUTurnDirectionLeftOverride(Arg.Is<bool?>(v => v == true));
     }
+
+    // ── #411: a tap flips the side the arrow shows ───────────────────
+
+    [Test]
+    public void ToggleUTurnDirection_PlannedLeftTurn_PostsRight()
+    {
+        // The web arrow shows the planned turn's side (State.YouTurn.IsTurnLeft)
+        // long before the turn is triggered. A tap asks for the other side; it
+        // used to ask for left every time, so a planned left turn never changed.
+        var builder = new MainViewModelBuilder();
+        var vm = builder.Build();
+        vm.State.YouTurn.IsTurnLeft = true;
+        builder.GpsPipelineService.ClearReceivedCalls();
+
+        vm.ToggleUTurnDirection();
+
+        builder.GpsPipelineService
+            .Received(1)
+            .SetNextUTurnDirectionLeftOverride(Arg.Is<bool?>(v => v == false));
+    }
+
+    [Test]
+    public void ToggleUTurnDirection_AfterTheCycleTookTheSwap_NextTapSwapsBack()
+    {
+        var builder = new MainViewModelBuilder();
+        var vm = builder.Build();
+        vm.State.YouTurn.IsTurnLeft = false; // planned right turn
+
+        vm.ToggleUTurnDirection();
+        Assert.That(vm.NextUTurnDirectionLeftOverride, Is.True);
+
+        // The cycle replans the turn to the left and clears the override.
+        vm.ApplyGpsCycleResult(new GpsCycleResult
+        {
+            YouTurn = new YouTurnSnapshot { IsTurnLeft = true, NextUTurnDirectionLeftOverride = null },
+        });
+        Assert.That(vm.State.YouTurn.IsTurnLeft, Is.True);
+        Assert.That(vm.NextUTurnDirectionLeftOverride, Is.Null);
+        builder.GpsPipelineService.ClearReceivedCalls();
+
+        vm.ToggleUTurnDirection();
+
+        builder.GpsPipelineService
+            .Received(1)
+            .SetNextUTurnDirectionLeftOverride(Arg.Is<bool?>(v => v == false));
+    }
+
+    [Test]
+    public void ToggleUTurnDirection_TwiceBeforeTheCycleTakesIt_EndsOnThePlannedSide()
+    {
+        var vm = new MainViewModelBuilder().Build();
+        vm.State.YouTurn.IsTurnLeft = false;
+
+        vm.ToggleUTurnDirection();
+        vm.ToggleUTurnDirection();
+
+        Assert.That(vm.NextUTurnDirectionLeftOverride, Is.False);
+    }
 }
