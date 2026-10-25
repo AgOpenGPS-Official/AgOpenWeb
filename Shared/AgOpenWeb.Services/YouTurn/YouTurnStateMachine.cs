@@ -65,6 +65,13 @@ public sealed class YouTurnStateMachine
     private readonly ILogger<YouTurnStateMachine> _logger;
     private readonly ConfigurationStore _configStore;
 
+    // The snake's worked-pass test samples a pass across the whole field, so each pass is
+    // decided once per plan and per turn, not on every cycle: a finished field plans no turn
+    // and would otherwise test every pass again on each cycle. Cleared when the snake is
+    // planned again, a turn completes, or the track, nudge or cultivated area changes.
+    private readonly Dictionary<int, bool> _coveredPasses = new();
+    private (List<int>? Plan, Models.Track.Track? Track, double Nudge, Boundary? Boundary, IReadOnlyList<Vec3>? Headland) _coveredPassesKey;
+
     public YouTurnStateMachine(
         YouTurnCreationService creation,
         YouTurnPathingService pathing,
@@ -171,7 +178,7 @@ public sealed class YouTurnStateMachine
         {
             // In the headland at the far end of a field: the tractor reached the end of the
             // current pass; the snake sequence may still have more passes to work.
-            canCreateTurn = _pathing.GetNextSnakePath(turn, WorkedPasses(in ctx, track, guidance)).HasValue;
+            canCreateTurn = _pathing.GetNextSnakePath(turn, WorkedPasses(in ctx, track, guidance, turn)).HasValue;
         }
 
         // Default: no armable trigger point — widget shows nothing meaningful.
@@ -740,7 +747,7 @@ public sealed class YouTurnStateMachine
         }
 
         // Never onto a worked pass: the next pass of the order that is still to do.
-        var isWorked = WorkedPasses(in ctx, track, guidance);
+        var isWorked = WorkedPasses(in ctx, track, guidance, turn);
         int? nextPath = _pathing.GetNextSnakePath(turn, isWorked);
         if (nextPath == null)
         {
@@ -769,15 +776,32 @@ public sealed class YouTurnStateMachine
 
     /// <summary>
     /// The worked-pass test for the snake: marked worked, or covered on the job's map
-    /// (<see cref="YouTurnPathingService.IsPassWorked"/>).
+    /// (<see cref="YouTurnPathingService.IsPassWorked"/>). The map test is remembered for the
+    /// plan in hand (see <see cref="_coveredPasses"/>); the tractor's own pass, the only one
+    /// being covered as it drives, is never the next pass of the plan.
     /// </summary>
-    private Func<int, bool> WorkedPasses(in TickContext ctx, Models.Track.Track track, GuidanceWorkingState guidance)
+    private Func<int, bool> WorkedPasses(in TickContext ctx, Models.Track.Track track, GuidanceWorkingState guidance,
+        YouTurnWorkingState turn)
     {
         var boundary = ctx.Boundary;
         var headlandLine = ctx.HeadlandLine;
         var isPointCovered = ctx.IsPointCovered;
         double nudge = guidance.NudgeOffset;
-        return pass => _pathing.IsPassWorked(track, pass, nudge, boundary, headlandLine, isPointCovered);
+        var plan = turn.SnakeSequence;
+        if (!ReferenceEquals(plan, _coveredPassesKey.Plan) || !ReferenceEquals(track, _coveredPassesKey.Track)
+            || nudge != _coveredPassesKey.Nudge || !ReferenceEquals(boundary, _coveredPassesKey.Boundary)
+            || !ReferenceEquals(headlandLine, _coveredPassesKey.Headland))
+        {
+            _coveredPasses.Clear();
+            _coveredPassesKey = (plan, track, nudge, boundary, headlandLine);
+        }
+        return pass =>
+        {
+            if (track.IsPathWorked(pass)) return true;
+            if (!_coveredPasses.TryGetValue(pass, out bool covered))
+                _coveredPasses[pass] = covered = _pathing.IsPassWorked(track, pass, nudge, boundary, headlandLine, isPointCovered);
+            return covered;
+        };
     }
 
     /// <summary>
@@ -1043,7 +1067,8 @@ public sealed class YouTurnStateMachine
                 // planned order: the next turn plans the snake again from this pass, as a skip
                 // change does (#410).
                 _pathing.AdvanceSnakeSequence(turn, guidance.HowManyPathsAway,
-                    WorkedPasses(in ctx, ctx.SelectedTrack, guidance));
+                    WorkedPasses(in ctx, ctx.SelectedTrack, guidance, turn));
+                _coveredPasses.Clear(); // decided again for the next turn
             }
         }
         else

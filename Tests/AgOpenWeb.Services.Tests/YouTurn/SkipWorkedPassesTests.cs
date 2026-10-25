@@ -151,6 +151,65 @@ public class SkipWorkedPassesTests
         Assert.That(turn.ReturnPassTargetPath, Is.EqualTo(2));
     }
 
+    [Test]
+    public void AtTheEndOfAFinishedField_PassesAreNotTestedOnEveryCycle()
+    {
+        // A finished field plans no turn, so the planner asks again on every cycle, from the
+        // cultivated area and then from the headland. The map test samples a pass across the
+        // whole field: it is made once per plan, not once per cycle.
+        var bench = new Bench();
+        var (guidance, turn) = bench.OnPass(-3, headingSouth: true);
+        int lookups = 0;
+        bench.Covered = (e, n) => { lookups++; return true; };
+
+        bench.Tick(guidance, turn);
+        int firstCycle = lookups;
+        for (int i = 0; i < 20; i++) bench.Tick(guidance, turn);
+        bench.DriveTo(-50); // past the turn line, in the headland
+        for (int i = 0; i < 20; i++) bench.Tick(guidance, turn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(firstCycle, Is.GreaterThan(0), "the first cycle tests the passes");
+            Assert.That(lookups, Is.EqualTo(firstCycle), "no cycle after it tests them again");
+            Assert.That(turn.TurnPath, Is.Null);
+        });
+    }
+
+    [Test]
+    public void APassOutsideTheOrder_IsPlannedOnce()
+    {
+        // The tractor on a pass whose middle is outside the cultivated area (an odd-shaped
+        // field): the plan starts from it and goes on to the first pass of the order. It used
+        // to leave the plan off the tractor's pass, so the plan was made again on every cycle.
+        var bench = new Bench();
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = -4 };
+        var turn = new YouTurnWorkingState();
+
+        bench.Plan(guidance, turn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(YouTurnPathingService.IsSnakeOnPass(turn, -4), Is.True);
+            Assert.That(bench.Pathing.GetNextSnakePath(turn, _ => false), Is.EqualTo(-3), "the first pass of the order");
+        });
+    }
+
+    [Test]
+    public void OnACurve_APassCoveredOnTheMap_IsWorked()
+    {
+        var bench = new Bench();
+        var curve = Models.Track.Track.FromCurve("Curve",
+            Enumerable.Range(-100, 201).Select(y => new Vec3(0, y, 0)).ToList());
+        Func<double, double, bool> covered = (e, n) => Math.Abs(e - PassX(-1)) < Width / 2;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(bench.IsPassWorked(curve, -1, covered), Is.True);
+            Assert.That(bench.IsPassWorked(curve, 0, covered), Is.False);
+        });
+    }
+
     // ── Bench ────────────────────────────────────────────────────────────
 
     /// <summary>The real planner on the report's field (8 m tool, 8 m radius, 16 m legs), skip 1.</summary>
@@ -164,6 +223,8 @@ public class SkipWorkedPassesTests
 
         /// <summary>The job's coverage map (easting, northing); null = nothing covered.</summary>
         public Func<double, double, bool>? Covered { get; set; }
+
+        public YouTurnPathingService Pathing { get; }
 
         public Bench()
         {
@@ -181,8 +242,8 @@ public class SkipWorkedPassesTests
 
             var offset = new PolygonOffsetService();
             var creation = new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, offset, c);
-            var pathing = new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, c);
-            _sm = new YouTurnStateMachine(creation, pathing, NullLogger<YouTurnStateMachine>.Instance, c);
+            Pathing = new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, c);
+            _sm = new YouTurnStateMachine(creation, Pathing, NullLogger<YouTurnStateMachine>.Instance, c);
 
             var outer = new List<Vec2> { new(-38, -60), new(38, -60), new(38, 60), new(-38, 60) };
             _boundary = new Boundary
@@ -212,6 +273,16 @@ public class SkipWorkedPassesTests
             _heading = headingSouth ? 180 : 0;
             guidance.HowManyPathsAway = pass;
         }
+
+        /// <summary>The tractor drives on along its pass to <paramref name="northing"/>.</summary>
+        public void DriveTo(double northing) => _y = northing;
+
+        /// <summary>Plan the snake from the pass <paramref name="guidance"/> is on.</summary>
+        public void Plan(GuidanceWorkingState guidance, YouTurnWorkingState turn) =>
+            Pathing.BuildSnakeSequence(_track, 0, guidance, turn, _boundary, _turnLine);
+
+        public bool IsPassWorked(Models.Track.Track track, int pass, Func<double, double, bool> covered) =>
+            Pathing.IsPassWorked(track, pass, 0, _boundary, _turnLine, covered);
 
         /// <summary>Sections were on while the tractor was on these passes.</summary>
         public void Worked(params int[] passes)

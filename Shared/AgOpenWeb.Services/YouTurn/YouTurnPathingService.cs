@@ -299,12 +299,16 @@ public sealed class YouTurnPathingService
             minPath, maxPath, AgOpenWeb.Services.Track.SwathPattern.Snake);
 
         // Rotate so the sequence starts at the current pass — the tractor may start anywhere in the field.
-        // A pass outside the order (its middle is outside the cultivated area) goes on to the first one.
+        // A pass outside the order (its middle is outside the cultivated area) is put in front of
+        // it, so the plan still starts from the pass the tractor is on and goes on to the first
+        // one; otherwise the plan would be made again on every cycle.
         int currentIdx = fullSequence.IndexOf(guidance.HowManyPathsAway);
         turn.SnakeSequence = currentIdx > 0
             ? fullSequence.Skip(currentIdx).Concat(fullSequence.Take(currentIdx)).ToList()
-            : fullSequence;
-        turn.SnakeIndex = currentIdx >= 0 ? 0 : -1;
+            : currentIdx < 0
+                ? fullSequence.Prepend(guidance.HowManyPathsAway).ToList()
+                : fullSequence;
+        turn.SnakeIndex = 0;
 
         _logger.LogDebug("[YouTurn] Built snake sequence (rotated from path {Cur}): [{Seq}]",
             guidance.HowManyPathsAway, string.Join(", ", turn.SnakeSequence));
@@ -375,50 +379,98 @@ public sealed class YouTurnPathingService
 
         double widthMinusOverlap = _configStore.ActualToolWidth - _configStore.Tool.Overlap;
         double distAway = PassGeometry.Offset(track, pass, widthMinusOverlap, nudgeOffset);
+        var area = CultivatedPolygon(boundary, headlandLine);
         int inside = 0, covered = 0;
-
-        void Sample(double e, double n)
-        {
-            if (!IsPointInsideCultivatedArea(e, n, boundary, headlandLine)) return;
-            inside++;
-            if (isPointCovered(e, n)) covered++;
-        }
 
         if (track.Points.Count > 2)
         {
-            foreach (var p in CurveProcessing.CreateOffsetCurve(track.Points, distAway))
-                Sample(p.Easting, p.Northing);
+            // The pass every 5 m or more. The curve is taken to 5 m before it is offset (the offset
+            // compares every point with every other one), and each sample costs a point-in-polygon
+            // test after a test against the area's bounding box, so the area's edge is taken to
+            // 5 m as well: a curve or a headland line has a point every metre or so.
+            const double CurveSampleSpacing = 5.0;
+            const double SpacingSq = CurveSampleSpacing * CurveSampleSpacing;
+            var reference = new List<Vec3>();
+            foreach (var p in track.Points)
+                if (reference.Count == 0 || GeometryMath.DistanceSquared(reference[^1], p) >= SpacingSq)
+                    reference.Add(p);
+            if (reference.Count < 2) reference = track.Points;
+
+            double minE = double.MaxValue, maxE = double.MinValue, minN = double.MaxValue, maxN = double.MinValue;
+            if (area != null)
+            {
+                var coarse = new List<Vec2>();
+                foreach (var p in area)
+                {
+                    minE = Math.Min(minE, p.Easting); maxE = Math.Max(maxE, p.Easting);
+                    minN = Math.Min(minN, p.Northing); maxN = Math.Max(maxN, p.Northing);
+                    if (coarse.Count == 0 || GeometryMath.DistanceSquared(coarse[^1], p) >= SpacingSq)
+                        coarse.Add(p);
+                }
+                if (coarse.Count >= 3) area = coarse;
+            }
+
+            foreach (var p in CurveProcessing.CreateOffsetCurve(reference, distAway))
+            {
+                if (area != null
+                    && (p.Easting < minE || p.Easting > maxE || p.Northing < minN || p.Northing > maxN
+                        || !GeometryMath.IsPointInPolygon(area, new Vec2(p.Easting, p.Northing))))
+                    continue;
+                inside++;
+                if (isPointCovered(p.Easting, p.Northing)) covered++;
+            }
         }
         else
         {
-            // The pass line every 2 m, over the length of the field along A→B.
-            const double SampleSpacing = 2.0;
+            if (area == null) return false;
             var a = track.Points[0];
             var b = track.Points[1];
             double dx = b.Easting - a.Easting, dy = b.Northing - a.Northing;
             double len = Math.Sqrt(dx * dx + dy * dy);
             if (len < 0.01) return false;
             double ux = dx / len, uy = dy / len;
-            double tMin = double.MaxValue, tMax = double.MinValue;
-            void Span(double e, double n)
-            {
-                double t = (e - a.Easting) * ux + (n - a.Northing) * uy;
-                tMin = Math.Min(tMin, t);
-                tMax = Math.Max(tMax, t);
-            }
-            if (headlandLine is { Count: >= 3 })
-                foreach (var p in headlandLine) Span(p.Easting, p.Northing);
-            else if (boundary?.OuterBoundary is { IsValid: true } outer)
-                foreach (var p in outer.Points) Span(p.Easting, p.Northing);
-            else
-                return false;
             // Right of A→B is (uy, -ux): the side PassGeometry counts positive.
             double offE = a.Easting + uy * distAway, offN = a.Northing - ux * distAway;
-            for (double t = tMin; t <= tMax; t += SampleSpacing)
-                Sample(offE + ux * t, offN + uy * t);
+
+            // Where the pass line crosses the area's edge, as distances along A→B: it is inside
+            // between the 1st and 2nd crossing, the 3rd and 4th, and so on (the even-odd rule
+            // of the point-in-polygon test). One pass over the edge instead of a point test per
+            // sample; a sample is then only a coverage lookup.
+            var crossings = new List<double>();
+            for (int i = 0, j = area.Count - 1; i < area.Count; j = i++)
+            {
+                var p = area[j];
+                var q = area[i];
+                double sp = (p.Easting - offE) * uy - (p.Northing - offN) * ux; // side of the line
+                double sq = (q.Easting - offE) * uy - (q.Northing - offN) * ux;
+                if ((sp > 0) == (sq > 0)) continue;
+                double tp = (p.Easting - offE) * ux + (p.Northing - offN) * uy;
+                double tq = (q.Easting - offE) * ux + (q.Northing - offN) * uy;
+                crossings.Add(tp + (tq - tp) * sp / (sp - sq));
+            }
+            crossings.Sort();
+
+            // The pass line every 2 m inside the area.
+            const double SampleSpacing = 2.0;
+            for (int k = 0; k + 1 < crossings.Count; k += 2)
+                for (double t = crossings[k] + SampleSpacing / 2; t < crossings[k + 1]; t += SampleSpacing)
+                {
+                    inside++;
+                    if (isPointCovered(offE + ux * t, offN + uy * t)) covered++;
+                }
         }
 
         return inside > 0 && covered * 2 >= inside;
+    }
+
+    /// <summary>The cultivated area's edge: the headland line, else the outer boundary; null when there is neither.</summary>
+    private static List<Vec2>? CultivatedPolygon(Boundary? boundary, IReadOnlyList<Vec3>? headlandLine)
+    {
+        if (headlandLine is { Count: >= 3 })
+            return headlandLine.Select(p => new Vec2(p.Easting, p.Northing)).ToList();
+        if (boundary?.OuterBoundary is { IsValid: true } outer)
+            return outer.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList();
+        return null;
     }
 
     /// <summary>
