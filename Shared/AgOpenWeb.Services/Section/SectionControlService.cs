@@ -201,6 +201,21 @@ public class SectionControlService : ISectionControlService
 
     public void SetFieldContext(AgOpenWeb.Models.Sections.SectionFieldContext context) => Volatile.Write(ref _field, context);
 
+    // The headland line's strip index for the per-tick headland test, kept with the line it
+    // was built from (one object, published whole) and rebuilt when the line is replaced or
+    // changes length.
+    private sealed record HeadlandIndexEntry(IReadOnlyList<Vec3> Line, int Count, PolygonSlabIndex? Index);
+    private HeadlandIndexEntry? _headlandIndex;
+
+    private PolygonSlabIndex? HeadlandIndex(IReadOnlyList<Vec3> line)
+    {
+        var cached = Volatile.Read(ref _headlandIndex);
+        if (cached != null && ReferenceEquals(cached.Line, line) && cached.Count == line.Count) return cached.Index;
+        var index = PolygonSlabIndex.Build(line);
+        Volatile.Write(ref _headlandIndex, new HeadlandIndexEntry(line, line.Count, index));
+        return index;
+    }
+
     public void Update(Vec3 toolPosition, double toolHeading, double vehicleHeading, double speed)
     {
         var tool = _configStore.Tool;
@@ -946,7 +961,7 @@ public class SectionControlService : ISectionControlService
         // swings past the outer boundary in a U-turn: with "Off outside boundary" off a
         // section straddling the boundary still counts as in bounds, so the outer
         // sections painted a half-disc over the boundary at the turn's apex.
-        return !GeometryMath.IsPointInPolygon(headlandLine, point);
+        return !(HeadlandIndex(headlandLine)?.Contains(point.Easting, point.Northing) ?? false);
     }
 
     public (Vec2 left, Vec2 right) GetSectionWorldPosition(int sectionIndex, Vec3 toolPosition, double toolHeading)
