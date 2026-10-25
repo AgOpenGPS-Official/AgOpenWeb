@@ -90,7 +90,8 @@ public sealed class YouTurnStateMachine
         bool IsSkipWorkedMode,
         double HeadlandCalculatedWidth,
         double HeadlandDistance,
-        bool IsAlternateSkipMode = false); // AgOpenGPS SkipMode.Alternative (#111)
+        bool IsAlternateSkipMode = false, // AgOpenGPS SkipMode.Alternative (#111)
+        Func<double, double, bool>? IsPointCovered = null); // the job's coverage: worked passes on the map
 
     /// <summary>
     /// Run one cycle of the state machine. Precondition: autosteer engaged, track active,
@@ -170,7 +171,7 @@ public sealed class YouTurnStateMachine
         {
             // In the headland at the far end of a field: the tractor reached the end of the
             // current pass; the snake sequence may still have more passes to work.
-            canCreateTurn = _pathing.GetNextSnakePath(turn).HasValue;
+            canCreateTurn = _pathing.GetNextSnakePath(turn, WorkedPasses(in ctx, track, guidance)).HasValue;
         }
 
         // Default: no armable trigger point — widget shows nothing meaningful.
@@ -729,13 +730,18 @@ public sealed class YouTurnStateMachine
         YouTurnWorkingState turn,
         YouTurnEffects effects)
     {
-        // Build the rotated snake sequence lazily on first turn.
-        if (turn.SnakeSequence == null)
+        // Plan the snake from the pass the tractor is on: at the first turn, and again when the
+        // tractor isn't on the pass the plan has it on: the operator moved to another pass
+        // midway (snap, or drove there), or a swapped turn left the order. Going on from the
+        // old pass sent the turn onto a worked pass, or back onto the one the tractor was on.
+        if (!YouTurnPathingService.IsSnakeOnPass(turn, guidance.HowManyPathsAway))
         {
             _pathing.BuildSnakeSequence(track, abHeading, guidance, turn, ctx.Boundary, ctx.HeadlandLine);
         }
 
-        int? nextPath = _pathing.GetNextSnakePath(turn);
+        // Never onto a worked pass: the next pass of the order that is still to do.
+        var isWorked = WorkedPasses(in ctx, track, guidance);
+        int? nextPath = _pathing.GetNextSnakePath(turn, isWorked);
         if (nextPath == null)
         {
             _logger.LogDebug("[YouTurn] Snake sequence complete — field done");
@@ -750,7 +756,7 @@ public sealed class YouTurnStateMachine
         if (TakeDirectionSwap(turn, guidance, target))
         {
             bool positive = target < guidance.HowManyPathsAway;
-            int skip = _pathing.GetNextUnworkedPathSkip(track, guidance.HowManyPathsAway, positive, ctx.UTurnSkipRows + 1);
+            int skip = _pathing.GetNextUnworkedPathSkip(track, guidance.HowManyPathsAway, positive, ctx.UTurnSkipRows + 1, isWorked);
             int swapped = guidance.HowManyPathsAway + (positive ? skip : -skip);
             if (_pathing.IsPathInsideCultivated(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine))
                 target = swapped;
@@ -759,6 +765,19 @@ public sealed class YouTurnStateMachine
         }
 
         CreateTurnToPath(in ctx, track, abHeading, headingRadians, guidance, turn, effects, target, "Snake");
+    }
+
+    /// <summary>
+    /// The worked-pass test for the snake: marked worked, or covered on the job's map
+    /// (<see cref="YouTurnPathingService.IsPassWorked"/>).
+    /// </summary>
+    private Func<int, bool> WorkedPasses(in TickContext ctx, Models.Track.Track track, GuidanceWorkingState guidance)
+    {
+        var boundary = ctx.Boundary;
+        var headlandLine = ctx.HeadlandLine;
+        var isPointCovered = ctx.IsPointCovered;
+        double nudge = guidance.NudgeOffset;
+        return pass => _pathing.IsPassWorked(track, pass, nudge, boundary, headlandLine, isPointCovered);
     }
 
     /// <summary>
@@ -1018,17 +1037,13 @@ public sealed class YouTurnStateMachine
             guidance.HowManyPathsAway = turn.ReturnPassTargetPath.Value;
             turn.ReturnPassTargetPath = null;
             if (ctx.IsAlternateSkipMode) AdvanceAlternate(turn);
-            else
+            else if (ctx.SelectedTrack != null)
             {
-                _pathing.AdvanceSnakeSequence(turn);
-                // A swapped turn (the U-turn arrow) left the planned order: the next turn
-                // plans the snake again from this pass, as a skip change does (#410).
-                if (turn.SnakeSequence is { } seq && turn.SnakeIndex >= 0 && turn.SnakeIndex < seq.Count
-                    && seq[turn.SnakeIndex] != guidance.HowManyPathsAway)
-                {
-                    turn.SnakeSequence = null;
-                    turn.SnakeIndex = -1;
-                }
+                // On to the pass the turn landed on. A swapped turn (the U-turn arrow) left the
+                // planned order: the next turn plans the snake again from this pass, as a skip
+                // change does (#410).
+                _pathing.AdvanceSnakeSequence(turn, guidance.HowManyPathsAway,
+                    WorkedPasses(in ctx, ctx.SelectedTrack, guidance));
             }
         }
         else
