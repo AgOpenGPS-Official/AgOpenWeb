@@ -93,6 +93,8 @@ namespace AgOpenWeb.Models.Base
 
         public static bool IsPointInPolygon(IReadOnlyList<Vec3> polygon, Vec3 testPoint)
         {
+            WorkCounters.PolygonTests++;
+            WorkCounters.PolygonEdges += polygon.Count;
             bool result = false;
             int j = polygon.Count - 1;
             for (int i = 0; i < polygon.Count; i++)
@@ -114,6 +116,8 @@ namespace AgOpenWeb.Models.Base
 
         public static bool IsPointInPolygon(IReadOnlyList<Vec3> polygon, Vec2 testPoint)
         {
+            WorkCounters.PolygonTests++;
+            WorkCounters.PolygonEdges += polygon.Count;
             bool result = false;
             int j = polygon.Count - 1;
             for (int i = 0; i < polygon.Count; i++)
@@ -135,6 +139,8 @@ namespace AgOpenWeb.Models.Base
 
         public static bool IsPointInPolygon(IReadOnlyList<Vec2> polygon, Vec2 testPoint)
         {
+            WorkCounters.PolygonTests++;
+            WorkCounters.PolygonEdges += polygon.Count;
             bool result = false;
             int j = polygon.Count - 1;
             for (int i = 0; i < polygon.Count; i++)
@@ -156,6 +162,8 @@ namespace AgOpenWeb.Models.Base
 
         public static bool IsPointInPolygon(IReadOnlyList<Vec2> polygon, Vec3 testPoint)
         {
+            WorkCounters.PolygonTests++;
+            WorkCounters.PolygonEdges += polygon.Count;
             bool result = false;
             int j = polygon.Count - 1;
             for (int i = 0; i < polygon.Count; i++)

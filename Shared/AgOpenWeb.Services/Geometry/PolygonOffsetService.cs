@@ -29,6 +29,7 @@ public class PolygonOffsetService : IPolygonOffsetService
     /// <returns>Offset polygon points, or null if offset collapses the polygon</returns>
     public List<Vec2>? CreateInwardOffset(List<Vec2> boundaryPoints, double offsetDistance, OffsetJoinType joinType = OffsetJoinType.Round)
     {
+        WorkCounters.PolygonOffsetPoints += boundaryPoints?.Count ?? 0;
         if (boundaryPoints == null || boundaryPoints.Count < 3)
             return null;
 
@@ -49,6 +50,7 @@ public class PolygonOffsetService : IPolygonOffsetService
     /// </summary>
     public List<Vec2>? RoundCorners(List<Vec2> ring, double radius)
     {
+        WorkCounters.PolygonOffsetPoints += ring?.Count ?? 0;
         if (ring == null || ring.Count < 3) return null;
         if (radius < 0.05) return new List<Vec2>(ring);
 
@@ -865,6 +867,7 @@ public class PolygonOffsetService : IPolygonOffsetService
     /// <returns>Offset polygon points</returns>
     public List<Vec2>? CreateOutwardOffset(List<Vec2> boundaryPoints, double offsetDistance, OffsetJoinType joinType = OffsetJoinType.Round)
     {
+        WorkCounters.PolygonOffsetPoints += boundaryPoints?.Count ?? 0;
         if (boundaryPoints == null || boundaryPoints.Count < 3)
             return null;
 
@@ -947,6 +950,7 @@ public class PolygonOffsetService : IPolygonOffsetService
     /// <returns>Offset line points, or null if offset fails</returns>
     public List<Vec2>? CreateLineOffset(List<Vec2> linePoints, double offsetDistance, OffsetJoinType joinType = OffsetJoinType.Round)
     {
+        WorkCounters.PolygonOffsetPoints += linePoints?.Count ?? 0;
         if (linePoints == null || linePoints.Count < 2)
             return null;
 
