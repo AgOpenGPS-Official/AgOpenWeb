@@ -53,6 +53,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly ITrackGuidanceService _trackGuidanceService;
     private readonly ISectionControlService _sectionControlService;
     private readonly ICoverageMapService _coverageMapService;
+    // The coverage test the U-turn planner reads worked passes from; one delegate, not one per cycle.
+    private readonly Func<double, double, bool> _isPointCovered;
     private readonly IAutoSteerService _autoSteerService;
     private readonly YouTurnGuidanceService _youTurnGuidanceService;
     private readonly YouTurnStateMachine _youTurnStateMachine;
@@ -229,6 +231,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _trackGuidanceService = trackGuidanceService;
         _sectionControlService = sectionControlService;
         _coverageMapService = coverageMapService;
+        _isPointCovered = coverageMapService.IsPointCovered;
         _autoSteerService = autoSteerService;
         _youTurnGuidanceService = youTurnGuidanceService;
         _youTurnStateMachine = youTurnStateMachine;
@@ -881,7 +884,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             isSkipWorkedMode,
             headlandCalculatedWidth,
             headlandDistanceConfig,
-            isAlternateSkipMode);
+            isAlternateSkipMode,
+            _isPointCovered);
 
         // Manual trigger — runs even when the auto gate would fail (e.g., YouTurn
         // toggle off). TriggerManual enforces its own preconditions (autosteer +
