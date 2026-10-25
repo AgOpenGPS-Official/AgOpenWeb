@@ -455,6 +455,8 @@ public class TramLineService(
     {
         bool inside = false;
         int count = fence.Count;
+        WorkCounters.PolygonTests++;
+        WorkCounters.PolygonEdges += count;
         for (int i = 0, j = count - 1; i < count; j = i++)
         {
             double yi = fence[i].Northing, yj = fence[j].Northing;

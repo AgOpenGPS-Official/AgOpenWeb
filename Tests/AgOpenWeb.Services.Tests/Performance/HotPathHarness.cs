@@ -31,7 +31,7 @@ public enum Skip { Normal, SkipWorked, Alternate }
 /// A large field driven through the real GPS cycle (<see cref="GpsPipelineService"/>) and the
 /// 100 Hz control tick (tool position + section control, as MainViewModel.OnControlLoopTicked),
 /// recording the <see cref="WorkCounters"/> each one costs (one control tick sampled per fix). 300 × 500 m, a boundary point
-/// every metre, the headland 24 m in (also a point a metre), a 12 m tool in 6 sections, auto
+/// every metre, the headland 24 m in (also a point a metre) or none, a 12 m tool in 6 sections, auto
 /// U-turn and auto sections on. The tractor drives north up one pass, from mid-field to the
 /// end of the pass in the headland, where it waits.
 /// </summary>
@@ -56,7 +56,7 @@ public sealed class HotPathHarness : IDisposable
     public GpsCycleResult? Last { get; private set; }
 
 
-    public HotPathHarness(PassTrack trackKind, Skip skip, bool fieldWorked)
+    public HotPathHarness(PassTrack trackKind, Skip skip, bool fieldWorked, bool hasHeadland = true)
     {
         ConfigurationStore.SetInstance(new ConfigurationStore());
         var config = ConfigurationStore.Instance;
@@ -124,9 +124,12 @@ public sealed class HotPathHarness : IDisposable
 
         _pipeline.SetHasActiveField(true);
         _pipeline.SetBoundary(boundary);
-        _pipeline.SetHeadlandLine(headland);
-        _pipeline.SetHeadlandOn(true);
-        _sections.SetFieldContext(new SectionFieldContext(boundary, headland, true, true));
+        // Many fields have only the outer boundary: the pipeline then turns at a line inset from
+        // the fence (its synthetic headland), and section control has no headland to test.
+        var headlandLine = hasHeadland ? headland : null;
+        _pipeline.SetHeadlandLine(headlandLine);
+        _pipeline.SetHeadlandOn(hasHeadland);
+        _sections.SetFieldContext(new SectionFieldContext(boundary, headlandLine, true, hasHeadland));
         _sections.SetAllAuto();
         _coverage.SetFieldBounds(-FieldWidth / 2, FieldWidth / 2, -FieldLength / 2, FieldLength / 2);
         if (fieldWorked)
@@ -136,8 +139,8 @@ public sealed class HotPathHarness : IDisposable
         _pipeline.SetYouTurnConfig(
             uTurnSkipRows: skip == Skip.Normal ? 0 : 1,
             isSkipWorkedMode: skip == Skip.SkipWorked,
-            headlandCalculatedWidth: HeadlandWidth,
-            headlandDistance: HeadlandWidth,
+            headlandCalculatedWidth: hasHeadland ? HeadlandWidth : 0,
+            headlandDistance: hasHeadland ? HeadlandWidth : 0,
             isAlternateSkipMode: skip == Skip.Alternate);
         _pipeline.SetYouTurnEnabled(true);
         _pipeline.SetAutoSteerEngaged(true);

@@ -27,8 +27,9 @@ namespace AgOpenWeb.Services.Tests.Performance;
 [NonParallelizable] // ConfigurationStore is a singleton.
 public class HotPathBudgetTests
 {
-    // GPS cycle. Measured on develop (2026-10-25): 2,816 edges (two tests against the
-    // 1,400-point headland), 2,002 offset points on the 1,000-point curve, 127 KB allocated.
+    // GPS cycle. Measured on develop (2026-10-25): 4,416 edges with a headland (two tests
+    // against the 1,400-point headland, one against the 1,600-point boundary), 1,604 with the
+    // boundary only; 2,002 offset points on the 1,000-point curve; 127 KB allocated.
     private const long FixEdges = 10_000;
     private const long FixCoverageLookups = 2_000;
     private const long FixOffsetCurvePoints = 5_000;
@@ -41,10 +42,12 @@ public class HotPathBudgetTests
     private const long FixPeakEdges = 5_000_000;
     private const long FixPeakAllocatedBytes = 16 * 1024 * 1024;
 
-    // Control tick (tool position + section control). Measured: 25,344 edges on every tick
-    // (nine tests against the outline), 360 coverage lookups. That is already a lot at
-    // 100 Hz; the budget keeps it from growing.
-    private const long TickEdges = 30_000;
+    // Control tick (tool position + section control). Measured: 25,344 edges a tick mid-field
+    // with a headland (none with the boundary only), and 117,262 within about 56 m of the
+    // field's edge, where BoundaryPolygon.IsPointInside walks the whole boundary for each
+    // section's points (92,000 with the boundary only); 360 coverage lookups. That is already
+    // a lot at 100 Hz; the budget keeps it from growing.
+    private const long TickEdges = 150_000;
     private const long TickCoverageLookups = 2_000;
     private const long TickAllocatedBytes = 512 * 1024;
     // The first paint of an empty job allocates the coverage bitmaps (48 MB over a few ticks).
@@ -55,23 +58,25 @@ public class HotPathBudgetTests
         foreach (var track in Enum.GetValues<PassTrack>())
         foreach (var skip in Enum.GetValues<Skip>())
         foreach (var worked in new[] { false, true })
-            yield return new TestCaseData(track, skip, worked)
-                .SetArgDisplayNames(track.ToString(), skip.ToString(), worked ? "finished field" : "empty field");
+        foreach (var headland in new[] { true, false })
+            yield return new TestCaseData(track, skip, worked, headland)
+                .SetArgDisplayNames(track.ToString(), skip.ToString(), worked ? "finished field" : "empty field",
+                    headland ? "headland" : "boundary only");
     }
 
     // 100 m before the headland line (226 m), through the turn's planning and trigger into
     // the headland, then 50 fixes at the end of the pass.
-    private static HotPathHarness Drive(PassTrack track, Skip skip, bool worked)
+    private static HotPathHarness Drive(PassTrack track, Skip skip, bool worked, bool headland)
     {
-        var h = new HotPathHarness(track, skip, worked);
+        var h = new HotPathHarness(track, skip, worked, headland);
         h.Drive(126, 240, waitFixes: 50);
         return h;
     }
 
     [TestCaseSource(nameof(Scenarios))]
-    public void Cycles_stay_within_budget(PassTrack track, Skip skip, bool worked)
+    public void Cycles_stay_within_budget(PassTrack track, Skip skip, bool worked, bool headland)
     {
-        using var h = Drive(track, skip, worked);
+        using var h = Drive(track, skip, worked, headland);
         CheckGpsCycles(h);
         CheckControlTicks(h);
     }
@@ -117,9 +122,12 @@ public class HotPathBudgetTests
     {
         foreach (var data in Scenarios())
         {
-            var (track, skip, worked) = ((PassTrack)data.Arguments[0]!, (Skip)data.Arguments[1]!, (bool)data.Arguments[2]!);
-            using var h = Drive(track, skip, worked);
-            TestContext.Out.WriteLine($"{track} {skip} {(worked ? "finished" : "empty")}");
+            var (track, skip, worked, headland) = ((PassTrack)data.Arguments[0]!, (Skip)data.Arguments[1]!,
+                (bool)data.Arguments[2]!, (bool)data.Arguments[3]!);
+            using var h = Drive(track, skip, worked, headland);
+            var y = h.Last?.YouTurn;
+            TestContext.Out.WriteLine($"{track} {skip} {(worked ? "finished" : "empty")} {(headland ? "headland" : "boundary only")}" +
+                $" (turn planned {y?.TurnPath != null}, triggered {y?.IsTriggered})");
             TestContext.Out.WriteLine("  GPS cycle    " + Stats(h.Fixes));
             TestContext.Out.WriteLine("  control tick " + Stats(h.ControlTicks));
         }
