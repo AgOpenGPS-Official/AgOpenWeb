@@ -299,12 +299,19 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
             stack.Attach(link);
             link.HandlerFailed += e => _log?.LogWarning(e, "VT link handler failed");
             link.Connected += info => SetLink("connected", "", info.Name);
-            link.Disconnected += (why, text) =>
+            // Down, or a try that never came up (refused while another terminal has the gateway: said
+            // by its name, "in use by AgOpenWeb on ..."). Tries repeat every 250 ms on a gateway that
+            // isn't there, so only a change is sent on.
+            void Down(LinkCloseReason why, string text)
             {
-                // Another terminal has the gateway: said by its name ("in use by AgOpenWeb on ...").
-                if (why == LinkCloseReason.Busy) SetLink("busy", text.StartsWith("in use by ", StringComparison.Ordinal) ? text[10..] : text, null);
-                else SetLink("connecting", text.Length > 0 ? $"{why}: {text}" : why.ToString(), null);
-            };
+                var (state, said) = why == LinkCloseReason.Busy
+                    ? ("busy", text.StartsWith("in use by ", StringComparison.Ordinal) ? text[10..] : text)
+                    : ("connecting", text.Length > 0 ? $"{why}: {text}" : why.ToString());
+                lock (_gate) if (_state == state && _why == said) return;
+                SetLink(state, said, null);
+            }
+            link.Disconnected += Down;
+            link.ConnectFailed += Down;
             link.RoundTrip += ms => { lock (_gate) _rtt = ms; PublishLink(force: false); };
             link.StatusReceived += st => { lock (_gate) _bus = st.State.ToString(); PublishLink(force: false); };
 
