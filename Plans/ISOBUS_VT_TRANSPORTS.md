@@ -7,8 +7,8 @@ farmer may have, what is trusted, and how the operator connects without typing a
 HAT is one setup among several (two units exist, both on the bench), and no network gateway is
 installed anywhere yet, so the choices here are open.
 
-The terminal itself (AgIsoStack-dotnet's `VirtualTerminalStack`, the VT cards) is described in
-`CLAUDE.md` ("ISOBUS virtual terminal"). The link protocol is specified in AgIsoStack-dotnet
+The terminal itself (SharpIsoTerm's `VirtualTerminalStack`, the VT cards) is described in
+`CLAUDE.md` ("ISOBUS virtual terminal"). The link protocol is specified in SharpIsoTerm
 `docs/TRANSPORT.md`.
 
 ---
@@ -68,7 +68,7 @@ Per platform:
 | Android | `NsdManager` | nothing new (the head already holds a multicast lock) |
 | Windows, macOS, Linux | a small mDNS query in .NET (no built-in API) | a dependency or ~200 lines of our own; to decide |
 
-Where the browsing lives: in AgIsoStack-dotnet beside `AowLink` (`AowLinkBrowser`), so any host
+Where the browsing lives: in SharpIsoTerm beside `AowLink` (`AowLinkBrowser`), so any host
 gets it; AgOpenWeb's service lists the results in the link message as it lists serial ports.
 
 ## 4. Gateways
@@ -83,13 +83,13 @@ gets it; AgOpenWeb's service lists the results in the link message as it lists s
   protocol. Which board to recommend is open (§7).
 - **Later boards** (the v26 AiO board when released): the AOW link next to their GVRET.
 
-`bench/aowlink_check.py` (AgIsoStack-dotnet) checks any gateway against the protocol; a new
+`bench/aowlink_check.py` (SharpIsoTerm) checks any gateway against the protocol; a new
 gateway passes it before it is recommended.
 
 ## 5. Packaging
 
-AgIsoStack-dotnet is private and unpublished, so the terminal is built into AgOpenWeb only with
-`-p:AgIsoStackDir=…`; no nightly or release has it. Setup A in particular needs it in the Linux
+SharpIsoTerm is private and unpublished, so the terminal is built into AgOpenWeb only with
+`-p:SharpIsoTermDir=…`; no nightly or release has it. Setup A in particular needs it in the Linux
 arm64 bundle. Until the library is published, options are a private package feed the release
 workflow can read, or building it in the HAT installer from a checkout. To decide with whoever
 owns the library's publication.
@@ -116,7 +116,7 @@ owns the library's publication.
 
 ## Built
 
-- **2026-10-25, discovery (§6 step 1, client side):** `AowLinkBrowser` in AgIsoStack-dotnet (own
+- **2026-10-25, discovery (§6 step 1, client side):** `AowLinkBrowser` in SharpIsoTerm (own
   mDNS query on the desktop and Android, `NSNetServiceBrowser` on iOS, so the desktop mDNS question
   in §7 is settled: our own, no dependency); the gear lists gateways by name with Refresh, keeps
   the name (`VtGatewayName`) and follows the gateway to a new address while not connected; the

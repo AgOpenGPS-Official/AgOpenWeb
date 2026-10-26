@@ -4,7 +4,7 @@
 
 using System.Globalization;
 using System.Text.Json.Serialization;
-using AgIsoStack;
+using SharpIsoTerm;
 using AgOpenWeb.Services;
 using AgOpenWeb.Services.Interfaces;
 using Microsoft.Extensions.Logging;
@@ -12,7 +12,7 @@ using Microsoft.Extensions.Logging;
 namespace AgOpenWeb.VirtualTerminal;
 
 /// <summary>
-/// The VT cards' terminals: AgIsoStack's terminal stack on the implement bus, one to four
+/// The VT cards' terminals: SharpIsoTerm's terminal stack on the implement bus, one to four
 /// terminals (AppSettings.VtCount; as displays in one cab, each implement choosing one), reached
 /// through an AOW link gateway (AppSettings.VtGateway, TCP port 2323 unless given) or an slcan
 /// adapter plugged into this device (AppSettings.VtAdapter, its serial port; it wins when set).
@@ -169,7 +169,7 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
         if (r == InputResult.Invalid) InputRefused?.Invoke();
     }
 
-    private void Call<T>(int terminal, Func<AgIsoStack.VirtualTerminal, Task<T>> call, Action<T>? then = null)
+    private void Call<T>(int terminal, Func<SharpIsoTerm.VirtualTerminal, Task<T>> call, Action<T>? then = null)
     {
         VirtualTerminalStack? stack;
         lock (_gate) stack = _stack;
@@ -381,7 +381,7 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
     }
 
     /// <summary>A key's press, a held about every 200 ms while it is down (ISO 11783-6), and its
-    /// release or abort. From AgIsoStack-dotnet's integration guide.</summary>
+    /// release or abort. From SharpIsoTerm's integration guide.</summary>
     private sealed class KeyRepeater(VirtualTerminalStack stack, Action<Task<bool>, Action<bool>?> observe)
     {
         private sealed class Down { public Timer? Timer; }
