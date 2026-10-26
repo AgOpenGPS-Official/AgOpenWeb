@@ -27,19 +27,24 @@ namespace AgOpenWeb.Services.Tests.Performance;
 [NonParallelizable] // ConfigurationStore is a singleton.
 public class HotPathBudgetTests
 {
-    // GPS cycle. Measured 2026-10-25: 2,828 edges with a headland (the U-turn zone tests
-    // against the 1,400-point headland line; the boundary goes through its strip index), 16
-    // with the boundary only; 2,002 offset points on the 1,000-point curve; 127 KB allocated.
-    private const long FixEdges = 10_000;
+    // GPS cycle. Measured 2026-10-25 (#430): 1,444 edges with a headland, nearly all of them
+    // the headland distance's raycast over the 1,400-point headland line (the boundary, the
+    // U-turn zone, the hydraulic lift and the headland distance's inside test go through strip
+    // indexes; before them it was 2,828 plus the raycast, uncounted then), 14 with the boundary
+    // only; 2,002 offset points on the 1,000-point curve; 93 KB allocated there, 5 KB on a
+    // line (the headland line is no longer copied every cycle). One full walk of the headland
+    // line goes over.
+    private const long FixEdges = 2_000;
     private const long FixCoverageLookups = 2_000;
     private const long FixOffsetCurvePoints = 5_000;
     private const long FixPolygonOffsetPoints = 1_000;
-    private const long FixAllocatedBytes = 512 * 1024;
+    private const long FixAllocatedBytes = 128 * 1024;
 
-    // Planning a turn is a one-off: up to 1.9 M edges and 3.3 MB (alternate skip). A few
-    // cycles may go over the steady budget, none past the peak.
+    // Planning a turn is a one-off: up to 47,000 edges (the curve; 2,700 on a line) and 3.6 MB
+    // (alternate skip). Before the turn line, headland and pass areas had strip indexes it was
+    // up to 1.9 M edges. A few cycles may go over the steady budget, none past the peak.
     private const int FixesOverBudgetAllowed = 5;
-    private const long FixPeakEdges = 5_000_000;
+    private const long FixPeakEdges = 100_000;
     private const long FixPeakAllocatedBytes = 16 * 1024 * 1024;
 
     // Control tick (tool position + section control). Measured 2026-10-25: 216 edges a tick

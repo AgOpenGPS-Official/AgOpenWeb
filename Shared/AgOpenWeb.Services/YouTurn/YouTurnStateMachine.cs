@@ -62,6 +62,7 @@ public sealed class YouTurnStateMachine
     // U-turn sound latches (AgOpenGPS turnTooCloseTrigger / isBoundAlarming) (#110).
     private bool _creationFailSounded, _approachAlarmed;
     private readonly YouTurnPathingService _pathing;
+    private readonly PolygonIndexCache _headlandIndex = new(); // the zone test, every GPS cycle
     private readonly ILogger<YouTurnStateMachine> _logger;
     private readonly ConfigurationStore _configStore;
 
@@ -1160,7 +1161,7 @@ public sealed class YouTurnStateMachine
         return minDistance;
     }
 
-    private static TractorZone DetermineZone(
+    private TractorZone DetermineZone(
         double easting,
         double northing,
         Boundary? boundary,
@@ -1169,7 +1170,7 @@ public sealed class YouTurnStateMachine
         // Cultivated area (inside the headland) — most common case, check first.
         if (headlandLine != null && headlandLine.Count >= 3)
         {
-            if (GeometryMath.IsPointInPolygon(headlandLine, new Vec2(easting, northing)))
+            if (_headlandIndex.Contains(headlandLine, easting, northing))
                 return TractorZone.InCultivatedArea;
         }
 

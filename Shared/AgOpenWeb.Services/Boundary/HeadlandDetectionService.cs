@@ -15,6 +15,9 @@ namespace AgOpenWeb.Services.Headland
     /// </summary>
     public class HeadlandDetectionService
     {
+        // The headland line's strip index for the proximity's inside test (every GPS cycle).
+        private readonly PolygonIndexCache _headlandIndex = new();
+
         /// <summary>
         /// Perform headland detection for tool sections and proximity.
         /// </summary>
@@ -171,7 +174,7 @@ namespace AgOpenWeb.Services.Headland
             output.HeadlandDistance = distance;
 
             // Check if vehicle is inside the headland
-            bool isInside = GeometryMath.IsPointInPolygon(input.Boundaries[0].HeadlandLine, vehiclePos);
+            bool isInside = _headlandIndex.Contains(input.Boundaries[0].HeadlandLine, vehiclePos.Easting, vehiclePos.Northing);
 
             // Calculate angle to nearest point
             double dx = nearestVal.Easting - vehiclePos.Easting;

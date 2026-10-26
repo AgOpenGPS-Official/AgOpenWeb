@@ -341,6 +341,7 @@ namespace AgOpenWeb.Models.Base
 
             double minDist = double.MaxValue;
             Vec2? closest = null;
+            WorkCounters.PolygonEdges += polygon.Count; // every edge, like a full point-in-polygon walk
 
             for (int i = 0; i < polygon.Count; i++)
             {
