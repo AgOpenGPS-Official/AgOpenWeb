@@ -88,11 +88,12 @@ gateway passes it before it is recommended.
 
 ## 5. Packaging
 
-SharpIsoTerm is private and unpublished, so the terminal is built into AgOpenWeb only with
-`-p:SharpIsoTermDir=…`; no nightly or release has it. Setup A in particular needs it in the Linux
-arm64 bundle. Until the library is published, options are a private package feed the release
-workflow can read, or building it in the HAT installer from a checkout. To decide with whoever
-owns the library's publication.
+**Done 2026-10-26:** SharpIsoTerm is public and its CI releases a NuGet package with every native
+library (tag vX.Y.Z: release vX.Y.Z; v0.1.0 the first). AgOpenWeb takes that package, pinned by
+version and SHA-256, and the build fetches it from the release into `nuget-local/`, so every head,
+nightly and release has the terminal, the Linux arm64 bundle for Setup A included, and none builds
+SharpIsoTerm. `-p:SharpIsoTermDir=…` still builds against a checkout, for work on the library.
+Moving to nuget.org later changes only where the package comes from.
 
 ## 6. Order
 

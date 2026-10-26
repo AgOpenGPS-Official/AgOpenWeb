@@ -68,15 +68,16 @@
     <ProjectReference Include="..\..\Shared\AgOpenWeb.RemoteWiring\AgOpenWeb.RemoteWiring.csproj" />
   </ItemGroup>
 
-  <!-- The ISOBUS virtual terminal (VT card), only with -p:SharpIsoTermDir=<absolute path to an
-       SharpIsoTerm checkout>; see Shared/AgOpenWeb.VirtualTerminal. -->
-  <PropertyGroup Condition="'$(SharpIsoTermDir)' != ''">
-    <DefineConstants>$(DefineConstants);AGISOSTACK</DefineConstants>
-  </PropertyGroup>
-  <ItemGroup Condition="'$(SharpIsoTermDir)' != ''">
+  <!-- The ISOBUS virtual terminal (VT card): see Shared/AgOpenWeb.VirtualTerminal. -->
+  <ItemGroup>
     <ProjectReference Include="..\..\Shared\AgOpenWeb.VirtualTerminal\AgOpenWeb.VirtualTerminal.csproj" />
-    <!-- Its native library, static on iOS, built for devices only (ios-arm64). -->
-    <NativeReference Include="$(SharpIsoTermDir)/native/build-ios/libisoshim-all.a" Kind="Static" ForceLoad="true" IsCxx="true" />
+    <!-- From a SharpIsoTerm checkout its native library (static) is linked here, from its
+         native/build-ios/ or, for the simulator, native/build-ios-simulator/; the package's
+         buildTransitive/ does it otherwise. -->
+    <NativeReference Include="$(SharpIsoTermDir)/native/build-ios-simulator/libisoshim-all.a" Kind="Static" ForceLoad="true" IsCxx="true"
+                     Condition="'$(SharpIsoTermDir)' != '' And $(RuntimeIdentifier.StartsWith('iossimulator'))" />
+    <NativeReference Include="$(SharpIsoTermDir)/native/build-ios/libisoshim-all.a" Kind="Static" ForceLoad="true" IsCxx="true"
+                     Condition="'$(SharpIsoTermDir)' != '' And !$(RuntimeIdentifier.StartsWith('iossimulator'))" />
   </ItemGroup>
 
 </Project>

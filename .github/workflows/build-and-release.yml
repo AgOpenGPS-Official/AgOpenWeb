@@ -193,6 +193,15 @@ jobs:
       - name: Compile Android
         run: dotnet build Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj -c Release
 
+      # The VT's native library comes with SharpIsoTerm's Android build; with its desktop build
+      # instead (the VT project not targeting net10.0-android) the app would build but have none.
+      - name: The terminal's native library is in the APK
+        run: |
+          APK=$(find Platforms/AgOpenWeb.Android/bin/Release -name "*.apk" | head -1)
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            unzip -l "$APK" "lib/$abi/libisoshim.so" > /dev/null || { echo "::error::$APK has no lib/$abi/libisoshim.so"; exit 1; }
+          done
+
   build-ios:
     runs-on: macos-26
     steps:
