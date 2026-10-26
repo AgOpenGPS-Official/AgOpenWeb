@@ -5528,7 +5528,7 @@ function renderBoundaryPlayer() {
 // The card touched last is on top of the other cards (29, the cards' layer; the others one
 // below it, still above the map's overlays at 20 and under the panels from 30 up).
 function raiseCard(card) {
-  if (card.style.zIndex === '29') return;
+  // Every card each time: one added since (a VT card) starts at the stylesheet's 29 too.
   for (const c of document.querySelectorAll('.chart-card')) c.style.zIndex = c === card ? '29' : '28';
 }
 function wireCardDrag(card) {
@@ -5536,6 +5536,7 @@ function wireCardDrag(card) {
   let drag = false, sx = 0, sy = 0, ox = 0, oy = 0;
   card.addEventListener('pointerdown', e => { e.stopPropagation(); raiseCard(card); }); // don't pan the map
   hdr.addEventListener('pointerdown', e => {
+    raiseCard(card); // the card's own handler doesn't hear it
     if (e.target.closest('button, select')) return;
     e.stopPropagation();
     const r = zoomRect(card);
@@ -5798,7 +5799,7 @@ function vtHit(items, x, y) {
 const Vt = (() => {
   const navBtn = document.getElementById('ln-vt'), tpl = document.getElementById('vt-card-tpl');
   const SIZES = [320, 400, 480, 600];
-  const PAGE = 6; // soft keys shown at once (the terminal's PhysicalKeys)
+  const PAGE = 12; // soft keys shown at once (the terminal's PhysicalKeys): two columns of six, 1-6 beside the mask
   let link = null, session = -1, images = new VtImages(); // picture ids are unique across terminals
   let audioCtx = null;
   const terms = []; // one per terminal: its card and what it shows
