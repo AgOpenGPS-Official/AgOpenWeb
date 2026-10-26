@@ -152,6 +152,11 @@ namespace AgOpenWeb.Models
         /// choosing one (in its own menu). One VT card each.</summary>
         public int VtCount { get; set; } = 1;
 
+        /// <summary>An slcan CAN adapter on this device the virtual terminals use instead of the
+        /// gateway: its serial port ("/dev/cu.usbmodem…", "COM3", "/dev/ttyACM0"). Empty: the
+        /// gateway.</summary>
+        public string VtAdapter { get; set; } = string.Empty;
+
         // Vehicle profile settings
         public string LastUsedVehicleProfile { get; set; } = string.Empty;
         public string LastUsedToolProfile { get; set; } = string.Empty;

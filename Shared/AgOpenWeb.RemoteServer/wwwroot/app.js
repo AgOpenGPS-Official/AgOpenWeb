@@ -5525,10 +5525,16 @@ function renderBoundaryPlayer() {
 // Drag chart cards by the header (web docks ln-panels, but charts are free overlays
 // like the native FloatingPanel so the operator can move them out of the way). The VT cards,
 // made later, use wireCardDrag too.
+// The card touched last is on top of the other cards (29, the cards' layer; the others one
+// below it, still above the map's overlays at 20 and under the panels from 30 up).
+function raiseCard(card) {
+  if (card.style.zIndex === '29') return;
+  for (const c of document.querySelectorAll('.chart-card')) c.style.zIndex = c === card ? '29' : '28';
+}
 function wireCardDrag(card) {
   const hdr = card.querySelector('.chart-hdr');
   let drag = false, sx = 0, sy = 0, ox = 0, oy = 0;
-  card.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
+  card.addEventListener('pointerdown', e => { e.stopPropagation(); raiseCard(card); }); // don't pan the map
   hdr.addEventListener('pointerdown', e => {
     if (e.target.closest('button, select')) return;
     e.stopPropagation();
@@ -5798,8 +5804,14 @@ const Vt = (() => {
   const terms = []; // one per terminal: its card and what it shows
 
   // The cards to show: the link's count (one while there is no link, for the gateway editor).
+  // The cards added after this browser's Connect open with the card it was pressed on.
+  let openAdded = false;
   function setCount(n) {
-    while (terms.length < n) terms.push(makeTerminal(terms.length));
+    while (terms.length < n) {
+      const term = makeTerminal(terms.length);
+      terms.push(term);
+      if (openAdded) term.setOpen(true);
+    }
     while (terms.length > n) terms.pop().remove();
   }
 
@@ -5813,6 +5825,7 @@ const Vt = (() => {
       link = m;
       navBtn.style.display = '';
       setCount(m.state === 'off' ? 1 : Math.max(1, Math.min(4, m.count || 1)));
+      if (m.state !== 'off') openAdded = false;
       render();
       return;
     }
@@ -5927,11 +5940,11 @@ const Vt = (() => {
     function wsLabel(ws) { return tr('Implement') + ' ' + ws.address + (ws.state === 'transferring' ? ' (' + ws.progress + '%)' : ''); }
 
     function renderHeader() {
-      nameEl.textContent = terms.length > 1 ? tr('VT {n}', { n: index + 1 }) : tr('Virtual Terminal');
+      nameEl.textContent = tr('VT {n}', { n: index + 1 }); // the same with one terminal or four
       const st = link ? link.state : 'off';
       dot.className = 'vt-dot ' + (st === 'connected' ? 'ok' : st === 'connecting' ? 'wait' : st === 'failed' ? 'bad' : '');
       dot.title = st === 'connected' ? (link.name || link.gateway) + (link.rtt != null ? ' · ' + link.rtt + ' ms' : '') + (link.bus ? ' · ' + link.bus : '')
-        : st === 'connecting' ? tr('Connecting to {gw}', { gw: link.gateway }) + (link.why ? ' (' + link.why + ')' : '') : '';
+        : st === 'connecting' ? (link.adapter ? tr('Waiting for the CAN adapter on {port}', { port: link.adapter }) : tr('Connecting to {gw}', { gw: link.gateway })) + (link.why ? ' (' + link.why + ')' : '') : '';
     }
 
     function render() {
@@ -5969,11 +5982,13 @@ const Vt = (() => {
         const d = document.createElement('div'); d.textContent = t; el.appendChild(d);
         if (sub) { const s = document.createElement('div'); s.className = 'vt-sub'; s.textContent = sub; el.appendChild(s); }
       };
-      if (showGateway || ((!link || link.state === 'off') && index === 0)) return { key: 'gw', build: buildGateway };
+      if (showGateway || ((!link || link.state === 'off') && index === 0)) return { key: 'gw:' + (link ? [link.session, link.state, link.gateway, link.adapter, link.count].concat(link.ports || []).join('|') : ''), build: buildGateway }; // rebuilt when what it shows changes
       if (!link || link.state === 'off') return { key: 'off', build: text(tr('No gateway')) };
       if (link.state === 'failed') return { key: 'failed' + link.why, build: text(tr('The terminal could not start.'), link.why) };
       if (link.state !== 'connected')
-        return { key: 'conn' + link.why, build: text(tr('Connecting to {gw}', { gw: link.gateway }), link.why) };
+        return { key: 'conn' + link.why, build: link.adapter
+          ? text(tr('Waiting for the CAN adapter on {port}', { port: link.adapter }), link.why)
+          : text(tr('Connecting to {gw}', { gw: link.gateway }), link.why) };
       if (!screen || !screen.ws || !screen.kind) {
         const ws = workingSets && workingSets.list && workingSets.list[0];
         if (ws && ws.state === 'transferring') return { key: 'up' + ws.progress, build: text(tr('Loading the implement\'s screens: {p}%', { p: ws.progress })) };
@@ -5984,15 +5999,45 @@ const Vt = (() => {
       return null;
     }
 
+    // The gear: how the terminals reach the bus (a gateway on the network, or an slcan adapter
+    // plugged into this device) and how many there are.
     function buildGateway(el) {
-      const d = document.createElement('div'); d.textContent = tr('ISOBUS gateway'); el.appendChild(d);
+      const d = document.createElement('div'); d.textContent = tr('ISOBUS connection'); el.appendChild(d);
+      const kind = document.createElement('select'); kind.className = 'vt-ws';
+      for (const [v, label] of [['gateway', tr('Gateway on the network')], ['adapter', tr('CAN adapter on this device')]]) {
+        const o = document.createElement('option'); o.value = v; o.textContent = label; kind.appendChild(o);
+      }
+      kind.value = link && link.adapter ? 'adapter' : 'gateway';
+      if (link && link.adapters === false && !link.adapter) kind.style.display = 'none'; // no USB adapters here (iOS)
+      el.appendChild(kind);
+      // Gateway: its address.
       const inp = document.createElement('input');
       inp.placeholder = '192.168.1.10'; inp.value = link && link.gateway || '';
       inp.autocapitalize = 'off'; inp.spellcheck = false;
-      el.appendChild(inp);
+      // Adapter: its serial port, from the host's list (refreshed when the gear opens).
+      const portRow = document.createElement('div'); portRow.className = 'vt-row';
+      const port = document.createElement('select'); port.className = 'vt-ws';
+      const ports = (link && link.ports || []).slice();
+      if (link && link.adapter && !ports.includes(link.adapter)) ports.unshift(link.adapter);
+      for (const p of ports) {
+        const o = document.createElement('option'); o.value = p; o.textContent = p; o.selected = link && p === link.adapter;
+        port.appendChild(o);
+      }
+      const again = document.createElement('button'); again.className = 'fo-btn'; again.textContent = tr('Refresh');
+      again.addEventListener('pointerdown', e => { e.preventDefault(); transport.send('vt.ports'); });
+      portRow.append(port, again);
       const sub = document.createElement('div'); sub.className = 'vt-sub';
-      sub.textContent = tr('Address of the AOW link gateway on the implement bus (port 2323). Empty: off.');
-      el.appendChild(sub);
+      const show = () => {
+        const adapter = kind.value === 'adapter';
+        inp.style.display = adapter ? 'none' : '';
+        portRow.style.display = adapter ? '' : 'none';
+        sub.textContent = adapter
+          ? (ports.length ? tr('An slcan adapter (CANable) on the implement bus, 250 kbit/s.') : tr('No adapter found: plug it in, then Refresh.'))
+          : tr('Address of the AOW link gateway on the implement bus (port 2323). Empty: off.');
+      };
+      kind.addEventListener('change', show);
+      el.append(inp, portRow, sub);
+      show();
       // How many terminals: one card each, as displays in one cab.
       const countRow = document.createElement('div'); countRow.className = 'vt-row';
       const countLabel = document.createElement('span'); countLabel.textContent = tr('Terminals');
@@ -6008,8 +6053,11 @@ const Vt = (() => {
       const ok = document.createElement('button'); ok.className = 'fo-btn'; ok.textContent = tr('Connect');
       ok.addEventListener('pointerdown', e => {
         e.preventDefault();
+        if (+count.value > 1) openAdded = true;
         if (+count.value !== have) transport.send('vt.count|' + count.value);
-        if (+count.value === have || inp.value.trim() !== (link && link.gateway || '')) transport.send('vt.gateway|' + inp.value.trim());
+        if (kind.value === 'adapter') { if (port.value) transport.send('vt.adapter|' + port.value); }
+        else if (+count.value === have || inp.value.trim() !== (link && link.gateway || '') || (link && link.adapter))
+          transport.send('vt.gateway|' + inp.value.trim());
         showGateway = false; msgEl.dataset.msg = ''; render();
       });
       row.appendChild(ok);
@@ -6170,6 +6218,7 @@ const Vt = (() => {
       e.preventDefault();
       if (!iHoldControl) return;
       showGateway = !showGateway; msgEl.dataset.msg = ''; render();
+      if (showGateway) transport.send('vt.ports');
     });
     q('.vt-size').addEventListener('pointerdown', e => {
       e.preventDefault();

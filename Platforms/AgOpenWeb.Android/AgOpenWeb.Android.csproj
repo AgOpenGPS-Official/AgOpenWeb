@@ -38,4 +38,13 @@
     <ProjectReference Include="..\..\Shared\AgOpenWeb.RemoteWiring\AgOpenWeb.RemoteWiring.csproj" />
   </ItemGroup>
 
+  <!-- The ISOBUS virtual terminal (VT card), only with -p:AgIsoStackDir=<absolute path to an
+       AgIsoStack-dotnet checkout>; see Shared/AgOpenWeb.VirtualTerminal. -->
+  <PropertyGroup Condition="'$(AgIsoStackDir)' != ''">
+    <DefineConstants>$(DefineConstants);AGISOSTACK</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(AgIsoStackDir)' != ''">
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.VirtualTerminal\AgOpenWeb.VirtualTerminal.csproj" />
+  </ItemGroup>
+
 </Project>

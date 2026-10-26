@@ -6,19 +6,30 @@
     project builds only with AgIsoStackDir naming a checkout of it (an absolute path), and a head
     references it only then:
       dotnet run -p:AgIsoStackDir=$HOME/Code/AgIsoStack-dotnet ...
-    It is not in AgOpenWeb.sln. Desktop only for now (the library's iOS and Android builds come
-    later); a head without it registers no terminal and the card never shows.
+    It is not in AgOpenWeb.sln. Desktop, Android and iOS (on a Mac, as the library); a head
+    without it registers no terminal and the card never shows. iOS: the head links the library's
+    static native library itself (device builds only: it is built for ios-arm64).
   -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(DesktopOnly)' != 'true'">net10.0;net10.0-android;net10.0-ios</TargetFrameworks>
+    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('OSX')) Or '$(DesktopOnly)' == 'true'">net10.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+    <SupportedOSPlatformVersion>23</SupportedOSPlatformVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-ios'">
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
+    <!-- The desktop build takes only the library's desktop target (no mobile workloads needed). -->
     <ProjectReference Include="$(AgIsoStackDir)/dotnet/AgIsoStack.VirtualTerminal/AgIsoStack.VirtualTerminal.csproj"
-                      AdditionalProperties="DesktopOnly=true" />
+                      AdditionalProperties="DesktopOnly=true" Condition="'$(TargetFramework)' == 'net10.0'" />
+    <ProjectReference Include="$(AgIsoStackDir)/dotnet/AgIsoStack.VirtualTerminal/AgIsoStack.VirtualTerminal.csproj"
+                      Condition="'$(TargetFramework)' != 'net10.0'" />
   </ItemGroup>
 
 </Project>
