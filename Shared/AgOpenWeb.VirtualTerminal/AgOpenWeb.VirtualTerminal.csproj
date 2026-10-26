@@ -2,13 +2,16 @@
 
   <!--
     The ISOBUS virtual terminal behind the web client's VT card: IVirtualTerminalService over
-    SharpIsoTerm's VirtualTerminal and AowLink. That library is not published yet, so this
-    project builds only with SharpIsoTermDir naming a checkout of it (an absolute path), and a head
-    references it only then:
+    SharpIsoTerm's VirtualTerminal and AowLink. SharpIsoTerm comes as its NuGet package from its
+    GitHub release (https://github.com/chriskinal/SharpIsoTerm/releases), pinned below by version
+    and SHA-256: FetchSharpIsoTerm downloads it into nuget-local/ (a package source, nuget.config)
+    during restore, so a plain build needs nothing else. The package has every native library
+    (desktop under runtimes/, Android in its .aar, iOS linked by its buildTransitive/ targets). To
+    take a new SharpIsoTerm, change both properties to its release's.
+    Working on SharpIsoTerm itself: build against a checkout of it instead (an absolute path),
       dotnet run -p:SharpIsoTermDir=$HOME/Code/SharpIsoTerm ...
-    It is not in AgOpenWeb.sln. Desktop, Android and iOS (on a Mac, as the library); a head
-    without it registers no terminal and the card never shows. iOS: the head links the library's
-    static native library itself (device builds only: it is built for ios-arm64).
+    which needs its native libraries built (its native/build.sh). Desktop, Android and iOS (on a
+    Mac, as the library); iOS device builds only (the native library is built for ios-arm64).
   -->
   <PropertyGroup>
     <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(DesktopOnly)' != 'true'">net10.0;net10.0-android;net10.0-ios</TargetFrameworks>
@@ -25,11 +28,42 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <SharpIsoTermVersion>0.1.1</SharpIsoTermVersion>
+    <SharpIsoTermSha256>342454bddd69a8bbab3236953a02b7689482c486f17bac3a3ff066882673d553</SharpIsoTermSha256>
+    <SharpIsoTermFeed>$(MSBuildThisFileDirectory)../../nuget-local/</SharpIsoTermFeed>
+    <SharpIsoTermPackage>$(SharpIsoTermFeed)SharpIsoTerm.$(SharpIsoTermVersion).nupkg</SharpIsoTermPackage>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(SharpIsoTermDir)' == ''">
+    <PackageReference Include="SharpIsoTerm" Version="$(SharpIsoTermVersion)" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(SharpIsoTermDir)' != ''">
     <!-- The desktop build takes only the library's desktop target (no mobile workloads needed). -->
     <ProjectReference Include="$(SharpIsoTermDir)/dotnet/SharpIsoTerm/SharpIsoTerm.csproj"
                       AdditionalProperties="DesktopOnly=true" Condition="'$(TargetFramework)' == 'net10.0'" />
     <ProjectReference Include="$(SharpIsoTermDir)/dotnet/SharpIsoTerm/SharpIsoTerm.csproj"
                       Condition="'$(TargetFramework)' != 'net10.0'" />
   </ItemGroup>
+
+  <!-- The package, fetched once (restore collects the package references after this) and checked
+       against its SHA-256; a file that does not match is deleted and the build stops. Each run
+       downloads to a file of its own, so two restores side by side cannot mix theirs. -->
+  <Target Name="FetchSharpIsoTerm" BeforeTargets="CollectPackageReferences"
+          Condition="'$(SharpIsoTermDir)' == '' And !Exists('$(SharpIsoTermPackage)')">
+    <PropertyGroup>
+      <_SharpIsoTermPart>$(SharpIsoTermPackage).$([System.Guid]::NewGuid().ToString('N')).part</_SharpIsoTermPart>
+    </PropertyGroup>
+    <DownloadFile SourceUrl="https://github.com/chriskinal/SharpIsoTerm/releases/download/v$(SharpIsoTermVersion)/SharpIsoTerm.$(SharpIsoTermVersion).nupkg"
+                  DestinationFolder="$(SharpIsoTermFeed)" DestinationFileName="$([System.IO.Path]::GetFileName($(_SharpIsoTermPart)))" Retries="3" />
+    <GetFileHash Files="$(_SharpIsoTermPart)" Algorithm="SHA256">
+      <Output TaskParameter="Hash" PropertyName="_SharpIsoTermHash" />
+    </GetFileHash>
+    <Delete Files="$(_SharpIsoTermPart)" Condition="'$(_SharpIsoTermHash)' != '$(SharpIsoTermSha256)'" />
+    <Error Condition="'$(_SharpIsoTermHash)' != '$(SharpIsoTermSha256)'"
+           Text="SharpIsoTerm $(SharpIsoTermVersion): the downloaded package's SHA-256 is $(_SharpIsoTermHash), not $(SharpIsoTermSha256) as pinned in $(MSBuildThisFileFullPath)." />
+    <Move SourceFiles="$(_SharpIsoTermPart)" DestinationFiles="$(SharpIsoTermPackage)" />
+  </Target>
 
 </Project>
