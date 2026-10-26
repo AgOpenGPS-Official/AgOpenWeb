@@ -1208,10 +1208,13 @@ const dlgLat = document.getElementById('dlg-lat'), dlgLon = document.getElementB
 // FormNumeric for numbers) (#110). For touch boxes with no OS keyboard (kiosk/Linux): when
 // on, focusing a text field opens a QWERTY panel, a numeric field a number pad, and the OS
 // keyboard is suppressed (inputmode=none). Keys edit the field in place and fire 'input', so
-// every existing handler sees them; OK sends Enter and closes.
+// every existing handler sees them; OK sends Enter and closes. Shift works as on a phone: one
+// tap capitalises the next letter, a second tap straight after locks it (caps lock) until Shift
+// is tapped again.
 const OSK = (() => {
   const root = document.getElementById('osk');
-  let target = null, shift = false;
+  const SHIFT_LOCK_MS = 400;                  // second Shift tap within this locks caps
+  let target = null, shift = 0, shiftAt = 0;  // shift: 0 off, 1 next letter, 2 caps lock
   const TEXT = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
   const NUM = ['789', '456', '123', '-0.'];
   const on = () => !!(config && config.display && config.display.keyboardEnabled);
@@ -1223,7 +1226,7 @@ const OSK = (() => {
     const rows = (num ? NUM : TEXT).map(r => [...r].map(c => ({ k: c, t: shift ? c.toUpperCase() : c })));
     if (num) rows.push([{ k: 'BS', t: '⌫', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
     else {
-      rows[3].unshift({ k: 'SH', t: shift ? '⇧' : '⇪', c: 'wide' });
+      rows[3].unshift({ k: 'SH', t: shift === 2 ? '⇪' : '⇧', c: ['wide', 'wide on', 'wide on lock'][shift] });
       rows[3].push({ k: 'BS', t: '⌫', c: 'wide' });
       rows.push([{ k: '-', t: '-' }, { k: '_', t: '_' }, { k: ' ', t: 'space', c: 'xwide' }, { k: '.', t: '.' }, { k: 'CLR', t: 'Clear', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
     }
@@ -1246,7 +1249,11 @@ const OSK = (() => {
   }
   function key(k) {
     const el = target; if (!el) return;
-    if (k === 'SH') { shift = !shift; render(); return; }
+    if (k === 'SH') {
+      const now = performance.now();
+      shift = shift === 1 && now - shiftAt < SHIFT_LOCK_MS ? 2 : shift ? 0 : 1;
+      shiftAt = now; render(); return;
+    }
     if (k === 'OK') {
       el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1260,10 +1267,10 @@ const OSK = (() => {
       return;
     }
     insert(shift ? k.toUpperCase() : k);
-    if (shift) { shift = false; render(); }
+    if (shift === 1) { shift = 0; render(); }
   }
   function open(el) {
-    target = el; shift = false;
+    target = el; shift = 0;
     if (!el.dataset.oskIm) el.dataset.oskIm = el.getAttribute('inputmode') ?? '';
     el.setAttribute('inputmode', 'none'); // no OS keyboard on top of ours
     render(); root.hidden = false;
