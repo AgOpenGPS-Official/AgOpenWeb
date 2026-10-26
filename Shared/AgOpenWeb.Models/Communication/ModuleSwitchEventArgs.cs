@@ -11,6 +11,12 @@ namespace AgOpenWeb.Models.Communication
     /// </summary>
     public class AutoSteerToggleEventArgs : EventArgs
     {
+        /// <summary>
+        /// Set by a handler that ran the toggle straight away: AutoSteer's state afterwards
+        /// (false if the engage was refused). The steer switch → sections check reads it,
+        /// as AgOpenGPS reads the button after its synchronous PerformClick.
+        /// </summary>
+        public bool? IsAutoSteerOnAfter { get; set; }
     }
 
     /// <summary>

@@ -68,4 +68,15 @@
     <ProjectReference Include="..\..\Shared\AgOpenWeb.RemoteWiring\AgOpenWeb.RemoteWiring.csproj" />
   </ItemGroup>
 
+  <!-- The ISOBUS virtual terminal (VT card), only with -p:SharpIsoTermDir=<absolute path to an
+       SharpIsoTerm checkout>; see Shared/AgOpenWeb.VirtualTerminal. -->
+  <PropertyGroup Condition="'$(SharpIsoTermDir)' != ''">
+    <DefineConstants>$(DefineConstants);AGISOSTACK</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(SharpIsoTermDir)' != ''">
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.VirtualTerminal\AgOpenWeb.VirtualTerminal.csproj" />
+    <!-- Its native library, static on iOS, built for devices only (ios-arm64). -->
+    <NativeReference Include="$(SharpIsoTermDir)/native/build-ios/libisoshim-all.a" Kind="Static" ForceLoad="true" IsCxx="true" />
+  </ItemGroup>
+
 </Project>

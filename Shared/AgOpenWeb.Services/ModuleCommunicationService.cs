@@ -102,8 +102,12 @@ namespace AgOpenWeb.Services
                 // Steer switch is active low
                 if (SteerSwitchHigh == currentState.IsAutoSteerOn)
                 {
-                    // Request AutoSteer toggle
-                    AutoSteerToggleRequested?.Invoke(this, new AutoSteerToggleEventArgs());
+                    // Request AutoSteer toggle. The steer switch → sections check below must
+                    // see the state after the toggle, or engaging turns sections off.
+                    var args = new AutoSteerToggleEventArgs();
+                    AutoSteerToggleRequested?.Invoke(this, args);
+                    if (args.IsAutoSteerOnAfter is bool on)
+                        currentState.IsAutoSteerOn = on;
                 }
             }
 

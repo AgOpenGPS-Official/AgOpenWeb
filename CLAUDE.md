@@ -336,6 +336,24 @@ the receiver's correction age, warnings and a message table; bug report dumps ca
 `ntrip_rtcm.txt`. Design, bench results and open checks: `Plans/RTCM_FORWARDING_PLAN.md`;
 bench scripts: `Tools/rtcm-bench`.
 
+## ISOBUS virtual terminal (VT card)
+The VT cards show ISOBUS implements' own screens. `Shared/AgOpenWeb.VirtualTerminal`
+(`IVirtualTerminalService`) runs SharpIsoTerm's terminal stack on the implement bus through
+an AOW link gateway (`AppSettings.VtGateway`, port 2323; the HAT's `aow-linkd`) or an slcan USB
+adapter on the device itself (`AppSettings.VtAdapter`, a CANable; not on iOS). Gateways announcing
+themselves by DNS-SD (`_aowlink._tcp`) are listed in the card's gear by name (`AowLinkBrowser`); one
+picked from the list is kept by name too (`VtGatewayName`) and followed to a new address. One to four
+terminals (`AppSettings.VtCount`), as displays in one cab, each implement choosing its terminal in
+its own menu, one card each. Their messages and pictures go to the browsers as `Vt` (with the
+terminal) and `VtImage` frames (`VirtualTerminalRemote`), the painter is in `app.js`, and each
+card sends `vt.*` commands naming its terminal. SharpIsoTerm is not published yet, so the
+terminal is built in only on request (any head: Desktop, Android, iOS device builds) and the
+project is not in the solution:
+`dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -p:SharpIsoTermDir=$HOME/Code/SharpIsoTerm`
+(an absolute path). Without it no terminal is registered and the card never shows. The service
+is disposed with the backend: on Android and iOS the process outlives it, and the library allows
+one stack per process.
+
 ## Debugging Tips
 
 1. **iOS simulator issues**: Use `xcrun simctl` commands directly if `dotnet build -t:Run` fails
@@ -374,6 +392,8 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.IntegrationTests` - test-support library (fake settings etc.); not a standalone test run
 
 CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/license-headers.py --check` for the licence headers, and `Tools/i18n-limits.py --check` (job `translations-fit`) so every translated label fits the English layout.
+
+**Hot-path budgets** (job `hot-path-budgets`, `Tests/AgOpenWeb.Services.Tests/Performance`): a 300 × 500 m field, with a headland and with only the outer boundary, is driven through the real GPS cycle and the 100 Hz control tick, and every cycle is held to a budget of `WorkCounters` (polygon edges, coverage lookups, offset points, bytes allocated). Counts don't depend on the machine, so CI can enforce them. A failure means new work runs every cycle: do it once and keep the result. `HotPathBudgetTests.Report` (explicit) prints the counts. Run locally: `dotnet test Tests/AgOpenWeb.Services.Tests/ -c Release --filter TestCategory=HotPath`.
 
 ## U-Turn System
 

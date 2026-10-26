@@ -91,89 +91,47 @@ namespace AgOpenWeb.Models.Base
             return 0 <= innerProduct && innerProduct <= dx * dx + dy * dy;
         }
 
-        public static bool IsPointInPolygon(IReadOnlyList<Vec3> polygon, Vec3 testPoint)
+        /// <summary>
+        /// Does the edge (e1, n1)–(e2, n2) cross the line running south from (e, n)? The one
+        /// crossing rule of every point-in-polygon test: an edge counts when its easting span
+        /// holds e, open at its west end and closed at its east end, and it passes south of the
+        /// point. So a point on a polygon's west or south edge is outside and on its east or
+        /// north edge inside, and two polygons sharing an edge never both claim a point on it.
+        /// </summary>
+        public static bool CrossesSouth(double e1, double n1, double e2, double n2, double e, double n) =>
+            ((e1 < e && e2 >= e) || (e2 < e && e1 >= e))
+            && n1 + (e - e1) / (e2 - e1) * (n2 - n1) < n;
+
+        /// <summary>Is (<paramref name="easting"/>, <paramref name="northing"/>) inside the polygon?
+        /// Walks every edge; a polygon tested on every control tick wants a
+        /// <see cref="PolygonSlabIndex"/>.</summary>
+        public static bool IsPointInPolygon<T>(IReadOnlyList<T> polygon, double easting, double northing)
+            where T : IPlanarPoint
         {
-            bool result = false;
-            int j = polygon.Count - 1;
-            for (int i = 0; i < polygon.Count; i++)
+            int count = polygon.Count;
+            WorkCounters.PolygonTests++;
+            WorkCounters.PolygonEdges += count;
+            bool inside = false;
+            for (int i = 0, j = count - 1; i < count; j = i++)
             {
-                if ((polygon[i].Easting < testPoint.Easting && polygon[j].Easting >= testPoint.Easting)
-                    || (polygon[j].Easting < testPoint.Easting && polygon[i].Easting >= testPoint.Easting))
-                {
-                    if (polygon[i].Northing + (testPoint.Easting - polygon[i].Easting)
-                        / (polygon[j].Easting - polygon[i].Easting) * (polygon[j].Northing - polygon[i].Northing)
-                        < testPoint.Northing)
-                    {
-                        result = !result;
-                    }
-                }
-                j = i;
+                T a = polygon[i], b = polygon[j];
+                if (CrossesSouth(a.Easting, a.Northing, b.Easting, b.Northing, easting, northing))
+                    inside = !inside;
             }
-            return result;
+            return inside;
         }
 
-        public static bool IsPointInPolygon(IReadOnlyList<Vec3> polygon, Vec2 testPoint)
-        {
-            bool result = false;
-            int j = polygon.Count - 1;
-            for (int i = 0; i < polygon.Count; i++)
-            {
-                if ((polygon[i].Easting < testPoint.Easting && polygon[j].Easting >= testPoint.Easting)
-                    || (polygon[j].Easting < testPoint.Easting && polygon[i].Easting >= testPoint.Easting))
-                {
-                    if (polygon[i].Northing + (testPoint.Easting - polygon[i].Easting)
-                        / (polygon[j].Easting - polygon[i].Easting) * (polygon[j].Northing - polygon[i].Northing)
-                        < testPoint.Northing)
-                    {
-                        result = !result;
-                    }
-                }
-                j = i;
-            }
-            return result;
-        }
+        public static bool IsPointInPolygon(IReadOnlyList<Vec3> polygon, Vec3 testPoint) =>
+            IsPointInPolygon(polygon, testPoint.Easting, testPoint.Northing);
 
-        public static bool IsPointInPolygon(IReadOnlyList<Vec2> polygon, Vec2 testPoint)
-        {
-            bool result = false;
-            int j = polygon.Count - 1;
-            for (int i = 0; i < polygon.Count; i++)
-            {
-                if ((polygon[i].Easting < testPoint.Easting && polygon[j].Easting >= testPoint.Easting)
-                    || (polygon[j].Easting < testPoint.Easting && polygon[i].Easting >= testPoint.Easting))
-                {
-                    if (polygon[i].Northing + (testPoint.Easting - polygon[i].Easting)
-                        / (polygon[j].Easting - polygon[i].Easting) * (polygon[j].Northing - polygon[i].Northing)
-                        < testPoint.Northing)
-                    {
-                        result = !result;
-                    }
-                }
-                j = i;
-            }
-            return result;
-        }
+        public static bool IsPointInPolygon(IReadOnlyList<Vec3> polygon, Vec2 testPoint) =>
+            IsPointInPolygon(polygon, testPoint.Easting, testPoint.Northing);
 
-        public static bool IsPointInPolygon(IReadOnlyList<Vec2> polygon, Vec3 testPoint)
-        {
-            bool result = false;
-            int j = polygon.Count - 1;
-            for (int i = 0; i < polygon.Count; i++)
-            {
-                if ((polygon[i].Easting < testPoint.Easting && polygon[j].Easting >= testPoint.Easting)
-                    || (polygon[j].Easting < testPoint.Easting && polygon[i].Easting >= testPoint.Easting))
-                {
-                    if (polygon[i].Northing + (testPoint.Easting - polygon[i].Easting)
-                        / (polygon[j].Easting - polygon[i].Easting) * (polygon[j].Northing - polygon[i].Northing)
-                        < testPoint.Northing)
-                    {
-                        result = !result;
-                    }
-                }
-                j = i;
-            }
-            return result;
-        }
+        public static bool IsPointInPolygon(IReadOnlyList<Vec2> polygon, Vec2 testPoint) =>
+            IsPointInPolygon(polygon, testPoint.Easting, testPoint.Northing);
+
+        public static bool IsPointInPolygon(IReadOnlyList<Vec2> polygon, Vec3 testPoint) =>
+            IsPointInPolygon(polygon, testPoint.Easting, testPoint.Northing);
 
         #endregion
 
@@ -383,6 +341,7 @@ namespace AgOpenWeb.Models.Base
 
             double minDist = double.MaxValue;
             Vec2? closest = null;
+            WorkCounters.PolygonEdges += polygon.Count; // every edge, like a full point-in-polygon walk
 
             for (int i = 0; i < polygon.Count; i++)
             {

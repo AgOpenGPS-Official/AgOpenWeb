@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The ISOBUS virtual terminal behind the web client's VT card: IVirtualTerminalService over
+    SharpIsoTerm's VirtualTerminal and AowLink. That library is not published yet, so this
+    project builds only with SharpIsoTermDir naming a checkout of it (an absolute path), and a head
+    references it only then:
+      dotnet run -p:SharpIsoTermDir=$HOME/Code/SharpIsoTerm ...
+    It is not in AgOpenWeb.sln. Desktop, Android and iOS (on a Mac, as the library); a head
+    without it registers no terminal and the card never shows. iOS: the head links the library's
+    static native library itself (device builds only: it is built for ios-arm64).
+  -->
+  <PropertyGroup>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(DesktopOnly)' != 'true'">net10.0;net10.0-android;net10.0-ios</TargetFrameworks>
+    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('OSX')) Or '$(DesktopOnly)' == 'true'">net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-android'">
+    <SupportedOSPlatformVersion>23</SupportedOSPlatformVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-ios'">
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgOpenWeb.Services\AgOpenWeb.Services.csproj" />
+    <!-- The desktop build takes only the library's desktop target (no mobile workloads needed). -->
+    <ProjectReference Include="$(SharpIsoTermDir)/dotnet/SharpIsoTerm/SharpIsoTerm.csproj"
+                      AdditionalProperties="DesktopOnly=true" Condition="'$(TargetFramework)' == 'net10.0'" />
+    <ProjectReference Include="$(SharpIsoTermDir)/dotnet/SharpIsoTerm/SharpIsoTerm.csproj"
+                      Condition="'$(TargetFramework)' != 'net10.0'" />
+  </ItemGroup>
+
+</Project>
