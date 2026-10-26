@@ -339,14 +339,18 @@ bench scripts: `Tools/rtcm-bench`.
 ## ISOBUS virtual terminal (VT card)
 The VT cards show ISOBUS implements' own screens. `Shared/AgOpenWeb.VirtualTerminal`
 (`IVirtualTerminalService`) runs AgIsoStack-dotnet's terminal stack on the implement bus through
-an AOW link gateway (`AppSettings.VtGateway`, port 2323; the HAT's `aow-linkd`): one to four
+an AOW link gateway (`AppSettings.VtGateway`, port 2323; the HAT's `aow-linkd`) or an slcan USB
+adapter on the device itself (`AppSettings.VtAdapter`, a CANable; not on iOS): one to four
 terminals (`AppSettings.VtCount`), as displays in one cab, each implement choosing its terminal in
 its own menu, one card each. Their messages and pictures go to the browsers as `Vt` (with the
 terminal) and `VtImage` frames (`VirtualTerminalRemote`), the painter is in `app.js`, and each
 card sends `vt.*` commands naming its terminal. AgIsoStack-dotnet is not published yet, so the
-terminal is built in only on request, Desktop only, and the project is not in the solution:
+terminal is built in only on request (any head: Desktop, Android, iOS device builds) and the
+project is not in the solution:
 `dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -p:AgIsoStackDir=$HOME/Code/AgIsoStack-dotnet`
-(an absolute path). Without it no terminal is registered and the card never shows.
+(an absolute path). Without it no terminal is registered and the card never shows. The service
+is disposed with the backend: on Android and iOS the process outlives it, and the library allows
+one stack per process.
 
 ## Debugging Tips
 

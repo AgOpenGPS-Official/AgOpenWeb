@@ -14,12 +14,13 @@ namespace AgOpenWeb.VirtualTerminal;
 /// <summary>
 /// The VT cards' terminals: AgIsoStack's terminal stack on the implement bus, one to four
 /// terminals (AppSettings.VtCount; as displays in one cab, each implement choosing one), reached
-/// through an AOW link gateway (AppSettings.VtGateway, TCP port 2323 unless given). Pools the
+/// through an AOW link gateway (AppSettings.VtGateway, TCP port 2323 unless given) or an slcan
+/// adapter plugged into this device (AppSettings.VtAdapter, its serial port; it wins when set). Pools the
 /// implements ask to keep are stored under VtPools in the data folder, by NAME and version
 /// label, one store for all the terminals. The stack and the link each run their own thread
 /// (the library's); this adds the held repeat of a key that is down.
 /// </summary>
-public sealed class VirtualTerminalService : IVirtualTerminalService
+public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposable
 {
     private readonly ISettingsService _settings;
     private readonly ILogger<VirtualTerminalService>? _log;
@@ -28,9 +29,12 @@ public sealed class VirtualTerminalService : IVirtualTerminalService
     private readonly object _connecting = new(); // one reconnect at a time
     private VirtualTerminalStack? _stack;
     private AowLink? _link;
+    private SlcanLink? _adapter;
     private KeyRepeater? _keys;
     private int _session, _count = 1;
-    private string _gateway = "", _state = "off", _why = "", _gatewayName = "", _bus = "";
+    private bool _disposed;
+    private string _gateway = "", _adapterPort = "", _state = "off", _why = "", _gatewayName = "", _bus = "";
+    private string[] _ports = [];
     private double _rtt = double.NaN;
     private long _linkSentAt;
 
@@ -44,14 +48,21 @@ public sealed class VirtualTerminalService : IVirtualTerminalService
         _log = log;
     }
 
-    public void Start() => Task.Run(() => Connect(_settings.Settings.VtGateway, _settings.Settings.VtCount));
+    public void Start() => Reconnect();
 
     public void SetGateway(string gateway)
     {
-        gateway = gateway.Trim();
-        _settings.Settings.VtGateway = gateway;
+        _settings.Settings.VtGateway = gateway.Trim();
+        _settings.Settings.VtAdapter = "";
         _settings.Save();
-        Task.Run(() => Connect(gateway, _settings.Settings.VtCount)); // stopping the old stack waits for a pool parsing
+        Reconnect();
+    }
+
+    public void SetAdapter(string port)
+    {
+        _settings.Settings.VtAdapter = port.Trim();
+        _settings.Save();
+        Reconnect();
     }
 
     public void SetCount(int count)
@@ -60,7 +71,33 @@ public sealed class VirtualTerminalService : IVirtualTerminalService
         if (count == _settings.Settings.VtCount) return;
         _settings.Settings.VtCount = count;
         _settings.Save();
-        Task.Run(() => Connect(_settings.Settings.VtGateway, count));
+        Reconnect();
+    }
+
+    public void RefreshPorts() => Task.Run(() =>
+    {
+        var ports = ListPorts();
+        lock (_gate) _ports = ports;
+        PublishLink(force: true);
+    });
+
+    private string[] ListPorts()
+    {
+        try { return SerialPorts.List().ToArray(); }
+        catch (Exception e)
+        {
+            _log?.LogDebug("VT serial ports: {Error}", e.Message);
+            return [];
+        }
+    }
+
+    // On a worker: stopping the old stack waits for a pool parsing.
+    private void Reconnect()
+    {
+        var s = _settings.Settings;
+        string gateway = s.VtGateway, adapter = s.VtAdapter;
+        int count = s.VtCount;
+        Task.Run(() => Connect(gateway, adapter, count));
     }
 
     public void Key(int terminal, bool button, ushort objectId, VtKeyAction action)
@@ -101,80 +138,132 @@ public sealed class VirtualTerminalService : IVirtualTerminalService
 
     // ── The terminals and their link ───────────────────────────────────────────────────────
 
-    private void Connect(string gateway, int count)
+    private void Connect(string gateway, string adapter, int count)
     {
         lock (_connecting)
         {
             VirtualTerminalStack? oldStack;
             AowLink? oldLink;
+            SlcanLink? oldAdapter;
             KeyRepeater? oldKeys;
             lock (_gate)
             {
-                oldStack = _stack; oldLink = _link; oldKeys = _keys;
-                _stack = null; _link = null; _keys = null;
+                oldStack = _stack; oldLink = _link; oldAdapter = _adapter; oldKeys = _keys;
+                _stack = null; _link = null; _adapter = null; _keys = null;
             }
             // Keys released first, then the link, then the terminals (the library's order).
             oldKeys?.AbortAll();
             oldLink?.Stop();
+            oldAdapter?.Stop();
             oldStack?.Stop();
+            if (_disposed) return;
 
             count = Math.Clamp(count, 1, 4);
+            var ports = ListPorts();
             lock (_gate)
             {
                 _session++;
                 _count = count;
                 _gateway = gateway;
-                _state = gateway.Length == 0 ? "off" : "connecting";
+                _adapterPort = adapter;
+                _ports = ports;
+                _state = gateway.Length == 0 && adapter.Length == 0 ? "off" : "connecting";
                 _why = _gatewayName = _bus = "";
                 _rtt = double.NaN;
             }
             PublishLink(force: true);
-            if (gateway.Length == 0) return;
+            if (adapter.Length > 0) ConnectAdapter(adapter, count);
+            else if (gateway.Length > 0) ConnectGateway(gateway, count);
+        }
+    }
 
-            var host = gateway;
-            int port = AowLink.DefaultPort;
-            int colon = gateway.LastIndexOf(':');
-            if (colon > 0 && int.TryParse(gateway[(colon + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var p))
-            {
-                host = gateway[..colon];
-                port = p;
-            }
+    /// <summary>Stops the terminals and their link: the backend is stopping. On Android and iOS
+    /// the process outlives the backend, and the library allows one stack per process.</summary>
+    public void Dispose()
+    {
+        _disposed = true;
+        Connect("", "", 1);
+    }
 
-            try
-            {
-                var link = new AowLink(host, port, name: "AgOpenWeb");
-                var stack = new VirtualTerminalStack(new VirtualTerminalOptions
-                {
-                    Send = link.Send,
-                    Store = new FilePoolStore(Path.Combine(AppDataRoot.Documents, "VtPools")),
-                    Count = count,
-                    Log = (level, text) => _log?.Log(level >= 3 ? LogLevel.Error : level == 2 ? LogLevel.Warning : LogLevel.Debug,
-                        "{Text}", text),
-                });
-                stack.Attach(link);
-                foreach (var vt in stack.Terminals)
-                {
-                    int index = vt.Index;
-                    vt.Message += json => Message?.Invoke(index, json);
-                    vt.Image += img => Image?.Invoke(img.Id, img.Width, img.Height, img.Rgba);
-                }
-                stack.HandlerFailed += e => _log?.LogWarning(e, "VT handler failed");
-                link.HandlerFailed += e => _log?.LogWarning(e, "VT link handler failed");
-                link.Connected += info => SetLink("connected", "", info.Name);
-                link.Disconnected += (why, text) => SetLink("connecting", text.Length > 0 ? $"{why}: {text}" : why.ToString(), null);
-                link.RoundTrip += ms => { lock (_gate) _rtt = ms; PublishLink(force: false); };
-                link.StatusReceived += st => { lock (_gate) _bus = st.State.ToString(); PublishLink(force: false); };
+    private VirtualTerminalStack NewStack(FrameSender send, int count, byte packetsPerCts = 0)
+    {
+        var stack = new VirtualTerminalStack(new VirtualTerminalOptions
+        {
+            Send = send,
+            PacketsPerCts = packetsPerCts,
+            Store = new FilePoolStore(Path.Combine(AppDataRoot.Documents, "VtPools")),
+            Count = count,
+            Log = (level, text) => _log?.Log(level >= 3 ? LogLevel.Error : level == 2 ? LogLevel.Warning : LogLevel.Debug,
+                "{Text}", text),
+        });
+        foreach (var vt in stack.Terminals)
+        {
+            int index = vt.Index;
+            vt.Message += json => Message?.Invoke(index, json);
+            vt.Image += img => Image?.Invoke(img.Id, img.Width, img.Height, img.Rgba);
+        }
+        stack.HandlerFailed += e => _log?.LogWarning(e, "VT handler failed");
+        return stack;
+    }
 
-                stack.Start();
-                link.Start();
-                lock (_gate) { _stack = stack; _link = link; _keys = new KeyRepeater(stack, Observe); }
-            }
-            catch (Exception e)
-            {
-                // No native library for this runtime, another stack in the process, ...
-                _log?.LogError(e, "VT could not start");
-                SetLink("failed", e.GetBaseException().Message, null);
-            }
+    // An slcan adapter on this device: no round trip or bus state to show; "connecting" while it
+    // isn't there, with why (not plugged in, waiting for permission).
+    private void ConnectAdapter(string adapter, int count)
+    {
+        try
+        {
+            var link = new SlcanLink(adapter);
+            // An implement's upload 16 frames at a time, not 255: a USB adapter's reads (Android's
+            // most) fall behind a long burst on a full bus, and a frame lost aborts the upload.
+            var stack = NewStack(link.Send, count, packetsPerCts: 16);
+            stack.Attach(link);
+            link.HandlerFailed += e => _log?.LogWarning(e, "VT adapter handler failed");
+            link.Connected += info => SetLink("connected", "", info);
+            link.Disconnected += (why, text) => SetLink("connecting", text.Length > 0 ? $"{why}: {text}" : why.ToString(), null);
+            link.OpenFailed += why => SetLink("connecting", why, null);
+            stack.Start();
+            link.Start();
+            lock (_gate) { _stack = stack; _adapter = link; _keys = new KeyRepeater(stack, Observe); }
+        }
+        catch (Exception e)
+        {
+            // No native library for this runtime, another stack in the process, ...
+            _log?.LogError(e, "VT could not start");
+            SetLink("failed", e.GetBaseException().Message, null);
+        }
+    }
+
+    private void ConnectGateway(string gateway, int count)
+    {
+        var host = gateway;
+        int port = AowLink.DefaultPort;
+        int colon = gateway.LastIndexOf(':');
+        if (colon > 0 && int.TryParse(gateway[(colon + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var p))
+        {
+            host = gateway[..colon];
+            port = p;
+        }
+
+        try
+        {
+            var link = new AowLink(host, port, name: "AgOpenWeb");
+            var stack = NewStack(link.Send, count);
+            stack.Attach(link);
+            link.HandlerFailed += e => _log?.LogWarning(e, "VT link handler failed");
+            link.Connected += info => SetLink("connected", "", info.Name);
+            link.Disconnected += (why, text) => SetLink("connecting", text.Length > 0 ? $"{why}: {text}" : why.ToString(), null);
+            link.RoundTrip += ms => { lock (_gate) _rtt = ms; PublishLink(force: false); };
+            link.StatusReceived += st => { lock (_gate) _bus = st.State.ToString(); PublishLink(force: false); };
+
+            stack.Start();
+            link.Start();
+            lock (_gate) { _stack = stack; _link = link; _keys = new KeyRepeater(stack, Observe); }
+        }
+        catch (Exception e)
+        {
+            // No native library for this runtime, another stack in the process, ...
+            _log?.LogError(e, "VT could not start");
+            SetLink("failed", e.GetBaseException().Message, null);
         }
     }
 
@@ -193,7 +282,9 @@ public sealed class VirtualTerminalService : IVirtualTerminalService
     // The link message: on any change of state, and with the round trip and the bus state at
     // most every 2 s (the gateway reports both every second). "session" changes with every new
     // stack: the cards then drop the old one's pictures and screens. "count": the terminals, one
-    // card each.
+    // card each. "adapter": the serial port when an adapter on this device is used instead of the
+    // gateway; "ports": the serial ports there are, for choosing one; "adapters": false where an
+    // app can't reach a USB adapter (iOS), so the gear offers only the gateway.
     private void PublishLink(bool force)
     {
         string json;
@@ -202,8 +293,8 @@ public sealed class VirtualTerminalService : IVirtualTerminalService
             long now = Environment.TickCount64;
             if (!force && now - _linkSentAt < 2000) return;
             _linkSentAt = now;
-            json = System.Text.Json.JsonSerializer.Serialize(new LinkMessage("link", _session, _count, _gateway, _state, _why,
-                _gatewayName, double.IsNaN(_rtt) ? null : Math.Round(_rtt, 1), _bus), LinkJsonContext.Default.LinkMessage);
+            json = System.Text.Json.JsonSerializer.Serialize(new LinkMessage("link", _session, _count, _gateway, _adapterPort, _ports, !OperatingSystem.IsIOS(),
+                _state, _why, _gatewayName, double.IsNaN(_rtt) ? null : Math.Round(_rtt, 1), _bus), LinkJsonContext.Default.LinkMessage);
         }
         Message?.Invoke(-1, json);
     }
@@ -269,6 +360,9 @@ internal sealed record LinkMessage(
     [property: JsonPropertyName("session")] int Session,
     [property: JsonPropertyName("count")] int Count,
     [property: JsonPropertyName("gateway")] string Gateway,
+    [property: JsonPropertyName("adapter")] string Adapter,
+    [property: JsonPropertyName("ports")] string[] Ports,
+    [property: JsonPropertyName("adapters")] bool Adapters,
     [property: JsonPropertyName("state")] string State,
     [property: JsonPropertyName("why")] string Why,
     [property: JsonPropertyName("name")] string Name,

@@ -8,7 +8,8 @@ namespace AgOpenWeb.Services.Interfaces;
 
 /// <summary>
 /// ISOBUS virtual terminals on the implement bus, one to four (as displays in one cab, each
-/// implement choosing one), each shown in its own VT card. A terminal flattens its implement's
+/// implement choosing one), each shown in its own VT card. The bus is reached through a gateway
+/// on the network or an slcan adapter plugged into this device. A terminal flattens its implement's
 /// screens into draw lists; the card paints them and sends the operator's touches back through
 /// these calls, each naming its terminal (0 first). Optional: a head registers one only when
 /// it is built with the terminal (AgOpenWeb.VirtualTerminal); without one the card never shows.
@@ -19,7 +20,7 @@ public interface IVirtualTerminalService
     /// <summary>Every message for the cards, as JSON with <c>"type"</c> first, and the terminal it
     /// is about: a terminal's own (<c>screen</c>, <c>edit</c>, <c>workingSets</c>, <c>alarms</c>,
     /// <c>audio</c>, <c>volume</c>, <c>identify</c>), or the link to the bus (<c>link</c>, with
-    /// the number of terminals) under -1. Raised on the terminals' or the link's thread; keep
+    /// the number of terminals, the adapter and the serial ports there are) under -1. Raised on the terminals' or the link's thread; keep
     /// handlers short.</summary>
     event Action<int, string>? Message;
 
@@ -34,9 +35,16 @@ public interface IVirtualTerminalService
     /// <summary>Connects to the saved gateway, if there is one.</summary>
     void Start();
 
-    /// <summary>Saves the gateway ("host" or "host:port"; "" turns the terminals off) and
-    /// connects to it.</summary>
+    /// <summary>Saves the gateway ("host" or "host:port"; "" turns the terminals off), stops using
+    /// an adapter, and connects to it.</summary>
     void SetGateway(string gateway);
+
+    /// <summary>Saves an slcan adapter on this device (its serial port) and uses it instead of the
+    /// gateway; "" goes back to the gateway.</summary>
+    void SetAdapter(string port);
+
+    /// <summary>Sends the link message again with the serial ports there are now.</summary>
+    void RefreshPorts();
 
     /// <summary>Saves how many terminals (1 to 4) and starts them again: the implements see
     /// their terminal go and come back, and load their pools from the store.</summary>
