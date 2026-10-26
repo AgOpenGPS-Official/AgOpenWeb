@@ -34,6 +34,7 @@ public sealed class YouTurnPathingService
 {
     private readonly ILogger<YouTurnPathingService> _logger;
     private readonly ConfigurationStore _configStore;
+    private readonly PolygonIndexCache _headlandIndex = new(); // the cultivated-area test of every offset point
 
     public YouTurnPathingService(ILogger<YouTurnPathingService> logger, ConfigurationStore configStore)
     {
@@ -411,12 +412,14 @@ public sealed class YouTurnPathingService
                 }
                 if (coarse.Count >= 3) area = coarse;
             }
+            // Every point of the offset curve is tested: the area's strip index, built once here.
+            var areaIndex = area != null ? PolygonSlabIndex.Build(area) : null;
 
             foreach (var p in CurveProcessing.CreateOffsetCurve(reference, distAway))
             {
                 if (area != null
                     && (p.Easting < minE || p.Easting > maxE || p.Northing < minN || p.Northing > maxN
-                        || !GeometryMath.IsPointInPolygon(area, new Vec2(p.Easting, p.Northing))))
+                        || !(areaIndex?.Contains(p.Easting, p.Northing) ?? false)))
                     continue;
                 inside++;
                 if (isPointCovered(p.Easting, p.Northing)) covered++;
@@ -503,13 +506,13 @@ public sealed class YouTurnPathingService
     }
 
     // Headland line takes precedence; fall back to the outer boundary when no headland is defined.
-    private static bool IsPointInsideCultivatedArea(
+    private bool IsPointInsideCultivatedArea(
         double easting, double northing,
         Boundary? boundary,
         IReadOnlyList<Vec3>? headlandLine)
     {
         if (headlandLine != null && headlandLine.Count >= 3)
-            return GeometryMath.IsPointInPolygon(headlandLine, new Vec2(easting, northing));
+            return _headlandIndex.Contains(headlandLine, easting, northing);
 
         if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid)
             return boundary.OuterBoundary.IsPointInside(easting, northing);

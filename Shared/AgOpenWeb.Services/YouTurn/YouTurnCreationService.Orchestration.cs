@@ -353,8 +353,10 @@ public partial class YouTurnCreationService
 
         double headlandWidthForTurn = Math.Max(totalHeadlandWidth - toolWidth, toolWidth);
 
+        // Asked for every candidate path point: the turn line's strip index, built once per plan.
+        var turnArea = PolygonSlabIndex.Build(turnBoundaryVec3);
         Func<Vec3, int> isPointInsideTurnArea = point =>
-            GeometryMath.IsPointInPolygon(turnBoundaryVec3, point) ? 0 : 1;
+            turnArea != null && turnArea.Contains(point.Easting, point.Northing) ? 0 : 1;
 
         var pivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians);
 
