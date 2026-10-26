@@ -10,12 +10,17 @@
     take a new SharpIsoTerm, change both properties to its release's.
     Working on SharpIsoTerm itself: build against a checkout of it instead (an absolute path),
       dotnet run -p:SharpIsoTermDir=$HOME/Code/SharpIsoTerm ...
-    which needs its native libraries built (its native/build.sh). Desktop, Android and iOS (on a
-    Mac, as the library); iOS device builds only (the native library is built for ios-arm64).
+    which needs its native libraries built (its native/build.sh).
   -->
   <PropertyGroup>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(DesktopOnly)' != 'true'">net10.0;net10.0-android;net10.0-ios</TargetFrameworks>
-    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('OSX')) Or '$(DesktopOnly)' == 'true'">net10.0</TargetFrameworks>
+    <!-- net10.0, and each mobile target whose workload is installed (its reference pack is there):
+         a head must take the package's assembly and native libraries for its own platform, so the
+         Android head gets net10.0-android wherever it builds (CI and the nightly: on Linux), and a
+         machine without a workload need not have it. -p:DesktopOnly=true: net10.0 only. -->
+    <_VtPacks>$(NetCoreTargetingPackRoot)</_VtPacks>
+    <_VtAndroid Condition="'$(DesktopOnly)' != 'true' And Exists('$(_VtPacks)') And '$([System.IO.Directory]::GetDirectories(`$(_VtPacks)`, `Microsoft.Android.Ref.*`))' != ''">;net10.0-android</_VtAndroid>
+    <_VtIos Condition="'$(DesktopOnly)' != 'true' And Exists('$(_VtPacks)') And '$([System.IO.Directory]::GetDirectories(`$(_VtPacks)`, `Microsoft.iOS.Ref.*`))' != ''">;net10.0-ios</_VtIos>
+    <TargetFrameworks>net10.0$(_VtAndroid)$(_VtIos)</TargetFrameworks>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
