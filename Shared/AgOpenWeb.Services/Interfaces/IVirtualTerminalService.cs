@@ -37,13 +37,13 @@ public interface IVirtualTerminalService
 
     /// <summary>Saves the gateway ("host" or "host:port"; "" turns the terminals off), stops using
     /// an adapter, and connects to it.</summary>
-    void SetGateway(string gateway);
+    void SetGateway(string gateway, string name = "");
 
     /// <summary>Saves an slcan adapter on this device (its serial port) and uses it instead of the
     /// gateway; "" goes back to the gateway.</summary>
     void SetAdapter(string port);
 
-    /// <summary>Sends the link message again with the serial ports there are now.</summary>
+    /// <summary>Looks for serial ports and gateways again now, and sends the link message.</summary>
     void RefreshPorts();
 
     /// <summary>Saves how many terminals (1 to 4) and starts them again: the implements see

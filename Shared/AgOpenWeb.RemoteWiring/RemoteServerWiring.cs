@@ -148,13 +148,16 @@ public static partial class RemoteServerWiring
                                         vt.Activate(at, wsName);
                                     return;
                                 }
-                                case "vt.gateway": // arg = "host" or "host:port"; "" turns the terminal off
-                                    vt?.SetGateway(arg);
+                                case "vt.gateway": // arg = "host" or "host:port", then a tab and the name of a gateway picked from the list; "" turns the terminal off
+                                {
+                                    int tab = arg.IndexOf('\t');
+                                    vt?.SetGateway(tab < 0 ? arg : arg[..tab], tab < 0 ? "" : arg[(tab + 1)..]);
                                     return;
+                                }
                                 case "vt.adapter": // arg = an slcan adapter's serial port on this device; "" back to the gateway
                                     vt?.SetAdapter(arg);
                                     return;
-                                case "vt.ports": // list the serial ports again (the gear's port list)
+                                case "vt.ports": // look for serial ports and gateways again (the gear's lists)
                                     vt?.RefreshPorts();
                                     return;
                                 case "vt.count": // arg = how many terminals, 1 to 4
