@@ -107,7 +107,7 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
         g.Port == AowLink.DefaultPort ? g.Host : g.Host + ":" + g.Port.ToString(CultureInfo.InvariantCulture);
 
     // The gateways on the network changed. The one picked by name, seen at another address while
-    // the terminal isn't connected: follow it there.
+    // the terminal isn't connected: follow it there; seen at its address under a new name: rename.
     private void OnGatewaysChanged(IReadOnlyList<AowLinkGateway> list)
     {
         string state;
@@ -117,6 +117,15 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
             state = _state;
         }
         var s = _settings.Settings;
+        // Renamed on its own page: the same gateway at the same address, under a new name.
+        var renamed = s.VtGatewayName.Length > 0 && s.VtAdapter.Length == 0 && list.All(g => g.Name != s.VtGatewayName)
+            ? list.FirstOrDefault(g => Address(g) == s.VtGateway) : null;
+        if (renamed is not null)
+        {
+            _log?.LogInformation("VT gateway {Old} is now called {Name}", s.VtGatewayName, renamed.Name);
+            s.VtGatewayName = renamed.Name;
+            _settings.Save();
+        }
         var moved = s.VtGatewayName.Length > 0 && s.VtAdapter.Length == 0 && state != "connected"
             ? list.FirstOrDefault(g => g.Name == s.VtGatewayName && Address(g) != s.VtGateway) : null;
         if (moved is not null)
