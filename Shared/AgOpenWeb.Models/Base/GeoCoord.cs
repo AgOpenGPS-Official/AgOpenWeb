@@ -6,7 +6,7 @@
 
 namespace AgOpenWeb.Models
 {
-    public struct GeoCoord
+    public struct GeoCoord : Base.IPlanarPoint
     {
         public GeoCoord(double northing, double easting)
         {

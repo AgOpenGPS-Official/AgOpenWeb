@@ -309,7 +309,7 @@ public class TramLineService(
                 point.Easting + Math.Sin(perpHeading) * offset,
                 point.Northing + Math.Cos(perpHeading) * offset
             );
-            bool isInside = fence == null || IsPointInFence(offsetPoint, fence);
+            bool isInside = fence == null || GeometryMath.IsPointInPolygon(fence, offsetPoint);
             allPoints.Add((offsetPoint, isInside));
         }
 
@@ -446,24 +446,6 @@ public class TramLineService(
         }
 
         return result;
-    }
-
-    /// <summary>
-    /// Ray casting point-in-polygon test for boundary clipping.
-    /// </summary>
-    private static bool IsPointInFence(Vec2 point, List<Vec3> fence)
-    {
-        bool inside = false;
-        int count = fence.Count;
-        for (int i = 0, j = count - 1; i < count; j = i++)
-        {
-            double yi = fence[i].Northing, yj = fence[j].Northing;
-            double xi = fence[i].Easting, xj = fence[j].Easting;
-            if (((yi > point.Northing) != (yj > point.Northing)) &&
-                (point.Easting < (xj - xi) * (point.Northing - yi) / (yj - yi) + xi))
-                inside = !inside;
-        }
-        return inside;
     }
 
     /// <summary>

@@ -797,6 +797,7 @@ public class CoverageMapService : ICoverageMapService
     /// </summary>
     private bool IsCellCovered(int cellE, int cellN)
     {
+        WorkCounters.CoverageLookups++;
         if (_detectionBits == null || !_fieldBoundsSet)
             return false;
 

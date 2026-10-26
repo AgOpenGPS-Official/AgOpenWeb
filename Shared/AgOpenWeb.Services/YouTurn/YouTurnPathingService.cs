@@ -268,41 +268,48 @@ public sealed class YouTurnPathingService
         if (widthMinusOverlap < 0.5) return;
 
         // Walk outwards perpendicular to the reference track to find the pass-number range
-        // that fits inside the cultivated area.
+        // that fits inside the cultivated area (tested at the track's middle).
         var pointA = referenceTrack.Points[0];
         var pointB = referenceTrack.Points[referenceTrack.Points.Count - 1];
         double perpAngle = abHeading + Math.PI / 2;
         double midE = (pointA.Easting + pointB.Easting) / 2;
         double midN = (pointA.Northing + pointB.Northing) / 2;
 
-        int minPath = 0, maxPath = 0;
-
-        for (int p = 0; p <= 200; p++)
+        bool Inside(int pass)
         {
-            double offsetDist = PassGeometry.Offset(referenceTrack, p, widthMinusOverlap);
-            double testE = midE + Math.Sin(perpAngle) * offsetDist;
-            double testN = midN + Math.Cos(perpAngle) * offsetDist;
-            if (!IsPointInsideCultivatedArea(testE, testN, boundary, headlandLine)) break;
-            maxPath = p;
+            double offsetDist = PassGeometry.Offset(referenceTrack, pass, widthMinusOverlap);
+            return IsPointInsideCultivatedArea(
+                midE + Math.Sin(perpAngle) * offsetDist, midN + Math.Cos(perpAngle) * offsetDist,
+                boundary, headlandLine);
         }
 
-        for (int p = -1; p >= -200; p--)
-        {
-            double offsetDist = PassGeometry.Offset(referenceTrack, p, widthMinusOverlap);
-            double testE = midE + Math.Sin(perpAngle) * offsetDist;
-            double testN = midN + Math.Cos(perpAngle) * offsetDist;
-            if (!IsPointInsideCultivatedArea(testE, testN, boundary, headlandLine)) break;
-            minPath = p;
-        }
+        // Start from the nearest pass inside the area. A line drawn on the fence (All Edges,
+        // a boundary edge) has pass 0 half a tool in, inside a headland wider than that: the
+        // range used to stop there at once, so the snake planned no turns.
+        // Twenty passes either way is far more than any headland; with none inside, the plan is
+        // pass 0 alone, as before (planned once, not again on every cycle).
+        int seed = 0;
+        for (int k = 1; k <= 40 && !Inside(seed); k++)
+            seed = (k % 2 == 1) ? (k + 1) / 2 : -(k / 2);
+        if (!Inside(seed)) seed = 0;
+
+        int minPath = seed, maxPath = seed;
+        while (maxPath - seed < 200 && Inside(maxPath + 1)) maxPath++;
+        while (seed - minPath < 200 && Inside(minPath - 1)) minPath--;
 
         var fullSequence = AgOpenWeb.Services.Track.SwathOrderingService.GeneratePathSequence(
             minPath, maxPath, AgOpenWeb.Services.Track.SwathPattern.Snake);
 
         // Rotate so the sequence starts at the current pass — the tractor may start anywhere in the field.
+        // A pass outside the order (its middle is outside the cultivated area) is put in front of
+        // it, so the plan still starts from the pass the tractor is on and goes on to the first
+        // one; otherwise the plan would be made again on every cycle.
         int currentIdx = fullSequence.IndexOf(guidance.HowManyPathsAway);
         turn.SnakeSequence = currentIdx > 0
             ? fullSequence.Skip(currentIdx).Concat(fullSequence.Take(currentIdx)).ToList()
-            : fullSequence;
+            : currentIdx < 0
+                ? fullSequence.Prepend(guidance.HowManyPathsAway).ToList()
+                : fullSequence;
         turn.SnakeIndex = 0;
 
         _logger.LogDebug("[YouTurn] Built snake sequence (rotated from path {Cur}): [{Seq}]",
@@ -310,43 +317,178 @@ public sealed class YouTurnPathingService
     }
 
     /// <summary>
-    /// Peek the next path number in the snake sequence, or null if the sequence is exhausted.
+    /// True when the snake sequence was planned for the pass the tractor is on. False before the
+    /// first turn, and after the operator moved to another pass midway or a swapped turn left
+    /// the order: the sequence is then planned again from this pass.
     /// </summary>
-    public int? GetNextSnakePath(YouTurnWorkingState turn)
+    public static bool IsSnakeOnPass(YouTurnWorkingState turn, int pass) =>
+        turn.SnakeSequence is { } seq && turn.SnakeIndex >= 0 && turn.SnakeIndex < seq.Count
+        && seq[turn.SnakeIndex] == pass;
+
+    /// <summary>
+    /// The next pass of the snake sequence that isn't worked yet, or null when every pass left
+    /// in it is worked (the field is done). Worked passes are passed over, never turned onto.
+    /// </summary>
+    public int? GetNextSnakePath(YouTurnWorkingState turn, Func<int, bool> isWorked)
     {
-        if (turn.SnakeSequence == null || turn.SnakeIndex < 0) return null;
-
-        int nextIndex = turn.SnakeIndex + 1;
-        if (nextIndex >= turn.SnakeSequence.Count) return null;
-
-        return turn.SnakeSequence[nextIndex];
+        if (turn.SnakeSequence is not { } seq) return null;
+        for (int i = Math.Max(turn.SnakeIndex + 1, 0); i < seq.Count; i++)
+            if (!isWorked(seq[i])) return seq[i];
+        return null;
     }
 
     /// <summary>
-    /// Advance the snake sequence cursor after a pass has been completed.
+    /// Move the snake sequence cursor to <paramref name="pass"/>, the pass a turn just landed on,
+    /// when it is the one <see cref="GetNextSnakePath"/> planned (the passes before it in the
+    /// sequence are worked). Any other pass, such as one a swapped turn went to, drops the
+    /// sequence, and the next turn plans it again from there.
     /// </summary>
-    public void AdvanceSnakeSequence(YouTurnWorkingState turn)
+    public void AdvanceSnakeSequence(YouTurnWorkingState turn, int pass, Func<int, bool> isWorked)
     {
-        if (turn.SnakeSequence != null && turn.SnakeIndex < turn.SnakeSequence.Count - 1)
+        if (turn.SnakeSequence is not { } seq) return;
+        for (int i = Math.Max(turn.SnakeIndex + 1, 0); i < seq.Count; i++)
         {
-            turn.SnakeIndex++;
-            _logger.LogDebug("[YouTurn] Snake advanced to index {Idx}: path {Path}",
-                turn.SnakeIndex, turn.SnakeSequence[turn.SnakeIndex]);
+            if (seq[i] == pass)
+            {
+                turn.SnakeIndex = i;
+                _logger.LogDebug("[YouTurn] Snake advanced to index {Idx}: path {Path}", i, pass);
+                return;
+            }
+            if (!isWorked(seq[i])) break;
         }
+        _logger.LogDebug("[YouTurn] Path {Path} is off the snake sequence - planning it again at the next turn", pass);
+        turn.SnakeSequence = null;
+        turn.SnakeIndex = -1;
+    }
+
+    /// <summary>
+    /// Is pass <paramref name="pass"/> worked? It is when sections were on while the tractor was
+    /// on it (<see cref="Models.Track.Track.WorkedPaths"/>), or when the job's coverage covers at
+    /// least half of it inside the cultivated area, as the map shows it: a pass worked before the
+    /// field was reopened, or while guidance was on another pass. A U-turn painted across the
+    /// end of a pass leaves the pass unworked.
+    /// </summary>
+    public bool IsPassWorked(
+        Models.Track.Track track,
+        int pass,
+        double nudgeOffset,
+        Boundary? boundary,
+        IReadOnlyList<Vec3>? headlandLine,
+        Func<double, double, bool>? isPointCovered)
+    {
+        if (track.IsPathWorked(pass)) return true;
+        if (isPointCovered == null || track.Points.Count < 2) return false;
+
+        double widthMinusOverlap = _configStore.ActualToolWidth - _configStore.Tool.Overlap;
+        double distAway = PassGeometry.Offset(track, pass, widthMinusOverlap, nudgeOffset);
+        var area = CultivatedPolygon(boundary, headlandLine);
+        int inside = 0, covered = 0;
+
+        if (track.Points.Count > 2)
+        {
+            // The pass every 5 m or more. The curve is taken to 5 m before it is offset (the offset
+            // compares every point with every other one), and each sample costs a point-in-polygon
+            // test after a test against the area's bounding box, so the area's edge is taken to
+            // 5 m as well: a curve or a headland line has a point every metre or so.
+            const double CurveSampleSpacing = 5.0;
+            const double SpacingSq = CurveSampleSpacing * CurveSampleSpacing;
+            var reference = new List<Vec3>();
+            foreach (var p in track.Points)
+                if (reference.Count == 0 || GeometryMath.DistanceSquared(reference[^1], p) >= SpacingSq)
+                    reference.Add(p);
+            if (reference.Count < 2) reference = track.Points;
+
+            double minE = double.MaxValue, maxE = double.MinValue, minN = double.MaxValue, maxN = double.MinValue;
+            if (area != null)
+            {
+                var coarse = new List<Vec2>();
+                foreach (var p in area)
+                {
+                    minE = Math.Min(minE, p.Easting); maxE = Math.Max(maxE, p.Easting);
+                    minN = Math.Min(minN, p.Northing); maxN = Math.Max(maxN, p.Northing);
+                    if (coarse.Count == 0 || GeometryMath.DistanceSquared(coarse[^1], p) >= SpacingSq)
+                        coarse.Add(p);
+                }
+                if (coarse.Count >= 3) area = coarse;
+            }
+
+            foreach (var p in CurveProcessing.CreateOffsetCurve(reference, distAway))
+            {
+                if (area != null
+                    && (p.Easting < minE || p.Easting > maxE || p.Northing < minN || p.Northing > maxN
+                        || !GeometryMath.IsPointInPolygon(area, new Vec2(p.Easting, p.Northing))))
+                    continue;
+                inside++;
+                if (isPointCovered(p.Easting, p.Northing)) covered++;
+            }
+        }
+        else
+        {
+            if (area == null) return false;
+            var a = track.Points[0];
+            var b = track.Points[1];
+            double dx = b.Easting - a.Easting, dy = b.Northing - a.Northing;
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len < 0.01) return false;
+            double ux = dx / len, uy = dy / len;
+            // Right of A→B is (uy, -ux): the side PassGeometry counts positive.
+            double offE = a.Easting + uy * distAway, offN = a.Northing - ux * distAway;
+
+            // Where the pass line crosses the area's edge, as distances along A→B: it is inside
+            // between the 1st and 2nd crossing, the 3rd and 4th, and so on (the even-odd rule
+            // of the point-in-polygon test). One pass over the edge instead of a point test per
+            // sample; a sample is then only a coverage lookup.
+            var crossings = new List<double>();
+            for (int i = 0, j = area.Count - 1; i < area.Count; j = i++)
+            {
+                var p = area[j];
+                var q = area[i];
+                double sp = (p.Easting - offE) * uy - (p.Northing - offN) * ux; // side of the line
+                double sq = (q.Easting - offE) * uy - (q.Northing - offN) * ux;
+                if ((sp > 0) == (sq > 0)) continue;
+                double tp = (p.Easting - offE) * ux + (p.Northing - offN) * uy;
+                double tq = (q.Easting - offE) * ux + (q.Northing - offN) * uy;
+                crossings.Add(tp + (tq - tp) * sp / (sp - sq));
+            }
+            crossings.Sort();
+
+            // The pass line every 2 m inside the area.
+            const double SampleSpacing = 2.0;
+            for (int k = 0; k + 1 < crossings.Count; k += 2)
+                for (double t = crossings[k] + SampleSpacing / 2; t < crossings[k + 1]; t += SampleSpacing)
+                {
+                    inside++;
+                    if (isPointCovered(offE + ux * t, offN + uy * t)) covered++;
+                }
+        }
+
+        return inside > 0 && covered * 2 >= inside;
+    }
+
+    /// <summary>The cultivated area's edge: the headland line, else the outer boundary; null when there is neither.</summary>
+    private static List<Vec2>? CultivatedPolygon(Boundary? boundary, IReadOnlyList<Vec3>? headlandLine)
+    {
+        if (headlandLine is { Count: >= 3 })
+            return headlandLine.Select(p => new Vec2(p.Easting, p.Northing)).ToList();
+        if (boundary?.OuterBoundary is { IsValid: true } outer)
+            return outer.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList();
+        return null;
     }
 
     /// <summary>
     /// Mirrors AgOpenGPS's GetNextNotWorkedTrack: start at the normal goal lane and walk outward
     /// until an unworked pass is found. Returns the actual skip distance (always positive).
     /// </summary>
-    public int GetNextUnworkedPathSkip(Models.Track.Track? selectedTrack, int currentPath, bool positiveDirection, int initialSkip)
+    public int GetNextUnworkedPathSkip(Models.Track.Track? selectedTrack, int currentPath, bool positiveDirection, int initialSkip,
+        Func<int, bool>? isWorked = null)
     {
         if (selectedTrack == null) return initialSkip;
+        isWorked ??= selectedTrack.IsPathWorked;
 
         int goalLane = currentPath + (positiveDirection ? initialSkip : -initialSkip);
         int iterations = 0;
 
-        while (selectedTrack.IsPathWorked(goalLane) && iterations < 100)
+        while (isWorked(goalLane) && iterations < 100)
         {
             if (positiveDirection) goalLane++; else goalLane--;
             iterations++;

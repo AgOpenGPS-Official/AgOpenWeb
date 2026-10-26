@@ -53,6 +53,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly ITrackGuidanceService _trackGuidanceService;
     private readonly ISectionControlService _sectionControlService;
     private readonly ICoverageMapService _coverageMapService;
+    // The coverage test the U-turn planner reads worked passes from; one delegate, not one per cycle.
+    private readonly Func<double, double, bool> _isPointCovered;
     private readonly IAutoSteerService _autoSteerService;
     private readonly YouTurnGuidanceService _youTurnGuidanceService;
     private readonly YouTurnStateMachine _youTurnStateMachine;
@@ -229,6 +231,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _trackGuidanceService = trackGuidanceService;
         _sectionControlService = sectionControlService;
         _coverageMapService = coverageMapService;
+        _isPointCovered = coverageMapService.IsPointCovered;
         _autoSteerService = autoSteerService;
         _youTurnGuidanceService = youTurnGuidanceService;
         _youTurnStateMachine = youTurnStateMachine;
@@ -881,7 +884,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             isSkipWorkedMode,
             headlandCalculatedWidth,
             headlandDistanceConfig,
-            isAlternateSkipMode);
+            isAlternateSkipMode,
+            _isPointCovered);
 
         // Manual trigger — runs even when the auto gate would fail (e.g., YouTurn
         // toggle off). TriggerManual enforces its own preconditions (autosteer +
@@ -980,7 +984,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // must NEVER leave the outer field boundary. Only skip for on-boundary pass 0.
         bool skipBoundaryCheck = isTrackOnBoundary && passNumber == 0;
         if (autoSteerEngaged && !skipBoundaryCheck
-            && !IsPointInsideBoundary(boundary, driftedEasting, driftedNorthing))
+            && boundary?.OuterBoundary is { IsValid: true } outer
+            && !outer.IsPointInside(driftedEasting, driftedNorthing))
         {
             autoSteerEngaged = false;
             autoSteerDisengaged = true;
@@ -1930,29 +1935,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // ══════════════════════════════════════════════════════════════════════
     // Geometry helpers (pure math, no UI)
     // ══════════════════════════════════════════════════════════════════════
-
-    private static bool IsPointInsideBoundary(Boundary? boundary, double easting, double northing)
-    {
-        if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
-            return true;
-
-        var points = boundary.OuterBoundary.Points;
-        int n = points.Count;
-        bool inside = false;
-
-        for (int i = 0, j = n - 1; i < n; j = i++)
-        {
-            var pi = points[i];
-            var pj = points[j];
-
-            if (((pi.Northing > northing) != (pj.Northing > northing)) &&
-                (easting < (pj.Easting - pi.Easting) * (northing - pi.Northing) / (pj.Northing - pi.Northing) + pi.Easting))
-            {
-                inside = !inside;
-            }
-        }
-        return inside;
-    }
 
     private static double FindNearestSegmentHeading(List<Vec3> points, double easting, double northing)
     {
