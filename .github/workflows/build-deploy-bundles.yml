@@ -44,8 +44,8 @@ on:
     tags:
       - 'v*'
   schedule:
-    # Daily rolling nightly prerelease at 06:00 UTC.
-    - cron: '0 6 * * *'
+    # Daily rolling nightly prerelease at 08:00 UTC (GitHub may start it later on a busy day).
+    - cron: '0 8 * * *'
 
 # Nightly runs (scheduled or manual) share one group and the newest wins; a release run is
 # never cancelled by a later run.
