@@ -42,7 +42,7 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
-    <!-- The VT card's gateways on the network: found by Bonjour (AgIsoStack's AowLinkBrowser);
+    <!-- The VT card's gateways on the network: found by Bonjour (SharpIsoTerm's AowLinkBrowser);
          iOS asks the user once for the local network. -->
     <key>NSLocalNetworkUsageDescription</key>
     <string>AgOpenWeb looks for ISOBUS gateways and machine modules on the tractor's network.</string>

@@ -5558,7 +5558,7 @@ for (const id of ['chart-steer', 'chart-heading', 'chart-xte']) wireCardDrag(doc
 
 // ---- VT painter ----
 // The virtual terminal's draw list (screens, soft keys, list options) painted in Canvas 2D: no
-// ISOBUS knowledge, the items in order. From AgIsoStack-dotnet's reference painter
+// ISOBUS knowledge, the items in order. From SharpIsoTerm's reference painter
 // (painter/vtpaint.js, bc508cf, MIT); keep the two in step when the draw list changes.
 //   images.add(id, w, h, rgba) · vtPaintMask(ctx, screen, images) · vtPaintKey(ctx, keys, i, images)
 //   vtPaintItems(ctx, items, images) · vtHit(items, x, y)
