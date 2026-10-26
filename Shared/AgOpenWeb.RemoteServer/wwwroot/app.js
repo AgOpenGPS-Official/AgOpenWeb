@@ -5977,13 +5977,13 @@ const Vt = (() => {
     }
 
     // What covers the mask instead of a screen, or null when there's a screen to show. The
-    // gateway editor is on the first card.
+    // gateway editor is on the first card only: one connection serves every terminal.
     function statusMessage() {
       const text = (t, sub) => el => {
         const d = document.createElement('div'); d.textContent = t; el.appendChild(d);
         if (sub) { const s = document.createElement('div'); s.className = 'vt-sub'; s.textContent = sub; el.appendChild(s); }
       };
-      if (showGateway || ((!link || link.state === 'off') && index === 0)) return { key: 'gw:' + (link ? [link.session, link.state, link.gateway, link.gatewayName, link.adapter, link.count].concat(link.ports || [], (link.gateways || []).map(g => g.name + '@' + g.address)).join('|') : ''), build: buildGateway }; // rebuilt when what it shows changes
+      if (index === 0 && (showGateway || !link || link.state === 'off')) return { key: 'gw:' + (link ? [link.session, link.state, link.gateway, link.gatewayName, link.adapter, link.count].concat(link.ports || [], (link.gateways || []).map(g => g.name + '@' + g.address)).join('|') : ''), build: buildGateway }; // rebuilt when what it shows changes
       if (!link || link.state === 'off') return { key: 'off', build: text(tr('No gateway')) };
       if (link.state === 'failed') return { key: 'failed' + link.why, build: text(tr('The terminal could not start.'), link.why) };
       if (link.state === 'busy')
@@ -6053,8 +6053,8 @@ const Vt = (() => {
         sub.textContent = adapter
           ? (ports.length ? tr('An slcan adapter (CANable) on the implement bus, 250 kbit/s.') : tr('No adapter found: plug it in, then Refresh.'))
           : !typed ? tr('A gateway on this network, on the implement bus.')
-          : found.length ? tr('Address of the AOW link gateway on the implement bus (port 2323). Empty: off.')
-          : tr('No gateway found on this network. Type its address (port 2323), or Refresh. Empty: off.');
+          : found.length ? tr('Address of the AOW link gateway on the implement bus (port 2323).')
+          : tr('No gateway found on this network. Type its address (port 2323), or Refresh.');
       };
       kind.addEventListener('change', show);
       pick.addEventListener('change', show);
@@ -6086,6 +6086,10 @@ const Vt = (() => {
       });
       row.appendChild(ok);
       if (link && link.state !== 'off') {
+        // Disconnect: every terminal off, until Connect.
+        const off = document.createElement('button'); off.className = 'fo-btn'; off.textContent = tr('Disconnect');
+        off.addEventListener('pointerdown', e => { e.preventDefault(); transport.send('vt.gateway|'); showGateway = false; msgEl.dataset.msg = ''; render(); });
+        row.appendChild(off);
         const cancel = document.createElement('button'); cancel.className = 'fo-btn'; cancel.textContent = tr('Cancel');
         cancel.addEventListener('pointerdown', e => { e.preventDefault(); showGateway = false; render(); });
         row.appendChild(cancel);
@@ -6237,6 +6241,7 @@ const Vt = (() => {
       }
     }
 
+    if (index) q('.vt-gear').style.display = 'none'; // the connection is set on VT 1
     q('.vt-x').addEventListener('pointerdown', e => { e.preventDefault(); term.setOpen(false); });
     q('.vt-gear').addEventListener('pointerdown', e => {
       e.preventDefault();
