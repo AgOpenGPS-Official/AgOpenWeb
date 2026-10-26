@@ -15,7 +15,9 @@ namespace AgOpenWeb.VirtualTerminal;
 /// The VT cards' terminals: AgIsoStack's terminal stack on the implement bus, one to four
 /// terminals (AppSettings.VtCount; as displays in one cab, each implement choosing one), reached
 /// through an AOW link gateway (AppSettings.VtGateway, TCP port 2323 unless given) or an slcan
-/// adapter plugged into this device (AppSettings.VtAdapter, its serial port; it wins when set). Pools the
+/// adapter plugged into this device (AppSettings.VtAdapter, its serial port; it wins when set).
+/// Gateways announcing themselves on the network are listed for the gear (AowLinkBrowser); one
+/// picked by name (AppSettings.VtGatewayName) is followed to a new address. Pools the
 /// implements ask to keep are stored under VtPools in the data folder, by NAME and version
 /// label, one store for all the terminals. The stack and the link each run their own thread
 /// (the library's); this adds the held repeat of a key that is down.
@@ -35,6 +37,8 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
     private bool _disposed;
     private string _gateway = "", _adapterPort = "", _state = "off", _why = "", _gatewayName = "", _bus = "";
     private string[] _ports = [];
+    private readonly AowLinkBrowser _browser = new();
+    private FoundGateway[] _gateways = [];
     private double _rtt = double.NaN;
     private long _linkSentAt;
 
@@ -48,11 +52,18 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
         _log = log;
     }
 
-    public void Start() => Reconnect();
+    public void Start()
+    {
+        _browser.Changed += OnGatewaysChanged;
+        _browser.HandlerFailed += e => _log?.LogWarning(e, "VT gateway list handler failed");
+        _browser.Start();
+        Reconnect();
+    }
 
-    public void SetGateway(string gateway)
+    public void SetGateway(string gateway, string name = "")
     {
         _settings.Settings.VtGateway = gateway.Trim();
+        _settings.Settings.VtGatewayName = gateway.Trim().Length == 0 ? "" : name.Trim();
         _settings.Settings.VtAdapter = "";
         _settings.Save();
         Reconnect();
@@ -76,6 +87,7 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
 
     public void RefreshPorts() => Task.Run(() =>
     {
+        _browser.Refresh();
         var ports = ListPorts();
         lock (_gate) _ports = ports;
         PublishLink(force: true);
@@ -89,6 +101,32 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
             _log?.LogDebug("VT serial ports: {Error}", e.Message);
             return [];
         }
+    }
+
+    private static string Address(AowLinkGateway g) =>
+        g.Port == AowLink.DefaultPort ? g.Host : g.Host + ":" + g.Port.ToString(CultureInfo.InvariantCulture);
+
+    // The gateways on the network changed. The one picked by name, seen at another address while
+    // the terminal isn't connected: follow it there.
+    private void OnGatewaysChanged(IReadOnlyList<AowLinkGateway> list)
+    {
+        string state;
+        lock (_gate)
+        {
+            _gateways = list.Select(g => new FoundGateway(g.Name, Address(g))).ToArray();
+            state = _state;
+        }
+        var s = _settings.Settings;
+        var moved = s.VtGatewayName.Length > 0 && s.VtAdapter.Length == 0 && state != "connected"
+            ? list.FirstOrDefault(g => g.Name == s.VtGatewayName && Address(g) != s.VtGateway) : null;
+        if (moved is not null)
+        {
+            _log?.LogInformation("VT gateway {Name} is now at {Address}", moved.Name, Address(moved));
+            s.VtGateway = Address(moved);
+            _settings.Save();
+            Reconnect();
+        }
+        else PublishLink(force: true);
     }
 
     // On a worker: stopping the old stack waits for a pool parsing.
@@ -182,6 +220,7 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
     public void Dispose()
     {
         _disposed = true;
+        _browser.Stop();
         Connect("", "", 1);
     }
 
@@ -284,7 +323,8 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
     // stack: the cards then drop the old one's pictures and screens. "count": the terminals, one
     // card each. "adapter": the serial port when an adapter on this device is used instead of the
     // gateway; "ports": the serial ports there are, for choosing one; "adapters": false where an
-    // app can't reach a USB adapter (iOS), so the gear offers only the gateway.
+    // app can't reach a USB adapter (iOS), so the gear offers only the gateway. "gatewayName": the
+    // gateway's announced name when it was picked from "gateways", the ones found on the network.
     private void PublishLink(bool force)
     {
         string json;
@@ -293,7 +333,8 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
             long now = Environment.TickCount64;
             if (!force && now - _linkSentAt < 2000) return;
             _linkSentAt = now;
-            json = System.Text.Json.JsonSerializer.Serialize(new LinkMessage("link", _session, _count, _gateway, _adapterPort, _ports, !OperatingSystem.IsIOS(),
+            json = System.Text.Json.JsonSerializer.Serialize(new LinkMessage("link", _session, _count, _gateway,
+                _settings.Settings.VtGatewayName, _gateways, _adapterPort, _ports, !OperatingSystem.IsIOS(),
                 _state, _why, _gatewayName, double.IsNaN(_rtt) ? null : Math.Round(_rtt, 1), _bus), LinkJsonContext.Default.LinkMessage);
         }
         Message?.Invoke(-1, json);
@@ -360,6 +401,8 @@ internal sealed record LinkMessage(
     [property: JsonPropertyName("session")] int Session,
     [property: JsonPropertyName("count")] int Count,
     [property: JsonPropertyName("gateway")] string Gateway,
+    [property: JsonPropertyName("gatewayName")] string GatewayName,
+    [property: JsonPropertyName("gateways")] FoundGateway[] Gateways,
     [property: JsonPropertyName("adapter")] string Adapter,
     [property: JsonPropertyName("ports")] string[] Ports,
     [property: JsonPropertyName("adapters")] bool Adapters,
@@ -368,6 +411,11 @@ internal sealed record LinkMessage(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("rtt")] double? Rtt,
     [property: JsonPropertyName("bus")] string Bus);
+
+/// <summary>A gateway announcing itself on the network: its name and its address.</summary>
+internal sealed record FoundGateway(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("address")] string Address);
 
 [JsonSerializable(typeof(LinkMessage))]
 internal sealed partial class LinkJsonContext : JsonSerializerContext;

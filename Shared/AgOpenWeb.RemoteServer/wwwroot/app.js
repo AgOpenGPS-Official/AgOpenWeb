@@ -5944,7 +5944,7 @@ const Vt = (() => {
       const st = link ? link.state : 'off';
       dot.className = 'vt-dot ' + (st === 'connected' ? 'ok' : st === 'connecting' ? 'wait' : st === 'failed' ? 'bad' : '');
       dot.title = st === 'connected' ? (link.name || link.gateway) + (link.rtt != null ? ' · ' + link.rtt + ' ms' : '') + (link.bus ? ' · ' + link.bus : '')
-        : st === 'connecting' ? (link.adapter ? tr('Waiting for the CAN adapter on {port}', { port: link.adapter }) : tr('Connecting to {gw}', { gw: link.gateway })) + (link.why ? ' (' + link.why + ')' : '') : '';
+        : st === 'connecting' ? (link.adapter ? tr('Waiting for the CAN adapter on {port}', { port: link.adapter }) : tr('Connecting to {gw}', { gw: link.gatewayName || link.gateway })) + (link.why ? ' (' + link.why + ')' : '') : '';
     }
 
     function render() {
@@ -5982,13 +5982,13 @@ const Vt = (() => {
         const d = document.createElement('div'); d.textContent = t; el.appendChild(d);
         if (sub) { const s = document.createElement('div'); s.className = 'vt-sub'; s.textContent = sub; el.appendChild(s); }
       };
-      if (showGateway || ((!link || link.state === 'off') && index === 0)) return { key: 'gw:' + (link ? [link.session, link.state, link.gateway, link.adapter, link.count].concat(link.ports || []).join('|') : ''), build: buildGateway }; // rebuilt when what it shows changes
+      if (showGateway || ((!link || link.state === 'off') && index === 0)) return { key: 'gw:' + (link ? [link.session, link.state, link.gateway, link.gatewayName, link.adapter, link.count].concat(link.ports || [], (link.gateways || []).map(g => g.name + '@' + g.address)).join('|') : ''), build: buildGateway }; // rebuilt when what it shows changes
       if (!link || link.state === 'off') return { key: 'off', build: text(tr('No gateway')) };
       if (link.state === 'failed') return { key: 'failed' + link.why, build: text(tr('The terminal could not start.'), link.why) };
       if (link.state !== 'connected')
         return { key: 'conn' + link.why, build: link.adapter
           ? text(tr('Waiting for the CAN adapter on {port}', { port: link.adapter }), link.why)
-          : text(tr('Connecting to {gw}', { gw: link.gateway }), link.why) };
+          : text(tr('Connecting to {gw}', { gw: link.gatewayName || link.gateway }), link.why) };
       if (!screen || !screen.ws || !screen.kind) {
         const ws = workingSets && workingSets.list && workingSets.list[0];
         if (ws && ws.state === 'transferring') return { key: 'up' + ws.progress, build: text(tr('Loading the implement\'s screens: {p}%', { p: ws.progress })) };
@@ -6010,9 +6010,23 @@ const Vt = (() => {
       kind.value = link && link.adapter ? 'adapter' : 'gateway';
       if (link && link.adapters === false && !link.adapter) kind.style.display = 'none'; // no USB adapters here (iOS)
       el.appendChild(kind);
-      // Gateway: its address.
+      // Gateway: one of those announcing themselves on the network, by name, or an address typed.
+      const found = (link && link.gateways || []).slice();
+      const gwRow = document.createElement('div'); gwRow.className = 'vt-row';
+      const pick = document.createElement('select'); pick.className = 'vt-ws';
+      for (const g of found) {
+        const o = document.createElement('option'); o.value = g.address; o.textContent = g.name; o.dataset.name = g.name;
+        pick.appendChild(o);
+      }
+      const other = document.createElement('option'); other.value = ''; other.textContent = tr('Other address…');
+      pick.appendChild(other);
+      const mine = link && link.gateway ? found.find(g => (link.gatewayName && g.name === link.gatewayName) || g.address === link.gateway) : found[0];
+      pick.value = mine ? mine.address : '';
+      const gwAgain = document.createElement('button'); gwAgain.className = 'fo-btn'; gwAgain.textContent = tr('Refresh');
+      gwAgain.addEventListener('pointerdown', e => { e.preventDefault(); transport.send('vt.ports'); });
+      gwRow.append(pick, gwAgain);
       const inp = document.createElement('input');
-      inp.placeholder = '192.168.1.10'; inp.value = link && link.gateway || '';
+      inp.placeholder = '192.168.1.10'; inp.value = link && link.gateway && !mine ? link.gateway : '';
       inp.autocapitalize = 'off'; inp.spellcheck = false;
       // Adapter: its serial port, from the host's list (refreshed when the gear opens).
       const portRow = document.createElement('div'); portRow.className = 'vt-row';
@@ -6028,15 +6042,19 @@ const Vt = (() => {
       portRow.append(port, again);
       const sub = document.createElement('div'); sub.className = 'vt-sub';
       const show = () => {
-        const adapter = kind.value === 'adapter';
-        inp.style.display = adapter ? 'none' : '';
+        const adapter = kind.value === 'adapter', typed = !pick.value;
+        gwRow.style.display = adapter ? 'none' : '';
+        inp.style.display = adapter || !typed ? 'none' : '';
         portRow.style.display = adapter ? '' : 'none';
         sub.textContent = adapter
           ? (ports.length ? tr('An slcan adapter (CANable) on the implement bus, 250 kbit/s.') : tr('No adapter found: plug it in, then Refresh.'))
-          : tr('Address of the AOW link gateway on the implement bus (port 2323). Empty: off.');
+          : !typed ? tr('A gateway on this network, on the implement bus.')
+          : found.length ? tr('Address of the AOW link gateway on the implement bus (port 2323). Empty: off.')
+          : tr('No gateway found on this network. Type its address (port 2323), or Refresh. Empty: off.');
       };
       kind.addEventListener('change', show);
-      el.append(inp, portRow, sub);
+      pick.addEventListener('change', show);
+      el.append(gwRow, inp, portRow, sub);
       show();
       // How many terminals: one card each, as displays in one cab.
       const countRow = document.createElement('div'); countRow.className = 'vt-row';
@@ -6055,9 +6073,11 @@ const Vt = (() => {
         e.preventDefault();
         if (+count.value > 1) openAdded = true;
         if (+count.value !== have) transport.send('vt.count|' + count.value);
+        const picked = pick.value ? pick.selectedOptions[0].dataset.name : '';
+        const address = pick.value || inp.value.trim();
         if (kind.value === 'adapter') { if (port.value) transport.send('vt.adapter|' + port.value); }
-        else if (+count.value === have || inp.value.trim() !== (link && link.gateway || '') || (link && link.adapter))
-          transport.send('vt.gateway|' + inp.value.trim());
+        else if (+count.value === have || address !== (link && link.gateway || '') || picked !== (link && link.gatewayName || '') || (link && link.adapter))
+          transport.send('vt.gateway|' + address + (picked ? '\t' + picked : ''));
         showGateway = false; msgEl.dataset.msg = ''; render();
       });
       row.appendChild(ok);

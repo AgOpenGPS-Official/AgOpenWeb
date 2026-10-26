@@ -116,6 +116,14 @@ owns the library's publication.
 
 ## Built
 
+- **2026-10-25, discovery (§6 step 1, client side):** `AowLinkBrowser` in AgIsoStack-dotnet (own
+  mDNS query on the desktop and Android, `NSNetServiceBrowser` on iOS, so the desktop mDNS question
+  in §7 is settled: our own, no dependency); the gear lists gateways by name with Refresh, keeps
+  the name (`VtGatewayName`) and follows the gateway to a new address while not connected; the
+  iOS plist entries. Tried with a gateway announced by hand (`dns-sd -R`) on the Mac (headless
+  app: listed, picked, followed to a new port) and the Galaxy Tab (listed at the Mac's LAN address). Gateways announcing themselves comes with step 2: `aow-linkd` announces only
+  once it listens beyond loopback.
+
 - **2026-10-25:** one to four terminals, one card each (AOW #429); the gateway client `AowLink`
   (library PR #1, #2); the slcan USB adapter on Windows, macOS, Linux and Android, and the
   terminal on the Android and iOS heads (AOW #433, library PR #3). On the bench: a CANable on the

@@ -148,6 +148,11 @@ namespace AgOpenWeb.Models
         /// "host" or "host:port" (port 2323 when left out). Empty: no terminal.</summary>
         public string VtGateway { get; set; } = string.Empty;
 
+        /// <summary>The name the gateway announces on the network (DNS-SD), when it was picked
+        /// from the gear's list: a gateway that comes back at another address is followed by
+        /// it. Empty: the address was typed.</summary>
+        public string VtGatewayName { get; set; } = string.Empty;
+
         /// <summary>How many virtual terminals, 1 to 4: as displays in one cab, each implement
         /// choosing one (in its own menu). One VT card each.</summary>
         public int VtCount { get; set; } = 1;

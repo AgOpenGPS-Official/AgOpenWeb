@@ -340,7 +340,9 @@ bench scripts: `Tools/rtcm-bench`.
 The VT cards show ISOBUS implements' own screens. `Shared/AgOpenWeb.VirtualTerminal`
 (`IVirtualTerminalService`) runs AgIsoStack-dotnet's terminal stack on the implement bus through
 an AOW link gateway (`AppSettings.VtGateway`, port 2323; the HAT's `aow-linkd`) or an slcan USB
-adapter on the device itself (`AppSettings.VtAdapter`, a CANable; not on iOS): one to four
+adapter on the device itself (`AppSettings.VtAdapter`, a CANable; not on iOS). Gateways announcing
+themselves by DNS-SD (`_aowlink._tcp`) are listed in the card's gear by name (`AowLinkBrowser`); one
+picked from the list is kept by name too (`VtGatewayName`) and followed to a new address. One to four
 terminals (`AppSettings.VtCount`), as displays in one cab, each implement choosing its terminal in
 its own menu, one card each. Their messages and pictures go to the browsers as `Vt` (with the
 terminal) and `VtImage` frames (`VirtualTerminalRemote`), the painter is in `app.js`, and each
