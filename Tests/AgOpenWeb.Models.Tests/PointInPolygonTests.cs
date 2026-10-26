@@ -12,8 +12,9 @@ namespace AgOpenWeb.Models.Tests;
 
 /// <summary>
 /// One point-in-polygon rule (<see cref="GeometryMath.CrossesSouth"/>) for every test in the
-/// app, and the strip index (<see cref="PolygonSlabIndex"/>, used by BoundaryPolygon and
-/// section control) giving the same answers as walking every edge.
+/// app, and the strip index (<see cref="PolygonSlabIndex"/>, used by BoundaryPolygon, and
+/// through <see cref="PolygonIndexCache"/> by section control, the GPS cycle and U-turn
+/// planning) giving the same answers as walking every edge.
 /// </summary>
 [TestFixture]
 public class PointInPolygonTests
@@ -140,5 +141,51 @@ public class PointInPolygonTests
         // Too few points: outside, not an exception.
         bp.Points = new List<BoundaryPoint> { new(0, 0, 0), new(1, 1, 0) };
         Assert.That(bp.IsPointInside(0.5, 0.2), Is.False);
+    }
+
+    [Test]
+    public void TheCache_AgreesWithTheFullWalk_EverywhereIncludingOnEdges()
+    {
+        foreach (var (name, poly) in Shapes())
+        {
+            var cache = new PolygonIndexCache();
+            var points = new List<(double E, double N)>();
+            for (double e = -70; e <= 70; e += 0.5)
+                for (double n = -50; n <= 50; n += 0.5) points.Add((e, n));
+            foreach (var v in poly) points.Add((v.Easting, v.Northing));
+
+            int mismatches = points.Count(p => cache.Contains(poly, p.E, p.N) != GeometryMath.IsPointInPolygon(poly, p.E, p.N));
+            Assert.That(mismatches, Is.Zero, name);
+        }
+    }
+
+    [Test]
+    public void TheCache_FollowsTheList()
+    {
+        var cache = new PolygonIndexCache();
+        var first = Square(0, 0, 10);
+        var index = cache.For(first);
+        Assert.That(cache.Contains(first, 5, 5), Is.True);
+        Assert.That(cache.For(first), Is.SameAs(index), "the same list: built once");
+
+        // Replaced: rebuilt.
+        var second = Square(100, 100, 10);
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.Contains(second, 5, 5), Is.False);
+            Assert.That(cache.Contains(second, 105, 105), Is.True);
+        });
+
+        // A point added to the same list: rebuilt (the count changed).
+        second.Insert(2, new Vec2(130, 105));
+        Assert.That(cache.Contains(second, 120, 105), Is.True);
+
+        // Too few points: outside, no index.
+        var line = new List<Vec2> { new(0, 0), new(1, 1) };
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.Contains(line, 0.5, 0.2), Is.False);
+            Assert.That(cache.For(line), Is.Null);
+        });
     }
 }

@@ -144,6 +144,24 @@ namespace AgOpenWeb.Models
         /// <summary>NTRIP on/off (Network IO). Off: the app does not connect to a caster.</summary>
         public bool NtripEnabled { get; set; } = true;
 
+        /// <summary>The AOW link gateway the virtual terminal reaches the ISOBUS through:
+        /// "host" or "host:port" (port 2323 when left out). Empty: no terminal.</summary>
+        public string VtGateway { get; set; } = string.Empty;
+
+        /// <summary>The name the gateway announces on the network (DNS-SD), when it was picked
+        /// from the gear's list: a gateway that comes back at another address is followed by
+        /// it. Empty: the address was typed.</summary>
+        public string VtGatewayName { get; set; } = string.Empty;
+
+        /// <summary>How many virtual terminals, 1 to 4: as displays in one cab, each implement
+        /// choosing one (in its own menu). One VT card each.</summary>
+        public int VtCount { get; set; } = 1;
+
+        /// <summary>An slcan CAN adapter on this device the virtual terminals use instead of the
+        /// gateway: its serial port ("/dev/cu.usbmodem…", "COM3", "/dev/ttyACM0"). Empty: the
+        /// gateway.</summary>
+        public string VtAdapter { get; set; } = string.Empty;
+
         // Vehicle profile settings
         public string LastUsedVehicleProfile { get; set; } = string.Empty;
         public string LastUsedToolProfile { get; set; } = string.Empty;

@@ -195,6 +195,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     // ── Headland proximity ──────────────────────────────────────────────
     private readonly HeadlandDetectionService _headlandDetector = new();
+    private readonly PolygonIndexCache _headlandIndex = new(); // the hydraulic lift's test
 
     // ── RTK quality tracking ────────────────────────────────────────────
     private int _previousFixQuality;
@@ -2072,10 +2073,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             VehiclePosition = toolPivot,
             Boundaries = new List<Models.Headland.BoundaryData>
             {
-                new Models.Headland.BoundaryData
-                {
-                    HeadlandLine = new List<Vec3>(headlandLine)
-                }
+                // The cycle's own copy (SetHeadlandLine), not copied again: only read.
+                new Models.Headland.BoundaryData { HeadlandLine = headlandLine }
             }
         };
 
@@ -2114,7 +2113,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double ahead = Math.Min(Math.Abs(speed) * Math.Max(0, _configStore.Machine.LookAhead), 20.0);
         var probe = new Vec2(toolPosition.Easting + Math.Sin(toolHeading) * ahead,
                              toolPosition.Northing + Math.Cos(toolHeading) * ahead);
-        bool inCultivatedArea = Models.Base.GeometryMath.IsPointInPolygon(headlandLine, probe);
+        bool inCultivatedArea = _headlandIndex.Contains(headlandLine, probe.Easting, probe.Northing);
 
         return inCultivatedArea ? (byte)1 : (byte)2;
     }
