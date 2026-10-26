@@ -241,6 +241,7 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
             PacketsPerCts = packetsPerCts,
             Store = new FilePoolStore(Path.Combine(AppDataRoot.Documents, "VtPools")),
             Count = count,
+            PhysicalKeys = 12, // two columns of six, as newer terminals have
             Log = (level, text) => _log?.Log(level >= 3 ? LogLevel.Error : level == 2 ? LogLevel.Warning : LogLevel.Debug,
                 "{Text}", text),
         });
