@@ -5942,8 +5942,9 @@ const Vt = (() => {
     function renderHeader() {
       nameEl.textContent = tr('VT {n}', { n: index + 1 }); // the same with one terminal or four
       const st = link ? link.state : 'off';
-      dot.className = 'vt-dot ' + (st === 'connected' ? 'ok' : st === 'connecting' ? 'wait' : st === 'failed' ? 'bad' : '');
+      dot.className = 'vt-dot ' + (st === 'connected' ? 'ok' : st === 'connecting' || st === 'busy' ? 'wait' : st === 'failed' ? 'bad' : '');
       dot.title = st === 'connected' ? (link.name || link.gateway) + (link.rtt != null ? ' · ' + link.rtt + ' ms' : '') + (link.bus ? ' · ' + link.bus : '')
+        : st === 'busy' ? tr('In use by {who}', { who: link.why })
         : st === 'connecting' ? (link.adapter ? tr('Waiting for the CAN adapter on {port}', { port: link.adapter }) : tr('Connecting to {gw}', { gw: link.gatewayName || link.gateway })) + (link.why ? ' (' + link.why + ')' : '') : '';
     }
 
@@ -5985,6 +5986,9 @@ const Vt = (() => {
       if (showGateway || ((!link || link.state === 'off') && index === 0)) return { key: 'gw:' + (link ? [link.session, link.state, link.gateway, link.gatewayName, link.adapter, link.count].concat(link.ports || [], (link.gateways || []).map(g => g.name + '@' + g.address)).join('|') : ''), build: buildGateway }; // rebuilt when what it shows changes
       if (!link || link.state === 'off') return { key: 'off', build: text(tr('No gateway')) };
       if (link.state === 'failed') return { key: 'failed' + link.why, build: text(tr('The terminal could not start.'), link.why) };
+      if (link.state === 'busy')
+        return { key: 'busy' + link.why, build: text(tr('{gw} is in use by {who}', { gw: link.gatewayName || link.gateway, who: link.why }),
+          tr('This card connects when the other terminal lets it go.')) };
       if (link.state !== 'connected')
         return { key: 'conn' + link.why, build: link.adapter
           ? text(tr('Waiting for the CAN adapter on {port}', { port: link.adapter }), link.why)

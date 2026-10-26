@@ -285,12 +285,17 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
 
         try
         {
-            var link = new AowLink(host, port, name: "AgOpenWeb");
+            var link = new AowLink(host, port, name: "AgOpenWeb on " + DeviceName());
             var stack = NewStack(link.Send, count);
             stack.Attach(link);
             link.HandlerFailed += e => _log?.LogWarning(e, "VT link handler failed");
             link.Connected += info => SetLink("connected", "", info.Name);
-            link.Disconnected += (why, text) => SetLink("connecting", text.Length > 0 ? $"{why}: {text}" : why.ToString(), null);
+            link.Disconnected += (why, text) =>
+            {
+                // Another terminal has the gateway: said by its name ("in use by AgOpenWeb on ...").
+                if (why == LinkCloseReason.Busy) SetLink("busy", text.StartsWith("in use by ", StringComparison.Ordinal) ? text[10..] : text, null);
+                else SetLink("connecting", text.Length > 0 ? $"{why}: {text}" : why.ToString(), null);
+            };
             link.RoundTrip += ms => { lock (_gate) _rtt = ms; PublishLink(force: false); };
             link.StatusReceived += st => { lock (_gate) _bus = st.State.ToString(); PublishLink(force: false); };
 
@@ -303,6 +308,25 @@ public sealed class VirtualTerminalService : IVirtualTerminalService, IDisposabl
             // No native library for this runtime, another stack in the process, ...
             _log?.LogError(e, "VT could not start");
             SetLink("failed", e.GetBaseException().Message, null);
+        }
+    }
+
+    // This device, for the gateway's page and for another terminal refused while this one has it.
+    private static string DeviceName()
+    {
+        try
+        {
+#if ANDROID
+            return Android.OS.Build.Model ?? "Android";
+#elif IOS
+            return UIKit.UIDevice.CurrentDevice.Name;
+#else
+            return Environment.MachineName;
+#endif
+        }
+        catch (Exception)
+        {
+            return "this device";
         }
     }
 
