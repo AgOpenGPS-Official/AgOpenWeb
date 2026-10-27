@@ -119,6 +119,7 @@ public partial class MainViewModel
             _autoSteerService.Disengage();
             _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
             StatusMessage = result.DisengageReason ?? "AutoSteer disengaged";
+            LogAutoSteerOff(StatusMessage);
         }
 
         // Phase C C5: YouTurn + Guidance snapshot mirror. The cycle worker

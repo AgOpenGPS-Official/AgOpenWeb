@@ -976,7 +976,9 @@ public partial class MainViewModel
         ManualYouTurnRightCommand = new RelayCommand(TriggerManualYouTurnRight);
         ToggleUTurnDirectionCommand = new RelayCommand(ToggleUTurnDirection);
 
-        ToggleAutoSteerCommand = new RelayCommand(() =>
+        // The parameter says what toggled it, for the log: null is the operator (the screen
+        // button or its hotkey); the module's steer switch, kickouts and guards pass a reason.
+        ToggleAutoSteerCommand = new RelayCommand<string?>(source =>
         {
             // Disengage is always allowed — the user must be able to stop the
             // tractor even after the track/field has been cleared. Engagement
@@ -1003,6 +1005,10 @@ public partial class MainViewModel
             //    GpsPipelineService.GetOrComputeSyntheticHeadland.
 
             IsAutoSteerEngaged = !IsAutoSteerEngaged;
+            if (IsAutoSteerEngaged)
+                _logger.LogInformation("[AutoSteer] On: {Source}", source ?? "AutoSteer button");
+            else
+                LogAutoSteerOff(source ?? "AutoSteer button");
             _audioService.Play(IsAutoSteerEngaged
                 ? Services.Interfaces.SoundEffect.AutoSteerOn
                 : Services.Interfaces.SoundEffect.AutoSteerOff);
@@ -1029,7 +1035,7 @@ public partial class MainViewModel
             IsContourModeOn = !IsContourModeOn;
             if (!IsContourModeOn && IsAutoSteerEngaged)
             {
-                ToggleAutoSteerCommand?.Execute(null);
+                ToggleAutoSteerCommand?.Execute("contour mode turned off");
                 ReportFailure("Guidance stopped - contour off");
                 return;
             }
@@ -1703,6 +1709,7 @@ public partial class MainViewModel
             IsAutoSteerEngaged = false;
             _autoSteerService.Disengage();
             _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
+            LogAutoSteerOff("track changed");
             ReportFailure("Guidance stopped: track changed");
         }
         if (IsYouTurnEnabled) IsYouTurnEnabled = false;

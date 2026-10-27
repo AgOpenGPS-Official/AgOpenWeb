@@ -17,13 +17,14 @@ public partial class MainViewModel
 {
     private void HandleFarFromFieldWarning(FarFromFieldWarning warning)
     {
+        double km = warning.DistanceMeters / 1000.0;
         if (IsAutoSteerEngaged)
         {
             IsAutoSteerEngaged = false;
             SyncGuidanceStateToPipeline();
+            LogAutoSteerOff(FormattableString.Invariant($"GPS {km:F1} km from the field origin"));
         }
 
-        double km = warning.DistanceMeters / 1000.0;
         ShowConfirmationDialog(
             "GPS far from field",
             $"GPS reports a position {km:F1} km from the loaded field origin. " +
