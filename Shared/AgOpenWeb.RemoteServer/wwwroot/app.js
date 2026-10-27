@@ -1217,6 +1217,11 @@ const OSK = (() => {
   const on = () => !!(config && config.display && config.display.keyboardEnabled);
   const isField = el => el instanceof HTMLTextAreaElement
     || (el instanceof HTMLInputElement && ['text', 'password', 'search', 'email', 'url', ''].includes(el.type) && !el.readOnly && !el.disabled);
+  // When the keyboard hides the field, a line above the keys shows the field's label and text
+  // (like the text box at the top of AgOpenGPS's keyboard form).
+  const pv = document.createElement('div'); pv.className = 'osk-row osk-pv'; pv.hidden = true;
+  pv.innerHTML = '<span class="osk-pv-lbl"></span><span class="osk-pv-txt"></span>';
+  const [pvLbl, pvTxt] = pv.children, caret = document.createElement('i');
   function render() {
     const num = !!(target && target.dataset.numField);
     root.classList.toggle('num', num);
@@ -1227,7 +1232,7 @@ const OSK = (() => {
       rows[3].push({ k: 'BS', t: '⌫', c: 'wide' });
       rows.push([{ k: '-', t: '-' }, { k: '_', t: '_' }, { k: ' ', t: 'space', c: 'xwide' }, { k: '.', t: '.' }, { k: 'CLR', t: 'Clear', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
     }
-    root.innerHTML = '';
+    root.replaceChildren(pv);
     for (const r of rows) {
       const row = document.createElement('div'); row.className = 'osk-row';
       for (const b of r) {
@@ -1243,6 +1248,20 @@ const OSK = (() => {
     const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
     try { el.setRangeText(s, a, b, 'end'); } catch (_) { el.value += s; }
     el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  function echo() {
+    const el = target; if (!el || pv.hidden) return;
+    const v = el.type === 'password' ? '•'.repeat(el.value.length) : el.value;
+    const a = Math.min(el.selectionEnd ?? v.length, v.length);
+    pvTxt.replaceChildren(v.slice(0, a), caret, v.slice(a));
+    pvTxt.scrollLeft = Math.max(0, caret.offsetLeft - pvTxt.clientWidth + 24); // keep the caret in sight
+  }
+  function place() {
+    pv.hidden = true;
+    pv.hidden = target.getBoundingClientRect().bottom <= root.getBoundingClientRect().top;
+    const lb = (target.labels && target.labels[0]) || target.previousElementSibling; // <label for> or <label></label><input>
+    pvLbl.textContent = lb && lb.tagName === 'LABEL' ? lb.textContent.trim() : '';
+    echo();
   }
   function key(k) {
     const el = target; if (!el) return;
@@ -1266,7 +1285,7 @@ const OSK = (() => {
     target = el; shift = false;
     if (!el.dataset.oskIm) el.dataset.oskIm = el.getAttribute('inputmode') ?? '';
     el.setAttribute('inputmode', 'none'); // no OS keyboard on top of ours
-    render(); root.hidden = false;
+    render(); root.hidden = false; place();
   }
   function close() {
     if (target && target.dataset.oskIm !== undefined) {
@@ -1278,13 +1297,14 @@ const OSK = (() => {
   // Keep focus in the field while tapping keys (pointerdown would blur it), and don't pan the map.
   root.addEventListener('pointerdown', e => {
     e.preventDefault(); e.stopPropagation();
-    const b = e.target.closest('button'); if (b) key(b.dataset.k);
+    const b = e.target.closest('button'); if (b) { key(b.dataset.k); echo(); }
   });
   document.addEventListener('focusin', e => { if (on() && isField(e.target)) open(e.target); else if (!root.contains(e.target)) close(); });
   document.addEventListener('focusout', e => {
     if (e.target !== target) return;
     setTimeout(() => { if (document.activeElement !== target) close(); }, 0);
   });
+  window.addEventListener('resize', () => { if (target) place(); });
   return { close };
 })();
 // Uniform numeric input, everywhere. A tablet's decimal keypad (Android Samsung / iOS) has no
