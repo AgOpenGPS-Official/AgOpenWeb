@@ -57,9 +57,10 @@ public class AutoSteerOffReasonTests
     }
 
     [Test]
-    public void Pipeline_kickout_logs_its_reason()
+    public void Pipeline_kickout_logs_and_shows_its_reason()
     {
         Engage();
+        string? msg = null; _vm.FailureReported += m => msg = m;
 
         _vm.ApplyGpsCycleResult(new GpsCycleResult
         {
@@ -69,6 +70,18 @@ public class AutoSteerOffReasonTests
 
         Assert.That(_vm.IsAutoSteerEngaged, Is.False);
         Assert.That(OffLines(), Is.EqualTo(new[] { "[AutoSteer] Off: AutoSteer disengaged - outside boundary" }));
+        Assert.That(msg, Is.EqualTo("AutoSteer disengaged - outside boundary"), "only the app knows why: say it on screen");
+    }
+
+    [Test]
+    public void Button_shows_no_notice()
+    {
+        Engage();
+        int notices = 0; _vm.FailureReported += _ => notices++;
+
+        _vm.ToggleAutoSteerCommand!.Execute(null);
+
+        Assert.That(notices, Is.Zero, "the operator knows why");
     }
 
     [Test]

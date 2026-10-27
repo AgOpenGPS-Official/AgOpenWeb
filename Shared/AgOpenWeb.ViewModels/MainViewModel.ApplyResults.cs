@@ -118,7 +118,9 @@ public partial class MainViewModel
             IsAutoSteerEngaged = false;
             _autoSteerService.Disengage();
             _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
-            StatusMessage = result.DisengageReason ?? "AutoSteer disengaged";
+            // The cycle's own kickouts (boundary, speed limits, RTK lost): only the app knows
+            // why, so say it on screen. The steer module only sees PGN 254 stop.
+            ReportFailure(result.DisengageReason ?? "AutoSteer disengaged");
             LogAutoSteerOff(StatusMessage);
         }
 
