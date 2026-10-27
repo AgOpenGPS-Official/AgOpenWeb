@@ -775,6 +775,9 @@ public static partial class RemoteServerWiring
                     // release, disconnect, or deadman — the machine must not keep
                     // actuating with no interface: disengage autosteer and turn sections
                     // off. (Headless target → control state lives in the browser.)
+                    // ControlAuthority raises Revoked just before Changed, on the same thread,
+                    // so the failsafe's reason is here when the release below runs.
+                    string? controlLostReason = null;
                     server.AuthorityChangedHandler = (held, name) =>
                     {
                         vt?.AbortKeys(); // a VT key held by the last holder ends here
@@ -783,11 +786,13 @@ public static partial class RemoteServerWiring
                             System.Diagnostics.Debug.WriteLine($"[remote] control taken by {name}");
                             return;
                         }
+                        string offReason = "browser control ended: " + (controlLostReason ?? "released");
+                        controlLostReason = null;
                         dispatcher.Post(() =>
                         {
                             if (vm.IsAutoSteerEngaged
-                                && vm.ToggleAutoSteerCommand?.CanExecute(null) == true)
-                                vm.ToggleAutoSteerCommand.Execute(null);
+                                && vm.ToggleAutoSteerCommand?.CanExecute(offReason) == true)
+                                vm.ToggleAutoSteerCommand.Execute(offReason);
                             if (vm.IsManualSectionMode
                                 && vm.ToggleManualModeCommand?.CanExecute(null) == true)
                                 vm.ToggleManualModeCommand.Execute(null);
@@ -800,7 +805,10 @@ public static partial class RemoteServerWiring
                     // Involuntary loss (disconnect / deadman) — log the reason; the
                     // disengage runs in AuthorityChangedHandler (covers release too).
                     server.FailsafeHandler = reason =>
+                    {
+                        controlLostReason = reason;
                         System.Diagnostics.Debug.WriteLine($"[remote] actuation failsafe: {reason}");
+                    };
 
                     // Steer Wizard projector: while the remote wizard is open, project the
                     // live SteerWizardViewModel to a WizardDto each broadcast tick. Read off

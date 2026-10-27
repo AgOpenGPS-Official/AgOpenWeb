@@ -78,7 +78,7 @@ public partial class MainViewModel
     {
         if (!IsAutoSteerEngaged)
             return;
-        ToggleAutoSteerCommand?.Execute(null);
+        ToggleAutoSteerCommand?.Execute("steer wizard opened");
         StatusMessage = "AutoSteer disengaged for the steer wizard";
     }
 }

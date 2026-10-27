@@ -408,6 +408,7 @@ public partial class MainViewModel : ObservableObject
         _gpsService.GpsDataUpdated += OnGpsDataUpdated;
         _autoSteerService.StateUpdated += OnAutoSteerStateUpdated;
         _autoSteerService.GuidanceLost += OnGuidanceLost;
+        _autoSteerService.SensorKickout += OnSensorKickout;
         (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetTramLineService(_tramLineService);
         (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetSmartWasService(_smartWasService);
         _autoSteerService.Start(); // Enable zero-copy GPS pipeline
@@ -1297,7 +1298,9 @@ public partial class MainViewModel : ObservableObject
 
             // Toggle autosteer when requested by module communication service
             // (e.g., from work switch or steer switch)
-            ToggleAutoSteerCommand?.Execute(null);
+            ToggleAutoSteerCommand?.Execute(IsAutoSteerEngaged
+                ? ModuleStoppedSteeringReason()
+                : "steer switch or button on the steer module");
         }
 
         // UpdateModuleSwitches runs on the host loop, so toggle right away and report the
@@ -1384,6 +1387,11 @@ public partial class MainViewModel : ObservableObject
         {
             _moduleSteeredSinceEngage = false;
             _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
+            // With a Switch or Button set, UpdateModuleSwitches turns AutoSteer off next and
+            // logs why; with None it stays on, so say so here.
+            if (ConfigStore.AutoSteer.ExternalEnable == 0)
+                _logger.LogInformation("[AutoSteer] {Reason}; AutoSteer stays on (steer switch / button: None)",
+                    ModuleStoppedSteeringReason());
             ReportFailure("Steer module stopped steering (kickout, switch or button)");
         }
     }
@@ -2057,6 +2065,7 @@ public partial class MainViewModel : ObservableObject
             IsAutoSteerEngaged = false;
             _autoSteerService.Disengage();
             SyncGuidanceStateToPipeline();
+            LogAutoSteerOff("field closed");
         }
 
         // CurrentFieldName clears via the pass-through when SetActiveField(null)

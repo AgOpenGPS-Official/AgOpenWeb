@@ -50,6 +50,7 @@ public partial class MainViewModel
             _autoSteerService.Disengage();
             SyncGuidanceStateToPipeline();
             _audioService.Play(SoundEffect.AutoSteerOff);
+            LogAutoSteerOff("GPS data lost");
         }
 
         // Also a section switched on by its own button or hotkey with neither master on (#316).
