@@ -7,7 +7,8 @@ name: Sync pulverizador
 # that PR is the update; a conflict shows on the PR.
 on:
   schedule:
-    - cron: '0 5 * * *'
+    # 18:00 UTC: the PR is there at the end of the working day, before the 22:00 UTC nightly.
+    - cron: '0 18 * * *'
   workflow_dispatch:
 
 permissions:
