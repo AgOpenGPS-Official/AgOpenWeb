@@ -105,6 +105,10 @@ public partial class MainViewModel
                 BroadcastOnly = () => ConfigStore.Connections.RtcmBroadcast,
                 UdpForwardPort = 2233,
                 GgaIntervalSeconds = 10,
+                // Before the first fix a VRS caster still needs to know roughly where we are.
+                FallbackPositionProvider = () => State.Field.OriginLatitude != 0 || State.Field.OriginLongitude != 0
+                    ? (State.Field.OriginLatitude, State.Field.OriginLongitude)
+                    : null,
                 UseManualPosition = false
             };
 

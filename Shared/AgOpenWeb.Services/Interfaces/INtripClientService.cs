@@ -138,6 +138,12 @@ public class NtripConfiguration
     public int GgaIntervalSeconds { get; set; } = 10;
 
     /// <summary>
+    /// Where to tell the caster the receiver is before it has had a fix (the open field's
+    /// origin); null for nowhere. With neither, no GGA is sent until the first fix (#443).
+    /// </summary>
+    public Func<(double Latitude, double Longitude)?>? FallbackPositionProvider { get; set; }
+
+    /// <summary>
     /// Use manual position for GGA (vs GPS position)
     /// </summary>
     public bool UseManualPosition { get; set; } = false;
