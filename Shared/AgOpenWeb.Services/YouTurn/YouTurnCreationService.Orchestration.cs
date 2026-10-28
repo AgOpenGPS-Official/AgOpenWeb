@@ -378,7 +378,8 @@ public partial class YouTurnCreationService
             : DensifyAbLine(track.Points);
 
         double widthMinusOverlap = toolWidth - config.Tool.Overlap;
-        double offsetDistance = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, widthMinusOverlap, guidance.NudgeOffset);
+        double offsetDistance = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, widthMinusOverlap, guidance.NudgeOffset,
+            Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay));
         List<Vec3> offsetCurve = Math.Abs(offsetDistance) < 0.01
             ? new List<Vec3>(basePoints)
             : CurveProcessing.CreateOffsetCurve(basePoints, offsetDistance);
@@ -495,7 +496,8 @@ public partial class YouTurnCreationService
 
         var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double offsetDistance = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, widthMinusOverlap);
+        double offsetDistance = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, widthMinusOverlap, 0,
+            Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay));
 
         List<Vec3> searchPoints = Math.Abs(offsetDistance) < 0.01
             ? track.Points
@@ -555,7 +557,8 @@ public partial class YouTurnCreationService
 
         var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double offsetDistance = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, widthMinusOverlap);
+        double offsetDistance = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, widthMinusOverlap, 0,
+            Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay));
 
         Models.Track.Track currentOffsetTrack;
         if (Math.Abs(offsetDistance) < 0.01)
@@ -713,7 +716,8 @@ public partial class YouTurnCreationService
         if (track == null || track.Points.Count != 2) return pos;
         var a = track.Points[0];
         double width = _configStore.ActualToolWidth - _configStore.Tool.Overlap;
-        double passOffset = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, width, guidance.NudgeOffset);
+        double passOffset = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, width, guidance.NudgeOffset,
+            Models.Track.PassGeometry.ToolShift(_configStore.Tool.Offset, guidance.IsHeadingSameWay));
         double rightE = Math.Cos(abHeading), rightN = -Math.Sin(abHeading);
         double perp = (pos.Easting - a.Easting) * rightE + (pos.Northing - a.Northing) * rightN;
         double shift = passOffset - perp;

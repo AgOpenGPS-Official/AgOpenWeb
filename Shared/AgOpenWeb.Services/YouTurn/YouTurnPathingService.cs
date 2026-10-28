@@ -81,10 +81,14 @@ public sealed class YouTurnPathingService
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         // Include the nudge so the cyan next-track line matches the U-turn exit leg and the
         // line the tractor steers after completion exactly (all use PassGeometry.Offset).
-        double nextDistAway = PassGeometry.Offset(referenceTrack, nextPathsAway, widthMinusOverlap, guidance.NudgeOffset);
+        // The next pass is driven the other way, so its tool shift has the other sign (#446).
+        double toolShift = PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay);
+        double nextDistAway = PassGeometry.Offset(referenceTrack, nextPathsAway, widthMinusOverlap, guidance.NudgeOffset, -toolShift);
+        double currentDistAway = PassGeometry.Offset(referenceTrack, guidance.HowManyPathsAway, widthMinusOverlap, guidance.NudgeOffset, toolShift);
 
-        // Authoritative perpendicular width for the U-turn arc — direction lives in IsTurnLeft.
-        turn.NextTrackTurnOffset = Math.Abs(pathsToMove * widthMinusOverlap);
+        // Authoritative perpendicular width for the U-turn arc — direction lives in IsTurnLeft:
+        // from the line steered now to the next, the passes apart ± twice the tool offset.
+        turn.NextTrackTurnOffset = Math.Abs(nextDistAway - currentDistAway);
 
         Models.Track.Track nextTrack;
         if (referenceTrack.Points.Count == 2)

@@ -822,7 +822,9 @@ public sealed class YouTurnStateMachine
     {
         var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double nextDistAway = Models.Track.PassGeometry.Offset(track, nextPath, widthMinusOverlap);
+        // The next pass is driven the other way: the tool shift changes sign (#446).
+        double toolShift = Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay);
+        double nextDistAway = Models.Track.PassGeometry.Offset(track, nextPath, widthMinusOverlap, 0, -toolShift);
         int pathDiff = nextPath - guidance.HowManyPathsAway;
 
         // The planned path dictates pathDiff (snake / alternative), not the regular skip logic.
@@ -830,7 +832,7 @@ public sealed class YouTurnStateMachine
         bool positiveOffset = pathDiff > 0;
         turn.IsTurnLeft = positiveOffset ^ guidance.IsHeadingSameWay;
         turn.WasHeadingSameWayAtTurnStart = guidance.IsHeadingSameWay;
-        turn.NextTrackTurnOffset = Math.Abs(pathDiff) * widthMinusOverlap;
+        turn.NextTrackTurnOffset = Math.Abs(pathDiff * widthMinusOverlap + 2 * toolShift);
 
         var refA = track.Points[0];
         var refB = track.Points[track.Points.Count - 1];
