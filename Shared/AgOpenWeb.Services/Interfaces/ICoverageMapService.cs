@@ -310,6 +310,12 @@ public interface ICoverageMapService
     /// at the new cell size. No-op if no field is open or the resolution is unchanged.
     /// </summary>
     void RebuildDisplayForResolutionChange();
+
+    /// <summary>
+    /// Keep both sides of the display grid at or below <paramref name="maxSide"/> pixels: the
+    /// largest texture a web client reported. Only ever tightens; an open field is regridded.
+    /// </summary>
+    void LimitDisplaySide(int maxSide);
 }
 
 /// <summary>

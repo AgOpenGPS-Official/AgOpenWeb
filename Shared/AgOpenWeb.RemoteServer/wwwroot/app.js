@@ -661,6 +661,26 @@ function applyMobileQualityCap() {
   transport.send('display.capResolution|2.5'); // 2.5 = Medium
 }
 
+// The largest texture this browser's GPU holds (often 4096 on tablets). The host keeps the
+// coverage grid within it, so coverage always fits one GPU render target; a bigger grid
+// falls back to a 2D canvas that is copied whole several times over and can get a tablet's
+// web view killed for memory. Read from CanvasKit's own context once it exists; sent once.
+let maxTextureSide = 0;
+let maxTextureSent = false;
+function readMaxTextureSide() {
+  try {
+    // The context CanvasKit made: asking for the same type returns it, not a new one.
+    const gl = ckcv.getContext('webgl2') || ckcv.getContext('webgl');
+    if (!gl) return 0;
+    return Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE), gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)) | 0;
+  } catch (e) { return 0; }
+}
+function reportMaxTexture() {
+  if (maxTextureSent || !iHoldControl || maxTextureSide <= 0) return;
+  maxTextureSent = true;
+  transport.send('display.maxTexture|' + maxTextureSide);
+}
+
 // An observer (a browser without control) sees everything and changes nothing (#397): the
 // host drops its commands, so say why when a tap of its own was refused. The host's
 // ObserverIds plus the hub's own control.* / diag.ping are what it may send.
@@ -701,6 +721,11 @@ function recreateSkSurface() {
   if (!grCtx) {
     const ctxHandle = CK.GetWebGLContext(ckcv);
     if (ctxHandle) grCtx = CK.MakeWebGLContext(ctxHandle);
+    if (grCtx) {
+      maxTextureSide = readMaxTextureSide();
+      reportMaxTexture();
+      upgradeCovToGpu(); // a grid built before the GPU context existed moves onto it
+    }
   }
   if (grCtx) skSurface = CK.MakeOnScreenGLSurface(grCtx, ckcv.width, ckcv.height, null);
   if (!skSurface) skSurface = CK.MakeWebGLCanvasSurface(ckcv);
@@ -4237,7 +4262,7 @@ function renderRole() {
 }
 function updateControlUi() {
   iHoldControl = lastControl.held && lastControl.holderId === myClientId;
-  if (iHoldControl) applyMobileQualityCap(); // a host-wide setting: sent once we may (#397)
+  if (iHoldControl) { applyMobileQualityCap(); reportMaxTexture(); } // host-wide: sent once we may (#397)
   if (typeof renderHostPrompt === 'function') renderHostPrompt(); // who may answer
   if (typeof updateAsGated === 'function') updateAsGated(); // re-gate AutoSteer actions
   if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); // re-gate Play
@@ -7109,11 +7134,7 @@ function makeCovGrid(init) {
   let canvas = null, cctx = null, covPaint = null;
   if (surface) {
     surface.getCanvas().clear(CK.TRANSPARENT);
-    covPaint = new CK.Paint(); covPaint.setStyle(CK.PaintStyle.Fill); covPaint.setAntiAlias(false);
-    // Src (replace), not SrcOver: cells carry a coverage-fraction alpha (edge cells < 1), and a
-    // cell is re-emitted with rising alpha as it fills — replace sets the exact value each time;
-    // SrcOver would blend re-draws and creep edges toward opaque.
-    covPaint.setBlendMode(CK.BlendMode.Src);
+    covPaint = makeCovPaint();
   } else {
     canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; cctx = canvas.getContext('2d');
   }
@@ -7122,6 +7143,32 @@ function makeCovGrid(init) {
     width: w, height: h, surface, covPaint, pending: [],
     canvas, cctx, dirty: true, skImg: null, lastBuild: 0,
   };
+}
+function makeCovPaint() {
+  const p = new CK.Paint(); p.setStyle(CK.PaintStyle.Fill); p.setAntiAlias(false);
+  // Src (replace), not SrcOver: cells carry a coverage-fraction alpha (edge cells < 1), and a
+  // cell is re-emitted with rising alpha as it fills — replace sets the exact value each time;
+  // SrcOver would blend re-draws and creep edges toward opaque.
+  p.setBlendMode(CK.BlendMode.Src);
+  return p;
+}
+// A page that loads with a job open gets its coverage before CanvasKit is ready, so the grid
+// is built on the 2D fallback and would stay there. Once the GPU context exists, copy it onto
+// a render target (once) and carry on with the GPU path. Both paths flip y the same way
+// (row 0 = highest northing), so the copy lines up as is.
+function upgradeCovToGpu() {
+  if (!cov || cov.surface || !cov.canvas || !CK || !grCtx) return;
+  let surface = null;
+  try { surface = CK.MakeRenderTarget(grCtx, cov.width, cov.height); } catch (e) { surface = null; }
+  if (!surface) return; // bigger than a texture: stays on the 2D path
+  const sk = surface.getCanvas();
+  sk.clear(CK.TRANSPARENT);
+  const img = CK.MakeImageFromCanvasImageSource(cov.canvas);
+  if (img) { sk.drawImageOptions(img, 0, 0, CK.FilterMode.Nearest, CK.MipmapMode.None, null); img.delete(); }
+  surface.flush();
+  if (cov.skImg) cov.skImg.delete();
+  cov.surface = surface; cov.covPaint = makeCovPaint();
+  cov.canvas = null; cov.cctx = null; cov.skImg = null; cov.dirty = true;
 }
 
 // Re-anchor existing coverage into a grown grid (bounds expansion, SAME cell size). The old
