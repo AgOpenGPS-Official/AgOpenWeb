@@ -75,6 +75,37 @@ public class NtripGgaPositionTests
         Assert.That(lon, Is.EqualTo(17.1).Within(1e-4));
     }
 
+    // Single or DGPS fails the steering check (MinFixQuality = RTK Fixed), so the pipeline marks
+    // the fix invalid. The caster still needs this position: without it a VRS caster sends no
+    // corrections, and the receiver never gets past single.
+    [TestCase(1, TestName = "Single fix marked invalid still sends the receiver's position")]
+    [TestCase(2, TestName = "DGPS fix marked invalid still sends the receiver's position")]
+    public void A_fix_below_the_steering_minimum_is_still_sent(int fixQuality)
+    {
+        var fix = Fix(48.2, 17.1);
+        fix.FixQuality = fixQuality;
+        fix.IsValid = false; // as GpsFixQualityValidator leaves it
+        _gps.CurrentData.Returns(fix);
+
+        var gga = _svc.NextGgaSentence(new NtripConfiguration { FallbackPositionProvider = () => (1.0, 1.0) });
+
+        var (lat, lon) = Where(gga!);
+        Assert.That(lat, Is.EqualTo(48.2).Within(1e-4), "the receiver, not the field origin");
+        Assert.That(lon, Is.EqualTo(17.1).Within(1e-4));
+        Assert.That(gga!.Split(',')[6], Is.EqualTo(fixQuality.ToString()), "its own fix quality");
+    }
+
+    [Test]
+    public void No_fix_at_a_position_falls_back()
+    {
+        var noFix = Fix(48.2, 17.1);
+        noFix.FixQuality = 0; // the receiver repeats a position but has no fix
+        _gps.CurrentData.Returns(noFix);
+
+        var (lat, _) = Where(_svc.NextGgaSentence(new NtripConfiguration { FallbackPositionProvider = () => (1.0, 1.0) })!);
+        Assert.That(lat, Is.EqualTo(1.0).Within(1e-4));
+    }
+
     [Test]
     public void Credentials_are_utf8_and_sent_without_a_user_name()
     {

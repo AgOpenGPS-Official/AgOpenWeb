@@ -719,6 +719,9 @@ public class NtripClientService : INtripClientService, IDisposable
     /// it, the last one; before the first, the configured fallback (the open field's origin).
     /// Null with none of these: a made-up position (this sent Kansas) gets corrections for the
     /// wrong place or the connection dropped (#443), so no GGA goes out until one is known.
+    /// Any fix counts, single and DGPS too: IsValid means good enough to steer by (RTK by
+    /// default), and a receiver in single that waited for it would never get the corrections
+    /// to reach RTK. AgIO sends the receiver's position whatever its quality.
     /// </summary>
     internal string? NextGgaSentence(NtripConfiguration config)
     {
@@ -726,7 +729,7 @@ public class NtripClientService : INtripClientService, IDisposable
             return GenerateGgaSentence(config.ManualLatitude, config.ManualLongitude, 0, 4, 12);
 
         var gpsData = _gpsService.CurrentData;
-        if (gpsData != null && gpsData.IsValid)
+        if (gpsData != null && HasFix(gpsData))
         {
             var p = gpsData.CurrentPosition;
             _lastGgaFix = (p.Latitude, p.Longitude, p.Altitude);
@@ -740,6 +743,11 @@ public class NtripClientService : INtripClientService, IDisposable
     }
 
     private (double Latitude, double Longitude, double Altitude)? _lastGgaFix;
+
+    /// <summary>The receiver reports a fix of any quality, at a position (not 0,0).</summary>
+    private static bool HasFix(GpsData gpsData) =>
+        gpsData.FixQuality > 0
+        && (gpsData.CurrentPosition.Latitude != 0 || gpsData.CurrentPosition.Longitude != 0);
 
     private void WatchdogTimerCallback(object? state)
     {
