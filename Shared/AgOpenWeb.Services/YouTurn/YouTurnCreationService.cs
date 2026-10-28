@@ -89,13 +89,9 @@ namespace AgOpenWeb.Services.YouTurn
             isOutSameCurve = false;
             arcStart = null;
 
-            // Lateral span of the arc = the pass spacing. NO ToolOffset compensation:
-            // AgOpenGPS shifts the arc by ±2*ToolOffset because its steering applies the
-            // implement offset to the pivot target, so the arc must pre-compensate. AgOpenWeb
-            // steering never applies ToolOffset (it only positions sections in
-            // SectionControlService) — the guidance line IS the pivot path — so adding the
-            // shift here lands the arc end (and exit leg) 2*ToolOffset off the cyan/post-turn
-            // line the pivot actually follows, causing a lateral jump + wiggle on turn exit.
+            // Lateral span of the arc = from the line steered now to the next one. Steering
+            // puts the tool, not the tractor, on the pass (#446), as AgOpenGPS does, so with a
+            // tool offset that is the pass spacing ± 2*ToolOffset: TurnOffset carries it.
             double turnOffset;
             if (input.TurnOffset > 0)
             {
@@ -342,12 +338,18 @@ namespace AgOpenWeb.Services.YouTurn
             // setting: snake, alternative and skip-worked turns pick their own target pass,
             // and skip-and-fill forces the skip to at least 1, so an adjacent target used to
             // get an exit leg two passes over, outside the field (#411).
+            //
+            // With a tool offset the tractor steers beside the pass, on the other side after
+            // the turn (#446): TurnOffset is the tractor's sideways move, the passes apart plus
+            // twice the tool shift, and the next line carries the shift for the new direction.
             double widthMinusOverlap = input.ToolWidth - input.ToolOverlap;
+            double toolShift = input.IsHeadingSameWay ? input.ToolOffset : -input.ToolOffset;
+            int side = (input.IsTurnLeft ^ input.IsHeadingSameWay) ? 1 : -1;
             int passes = input.TurnOffset > 0 && widthMinusOverlap > 0
-                ? Math.Max(1, (int)Math.Round(input.TurnOffset / widthMinusOverlap))
+                ? Math.Max(1, (int)Math.Round((input.TurnOffset - 2 * toolShift * side) / widthMinusOverlap))
                 : input.RowSkipsWidth + 1;
-            int passDelta = (input.IsTurnLeft ^ input.IsHeadingSameWay) ? passes : -passes;
-            double distAway = widthMinusOverlap * (input.HowManyPathsAway + passDelta) + input.PassEdgeOffset + input.NudgeDistance;
+            int passDelta = side * passes;
+            double distAway = widthMinusOverlap * (input.HowManyPathsAway + passDelta) + input.PassEdgeOffset + input.NudgeDistance + toolShift;
 
             // Create the next line
             nextCurve = BuildNewOffsetCurveList(input, distAway);

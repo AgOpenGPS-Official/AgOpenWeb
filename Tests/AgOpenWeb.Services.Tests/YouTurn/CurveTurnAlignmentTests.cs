@@ -276,7 +276,7 @@ public class CurveTurnAlignmentTests
     }
 
     // The EXIT leg must lie on the cyan/post-turn next pass (basePoints offset by the
-    // pass-number distance) — the line the tractor actually drives after completion.
+    // pass-number distance, and the tool shift) — the line the tractor actually drives after completion.
     // Reproduces the lateral offset the operator saw: cyan ~1 m off the green exit leg.
     [TestCase(true, 0, TestName = "ExitLeg_OnNextPass_North_Omega")]
     [TestCase(false, 0, TestName = "ExitLeg_OnNextPass_South_Omega")]
@@ -303,7 +303,10 @@ public class CurveTurnAlignmentTests
         double width = ConfigurationStore.Instance.ActualToolWidth - ConfigurationStore.Instance.Tool.Overlap;
         bool positiveOffset = turn.IsTurnLeft ^ guidance.IsHeadingSameWay;
         int offsetChange = positiveOffset ? 1 : -1; // skip 0 -> move 1 pass
-        double nextDistAway = width * (guidance.HowManyPathsAway + offsetChange);
+        // With a tool offset the tractor steers beside the pass so the tool runs on it, and
+        // the next pass is driven the other way: its shift is this direction's, negated (#446).
+        double nextDistAway = width * (guidance.HowManyPathsAway + offsetChange)
+            - AgOpenWeb.Models.Track.PassGeometry.ToolShift(toolOffset, !sameWay);
         var nextPass = CurveProcessing.ExtendCurveEnds(CurveProcessing.CreateOffsetCurve(curve, nextDistAway));
 
         double heading = sameWay ? near.Heading : near.Heading + Math.PI;

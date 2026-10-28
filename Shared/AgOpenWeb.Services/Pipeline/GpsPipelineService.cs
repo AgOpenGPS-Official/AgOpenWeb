@@ -1060,8 +1060,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
         if (hasTrack)
         {
             var config2 = _configStore;
+            // Which way along the track we drive decides which side of the pass the tractor
+            // steers with a tool offset (#446), so it is known before any line is placed. Held
+            // through a U-turn: the turn was planned for the old direction, and the next cycle
+            // after it completes takes the new one.
+            if (!isInYouTurn)
+                _guidanceWorking.IsHeadingSameWay = IsHeadingSameWayOn(track!, driftedEasting, driftedNorthing, headingRad);
+            double toolShift = Models.Track.PassGeometry.ToolShift(config2.Tool.Offset, _guidanceWorking.IsHeadingSameWay);
             double widthMinusOverlap = config2.ActualToolWidth - config2.Tool.Overlap;
-            double distAway = Models.Track.PassGeometry.Offset(track, passNumber, widthMinusOverlap, nudgeOffset);
+            double distAway = Models.Track.PassGeometry.Offset(track, passNumber, widthMinusOverlap, nudgeOffset, toolShift);
 
             // Curve tracks: extend the displayed (magenta) line straight to the U-turn so
             // there's no visible gap between the guidance line and the turn (the line the
@@ -1534,9 +1541,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double steerE = driftedEasting + Math.Sin(headingRad) * config.Vehicle.Wheelbase;
         double steerN = driftedNorthing + Math.Cos(headingRad) * config.Vehicle.Wheelbase;
 
-        // Calculate parallel offset
+        // Calculate parallel offset: the line that puts the tool on the pass (#446)
+        bool isHeadingSameWay = _guidanceWorking.IsHeadingSameWay;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double distAway = Models.Track.PassGeometry.Offset(track, passNumber, widthMinusOverlap, nudgeOffset);
+        double distAway = Models.Track.PassGeometry.Offset(track, passNumber, widthMinusOverlap, nudgeOffset,
+            Models.Track.PassGeometry.ToolShift(config.Tool.Offset, isHeadingSameWay));
 
         if (_cycleCounter % 50 == 0)
         {
@@ -1605,17 +1614,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
             Console.WriteLine($"[Guidance] track: ({p0.Easting:F1},{p0.Northing:F1})->({pN.Easting:F1},{pN.Northing:F1})");
         }
 
-        // Calculate heading alignment using the offset track we're actually following
-        double trackHeading = FindNearestSegmentHeading(currentTrack.Points, driftedEasting, driftedNorthing);
-        double headingDiff = headingRad - trackHeading;
-        while (headingDiff > Math.PI) headingDiff -= 2 * Math.PI;
-        while (headingDiff < -Math.PI) headingDiff += 2 * Math.PI;
-        bool isHeadingSameWay = Math.Abs(headingDiff) < Math.PI / 2;
-        // Keep the cycle's direction flag current for the lateral snap, which reads it at
-        // the start of the next cycle. It was only refreshed by the YouTurn tick (auto U-turn
-        // on + a headland), so otherwise it went stale and swapped the snap left/right
-        // when driving against the track's direction (#172).
-        _guidanceWorking.IsHeadingSameWay = isHeadingSameWay;
 
         // Build guidance input
         var input = new Models.Track.TrackGuidanceInput
@@ -1825,8 +1823,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // the half width between the reference line and pass 0) before rounding to the
         // nearest pass. Without the nudge, nudging the line perpendicular can cause the
         // auto-select to fight the nudge each cycle.
-        int nearestPass = Models.Track.PassGeometry.Nearest(track, sampleDist, widthMinusOverlap, nudgeOffset);
-        double distAway = Models.Track.PassGeometry.Offset(track, nearestPass, widthMinusOverlap, nudgeOffset);
+        // With a tool offset the pass is the one nearest the tool, and the line shown is the one
+        // the tractor steers to put the tool on it (#446).
+        double toolShift = Models.Track.PassGeometry.ToolShift(config.Tool.Offset, _guidanceWorking.IsHeadingSameWay);
+        int nearestPass = Models.Track.PassGeometry.Nearest(track, sampleDist, widthMinusOverlap, nudgeOffset, toolShift);
+        double distAway = Models.Track.PassGeometry.Offset(track, nearestPass, widthMinusOverlap, nudgeOffset, toolShift);
 
         Models.Track.Track? resultTrack = null;
         if (Math.Abs(distAway) < 0.01)
@@ -1861,17 +1862,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // Update XTE display — actual pivot distance to the selected pass line.
         double pivotPerp = CalculatePerpendicularDistance(track, pivotEasting, pivotNorthing);
         double xte = pivotPerp - distAway;
-        if (track.Points.Count >= 2)
-        {
-            var a = track.Points[0];
-            var b = track.Points[track.Points.Count - 1];
-            double trackHeading = Math.Atan2(b.Easting - a.Easting, b.Northing - a.Northing);
-            double vehicleHeading = pos.Heading * Math.PI / 180.0;
-            double headingDiff = Math.Abs(vehicleHeading - trackHeading);
-            if (headingDiff > Math.PI) headingDiff = 2 * Math.PI - headingDiff;
-            if (headingDiff > Math.PI / 2) xte = -xte;
-            _guidanceWorking.IsHeadingSameWay = headingDiff <= Math.PI / 2; // #172, as above
-        }
+        if (!_guidanceWorking.IsHeadingSameWay) xte = -xte; // set for this cycle before any line (#172, #446)
 
         _autoSteerService.UpdateGuidanceResults(0, xte);
         return (nearestPass, resultTrack);
@@ -1936,6 +1927,21 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // ══════════════════════════════════════════════════════════════════════
     // Geometry helpers (pure math, no UI)
     // ══════════════════════════════════════════════════════════════════════
+
+    /// <summary>Driving along the track's own direction (A→B) where the tractor is? An AB line by
+    /// its A→B heading, a curve by its nearest segment.</summary>
+    private static bool IsHeadingSameWayOn(Models.Track.Track track, double easting, double northing, double headingRad)
+    {
+        var pts = track.Points;
+        if (pts.Count < 2) return true;
+        double trackHeading = pts.Count == 2
+            ? Math.Atan2(pts[1].Easting - pts[0].Easting, pts[1].Northing - pts[0].Northing)
+            : FindNearestSegmentHeading(pts, easting, northing);
+        double diff = headingRad - trackHeading;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        return Math.Abs(diff) < Math.PI / 2;
+    }
 
     private static double FindNearestSegmentHeading(List<Vec3> points, double easting, double northing)
     {
