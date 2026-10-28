@@ -48,6 +48,13 @@ public interface IAutoSteerService
     event EventHandler? GuidanceLost;
 
     /// <summary>
+    /// The pressure or current sensor (PGN 250) reached its trip point while AutoSteer was
+    /// engaged, so the service stopped steering. Raised once per kickout, on the UDP receive
+    /// thread, with the reason; the handler should marshal to the UI and take AutoSteer off.
+    /// </summary>
+    event EventHandler<string>? SensorKickout;
+
+    /// <summary>
     /// Whether auto-steer is enabled and processing GPS data.
     /// </summary>
     bool IsEnabled { get; }

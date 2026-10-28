@@ -38,12 +38,9 @@ public static class NtripConnectionTester
                           $"Ntrip-Version: Ntrip/2.0\r\n" +
                           $"User-Agent: NTRIP AgOpenWeb/Test\r\n";
 
-            if (!string.IsNullOrEmpty(username))
-            {
-                var credentials = Convert.ToBase64String(
-                    System.Text.Encoding.ASCII.GetBytes($"{username}:{password}"));
-                request += $"Authorization: Basic {credentials}\r\n";
-            }
+            // As the client logs in: a password with no user name used to be left out here (#443)
+            if (NtripCredentials.BasicAuthorization(username, password) is { } authorization)
+                request += $"Authorization: {authorization}\r\n";
             request += "\r\n";
 
             var requestBytes = System.Text.Encoding.ASCII.GetBytes(request);
