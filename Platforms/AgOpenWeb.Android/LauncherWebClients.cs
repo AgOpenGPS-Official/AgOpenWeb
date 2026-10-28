@@ -20,12 +20,28 @@ internal sealed class LauncherWebViewClient : WebViewClient
 {
     private readonly int _port;
     private readonly Action<bool> _loadFinished;
+    private readonly Action<WebView> _renderGone;
     private bool _failed;
 
-    public LauncherWebViewClient(int port, Action<bool> loadFinished)
+    public LauncherWebViewClient(int port, Action<bool> loadFinished, Action<WebView> renderGone)
     {
         _port = port;
         _loadFinished = loadFinished;
+        _renderGone = renderGone;
+    }
+
+    // The page's renderer process died: killed for memory (Android picks the biggest process,
+    // usually this one) or crashed. Unhandled, Android then kills the whole app, guidance host
+    // included. Report it handled and let the activity load the page in a new WebView.
+    public override bool OnRenderProcessGone(WebView? view, RenderProcessGoneDetail? detail)
+    {
+        if (OperatingSystem.IsAndroidVersionAtLeast(26) && detail != null)
+            Console.WriteLine($"[Launcher] web view renderer gone (crashed={detail.DidCrash()}, " +
+                              $"priority at exit={detail.RendererPriorityAtExit()}); reloading the page");
+        else
+            Console.WriteLine("[Launcher] web view renderer gone; reloading the page");
+        if (view != null) _renderGone(view);
+        return true;
     }
 
     public override bool ShouldOverrideUrlLoading(WebView? view, IWebResourceRequest? request)

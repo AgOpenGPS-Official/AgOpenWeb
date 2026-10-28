@@ -180,6 +180,11 @@ public static partial class RemoteServerWiring
                                     if (double.TryParse(arg, num, inv, out var capMult)) // (2.5 = Medium)
                                         vm.CapDisplayResolution(capMult); // only coarsens; idempotent
                                     return;
+                                case "display.maxTexture": // arg = the web view's largest texture side (px)
+                                    if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var maxTex))
+                                        services.GetRequiredService<AgOpenWeb.Services.Interfaces.ICoverageMapService>()
+                                            .LimitDisplaySide(maxTex); // only tightens; regrids an open field
+                                    return;
                                 case "view.save": // web camera tilt+zoom (+ follow mode, #176) persisted host-side (issue #35).
                                 {                 // arg = "pitch|zoom[|mode]" (pitch radians, zoom px/m, client mode). Tier-1.
                                     var vparts = arg.Split('|');
