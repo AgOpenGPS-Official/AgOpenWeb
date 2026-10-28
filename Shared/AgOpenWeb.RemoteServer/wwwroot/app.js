@@ -4659,11 +4659,13 @@ function updateLightbarText() {
     const onLine = Math.abs(xte) < 0.05;
     lbArrow.textContent = (onLine ? '●' : xte > 0 ? '◀' : '▶') + ' '; // arrow = steer direction
     lbArrow.style.color = !onLine && xte > 0 ? LB_LEFT : LB_RIGHT;
-    // 1-based pass label (human counting): the reference AB line is "Pass 1", one over is
-    // "Pass 2", etc. — magnitude only (the arrow already shows which way to steer).
+    // Pass label as AgOpenGPS shows it: the reference line is the edge between two passes
+    // (PassGeometry), so each side counts from 1. Pass 0 is "Pass 1 R" (first pass right of
+    // A→B), pass −1 is "Pass 1 L". The side is fixed in the field, whichever way you drive.
     const pass = (tick.op ? tick.op.passNumber : 0) | 0;
     lbText.textContent = fmtUnit(Math.abs(xte) * 100, 'cm', 0);
-    lbPass.textContent = tick.op && tick.op.contour ? '' : tr('Pass {n}', { n: Math.abs(pass) + 1 }); // no passes on a contour (#110)
+    lbPass.textContent = tick.op && tick.op.contour ? '' // no passes on a contour (#110)
+      : pass >= 0 ? tr('Pass {n} R', { n: pass + 1 }) : tr('Pass {n} L', { n: -pass });
   }
   lbEl.style.display = 'block';
 }
