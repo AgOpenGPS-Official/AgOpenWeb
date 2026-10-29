@@ -4696,11 +4696,9 @@ function xteText(xte) {
 // Lightbar readout text → DOM overlay (the LED strip itself is drawn by lightbarSk).
 // Updated every frame from the latest tick; hidden when guidance is off.
 const lbEl = document.getElementById('lb');
-// Arrow + text as two spans, so the arrow can take the colour of the lit cells; the
-// pass number goes on its own line below.
+// Arrow + text as two spans, so the arrow can take the colour of the lit cells.
 const lbArrow = lbEl.appendChild(document.createElement('span'));
 const lbText = lbEl.appendChild(document.createElement('span'));
-const lbPass = lbEl.appendChild(document.createElement('div'));
 const LB_LEFT = '#ff7a3d', LB_RIGHT = '#39FF6A'; // as lightbarSk: steer left / steer right, on line
 function updateLightbarText() {
   const cfg = config && config.autosteer;
@@ -4716,20 +4714,13 @@ function updateLightbarText() {
     lbArrow.textContent = err === 0 ? '' : err > 0 ? '◀ ' : '▶ ';
     lbArrow.style.color = err > 0 ? LB_LEFT : LB_RIGHT;
     lbText.textContent = err === 0 ? '> 0 <' : `${Math.abs(err).toFixed(1)}°`;
-    lbPass.textContent = '';
   } else {
     // Light bar: cross-track distance.
     const xte = tick.crossTrackError || 0;
     const onLine = Math.abs(xte) < 0.05;
     lbArrow.textContent = (onLine ? '●' : xte > 0 ? '◀' : '▶') + ' '; // arrow = steer direction
     lbArrow.style.color = !onLine && xte > 0 ? LB_LEFT : LB_RIGHT;
-    // Pass label as AgOpenGPS shows it: the reference line is the edge between two passes
-    // (PassGeometry), so each side counts from 1. Pass 0 is "Pass 1 R" (first pass right of
-    // A→B), pass −1 is "Pass 1 L". The side is fixed in the field, whichever way you drive.
-    const pass = (tick.op ? tick.op.passNumber : 0) | 0;
     lbText.textContent = fmtUnit(Math.abs(xte) * 100, 'cm', 0);
-    lbPass.textContent = tick.op && tick.op.contour ? '' // no passes on a contour (#110)
-      : pass >= 0 ? tr('Pass {n} R', { n: pass + 1 }) : tr('Pass {n} L', { n: -pass });
   }
   lbEl.style.display = 'block';
 }
@@ -4748,6 +4739,20 @@ function updateTramLights() {
   tramL.classList.toggle('on', (b & 2) !== 0);
   tramR.classList.toggle('manual', (b & 4) !== 0);
   tramL.classList.toggle('manual', (b & 8) !== 0);
+}
+
+// Pass HUD → DOM overlay under the lightbar readout, as AgOpenGPS's DrawTrackInfo: shown
+// with any track, whatever the Light bar / Steer bar settings. The reference line is the
+// edge between two passes (PassGeometry), so each side counts from 1: pass 0 is "1R" (first
+// pass right of A→B), pass −1 is "1L". The side is fixed in the field, whichever way you drive.
+const passHud = document.getElementById('pass-hud');
+function updatePassHud() {
+  // No passes on a contour (#110).
+  if (!tick || !tick.guidanceActive || !tick.op || tick.op.contour) { passHud.style.display = 'none'; return; }
+  const pass = tick.op.passNumber | 0;
+  const label = pass >= 0 ? `${pass + 1}R` : `${-pass}L`;
+  if (passHud.textContent !== label) passHud.textContent = label;
+  passHud.style.display = 'block';
 }
 
 // Headland-distance HUD → DOM overlay (mirrors the native SkiaMapControl HUD).
@@ -7564,6 +7569,7 @@ function skFrame() {
   // DOM overlays (independent of the GL surface).
   updateLightbarText();
   updateTramLights();
+  updatePassHud();
   updateHeadlandHud();
   renderStatusBar();
   renderSimBar();

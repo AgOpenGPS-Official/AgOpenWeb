@@ -164,12 +164,18 @@
     #fc-reset { margin-top: 6px; width: 100%; text-align: center; height: 34px; border: 1px solid var(--border); border-radius: 8px;
       background: rgba(var(--ov),0.06); color: var(--text-2); font: 600 12px system-ui, sans-serif; cursor: pointer; }
     #fc-reset:hover { background: rgba(var(--ov),0.14); }
-    /* Lightbar readout (arrow + cm, pass number on a second line) — DOM overlay so it
-       renders identically under both the 2D and Skia map renderers (CanvasKit has no
-       bundled font). Sits just below the LED strip. */
+    /* Lightbar readout (arrow + cm) — DOM overlay so it renders identically under both the
+       2D and Skia map renderers (CanvasKit has no bundled font). Sits just below the LED strip. */
     #lb {
       position: fixed; top: calc(74px + var(--sat)); left: 0; right: 0; text-align: center; display: none;
       color: var(--text-2); font: 600 15px system-ui, sans-serif; pointer-events: none;
+      text-shadow: 0 1px 2px #000;
+    }
+    /* Pass HUD ("1R" / "2L") under the lightbar readout, as big as the headland distance and
+       shown whatever the bar settings (updatePassHud). Ends above the headland HUD. */
+    #pass-hud {
+      position: fixed; top: calc(94px + var(--sat)); left: 0; right: 0; text-align: center; display: none;
+      color: #fff; font: 700 19px/24px system-ui, sans-serif; pointer-events: none;
       text-shadow: 0 1px 2px #000;
     }
     /* Headland-distance HUD — screen-space box at top-centre (below the light bar's two lines),
@@ -1392,6 +1398,7 @@
   </div>
   <div id="lb"></div>
   <div id="tram-lights"><button class="tram-dot" id="tram-l" title="Left tram: tap to force on"></button><button class="tram-dot" id="tram-r" title="Right tram: tap to force on"></button></div>
+  <div id="pass-hud"></div>
   <div id="headland-hud"></div>
   <div id="maptap-hint"></div>
   <div id="reverse-badge" title="Reversing">&#9664; REVERSE</div>
