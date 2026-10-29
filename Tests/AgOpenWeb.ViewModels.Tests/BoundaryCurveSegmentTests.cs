@@ -134,6 +134,38 @@ public class BoundaryCurveSegmentTests
     }
 
     [Test]
+    public void ATapOnARoundedCorner_RunsOnAlongTheSide()
+    {
+        // The ring's corners are rounded to the U-turn radius; B tapped on the SE corner lands
+        // partway round it. The curve comes down the east side, so it runs on south, not at the
+        // corner's diagonal.
+        var vm = new MainViewModelBuilder { PolygonOffsetService = new AgOpenWeb.Services.Geometry.PolygonOffsetService() }.Build();
+        vm.State.Field.CurrentBoundary = _vm.State.Field.CurrentBoundary;
+        ConfigurationStore.Instance.Guidance.UTurnRadius = 8;
+
+        vm.RemoteCreateBoundaryCurveSegment(100, 150, 100, 0);
+
+        var pts = vm.SelectedTrack!.Points;
+        double eastSide = pts.First(p => p.Northing is > 100 and < 160).Easting; // A's run-on, on the side
+        Assert.That(pts[^1].Northing, Is.LessThan(-5), "runs on south past the fence");
+        Assert.That(pts[^1].Easting, Is.EqualTo(eastSide).Within(0.5), "along the east side's line");
+    }
+
+    [Test]
+    public void TrimCornerEnd_KeepsAGentleBend()
+    {
+        // A 200 m radius bend (a curved field edge) with an 8 m rounding radius: nothing goes.
+        var path = new List<AgOpenWeb.Models.Base.Vec2>();
+        for (int i = 0; i <= 40; i++)
+        {
+            double a = i * 0.01;
+            path.Add(new AgOpenWeb.Models.Base.Vec2(200 * Math.Sin(a), 200 * (1 - Math.Cos(a))));
+        }
+        MainViewModel.TrimCornerEnd(path, 8);
+        Assert.That(path, Has.Count.EqualTo(41));
+    }
+
+    [Test]
     public void SamePoint_IsRefused()
     {
         _vm.RemoteCreateBoundaryCurveSegment(0, 50, 0, 50.5);
