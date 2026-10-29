@@ -269,6 +269,20 @@ public static class WireCodec
             w.Write((byte)(e.IsDefault ? 1 : 0));
             w.Write(e.AssociatedFields.Count);
             foreach (var f in e.AssociatedFields) WriteStr(w, f);
+            // The fallback service (append-only): [u8 present] then str host, i32 port, str mount,
+            // str user, str password (masked), u8 auto-switch, i32 failed attempts before switching.
+            var fb = e.Fallback;
+            w.Write((byte)(fb != null ? 1 : 0));
+            if (fb != null)
+            {
+                WriteStr(w, fb.CasterHost);
+                w.Write(fb.CasterPort);
+                WriteStr(w, fb.MountPoint);
+                WriteStr(w, fb.Username);
+                WriteStr(w, fb.Password);
+                w.Write((byte)(fb.AutoSwitch ? 1 : 0));
+                w.Write(fb.SwitchAfterFailures);
+            }
         }
         w.Write(p.AvailableFields.Count);
         foreach (var f in p.AvailableFields) WriteStr(w, f);
@@ -784,6 +798,23 @@ public static class WireCodec
         w.Write((byte)(s.SendCorrectedPosition ? 1 : 0));
         // Network IO: the subnet the scan came from (append-only, #334).
         WriteStr(w, s.ScanReplySubnet);
+        // NTRIP session (append-only, NTRIP plan Phase 4): [u8 present] then u8 using fallback,
+        // main is back, has fallback, profile per field; u8 state; i32 last error (-1 none);
+        // i32 failed attempts; f32 retry s; str notice.
+        var ns = s.NtripSession;
+        w.Write((byte)(ns != null ? 1 : 0));
+        if (ns != null)
+        {
+            w.Write((byte)(ns.UsingFallback ? 1 : 0));
+            w.Write((byte)(ns.MainIsBack ? 1 : 0));
+            w.Write((byte)(ns.HasFallback ? 1 : 0));
+            w.Write((byte)(ns.ProfilePerField ? 1 : 0));
+            w.Write((byte)ns.State);
+            w.Write(ns.LastError);
+            w.Write(ns.Attempts);
+            w.Write((float)ns.RetryInSeconds);
+            WriteStr(w, ns.Notice);
+        }
         return ms.ToArray();
     }
 

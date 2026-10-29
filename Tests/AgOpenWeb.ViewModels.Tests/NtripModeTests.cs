@@ -185,6 +185,139 @@ public class NtripModeTests
         await b.NtripService.Received(1).SwitchToAsync(service);
     }
 
+    // ── Notices ──────────────────────────────────────────────────────────
+
+    [Test]
+    public void ASwitch_IsShownAsAToast_AndStaysInTheState()
+    {
+        var (b, vm) = Running(perField: false, null);
+        var toasts = new List<string>();
+        vm.NtripNoticeReported += toasts.Add;
+
+        b.NtripService.Notice += Raise.EventWith(new NtripNoticeEventArgs { Kind = NtripNoticeKind.SwitchedToFallback, Automatic = true, Message = "Fallback in use" });
+
+        Assert.That(WaitFor(() => toasts.Count == 1), Is.True);
+        Assert.That(toasts[0], Is.EqualTo("Fallback in use"));
+        Assert.That(WaitFor(() => vm.State.Connections.NtripNotice == "Fallback in use"), Is.True);
+        Assert.That(vm.IsPromptPending, Is.False, "a switch is told, not asked");
+    }
+
+    [Test]
+    public async Task WhenTheMainServiceIsBack_TheOperatorIsAsked_AndOnlyAYesSwitchesBack()
+    {
+        var (b, vm) = Running(perField: false, null);
+        b.NtripService.Using.Returns(NtripService.Fallback);
+        b.NtripService.MainIsBack.Returns(true);
+
+        b.NtripService.Notice += Raise.EventWith(new NtripNoticeEventArgs { Kind = NtripNoticeKind.MainBack, Message = "The main service answers again." });
+
+        Assert.That(WaitFor(() => vm.IsPromptPending), Is.True);
+        Assert.That(vm.ConfirmationDialogTitle, Is.EqualTo("Main service is back"));
+        Assert.That(vm.ConfirmationDialogConfirmLabel, Is.EqualTo("Switch back"));
+        Assert.That(vm.ConfirmationDialogCancelLabel, Is.EqualTo("Stay on fallback"));
+        await b.NtripService.DidNotReceiveWithAnyArgs().SwitchToAsync(default);
+
+        vm.AnswerPrompt(vm.PromptSeq, confirm: true, checkboxChecked: false);
+
+        await b.NtripService.Received(1).SwitchToAsync(NtripService.Main);
+    }
+
+    [Test]
+    public async Task AYesThatComesTooLate_SwitchesNothing()
+    {
+        // The operator switched by hand while the question was open, or the main service dropped again.
+        var (b, vm) = Running(perField: false, null);
+        b.NtripService.Using.Returns(NtripService.Fallback);
+        b.NtripService.MainIsBack.Returns(true);
+        b.NtripService.Notice += Raise.EventWith(new NtripNoticeEventArgs { Kind = NtripNoticeKind.MainBack, Message = "The main service answers again." });
+        Assert.That(WaitFor(() => vm.IsPromptPending), Is.True);
+
+        b.NtripService.MainIsBack.Returns(false);
+        vm.AnswerPrompt(vm.PromptSeq, confirm: true, checkboxChecked: false);
+
+        await b.NtripService.DidNotReceiveWithAnyArgs().SwitchToAsync(default);
+    }
+
+    [Test]
+    public void TheMainServiceBeingBack_DoesNotReplaceAQuestionThatIsAlreadyWaiting()
+    {
+        var (b, vm) = Running(perField: false, null);
+        vm.ShowConfirmationDialog("Something else", "Another question", () => { });
+        int seq = vm.PromptSeq;
+
+        b.NtripService.Notice += Raise.EventWith(new NtripNoticeEventArgs { Kind = NtripNoticeKind.MainBack, Message = "The main service answers again." });
+        Thread.Sleep(200);
+
+        Assert.That(vm.ConfirmationDialogTitle, Is.EqualTo("Something else"));
+        Assert.That(vm.PromptSeq, Is.EqualTo(seq));
+        Assert.That(vm.State.Connections.NtripNotice, Is.EqualTo("The main service answers again."), "the card still says it");
+    }
+
+    [Test]
+    public async Task StayingOnTheFallback_SwitchesNothing()
+    {
+        var (b, vm) = Running(perField: false, null);
+        b.NtripService.Notice += Raise.EventWith(new NtripNoticeEventArgs { Kind = NtripNoticeKind.MainBack, Message = "The main service answers again." });
+        Assert.That(WaitFor(() => vm.IsPromptPending), Is.True);
+
+        vm.AnswerPrompt(vm.PromptSeq, confirm: false, checkboxChecked: false);
+
+        Assert.That(vm.IsPromptPending, Is.False);
+        await b.NtripService.DidNotReceiveWithAnyArgs().SwitchToAsync(default);
+    }
+
+    [Test]
+    public void TheNoteAboutTheNewDefault_IsShownOnce_ToWhoHadProfilesTiedToFields()
+    {
+        var (b, vm) = Running(perField: false, null);
+        var tied = Profile("default.caster");
+        tied.AssociatedFields.Add("North field");
+        b.NtripProfileService.Profiles.Returns(new List<NtripProfile> { tied });
+        var toasts = new List<string>();
+        vm.NtripNoticeReported += toasts.Add;
+        ConfigurationStore.Instance.Connections.NtripModeNoticeShown = false;
+
+        vm.ShowNtripModeNoticeOnce();
+        vm.ShowNtripModeNoticeOnce();
+
+        Assert.That(toasts, Has.Count.EqualTo(1));
+        Assert.That(toasts[0], Does.Contain("one profile with a fallback").And.Contain("Profile per field"));
+        Assert.That(vm.State.Connections.NtripNotice, Is.EqualTo(toasts[0]), "it stays in the card too");
+        Assert.That(ConfigurationStore.Instance.Connections.NtripModeNoticeShown, Is.True);
+        b.ConfigurationService.Received().SaveAppSettings();
+    }
+
+    [Test]
+    public void NobodyElse_GetsTheNote()
+    {
+        var (b, vm) = Running(perField: false, null);
+        b.NtripProfileService.Profiles.Returns(new List<NtripProfile> { Profile("default.caster") });   // no fields tied
+        var toasts = new List<string>();
+        vm.NtripNoticeReported += toasts.Add;
+        ConfigurationStore.Instance.Connections.NtripModeNoticeShown = false;
+
+        vm.ShowNtripModeNoticeOnce();
+
+        Assert.That(toasts, Is.Empty);
+        Assert.That(ConfigurationStore.Instance.Connections.NtripModeNoticeShown, Is.True, "and it is not asked again");
+    }
+
+    [Test]
+    public void ANoticeAlreadyShown_IsNotShownAgain()
+    {
+        var (b, vm) = Running(perField: false, null);
+        var tied = Profile("default.caster");
+        tied.AssociatedFields.Add("North field");
+        b.NtripProfileService.Profiles.Returns(new List<NtripProfile> { tied });
+        var toasts = new List<string>();
+        vm.NtripNoticeReported += toasts.Add;
+        ConfigurationStore.Instance.Connections.NtripModeNoticeShown = true;
+
+        vm.ShowNtripModeNoticeOnce();
+
+        Assert.That(toasts, Is.Empty);
+    }
+
     [Test]
     public void ANotice_ReachesTheState_AndTheServiceInUseFollows()
     {

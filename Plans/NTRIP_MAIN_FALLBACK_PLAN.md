@@ -1,6 +1,6 @@
 # NTRIP: main and fallback service, a sturdier client, and a report that explains itself
 
-**Status:** approved 2026-10-29 (#463). Phases 1 to 3 built, in review (#464); phases 4 and 5 are not started.
+**Status:** approved 2026-10-29 (#463). Phases 1 to 4 built, in review (#464); phase 5 (docs) is in progress.
 **Prompted by:** #443 (NTRIP "not working": the reporter and the maintainers had to guess whether it was the login, the mount point or the position), #285 and #385 (silent stops and retries), and a rebuild of the NTRIP client in AgIO (AgOpenGPS) that was tested against recorded casters and a caster of our own. This plan brings what that rebuild learned to AgOpenWeb, in AgOpenWeb's own architecture.
 **Related:** `Plans/RTCM_FORWARDING_PLAN.md` (the forwarding half, already in), `Plans/Completed/NTRIP_PROFILES_PLAN.md` (profiles per field), `Plans/BUG_REPORT_SUBMISSION_PLAN.md` (what a report carries), #278 (NTRIP on/off), #397 (observers), #444 (position sent to the caster).
 
@@ -119,6 +119,13 @@ Phases 1 and 2 together answer #443: a failure has a name and a maintainer can r
 ### Phase 4: the Network IO card and the editor
 - Card: one headline and the checks, the service in use, **Switch to fallback / main**, a mode switch with one sentence on each mode, the switch-back prompt, the same-login sentence (decision 5), the notice. Editor: Main and Fallback tabs, *Test* per tab, the auto-switch toggle and count, the warning that the fallback is ignored in per-field mode. Touch sizes as the other Network IO controls.
 - Verified in the headless app with the fake caster and in a browser (Playwright), once on each head's web view where it differs.
+- **Built as:**
+  - Wire (all append-only): the Status frame ends with an `NtripSessionDto` (service in use, main is back, fallback present, mode, state, last failure, failed attempts, retry time, last notice); each profile in the profiles frame ends with its fallback (password masked like the main one). `ntrip.save` carries the fallback block after the associated fields (read by `NtripProfileFields.FallbackFrom`, tested without a server); `ntrip.test` takes a flag for the fallback; `ntrip.switch|main|fallback` and `config.set|conn.ntripProfilePerField` were added in Phase 3.
+  - The headline, the advice sentence and the six checks are made by the client from that state and the RTCM table it already has, so they are translated with the rest (`tr()`); the host sends no sentences except the notice.
+  - A switch is a toast; "the main service answers again" is the host's confirmation dialog ("Switch back" / "Stay on fallback"), shown on every browser and answered by the one with control. The note for installations that had profiles tied to fields is a toast once (`NtripModeNoticeShown`) and stays in the card.
+  - The switch button always asks first; no switch is possible without control (commands are not in `ObserverIds`).
+  - `en.json` was regenerated with a port of `Tools/i18n-extract.py` (checked identical on the unchanged tree first), as this machine has no Python.
+  - Checked in the running app with a browser (Playwright) against two fake casters: refused login with advice and checks, the confirmed switch, the toast, the "main is back" question with both answers, the switch back, both modes, the editor (stored fallback shown, passwords masked, saved with the stored passwords kept, removal by an empty host, Test on the fallback), and the automatic switch with a fallback typed into the editor.
 
 ### Phase 5: docs
 `CLAUDE.md` (the NTRIP sections), `Plans/ARCHITECTURE.md` (NTRIP data flow), `Docs/INTERFACE_GUIDE.md` (Network IO), this plan to `Plans/Completed/`, `RTCM_FORWARDING_PLAN.md` "Still to check" list unchanged.

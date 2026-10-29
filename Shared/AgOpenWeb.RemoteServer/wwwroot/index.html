@@ -602,6 +602,14 @@
     .nio-bcrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
     .nio-warn { color: #ef4444; font: 600 12px system-ui, sans-serif; margin-top: 4px; }
     .nio-aged { color: #ef4444; }
+    .nio-svcrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+    .nio-svcrow .cfg-act { flex: none; min-height: 44px; padding: 8px 14px; }
+    .nio-note { color: var(--text); background: rgba(241,196,15,0.14); border-left: 3px solid #F1C40F; border-radius: 4px;
+      font: 500 12px system-ui, sans-serif; margin-top: 6px; padding: 6px 8px; }
+    .nio-chk-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; font: 500 12px system-ui, sans-serif; color: var(--text); }
+    .nio-chk-row .mark { width: 14px; text-align: center; font-weight: 700; }
+    .nio-chk-row.ok .mark { color: #22c55e; } .nio-chk-row.bad .mark { color: #ef4444; } .nio-chk-row.wait .mark { color: var(--text-muted); }
+    #nio-mode .cfg-act { min-height: 44px; }
     .nio-rtcm { margin-top: 6px; }
     .nio-rtcm summary { color: var(--text-2); font: 500 12px system-ui, sans-serif; cursor: pointer; }
     .nio-rtcmscroll { max-height: calc(30 * var(--vh)); overflow-y: auto; }
@@ -2108,6 +2116,16 @@
     <div class="sa-hint" id="nio-ntrip-dest"></div>
     <div class="sa-hint" id="nio-ntrip-rx"></div>
     <div class="nio-warn" id="nio-ntrip-warn" hidden></div>
+    <div class="sa-hint" id="nio-ntrip-advice"></div>
+    <div class="nio-svcrow" id="nio-svc" hidden>
+      <span class="nio-mod" id="nio-svc-text"></span>
+      <button id="nio-svc-switch" class="cfg-act rn-gated"></button>
+    </div>
+    <div class="nio-note" id="nio-ntrip-notice" hidden></div>
+    <details class="nio-rtcm" id="nio-checks" hidden>
+      <summary id="nio-checks-sum">Checks</summary>
+      <div id="nio-checks-rows"></div>
+    </details>
     <details class="nio-rtcm" id="nio-rtcm" hidden>
       <summary id="nio-rtcm-sum"></summary>
       <div class="nio-rtcmscroll">
@@ -2125,6 +2143,12 @@
       <input type="checkbox" class="nio-chk" id="nio-ntrip-on" data-key="conn.ntripEnabled" checked>
       <span class="nio-mod">NTRIP on</span>
     </label>
+    <div class="cfg-label" style="margin-top:10px">NTRIP profile in use</div>
+    <div class="ln-seg" id="nio-mode">
+      <button class="cfg-act rn-gated" data-v="0">One profile + fallback</button>
+      <button class="cfg-act rn-gated" data-v="1">Profile per field</button>
+    </div>
+    <div class="sa-hint" id="nio-mode-hint"></div>
     <button id="nio-ntprofiles" class="cfg-act cfg-actwide" style="margin-top:8px">NTRIP Profiles</button>
   </div>
   <!-- System Data — chain sub-panel of Network IO, opened from the GPS line's arrow. The
@@ -2205,9 +2229,27 @@
         <button id="nte-test" class="sw-b sw-grey" style="flex:none;padding:8px 16px">Test Connection</button>
         <span id="nte-teststatus" class="sa-hint"></span>
       </div>
+      <div class="cfg-label" style="margin-top:12px">Fallback service (optional)</div>
+      <div class="sa-hint">Used when the main service fails. Only with "One profile + fallback". Leave the host empty for none.</div>
+      <div class="nio-fld"><label>Host</label><input class="cfg-num nio-tx" id="nte-fb-host" placeholder="e.g., rtk2go.com"></div>
+      <div class="nio-row2">
+        <div class="nio-fld"><label>Port</label><input class="cfg-num nio-tx" id="nte-fb-port" type="number" placeholder="2101"></div>
+        <div class="nio-fld"><label>Mount</label><input class="cfg-num nio-tx" id="nte-fb-mount" placeholder="NEAR-RTCM3" translate="no"></div>
+      </div>
+      <div class="nio-row2">
+        <div class="nio-fld"><label>User</label><input class="cfg-num nio-tx" id="nte-fb-user" placeholder="(optional)"></div>
+        <div class="nio-fld"><label>Pass</label><input class="cfg-num nio-tx" id="nte-fb-pass" type="password" placeholder="(optional)"></div>
+      </div>
+      <div class="nio-testrow">
+        <button id="nte-fb-test" class="sw-b sw-grey" style="flex:none;padding:8px 16px">Test fallback</button>
+        <span id="nte-fb-teststatus" class="sa-hint"></span>
+      </div>
+      <label class="nio-cklbl"><input type="checkbox" id="nte-fb-auto"> Switch to the fallback by itself when the main service fails</label>
+      <div class="nio-fld" style="margin-top:6px"><label>After this many failed attempts</label><input class="cfg-num nio-tx" id="nte-fb-after" type="number" min="1" max="20" placeholder="2"></div>
+      <div class="sa-hint">A wrong login or mount point switches at once. Going back to the main service is always your choice.</div>
       <div class="cfg-label" style="margin-top:6px">Associated Fields</div>
       <div id="nte-fields" class="nio-fieldlist"></div>
-      <div class="sa-hint">Fields not selected will use the default profile (if set).</div>
+      <div class="sa-hint">Fields not selected will use the default profile (if set). Only with "Profile per field".</div>
       <label class="nio-cklbl"><input type="checkbox" id="nte-auto"> Auto-connect when associated field is loaded</label>
       <label class="nio-cklbl"><input type="checkbox" id="nte-default"> Set as default profile (for fields without specific association)</label>
       <div class="sw-btns" style="margin-top:14px; justify-content:flex-end">

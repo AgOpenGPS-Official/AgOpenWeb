@@ -148,6 +148,9 @@ namespace AgOpenWeb.Models
         /// one profile in use, with its fallback service, and a field load changes nothing.</summary>
         public bool NtripProfilePerField { get; set; } = false;
 
+        /// <summary>The one-time note that NTRIP now uses one profile with a fallback has been shown.</summary>
+        public bool NtripModeNoticeShown { get; set; } = false;
+
         /// <summary>The AOW link gateway the virtual terminal reaches the ISOBUS through:
         /// "host" or "host:port" (port 2323 when left out). Empty: no terminal.</summary>
         public string VtGateway { get; set; } = string.Empty;

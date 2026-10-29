@@ -850,6 +850,7 @@ public static partial class RemoteServerWiring
 
                     // Refusals and failures (#109): shown as a short notification on the web.
                     vm.FailureReported += msg => server.ShowToast(msg);
+                    vm.NtripNoticeReported += msg => server.ShowToast(msg);
 
                     // AiO board messages (PGN 221), when "AiO Board Msgs" is on (#110).
                     if (services.GetService<IAutoSteerService>() is { } hwSteer)

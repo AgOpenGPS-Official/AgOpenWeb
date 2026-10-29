@@ -115,6 +115,13 @@ public class ConnectionConfig : ObservableObject
         set => SetProperty(ref _ntripProfilePerField, value);
     }
 
+    private bool _ntripModeNoticeShown;
+    public bool NtripModeNoticeShown
+    {
+        get => _ntripModeNoticeShown;
+        set => SetProperty(ref _ntripModeNoticeShown, value);
+    }
+
     // GPS Mode
     private bool _isDualGps;
     public bool IsDualGps

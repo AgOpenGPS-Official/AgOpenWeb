@@ -433,12 +433,15 @@ public static partial class RemoteServerWiring
                 if (vm != null && arg is "main" or "fallback")
                     _ = vm.SwitchNtripServiceAsync(arg == "main" ? AgOpenWeb.Services.Interfaces.NtripService.Main : AgOpenWeb.Services.Interfaces.NtripService.Fallback);
                 return;
-            case "ntrip.test": // arg = host \t port \t mount \t user \t pass \t id (the mask = id's stored pass)
+            case "ntrip.test": // arg = host \t port \t mount \t user \t pass \t id \t fallback (1 = the fallback's); a masked pass = the stored one
             {
                 var t = arg.Split('\t');
                 if (t.Length < 3) return;
                 if (t.Length > 4 && t[4] == AgOpenWeb.RemoteServer.Secrets.Mask)
-                    t[4] = svc.Profiles.FirstOrDefault(p => p.Id == t.ElementAtOrDefault(5))?.Password ?? "";
+                {
+                    var stored = svc.Profiles.FirstOrDefault(p => p.Id == t.ElementAtOrDefault(5));
+                    t[4] = (t.ElementAtOrDefault(6) == "1" ? stored?.Fallback?.Password : stored?.Password) ?? "";
+                }
                 int.TryParse(t.ElementAtOrDefault(1), System.Globalization.NumberStyles.Integer, inv, out var tport);
                 if (tport == 0) tport = 2101;
                 state.Connections.NtripTestStatus = "Testing connection...";
@@ -446,7 +449,7 @@ public static partial class RemoteServerWiring
                     t.ElementAtOrDefault(3) ?? "", t.ElementAtOrDefault(4) ?? "");
                 return;
             }
-            case "ntrip.save": // id \t name \t host \t port \t mount \t user \t pass \t auto \t default \t assoc(csv)
+            case "ntrip.save": // id \t name \t host \t port \t mount \t user \t pass \t auto \t default \t assoc(csv) [\t fallback: present \t host \t port \t mount \t user \t pass \t auto \t after]
             {
                 var f = arg.Split('\t');
                 if (f.Length < 9) return;
@@ -470,8 +473,9 @@ public static partial class RemoteServerWiring
                     AutoConnectOnFieldLoad = f[7] == "1", IsDefault = f[8] == "1",
                     AssociatedFields = assoc,
                 };
-                // The editor does not carry the fallback yet: an edit keeps the one the profile has.
-                if (existing != null) { profile.Id = existing.Id; profile.FilePath = existing.FilePath; profile.Fallback = existing.Fallback; }
+                // The fallback block comes after the associated fields; without it an edit keeps the profile's fallback.
+                if (existing != null) { profile.Id = existing.Id; profile.FilePath = existing.FilePath; }
+                profile.Fallback = AgOpenWeb.Services.NtripProfileFields.FallbackFrom(f, 10, existing?.Fallback, AgOpenWeb.RemoteServer.Secrets.Mask);
                 // Copy the old caster settings before saving (the save may update the stored
                 // profile in place), to tell whether the connected one changed.
                 var before = existing == null ? null : new AgOpenWeb.Models.Ntrip.NtripProfile

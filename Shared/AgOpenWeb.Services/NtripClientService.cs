@@ -138,6 +138,8 @@ public class NtripClientService : INtripClientService, IDisposable
 
     public bool MainIsBack => _mainIsBack;
 
+    public bool HasFallback => NtripFailover.IsConfigured(_mainConfig?.Fallback);
+
     public async Task SwitchToAsync(NtripService service)
     {
         SwitchTo(service, automatic: false);

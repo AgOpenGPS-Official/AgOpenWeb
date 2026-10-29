@@ -201,6 +201,13 @@ window.RemoteTransport = {
           const sendCorrectedPosition = !!u8();
           // Network IO: the subnet the scan came from (append-only, #334).
           const scanReplySubnet = str();
+          // NTRIP session (append-only): null without a client. state: 0 Stopped, 1 Connecting,
+          // 2 Connected, 3 Streaming, 4 Waiting, 5 GaveUp; lastError: NtripCategory, -1 none.
+          let ntripSession = null;
+          if (u8()) {
+            ntripSession = { usingFallback: !!u8(), mainIsBack: !!u8(), hasFallback: !!u8(), profilePerField: !!u8(),
+              state: u8(), lastError: i32(), attempts: i32(), retrySeconds: f32(), notice: str() };
+          }
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -212,7 +219,7 @@ window.RemoteTransport = {
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripEnabled, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
-            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet,
+            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet, ntripSession,
           });
           break;
         }
@@ -223,7 +230,9 @@ window.RemoteTransport = {
             const username = str(), password = str(), autoConnect = !!u8(), isDefault = !!u8();
             const ac = i32(); const associatedFields = new Array(ac);
             for (let j = 0; j < ac; j++) associatedFields[j] = str();
-            profiles[k] = { id, name, casterHost, casterPort, mountPoint, username, password, autoConnect, isDefault, associatedFields };
+            let fallback = null;
+            if (u8()) fallback = { host: str(), port: i32(), mount: str(), username: str(), password: str(), autoSwitch: !!u8(), after: i32() };
+            profiles[k] = { id, name, casterHost, casterPort, mountPoint, username, password, autoConnect, isDefault, associatedFields, fallback };
           }
           const af = i32(); const availableFields = new Array(af);
           for (let k = 0; k < af; k++) availableFields[k] = str();

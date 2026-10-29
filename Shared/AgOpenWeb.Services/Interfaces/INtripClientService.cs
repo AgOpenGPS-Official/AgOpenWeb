@@ -35,6 +35,11 @@ public interface INtripClientService
     NtripService Using { get; }
 
     /// <summary>
+    /// The configuration in use has a fallback service to switch to.
+    /// </summary>
+    bool HasFallback { get; }
+
+    /// <summary>
     /// The main service answers again while the fallback is in use. Never switched back by itself.
     /// </summary>
     bool MainIsBack { get; }

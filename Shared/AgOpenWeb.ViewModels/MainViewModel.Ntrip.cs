@@ -201,6 +201,7 @@ public partial class MainViewModel
         try
         {
             await _ntripProfileService.LoadProfilesAsync();
+            ShowNtripModeNoticeOnce();
             await ConnectDefaultNtripProfileOnStartupAsync();
         }
         catch (Exception ex)
@@ -446,11 +447,48 @@ public partial class MainViewModel
         else _dispatcher.Post(() => ApplyNtripNotice(e));
     }
 
+    /// <summary>A switch between the NTRIP services, to show as a short notification on the web.</summary>
+    public event Action<string>? NtripNoticeReported;
+
     private void ApplyNtripNotice(NtripNoticeEventArgs e)
     {
         State.Connections.NtripNotice = e.Message;
         State.Connections.NtripUsingFallback = _ntripService.Using == NtripService.Fallback;
         State.Connections.NtripMainIsBack = _ntripService.MainIsBack;
+
+        if (e.Kind != NtripNoticeKind.MainBack)
+        {
+            NtripNoticeReported?.Invoke(e.Message);
+            return;
+        }
+
+        // The main service answers again: ask, never switch back by itself. Not over another question
+        // that is waiting; the card in Network IO still offers the switch.
+        if (IsPromptPending) return;
+        ShowConfirmationDialog("Main service is back", e.Message + " Switch back to it? GPS may lose RTK and the position may shift a little.",
+            "Switch back", "Stay on fallback", () =>
+            {
+                // Only while it is still true: the operator may have switched, or the main service may have dropped again.
+                if (_ntripService.Using == NtripService.Fallback && _ntripService.MainIsBack) _ = SwitchNtripServiceAsync(NtripService.Main);
+            });
+    }
+
+    /// <summary>
+    /// Once, for an installation whose profiles were tied to fields before NTRIP got a fallback: say that one
+    /// profile with a fallback is now the default and the field links are kept (Plans/NTRIP_MAIN_FALLBACK_PLAN.md).
+    /// </summary>
+    internal void ShowNtripModeNoticeOnce()
+    {
+        if (!_dispatcher.CheckAccess()) { _dispatcher.Post(ShowNtripModeNoticeOnce); return; }   // settings and state are the UI thread's
+        var connections = ConfigStore.Connections;
+        if (connections.NtripModeNoticeShown) return;
+        connections.NtripModeNoticeShown = true;
+        _configurationService.SaveAppSettings();
+        if (connections.NtripProfilePerField || !_ntripProfileService.Profiles.Any(p => p.AssociatedFields.Count > 0)) return;
+
+        const string text = "NTRIP now uses one profile with a fallback service. Your profiles keep their fields: turn on \"Profile per field\" in Network IO to use them.";
+        State.Connections.NtripNotice = text;
+        NtripNoticeReported?.Invoke(text);
     }
 
     private void OnRtcmDataReceived(object? sender, RtcmDataReceivedEventArgs e)
