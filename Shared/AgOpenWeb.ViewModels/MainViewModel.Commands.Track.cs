@@ -154,7 +154,14 @@ public partial class MainViewModel
             ? (Reach(fwd, v) <= Reach(back, v) ? fwd : back)
             : (Length(fwd) <= Length(back) ? fwd : back);
         var seg = new System.Collections.Generic.List<Models.Base.Vec3>(arc.Count + 1);
-        foreach (var p in arc) seg.Add(new Models.Base.Vec3(p.Easting, p.Northing, 0));
+        foreach (var p in arc)
+        {
+            // A tap on a boundary vertex projects onto it, repeating that vertex: a zero-length
+            // end segment has no heading (atan2(0,0) = north), so the end ran on due north.
+            if (seg.Count > 0 && Math.Abs(seg[^1].Easting - p.Easting) < 0.01 && Math.Abs(seg[^1].Northing - p.Northing) < 0.01)
+                continue;
+            seg.Add(new Models.Base.Vec3(p.Easting, p.Northing, 0));
+        }
         if (seg.Count == 2) // both taps on one side: a straight run, still a curve track
             seg.Insert(1, new Models.Base.Vec3((seg[0].Easting + seg[1].Easting) / 2, (seg[0].Northing + seg[1].Northing) / 2, 0));
 

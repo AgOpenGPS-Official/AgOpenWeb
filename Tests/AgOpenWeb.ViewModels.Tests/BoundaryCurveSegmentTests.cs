@@ -121,6 +121,19 @@ public class BoundaryCurveSegmentTests
     }
 
     [Test]
+    public void ATapOnACorner_RunsOnTheWayTheCurveGoes()
+    {
+        // B lands on the NE corner, a boundary vertex, at the end of a walk against the ring's
+        // order (the short way from the north side): the curve ends heading east, so it runs
+        // on east, not due north from a repeated end point.
+        _vm.RemoteCreateBoundaryCurveSegment(50, 200, 100, 200);
+
+        var pts = _vm.SelectedTrack!.Points;
+        Assert.That(pts[^1].Easting, Is.GreaterThan(105));
+        Assert.That(pts[^1].Northing, Is.EqualTo(200).Within(0.5));
+    }
+
+    [Test]
     public void SamePoint_IsRefused()
     {
         _vm.RemoteCreateBoundaryCurveSegment(0, 50, 0, 50.5);
