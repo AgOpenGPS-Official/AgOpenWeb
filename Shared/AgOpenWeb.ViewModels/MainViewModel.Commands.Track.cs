@@ -1109,7 +1109,6 @@ public partial class MainViewModel
                 };
             }
 
-            ConfigStore.Guidance.TramDisplay = tram.DisplayMode != Models.Configuration.TramDisplayMode.Off;
             UpdateTramLines(SelectedTrack);
             OnPropertyChanged(nameof(TramDisplayLabel));
             StatusMessage = tram.DisplayMode switch
@@ -1135,7 +1134,6 @@ public partial class MainViewModel
             }
 
             ConfigStore.Tram.DisplayMode = Models.Configuration.TramDisplayMode.All;
-            ConfigStore.Guidance.TramDisplay = true;
             UpdateTramLines(SelectedTrack);
             OnPropertyChanged(nameof(TramDisplayLabel));
             StatusMessage = ConfigStore.Tram.Systems.Count > 0
@@ -1180,7 +1178,6 @@ public partial class MainViewModel
         void SetTramMode(Models.Configuration.TramDisplayMode mode)
         {
             ConfigStore.Tram.DisplayMode = mode;
-            ConfigStore.Guidance.TramDisplay = mode != Models.Configuration.TramDisplayMode.Off;
             UpdateTramLines(SelectedTrack);
             OnPropertyChanged(nameof(TramDisplayLabel));
         }
