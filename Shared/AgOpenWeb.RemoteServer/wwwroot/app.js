@@ -941,6 +941,34 @@ addEventListener('touchend', e => {
   _lastTapEnd = now;
 }, { passive: false });
 
+// #465: some Linux touch stacks follow a finger tap with an emulated mouse press when the
+// finger lifts. The UI acts on pointerdown, so that second press shut the menu the finger had
+// just opened (a stylus sends one press, and a second finger cancels the emulation). Drop it,
+// before any other handler sees it: a mouse press right after a touch ended near the same
+// spot, and a second press from a pointer that is already down (a real one never does that).
+const GHOST_PRESS_MS = 800, GHOST_PRESS_PX = 30;
+let _touchEnd = null;
+const _pointersDown = new Set();
+function noteTouchEnd(t, x, y) { _touchEnd = { t, x, y }; }
+addEventListener('pointerup', e => {
+  _pointersDown.delete(e.pointerId);
+  if (e.pointerType === 'touch') noteTouchEnd(e.timeStamp, e.clientX, e.clientY);
+}, true);
+addEventListener('pointercancel', e => _pointersDown.delete(e.pointerId), true);
+addEventListener('blur', () => _pointersDown.clear()); // a release we never saw
+addEventListener('touchend', e => {
+  const t = e.changedTouches[0];
+  if (t) noteTouchEnd(e.timeStamp, t.clientX, t.clientY);
+}, true);
+addEventListener('pointerdown', e => {
+  // Forget a pointer once it is caught pressing twice, so a lost release costs one press at most.
+  const ghost = _pointersDown.delete(e.pointerId) || (e.pointerType === 'mouse' && _touchEnd
+    && e.timeStamp - _touchEnd.t < GHOST_PRESS_MS
+    && Math.hypot(e.clientX - _touchEnd.x, e.clientY - _touchEnd.y) < GHOST_PRESS_PX);
+  if (ghost) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+  _pointersDown.add(e.pointerId);
+}, true);
+
 // A tap on the vehicle resets its direction, as in AgOpenGPS: the heading is learned again
 // from the next forward travel. It is the way out when the first heading was taken while
 // backing, after which (with an IMU) forward travel reads as reverse.
