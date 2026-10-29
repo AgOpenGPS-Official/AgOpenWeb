@@ -61,10 +61,13 @@ public partial class MainViewModel
 
     /// <summary>
     /// Boundary curve from two tapped points (remote/web "Bnd. Curve"): snap A and B to the
-    /// nearest outer-boundary vertices, walk the shorter arc between them, and create an OPEN
-    /// curve following the boundary. Mirrors native FormABDraw's BtnMakeCurve segment logic.
+    /// nearest outer-boundary vertices, walk the boundary between them, and create an OPEN
+    /// curve following it. Without <paramref name="via"/> it takes the shorter way round, as
+    /// AgOpenGPS's FormABDraw BtnMakeCurve does; with it, the way round that passes nearer
+    /// that point (the operator's A → B / B → A pick, #450).
     /// </summary>
-    public void RemoteCreateBoundaryCurveSegment(double aE, double aN, double bE, double bN)
+    public void RemoteCreateBoundaryCurveSegment(double aE, double aN, double bE, double bN,
+        Models.Base.Vec2? via = null)
     {
         var boundary = State.Field.CurrentBoundary?.OuterBoundary;
         if (boundary?.Points == null || boundary.Points.Count < 3)
@@ -139,10 +142,26 @@ public partial class MainViewModel
             for (int i = 1; i < path.Count; i++) len += GeometryMath.Distance(path[i - 1], path[i]);
             return len;
         }
+        double Reach(System.Collections.Generic.List<Models.Base.Vec2> path, Models.Base.Vec2 p)
+        {
+            double best = double.MaxValue;
+            for (int i = 1; i < path.Count; i++)
+                best = Math.Min(best, GeometryMath.PointToSegmentDistance(p, path[i - 1], path[i]));
+            return best;
+        }
         var fwd = Walk(1); var back = Walk(-1);
-        var arc = Length(fwd) <= Length(back) ? fwd : back;
+        var arc = via is { } v
+            ? (Reach(fwd, v) <= Reach(back, v) ? fwd : back)
+            : (Length(fwd) <= Length(back) ? fwd : back);
         var seg = new System.Collections.Generic.List<Models.Base.Vec3>(arc.Count + 1);
-        foreach (var p in arc) seg.Add(new Models.Base.Vec3(p.Easting, p.Northing, 0));
+        foreach (var p in arc)
+        {
+            // A tap on a boundary vertex projects onto it, repeating that vertex: a zero-length
+            // end segment has no heading (atan2(0,0) = north), so the end ran on due north.
+            if (seg.Count > 0 && Math.Abs(seg[^1].Easting - p.Easting) < 0.01 && Math.Abs(seg[^1].Northing - p.Northing) < 0.01)
+                continue;
+            seg.Add(new Models.Base.Vec3(p.Easting, p.Northing, 0));
+        }
         if (seg.Count == 2) // both taps on one side: a straight run, still a curve track
             seg.Insert(1, new Models.Base.Vec3((seg[0].Easting + seg[1].Easting) / 2, (seg[0].Northing + seg[1].Northing) / 2, 0));
 
@@ -152,7 +171,7 @@ public partial class MainViewModel
         // hand-drawn curve tool (ExtendCurvePastBoundary) and an AB line. Without this the curve
         // stops inside the field and the U-turn generator has no boundary crossing to anchor the
         // turn at each pass end; with it, the ends run past the fence and turns fire normally.
-        var curvePoints = ExtendCurvePastBoundary(headed);
+        var curvePoints = ExtendCurvePastBoundary(headed, keepEndsApart: true);
         var track = new Models.Track.Track
         {
             Name = "Boundary Curve",
@@ -1538,8 +1557,11 @@ public partial class MainViewModel
     /// </summary>
     /// <param name="points">Original curve points</param>
     /// <param name="marginMeters">How far past the boundary to extend (default 20m)</param>
+    /// <param name="keepEndsApart">An end heading towards the other end stops short of halfway
+    /// across the gap between them, so they don't overlap: a boundary curve the long way round
+    /// has both ends on the fence, facing each other across what it leaves out (#450).</param>
     /// <returns>New list with extended endpoints</returns>
-    private List<Vec3> ExtendCurvePastBoundary(List<Vec3> points, double marginMeters = 20.0)
+    private List<Vec3> ExtendCurvePastBoundary(List<Vec3> points, double marginMeters = 20.0, bool keepEndsApart = false)
     {
         if (points.Count < 2)
         {
@@ -1614,6 +1636,17 @@ public partial class MainViewModel
                 if (t > 0 && u >= 0 && u <= 1)
                     extendEnd = Math.Max(extendEnd, t + marginMeters);
             }
+        }
+
+        if (keepEndsApart)
+        {
+            double gapE = lastPoint.Easting - firstPoint.Easting, gapN = lastPoint.Northing - firstPoint.Northing;
+            double cap = Math.Max(1.0, Math.Sqrt(gapE * gapE + gapN * gapN) / 2 - 1.0);
+            // The start extends backwards (−heading), the end forwards (+heading).
+            if (-Math.Sin(startHeading) * gapE - Math.Cos(startHeading) * gapN > 0)
+                extendStart = Math.Min(extendStart, cap);
+            if (-Math.Sin(endHeading) * gapE - Math.Cos(endHeading) * gapN > 0)
+                extendEnd = Math.Min(extendEnd, cap);
         }
 
         // Create extended start point
