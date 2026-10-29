@@ -36,6 +36,11 @@ public interface INtripClientService
     bool IsActive { get; }
 
     /// <summary>
+    /// What the session is doing: its state, the last failure and when it tries again.
+    /// </summary>
+    NtripSessionStatus Status { get; }
+
+    /// <summary>
     /// Total bytes received from caster
     /// </summary>
     ulong TotalBytesReceived { get; }
@@ -53,7 +58,8 @@ public interface INtripClientService
     RtcmStreamSnapshot GetRtcmStreamSnapshot();
 
     /// <summary>
-    /// Connect to NTRIP caster with specified configuration
+    /// Connect to NTRIP caster with specified configuration. Returns once the session is
+    /// started; it retries by itself, and its progress comes through <see cref="ConnectionStatusChanged"/>.
     /// </summary>
     Task ConnectAsync(NtripConfiguration config);
 
