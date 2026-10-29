@@ -153,6 +153,11 @@ public partial class MainViewModel
         var arc = via is { } v
             ? (Reach(fwd, v) <= Reach(back, v) ? fwd : back)
             : (Length(fwd) <= Length(back) ? fwd : back);
+        // A tap on a corner lands partway round its rounding: the curve would end mid-turn and
+        // run on at that diagonal. Each end is taken back to where the corner starts, so it runs
+        // on along the side instead.
+        TrimCornerEnd(arc, ConfigStore.Guidance.UTurnRadius);
+        arc.Reverse(); TrimCornerEnd(arc, ConfigStore.Guidance.UTurnRadius); arc.Reverse();
         var seg = new System.Collections.Generic.List<Models.Base.Vec3>(arc.Count + 1);
         foreach (var p in arc)
         {
@@ -187,6 +192,35 @@ public partial class MainViewModel
         SelectedTrack = track;
         SaveTracksToFile();
         StatusMessage = $"Created boundary curve ({curvePoints.Count} points, {insetDistance:F1} m inside fence)";
+    }
+
+    /// <summary>
+    /// Takes the end of a boundary-curve path back to the start of a rounded corner it stops
+    /// partway round (#450): while its last segments turn nearly as tightly as the corner
+    /// rounding (radius <paramref name="radius"/>), they go, up to half a circle's length. A
+    /// gentle bend in a curved field boundary turns far less and is kept.
+    /// </summary>
+    internal static void TrimCornerEnd(System.Collections.Generic.List<Models.Base.Vec2> path, double radius)
+    {
+        if (radius <= 0 || path.Count < 3) return;
+        static double Heading(Models.Base.Vec2 a, Models.Base.Vec2 b) =>
+            Math.Atan2(b.Easting - a.Easting, b.Northing - a.Northing);
+        int end = path.Count - 1;
+        double walked = 0;
+        while (end >= 2 && walked <= Math.PI * radius)
+        {
+            var b = path[end]; var a = path[end - 1]; var z = path[end - 2];
+            double len = GeometryMath.Distance(a, b);
+            if (len < 0.01 || GeometryMath.Distance(z, a) < 0.01) { end--; continue; }
+            double turn = Math.Abs(Math.IEEERemainder(Heading(a, b) - Heading(z, a), 2 * Math.PI));
+            // A rounding turns len/radius per segment, its first one about half that (it leaves
+            // the side on a tangent); a quarter keeps both and still passes a gentle bend.
+            if (turn < 0.25 * len / radius || turn < 0.2 * Math.PI / 180) break; // straight here
+            walked += len;
+            end--;
+        }
+        if (end < path.Count - 1 && end >= 1 && walked <= Math.PI * radius)
+            path.RemoveRange(end + 1, path.Count - end - 1);
     }
 
     private void InitializeTrackCommands()
