@@ -65,8 +65,11 @@ internal static class LauncherEntry
     }
 
     /// <summary>Closing the window must stop the backend first so its save runs. Photino asks
-    /// before closing: confirm (a stray click on X mid-job, #348), cancel, stop off the UI
-    /// thread, then close for real.</summary>
+    /// before closing: confirm (a stray click on X mid-job, #348), then stop the backend before
+    /// letting the window go. The stop is waited for here rather than cancelling the close and
+    /// closing again afterwards: on macOS the window closes (and the app quits) even when the
+    /// handler cancels, which cut the stop short and left the VT stack's native thread running
+    /// as the process exited. The stop runs off the UI thread; a stuck one gets 5 s.</summary>
     public static bool StopThenClose(PhotinoWindow window, BackendHost? backend, ref bool closing)
     {
         if (backend is not { IsRunning: true } || closing) return false; // let it close
@@ -75,12 +78,13 @@ internal static class LauncherEntry
                 PhotinoDialogButtons.YesNo, PhotinoDialogIcon.Question) != PhotinoDialogResult.Yes)
             return true; // stay open
         closing = true;
-        _ = Task.Run(async () =>
+        var stop = Task.Run(async () =>
         {
-            try { await backend.StopAsync(); } catch { /* close regardless */ }
-            window.Invoke(window.Close);
+            try { await backend.StopAsync(); } catch (Exception ex) { Console.WriteLine($"[launcher] backend stop failed: {ex.Message}"); }
         });
-        return true; // cancel this close
+        if (!stop.Wait(TimeSpan.FromSeconds(5)))
+            Console.WriteLine("[launcher] backend still stopping after 5 s; closing anyway");
+        return false; // now let it close
     }
 
     private const string SplashCss = "html,body{margin:0;height:100%;background:#0b1020;color:#fff;font:16px system-ui,sans-serif}" +
