@@ -1,6 +1,6 @@
 # NTRIP: main and fallback service, a sturdier client, and a report that explains itself
 
-**Status:** proposed 2026-10-29. Nothing is built. Needs the approval of the maintainers (see "Decisions taken") before Phase 1.
+**Status:** approved 2026-10-29 (#463). Phase 1 built, in review; the other phases are not started.
 **Prompted by:** #443 (NTRIP "not working": the reporter and the maintainers had to guess whether it was the login, the mount point or the position), #285 and #385 (silent stops and retries), and a rebuild of the NTRIP client in AgIO (AgOpenGPS) that was tested against recorded casters and a caster of our own. This plan brings what that rebuild learned to AgOpenWeb, in AgOpenWeb's own architecture.
 **Related:** `Plans/RTCM_FORWARDING_PLAN.md` (the forwarding half, already in), `Plans/Completed/NTRIP_PROFILES_PLAN.md` (profiles per field), `Plans/BUG_REPORT_SUBMISSION_PLAN.md` (what a report carries), #278 (NTRIP on/off), #397 (observers), #444 (position sent to the caster).
 
@@ -70,7 +70,7 @@ caster(s) ──► NtripSession (state machine, timeouts, retry policy)
                                                                              └─► ntrip_session.txt in the Bug Report dump
 ```
 
-New files (`Shared/AgOpenWeb.Services/Ntrip/`, Apache header, `CultureInfo.InvariantCulture` throughout, added to the `CA1305` error globs in `.editorconfig`): `NtripSession`, `NtripOutcome` (categories), `RetryPolicy`, `NtripRequest` (builds the request, Auto/1.0/2.0), `NtripHeaderScanner` (ICY/HTTP/source table), `CorrectionSourceManager`, `NtripStatus`, `CorrectionChecks`, `NtripSupportReport`. `NtripResponse` is extended, not replaced. `NtripConnectionTester` (the editor's Test button) runs the same session code for one attempt, so Test and the real thing cannot disagree.
+New files (`Shared/AgOpenWeb.Services/Ntrip/`, Apache header, `CultureInfo.InvariantCulture` throughout; `CA1305` is already an error for all production code): `NtripSession`, `NtripOutcome` (categories), `RetryPolicy`, `NtripRequest` (builds the request, Auto/1.0/2.0), `NtripHeaderScanner` (ICY/HTTP/source table), `CorrectionSourceManager`, `NtripStatus`, `CorrectionChecks`, `NtripSupportReport`. `NtripResponse` is extended, not replaced. `NtripConnectionTester` (the editor's Test button) runs the same session code for one attempt, so Test and the real thing cannot disagree.
 
 Wire: `Contracts.cs` (`NtripStatusDto`, `NtripProfileDto.Fallback...`), `SceneProjector`, `WireCodec` + `transport.js` in the same order, `app.js` (card, editor, prompt). Commands: `ntrip.mode|main|field`, `ntrip.switch|main|fallback`, `ntrip.answer|yes|no` (the switch-back prompt, existing prompt frame), `ntrip.save` extended with the fallback fields. All need control (none are in `ObserverIds`); observers see the card and the prompt, change nothing. Passwords in the profiles frame stay masked as `ntrip.test` already treats them (#397).
 
@@ -87,6 +87,12 @@ Reviewed by the maintainers on a docs-only PR. Answers to the open questions go 
 - `NtripStatus` filled and logged; `State.Connections.NtripStatus` fed from its headline.
 - Tests (NUnit, `AgOpenWeb.Services.Tests`): a fake caster on 127.0.0.1 for each outcome and for each rule of decision 11 (accepted 2.0, accepted 1.0 after a 2.0 refusal, no 1.0 retry after 401, 404, a source table or a timeout, the remembered version, ICY, chunked, wrong login, wrong mount point with a source table, busy, silent, closes after 200, not RTCM), a fake clock for the retry policy and every timeout, `NtripHandshakeTests` and `NtripHeaderBufferCapTests` kept green.
 - **Outcome:** same behaviour as today for a caster that works; a failure now has a name. The first thing in the PR is an audit table: each defect found in the rebuild against `NtripClientService` as it is, "still applies" or "already fine", so the maintainers see what is a change and what is not.
+- **Built as** (differences from the sketch above, all to keep it smaller):
+  - `NtripSession` is the connection and the retry loop in one; there is no separate `RetryPolicy` class. The backoff is the one the client already had (1, 2, 4, 8, 15 s), without jitter, and a wrong login or mount point still ends the session at once, so nothing waits on attempts that cannot help (see decision 4).
+  - The status type is `NtripSessionStatus` (a record), so it is not confused with the `NtripStatus` string property of the state classes. The headline, light and checks come with the card in Phase 4.
+  - `NtripReply` stays, derived from the new `NtripOutcome`, so `NtripResponse.Classify` is the one classification. Its messages keep the wording the client had.
+  - The no-data limit is 30 s, as the stall watchdog it replaces; the connect limit is 10 s and the reply limit 15 s. `ConnectAsync` now returns when the session has started and no longer throws for an unreachable caster: the session reports it and retries.
+  - The position goes in the NTRIP 2.0 request (`Ntrip-GGA`) or, for NTRIP 1.0, right after the answer, then on the interval; before, the first one went out 5 s after connecting.
 
 ### Phase 2: the report (straight after Phase 1)
 Phases 1 and 2 together answer #443: a failure has a name and a maintainer can read it from the dump. They go to testers before any fallback UI exists.

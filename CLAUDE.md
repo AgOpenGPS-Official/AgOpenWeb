@@ -235,7 +235,8 @@ AgOpenWeb may use different/improved formats from AgOpenGPS when it benefits cod
 | `Shared/AgOpenWeb.Services/Track/TrackGuidanceService.cs` | Pure Pursuit + Stanley guidance |
 | `Shared/AgOpenWeb.Services/YouTurn/YouTurnStateMachine.cs` | U-turn planning and following |
 | `Shared/AgOpenWeb.Services/Coverage/CoverageMapService.cs` | Coverage detection + display grids, tiles |
-| `Shared/AgOpenWeb.Services/NtripClientService.cs` | NTRIP RTK corrections |
+| `Shared/AgOpenWeb.Services/Ntrip/NtripSession.cs` | NTRIP connection: request, reply, retry, timeouts, status |
+| `Shared/AgOpenWeb.Services/NtripClientService.cs` | NTRIP RTK corrections: frames the stream, forwards it to the GPS module |
 | `Shared/AgOpenWeb.Services/ConfigurationService.cs` | AppSettings ↔ ConfigurationStore sync |
 | `Platforms/AgOpenWeb.Desktop/Program.cs` | Desktop mode selection |
 | `Platforms/AgOpenWeb.Desktop/Launcher/LauncherEntry.cs` | Photino window: all-in-one app or `--console` supervisor |
@@ -316,14 +317,23 @@ Playwright: wait for `iHoldControl === true`, then `transport.send(...)`; read `
 old build on `:5174`.
 
 ## NTRIP Connection Format
-The NTRIP client uses HTTP/1.1 format:
+`NtripSession` (`Services/Ntrip/`) makes the connection and asks with NTRIP 2.0:
 ```
 GET /mountpoint HTTP/1.1
-Host: caster.example.com
+Host: caster.example.com:2101
 Ntrip-Version: Ntrip/2.0
-Authorization: Basic base64(username:password)
 User-Agent: NTRIP AgOpenWeb
+Authorization: Basic base64(username:password)
+Ntrip-GGA: $GPGGA,...
+Connection: close
 ```
+A caster that did not understand it (a reply that is no NTRIP or HTTP reply, or HTTP 400 or 505) gets the
+NTRIP 1.0 request (`GET /mountpoint HTTP/1.0`, no Host or version header, the position sent right after
+the answer) once; never after a 401, 403, 404, an error text or a source table. The version that delivered
+corrections is remembered per service. `NtripResponse.Classify` sorts every reply into an `NtripCategory`
+(wrong login and unknown mount point end the session, the rest is retried after 1, 2, 4, 8, 15 s, and a
+network change ends the wait); `NtripConnectionTester` (the Test button) opens its connection the same way.
+Every wait has a timeout (`NtripTimeouts`). Design: `Plans/NTRIP_MAIN_FALLBACK_PLAN.md`.
 
 ### RTCM forwarding
 `NtripClientService` frames the caster's stream into RTCM 3 messages (`RtcmFramer`, after
