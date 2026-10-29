@@ -15,7 +15,7 @@
   <PropertyGroup>
     <!-- net10.0, and each mobile target whose workload is installed (its reference pack is there):
          a head must take the package's assembly and native libraries for its own platform, so the
-         Android head gets net10.0-android wherever it builds (CI and the nightly: on Linux), and a
+         Android head gets net10.0-android wherever it builds (CI and the beta: on Linux), and a
          machine without a workload need not have it. -p:DesktopOnly=true: net10.0 only. -->
     <_VtPacks>$(NetCoreTargetingPackRoot)</_VtPacks>
     <_VtAndroid Condition="'$(DesktopOnly)' != 'true' And Exists('$(_VtPacks)') And '$([System.IO.Directory]::GetDirectories(`$(_VtPacks)`, `Microsoft.Android.Ref.*`))' != ''">;net10.0-android</_VtAndroid>

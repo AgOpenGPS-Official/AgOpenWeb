@@ -91,7 +91,7 @@ gateway passes it before it is recommended.
 **Done 2026-10-26:** SharpIsoTerm is public and its CI releases a NuGet package with every native
 library (tag vX.Y.Z: release vX.Y.Z; v0.1.0 the first). AgOpenWeb takes that package, pinned by
 version and SHA-256, and the build fetches it from the release into `nuget-local/`, so every head,
-nightly and release has the terminal, the Linux arm64 bundle for Setup A included, and none builds
+beta and release has the terminal, the Linux arm64 bundle for Setup A included, and none builds
 SharpIsoTerm. `-p:SharpIsoTermDir=…` still builds against a checkout, for work on the library.
 Moving to nuget.org later changes only where the package comes from.
 
