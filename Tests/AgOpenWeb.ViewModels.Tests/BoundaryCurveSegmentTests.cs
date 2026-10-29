@@ -97,6 +97,30 @@ public class BoundaryCurveSegmentTests
     }
 
     [Test]
+    public void TheLongWayRound_WhenItsPicked()
+    {
+        // #450: A and B on the west side; the operator picks the way round past the east side.
+        _vm.RemoteCreateBoundaryCurveSegment(0, 50, 0, 150, new AgOpenWeb.Models.Base.Vec2(100, 100));
+
+        var pts = _vm.SelectedTrack!.Points;
+        Assert.That(DistanceToLine(pts, 100, 100), Is.LessThan(10), "runs down the east side");
+        Assert.That(DistanceToLine(pts, 50, 0), Is.LessThan(10), "and along the south side");
+        // Both ends face each other across the gap between the taps: they run on towards each
+        // other, but stop short of halfway instead of overlapping.
+        Assert.That(pts[0].Easting, Is.EqualTo(pts[^1].Easting).Within(1e-6), "both ends on the west side");
+        Assert.That(pts[0].Northing, Is.LessThan(pts[^1].Northing - 1.5), "the ends stop apart, not overlapping");
+    }
+
+    [Test]
+    public void TheShortWayRound_WhenItsPicked()
+    {
+        _vm.RemoteCreateBoundaryCurveSegment(0, 50, 0, 150, new AgOpenWeb.Models.Base.Vec2(0, 100));
+
+        Assert.That(DistanceToLine(_vm.SelectedTrack!.Points, 0, 100), Is.LessThan(10));
+        Assert.That(DistanceToLine(_vm.SelectedTrack.Points, 100, 100), Is.GreaterThan(20));
+    }
+
+    [Test]
     public void SamePoint_IsRefused()
     {
         _vm.RemoteCreateBoundaryCurveSegment(0, 50, 0, 50.5);

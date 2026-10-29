@@ -443,14 +443,20 @@ public static partial class RemoteServerWiring
                                     return;
                                 }
                                 case "track.boundaryCurveSeg": // "Bnd. Curve": tap A + B on the boundary.
-                                {                              // arg = "aE,aN,bE,bN" (m, from s2w). Tier-1.
-                                    var bc = arg.Split(',');
+                                {                              // arg = "aE,aN,bE,bN[,viaE,viaN]" (m, from s2w):
+                                    var bc = arg.Split(',');   // via = a point on the way round picked (#450)
                                     if (bc.Length >= 4
                                         && double.TryParse(bc[0], num, inv, out var caE)
                                         && double.TryParse(bc[1], num, inv, out var caN)
                                         && double.TryParse(bc[2], num, inv, out var cbE)
                                         && double.TryParse(bc[3], num, inv, out var cbN))
-                                        vm.RemoteCreateBoundaryCurveSegment(caE, caN, cbE, cbN);
+                                    {
+                                        Models.Base.Vec2? via = bc.Length >= 6
+                                            && double.TryParse(bc[4], num, inv, out var cvE)
+                                            && double.TryParse(bc[5], num, inv, out var cvN)
+                                            ? new Models.Base.Vec2(cvE, cvN) : null;
+                                        vm.RemoteCreateBoundaryCurveSegment(caE, caN, cbE, cbN, via);
+                                    }
                                     return;
                                 }
                                 case "flag.placeAt": // Phase MT map-tap. arg = "easting,northing"

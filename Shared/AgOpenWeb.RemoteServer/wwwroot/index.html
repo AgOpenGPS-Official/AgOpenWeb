@@ -240,6 +240,7 @@
       cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.45);
     }
     #draw-toolbar button:active { background: rgba(50,80,120,0.95); }
+    #draw-toolbar button.active { background: rgba(255,210,74,0.25); border-color: #ffd24a; color: #ffe9a6; }
     #draw-finish, #draw-setpoint { border-color: rgba(110,220,150,0.7) !important; color: #b6f0cd !important; }
     #draw-cancel { border-color: rgba(230,120,110,0.7) !important; color: #f3c4bd !important; }
     /* On-screen U-Turn / Lateral buttons — bare glyphs over the map (native look), docked
@@ -1391,6 +1392,8 @@
   <div id="draw-toolbar">
     <button id="draw-setpoint">Set Point</button>
     <button id="draw-undo">Undo</button>
+    <button id="draw-dir-ab" style="display:none" title="Curve from A on round the boundary to B">A → B</button>
+    <button id="draw-dir-ba" style="display:none" title="Curve from B on round the boundary to A, the other way">B → A</button>
     <button id="draw-finish">Finish</button>
     <button id="draw-cancel">Cancel</button>
   </div>
@@ -3019,7 +3022,7 @@
       <div class="dlg-sub">From Field Boundary</div>
       <div class="dlg-modes">
         <button class="dlg-mode" data-qab="boundaryEdge" title="AB line along the longest boundary edge"><span class="dlg-bigtxt">AB</span><span>Longest Edge</span></button>
-        <button class="dlg-mode" data-qab="boundaryCurve" title="Curve along the boundary from A to B, the shorter way round"><img src="/icons/ABTrackCurve.png" alt=""><span>Bnd. Curve</span></button>
+        <button class="dlg-mode" data-qab="boundaryCurve" title="Curve along the boundary from A to B, either way round"><img src="/icons/ABTrackCurve.png" alt=""><span>Bnd. Curve</span></button>
         <button class="dlg-mode" data-qab="allEdges" title="AB line for every boundary edge"><span class="dlg-bigtxt">All</span><span>All Edges</span></button>
       </div>
       <div class="dlg-sub">Draw on Map</div>
