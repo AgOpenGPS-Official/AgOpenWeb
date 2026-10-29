@@ -619,7 +619,7 @@ public static partial class RemoteServerWiring
                                 // directly (mirrors the vehicle/tool ApplyProfileCommand path);
                                 // confirmations happen client-side. Tier-1 (config files). ---
                                 case "ntrip.save": case "ntrip.delete": case "ntrip.setDefault":
-                                case "ntrip.test":
+                                case "ntrip.test": case "ntrip.switch":
                                     ApplyNtripCommand(
                                         services.GetRequiredService<INtripProfileService>(),
                                         services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>(),

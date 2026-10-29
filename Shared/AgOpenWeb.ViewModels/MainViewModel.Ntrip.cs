@@ -28,6 +28,8 @@ public partial class MainViewModel
     private string _ntripMountPoint = "";
     private string _ntripUsername = "";
     private string _ntripPassword = "";
+    private NtripFallbackConfiguration? _ntripFallback;   // of the profile in use; null in the profile-per-field mode
+    private (string Host, int Port, string Mount)? _ntripFallbackFor;   // the main service that fallback belongs to
 
     #endregion
 
@@ -109,7 +111,10 @@ public partial class MainViewModel
                 FallbackPositionProvider = () => State.Field.OriginLatitude != 0 || State.Field.OriginLongitude != 0
                     ? (State.Field.OriginLatitude, State.Field.OriginLongitude)
                     : null,
-                UseManualPosition = false
+                UseManualPosition = false,
+                // Only for the main service it was made for: a caster typed in by hand has none.
+                Fallback = _ntripFallbackFor is { } key && key.Host == NtripCasterAddress && key.Port == NtripCasterPort && key.Mount == NtripMountPoint
+                    ? _ntripFallback : null,
             };
 
             await _ntripService.ConnectAsync(config);
@@ -132,9 +137,40 @@ public partial class MainViewModel
     /// </summary>
     private void OnNtripEnabledChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(Models.Configuration.ConnectionConfig.NtripEnabled)) return;
-        _ = ApplyNtripEnabledAsync(ConfigStore.Connections.NtripEnabled);
+        if (e.PropertyName == nameof(Models.Configuration.ConnectionConfig.NtripEnabled))
+            _ = ApplyNtripEnabledAsync(ConfigStore.Connections.NtripEnabled);
+        else if (e.PropertyName == nameof(Models.Configuration.ConnectionConfig.NtripProfilePerField))
+            _ = ApplyNtripModeAsync();
     }
+
+    /// <summary>
+    /// The mode changed while running. Profile per field: the open field's profile. One profile with
+    /// a fallback: the default profile (with its fallback). Nothing is deleted either way.
+    /// </summary>
+    private async Task ApplyNtripModeAsync()
+    {
+        try
+        {
+            if (!ConfigStore.Connections.NtripEnabled || !_ntripService.IsActive) return;
+
+            var field = State.Field.ActiveField?.Name;
+            var profile = ConfigStore.Connections.NtripProfilePerField && !string.IsNullOrEmpty(field)
+                ? _ntripProfileService.GetProfileForField(field)
+                : _ntripProfileService.DefaultProfile;
+            if (profile == null || !profile.AutoConnectOnFieldLoad) return;
+
+            // The same caster can still need a new session: the mode decides whether the fallback is part of it.
+            if (IsNtripConnectedTo(profile) && SameFallback(FallbackFor(profile), _ntripFallback)) return;
+            await SwitchToNtripProfileAsync(profile);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error applying the NTRIP mode");
+        }
+    }
+
+    /// <summary>Switch to the main or the fallback service of the connected profile, at any time.</summary>
+    public Task SwitchNtripServiceAsync(NtripService service) => _ntripService.SwitchToAsync(service);
 
     private async Task ApplyNtripEnabledAsync(bool enabled)
     {
@@ -215,7 +251,7 @@ public partial class MainViewModel
     {
         try
         {
-            if (!ConfigStore.Connections.NtripEnabled || !_ntripService.IsActive) return;
+            if (!ConfigStore.Connections.NtripEnabled || !ConfigStore.Connections.NtripProfilePerField || !_ntripService.IsActive) return;
 
             var profile = _ntripProfileService.DefaultProfile;
             if (profile == null || !profile.AutoConnectOnFieldLoad || IsNtripConnectedTo(profile)) return;
@@ -251,9 +287,34 @@ public partial class MainViewModel
         NtripMountPoint = profile.MountPoint;
         NtripUsername = profile.Username;
         NtripPassword = profile.Password;
+        UseFallbackOf(profile);
 
         await ConnectToNtripAsync();
     }
+
+    private void UseFallbackOf(Models.Ntrip.NtripProfile profile)
+    {
+        _ntripFallback = FallbackFor(profile);
+        _ntripFallbackFor = (profile.CasterHost, profile.CasterPort, profile.MountPoint);
+    }
+
+    private static bool SameFallback(NtripFallbackConfiguration? a, NtripFallbackConfiguration? b) =>
+        a == null || b == null
+            ? a == b
+            : a.CasterAddress == b.CasterAddress && a.CasterPort == b.CasterPort && a.MountPoint == b.MountPoint
+                && a.Username == b.Username && a.Password == b.Password
+                && a.AutoSwitch == b.AutoSwitch && a.SwitchAfterFailures == b.SwitchAfterFailures;
+
+    /// <summary>The profile's fallback service; none in the profile-per-field mode, which uses the main service only.</summary>
+    private NtripFallbackConfiguration? FallbackFor(Models.Ntrip.NtripProfile profile) =>
+        ConfigStore.Connections.NtripProfilePerField || profile.Fallback is not { IsComplete: true } f
+            ? null
+            : new NtripFallbackConfiguration
+            {
+                CasterAddress = f.CasterHost, CasterPort = f.CasterPort, MountPoint = f.MountPoint,
+                Username = f.Username, Password = f.Password,
+                AutoSwitch = f.AutoSwitch, SwitchAfterFailures = f.SwitchAfterFailures,
+            };
 
     /// <summary>
     /// After an NTRIP profile is edited: if we're connected with its old caster settings and
@@ -269,7 +330,7 @@ public partial class MainViewModel
             if (!wasThisOne) return;
             bool changed = before.CasterHost != after.CasterHost || before.CasterPort != after.CasterPort
                 || before.MountPoint != after.MountPoint || before.Username != after.Username
-                || before.Password != after.Password;
+                || before.Password != after.Password || !SameFallback(before.Fallback, after.Fallback);
             if (!changed) return;
 
             await _ntripService.DisconnectAsync();
@@ -278,6 +339,7 @@ public partial class MainViewModel
             NtripMountPoint = after.MountPoint;
             NtripUsername = after.Username;
             NtripPassword = after.Password;
+            UseFallbackOf(after);
             _logger.LogInformation("NTRIP profile '{ProfileName}' changed while connected; reconnecting", after.Name);
             await ConnectToNtripAsync();
         }
@@ -286,6 +348,13 @@ public partial class MainViewModel
             _logger.LogError(ex, "Error reconnecting NTRIP after a profile change");
         }
     }
+
+    private static bool SameFallback(Models.Ntrip.NtripFallback? a, Models.Ntrip.NtripFallback? b) =>
+        a == null || b == null
+            ? a == b
+            : a.CasterHost == b.CasterHost && a.CasterPort == b.CasterPort && a.MountPoint == b.MountPoint
+                && a.Username == b.Username && a.Password == b.Password
+                && a.AutoSwitch == b.AutoSwitch && a.SwitchAfterFailures == b.SwitchAfterFailures;
 
     /// <summary>
     /// Handles NTRIP profile connection when a field is loaded.
@@ -298,6 +367,13 @@ public partial class MainViewModel
             if (!ConfigStore.Connections.NtripEnabled)
             {
                 _logger.LogDebug("NTRIP is switched off; not connecting for field '{FieldName}'", fieldName);
+                return;
+            }
+
+            // One profile with a fallback is in use: a field load changes nothing.
+            if (!ConfigStore.Connections.NtripProfilePerField)
+            {
+                _logger.LogDebug("NTRIP uses one profile; not switching for field '{FieldName}'", fieldName);
                 return;
             }
 
@@ -356,9 +432,25 @@ public partial class MainViewModel
         State.Connections.IsNtripConnected = e.IsConnected;
         State.Connections.NtripStatus = e.Message ?? (e.IsConnected ? "Connected" : "Not Connected");
 
+        State.Connections.NtripUsingFallback = _ntripService.Using == NtripService.Fallback;
+        State.Connections.NtripMainIsBack = _ntripService.MainIsBack;
+
         // Legacy property updates
         IsNtripConnected = e.IsConnected;
         NtripStatus = e.Message ?? (e.IsConnected ? "Connected" : "Not Connected");
+    }
+
+    private void OnNtripNotice(object? sender, NtripNoticeEventArgs e)
+    {
+        if (_dispatcher.CheckAccess()) ApplyNtripNotice(e);
+        else _dispatcher.Post(() => ApplyNtripNotice(e));
+    }
+
+    private void ApplyNtripNotice(NtripNoticeEventArgs e)
+    {
+        State.Connections.NtripNotice = e.Message;
+        State.Connections.NtripUsingFallback = _ntripService.Using == NtripService.Fallback;
+        State.Connections.NtripMainIsBack = _ntripService.MainIsBack;
     }
 
     private void OnRtcmDataReceived(object? sender, RtcmDataReceivedEventArgs e)

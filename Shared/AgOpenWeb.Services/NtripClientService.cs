@@ -29,6 +29,7 @@ public class NtripClientService : INtripClientService, IDisposable
 {
     public event EventHandler<NtripConnectionEventArgs>? ConnectionStatusChanged;
     public event EventHandler<RtcmDataReceivedEventArgs>? RtcmDataReceived;
+    public event EventHandler<NtripNoticeEventArgs>? Notice;
 
     private Socket? _udpSocket;
     private NtripSession? _session;
@@ -36,7 +37,13 @@ public class NtripClientService : INtripClientService, IDisposable
     private (bool Connected, string Message)? _reported;   // the last status event raised, so repeats are not
     private readonly NtripEventLog _events = new();   // for the bug report; kept across sessions
     private CancellationTokenSource? _cancellationTokenSource;
-    private NtripConfiguration? _config;
+    private NtripConfiguration? _config;       // the one in use: the main service, or the fallback after a switch
+    private NtripConfiguration? _mainConfig;   // as ConnectAsync got it, with the fallback
+    private NtripService _using;
+    private bool _mainIsBack;
+    private NtripSession? _probe;              // tries the main service in the background while the fallback is in use
+    internal int[] ProbeBackoff { get; set; } = NtripFailover.ProbeBackoff;   // a test shortens it
+    private CancellationTokenSource? _probeCts;
     private bool _isDisposed;
     // The NTRIP version that delivered corrections, per service: a reconnect starts with it.
     private readonly ConcurrentDictionary<string, NtripVersion> _versions = new();
@@ -118,8 +125,111 @@ public class NtripClientService : INtripClientService, IDisposable
     public async Task ConnectAsync(NtripConfiguration config)
     {
         Volatile.Write(ref _wanted, true);
-        StartSession(config);
+        lock (_sessionLock)
+        {
+            _mainConfig = config;
+            _using = NtripService.Main;
+            StartSession(config);
+        }
         await Task.CompletedTask;
+    }
+
+    public NtripService Using => _using;
+
+    public bool MainIsBack => _mainIsBack;
+
+    public async Task SwitchToAsync(NtripService service)
+    {
+        SwitchTo(service, automatic: false);
+        await Task.CompletedTask;
+    }
+
+    // Starts a session for the other service. The pacer is cleared with it, so an old caster's
+    // epoch is never sent after the new caster's. A switch the session itself asked for is dropped
+    // when that session has been replaced in the meantime (<paramref name="requestedBy"/>).
+    private void SwitchTo(NtripService service, bool automatic, NtripSession? requestedBy = null)
+    {
+        NtripNoticeKind kind = service == NtripService.Fallback ? NtripNoticeKind.SwitchedToFallback : NtripNoticeKind.SwitchedToMain;
+        lock (_sessionLock)
+        {
+            if (_mainConfig == null || !Volatile.Read(ref _wanted) || service == _using) return;
+            if (requestedBy != null && !ReferenceEquals(requestedBy, _session)) return;
+            if (service == NtripService.Fallback && !NtripFailover.IsConfigured(_mainConfig.Fallback)) return;
+
+            // Only a main service that is failing is watched for coming back; one that was healthy needs no watch.
+            bool mainFailing = _status.State is NtripState.Waiting or NtripState.GaveUp;
+            _using = service;
+            StartSession(service == NtripService.Main ? _mainConfig : NtripFailover.ForFallback(_mainConfig, _mainConfig.Fallback!));
+            if (service == NtripService.Fallback && mainFailing) StartProbe();
+            string message = NtripFailover.NoticeText(kind, automatic);
+            _events.Add(new NtripEvent(Clock.Current.Now, Service?.ToString() ?? "", NtripState.Connecting, null, message, "", NtripVersion.V2, 0));
+            _logger.LogWarning("[NTRIP] {Message} ({Service})", message, Service);
+        }
+        Notice?.Invoke(this, new NtripNoticeEventArgs { Kind = kind, Automatic = automatic, Message = NtripFailover.NoticeText(kind, automatic) });
+    }
+
+    // Tries the main service in the background while the fallback is in use, slowly, to tell the
+    // operator when it answers again. Not when both are one login on one caster: a second
+    // connection could push the fallback's off. Called with _sessionLock held.
+    private void StartProbe()
+    {
+        if (_mainConfig is not { Fallback: { } fallback } main || NtripFailover.SameAccount(main, fallback)) return;
+
+        var cts = new CancellationTokenSource();
+        _probeCts = cts;
+        _ = Task.Run(() => ProbeLoopAsync(main, cts.Token));
+    }
+
+    // A session that ends for good (a main mount point that is down often answers 401 or 404)
+    // is started again after the longest step, until the main service answers or the probe is stopped.
+    private async Task ProbeLoopAsync(NtripConfiguration main, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            NtripSession probe = new(main, _ => { }, () => true, () => NextGgaSentence(main))
+            {
+                Backoff = ProbeBackoff,
+                NetworkChanged = () => Volatile.Read(ref _networkChanged).Task,
+                VersionMemory = _versions,
+            };
+            probe.StatusChanged += status => { if (status.IsOpen) OnMainBack(probe); };
+            lock (_sessionLock)
+            {
+                if (ct.IsCancellationRequested) return;
+                _probe = probe;
+            }
+
+            await probe.RunAsync(ct).ConfigureAwait(false);
+            try { await Task.Delay(TimeSpan.FromSeconds(ProbeBackoff[^1]), ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return; }
+        }
+    }
+
+    private void StopProbe()
+    {
+        lock (_sessionLock)
+        {
+            _probeCts?.Cancel();
+            _probeCts?.Dispose();
+            _probeCts = null;
+            _probe = null;
+            _mainIsBack = false;
+        }
+    }
+
+    // The main service accepted the probe: close it and tell the operator. The fallback stays in use.
+    private void OnMainBack(NtripSession probe)
+    {
+        lock (_sessionLock)
+        {
+            if (!ReferenceEquals(probe, _probe) || _using != NtripService.Fallback || _mainIsBack) return;
+            _probeCts?.Cancel();
+            _mainIsBack = true;
+            string message = NtripFailover.NoticeText(NtripNoticeKind.MainBack, automatic: false);
+            _events.Add(new NtripEvent(Clock.Current.Now, Service?.ToString() ?? "", NtripState.Connected, null, message, "", NtripVersion.V2, 0));
+            _logger.LogInformation("[NTRIP] {Message}", message);
+        }
+        Notice?.Invoke(this, new NtripNoticeEventArgs { Kind = NtripNoticeKind.MainBack, Message = NtripFailover.NoticeText(NtripNoticeKind.MainBack, false) });
     }
 
     private void StartSession(NtripConfiguration config)
@@ -178,6 +288,7 @@ public class NtripClientService : INtripClientService, IDisposable
     {
         bool wasActive = Volatile.Read(ref _wanted) || _sessionOpen;
         Volatile.Write(ref _wanted, false);
+        lock (_sessionLock) _using = NtripService.Main;   // before the "Disconnected" event, which readers see
         Teardown(wasActive ? "Disconnected" : null);
         await Task.CompletedTask;
     }
@@ -186,6 +297,7 @@ public class NtripClientService : INtripClientService, IDisposable
     /// not-connected status with <paramref name="message"/> when one is given.</summary>
     private void Teardown(string? message)
     {
+        StopProbe();
         lock (_sessionLock)
         {
             _healthTimer?.Dispose();
@@ -218,14 +330,20 @@ public class NtripClientService : INtripClientService, IDisposable
     // secret under three characters is left alone: it would mangle ordinary words.
     private string Redact(string text, bool userName)
     {
-        if (_config is not { } config || text.Length == 0) return text;
+        if (_mainConfig is not { } main || text.Length == 0) return text;
         var secrets = new List<string>();
-        if (NtripCredentials.BasicAuthorization(config.Username, config.Password) is { } basic) secrets.Add(basic["Basic ".Length..]);
-        AddSecret(secrets, config.Password);
-        if (userName) AddSecret(secrets, config.Username);
+        AddLogin(secrets, main.Username, main.Password, userName);
+        if (main.Fallback is { } fallback) AddLogin(secrets, fallback.Username, fallback.Password, userName);
         foreach (string secret in secrets.OrderByDescending(s => s.Length))
             text = text.Replace(secret, "***", StringComparison.OrdinalIgnoreCase);
         return text;
+    }
+
+    private static void AddLogin(List<string> secrets, string user, string password, bool userName)
+    {
+        if (NtripCredentials.BasicAuthorization(user, password) is { } basic) secrets.Add(basic["Basic ".Length..]);
+        AddSecret(secrets, password);
+        if (userName) AddSecret(secrets, user);
     }
 
     private static void AddSecret(List<string> secrets, string secret)
@@ -240,6 +358,7 @@ public class NtripClientService : INtripClientService, IDisposable
 
     private void OnSessionStatus(NtripSession source, NtripSessionStatus status)
     {
+        bool raise, switchNow;
         lock (_sessionLock)
         {
             if (!ReferenceEquals(source, _session)) return;
@@ -252,15 +371,21 @@ public class NtripClientService : INtripClientService, IDisposable
             if (status.State == NtripState.GaveUp) _sessionOpen = false;   // over until the user acts; IsActive stays
             _events.Add(new NtripEvent(Clock.Current.Now, Service?.ToString() ?? "", status.State, status.LastError,
                 status.Message, status.FirstLine, status.Version, status.Attempts));
-            if (_reported == (status.IsOpen, status.Message)) return;
-            _reported = (status.IsOpen, status.Message);
+            raise = _reported != (status.IsOpen, status.Message);
+            if (raise) _reported = (status.IsOpen, status.Message);
+            switchNow = _using == NtripService.Main && _mainConfig?.Fallback is { } fallback
+                && NtripFailover.IsConfigured(fallback) && NtripFailover.ShouldSwitch(status, fallback);
         }
 
-        if (status.State == NtripState.Connected)
-            _logger.LogInformation("[NTRIP] connected and authorized with NTRIP {Version}, receiving RTCM data", status.Version);
-        else if (status.State is NtripState.Waiting or NtripState.GaveUp)
-            _logger.LogWarning("[NTRIP] {Category}: {Message} (caster said: {FirstLine})", status.LastError, status.Message, status.FirstLine);
-        RaiseStatus(status.IsOpen, status.Message);
+        if (raise)
+        {
+            if (status.State == NtripState.Connected)
+                _logger.LogInformation("[NTRIP] connected and authorized with NTRIP {Version}, receiving RTCM data", status.Version);
+            else if (status.State is NtripState.Waiting or NtripState.GaveUp)
+                _logger.LogWarning("[NTRIP] {Category}: {Message} (caster said: {FirstLine})", status.LastError, status.Message, status.FirstLine);
+            RaiseStatus(status.IsOpen, status.Message);
+        }
+        if (switchNow) SwitchTo(NtripService.Fallback, automatic: true, requestedBy: source);
     }
 
     /// <summary>A stream begins: forget the previous one's counts and queue, and decode it if the reply was chunked.</summary>

@@ -110,6 +110,29 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _ntripRtcmUnicast, value);
     }
 
+    // The corrections come from the fallback service, the main service answers again while it is
+    // in use (the operator decides about going back), and the last switch notice (empty = none).
+    private bool _ntripUsingFallback;
+    public bool NtripUsingFallback
+    {
+        get => _ntripUsingFallback;
+        set => SetProperty(ref _ntripUsingFallback, value);
+    }
+
+    private bool _ntripMainIsBack;
+    public bool NtripMainIsBack
+    {
+        get => _ntripMainIsBack;
+        set => SetProperty(ref _ntripMainIsBack, value);
+    }
+
+    private string _ntripNotice = string.Empty;
+    public string NtripNotice
+    {
+        get => _ntripNotice;
+        set => SetProperty(ref _ntripNotice, value);
+    }
+
     // Result of the most recent NTRIP "Test Connection" probe (e.g. from the remote
     // Network IO editor). Set on the UI thread by the test runner; projected on the
     // Status frame so the browser editor can show it. Empty = no test run.
@@ -246,6 +269,8 @@ public class ConnectionState : ObservableObject
         NtripBytesReceived = 0;
         NtripRtcmDestination = "";
         NtripRtcmUnicast = false;
+        NtripUsingFallback = NtripMainIsBack = false;
+        NtripNotice = "";
         IsAutoSteerConnected = IsAutoSteerDataOk = IsAutoSteerEngaged = false;
         IsMachineConnected = IsMachineDataOk = false;
         IsImuConnected = IsImuDataOk = false;

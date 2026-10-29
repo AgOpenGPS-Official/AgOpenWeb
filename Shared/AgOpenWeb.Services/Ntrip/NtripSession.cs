@@ -20,9 +20,9 @@ public delegate void NtripBodyHandler(ReadOnlySpan<byte> data);
 /// </summary>
 public sealed class NtripSession
 {
-    // Seconds to wait after consecutive failed attempts; it stays at the last. A small glitch
+    // Seconds to wait after consecutive failed attempts; the last step repeats. A small glitch
     // recovers quickly and a long outage does not hammer the caster.
-    private static readonly int[] BackoffSeconds = [1, 2, 4, 8, 15];
+    public static readonly int[] DefaultBackoff = [1, 2, 4, 8, 15];
 
     private readonly NtripConfiguration _config;
     private readonly NtripBodyHandler _onBody;
@@ -45,6 +45,8 @@ public sealed class NtripSession
     public Func<Task>? NetworkChanged { get; init; }
     /// <summary>The NTRIP version that delivered corrections, per service, so a reconnect skips the probe.</summary>
     public ConcurrentDictionary<string, NtripVersion>? VersionMemory { get; init; }
+    /// <summary>Seconds to wait after consecutive failed attempts, the last one repeating.</summary>
+    public int[] Backoff { get; init; } = DefaultBackoff;
 
     public event Action<NtripSessionStatus>? StatusChanged;
 
@@ -91,7 +93,7 @@ public sealed class NtripSession
                 }
 
                 _attempts++;
-                double wait = BackoffSeconds[Math.Min(_attempts, BackoffSeconds.Length) - 1];
+                double wait = Backoff[Math.Min(_attempts, Backoff.Length) - 1];
                 if (outcome.IsFinal)
                 {
                     Update(s => s with { State = NtripState.GaveUp, Message = outcome.Message, LastError = outcome.Category, FirstLine = outcome.FirstLine, Attempts = _attempts, RetryInSeconds = 0 });

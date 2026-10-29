@@ -335,6 +335,15 @@ corrections is remembered per service. `NtripResponse.Classify` sorts every repl
 network change ends the wait); `NtripConnectionTester` (the Test button) opens its connection the same way.
 Every wait has a timeout (`NtripTimeouts`). Design: `Plans/NTRIP_MAIN_FALLBACK_PLAN.md`.
 
+**Main and fallback service.** Two exclusive modes (`Connections.NtripProfilePerField`, `config.set|conn.ntripProfilePerField`).
+The default is one profile (the default profile) with an optional fallback service (`NtripProfile.Fallback`): a field load
+changes nothing. With the setting on, a loaded field switches the profile and the fallback is not used. The client
+(`NtripClientService`, rules in `NtripFailover`) switches to the fallback by itself only with the profile's Auto-switch on:
+after `SwitchAfterFailures` failed attempts, or at once for a wrong login or mount point. The operator switches in both
+directions at any time (`ntrip.switch|main|fallback`, `INtripClientService.SwitchToAsync`). It **never goes back by itself**:
+while the fallback is in use after a failure, the main service is tried slowly in the background and a `MainBack` notice
+says when it answers; not when both are one login on one caster. Every switch raises `Notice` and says that RTK may be lost.
+
 ### RTCM forwarding
 `NtripClientService` frames the caster's stream into RTCM 3 messages (`RtcmFramer`, after
 `ChunkedDecoder` if the reply is chunked) and queues whole messages (`RtcmQueue`): 256-byte

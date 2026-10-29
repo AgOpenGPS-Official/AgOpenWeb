@@ -520,6 +520,7 @@ public class ConfigurationService(
         store.Connections.RtcmBroadcast = settings.RtcmBroadcast;
         store.Connections.SendCorrectedPosition = settings.SendCorrectedPosition;
         store.Connections.NtripEnabled = settings.NtripEnabled;
+        store.Connections.NtripProfilePerField = settings.NtripProfilePerField;
         store.Connections.GpsUpdateRate = settings.GpsUpdateRate;
         store.Connections.UseRtk = settings.UseRtk;
         store.Connections.IsGpsConfigured = settings.IsGpsConfigured;
@@ -594,6 +595,7 @@ public class ConfigurationService(
         settings.RtcmBroadcast = store.Connections.RtcmBroadcast;
         settings.SendCorrectedPosition = store.Connections.SendCorrectedPosition;
         settings.NtripEnabled = store.Connections.NtripEnabled;
+        settings.NtripProfilePerField = store.Connections.NtripProfilePerField;
         settings.GpsUpdateRate = store.Connections.GpsUpdateRate;
         settings.UseRtk = store.Connections.UseRtk;
         settings.IsGpsConfigured = store.Connections.IsGpsConfigured;

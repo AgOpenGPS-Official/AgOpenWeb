@@ -24,6 +24,28 @@ public interface INtripClientService
     event EventHandler<RtcmDataReceivedEventArgs>? RtcmDataReceived;
 
     /// <summary>
+    /// Event fired when the client switched between the main and the fallback service, or when
+    /// the main service can be used again (the operator decides whether to go back).
+    /// </summary>
+    event EventHandler<NtripNoticeEventArgs>? Notice;
+
+    /// <summary>
+    /// The service the corrections come from: the main one, or the fallback after a switch.
+    /// </summary>
+    NtripService Using { get; }
+
+    /// <summary>
+    /// The main service answers again while the fallback is in use. Never switched back by itself.
+    /// </summary>
+    bool MainIsBack { get; }
+
+    /// <summary>
+    /// Switch to the main or the fallback service, at any time. Switching to a fallback that
+    /// is not configured does nothing. Raises <see cref="Notice"/>.
+    /// </summary>
+    Task SwitchToAsync(NtripService service);
+
+    /// <summary>
     /// Whether the caster accepted the request (answered 200) and the session is open
     /// </summary>
     bool IsConnected { get; }
@@ -173,6 +195,54 @@ public class NtripConfiguration
     /// Manual longitude for GGA (if UseManualPosition is true)
     /// </summary>
     public double ManualLongitude { get; set; } = 0;
+
+    /// <summary>
+    /// The service to fall back to; null for none. The fields above are the main service.
+    /// </summary>
+    public NtripFallbackConfiguration? Fallback { get; set; }
+
+    internal NtripConfiguration Copy() => (NtripConfiguration)MemberwiseClone();
+}
+
+/// <summary>The fallback service and when to switch to it (the address and login of the fallback caster).</summary>
+public class NtripFallbackConfiguration
+{
+    public string CasterAddress { get; set; } = "";
+    public int CasterPort { get; set; } = 2101;
+    public string MountPoint { get; set; } = "";
+    public string Username { get; set; } = "";
+    public string Password { get; set; } = "";
+
+    /// <summary>Switch on its own after <see cref="SwitchAfterFailures"/> failed attempts of the main service.</summary>
+    public bool AutoSwitch { get; set; }
+    public int SwitchAfterFailures { get; set; } = 2;
+}
+
+/// <summary>Which service the corrections come from.</summary>
+public enum NtripService
+{
+    Main,
+    Fallback,
+}
+
+public enum NtripNoticeKind
+{
+    /// <summary>Now on the fallback; the main service failed (Automatic) or the operator switched.</summary>
+    SwitchedToFallback,
+    /// <summary>Now on the main service again, by the operator.</summary>
+    SwitchedToMain,
+    /// <summary>The main service answers again; the fallback is still in use until the operator switches.</summary>
+    MainBack,
+}
+
+/// <summary>A switch between the services, or the main service coming back.</summary>
+public class NtripNoticeEventArgs : EventArgs
+{
+    public NtripNoticeKind Kind { get; set; }
+    /// <summary>The client switched by itself (Auto-switch).</summary>
+    public bool Automatic { get; set; }
+    /// <summary>One plain sentence; a switch also says that RTK may be lost and the position may shift a little.</summary>
+    public string Message { get; set; } = "";
 }
 
 /// <summary>

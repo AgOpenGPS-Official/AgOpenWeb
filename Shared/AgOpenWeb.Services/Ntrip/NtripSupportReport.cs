@@ -37,6 +37,7 @@ public static class NtripSupportReport
             sb.AppendLine(Ci, $"Service:           {service?.ToString() ?? "-"}");
             sb.AppendLine(Ci, $"Login set:         user name {YesNo(service?.HasUserName)}, password {YesNo(service?.HasPassword)}");
             sb.AppendLine(Ci, $"Requested:         {YesNo(ntrip.IsActive)}");
+            sb.AppendLine(Ci, $"Using:             {(ntrip.Using == NtripService.Fallback ? "the fallback service" + (ntrip.MainIsBack ? " (the main service answers again)" : "") : "the main service")}");
             sb.AppendLine(Ci, $"State:             {(idle ? "Stopped" : status.State.ToString())}");
             sb.AppendLine(Ci, $"Message:           {(idle ? "-" : status.Message)}");
             sb.AppendLine(Ci, $"Last failure:      {Describe(lastFailure)}");
@@ -82,7 +83,7 @@ public static class NtripSupportReport
             string service = ntrip.Service?.ToString() ?? "-";
             NtripSessionStatus status = ntrip.Status;
             if (status != NtripSessionStatus.Idle)
-                return $"{status.State}{(status.LastError is { } c ? $", {c}" : "")}, {service}: {status.Message}";
+                return $"{status.State}{(status.LastError is { } c ? $", {c}" : "")}, {service}{(ntrip.Using == NtripService.Fallback ? " (fallback)" : "")}: {status.Message}";
 
             // Stopped by the user: say what the session was doing before.
             NtripEvent? before = events.LastOrDefault(e => e.State != NtripState.Stopped);

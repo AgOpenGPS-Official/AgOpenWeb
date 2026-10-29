@@ -1,6 +1,6 @@
 # NTRIP: main and fallback service, a sturdier client, and a report that explains itself
 
-**Status:** approved 2026-10-29 (#463). Phases 1 and 2 built, in review (#464); the other phases are not started.
+**Status:** approved 2026-10-29 (#463). Phases 1 to 3 built, in review (#464); phases 4 and 5 are not started.
 **Prompted by:** #443 (NTRIP "not working": the reporter and the maintainers had to guess whether it was the login, the mount point or the position), #285 and #385 (silent stops and retries), and a rebuild of the NTRIP client in AgIO (AgOpenGPS) that was tested against recorded casters and a caster of our own. This plan brings what that rebuild learned to AgOpenWeb, in AgOpenWeb's own architecture.
 **Related:** `Plans/RTCM_FORWARDING_PLAN.md` (the forwarding half, already in), `Plans/Completed/NTRIP_PROFILES_PLAN.md` (profiles per field), `Plans/BUG_REPORT_SUBMISSION_PLAN.md` (what a report carries), #278 (NTRIP on/off), #397 (observers), #444 (position sent to the caster).
 
@@ -108,6 +108,13 @@ Phases 1 and 2 together answer #443: a failure has a name and a maintainer can r
 - `NtripProfile.Fallback`, `Connections.NtripMode` (`config.set|conn.ntripMode`), `CorrectionSourceManager`, `SwitchTo`, the notices.
 - `MainViewModel.Ntrip.cs`: `HandleNtripProfileForFieldAsync`, `RestoreDefaultNtripProfileAsync` and `ReconnectNtripIfConnectedAsync` act in per-field mode only; in main-and-fallback mode the default profile is connected at start and on edit.
 - Tests: the existing `NtripFieldCloseTests` unchanged for per-field mode; new ones for the other mode (field load and close do nothing); switch after N failures; an outcome retrying cannot fix switches at once with Auto-switch on and not with it off; no auto-return; the same-account rule, including two mount points of one login (no probe, no "main is back"); mode change deletes nothing.
+- **Built as** (differences from the sketch above):
+  - The mode is one setting, `NtripProfilePerField` (`config.set|conn.ntripProfilePerField`), false by default; no `NtripMode` enum.
+  - There is no separate `CorrectionSourceManager`: `NtripClientService` starts the session for the service in use and `NtripFailover` holds the rules (when to switch, the same-account test, the notice texts). `NtripFallback` has the main service's fields plus Auto-switch and the count; no `Enabled`, `Version` or `RawTcp`.
+  - A switch restarts the session and clears the pacer. Manual switch: `INtripClientService.SwitchToAsync` / `ntrip.switch|main|fallback`. The service raises `Notice` (switched to the fallback, by itself or by the operator; switched to the main; the main service answers again) and the state carries `NtripUsingFallback`, `NtripMainIsBack`, `NtripNotice` for the card of Phase 4.
+  - The background try of the main service runs only after a failing main service (not after a switch away from a healthy one), slowly (30, 60, 120, 300 s), starts over after a final answer, sends the position like the real connection, and is never started for the same login on the same caster.
+  - `ntrip.save` keeps the fallback of the profile it edits until the editor of Phase 4 carries it.
+  - `ConnectToNtripAsync` uses the fallback only for the main service it was made for, so a caster typed in by hand does not inherit one. A mode change reconnects when the fallback part of the session differs, also on the same caster.
 
 ### Phase 4: the Network IO card and the editor
 - Card: one headline and the checks, the service in use, **Switch to fallback / main**, a mode switch with one sentence on each mode, the switch-back prompt, the same-login sentence (decision 5), the notice. Editor: Main and Fallback tabs, *Test* per tab, the auto-switch toggle and count, the warning that the fallback is ignored in per-field mode. Touch sizes as the other Network IO controls.

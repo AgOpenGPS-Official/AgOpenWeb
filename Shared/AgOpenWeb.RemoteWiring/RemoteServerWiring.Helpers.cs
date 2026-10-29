@@ -77,6 +77,7 @@ public static partial class RemoteServerWiring
             case "conn.rtcmBroadcast": con.RtcmBroadcast = B(); cfg.SaveAppSettings(); return;
             case "conn.sendCorrectedPosition": con.SendCorrectedPosition = B(); cfg.SaveAppSettings(); return;
             case "conn.ntripEnabled": con.NtripEnabled = B(); cfg.SaveAppSettings(); return; // the VM connects / disconnects
+            case "conn.ntripProfilePerField": con.NtripProfilePerField = B(); cfg.SaveAppSettings(); return; // the VM applies the mode
             // --- Vehicle config (Phase 9b). Live effect; persisted by a profile.save. ---
             case "vehicle.type":
                 if (I(out var ty))
@@ -428,6 +429,10 @@ public static partial class RemoteServerWiring
             case "ntrip.setDefault": // arg = id
                 _ = svc.SetDefaultProfileAsync(arg);
                 return;
+            case "ntrip.switch": // arg = main | fallback: the service the corrections come from
+                if (vm != null && arg is "main" or "fallback")
+                    _ = vm.SwitchNtripServiceAsync(arg == "main" ? AgOpenWeb.Services.Interfaces.NtripService.Main : AgOpenWeb.Services.Interfaces.NtripService.Fallback);
+                return;
             case "ntrip.test": // arg = host \t port \t mount \t user \t pass \t id (the mask = id's stored pass)
             {
                 var t = arg.Split('\t');
@@ -465,13 +470,15 @@ public static partial class RemoteServerWiring
                     AutoConnectOnFieldLoad = f[7] == "1", IsDefault = f[8] == "1",
                     AssociatedFields = assoc,
                 };
-                if (existing != null) { profile.Id = existing.Id; profile.FilePath = existing.FilePath; }
+                // The editor does not carry the fallback yet: an edit keeps the one the profile has.
+                if (existing != null) { profile.Id = existing.Id; profile.FilePath = existing.FilePath; profile.Fallback = existing.Fallback; }
                 // Copy the old caster settings before saving (the save may update the stored
                 // profile in place), to tell whether the connected one changed.
                 var before = existing == null ? null : new AgOpenWeb.Models.Ntrip.NtripProfile
                 {
                     Name = existing.Name, CasterHost = existing.CasterHost, CasterPort = existing.CasterPort,
                     MountPoint = existing.MountPoint, Username = existing.Username, Password = existing.Password,
+                    Fallback = existing.Fallback?.Clone(),   // a copy: the editor will change the fallback in place
                 };
                 _ = svc.SaveProfileAsync(profile);
                 // Editing the profile we're connected with: reconnect with the new settings
