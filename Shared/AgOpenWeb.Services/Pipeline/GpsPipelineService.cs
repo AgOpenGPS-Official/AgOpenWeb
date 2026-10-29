@@ -1212,10 +1212,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
             double hRad = pos.Heading * Math.PI / 180.0;
             double lookE = driftedEasting + Math.Sin(hRad) * lookDist;
             double lookN = driftedNorthing + Math.Cos(hRad) * lookDist;
-            var (nearestPass, nearestDisplayTrack) = UpdateDisplayTrack(
+            var (nearestPass, nearestDisplayTrack, displayXte) = UpdateDisplayTrack(
                 pos, track!, passNumber, nudgeOffset,
                 driftedEasting, driftedNorthing,
                 lookE, lookN);
+            // The light bar shows the distance to the line in free-drive too, as AgOpenGPS
+            // does (it computes the line's distance whether or not AutoSteer is on).
+            crossTrackError = displayXte;
             if (nearestDisplayTrack != null)
             {
                 displayTrack = nearestDisplayTrack;
@@ -1803,9 +1806,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     /// <summary>
     /// Display-only track update: finds nearest pass and updates map, without steering.
-    /// Returns the detected nearest pass number and the offset display track.
+    /// Returns the detected nearest pass number, the offset display track and the pivot's
+    /// cross-track error to it (m, the engaged guidance's sign) for the light bar.
     /// </summary>
-    private (int nearestPass, Models.Track.Track? displayTrack) UpdateDisplayTrack(
+    private (int nearestPass, Models.Track.Track? displayTrack, double xte) UpdateDisplayTrack(
         Position pos, Models.Track.Track track, int passNumber, double nudgeOffset,
         double pivotEasting, double pivotNorthing,
         double sampleEasting, double sampleNorthing)
@@ -1865,7 +1869,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         if (!_guidanceWorking.IsHeadingSameWay) xte = -xte; // set for this cycle before any line (#172, #446)
 
         _autoSteerService.UpdateGuidanceResults(0, xte);
-        return (nearestPass, resultTrack);
+        return (nearestPass, resultTrack, xte);
     }
 
     /// <summary>
