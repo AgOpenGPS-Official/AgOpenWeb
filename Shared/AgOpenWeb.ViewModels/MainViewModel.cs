@@ -2529,12 +2529,22 @@ public partial class MainViewModel : ObservableObject
                 _tramSystemLineRanges[sys.Name] = (startIdx, lines.Count, false);
             }
         }
+        else if (!_hasTramSystemsEverUsed && track is { IsABLine: true })
+        {
+            // An AB line: tram lines parallel to it, clipped to the fence, plus the
+            // boundary tram track, as AgOpenGPS's CABLine.BuildTram. A straight line's
+            // offsets can't fold, so this doesn't bring back the curved-field "web".
+            _tramLineService.GenerateParallelTramLines(track, fieldWidth);
+            if (State.Field.CurrentBoundary?.OuterBoundary?.Points is { Count: >= 3 } fence)
+                _tramLineService.GenerateBoundaryTramTracks(
+                    fence.Select(p => new Models.Base.Vec3(p.Easting, p.Northing, p.Heading)).ToList());
+        }
         else if (!_hasTramSystemsEverUsed)
         {
-            // Controlled-traffic lanes parallel to the field boundary, spaced at the
-            // tram (sprayer/CTF) width. Clean concentric Clipper offsets — replaces the
-            // legacy per-point lateral offset of the guidance curve, which folded into a
-            // self-intersecting "web" on irregular/curved fields.
+            // A curve, or no track: controlled-traffic lanes parallel to the field boundary,
+            // spaced at the tram (sprayer/CTF) width. Clean concentric Clipper offsets —
+            // replaces the legacy per-point lateral offset of the guidance curve, which
+            // folded into a self-intersecting "web" on irregular/curved fields.
             _tramLineService.GenerateConcentricTramLanes();
         }
 
