@@ -184,7 +184,11 @@ public record TickDto(
     // Engaged, but the steer module reports it isn't steering (#126).
     bool ModuleNotSteering,
     // Heading chart: GPS fix-to-fix heading, degrees (#111).
-    double ChartGpsHeading);
+    double ChartGpsHeading,
+    // Tram lights (#451, FieldToolsState.TramLights): bit 0/1 right/left on a tram track,
+    // bit 2/3 right/left forced on by hand, bit 4 = show the lights (Tram tab "Display"
+    // on, a tram display mode on, and a tool wider than the wheel track).
+    int TramLights);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed
@@ -435,7 +439,7 @@ public record ToolConfigDto(
 public record UturnConfigDto(int Style, double Extension, int Smoothing, double Radius, double DistanceFromBoundary);
 
 /// <summary>Tram Lines tab (ConfigStore.Guidance tram fields).</summary>
-public record TramConfigDto(int Passes, bool Display, int Line, double Width);
+public record TramConfigDto(int Passes, bool Display, int Line, double Width, bool OuterInverted);
 
 /// <summary>Machine Control tab (ConfigStore.Machine). PinAssignments: 24 PinFunction ints.</summary>
 public record MachineConfigDto(

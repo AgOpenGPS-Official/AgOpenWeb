@@ -545,27 +545,47 @@ public class TramLineService(
     }
 
     /// <summary>
-    /// Detect which wheels are on tram lines.
-    /// Returns a byte: bit 0 = right wheel, bit 1 = left wheel.
+    /// Whether the tram wheel tracks are at the tool's edges (outer) or about its centre
+    /// (inner), as AgOpenGPS decides it (CTram.IsTramOuterOrInner): outer when the tram
+    /// width is an even number of tool widths, swapped by <see cref="TramConfig.IsOuterInverted"/>.
     /// </summary>
-    public byte DetectTramWheels(Vec3 vehiclePosition, double vehicleHeading, double tolerance)
+    public static bool IsOuter(double tramWidth, double toolWidth, bool inverted)
+    {
+        bool outer = toolWidth > 0 && ((int)(tramWidth / toolWidth + 0.5)) % 2 == 0;
+        return inverted ? !outer : outer;
+    }
+
+    /// <summary>
+    /// Detect which wheels are on tram lines, checked where the tram wheel tracks run under
+    /// the tool (AgOpenGPS): ± half the wheel track about the tool's centre, or that far in
+    /// from its edges when the trams are outer (<see cref="IsOuter"/>). Only a tool wider
+    /// than the wheel track has tram control. Returns a byte: bit 0 = right, bit 1 = left.
+    /// </summary>
+    public byte DetectTramWheels(Vec3 toolPosition, double toolHeading, double tolerance)
     {
         var config = configStore;
         double halfTrack = config.Vehicle.TrackWidth / 2.0;
+        double toolWidth = config.ActualToolWidth;
+        if (toolWidth <= config.Vehicle.TrackWidth) return 0;
+
+        double fromCentre = IsOuter(config.Tram.TramWidth, toolWidth, config.Tram.IsOuterInverted)
+            ? toolWidth / 2.0 - halfTrack
+            : halfTrack;
+        double centre = config.Tool.Offset; // + = right of the tractor
 
         // Calculate left and right wheel positions
-        double perpHeading = vehicleHeading + Math.PI / 2.0;
+        double perpHeading = toolHeading + Math.PI / 2.0;
         double sinPerp = Math.Sin(perpHeading);
         double cosPerp = Math.Cos(perpHeading);
 
         var rightWheel = new Vec3(
-            vehiclePosition.Easting + sinPerp * halfTrack,
-            vehiclePosition.Northing + cosPerp * halfTrack,
-            vehicleHeading);
+            toolPosition.Easting + sinPerp * (centre + fromCentre),
+            toolPosition.Northing + cosPerp * (centre + fromCentre),
+            toolHeading);
         var leftWheel = new Vec3(
-            vehiclePosition.Easting - sinPerp * halfTrack,
-            vehiclePosition.Northing - cosPerp * halfTrack,
-            vehicleHeading);
+            toolPosition.Easting + sinPerp * (centre - fromCentre),
+            toolPosition.Northing + cosPerp * (centre - fromCentre),
+            toolHeading);
 
         byte result = 0;
 

@@ -89,18 +89,19 @@ public partial class MainViewModel
         // atomic on x86/ARM — no lock needed.
         _latestGpsToPgnLatencyMs = state.TotalLatencyMs;
         if (_dispatcher.CheckAccess())
-        {
-            TramControlByte = state.TramState;
-            _mapService.SetTramControlByte(state.TramState);
-        }
+            ApplyTramState(state.TramState);
         else
-        {
-            _dispatcher.Post(() =>
-            {
-                TramControlByte = state.TramState;
-                _mapService.SetTramControlByte(state.TramState);
-            });
-        }
+            _dispatcher.Post(() => ApplyTramState(state.TramState));
+    }
+
+    private void ApplyTramState(byte tramState)
+    {
+        TramControlByte = tramState;
+        _mapService.SetTramControlByte(tramState);
+        // The web tram lights: the detected bits, plus the manual overrides (#451).
+        State.FieldTools.TramLights = (byte)(tramState
+            | (_tramLineService.IsRightManualOn ? 4 : 0)
+            | (_tramLineService.IsLeftManualOn ? 8 : 0));
     }
 
     #endregion

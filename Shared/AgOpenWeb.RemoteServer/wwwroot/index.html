@@ -202,6 +202,16 @@
       background: rgba(70,10,10,0.9); color: #ffd0d0; font: 700 15px system-ui, sans-serif;
       letter-spacing: 0.05em; pointer-events: none; z-index: 40; }
     #reverse-badge.show { display: block; }
+    /* Tram lights (#451, AgOpenGPS DrawTramMarkers): one each side of the light bar's text.
+       Green = that wheel is on a tram track, red = not, flashing yellow = forced on by a tap. */
+    #tram-lights { position: fixed; top: calc(70px + var(--sat)); left: 50%; transform: translateX(-50%);
+      width: 240px; display: none; justify-content: space-between; z-index: 10; pointer-events: none; }
+    #tram-lights.show { display: flex; }
+    .tram-dot { width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(0,0,0,0.6);
+      background: rgba(230,0,0,0.55); pointer-events: auto; cursor: pointer; padding: 0; }
+    .tram-dot.on { background: rgb(74,252,74); }
+    .tram-dot.manual { animation: tram-flash 1s steps(1) infinite; }
+    @keyframes tram-flash { 0% { background: rgb(252,252,0); } 50% { background: #000; } }
     /* "Esc to cancel" only on pointer devices with a keyboard; touch cancels via the red
        Cancel button in the draw toolbar (no Esc key on a tablet). */
     @media (pointer: fine) { #maptap-hint::after { content: '  ·  Esc to cancel'; opacity: 0.6; font-weight: 400; } }
@@ -1380,6 +1390,7 @@
     <span class="sbd-item"><span class="sbd-k">CTRL</span><span class="sbd-v" id="sbd-ctrl">—</span></span>
   </div>
   <div id="lb"></div>
+  <div id="tram-lights"><button class="tram-dot" id="tram-l" title="Left tram: tap to force on"></button><button class="tram-dot" id="tram-r" title="Right tram: tap to force on"></button></div>
   <div id="headland-hud"></div>
   <div id="maptap-hint"></div>
   <div id="reverse-badge" title="Reversing">&#9664; REVERSE</div>
@@ -1846,9 +1857,9 @@
     </div>
     <!-- ===== TRAM ===== -->
     <div id="tc-tram" class="cfg-body" data-strip="tc-top" hidden>
-      <div class="vc-diagrow"><img src="/icons/ConT_TramOverride.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Passes</label><input class="cfg-num" data-key="tram.passes" type="number" step="1"></div></div>
-      <div class="cfg-grid"><label>Display</label><button class="cfg-tgl" data-key="tram.display">Off</button></div>
       <div class="vc-diagrow"><img src="/icons/ConT_TramSpacing.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Tram width (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tram.width" type="number" step="0.1" min="1"></div></div>
+      <div class="vc-diagrow"><img src="/icons/ConT_TramOverrideDisplay.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Tram lights</label><button class="cfg-tgl" data-key="tram.display" title="Show the left and right tram lights; tap one to force that side on">Off</button></div></div>
+      <div class="vc-diagrow"><img src="/icons/ConT_TramOverride.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Swap outer / inner</label><button class="cfg-tgl" data-key="tram.outerInverted" title="Tram wheels at the tool's edges or about its centre: the other one from what the tram width picks">Off</button></div></div>
       <div class="cfg-grid"><label>First tram pass</label><input class="cfg-num" data-key="tram.line" type="number" step="1" min="1" title="Pass the tram lines start on (AgOpenGPS start pass + 1)"></div>
     </div>
     <button id="tc-save" class="ln-savebtn">Save Profile</button>

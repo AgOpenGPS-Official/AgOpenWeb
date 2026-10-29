@@ -97,11 +97,10 @@ public interface ITramLineService
     double DistanceToNearestTramLine(Vec3 position);
 
     /// <summary>
-    /// Detect which wheels are on tram lines.
-    /// Returns a byte: bit 0 = right wheel, bit 1 = left wheel.
-    /// Includes manual override flags.
+    /// Detect which tram wheel tracks the tool is on (inner or outer, as AgOpenGPS).
+    /// Returns a byte: bit 0 = right, bit 1 = left. Includes manual override flags.
     /// </summary>
-    byte DetectTramWheels(Vec3 vehiclePosition, double vehicleHeading, double tolerance);
+    byte DetectTramWheels(Vec3 toolPosition, double toolHeading, double tolerance);
 
     /// <summary>
     /// Left wheel manual override - force recording left wheel track

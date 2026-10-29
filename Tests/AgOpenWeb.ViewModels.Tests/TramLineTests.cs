@@ -35,6 +35,36 @@ public class TramLineTests
         config.Tram.StartPass = 0;
         config.Vehicle.TrackWidth = 1.8;
         config.Tool.Width = 12.0;
+        config.Tram.IsOuterInverted = false;
+        _savedSections = config.NumSections;
+        _savedSection0 = config.Tool.GetSectionWidth(0);
+        _savedOffset = config.Tool.Offset;
+        // The wheel checks follow the tool: one 12 m section, no offset. A 36 m tram is three
+        // tool widths (odd), so the tram wheels run about the tool's centre (inner).
+        UseTool(12.0, 36.0);
+    }
+
+    private int _savedSections;
+    private double _savedSection0, _savedOffset;
+
+    [TearDown]
+    public void TearDown()
+    {
+        var config = ConfigurationStore.Instance;
+        config.NumSections = _savedSections;
+        config.Tool.SetSectionWidth(0, _savedSection0);
+        config.Tool.Offset = _savedOffset;
+        config.Tram.IsOuterInverted = false;
+        config.Tram.TramWidth = 24.0;
+    }
+
+    private static void UseTool(double toolWidth, double tramWidth, double offset = 0)
+    {
+        var config = ConfigurationStore.Instance;
+        config.NumSections = 1;
+        config.Tool.SetSectionWidth(0, toolWidth * 100.0); // cm
+        config.Tool.Offset = offset;
+        config.Tram.TramWidth = tramWidth;
     }
 
     // ---------------------------------------------------------------
@@ -226,6 +256,55 @@ public class TramLineTests
 
         Assert.That(result & 1, Is.EqualTo(1), "Manual right override forces bit 0");
         Assert.That(result & 2, Is.EqualTo(0), "Left not overridden");
+    }
+
+    [Test]
+    public void IsOuter_EvenNumberOfToolWidths_AsAgOpenGPS()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(TramLineService.IsOuter(24, 12, false), Is.True, "2 tool widths: outer");
+            Assert.That(TramLineService.IsOuter(36, 12, false), Is.False, "3 tool widths: inner");
+            Assert.That(TramLineService.IsOuter(21, 6, false), Is.True, "3.5 rounds to 4: outer");
+            Assert.That(TramLineService.IsOuter(24, 12, true), Is.False, "swapped");
+        });
+    }
+
+    [Test]
+    public void DetectTramWheels_Outer_ChecksInFromTheToolEdges()
+    {
+        // 24 m tram, 12 m tool: outer, so the wheels are half the track in from each edge:
+        // 6 − 0.9 = 5.1 m either side of the tool's centre.
+        UseTool(12.0, 24.0);
+        _service.AddTramLine(new List<Vec2> { new Vec2(5.1, 0), new Vec2(5.1, 100) });
+        _service.AddTramLine(new List<Vec2> { new Vec2(-5.1, 0), new Vec2(-5.1, 100) });
+        _service.AddTramLine(new List<Vec2> { new Vec2(0.9, 0), new Vec2(0.9, 100) });
+
+        Assert.That(_service.DetectTramWheels(new Vec3(0, 50, 0), 0, 0.5), Is.EqualTo(3));
+
+        ConfigurationStore.Instance.Tram.IsOuterInverted = true; // swapped: back to ±0.9
+        Assert.That(_service.DetectTramWheels(new Vec3(0, 50, 0), 0, 0.5), Is.EqualTo(1),
+            "only the right inner track is laid");
+    }
+
+    [Test]
+    public void DetectTramWheels_FollowsTheToolOffset()
+    {
+        UseTool(12.0, 36.0, offset: 2.0); // tool 2 m right of the tractor
+        _service.AddTramLine(new List<Vec2> { new Vec2(2.9, 0), new Vec2(2.9, 100) });
+        _service.AddTramLine(new List<Vec2> { new Vec2(1.1, 0), new Vec2(1.1, 100) });
+
+        Assert.That(_service.DetectTramWheels(new Vec3(0, 50, 0), 0, 0.5), Is.EqualTo(3));
+    }
+
+    [Test]
+    public void DetectTramWheels_ToolNoWiderThanTheTrack_NoTramControl()
+    {
+        UseTool(1.5, 36.0);
+        _service.IsRightManualOn = true;
+        _service.AddTramLine(new List<Vec2> { new Vec2(0.9, 0), new Vec2(0.9, 100) });
+
+        Assert.That(_service.DetectTramWheels(new Vec3(0, 50, 0), 0, 0.5), Is.EqualTo(0));
     }
 
     // ---------------------------------------------------------------

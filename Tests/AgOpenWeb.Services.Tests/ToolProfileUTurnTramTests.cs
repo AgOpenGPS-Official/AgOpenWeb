@@ -47,6 +47,7 @@ public class ToolProfileUTurnTramTests
         s.Guidance.TramPasses = 7;
         s.Guidance.TramDisplay = false;
         s.Guidance.TramLine = 4;
+        s.Tram.IsOuterInverted = true;
         return s;
     }
 
@@ -58,6 +59,7 @@ public class ToolProfileUTurnTramTests
         Assert.That(d.Guidance.UTurnStyle, Is.EqualTo((int)YouTurnType.KStyle));
         Assert.That(d.Guidance.UTurnSmoothing, Is.EqualTo(22));
         Assert.That(d.Tram.TramWidth, Is.EqualTo(21.0));
+        Assert.That(d.Tram.IsOuterInverted, Is.True);
         Assert.That(d.Guidance.TramPasses, Is.EqualTo(7));
         Assert.That(d.Guidance.TramDisplay, Is.False);
         Assert.That(d.Guidance.TramLine, Is.EqualTo(4));
@@ -129,22 +131,22 @@ public class ToolProfileUTurnTramTests
             Assert.That(dst.Guidance.TramPasses, Is.EqualTo(def.TramPasses));
             Assert.That(dst.Guidance.TramDisplay, Is.EqualTo(def.TramDisplay));
             Assert.That(dst.Guidance.TramLine, Is.EqualTo(def.TramLine));
+            Assert.That(dst.Tram.IsOuterInverted, Is.False);
         });
     }
 
     [Test]
-    public void OpeningAField_LeavesTheToolsTramWidthAndFirstPassAlone()
+    public void OpeningAField_LeavesTheToolsTramSettingsAlone()
     {
         string field = Path.Combine(_root, "Field");
         Directory.CreateDirectory(field);
 
         // A field saved while another tool's tram settings were live...
-        var other = new TramConfig { TramWidth = 36.0, StartPass = 5, IsOuterInverted = true };
+        var other = new TramConfig { TramWidth = 36.0, StartPass = 5, IsOuterInverted = false };
         TramConfigFileService.Save(field, other);
 
-        // ...opened with the sprayer on: its width and first pass stay, the field's own
-        // state loads.
-        var tram = new TramConfig { TramWidth = 21.0, StartPass = 3 };
+        // ...opened with the sprayer on: its width, first pass and outer/inner stay.
+        var tram = new TramConfig { TramWidth = 21.0, StartPass = 3, IsOuterInverted = true };
         TramConfigFileService.Load(field, tram);
 
         Assert.Multiple(() =>
