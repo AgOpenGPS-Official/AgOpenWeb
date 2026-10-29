@@ -65,7 +65,8 @@ public static class NtripResponse
                     return new(NtripCategory.NotUnderstood, "This address answered with a web page, not an NTRIP caster. Check the address and port.", first, chunked);
                 return new(NtripCategory.Accepted, "", first, chunked);
             case "401":
-                return new(NtripCategory.LoginRejected, "Authentication failed (check username and password)", first, chunked);
+                // Some casters (AgOpenNtripCaster) also answer 401 for a mount point they do not have.
+                return new(NtripCategory.LoginRejected, "Authentication failed (check username, password and mount point)", first, chunked);
             case "403":
                 return FromText(first + " " + body, first, chunked, "Access denied: " + first, NtripCategory.LoginRejected);
             case "404":

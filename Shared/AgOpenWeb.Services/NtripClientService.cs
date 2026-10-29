@@ -34,6 +34,7 @@ public class NtripClientService : INtripClientService, IDisposable
     private NtripSession? _session;
     private NtripSessionStatus _status = NtripSessionStatus.Idle;
     private (bool Connected, string Message)? _reported;   // the last status event raised, so repeats are not
+    private readonly NtripEventLog _events = new();   // for the bug report; kept across sessions
     private CancellationTokenSource? _cancellationTokenSource;
     private NtripConfiguration? _config;
     private bool _isDisposed;
@@ -89,6 +90,9 @@ public class NtripClientService : INtripClientService, IDisposable
     public bool IsActive => Volatile.Read(ref _wanted);
     public ulong TotalBytesReceived { get; private set; }
     public NtripSessionStatus Status => _status;
+    public NtripServiceInfo? Service { get; private set; }
+
+    public IReadOnlyList<NtripEvent> Events => _events.ToArray();
 
     private bool _wanted;      // ConnectAsync called, DisconnectAsync not
     private bool _sessionOpen; // a session is running: connecting, retrying or streaming
@@ -124,6 +128,8 @@ public class NtripClientService : INtripClientService, IDisposable
         {
             Teardown(null);
             _config = config;
+            Service = new NtripServiceInfo(config.CasterAddress, config.CasterPort, config.MountPoint,
+                !string.IsNullOrEmpty(config.Username), !string.IsNullOrEmpty(config.Password));
 
             // UDP socket for forwarding RTCM data to the GPS module (subnet.255:2233)
             Socket udp = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
@@ -190,6 +196,7 @@ public class NtripClientService : INtripClientService, IDisposable
             _cancellationTokenSource = null;
             _pacer.Clear(); // a new session must not inherit the old one's corrections
             _session = null;   // what the session that is ending still reports is ignored
+            NtripVersion version = _status.Version;
             _status = NtripSessionStatus.Idle;
 
             _udpSocket?.Close();
@@ -199,9 +206,33 @@ public class NtripClientService : INtripClientService, IDisposable
             _sessionOpen = false;
             IsConnected = false;
             _reported = null;
+            if (message != null)
+                _events.Add(new NtripEvent(Clock.Current.Now, Service?.ToString() ?? "", NtripState.Stopped, null, message, "", version, 0));
         }
 
         if (message != null) RaiseStatus(false, message);
+    }
+
+    // A caster should never repeat the login, but one that does must not put it in the report or the log.
+    // Each secret is replaced as typed, URL-escaped and (the pair) as the Basic value, longest first. A
+    // secret under three characters is left alone: it would mangle ordinary words.
+    private string Redact(string text, bool userName)
+    {
+        if (_config is not { } config || text.Length == 0) return text;
+        var secrets = new List<string>();
+        if (NtripCredentials.BasicAuthorization(config.Username, config.Password) is { } basic) secrets.Add(basic["Basic ".Length..]);
+        AddSecret(secrets, config.Password);
+        if (userName) AddSecret(secrets, config.Username);
+        foreach (string secret in secrets.OrderByDescending(s => s.Length))
+            text = text.Replace(secret, "***", StringComparison.OrdinalIgnoreCase);
+        return text;
+    }
+
+    private static void AddSecret(List<string> secrets, string secret)
+    {
+        if (secret.Length < 3) return;
+        secrets.Add(secret);
+        secrets.Add(Uri.EscapeDataString(secret));
     }
 
     private void RaiseStatus(bool connected, string message) =>
@@ -212,9 +243,15 @@ public class NtripClientService : INtripClientService, IDisposable
         lock (_sessionLock)
         {
             if (!ReferenceEquals(source, _session)) return;
+            // What the caster said loses the user name too; the text made here keeps it, because a mount point can be the same word.
+            string firstLine = Redact(status.FirstLine, userName: true);
+            string message = status.FirstLine.Length > 0 ? status.Message.Replace(status.FirstLine, firstLine, StringComparison.Ordinal) : status.Message;
+            status = status with { Message = Redact(message, userName: false), FirstLine = firstLine };
             _status = status;
             IsConnected = status.IsOpen;
             if (status.State == NtripState.GaveUp) _sessionOpen = false;   // over until the user acts; IsActive stays
+            _events.Add(new NtripEvent(Clock.Current.Now, Service?.ToString() ?? "", status.State, status.LastError,
+                status.Message, status.FirstLine, status.Version, status.Attempts));
             if (_reported == (status.IsOpen, status.Message)) return;
             _reported = (status.IsOpen, status.Message);
         }

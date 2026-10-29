@@ -41,6 +41,16 @@ public interface INtripClientService
     NtripSessionStatus Status { get; }
 
     /// <summary>
+    /// The service the client was last started for; null before the first start. Never holds the login.
+    /// </summary>
+    NtripServiceInfo? Service { get; }
+
+    /// <summary>
+    /// The last steps of the sessions, oldest first (the bug report reads them). Holds no login.
+    /// </summary>
+    IReadOnlyList<NtripEvent> Events { get; }
+
+    /// <summary>
     /// Total bytes received from caster
     /// </summary>
     ulong TotalBytesReceived { get; }

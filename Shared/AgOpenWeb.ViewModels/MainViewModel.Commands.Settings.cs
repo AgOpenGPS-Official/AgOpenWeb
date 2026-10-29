@@ -201,7 +201,8 @@ public partial class MainViewModel
                 var zipPath = Services.DebugDumpService.CreateDump(
                     _settingsService, AgOpenWeb.Models.State.RuntimeStateCapture.From(_appState), _configStore, screenshotPng: screenshot,
                     activeJobTaskName: SaveCoverageForDump(),
-                    ntripRtcmReport: NtripRtcmReport());
+                    ntripRtcmReport: NtripRtcmReport(),
+                    ntripSessionReport: NtripSessionReport(), ntripSummary: NtripSummary());
                 StatusMessage = $"Debug dump saved: {zipPath}";
                 _logger.LogInformation($"Debug dump created: {zipPath}");
             }
@@ -234,7 +235,8 @@ public partial class MainViewModel
                 _bugReportTempZipPath = Services.DebugDumpService.CreateDump(
                     _settingsService, AgOpenWeb.Models.State.RuntimeStateCapture.From(_appState), _configStore, screenshotPng: _bugReportScreenshot,
                     activeJobTaskName: SaveCoverageForDump(),
-                    ntripRtcmReport: NtripRtcmReport());
+                    ntripRtcmReport: NtripRtcmReport(),
+                    ntripSessionReport: NtripSessionReport(), ntripSummary: NtripSummary());
             }
             catch (Exception ex)
             {
@@ -342,7 +344,8 @@ public partial class MainViewModel
                         additionalNotes: notes,
                         screenshotPng: _bugReportScreenshot,
                         activeJobTaskName: SaveCoverageForDump(),
-                    ntripRtcmReport: NtripRtcmReport(),
+                        ntripRtcmReport: NtripRtcmReport(),
+                        ntripSessionReport: NtripSessionReport(), ntripSummary: NtripSummary(),
                         outputDirectory: bugReportsDir,
                         filePrefix: $"bugreport_{titleSlug}",
                         userAttachments: attachmentPaths);
@@ -482,6 +485,10 @@ public partial class MainViewModel
     }
 
     private string? NtripRtcmReport() => Services.NtripRtcmReport.Build(_ntripService, _gpsService);
+
+    private string? NtripSessionReport() => Services.NtripSupportReport.Build(_ntripService, _gpsService);
+
+    private string? NtripSummary() => Services.NtripSupportReport.Summary(_ntripService);
 
     /// <summary>
     /// Save the active job's coverage so a dump's tiles are current, and return the job's

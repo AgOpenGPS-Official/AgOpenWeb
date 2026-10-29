@@ -45,7 +45,9 @@ public class DebugDumpService
         string filePrefix = "debug_dump",
         IReadOnlyList<string>? userAttachments = null,
         string? activeJobTaskName = null,
-        string? ntripRtcmReport = null)
+        string? ntripRtcmReport = null,
+        string? ntripSessionReport = null,
+        string? ntripSummary = null)
     {
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
         var dumpDir = outputDirectory
@@ -57,7 +59,7 @@ public class DebugDumpService
         using var archive = new ZipArchive(zipStream, ZipArchiveMode.Create);
 
         // 1. System info
-        AddTextEntry(archive, "system_info.txt", BuildSystemInfo());
+        AddTextEntry(archive, "system_info.txt", BuildSystemInfo(ntripSummary));
 
         // 2. App settings
         try
@@ -106,6 +108,10 @@ public class DebugDumpService
         // 5a. What the NTRIP caster sent, by RTCM message, and the receiver's differential age.
         if (!string.IsNullOrEmpty(ntripRtcmReport))
             AddTextEntry(archive, "ntrip_rtcm.txt", ntripRtcmReport);
+
+        // 5a2. What the NTRIP connection did and why it failed (no login in it).
+        if (!string.IsNullOrEmpty(ntripSessionReport))
+            AddTextEntry(archive, "ntrip_session.txt", ntripSessionReport);
 
         // 5b. GPS data recorder (last 5 minutes of position/guidance/YouTurn/heading inputs)
         try
@@ -322,7 +328,7 @@ public class DebugDumpService
         return finalPath;
     }
 
-    private static string BuildSystemInfo()
+    private static string BuildSystemInfo(string? ntripSummary)
     {
         var sb = new StringBuilder();
 
@@ -349,6 +355,7 @@ public class DebugDumpService
         sb.AppendLine(inv, $"Machine: {Environment.MachineName}");
         sb.AppendLine(inv, $"Processors: {Environment.ProcessorCount}");
         sb.AppendLine(inv, $"Working Set: {Environment.WorkingSet / 1024 / 1024}MB");
+        if (!string.IsNullOrEmpty(ntripSummary)) sb.AppendLine(inv, $"NTRIP: {ntripSummary}");
         return sb.ToString();
     }
 

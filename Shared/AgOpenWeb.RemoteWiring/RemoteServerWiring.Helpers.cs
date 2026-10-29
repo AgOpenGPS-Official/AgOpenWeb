@@ -594,7 +594,10 @@ public static partial class RemoteServerWiring
                         additionalNotes: notes, outputDirectory: dir, filePrefix: "bugreport_" + slug,
                         activeJobTaskName: SaveCoverageForDump(services, state),
                         ntripRtcmReport: AgOpenWeb.Services.NtripRtcmReport.Build(
-                            services.GetService<INtripClientService>(), services.GetService<IGpsService>()));
+                            services.GetService<INtripClientService>(), services.GetService<IGpsService>()),
+                        ntripSessionReport: AgOpenWeb.Services.NtripSupportReport.Build(
+                            services.GetService<INtripClientService>(), services.GetService<IGpsService>()),
+                        ntripSummary: AgOpenWeb.Services.NtripSupportReport.Summary(services.GetService<INtripClientService>()));
                     state.BugReportStatus = "Saved: " + zip;
                     BugReportRemote.NewReport(zip);
                 }

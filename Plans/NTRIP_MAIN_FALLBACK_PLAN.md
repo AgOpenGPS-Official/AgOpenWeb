@@ -1,6 +1,6 @@
 # NTRIP: main and fallback service, a sturdier client, and a report that explains itself
 
-**Status:** approved 2026-10-29 (#463). Phase 1 built, in review; the other phases are not started.
+**Status:** approved 2026-10-29 (#463). Phases 1 and 2 built, in review (#464); the other phases are not started.
 **Prompted by:** #443 (NTRIP "not working": the reporter and the maintainers had to guess whether it was the login, the mount point or the position), #285 and #385 (silent stops and retries), and a rebuild of the NTRIP client in AgIO (AgOpenGPS) that was tested against recorded casters and a caster of our own. This plan brings what that rebuild learned to AgOpenWeb, in AgOpenWeb's own architecture.
 **Related:** `Plans/RTCM_FORWARDING_PLAN.md` (the forwarding half, already in), `Plans/Completed/NTRIP_PROFILES_PLAN.md` (profiles per field), `Plans/BUG_REPORT_SUBMISSION_PLAN.md` (what a report carries), #278 (NTRIP on/off), #397 (observers), #444 (position sent to the caster).
 
@@ -98,6 +98,11 @@ Reviewed by the maintainers on a docs-only PR. Answers to the open questions go 
 Phases 1 and 2 together answer #443: a failure has a name and a maintainer can read it from the dump. They go to testers before any fallback UI exists.
 - `ntrip_session.txt`, the `system_info.txt` line, `NtripSupportReport`; the redaction test (decision 8) over status, events, log lines, the dump and the profile frame.
 - A dump made in each failure state of Phase 1 is read as a maintainer: the cause must be readable from `ntrip_session.txt` alone.
+- **Built as:**
+  - `NtripSupportReport` (`Services/Ntrip/`) builds `ntrip_session.txt` and the `NTRIP:` line of `system_info.txt` from what `INtripClientService` now exposes: `Status`, `Service` (host, port, mount, whether a login is set) and `Events` (the last 40 steps, kept across sessions in an `NtripEventLog`; a repeat of the last step is not written again, but the same text at another attempt is).
+  - Masking: the password, the Basic value and, in what the caster said, the user name are replaced by `***` as typed, upper case and URL-escaped, longest first. The text the client writes itself keeps the user name, because a mount point can be the same word; host and mount are shown as set. A login under three characters is not masked, as that would mangle ordinary words.
+  - After the user disconnects, the summary and the report still carry the last failure (`Stopped by the user, ...; before that GaveUp, LoginRejected`).
+  - A `401` now says "check username, password and mount point": some casters (our own) answer 401 for an unknown mount point.
 
 ### Phase 3: profiles with a fallback, and the mode
 - `NtripProfile.Fallback`, `Connections.NtripMode` (`config.set|conn.ntripMode`), `CorrectionSourceManager`, `SwitchTo`, the notices.
