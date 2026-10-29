@@ -123,6 +123,7 @@ window.RemoteTransport = {
           op.reverse = !!u8(); // #125 — vehicle reversing
           op.moduleNotSteering = !!u8(); // #126 — engaged, module reports not steering
           const chartGpsHeading = f32(); // #111 — heading chart, GPS fix-to-fix
+          tools.tramLights = u8(); // #451 — bit 0/1 R/L on a tram, 2/3 R/L forced, 4 show
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool, op, roll, tools,
@@ -322,7 +323,7 @@ window.RemoteTransport = {
             isSteerSwitchEnabled: !!u8(), isSteerSwitchManualSections: !!u8(), totalWidth: f64(),
           };
           const uturn = { style: i32(), extension: f64(), smoothing: i32(), radius: f64(), distanceFromBoundary: f64() };
-          const tram = { passes: i32(), display: !!u8(), line: i32(), width: f64() };
+          const tram = { passes: i32(), display: !!u8(), line: i32(), width: f64(), outerInverted: !!u8() };
           const machine = {
             hydraulicLiftEnabled: !!u8(), raiseTime: i32(), lookAhead: f64(), lowerTime: i32(), invertRelay: !!u8(),
             user1: i32(), user2: i32(), user3: i32(), user4: i32(), pinAssignments: rdI32(),

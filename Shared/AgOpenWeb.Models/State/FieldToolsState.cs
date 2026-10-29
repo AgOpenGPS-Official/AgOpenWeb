@@ -33,4 +33,8 @@ public sealed class FieldToolsState
 
     /// <summary>0 Normal, 1 Alternative, 2 Ignore worked tracks (AgOpenGPS SkipMode, #111).</summary>
     public int UTurnSkipMode { get; set; }
+
+    /// <summary>Tram lights (#451): bit 0 right on a tram track, bit 1 left (the PGN 239 tram
+    /// byte), bit 2 right forced on by hand, bit 3 left.</summary>
+    public byte TramLights { get; set; }
 }

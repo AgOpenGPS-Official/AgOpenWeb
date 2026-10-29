@@ -186,6 +186,7 @@ public static class ToolProfileJsonService
                 Passes = store.Guidance.TramPasses,
                 Display = store.Guidance.TramDisplay,
                 Line = store.Guidance.TramLine,
+                OuterInverted = store.Tram.IsOuterInverted,
             },
         };
     }
@@ -303,6 +304,7 @@ public static class ToolProfileJsonService
         store.Guidance.TramPasses = dto.Tram?.Passes ?? dg.TramPasses;
         store.Guidance.TramDisplay = dto.Tram?.Display ?? dg.TramDisplay;
         store.Guidance.TramLine = dto.Tram?.Line ?? dg.TramLine;
+        store.Tram.IsOuterInverted = dto.Tram?.OuterInverted ?? false;
 
         // Profile metadata
         store.ActiveToolProfileName = profileName;
@@ -380,6 +382,7 @@ public static class ToolProfileJsonService
         public int? Passes { get; set; }
         public bool? Display { get; set; }
         public int? Line { get; set; }
+        public bool? OuterInverted { get; set; } // AgOpenGPS setTool_isTramOuterInverted (#451)
     }
 
     internal class MachineDto

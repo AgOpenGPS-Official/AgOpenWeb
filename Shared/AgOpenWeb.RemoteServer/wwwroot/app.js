@@ -4734,6 +4734,22 @@ function updateLightbarText() {
   lbEl.style.display = 'block';
 }
 
+// Tram lights (#451): AgOpenGPS's two dots, left and right of the light bar. The host sends
+// whether to show them (Tram tab Display, a tram mode on, a tool wider than the wheel track),
+// which wheel is on a tram track, and which side is forced on; a tap toggles the force.
+const tramLightsEl = document.getElementById('tram-lights');
+const tramL = document.getElementById('tram-l'), tramR = document.getElementById('tram-r');
+tramL.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('tram.manualLeft'); });
+tramR.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('tram.manualRight'); });
+function updateTramLights() {
+  const b = tick && tick.tools ? tick.tools.tramLights | 0 : 0;
+  tramLightsEl.classList.toggle('show', (b & 16) !== 0);
+  tramR.classList.toggle('on', (b & 1) !== 0);
+  tramL.classList.toggle('on', (b & 2) !== 0);
+  tramR.classList.toggle('manual', (b & 4) !== 0);
+  tramL.classList.toggle('manual', (b & 8) !== 0);
+}
+
 // Headland-distance HUD → DOM overlay (mirrors the native SkiaMapControl HUD).
 // Shown only when Display.HeadlandDistanceVisible is on and a live distance ≥ 0
 // (−1 = no headland / not driving). Metric/imperial follows the status bar.
@@ -7547,6 +7563,7 @@ function skFrame() {
   }
   // DOM overlays (independent of the GL surface).
   updateLightbarText();
+  updateTramLights();
   updateHeadlandHud();
   renderStatusBar();
   renderSimBar();

@@ -373,6 +373,7 @@ public static class WireCodec
         w.Write((byte)(tr.Display ? 1 : 0));
         w.Write(tr.Line);              // i32
         w.Write(tr.Width);             // f64 — tram width, m (#110)
+        w.Write((byte)(tr.OuterInverted ? 1 : 0)); // #451 — swap outer/inner
         // Machine Control tab.
         var m = c.Machine;
         w.Write((byte)(m.HydraulicLiftEnabled ? 1 : 0));
@@ -625,6 +626,7 @@ public static class WireCodec
         w.Write((byte)(t.IsReverse ? 1 : 0)); // #125 — reversing
         w.Write((byte)(t.ModuleNotSteering ? 1 : 0)); // #126 — engaged but module not steering
         w.Write((float)t.ChartGpsHeading); // f32 — heading chart GPS fix-to-fix (#111)
+        w.Write((byte)t.TramLights);  // #451 — tram lights bits
         return ms.ToArray();
     }
 

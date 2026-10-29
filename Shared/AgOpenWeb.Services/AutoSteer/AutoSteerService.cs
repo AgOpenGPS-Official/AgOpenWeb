@@ -814,6 +814,9 @@ public class AutoSteerService : IAutoSteerService
         else
         {
             _state.TramState = 0;
+            // AgOpenGPS: turning the tram display off clears the manual overrides.
+            if (_tramLineService != null)
+                _tramLineService.IsLeftManualOn = _tramLineService.IsRightManualOn = false;
         }
     }
 

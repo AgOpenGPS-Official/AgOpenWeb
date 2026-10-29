@@ -698,6 +698,8 @@ public static partial class RemoteServerWiring
                                 "headland.toggle" => vm.ToggleHeadlandCommand,
                                 "headland.sectionToggle" => vm.ToggleSectionInHeadlandCommand,
                                 "tram.cycle" => vm.ToggleTramDisplayCommand,
+                                "tram.manualLeft" => vm.ToggleTramLeftManualCommand,  // tram lights (#451)
+                                "tram.manualRight" => vm.ToggleTramRightManualCommand,
                                 "tool.resetHeading" => vm.ResetToolHeadingCommand,
                                 "map.cycleColor" => vm.ChangeMappingColorCommand,
                                 "flag.placeHere" => vm.PlaceFlagHereCommand,
