@@ -13,6 +13,10 @@
 - **The failure is only in the log.** Why the last attempts failed, in which order, what the caster answered: the 5-second `[NTRIP]` line has the RTCM side (`Plans/RTCM_FORWARDING_PLAN.md`), but not the connection side. A report from a user who "has no corrections" cannot be told apart from a wrong password without asking.
 - **Waits are implicit.** The wait for the caster's reply is bounded only by the 30 s stall watchdog; the retry state is a set of `Interlocked` flags (`_reconnectInProgress`, `_failureStreak`, `_generation`) around a `Teardown`.
 - **Request and docs disagree.** `CLAUDE.md` and `Plans/ARCHITECTURE.md` say the request carries `Ntrip-Version: Ntrip/2.0`; `SendNtripRequestAsync` sends HTTP/1.1 with `Connection: keep-alive` and no version header. Casters that only serve NTRIP 2.0 to clients that ask for it see an NTRIP 1 client.
+- **Test and the real connection disagree.** The editor's Test button already sends `Ntrip-Version: Ntrip/2.0` (`NtripConnectionTester.cs:38`); the client does not (`NtripClientService.cs:313`). A passing Test can be followed by a different result on the real connection. Running Test on the same session code removes the difference.
+- **The TCP connect has no timeout of its own.** `tcp.ConnectAsync` (`NtripClientService.cs:175`) waits for the operating system's connect timeout.
+- **A wrong login or mount point ends the client, so a threshold is never reached.** A `Rejected` reply goes to `Teardown` (`NtripClientService.cs:444`) and nothing retries; "after N failed attempts" would never fire for the failures that most need a fallback (decision 4).
+- **Classification exists once already.** Replies are sorted into `Accepted`, `Rejected` and `RejectedRetry` (`NtripResponse.cs`). The outcome categories extend that enum; there is one classification, not two.
 - **Profiles are for fields only.** Nothing lets a farm with two services (own base station plus a network service) say "use this one, and if it fails, that one".
 
 What is **already good** and stays as it is: `RtcmFramer`, `ChunkedDecoder`, `RtcmQueue` (pacing, unicast to the GPS module), `RtcmStreamStats`, `NtripRtcmReport`, GGA from the last fix or the field origin (#444), the network-change wake-up (`INetworkWatcher`), the header cap (F2), the Network IO RTCM table. The rebuild's framer/queue were ported *from* these; nothing there is replaced.
@@ -38,13 +42,18 @@ What is **already good** and stays as it is: `RtcmFramer`, `ChunkedDecoder`, `Rt
    Switching the mode deletes and rewrites nothing; switching back finds the profiles as they were. Per-field *with* fallback is out of scope (decision 4 below).
 2. **The profile file grows, it does not change shape.** `NtripProfile` keeps `Id`, `Name`, `CasterHost/Port`, `MountPoint`, `Username`, `Password`, `AssociatedFields`, `AutoConnectOnFieldLoad`, `IsDefault`, `FilePath` (these are the **main** service, so every existing file loads as it is) and gains `Fallback` (null = none): `Enabled`, `CasterHost/Port`, `MountPoint`, `Username`, `Password`, `AutoSwitch` (default false), `SwitchAfterFailures` (default 2), plus `Version` (Auto/1.0/2.0) and `RawTcp` per service where the rebuild has them. Unknown fields in old files default; no migration code.
 3. **The fallback is another NTRIP service.** A serial radio fallback (AgIO has one) does not exist here: AgOpenWeb has no serial path to the receiver, and a radio wired to the receiver already feeds it without the app.
-4. **Switching rules.** Automatic: after `SwitchAfterFailures` failed attempts in a row on the main service (a failed attempt is any outcome that is not "corrections arrived"), if `AutoSwitch` is on. Manual: a button at any time, in both directions. **Never back by itself:** while on the fallback the main service is probed in the background only if it is a different account on a different caster (decision 5), and a *"The main service is back. Switch back?"* prompt asks the operator. A switch raises one notice that says GPS may lose RTK and the position may shift a little. In manual mode (`AutoSwitch` off, the default) the client reports the failure with advice and waits for the operator.
-5. **Same account, same caster: no second connection.** If main and fallback share caster and login, the main is not probed while the fallback is in use.
-6. **The rebuilt connection layer replaces the connection half of `NtripClientService`, not the forwarding half.** `INtripClientService` keeps its members (`IsActive`, `IsConnected`, `ConnectAsync`, `DisconnectAsync`, `RtcmDestination`, `GetRtcmStreamSnapshot`, `TotalBytesReceived`, events) so the VM, `NtripFieldCloseTests` and the dump keep working; it gains `Status` (decision 7) and `SwitchTo(main|fallback)`. The framer, queue and stats are used as they are.
+4. **Switching rules.** Automatic: after `SwitchAfterFailures` failed attempts in a row on the main service (a failed attempt is any outcome that is not "corrections arrived"), if `AutoSwitch` is on. **An outcome that retrying cannot fix** (wrong login, mount point not found, access denied) **counts as having reached the threshold at once**: with Auto-switch on the switch happens on the first such reply, not after N attempts that will never come. Manual: a button at any time, in both directions. **Never back by itself:** while on the fallback the main service is probed in the background only if it is a different account on a different caster (decision 5), and a *"The main service is back. Switch back?"* prompt asks the operator. A switch raises one notice that says GPS may lose RTK and the position may shift a little. In manual mode (`AutoSwitch` off, the default) the client reports the failure with advice and waits for the operator.
+5. **Same account, same caster: no second connection.** If main and fallback share caster and login, the main is not probed while the fallback is in use. This holds when the two use **different mount points of one subscription** (a common setup: a VRS mount point plus the nearest base): the main is never probed, so "The main service is back" never appears. That is intended, and the card says so while the fallback is in use: *"The main service is not tried in the background because it uses the same login. Switch back yourself when you want it."* with the **Switch to main** button next to it.
+6. **The rebuilt connection layer replaces the connection half of `NtripClientService`, not the forwarding half.** `INtripClientService` keeps its members (`IsActive`, `IsConnected`, `ConnectAsync`, `DisconnectAsync`, `RtcmDestination`, `GetRtcmStreamSnapshot`, `TotalBytesReceived`, events) so the VM, `NtripFieldCloseTests` and the dump keep working; it gains `Status` (decision 7) and `SwitchTo(main|fallback)`. The framer, queue and stats are used as they are. The outcome categories extend `NtripReply` (`NtripResponse.cs`), so the client, the Test button and the status share one classification.
 7. **One status object, read by everyone.** `NtripStatus` (immutable snapshot): state, `Using` (main/fallback), headline and advice (English, through `tr()` on the client), the checks, the last outcome category, attempts, seconds to the next retry, the last N events. The Network IO card, the status bar text (`State.Connections.NtripStatus`, kept for what reads it), the bug report and the log are all produced from it, so they cannot disagree.
 8. **Reports never hold a password.** The support text names host, port and mount point (the maintainers need them) and the user name is blanked like `RedactSecrets` blanks `NtripUsername`; passwords are never written. A test feeds a password through every path (status, events, report, log lines) and fails if it appears.
 9. **Strings.** Every sentence the user can read is English in `app.js` through `tr()` (host side: a code and arguments; the client composes the sentence), so `Tools/i18n-extract.py` and `Tools/i18n-limits.py` see it and Weblate can translate it. The rebuild's sentences are short on purpose; each must fit its label.
 10. **Cross-platform parity and threading as the rules say.** All of it is in `Shared/`. The client runs on its own I/O tasks and posts to the host-loop dispatcher; it never touches the cycle worker or `*State` directly (`UpdateNtripConnectionProperties` stays the only writer).
+11. **When to retry with NTRIP 1.0** (Version = Auto only; a service set to 1.0 or 2.0 is never second-guessed). The client goes back to the 1.0 request, once, only when the caster did not understand the 2.0 one:
+    - the reply is not an NTRIP or HTTP reply at all (not `ICY`, `HTTP/x.y`, `SOURCETABLE` or `ERROR`), and
+    - `HTTP 400 Bad Request` or `HTTP 505 Version Not Supported`.
+
+    **Never** on `401`, `403` or `404`, on `ERROR - Bad Password`, or on a source table (that means a wrong mount point, and the answer would be the same in 1.0); never on a timeout or a close with no reply (some casters close on a bad login; that is a failure with its own category, and it is retried as such). The version that **delivered corrections** is remembered for that service (caster, port, mount point, in memory; forgotten when the profile is edited or the host restarts), so a reconnect starts with it and does not repeat the probe. Each case above, and each "never" case, has its own fake-caster test.
 
 ## Design
 
@@ -74,29 +83,31 @@ Reviewed by the maintainers on a docs-only PR. Answers to the open questions go 
 
 ### Phase 1: the connection layer, no visible change
 - `NtripSession`, `RetryPolicy`, `NtripRequest`, `NtripHeaderScanner`, outcome categories; `NtripClientService` uses them; single service, same UI. `Ntrip-Version: Ntrip/2.0` is sent with the fall back to 1.0 (decision 2 below).
+- The Test button runs the same session code, so it cannot pass where the real connection fails. Every wait gets its own timeout, the TCP connect included.
 - `NtripStatus` filled and logged; `State.Connections.NtripStatus` fed from its headline.
-- Tests (NUnit, `AgOpenWeb.Services.Tests`): a fake caster on 127.0.0.1 for each outcome (accepted 2.0, accepted 1.0 after a 2.0 refusal, ICY, chunked, wrong login, wrong mount point with a source table, busy, silent, closes after 200, not RTCM), a fake clock for the retry policy and every timeout, `NtripHandshakeTests` and `NtripHeaderBufferCapTests` kept green.
+- Tests (NUnit, `AgOpenWeb.Services.Tests`): a fake caster on 127.0.0.1 for each outcome and for each rule of decision 11 (accepted 2.0, accepted 1.0 after a 2.0 refusal, no 1.0 retry after 401, 404, a source table or a timeout, the remembered version, ICY, chunked, wrong login, wrong mount point with a source table, busy, silent, closes after 200, not RTCM), a fake clock for the retry policy and every timeout, `NtripHandshakeTests` and `NtripHeaderBufferCapTests` kept green.
 - **Outcome:** same behaviour as today for a caster that works; a failure now has a name. The first thing in the PR is an audit table: each defect found in the rebuild against `NtripClientService` as it is, "still applies" or "already fine", so the maintainers see what is a change and what is not.
 
-### Phase 2: profiles with a fallback, and the mode
-- `NtripProfile.Fallback`, `Connections.NtripMode` (`config.set|conn.ntripMode`), `CorrectionSourceManager`, `SwitchTo`, the notices.
-- `MainViewModel.Ntrip.cs`: `HandleNtripProfileForFieldAsync`, `RestoreDefaultNtripProfileAsync` and `ReconnectNtripIfConnectedAsync` act in per-field mode only; in main-and-fallback mode the default profile is connected at start and on edit.
-- Tests: the existing `NtripFieldCloseTests` unchanged for per-field mode; new ones for the other mode (field load and close do nothing); switch after N failures; no switch with `AutoSwitch` off; no auto-return; the same-account rule; mode change deletes nothing.
-
-### Phase 3: the Network IO card and the editor
-- Card: one headline and the checks, the service in use, **Switch to fallback / main**, a mode switch with one sentence on each mode, the switch-back prompt, the notice. Editor: Main and Fallback tabs, *Test* per tab, the auto-switch toggle and count, the warning that the fallback is ignored in per-field mode. Touch sizes as the other Network IO controls.
-- Verified in the headless app with the fake caster and in a browser (Playwright), once on each head's web view where it differs.
-
-### Phase 4: the report
+### Phase 2: the report (straight after Phase 1)
+Phases 1 and 2 together answer #443: a failure has a name and a maintainer can read it from the dump. They go to testers before any fallback UI exists.
 - `ntrip_session.txt`, the `system_info.txt` line, `NtripSupportReport`; the redaction test (decision 8) over status, events, log lines, the dump and the profile frame.
 - A dump made in each failure state of Phase 1 is read as a maintainer: the cause must be readable from `ntrip_session.txt` alone.
+
+### Phase 3: profiles with a fallback, and the mode
+- `NtripProfile.Fallback`, `Connections.NtripMode` (`config.set|conn.ntripMode`), `CorrectionSourceManager`, `SwitchTo`, the notices.
+- `MainViewModel.Ntrip.cs`: `HandleNtripProfileForFieldAsync`, `RestoreDefaultNtripProfileAsync` and `ReconnectNtripIfConnectedAsync` act in per-field mode only; in main-and-fallback mode the default profile is connected at start and on edit.
+- Tests: the existing `NtripFieldCloseTests` unchanged for per-field mode; new ones for the other mode (field load and close do nothing); switch after N failures; an outcome retrying cannot fix switches at once with Auto-switch on and not with it off; no auto-return; the same-account rule, including two mount points of one login (no probe, no "main is back"); mode change deletes nothing.
+
+### Phase 4: the Network IO card and the editor
+- Card: one headline and the checks, the service in use, **Switch to fallback / main**, a mode switch with one sentence on each mode, the switch-back prompt, the same-login sentence (decision 5), the notice. Editor: Main and Fallback tabs, *Test* per tab, the auto-switch toggle and count, the warning that the fallback is ignored in per-field mode. Touch sizes as the other Network IO controls.
+- Verified in the headless app with the fake caster and in a browser (Playwright), once on each head's web view where it differs.
 
 ### Phase 5: docs
 `CLAUDE.md` (the NTRIP sections), `Plans/ARCHITECTURE.md` (NTRIP data flow), `Docs/INTERFACE_GUIDE.md` (Network IO), this plan to `Plans/Completed/`, `RTCM_FORWARDING_PLAN.md` "Still to check" list unchanged.
 
 ## Verification
 
-- **Unit and fake caster** as in Phase 1 and 2; time through `IClock`, no sleeps.
+- **Unit and fake caster** as in Phases 1 and 3; time through `IClock`, no sleeps.
 - **Headless** with `AGOPENWEB_DATA`: the fake caster stops answering, the card shows the advice, the fallback takes over after the count, the prompt appears when the main returns, a second browser (observer) sees both and can change neither.
 - **A real caster** of ours for the happy path and a wrong password (the AgIO rebuild's recordings are local only and are not committed; fixtures here are written by hand or anonymised first).
 - **Bench:** AiO v26 with an F9P: corrections keep reaching the board across a switch; the RTCM queue is cleared at a switch so an old caster's epoch is never sent after the new caster's.
