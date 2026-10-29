@@ -421,12 +421,13 @@ Two GitHub Actions workflows, split by purpose:
 - **`build-deploy-bundles.yml`** — the single packaging + release publisher. Runs the
   `deploy/{linux,windows,macos}/package.sh` scripts + builds the signed Android APK on clean runners:
   - on a **`v*` tag** (or manual dispatch with a tag) → publishes one complete Release, marked
-    prerelease so it never shows as "Latest" (the nightly is the build users run), with every
+    prerelease so it never shows as "Latest" (the beta is the build users run), with every
     artifact: Linux daemon (x64/arm64) + desktop launcher (x64/arm64) tarballs, Windows zip
     (launcher + service installer), macOS `.dmg`, and the Android APK;
-  - on a **daily schedule** → refreshes a rolling `nightly` prerelease with the same artifacts;
-  - on a manual dispatch, by its `publish` input: `nightly` (default) refreshes the rolling
-    nightly from `develop` right away (title carries build time + commit); `release` publishes
+  - on a **daily schedule** → refreshes a rolling `beta` prerelease with the same artifacts, only
+    when `develop` has moved on since the beta was built (otherwise the run builds nothing);
+  - on a manual dispatch, by its `publish` input: `beta` (default) refreshes the rolling
+    beta from `develop` right away (title carries build time + commit); `release` publishes
     the Release named by `release_tag`; `none` builds + uploads artifacts only (dry run).
 
 To cut a release: bump `sys/version.h`, then push a tag — `git tag v26.6.x && git push origin v26.6.x`.

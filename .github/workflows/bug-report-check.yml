@@ -36,7 +36,7 @@ jobs:
           script: |
             const MARKER = '<!-- bug-report-check -->';
             const LABEL = 'needs-info';
-            const NIGHTLY = 'https://github.com/AgOpenGPS-Official/AgOpenWeb/releases/tag/nightly';
+            const BETA = 'https://github.com/AgOpenGPS-Official/AgOpenWeb/releases/tag/beta';
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;
 
@@ -61,7 +61,7 @@ jobs:
                 MARKER,
                 `Thanks for the report, @${issue.user.login}. Please attach a **Bug Report Dump**. It holds the version, platform, your notes, a screenshot and the logs, so with it nothing else is needed.`,
                 '',
-                `1. Use the latest [Nightly build](${NIGHTLY}) and get the problem to happen again.`,
+                `1. Use the latest [Beta build](${BETA}) and get the problem to happen again.`,
                 '2. In the app: main menu → **Bug Report Dump**, type what happened, press **Create Bug Report**, then **Download**.',
                 '3. Drag the `bugreport_….zip` into this issue or a comment. If it is over 25 MB, upload it to Google Drive, Dropbox or OneDrive and paste the link.',
                 '',

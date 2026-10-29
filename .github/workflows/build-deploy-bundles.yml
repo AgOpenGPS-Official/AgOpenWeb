@@ -2,7 +2,7 @@ name: Build Deployment Bundles
 
 # Builds the AgOpenWeb deployment bundles on clean runners and publishes ONE complete Release
 # with every user-facing artifact (the single release publisher; build-and-release.yml is for
-# per-commit CI + nightly only):
+# per-commit CI only):
 #   - Linux x64 / arm64 daemon: self-contained host + systemd unit + install scripts (.tar.gz),
 #     via deploy/linux/package.sh — the in-cab headless daemon for mini-PCs / SBCs.
 #   - Linux x64 / arm64 launcher: self-contained desktop app (.tar.gz), via
@@ -19,11 +19,12 @@ name: Build Deployment Bundles
 #
 # Triggers:
 #   - push of a v* tag: build + publish the tagged Release for that tag, as a prerelease so it
-#     never shows as "Latest" (the nightly is the build to use).
-#   - schedule (daily): build + refresh the rolling "nightly" prerelease from the default branch.
+#     never shows as "Latest" (the beta is the build to use).
+#   - schedule (daily): refresh the rolling "beta" prerelease from the default branch, if it
+#     has moved on since the beta was last built (else the run builds nothing).
 #   - workflow_dispatch: build on demand, then by the `publish` input:
-#       nightly (default) — refresh the rolling "nightly" prerelease now, so beta testers get
-#                           current code without waiting for the schedule (default branch only);
+#       beta (default) — refresh the rolling "beta" prerelease now, so testers get current
+#                        code without waiting for the schedule (default branch only);
 #       release           — publish the Release named by `release_tag`;
 #       none              — just upload build artifacts (a dry run — no Release).
 # (Per-commit CI — tests + compile checks — lives in build-and-release.yml.)
@@ -34,8 +35,8 @@ on:
       publish:
         description: 'What to publish after building'
         type: choice
-        options: [nightly, release, none]
-        default: nightly
+        options: [beta, release, none]
+        default: beta
       release_tag:
         description: 'Release tag (e.g. v26.6.7) — only for publish = release'
         required: false
@@ -44,14 +45,14 @@ on:
     tags:
       - 'v*'
   schedule:
-    # Daily rolling nightly prerelease at 06:00 UTC.
+    # Daily refresh of the rolling beta at 06:00 UTC, when the default branch has moved on.
     - cron: '0 6 * * *'
 
-# Nightly runs (scheduled or manual) share one group and the newest wins; a release run is
+# Beta runs (scheduled or manual) share one group and the newest wins; a release run is
 # never cancelled by a later run.
 concurrency:
-  group: ${{ github.workflow }}-${{ (github.event_name == 'schedule' || inputs.publish == 'nightly') && 'nightly' || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'schedule' || inputs.publish == 'nightly' }}
+  group: ${{ github.workflow }}-${{ (github.event_name == 'schedule' || inputs.publish == 'beta') && 'beta' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'schedule' || inputs.publish == 'beta' }}
 
 permissions:
   contents: read    # build jobs only read; the release job grants itself write
@@ -66,7 +67,31 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
+  # The scheduled run builds only when the default branch has moved on since the beta was
+  # built, so the beta's date stays the date of its code. Every other run builds.
+  changed:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          BUILD=true
+          if [ "$EVENT" = "schedule" ]; then
+            BETA=$(gh api "repos/${GITHUB_REPOSITORY}/commits/beta" --jq .sha 2>/dev/null || true)
+            if [ "$BETA" = "$GITHUB_SHA" ]; then
+              echo "The beta is already at ${GITHUB_SHA::8}; nothing to build."
+              BUILD=false
+            fi
+          fi
+          echo "build=${BUILD}" >> "$GITHUB_OUTPUT"
+
   linux:
+    needs: changed
+    if: needs.changed.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -94,6 +119,8 @@ jobs:
           retention-days: 30
 
   linux-launcher:
+    needs: changed
+    if: needs.changed.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -121,6 +148,8 @@ jobs:
           retention-days: 30
 
   windows:
+    needs: changed
+    if: needs.changed.outputs.build == 'true'
     runs-on: ubuntu-latest   # cross-publishes win-x64 from Linux — no Windows runner needed
     steps:
       - uses: actions/checkout@v4
@@ -143,6 +172,8 @@ jobs:
           retention-days: 30
 
   macos:
+    needs: changed
+    if: needs.changed.outputs.build == 'true'
     runs-on: macos-14   # Apple silicon (arm64) — the .dmg is osx-arm64; needs macOS for hdiutil/codesign
     steps:
       - uses: actions/checkout@v4
@@ -165,6 +196,8 @@ jobs:
           retention-days: 30
 
   android:
+    needs: changed
+    if: needs.changed.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -262,8 +295,8 @@ jobs:
 
   release:
     needs: [linux, linux-launcher, windows, macos, android]
-    # Publish for a v* tag push, the scheduled nightly, or a dispatch with publish = nightly /
-    # release. A dispatch with publish = none still builds the artifacts (above) but skips this.
+    # Publish for a v* tag push, the scheduled beta refresh, or a dispatch with publish = beta /
+    # release. Skipped with the builds when the scheduled run found nothing new. A dispatch with publish = none still builds the artifacts (above) but skips this.
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.publish != 'none')
     runs-on: ubuntu-latest
     permissions:
@@ -288,18 +321,18 @@ jobs:
           VERSION=$(grep -oP 'VERSION\s+"\K[^"]+' sys/version.h || echo "0.0.0")
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           SHORT_SHA="${GITHUB_SHA::8}"
-          if [ "$EVENT" = "schedule" ] || [ "$PUBLISH" = "nightly" ]; then
-            # Rolling nightly: one reused "nightly" tag/release, refreshed each run. Only from
-            # the default branch, so a dispatch from a feature branch can't replace it.
+          if [ "$EVENT" = "schedule" ] || [ "$PUBLISH" = "beta" ]; then
+            # Rolling beta: one reused "beta" tag/release, refreshed each run. Only from the
+            # default branch, so a dispatch from a feature branch can't replace it.
             if [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]; then
-              echo "::error::The nightly is built from '$DEFAULT_BRANCH'; this run is on '$GITHUB_REF_NAME'. Use publish = none for a branch build."
+              echo "::error::The beta is built from '$DEFAULT_BRANCH'; this run is on '$GITHUB_REF_NAME'. Use publish = none for a branch build."
               exit 1
             fi
             if [ "$EVENT" = "schedule" ]; then TRIGGER="scheduled"; else TRIGGER="manual"; fi
-            echo "tag=nightly" >> "$GITHUB_OUTPUT"
-            echo "name=Nightly Build ($(date -u +'%Y-%m-%d %H:%M') UTC · ${SHORT_SHA})" >> "$GITHUB_OUTPUT"
+            echo "tag=beta" >> "$GITHUB_OUTPUT"
+            echo "name=Beta Build ($(date -u +'%Y-%m-%d %H:%M') UTC · ${SHORT_SHA})" >> "$GITHUB_OUTPUT"
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
-            echo "nightly=true" >> "$GITHUB_OUTPUT"
+            echo "beta=true" >> "$GITHUB_OUTPUT"
             echo "banner=> ⚠️ Unversioned prerelease of the latest \`${DEFAULT_BRANCH}\` (${TRIGGER} build of [\`${SHORT_SHA}\`](${REPO_URL}/commit/${GITHUB_SHA})) — may be unstable." >> "$GITHUB_OUTPUT"
           else
             if [ "$EVENT" = "workflow_dispatch" ]; then
@@ -314,20 +347,20 @@ jobs:
             echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
             echo "name=AgOpenWeb ${TAG}" >> "$GITHUB_OUTPUT"
             # Numbered builds are prereleases too: GitHub's "Latest" would otherwise send people
-            # to a build older than the nightly.
+            # to a build older than the beta.
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
-            echo "nightly=false" >> "$GITHUB_OUTPUT"
-            echo "banner=> **Use the [Nightly](${REPO_URL}/releases/tag/nightly)** — it is rebuilt from \`${DEFAULT_BRANCH}\` daily and on demand, and is the build to report issues against." >> "$GITHUB_OUTPUT"
+            echo "beta=false" >> "$GITHUB_OUTPUT"
+            echo "banner=> **Use the [Beta](${REPO_URL}/releases/tag/beta)** — it is rebuilt from \`${DEFAULT_BRANCH}\` on demand and daily when there are changes, and is the build to report issues against." >> "$GITHUB_OUTPUT"
           fi
 
       - name: List bundles
         run: find dist -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.dmg' -o -name '*.apk' \)
 
-      # The nightly reuses one tag/release; delete the prior one so assets don't accumulate.
-      - name: Refresh rolling nightly
-        if: steps.meta.outputs.nightly == 'true'
+      # The beta reuses one tag/release; delete the prior one so assets don't accumulate.
+      - name: Refresh rolling beta
+        if: steps.meta.outputs.beta == 'true'
         run: |
-          gh release delete nightly --yes --cleanup-tag || true
+          gh release delete beta --yes --cleanup-tag || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
