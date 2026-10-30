@@ -1680,7 +1680,11 @@ document.getElementById('flag-deleteall').addEventListener('pointerdown', e => {
   showConfirm(tr('Delete All Flags'), tr('Delete all flags? This cannot be undone.'), () => transport.send('flag.deleteAll'));
 });
 document.getElementById('flag-close').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
-document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.stopPropagation(); bnToggleFly(bnAb, e.currentTarget); });
+document.getElementById('bn-abmenu').addEventListener('pointerdown', e => {
+  e.stopPropagation(); bnToggleFly(bnAb, e.currentTarget);
+  populateCfgControls(bnAb, true); // the snap distance
+});
+wireCfgControls(bnAb);
 
 // ---- AB-line creation (mirrors native QuickABSelector + DrawAB dialogs) ----
 // All four modes run the REAL native commands on the host (no geometry in JS):
