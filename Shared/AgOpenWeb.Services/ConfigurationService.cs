@@ -469,8 +469,6 @@ public class ConfigurationService(
         // Display config (preferences only — window/camera/day-night/panel
         // STATE moved to PersistentAppState).
         store.Display.StartFullscreen = settings.StartFullscreen;
-        store.Display.MapFpsLimit = settings.MapFpsLimit;
-        store.Display.ShowFps = settings.ShowFps;
         store.Display.SvennArrowVisible = settings.SvennArrowVisible;
         store.Display.KeyboardEnabled = settings.KeyboardEnabled;
         store.Display.HeadlandDistanceVisible = settings.HeadlandDistanceVisible;
@@ -550,8 +548,6 @@ public class ConfigurationService(
         // Display config (preferences only — window/camera/day-night/panel
         // STATE is persisted by PersistentStateService).
         settings.StartFullscreen = store.Display.StartFullscreen;
-        settings.MapFpsLimit = store.Display.MapFpsLimit;
-        settings.ShowFps = store.Display.ShowFps;
         settings.SvennArrowVisible = store.Display.SvennArrowVisible;
         settings.KeyboardEnabled = store.Display.KeyboardEnabled;
         settings.HeadlandDistanceVisible = store.Display.HeadlandDistanceVisible;

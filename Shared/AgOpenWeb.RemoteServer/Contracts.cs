@@ -416,8 +416,6 @@ public record DisplayConfigDto(
     // Day/Night theme (PersistentAppState.IsDayMode). The web client switches its full
     // light/dark palette + map colours on this; the Day/Night Theme button toggles it.
     bool IsDayMode,
-    // Client map render cap (0 = uncapped, 60, 30) and the on-map FPS counter.
-    int MapFpsLimit, bool ShowFps,
     // UI size in percent (100/115/130/150): the client zooms its controls, not the map.
     int UiScale);
 
