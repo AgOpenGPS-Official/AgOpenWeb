@@ -235,7 +235,8 @@ AgOpenWeb may use different/improved formats from AgOpenGPS when it benefits cod
 | `Shared/AgOpenWeb.Services/Track/TrackGuidanceService.cs` | Pure Pursuit + Stanley guidance |
 | `Shared/AgOpenWeb.Services/YouTurn/YouTurnStateMachine.cs` | U-turn planning and following |
 | `Shared/AgOpenWeb.Services/Coverage/CoverageMapService.cs` | Coverage detection + display grids, tiles |
-| `Shared/AgOpenWeb.Services/NtripClientService.cs` | NTRIP RTK corrections |
+| `Shared/AgOpenWeb.Services/Ntrip/NtripSession.cs` | NTRIP connection: request, reply, retry, timeouts, status |
+| `Shared/AgOpenWeb.Services/NtripClientService.cs` | NTRIP RTK corrections: frames the stream, forwards it to the GPS module |
 | `Shared/AgOpenWeb.Services/ConfigurationService.cs` | AppSettings ↔ ConfigurationStore sync |
 | `Platforms/AgOpenWeb.Desktop/Program.cs` | Desktop mode selection |
 | `Platforms/AgOpenWeb.Desktop/Launcher/LauncherEntry.cs` | Photino window: all-in-one app or `--console` supervisor |
@@ -316,14 +317,39 @@ Playwright: wait for `iHoldControl === true`, then `transport.send(...)`; read `
 old build on `:5174`.
 
 ## NTRIP Connection Format
-The NTRIP client uses HTTP/1.1 format:
+`NtripSession` (`Services/Ntrip/`) makes the connection and asks with NTRIP 2.0:
 ```
 GET /mountpoint HTTP/1.1
-Host: caster.example.com
+Host: caster.example.com:2101
 Ntrip-Version: Ntrip/2.0
-Authorization: Basic base64(username:password)
 User-Agent: NTRIP AgOpenWeb
+Authorization: Basic base64(username:password)
+Ntrip-GGA: $GPGGA,...
+Connection: close
 ```
+A caster that did not understand it (a reply that is no NTRIP or HTTP reply, or HTTP 400 or 505) gets the
+NTRIP 1.0 request (`GET /mountpoint HTTP/1.0`, no Host or version header, the position sent right after
+the answer) once; never after a 401, 403, 404, an error text or a source table. The version that delivered
+corrections is remembered per service. `NtripResponse.Classify` sorts every reply into an `NtripCategory`
+(wrong login and unknown mount point end the session, the rest is retried after 1, 2, 4, 8, 15 s, and a
+network change ends the wait); `NtripConnectionTester` (the Test button) opens its connection the same way.
+Every wait has a timeout (`NtripTimeouts`). Design: `Plans/Completed/NTRIP_MAIN_FALLBACK_PLAN.md`.
+
+**Main and fallback service.** Two exclusive modes (`Connections.NtripProfilePerField`, `config.set|conn.ntripProfilePerField`).
+The default is one profile (the default profile) with an optional fallback service (`NtripProfile.Fallback`): a field load
+changes nothing. With the setting on, a loaded field switches the profile and the fallback is not used. The client
+(`NtripClientService`, rules in `NtripFailover`) switches to the fallback by itself only with the profile's Auto-switch on:
+after `SwitchAfterFailures` failed attempts, or at once for a wrong login or mount point. The operator switches in both
+directions at any time (`ntrip.switch|main|fallback`, `INtripClientService.SwitchToAsync`). It **never goes back by itself**:
+while the fallback is in use after a failure, the main service is tried slowly in the background and a `MainBack` notice
+says when it answers; not when both are one login on one caster. Every switch raises `Notice` and says that RTK may be lost.
+In the web client the Network IO card keeps to the first lines and the switch; NTRIP Settings (`renderNtripSettings` in
+`app.js`: headline, advice, checks, the mode) shows the rest, from the `NtripSessionDto` that ends the Status frame;
+`ntrip.use|id` connects with a profile now (`MainViewModel.UseNtripProfileAsync`; the default too in the one-profile mode); the session frame carries
+the profile name and the service in use (`ConnectionState.NtripProfileName/MainText/FallbackText`). A new default profile connects at once; the
+*NTRIP active / disabled* button (`conn.ntripEnabled`) connects the default profile even with its auto-connect off. `ntrip.mountpoints` asks the caster for its
+source table (`NtripSourcetable`), answered in its own frame; a profile's fallback ends its entry in the profiles frame; `ntrip.save` carries it (`NtripProfileFields`), `ntrip.test` can test it. A switch is a toast, "the main service
+is back" is the host's confirmation dialog.
 
 ### RTCM forwarding
 `NtripClientService` frames the caster's stream into RTCM 3 messages (`RtcmFramer`, after
@@ -362,7 +388,7 @@ one stack per process.
 2. **iOS device**: `xcrun devicectl device process launch --console --terminate-existing com.agopenweb.ios` streams the app's console; its web server is reachable from the Mac over the USB link
 3. **Android**: Debug builds enable WebView debugging (`chrome://inspect`); `adb forward tcp:5599 tcp:5174` reaches the host
 4. **A client shows something a fresh connection doesn't**: compare the incremental stream with the full snapshot (coverage deltas vs `Snapshot()`)
-5. **Bug Report Dump** (main menu) zips settings, state, the field, the active job's coverage tiles and the last 5 minutes of the GPS log (10 Hz; includes the sentence type, its pre-fusion heading and the receiver's differential age); with NTRIP in use, `ntrip_rtcm.txt` lists the RTCM messages the caster sent by type
+5. **Bug Report Dump** (main menu) zips settings, state, the field, the active job's coverage tiles and the last 5 minutes of the GPS log (10 Hz; includes the sentence type, its pre-fusion heading and the receiver's differential age); with NTRIP in use, `ntrip_rtcm.txt` lists the RTCM messages the caster sent by type and `ntrip_session.txt` what the connection did and why it failed (no login in it; `system_info.txt` has an `NTRIP:` line with the same outcome)
 6. **iOS Release builds hang in CI**: Use Debug configuration (Release triggers AOT compilation that hangs on runners). Simulator builds run on the interpreter (`MtouchInterpreter=all` in the csproj), so they skip AOT altogether; device builds keep it
 
 ## Code Style

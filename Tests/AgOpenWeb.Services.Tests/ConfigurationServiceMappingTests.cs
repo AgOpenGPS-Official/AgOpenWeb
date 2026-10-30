@@ -134,6 +134,7 @@ public class ConfigurationServiceMappingTests
         c.NtripUsername = "user";
         c.NtripPassword = "pass";
         c.NtripAutoConnect = true;
+        c.NtripProfilePerField = true;
         c.AgShareServer = "https://custom";
         c.AgShareApiKey = "key-123";
         c.AgShareEnabled = true;
@@ -153,6 +154,7 @@ public class ConfigurationServiceMappingTests
             Assert.That(r.NtripUsername, Is.EqualTo("user"));
             Assert.That(r.NtripPassword, Is.EqualTo("pass"));
             Assert.That(r.NtripAutoConnect, Is.True);
+            Assert.That(r.NtripProfilePerField, Is.True);
             Assert.That(r.AgShareServer, Is.EqualTo("https://custom"));
             Assert.That(r.AgShareApiKey, Is.EqualTo("key-123"));
             Assert.That(r.AgShareEnabled, Is.True);
