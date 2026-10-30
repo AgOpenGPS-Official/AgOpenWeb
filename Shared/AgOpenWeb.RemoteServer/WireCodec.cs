@@ -663,6 +663,7 @@ public static class WireCodec
         w.Write(t.PassNumber);       // i32 — guidance pass offset (0 = on reference)
         w.Write((float)t.NudgeOffset); // f32 — driver-relative nudge (m, +right) — #93 readout
         w.Write((float)t.RefNudgeMoved); // f32 — Ref Nudge panel total (m, +right) — #489
+        w.Write((byte)(t.RefNudgePending ? 1 : 0)); // unsaved reference move
         w.Write((byte)(t.HasGoal ? 1 : 0)); // #95 — PP goal marker
         w.Write(t.GoalE);            // f64
         w.Write(t.GoalN);            // f64

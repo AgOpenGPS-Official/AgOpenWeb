@@ -178,6 +178,8 @@ public record TickDto(
     double NudgeOffset,
     // Ref Nudge panel (#489): how far the selected track was moved since the panel opened (m, +right).
     double RefNudgeMoved,
+    // ... and whether that move still waits for Save (Undo / Save enable on it).
+    bool RefNudgePending,
     // Pure Pursuit goal point (field-local m) — the steering target while engaged, or in
     // free-drive the target it would chase if engaged now. HasGoal gates the map marker (#95).
     bool HasGoal,

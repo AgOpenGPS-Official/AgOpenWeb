@@ -1720,7 +1720,15 @@ function openRefNudge() {
 }
 function closeRefNudge() { refNudgeOpen = false; refPanel.hidden = true; }
 document.getElementById('bn-refnudge').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); abFlyoutClose(); openRefNudge(); });
-document.getElementById('rf-exit').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeRefNudge(); });
+const refUndo = document.getElementById('rf-undo');
+const refSave = document.getElementById('rf-save');
+let refPending = false; // an unsaved move on the selected line (tick.op.refNudgePending)
+document.getElementById('rf-exit').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  if (!refPending) { closeRefNudge(); return; }
+  // Leaving would undo the move (the next line takes over): ask, Cancel keeps the panel for Undo.
+  showConfirm(tr('Reference line nudge'), tr('Save the moved line before closing?'), () => { transport.send('track.refNudgeSave'); closeRefNudge(); });
+});
 for (const b of refPanel.querySelectorAll('button[data-cmd]'))
   b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send(b.dataset.cmd); });
 wireCfgControls(refPanel);
@@ -1734,6 +1742,9 @@ function renderRefNudge(hasTrack) {
   if (refMoved.textContent !== text) refMoved.textContent = text;
   const name = tick.activeTrackName || '';
   if (refName.textContent !== name) refName.textContent = name;
+  refPending = !!(tick.op && tick.op.refNudgePending);
+  refUndo.disabled = !refPending;
+  refSave.disabled = !refPending;
   populateCfgControls(refPanel); // the step; not while it is being typed
 }
 

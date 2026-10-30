@@ -2362,6 +2362,7 @@ public partial class MainViewModel : ObservableObject
                 // Sync IsActive state with selection
                 if (oldValue != null)
                 {
+                    DiscardPendingRefNudge(oldValue); // an unsaved Ref Nudge move doesn't follow to the next line (#489)
                     oldValue.IsActive = false;
                 }
                 if (value != null)
@@ -6191,7 +6192,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            Services.GeoJson.GeoJsonFieldService.SaveTracks(activeField.DirectoryPath, SavedTracks.ToList());
+            Services.GeoJson.GeoJsonFieldService.SaveTracks(activeField.DirectoryPath, TracksForSave());
             _logger.LogDebug("[NUDGE] SaveTracksToFile: Saved {TrackCount} tracks", SavedTracks.Count);
         }
         catch (System.Exception ex)

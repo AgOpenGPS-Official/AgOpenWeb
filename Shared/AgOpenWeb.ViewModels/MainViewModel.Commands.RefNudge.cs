@@ -5,34 +5,40 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Windows.Input;
 using AgOpenWeb.Models.Base;
+using AgOpenWeb.Models.Guidance;
 using AgOpenWeb.Models.Track;
-using AgOpenWeb.Services.Interfaces;
-using AgOpenWeb.Services.Track;
 using CommunityToolkit.Mvvm.Input;
 
 namespace AgOpenWeb.ViewModels;
 
 /// <summary>
 /// Reference line nudge (AgOpenGPS FormRefNudge / NudgeRefTrack, #489): moves the selected
-/// track itself, and saves it, where the normal nudge only offsets the guidance line. The
-/// Ref Nudge panel stays open while the operator moves a line, saves, selects the next
-/// line and moves that. The step is its own setting in the vehicle profile
+/// track itself, where the normal nudge only offsets the guidance line. A move is live at
+/// once (guidance and the map follow the moved line) but only written to field.geojson by
+/// Save; Undo puts the line back as it was. Until then the file keeps the saved line: every
+/// other save of the field's tracks (selecting another track, closing the field) writes the
+/// line as it was. The step is its own setting in the vehicle profile
 /// (AutoSteer.RefNudgeDistance), apart from the normal nudge's.
 /// </summary>
 public partial class MainViewModel
 {
-    private readonly ITrackNudgingService _refNudging = new TrackNudgingService();
-
     // The track the panel's "moved" total belongs to; another track starts again at zero.
     private Track? _refNudgeTrack;
+
+    // Unsaved reference moves: the line as it was saved, per moved track. The lists are
+    // never changed, a move builds a new one.
+    private readonly Dictionary<Track, List<Vec3>> _refNudgeSaved = new();
 
     public ICommand? RefNudgeLeftCommand { get; private set; }
     public ICommand? RefNudgeRightCommand { get; private set; }
     public ICommand? RefHalfNudgeLeftCommand { get; private set; }
     public ICommand? RefHalfNudgeRightCommand { get; private set; }
     public ICommand? RefNudgeBeginCommand { get; private set; }
+    public ICommand? RefNudgeSaveCommand { get; private set; }
+    public ICommand? RefNudgeUndoCommand { get; private set; }
 
     private void InitializeRefNudgeCommands()
     {
@@ -41,21 +47,30 @@ public partial class MainViewModel
         RefNudgeRightCommand = new RelayCommand(() => RefNudgeSelectedTrack(ConfigStore.AutoSteer.RefNudgeDistance * 0.01));
         RefHalfNudgeLeftCommand = new RelayCommand(() => RefNudgeSelectedTrack(-RefHalfWorkingWidth()));
         RefHalfNudgeRightCommand = new RelayCommand(() => RefNudgeSelectedTrack(RefHalfWorkingWidth()));
-        // The panel opened: the moved total starts at zero.
+        // The panel opened: the moved total starts at zero, unless a move is still waiting for Save.
         RefNudgeBeginCommand = new RelayCommand(() =>
         {
             _refNudgeTrack = SelectedTrack;
-            State.Operation.RefNudgeMoved = 0;
+            if (SelectedTrack == null || !_refNudgeSaved.ContainsKey(SelectedTrack))
+                State.Operation.RefNudgeMoved = 0;
+            State.Operation.RefNudgePending = SelectedTrack != null && _refNudgeSaved.ContainsKey(SelectedTrack);
         });
+        RefNudgeSaveCommand = new RelayCommand(SaveRefNudge);
+        RefNudgeUndoCommand = new RelayCommand(UndoRefNudge);
     }
 
     /// <summary>Half a working width, as AgOpenGPS (tool width − overlap) × 0.5.</summary>
     private double RefHalfWorkingWidth() => (ConfigStore.ActualToolWidth - Tool.Overlap) * 0.5;
 
+    /// <summary>The tracks as they are written to field.geojson: a track with an unsaved
+    /// reference move as it was saved.</summary>
+    private List<Track> TracksForSave() =>
+        SavedTracks.Select(t => _refNudgeSaved.TryGetValue(t, out var saved) ? t.WithPoints(saved) : t).ToList();
+
     /// <summary>
     /// Move the selected track sideways by <paramref name="meters"/> (+ = the driver's right,
     /// as the normal nudge), then refresh guidance so the swaths and the pass number follow
-    /// the moved line, and save the field's tracks.
+    /// the moved line. Not saved: that is Save's.
     /// </summary>
     private void RefNudgeSelectedTrack(double meters)
     {
@@ -87,38 +102,86 @@ public partial class MainViewModel
         }
         State.Operation.RefNudgeMoved += meters;
 
-        // A new list: the cycle may be reading the old one.
-        track.Points = moved;
-        // Pending U-turn was built from the old line.
-        _intents.RequestClearYouTurn();
-        OnSelectedTrackGeometryChanged();
+        _refNudgeSaved.TryAdd(track, track.Points); // the line as saved, kept for Undo and for other saves
+        track.Points = moved; // a new list: the cycle may be reading the old one
+        State.Operation.RefNudgePending = true;
+        RefreshGuidanceAfterRefNudge();
 
         StatusMessage = string.Create(CultureInfo.InvariantCulture,
             $"Moved '{track.Name}' {(meters > 0 ? "right" : "left")} {Math.Abs(meters * 100):F1} cm");
     }
 
+    /// <summary>Write the moved line to field.geojson; the moved line is the saved one from now on.</summary>
+    private void SaveRefNudge()
+    {
+        var track = SelectedTrack;
+        if (track == null || !_refNudgeSaved.Remove(track))
+        {
+            StatusMessage = "No reference move to save";
+            return;
+        }
+        SaveTracksToFile();
+        State.Operation.RefNudgeMoved = 0;
+        State.Operation.RefNudgePending = false;
+        StatusMessage = $"Saved '{track.Name}'";
+    }
+
+    /// <summary>Put the selected line back as it was saved.</summary>
+    private void UndoRefNudge()
+    {
+        var track = SelectedTrack;
+        if (track == null || !RestoreSavedLine(track))
+        {
+            StatusMessage = "No reference move to undo";
+            return;
+        }
+        RefreshGuidanceAfterRefNudge();
+        StatusMessage = $"Undid the move of '{track.Name}'";
+    }
+
+    /// <summary>A track we leave with an unsaved reference move gets its saved line back,
+    /// so nothing unsaved is carried over to the next line.</summary>
+    private void DiscardPendingRefNudge(Track track)
+    {
+        if (RestoreSavedLine(track))
+            StatusMessage = $"The unsaved move of '{track.Name}' was undone";
+    }
+
+    private bool RestoreSavedLine(Track track)
+    {
+        if (!_refNudgeSaved.Remove(track, out var saved)) return false;
+        track.Points = saved;
+        State.Operation.RefNudgeMoved = 0;
+        State.Operation.RefNudgePending = false;
+        return true;
+    }
+
+    /// <summary>The moved or restored line becomes the one guidance and the map use, a pending
+    /// U-turn was built from the old line.</summary>
+    private void RefreshGuidanceAfterRefNudge()
+    {
+        _intents.RequestClearYouTurn();
+        SyncGuidanceStateToPipeline();
+        _mapService.SetActiveTrack(SelectedTrack);
+    }
+
     /// <summary>The track's points moved perpendicular to the line by <paramref name="distance"/>
-    /// (+ = right of A→B), or null for a curve too short or too tight to move.</summary>
-    private List<Vec3>? MoveTrackSideways(List<Vec3> points, double distance)
+    /// (+ = right of A→B), or null for a curve too tight to offset. A curve gets the same offset
+    /// the passes are built with, so a moved reference is the pass that was there.</summary>
+    private static List<Vec3>? MoveTrackSideways(List<Vec3> points, double distance)
     {
         if (points.Count == 2)
         {
             double heading = Math.Atan2(points[1].Easting - points[0].Easting, points[1].Northing - points[0].Northing);
-            var output = _refNudging.NudgeABLine(new ABLineNudgeInput
-            {
-                PointA = new Vec2(points[0].Easting, points[0].Northing),
-                PointB = new Vec2(points[1].Easting, points[1].Northing),
-                Heading = heading,
-                Distance = distance,
-            });
+            double dE = Math.Cos(heading) * distance, dN = -Math.Sin(heading) * distance;
             return new List<Vec3>
             {
-                new(output.NewPointA.Easting, output.NewPointA.Northing, points[0].Heading),
-                new(output.NewPointB.Easting, output.NewPointB.Northing, points[1].Heading),
+                new(points[0].Easting + dE, points[0].Northing + dN, points[0].Heading),
+                new(points[1].Easting + dE, points[1].Northing + dN, points[1].Heading),
             };
         }
 
-        var curve = _refNudging.NudgeCurve(new CurveNudgeInput { CurvePoints = points, Distance = distance });
-        return curve.NewCurvePoints.Count > 0 ? curve.NewCurvePoints : null;
+        var moved = CurveProcessing.CreateOffsetCurve(points, distance);
+        return moved.Count >= 2 ? moved : null;
     }
 }

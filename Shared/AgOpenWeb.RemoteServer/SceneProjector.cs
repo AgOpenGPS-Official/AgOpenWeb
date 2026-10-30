@@ -361,6 +361,7 @@ public sealed class SceneProjector
             // intent's sign when heading against the track, so flip it back the same way.
             g.IsHeadingSameWay ? g.NudgeOffset : -g.NudgeOffset,
             _state.Operation.RefNudgeMoved, // Ref Nudge panel total (#489)
+            _state.Operation.RefNudgePending,
             // Pure Pursuit goal (#95) — only with an active track (the flag can lag a
             // track deselect by one cycle).
             g.HasGoalPoint && _state.Field.ActiveTrack != null,
