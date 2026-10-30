@@ -1113,7 +1113,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 baseTrack = track;
             }
 
-            if (track.Points.Count > 2 && config2.Display.ExtraGuidelines)
+            if (config2.Display.ExtraGuidelines)
             {
                 guideArgs = (widthMinusOverlap, toolShift, extendDisp, config2.Display.ExtraGuidelinesCount);
                 guideLines = GuideLines(track, passNumber, widthMinusOverlap, nudgeOffset, toolShift, extendDisp,
@@ -1827,7 +1827,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private IReadOnlyList<IReadOnlyList<Vec3>>? _guideLines;
 
     /// <summary>
-    /// The extra guidelines of a curve: <paramref name="count"/> passes each side of
+    /// The extra guidelines of a track: <paramref name="count"/> passes each side of
     /// <paramref name="pass"/>, offset from the reference with the collision test like the pass
     /// itself, so they round off at corners instead of pinching into spikes or folding over on a
     /// tight bend (#450). Adjacent passes are driven the other way, so the tool offset moves to
@@ -1846,6 +1846,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
             {
                 double shift = k % 2 == 1 ? -toolShift : toolShift;
                 double dist = Models.Track.PassGeometry.Offset(track, pass + side * k, widthMinusOverlap, nudge, shift);
+                if (track.Points.Count == 2)
+                {
+                    // An AB line: A and B moved sideways; the map draws it across the field.
+                    var a = track.Points[0];
+                    var b = track.Points[1];
+                    double right = Math.Atan2(b.Easting - a.Easting, b.Northing - a.Northing) + Math.PI / 2;
+                    double de = Math.Sin(right) * dist, dn = Math.Cos(right) * dist;
+                    lines.Add(new List<Vec3> { new(a.Easting + de, a.Northing + dn, a.Heading), new(b.Easting + de, b.Northing + dn, b.Heading) });
+                    continue;
+                }
                 var points = Math.Abs(dist) < 0.01 ? track.Points : _offsetPasses.Get(track, dist).Points;
                 lines.Add(extend ? CurveProcessing.ExtendCurveEnds(points) : points);
             }
