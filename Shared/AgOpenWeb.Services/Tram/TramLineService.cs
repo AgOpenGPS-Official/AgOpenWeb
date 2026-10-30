@@ -288,7 +288,84 @@ public class TramLineService(
     /// AB lines (2 points) are densified to 2m spacing before offsetting.
     /// Returns multiple segments when the line exits and re-enters the boundary.
     /// </summary>
-    private List<List<Vec2>> OffsetTrackLaterallySegmented(Models.Track.Track track, double offset, List<Vec3>? fence)
+    internal static List<List<Vec2>> OffsetTrackLaterallySegmented(Models.Track.Track track, double offset, List<Vec3>? fence)
+    {
+        // An AB line's offset is straight: clip it against the fence where it crosses the
+        // edges. Testing each of its 2 m points against the fence instead cost a field's
+        // worth of polygon tests per line, and seconds per track select on a slow tablet.
+        if (track.Points.Count == 2 && fence is { Count: >= 3 })
+        {
+            var clipped = ClipOffsetABLine(track.Points[0], track.Points[1], offset, fence, 2.0);
+            if (clipped != null) return clipped;
+        }
+        return OffsetPointsSegmented(track, offset, fence);
+    }
+
+    /// <summary>
+    /// The parts of an AB line's lateral offset inside the fence, as <see cref="OffsetPointsSegmented"/>
+    /// gives them (points every <paramref name="spacing"/> m on the line densified 500 m past A and B,
+    /// plus the fence crossings), from the line's crossings with the fence edges. Null for a line too
+    /// short to have a heading.
+    /// </summary>
+    private static List<List<Vec2>>? ClipOffsetABLine(Vec3 a, Vec3 b, double offset, List<Vec3> fence, double spacing)
+    {
+        double dx = b.Easting - a.Easting, dy = b.Northing - a.Northing;
+        double len = Math.Sqrt(dx * dx + dy * dy);
+        if (len < 0.01) return null;
+
+        // Same frame as DensifyLine: along u from 500 m before A; the offset goes to the right of u.
+        double heading = Math.Atan2(dx, dy);
+        double ux = Math.Sin(heading), uy = Math.Cos(heading);
+        double rx = Math.Sin(heading + Math.PI / 2.0), ry = Math.Cos(heading + Math.PI / 2.0);
+        const double ext = 500;
+        int numPts = (int)((len + 2 * ext) / spacing) + 1;
+        double startE = a.Easting - ux * ext, startN = a.Northing - uy * ext;
+        double oE = startE + rx * offset, oN = startN + ry * offset; // the offset line's first point
+        double tLast = (numPts - 1) * spacing;
+
+        // Where the line crosses each fence edge, as distances along it. An edge counts when its
+        // ends lie on opposite sides (half-open, so a line through a vertex crosses once).
+        var crossings = new List<double>();
+        for (int i = 0, j = fence.Count - 1; i < fence.Count; j = i++)
+        {
+            double si = (fence[i].Easting - oE) * rx + (fence[i].Northing - oN) * ry;
+            double sj = (fence[j].Easting - oE) * rx + (fence[j].Northing - oN) * ry;
+            if ((si > 0) == (sj > 0)) continue;
+            double f = sj / (sj - si);
+            double xE = fence[j].Easting + (fence[i].Easting - fence[j].Easting) * f;
+            double xN = fence[j].Northing + (fence[i].Northing - fence[j].Northing) * f;
+            crossings.Add((xE - oE) * ux + (xN - oN) * uy);
+        }
+        crossings.Sort();
+
+        Vec2 At(double t) => new(oE + ux * t, oN + uy * t);
+        var segments = new List<List<Vec2>>();
+        // Inside between each pair of crossings, kept to the densified line's extent.
+        for (int c = 0; c + 1 < crossings.Count; c += 2)
+        {
+            double t0 = crossings[c], t1 = crossings[c + 1];
+            if (t1 < 0 || t0 > tLast) continue;
+            var seg = new List<Vec2>();
+            if (t0 >= 0) seg.Add(At(t0));
+            int inside = 0;
+            for (int k = Math.Max(0, (int)Math.Floor(t0 / spacing)); k < numPts; k++)
+            {
+                double t = k * spacing;
+                if (t <= t0) continue;
+                if (t >= t1) break;
+                seg.Add(At(t));
+                inside++;
+            }
+            if (t1 <= tLast) seg.Add(At(t1));
+            // A piece with none of the 2 m points inside (a corner cut short of one step) is left
+            // out, as the point test leaves it out.
+            if (inside > 0 && seg.Count > 1) segments.Add(seg);
+        }
+        return segments;
+    }
+
+    /// <summary>Offset each of the track's points (an AB line densified first) and keep the runs inside the fence.</summary>
+    internal static List<List<Vec2>> OffsetPointsSegmented(Models.Track.Track track, double offset, List<Vec3>? fence)
     {
         var segments = new List<List<Vec2>>();
 
@@ -353,7 +430,7 @@ public class TramLineService(
     /// <summary>
     /// Legacy single-segment version for backward compatibility.
     /// </summary>
-    private List<Vec2> OffsetTrackLaterally(Models.Track.Track track, double offset, List<Vec3>? fence = null)
+    private static List<Vec2> OffsetTrackLaterally(Models.Track.Track track, double offset, List<Vec3>? fence = null)
     {
         if (fence == null)
         {
