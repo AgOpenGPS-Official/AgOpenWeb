@@ -581,24 +581,50 @@ public static partial class RemoteServerWiring
                 var state = services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>();
                 state.BugReportStatus = "Creating bug report…";
                 BugReportRemote.NewReport(null);
+                var dir = System.IO.Path.Combine(
+                    AgOpenWeb.Services.AppDataRoot.Documents, "BugReports");
+                var slug = string.IsNullOrWhiteSpace(title) ? "untitled"
+                    : new string(title.Trim().ToLowerInvariant().Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray());
+                if (slug.Length > 60) slug = slug.Substring(0, 60);
+                var notes = string.IsNullOrWhiteSpace(title) ? desc : "# " + title + "\n\n" + desc;
+                // The state as it is now, read here on the host loop; the coverage save, field files
+                // and compression run in the background, so a slow tablet keeps steering and
+                // simulating while the report is written (1-4 s held the loop, GPS lost).
+                AgOpenWeb.Services.DebugDumpService.DumpSnapshot snap;
                 try
                 {
-                    var dir = System.IO.Path.Combine(
-                        AgOpenWeb.Services.AppDataRoot.Documents, "BugReports");
-                    var slug = string.IsNullOrWhiteSpace(title) ? "untitled"
-                        : new string(title.Trim().ToLowerInvariant().Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray());
-                    if (slug.Length > 60) slug = slug.Substring(0, 60);
-                    var notes = string.IsNullOrWhiteSpace(title) ? desc : "# " + title + "\n\n" + desc;
-                    var zip = AgOpenWeb.Services.DebugDumpService.CreateDump(
+                    snap = AgOpenWeb.Services.DebugDumpService.Capture(
                         services.GetRequiredService<ISettingsService>(), AgOpenWeb.Models.State.RuntimeStateCapture.From(state), store,
-                        additionalNotes: notes, outputDirectory: dir, filePrefix: "bugreport_" + slug,
-                        activeJobTaskName: SaveCoverageForDump(services, state),
-                        ntripRtcmReport: AgOpenWeb.Services.NtripRtcmReport.Build(
+                        AgOpenWeb.Services.NtripRtcmReport.Build(
                             services.GetService<INtripClientService>(), services.GetService<IGpsService>()));
-                    state.BugReportStatus = "Saved: " + zip;
-                    BugReportRemote.NewReport(zip);
                 }
-                catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; }
+                catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; return; }
+                var job = ActiveJobForDump(services, state);
+                var coverage = services.GetRequiredService<ICoverageMapService>();
+                var ui = services.GetRequiredService<IUiDispatcher>();
+                _ = Task.Run(() =>
+                {
+                    string status;
+                    string? zip = null;
+                    try
+                    {
+                        if (job is { } j)
+                        {
+                            try { coverage.SaveToFile(j.FieldDir, j.Task); }
+                            catch { /* the dump still carries the last autosave */ }
+                        }
+                        zip = AgOpenWeb.Services.DebugDumpService.WriteDump(snap,
+                            additionalNotes: notes, outputDirectory: dir, filePrefix: "bugreport_" + slug,
+                            activeJobTaskName: job?.Task);
+                        status = "Saved: " + zip;
+                    }
+                    catch (Exception ex) { status = "Error: " + ex.Message; }
+                    ui.Post(() =>
+                    {
+                        state.BugReportStatus = status;
+                        if (zip != null) BugReportRemote.NewReport(zip);
+                    });
+                });
                 return;
             }
             case "app.bugReport.send": // arg = zip name \t GitHub user \t email \t title \t description
@@ -608,18 +634,15 @@ public static partial class RemoteServerWiring
     }
 
     /// <summary>
-    /// Save the active job's coverage so the dump's tiles are current, and return the
-    /// job's task name for <see cref="AgOpenWeb.Services.DebugDumpService.CreateDump"/>.
-    /// Null when no job is open; a failed save still returns the name (stale tiles beat none).
+    /// The open job's field folder and task name, whose coverage the dump saves first and
+    /// carries (<see cref="AgOpenWeb.Services.DebugDumpService.WriteDump"/>); null with no job.
     /// </summary>
-    private static string? SaveCoverageForDump(IServiceProvider services, AgOpenWeb.Models.State.ApplicationState state)
+    private static (string FieldDir, string Task)? ActiveJobForDump(IServiceProvider services, AgOpenWeb.Models.State.ApplicationState state)
     {
         var task = services.GetRequiredService<IJobService>().ActiveJob?.TaskName;
         var fieldDir = state.Field.ActiveField?.DirectoryPath;
         if (string.IsNullOrWhiteSpace(task) || string.IsNullOrEmpty(fieldDir)) return null;
-        try { services.GetRequiredService<ICoverageMapService>().SaveToFile(fieldDir, task); }
-        catch { /* the dump still carries the last autosave */ }
-        return task;
+        return (fieldDir, task);
     }
 
     private static async Task TestNtripAndReportAsync(

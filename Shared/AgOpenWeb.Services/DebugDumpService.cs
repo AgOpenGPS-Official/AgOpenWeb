@@ -32,91 +32,89 @@ public class DebugDumpService
     };
 
     /// <summary>
-    /// Create a debug dump zip file containing all diagnostic information.
-    /// Returns the path to the created zip file.
+    /// The live parts of a dump, read at one moment: settings, configuration, runtime state,
+    /// logs and the GPS recorder, as text. <see cref="Capture"/> reads them on the host loop,
+    /// where that state lives; <see cref="WriteDump"/> does the slow part (field files, coverage
+    /// tiles, compression) on any thread, so making a report doesn't stall the loop, the
+    /// simulator or guidance (a dump held a slow tablet's loop for 1-4 s and set off GPS lost).
     /// </summary>
-    public static string CreateDump(
+    public sealed class DumpSnapshot
+    {
+        internal List<(string Name, string Text)> Entries { get; } = new();
+        internal string? FieldDirectory { get; init; }
+        internal string? ProfileName { get; init; }
+    }
+
+    /// <summary>Read the dump's live parts (see <see cref="DumpSnapshot"/>). Quick; call it on the host loop.</summary>
+    public static DumpSnapshot Capture(
         ISettingsService settingsService,
         RuntimeStateCapture runtime,
         ConfigurationStore configStore,
-        string? additionalNotes = null,
-        byte[]? screenshotPng = null,
-        string? outputDirectory = null,
-        string filePrefix = "debug_dump",
-        IReadOnlyList<string>? userAttachments = null,
-        string? activeJobTaskName = null,
         string? ntripRtcmReport = null)
     {
-        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
-        var dumpDir = outputDirectory
-            ?? Path.Combine(Path.GetTempPath(), "AgOpenWeb", "dumps");
-        Directory.CreateDirectory(dumpDir);
-        var zipPath = Path.Combine(dumpDir, $"{filePrefix}_{timestamp}.zip");
-
-        using var zipStream = File.Create(zipPath);
-        using var archive = new ZipArchive(zipStream, ZipArchiveMode.Create);
+        string? profileName = null;
+        try { profileName = configStore.ActiveVehicleProfileName; } catch { }
+        var snap = new DumpSnapshot { FieldDirectory = runtime.FieldDirectory, ProfileName = profileName };
+        var entries = snap.Entries;
 
         // 1. System info
-        AddTextEntry(archive, "system_info.txt", BuildSystemInfo());
+        entries.Add(("system_info.txt", BuildSystemInfo()));
 
         // 2. App settings
         try
         {
             var settingsJson = RedactSecrets(JsonSerializer.Serialize(settingsService.Settings, JsonOptions));
-            AddTextEntry(archive, "appsettings.json", settingsJson);
+            entries.Add(("appsettings.json", settingsJson));
         }
         catch (Exception ex)
         {
-            AddTextEntry(archive, "appsettings_error.txt", ex.ToString());
+            entries.Add(("appsettings_error.txt", ex.ToString()));
         }
 
         // 3. Configuration store snapshot
         try
         {
-            var configSnapshot = BuildConfigSnapshot(configStore);
-            AddTextEntry(archive, "configuration.json", configSnapshot);
+            entries.Add(("configuration.json", BuildConfigSnapshot(configStore)));
         }
         catch (Exception ex)
         {
-            AddTextEntry(archive, "configuration_error.txt", ex.ToString());
+            entries.Add(("configuration_error.txt", ex.ToString()));
         }
 
         // 4. Runtime state snapshot
         try
         {
-            var stateSnapshot = runtime.Json;
-            AddTextEntry(archive, "runtime_state.json", stateSnapshot);
+            entries.Add(("runtime_state.json", runtime.Json));
         }
         catch (Exception ex)
         {
-            AddTextEntry(archive, "state_error.txt", ex.ToString());
+            entries.Add(("state_error.txt", ex.ToString()));
         }
 
         // 5. Log entries
         try
         {
-            var logs = BuildLogDump();
-            AddTextEntry(archive, "logs.txt", logs);
+            entries.Add(("logs.txt", BuildLogDump()));
         }
         catch (Exception ex)
         {
-            AddTextEntry(archive, "logs_error.txt", ex.ToString());
+            entries.Add(("logs_error.txt", ex.ToString()));
         }
 
         // 5a. What the NTRIP caster sent, by RTCM message, and the receiver's differential age.
         if (!string.IsNullOrEmpty(ntripRtcmReport))
-            AddTextEntry(archive, "ntrip_rtcm.txt", ntripRtcmReport);
+            entries.Add(("ntrip_rtcm.txt", ntripRtcmReport));
 
         // 5b. GPS data recorder (last 5 minutes of position/guidance/YouTurn/heading inputs)
         try
         {
             var gpsCsv = Logging.GpsDataRecorder.Instance.ExportCsv();
             if (gpsCsv.Length > 50) // more than just the header
-                AddTextEntry(archive, "gps_data_log.csv", gpsCsv);
+                entries.Add(("gps_data_log.csv", gpsCsv));
         }
         catch (Exception ex)
         {
-            AddTextEntry(archive, "gps_data_log_error.txt", ex.ToString());
+            entries.Add(("gps_data_log_error.txt", ex.ToString()));
         }
 
         // 5c. Last observed YouTurn path — forensic sidecar so we can
@@ -135,19 +133,66 @@ public class DebugDumpService
                     var p = lastPath[i];
                     pathDtos[i] = new { e = p.Easting, n = p.Northing, h = p.Heading };
                 }
-                var json = JsonSerializer.Serialize(pathDtos, JsonOptions);
-                AddTextEntry(archive, "turn_path.json", json);
+                entries.Add(("turn_path.json", JsonSerializer.Serialize(pathDtos, JsonOptions)));
             }
         }
         catch (Exception ex)
         {
-            AddTextEntry(archive, "turn_path_error.txt", ex.ToString());
+            entries.Add(("turn_path_error.txt", ex.ToString()));
         }
+
+        return snap;
+    }
+
+    /// <summary>
+    /// Create a debug dump zip file containing all diagnostic information.
+    /// Returns the path to the created zip file.
+    /// </summary>
+    public static string CreateDump(
+        ISettingsService settingsService,
+        RuntimeStateCapture runtime,
+        ConfigurationStore configStore,
+        string? additionalNotes = null,
+        byte[]? screenshotPng = null,
+        string? outputDirectory = null,
+        string filePrefix = "debug_dump",
+        IReadOnlyList<string>? userAttachments = null,
+        string? activeJobTaskName = null,
+        string? ntripRtcmReport = null) =>
+        WriteDump(Capture(settingsService, runtime, configStore, ntripRtcmReport),
+            additionalNotes, screenshotPng, outputDirectory, filePrefix, userAttachments, activeJobTaskName);
+
+    /// <summary>
+    /// Write a captured dump to its zip with the field's files, the active job's coverage tiles,
+    /// the screenshot, notes and attachments. Reads only the disk and the snapshot: any thread.
+    /// Returns the path to the created zip file.
+    /// </summary>
+    public static string WriteDump(
+        DumpSnapshot snapshot,
+        string? additionalNotes = null,
+        byte[]? screenshotPng = null,
+        string? outputDirectory = null,
+        string filePrefix = "debug_dump",
+        IReadOnlyList<string>? userAttachments = null,
+        string? activeJobTaskName = null)
+    {
+        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
+        var dumpDir = outputDirectory
+            ?? Path.Combine(Path.GetTempPath(), "AgOpenWeb", "dumps");
+        Directory.CreateDirectory(dumpDir);
+        var zipPath = Path.Combine(dumpDir, $"{filePrefix}_{timestamp}.zip");
+
+        using var zipStream = File.Create(zipPath);
+        using var archive = new ZipArchive(zipStream, ZipArchiveMode.Create);
+
+        // 1-5c. The live parts, as captured.
+        foreach (var (name, text) in snapshot.Entries)
+            AddTextEntry(archive, name, text);
 
         // 6. Current field files (if a field is open)
         try
         {
-            var fieldDir = runtime.FieldDirectory;
+            var fieldDir = snapshot.FieldDirectory;
             if (!string.IsNullOrEmpty(fieldDir) && Directory.Exists(fieldDir))
             {
                 foreach (var file in Directory.GetFiles(fieldDir))
@@ -158,10 +203,7 @@ public class DebugDumpService
                     if (ext == ".bin" && new FileInfo(file).Length > 5_000_000)
                         continue;
 
-                    var entry = archive.CreateEntry($"field/{fileName}");
-                    using var entryStream = entry.Open();
-                    using var fileStream = File.OpenRead(file);
-                    fileStream.CopyTo(entryStream);
+                    AddFileEntry(archive, $"field/{fileName}", file);
                 }
             }
         }
@@ -175,7 +217,7 @@ public class DebugDumpService
         // saves coverage first; the tiles on disk are otherwise up to an autosave old.
         try
         {
-            var fieldDir = runtime.FieldDirectory;
+            var fieldDir = snapshot.FieldDirectory;
             if (!string.IsNullOrEmpty(fieldDir) && !string.IsNullOrWhiteSpace(activeJobTaskName))
             {
                 var jobDir = Path.Combine(fieldDir, "jobs", activeJobTaskName);
@@ -185,10 +227,7 @@ public class DebugDumpService
                     {
                         if (new FileInfo(file).Length > 20_000_000) continue;
                         var relative = Path.GetRelativePath(fieldDir, file).Replace('\\', '/');
-                        var entry = archive.CreateEntry($"field/{relative}");
-                        using var entryStream = entry.Open();
-                        using var fileStream = File.OpenRead(file);
-                        fileStream.CopyTo(entryStream);
+                        AddFileEntry(archive, $"field/{relative}", file);
                     }
                 }
             }
@@ -199,22 +238,15 @@ public class DebugDumpService
         }
 
         // 7. Current vehicle profile
-        try
-        {
-            var profileName = configStore.ActiveVehicleProfileName;
-            if (!string.IsNullOrEmpty(profileName))
-            {
-                AddTextEntry(archive, "active_profile_name.txt", profileName);
-            }
-        }
-        catch { }
+        if (!string.IsNullOrEmpty(snapshot.ProfileName))
+            AddTextEntry(archive, "active_profile_name.txt", snapshot.ProfileName);
 
         // 8. Screenshot
         if (screenshotPng != null && screenshotPng.Length > 0)
         {
             try
             {
-                var entry = archive.CreateEntry("screenshot.png");
+                var entry = archive.CreateEntry("screenshot.png", CompressionLevel.NoCompression);
                 using var entryStream = entry.Open();
                 entryStream.Write(screenshotPng, 0, screenshotPng.Length);
             }
@@ -238,13 +270,7 @@ public class DebugDumpService
                 try
                 {
                     if (File.Exists(filePath))
-                    {
-                        var fileName = Path.GetFileName(filePath);
-                        var entry = archive.CreateEntry($"attachments/{fileName}");
-                        using var entryStream = entry.Open();
-                        using var fileStream = File.OpenRead(filePath);
-                        fileStream.CopyTo(entryStream);
-                    }
+                        AddFileEntry(archive, $"attachments/{Path.GetFileName(filePath)}", filePath);
                 }
                 catch (Exception ex)
                 {
@@ -302,13 +328,7 @@ public class DebugDumpService
                     try
                     {
                         if (File.Exists(filePath))
-                        {
-                            var fileName = Path.GetFileName(filePath);
-                            var entry = archive.CreateEntry($"attachments/{fileName}");
-                            using var entryStream = entry.Open();
-                            using var fileStream = File.OpenRead(filePath);
-                            fileStream.CopyTo(entryStream);
-                        }
+                            AddFileEntry(archive, $"attachments/{Path.GetFileName(filePath)}", filePath);
                     }
                     catch (Exception ex)
                     {
@@ -460,6 +480,22 @@ public class DebugDumpService
                 $"[{entry.Timestamp:HH:mm:ss.fff}] [{entry.Level}] {entry.Category}: {entry.Message}");
         }
         return sb.ToString();
+    }
+
+    // Already compressed: deflating these again takes the most time in a dump (a field's
+    // background image is several MB) and saves nothing.
+    private static readonly HashSet<string> StoredExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".webp", ".gif", ".zip", ".gz", ".mp4", ".mov", ".webm",
+    };
+
+    private static void AddFileEntry(ZipArchive archive, string name, string path)
+    {
+        var level = StoredExtensions.Contains(Path.GetExtension(path)) ? CompressionLevel.NoCompression : CompressionLevel.Optimal;
+        var entry = archive.CreateEntry(name, level);
+        using var entryStream = entry.Open();
+        using var fileStream = File.OpenRead(path);
+        fileStream.CopyTo(entryStream);
     }
 
     private static void AddTextEntry(ZipArchive archive, string name, string content)
