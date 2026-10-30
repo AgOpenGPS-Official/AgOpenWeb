@@ -2,7 +2,7 @@
 
 **Status:** approved 2026-10-29 (#463). All phases built (#464). The decisions below are as built; later changes after a first look in the app are under "Built as" of Phase 4.
 **Prompted by:** #443 (NTRIP "not working": the reporter and the maintainers had to guess whether it was the login, the mount point or the position), #285 and #385 (silent stops and retries), and a rebuild of the NTRIP client in AgIO (AgOpenGPS) that was tested against recorded casters and a caster of our own. This plan brings what that rebuild learned to AgOpenWeb, in AgOpenWeb's own architecture.
-**Related:** `Plans/RTCM_FORWARDING_PLAN.md` (the forwarding half, already in), `Plans/Completed/NTRIP_PROFILES_PLAN.md` (profiles per field), `Plans/BUG_REPORT_SUBMISSION_PLAN.md` (what a report carries), #278 (NTRIP on/off), #397 (observers), #444 (position sent to the caster).
+**Related:** `Plans/RTCM_FORWARDING_PLAN.md` (the forwarding half, already in), `Plans/Completed/NTRIP_PROFILES_PLAN.md` (profiles per field), `Plans/Completed/BUG_REPORT_SUBMISSION_PLAN.md` (what a report carries), #278 (NTRIP on/off), #397 (observers), #444 (position sent to the caster).
 
 ## What happens today
 
@@ -12,7 +12,7 @@
 - **The status is one sentence.** `NtripStatus` is a free string ("Rejected: Mount point not found", "receive error: ..."). The panel cannot say *what to do*, and the web client cannot tell a wrong password from a caster that is down.
 - **The failure is only in the log.** Why the last attempts failed, in which order, what the caster answered: the 5-second `[NTRIP]` line has the RTCM side (`Plans/RTCM_FORWARDING_PLAN.md`), but not the connection side. A report from a user who "has no corrections" cannot be told apart from a wrong password without asking.
 - **Waits are implicit.** The wait for the caster's reply is bounded only by the 30 s stall watchdog; the retry state is a set of `Interlocked` flags (`_reconnectInProgress`, `_failureStreak`, `_generation`) around a `Teardown`.
-- **Request and docs disagree.** `CLAUDE.md` and `Plans/ARCHITECTURE.md` say the request carries `Ntrip-Version: Ntrip/2.0`; `SendNtripRequestAsync` sends HTTP/1.1 with `Connection: keep-alive` and no version header. Casters that only serve NTRIP 2.0 to clients that ask for it see an NTRIP 1 client.
+- **Request and docs disagree.** `CLAUDE.md` and `Docs/ARCHITECTURE.md` say the request carries `Ntrip-Version: Ntrip/2.0`; `SendNtripRequestAsync` sends HTTP/1.1 with `Connection: keep-alive` and no version header. Casters that only serve NTRIP 2.0 to clients that ask for it see an NTRIP 1 client.
 - **Test and the real connection disagree.** The editor's Test button already sends `Ntrip-Version: Ntrip/2.0` (`NtripConnectionTester.cs:38`); the client does not (`NtripClientService.cs:313`). A passing Test can be followed by a different result on the real connection. Running Test on the same session code removes the difference.
 - **The TCP connect has no timeout of its own.** `tcp.ConnectAsync` (`NtripClientService.cs:175`) waits for the operating system's connect timeout.
 - **A wrong login or mount point ends the client, so a threshold is never reached.** A `Rejected` reply goes to `Teardown` (`NtripClientService.cs:444`) and nothing retries; "after N failed attempts" would never fire for the failures that most need a fallback (decision 4).
@@ -131,7 +131,7 @@ Phases 1 and 2 together answer #443: a failure has a name and a maintainer can r
   - Checked in the running app with a browser (Playwright) against two fake casters: refused login with advice and checks, the confirmed switch, the toast, the "main is back" question with both answers, the switch back, both modes, the editor (stored fallback shown, passwords masked, saved with the stored passwords kept, removal by an empty host, Test on the fallback), and the automatic switch with a fallback typed into the editor.
 
 ### Phase 5: docs
-`CLAUDE.md` (the NTRIP sections), `Plans/ARCHITECTURE.md` (NTRIP data flow), `Docs/INTERFACE_GUIDE.md` (Network IO), this plan to `Plans/Completed/`, `RTCM_FORWARDING_PLAN.md` "Still to check" list unchanged.
+`CLAUDE.md` (the NTRIP sections), `Docs/ARCHITECTURE.md` (NTRIP data flow), `Docs/INTERFACE_GUIDE.md` (Network IO), this plan to `Plans/Completed/`, `RTCM_FORWARDING_PLAN.md` "Still to check" list unchanged.
 - **Built as:** all four done in #464; `CLAUDE.md` and `ARCHITECTURE.md` now say NTRIP 2.0 first with one try of 1.0 (decision 2); references to this plan point to `Plans/Completed/`.
 
 ## Verification
@@ -148,7 +148,7 @@ Phases 1 and 2 together answer #443: a failure has a name and a maintainer can r
 These were open questions in the first draft; the maintainers can still overrule them in review.
 
 1. **Existing installs get the new default.** Main + Fallback for everyone. Profiles that have field associations keep them (nothing is deleted); in Main + Fallback mode they are ignored. A user who relied on a profile per field switches the mode once in Network IO. The first start after the update shows one notice that says so.
-2. **The request is NTRIP 2.0 first, with a fall back to 1.0** (`Ntrip-Version: Ntrip/2.0`, and a caster that does not understand it gets the 1.0 request once per round), as AgIO does. `CLAUDE.md` and `Plans/ARCHITECTURE.md` are corrected to describe that exactly, in Phase 5.
+2. **The request is NTRIP 2.0 first, with a fall back to 1.0** (`Ntrip-Version: Ntrip/2.0`, and a caster that does not understand it gets the 1.0 request once per round), as AgIO does. `CLAUDE.md` and `Docs/ARCHITECTURE.md` are corrected to describe that exactly, in Phase 5.
 3. **Fallback is NTRIP only.** No serial or radio source.
 4. **The two modes stay exclusive:** fallback off (Profile per field) or fallback on (Main + Fallback). Per-field with a fallback is not planned.
 5. **Auto-switch is off by default.** The default is *report and let the operator choose*: when the main service fails the card says why and offers **Switch to fallback**; with Auto-switch on, the switch happens after `SwitchAfterFailures` (default 2) failed attempts. The "main is back, switch back?" prompt appears in both settings.

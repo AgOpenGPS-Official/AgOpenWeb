@@ -19,7 +19,7 @@ Thank you for your interest in contributing to AgOpenWeb! This document lists fe
 
 ## Key Documents
 
-- **[Plans/ARCHITECTURE.md](Plans/ARCHITECTURE.md)** - Full architecture documentation: service communication, state management, domain models, data flow diagrams
+- **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)** - Full architecture documentation: service communication, state management, domain models, data flow diagrams
 - **[CLAUDE.md](CLAUDE.md)** - Build commands, key files reference, common development tasks
 - **[PGN.md](PGN.md)** - UDP packet protocol for hardware communication
 

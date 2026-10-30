@@ -379,8 +379,8 @@ In priority order:
 The earlier framing of "throttle GPS-display setters to 10 Hz" was the
 wrong shape. **GPS is just another sensor feeding the position
 estimator at its own 10 Hz arrival rate** — see the cadence design in
-[`UNIFIED_CONTROL_LOOP_PLAN`](../../Completed/UNIFIED_CONTROL_LOOP_PLAN.md)
-and [`UNIFIED_PACKET_PROTOCOL`](../../Completed/UNIFIED_PACKET_PROTOCOL.md).
+[`UNIFIED_CONTROL_LOOP_PLAN`](../../../Completed/UNIFIED_CONTROL_LOOP_PLAN.md)
+and [`UNIFIED_PACKET_PROTOCOL`](../../../Completed/UNIFIED_PACKET_PROTOCOL.md).
 Control runs at 100 Hz consuming dead-reckoned pose; nothing should be
 *gated on GPS sensor arrival*.
 
@@ -588,7 +588,7 @@ tiers above combined.
 Profiler is CPU-only and severely undercounts GPU-bound work like
 texture sampling, fragment shader cost, and bandwidth. The right tool
 for the imagery audit is **Metal System Trace** (already supported by
-`Plans/perf_data/2026-05-20/instruments-trace-ipad.sh` via
+`Plans/Ideas/perf_data/2026-05-20/instruments-trace-ipad.sh` via
 `TEMPLATE='Metal System Trace' bash …`).
 
 Levers to investigate: texture resolution and tile size, mipmap

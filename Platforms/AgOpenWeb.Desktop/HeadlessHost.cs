@@ -24,7 +24,7 @@ namespace AgOpenWeb.Desktop;
 /// Avalonia UI thread in the windowed build.
 ///
 /// Selected by the absence of <c>--windowed</c> (see Program.Main).
-/// See Plans/WEBUI_MIGRATION_PLAN.md Phase 10 and Plans/WEBUI_SESSION_HANDOFF.md.
+/// See Plans/Completed/WEBUI_MIGRATION_PLAN.md Phase 10 and Plans/Completed/WEBUI_SESSION_HANDOFF.md.
 /// </summary>
 internal static class HeadlessHost
 {

@@ -2,7 +2,7 @@
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-// The public half of the bug report service (Plans/BUG_REPORT_SUBMISSION_PLAN.md):
+// The public half of the bug report service (Plans/Completed/BUG_REPORT_SUBMISSION_PLAN.md):
 // POST /v1/reports takes a dump from the app, stores it in R2 and opens the GitHub issue.
 // The daily cron opens issues that failed earlier and prunes storage. Dumps are read back
 // only through the dumps Worker, behind Cloudflare Access.

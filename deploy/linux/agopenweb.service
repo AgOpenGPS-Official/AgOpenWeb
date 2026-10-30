@@ -2,7 +2,7 @@
 #
 # Runs the display-less .NET host as a daemon on a cab-PC / one-box SBC. The host
 # has NO native UI; operators use a browser (remote tablet, or a local
-# chromium-kiosk pointed at http://localhost:5174). See Plans/DEPLOYMENT_PATTERNS.md.
+# chromium-kiosk pointed at http://localhost:5174). See Plans/Ideas/DEPLOYMENT_PATTERNS.md.
 #
 # Install with deploy/linux/install.sh, which publishes the self-contained build to
 # /opt/agopenweb, creates the agopenweb service user, and installs + enables this unit.

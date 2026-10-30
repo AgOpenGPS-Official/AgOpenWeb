@@ -49,7 +49,7 @@ public static class ServiceCollectionExtensions
         // UI-thread dispatcher + timer abstraction. With the native UI gone the VM/pipeline
         // run on a single HostLoopDispatcher (owned by the foreground BackendService's
         // AndroidBackendHost, which re-registers its own instance — last-wins), so guidance
-        // stays live while the WebView Activity is backgrounded. See Plans/CONFIG_STATE_AUDIT.md §11.
+        // stays live while the WebView Activity is backgrounded. See Plans/Completed/CONFIG_STATE_AUDIT.md §11.
         services.AddSingleton<HostLoopDispatcher>();
         services.AddSingleton<IUiDispatcher>(sp => sp.GetRequiredService<HostLoopDispatcher>());
         services.AddSingleton<IUiTimerFactory>(sp => sp.GetRequiredService<HostLoopDispatcher>());

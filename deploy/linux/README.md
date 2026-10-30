@@ -3,7 +3,7 @@
 Run the **headless** AgOpenWeb host as a daemon on a cab-PC / one-box SBC. The host
 has no native UI; operators use a browser (remote tablet, or a local chromium-kiosk
 pointed at `http://localhost:5174`). Background and rationale:
-[`Plans/DEPLOYMENT_PATTERNS.md`](../../Plans/DEPLOYMENT_PATTERNS.md).
+[`Plans/Ideas/DEPLOYMENT_PATTERNS.md`](../../Plans/Ideas/DEPLOYMENT_PATTERNS.md).
 
 ## Install
 

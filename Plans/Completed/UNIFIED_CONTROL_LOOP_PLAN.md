@@ -349,7 +349,7 @@ Single feature branch `feature/unified-control-loop`. Commits in this order; eac
 - Issue #313 — original sub-frame section control proposal
 - Firmware issue #28 — PGN 237 confirmed-state reply (future, enables hybrid coverage)
 - Firmware issue #29 — raw IMU at higher rate (future, improves estimator quality)
-- `Plans/PERFORMANCE_STRATEGY.md` — FPS floor and perf discipline
-- `Plans/IMU_HEADING_WIRING_PLAN.md` — current IMU heading flow on host
+- `Docs/PERFORMANCE_STRATEGY.md` — FPS floor and perf discipline
+- `Plans/Completed/IMU_HEADING_WIRING_PLAN.md` — current IMU heading flow on host
 - Firmware: `/Users/chris/Code/Firmware_Teensy_AiO_26/src/main.cpp` — task scheduler with 100 Hz autosteer
 - Firmware: `/Users/chris/Code/Firmware_Teensy_AiO_26/lib/aio_system/MachineProcessor.cpp` — every-loop reactive section handling, 2 s watchdog

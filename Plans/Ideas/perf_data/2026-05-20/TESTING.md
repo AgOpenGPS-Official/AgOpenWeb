@@ -10,7 +10,7 @@ Devices:
   `com.agopenweb.android`)
 
 Output: one log file per (platform, scenario) at
-`Plans/perf_data/2026-05-20/<platform>/<scenario>.log`. The whole `*.log` set
+`Plans/Ideas/perf_data/2026-05-20/<platform>/<scenario>.log`. The whole `*.log` set
 is gitignored — summary goes on #403.
 
 ---
@@ -20,12 +20,12 @@ is gitignored — summary goes on #403.
 1. ✅ Build iOS + Android on `perf-05/instrumentation` (done — both green).
 2. Install fresh build on both devices.
 3. Push 7 marker files to both devices via
-   `Plans/perf_data/2026-05-20/push-markers.sh` (created alongside this doc).
+   `Plans/Ideas/perf_data/2026-05-20/push-markers.sh` (created alongside this doc).
 4. Launch the app on iPad and Android.
 5. Start syslog capture on both devices, filtered for `PERF` / `RenderBudget`,
    written to:
-   - `Plans/perf_data/2026-05-20/ipad/_stream.log`
-   - `Plans/perf_data/2026-05-20/android/_stream.log`
+   - `Plans/Ideas/perf_data/2026-05-20/ipad/_stream.log`
+   - `Plans/Ideas/perf_data/2026-05-20/android/_stream.log`
 6. Verify the `[DiagFlags]` startup line appears in each stream — confirms
    all 7 markers were read.
 
@@ -158,10 +158,10 @@ data, or `Metal System Trace` for GPU command timing.
 1. Stop syslog captures.
 2. Confirm scenario log files exist:
    ```
-   Plans/perf_data/2026-05-20/ipad/S1.log
-   Plans/perf_data/2026-05-20/ipad/S2.log
+   Plans/Ideas/perf_data/2026-05-20/ipad/S1.log
+   Plans/Ideas/perf_data/2026-05-20/ipad/S2.log
    …
-   Plans/perf_data/2026-05-20/android/S1.log
+   Plans/Ideas/perf_data/2026-05-20/android/S1.log
    …
    ```
 3. Claude builds the analysis table, posts it as a comment on #403, and
@@ -170,7 +170,7 @@ data, or `Metal System Trace` for GPU command timing.
 4. Remove marker files from both devices so a stray production run won't
    keep emitting `*-PERF` lines:
    ```
-   Plans/perf_data/2026-05-20/clear-markers.sh
+   Plans/Ideas/perf_data/2026-05-20/clear-markers.sh
    ```
 
 ---

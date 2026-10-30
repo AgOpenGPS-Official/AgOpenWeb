@@ -34,7 +34,7 @@ public sealed record BugReportSendResult(BugReportOutcome Outcome, int? Issue = 
 /// keeps the ones that couldn't go yet: a tractor is often out of signal. Each queued report
 /// is a sidecar <c>outbox/&lt;zip name&gt;.json</c> beside the dumps; the zip itself stays where
 /// the reporter's copy is. Retries back off (1, 5, 30 min, then hourly) and stop after 14
-/// days. Plans/BUG_REPORT_SUBMISSION_PLAN.md.
+/// days. Plans/Completed/BUG_REPORT_SUBMISSION_PLAN.md.
 /// </summary>
 public sealed class BugReportOutbox
 {

@@ -105,7 +105,7 @@ public class BoundaryRecordingService : IBoundaryRecordingService
         // Normalize resolution once at the source: GPS capture records at a fixed
         // ~1 m spacing; collapse near-collinear runs (keeping curve detail) so the
         // dense capture density doesn't propagate into storage, derived geometry, and
-        // rendering. See Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
+        // rendering. See Plans/Completed/BOUNDARY_RESOLUTION_NORMALIZATION.md.
         var polygon = new BoundaryPolygon
         {
             IsDriveThrough = false,

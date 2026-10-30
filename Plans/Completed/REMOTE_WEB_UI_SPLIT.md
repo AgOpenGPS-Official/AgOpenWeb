@@ -408,9 +408,9 @@ The remaining Phase 0 work is **projection/serialization + a headless dispatcher
 ---
 
 ## References
-- `Plans/ARCHITECTURE.md` — services, state, data flow
+- `Docs/ARCHITECTURE.md` — services, state, data flow
 - `Plans/Completed/UNIFIED_CONTROL_LOOP_PLAN.md` — decoupled cadences (100/50/10 Hz, dead-reckoned position)
-- `Plans/CONFIG_STATE_AUDIT.md` — SoT cleanup the headless-VM split would force/benefit from
+- `Plans/Completed/CONFIG_STATE_AUDIT.md` — SoT cleanup the headless-VM split would force/benefit from
 - `Shared/AgOpenWeb.Services/Coverage/CoverageMapService.cs` — coverage layers, dirty rects, COVD/COVS formats
 - `Shared/AgOpenWeb.Models/Track/Track.cs` — unified track model
 - Memory: "Coverage is cell-based, not patches"; "Control cadences decoupled from GPS"; "Map-centric is non-negotiable"

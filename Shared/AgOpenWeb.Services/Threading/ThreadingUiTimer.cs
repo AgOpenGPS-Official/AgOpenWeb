@@ -14,7 +14,7 @@ namespace AgOpenWeb.Services.Threading;
 /// timers (autosave, status rotation, etc.) must actually run but there is no
 /// Avalonia dispatcher. Ticks fire on a thread-pool thread; a headless host that
 /// needs them marshalled routes through <see cref="IUiDispatcher"/>.
-/// See Plans/CONFIG_STATE_AUDIT.md §11.3.
+/// See Plans/Completed/CONFIG_STATE_AUDIT.md §11.3.
 /// </summary>
 public sealed class ThreadingUiTimer : IUiTimer, IDisposable
 {

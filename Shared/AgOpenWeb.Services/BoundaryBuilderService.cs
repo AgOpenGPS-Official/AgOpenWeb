@@ -64,7 +64,7 @@ public class BoundaryBuilderService : IBoundaryBuilderService
 
         // Convert to BoundaryPolygon, then normalize resolution once at the source so
         // the 0.5 m build-segment density doesn't propagate downstream. See
-        // Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
+        // Plans/Completed/BOUNDARY_RESOLUTION_NORMALIZATION.md.
         var raw = new List<BoundaryPoint>(polygon.Count);
         foreach (var point in polygon)
             raw.Add(new BoundaryPoint(point.Easting, point.Northing, 0));

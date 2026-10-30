@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code when working with this repository.
 
 **Key documentation:**
-- **[Plans/ARCHITECTURE.md](Plans/ARCHITECTURE.md)** - Full architecture: services, state management, data flow
+- **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)** - Full architecture: services, state management, data flow
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contributor guide with cross-platform parity rules
 - **[PGN.md](PGN.md)** - UDP packet protocol for hardware communication
 - **[Docs/TRANSLATIONS.md](Docs/TRANSLATIONS.md)** - UI strings and Weblate
@@ -291,7 +291,7 @@ Everything else lives in `Shared/`.
 
 What each shell must provide to the web UI (JS + WASM, audio without a gesture, `window.open`
 to the system browser, keep the screen awake, localhost HTTP) is listed in
-`Plans/AVALONIA_REMOVAL_PLAN.md`.
+`Plans/Completed/AVALONIA_REMOVAL_PLAN.md`.
 
 ## Common Tasks
 
