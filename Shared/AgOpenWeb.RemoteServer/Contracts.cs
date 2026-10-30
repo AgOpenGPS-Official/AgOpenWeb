@@ -60,7 +60,8 @@ public record SceneDto(
     IReadOnlyList<IReadOnlyList<Vec2Dto>> ContourStrips, // saved contour strips (#110)
     IReadOnlyList<Vec2Dto>? ContourRef, // contour mode: the strip being followed (points) (#110)
     bool ContourLocked, // contour lock on
-    IReadOnlyList<IReadOnlyList<Vec2Dto>> GuideLines); // a curve's extra guidelines, built by the host (#450)
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> GuideLines, // a curve's extra guidelines, built by the host (#450)
+    IReadOnlyList<Vec2Dto>? ToolPass); // the centre of the pass shown, where the tool runs: the map draws the tool's width along it
 
 /// <summary>A field flag marker: field-local position (m) + display colour hex + name.</summary>
 public record FlagDto(double E, double N, string ColorHex, string Name);

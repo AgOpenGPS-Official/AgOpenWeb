@@ -1058,6 +1058,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         Models.Track.Track? baseTrack = null;
         IReadOnlyList<IReadOnlyList<Vec3>>? guideLines = null;
         (double Width, double Shift, bool Extend, int Count)? guideArgs = null;
+        IReadOnlyList<Vec3>? toolPass = null;
+        (double Width, bool Extend)? toolPassArgs = null;
 
         // Always compute the display track when we have a track (for map visualization)
         if (hasTrack)
@@ -1112,6 +1114,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 };
                 baseTrack = track;
             }
+
+            toolPassArgs = (widthMinusOverlap, extendDisp);
+            toolPass = ToolPass(track, passNumber, widthMinusOverlap, nudgeOffset, extendDisp);
 
             if (config2.Display.ExtraGuidelines)
             {
@@ -1241,6 +1246,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 // The guidelines go either side of the pass shown.
                 if (guideArgs is { } ga)
                     guideLines = GuideLines(track!, nearestPass, ga.Width, nudgeOffset, ga.Shift, ga.Extend, ga.Count);
+                if (toolPassArgs is { } ta)
+                    toolPass = ToolPass(track!, nearestPass, ta.Width, nudgeOffset, ta.Extend);
 
                 // #95: show where Pure Pursuit would aim if engaged now, so the operator
                 // can see the target (field vs. ditch) before engaging.
@@ -1406,7 +1413,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 justCompleted: youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false)),
             Guidance = BuildGuidanceSnapshot(
                 WithLineLabel(_guidanceWorking), displayTrack, baseTrack, hasGuidance,
-                diagPathAnchorA, diagPathAnchorB, diagTurnPathCount, diagAntiTangentGuardFired) with { GuideLines = guideLines },
+                diagPathAnchorA, diagPathAnchorB, diagTurnPathCount, diagAntiTangentGuardFired) with { GuideLines = guideLines, ToolPass = toolPass },
 
             // Sections
             SectionStates = secStatesArr,
@@ -1833,6 +1840,40 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// Returns the detected nearest pass number, the offset display track and the pivot's
     /// cross-track error to it (m, the engaged guidance's sign) for the light bar.
     /// </summary>
+    private (Models.Track.Track Track, int Pass, double Width, double Nudge, bool Extend, double Radius) _toolPassKey;
+    private IReadOnlyList<Vec3>? _toolPass;
+
+    /// <summary>
+    /// Where the tool runs on the pass shown: the pass's centre, without the tool shift the
+    /// tractor's line has (PassGeometry). The map draws the tool's width along it, as AgOpenGPS's
+    /// shadow on the current AB line shows where the tool will land; on a curve it follows the
+    /// pass, its corners rounded as the tractor will drive them. The same list until the pass
+    /// changes.
+    /// </summary>
+    private IReadOnlyList<Vec3> ToolPass(Models.Track.Track track, int pass, double widthMinusOverlap, double nudge, bool extend)
+    {
+        double radius = _configStore.Guidance.UTurnRadius;
+        var key = (track, pass, widthMinusOverlap, nudge, extend, radius);
+        if (_toolPass != null && _toolPassKey.Equals(key)) return _toolPass;
+        double dist = Models.Track.PassGeometry.Offset(track, pass, widthMinusOverlap, nudge);
+        IReadOnlyList<Vec3> line;
+        if (track.Points.Count == 2)
+        {
+            var a = track.Points[0];
+            var b = track.Points[1];
+            double right = Math.Atan2(b.Easting - a.Easting, b.Northing - a.Northing) + Math.PI / 2;
+            double de = Math.Sin(right) * dist, dn = Math.Cos(right) * dist;
+            line = new List<Vec3> { new(a.Easting + de, a.Northing + dn, a.Heading), new(b.Easting + de, b.Northing + dn, b.Heading) };
+        }
+        else
+        {
+            var points = Math.Abs(dist) < 0.01 ? track.Points : _offsetPasses.Get(track, dist, radius).Points;
+            line = extend ? CurveProcessing.ExtendCurveEnds(points) : points;
+        }
+        _toolPassKey = key;
+        return _toolPass = line;
+    }
+
     private (Models.Track.Track Track, int Pass, double Width, double Nudge, double Shift, bool Extend, int Count) _guideKey;
     private IReadOnlyList<IReadOnlyList<Vec3>>? _guideLines;
 
@@ -1873,6 +1914,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
         return _guideLines = lines;
     }
 
+    private const double PassPickIntervalSeconds = 0.66;
+    private Models.Track.Track? _passPickTrack;
+    private long _lastPassPick;
+
     private (int nearestPass, Models.Track.Track? displayTrack, double xte) UpdateDisplayTrack(
         Position pos, Models.Track.Track track, int passNumber, double nudgeOffset,
         double pivotEasting, double pivotNorthing,
@@ -1895,6 +1940,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // the tractor steers to put the tool on it (#446).
         double toolShift = Models.Track.PassGeometry.ToolShift(config.Tool.Offset, _guidanceWorking.IsHeadingSameWay);
         int nearestPass = Models.Track.PassGeometry.Nearest(track, sampleDist, widthMinusOverlap, nudgeOffset, toolShift);
+        // The pass is picked again at most every 0.66 s, as AgOpenGPS (CABLine / CABCurve
+        // BuildCurrentLine): between picks the line stays put, so it doesn't flick between two
+        // passes when the tractor is halfway. A new track is picked at once.
+        long now = Clock.Current.GetTimestamp();
+        if (!ReferenceEquals(track, _passPickTrack) || Clock.Current.ElapsedSeconds(_lastPassPick, now) >= PassPickIntervalSeconds)
+        {
+            _passPickTrack = track;
+            _lastPassPick = now;
+        }
+        else nearestPass = passNumber;
         double distAway = Models.Track.PassGeometry.Offset(track, nearestPass, widthMinusOverlap, nudgeOffset, toolShift);
 
         Models.Track.Track? resultTrack = null;

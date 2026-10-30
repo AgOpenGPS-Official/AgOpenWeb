@@ -28,7 +28,7 @@ public class GuidanceWorkingStateTests
         // (the snapshot's GuideLines, #450). The guard's real intent — every WORKING field
         // has an observable mirror — is unaffected; only the reverse direction
         // carries these documented exceptions.
-        var observableOnly = new HashSet<string> { "DisplayLine", "GuideLines" };
+        var observableOnly = new HashSet<string> { "DisplayLine", "GuideLines", "ToolPass" };
         var observableProps = DeclaredProps(typeof(GuidanceState))
             .Where(p => !observableOnly.Contains(p.Name))
             .ToArray();
