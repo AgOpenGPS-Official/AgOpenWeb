@@ -39,7 +39,8 @@ A folder may still contain AgOpenGPS files (`Field.txt`, `Boundary.txt`, `TrackL
 ### Coordinates
 
 - Positions are WGS84 `[longitude, latitude]` in degrees, the GeoJSON order.
-- Lines and polygons whose points carry a heading use `[longitude, latitude, heading]`. **The third value is a heading in radians, not an altitude**: 0 = north, clockwise, range 0 to 2π, computed as `atan2(ΔEasting, ΔNorthing)` to the next point. A missing third value reads as heading 0.
+- Lines and polygons whose points carry a heading use `[longitude, latitude, heading]`. **The third value is a heading in radians, not an altitude**: 0 = north, clockwise, range 0 to 2π, computed as `atan2(ΔEasting, ΔNorthing)` to the next point (the heading of the segment starting there); the last point repeats the one before. This is not AgOpenGPS's convention, which averages each point's heading over its previous and next points.
+- **Tracks:** AgOpenWeb writes this heading but works it out again from the points when it reads a track, so a writer may leave the third value out or use AgOpenGPS's convention. A reader should do the same rather than trust the stored value. Boundaries and headland lines are read as stored; a missing third value reads as heading 0.
 - AgOpenWeb works internally in metres on a flat plane centred on the field origin. It converts with the projection below, so a round-trip through AgOpenWeb returns the same WGS84 within float precision. Use the same formulas if AgShare needs plane coordinates (it already does for uploads).
 
 ```math
