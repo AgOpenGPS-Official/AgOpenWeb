@@ -564,8 +564,19 @@ public partial class MainViewModel
 
             Track newTrack;
 
+            // Two taps in a row on the fence: the curve follows the fence between them, the shorter
+            // way round, as AgOpenGPS's FormABDraw makes a curve from two picks on the boundary.
+            // Elsewhere it is a smooth curve through the taps (the map snaps a tap near the fence onto it).
+            var alongFence = FollowFence(_drawnCurvePoints);
+            if (alongFence != null)
+            {
+                var fencePoints = Models.Guidance.CurveProcessing.CalculateHeadings(
+                    Models.Guidance.CurveProcessing.SmoothLongSegments(alongFence));
+                newTrack = Track.FromCurve($"DrawnCurve {DateTime.Now:HH:mm:ss}", ExtendCurvePastBoundary(fencePoints), isClosed: false);
+                StatusMessage = $"Created curve along the boundary: {newTrack.Name}";
+            }
             // If only 2 points, create a straight AB line
-            if (_drawnCurvePoints.Count == 2)
+            else if (_drawnCurvePoints.Count == 2)
             {
                 var (extendedA, extendedB) = ExtendABLinePastBoundary(_drawnCurvePoints[0], _drawnCurvePoints[1]);
                 newTrack = Track.FromABLine(
@@ -1867,6 +1878,33 @@ public partial class MainViewModel
     /// the given point, along <paramref name="headingDeg"/> (degrees true) (#335).
     /// </summary>
     private bool _recordingPivot;
+
+    /// <summary>
+    /// The drawn points with the fence between each two in a row that lie on it (within a
+    /// centimetre: the map snaps a tap near the fence onto it), or null when no two do.
+    /// </summary>
+    private System.Collections.Generic.List<Vec3>? FollowFence(System.Collections.Generic.IReadOnlyList<Vec3> taps)
+    {
+        var fence = State.Field.CurrentBoundary?.OuterBoundary?.Points;
+        if (fence == null || fence.Count < 3 || taps.Count < 2) return null;
+        var ring = fence.Select(p => new Models.Base.Vec2(p.Easting, p.Northing)).ToList();
+        bool OnFence(Vec3 p) => Models.Guidance.FencePath.Project(ring, new Models.Base.Vec2(p.Easting, p.Northing)).Distance < 0.01;
+
+        var path = new System.Collections.Generic.List<Vec3> { taps[0] };
+        bool any = false;
+        for (int i = 0; i + 1 < taps.Count; i++)
+        {
+            if (OnFence(taps[i]) && OnFence(taps[i + 1]))
+            {
+                var run = Models.Guidance.FencePath.ShorterRun(ring,
+                    new Models.Base.Vec2(taps[i].Easting, taps[i].Northing), new Models.Base.Vec2(taps[i + 1].Easting, taps[i + 1].Northing));
+                path.AddRange(run.Skip(1));
+                any = true;
+            }
+            else path.Add(taps[i + 1]);
+        }
+        return any ? path : null;
+    }
 
     // Width of a pass (width − overlap), for a pivot's reference circle.
     private double PassWidth => Math.Max(ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap, 0.1);

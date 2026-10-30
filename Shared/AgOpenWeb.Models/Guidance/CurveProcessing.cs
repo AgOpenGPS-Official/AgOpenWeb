@@ -107,6 +107,33 @@ namespace AgOpenWeb.Models.Guidance
         }
 
         /// <summary>
+        /// A Catmull-Rom curve through the points, only on the segments longer than
+        /// <paramref name="minLength"/> (with a point every <paramref name="step"/> metres): a line drawn
+        /// through a few taps and along stretches of fence, whose fence points stay where they are.
+        /// </summary>
+        public static List<Vec3> SmoothLongSegments(IReadOnlyList<Vec3> points, double minLength = 2.0, double step = 1.0)
+        {
+            int n = points.Count;
+            var result = new List<Vec3>(n);
+            if (n == 0) return result;
+            for (int i = 0; i + 1 < n; i++)
+            {
+                var p1 = points[i];
+                var p2 = points[i + 1];
+                result.Add(p1);
+                double len = Math.Sqrt(Math.Pow(p2.Easting - p1.Easting, 2) + Math.Pow(p2.Northing - p1.Northing, 2));
+                if (len <= minLength) continue;
+                var p0 = i > 0 ? points[i - 1] : ExtrapolatePoint(p2, p1);
+                var p3 = i + 2 < n ? points[i + 2] : ExtrapolatePoint(p1, p2);
+                int steps = (int)Math.Ceiling(len / step);
+                for (int k = 1; k < steps; k++)
+                    result.Add(CatmullRomPoint(p0, p1, p2, p3, (double)k / steps));
+            }
+            result.Add(points[n - 1]);
+            return result;
+        }
+
+        /// <summary>
         /// Smooths a curve using Catmull-Rom spline interpolation.
         /// Creates a smooth curve that passes through all control points.
         /// </summary>

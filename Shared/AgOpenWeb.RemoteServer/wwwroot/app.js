@@ -1842,6 +1842,27 @@ function boundaryArcs(ring, a, b) {
   const sa = at(a), sb = at(b);
   return [walk(a, sa, b, sb), walk(b, sb, a, sa)];
 }
+// A drawn curve as the host will make it: between two taps in a row on the fence it follows
+// the fence the shorter way round (AgOpenGPS FormABDraw); elsewhere it runs from tap to tap.
+function drawnCurvePreview() {
+  const ring = scene && scene.boundaries && scene.boundaries[0];
+  if (!ring || ring.length < 3) return drawPts;
+  const onFence = p => ring.some((a, i) => {
+    const b = ring[(i + 1) % ring.length], dx = b.e - a.e, dn = b.n - a.n, l2 = dx * dx + dn * dn;
+    const t = l2 > 0 ? Math.max(0, Math.min(1, ((p.e - a.e) * dx + (p.n - a.n) * dn) / l2)) : 0;
+    return Math.hypot(a.e + t * dx - p.e, a.n + t * dn - p.n) < 0.01;
+  });
+  const out = [drawPts[0]];
+  for (let i = 1; i < drawPts.length; i++) {
+    const a = drawPts[i - 1], b = drawPts[i];
+    if (onFence(a) && onFence(b)) {
+      const arcs = boundaryArcs(ring, a, b);
+      const run = polyLen(arcs[0]) <= polyLen(arcs[1]) ? arcs[0] : arcs[1].slice().reverse();
+      out.push(...run.slice(1));
+    } else out.push(b);
+  }
+  return out;
+}
 // The chosen way round, drawn while picking (#450).
 function drawBoundaryCurvePreviewSk(canvas) {
   if (abFlow !== 'boundaryCurve' || !bcArcs) return;
@@ -6751,7 +6772,7 @@ function drawHeadlandDrawSk(canvas) {
 // finish/cancel. Cyan line through the points + an outlined dot at each.
 function drawDrawingSk(canvas) {
   if (!drawMode || !drawPts.length) return;
-  if (drawPts.length >= 2) strokePtsSk(canvas, drawPts, false, SKP.track);
+  if (drawPts.length >= 2) strokePtsSk(canvas, abFlow === 'curve' ? drawnCurvePreview() : drawPts, false, SKP.track);
   const rad = Math.max(4, 0.5 * pxPerM);
   SKP.flagFill.setColor(ckColor('#40E0FF'));
   for (const p of drawPts) {
