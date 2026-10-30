@@ -499,7 +499,14 @@ public static partial class RemoteServerWiring
                     MountPoint = existing.MountPoint, Username = existing.Username, Password = existing.Password,
                     Fallback = existing.Fallback?.Clone(),   // a copy: the editor will change the fallback in place
                 };
-                _ = svc.SaveProfileAsync(profile);
+                // The first profile is the default one, so it has something to connect with.
+                if (existing == null && !svc.Profiles.Any(p => p.IsDefault)) profile.IsDefault = true;
+                _ = SaveNewProfileAsync();
+                async Task SaveNewProfileAsync()
+                {
+                    await svc.SaveProfileAsync(profile);
+                    if (existing == null && vm != null) await vm.ConnectNewNtripProfileAsync(profile);
+                }
                 // Editing the profile we're connected with: reconnect with the new settings
                 // now, not at the next field load / restart (#111).
                 if (before != null && vm != null)

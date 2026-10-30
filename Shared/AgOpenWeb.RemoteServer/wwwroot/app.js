@@ -3301,8 +3301,14 @@ function renderNtripSettings() {
   const bc = document.getElementById('nio-rtcm-bc');
   if (document.activeElement !== bc) bc.checked = !!s.rtcmBroadcast;
   const nen = document.getElementById('nio-ntrip-on');
-  if (document.activeElement !== nen) nen.checked = !!s.ntripEnabled;
+  nen.textContent = s.ntripEnabled ? tr('NTRIP active') : tr('NTRIP disabled');
+  nen.style.borderColor = s.ntripEnabled ? '#22c55e' : '';
 }
+// Active connects the default profile (even when its auto-connect is off), Disabled drops the connection.
+document.getElementById('nio-ntrip-on').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (statusBar) cfgSend('conn.ntripEnabled', statusBar.ntripEnabled ? '0' : '1');
+});
 
 // What the caster is sending (RTCM plan, Phase 5): the receiver's fix and correction age,
 // a plain warning when the base position or the observations are missing, and the message
@@ -3464,7 +3470,15 @@ function renderNtripList() {
       + '<div class="nt-caster"></div><div class="nt-def">' + (p.isDefault ? '★' : '') + '</div>';
     row.querySelector('.nt-name').textContent = p.name;
     row.querySelector('.nt-mount').textContent = p.mountPoint;
-    row.querySelector('.nt-caster').textContent = p.casterHost;
+    // With a fallback the column names both services; without one it is just the caster.
+    const caster = row.querySelector('.nt-caster');
+    const fbHost = p.fallback && p.fallback.host;
+    for (const [label, host] of fbHost ? [['Main: ', p.casterHost], ['FB: ', fbHost]] : [['', p.casterHost]]) {
+      const line = document.createElement('div');
+      line.textContent = label + host;
+      line.title = line.textContent;
+      caster.appendChild(line);
+    }
     row.addEventListener('pointerdown', ev => { ev.stopPropagation(); ntSelId = p.id; renderNtripList(); });
     list.appendChild(row);
   }

@@ -73,7 +73,7 @@ configuration — none of these steer the machine.
     go and the receiver's correction age, and two buttons, *NTRIP Settings* and, for a profile with a
     fallback, *Switch to fallback* / *Switch to main*. Everything else is in **NTRIP Settings**: a plain
     headline and what to do about it, the service in use, a list of checks (connected, logged in, mount
-    point, corrections, base position, age), the RTCM messages, the profile mode, *NTRIP on*, *Broadcast
+    point, corrections, base position, age), the RTCM messages, the profile mode, the *NTRIP active* / *NTRIP disabled* button, *Broadcast
     corrections* and the profiles. NTRIP Settings, the profiles and the profile editor stay open when you
     tap beside them. In a profile, *Find mount points* reads the caster's list (nearest first) to pick from.
     A profile can have a **fallback service**: the switch is there at any

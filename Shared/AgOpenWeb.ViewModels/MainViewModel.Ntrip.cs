@@ -184,7 +184,8 @@ public partial class MainViewModel
             }
             var field = State.Field.ActiveField?.Name;
             if (!string.IsNullOrEmpty(field)) await HandleNtripProfileForFieldAsync(field);
-            if (!_ntripService.IsActive) await ConnectDefaultNtripProfileOnStartupAsync();
+            // Switched on by hand: connect whatever the profile's auto-connect says.
+            if (!_ntripService.IsActive) await ConnectDefaultNtripProfileOnStartupAsync(explicitRequest: true);
         }
         catch (Exception ex)
         {
@@ -216,7 +217,7 @@ public partial class MainViewModel
     /// auto-connect is enabled, and we are not already connected). A field-loaded
     /// later that has its own profile will switch via <see cref="HandleNtripProfileForFieldAsync"/>.
     /// </summary>
-    private async Task ConnectDefaultNtripProfileOnStartupAsync()
+    private async Task ConnectDefaultNtripProfileOnStartupAsync(bool explicitRequest = false)
     {
         if (!ConfigStore.Connections.NtripEnabled)
         {
@@ -231,7 +232,7 @@ public partial class MainViewModel
             return;
         }
 
-        if (!profile.AutoConnectOnFieldLoad)
+        if (!explicitRequest && !profile.AutoConnectOnFieldLoad)
         {
             _logger.LogDebug("Default NTRIP profile '{ProfileName}' has auto-connect disabled", profile.Name);
             return;
@@ -240,8 +241,26 @@ public partial class MainViewModel
         if (_ntripService.IsActive)
             return;
 
-        _logger.LogInformation("Auto-connecting default NTRIP profile '{ProfileName}' at startup", profile.Name);
+        _logger.LogInformation("Connecting default NTRIP profile '{ProfileName}' ({Reason})", profile.Name,
+            explicitRequest ? "NTRIP switched on" : "startup auto-connect");
         await SwitchToNtripProfileAsync(profile);
+    }
+
+    /// <summary>
+    /// A profile was just created. If it is the default one and nothing is connected, start it now:
+    /// otherwise the first profile would do nothing until a restart or a field load.
+    /// </summary>
+    public async Task ConnectNewNtripProfileAsync(Models.Ntrip.NtripProfile profile)
+    {
+        try
+        {
+            if (!ConfigStore.Connections.NtripEnabled || _ntripService.IsActive || !profile.IsDefault) return;
+            await SwitchToNtripProfileAsync(profile);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error connecting the new NTRIP profile");
+        }
     }
 
     /// <summary>

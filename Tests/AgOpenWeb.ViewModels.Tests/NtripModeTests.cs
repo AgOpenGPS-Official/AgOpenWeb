@@ -151,6 +151,56 @@ public class NtripModeTests
     }
 
     [Test]
+    public async Task ANewDefaultProfile_ConnectsAtOnce_EvenWithAutoConnectOff()
+    {
+        var (b, vm) = Running(perField: false, null);
+        b.NtripService.IsActive.Returns(false);
+        NtripProfile created = Profile("new.caster", Fallback());
+        created.AutoConnectOnFieldLoad = false;
+
+        await vm.ConnectNewNtripProfileAsync(created);
+
+        Assert.That(Connects(b), Is.EqualTo(1));
+        Assert.That(LastConnect(b).CasterAddress, Is.EqualTo("new.caster"));
+        Assert.That(LastConnect(b).Fallback, Is.Not.Null);
+    }
+
+    [Test]
+    public async Task ANewProfile_DoesNotConnect_WhenNtripIsDisabledOrAlreadyActiveOrNotTheDefault()
+    {
+        var (b, vm) = Running(perField: false, null);
+        b.NtripService.IsActive.Returns(false);
+
+        ConfigurationStore.Instance.Connections.NtripEnabled = false;
+        await vm.ConnectNewNtripProfileAsync(Profile("a.caster"));
+        ConfigurationStore.Instance.Connections.NtripEnabled = true;
+
+        b.NtripService.IsActive.Returns(true);
+        await vm.ConnectNewNtripProfileAsync(Profile("b.caster"));
+        b.NtripService.IsActive.Returns(false);
+
+        NtripProfile notDefault = Profile("c.caster");
+        notDefault.IsDefault = false;
+        await vm.ConnectNewNtripProfileAsync(notDefault);
+
+        Assert.That(Connects(b), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void SwitchingNtripOn_ConnectsTheDefaultProfile_EvenWithAutoConnectOff()
+    {
+        NtripProfile profile = Profile("default.caster");
+        profile.AutoConnectOnFieldLoad = false;
+        var (b, _) = Running(perField: false, profile);
+        ConfigurationStore.Instance.Connections.NtripEnabled = false;
+        b.NtripService.IsActive.Returns(false);
+
+        ConfigurationStore.Instance.Connections.NtripEnabled = true;
+
+        Assert.That(WaitFor(() => Connects(b) == 1), Is.True);
+    }
+
+    [Test]
     public async Task EditingOnlyTheFallback_ReconnectsTheConnectedProfile()
     {
         var (b, vm) = Running(perField: false, Profile("field.caster", Fallback()));

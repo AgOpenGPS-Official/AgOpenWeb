@@ -639,7 +639,7 @@
     .nio-tbtn:hover { background: rgba(var(--ov),0.18); }
     .nio-tbtn-x { color: #ff7a6b; } .nio-tbtn-star { color: #F1C40F; font-size: 22px; }
     .nio-tbsep { width: 1px; height: 28px; background: var(--border); margin: 0 4px; }
-    .nio-nthead, .nio-ntrow { display: grid; grid-template-columns: 1fr 160px 60px; align-items: center; }
+    .nio-nthead, .nio-ntrow { display: grid; grid-template-columns: 1fr 230px 60px; align-items: center; }
     .nio-nthead { color: var(--text-muted); font: 600 12px system-ui, sans-serif; padding: 8px 12px; background: rgba(var(--ov),0.05); border-radius: 6px 6px 0 0; }
     .nio-nthead span:last-child, .nio-ntrow .nt-def { text-align: center; }
     .nio-ntlist { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 6px 6px; min-height: 120px; max-height: 320px; overflow: auto; }
@@ -648,7 +648,8 @@
     .nio-ntrow.sel { background: var(--sel); }
     .nio-ntrow .nt-name { color: var(--text); font: 600 14px system-ui, sans-serif; }
     .nio-ntrow .nt-mount { color: var(--text-dim); font: 400 12px system-ui, sans-serif; }
-    .nio-ntrow .nt-caster { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
+    .nio-ntrow .nt-caster { color: var(--text-2); font: 500 13px system-ui, sans-serif; min-width: 0; }
+    .nio-ntrow .nt-caster div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .nio-ntrow .nt-def { color: #F1C40F; font: 700 20px system-ui, sans-serif; }
     /* NTRIP editor modal */
     .nio-fld { margin-bottom: 8px; }
@@ -2163,10 +2164,8 @@
       <button class="cfg-act rn-gated" data-v="1">Profile per field</button>
     </div>
     <div class="sa-hint" id="nio-mode-hint"></div>
-    <label class="nio-bcrow" title="Off: no connection to the NTRIP caster, for work without mobile coverage">
-      <input type="checkbox" class="nio-chk" id="nio-ntrip-on" data-key="conn.ntripEnabled" checked>
-      <span class="nio-mod">NTRIP on</span>
-    </label>
+    <button id="nio-ntrip-on" class="cfg-act cfg-actwide rn-gated" style="margin-top:10px"
+      title="Disabled: no connection to the NTRIP caster, for work without mobile coverage">NTRIP active</button>
     <label class="nio-bcrow" title="Send corrections to every device on the module subnet, not only to the GPS module">
       <input type="checkbox" class="nio-chk" id="nio-rtcm-bc" data-key="conn.rtcmBroadcast">
       <span class="nio-mod">Broadcast corrections</span>
