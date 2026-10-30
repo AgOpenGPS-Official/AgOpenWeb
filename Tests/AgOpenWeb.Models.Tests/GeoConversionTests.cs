@@ -199,32 +199,6 @@ public class BoundaryUtilsTests
 }
 
 [TestFixture]
-public class CurveUtilsTests
-{
-    [Test]
-    public void CalculateHeadings_Vec2_LastPointUsesSecondToLastHeading()
-    {
-        var points = new List<Vec2>
-        {
-            new(0, 0), new(0, 10), new(0, 20)
-        };
-
-        var result = CurveUtils.CalculateHeadings(points);
-
-        Assert.That(result, Has.Count.EqualTo(3));
-        // All heading north (atan2(0,10) = 0)
-        Assert.That(result[2].Heading, Is.EqualTo(result[1].Heading).Within(1e-10));
-    }
-
-    [Test]
-    public void CalculateHeadings_TooFewPoints_ReturnsEmpty()
-    {
-        var result = CurveUtils.CalculateHeadings(new List<Vec2> { new(0, 0) });
-        Assert.That(result, Is.Empty);
-    }
-}
-
-[TestFixture]
 public class GeoCalculationsTests
 {
     [Test]

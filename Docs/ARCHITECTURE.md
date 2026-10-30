@@ -70,7 +70,7 @@ AgOpenWeb3/
 │   │
 │   ├── AgOpenWeb.Services/          # Business logic
 │   │   ├── AutoSteer/                  # AutoSteerService, PgnBuilder
-│   │   ├── Track/                      # TrackGuidanceService, TrackNudgingService
+│   │   ├── Track/                      # TrackGuidanceService
 │   │   ├── YouTurn/                    # YouTurnCreationService, YouTurnGuidanceService
 │   │   ├── Geometry/                   # PolygonOffset, FenceArea, WorkedArea
 │   │   ├── Headland/                   # HeadlandBuilderService
@@ -465,7 +465,6 @@ public static IServiceCollection AddAgOpenWebServices(this IServiceCollection se
     // Guidance
     services.AddSingleton<ITrackGuidanceService, TrackGuidanceService>();
     services.AddSingleton<IYouTurnGuidanceService, YouTurnGuidanceService>();
-    services.AddSingleton<ITrackNudgingService, TrackNudgingService>();
 
     // Field & Boundary
     services.AddSingleton<IFieldService, FieldService>();
@@ -559,7 +558,6 @@ var minFix = ConfigurationStore.Instance.Connection.MinFixQuality;
 | `TrackGuidanceService` | Pure Pursuit + Stanley algorithms for all track types |
 | `YouTurnGuidanceService` | U-turn path following |
 | `YouTurnCreationService` | Generate U-turn paths from boundaries |
-| `TrackNudgingService` | Shift tracks left/right |
 | `TramlineService` | Tramline calculations |
 
 #### Field Services

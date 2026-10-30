@@ -515,7 +515,11 @@ public partial class GeoJsonFieldService
         if (coords == null || coords.Count < 2)
             return null;
 
-        var points = geo.FromGeoJsonCoordinatesVec3(coords);
+        // The stored heading is not trusted: guidance takes a point's heading as that of the
+        // segment starting there, and curve offsets build on it, so it is worked out again the
+        // same way for every track, an AB line too. A file from AgOpenGPS (headings averaged
+        // over both neighbours) or another writer (none, or anything) reads the same.
+        var points = Models.Guidance.CurveProcessing.CalculateHeadings(geo.FromGeoJsonCoordinatesVec3(coords));
 
         var trackTypeInt = GetIntProp(feature, FieldPropertyKeys.TrackType);
         var trackType = Enum.IsDefined(typeof(TrackType), trackTypeInt)

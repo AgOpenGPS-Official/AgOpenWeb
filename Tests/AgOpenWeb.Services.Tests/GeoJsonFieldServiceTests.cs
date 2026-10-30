@@ -161,8 +161,10 @@ public class GeoJsonFieldServiceTests
     }
 
     [Test]
-    public void SaveAndLoad_TrackHeadings_Preserved()
+    public void SaveAndLoad_TrackHeadings_AreSegmentHeadings()
     {
+        // A track's headings are worked out again on load: each point takes the heading of the
+        // segment starting there, the last repeats the one before, whatever was stored.
         var field = CreateTestField();
         var tracks = new List<MTrack>
         {
@@ -172,9 +174,9 @@ public class GeoJsonFieldServiceTests
                 Type = MTrackType.Curve,
                 Points = new List<Vec3>
                 {
-                    new(0, 0, 0.7854),    // ~45 deg
-                    new(50, 50, 1.5708),   // ~90 deg
-                    new(100, 50, 3.1416),  // ~180 deg
+                    new(0, 0, 0),       // stored north; the segment runs at 45°
+                    new(50, 50, 0),     // stored north; the segment runs east
+                    new(100, 50, 3.1416),
                 },
             }
         };
@@ -182,10 +184,11 @@ public class GeoJsonFieldServiceTests
         GeoJsonFieldService.Save(field, tracks);
         var (_, loadedTracks) = GeoJsonFieldService.Load(_tempDir);
 
+        var expected = new[] { Math.PI / 4, Math.PI / 2, Math.PI / 2 };
         for (int i = 0; i < 3; i++)
         {
             Assert.That(loadedTracks[0].Points[i].Heading,
-                Is.EqualTo(tracks[0].Points[i].Heading).Within(0.0001),
+                Is.EqualTo(expected[i]).Within(0.0001),
                 $"Point {i} heading");
         }
     }
