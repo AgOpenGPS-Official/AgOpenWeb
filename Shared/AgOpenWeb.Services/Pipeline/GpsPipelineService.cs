@@ -115,10 +115,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // ReferenceEquals gate in MainViewModel.ApplyResults then fired on every
     // cycle, defeating the VBO-rebuild gate downstream and re-uploading
     // boundary/track buffers at GPS rate. PERF-05 #403 sub-finding #5.
-    // Cache key: (source track ref, distAway). Both must match to reuse.
+    // Cache key: (source track ref, its points list and count, distAway, turn radius). All must
+    // match to reuse: a track whose points were replaced (extend A/B, Ref Nudge) keeps its object.
     private Models.Track.Track? _cachedOffsetTrack;
     private Models.Track.Track? _cachedOffsetSourceTrack;
+    private List<Vec3>? _cachedOffsetSourcePoints;
+    private int _cachedOffsetSourceCount;
     private double _cachedOffsetDistAway;
+    private double _cachedOffsetTurnRadius;
     private readonly OffsetPassCache _offsetPasses = new();
     // Phase D D3: passNumber / nudgeOffset live on _guidanceWorking as the single
     // source of truth. The separate _passNumber / _nudgeOffset fields used to be
@@ -1228,7 +1232,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             double hRad = pos.Heading * Math.PI / 180.0;
             double lookE = driftedEasting + Math.Sin(hRad) * lookDist;
             double lookN = driftedNorthing + Math.Cos(hRad) * lookDist;
-            var (nearestPass, nearestDisplayTrack, displayXte) = UpdateDisplayTrack(
+            var (nearestPass, nearestDisplayTrack, displayXte, onReference) = UpdateDisplayTrack(
                 pos, track!, passNumber, nudgeOffset,
                 driftedEasting, driftedNorthing,
                 lookE, lookN);
@@ -1242,7 +1246,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 // stale baseTrack set by the earlier block (when incoming passNumber
                 // was non-zero) stays pointing at the reference track, and the UI
                 // renders baseTrack + displayTrack at the same position (overlap).
-                baseTrack = ReferenceEquals(nearestDisplayTrack, track) ? null : track;
+                baseTrack = onReference ? null : track;
                 // The guidelines go either side of the pass shown.
                 if (guideArgs is { } ga)
                     guideLines = GuideLines(track!, nearestPass, ga.Width, nudgeOffset, ga.Shift, ga.Extend, ga.Count);
@@ -1927,7 +1931,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private Models.Track.Track? _passPickTrack;
     private long _lastPassPick;
 
-    private (int nearestPass, Models.Track.Track? displayTrack, double xte) UpdateDisplayTrack(
+    private (int nearestPass, Models.Track.Track? displayTrack, double xte, bool onReference) UpdateDisplayTrack(
         Position pos, Models.Track.Track track, int passNumber, double nudgeOffset,
         double pivotEasting, double pivotNorthing,
         double sampleEasting, double sampleNorthing)
@@ -1961,14 +1965,23 @@ public sealed class GpsPipelineService : IGpsPipelineService
         else nearestPass = passNumber;
         double distAway = Models.Track.PassGeometry.Offset(track, nearestPass, widthMinusOverlap, nudgeOffset, toolShift);
 
-        Models.Track.Track? resultTrack = null;
-        if (Math.Abs(distAway) < 0.01)
+        // An open curve's pass is extended straight past A and B like the line the tractor steers,
+        // the guidelines and the line shown while guiding, whether AutoSteer is engaged or not (#492).
+        bool extend = track.Points.Count > 2 && !track.IsClosed;
+        bool onReference = Math.Abs(distAway) < 0.01;
+        double turnRadius = _configStore.Guidance.UTurnRadius;
+
+        Models.Track.Track resultTrack;
+        if (onReference && !extend)
         {
             // On the base track — show reference directly
             resultTrack = track;
         }
         else if (ReferenceEquals(_cachedOffsetSourceTrack, track)
+                 && ReferenceEquals(_cachedOffsetSourcePoints, track.Points)
+                 && _cachedOffsetSourceCount == track.Points.Count
                  && _cachedOffsetDistAway == distAway
+                 && _cachedOffsetTurnRadius == turnRadius
                  && _cachedOffsetTrack != null)
         {
             // Inputs unchanged — reuse last offset track so the downstream
@@ -1977,7 +1990,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
         else
         {
-            var offsetPoints = new List<Vec3>(_offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius).Points);
+            // The extended reference is the line itself: the caller leaves baseTrack out so it
+            // isn't drawn twice at the same position.
+            var pass = onReference ? track.Points : _offsetPasses.Get(track, distAway, turnRadius).Points;
+            var offsetPoints = extend ? CurveProcessing.ExtendCurveEnds(pass) : new List<Vec3>(pass);
             resultTrack = new Models.Track.Track
             {
                 Name = $"{track.Name} (pass {nearestPass})",
@@ -1987,7 +2003,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 IsActive = true
             };
             _cachedOffsetSourceTrack = track;
+            _cachedOffsetSourcePoints = track.Points;
+            _cachedOffsetSourceCount = track.Points.Count;
             _cachedOffsetDistAway = distAway;
+            _cachedOffsetTurnRadius = turnRadius;
             _cachedOffsetTrack = resultTrack;
         }
 
@@ -1997,7 +2016,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         if (!_guidanceWorking.IsHeadingSameWay) xte = -xte; // set for this cycle before any line (#172, #446)
 
         _autoSteerService.UpdateGuidanceResults(0, xte);
-        return (nearestPass, resultTrack, xte);
+        return (nearestPass, resultTrack, xte, onReference);
     }
 
     /// <summary>
