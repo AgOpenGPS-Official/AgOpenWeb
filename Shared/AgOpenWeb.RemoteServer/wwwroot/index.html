@@ -171,6 +171,13 @@
       color: var(--text-2); font: 600 15px system-ui, sans-serif; pointer-events: none;
       text-shadow: 0 1px 2px #000;
     }
+    #lb .lb-avg { display: none; margin-left: 10px; color: #f2f366; font: 600 12px system-ui, sans-serif; }
+    /* Guidance bar (#479), as AgOpenGPS. Light bar: the cells either side of the readout, on
+       its row (lightbarSk), the pass under them. Steer bar: the readout, then the bar
+       (steerBarSk, drawn at 84 px), then the pass. */
+    body.lightbar #lb, body.steerbar #lb { top: calc(54px + var(--sat)); }
+    body.lightbar #pass-hud { top: calc(78px + var(--sat)); }
+    body.steerbar #pass-hud { top: calc(97px + var(--sat)); }
     /* Pass HUD ("1R" / "2L") under the lightbar readout, as big as the headland distance and
        shown whatever the bar settings (updatePassHud). Ends above the headland HUD. */
     #pass-hud {
@@ -417,7 +424,7 @@
     /* Screen & Alerts toggle grid (3-up, native UniformGrid Columns=3). */
     .sa-panel { width: 480px; }
     .sa-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px; }
-    .sa-tgl, .sa-act { height: 40px; border: 1px solid var(--border); border-radius: 6px;
+    .sa-tgl, .sa-act, .sa-opt { height: 40px; border: 1px solid var(--border); border-radius: 6px;
       background: rgba(var(--ov),0.06); color: var(--text-2); cursor: pointer;
       font: 600 12px system-ui, sans-serif; text-align: left; padding: 0 8px;
       display: flex; align-items: center; gap: 6px; }
@@ -427,8 +434,9 @@
       background: rgba(var(--ov),0.06); color: var(--text-2); cursor: pointer;
       font: 600 12px system-ui, sans-serif; }
     .sa-scale.active { background: #1f6fb2; border-color: #4A90D9; color: #fff; }
-    .sa-tgl:hover, .sa-act:hover { background: rgba(var(--ov),0.14); }
-    .sa-tgl.active { background: #1f6fb2; border-color: #4A90D9; color: #fff; }
+    .sa-tgl:hover, .sa-act:hover, .sa-opt:hover { background: rgba(var(--ov),0.14); }
+    .sa-tgl.active, .sa-opt.active { background: #1f6fb2; border-color: #4A90D9; color: #fff; }
+    .sa-lbl { align-self: center; color: var(--text-2); font: 600 12px system-ui, sans-serif; }
     .sa-act { background: rgba(var(--ov),0.10); }
     .sa-grid .cfg-num { height: 40px; }
     .sa-hint { color: var(--text-muted); font: 400 11px system-ui, sans-serif; }
@@ -1545,6 +1553,16 @@
       <input id="sa-extracount" class="cfg-num" type="number" step="1" min="1" max="50" title="Extra guide count">
       <button class="sa-act" data-cmd="display.cycleResolution">Quality: <span id="sa-quality">—</span></button>
     </div>
+    <!-- Guidance bar, as AgOpenGPS: light bar or steer bar, one or the other, and On/Off apart
+         from the style. Kept with the vehicle's AutoSteer settings, saved at once (#479). -->
+    <div class="cfg-label">Guidance Bar</div>
+    <div class="sa-grid">
+      <button class="sa-opt" data-key="autosteer.steerBarEnabled" data-val="0"><img class="sa-ic" src="/icons/ConD_LightBar.png" alt="">Light Bar</button>
+      <button class="sa-opt" data-key="autosteer.steerBarEnabled" data-val="1"><img class="sa-ic" src="/icons/ConD_SteerBarBar.png" alt="">Steer Bar</button>
+      <button class="sa-opt" id="sa-baron" data-key="autosteer.lightbarEnabled">On/Off</button>
+      <span class="sa-lbl">cm per pixel</span>
+      <input id="sa-cmpp" class="cfg-num" type="number" step="1" min="1" max="20" title="cm of cross-track error per light">
+    </div>
     <div class="cfg-label">UI Size</div>
     <div class="sa-grid sa-uiscale">
       <button class="sa-scale" data-scale="100">100%</button>
@@ -2052,10 +2070,7 @@
           <div class="as-card"><div class="cfg-grid">
             <label>Nudge distance (<span class="u" data-unit="cm"></span>)</label><input class="cfg-num" data-unit="cm" data-key="autosteer.nudgeDistance" type="number" step="1">
             <label>Next guidance (s)</label><input class="cfg-num" data-key="autosteer.nextGuidanceTime" type="number" step="0.1">
-            <label>cm per pixel</label><input class="cfg-num" data-key="autosteer.cmPerPixel" type="number" step="1">
           </div></div>
-          <div class="as-card as-togcard"><img src="/icons/ConD_LightBar.png" alt=""><label>Light bar</label><button class="cfg-tgl" data-key="autosteer.lightbarEnabled">Off</button></div>
-          <div class="as-card as-togcard"><img src="/icons/ConD_SteerBarBar.png" alt=""><label>Steer bar</label><button class="cfg-tgl" data-key="autosteer.steerBarEnabled">Off</button></div>
         </div>
 
         <!-- Right-pane action buttons -->

@@ -889,6 +889,14 @@ function buildSkPaints() {
   SKP.lbFill = new CK.Paint();
   SKP.lbFill.setStyle(CK.PaintStyle.Fill);
   SKP.lbFill.setAntiAlias(false);
+  // Steer bar (steerBarSk): its bar and arrows, outlined in black.
+  SKP.sbFill = new CK.Paint();
+  SKP.sbFill.setStyle(CK.PaintStyle.Fill);
+  SKP.sbFill.setAntiAlias(true);
+  SKP.sbLine = new CK.Paint();
+  SKP.sbLine.setStyle(CK.PaintStyle.Stroke);
+  SKP.sbLine.setAntiAlias(true);
+  SKP.sbLine.setStrokeJoin(CK.StrokeJoin.Miter);
   // Vehicle triangle in marker-local px (drawn under canvas translate+rotate).
   skTri = CK.Path.MakeFromSVGString('M 0 -14 L 9 11 L -9 11 Z');
   applyMapTheme(); // sync grid colours if the theme arrived before paints were built
@@ -2790,6 +2798,13 @@ for (const b of saPanel.querySelectorAll('.sa-act'))
 // On click, not pointerdown: the panel resizes under the finger once the new size applies.
 for (const b of saPanel.querySelectorAll('.sa-scale'))
   b.addEventListener('click', e => { e.stopPropagation(); cfgSend('display.uiScale', b.dataset.scale); });
+// Guidance bar (#479): the vehicle's AutoSteer settings, not display.*. The style buttons
+// pick one of two; On/Off is apart from them.
+for (const b of saPanel.querySelectorAll('.sa-opt[data-val]'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.dataset.val); });
+const saBarOn = document.getElementById('sa-baron'), saCmpp = document.getElementById('sa-cmpp');
+saBarOn.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(saBarOn.dataset.key, saBarOn.classList.contains('active') ? '0' : '1'); });
+saCmpp.addEventListener('change', () => { const v = parseInt(saCmpp.value); if (Number.isFinite(v)) cfgSend('autosteer.cmPerPixel', v); });
 const saExtra = document.getElementById('sa-extracount');
 saExtra.addEventListener('change', () => { const v = parseInt(saExtra.value); if (Number.isFinite(v)) cfgSend('display.extraGuidelinesCount', v); });
 function populateScreenAlerts() {
@@ -2799,6 +2814,13 @@ function populateScreenAlerts() {
   if (document.activeElement !== saExtra) saExtra.value = d.extraGuidelinesCount;
   document.getElementById('sa-quality').textContent = d.resolutionLabel || '—';
   for (const b of saPanel.querySelectorAll('.sa-scale')) b.classList.toggle('active', +b.dataset.scale === (d.uiScale || 100));
+  const a = config.autosteer;
+  if (a) {
+    for (const b of saPanel.querySelectorAll('.sa-opt[data-val]'))
+      b.classList.toggle('active', (b.dataset.val === '1') === !!a.steerBarEnabled);
+    saBarOn.classList.toggle('active', !!a.lightbarEnabled);
+    if (document.activeElement !== saCmpp) saCmpp.value = a.cmPerPixel;
+  }
 }
 // Vehicle config panel — full native VehicleConfigDialog surface (Vehicle/GPS/Roll).
 // Generic config controls keyed by data-key="<section>.<field>"; reused by later
@@ -5055,30 +5077,35 @@ const lbEl = document.getElementById('lb');
 // Arrow + text as two spans, so the arrow can take the colour of the lit cells.
 const lbArrow = lbEl.appendChild(document.createElement('span'));
 const lbText = lbEl.appendChild(document.createElement('span'));
+// Light bar style: AgOpenGPS's small yellow figure, a slow average of the error that shows
+// while it stays under 15 cm. Beside the distance, not under it: the pass HUD is there.
+const lbAvg = lbEl.appendChild(document.createElement('span'));
+lbAvg.className = 'lb-avg';
+let lbAvgTick = null, lbAvgM = 0.15;
+let lbHalfW = 0; // half the readout's width, for the light bar's cells either side of it
 const LB_LEFT = '#ff7a3d', LB_RIGHT = '#39FF6A'; // as lightbarSk: steer left / steer right, on line
 function updateLightbarText() {
   const cfg = config && config.autosteer;
-  if (!tick || !tick.guidanceActive || !cfg || !cfg.guidanceBarOn) { lbEl.style.display = 'none'; return; }
-  // AgOpenGPS: "Light bar" is on/off, "Steer bar" picks the style. In light-bar style the
-  // distance text shows even with the bar off; in steer-bar style it all goes (#111).
-  if (cfg.steerBarEnabled && !cfg.lightbarEnabled) { lbEl.style.display = 'none'; return; }
-  if (cfg.steerBarEnabled) {
-    // Steer bar: steer-angle error (deg) with dead-zone.
-    let err = tick.steerAngleError || 0;
-    const dz = (tick.op && tick.op.autoSteer) ? 0.5 : 0.2;
-    if (Math.abs(err) < dz) err = 0;
-    lbArrow.textContent = err === 0 ? '' : err > 0 ? '◀ ' : '▶ ';
-    lbArrow.style.color = err > 0 ? LB_LEFT : LB_RIGHT;
-    lbText.textContent = err === 0 ? '> 0 <' : `${Math.abs(err).toFixed(1)}°`;
-  } else {
-    // Light bar: cross-track distance.
-    const xte = tick.crossTrackError || 0;
-    const onLine = Math.abs(xte) < 0.05;
-    lbArrow.textContent = (onLine ? '●' : xte > 0 ? '◀' : '▶') + ' '; // arrow = steer direction
-    lbArrow.style.color = !onLine && xte > 0 ? LB_LEFT : LB_RIGHT;
-    lbText.textContent = fmtUnit(Math.abs(xte) * 100, 'cm', 0);
+  // AgOpenGPS: On/Off shows or hides the bar, whatever its style; light bar or steer bar
+  // is the style, and both show the distance from the line here (#479).
+  const shown = !!(tick && tick.guidanceActive && cfg && cfg.guidanceBarOn && cfg.lightbarEnabled);
+  document.body.classList.toggle('steerbar', shown && !!cfg.steerBarEnabled);
+  document.body.classList.toggle('lightbar', shown && !cfg.steerBarEnabled);
+  if (!shown) { lbEl.style.display = 'none'; lbAvgTick = null; lbAvgM = 0.15; return; }
+  const xte = tick.crossTrackError || 0;
+  const onLine = Math.abs(xte) < 0.05;
+  lbArrow.textContent = (onLine ? '●' : xte > 0 ? '◀' : '▶') + ' '; // arrow = steer direction
+  lbArrow.style.color = !onLine && xte > 0 ? LB_LEFT : LB_RIGHT;
+  lbText.textContent = fmtUnit(Math.abs(xte) * 100, 'cm', 0);
+  if (cfg.steerBarEnabled) lbAvg.style.display = 'none';
+  else {
+    // Once per tick (AgOpenGPS: once per GPS fix), not per frame.
+    if (tick !== lbAvgTick) { lbAvgTick = tick; lbAvgM = Math.min(lbAvgM * 0.98 + Math.abs(xte) * 0.02, 0.15); }
+    lbAvg.textContent = fmtUnit(lbAvgM * 100, 'cm', 1);
+    lbAvg.style.display = lbAvgM < 0.15 ? 'inline' : 'none';
   }
   lbEl.style.display = 'block';
+  lbHalfW = (lbArrow.offsetWidth + lbText.offsetWidth + (lbAvg.style.display === 'none' ? 0 : lbAvg.offsetWidth + 10)) / 2;
 }
 
 // Tram lights (#451): AgOpenGPS's two dots, left and right of the light bar. The host sends
@@ -7860,43 +7887,70 @@ function toolFootprintSk(canvas) {
 // bundled), so here we draw only the LEDs. Drawn in CSS px
 // (under renderSkia's scale(dpr)), so it must run before canvas.restore().
 function lightbarSk(canvas) {
-  // GuidanceBarOn is the master; SteerBarEnabled picks the mode (steer-angle error vs
-  // cross-track). Mirrors the native LightBarPanel.
+  // The Light bar / Steer bar style picks what's drawn (AgOpenGPS isLightBarNotSteerBar);
+  // On/Off hides either (isLightbarOn, #479). GuidanceBarOn has no control and stays on.
   const cfg = config && config.autosteer;
   if (!tick || !tick.guidanceActive || !cfg || !cfg.guidanceBarOn) return;
-  if (!cfg.lightbarEnabled) return; // the Light bar toggle (AgOpenGPS isLightbarOn, #111)
-  const SEG = 15, W = 18, H = 16, GAP = 4;
-  const mid = (SEG - 1) / 2;
-  const steerMode = !!cfg.steerBarEnabled;
-  let val, PER, onThresh;
-  if (steerMode) {
-    val = tick.steerAngleError || 0;                          // actual − commanded (deg)
-    const dz = (tick.op && tick.op.autoSteer) ? 0.5 : 0.2;    // AgOpen dead-zone
-    if (Math.abs(val) < dz) val = 0;
-    PER = 12 / mid; onThresh = dz;                            // ±12° full deflection
-  } else {
-    // AutoSteer › cm per pixel (AgOpenGPS lightbarCmPerPixel): cm of XTE per lit cell (#110).
-    const cpp = Math.max(1, (cfg.cmPerPixel | 0) || 5);
-    val = tick.crossTrackError || 0; PER = cpp / 100; onThresh = 0.05; // + = right of line
-  }
-  const totalW = SEG * (W + GAP) - GAP;
-  const x0 = (vw - totalW) / 2, top = 54; // below the top status bar
-  const lit = Math.min(Math.round(Math.abs(val) / PER), mid);
-  const onLine = Math.abs(val) < onThresh;
+  if (!cfg.lightbarEnabled) return;
+  if (cfg.steerBarEnabled) { steerBarSk(canvas, 84); return; } // under the readout (body.steerbar #lb)
+  // As AgOpenGPS: the cells either side of the readout, on its row (body.lightbar #lb), lit
+  // outwards from it on the side to steer. No centre cell: the readout's ● is on the line.
+  const SIDE = 7, W = 18, H = 16, GAP = 4, top = 56;
+  // AutoSteer › cm per pixel (AgOpenGPS lightbarCmPerPixel): cm of XTE per lit cell (#110).
+  const cpp = Math.max(1, (cfg.cmPerPixel | 0) || 5);
+  const val = tick.crossTrackError || 0, PER = cpp / 100; // + = right of line
+  const lit = Math.min(Math.round(Math.abs(val) / PER), SIDE);
   const steerLeft = val > 0; // lights point the way to STEER (native convention)
   const litCol = steerLeft ? '#ff7a3d' : '#39FF6A';
+  const inner = Math.max(40, lbHalfW + 10); // clear of the readout, however wide it is
   const p = SKP.lbFill;
-  for (let i = 0; i < SEG; i++) {
-    const idx = i - mid;
-    const x = x0 + i * (W + GAP);
-    let on = false, col = '#1c2230';
-    if (idx === 0) { on = onLine; col = on ? '#39FF6A' : '#2a3550'; }
-    else if (steerLeft ? (idx < 0 && -idx <= lit) : (idx > 0 && idx <= lit)) { on = true; col = litCol; }
-    p.setColor(ckColor(on ? col : '#1c2230'));
-    canvas.drawRect(CK.XYWHRect(x, top, W, H), p);
+  for (let i = 1; i <= SIDE; i++) {
+    const off = inner + (i - 1) * (W + GAP);
+    for (const left of [true, false]) {
+      const on = left === steerLeft && i <= lit;
+      p.setColor(ckColor(on ? litCol : '#1c2230'));
+      canvas.drawRect(CK.XYWHRect(left ? vw / 2 - off - W : vw / 2 + off, top, W, H), p);
+    }
   }
-  // No arrow here: the readout under the strip (updateLightbarText) carries it, and one
-  // drawn here sat on top of that text (#219).
+}
+// Steer bar (AgOpenGPS DrawSteerBarText): the steer angle error (actual − commanded) as a
+// yellow bar from the centre, its length the error (up to 12°), lying on the side away from
+// the turn; an olive arrow at the centre and a green one at the bar's end point the way to
+// turn the wheel. Nothing inside the dead zone (0.2°, 0.5° under AutoSteer); smaller and at
+// half strength under AutoSteer.
+function steerBarSk(canvas, cy) {
+  const auto = !!(tick.op && tick.op.autoSteer);
+  const err = tick.steerAngleError || 0;
+  if (Math.abs(err) < (auto ? 0.5 : 0.2)) return;
+  const spacing = Math.max(28, vw / 50);
+  const cx = vw / 2;
+  const turn = err > 0 ? -1 : 1;                 // + error: turn left (as the light bar)
+  const endX = cx - turn * (Math.min(Math.abs(err), 12) * spacing + 35);
+  // AgOpenGPS's shapes, sized to the light bar's strip so the readout under it stays clear.
+  const half = auto ? 7 : 10;                    // arrow half-height
+  const point = half + 14;                       // arrow length (AgOpenGPS offset + pointy)
+  const a = auto ? 0.5 : 1;
+  const f = SKP.sbFill, l = SKP.sbLine;
+  // The bar: black under yellow.
+  l.setStrokeCap(CK.StrokeCap.Butt);
+  for (const [w, col] of [[auto ? 5 : 9, `rgba(0,0,0,${a})`], [auto ? 3 : 6, `rgba(242,251,102,${a})`]]) {
+    l.setStrokeWidth(w); l.setColor(ckColor(col));
+    canvas.drawLine(cx, cy, endX, cy, l);
+  }
+  l.setStrokeWidth(2); l.setColor(ckColor(`rgba(0,0,0,${a})`));
+  for (const [x, col] of [[endX, `rgba(0,252,0,${a})`], [cx, `rgba(201,201,0,${a})`]]) {
+    const path = CK.Path.MakeFromCmds([
+      CK.MOVE_VERB, x, cy - half,
+      CK.LINE_VERB, x + turn * point, cy,
+      CK.LINE_VERB, x, cy + half,
+      CK.CLOSE_VERB,
+    ]);
+    if (!path) continue;
+    f.setColor(ckColor(col));
+    canvas.drawPath(path, f);
+    canvas.drawPath(path, l);
+    path.delete();
+  }
 }
 function renderSkia(canvas, rp) {
   canvas.clear(ckColor(mapIsDay ? MAP_CLEAR.day : MAP_CLEAR.night));
