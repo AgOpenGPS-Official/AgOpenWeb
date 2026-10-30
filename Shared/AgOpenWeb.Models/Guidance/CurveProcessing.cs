@@ -615,6 +615,100 @@ namespace AgOpenWeb.Models.Guidance
             return n < 2 ? result : CalculateHeadings(result);
         }
 
+        /// <summary>
+        /// The line with its bends no tighter than <paramref name="radius"/> (the U-turn radius, what
+        /// the rig can turn): a corner tighter than that becomes an arc on its inside, as the tractor
+        /// drives it anyway, cutting it. Where nothing is tighter the line is returned as it is. Bends
+        /// are measured on a 1 m resampling, over chords two points either side, and smoothed a step
+        /// at a time (each point toward its neighbours) where too tight, until none is; straight
+        /// stretches and gentle curves are not moved. The ends of an open line stay put.
+        /// </summary>
+        public static List<Vec3> LimitTurnRadius(List<Vec3> points, double radius, bool closed)
+        {
+            if (radius <= 0 || points == null || points.Count < 5) return points!;
+            var pts = ResampleUniform(points, 1.0);
+            int count = closed ? pts.Count - 1 : pts.Count; // a loop's last point repeats the first
+            if (count < 5) return points;
+            const int k = 2;
+            var e = new double[count];
+            var no = new double[count];
+            for (int i = 0; i < count; i++) { e[i] = pts[i].Easting; no[i] = pts[i].Northing; }
+
+            int Wrap(int i) => (i % count + count) % count;
+            bool TooTight(int i)
+            {
+                int a = closed ? Wrap(i - k) : i - k, c = closed ? Wrap(i + k) : i + k;
+                return Circumradius(e[a], no[a], e[i], no[i], e[c], no[c]) < radius * 0.98;
+            }
+
+            int lo = closed ? 0 : k, hi = closed ? count - 1 : count - 1 - k;
+            bool any = false;
+            for (int i = lo; i <= hi && !any; i++) any = TooTight(i);
+            if (!any) return points;
+
+            var ne = new double[count];
+            var nn = new double[count];
+            for (int iter = 0; iter < 2000; iter++)
+            {
+                bool moved = false;
+                Array.Copy(e, ne, count);
+                Array.Copy(no, nn, count);
+                for (int i = lo; i <= hi; i++)
+                {
+                    if (!TooTight(i)) continue;
+                    int a = closed ? Wrap(i - 1) : i - 1, c = closed ? Wrap(i + 1) : i + 1;
+                    if (!closed && (a < 1 || c > count - 2)) continue; // the ends stay put
+                    ne[i] = (e[a] + 2 * e[i] + e[c]) / 4;
+                    nn[i] = (no[a] + 2 * no[i] + no[c]) / 4;
+                    moved = true;
+                }
+                (e, ne) = (ne, e);
+                (no, nn) = (nn, no);
+                if (!moved) break;
+            }
+
+            var result = new List<Vec3>(count + 1);
+            for (int i = 0; i < count; i++) result.Add(new Vec3(e[i], no[i], 0));
+            if (closed) result.Add(result[0]);
+            return CalculateHeadings(result);
+        }
+
+        private static double Circumradius(double ax, double ay, double bx, double by, double cx, double cy)
+        {
+            double ab = Math.Sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+            double bc = Math.Sqrt((cx - bx) * (cx - bx) + (cy - by) * (cy - by));
+            double ca = Math.Sqrt((ax - cx) * (ax - cx) + (ay - cy) * (ay - cy));
+            double area2 = Math.Abs((bx - ax) * (cy - ay) - (by - ay) * (cx - ax)); // twice the area
+            return area2 < 1e-12 ? double.PositiveInfinity : ab * bc * ca / (2 * area2);
+        }
+
+        /// <summary>The line with points <paramref name="spacing"/> apart along it (the last point kept).</summary>
+        public static List<Vec3> ResampleUniform(IReadOnlyList<Vec3> points, double spacing)
+        {
+            var result = new List<Vec3>();
+            if (points.Count == 0) return result;
+            result.Add(points[0]);
+            double carry = 0; // distance along the current segment to the next sample
+            for (int i = 0; i + 1 < points.Count; i++)
+            {
+                var a = points[i];
+                var b = points[i + 1];
+                double len = Math.Sqrt((b.Easting - a.Easting) * (b.Easting - a.Easting) + (b.Northing - a.Northing) * (b.Northing - a.Northing));
+                double at = spacing - carry;
+                while (at <= len)
+                {
+                    double t = at / len;
+                    result.Add(new Vec3(a.Easting + (b.Easting - a.Easting) * t, a.Northing + (b.Northing - a.Northing) * t, 0));
+                    at += spacing;
+                }
+                carry = len - (at - spacing);
+            }
+            var last = points[^1];
+            if (Math.Abs(result[^1].Easting - last.Easting) > 1e-6 || Math.Abs(result[^1].Northing - last.Northing) > 1e-6)
+                result.Add(new Vec3(last.Easting, last.Northing, 0));
+            return result;
+        }
+
         // Below this many points the plain scan is as quick as building a grid.
         private const int NearGridMinPoints = 64;
 

@@ -47,11 +47,11 @@ public class BoundaryCurveSegmentTests
         var track = _vm.SelectedTrack;
         Assert.That(track, Is.Not.Null);
         Assert.That(track!.Name, Is.EqualTo("Boundary Curve"));
-        Assert.That(track.NoPassOffset, Is.True);
+        Assert.That(track.NoPassOffset, Is.False, "ordinary passes, as AgOpenGPS's: the pass shown follows the tractor");
         var inField = track.Points.Where(p => p.Northing is > 60 and < 140).ToList();
         Assert.That(inField, Is.Not.Empty);
         double e0 = inField[0].Easting;
-        Assert.That(e0, Is.InRange(0.0, 10.0), "on the west side, at most the inset inside it");
+        Assert.That(e0, Is.EqualTo(0).Within(1e-6), "on the fence, as AgOpenGPS's");
         foreach (var p in inField) Assert.That(p.Easting, Is.EqualTo(e0).Within(1e-6));
     }
 
@@ -67,22 +67,13 @@ public class BoundaryCurveSegmentTests
     }
 
     [Test]
-    public void ACorner_IsRoundedToTheUTurnRadius()
+    public void ACorner_IsTheFenceCorner()
     {
-        // #422 follow-up: the curve rounds the corner as tightly as the rig can turn, not by a
-        // share of the side lengths (which left big gaps on long sides).
-        var vm = new MainViewModelBuilder { PolygonOffsetService = new AgOpenWeb.Services.Geometry.PolygonOffsetService() }.Build();
-        vm.State.Field.CurrentBoundary = _vm.State.Field.CurrentBoundary;
-        ConfigurationStore.Instance.Guidance.UTurnRadius = 8;
-        double inset = ConfigurationStore.Instance.ActualToolWidth / 2
-            + ConfigurationStore.Instance.Guidance.UTurnDistanceFromBoundary / 2;
+        // On the fence, as AgOpenGPS's; each pass rounds a corner the rig can't turn (OffsetPassCache).
+        _vm.RemoteCreateBoundaryCurveSegment(0, 150, 50, 200); // up the west side, round the NW corner
 
-        vm.RemoteCreateBoundaryCurveSegment(0, 150, 50, 200); // up the west side, round the NW corner
-
-        var pts = vm.SelectedTrack!.Points;
-        double cornerE = inset, cornerN = 200 - inset;
-        double nearest = pts.Min(p => Math.Sqrt((p.Easting - cornerE) * (p.Easting - cornerE) + (p.Northing - cornerN) * (p.Northing - cornerN)));
-        Assert.That(nearest, Is.EqualTo(8 * (Math.Sqrt(2) - 1)).Within(0.1));
+        var pts = _vm.SelectedTrack!.Points;
+        Assert.That(pts.Any(p => Math.Abs(p.Easting) < 1e-6 && Math.Abs(p.Northing - 200) < 1e-6));
     }
 
     private static double DistanceToLine(IReadOnlyList<AgOpenWeb.Models.Base.Vec3> pts, double e, double n)
@@ -134,35 +125,14 @@ public class BoundaryCurveSegmentTests
     }
 
     [Test]
-    public void ATapOnARoundedCorner_RunsOnAlongTheSide()
+    public void ATapOnTheCorner_RunsOnAlongTheSide()
     {
-        // The ring's corners are rounded to the U-turn radius; B tapped on the SE corner lands
-        // partway round it. The curve comes down the east side, so it runs on south, not at the
-        // corner's diagonal.
-        var vm = new MainViewModelBuilder { PolygonOffsetService = new AgOpenWeb.Services.Geometry.PolygonOffsetService() }.Build();
-        vm.State.Field.CurrentBoundary = _vm.State.Field.CurrentBoundary;
-        ConfigurationStore.Instance.Guidance.UTurnRadius = 8;
+        // B tapped on the SE corner: the curve comes down the east side, so it runs on south.
+        _vm.RemoteCreateBoundaryCurveSegment(100, 150, 100, 0);
 
-        vm.RemoteCreateBoundaryCurveSegment(100, 150, 100, 0);
-
-        var pts = vm.SelectedTrack!.Points;
-        double eastSide = pts.First(p => p.Northing is > 100 and < 160).Easting; // A's run-on, on the side
+        var pts = _vm.SelectedTrack!.Points;
         Assert.That(pts[^1].Northing, Is.LessThan(-5), "runs on south past the fence");
-        Assert.That(pts[^1].Easting, Is.EqualTo(eastSide).Within(0.5), "along the east side's line");
-    }
-
-    [Test]
-    public void TrimCornerEnd_KeepsAGentleBend()
-    {
-        // A 200 m radius bend (a curved field edge) with an 8 m rounding radius: nothing goes.
-        var path = new List<AgOpenWeb.Models.Base.Vec2>();
-        for (int i = 0; i <= 40; i++)
-        {
-            double a = i * 0.01;
-            path.Add(new AgOpenWeb.Models.Base.Vec2(200 * Math.Sin(a), 200 * (1 - Math.Cos(a))));
-        }
-        MainViewModel.TrimCornerEnd(path, 8);
-        Assert.That(path, Has.Count.EqualTo(41));
+        Assert.That(pts[^1].Easting, Is.EqualTo(100).Within(0.5), "along the east side's line");
     }
 
     [Test]

@@ -25,13 +25,18 @@ internal sealed class OffsetPassCache
     private List<Vec3>? _points;
     private int _count;
     private (Vec3 Center, double Radius)? _pivot;
+    private double _minTurnRadius;
 
-    public (List<Vec3> Points, double PercentRemoved) Get(Models.Track.Track track, double distAway)
+    /// <param name="minTurnRadius">No bend of a curve's pass is tighter than this (the U-turn radius,
+    /// what the rig can turn); 0 leaves the passes as offset.</param>
+    public (List<Vec3> Points, double PercentRemoved) Get(Models.Track.Track track, double distAway, double minTurnRadius = 0)
     {
         lock (_lock)
         {
-            if (!ReferenceEquals(track, _track) || !ReferenceEquals(track.Points, _points) || track.Points.Count != _count)
+            if (!ReferenceEquals(track, _track) || !ReferenceEquals(track.Points, _points) || track.Points.Count != _count
+                || minTurnRadius != _minTurnRadius)
             {
+                _minTurnRadius = minTurnRadius;
                 _passes.Clear();
                 _pivot = null;
                 _track = track;
@@ -48,7 +53,12 @@ internal sealed class OffsetPassCache
                 made = (CurveProcessing.PivotPass(center, radius, distAway), 0);
             }
             else
+            {
                 made = CurveProcessing.CreateOffsetCurveWithInfo(track.Points, distAway, track.IsClosed);
+                // A corner tighter than the rig can turn (an inner pass at a field corner) becomes an
+                // arc it can drive; pure pursuit cut it anyway, by up to 2 m.
+                made.Points = CurveProcessing.LimitTurnRadius(made.Points, minTurnRadius, track.IsClosed);
+            }
             _passes[distAway] = made;
             return made;
         }
