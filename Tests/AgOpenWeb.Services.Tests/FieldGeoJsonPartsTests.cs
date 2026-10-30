@@ -260,4 +260,39 @@ public class FieldGeoJsonPartsTests
         GeoJsonFieldService.DeleteContours(_dir);
         Assert.That(GeoJsonFieldService.LoadContours(_dir), Is.Empty);
     }
+
+    // contours.geojson gains a strip at every headland for seasons: an append writes the new
+    // strips in place of the closing "]}" and leaves what's there alone, instead of reading
+    // and rewriting the whole file on the host loop every pass.
+    [Test]
+    public void Contours_append_writes_only_the_new_strips()
+    {
+        GeoJsonFieldService.Save(NewField(), tracks: null);
+        for (int k = 0; k < 50; k++)
+            GeoJsonFieldService.AppendContours(_dir, new[] { new[] { new Vec3(k, 0, 0), new Vec3(k, 100, 0) } });
+        var path = Path.Combine(_dir, GeoJsonFieldService.ContoursFileName);
+        var before = File.ReadAllBytes(path);
+        int keep = Array.LastIndexOf(before, (byte)']');
+
+        GeoJsonFieldService.AppendContours(_dir, new[] { new[] { new Vec3(50, 0, 0), new Vec3(50, 100, 0) } });
+
+        var after = File.ReadAllBytes(path);
+        Assert.That(after.Take(keep), Is.EqualTo(before.Take(keep)), "existing strips untouched");
+        var strips = GeoJsonFieldService.LoadContours(_dir);
+        Assert.That(strips, Has.Count.EqualTo(51));
+        Assert.That(strips.Select(st => st[0].Easting), Is.EqualTo(Enumerable.Range(0, 51).Select(k => (double)k)).Within(0.001));
+    }
+
+    [TestCase("{\n  \"type\": \"FeatureCollection\",\n  \"features\": []\n}", TestName = "Contours_append_to_an_empty_collection")]
+    [TestCase("{\"features\":[],\"type\":\"FeatureCollection\"}", TestName = "Contours_append_to_a_file_ending_otherwise_rewrites_it")]
+    public void Contours_append_to_a_file_not_written_by_append(string existing)
+    {
+        GeoJsonFieldService.Save(NewField(), tracks: null);
+        File.WriteAllText(Path.Combine(_dir, GeoJsonFieldService.ContoursFileName), existing);
+
+        GeoJsonFieldService.AppendContours(_dir, new[] { new[] { new Vec3(1, 1, 0), new Vec3(1, 50, 0) } });
+        GeoJsonFieldService.AppendContours(_dir, new[] { new[] { new Vec3(2, 1, 0), new Vec3(2, 50, 0) } });
+
+        Assert.That(GeoJsonFieldService.LoadContours(_dir).Select(st => st[0].Easting), Is.EqualTo(new[] { 1.0, 2.0 }).Within(0.001));
+    }
 }
