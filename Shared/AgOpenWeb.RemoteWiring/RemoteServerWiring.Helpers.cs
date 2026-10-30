@@ -508,7 +508,8 @@ public static partial class RemoteServerWiring
                 async Task SaveNewProfileAsync()
                 {
                     await svc.SaveProfileAsync(profile);
-                    if (existing == null && vm != null) await vm.ConnectNewNtripProfileAsync(profile);
+                    // back on the host loop: the connect sets VM and State properties
+                    if (existing == null && vm != null) dispatcher.Post(() => _ = vm.ConnectNewNtripProfileAsync(profile));
                 }
                 // Editing the profile we're connected with: reconnect with the new settings
                 // now, not at the next field load / restart (#111).
@@ -697,7 +698,7 @@ public static partial class RemoteServerWiring
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
         _mountpointsCts = cts;
         int seq = Interlocked.Increment(ref _mountpointSeq);
-        state.Connections.NtripMountpoints = new AgOpenWeb.Models.Ntrip.NtripMountpointList(seq, which, "Loading...", []);
+        state.Connections.NtripMountpoints = new AgOpenWeb.Models.Ntrip.NtripMountpointList(seq, which, "loading", []);
 
         var position = gps?.CurrentData is { FixQuality: > 0 } data
             && (data.CurrentPosition.Latitude != 0 || data.CurrentPosition.Longitude != 0)
@@ -724,7 +725,7 @@ public static partial class RemoteServerWiring
         dispatcher.Post(() =>
         {
             if (state.Connections.NtripMountpoints.Seq != seq) return;
-            string status = result.Error ?? (result.Partial ? "Only part of the list arrived." : "");
+            string status = result.Error != null ? "error:" + result.Error : result.Partial ? "partial" : "";
             state.Connections.NtripMountpoints = new AgOpenWeb.Models.Ntrip.NtripMountpointList(
                 seq, which, status, result.Error == null ? result.Mountpoints : []);
         });

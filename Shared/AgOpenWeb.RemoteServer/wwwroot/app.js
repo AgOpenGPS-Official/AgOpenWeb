@@ -3499,7 +3499,7 @@ function renderNtripList() {
     // With a fallback the column names both services; without one it is just the caster.
     const caster = row.querySelector('.nt-caster');
     const fbHost = p.fallback && p.fallback.host;
-    for (const [label, host] of fbHost ? [['Main: ', p.casterHost], ['FB: ', fbHost]] : [['', p.casterHost]]) {
+    for (const [label, host] of fbHost ? [[tr('Main:') + ' ', p.casterHost], [tr('FB:') + ' ', fbHost]] : [['', p.casterHost]]) {
       const line = document.createElement('div');
       line.textContent = label + host;
       line.title = line.textContent;
@@ -3571,9 +3571,9 @@ function findMounts(fb) {
   _ntmFor = fb ? 'fallback' : 'main';
   document.getElementById('ntm-filter').value = '';
   if (!host) {
-    ntripMounts = { seq: 0, forService: _ntmFor, status: tr('Error: Caster host is required'), items: [] };
+    ntripMounts = { seq: 0, forService: _ntmFor, status: 'error:' + tr('Error: Caster host is required'), items: [] };
   } else {
-    ntripMounts = { seq: ntripMounts.seq, forService: _ntmFor, status: 'Loading...', items: [] };
+    ntripMounts = { seq: ntripMounts.seq, forService: _ntmFor, status: 'loading', items: [] };
     // pass is the host's mask for a stored password; the id lets the host use that one (#397)
     transport.send('ntrip.mountpoints|' + [host, port, user, pass, (nteBuf && nteBuf.id) || '', fb ? '1' : '0'].join('\t'));
   }
@@ -3583,17 +3583,18 @@ function findMounts(fb) {
 function renderNtripMounts() {
   const card = document.getElementById('dlg-ntmounts');
   if (!card.classList.contains('open') || ntripMounts.forService !== _ntmFor) return;
-  const loading = ntripMounts.status === 'Loading...';
+  const loading = ntripMounts.status === 'loading';
   const filter = document.getElementById('ntm-filter').value.trim().toLowerCase();
   const items = ntripMounts.items.filter(m => !filter || (m.mount + ' ' + m.name + ' ' + m.country).toLowerCase().includes(filter));
   const MAX_ROWS = 200;   // a big network has over a thousand: the nearest first, the rest through the search
   const shown = items.slice(0, MAX_ROWS);
-  const partial = ntripMounts.status === 'Only part of the list arrived.';   // the host's words; the list is shown all the same
+  const partial = ntripMounts.status === 'partial';   // the list is shown all the same
   const count = items.length > MAX_ROWS ? tr('{n} mount points, showing {m}. Search to narrow it down.', { n: items.length, m: MAX_ROWS })
     : tr('{n} mount points', { n: items.length });
   document.getElementById('ntm-status').textContent = loading ? tr('Loading...')
     : partial ? count + ' ' + tr('Only part of the list arrived.')
-    : ntripMounts.status ? ntripMounts.status : count;
+    : ntripMounts.status.startsWith('error:') ? ntripMounts.status.slice(6)   // the caster's own reason, as the host worded it
+    : count;
   const list = document.getElementById('ntm-list');
   list.innerHTML = '';
   for (const m of shown) {

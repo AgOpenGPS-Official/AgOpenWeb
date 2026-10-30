@@ -189,12 +189,20 @@ public partial class MainViewModel
             var profile = _ntripProfileService.Profiles.FirstOrDefault(p => p.Id == id);
             if (profile == null) return;
             if (!ConfigStore.Connections.NtripProfilePerField) await _ntripProfileService.SetDefaultProfileAsync(id);
-            await SwitchToNtripProfileAsync(profile);
+            // Back on the loop after the awaited save: the switch sets VM and State properties.
+            if (_dispatcher.CheckAccess()) await SwitchToNtripProfileAsync(profile);
+            else _dispatcher.Post(() => _ = SwitchToNtripProfileSafeAsync(profile));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error switching to NTRIP profile {Id}", id);
         }
+    }
+
+    private async Task SwitchToNtripProfileSafeAsync(Models.Ntrip.NtripProfile profile)
+    {
+        try { await SwitchToNtripProfileAsync(profile); }
+        catch (Exception ex) { _logger.LogError(ex, "Error switching to NTRIP profile {Name}", profile.Name); }
     }
 
     /// <summary>Switch to the main or the fallback service of the connected profile, at any time.</summary>

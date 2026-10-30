@@ -15,8 +15,8 @@ public sealed record NtripMountpoint(string Mount, string Name, string Format, s
 /// <summary>
 /// The mount points last asked for in the profile editor, nearest first. <paramref name="Seq"/> counts the
 /// requests so a client can tell a new list from the old one; <paramref name="For"/> says which service the
-/// list is for ("main" or "fallback"); <paramref name="Status"/> is the sentence to show ("Loading...", the
-/// reason it failed, or how many were found).
+/// list is for ("main" or "fallback"); <paramref name="Status"/> is a code: "loading", "partial" (only part of
+/// the list arrived), "error:" and the reason it failed, or empty when the list was read.
 /// </summary>
 public sealed record NtripMountpointList(int Seq, string For, string Status, IReadOnlyList<NtripMountpoint> Items)
 {

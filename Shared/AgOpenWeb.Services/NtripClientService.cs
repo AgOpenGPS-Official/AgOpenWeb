@@ -44,6 +44,7 @@ public class NtripClientService : INtripClientService, IDisposable
     private NtripSession? _probe;              // tries the main service in the background while the fallback is in use
     internal int[] ProbeBackoff { get; set; } = NtripFailover.ProbeBackoff;   // a test shortens it
     private CancellationTokenSource? _probeCts;
+    private CancellationTokenSource? _candidateCts;   // tries the fallback in the background before an automatic switch
     private bool _isDisposed;
     // The NTRIP version that delivered corrections, per service: a reconnect starts with it.
     private readonly ConcurrentDictionary<string, NtripVersion> _versions = new();
@@ -159,7 +160,7 @@ public class NtripClientService : INtripClientService, IDisposable
             if (service == NtripService.Fallback && !NtripFailover.IsConfigured(_mainConfig.Fallback)) return;
 
             // Only a main service that is failing is watched for coming back; one that was healthy needs no watch.
-            bool mainFailing = _status.State is NtripState.Waiting or NtripState.GaveUp;
+            bool mainFailing = automatic || _status.State is NtripState.Waiting or NtripState.GaveUp;
             _using = service;
             StartSession(service == NtripService.Main ? _mainConfig : NtripFailover.ForFallback(_mainConfig, _mainConfig.Fallback!));
             if (service == NtripService.Fallback && mainFailing) StartProbe();
@@ -194,7 +195,7 @@ public class NtripClientService : INtripClientService, IDisposable
                 NetworkChanged = () => Volatile.Read(ref _networkChanged).Task,
                 VersionMemory = _versions,
             };
-            probe.StatusChanged += status => { if (status.IsOpen) OnMainBack(probe); };
+            probe.StatusChanged += status => OnProbeStatus(probe, status);
             lock (_sessionLock)
             {
                 if (ct.IsCancellationRequested) return;
@@ -211,6 +212,7 @@ public class NtripClientService : INtripClientService, IDisposable
     {
         lock (_sessionLock)
         {
+            StopCandidate();
             _probeCts?.Cancel();
             _probeCts?.Dispose();
             _probeCts = null;
@@ -219,13 +221,59 @@ public class NtripClientService : INtripClientService, IDisposable
         }
     }
 
-    // The main service accepted the probe: close it and tell the operator. The fallback stays in use.
+    // Make before break: the fallback is not switched to until it has delivered corrections itself.
+    // A dropout of the network fails both services, so the client then stays on the main service
+    // and simply resumes there. Called with _sessionLock held.
+    private void StartCandidate(NtripSession requestedBy)
+    {
+        if (_candidateCts != null || _mainConfig is not { Fallback: { } fallback } main) return;
+
+        var cts = new CancellationTokenSource();
+        _candidateCts = cts;
+        NtripConfiguration config = NtripFailover.ForFallback(main, fallback);
+        NtripSession candidate = new(config, _ => { }, () => true, () => NextGgaSentence(config))
+        {
+            NetworkChanged = () => Volatile.Read(ref _networkChanged).Task,
+            VersionMemory = _versions,
+        };
+        candidate.StatusChanged += status =>
+        {
+            if (status.State != NtripState.Streaming || cts.IsCancellationRequested) return;
+            SwitchTo(NtripService.Fallback, automatic: true, requestedBy: requestedBy);
+        };
+        _ = Task.Run(() => candidate.RunAsync(cts.Token));
+    }
+
+    private void StopCandidate()
+    {
+        lock (_sessionLock)
+        {
+            _candidateCts?.Cancel();
+            _candidateCts?.Dispose();
+            _candidateCts = null;
+        }
+    }
+
+    // The probe delivers corrections: the main service is really back. It stays open, so the flag
+    // follows it: gone again when the main service drops, and told again when it comes back.
+    private void OnProbeStatus(NtripSession probe, NtripSessionStatus status)
+    {
+        if (status.State == NtripState.Streaming) { OnMainBack(probe); return; }
+        bool cleared;
+        lock (_sessionLock)
+        {
+            cleared = ReferenceEquals(probe, _probe) && _mainIsBack;
+            if (cleared) _mainIsBack = false;
+        }
+        if (cleared) RaiseStatus(IsConnected, _status.Message);
+    }
+
+    // The main service delivers corrections to the probe: tell the operator. The fallback stays in use.
     private void OnMainBack(NtripSession probe)
     {
         lock (_sessionLock)
         {
             if (!ReferenceEquals(probe, _probe) || _using != NtripService.Fallback || _mainIsBack) return;
-            _probeCts?.Cancel();
             _mainIsBack = true;
             string message = NtripFailover.NoticeText(NtripNoticeKind.MainBack, automatic: false);
             _events.Add(new NtripEvent(Clock.Current.Now, Service?.ToString() ?? "", NtripState.Connected, null, message, "", NtripVersion.V2, 0));
@@ -375,6 +423,7 @@ public class NtripClientService : INtripClientService, IDisposable
                 status.Message, status.FirstLine, status.Version, status.Attempts));
             raise = _reported != (status.IsOpen, status.Message);
             if (raise) _reported = (status.IsOpen, status.Message);
+            if (status.State == NtripState.Streaming && _using == NtripService.Main) StopCandidate();   // the main service is back before the fallback was
             switchNow = _using == NtripService.Main && _mainConfig?.Fallback is { } fallback
                 && NtripFailover.IsConfigured(fallback) && NtripFailover.ShouldSwitch(status, fallback);
         }
@@ -387,7 +436,7 @@ public class NtripClientService : INtripClientService, IDisposable
                 _logger.LogWarning("[NTRIP] {Category}: {Message} (caster said: {FirstLine})", status.LastError, status.Message, status.FirstLine);
             RaiseStatus(status.IsOpen, status.Message);
         }
-        if (switchNow) SwitchTo(NtripService.Fallback, automatic: true, requestedBy: source);
+        if (switchNow) lock (_sessionLock) { if (ReferenceEquals(source, _session)) StartCandidate(source); }
     }
 
     /// <summary>A stream begins: forget the previous one's counts and queue, and decode it if the reply was chunked.</summary>

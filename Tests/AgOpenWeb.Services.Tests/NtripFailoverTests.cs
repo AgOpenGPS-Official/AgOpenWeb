@@ -31,8 +31,9 @@ public class NtripFailoverTests
         },
     };
 
+    // Accepts and sends corrections: a service counts as working once bytes arrive, not at the 200.
     private static Task Accept(System.Net.Sockets.NetworkStream s) =>
-        NtripFakeCaster.SendAsync(s, "ICY 200 OK\r\n\r\n").ContinueWith(_ => Task.Delay(5000)).Unwrap();
+        NtripFakeCaster.SendAsync(s, "ICY 200 OK\r\n\r\nrtcm").ContinueWith(_ => Task.Delay(5000)).Unwrap();
 
     private static bool WaitFor(Func<bool> condition, int ms = 5000)
     {
@@ -337,14 +338,50 @@ public class NtripFailoverTests
         using var main = new NtripFakeCaster((_, _, s) => NtripFakeCaster.SendAsync(s, Busy));
         using var fallback = new NtripFakeCaster((_, _, s) => NtripFakeCaster.SendAsync(s, "ERROR - bad login, your password FallbackSecret1\r\n\r\n"));
         var (svc, _) = Client();
-        NtripConfiguration config = Config(main.Port, fallback.Port, autoSwitch: true, after: 1);
+        NtripConfiguration config = Config(main.Port, fallback.Port, autoSwitch: false);
         config.Fallback!.Password = "FallbackSecret1";
 
         await svc.ConnectAsync(config);
+        await svc.SwitchToAsync(NtripService.Fallback);   // by hand: an automatic switch waits for a fallback that works
 
         Assert.That(WaitFor(() => svc.Using == NtripService.Fallback && svc.Status.State == NtripState.GaveUp), Is.True);
         Assert.That(svc.Status.FirstLine, Does.Contain("***").And.Not.Contain("FallbackSecret1"));
         Assert.That(NtripSupportReport.Build(svc, null), Does.Not.Contain("FallbackSecret1").And.Contain("the fallback service"));
+        svc.Dispose();
+    }
+
+    [Test]
+    public async Task WhenBothServicesFail_TheClientStaysOnTheMainService()
+    {
+        // A network dropout fails both: nothing is switched to until the fallback has delivered corrections.
+        using var main = new NtripFakeCaster((_, _, s) => NtripFakeCaster.SendAsync(s, Busy));
+        using var fallback = new NtripFakeCaster((_, _, s) => NtripFakeCaster.SendAsync(s, Busy));
+        var (svc, notices) = Client();
+
+        await svc.ConnectAsync(Config(main.Port, fallback.Port, autoSwitch: true, after: 1));
+
+        Assert.That(WaitFor(() => fallback.Accepted >= 1), Is.True, "the fallback was tried");
+        Assert.That(WaitFor(() => svc.Using == NtripService.Fallback, 1500), Is.False);
+        Assert.That(notices.Where(n => n.Kind == NtripNoticeKind.SwitchedToFallback), Is.Empty);
+        svc.Dispose();
+    }
+
+    [Test]
+    public async Task AMainServiceThatAcceptsButSendsNothing_IsNotReportedAsBack()
+    {
+        // The caster is up and the base behind it is down: it accepts and sends nothing.
+        using var main = new NtripFakeCaster((connection, _, s) => connection <= 2
+            ? NtripFakeCaster.SendAsync(s, Busy)
+            : NtripFakeCaster.SendAsync(s, "ICY 200 OK\r\n\r\n").ContinueWith(_ => Task.Delay(5000)).Unwrap());
+        using var fallback = new NtripFakeCaster((_, _, s) => Accept(s));
+        var (svc, _) = Client();
+        svc.ProbeBackoff = [1];
+
+        await svc.ConnectAsync(Config(main.Port, fallback.Port, autoSwitch: true, after: 1));
+
+        Assert.That(WaitFor(() => svc.Using == NtripService.Fallback), Is.True);
+        Assert.That(WaitFor(() => main.Accepted >= 3), Is.True, "the probe was accepted");
+        Assert.That(WaitFor(() => svc.MainIsBack, 1500), Is.False);
         svc.Dispose();
     }
 }
