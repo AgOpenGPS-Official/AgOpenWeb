@@ -231,7 +231,7 @@
     /* Touch cancel for bare map-tap flows (flag placement) that have no draw toolbar. Shown
        by startMapTap only when the toolbar isn't up, so it never doubles the toolbar Cancel. */
     /* Ref Nudge panel (#489): beside the right nav, under the status bar. */
-    #refnudge { position: fixed; top: calc(var(--bar-bottom) + 10px); right: calc(var(--sar) + 96px); z-index: 33;
+    #refnudge { position: fixed; top: calc(var(--bar-bottom, calc(46px + var(--sat))) + 10px); right: calc(var(--sar) + 96px); z-index: 33;
       display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px;
       background: var(--float-bg); border: 1px solid var(--border-2); color: var(--text); }
     #refnudge[hidden] { display: none; }
