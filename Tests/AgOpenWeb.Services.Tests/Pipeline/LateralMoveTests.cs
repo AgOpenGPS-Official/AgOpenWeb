@@ -124,4 +124,29 @@ public class LateralMoveTests
             Assert.That(moved.NudgeOffset, Is.EqualTo(0.3).Within(1e-9));
         });
     }
+
+    // The pass label, as AgOpenGPS's DrawTrackInfo: an arrow for the way you drive along the line
+    // (↑ A→B, ↓ B→A) and the pass, counted from 1 either side of the reference line.
+    [TestCase(0.0, 0, "↑1R")]
+    [TestCase(0.0, 2, "↑3R")]
+    [TestCase(0.0, -1, "↑1L")]
+    [TestCase(180.0, 0, "↓1R")]
+    public void Pass_label_shows_the_way_you_drive_and_the_pass(double headingDeg, int pass, string label)
+    {
+        var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
+        _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetAutoSteerEngaged(true);
+        GuidanceSnapshot g = null!;
+        for (int i = 0; i < 3; i++)
+        {
+            _gpsService.UpdateGpsData(new GpsData
+            {
+                CurrentPosition = new Position { Latitude = 43.7128, Longitude = -74.006, Heading = headingDeg, Speed = 2 },
+                FixQuality = 4,
+                IsValid = true,
+            });
+            g = _results[^1].Guidance!;
+        }
+        Assert.That(g.CurrentLineLabel, Is.EqualTo(label));
+    }
 }

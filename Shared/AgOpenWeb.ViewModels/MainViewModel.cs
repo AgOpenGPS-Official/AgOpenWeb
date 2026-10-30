@@ -2267,7 +2267,7 @@ public partial class MainViewModel : ObservableObject
     // Curve recording state (drive mode)
     private List<Vec3> _recordedCurvePoints = new();
     private Vec3? _lastCurvePoint;
-    private const double CurveMinPointSpacing = 2.0; // Minimum 2m spacing between curve points
+    private const double CurveMinPointSpacing = 1.0; // a point a metre while driving a curve (AgOpenGPS: every fix)
 
     /// <summary>
     /// Whether curve recording is currently active

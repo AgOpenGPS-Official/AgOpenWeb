@@ -1405,7 +1405,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 _youTurn,
                 justCompleted: youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false)),
             Guidance = BuildGuidanceSnapshot(
-                _guidanceWorking, displayTrack, baseTrack, hasGuidance,
+                WithLineLabel(_guidanceWorking), displayTrack, baseTrack, hasGuidance,
                 diagPathAnchorA, diagPathAnchorB, diagTurnPathCount, diagAntiTangentGuardFired) with { GuideLines = guideLines },
 
             // Sections
@@ -1493,6 +1493,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
         NextUTurnDirectionLeftOverride = src.NextUTurnDirectionLeftOverride,
         JustCompleted = justCompleted,
     };
+
+    // The pass label, as AgOpenGPS's DrawTrackInfo: an arrow for the way you drive (up = A→B, its
+    // font's '{'; down = B→A, its '}') and the pass counted from the reference line, which is the
+    // edge between passes: pass 0 is 1R, pass −1 is 1L. The map adds the nudge in its own units.
+    private static GuidanceWorkingState WithLineLabel(GuidanceWorkingState g)
+    {
+        int pass = g.HowManyPathsAway;
+        g.CurrentLineLabel = (g.IsHeadingSameWay ? "↑" : "↓") + (pass >= 0 ? $"{pass + 1}R" : $"{-pass}L");
+        return g;
+    }
 
     private static GuidanceSnapshot BuildGuidanceSnapshot(
         GuidanceWorkingState src,
