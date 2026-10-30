@@ -838,6 +838,9 @@ public static class WireCodec
             w.Write(ns.Attempts);
             w.Write((float)ns.RetryInSeconds);
             WriteStr(w, ns.Notice);
+            // Append-only: the profile in use ("" for a caster typed in) and the service in use ("MOUNT@host:port").
+            WriteStr(w, ns.Profile);
+            WriteStr(w, ns.Service);
         }
         return ms.ToArray();
     }

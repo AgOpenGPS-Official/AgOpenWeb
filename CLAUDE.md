@@ -345,7 +345,7 @@ while the fallback is in use after a failure, the main service is tried slowly i
 says when it answers; not when both are one login on one caster. Every switch raises `Notice` and says that RTK may be lost.
 In the web client the Network IO card keeps to the first lines and the switch; NTRIP Settings (`renderNtripSettings` in
 `app.js`: headline, advice, checks, the mode) shows the rest, from the `NtripSessionDto` that ends the Status frame;
-`ntrip.mountpoints` asks the caster for its source table (`NtripSourcetable`), answered in its own frame; a profile's fallback ends its entry in the profiles
+`ntrip.use|id` connects with a profile now (`MainViewModel.UseNtripProfileAsync`; the default too in the one-profile mode); the session frame carries the profile name and the service in use (`ConnectionState.NtripProfileName/MainText/FallbackText`). `ntrip.mountpoints` asks the caster for its source table (`NtripSourcetable`), answered in its own frame; a profile's fallback ends its entry in the profiles
 frame; `ntrip.save` carries it (`NtripProfileFields`), `ntrip.test` can test it. A switch is a toast, "the main service
 is back" is the host's confirmation dialog.
 

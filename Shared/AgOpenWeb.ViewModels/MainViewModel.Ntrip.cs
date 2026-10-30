@@ -118,6 +118,12 @@ public partial class MainViewModel
                     ? _ntripFallback : null,
             };
 
+            // The name belongs to the main service it was set for; a caster typed in by hand has none.
+            State.Connections.NtripProfileName = _ntripFallbackFor is { } k && k.Host == NtripCasterAddress
+                && k.Port == NtripCasterPort && k.Mount == NtripMountPoint ? _ntripProfileName : "";
+            State.Connections.NtripMainText = $"{config.MountPoint}@{config.CasterAddress}:{config.CasterPort}";
+            State.Connections.NtripFallbackText = config.Fallback is { } f ? $"{f.MountPoint}@{f.CasterAddress}:{f.CasterPort}" : "";
+
             await _ntripService.ConnectAsync(config);
         }
         catch (Exception ex)
@@ -167,6 +173,27 @@ public partial class MainViewModel
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error applying the NTRIP mode");
+        }
+    }
+
+    /// <summary>
+    /// Connect with this profile now. With one profile and a fallback it also becomes the default one, so it
+    /// is the one after a restart; with a profile per field it is used until a field loads another.
+    /// Does nothing while NTRIP is switched off.
+    /// </summary>
+    public async Task UseNtripProfileAsync(string id)
+    {
+        try
+        {
+            if (!ConfigStore.Connections.NtripEnabled) return;
+            var profile = _ntripProfileService.Profiles.FirstOrDefault(p => p.Id == id);
+            if (profile == null) return;
+            if (!ConfigStore.Connections.NtripProfilePerField) await _ntripProfileService.SetDefaultProfileAsync(id);
+            await SwitchToNtripProfileAsync(profile);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error switching to NTRIP profile {Id}", id);
         }
     }
 
@@ -313,8 +340,11 @@ public partial class MainViewModel
         await ConnectToNtripAsync();
     }
 
+    private string _ntripProfileName = "";
+
     private void UseFallbackOf(Models.Ntrip.NtripProfile profile)
     {
+        _ntripProfileName = profile.Name;
         _ntripFallback = FallbackFor(profile);
         _ntripFallbackFor = (profile.CasterHost, profile.CasterPort, profile.MountPoint);
     }

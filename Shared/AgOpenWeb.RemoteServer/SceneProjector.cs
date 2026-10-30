@@ -443,16 +443,18 @@ public sealed class SceneProjector
             FieldDataProvider?.Invoke(),
             cfg.SendCorrectedPosition,
             c.ScanReplySubnet ?? "",
-            BuildNtripSession(cfg.NtripProfilePerField, c.NtripNotice ?? ""));
+            BuildNtripSession(cfg.NtripProfilePerField, c));
     }
 
     // The NTRIP session for the Network IO card, read live for every status frame.
-    private NtripSessionDto? BuildNtripSession(bool profilePerField, string notice)
+    private NtripSessionDto? BuildNtripSession(bool profilePerField, ConnectionState c)
     {
         if (_ntrip == null) return null;
         var status = _ntrip.Status;
-        return new NtripSessionDto(_ntrip.Using == NtripService.Fallback, _ntrip.MainIsBack, _ntrip.HasFallback, profilePerField,
-            (int)status.State, status.LastError is { } error ? (int)error : -1, status.Attempts, status.RetryInSeconds, notice);
+        bool fallback = _ntrip.Using == NtripService.Fallback;
+        return new NtripSessionDto(fallback, _ntrip.MainIsBack, _ntrip.HasFallback, profilePerField,
+            (int)status.State, status.LastError is { } error ? (int)error : -1, status.Attempts, status.RetryInSeconds, c.NtripNotice ?? "",
+            c.NtripProfileName ?? "", (fallback ? c.NtripFallbackText : c.NtripMainText) ?? "");
     }
 
     // Read live for every status frame, so "seconds since the last one" keeps counting

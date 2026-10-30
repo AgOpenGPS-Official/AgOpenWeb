@@ -3151,6 +3151,9 @@ function renderNetworkIo() {
   document.getElementById('nio-hostips').textContent = s.hostIps || '—';
   document.getElementById('nio-ntrip-dot').style.background = s.ntripConnected ? '#22c55e' : '#6b7280';
   document.getElementById('nio-ntrip-status').textContent = ntripHeadline(s);
+  const who = document.getElementById('nio-ntrip-who'), ns0 = s.ntripSession;
+  who.textContent = s.ntripEnabled && ns0 && ns0.state !== 0 ? ntripWho(ns0) : '';
+  who.hidden = !who.textContent;
   document.getElementById('nio-ntrip-bytes').textContent = Math.floor((s.ntripBytes || 0) / 1024).toLocaleString() + ' KB';
   // Where the corrections go: the GPS module's own address, or the subnet broadcast.
   document.getElementById('nio-ntrip-dest').textContent = !s.ntripDestination ? ''
@@ -3231,6 +3234,8 @@ function renderNtripSwitch(s) {
   btn.textContent = ns.usingFallback ? tr('Switch to main') : tr('Switch to fallback');
   btn.classList.toggle('disabled', !iHoldControl);
 }
+// The profile and the service in use, as one line: "Home · MOUNT@caster.example:2101".
+const ntripWho = ns => [ns.profile, ns.service].filter(Boolean).join(' · ');
 function renderNtripSession(s) {
   const ns = s.ntripSession, on = !!s.ntripEnabled && !!ns;
   const advice = document.getElementById('nio-ntrip-advice');
@@ -3239,8 +3244,9 @@ function renderNtripSession(s) {
 
   // Which service is in use (only with a fallback); the switch itself is on the Network IO card.
   const svcText = document.getElementById('nio-svc-text');
-  svcText.hidden = !(on && ns.hasFallback);
-  if (!svcText.hidden) svcText.textContent = ns.usingFallback ? tr('Using the fallback service') : tr('Using the main service');
+  const who = on ? ntripWho(ns) : '';
+  svcText.hidden = !(on && (ns.hasFallback || who));
+  if (!svcText.hidden) svcText.textContent = (ns.hasFallback ? (ns.usingFallback ? tr('Using the fallback service') : tr('Using the main service')) + (who ? ': ' : '') : '') + who;
   const note = document.getElementById('nio-ntrip-notice');
   const text = ns && ns.mainIsBack && !ns.notice ? tr('The main service answers again.') : (ns ? ns.notice : '');
   note.hidden = !text;
@@ -3457,6 +3463,24 @@ document.getElementById('nt-del').addEventListener('pointerdown', e => {
 document.getElementById('nt-default').addEventListener('pointerdown', e => {
   e.stopPropagation(); const p = selectedNtProfile(); if (p) transport.send('ntrip.setDefault|' + p.id);
 });
+let _ntripUseKey = '';
+// The profile the client is connected with: by its name, which the host sends with the session.
+function ntripProfileInUse(p) {
+  const s = statusBar, ns = s && s.ntripSession;
+  return !!(s && s.ntripEnabled && ns && ns.state !== 0 && ns.profile && ns.profile === p.name);
+}
+// Use: connect with the selected profile now. It asks first when a session is running: RTK may be lost.
+document.getElementById('nt-use').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  const p = selectedNtProfile(), s = statusBar;
+  if (!p || !iHoldControl) return;
+  if (!s || !s.ntripEnabled) { showToast(tr('NTRIP is disabled. Switch it on in NTRIP Settings first.')); return; }
+  if (ntripProfileInUse(p)) return;
+  const go = () => transport.send('ntrip.use|' + p.id);
+  const ns = s.ntripSession;
+  if (ns && ns.state !== 0) showConfirm(tr('Use this profile'), tr('GPS may lose RTK and the position may shift a little.') + ' ' + tr('Connect with {name}?', { name: p.name }), go);
+  else go();
+});
 function selectedNtProfile() { return (ntripProfiles && ntripProfiles.profiles.find(p => p.id === ntSelId)) || null; }
 function renderNtripList() {
   const list = document.getElementById('nt-list');
@@ -3469,7 +3493,9 @@ function renderNtripList() {
     row.innerHTML = '<div><div class="nt-name"></div><div class="nt-mount"></div></div>'
       + '<div class="nt-caster"></div><div class="nt-def">' + (p.isDefault ? '★' : '') + '</div>';
     row.querySelector('.nt-name').textContent = p.name;
-    row.querySelector('.nt-mount').textContent = p.mountPoint;
+    const inUse = ntripProfileInUse(p);
+    row.querySelector('.nt-mount').textContent = p.mountPoint + (inUse ? ' · ' + tr('in use') : '');
+    if (inUse) row.querySelector('.nt-name').style.color = '#22c55e';
     // With a fallback the column names both services; without one it is just the caster.
     const caster = row.querySelector('.nt-caster');
     const fbHost = p.fallback && p.fallback.host;
@@ -4448,6 +4474,9 @@ function renderSettings() {
   if (nioPanel.classList.contains('open')) renderNetworkIo();
   if (ntsPanel.classList.contains('open')) renderNtripSettings();
   if (sdPanel.classList.contains('open')) renderSystemData();
+  // The profile list marks the one in use: redrawn only when that changes, not on every frame.
+  const useKey = ntripProfiles ? ntripProfiles.profiles.map(ntripProfileInUse).join() : '';
+  if (useKey !== _ntripUseKey) { _ntripUseKey = useKey; if (document.getElementById('ntripprofiles').classList.contains('open')) renderNtripList(); }
   // NTRIP test result rides the Status frame while a test is in flight.
   if (_nteTestActive && document.getElementById('ntripeditor').classList.contains('open') && statusBar)
     document.getElementById(_nteTestWhich === 'fb' ? 'nte-fb-teststatus' : 'nte-teststatus').textContent = statusBar.ntripTestStatus || '';

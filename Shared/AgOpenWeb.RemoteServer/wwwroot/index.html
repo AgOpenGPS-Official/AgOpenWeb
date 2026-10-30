@@ -638,6 +638,7 @@
       color: var(--text); font: 700 20px system-ui, sans-serif; cursor: pointer; }
     .nio-tbtn:hover { background: rgba(var(--ov),0.18); }
     .nio-tbtn-x { color: #ff7a6b; } .nio-tbtn-star { color: #F1C40F; font-size: 22px; }
+    .nio-tbtn-use { width: auto; padding: 0 12px; font-weight: 700; }
     .nio-tbsep { width: 1px; height: 28px; background: var(--border); margin: 0 4px; }
     .nio-nthead, .nio-ntrow { display: grid; grid-template-columns: 1fr 230px 60px; align-items: center; }
     .nio-nthead { color: var(--text-muted); font: 600 12px system-ui, sans-serif; padding: 8px 12px; background: rgba(var(--ov),0.05); border-radius: 6px 6px 0 0; }
@@ -2123,6 +2124,7 @@
       <span class="nio-mod" style="font-weight:700">NTRIP</span>
       <span class="nio-ntstatus" id="nio-ntrip-status">Not Connected</span>
     </div>
+    <div class="sa-hint" id="nio-ntrip-who" translate="no" hidden></div>
     <div class="sa-hint" id="nio-ntrip-bytes" translate="no">0 KB</div>
     <div class="sa-hint" id="nio-ntrip-dest"></div>
     <div class="sa-hint" id="nio-ntrip-rx"></div>
@@ -2227,6 +2229,7 @@
       <button id="nt-edit" class="nio-tbtn" title="Edit Selected Profile">⚙</button>
       <button id="nt-del" class="nio-tbtn nio-tbtn-x" title="Delete Selected Profile">✕</button>
       <span class="nio-tbsep"></span>
+      <button id="nt-use" class="nio-tbtn nio-tbtn-use" title="Connect with the Selected Profile">Use</button>
       <button id="nt-default" class="nio-tbtn nio-tbtn-star" title="Set as Default Profile">★</button>
     </div>
     <div class="nio-nthead"><span>Profile Name</span><span>Caster</span><span>Default</span></div>

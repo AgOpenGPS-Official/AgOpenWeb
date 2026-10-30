@@ -378,7 +378,9 @@ public record NtripSessionDto(
     int LastError,
     int Attempts,
     double RetryInSeconds,
-    string Notice);
+    string Notice,
+    string Profile = "",
+    string Service = "");
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and

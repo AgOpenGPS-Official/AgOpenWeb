@@ -76,6 +76,9 @@ configuration — none of these steer the machine.
     point, corrections, base position, age), the RTCM messages, the profile mode, the *NTRIP active* / *NTRIP disabled* button, *Broadcast
     corrections* and the profiles. NTRIP Settings, the profiles and the profile editor stay open when you
     tap beside them. In a profile, *Find mount points* reads the caster's list (nearest first) to pick from.
+    The card and NTRIP Settings name the profile and the service in use (`MOUNT@host:port`). In the profile
+    list, *Use* connects with the selected profile now (it asks first when a session is running); with one
+    profile and a fallback it also becomes the default, and the list marks the one in use.
     A profile can have a **fallback service**: the switch is there at any
     time and always asks first, because RTK may be lost. With *Switch to the fallback by itself* on in the
     profile, the fallback takes over after the set number of failed attempts, or at once for a wrong

@@ -206,7 +206,7 @@ window.RemoteTransport = {
           let ntripSession = null;
           if (u8()) {
             ntripSession = { usingFallback: !!u8(), mainIsBack: !!u8(), hasFallback: !!u8(), profilePerField: !!u8(),
-              state: u8(), lastError: i32(), attempts: i32(), retrySeconds: f32(), notice: str() };
+              state: u8(), lastError: i32(), attempts: i32(), retrySeconds: f32(), notice: str(), profile: str(), service: str() };
           }
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,

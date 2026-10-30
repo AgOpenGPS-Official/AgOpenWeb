@@ -186,6 +186,70 @@ public class NtripModeTests
         Assert.That(Connects(b), Is.EqualTo(0));
     }
 
+    private static NtripProfile Listed(MainViewModelBuilder b, string host, bool withFallback)
+    {
+        NtripProfile p = Profile(host, withFallback ? Fallback() : null);
+        p.IsDefault = false;
+        b.NtripProfileService.Profiles.Returns(new List<NtripProfile> { p });
+        return p;
+    }
+
+    [Test]
+    public async Task UsingAProfile_ConnectsItAndMakesItTheDefault_WithOneProfile()
+    {
+        var (b, vm) = Running(perField: false, null);
+        NtripProfile p = Listed(b, "chosen.caster", withFallback: true);
+
+        await vm.UseNtripProfileAsync(p.Id);
+
+        await b.NtripProfileService.Received(1).SetDefaultProfileAsync(p.Id);
+        Assert.That(LastConnect(b).CasterAddress, Is.EqualTo("chosen.caster"));
+        Assert.That(LastConnect(b).Fallback, Is.Not.Null);
+        Assert.That(vm.State.Connections.NtripProfileName, Is.EqualTo("chosen.caster"));
+        Assert.That(vm.State.Connections.NtripMainText, Is.EqualTo("M@chosen.caster:2101"));
+        Assert.That(vm.State.Connections.NtripFallbackText, Is.EqualTo("F@fallback.caster:2102"));
+    }
+
+    [Test]
+    public async Task UsingAProfile_WithAProfilePerField_DoesNotChangeTheDefault()
+    {
+        var (b, vm) = Running(perField: true, null);
+        NtripProfile p = Listed(b, "chosen.caster", withFallback: true);
+
+        await vm.UseNtripProfileAsync(p.Id);
+
+        await b.NtripProfileService.DidNotReceiveWithAnyArgs().SetDefaultProfileAsync(default!);
+        Assert.That(LastConnect(b).CasterAddress, Is.EqualTo("chosen.caster"));
+        Assert.That(LastConnect(b).Fallback, Is.Null);
+    }
+
+    [Test]
+    public async Task UsingAProfile_WhileNtripIsDisabled_DoesNothing()
+    {
+        var (b, vm) = Running(perField: false, null);
+        NtripProfile p = Listed(b, "chosen.caster", withFallback: false);
+        ConfigurationStore.Instance.Connections.NtripEnabled = false;
+
+        await vm.UseNtripProfileAsync(p.Id);
+        ConfigurationStore.Instance.Connections.NtripEnabled = true;
+
+        Assert.That(Connects(b), Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task ACasterTypedInByHand_HasNoProfileName()
+    {
+        var (b, vm) = Running(perField: false, null);
+        NtripProfile p = Listed(b, "chosen.caster", withFallback: false);
+        await vm.UseNtripProfileAsync(p.Id);
+
+        vm.NtripCasterAddress = "typed.caster";
+        await vm.ConnectToNtripAsync();
+
+        Assert.That(vm.State.Connections.NtripProfileName, Is.Empty);
+        Assert.That(vm.State.Connections.NtripMainText, Is.EqualTo("M@typed.caster:2101"));
+    }
+
     [Test]
     public void SwitchingNtripOn_ConnectsTheDefaultProfile_EvenWithAutoConnectOff()
     {

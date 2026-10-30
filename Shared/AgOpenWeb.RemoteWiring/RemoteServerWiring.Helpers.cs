@@ -429,6 +429,9 @@ public static partial class RemoteServerWiring
             case "ntrip.setDefault": // arg = id
                 _ = svc.SetDefaultProfileAsync(arg);
                 return;
+            case "ntrip.use": // arg = id: connect with that profile now
+                if (vm != null) _ = vm.UseNtripProfileAsync(arg);
+                return;
             case "ntrip.switch": // arg = main | fallback: the service the corrections come from
                 if (vm != null && arg is "main" or "fallback")
                     _ = vm.SwitchNtripServiceAsync(arg == "main" ? AgOpenWeb.Services.Interfaces.NtripService.Main : AgOpenWeb.Services.Interfaces.NtripService.Fallback);

@@ -134,6 +134,15 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _ntripMainIsBack, value);
     }
 
+    // Which profile and services the client was started with, for the cards ("MOUNT@host:port"; the
+    // profile name is empty for a caster typed in by hand). Never holds a login.
+    private string _ntripProfileName = string.Empty;
+    public string NtripProfileName { get => _ntripProfileName; set => SetProperty(ref _ntripProfileName, value); }
+    private string _ntripMainText = string.Empty;
+    public string NtripMainText { get => _ntripMainText; set => SetProperty(ref _ntripMainText, value); }
+    private string _ntripFallbackText = string.Empty;
+    public string NtripFallbackText { get => _ntripFallbackText; set => SetProperty(ref _ntripFallbackText, value); }
+
     private string _ntripNotice = string.Empty;
     public string NtripNotice
     {
@@ -279,6 +288,7 @@ public class ConnectionState : ObservableObject
         NtripRtcmUnicast = false;
         NtripUsingFallback = NtripMainIsBack = false;
         NtripNotice = "";
+        NtripProfileName = NtripMainText = NtripFallbackText = "";
         NtripMountpoints = AgOpenWeb.Models.Ntrip.NtripMountpointList.None;
         IsAutoSteerConnected = IsAutoSteerDataOk = IsAutoSteerEngaged = false;
         IsMachineConnected = IsMachineDataOk = false;
