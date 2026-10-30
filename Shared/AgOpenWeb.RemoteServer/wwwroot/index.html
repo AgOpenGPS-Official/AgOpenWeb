@@ -3073,6 +3073,12 @@
         <button class="dlg-mode" data-qab="latLonHeading" title="AB line from a latitude/longitude and a heading"><span class="dlg-bigtxt">A+</span><span>Lat/Lon + Heading</span></button>
         <button class="dlg-mode" data-qab="latLonAB" title="AB line through two latitude/longitude points"><span class="dlg-bigtxt">AB</span><span>Lat/Lon A, B</span></button>
       </div>
+      <!-- Water pivot (AgOpenGPS TrackMode.waterPivot): its passes are circles about the centre. -->
+      <div class="dlg-sub">Water Pivot</div>
+      <div class="dlg-modes">
+        <button class="dlg-mode" data-qab="recordPivot" title="Drive part of the way round a water pivot"><span class="dlg-bigtxt">◯</span><span>Drive Round</span></button>
+        <button class="dlg-mode" data-qab="latLonPivot" title="Water pivot from the latitude/longitude of its centre"><span class="dlg-bigtxt">◯</span><span>Lat/Lon Centre</span></button>
+      </div>
       <div class="dlg-buttons"><button id="dlg-qab-cancel" class="dlg-btn dlg-cancel">Cancel</button></div>
     </div>
     <!-- Coordinates line (#335): A + heading, or A + B. The fill buttons put in the
@@ -3080,7 +3086,7 @@
     <div id="dlg-latlonab" class="dlg-card">
       <div class="dlg-title" id="ll-title"></div>
       <div class="ll-pt">
-        <div class="ll-hdr"><span>A</span><button class="dlg-btn ll-fill" data-ll-fill="a">Use current position</button></div>
+        <div class="ll-hdr"><span id="ll-a-label">A</span><button class="dlg-btn ll-fill" data-ll-fill="a">Use current position</button></div>
         <label class="dlg-label" for="ll-lat-a">Latitude (−90 to 90)</label>
         <input id="ll-lat-a" class="dlg-input num-field" type="text" placeholder="0.00000000">
         <label class="dlg-label" for="ll-lon-a">Longitude (−180 to 180)</label>

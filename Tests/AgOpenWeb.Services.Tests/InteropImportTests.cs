@@ -144,4 +144,24 @@ public class InteropImportTests
         Assert.That(reloaded.IsPointCovered(0, 5), Is.True);
         Assert.That(reloaded.TotalWorkedArea, Is.EqualTo(20).Within(0.5));
     }
+
+    // A water pivot in TrackLines.txt has only its centre (A); B is unset. It imports as the
+    // centre twice, which the field load turns into the pivot's circle.
+    [Test]
+    public void Water_pivot_imports_as_its_centre()
+    {
+        File.WriteAllLines(Path.Combine(_dir, "TrackLines.txt"), new[]
+        {
+            "$TrackLines", "Piv", "0", "35.5,-12.25", "0,0", "0", "64", "True", "0",
+        });
+
+        var t = TrackFilesService.Load(_dir).Single();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(t.Type, Is.EqualTo(AgOpenWeb.Models.Track.TrackType.WaterPivot));
+            Assert.That(t.Points, Has.Count.EqualTo(2));
+            Assert.That(t.Points.All(p => p.Easting == 35.5 && p.Northing == -12.25), "the centre, not B");
+        });
+    }
 }

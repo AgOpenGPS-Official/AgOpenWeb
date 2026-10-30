@@ -4242,6 +4242,7 @@ public partial class MainViewModel : ObservableObject
 
     // AB Line Guidance Commands - Bottom Bar (always visible)
     public ICommand? SnapLeftCommand { get; private set; }
+    public ICommand? StartPivotRecordingCommand { get; private set; }
     public ICommand? SnapRightCommand { get; private set; }
     public ICommand? StopGuidanceCommand { get; private set; }
     public ICommand? UTurnCommand { get; private set; }
@@ -6282,6 +6283,14 @@ public partial class MainViewModel : ObservableObject
                 // Ensure all tracks start inactive (SelectedTrack setter will activate)
                 track.IsActive = false;
                 MigrateCurveTrack(track);
+                // A pivot imported from AgOpenGPS has only its centre: its reference circle is a
+                // pass width out, so its passes are AgOpenGPS's (half a width, then whole widths).
+                if (track.IsPivot && track.Points.Count < 3 && track.Points.Count > 0)
+                {
+                    var c = track.Points[0];
+                    track.Points = Models.Guidance.CurveProcessing.Circle(new Vec3(c.Easting, c.Northing, 0), PassWidth);
+                    track.IsClosed = true;
+                }
                 SavedTracks.Add(track); // mirrors into State.Field.Tracks
 
                 // Debug: log track details
