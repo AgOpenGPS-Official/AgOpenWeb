@@ -1433,6 +1433,33 @@ document.addEventListener('input', e => {
 scanNumericFields(document);
 new MutationObserver(muts => { for (const m of muts) for (const n of m.addedNodes) scanNumericFields(n); })
   .observe(document.documentElement, { childList: true, subtree: true });
+// A tap in a text or number field selects its whole value, also when it already has focus, so
+// the first key typed (OS keyboard, on-screen keyboard or physical) replaces the value instead of
+// landing inside it (#491; AgOpenGPS FormNumeric clears on the first key). Delegated and on the
+// capture phase, so fields added later are covered and a dialog that stops the event is too. The
+// selection is made after the tap is over: mobile engines drop a select() made in focus, and the
+// tap's own caret placement would undo it. A drag that selects part of the text is left alone.
+const TAP_SELECT_TYPES = ['text', 'number', 'search', 'email', 'url', 'tel', 'password', ''];
+function tapSelectable(el) {
+  return el instanceof HTMLInputElement && TAP_SELECT_TYPES.includes(el.type) && !el.readOnly && !el.disabled;
+}
+let tapStart = null;
+document.addEventListener('pointerdown', e => {
+  tapStart = tapSelectable(e.target)
+    ? { el: e.target, x: e.clientX, y: e.clientY, slop: e.pointerType === 'mouse' ? TAP_SLOP : TAP_SLOP_TOUCH } // as the map's tap
+    : null;
+}, true);
+document.addEventListener('click', e => {
+  const start = tapStart; tapStart = null;
+  const el = e.target;
+  if (!start || start.el !== el || !tapSelectable(el)) return;
+  if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > start.slop) return;
+  setTimeout(() => {
+    if (document.activeElement !== el) return;
+    el.select();
+    try { el.setSelectionRange(0, el.value.length); } catch (_) {} // iOS ignores select() in some fields
+  }, 0);
+}, true);
 function openSimCoords() {
   // Pre-fill with the current vehicle position (from the Status frame), matching
   // the native dialog's GetSimulatorPosition() seed.
