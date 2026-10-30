@@ -343,8 +343,9 @@ after `SwitchAfterFailures` failed attempts, or at once for a wrong login or mou
 directions at any time (`ntrip.switch|main|fallback`, `INtripClientService.SwitchToAsync`). It **never goes back by itself**:
 while the fallback is in use after a failure, the main service is tried slowly in the background and a `MainBack` notice
 says when it answers; not when both are one login on one caster. Every switch raises `Notice` and says that RTK may be lost.
-In the web client the Network IO card shows it (`renderNtripSession` in `app.js`: headline, advice, checks, the switch,
-the mode) from the `NtripSessionDto` that ends the Status frame; a profile's fallback ends its entry in the profiles
+In the web client the Network IO card keeps to the first lines and the switch; NTRIP Settings (`renderNtripSettings` in
+`app.js`: headline, advice, checks, the mode) shows the rest, from the `NtripSessionDto` that ends the Status frame;
+`ntrip.mountpoints` asks the caster for its source table (`NtripSourcetable`), answered in its own frame; a profile's fallback ends its entry in the profiles
 frame; `ntrip.save` carries it (`NtripProfileFields`), `ntrip.test` can test it. A switch is a toast, "the main service
 is back" is the host's confirmation dialog.
 

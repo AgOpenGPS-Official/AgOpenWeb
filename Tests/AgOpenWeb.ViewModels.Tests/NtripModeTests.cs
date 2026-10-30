@@ -319,6 +319,31 @@ public class NtripModeTests
     }
 
     [Test]
+    public void ANotice_FadesFromTheCardAfterFiveMinutes()
+    {
+        var clock = new AgOpenWeb.Models.Timing.TestClock();
+        AgOpenWeb.Models.Timing.Clock.Set(clock);
+        try
+        {
+            var (b, vm) = Running(perField: false, null);
+            b.NtripService.Notice += Raise.EventWith(new NtripNoticeEventArgs { Kind = NtripNoticeKind.SwitchedToMain, Message = "Back on the main service." });
+            Assert.That(WaitFor(() => vm.State.Connections.NtripNotice.Length > 0), Is.True);
+
+            clock.AdvanceSeconds(4 * 60);
+            vm.ExpireNtripNotice();
+            Assert.That(vm.State.Connections.NtripNotice, Is.EqualTo("Back on the main service."), "still there after four minutes");
+
+            clock.AdvanceSeconds(2 * 60);
+            vm.ExpireNtripNotice();
+            Assert.That(vm.State.Connections.NtripNotice, Is.Empty);
+        }
+        finally
+        {
+            AgOpenWeb.Models.Timing.Clock.Reset();
+        }
+    }
+
+    [Test]
     public void ANotice_ReachesTheState_AndTheServiceInUseFollows()
     {
         var (b, vm) = Running(perField: false, null);

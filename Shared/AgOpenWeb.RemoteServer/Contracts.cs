@@ -563,6 +563,14 @@ public record NtripFallbackDto(
     string CasterHost, int CasterPort, string MountPoint, string Username, string Password,
     bool AutoSwitch, int SwitchAfterFailures);
 
+/// <summary>The mount points last asked for in the NTRIP profile editor: its own frame, sent when a new
+/// list (or a new status) is ready. For is "main" or "fallback"; Status is the sentence to show.</summary>
+public record NtripMountpointsDto(int Seq, string For, string Status, IReadOnlyList<NtripMountpointDto> Items);
+
+/// <param name="DistanceKm">NaN when the position of the mount point or of the receiver is unknown.</param>
+public record NtripMountpointDto(string Mount, string Name, string Format, string Systems, string Country,
+    double DistanceKm, bool NeedsPosition);
+
 /// <summary>Field Operations read-frame (Phase 9 Field Ops) — the field/job lifecycle
 /// lists for the Fields-and-Jobs dialog. Fields = every field on disk (distance enriched
 /// when a GPS fix exists); Jobs = ALL jobs across fields (the client filters by the

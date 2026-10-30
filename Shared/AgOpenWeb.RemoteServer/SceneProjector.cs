@@ -481,6 +481,20 @@ public sealed class SceneProjector
         return new NtripProfilesDto(profiles, _ntripProfiles.GetAvailableFields().ToList());
     }
 
+    // The mount points last asked for in the profile editor. Re-sent when a request starts or finishes.
+    public NtripMountpointsDto BuildNtripMountpoints()
+    {
+        var list = _state.Connections.NtripMountpoints;
+        return new NtripMountpointsDto(list.Seq, list.For, list.Status,
+            list.Items.Select(m => new NtripMountpointDto(m.Mount, m.Name, m.Format, m.Systems, m.Country, m.DistanceKm, m.NeedsPosition)).ToList());
+    }
+
+    public long NtripMountpointsFingerprint()
+    {
+        var list = _state.Connections.NtripMountpoints;
+        return list.Seq * 31L + list.Status.GetHashCode() + list.Items.Count;
+    }
+
     // Re-send the NTRIP profiles frame on add / edit / delete / set-default.
     public long NtripProfilesFingerprint()
     {

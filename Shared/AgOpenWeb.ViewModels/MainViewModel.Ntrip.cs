@@ -5,6 +5,7 @@
 using System;
 using System.Threading.Tasks;
 
+using AgOpenWeb.Models.Timing;
 using AgOpenWeb.Services.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -447,12 +448,29 @@ public partial class MainViewModel
         else _dispatcher.Post(() => ApplyNtripNotice(e));
     }
 
+    // A switch or note is told once and then fades from the card, so an old one does not stay.
+    private const double NtripNoticeSeconds = 5 * 60;
+    private long _ntripNoticeAt;
+
+    private void SetNtripNotice(string text)
+    {
+        State.Connections.NtripNotice = text;
+        _ntripNoticeAt = Clock.Current.GetTimestamp();
+    }
+
+    internal void ExpireNtripNotice()
+    {
+        if (State.Connections.NtripNotice.Length == 0) return;
+        if (Clock.Current.ElapsedSeconds(_ntripNoticeAt, Clock.Current.GetTimestamp()) > NtripNoticeSeconds)
+            State.Connections.NtripNotice = "";
+    }
+
     /// <summary>A switch between the NTRIP services, to show as a short notification on the web.</summary>
     public event Action<string>? NtripNoticeReported;
 
     private void ApplyNtripNotice(NtripNoticeEventArgs e)
     {
-        State.Connections.NtripNotice = e.Message;
+        SetNtripNotice(e.Message);
         State.Connections.NtripUsingFallback = _ntripService.Using == NtripService.Fallback;
         State.Connections.NtripMainIsBack = _ntripService.MainIsBack;
 
@@ -487,7 +505,7 @@ public partial class MainViewModel
         if (connections.NtripProfilePerField || !_ntripProfileService.Profiles.Any(p => p.AssociatedFields.Count > 0)) return;
 
         const string text = "NTRIP now uses one profile with a fallback service. Your profiles keep their fields: turn on \"Profile per field\" in Network IO to use them.";
-        State.Connections.NtripNotice = text;
+        SetNtripNotice(text);
         NtripNoticeReported?.Invoke(text);
     }
 

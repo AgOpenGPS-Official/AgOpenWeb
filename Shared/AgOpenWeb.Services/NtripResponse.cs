@@ -83,6 +83,12 @@ public static class NtripResponse
         }
     }
 
+    /// <summary>The reply is a source table (the caster's list of mount points) and not a stream.</summary>
+    public static bool IsSourcetable(string header, ReadOnlySpan<byte> firstBody = default) =>
+        (header ?? "").Split('\n')[0].Trim().StartsWith("SOURCETABLE", StringComparison.OrdinalIgnoreCase)
+        || HeaderValue(header ?? "", "Content-Type").Contains("sourcetable", StringComparison.OrdinalIgnoreCase)
+        || LooksLikeSourcetable(firstBody);
+
     private static NtripOutcome MountNotFound(string message, string first, bool chunked) =>
         new(NtripCategory.UnknownMountpoint, message, first, chunked);
 

@@ -38,6 +38,7 @@ internal sealed class NtripConnection : IDisposable
 
     private Socket? _socket;
     private NetworkStream? _stream;
+    private readonly bool _wantsSourcetable;   // asked for the list of mount points: that list is the answer
 
     public NtripOutcome Outcome { get; private set; } = new(NtripCategory.CasterUnreachable, "");
     public NtripVersion Version { get; }
@@ -45,7 +46,11 @@ internal sealed class NtripConnection : IDisposable
     public byte[] InitialBody { get; private set; } = [];
     public TimedReader? Reader { get; private set; }
 
-    private NtripConnection(NtripVersion version) => Version = version;
+    private NtripConnection(NtripVersion version, bool wantsSourcetable)
+    {
+        Version = version;
+        _wantsSourcetable = wantsSourcetable;
+    }
 
     /// <summary>
     /// Opens a connection with <paramref name="first"/>; a caster that did not understand NTRIP 2.0
@@ -53,21 +58,21 @@ internal sealed class NtripConnection : IDisposable
     /// </summary>
     /// <param name="gga">The position for the NTRIP 2.0 request header; returns null while unknown.</param>
     public static async Task<NtripConnection> OpenAsync(NtripConfiguration config, NtripVersion first,
-        Func<string?> gga, NtripTimeouts timeouts, CancellationToken ct)
+        Func<string?> gga, NtripTimeouts timeouts, CancellationToken ct, bool sourcetable = false)
     {
-        NtripConnection conn = await AttemptAsync(config, first, first == NtripVersion.V2 ? gga() : null, timeouts, ct).ConfigureAwait(false);
+        NtripConnection conn = await AttemptAsync(config, first, first == NtripVersion.V2 ? gga() : null, timeouts, ct, sourcetable).ConfigureAwait(false);
         if (first == NtripVersion.V2 && conn.Outcome.Ntrip2NotUnderstood)
         {
             conn.Dispose();
-            conn = await AttemptAsync(config, NtripVersion.V1, null, timeouts, ct).ConfigureAwait(false);
+            conn = await AttemptAsync(config, NtripVersion.V1, null, timeouts, ct, sourcetable).ConfigureAwait(false);
         }
         return conn;
     }
 
     private static async Task<NtripConnection> AttemptAsync(NtripConfiguration config, NtripVersion version,
-        string? gga, NtripTimeouts timeouts, CancellationToken ct)
+        string? gga, NtripTimeouts timeouts, CancellationToken ct, bool sourcetable)
     {
-        var conn = new NtripConnection(version);
+        var conn = new NtripConnection(version, sourcetable);
         try
         {
             await conn.RunAsync(config, gga, timeouts, ct).ConfigureAwait(false);
@@ -145,14 +150,16 @@ internal sealed class NtripConnection : IDisposable
                 return;
             }
             header.AddRange(Reader.Buffer.AsSpan(0, n));
-            if (header.Count > MaxHeaderBytes)
-            {
-                Fail(new NtripOutcome(NtripCategory.NotUnderstood, "The caster sent an invalid reply."));
-                return;
-            }
             if (NtripHeaderScanner.TryFindEnd(CollectionsMarshal.AsSpan(header), out int headerLength, out int bodyOffset))
             {
                 Complete(header.ToArray(), headerLength, bodyOffset);
+                return;
+            }
+            // The cap is for a header that does not end. A read that holds a whole header and a large body
+            // (a source table) was found above and is not held to it.
+            if (header.Count > MaxHeaderBytes)
+            {
+                Fail(new NtripOutcome(NtripCategory.NotUnderstood, "The caster sent an invalid reply."));
                 return;
             }
         }
@@ -171,7 +178,11 @@ internal sealed class NtripConnection : IDisposable
     private void Complete(byte[] all, int headerLength, int bodyOffset)
     {
         byte[] body = all[bodyOffset..];
-        Outcome = NtripResponse.Classify(Encoding.ASCII.GetString(all, 0, headerLength), body);
+        string header = Encoding.ASCII.GetString(all, 0, headerLength);
+        Outcome = NtripResponse.Classify(header, body);
+        // Asked for the list of mount points, the list is the answer; elsewhere it means the mount point does not exist.
+        if (_wantsSourcetable && NtripResponse.IsSourcetable(header, body))
+            Outcome = new NtripOutcome(NtripCategory.Accepted, "", Outcome.FirstLine, Outcome.Chunked);
         if (Outcome.IsAccepted) InitialBody = body;
         else Close();
     }

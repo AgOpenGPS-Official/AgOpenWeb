@@ -418,7 +418,7 @@ public static partial class RemoteServerWiring
     private static void ApplyNtripCommand(
         AgOpenWeb.Services.Interfaces.INtripProfileService svc,
         AgOpenWeb.Models.State.ApplicationState state, IUiDispatcher dispatcher,
-        string cmd, string arg, AgOpenWeb.ViewModels.MainViewModel? vm = null)
+        string cmd, string arg, AgOpenWeb.ViewModels.MainViewModel? vm = null, IGpsService? gps = null)
     {
         var inv = System.Globalization.CultureInfo.InvariantCulture;
         switch (cmd)
@@ -437,18 +437,33 @@ public static partial class RemoteServerWiring
             {
                 var t = arg.Split('\t');
                 if (t.Length < 3) return;
-                if (t.Length > 4 && t[4] == AgOpenWeb.RemoteServer.Secrets.Mask)
-                {
-                    var stored = svc.Profiles.FirstOrDefault(p => p.Id == t.ElementAtOrDefault(5));
-                    t[4] = (t.ElementAtOrDefault(6) == "1" ? stored?.Fallback?.Password : stored?.Password) ?? "";
-                }
                 int.TryParse(t.ElementAtOrDefault(1), System.Globalization.NumberStyles.Integer, inv, out var tport);
                 if (tport == 0) tport = 2101;
+                if (t.Length > 4 && t[4] == AgOpenWeb.RemoteServer.Secrets.Mask)
+                    t[4] = StoredPassword(svc.Profiles.FirstOrDefault(p => p.Id == t.ElementAtOrDefault(5)), t.ElementAtOrDefault(6) == "1", t[0], tport);
                 state.Connections.NtripTestStatus = "Testing connection...";
                 _ = TestNtripAndReportAsync(dispatcher, state, t[0], tport, t[2],
                     t.ElementAtOrDefault(3) ?? "", t.ElementAtOrDefault(4) ?? "");
                 return;
             }
+            case "ntrip.mountpoints": // arg = host \t port \t user \t pass \t id \t fallback (1 = the fallback's); a masked pass = the stored one
+            {
+                var t = arg.Split('\t');
+                if (t.Length < 2 || string.IsNullOrWhiteSpace(t[0])) return;
+                bool forFallback = t.ElementAtOrDefault(5) == "1";
+                int.TryParse(t[1], System.Globalization.NumberStyles.Integer, inv, out var mport);
+                if (mport == 0) mport = 2101;
+                string pass = t.ElementAtOrDefault(3) ?? "";
+                if (pass == AgOpenWeb.RemoteServer.Secrets.Mask)
+                    pass = StoredPassword(svc.Profiles.FirstOrDefault(p => p.Id == t.ElementAtOrDefault(4)), forFallback, t[0], mport);
+                _ = FetchMountpointsAsync(dispatcher, state, t[0], mport, t.ElementAtOrDefault(2) ?? "", pass,
+                    forFallback ? "fallback" : "main", gps);
+                return;
+            }
+            case "ntrip.mountpoints.clear": // the picker is closed: the list is not kept
+                CancelMountpoints();
+                state.Connections.NtripMountpoints = AgOpenWeb.Models.Ntrip.NtripMountpointList.None;
+                return;
             case "ntrip.save": // id \t name \t host \t port \t mount \t user \t pass \t auto \t default \t assoc(csv) [\t fallback: present \t host \t port \t mount \t user \t pass \t auto \t after]
             {
                 var f = arg.Split('\t');
@@ -634,6 +649,75 @@ public static partial class RemoteServerWiring
         try { services.GetRequiredService<ICoverageMapService>().SaveToFile(fieldDir, task); }
         catch { /* the dump still carries the last autosave */ }
         return task;
+    }
+
+    // A stored password goes only to the host it belongs to. The editor holds the mask, not the password, so
+    // a host typed over the stored one gets no password rather than the stored one.
+    private static string StoredPassword(AgOpenWeb.Models.Ntrip.NtripProfile? profile, bool fallback, string host, int port)
+    {
+        string? storedHost, stored;
+        int storedPort;
+        if (fallback)
+        {
+            if (profile?.Fallback is not { } f) return "";
+            (storedHost, storedPort, stored) = (f.CasterHost, f.CasterPort, f.Password);
+        }
+        else
+        {
+            if (profile == null) return "";
+            (storedHost, storedPort, stored) = (profile.CasterHost, profile.CasterPort, profile.Password);
+        }
+        return string.Equals(storedHost?.Trim(), host.Trim(), StringComparison.OrdinalIgnoreCase) && storedPort == port ? stored ?? "" : "";
+    }
+
+    // One request at a time is wanted: a new one, or closing the picker, stops the one still running. The
+    // counter is not the state's, so a reset of the state cannot hand out a number twice.
+    private static int _mountpointSeq;
+    private static CancellationTokenSource? _mountpointsCts;
+
+    private static void CancelMountpoints() => Interlocked.Exchange(ref _mountpointsCts, null)?.Cancel();
+
+    // Asks a caster for its mount points off the UI thread and puts the answer in the state. The list is
+    // nearest first when the receiver has a position.
+    private static async Task FetchMountpointsAsync(
+        IUiDispatcher dispatcher, AgOpenWeb.Models.State.ApplicationState state,
+        string host, int port, string user, string pass, string which, IGpsService? gps)
+    {
+        CancelMountpoints();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+        _mountpointsCts = cts;
+        int seq = Interlocked.Increment(ref _mountpointSeq);
+        state.Connections.NtripMountpoints = new AgOpenWeb.Models.Ntrip.NtripMountpointList(seq, which, "Loading...", []);
+
+        var position = gps?.CurrentData is { FixQuality: > 0 } data
+            && (data.CurrentPosition.Latitude != 0 || data.CurrentPosition.Longitude != 0)
+            ? (data.CurrentPosition.Latitude, data.CurrentPosition.Longitude)
+            : ((double Latitude, double Longitude)?)null;
+        AgOpenWeb.Services.SourcetableResult result;
+        try
+        {
+            result = await AgOpenWeb.Services.NtripSourcetable.FetchAsync(host, port, user, pass, position,
+                new AgOpenWeb.Services.NtripTimeouts(), cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;   // replaced by a newer request, or the picker was closed: nobody waits for this one
+        }
+        catch (Exception ex)
+        {
+            result = new AgOpenWeb.Services.SourcetableResult([], ex.Message);
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref _mountpointsCts, null, cts);   // before it is disposed: CancelMountpoints must not reach a disposed one
+        }
+        dispatcher.Post(() =>
+        {
+            if (state.Connections.NtripMountpoints.Seq != seq) return;
+            string status = result.Error ?? (result.Partial ? "Only part of the list arrived." : "");
+            state.Connections.NtripMountpoints = new AgOpenWeb.Models.Ntrip.NtripMountpointList(
+                seq, which, status, result.Error == null ? result.Mountpoints : []);
+        });
     }
 
     private static async Task TestNtripAndReportAsync(

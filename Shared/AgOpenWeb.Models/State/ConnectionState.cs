@@ -110,6 +110,14 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _ntripRtcmUnicast, value);
     }
 
+    // The mount points last asked for in the NTRIP profile editor (empty until then).
+    private AgOpenWeb.Models.Ntrip.NtripMountpointList _ntripMountpoints = AgOpenWeb.Models.Ntrip.NtripMountpointList.None;
+    public AgOpenWeb.Models.Ntrip.NtripMountpointList NtripMountpoints
+    {
+        get => _ntripMountpoints;
+        set => SetProperty(ref _ntripMountpoints, value);
+    }
+
     // The corrections come from the fallback service, the main service answers again while it is
     // in use (the operator decides about going back), and the last switch notice (empty = none).
     private bool _ntripUsingFallback;
@@ -271,6 +279,7 @@ public class ConnectionState : ObservableObject
         NtripRtcmUnicast = false;
         NtripUsingFallback = NtripMainIsBack = false;
         NtripNotice = "";
+        NtripMountpoints = AgOpenWeb.Models.Ntrip.NtripMountpointList.None;
         IsAutoSteerConnected = IsAutoSteerDataOk = IsAutoSteerEngaged = false;
         IsMachineConnected = IsMachineDataOk = false;
         IsImuConnected = IsImuDataOk = false;

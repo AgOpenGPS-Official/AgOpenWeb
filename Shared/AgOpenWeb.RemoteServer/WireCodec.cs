@@ -24,7 +24,7 @@ public static class WireCodec
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
         FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17,
         Sound = 18, Pong = 19, CoverageEdge = 20, ViewPrefs = 21, Prompt = 22, Toast = 23, DrivePick = 24, HardwareMessage = 25,
-        Vt = 26, VtImage = 27;
+        Vt = 26, VtImage = 27, NtripMountpoints = 28;
 
     /// <summary>One-shot alert: tells the client to play sound effect
     /// <paramref name="effectId"/> (the <c>SoundEffect</c> enum value). Pushed
@@ -247,6 +247,30 @@ public static class WireCodec
         w.Write(f.KmlFiles.Count);
         foreach (var s in f.KmlFiles) WriteStr(w, s);
         WriteStr(w, f.ActiveFieldName);
+        return ms.ToArray();
+    }
+
+    // The mount points last asked for in the profile editor: [i32 seq] str for, str status,
+    // [i32 n][ per mount point: str mount, name, format, systems, country, f32 km (NaN = unknown), u8 needs position ].
+    public static byte[] EncodeNtripMountpoints(NtripMountpointsDto d)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(NtripMountpoints);
+        w.Write(d.Seq);
+        WriteStr(w, d.For);
+        WriteStr(w, d.Status);
+        w.Write(d.Items.Count);
+        foreach (var m in d.Items)
+        {
+            WriteStr(w, m.Mount);
+            WriteStr(w, m.Name);
+            WriteStr(w, m.Format);
+            WriteStr(w, m.Systems);
+            WriteStr(w, m.Country);
+            w.Write((float)m.DistanceKm);
+            w.Write((byte)(m.NeedsPosition ? 1 : 0));
+        }
         return ms.ToArray();
     }
 

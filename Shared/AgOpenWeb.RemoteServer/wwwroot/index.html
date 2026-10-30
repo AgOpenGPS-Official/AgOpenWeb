@@ -602,8 +602,17 @@
     .nio-bcrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
     .nio-warn { color: #ef4444; font: 600 12px system-ui, sans-serif; margin-top: 4px; }
     .nio-aged { color: #ef4444; }
-    .nio-svcrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
-    .nio-svcrow .cfg-act { flex: none; min-height: 44px; padding: 8px 14px; }
+    .nio-find { margin-top: 2px; min-height: 44px; }
+    .ntm-card { max-width: 520px; width: calc(100vw - 32px); gap: 8px; }
+    .ntm-list { max-height: calc(100 * var(--vh) - 300px); overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    .ntm-row { display: flex; flex-direction: column; align-items: stretch; gap: 2px; text-align: left; min-height: 48px; padding: 6px 10px;
+      border: 0; border-radius: 6px; background: rgba(var(--ov),0.08); color: var(--text); cursor: pointer; font: 500 13px system-ui, sans-serif; }
+    .ntm-row:hover { background: rgba(var(--ov),0.16); }
+    .ntm-top { display: flex; justify-content: space-between; gap: 8px; }
+    .ntm-mount { font-weight: 700; }
+    .ntm-km, .ntm-sub { color: var(--text-muted); font-size: 11px; }
+    .nio-btnrow { display: flex; gap: 8px; margin-top: 8px; }
+    .nio-btnrow .cfg-act { flex: 1; min-height: 44px; }
     .nio-note { color: var(--text); background: rgba(241,196,15,0.14); border-left: 3px solid #F1C40F; border-radius: 4px;
       font: 500 12px system-ui, sans-serif; margin-top: 6px; padding: 6px 8px; }
     .nio-chk-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; font: 500 12px system-ui, sans-serif; color: var(--text); }
@@ -621,6 +630,7 @@
     .nio-ntstatus { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
     /* NTRIP chain sub-panels (ln-panels that replace their parent). */
     .nio-ntmodal { width: 520px; }
+    .nio-ntset { width: 460px; max-height: calc(100 * var(--vh) - 72px); overflow: auto; }
     .nio-ntedit { width: 480px; max-height: calc(100 * var(--vh) - 72px); overflow: auto; }
     .nio-nttoolbar { display: flex; align-items: center; gap: 6px; background: rgba(var(--ov),0.05);
       border-radius: 8px; padding: 6px; margin-bottom: 12px; }
@@ -2115,13 +2125,25 @@
     <div class="sa-hint" id="nio-ntrip-bytes" translate="no">0 KB</div>
     <div class="sa-hint" id="nio-ntrip-dest"></div>
     <div class="sa-hint" id="nio-ntrip-rx"></div>
-    <div class="nio-warn" id="nio-ntrip-warn" hidden></div>
-    <div class="sa-hint" id="nio-ntrip-advice"></div>
-    <div class="nio-svcrow" id="nio-svc" hidden>
-      <span class="nio-mod" id="nio-svc-text"></span>
-      <button id="nio-svc-switch" class="cfg-act rn-gated"></button>
+    <div class="nio-btnrow">
+      <button id="nio-ntset" class="cfg-act">NTRIP Settings</button>
+      <button id="nio-svc-switch" class="cfg-act rn-gated" hidden></button>
     </div>
+  </div>
+  <!-- NTRIP Settings — chain sub-panel of Network IO, opened from its NTRIP line: the connection in
+       detail (headline and advice, the checks, the RTCM messages), the mode, the options and the
+       profiles. Back reopens Network IO. -->
+  <div id="ntripsettings" class="ln-panel nio-ntset">
+    <div class="ln-hdr"><button class="ln-x" id="nts-back" title="Back">←</button><span class="ln-hdr-title">NTRIP Settings</span><button class="ln-x" id="nts-x" title="Close">✕</button></div>
+    <div class="nio-ntriprow">
+      <span class="nio-dot" id="nts-dot"></span>
+      <span class="nio-mod" style="font-weight:700">NTRIP</span>
+      <span class="nio-ntstatus" id="nts-status">Not Connected</span>
+    </div>
+    <div class="sa-hint" id="nio-ntrip-advice"></div>
+    <div class="nio-mod" id="nio-svc-text" hidden></div>
     <div class="nio-note" id="nio-ntrip-notice" hidden></div>
+    <div class="nio-warn" id="nio-ntrip-warn" hidden></div>
     <details class="nio-rtcm" id="nio-checks" hidden>
       <summary id="nio-checks-sum">Checks</summary>
       <div id="nio-checks-rows"></div>
@@ -2135,21 +2157,21 @@
         </table>
       </div>
     </details>
-    <label class="nio-bcrow" title="Send corrections to every device on the module subnet, not only to the GPS module">
-      <input type="checkbox" class="nio-chk" id="nio-rtcm-bc" data-key="conn.rtcmBroadcast">
-      <span class="nio-mod">Broadcast corrections</span>
-    </label>
-    <label class="nio-bcrow" title="Off: no connection to the NTRIP caster, for work without mobile coverage">
-      <input type="checkbox" class="nio-chk" id="nio-ntrip-on" data-key="conn.ntripEnabled" checked>
-      <span class="nio-mod">NTRIP on</span>
-    </label>
     <div class="cfg-label" style="margin-top:10px">NTRIP profile in use</div>
     <div class="ln-seg" id="nio-mode">
       <button class="cfg-act rn-gated" data-v="0">One profile + fallback</button>
       <button class="cfg-act rn-gated" data-v="1">Profile per field</button>
     </div>
     <div class="sa-hint" id="nio-mode-hint"></div>
-    <button id="nio-ntprofiles" class="cfg-act cfg-actwide" style="margin-top:8px">NTRIP Profiles</button>
+    <label class="nio-bcrow" title="Off: no connection to the NTRIP caster, for work without mobile coverage">
+      <input type="checkbox" class="nio-chk" id="nio-ntrip-on" data-key="conn.ntripEnabled" checked>
+      <span class="nio-mod">NTRIP on</span>
+    </label>
+    <label class="nio-bcrow" title="Send corrections to every device on the module subnet, not only to the GPS module">
+      <input type="checkbox" class="nio-chk" id="nio-rtcm-bc" data-key="conn.rtcmBroadcast">
+      <span class="nio-mod">Broadcast corrections</span>
+    </label>
+    <button id="nio-ntprofiles" class="cfg-act cfg-actwide" style="margin-top:10px">NTRIP Profiles</button>
   </div>
   <!-- System Data — chain sub-panel of Network IO, opened from the GPS line's arrow. The
        AgIO / AgOpenGPS "System Data" forms in one card: parsed values, each heading source
@@ -2221,6 +2243,7 @@
         <div class="nio-fld"><label>Port</label><input class="cfg-num nio-tx" id="nte-port" type="number" placeholder="2101"></div>
         <div class="nio-fld"><label>Mount</label><input class="cfg-num nio-tx" id="nte-mount" placeholder="NEAR-RTCM3" translate="no"></div>
       </div>
+      <button id="nte-find" class="cfg-act cfg-actwide nio-find">Find mount points</button>
       <div class="nio-row2">
         <div class="nio-fld"><label>User</label><input class="cfg-num nio-tx" id="nte-user" placeholder="(optional)"></div>
         <div class="nio-fld"><label>Pass</label><input class="cfg-num nio-tx" id="nte-pass" type="password" placeholder="(optional)"></div>
@@ -2236,6 +2259,7 @@
         <div class="nio-fld"><label>Port</label><input class="cfg-num nio-tx" id="nte-fb-port" type="number" placeholder="2101"></div>
         <div class="nio-fld"><label>Mount</label><input class="cfg-num nio-tx" id="nte-fb-mount" placeholder="NEAR-RTCM3" translate="no"></div>
       </div>
+      <button id="nte-fb-find" class="cfg-act cfg-actwide nio-find">Find mount points</button>
       <div class="nio-row2">
         <div class="nio-fld"><label>User</label><input class="cfg-num nio-tx" id="nte-fb-user" placeholder="(optional)"></div>
         <div class="nio-fld"><label>Pass</label><input class="cfg-num nio-tx" id="nte-fb-pass" type="password" placeholder="(optional)"></div>
@@ -3044,6 +3068,17 @@
       <div class="dlg-buttons">
         <button id="dlgc-cancel" class="dlg-btn dlg-cancel">Cancel</button>
         <button id="dlgc-ok" class="dlg-btn dlg-ok">Confirm</button>
+      </div>
+    </div>
+    <!-- Mount points of a caster (NTRIP profile editor → Find mount points): the host reads the caster's
+         source table; a tap on a row fills the Mount field. -->
+    <div id="dlg-ntmounts" class="dlg-card ntm-card sticky">
+      <div class="dlg-title">Mount points</div>
+      <input class="cfg-num nio-tx" id="ntm-filter" placeholder="Search" autocomplete="off">
+      <div class="sa-hint" id="ntm-status"></div>
+      <div class="ntm-list" id="ntm-list"></div>
+      <div class="dlg-buttons">
+        <button id="ntm-close" class="dlg-btn dlg-cancel">Close</button>
       </div>
     </div>
     <!-- Unsaved-coverage guard (server-driven via Status.unsavedCoveragePrompt): coverage

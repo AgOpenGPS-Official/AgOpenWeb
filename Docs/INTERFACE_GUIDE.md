@@ -69,9 +69,14 @@ configuration — none of these steer the machine.
 14. **Field tools** — Field Builder, boundary tools, import tracks, recorded path, delete applied
     area, GPS offset fix.
 15. **Network IO** — NTRIP (RTK corrections) settings and module network/IP status.
-    The NTRIP card gives a plain headline and what to do about it, the service in use, a list of
-    checks (connected, logged in, mount point, corrections, base position, age) and the profile mode.
-    A profile can have a **fallback service**: *Switch to fallback* / *Switch to main* is there at any
+    The card keeps to the first lines: whether NTRIP is fine, the bytes received, where the corrections
+    go and the receiver's correction age, and two buttons, *NTRIP Settings* and, for a profile with a
+    fallback, *Switch to fallback* / *Switch to main*. Everything else is in **NTRIP Settings**: a plain
+    headline and what to do about it, the service in use, a list of checks (connected, logged in, mount
+    point, corrections, base position, age), the RTCM messages, the profile mode, *NTRIP on*, *Broadcast
+    corrections* and the profiles. NTRIP Settings, the profiles and the profile editor stay open when you
+    tap beside them. In a profile, *Find mount points* reads the caster's list (nearest first) to pick from.
+    A profile can have a **fallback service**: the switch is there at any
     time and always asks first, because RTK may be lost. With *Switch to the fallback by itself* on in the
     profile, the fallback takes over after the set number of failed attempts, or at once for a wrong
     login or mount point; going back is always your choice, and the app asks when the main service

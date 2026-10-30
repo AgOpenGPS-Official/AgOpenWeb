@@ -76,6 +76,7 @@ let mapIsDay = false;  // day/night theme (mirrors config.display.isDayMode) —
 let profiles = null;   // Vehicle & Tool picker hub: profile lists + active pair
 let profilesDirty = false;
 let ntripProfiles = null; // Network IO: saved NTRIP profiles + associable fields
+let ntripMounts = { seq: 0, forService: '', status: '', items: [] }; // the mount points last asked for in the profile editor
 let ntripDirty = false;
 let fieldOps = null;   // Field Operations: field list + jobs + suggestions + import files
 let fieldOpsDirty = false;
@@ -425,6 +426,7 @@ const transport = RemoteTransport.create({
   onConfig(c) { config = c; configDirty = true; applyTheme(c && c.display && c.display.isDayMode); applyUiScale(c && c.display && c.display.uiScale); },
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
+  onNtripMountpoints(m) { ntripMounts = m; renderNtripMounts(); },
   onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
   onAgShare(a) { agShare = a; agShareDirty = true; },
   onAppInfo(a) { appInfo = a; appInfoDirty = true; I18n.setLanguage(a.currentLanguage); },
@@ -1222,6 +1224,8 @@ function showConfirm(title, message, onConfirm, onBack) {
 }
 dialogHost.querySelector('.dlg-backdrop').addEventListener('pointerdown', e => {
   e.stopPropagation();
+  // A sticky card (a long list to pick from) stays until it is closed: an outside tap on a screen this size is a slip.
+  if (dialogHost.querySelector('.dlg-card.open.sticky')) return;
   // Backdrop-dismiss of the unsaved-coverage guard must resolve it (= Cancel), else the
   // host stays blocked with its dialog open and the field never closes.
   if (_ucovOpen) { _ucovOpen = false; transport.send('coverage.cancelClose'); }
@@ -2235,13 +2239,13 @@ document.getElementById('dlg-tracks-close').addEventListener('pointerdown', e =>
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'fieldbuilder', 'offsetfix', 'importtracks', 'recpath', 'boundarymenu', 'boundaryplayer', 'kmlboundary', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'systemdata', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
+const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'fieldbuilder', 'offsetfix', 'importtracks', 'recpath', 'boundarymenu', 'boundaryplayer', 'kmlboundary', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripsettings', 'systemdata', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
 // The bug report panel too: leave it open while driving and press the button the
 // moment a problem shows, since the dump holds only the last 60 s of GPS data.
-const NO_SCRIM = new Set(['smartwas', 'recpath', 'boundaryplayer', 'fieldbuilder', 'bugreport']);
+const NO_SCRIM = new Set(['smartwas', 'recpath', 'boundaryplayer', 'fieldbuilder', 'bugreport', 'ntripsettings', 'ntripprofiles', 'ntripeditor']);
 const lnScrim = document.getElementById('ln-scrim');
 function lnCloseAll() {
   for (const id of LN_NAV_PANELS) document.getElementById(id).classList.remove('open');
@@ -3152,14 +3156,10 @@ function renderNetworkIo() {
   document.getElementById('nio-ntrip-dest').textContent = !s.ntripDestination ? ''
     : s.ntripUnicast ? tr('Corrections go to the GPS module at {ip}', { ip: s.ntripDestination })
     : tr('Corrections are broadcast to {ip}', { ip: s.ntripDestination });
-  const bc = document.getElementById('nio-rtcm-bc');
-  if (document.activeElement !== bc) bc.checked = !!s.rtcmBroadcast;
-  const nen = document.getElementById('nio-ntrip-on');
-  if (document.activeElement !== nen) nen.checked = !!s.ntripEnabled;
   const p100 = document.getElementById('nio-pgn100');
   if (document.activeElement !== p100) p100.checked = !!s.sendCorrectedPosition;
-  renderNtripSession(s);
-  renderNtripRtcm(s);
+  renderNtripRx(s);
+  renderNtripSwitch(s);
   nioSubnetBtn.classList.toggle('disabled', !iHoldControl);
 }
 
@@ -3223,20 +3223,24 @@ function ntripChecks(s) {
       Number.isFinite(s.age) ? tr('Correction age {n} s', { n: s.age.toFixed(0) }) : tr('Correction age unknown')),
   ];
 }
+// The one switch of the Network IO card, only with a fallback. It always asks first: RTK may be lost.
+function renderNtripSwitch(s) {
+  const ns = s.ntripSession, btn = document.getElementById('nio-svc-switch');
+  btn.hidden = !(s.ntripEnabled && ns && ns.hasFallback);
+  if (btn.hidden) return;
+  btn.textContent = ns.usingFallback ? tr('Switch to main') : tr('Switch to fallback');
+  btn.classList.toggle('disabled', !iHoldControl);
+}
 function renderNtripSession(s) {
   const ns = s.ntripSession, on = !!s.ntripEnabled && !!ns;
   const advice = document.getElementById('nio-ntrip-advice');
   advice.textContent = ntripAdvice(s);
   advice.hidden = !advice.textContent;
 
-  // The service in use and the switch (only with a fallback). Always asks first: RTK may be lost.
-  const svc = document.getElementById('nio-svc'), btn = document.getElementById('nio-svc-switch');
-  svc.hidden = !(on && ns.hasFallback);
-  if (!svc.hidden) {
-    document.getElementById('nio-svc-text').textContent = ns.usingFallback ? tr('Using the fallback service') : tr('Using the main service');
-    btn.textContent = ns.usingFallback ? tr('Switch to main') : tr('Switch to fallback');
-    btn.classList.toggle('disabled', !iHoldControl);
-  }
+  // Which service is in use (only with a fallback); the switch itself is on the Network IO card.
+  const svcText = document.getElementById('nio-svc-text');
+  svcText.hidden = !(on && ns.hasFallback);
+  if (!svcText.hidden) svcText.textContent = ns.usingFallback ? tr('Using the fallback service') : tr('Using the main service');
   const note = document.getElementById('nio-ntrip-notice');
   const text = ns && ns.mainIsBack && !ns.notice ? tr('The main service answers again.') : (ns ? ns.notice : '');
   note.hidden = !text;
@@ -3279,6 +3283,27 @@ for (const b of document.querySelectorAll('#nio-mode .cfg-act'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); if (iHoldControl) cfgSend('conn.ntripProfilePerField', b.dataset.v); });
 
 
+// NTRIP Settings — chain sub-panel of Network IO: the connection in detail, the mode, the options and the
+// profiles. The Network IO card keeps only the first lines and the two buttons.
+const ntsPanel = document.getElementById('ntripsettings');
+function openNtripSettings() { lnOpen('ntripsettings', 'ln-network', renderNtripSettings); }
+document.getElementById('nio-ntset').addEventListener('pointerdown', e => { e.stopPropagation(); openNtripSettings(); });
+document.getElementById('nts-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('networkio', 'ln-network', renderNetworkIo); });
+document.getElementById('nts-x').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
+for (const cb of ntsPanel.querySelectorAll('.nio-chk'))
+  cb.addEventListener('change', () => cfgSend(cb.dataset.key, cb.checked ? '1' : '0'));
+function renderNtripSettings() {
+  const s = statusBar; if (!s) return;
+  document.getElementById('nts-dot').style.background = s.ntripConnected ? '#22c55e' : '#6b7280';
+  document.getElementById('nts-status').textContent = ntripHeadline(s);
+  renderNtripSession(s);
+  renderNtripRtcm(s);
+  const bc = document.getElementById('nio-rtcm-bc');
+  if (document.activeElement !== bc) bc.checked = !!s.rtcmBroadcast;
+  const nen = document.getElementById('nio-ntrip-on');
+  if (document.activeElement !== nen) nen.checked = !!s.ntripEnabled;
+}
+
 // What the caster is sending (RTCM plan, Phase 5): the receiver's fix and correction age,
 // a plain warning when the base position or the observations are missing, and the message
 // types with how often each comes. The receiver can keep reporting RTK Fixed for minutes
@@ -3317,13 +3342,18 @@ function ntripRtcmWarning(r) {
   if (base > 60) return tr('No base position received for {n} s.', { n: Math.round(base) });
   return '';
 }
-function renderNtripRtcm(s) {
+// The receiver's fix and the age of its corrections: the line of the Network IO card.
+function renderNtripRx(s) {
   const r = s.ntripConnected ? s.ntripRtcm : null;
-  const rx = document.getElementById('nio-ntrip-rx'), warn = document.getElementById('nio-ntrip-warn');
-  const box = document.getElementById('nio-rtcm');
-  box.hidden = !r;
+  const rx = document.getElementById('nio-ntrip-rx');
   rx.textContent = r ? tr('Receiver: {fix}, correction age {age} s', { fix: s.fixText || '—', age: Number.isFinite(s.age) ? s.age.toFixed(0) : '—' }) : '';
   rx.classList.toggle('nio-aged', !!r && s.age > 5);
+}
+function renderNtripRtcm(s) {
+  const r = s.ntripConnected ? s.ntripRtcm : null;
+  const warn = document.getElementById('nio-ntrip-warn');
+  const box = document.getElementById('nio-rtcm');
+  box.hidden = !r;
   const w = r ? ntripRtcmWarning(r) : '';
   warn.hidden = !w;
   warn.textContent = w;
@@ -3409,7 +3439,7 @@ function renderSystemData() {
 // Back reopens the parent fly-out (Network IO); Close → map.
 let ntSelId = null;
 function openNtripProfiles() { lnOpen('ntripprofiles', 'ln-network', renderNtripList); }
-document.getElementById('nt-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('networkio', 'ln-network', renderNetworkIo); });
+document.getElementById('nt-back').addEventListener('pointerdown', e => { e.stopPropagation(); openNtripSettings(); });
 document.getElementById('nt-x').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
 document.getElementById('nt-add').addEventListener('pointerdown', e => { e.stopPropagation(); openNtripEditor(null); });
 document.getElementById('nt-edit').addEventListener('pointerdown', e => { e.stopPropagation(); const p = selectedNtProfile(); if (p) openNtripEditor(p); });
@@ -3490,6 +3520,64 @@ function renderNteFields() {
     box.appendChild(lbl);
   }
 }
+// Find mount points — the host reads the caster's source table and sends it nearest first; a tap fills the
+// Mount field of the main service or the fallback.
+let _ntmFor = '';
+function findMounts(fb) {
+  const p = fb ? 'nte-fb-' : 'nte-';
+  const host = document.getElementById(p + 'host').value.trim();
+  const port = document.getElementById(p + 'port').value || '2101';
+  const user = document.getElementById(p + 'user').value, pass = document.getElementById(p + 'pass').value;
+  _ntmFor = fb ? 'fallback' : 'main';
+  document.getElementById('ntm-filter').value = '';
+  if (!host) {
+    ntripMounts = { seq: 0, forService: _ntmFor, status: tr('Error: Caster host is required'), items: [] };
+  } else {
+    ntripMounts = { seq: ntripMounts.seq, forService: _ntmFor, status: 'Loading...', items: [] };
+    // pass is the host's mask for a stored password; the id lets the host use that one (#397)
+    transport.send('ntrip.mountpoints|' + [host, port, user, pass, (nteBuf && nteBuf.id) || '', fb ? '1' : '0'].join('\t'));
+  }
+  renderNtripMounts();
+  openDialog('dlg-ntmounts');
+}
+function renderNtripMounts() {
+  const card = document.getElementById('dlg-ntmounts');
+  if (!card.classList.contains('open') || ntripMounts.forService !== _ntmFor) return;
+  const loading = ntripMounts.status === 'Loading...';
+  const filter = document.getElementById('ntm-filter').value.trim().toLowerCase();
+  const items = ntripMounts.items.filter(m => !filter || (m.mount + ' ' + m.name + ' ' + m.country).toLowerCase().includes(filter));
+  const MAX_ROWS = 200;   // a big network has over a thousand: the nearest first, the rest through the search
+  const shown = items.slice(0, MAX_ROWS);
+  const partial = ntripMounts.status === 'Only part of the list arrived.';   // the host's words; the list is shown all the same
+  const count = items.length > MAX_ROWS ? tr('{n} mount points, showing {m}. Search to narrow it down.', { n: items.length, m: MAX_ROWS })
+    : tr('{n} mount points', { n: items.length });
+  document.getElementById('ntm-status').textContent = loading ? tr('Loading...')
+    : partial ? count + ' ' + tr('Only part of the list arrived.')
+    : ntripMounts.status ? ntripMounts.status : count;
+  const list = document.getElementById('ntm-list');
+  list.innerHTML = '';
+  for (const m of shown) {
+    const row = document.createElement('button');
+    row.className = 'ntm-row';
+    const km = Number.isFinite(m.km) ? (m.km < 10 ? m.km.toFixed(1) : Math.round(m.km)) + ' km' : '';
+    row.innerHTML = '<span class="ntm-top"><span class="ntm-mount" translate="no"></span><span class="ntm-km" translate="no"></span></span><span class="ntm-sub"></span>';
+    row.querySelector('.ntm-mount').textContent = m.mount;
+    row.querySelector('.ntm-km').textContent = km;
+    row.querySelector('.ntm-sub').textContent = [m.name, m.format, m.systems, m.country, m.needsPosition ? tr('needs your position') : ''].filter(Boolean).join(' · ');
+    row.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      document.getElementById(_ntmFor === 'fallback' ? 'nte-fb-mount' : 'nte-mount').value = m.mount;
+      closeNtripMounts();
+    });
+    list.appendChild(row);
+  }
+}
+document.getElementById('ntm-filter').addEventListener('input', renderNtripMounts);
+// Closing the list also tells the host to drop it: it is not kept, and a client that connects later is not sent it.
+function closeNtripMounts() { closeDialog(); transport.send('ntrip.mountpoints.clear'); }
+document.getElementById('ntm-close').addEventListener('pointerdown', e => { e.stopPropagation(); closeNtripMounts(); });
+document.getElementById('nte-find').addEventListener('pointerdown', e => { e.stopPropagation(); findMounts(false); });
+document.getElementById('nte-fb-find').addEventListener('pointerdown', e => { e.stopPropagation(); findMounts(true); });
 document.getElementById('nte-test').addEventListener('pointerdown', e => {
   e.stopPropagation();
   const host = document.getElementById('nte-host').value.trim();
@@ -4344,6 +4432,7 @@ function renderSettings() {
   if (profilesDirty) { profilesDirty = false; if (document.getElementById('vehtoolhub').classList.contains('open')) refreshHub(); }
   // Network IO panel: module/NTRIP readouts ride the Status frame → refresh each frame.
   if (nioPanel.classList.contains('open')) renderNetworkIo();
+  if (ntsPanel.classList.contains('open')) renderNtripSettings();
   if (sdPanel.classList.contains('open')) renderSystemData();
   // NTRIP test result rides the Status frame while a test is in flight.
   if (_nteTestActive && document.getElementById('ntripeditor').classList.contains('open') && statusBar)

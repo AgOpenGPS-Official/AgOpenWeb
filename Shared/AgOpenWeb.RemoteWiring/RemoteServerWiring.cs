@@ -619,11 +619,11 @@ public static partial class RemoteServerWiring
                                 // directly (mirrors the vehicle/tool ApplyProfileCommand path);
                                 // confirmations happen client-side. Tier-1 (config files). ---
                                 case "ntrip.save": case "ntrip.delete": case "ntrip.setDefault":
-                                case "ntrip.test": case "ntrip.switch":
+                                case "ntrip.test": case "ntrip.switch": case "ntrip.mountpoints":
                                     ApplyNtripCommand(
                                         services.GetRequiredService<INtripProfileService>(),
                                         services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>(),
-                                        dispatcher, cmd, arg, vm);
+                                        dispatcher, cmd, arg, vm, services.GetService<IGpsService>());
                                     return;
                                 // --- Field Operations (Phase 9). Lifecycle routes through the real
                                 // StartWorkSessionDialogViewModel (host-driven) so field/job open/
