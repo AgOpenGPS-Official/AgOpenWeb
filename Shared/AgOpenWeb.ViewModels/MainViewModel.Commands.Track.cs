@@ -237,7 +237,7 @@ public partial class MainViewModel
                 return;
             }
             _intents.RequestGuidanceSnap(left: true);
-            StatusMessage = "Snapped left";
+            StatusMessage = "Moved one pass left";
         });
 
         SnapRightCommand = new RelayCommand(() =>
@@ -249,7 +249,7 @@ public partial class MainViewModel
                 return;
             }
             _intents.RequestGuidanceSnap(left: false);
-            StatusMessage = "Snapped right";
+            StatusMessage = "Moved one pass right";
         });
 
         StopGuidanceCommand = new RelayCommand(() =>
