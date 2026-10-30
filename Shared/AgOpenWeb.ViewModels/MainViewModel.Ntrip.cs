@@ -542,7 +542,7 @@ public partial class MainViewModel
 
     /// <summary>
     /// Once, for an installation whose profiles were tied to fields before NTRIP got a fallback: say that one
-    /// profile with a fallback is now the default and the field links are kept (Plans/NTRIP_MAIN_FALLBACK_PLAN.md).
+    /// profile with a fallback is now the default and the field links are kept (Plans/Completed/NTRIP_MAIN_FALLBACK_PLAN.md).
     /// </summary>
     internal void ShowNtripModeNoticeOnce()
     {

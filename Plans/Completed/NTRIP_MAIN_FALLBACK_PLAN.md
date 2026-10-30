@@ -1,6 +1,6 @@
 # NTRIP: main and fallback service, a sturdier client, and a report that explains itself
 
-**Status:** approved 2026-10-29 (#463). Phases 1 to 4 built, in review (#464); phase 5 (docs) is in progress.
+**Status:** approved 2026-10-29 (#463). All phases built (#464). The decisions below are as built; later changes after a first look in the app are under "Built as" of Phase 4.
 **Prompted by:** #443 (NTRIP "not working": the reporter and the maintainers had to guess whether it was the login, the mount point or the position), #285 and #385 (silent stops and retries), and a rebuild of the NTRIP client in AgIO (AgOpenGPS) that was tested against recorded casters and a caster of our own. This plan brings what that rebuild learned to AgOpenWeb, in AgOpenWeb's own architecture.
 **Related:** `Plans/RTCM_FORWARDING_PLAN.md` (the forwarding half, already in), `Plans/Completed/NTRIP_PROFILES_PLAN.md` (profiles per field), `Plans/BUG_REPORT_SUBMISSION_PLAN.md` (what a report carries), #278 (NTRIP on/off), #397 (observers), #444 (position sent to the caster).
 
@@ -126,11 +126,13 @@ Phases 1 and 2 together answer #443: a failure has a name and a maintainer can r
   - The switch button always asks first; no switch is possible without control (commands are not in `ObserverIds`).
   - **Changed after a first look in the app** (the card was too busy): the Network IO card keeps the first lines (headline, bytes, where the corrections go, the receiver's age) and two buttons, *NTRIP Settings* and the one switch; headline advice, notice, checks, RTCM table, mode, *NTRIP on*, *Broadcast corrections* and the profiles moved to a screen of their own, **NTRIP Settings**. A notice fades after five minutes. NTRIP Settings, the profiles and the editor are not light-dismissed (no scrim): a tap beside them is a slip on a screen this size.
   - **Find mount points** in the profile editor (main and fallback): the host reads the caster's source table with the client's own connection code (NTRIP 2.0, then 1.0), nearest first when the receiver has a position, and sends it in a frame of its own (`NtripMountpoints`, type 28); a long list shows the nearest 200 with a search. A header followed at once by a large table is not held to the header cap (it was, and kadaster and centipede failed).
+  - **Choosing and starting a profile** (after use in the app): the first profile ever saved becomes the default one and connects at once when NTRIP is on and nothing is connected, whatever its *Auto connect with associated field* says (that only concerns field loads and startup); the *NTRIP on* box became a button, **NTRIP active / NTRIP disabled**, and switching it on connects the default profile even with auto-connect off. The profile list has **Use** (`ntrip.use|id`, `MainViewModel.UseNtripProfileAsync`): it connects with the selected profile now, asks first when a session runs, and in the one-profile mode also makes it the default; the list marks the profile in use and shows `Main:` and `FB:` when a fallback is set. The card and NTRIP Settings name the profile and the service in use (the session frame ends with both).
   - `en.json` was regenerated with a port of `Tools/i18n-extract.py` (checked identical on the unchanged tree first), as this machine has no Python.
   - Checked in the running app with a browser (Playwright) against two fake casters: refused login with advice and checks, the confirmed switch, the toast, the "main is back" question with both answers, the switch back, both modes, the editor (stored fallback shown, passwords masked, saved with the stored passwords kept, removal by an empty host, Test on the fallback), and the automatic switch with a fallback typed into the editor.
 
 ### Phase 5: docs
 `CLAUDE.md` (the NTRIP sections), `Plans/ARCHITECTURE.md` (NTRIP data flow), `Docs/INTERFACE_GUIDE.md` (Network IO), this plan to `Plans/Completed/`, `RTCM_FORWARDING_PLAN.md` "Still to check" list unchanged.
+- **Built as:** all four done in #464; `CLAUDE.md` and `ARCHITECTURE.md` now say NTRIP 2.0 first with one try of 1.0 (decision 2); references to this plan point to `Plans/Completed/`.
 
 ## Verification
 
@@ -156,6 +158,5 @@ These were open questions in the first draft; the maintainers can still overrule
 ## Out of scope
 
 - Serial or USB connection to a receiver; a radio source.
-- Caster selection from a source table beyond what Test already shows (the rebuild has a mount point picker; it can follow separately).
 - Changes to the RTCM forwarding, the queue or the Worker.
 - Changes to AgIO (AgOpenGPS): the rebuild there is its own pull request.

@@ -333,7 +333,7 @@ the answer) once; never after a 401, 403, 404, an error text or a source table. 
 corrections is remembered per service. `NtripResponse.Classify` sorts every reply into an `NtripCategory`
 (wrong login and unknown mount point end the session, the rest is retried after 1, 2, 4, 8, 15 s, and a
 network change ends the wait); `NtripConnectionTester` (the Test button) opens its connection the same way.
-Every wait has a timeout (`NtripTimeouts`). Design: `Plans/NTRIP_MAIN_FALLBACK_PLAN.md`.
+Every wait has a timeout (`NtripTimeouts`). Design: `Plans/Completed/NTRIP_MAIN_FALLBACK_PLAN.md`.
 
 **Main and fallback service.** Two exclusive modes (`Connections.NtripProfilePerField`, `config.set|conn.ntripProfilePerField`).
 The default is one profile (the default profile) with an optional fallback service (`NtripProfile.Fallback`): a field load
@@ -345,8 +345,10 @@ while the fallback is in use after a failure, the main service is tried slowly i
 says when it answers; not when both are one login on one caster. Every switch raises `Notice` and says that RTK may be lost.
 In the web client the Network IO card keeps to the first lines and the switch; NTRIP Settings (`renderNtripSettings` in
 `app.js`: headline, advice, checks, the mode) shows the rest, from the `NtripSessionDto` that ends the Status frame;
-`ntrip.use|id` connects with a profile now (`MainViewModel.UseNtripProfileAsync`; the default too in the one-profile mode); the session frame carries the profile name and the service in use (`ConnectionState.NtripProfileName/MainText/FallbackText`). `ntrip.mountpoints` asks the caster for its source table (`NtripSourcetable`), answered in its own frame; a profile's fallback ends its entry in the profiles
-frame; `ntrip.save` carries it (`NtripProfileFields`), `ntrip.test` can test it. A switch is a toast, "the main service
+`ntrip.use|id` connects with a profile now (`MainViewModel.UseNtripProfileAsync`; the default too in the one-profile mode); the session frame carries
+the profile name and the service in use (`ConnectionState.NtripProfileName/MainText/FallbackText`). A new default profile connects at once; the
+*NTRIP active / disabled* button (`conn.ntripEnabled`) connects the default profile even with its auto-connect off. `ntrip.mountpoints` asks the caster for its
+source table (`NtripSourcetable`), answered in its own frame; a profile's fallback ends its entry in the profiles frame; `ntrip.save` carries it (`NtripProfileFields`), `ntrip.test` can test it. A switch is a toast, "the main service
 is back" is the host's confirmation dialog.
 
 ### RTCM forwarding
