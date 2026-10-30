@@ -558,6 +558,7 @@
       font: 700 13px system-ui, sans-serif; padding: 7px 12px; cursor: pointer; }
     .as-confirm { display: flex; align-items: center; gap: 10px; margin: 0 16px 12px; padding: 10px;
       border: 1px solid #c24; border-radius: 8px; background: rgba(180,40,40,0.12); color: #ffd9d9; font: 600 13px system-ui, sans-serif; }
+    .as-confirm[hidden] { display: none; } /* display: flex would show it while hidden */
     .as-confirm .cfg-act { flex: none; padding: 8px 16px; }
     /* Gated (Tier-2) controls dim until the client holds control. */
     .rn-gated.disabled { opacity: 0.4; pointer-events: none; }
