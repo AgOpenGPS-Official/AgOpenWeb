@@ -139,6 +139,47 @@ public class DebugDumpJobContentTests
         });
     }
 
+    // The field's background image is several MB of PNG: deflating it again took most of a
+    // dump's time on a slow tablet, for nothing. Text still compresses.
+    [Test]
+    public void Dump_stores_already_compressed_files_and_deflates_text()
+    {
+        var fieldDir = Path.Combine(_dir, "Fields", "img");
+        Directory.CreateDirectory(fieldDir);
+        var noise = new byte[200_000];
+        new Random(1).NextBytes(noise);
+        File.WriteAllBytes(Path.Combine(fieldDir, "background.png"), noise);
+        File.WriteAllText(Path.Combine(fieldDir, "field.geojson"), string.Concat(Enumerable.Repeat("{\"type\":\"Feature\"}\n", 5000)));
+        var state = new ApplicationState();
+        state.Field.ActiveField = new Field { Name = "img", DirectoryPath = fieldDir };
+
+        var zip = DebugDumpService.CreateDump(Settings(), RuntimeStateCapture.From(state), new ConfigurationStore(), outputDirectory: _dir);
+        using var a = ZipFile.OpenRead(zip);
+        var png = a.GetEntry("field/background.png")!;
+        var geo = a.GetEntry("field/field.geojson")!;
+        Assert.Multiple(() =>
+        {
+            Assert.That(png.CompressedLength, Is.EqualTo(png.Length), "PNG stored");
+            Assert.That(geo.CompressedLength, Is.LessThan(geo.Length / 10), "text deflated");
+        });
+    }
+
+    // The report shows the state when the button was pressed: Capture reads it on the host loop,
+    // and what changes while WriteDump runs in the background doesn't reach the dump.
+    [Test]
+    public void Dump_carries_the_state_captured_not_the_state_when_written()
+    {
+        var store = new ConfigurationStore();
+        store.AutoSteer.CountsPerDegree = 100;
+        var snap = DebugDumpService.Capture(Settings(), RuntimeStateCapture.From(new ApplicationState()), store);
+        store.AutoSteer.CountsPerDegree = 200;
+
+        var zip = DebugDumpService.WriteDump(snap, outputDirectory: _dir);
+        using var a = ZipFile.OpenRead(zip);
+        using var cfg = JsonDocument.Parse(new StreamReader(a.GetEntry("configuration.json")!.Open()).ReadToEnd());
+        Assert.That(cfg.RootElement.GetProperty("AutoSteer").GetProperty("CountsPerDegree").GetDouble(), Is.EqualTo(100));
+    }
+
     [Test]
     public void Dump_without_a_job_has_no_job_entries()
     {
