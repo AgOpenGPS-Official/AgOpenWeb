@@ -24,6 +24,7 @@ internal sealed class OffsetPassCache
     private Models.Track.Track? _track;
     private List<Vec3>? _points;
     private int _count;
+    private (Vec3 Center, double Radius)? _pivot;
 
     public (List<Vec3> Points, double PercentRemoved) Get(Models.Track.Track track, double distAway)
     {
@@ -32,13 +33,22 @@ internal sealed class OffsetPassCache
             if (!ReferenceEquals(track, _track) || !ReferenceEquals(track.Points, _points) || track.Points.Count != _count)
             {
                 _passes.Clear();
+                _pivot = null;
                 _track = track;
                 _points = track.Points;
                 _count = track.Points.Count;
             }
             if (_passes.TryGetValue(distAway, out var hit)) return hit;
             if (_passes.Count >= Capacity) _passes.Clear();
-            var made = CurveProcessing.CreateOffsetCurveWithInfo(track.Points, distAway, track.IsClosed);
+            (List<Vec3> Points, double PercentRemoved) made;
+            if (track.IsPivot)
+            {
+                // A water pivot's passes are circles about its centre, as AgOpenGPS builds them.
+                var (center, radius) = _pivot ??= track.PivotCircle();
+                made = (CurveProcessing.PivotPass(center, radius, distAway), 0);
+            }
+            else
+                made = CurveProcessing.CreateOffsetCurveWithInfo(track.Points, distAway, track.IsClosed);
             _passes[distAway] = made;
             return made;
         }

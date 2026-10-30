@@ -3024,6 +3024,7 @@
         <button class="dlg-mode" data-qab="aPlus" title="AB line from current position &amp; heading"><img src="/icons/ABTrackAPlus.png" alt=""><span>A+</span></button>
         <button class="dlg-mode" data-qab="driveAB" title="Drive from A to B"><img src="/icons/ABTrackAB.png" alt=""><span>Drive AB</span></button>
         <button class="dlg-mode" data-qab="recordCurve" title="Drive to record a curve"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
+        <button class="dlg-mode" data-qab="recordPivot" title="Drive part of the way round a water pivot"><span class="dlg-bigtxt">◯</span><span>Pivot</span></button>
         <!-- Ref side (#345, AgOpenGPS isRefRightSide): a driven line's reference goes to this
              edge of the implement; the reference line is the edge between passes, so a pass
              runs where the tractor drove. Only the driven modes use it, so it sits in their
@@ -3053,6 +3054,7 @@
       <div class="dlg-modes">
         <button class="dlg-mode" data-qab="latLonHeading" title="AB line from a latitude/longitude and a heading"><span class="dlg-bigtxt">A+</span><span>Lat/Lon + Heading</span></button>
         <button class="dlg-mode" data-qab="latLonAB" title="AB line through two latitude/longitude points"><span class="dlg-bigtxt">AB</span><span>Lat/Lon A, B</span></button>
+        <button class="dlg-mode" data-qab="latLonPivot" title="Water pivot from the latitude/longitude of its centre"><span class="dlg-bigtxt">◯</span><span>Pivot Centre</span></button>
       </div>
       <div class="dlg-buttons"><button id="dlg-qab-cancel" class="dlg-btn dlg-cancel">Cancel</button></div>
     </div>
@@ -3061,7 +3063,7 @@
     <div id="dlg-latlonab" class="dlg-card">
       <div class="dlg-title" id="ll-title"></div>
       <div class="ll-pt">
-        <div class="ll-hdr"><span>A</span><button class="dlg-btn ll-fill" data-ll-fill="a">Use current position</button></div>
+        <div class="ll-hdr"><span id="ll-a-label">A</span><button class="dlg-btn ll-fill" data-ll-fill="a">Use current position</button></div>
         <label class="dlg-label" for="ll-lat-a">Latitude (−90 to 90)</label>
         <input id="ll-lat-a" class="dlg-input num-field" type="text" placeholder="0.00000000">
         <label class="dlg-label" for="ll-lon-a">Longitude (−180 to 180)</label>

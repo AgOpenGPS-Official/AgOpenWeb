@@ -402,9 +402,19 @@ public partial class MainViewModel
             StatusMessage = ABCreationInstructions;
         });
 
+        // A water pivot: drive part of the way round it, recording like a curve; Finish fits the
+        // circle (AgOpenGPS adds three points by hand and fits a circle through them).
+        StartPivotRecordingCommand = new RelayCommand(() =>
+        {
+            StartCurveRecordingCommand!.Execute(null);
+            _recordingPivot = true;
+            StatusMessage = "Pivot: drive part of the way round it, then Finish";
+        });
+
         StartCurveRecordingCommand = new RelayCommand(() =>
         {
             State.UI.CloseDialog();
+            _recordingPivot = false;
             CurrentABCreationMode = ABCreationMode.Curve;
             _recordedCurvePoints.Clear();
             _lastCurvePoint = null;
@@ -439,6 +449,19 @@ public partial class MainViewModel
             if (_recordedCurvePoints.Count < 3)
             {
                 ReportFailure($"Need at least 3 points for a curve (have {_recordedCurvePoints.Count})");
+                return;
+            }
+
+            if (_recordingPivot)
+            {
+                AddPivotFromRecording(); // reports a failure; the recording ends either way, as the map's does
+                _mapService.ClearRecordingPoints();
+                _recordingPivot = false;
+                CurrentABCreationMode = ABCreationMode.None;
+                _recordedCurvePoints.Clear();
+                _lastCurvePoint = null;
+                OnPropertyChanged(nameof(IsRecordingCurve));
+                OnPropertyChanged(nameof(RecordedCurvePointCount));
                 return;
             }
 
@@ -1827,6 +1850,57 @@ public partial class MainViewModel
     /// AB line from typed coordinates (AgOpenGPS Build Tracks "Lat/Lon + Heading"): A at
     /// the given point, along <paramref name="headingDeg"/> (degrees true) (#335).
     /// </summary>
+    private bool _recordingPivot;
+
+    // Width of a pass (width − overlap), for a pivot's reference circle.
+    private double PassWidth => Math.Max(ConfigStore.ActualToolWidth - ConfigStore.Tool.Overlap, 0.1);
+
+    /// <summary>
+    /// The pivot through the recorded points: the circle that fits them, with a pass where the
+    /// tractor drove (its reference half a width outside, like a driven line's). Refuses points
+    /// that are not on a circle or one too small or too big to be a pivot.
+    /// </summary>
+    private bool AddPivotFromRecording()
+    {
+        var fit = Models.Guidance.CurveProcessing.FitCircle(_recordedCurvePoints);
+        if (fit is not { } c || c.Radius < 5 || c.Radius > 2000)
+        {
+            ReportFailure("Drive further round the pivot: the points don't make a circle yet");
+            return false;
+        }
+        if (c.Rms > Math.Max(1.0, 0.02 * c.Radius))
+        {
+            ReportFailure($"The driven points are not on a circle (they stray {c.Rms:F1} m from it)");
+            return false;
+        }
+        AddPivot(c.Center, c.Radius + PassWidth / 2);
+        return true;
+    }
+
+    /// <summary>
+    /// A water pivot from its centre typed in (AgOpenGPS Build Tracks "Pivot" lat/lon). A pass runs
+    /// where the tractor is, as for a driven line; standing at the centre, the passes are AgOpenGPS's,
+    /// half a width and then a whole width apart from the centre.
+    /// </summary>
+    public void CreateLatLonPivot(double lat, double lon)
+    {
+        State.UI.CloseDialog();
+        if (!TryLatLonToLocal(lat, lon, out var c)) return;
+        var v = State.Vehicle;
+        double here = Math.Sqrt(Math.Pow(v.Easting - c.Easting, 2) + Math.Pow(v.Northing - c.Northing, 2));
+        AddPivot(new Vec3(c.Easting, c.Northing, 0), here > PassWidth / 2 ? here + PassWidth / 2 : PassWidth);
+    }
+
+    private void AddPivot(Vec3 center, double referenceRadius)
+    {
+        foreach (var t in SavedTracks) t.IsActive = false;
+        var track = Track.FromPivot($"Pivot {DateTime.Now:HH:mm}", center, referenceRadius);
+        SavedTracks.Add(track);
+        SaveTracksToFile(); // before selecting: the previous track's pass and nudge stay its own
+        SelectedTrack = track;
+        StatusMessage = $"Created pivot: centre {center.Easting:F1}, {center.Northing:F1}, passes {PassWidth:F1} m apart";
+    }
+
     public void CreateLatLonHeadingLine(double lat, double lon, double headingDeg)
     {
         State.UI.CloseDialog();

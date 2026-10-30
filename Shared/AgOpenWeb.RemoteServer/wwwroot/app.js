@@ -1439,9 +1439,10 @@ function llFill(pt) {
 }
 function openLatLonLine(mode) {
   llMode = mode;
-  const ab = mode === 'latLonAB';
-  llEl('ll-title').textContent = ab ? tr('AB Line from Two Points') : tr('AB Line from Point and Heading');
-  llEl('ll-heading-row').hidden = ab;
+  const ab = mode === 'latLonAB', pivot = mode === 'latLonPivot';
+  llEl('ll-title').textContent = pivot ? tr('Water Pivot from its Centre') : ab ? tr('AB Line from Two Points') : tr('AB Line from Point and Heading');
+  llEl('ll-a-label').textContent = pivot ? tr('Centre') : 'A';
+  llEl('ll-heading-row').hidden = ab || pivot;
   llEl('ll-b-row').hidden = !ab;
   for (const id of ['ll-lat-a', 'll-lon-a', 'll-heading', 'll-lat-b', 'll-lon-b']) llEl(id).value = '';
   llEl('ll-err').textContent = '';
@@ -1460,7 +1461,8 @@ llEl('ll-ok').addEventListener('pointerdown', e => {
   const latA = num('ll-lat-a'), lonA = num('ll-lon-a');
   let err = !okLat(latA) || !okLon(lonA) ? tr('Point A needs a latitude (−90 to 90) and longitude (−180 to 180)') : '';
   let cmd = '';
-  if (!err && llMode === 'latLonAB') {
+  if (!err && llMode === 'latLonPivot') cmd = 'track.latLonPivot|' + [latA, lonA].join(',');
+  else if (!err && llMode === 'latLonAB') {
     const latB = num('ll-lat-b'), lonB = num('ll-lon-b');
     if (!okLat(latB) || !okLon(lonB)) err = tr('Point B needs a latitude (−90 to 90) and longitude (−180 to 180)');
     else cmd = 'track.latLonAB|' + [latA, lonA, latB, lonB].join(',');
@@ -1703,7 +1705,9 @@ function abHint() {
     case 'straight': return drawPts.length === 0 ? tr('Tap Point A') : tr('Tap Point B');
     case 'curve': return tr('Tap points ({n}) — Finish when done', { n: drawPts.length });
     case 'driveAB': return driveStep === 0 ? tr('Drive to A, then Set Point') : tr('Drive to B, then Set Point');
-    case 'recordCurve': return driveStep === 0 ? tr('Drive to A, then Set Point A') : tr('Drive the curve to B, then Set Point B');
+    case 'recordCurve': return recPivot
+      ? (driveStep === 0 ? tr('Drive onto the pivot track, then Start') : tr('Drive part of the way round the pivot, then Finish'))
+      : (driveStep === 0 ? tr('Drive to A, then Set Point A') : tr('Drive the curve to B, then Set Point B'));
   }
   return '';
 }
@@ -1767,12 +1771,15 @@ function startDriveAB() {                  // GPS: set A then B at the vehicle
   document.getElementById('draw-setpoint').textContent = tr('Set Point A');
   hintEl.classList.add('show'); setAbHint();
 }
-function startRecordCurve() {              // GPS: record by driving — Set Start → Set End
-  abFlow = 'recordCurve'; driveStep = 0; curveMarks = []; _lastCurveMark = null;
+// A water pivot is recorded the same way: Start, drive part of the way round, Finish; the host
+// fits the circle (AgOpenGPS adds three points round it by hand).
+let recPivot = false;
+function startRecordCurve(pivot = false) { // GPS: record by driving — Set Start → Set End
+  abFlow = 'recordCurve'; driveStep = 0; curveMarks = []; _lastCurveMark = null; recPivot = pivot;
   // Recording doesn't begin until "Set Start" (deferred track.recordCurve), so the operator
   // can position at the curve's start first. The set-point button drives the two-step.
   showAbBar(true, false, false);
-  document.getElementById('draw-setpoint').textContent = tr('Set Point A');
+  document.getElementById('draw-setpoint').textContent = pivot ? tr('Start') : tr('Set Point A');
   hintEl.classList.add('show'); setAbHint();
 }
 // "Bnd. Curve" — tap point A then point B on the boundary, then pick which way round the
@@ -1902,8 +1909,8 @@ function abSetPoint() {                     // Set-point button — drives Drive
   } else if (abFlow === 'recordCurve') {
     if (driveStep > 1) return;              // guard a double-B while B lingers
     if (driveStep === 0) {                  // Set Point A → drop the A endpoint + begin recording
-      transport.send('track.recordCurve');
-      driveStep = 1; btn.textContent = tr('Set Point B');
+      transport.send(recPivot ? 'track.recordPivot' : 'track.recordCurve');
+      driveStep = 1; btn.textContent = recPivot ? tr('Finish') : tr('Set Point B');
       if (tick && tick.pose) {
         drawPts.push(poseEdgePt());                          // labeled "A" endpoint dot (orange)
         _lastCurveMark = { e: tick.pose.e, n: tick.pose.n }; // seed green-dot spacing; no dot at A itself
@@ -2172,7 +2179,8 @@ document.getElementById('dlg-quickab').querySelectorAll('[data-qab]').forEach(b 
       transport.send('track.aPlus' + (v !== '' && isFinite(+v) ? '|' + (+v) : ''));
     }
   }
-  else if (m === 'latLonHeading' || m === 'latLonAB') openLatLonLine(m);
+  else if (m === 'latLonHeading' || m === 'latLonAB' || m === 'latLonPivot') openLatLonLine(m);
+  else if (m === 'recordPivot') startRecordCurve(true);
   else if (m === 'driveAB') startDriveAB();
   else if (m === 'recordCurve') startRecordCurve();
   else if (m === 'boundaryEdge') transport.send('track.createFromBoundary');
