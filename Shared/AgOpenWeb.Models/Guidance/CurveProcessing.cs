@@ -349,6 +349,7 @@ namespace AgOpenWeb.Models.Guidance
             // A long curve (a boundary with a point every metre) is bucketed once, so the test
             // looks only at the points near each offset point instead of all of them.
             var near = refCount > NearGridMinPoints ? new PointGrid(originalPoints, Math.Abs(offsetDistance)) : null;
+            int lastClear = -1; // the last reference point whose offset point cleared the collision test
 
             for (int i = 0; i < refCount; i++)
             {
@@ -368,6 +369,12 @@ namespace AgOpenWeb.Models.Guidance
 
                 if (addPoint)
                 {
+                    // Round the outside of a bend: the offset jumps from the last point's normal to
+                    // this one's, which left a chord with a kink at each end that the tractor overshot.
+                    if (lastClear == i - 1 && i > 0)
+                        AddArc(offsetPoints, pt, originalPoints[i - 1].Heading, pt.Heading, offsetDistance);
+                    lastClear = i;
+
                     // Also check minimum spacing from previous offset point (AgOpenGPS uses ~0.48 * tool width)
                     // We use a simpler 1m minimum spacing check
                     if (offsetPoints.Count > 0)
@@ -422,9 +429,12 @@ namespace AgOpenWeb.Models.Guidance
                 offsetPoints = ChaikinsSmooth(offsetPoints, 1);
 
             // A loop's first and last points are offset along different sides of the seam corner:
-            // join them, or the pass (and its guidelines) stop short there (#450).
+            // join them, or the pass (and its guidelines) stop short there (#450). Round the join
+            // on the outside of the seam's bend, as at any other.
             if (closed && offsetPoints.Count > 2)
             {
+                if (refCount > 2)
+                    AddArc(offsetPoints, originalPoints[0], originalPoints[refCount - 2].Heading, originalPoints[0].Heading, offsetDistance);
                 var first = offsetPoints[0];
                 var last = offsetPoints[^1];
                 if (Math.Abs(first.Easting - last.Easting) > 1e-6 || Math.Abs(first.Northing - last.Northing) > 1e-6)
@@ -493,6 +503,25 @@ namespace AgOpenWeb.Models.Guidance
         /// <summary>The point spacing of a fence line around <paramref name="areaSquareMetres"/>.</summary>
         public static double FenceSpacing(double areaSquareMetres) =>
             areaSquareMetres < 200_000 ? 1.1 : areaSquareMetres < 400_000 ? 2.2 : 3.3;
+
+        /// <summary>
+        /// The round join of a parallel offset on the outside of a bend at <paramref name="corner"/>:
+        /// points <paramref name="offset"/> from it, at least a metre apart, turning from the normal of
+        /// <paramref name="fromHeading"/> to that of <paramref name="toHeading"/> (the end points are the
+        /// offset points either side, already there). Nothing on the inside of a bend, where the
+        /// collision test removes the points instead, or for a turn that spans under two metres.
+        /// </summary>
+        private static void AddArc(List<Vec3> pts, Vec3 corner, double fromHeading, double toHeading, double offset)
+        {
+            double turn = Math.IEEERemainder(toHeading - fromHeading, 2 * Math.PI); // + = a right turn
+            if (Math.Sign(turn) != -Math.Sign(offset)) return; // a right turn's outside is on the left
+            int steps = (int)Math.Ceiling(Math.Abs(turn * offset) / 1.0);
+            for (int k = 1; k < steps; k++)
+            {
+                double a = fromHeading + turn * k / steps + Math.PI / 2;
+                pts.Add(new Vec3(corner.Easting + Math.Sin(a) * offset, corner.Northing + Math.Cos(a) * offset, 0));
+            }
+        }
 
         /// <summary>
         /// A clockwise circle from north, closed (the last point repeats the first), with a point at
@@ -571,7 +600,7 @@ namespace AgOpenWeb.Models.Guidance
         // Below this many points the plain scan is as quick as building a grid.
         private const int NearGridMinPoints = 64;
 
-        private static bool AnyCloser(IReadOnlyList<Vec3> points, double e, double n, double distSq)
+        internal static bool AnyCloser(IReadOnlyList<Vec3> points, double e, double n, double distSq)
         {
             for (int t = 0; t < points.Count; t++)
             {
@@ -586,7 +615,7 @@ namespace AgOpenWeb.Models.Guidance
         /// offset to a query point lies in its cell or one of the eight around it. The answer is the
         /// plain scan's, found in a few cells.
         /// </summary>
-        private sealed class PointGrid
+        internal sealed class PointGrid
         {
             private readonly double _cell;
             private readonly Dictionary<(long, long), List<int>> _cells = new();
