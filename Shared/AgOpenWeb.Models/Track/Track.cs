@@ -239,6 +239,10 @@ public class Track : INotifyPropertyChanged
     /// </summary>
     public bool IsRecordedPath => Type == TrackType.RecordedPath;
 
+    /// <summary>A line to guide on: not a recorded path or a contour strip, which share the
+    /// track list but are driven their own way (AgOpenGPS keeps them out of its track list).</summary>
+    public bool IsGuidanceTrack => Type is not (TrackType.RecordedPath or TrackType.Contour);
+
     /// <summary>
     /// Whether this is a contour strip (for contour guidance).
     /// </summary>

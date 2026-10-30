@@ -1763,7 +1763,7 @@ public partial class MainViewModel
         for (int i = 1; i <= count; i++)
         {
             var t = SavedTracks[((start + step * i) % count + count) % count];
-            if (t.IsVisible) { next = t; break; }
+            if (t.IsVisible && t.IsGuidanceTrack) { next = t; break; }
         }
         if (next == null || ReferenceEquals(next, SelectedTrack)) return;
 

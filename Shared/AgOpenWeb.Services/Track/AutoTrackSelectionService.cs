@@ -38,7 +38,7 @@ public static class AutoTrackSelectionService
         for (int i = 0; i < tracks.Count; i++)
         {
             var track = tracks[i];
-            if (!track.IsVisible || track.Points.Count < 2)
+            if (!track.IsVisible || !track.IsGuidanceTrack || track.Points.Count < 2)
                 continue;
 
             // Heading alignment check for AB lines (curves skip this)

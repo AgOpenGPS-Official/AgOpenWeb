@@ -162,10 +162,21 @@ public class CurveGuideLinesTests
         Assert.That(again, Is.SameAs(first));
     }
 
+    // An AB line's guidelines: two points each, spaced like the passes (width − overlap, the
+    // tool offset on the other side every other line), where the map spaced them by the full
+    // tool width with no offset at all.
     [Test]
-    public void An_AB_line_has_no_host_guidelines()
+    public void Guidelines_of_an_AB_line_are_spaced_like_its_passes()
     {
+        ConfigurationStore.Instance.Tool.Overlap = 0.4;
         var ab = new Models.Track.Track { Name = "AB", Points = new List<Vec3> { new(0, -100, 0), new(0, 100, 0) }, Type = Models.Track.TrackType.ABLine };
-        Assert.That(Cycle(ab, pass: 0).GuideLines, Is.Null);
+        var lines = Cycle(ab, pass: 0).GuideLines!;
+
+        Assert.That(lines, Has.Count.EqualTo(6));
+        Assert.That(lines.All(l => l.Count == 2 && Math.Abs(l[0].Easting - l[1].Easting) < 1e-9), "straight, parallel to the line");
+        var across = lines.Select(l => l[0].Easting).OrderBy(x => x).ToList();
+        var steps = across.Zip(across.Skip(1), (a, b) => Math.Round(b - a, 2)).ToList();
+        // 5.6 m passes (6 − 0.4); neighbours 5.6 ∓ 1.6 apart, 11.2 across the pass shown.
+        foreach (double st in steps) Assert.That(new[] { 4.0, 7.2, 11.2 }, Does.Contain(st), string.Join(", ", steps));
     }
 }

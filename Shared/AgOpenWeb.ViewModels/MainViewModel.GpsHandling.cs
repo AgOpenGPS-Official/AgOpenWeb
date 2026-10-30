@@ -169,7 +169,17 @@ public partial class MainViewModel
             }
         }
 
-        double headingRad = data.CurrentPosition.Heading * Math.PI / 180.0;
+        // What is recorded follows the pivot, as AgOpenGPS records pivotAxlePos: the cycle's
+        // position has the antenna-to-pivot shift, roll and drift applied, while the fix above is
+        // the antenna's. A curve recorded from the antenna sat beside the drive by the antenna's
+        // lateral offset and the roll (and started with one pivot point). Until the first cycle
+        // there is only the fix.
+        var vehicle = State.Vehicle;
+        bool hasPivot = vehicle.Easting != 0 || vehicle.Northing != 0;
+        double pivotE = hasPivot ? vehicle.Easting : posEasting;
+        double pivotN = hasPivot ? vehicle.Northing : posNorthing;
+        double pivotHeading = hasPivot ? vehicle.Heading : data.CurrentPosition.Heading;
+        double headingRad = pivotHeading * Math.PI / 180.0;
 
         // Auto-initialize coverage bounds from GPS if no boundary exists (#138)
         EnsureCoverageBoundsInitialized(posEasting, posNorthing);
@@ -179,20 +189,20 @@ public partial class MainViewModel
         // Add boundary point if recording is active
         if (_boundaryRecordingService.IsRecording && BoundaryRecordingSectionsAllow())
         {
-            var (bndE, bndN) = BoundaryRecordPoint(posEasting, posNorthing, headingRad);
+            var (bndE, bndN) = BoundaryRecordPoint(pivotE, pivotN, headingRad);
             _boundaryRecordingService.AddPoint(bndE, bndN, headingRad);
         }
 
         // Add curve point if curve recording is active
         if (CurrentABCreationMode == ABCreationMode.Curve)
         {
-            AddCurvePoint(posEasting, posNorthing, data.CurrentPosition.Heading);
+            AddCurvePoint(pivotE, pivotN, pivotHeading);
         }
 
         // Add contour point if contour recording is active
         if (IsRecordingContour)
         {
-            AddContourPoint(posEasting, posNorthing, data.CurrentPosition.Heading);
+            AddContourPoint(pivotE, pivotN, pivotHeading);
         }
 
         // Log elevation data if enabled (#120)
@@ -211,7 +221,7 @@ public partial class MainViewModel
         // Add recorded path point if path recording is active
         if (IsRecordingPath)
         {
-            AddRecordedPathPoint(posEasting, posNorthing, data.CurrentPosition.Heading);
+            AddRecordedPathPoint(pivotE, pivotN, pivotHeading);
         }
 
         // Update recorded path playback if active
