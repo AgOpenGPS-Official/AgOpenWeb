@@ -42,6 +42,14 @@
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+    <!-- The VT card's gateways on the network: found by Bonjour (SharpIsoTerm's AowLinkBrowser);
+         iOS asks the user once for the local network. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>AgOpenWeb looks for ISOBUS gateways and machine modules on the tractor's network.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_aowlink._tcp</string>
+    </array>
     <!-- Privacy purpose strings. Apple's static scanner (ITMS-90683) requires the
          keys for frameworks the binary references even though AgOpenWeb does not
          use the underlying features. GPS comes from external hardware over UDP,

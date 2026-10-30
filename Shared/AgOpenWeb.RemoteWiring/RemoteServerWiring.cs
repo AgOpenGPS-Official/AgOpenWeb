@@ -44,6 +44,10 @@ public static partial class RemoteServerWiring
         // shared by the command-handler and wizard-projector closures below.
         bool wizardActive = false;
 
+                    // The ISOBUS virtual terminal (VT card), when this head has one.
+                    var vt = services.GetService<IVirtualTerminalService>();
+                    if (vt is not null) VirtualTerminalRemote.Start(server, vt);
+
                     server.CommandHandler = (cmd, arg) =>
                         dispatcher.Post(() =>
                         {
@@ -94,6 +98,72 @@ public static partial class RemoteServerWiring
                                     services.GetRequiredService<AgOpenWeb.Services.Interfaces.IIsobusTaskControllerService>()
                                         .ToggleSectionControl();
                                     return;
+                                // VT card: the implement's soft keys, buttons and input fields. Each
+                                // arg starts with the terminal ("0," to "3,"): one card per terminal.
+                                // vt.key arg = "t,s|b,id,p|r|a": soft key or button, object id, press,
+                                // release or abort; the terminal repeats a held key.
+                                case "vt.key":
+                                {
+                                    var k = arg.Split(',');
+                                    if (vt is not null && k.Length == 4
+                                        && int.TryParse(k[0], System.Globalization.NumberStyles.Integer, inv, out var kt)
+                                        && ushort.TryParse(k[2], System.Globalization.NumberStyles.Integer, inv, out var kid))
+                                        vt.Key(kt, k[1] == "b", kid,
+                                            k[3] == "p" ? VtKeyAction.Press : k[3] == "r" ? VtKeyAction.Release : VtKeyAction.Abort);
+                                    return;
+                                }
+                                case "vt.select": // arg = "t,id"
+                                {
+                                    var k = arg.Split(',');
+                                    if (vt is not null && k.Length == 2
+                                        && int.TryParse(k[0], System.Globalization.NumberStyles.Integer, inv, out var st)
+                                        && ushort.TryParse(k[1], System.Globalization.NumberStyles.Integer, inv, out var sid))
+                                        vt.Select(st, sid);
+                                    return;
+                                }
+                                case "vt.number": // arg = "t,id,raw" (number, bool 0/1, list index)
+                                case "vt.string": // arg = "t,id,text"
+                                {
+                                    var c1 = arg.IndexOf(',');
+                                    var c2 = c1 < 0 ? -1 : arg.IndexOf(',', c1 + 1);
+                                    if (vt is null || c2 < 0
+                                        || !int.TryParse(arg[..c1], System.Globalization.NumberStyles.Integer, inv, out var nt)
+                                        || !ushort.TryParse(arg[(c1 + 1)..c2], System.Globalization.NumberStyles.Integer, inv, out var nid))
+                                        return;
+                                    if (cmd == "vt.string") vt.SetString(nt, nid, arg[(c2 + 1)..]);
+                                    else if (uint.TryParse(arg[(c2 + 1)..], System.Globalization.NumberStyles.Integer, inv, out var raw))
+                                        vt.SetNumber(nt, nid, raw);
+                                    return;
+                                }
+                                case "vt.escape": // arg = "t"
+                                    if (vt is not null && int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var et))
+                                        vt.Escape(et);
+                                    return;
+                                case "vt.activate": // arg = "t,NAME": the implement's NAME, 16 hex digits
+                                {
+                                    var k = arg.Split(',');
+                                    if (vt is not null && k.Length == 2
+                                        && int.TryParse(k[0], System.Globalization.NumberStyles.Integer, inv, out var at)
+                                        && ulong.TryParse(k[1], System.Globalization.NumberStyles.HexNumber, inv, out var wsName))
+                                        vt.Activate(at, wsName);
+                                    return;
+                                }
+                                case "vt.gateway": // arg = "host" or "host:port", then a tab and the name of a gateway picked from the list; "" turns the terminal off
+                                {
+                                    int tab = arg.IndexOf('\t');
+                                    vt?.SetGateway(tab < 0 ? arg : arg[..tab], tab < 0 ? "" : arg[(tab + 1)..]);
+                                    return;
+                                }
+                                case "vt.adapter": // arg = an slcan adapter's serial port on this device; "" back to the gateway
+                                    vt?.SetAdapter(arg);
+                                    return;
+                                case "vt.ports": // look for serial ports and gateways again (the gear's lists)
+                                    vt?.RefreshPorts();
+                                    return;
+                                case "vt.count": // arg = how many terminals, 1 to 4
+                                    if (vt is not null && int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var vc))
+                                        vt.SetCount(vc);
+                                    return;
                                 case "section.toggle": // Tier-2 (gated); cycle one section
                                     if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var si)
                                         && vm.ToggleSectionCommand?.CanExecute(si) == true)
@@ -109,6 +179,11 @@ public static partial class RemoteServerWiring
                                 case "display.capResolution": // web auto-quality: arg = min multiplier
                                     if (double.TryParse(arg, num, inv, out var capMult)) // (2.5 = Medium)
                                         vm.CapDisplayResolution(capMult); // only coarsens; idempotent
+                                    return;
+                                case "display.maxTexture": // arg = the web view's largest texture side (px)
+                                    if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var maxTex))
+                                        services.GetRequiredService<AgOpenWeb.Services.Interfaces.ICoverageMapService>()
+                                            .LimitDisplaySide(maxTex); // only tightens; regrids an open field
                                     return;
                                 case "view.save": // web camera tilt+zoom (+ follow mode, #176) persisted host-side (issue #35).
                                 {                 // arg = "pitch|zoom[|mode]" (pitch radians, zoom px/m, client mode). Tier-1.
@@ -368,14 +443,20 @@ public static partial class RemoteServerWiring
                                     return;
                                 }
                                 case "track.boundaryCurveSeg": // "Bnd. Curve": tap A + B on the boundary.
-                                {                              // arg = "aE,aN,bE,bN" (m, from s2w). Tier-1.
-                                    var bc = arg.Split(',');
+                                {                              // arg = "aE,aN,bE,bN[,viaE,viaN]" (m, from s2w):
+                                    var bc = arg.Split(',');   // via = a point on the way round picked (#450)
                                     if (bc.Length >= 4
                                         && double.TryParse(bc[0], num, inv, out var caE)
                                         && double.TryParse(bc[1], num, inv, out var caN)
                                         && double.TryParse(bc[2], num, inv, out var cbE)
                                         && double.TryParse(bc[3], num, inv, out var cbN))
-                                        vm.RemoteCreateBoundaryCurveSegment(caE, caN, cbE, cbN);
+                                    {
+                                        Models.Base.Vec2? via = bc.Length >= 6
+                                            && double.TryParse(bc[4], num, inv, out var cvE)
+                                            && double.TryParse(bc[5], num, inv, out var cvN)
+                                            ? new Models.Base.Vec2(cvE, cvN) : null;
+                                        vm.RemoteCreateBoundaryCurveSegment(caE, caN, cbE, cbN, via);
+                                    }
                                     return;
                                 }
                                 case "flag.placeAt": // Phase MT map-tap. arg = "easting,northing"
@@ -617,6 +698,8 @@ public static partial class RemoteServerWiring
                                 "headland.toggle" => vm.ToggleHeadlandCommand,
                                 "headland.sectionToggle" => vm.ToggleSectionInHeadlandCommand,
                                 "tram.cycle" => vm.ToggleTramDisplayCommand,
+                                "tram.manualLeft" => vm.ToggleTramLeftManualCommand,  // tram lights (#451)
+                                "tram.manualRight" => vm.ToggleTramRightManualCommand,
                                 "tool.resetHeading" => vm.ResetToolHeadingCommand,
                                 "map.cycleColor" => vm.ChangeMappingColorCommand,
                                 "flag.placeHere" => vm.PlaceFlagHereCommand,
@@ -697,36 +780,32 @@ public static partial class RemoteServerWiring
                             if (c?.CanExecute(null) == true) c.Execute(null);
                         });
 
-                    // Tier-2 (live actuation) ids — honored only while a client holds
-                    // fresh control authority (Phase 2 safety gate).
-                    server.IsRestrictedCommand = id =>
-                        id.StartsWith("section.") || id.StartsWith("autosteer.")
-                        || id.StartsWith("isobus.") // switches the implement's section control
-                        || id.StartsWith("youturn.") || id.StartsWith("contour.")
-                        || (id.StartsWith("track.") && !UngatedTrackIds.Contains(id)) // see below
-                        || (id.StartsWith("headland.") && !UngatedHeadlandIds.Contains(id))
-                        || id.StartsWith("smartwas.") || id.StartsWith("wizard.action")
-                        || id == "net.subnet" // restarts every module → gate it
-                        || id == "prompt.answer" // a confirm can delete data or restart modules
-                        || id == "recpath.play" // drives the vehicle along the path → actuation
-                        || id == "heading.resetDirection"; // changes the heading the steering uses
+                    // Every command needs fresh control authority except the few an observer
+                    // may send (#397: a second browser watches, it changes nothing).
+                    server.IsRestrictedCommand = id => !ObserverIds.Contains(id);
 
                     // One operator, via the browser. When the control session ends —
                     // release, disconnect, or deadman — the machine must not keep
                     // actuating with no interface: disengage autosteer and turn sections
                     // off. (Headless target → control state lives in the browser.)
+                    // ControlAuthority raises Revoked just before Changed, on the same thread,
+                    // so the failsafe's reason is here when the release below runs.
+                    string? controlLostReason = null;
                     server.AuthorityChangedHandler = (held, name) =>
                     {
+                        vt?.AbortKeys(); // a VT key held by the last holder ends here
                         if (held)
                         {
                             System.Diagnostics.Debug.WriteLine($"[remote] control taken by {name}");
                             return;
                         }
+                        string offReason = "browser control ended: " + (controlLostReason ?? "released");
+                        controlLostReason = null;
                         dispatcher.Post(() =>
                         {
                             if (vm.IsAutoSteerEngaged
-                                && vm.ToggleAutoSteerCommand?.CanExecute(null) == true)
-                                vm.ToggleAutoSteerCommand.Execute(null);
+                                && vm.ToggleAutoSteerCommand?.CanExecute(offReason) == true)
+                                vm.ToggleAutoSteerCommand.Execute(offReason);
                             if (vm.IsManualSectionMode
                                 && vm.ToggleManualModeCommand?.CanExecute(null) == true)
                                 vm.ToggleManualModeCommand.Execute(null);
@@ -739,7 +818,10 @@ public static partial class RemoteServerWiring
                     // Involuntary loss (disconnect / deadman) — log the reason; the
                     // disengage runs in AuthorityChangedHandler (covers release too).
                     server.FailsafeHandler = reason =>
+                    {
+                        controlLostReason = reason;
                         System.Diagnostics.Debug.WriteLine($"[remote] actuation failsafe: {reason}");
+                    };
 
                     // Steer Wizard projector: while the remote wizard is open, project the
                     // live SteerWizardViewModel to a WizardDto each broadcast tick. Read off

@@ -155,6 +155,7 @@ public class ToolProfileService : IToolProfileService
         store.Guidance.TramPasses = dg.TramPasses;
         store.Guidance.TramDisplay = dg.TramDisplay;
         store.Guidance.TramLine = dg.TramLine;
+        store.Tram.IsOuterInverted = false;
 
         store.ActiveToolProfileName = profileName;
         store.ActiveToolProfilePath = Path.Combine(ToolsDirectory, $"{profileName}.json");

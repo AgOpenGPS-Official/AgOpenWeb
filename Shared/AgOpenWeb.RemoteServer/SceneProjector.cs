@@ -358,7 +358,10 @@ public sealed class SceneProjector
             g.GoalPoint.Northing,
             g.IsReverse,
             _state.Connections.IsModuleNotSteering,
-            hchart.Gps);
+            hchart.Gps,
+            _state.FieldTools.TramLights
+                | (_config.Guidance.TramDisplay && _config.Tram.DisplayMode != TramDisplayMode.Off
+                   && _config.ActualToolWidth > _config.Vehicle.TrackWidth ? 16 : 0));
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from
@@ -461,7 +464,7 @@ public sealed class SceneProjector
         var profiles = _ntripProfiles.Profiles
             .Select(p => new NtripProfileDto(
                 p.Id, p.Name, p.CasterHost, p.CasterPort, p.MountPoint,
-                p.Username, p.Password, p.AutoConnectOnFieldLoad, p.IsDefault,
+                p.Username, Secrets.Masked(p.Password), p.AutoConnectOnFieldLoad, p.IsDefault,
                 p.AssociatedFields.ToList()))
             .ToList();
         return new NtripProfilesDto(profiles, _ntripProfiles.GetAvailableFields().ToList());
@@ -637,7 +640,7 @@ public sealed class SceneProjector
         catch { /* fields dir optional */ }
         local.Sort((a, b) => string.Compare(a.Name, b.Name, System.StringComparison.OrdinalIgnoreCase));
         var cloud = ag.CloudFields.Select(f => new AgShareCloudFieldDto(f.Id, f.Name, f.AreaHa)).ToList();
-        return new AgShareDto(c.AgShareServer ?? "", c.AgShareApiKey ?? "", c.AgShareEnabled,
+        return new AgShareDto(c.AgShareServer ?? "", Secrets.Masked(c.AgShareApiKey), c.AgShareEnabled,
             ag.Status ?? "", ag.Busy, local, cloud);
     }
 
@@ -788,7 +791,8 @@ public sealed class SceneProjector
                 t.IsSteerSwitchEnabled, t.IsSteerSwitchManualSections, _config.ActualToolWidth),
             new UturnConfigDto(g.UTurnStyle, g.UTurnExtension, g.UTurnSmoothing, g.UTurnRadius, g.UTurnDistanceFromBoundary),
             // Line = the field's actual start pass (tram settings live with the field), 1-based.
-            new TramConfigDto(g.TramPasses, g.TramDisplay, _config.Tram.StartPass + 1, _config.Tram.TramWidth),
+            new TramConfigDto(g.TramPasses, g.TramDisplay, _config.Tram.StartPass + 1, _config.Tram.TramWidth,
+                _config.Tram.IsOuterInverted),
             new MachineConfigDto(m.HydraulicLiftEnabled, m.RaiseTime, m.LookAhead, m.LowerTime, m.InvertRelay,
                 m.User1Value, m.User2Value, m.User3Value, m.User4Value, pins),
             BuildDisplay(), BuildAutoSteer());
@@ -897,6 +901,7 @@ public sealed class SceneProjector
         h = h * 31 + (int)t.SingleCoverageColor;
         h = h * 31 + g.UTurnStyle * 7 + g.UTurnSmoothing * 11 + g.TramPasses * 13 + (g.TramDisplay ? 1 : 0) + g.TramLine * 17;
         h = h * 31 + _config.Tram.StartPass * 19 + _config.Tram.TramWidth.GetHashCode(); // #110
+        h = h * 31 + (_config.Tram.IsOuterInverted ? 1 : 0); // #451
         h = h * 31 + (mc.HydraulicLiftEnabled ? 1 : 0) + mc.RaiseTime * 7 + mc.LowerTime * 11 + (mc.InvertRelay ? 64 : 0)
               + mc.User1Value + mc.User2Value * 3 + mc.User3Value * 5 + mc.User4Value * 7;
         for (int i = 0; i < 24; i++) h = h * 31 + (int)mc.GetPinAssignment(i);

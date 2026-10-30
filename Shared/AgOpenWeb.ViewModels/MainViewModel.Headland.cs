@@ -312,7 +312,7 @@ public partial class MainViewModel
                 foreach (var bp in bndPts) { cx += bp.Easting; cy += bp.Northing; }
                 cx /= bndPts.Count; cy /= bndPts.Count;
 
-                bool containsCentroid = IsPointInPolygon(cx, cy, closedPoly);
+                bool containsCentroid = GeometryMath.IsPointInPolygon(closedPoly, cx, cy);
                 if (containsCentroid)
                 {
                     headland = closedPoly;
@@ -525,7 +525,7 @@ public partial class MainViewModel
                 foreach (var bp in bndPts) { cx += bp.Easting; cy += bp.Northing; }
                 cx /= bndPts.Count; cy /= bndPts.Count;
 
-                bool loopContainsCentroid = IsPointInPolygon(cx, cy, loopPoly);
+                bool loopContainsCentroid = GeometryMath.IsPointInPolygon(loopPoly, cx, cy);
 
                 if (!loopContainsCentroid)
                 {
@@ -679,8 +679,8 @@ public partial class MainViewModel
                 foreach (var bp in bndPts) { cx += bp.Easting; cy += bp.Northing; }
                 cx /= bndPts.Count; cy /= bndPts.Count;
 
-                bool aContains = IsPointInPolygon(cx, cy, polyA);
-                bool bContains = IsPointInPolygon(cx, cy, polyB);
+                bool aContains = GeometryMath.IsPointInPolygon(polyA, cx, cy);
+                bool bContains = GeometryMath.IsPointInPolygon(polyB, cx, cy);
 
                 _logger.LogDebug($"[Headland] PathA: {polyA.Count} pts, PathB: {polyB.Count} pts, centroid: ({cx:F1},{cy:F1}), aContains={aContains}, bContains={bContains}");
 
@@ -770,20 +770,6 @@ public partial class MainViewModel
         ix = ax + t * (bx - ax);
         iy = ay + t * (by - ay);
         return true;
-    }
-
-    private static bool IsPointInPolygon(double px, double py, List<Vec3> polygon)
-    {
-        bool inside = false;
-        int count = polygon.Count;
-        for (int i = 0, j = count - 1; i < count; j = i++)
-        {
-            double yi = polygon[i].Northing, yj = polygon[j].Northing;
-            double xi = polygon[i].Easting, xj = polygon[j].Easting;
-            if (((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
-                inside = !inside;
-        }
-        return inside;
     }
 
     private static double CalculateSignedArea(List<Vec3> polygon)

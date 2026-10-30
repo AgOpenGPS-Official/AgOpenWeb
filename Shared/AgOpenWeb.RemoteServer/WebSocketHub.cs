@@ -28,8 +28,8 @@ public sealed class WebSocketHub
 
     public WebSocketHub(ControlAuthority authority) => _authority = authority;
 
-    /// <summary>Classifies a command id as Tier-2 (live actuation). Tier-2 commands
-    /// are dropped unless the sending connection currently holds fresh authority.
+    /// <summary>True for a command id that needs control: it is dropped unless the
+    /// sending connection currently holds fresh authority (the host gates all but a few).
     /// Set by the host (the app knows its command ids); null = nothing restricted.</summary>
     public Func<string, bool>? IsRestrictedCommand { get; set; }
 
@@ -97,7 +97,7 @@ public sealed class WebSocketHub
     }
 
     // Route one inbound command from a connection. control.* manage actuation
-    // authority; any other id runs through CommandHandler, but a Tier-2 id is
+    // authority; any other id runs through CommandHandler, but a restricted id is
     // dropped unless this connection holds fresh authority — the safety gate.
     private void Dispatch(Guid conn, string msg)
     {
@@ -120,7 +120,7 @@ public sealed class WebSocketHub
         }
 
         if (IsRestrictedCommand is { } restricted && restricted(id) && !_authority.HoldsFresh(conn))
-            return; // Tier-2 without fresh authority → dropped
+            return; // no fresh authority → dropped (an observer changes nothing)
 
         CommandHandler?.Invoke(id, arg);
     }

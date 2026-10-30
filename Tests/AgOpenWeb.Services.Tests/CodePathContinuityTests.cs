@@ -29,6 +29,12 @@ namespace AgOpenWeb.Services.Tests;
 /// formats). A new file name is a format decision, made here on purpose.</item>
 /// <item>JSON is <c>System.Text.Json</c>; <c>Newtonsoft.Json</c> stays inside the AgShare client.</item>
 /// <item>The host-side wiring runs on the host loop; it creates no timers or threads of its own.</item>
+/// <item>A browser without control is an observer: every command needs control except the
+/// host's <c>ObserverIds</c>, and the client's <c>OBSERVER_IDS</c> is the same list (#397).</item>
+/// <item>Stored credentials (NTRIP passwords, the AgShare key) never go to a client: the
+/// projectors send them only through <c>Secrets.Masked</c> (#397).</item>
+/// <item>Point-in-polygon has one crossing rule, <c>GeometryMath.CrossesSouth</c>, walked by
+/// <c>GeometryMath.IsPointInPolygon</c> or looked up through <c>PolygonSlabIndex</c>.</item>
 /// </list>
 /// </summary>
 [TestFixture]
@@ -151,6 +157,46 @@ public class CodePathContinuityTests
     }
 
     [Test]
+    public void Observers_ChangeNothing_ClientAndHostAgree()
+    {
+        var root = RepoRoot();
+        var wiring = File.ReadAllText(Path.Combine(root, "Shared", "AgOpenWeb.RemoteWiring", "RemoteServerWiring.cs"));
+        Assert.That(wiring, Does.Contain("server.IsRestrictedCommand = id => !ObserverIds.Contains(id);"),
+            "Every command needs control except ObserverIds (#397): an observer sees everything " +
+            "and changes nothing. Don't gate by prefix again.");
+
+        var helpers = File.ReadAllText(Path.Combine(root, "Shared", "AgOpenWeb.RemoteWiring", "RemoteServerWiring.Helpers.cs"));
+        var hostBlock = Regex.Match(helpers, @"ObserverIds\s*=\s*new\(\)\s*\{(.*?)\};", RegexOptions.Singleline);
+        Assert.That(hostBlock.Success, "ObserverIds not found in RemoteServerWiring.Helpers.cs");
+        var host = Regex.Matches(hostBlock.Groups[1].Value, @"""([^""]+)""").Select(m => m.Groups[1].Value);
+
+        var app = File.ReadAllText(Path.Combine(root, "Shared", "AgOpenWeb.RemoteServer", "wwwroot", "app.js"));
+        var clientBlock = Regex.Match(app, @"OBSERVER_IDS\s*=\s*new Set\(\[(.*?)\]\)", RegexOptions.Singleline);
+        Assert.That(clientBlock.Success, "OBSERVER_IDS not found in app.js");
+        var client = Regex.Matches(clientBlock.Groups[1].Value, @"'([^']+)'").Select(m => m.Groups[1].Value);
+
+        // The hub answers these itself, before the gate.
+        var hub = new[] { "control.acquire", "control.release", "control.presence", "diag.ping" };
+        Assert.That(client.OrderBy(x => x), Is.EqualTo(host.Concat(hub).OrderBy(x => x)),
+            "app.js OBSERVER_IDS must be the host's ObserverIds plus the hub's control.* and diag.ping.");
+    }
+
+    [Test]
+    public void Credentials_GoOutMasked()
+    {
+        // Every browser on the LAN gets the read frames, signed in or not.
+        var bare = new System.Text.RegularExpressions.Regex(@"\.(Password|AgShareApiKey)\b");
+        // The projectors build the DTOs; WireCodec only encodes what they hold.
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.RemoteServer"), "*Projector.cs"))
+        {
+            foreach (var (line, i) in File.ReadAllLines(file).Select((l, i) => (l, i + 1)))
+                if (bare.IsMatch(line) && !line.Contains("Secrets.Masked(") && !line.Contains("GetHashCode()"))
+                    Assert.Fail($"{Path.GetFileName(file)}:{i} reads a stored credential without Secrets.Masked: " +
+                        $"{line.Trim()}. Send the mask; the wiring takes the mask back as \"unchanged\".");
+        }
+    }
+
+    [Test]
     public void EveryClientCommand_HasAHostHandler()
     {
         var root = RepoRoot();
@@ -207,6 +253,7 @@ public class CodePathContinuityTests
         ".AutoSteer.json", ".tool.xml", ".env.xml",
         // Bug report dump
         "gps_data_log.csv", "logs.txt", "system_info.txt", "ntrip_rtcm.txt",
+        "contact.txt", // the reporter's email, maintainers only (#407 follow-up)
         "appsettings_error.txt", "configuration_error.txt", "field_error.txt", "job_error.txt",
         "logs_error.txt", "save_error.txt", "screenshot_error.txt", "state_error.txt",
         "turn_path_error.txt", "gps_data_log_error.txt",
@@ -285,6 +332,40 @@ public class CodePathContinuityTests
                 .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
                          && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
             : Enumerable.Empty<string>();
+
+    // ── Geometry ──────────────────────────────────────────────────────────
+
+    [Test]
+    public void PointInPolygon_HasOneImplementation()
+    {
+        // A ray cast flips a flag at each edge it crosses, worked out from eastings and
+        // northings. Copies used to differ on points on an edge, missed speed-ups and were
+        // invisible to the hot-path budgets.
+        var allowed = new[] { "GeometryMath.cs", "PolygonSlabIndex.cs" };
+        var toggle = new Regex(@"\b(\w+)\s*=\s*!\1\s*;");
+        var root = RepoRoot();
+        var offenders = new List<string>();
+        foreach (var dir in new[] { "Shared", "Platforms" })
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, dir), "*.cs", SearchOption.AllDirectories))
+        {
+            if (file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
+                || file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                || allowed.Contains(Path.GetFileName(file)))
+                continue;
+            var lines = File.ReadAllLines(file);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (!toggle.IsMatch(lines[i])) continue;
+                var before = string.Join(" ", lines.Skip(Math.Max(0, i - 6)).Take(Math.Min(6, i))).Replace("//", "");
+                if ((before.Contains("Easting") || before.Contains("Northing")) && before.Contains('/'))
+                    offenders.Add($"{Path.GetRelativePath(root, file)}:{i + 1}");
+            }
+        }
+        Assert.That(offenders, Is.Empty,
+            "Point-in-polygon tests go through GeometryMath.IsPointInPolygon (or a PolygonSlabIndex for one " +
+            "tested every tick, as BoundaryPolygon does), so every caller uses one edge rule and is counted by " +
+            "the hot-path budgets. Hand-written ray casts: " + string.Join(", ", offenders));
+    }
 
     private static string RepoRoot()
     {

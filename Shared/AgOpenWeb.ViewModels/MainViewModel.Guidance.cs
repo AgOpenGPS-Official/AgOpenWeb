@@ -34,9 +34,45 @@ public partial class MainViewModel
     {
         _logger.LogWarning("[AutoSteer] No guidance update for {Limit:F1} s while engaged — AutoSteer turned off (#169)",
             AutoSteerService.GuidanceStaleLimit.TotalSeconds);
-        if (IsAutoSteerEngaged) ToggleAutoSteerCommand?.Execute(null);
+        if (IsAutoSteerEngaged) ToggleAutoSteerCommand?.Execute("no GPS/guidance update for over 1 s");
         ReportFailure("AutoSteer off: no GPS/guidance update for over 1 s");
     });
+
+    /// <summary>
+    /// The service stopped steering on a pressure or current sensor kickout (PGN 250). Take
+    /// AutoSteer off in the app too, as when guidance goes stale; otherwise the button stays
+    /// on while nothing steers, and nothing says why.
+    /// </summary>
+    private void OnSensorKickout(object? sender, string reason) => _dispatcher.Post(() =>
+    {
+        if (IsAutoSteerEngaged) ToggleAutoSteerCommand?.Execute(reason);
+        ReportFailure($"AutoSteer off: {reason}");
+    });
+
+    /// <summary>
+    /// Every way AutoSteer goes off logs why here, so logs.txt in a bug report has the
+    /// reason: the status line only shows the latest message, and the steer module sees
+    /// only that PGN 254 stopped asking it to steer.
+    /// </summary>
+    private void LogAutoSteerOff(string reason) =>
+        _logger.LogInformation("[AutoSteer] Off: {Reason}", reason);
+
+    /// <summary>
+    /// Why the steer module stopped steering, as far as the app can tell. The module's own
+    /// pressure or current kickout clears the same PGN 253 bit as its switch and button, so
+    /// the latest sensor reading (PGN 250) goes with it when a sensor is in use.
+    /// </summary>
+    private string ModuleStoppedSteeringReason()
+    {
+        const string reason = "steer module stopped steering (switch, button or kickout)";
+        var a = ConfigStore.AutoSteer;
+        double pct = _autoSteerService.SensorPercent;
+        if (a.PressureSensorEnabled)
+            return FormattableString.Invariant($"{reason}, pressure sensor {pct:F0}% (trip point {a.PressureTripPoint}%)");
+        if (a.CurrentSensorEnabled)
+            return FormattableString.Invariant($"{reason}, current sensor {pct:F0}% (trip point {a.CurrentTripPoint}%)");
+        return reason;
+    }
 
     private void OnAutoSteerStateUpdated(object? sender, VehicleStateSnapshot state)
     {
@@ -53,18 +89,19 @@ public partial class MainViewModel
         // atomic on x86/ARM — no lock needed.
         _latestGpsToPgnLatencyMs = state.TotalLatencyMs;
         if (_dispatcher.CheckAccess())
-        {
-            TramControlByte = state.TramState;
-            _mapService.SetTramControlByte(state.TramState);
-        }
+            ApplyTramState(state.TramState);
         else
-        {
-            _dispatcher.Post(() =>
-            {
-                TramControlByte = state.TramState;
-                _mapService.SetTramControlByte(state.TramState);
-            });
-        }
+            _dispatcher.Post(() => ApplyTramState(state.TramState));
+    }
+
+    private void ApplyTramState(byte tramState)
+    {
+        TramControlByte = tramState;
+        _mapService.SetTramControlByte(tramState);
+        // The web tram lights: the detected bits, plus the manual overrides (#451).
+        State.FieldTools.TramLights = (byte)(tramState
+            | (_tramLineService.IsRightManualOn ? 4 : 0)
+            | (_tramLineService.IsLeftManualOn ? 8 : 0));
     }
 
     #endregion

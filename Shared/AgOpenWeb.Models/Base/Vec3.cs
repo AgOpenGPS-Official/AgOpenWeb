@@ -10,7 +10,7 @@ namespace AgOpenWeb.Models.Base
     /// <summary>
     /// 3D vector with easting (X), northing (Y), and heading components
     /// </summary>
-    public struct Vec3
+    public struct Vec3 : IPlanarPoint
     {
         public double Easting { get; set; }
         public double Northing { get; set; }

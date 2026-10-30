@@ -304,8 +304,7 @@ public class NtripClientService : INtripClientService, IDisposable
 
         // Build NTRIP request (HTTP GET with Basic Auth)
         // Use NTRIP 1.0 compatible format (simpler, more widely supported)
-        var credentials = Convert.ToBase64String(
-            Encoding.ASCII.GetBytes($"{_config.Username}:{_config.Password}"));
+        var authorization = NtripCredentials.BasicAuthorization(_config.Username, _config.Password);
 
         // Build request string manually with explicit \r\n to ensure correct formatting.
         // NTRIP protocol is invariant — interpolations must not pick up locale formatting.
@@ -314,7 +313,8 @@ public class NtripClientService : INtripClientService, IDisposable
         request.Append(inv, $"GET /{_config.MountPoint} HTTP/1.1\r\n");
         request.Append(inv, $"Host: {_config.CasterAddress}\r\n");
         request.Append("User-Agent: NTRIP AgOpenWeb/1.0\r\n");
-        request.Append(inv, $"Authorization: Basic {credentials}\r\n");
+        if (authorization != null)
+            request.Append(inv, $"Authorization: {authorization}\r\n");
         request.Append("Accept: */*\r\n");
         request.Append("Connection: keep-alive\r\n");
         request.Append("\r\n");
@@ -705,51 +705,49 @@ public class NtripClientService : INtripClientService, IDisposable
 
         try
         {
-            string ggaSentence;
-
-            if (_config.UseManualPosition)
-            {
-                // Use manual position
-                ggaSentence = GenerateGgaSentence(
-                    _config.ManualLatitude,
-                    _config.ManualLongitude,
-                    0, // altitude
-                    4, // fix quality (RTK fixed)
-                    12); // satellites
-            }
-            else
-            {
-                // Use GPS position from GpsService
-                var gpsData = _gpsService.CurrentData;
-                if (gpsData != null && gpsData.IsValid)
-                {
-                    ggaSentence = GenerateGgaSentence(
-                        gpsData.CurrentPosition.Latitude,
-                        gpsData.CurrentPosition.Longitude,
-                        gpsData.CurrentPosition.Altitude,
-                        gpsData.FixQuality,
-                        gpsData.SatellitesInUse);
-                }
-                else
-                {
-                    // No GPS data available yet - send default position (center of US)
-                    // This allows caster to start sending corrections
-                    ggaSentence = GenerateGgaSentence(
-                        39.8283, // Latitude (Kansas, US)
-                        -98.5795, // Longitude
-                        0, // altitude
-                        1, // fix quality (GPS fix)
-                        8); // satellites
-                }
-            }
-
-            _ = SendGgaSentenceAsync(ggaSentence);
+            if (NextGgaSentence(_config) is { } ggaSentence)
+                _ = SendGgaSentenceAsync(ggaSentence);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"NTRIP: GGA timer error: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// The position a VRS caster builds its corrections for: the receiver's fix; after losing
+    /// it, the last one; before the first, the configured fallback (the open field's origin).
+    /// Null with none of these: a made-up position (this sent Kansas) gets corrections for the
+    /// wrong place or the connection dropped (#443), so no GGA goes out until one is known.
+    /// Any fix counts, single and DGPS too: IsValid means good enough to steer by (RTK by
+    /// default), and a receiver in single that waited for it would never get the corrections
+    /// to reach RTK. AgIO sends the receiver's position whatever its quality.
+    /// </summary>
+    internal string? NextGgaSentence(NtripConfiguration config)
+    {
+        if (config.UseManualPosition)
+            return GenerateGgaSentence(config.ManualLatitude, config.ManualLongitude, 0, 4, 12);
+
+        var gpsData = _gpsService.CurrentData;
+        if (gpsData != null && HasFix(gpsData))
+        {
+            var p = gpsData.CurrentPosition;
+            _lastGgaFix = (p.Latitude, p.Longitude, p.Altitude);
+            return GenerateGgaSentence(p.Latitude, p.Longitude, p.Altitude, gpsData.FixQuality, gpsData.SatellitesInUse);
+        }
+        if (_lastGgaFix is { } last)
+            return GenerateGgaSentence(last.Latitude, last.Longitude, last.Altitude, 1, 8);
+        if (config.FallbackPositionProvider?.Invoke() is { } fallback)
+            return GenerateGgaSentence(fallback.Latitude, fallback.Longitude, 0, 1, 8);
+        return null;
+    }
+
+    private (double Latitude, double Longitude, double Altitude)? _lastGgaFix;
+
+    /// <summary>The receiver reports a fix of any quality, at a position (not 0,0).</summary>
+    private static bool HasFix(GpsData gpsData) =>
+        gpsData.FixQuality > 0
+        && (gpsData.CurrentPosition.Latitude != 0 || gpsData.CurrentPosition.Longitude != 0);
 
     private void WatchdogTimerCallback(object? state)
     {

@@ -10,6 +10,7 @@ using AgOpenWeb.Services.Battery;
 using AgOpenWeb.Services.Interfaces;
 using AgOpenWeb.Services.YouTurn;
 using AgOpenWeb.ViewModels;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -38,6 +39,7 @@ public class MainViewModelBuilder
     public IModuleCommunicationService ModuleCommunicationService { get; set; } = Substitute.For<IModuleCommunicationService>();
     public IConfigurationService ConfigurationService { get; set; } = Substitute.For<IConfigurationService>();
     public IFieldService FieldService { get; } = Substitute.For<IFieldService>();
+    public ILogger<MainViewModel> Logger { get; set; } = NullLogger<MainViewModel>.Instance;
     public AgOpenWeb.Services.Interfaces.ITramLineService TramLineService { get; } = Substitute.For<AgOpenWeb.Services.Interfaces.ITramLineService>();
     public AgOpenWeb.Services.Pipeline.PipelineIntents Intents { get; } = new();
     public AgOpenWeb.Services.Geometry.IPolygonOffsetService PolygonOffsetService { get; set; } = Substitute.For<AgOpenWeb.Services.Geometry.IPolygonOffsetService>();
@@ -96,7 +98,7 @@ public class MainViewModelBuilder
             tramLineService: TramLineService,
             gpsPipelineService: GpsPipelineService,
             intents: Intents,
-            logger: NullLogger<MainViewModel>.Instance,
+            logger: Logger,
             appState: new ApplicationState(),
             configStore: ConfigurationStore.Instance,
             persistentStateService: Substitute.For<IPersistentStateService>(),

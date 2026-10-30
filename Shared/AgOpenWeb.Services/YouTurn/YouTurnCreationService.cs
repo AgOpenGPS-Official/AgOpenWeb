@@ -89,13 +89,9 @@ namespace AgOpenWeb.Services.YouTurn
             isOutSameCurve = false;
             arcStart = null;
 
-            // Lateral span of the arc = the pass spacing. NO ToolOffset compensation:
-            // AgOpenGPS shifts the arc by ±2*ToolOffset because its steering applies the
-            // implement offset to the pivot target, so the arc must pre-compensate. AgOpenWeb
-            // steering never applies ToolOffset (it only positions sections in
-            // SectionControlService) — the guidance line IS the pivot path — so adding the
-            // shift here lands the arc end (and exit leg) 2*ToolOffset off the cyan/post-turn
-            // line the pivot actually follows, causing a lateral jump + wiggle on turn exit.
+            // Lateral span of the arc = from the line steered now to the next one. Steering
+            // puts the tool, not the tractor, on the pass (#446), as AgOpenGPS does, so with a
+            // tool offset that is the pass spacing ± 2*ToolOffset: TurnOffset carries it.
             double turnOffset;
             if (input.TurnOffset > 0)
             {
@@ -153,7 +149,7 @@ namespace AgOpenWeb.Services.YouTurn
             // Dubins omega (CreateCurveOmegaTurn) for the straight-connector case.
             // Dubins is kept ONLY as that internal wide-turn fallback — it is no longer
             // a selectable style, because its shortest-path solution loops on close rows.
-            return CreateCurveSagittaTurn(input, turnOffset);
+            return CreateCurveSagittaTurn(input, turnOffset, keyhole: input.TurnType == YouTurnType.KeyholeStyle);
         }
 
         private bool CreateCurveOmegaTurn(YouTurnCreationInput input, double turnOffset)
@@ -337,11 +333,23 @@ namespace AgOpenWeb.Services.YouTurn
             // point's stored heading; when the recorded curve ends before the headland the arc
             // seats on the tangent extension and a noisy end-point heading skewed the measured
             // offset by metres, plotting the exit leg off the next pass the tractor drives.)
+            //
+            // The pass count comes from the planned turn's width (TurnOffset), not the skip
+            // setting: snake, alternative and skip-worked turns pick their own target pass,
+            // and skip-and-fill forces the skip to at least 1, so an adjacent target used to
+            // get an exit leg two passes over, outside the field (#411).
+            //
+            // With a tool offset the tractor steers beside the pass, on the other side after
+            // the turn (#446): TurnOffset is the tractor's sideways move, the passes apart plus
+            // twice the tool shift, and the next line carries the shift for the new direction.
             double widthMinusOverlap = input.ToolWidth - input.ToolOverlap;
-            int passDelta = (input.IsTurnLeft ^ input.IsHeadingSameWay)
-                ? (input.RowSkipsWidth + 1)
-                : -(input.RowSkipsWidth + 1);
-            double distAway = widthMinusOverlap * (input.HowManyPathsAway + passDelta) + input.PassEdgeOffset + input.NudgeDistance;
+            double toolShift = input.IsHeadingSameWay ? input.ToolOffset : -input.ToolOffset;
+            int side = (input.IsTurnLeft ^ input.IsHeadingSameWay) ? 1 : -1;
+            int passes = input.TurnOffset > 0 && widthMinusOverlap > 0
+                ? Math.Max(1, (int)Math.Round((input.TurnOffset - 2 * toolShift * side) / widthMinusOverlap))
+                : input.RowSkipsWidth + 1;
+            int passDelta = side * passes;
+            double distAway = widthMinusOverlap * (input.HowManyPathsAway + passDelta) + input.PassEdgeOffset + input.NudgeDistance + toolShift;
 
             // Create the next line
             nextCurve = BuildNewOffsetCurveList(input, distAway);
@@ -432,7 +440,8 @@ namespace AgOpenWeb.Services.YouTurn
         /// (<see cref="GetOffsetSemicirclePoints"/>) so the path meets the row
         /// tangentially instead of stepping curvature from 0 to 1/R.
         /// </summary>
-        private bool CreateCurveSagittaTurn(YouTurnCreationInput input, double turnOffset)
+        // keyhole: the counter-arc mirrored at the end too (YouTurnType.KeyholeStyle).
+        private bool CreateCurveSagittaTurn(YouTurnCreationInput input, double turnOffset, bool keyhole = false)
         {
             // Keep from making turns constantly - wait 1.5 seconds
             if (input.MakeUTurnCounter < 4)
@@ -497,7 +506,9 @@ namespace AgOpenWeb.Services.YouTurn
                 if (currentPos.Heading >= TWO_PI) currentPos.Heading -= TWO_PI;
                 head = currentPos.Heading;
 
-                ytList = SagittaTurnGeometry.BuildOffsetArc(currentPos, head, isTurningRight, input.TurnRadius, sagittaPullback, Math.PI);
+                ytList = keyhole
+                    ? SagittaTurnGeometry.BuildKeyhole(currentPos, head, isTurningRight, input.TurnRadius, Math.Abs(turnOffset))
+                    : SagittaTurnGeometry.BuildOffsetArc(currentPos, head, isTurningRight, input.TurnRadius, sagittaPullback, Math.PI);
                 if (ytList.Count == 0)
                 {
                     FailCreate();

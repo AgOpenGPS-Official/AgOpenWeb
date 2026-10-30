@@ -51,6 +51,12 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private long _lastRecPathFp = long.MinValue;
     // Host-driven pending confirm/error dialog (#109). Read every tick, re-sent on change.
     public Func<PromptDto?>? PromptProvider { get; set; }
+
+    /// <summary>The VT card's frames for a new client (see RemoteServerHost).</summary>
+    public Func<IReadOnlyList<byte[]>>? VtSeedProvider { get; set; }
+
+    /// <summary>The VT card's frames since the last tick, drained (see RemoteServerHost).</summary>
+    public Func<IReadOnlyList<byte[]>?>? VtFramesProvider { get; set; }
     private PromptDto _lastPrompt = PromptDto.None;
     // Host-driven Boundary read-frame (menu list + live drive-around recording state).
     public Func<BoundaryDto?>? BoundaryProvider { get; set; }
@@ -104,6 +110,8 @@ public sealed class MapBroadcaster : IAsyncDisposable
             WireCodec.EncodeControlState(_authority.Snapshot()),
             WireCodec.EncodePrompt(PromptProvider?.Invoke() ?? PromptDto.None),
         };
+        if (VtSeedProvider?.Invoke() is { } vt)
+            frames.AddRange(vt);
         if (ViewPrefsProvider?.Invoke() is { } vp)
             frames.Add(WireCodec.EncodeViewPrefs(vp.Pitch, vp.Zoom, vp.CameraMode));
         if (_coverageProjector.BuildInit() is { } init)
@@ -243,6 +251,11 @@ public sealed class MapBroadcaster : IAsyncDisposable
                     _lastPrompt = prompt;
                     await _ws.BroadcastAsync(WireCodec.EncodePrompt(prompt), ct).ConfigureAwait(false);
                 }
+
+                // Virtual terminal (VT card): pictures before the screens that use them, in order.
+                if (VtFramesProvider?.Invoke() is { Count: > 0 } vtFrames)
+                    foreach (var frame in vtFrames)
+                        await _ws.BroadcastAsync(frame, ct).ConfigureAwait(false);
 
                 await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)
                     .ConfigureAwait(false);

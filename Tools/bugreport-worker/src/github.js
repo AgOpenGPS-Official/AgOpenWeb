@@ -76,6 +76,13 @@ export async function createIssue(env, { title, body, labels }) {
     { method: 'POST', body: JSON.stringify({ title, body, labels }) });
 }
 
+/** Whether a GitHub account by this name exists; throws when GitHub can't say. */
+export async function userExists(env, name) {
+  const token = await installationToken(env);
+  try { await call(`/users/${encodeURIComponent(name)}`, token); return true; }
+  catch (e) { if (/: 404 /.test(e.message)) return false; throw e; }
+}
+
 export async function comment(env, number, body) {
   const token = await installationToken(env);
   return call(`/repos/${env.GITHUB_REPO}/issues/${number}/comments`, token,

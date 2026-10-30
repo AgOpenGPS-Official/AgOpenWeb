@@ -8,7 +8,7 @@
 // only through the dumps Worker, behind Cloudflare Access.
 
 import { listEntries, readEntry, publicSystemInfo } from './zip.js';
-import { createIssue, comment, closedReportIssues } from './github.js';
+import { createIssue, comment, closedReportIssues, userExists } from './github.js';
 import { planPrune, issueOf } from './prune.js';
 
 const json = (status, body) => new Response(JSON.stringify(body), {
@@ -40,28 +40,51 @@ async function listAll(bucket, prefix) {
   return out;
 }
 
+// What a report must carry before it becomes an issue (the app's Send button checks the
+// same): enough words to act on, and a way to reach the reporter. The contact is a GitHub
+// username (mentioned on the issue, so replies notify them) or an email address, which the
+// app writes into the dump as contact.txt and so stays with the maintainers.
+export const MIN_TITLE = 15, MIN_DESCRIPTION = 40;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const GITHUB_USER = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
+const chars = s => [...s].length;
+
 /** Report metadata as the app sends it, cut to sizes GitHub and R2 accept. */
 export function cleanMeta(raw) {
   let m;
   try { m = JSON.parse(raw || '{}'); } catch { return null; }
   if (!m || typeof m !== 'object') return null;
-  const github = clip(m.github, 39).replace(/^@/, '');
+  const github = clip(m.github, 100).trim().replace(/^@/, '');
   return {
     title: clip(m.title, 200).replace(/\s+/g, ' ').trim(),
     description: clip(m.description, 20000).trim(),
     version: clip(m.version, 100),
     platform: clip(m.platform, 50),
     language: clip(m.language, 20),
-    github: /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(github) ? github : '',
+    github: GITHUB_USER.test(github) ? github : '',
+    githubInvalid: github !== '' && !GITHUB_USER.test(github),
   };
 }
 
-export function issueFor(env, meta, sysInfo, key) {
+/** Why a report can't be taken as it is, or null. contact = the dump's contact.txt text. */
+export function whatsMissing(meta, contact) {
+  if (chars(meta.title) < MIN_TITLE) return `Title too short: at least ${MIN_TITLE} characters.`;
+  if (chars(meta.description) < MIN_DESCRIPTION)
+    return `Description too short: at least ${MIN_DESCRIPTION} characters.`;
+  if (meta.githubInvalid) return 'Not a GitHub username.';
+  const email = (contact || '').split(/\r?\n/).some(l => EMAIL.test(l.replace(/^\uFEFF/, '').replace(/^Email:\s*/i, '').trim()));
+  if (!meta.github && !email) return 'Add a GitHub username or an email address so we can reply.';
+  return null;
+}
+
+export function issueFor(env, meta, sysInfo, key, attachments = 0) {
   const link = `${env.DUMPS_URL}/v1/${key}`;
   const facts = [
     ...sysInfo,
     meta.platform ? `Platform: ${meta.platform}` : null,
     meta.language ? `Language: ${meta.language}` : null,
+    // The count only: names and contents stay in the maintainer-only dump.
+    attachments ? `Attachments: ${attachments} (in the dump)` : null,
     `Dump: ${link} (maintainers only)`,
   ].filter(Boolean);
   const lines = [
@@ -103,6 +126,16 @@ async function report(request, env) {
   if (!sys) return json(400, { error: 'Not an AgOpenWeb bug report.' });
   const sysBytes = await readEntry(bytes, sys, 64 * 1024);
   const sysInfo = sysBytes ? publicSystemInfo(new TextDecoder().decode(sysBytes)) : [];
+  const contactEntry = entries.find(e => e.name === 'contact.txt');
+  const contactBytes = contactEntry ? await readEntry(bytes, contactEntry, 4 * 1024) : null;
+  const missing = whatsMissing(meta, contactBytes ? new TextDecoder().decode(contactBytes) : '');
+  if (missing) return json(400, { error: missing });
+  // A made-up username would leave the reporter unreachable. GitHub trouble doesn't block
+  // the report: only a clear "no such user" does.
+  if (meta.github) {
+    const known = await userExists(env, meta.github).catch(e => { console.error('user check', e.message); return true; });
+    if (!known) return json(400, { error: `No GitHub user @${meta.github}.` });
+  }
 
   const now = new Date();
   const who = await ipHash(env, ip);
@@ -118,7 +151,8 @@ async function report(request, env) {
     httpMetadata: { contentType: 'application/zip' }, customMetadata: custom,
   });
 
-  const issue = issueFor(env, meta, sysInfo, key);
+  const attachments = entries.filter(e => e.name.startsWith('attachments/') && !e.name.endsWith('/')).length;
+  const issue = issueFor(env, meta, sysInfo, key, attachments);
   try {
     const made = await createIssue(env, issue);
     await env.DUMPS.put(key, bytes, {

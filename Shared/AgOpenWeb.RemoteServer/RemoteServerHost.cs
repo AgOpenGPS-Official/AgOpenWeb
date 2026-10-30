@@ -53,6 +53,24 @@ public sealed class RemoteServerHost
     public void ShowHardwareMessage(string text, int seconds, bool warning)
         => _ = _ws?.BroadcastAsync(WireCodec.EncodeHardwareMessage(text, seconds, warning));
 
+    /// <summary>The VT card's frames for a client that just connected: its link state, the
+    /// pictures and the latest screen. Empty when the build has no terminal.</summary>
+    public Func<IReadOnlyList<byte[]>>? VtSeedProvider
+    {
+        get => _broadcaster?.VtSeedProvider;
+        set { _vtSeedProvider = value; if (_broadcaster is not null) _broadcaster.VtSeedProvider = value; }
+    }
+    private Func<IReadOnlyList<byte[]>>? _vtSeedProvider;
+
+    /// <summary>The VT card's frames to send since the last broadcast tick, in order (drained:
+    /// each call returns them once). Null or empty when there are none.</summary>
+    public Func<IReadOnlyList<byte[]>?>? VtFramesProvider
+    {
+        get => _broadcaster?.VtFramesProvider;
+        set { _vtFramesProvider = value; if (_broadcaster is not null) _broadcaster.VtFramesProvider = value; }
+    }
+    private Func<IReadOnlyList<byte[]>?>? _vtFramesProvider;
+
     /// <summary>Broadcast the Drive In pick list (#109). The browser that pressed Drive In
     /// shows it.</summary>
     public void ShowDrivePick(IReadOnlyList<FieldEntryDto> fields)
@@ -237,8 +255,8 @@ public sealed class RemoteServerHost
     }
     private Action<string, string>? _commandHandler;
 
-    /// <summary>Classifies a command id as Tier-2 (live actuation) — those are
-    /// honored only while the sending client holds fresh control authority.</summary>
+    /// <summary>True for a command id that needs control — honored only while the
+    /// sending client holds fresh control authority.</summary>
     public Func<string, bool>? IsRestrictedCommand
     {
         get => _ws?.IsRestrictedCommand;
@@ -284,6 +302,8 @@ public sealed class RemoteServerHost
         _ws.IsRestrictedCommand = _isRestricted;
         _broadcaster.WizardProvider = _wizardProvider;
         _broadcaster.PromptProvider = _promptProvider;
+        _broadcaster.VtSeedProvider = _vtSeedProvider;
+        _broadcaster.VtFramesProvider = _vtFramesProvider;
         _broadcaster.RecordedPathProvider = _recordedPathProvider;
         _broadcaster.BoundaryProvider = _boundaryProvider;
         _broadcaster.ViewPrefsProvider = _viewPrefsProvider;
@@ -394,21 +414,68 @@ public sealed class RemoteServerHost
         // Filename-only (no path traversal), and only the reports the app wrote.
         server.MapGetPrefix("/bugreports/", file =>
         {
-            if (file.Contains('/') || file.Contains('\\') || file.Contains("..")
-                || !file.StartsWith("bugreport_", StringComparison.Ordinal)
-                || !file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                return SimpleWebServer.Response.NotFound;
-            var path = Path.Combine(AgOpenWeb.Services.AppDataRoot.Documents, "BugReports", file);
-            if (!File.Exists(path)) return SimpleWebServer.Response.NotFound;
+            var path = BugReportZip(file);
+            if (path is null) return SimpleWebServer.Response.NotFound;
             return SimpleWebServer.Response.Bytes(File.ReadAllBytes(path), "application/zip",
                 // No filename in the header: the browser takes it from the URL, which carries
                 // non-ASCII titles intact.
                 new[] { ("Content-Disposition", "attachment"), ("Cache-Control", "no-store") });
         });
 
+        // Screenshots and files added to a report (the body is the file). Only the screen
+        // holding control may change a report, like every other change (observers change
+        // nothing, #397); the client sends its connection id. The files stay in the dump.
+        server.MapPost("/bugreports/attach", (int)AgOpenWeb.Services.BugReport.BugReportAttachments.MaxFileBytes + 1024,
+            req => Task.FromResult(ChangeReport(req, authority, (path, name) =>
+                AgOpenWeb.Services.BugReport.BugReportAttachments.Add(path, name, req.Body))));
+        server.MapPost("/bugreports/detach", 0,
+            req => Task.FromResult(ChangeReport(req, authority, (path, name) =>
+                (AgOpenWeb.Services.BugReport.BugReportAttachments.Refusal.None,
+                 AgOpenWeb.Services.BugReport.BugReportAttachments.Remove(path, name)))));
+
         await server.StartAsync().ConfigureAwait(false);
         _broadcaster.Start();
         _server = server;
+    }
+
+    // A bug report the app wrote: filename only (no path traversal), bugreport_*.zip, present.
+    private static string? BugReportZip(string file)
+    {
+        if (file.Contains('/') || file.Contains('\\') || file.Contains("..")
+            || !file.StartsWith("bugreport_", StringComparison.Ordinal)
+            || !file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var path = Path.Combine(AgOpenWeb.Services.AppDataRoot.Documents, "BugReports", file);
+        return File.Exists(path) ? path : null;
+    }
+
+    // POST /bugreports/attach|detach?zip=&name=&client=: gate on control, run the change,
+    // reply {refusal, files:[{name,size}]}. A dump being read by Send at that moment is "busy".
+    private static SimpleWebServer.Response ChangeReport(SimpleWebServer.PostRequest req, ControlAuthority authority,
+        Func<string, string, (AgOpenWeb.Services.BugReport.BugReportAttachments.Refusal,
+            IReadOnlyList<AgOpenWeb.Services.BugReport.BugReportAttachments.Attachment>)> change)
+    {
+        string Q(string k) => req.Query.TryGetValue(k, out var v) ? v : "";
+        if (!Guid.TryParse(Q("client"), out var client) || !authority.HoldsFresh(client))
+            return new SimpleWebServer.Response(403, "text/plain", "view only"u8.ToArray());
+        var path = BugReportZip(Q("zip"));
+        if (path is null || Q("name").Length == 0) return SimpleWebServer.Response.NotFound;
+        object reply;
+        try
+        {
+            var (refusal, files) = change(path, Q("name"));
+            reply = new
+            {
+                refusal = refusal.ToString(),
+                files = files.Select(f => new { name = f.Name, size = f.Size }),
+            };
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            reply = new { refusal = "Busy", files = Array.Empty<object>() };
+        }
+        return SimpleWebServer.Response.Text(System.Text.Json.JsonSerializer.Serialize(reply), "application/json",
+            new[] { ("Cache-Control", "no-store") });
     }
 
     public async Task StopAsync()

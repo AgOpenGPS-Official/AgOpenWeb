@@ -438,20 +438,26 @@ public class AutoSteerService : IAutoSteerService
         if (config.PressureSensorEnabled && config.PressureTripPoint > 0)
         {
             if (_sensorPercent >= config.PressureTripPoint)
-            {
-                Disengage();
-                Debug.WriteLine($"[AutoSteer] Pressure kickout: {_sensorPercent:F1}% >= {config.PressureTripPoint}%");
-            }
+                Kickout("pressure", config.PressureTripPoint);
         }
         // Check current sensor trip point (motor overload protection)
         else if (config.CurrentSensorEnabled && config.CurrentTripPoint > 0)
         {
             if (_sensorPercent >= config.CurrentTripPoint)
-            {
-                Disengage();
-                Debug.WriteLine($"[AutoSteer] Current kickout: {_sensorPercent:F1}% >= {config.CurrentTripPoint}%");
-            }
+                Kickout("current", config.CurrentTripPoint);
         }
+    }
+
+    public event EventHandler<string>? SensorKickout;
+
+    // Every PGN 250 above the trip point lands here; tell the app once, on the kickout itself.
+    private void Kickout(string sensor, int tripPoint)
+    {
+        bool wasEngaged = _isEngaged;
+        Disengage();
+        if (wasEngaged)
+            SensorKickout?.Invoke(this, FormattableString.Invariant(
+                $"{sensor} sensor {_sensorPercent:F0}% reached the trip point ({tripPoint}%)"));
     }
 
     public void Engage()
@@ -808,6 +814,9 @@ public class AutoSteerService : IAutoSteerService
         else
         {
             _state.TramState = 0;
+            // AgOpenGPS: turning the tram display off clears the manual overrides.
+            if (_tramLineService != null)
+                _tramLineService.IsLeftManualOn = _tramLineService.IsRightManualOn = false;
         }
     }
 

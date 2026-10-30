@@ -14,26 +14,13 @@ namespace AgOpenWeb.RemoteWiring;
 
 public static partial class RemoteServerWiring
 {
-    private static readonly System.Collections.Generic.HashSet<string> UngatedTrackIds = new()
+    // A browser without control is an observer: it sees everything and changes nothing
+    // (#397). Only these ids run for it; the hub handles control.* and diag.ping itself.
+    // Fail-closed: a new id needs control unless it is added here, and only a request
+    // that changes no setting, data or machine state belongs here.
+    internal static readonly System.Collections.Generic.HashSet<string> ObserverIds = new()
     {
-        "track.drawStraight", "track.drawCurve", "track.drawPoint", "track.drawFinish",
-        "track.drawUndo", "track.drawCancel", "track.aPlus", "track.driveAB",
-        "track.latLonHeading", "track.latLonAB", "track.refSide",
-        "track.recordCurve", "track.finishCurve", "track.setABGps",
-        "track.createFromBoundary", "track.boundaryCurve", "track.boundaryCurveSeg", "track.allEdges",
-        "track.setVisible", "track.toggleRecPaths", "track.editSave",
-        "track.rename", // field data, like editSave / headland.rename; was silently dropped for observers (#111)
-    };
-
-    // Field Builder headland *building* is field-data editing (done while reviewing the
-    // field, not live actuation), so it stays ungated like track creation. The live
-    // headland on/off + section-in-headland toggles (headland.toggle / .sectionToggle)
-    // DO change what the machine does, so they remain gated. Fail-closed: a new
-    // headland.* id defaults to gated until added here.
-    private static readonly System.Collections.Generic.HashSet<string> UngatedHeadlandIds = new()
-    {
-        "headland.fromMapPoints", "headland.wholeBoundary", "headland.setOffset",
-        "headland.delete", "headland.deleteAll", "headland.rename", "headland.editSave",
+        "boundary.refresh", // rebuilds the boundary menu list from the open field
     };
 
     /// <summary>Parse a whole-number setting, rounding a decimal ("12.5" → 13) rather than
@@ -83,7 +70,9 @@ public static partial class RemoteServerWiring
             case "conn.machineConfigured": con.IsMachineConfigured = B(); cfg.SaveAppSettings(); return;
             // --- AgShare cloud settings (ConfigStore.Connections). Persist on change. ---
             case "conn.agShareServer": con.AgShareServer = val; cfg.SaveAppSettings(); return;
-            case "conn.agShareApiKey": con.AgShareApiKey = val; cfg.SaveAppSettings(); return;
+            case "conn.agShareApiKey": // the mask = unchanged (the client never has the key)
+                if (val == AgOpenWeb.RemoteServer.Secrets.Mask) return;
+                con.AgShareApiKey = val; cfg.SaveAppSettings(); return;
             case "conn.agShareEnabled": con.AgShareEnabled = B(); cfg.SaveAppSettings(); return;
             case "conn.rtcmBroadcast": con.RtcmBroadcast = B(); cfg.SaveAppSettings(); return;
             case "conn.sendCorrectedPosition": con.SendCorrectedPosition = B(); cfg.SaveAppSettings(); return;
@@ -183,6 +172,7 @@ public static partial class RemoteServerWiring
             case "tram.display": gd.TramDisplay = B(); return;
             case "tram.line": if (I(out var tl)) gd.TramLine = tl; return;
             case "tram.width": if (D(out var tw) && tw > 0) store.Tram.TramWidth = tw; return; // m (#110)
+            case "tram.outerInverted": store.Tram.IsOuterInverted = B(); return; // AgOpenGPS "Override" (#451)
             // --- Machine Control (ConfigStore.Machine) ---
             case "machine.hydraulicLiftEnabled": mch.HydraulicLiftEnabled = B(); return;
             case "machine.raiseTime": if (I(out var m1)) mch.RaiseTime = m1; return;
@@ -440,10 +430,12 @@ public static partial class RemoteServerWiring
             case "ntrip.setDefault": // arg = id
                 _ = svc.SetDefaultProfileAsync(arg);
                 return;
-            case "ntrip.test": // arg = host \t port \t mount \t user \t pass
+            case "ntrip.test": // arg = host \t port \t mount \t user \t pass \t id (the mask = id's stored pass)
             {
                 var t = arg.Split('\t');
                 if (t.Length < 3) return;
+                if (t.Length > 4 && t[4] == AgOpenWeb.RemoteServer.Secrets.Mask)
+                    t[4] = svc.Profiles.FirstOrDefault(p => p.Id == t.ElementAtOrDefault(5))?.Password ?? "";
                 int.TryParse(t.ElementAtOrDefault(1), System.Globalization.NumberStyles.Integer, inv, out var tport);
                 if (tport == 0) tport = 2101;
                 state.Connections.NtripTestStatus = "Testing connection...";
@@ -469,7 +461,9 @@ public static partial class RemoteServerWiring
                 var profile = new AgOpenWeb.Models.Ntrip.NtripProfile
                 {
                     Name = f[1], CasterHost = f[2], CasterPort = port, MountPoint = f[4],
-                    Username = f[5], Password = f[6],
+                    Username = f[5],
+                    // The editor only has the mask for a stored password: keep that one.
+                    Password = f[6] == AgOpenWeb.RemoteServer.Secrets.Mask ? existing?.Password ?? "" : f[6],
                     AutoConnectOnFieldLoad = f[7] == "1", IsDefault = f[8] == "1",
                     AssociatedFields = assoc,
                 };
@@ -589,45 +583,68 @@ public static partial class RemoteServerWiring
                 var state = services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>();
                 state.BugReportStatus = "Creating bug report…";
                 BugReportRemote.NewReport(null);
+                var dir = System.IO.Path.Combine(
+                    AgOpenWeb.Services.AppDataRoot.Documents, "BugReports");
+                var slug = string.IsNullOrWhiteSpace(title) ? "untitled"
+                    : new string(title.Trim().ToLowerInvariant().Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray());
+                if (slug.Length > 60) slug = slug.Substring(0, 60);
+                var notes = string.IsNullOrWhiteSpace(title) ? desc : "# " + title + "\n\n" + desc;
+                // The state as it is now, read here on the host loop; the coverage save, field files
+                // and compression run in the background, so a slow tablet keeps steering and
+                // simulating while the report is written (1-4 s held the loop, GPS lost).
+                AgOpenWeb.Services.DebugDumpService.DumpSnapshot snap;
                 try
                 {
-                    var dir = System.IO.Path.Combine(
-                        AgOpenWeb.Services.AppDataRoot.Documents, "BugReports");
-                    var slug = string.IsNullOrWhiteSpace(title) ? "untitled"
-                        : new string(title.Trim().ToLowerInvariant().Select(ch => char.IsLetterOrDigit(ch) ? ch : '-').ToArray());
-                    if (slug.Length > 60) slug = slug.Substring(0, 60);
-                    var notes = string.IsNullOrWhiteSpace(title) ? desc : "# " + title + "\n\n" + desc;
-                    var zip = AgOpenWeb.Services.DebugDumpService.CreateDump(
+                    snap = AgOpenWeb.Services.DebugDumpService.Capture(
                         services.GetRequiredService<ISettingsService>(), AgOpenWeb.Models.State.RuntimeStateCapture.From(state), store,
-                        additionalNotes: notes, outputDirectory: dir, filePrefix: "bugreport_" + slug,
-                        activeJobTaskName: SaveCoverageForDump(services, state),
-                        ntripRtcmReport: AgOpenWeb.Services.NtripRtcmReport.Build(
+                        AgOpenWeb.Services.NtripRtcmReport.Build(
                             services.GetService<INtripClientService>(), services.GetService<IGpsService>()));
-                    state.BugReportStatus = "Saved: " + zip;
-                    BugReportRemote.NewReport(zip);
                 }
-                catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; }
+                catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; return; }
+                var job = ActiveJobForDump(services, state);
+                var coverage = services.GetRequiredService<ICoverageMapService>();
+                var ui = services.GetRequiredService<IUiDispatcher>();
+                _ = Task.Run(() =>
+                {
+                    string status;
+                    string? zip = null;
+                    try
+                    {
+                        if (job is { } j)
+                        {
+                            try { coverage.SaveToFile(j.FieldDir, j.Task); }
+                            catch { /* the dump still carries the last autosave */ }
+                        }
+                        zip = AgOpenWeb.Services.DebugDumpService.WriteDump(snap,
+                            additionalNotes: notes, outputDirectory: dir, filePrefix: "bugreport_" + slug,
+                            activeJobTaskName: job?.Task);
+                        status = "Saved: " + zip;
+                    }
+                    catch (Exception ex) { status = "Error: " + ex.Message; }
+                    ui.Post(() =>
+                    {
+                        state.BugReportStatus = status;
+                        if (zip != null) BugReportRemote.NewReport(zip);
+                    });
+                });
                 return;
             }
-            case "app.bugReport.send": // arg = zip name \t GitHub user \t title \t description
+            case "app.bugReport.send": // arg = zip name \t GitHub user \t email \t title \t description
                 BugReportRemote.Send(arg, services.GetRequiredService<ISettingsService>().Settings.Language ?? "");
                 return;
         }
     }
 
     /// <summary>
-    /// Save the active job's coverage so the dump's tiles are current, and return the
-    /// job's task name for <see cref="AgOpenWeb.Services.DebugDumpService.CreateDump"/>.
-    /// Null when no job is open; a failed save still returns the name (stale tiles beat none).
+    /// The open job's field folder and task name, whose coverage the dump saves first and
+    /// carries (<see cref="AgOpenWeb.Services.DebugDumpService.WriteDump"/>); null with no job.
     /// </summary>
-    private static string? SaveCoverageForDump(IServiceProvider services, AgOpenWeb.Models.State.ApplicationState state)
+    private static (string FieldDir, string Task)? ActiveJobForDump(IServiceProvider services, AgOpenWeb.Models.State.ApplicationState state)
     {
         var task = services.GetRequiredService<IJobService>().ActiveJob?.TaskName;
         var fieldDir = state.Field.ActiveField?.DirectoryPath;
         if (string.IsNullOrWhiteSpace(task) || string.IsNullOrEmpty(fieldDir)) return null;
-        try { services.GetRequiredService<ICoverageMapService>().SaveToFile(fieldDir, task); }
-        catch { /* the dump still carries the last autosave */ }
-        return task;
+        return (fieldDir, task);
     }
 
     private static async Task TestNtripAndReportAsync(

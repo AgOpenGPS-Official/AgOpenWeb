@@ -61,10 +61,13 @@ public partial class MainViewModel
 
     /// <summary>
     /// Boundary curve from two tapped points (remote/web "Bnd. Curve"): snap A and B to the
-    /// nearest outer-boundary vertices, walk the shorter arc between them, and create an OPEN
-    /// curve following the boundary. Mirrors native FormABDraw's BtnMakeCurve segment logic.
+    /// nearest outer-boundary vertices, walk the boundary between them, and create an OPEN
+    /// curve following it. Without <paramref name="via"/> it takes the shorter way round, as
+    /// AgOpenGPS's FormABDraw BtnMakeCurve does; with it, the way round that passes nearer
+    /// that point (the operator's A → B / B → A pick, #450).
     /// </summary>
-    public void RemoteCreateBoundaryCurveSegment(double aE, double aN, double bE, double bN)
+    public void RemoteCreateBoundaryCurveSegment(double aE, double aN, double bE, double bN,
+        Models.Base.Vec2? via = null)
     {
         var boundary = State.Field.CurrentBoundary?.OuterBoundary;
         if (boundary?.Points == null || boundary.Points.Count < 3)
@@ -139,10 +142,31 @@ public partial class MainViewModel
             for (int i = 1; i < path.Count; i++) len += GeometryMath.Distance(path[i - 1], path[i]);
             return len;
         }
+        double Reach(System.Collections.Generic.List<Models.Base.Vec2> path, Models.Base.Vec2 p)
+        {
+            double best = double.MaxValue;
+            for (int i = 1; i < path.Count; i++)
+                best = Math.Min(best, GeometryMath.PointToSegmentDistance(p, path[i - 1], path[i]));
+            return best;
+        }
         var fwd = Walk(1); var back = Walk(-1);
-        var arc = Length(fwd) <= Length(back) ? fwd : back;
+        var arc = via is { } v
+            ? (Reach(fwd, v) <= Reach(back, v) ? fwd : back)
+            : (Length(fwd) <= Length(back) ? fwd : back);
+        // A tap on a corner lands partway round its rounding: the curve would end mid-turn and
+        // run on at that diagonal. Each end is taken back to where the corner starts, so it runs
+        // on along the side instead.
+        TrimCornerEnd(arc, ConfigStore.Guidance.UTurnRadius);
+        arc.Reverse(); TrimCornerEnd(arc, ConfigStore.Guidance.UTurnRadius); arc.Reverse();
         var seg = new System.Collections.Generic.List<Models.Base.Vec3>(arc.Count + 1);
-        foreach (var p in arc) seg.Add(new Models.Base.Vec3(p.Easting, p.Northing, 0));
+        foreach (var p in arc)
+        {
+            // A tap on a boundary vertex projects onto it, repeating that vertex: a zero-length
+            // end segment has no heading (atan2(0,0) = north), so the end ran on due north.
+            if (seg.Count > 0 && Math.Abs(seg[^1].Easting - p.Easting) < 0.01 && Math.Abs(seg[^1].Northing - p.Northing) < 0.01)
+                continue;
+            seg.Add(new Models.Base.Vec3(p.Easting, p.Northing, 0));
+        }
         if (seg.Count == 2) // both taps on one side: a straight run, still a curve track
             seg.Insert(1, new Models.Base.Vec3((seg[0].Easting + seg[1].Easting) / 2, (seg[0].Northing + seg[1].Northing) / 2, 0));
 
@@ -152,7 +176,7 @@ public partial class MainViewModel
         // hand-drawn curve tool (ExtendCurvePastBoundary) and an AB line. Without this the curve
         // stops inside the field and the U-turn generator has no boundary crossing to anchor the
         // turn at each pass end; with it, the ends run past the fence and turns fire normally.
-        var curvePoints = ExtendCurvePastBoundary(headed);
+        var curvePoints = ExtendCurvePastBoundary(headed, keepEndsApart: true);
         var track = new Models.Track.Track
         {
             Name = "Boundary Curve",
@@ -168,6 +192,35 @@ public partial class MainViewModel
         SelectedTrack = track;
         SaveTracksToFile();
         StatusMessage = $"Created boundary curve ({curvePoints.Count} points, {insetDistance:F1} m inside fence)";
+    }
+
+    /// <summary>
+    /// Takes the end of a boundary-curve path back to the start of a rounded corner it stops
+    /// partway round (#450): while its last segments turn nearly as tightly as the corner
+    /// rounding (radius <paramref name="radius"/>), they go, up to half a circle's length. A
+    /// gentle bend in a curved field boundary turns far less and is kept.
+    /// </summary>
+    internal static void TrimCornerEnd(System.Collections.Generic.List<Models.Base.Vec2> path, double radius)
+    {
+        if (radius <= 0 || path.Count < 3) return;
+        static double Heading(Models.Base.Vec2 a, Models.Base.Vec2 b) =>
+            Math.Atan2(b.Easting - a.Easting, b.Northing - a.Northing);
+        int end = path.Count - 1;
+        double walked = 0;
+        while (end >= 2 && walked <= Math.PI * radius)
+        {
+            var b = path[end]; var a = path[end - 1]; var z = path[end - 2];
+            double len = GeometryMath.Distance(a, b);
+            if (len < 0.01 || GeometryMath.Distance(z, a) < 0.01) { end--; continue; }
+            double turn = Math.Abs(Math.IEEERemainder(Heading(a, b) - Heading(z, a), 2 * Math.PI));
+            // A rounding turns len/radius per segment, its first one about half that (it leaves
+            // the side on a tangent); a quarter keeps both and still passes a gentle bend.
+            if (turn < 0.25 * len / radius || turn < 0.2 * Math.PI / 180) break; // straight here
+            walked += len;
+            end--;
+        }
+        if (end < path.Count - 1 && end >= 1 && walked <= Math.PI * radius)
+            path.RemoveRange(end + 1, path.Count - end - 1);
     }
 
     private void InitializeTrackCommands()
@@ -976,7 +1029,9 @@ public partial class MainViewModel
         ManualYouTurnRightCommand = new RelayCommand(TriggerManualYouTurnRight);
         ToggleUTurnDirectionCommand = new RelayCommand(ToggleUTurnDirection);
 
-        ToggleAutoSteerCommand = new RelayCommand(() =>
+        // The parameter says what toggled it, for the log: null is the operator (the screen
+        // button or its hotkey); the module's steer switch, kickouts and guards pass a reason.
+        ToggleAutoSteerCommand = new RelayCommand<string?>(source =>
         {
             // Disengage is always allowed — the user must be able to stop the
             // tractor even after the track/field has been cleared. Engagement
@@ -1003,6 +1058,10 @@ public partial class MainViewModel
             //    GpsPipelineService.GetOrComputeSyntheticHeadland.
 
             IsAutoSteerEngaged = !IsAutoSteerEngaged;
+            if (IsAutoSteerEngaged)
+                _logger.LogInformation("[AutoSteer] On: {Source}", source ?? "AutoSteer button");
+            else
+                LogAutoSteerOff(source ?? "AutoSteer button");
             _audioService.Play(IsAutoSteerEngaged
                 ? Services.Interfaces.SoundEffect.AutoSteerOn
                 : Services.Interfaces.SoundEffect.AutoSteerOff);
@@ -1029,7 +1088,7 @@ public partial class MainViewModel
             IsContourModeOn = !IsContourModeOn;
             if (!IsContourModeOn && IsAutoSteerEngaged)
             {
-                ToggleAutoSteerCommand?.Execute(null);
+                ToggleAutoSteerCommand?.Execute("contour mode turned off");
                 ReportFailure("Guidance stopped - contour off");
                 return;
             }
@@ -1103,7 +1162,6 @@ public partial class MainViewModel
                 };
             }
 
-            ConfigStore.Guidance.TramDisplay = tram.DisplayMode != Models.Configuration.TramDisplayMode.Off;
             UpdateTramLines(SelectedTrack);
             OnPropertyChanged(nameof(TramDisplayLabel));
             StatusMessage = tram.DisplayMode switch
@@ -1129,7 +1187,6 @@ public partial class MainViewModel
             }
 
             ConfigStore.Tram.DisplayMode = Models.Configuration.TramDisplayMode.All;
-            ConfigStore.Guidance.TramDisplay = true;
             UpdateTramLines(SelectedTrack);
             OnPropertyChanged(nameof(TramDisplayLabel));
             StatusMessage = ConfigStore.Tram.Systems.Count > 0
@@ -1174,7 +1231,6 @@ public partial class MainViewModel
         void SetTramMode(Models.Configuration.TramDisplayMode mode)
         {
             ConfigStore.Tram.DisplayMode = mode;
-            ConfigStore.Guidance.TramDisplay = mode != Models.Configuration.TramDisplayMode.Off;
             UpdateTramLines(SelectedTrack);
             OnPropertyChanged(nameof(TramDisplayLabel));
         }
@@ -1409,52 +1465,11 @@ public partial class MainViewModel
                 return;
             }
 
-            var pts = boundary.Points;
-            int n = pts.Count;
-
-            // Boundary points are densified along each straight edge, so one AB line PER POINT
-            // would make dozens on a 4-sided field. Find the CORNERS instead — vertices where the
-            // boundary direction turns sharply — and make one AB line per edge between corners.
-            const double CornerTurnThreshold = 0.35; // ~20°: real corners turn ~90°, edge noise <5°
-            var corners = new System.Collections.Generic.List<int>();
-            for (int i = 0; i < n; i++)
-            {
-                var prev = pts[(i - 1 + n) % n];
-                var cur = pts[i];
-                var nxt = pts[(i + 1) % n];
-                double hIn = Math.Atan2(cur.Easting - prev.Easting, cur.Northing - prev.Northing);
-                double hOut = Math.Atan2(nxt.Easting - cur.Easting, nxt.Northing - cur.Northing);
-                double turn = hOut - hIn;
-                while (turn > Math.PI) turn -= 2 * Math.PI;
-                while (turn < -Math.PI) turn += 2 * Math.PI;
-                if (Math.Abs(turn) > CornerTurnThreshold) corners.Add(i);
-            }
-
-            int created = 0;
-            if (corners.Count >= 2)
-            {
-                // One AB line per edge: from each corner to the next, extended 50 m past both.
-                for (int k = 0; k < corners.Count; k++)
-                {
-                    var pa = pts[corners[k]];
-                    var pb = pts[corners[(k + 1) % corners.Count]];
-                    double dx = pb.Easting - pa.Easting, dy = pb.Northing - pa.Northing;
-                    double dist = Math.Sqrt(dx * dx + dy * dy);
-                    if (dist < 5.0) continue;
-
-                    double heading = Math.Atan2(dx, dy);
-                    var a = new Models.Base.Vec3(pa.Easting - Math.Sin(heading) * 50, pa.Northing - Math.Cos(heading) * 50, heading);
-                    var b = new Models.Base.Vec3(pb.Easting + Math.Sin(heading) * 50, pb.Northing + Math.Cos(heading) * 50, heading);
-                    SavedTracks.Add(new Models.Track.Track
-                    {
-                        Name = $"Edge {created + 1} ({dist:F0}m)",
-                        Points = new System.Collections.Generic.List<Models.Base.Vec3> { a, b },
-                        Type = Models.Track.TrackType.ABLine,
-                        IsVisible = true
-                    });
-                    created++;
-                }
-            }
+            // A straight edge becomes an AB line, a curved one an AB curve (#365).
+            var edges = Models.Track.BoundaryEdgeTracks.Build(boundary.Points);
+            foreach (var t in edges) SavedTracks.Add(t);
+            int created = edges.Count;
+            int curves = edges.Count(t => t.Type == Models.Track.TrackType.Curve);
 
             if (created > 0)
             {
@@ -1462,7 +1477,9 @@ public partial class MainViewModel
                 SelectedTrack = SavedTracks[SavedTracks.Count - 1];
             }
             StatusMessage = created > 0
-                ? $"Created {created} AB lines from boundary edges"
+                ? (curves > 0
+                    ? $"Created {created - curves} AB lines and {curves} curves from boundary edges"
+                    : $"Created {created} AB lines from boundary edges")
                 : "Could not detect distinct boundary edges";
         });
 
@@ -1571,8 +1588,11 @@ public partial class MainViewModel
     /// </summary>
     /// <param name="points">Original curve points</param>
     /// <param name="marginMeters">How far past the boundary to extend (default 20m)</param>
+    /// <param name="keepEndsApart">An end heading towards the other end stops short of halfway
+    /// across the gap between them, so they don't overlap: a boundary curve the long way round
+    /// has both ends on the fence, facing each other across what it leaves out (#450).</param>
     /// <returns>New list with extended endpoints</returns>
-    private List<Vec3> ExtendCurvePastBoundary(List<Vec3> points, double marginMeters = 20.0)
+    private List<Vec3> ExtendCurvePastBoundary(List<Vec3> points, double marginMeters = 20.0, bool keepEndsApart = false)
     {
         if (points.Count < 2)
         {
@@ -1647,6 +1667,17 @@ public partial class MainViewModel
                 if (t > 0 && u >= 0 && u <= 1)
                     extendEnd = Math.Max(extendEnd, t + marginMeters);
             }
+        }
+
+        if (keepEndsApart)
+        {
+            double gapE = lastPoint.Easting - firstPoint.Easting, gapN = lastPoint.Northing - firstPoint.Northing;
+            double cap = Math.Max(1.0, Math.Sqrt(gapE * gapE + gapN * gapN) / 2 - 1.0);
+            // The start extends backwards (−heading), the end forwards (+heading).
+            if (-Math.Sin(startHeading) * gapE - Math.Cos(startHeading) * gapN > 0)
+                extendStart = Math.Min(extendStart, cap);
+            if (-Math.Sin(endHeading) * gapE - Math.Cos(endHeading) * gapN > 0)
+                extendEnd = Math.Min(extendEnd, cap);
         }
 
         // Create extended start point
@@ -1742,6 +1773,7 @@ public partial class MainViewModel
             IsAutoSteerEngaged = false;
             _autoSteerService.Disengage();
             _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
+            LogAutoSteerOff("track changed");
             ReportFailure("Guidance stopped: track changed");
         }
         if (IsYouTurnEnabled) IsYouTurnEnabled = false;

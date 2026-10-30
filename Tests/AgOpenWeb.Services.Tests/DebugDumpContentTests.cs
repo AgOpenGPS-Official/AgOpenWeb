@@ -139,6 +139,47 @@ public class DebugDumpJobContentTests
         });
     }
 
+    // The field's background image is several MB of PNG: deflating it again took most of a
+    // dump's time on a slow tablet, for nothing. Text still compresses.
+    [Test]
+    public void Dump_stores_already_compressed_files_and_deflates_text()
+    {
+        var fieldDir = Path.Combine(_dir, "Fields", "img");
+        Directory.CreateDirectory(fieldDir);
+        var noise = new byte[200_000];
+        new Random(1).NextBytes(noise);
+        File.WriteAllBytes(Path.Combine(fieldDir, "background.png"), noise);
+        File.WriteAllText(Path.Combine(fieldDir, "field.geojson"), string.Concat(Enumerable.Repeat("{\"type\":\"Feature\"}\n", 5000)));
+        var state = new ApplicationState();
+        state.Field.ActiveField = new Field { Name = "img", DirectoryPath = fieldDir };
+
+        var zip = DebugDumpService.CreateDump(Settings(), RuntimeStateCapture.From(state), new ConfigurationStore(), outputDirectory: _dir);
+        using var a = ZipFile.OpenRead(zip);
+        var png = a.GetEntry("field/background.png")!;
+        var geo = a.GetEntry("field/field.geojson")!;
+        Assert.Multiple(() =>
+        {
+            Assert.That(png.CompressedLength, Is.EqualTo(png.Length), "PNG stored");
+            Assert.That(geo.CompressedLength, Is.LessThan(geo.Length / 10), "text deflated");
+        });
+    }
+
+    // The report shows the state when the button was pressed: Capture reads it on the host loop,
+    // and what changes while WriteDump runs in the background doesn't reach the dump.
+    [Test]
+    public void Dump_carries_the_state_captured_not_the_state_when_written()
+    {
+        var store = new ConfigurationStore();
+        store.AutoSteer.CountsPerDegree = 100;
+        var snap = DebugDumpService.Capture(Settings(), RuntimeStateCapture.From(new ApplicationState()), store);
+        store.AutoSteer.CountsPerDegree = 200;
+
+        var zip = DebugDumpService.WriteDump(snap, outputDirectory: _dir);
+        using var a = ZipFile.OpenRead(zip);
+        using var cfg = JsonDocument.Parse(new StreamReader(a.GetEntry("configuration.json")!.Open()).ReadToEnd());
+        Assert.That(cfg.RootElement.GetProperty("AutoSteer").GetProperty("CountsPerDegree").GetDouble(), Is.EqualTo(100));
+    }
+
     [Test]
     public void Dump_without_a_job_has_no_job_entries()
     {
@@ -171,6 +212,38 @@ public class DebugDumpJobContentTests
         {
             Assert.That(widths, Is.EqualTo(new[] { 600.0, 600.0 }));
             Assert.That(cfg.RootElement.GetProperty("ActualToolWidth").GetDouble(), Is.EqualTo(12));
+        });
+    }
+
+    [Test]
+    public void Dump_carries_the_uturn_settings_and_skip_state()
+    {
+        // #418: the radius alone doesn't say where a turn goes; the skip picks its target pass.
+        var store = new ConfigurationStore();
+        store.Guidance.UTurnRadius = 8;
+        store.Guidance.UTurnExtension = 25;
+        store.Guidance.UTurnDistanceFromBoundary = 3;
+        store.Guidance.UTurnStyle = 1;
+        store.Guidance.UTurnSmoothing = 9;
+        var state = new ApplicationState();
+        state.FieldTools.UTurnSkipRows = 2;
+        state.FieldTools.IsUTurnSkipRowsEnabled = true;
+
+        var zip = DebugDumpService.CreateDump(Settings(), RuntimeStateCapture.From(state), store, outputDirectory: _dir);
+        using var a = ZipFile.OpenRead(zip);
+        using var cfg = JsonDocument.Parse(new StreamReader(a.GetEntry("configuration.json")!.Open()).ReadToEnd());
+        using var rt = JsonDocument.Parse(new StreamReader(a.GetEntry("runtime_state.json")!.Open()).ReadToEnd());
+        var g = cfg.RootElement.GetProperty("Guidance");
+        var ft = rt.RootElement.GetProperty("FieldTools");
+        Assert.Multiple(() =>
+        {
+            Assert.That(g.GetProperty("UTurnRadius").GetDouble(), Is.EqualTo(8));
+            Assert.That(g.GetProperty("UTurnExtension").GetDouble(), Is.EqualTo(25));
+            Assert.That(g.GetProperty("UTurnDistanceFromBoundary").GetDouble(), Is.EqualTo(3));
+            Assert.That(g.GetProperty("UTurnStyle").GetInt32(), Is.EqualTo(1));
+            Assert.That(g.GetProperty("UTurnSmoothing").GetInt32(), Is.EqualTo(9));
+            Assert.That(ft.GetProperty("UTurnSkipRows").GetInt32(), Is.EqualTo(2));
+            Assert.That(ft.GetProperty("IsUTurnSkipRowsEnabled").GetBoolean(), Is.True);
         });
     }
 }

@@ -62,8 +62,16 @@ public sealed class YouTurnStateMachine
     // U-turn sound latches (AgOpenGPS turnTooCloseTrigger / isBoundAlarming) (#110).
     private bool _creationFailSounded, _approachAlarmed;
     private readonly YouTurnPathingService _pathing;
+    private readonly PolygonIndexCache _headlandIndex = new(); // the zone test, every GPS cycle
     private readonly ILogger<YouTurnStateMachine> _logger;
     private readonly ConfigurationStore _configStore;
+
+    // The snake's worked-pass test samples a pass across the whole field, so each pass is
+    // decided once per plan and per turn, not on every cycle: a finished field plans no turn
+    // and would otherwise test every pass again on each cycle. Cleared when the snake is
+    // planned again, a turn completes, or the track, nudge or cultivated area changes.
+    private readonly Dictionary<int, bool> _coveredPasses = new();
+    private (List<int>? Plan, Models.Track.Track? Track, double Nudge, Boundary? Boundary, IReadOnlyList<Vec3>? Headland) _coveredPassesKey;
 
     public YouTurnStateMachine(
         YouTurnCreationService creation,
@@ -90,7 +98,8 @@ public sealed class YouTurnStateMachine
         bool IsSkipWorkedMode,
         double HeadlandCalculatedWidth,
         double HeadlandDistance,
-        bool IsAlternateSkipMode = false); // AgOpenGPS SkipMode.Alternative (#111)
+        bool IsAlternateSkipMode = false, // AgOpenGPS SkipMode.Alternative (#111)
+        Func<double, double, bool>? IsPointCovered = null); // the job's coverage: worked passes on the map
 
     /// <summary>
     /// Run one cycle of the state machine. Precondition: autosteer engaged, track active,
@@ -170,7 +179,7 @@ public sealed class YouTurnStateMachine
         {
             // In the headland at the far end of a field: the tractor reached the end of the
             // current pass; the snake sequence may still have more passes to work.
-            canCreateTurn = _pathing.GetNextSnakePath(turn).HasValue;
+            canCreateTurn = _pathing.GetNextSnakePath(turn, WorkedPasses(in ctx, track, guidance, turn)).HasValue;
         }
 
         // Default: no armable trigger point — widget shows nothing meaningful.
@@ -182,8 +191,8 @@ public sealed class YouTurnStateMachine
         // was already rendered (TurnPath != null) but execution hasn't
         // begun, drop the rendered path so the CREATE branch below
         // recomputes it with the new direction this same cycle. The
-        // override flag itself is cleared inside HandleNormalCreation /
-        // HandleSnakeCreation after consumption — leave it set here.
+        // override flag itself is cleared by TakeDirectionSwap in the
+        // Handle*Creation methods — leave it set here.
         // Mid-arc flips are unsafe and stay no-op.
         if (turn.NextUTurnDirectionLeftOverride.HasValue
             && turn.TurnPath != null
@@ -729,13 +738,18 @@ public sealed class YouTurnStateMachine
         YouTurnWorkingState turn,
         YouTurnEffects effects)
     {
-        // Build the rotated snake sequence lazily on first turn.
-        if (turn.SnakeSequence == null)
+        // Plan the snake from the pass the tractor is on: at the first turn, and again when the
+        // tractor isn't on the pass the plan has it on: the operator moved to another pass
+        // midway (snap, or drove there), or a swapped turn left the order. Going on from the
+        // old pass sent the turn onto a worked pass, or back onto the one the tractor was on.
+        if (!YouTurnPathingService.IsSnakeOnPass(turn, guidance.HowManyPathsAway))
         {
             _pathing.BuildSnakeSequence(track, abHeading, guidance, turn, ctx.Boundary, ctx.HeadlandLine);
         }
 
-        int? nextPath = _pathing.GetNextSnakePath(turn);
+        // Never onto a worked pass: the next pass of the order that is still to do.
+        var isWorked = WorkedPasses(in ctx, track, guidance, turn);
+        int? nextPath = _pathing.GetNextSnakePath(turn, isWorked);
         if (nextPath == null)
         {
             _logger.LogDebug("[YouTurn] Snake sequence complete — field done");
@@ -743,7 +757,52 @@ public sealed class YouTurnStateMachine
             return;
         }
 
-        CreateTurnToPath(in ctx, track, abHeading, headingRadians, guidance, turn, effects, nextPath.Value, "Snake");
+        // The operator swapped the direction: turn onto the nearest unworked pass on that side,
+        // as AgOpenGPS's GetNextNotWorkedTrack does. CompleteTurn then plans the snake again
+        // from that pass.
+        int target = nextPath.Value;
+        if (TakeDirectionSwap(turn, guidance, target))
+        {
+            bool positive = target < guidance.HowManyPathsAway;
+            int skip = _pathing.GetNextUnworkedPathSkip(track, guidance.HowManyPathsAway, positive, ctx.UTurnSkipRows + 1, isWorked);
+            int swapped = guidance.HowManyPathsAway + (positive ? skip : -skip);
+            if (_pathing.IsPathInsideCultivated(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine))
+                target = swapped;
+            else
+                RefuseDirectionSwap(swapped, effects);
+        }
+
+        CreateTurnToPath(in ctx, track, abHeading, headingRadians, guidance, turn, effects, target, "Snake");
+    }
+
+    /// <summary>
+    /// The worked-pass test for the snake: marked worked, or covered on the job's map
+    /// (<see cref="YouTurnPathingService.IsPassWorked"/>). The map test is remembered for the
+    /// plan in hand (see <see cref="_coveredPasses"/>); the tractor's own pass, the only one
+    /// being covered as it drives, is never the next pass of the plan.
+    /// </summary>
+    private Func<int, bool> WorkedPasses(in TickContext ctx, Models.Track.Track track, GuidanceWorkingState guidance,
+        YouTurnWorkingState turn)
+    {
+        var boundary = ctx.Boundary;
+        var headlandLine = ctx.HeadlandLine;
+        var isPointCovered = ctx.IsPointCovered;
+        double nudge = guidance.NudgeOffset;
+        var plan = turn.SnakeSequence;
+        if (!ReferenceEquals(plan, _coveredPassesKey.Plan) || !ReferenceEquals(track, _coveredPassesKey.Track)
+            || nudge != _coveredPassesKey.Nudge || !ReferenceEquals(boundary, _coveredPassesKey.Boundary)
+            || !ReferenceEquals(headlandLine, _coveredPassesKey.Headland))
+        {
+            _coveredPasses.Clear();
+            _coveredPassesKey = (plan, track, nudge, boundary, headlandLine);
+        }
+        return pass =>
+        {
+            if (track.IsPathWorked(pass)) return true;
+            if (!_coveredPasses.TryGetValue(pass, out bool covered))
+                _coveredPasses[pass] = covered = _pathing.IsPassWorked(track, pass, nudge, boundary, headlandLine, isPointCovered);
+            return covered;
+        };
     }
 
     /// <summary>
@@ -763,21 +822,17 @@ public sealed class YouTurnStateMachine
     {
         var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double nextDistAway = Models.Track.PassGeometry.Offset(track, nextPath, widthMinusOverlap);
+        // The next pass is driven the other way: the tool shift changes sign (#446).
+        double toolShift = Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay);
+        double nextDistAway = Models.Track.PassGeometry.Offset(track, nextPath, widthMinusOverlap, 0, -toolShift);
         int pathDiff = nextPath - guidance.HowManyPathsAway;
 
         // The planned path dictates pathDiff (snake / alternative), not the regular skip logic.
+        // The callers have already turned it to the operator's side if the direction was swapped.
         bool positiveOffset = pathDiff > 0;
         turn.IsTurnLeft = positiveOffset ^ guidance.IsHeadingSameWay;
-        // Apply the UI's one-shot direction override before the snake geometry is
-        // committed; clear so the next snake step computes its own direction.
-        if (turn.NextUTurnDirectionLeftOverride is { } overrideLeft)
-        {
-            turn.IsTurnLeft = overrideLeft;
-            turn.NextUTurnDirectionLeftOverride = null;
-        }
         turn.WasHeadingSameWayAtTurnStart = guidance.IsHeadingSameWay;
-        turn.NextTrackTurnOffset = Math.Abs(pathDiff) * widthMinusOverlap;
+        turn.NextTrackTurnOffset = Math.Abs(pathDiff * widthMinusOverlap + 2 * toolShift);
 
         var refA = track.Points[0];
         var refB = track.Points[track.Points.Count - 1];
@@ -840,6 +895,21 @@ public sealed class YouTurnStateMachine
         }
 
         int nextPath = guidance.HowManyPathsAway + turn.AltSign * turn.AltWidth;
+        // The operator swapped the direction: this turn goes to the other side and the pattern
+        // alternates on from there, as AgOpenGPS's flipped isTurnLeft does.
+        if (TakeDirectionSwap(turn, guidance, nextPath))
+        {
+            int swapped = guidance.HowManyPathsAway - turn.AltSign * turn.AltWidth;
+            if (_pathing.IsPathInsideCultivated(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine))
+            {
+                turn.AltSign = -turn.AltSign;
+                nextPath = swapped;
+            }
+            else
+            {
+                RefuseDirectionSwap(swapped, effects);
+            }
+        }
         if (!_pathing.IsPathInsideCultivated(track, abHeading, nextPath, ctx.Boundary, ctx.HeadlandLine))
         {
             effects.StatusMessage = "End of field reached";
@@ -888,15 +958,22 @@ public sealed class YouTurnStateMachine
         // IsTurnLeft depends on which direction has cultivated area and the current heading.
         // positiveDirection ^ IsHeadingSameWay gives the correct turn direction.
         turn.IsTurnLeft = positiveDirection ^ guidance.IsHeadingSameWay;
-        // Apply the UI's one-shot direction override (set by the U-turn direction
-        // toggle while idle), then clear it so it doesn't leak into a later turn.
-        // Mirrors legacy FormGPS.SwapDirection — the user pre-selects which way
-        // the next U-turn should swing while still in the cultivated row.
-        if (turn.NextUTurnDirectionLeftOverride is { } overrideLeft)
+        // The operator swapped the direction (the U-turn arrow, legacy FormGPS.SwapDirection):
+        // turn the other way, when the pass on that side is inside the field.
+        int pathsToMove = ctx.UTurnSkipRows + 1;
+        int plannedPath = guidance.HowManyPathsAway + (positiveDirection ? pathsToMove : -pathsToMove);
+        if (TakeDirectionSwap(turn, guidance, plannedPath))
         {
-            turn.IsTurnLeft = overrideLeft;
-            turn.NextUTurnDirectionLeftOverride = null;
-            _logger.LogDebug("[YouTurn] Applied direction override: turnLeft={Left}", overrideLeft);
+            int swapped = guidance.HowManyPathsAway + (positiveDirection ? -pathsToMove : pathsToMove);
+            if (_pathing.IsPathInsideCultivated(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine))
+            {
+                turn.IsTurnLeft = !turn.IsTurnLeft;
+                _logger.LogDebug("[YouTurn] Direction swapped: turnLeft={Left}", turn.IsTurnLeft);
+            }
+            else
+            {
+                RefuseDirectionSwap(swapped, effects);
+            }
         }
         turn.WasHeadingSameWayAtTurnStart = guidance.IsHeadingSameWay;
 
@@ -907,6 +984,27 @@ public sealed class YouTurnStateMachine
         effects.IsInYouTurnMapFlag = true;
 
         CreatePathAndSync(in ctx, track, headingRadians, abHeading, guidance, turn, effects);
+    }
+
+    /// <summary>
+    /// Take the operator's direction swap (the U-turn arrow) for a turn planned onto
+    /// <paramref name="plannedPath"/>, and clear it so it never reaches a later turn. True
+    /// when the operator asked for the other side; the caller then picks a pass there.
+    /// </summary>
+    private static bool TakeDirectionSwap(YouTurnWorkingState turn, GuidanceWorkingState guidance, int plannedPath)
+    {
+        if (turn.NextUTurnDirectionLeftOverride is not { } overrideLeft) return false;
+        turn.NextUTurnDirectionLeftOverride = null;
+        // Same rule as CreateTurnToPath: a higher pass number lies right of the AB heading.
+        bool plannedLeft = (plannedPath > guidance.HowManyPathsAway) ^ guidance.IsHeadingSameWay;
+        return overrideLeft != plannedLeft;
+    }
+
+    /// <summary>The swapped side has no pass inside the field: keep the planned turn.</summary>
+    private void RefuseDirectionSwap(int swappedPath, YouTurnEffects effects)
+    {
+        _logger.LogDebug("[YouTurn] Direction swap refused: path {Path} is outside the field", swappedPath);
+        effects.StatusMessage = "U-turn direction not changed: no pass on that side inside the field";
     }
 
     private void CreatePathAndSync(
@@ -966,7 +1064,15 @@ public sealed class YouTurnStateMachine
             guidance.HowManyPathsAway = turn.ReturnPassTargetPath.Value;
             turn.ReturnPassTargetPath = null;
             if (ctx.IsAlternateSkipMode) AdvanceAlternate(turn);
-            else _pathing.AdvanceSnakeSequence(turn);
+            else if (ctx.SelectedTrack != null)
+            {
+                // On to the pass the turn landed on. A swapped turn (the U-turn arrow) left the
+                // planned order: the next turn plans the snake again from this pass, as a skip
+                // change does (#410).
+                _pathing.AdvanceSnakeSequence(turn, guidance.HowManyPathsAway,
+                    WorkedPasses(in ctx, ctx.SelectedTrack, guidance, turn));
+                _coveredPasses.Clear(); // decided again for the next turn
+            }
         }
         else
         {
@@ -1057,7 +1163,7 @@ public sealed class YouTurnStateMachine
         return minDistance;
     }
 
-    private static TractorZone DetermineZone(
+    private TractorZone DetermineZone(
         double easting,
         double northing,
         Boundary? boundary,
@@ -1066,7 +1172,7 @@ public sealed class YouTurnStateMachine
         // Cultivated area (inside the headland) — most common case, check first.
         if (headlandLine != null && headlandLine.Count >= 3)
         {
-            if (GeometryMath.IsPointInPolygon(headlandLine, new Vec2(easting, northing)))
+            if (_headlandIndex.Contains(headlandLine, easting, northing))
                 return TractorZone.InCultivatedArea;
         }
 

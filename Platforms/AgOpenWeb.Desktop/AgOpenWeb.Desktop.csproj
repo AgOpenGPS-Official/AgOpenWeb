@@ -74,4 +74,9 @@
     <ProjectReference Include="..\..\Shared\AgOpenWeb.RemoteWiring\AgOpenWeb.RemoteWiring.csproj" />
   </ItemGroup>
 
+  <!-- The ISOBUS virtual terminal (VT card): see Shared/AgOpenWeb.VirtualTerminal. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.VirtualTerminal\AgOpenWeb.VirtualTerminal.csproj" />
+  </ItemGroup>
+
 </Project>

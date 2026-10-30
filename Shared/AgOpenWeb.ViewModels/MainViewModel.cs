@@ -408,6 +408,7 @@ public partial class MainViewModel : ObservableObject
         _gpsService.GpsDataUpdated += OnGpsDataUpdated;
         _autoSteerService.StateUpdated += OnAutoSteerStateUpdated;
         _autoSteerService.GuidanceLost += OnGuidanceLost;
+        _autoSteerService.SensorKickout += OnSensorKickout;
         (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetTramLineService(_tramLineService);
         (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetSmartWasService(_smartWasService);
         _autoSteerService.Start(); // Enable zero-copy GPS pipeline
@@ -717,14 +718,8 @@ public partial class MainViewModel : ObservableObject
             toolN = hitchN - Math.Cos(toolHeading) * pivotOffset;
         }
 
-        // Lateral offset perpendicular to tool heading (right is positive,
-        // matching ToolPositionService.ApplyLateralOffset).
-        if (Math.Abs(tool.Offset) > 0.001)
-        {
-            double perp = toolHeading + Math.PI / 2.0;
-            toolE += Math.Sin(perp) * tool.Offset;
-            toolN += Math.Cos(perp) * tool.Offset;
-        }
+        // No lateral offset: the section spans the map draws from this point carry it,
+        // as in ToolPositionService (#446).
 
         _mapService.SetAllPositions(
             p.Position.Easting, p.Position.Northing, p.Heading,
@@ -1288,7 +1283,7 @@ public partial class MainViewModel : ObservableObject
 
     private void OnAutoSteerToggleRequested(object? sender, AutoSteerToggleEventArgs e)
     {
-        _dispatcher.Post(() =>
+        void Toggle()
         {
             // The module arming for a steer-wizard Free Drive test isn't a request to steer:
             // ignore it quietly (ToggleAutoSteerCommand would refuse it anyway, #154).
@@ -1297,8 +1292,22 @@ public partial class MainViewModel : ObservableObject
 
             // Toggle autosteer when requested by module communication service
             // (e.g., from work switch or steer switch)
-            ToggleAutoSteerCommand?.Execute(null);
-        });
+            ToggleAutoSteerCommand?.Execute(IsAutoSteerEngaged
+                ? ModuleStoppedSteeringReason()
+                : "steer switch or button on the steer module");
+        }
+
+        // UpdateModuleSwitches runs on the host loop, so toggle right away and report the
+        // result: the steer switch → sections check that follows needs it.
+        if (_dispatcher.CheckAccess())
+        {
+            Toggle();
+            e.IsAutoSteerOnAfter = IsAutoSteerEngaged;
+        }
+        else
+        {
+            _dispatcher.Post(Toggle);
+        }
     }
 
     private void OnSectionMasterToggleRequested(object? sender, SectionMasterToggleEventArgs e)
@@ -1372,6 +1381,11 @@ public partial class MainViewModel : ObservableObject
         {
             _moduleSteeredSinceEngage = false;
             _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
+            // With a Switch or Button set, UpdateModuleSwitches turns AutoSteer off next and
+            // logs why; with None it stays on, so say so here.
+            if (ConfigStore.AutoSteer.ExternalEnable == 0)
+                _logger.LogInformation("[AutoSteer] {Reason}; AutoSteer stays on (steer switch / button: None)",
+                    ModuleStoppedSteeringReason());
             ReportFailure("Steer module stopped steering (kickout, switch or button)");
         }
     }
@@ -2045,6 +2059,7 @@ public partial class MainViewModel : ObservableObject
             IsAutoSteerEngaged = false;
             _autoSteerService.Disengage();
             SyncGuidanceStateToPipeline();
+            LogAutoSteerOff("field closed");
         }
 
         // CurrentFieldName clears via the pass-through when SetActiveField(null)
@@ -2508,12 +2523,22 @@ public partial class MainViewModel : ObservableObject
                 _tramSystemLineRanges[sys.Name] = (startIdx, lines.Count, false);
             }
         }
+        else if (!_hasTramSystemsEverUsed && track is { IsABLine: true })
+        {
+            // An AB line: tram lines parallel to it, clipped to the fence, plus the
+            // boundary tram track, as AgOpenGPS's CABLine.BuildTram. A straight line's
+            // offsets can't fold, so this doesn't bring back the curved-field "web".
+            _tramLineService.GenerateParallelTramLines(track, fieldWidth);
+            if (State.Field.CurrentBoundary?.OuterBoundary?.Points is { Count: >= 3 } fence)
+                _tramLineService.GenerateBoundaryTramTracks(
+                    fence.Select(p => new Models.Base.Vec3(p.Easting, p.Northing, p.Heading)).ToList());
+        }
         else if (!_hasTramSystemsEverUsed)
         {
-            // Controlled-traffic lanes parallel to the field boundary, spaced at the
-            // tram (sprayer/CTF) width. Clean concentric Clipper offsets — replaces the
-            // legacy per-point lateral offset of the guidance curve, which folded into a
-            // self-intersecting "web" on irregular/curved fields.
+            // A curve, or no track: controlled-traffic lanes parallel to the field boundary,
+            // spaced at the tram (sprayer/CTF) width. Clean concentric Clipper offsets —
+            // replaces the legacy per-point lateral offset of the guidance curve, which
+            // folded into a self-intersecting "web" on irregular/curved fields.
             _tramLineService.GenerateConcentricTramLanes();
         }
 

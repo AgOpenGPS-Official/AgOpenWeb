@@ -28,7 +28,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19, COVERAGE_EDGE: 20, VIEW_PREFS: 21, PROMPT: 22, TOAST: 23, DRIVE_PICK: 24, HW_MSG: 25 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19, COVERAGE_EDGE: 20, VIEW_PREFS: 21, PROMPT: 22, TOAST: 23, DRIVE_PICK: 24, HW_MSG: 25, VT: 26, VT_IMAGE: 27 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -123,6 +123,7 @@ window.RemoteTransport = {
           op.reverse = !!u8(); // #125 — vehicle reversing
           op.moduleNotSteering = !!u8(); // #126 — engaged, module reports not steering
           const chartGpsHeading = f32(); // #111 — heading chart, GPS fix-to-fix
+          tools.tramLights = u8(); // #451 — bit 0/1 R/L on a tram, 2/3 R/L forced, 4 show
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool, op, roll, tools,
@@ -322,7 +323,7 @@ window.RemoteTransport = {
             isSteerSwitchEnabled: !!u8(), isSteerSwitchManualSections: !!u8(), totalWidth: f64(),
           };
           const uturn = { style: i32(), extension: f64(), smoothing: i32(), radius: f64(), distanceFromBoundary: f64() };
-          const tram = { passes: i32(), display: !!u8(), line: i32(), width: f64() };
+          const tram = { passes: i32(), display: !!u8(), line: i32(), width: f64(), outerInverted: !!u8() };
           const machine = {
             hydraulicLiftEnabled: !!u8(), raiseTime: i32(), lookAhead: f64(), lowerTime: i32(), invertRelay: !!u8(),
             user1: i32(), user2: i32(), user3: i32(), user4: i32(), pinAssignments: rdI32(),
@@ -434,6 +435,20 @@ window.RemoteTransport = {
         case TYPE.HW_MSG: { // module hardware message, PGN 221 (#110)
           const text = str(), seconds = i32(), warning = !!u8();
           handlers.onHardwareMessage && handlers.onHardwareMessage(text, seconds, warning);
+          break;
+        }
+        case TYPE.VT: {
+          // Virtual terminal (VT cards): the terminal (255: the link, for all of them), then one
+          // JSON message, as the terminal wrote it.
+          const t = u8();
+          handlers.onVt && handlers.onVt(JSON.parse(str()), t === 255 ? -1 : t);
+          break;
+        }
+        case TYPE.VT_IMAGE: {
+          // A VT picture: id, width, height, then RGBA rows (copied: the buffer is the frame's).
+          const id = dv.getUint32(o, true); o += 4;
+          const w = i32(), h = i32();
+          handlers.onVtImage && handlers.onVtImage(id, w, h, new Uint8Array(buffer.slice(o, o + w * h * 4)));
           break;
         }
         case TYPE.TOAST: {

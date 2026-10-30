@@ -92,6 +92,7 @@ internal sealed class BackendHost
 
         var configService = sp.GetRequiredService<IConfigurationService>();
         var persistentState = sp.GetRequiredService<IPersistentStateService>();
+        var virtualTerminal = sp.GetService<IVirtualTerminalService>() as IDisposable;
 
         // Persist config + state and stop the embedded server during ApplicationStopping,
         // which fires WHILE the provider is still alive (a save after the provider is
@@ -100,10 +101,20 @@ internal sealed class BackendHost
         var lifetime = sp.GetRequiredService<IHostApplicationLifetime>();
         lifetime.ApplicationStopping.Register(() =>
         {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            void Step(string what, Action act)
+            {
+                try { act(); } catch (Exception ex) { Console.WriteLine($"[backend] {what} failed: {ex.Message}"); }
+                Console.WriteLine($"[backend]   {what}: {clock.ElapsedMilliseconds} ms");
+            }
             Console.WriteLine("[backend] shutting down — saving config + state…");
-            try { configService.SaveAppSettings(); } catch (Exception ex) { Console.WriteLine($"[backend] save config failed: {ex.Message}"); }
-            try { persistentState.Save(); } catch (Exception ex) { Console.WriteLine($"[backend] save state failed: {ex.Message}"); }
-            try { remoteServer.StopAsync().GetAwaiter().GetResult(); } catch (Exception ex) { Console.WriteLine($"[backend] server stop failed: {ex.Message}"); }
+            // The VT stack first: its native thread steps AgIsoStack, and if the process exits
+            // with it still running (macOS quits once the window is gone), it locks a mutex
+            // the C++ static destructors have already torn down and the app aborts.
+            Step("VT stack stop", () => virtualTerminal?.Dispose());
+            Step("save config", configService.SaveAppSettings);
+            Step("save state", () => persistentState.Save());
+            Step("web server stop", () => remoteServer.StopAsync().GetAwaiter().GetResult());
             Console.WriteLine("[backend] stopped.");
         });
 

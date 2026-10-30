@@ -329,6 +329,7 @@ namespace AgOpenWeb.Models.Guidance
         public static (List<Vec3> Points, double PercentRemoved) CreateOffsetCurveWithInfo(
             IReadOnlyList<Vec3> originalPoints, double offsetDistance)
         {
+            WorkCounters.OffsetCurvePoints += originalPoints?.Count ?? 0;
             if (originalPoints == null || originalPoints.Count < 2)
                 return (originalPoints != null ? new List<Vec3>(originalPoints) : new List<Vec3>(), 0);
 

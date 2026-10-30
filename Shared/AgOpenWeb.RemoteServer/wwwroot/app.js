@@ -438,13 +438,15 @@ const transport = RemoteTransport.create({
     if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
   },
   onWizard(w) { wizard = w; wizardDirty = true; },
-  onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); applyMobileQualityCap(); },
-  onControlState(s) { lastControl = s; updateControlUi(); claimSeatIfFree(); },
+  onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); Vt.render(); },
+  onControlState(s) { lastControl = s; updateControlUi(); claimSeatIfFree(); Vt.render(); },
   onSound(id) { Sounds.play(id); },
   onPrompt(p) { hostPrompt = p; renderHostPrompt(); },
   onToast(msg) { showToast(msg); },
   onHardwareMessage(text, seconds, warning) { showHardwareMessage(text, seconds, warning); },
   onDrivePick(fields) { showDrivePick(fields); },
+  onVt(m, t) { Vt.message(m, t); },
+  onVtImage(id, w, h, rgba) { Vt.image(id, w, h, rgba); },
   // Round-trip link probe reply: token is the performance.now() we sent in diag.ping, so
   // RTT = now − token measures the pure server↔client link (one client clock, no skew).
   onPong(token) {
@@ -661,6 +663,45 @@ function applyMobileQualityCap() {
   transport.send('display.capResolution|2.5'); // 2.5 = Medium
 }
 
+// The largest texture this browser's GPU holds (often 4096 on tablets). The host keeps the
+// coverage grid within it, so coverage always fits one GPU render target; a bigger grid
+// falls back to a 2D canvas that is copied whole several times over and can get a tablet's
+// web view killed for memory. Read from CanvasKit's own context once it exists; sent once.
+let maxTextureSide = 0;
+let maxTextureSent = false;
+function readMaxTextureSide() {
+  try {
+    // The context CanvasKit made: asking for the same type returns it, not a new one.
+    const gl = ckcv.getContext('webgl2') || ckcv.getContext('webgl');
+    if (!gl) return 0;
+    return Math.min(gl.getParameter(gl.MAX_TEXTURE_SIZE), gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)) | 0;
+  } catch (e) { return 0; }
+}
+function reportMaxTexture() {
+  if (maxTextureSent || !iHoldControl || maxTextureSide <= 0) return;
+  maxTextureSent = true;
+  transport.send('display.maxTexture|' + maxTextureSide);
+}
+
+// An observer (a browser without control) sees everything and changes nothing (#397): the
+// host drops its commands, so say why when a tap of its own was refused. The host's
+// ObserverIds plus the hub's own control.* / diag.ping are what it may send.
+const OBSERVER_IDS = new Set(['control.acquire', 'control.release', 'control.presence', 'diag.ping', 'boundary.refresh']);
+let _viewOnlyToastT = -Infinity;
+const _send = transport.send;
+transport.send = cmd => {
+  const id = String(cmd).split('|')[0];
+  if (!iHoldControl && !OBSERVER_IDS.has(id)) {
+    const now = performance.now();
+    if (navigator.userActivation && navigator.userActivation.isActive && now - _viewOnlyToastT > 3000) {
+      _viewOnlyToastT = now;
+      showToast(tr('View only: another screen has control'));
+    }
+    return;
+  }
+  _send(cmd);
+};
+
 transport.start();
 
 // ---- CanvasKit (Skia) renderer — built alongside Canvas2D for A/B (toggle K).
@@ -682,6 +723,11 @@ function recreateSkSurface() {
   if (!grCtx) {
     const ctxHandle = CK.GetWebGLContext(ckcv);
     if (ctxHandle) grCtx = CK.MakeWebGLContext(ctxHandle);
+    if (grCtx) {
+      maxTextureSide = readMaxTextureSide();
+      reportMaxTexture();
+      upgradeCovToGpu(); // a grid built before the GPU context existed moves onto it
+    }
   }
   if (grCtx) skSurface = CK.MakeOnScreenGLSurface(grCtx, ckcv.width, ckcv.height, null);
   if (!skSurface) skSurface = CK.MakeWebGLCanvasSurface(ckcv);
@@ -897,6 +943,34 @@ addEventListener('touchend', e => {
   _lastTapEnd = now;
 }, { passive: false });
 
+// #465: some Linux touch stacks follow a finger tap with an emulated mouse press when the
+// finger lifts. The UI acts on pointerdown, so that second press shut the menu the finger had
+// just opened (a stylus sends one press, and a second finger cancels the emulation). Drop it,
+// before any other handler sees it: a mouse press right after a touch ended near the same
+// spot, and a second press from a pointer that is already down (a real one never does that).
+const GHOST_PRESS_MS = 800, GHOST_PRESS_PX = 30;
+let _touchEnd = null;
+const _pointersDown = new Set();
+function noteTouchEnd(t, x, y) { _touchEnd = { t, x, y }; }
+addEventListener('pointerup', e => {
+  _pointersDown.delete(e.pointerId);
+  if (e.pointerType === 'touch') noteTouchEnd(e.timeStamp, e.clientX, e.clientY);
+}, true);
+addEventListener('pointercancel', e => _pointersDown.delete(e.pointerId), true);
+addEventListener('blur', () => _pointersDown.clear()); // a release we never saw
+addEventListener('touchend', e => {
+  const t = e.changedTouches[0];
+  if (t) noteTouchEnd(e.timeStamp, t.clientX, t.clientY);
+}, true);
+addEventListener('pointerdown', e => {
+  // Forget a pointer once it is caught pressing twice, so a lost release costs one press at most.
+  const ghost = _pointersDown.delete(e.pointerId) || (e.pointerType === 'mouse' && _touchEnd
+    && e.timeStamp - _touchEnd.t < GHOST_PRESS_MS
+    && Math.hypot(e.clientX - _touchEnd.x, e.clientY - _touchEnd.y) < GHOST_PRESS_PX);
+  if (ghost) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+  _pointersDown.add(e.pointerId);
+}, true);
+
 // A tap on the vehicle resets its direction, as in AgOpenGPS: the heading is learned again
 // from the next forward travel. It is the way out when the first heading was taken while
 // backing, after which (with an IMU) forward travel reads as reverse.
@@ -951,7 +1025,11 @@ addEventListener('pointermove', e => {
   // touch/pen there's no hover to ride, and a tap's micro-move would drop the "big A" under
   // the finger/button and clash with the placed-dot label; touch relies on the dot letters
   // + the "Tap Point A/B" banner instead.
-  if (mapTap && (abFlow === 'straight' || abFlow === 'curve') && e.pointerType === 'mouse') updateAbCursorLabel(e.clientX, e.clientY);
+  // Only over the map itself: over a button or a menu it isn't where the next point goes (#399).
+  if (mapTap && (abFlow === 'straight' || abFlow === 'curve') && e.pointerType === 'mouse') {
+    if (e.target && e.target.id === 'ck') updateAbCursorLabel(e.clientX, e.clientY);
+    else if (abLabelEl) abLabelEl.classList.remove('show');
+  }
   if (editDragIdx >= 0 && editSession) {       // drag the grabbed handle
     const w = s2w(e.clientX, e.clientY);
     if (w) editSession.points[editDragIdx] = editSession.kind === 'headland' ? hlSnap(w.e, w.n) : { e: w.e, n: w.n };
@@ -1040,7 +1118,7 @@ const HOTKEY_CMD = {
   NudgeLeft: 'track.nudgeLeft', NudgeRight: 'track.nudgeRight',
   ManualSection: 'section.manual', AutoSection: 'section.master',
 };
-const HOTKEY_TIER1 = { Flag: 'flag.placeHere' }; // markers — not control-gated (like the button)
+const HOTKEY_TIER1 = { Flag: 'flag.placeHere' }; // markers (still need control, like every command)
 const HOTKEY_UI = {
   FieldMenu: () => document.getElementById('ln-fieldops').dispatchEvent(new PointerEvent('pointerdown')),
   VehicleSettings: () => document.getElementById('ln-vehicle').dispatchEvent(new PointerEvent('pointerdown')),
@@ -1077,8 +1155,7 @@ addEventListener('keydown', e => {
   transport.send(cmd);
 });
 // ---- simulator bar (Phase 6) — mirrors the native SimulatorPanel ----
-// Sim is Tier-1 (hardware-safe), so the bar's commands aren't gated by control
-// authority — anyone driving the sim is fine. Panel *visibility* is client-local
+// Like every command, the bar's need control (an observer changes nothing, #397). Panel *visibility* is client-local
 // (the host's IsSimulatorPanelVisible is a native-only concept); enabled/speed/
 // steer are host state, mirrored back over the Status frame.
 const SIM = {
@@ -1186,26 +1263,34 @@ const dlgLat = document.getElementById('dlg-lat'), dlgLon = document.getElementB
 // FormNumeric for numbers) (#110). For touch boxes with no OS keyboard (kiosk/Linux): when
 // on, focusing a text field opens a QWERTY panel, a numeric field a number pad, and the OS
 // keyboard is suppressed (inputmode=none). Keys edit the field in place and fire 'input', so
-// every existing handler sees them; OK sends Enter and closes.
+// every existing handler sees them; OK sends Enter and closes. Shift works as on a phone: one
+// tap capitalises the next letter, a second tap straight after locks it (caps lock) until Shift
+// is tapped again.
 const OSK = (() => {
   const root = document.getElementById('osk');
-  let target = null, shift = false;
+  const SHIFT_LOCK_MS = 400;                  // second Shift tap within this locks caps
+  let target = null, shift = 0, shiftAt = 0;  // shift: 0 off, 1 next letter, 2 caps lock
   const TEXT = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
   const NUM = ['789', '456', '123', '-0.'];
   const on = () => !!(config && config.display && config.display.keyboardEnabled);
   const isField = el => el instanceof HTMLTextAreaElement
     || (el instanceof HTMLInputElement && ['text', 'password', 'search', 'email', 'url', ''].includes(el.type) && !el.readOnly && !el.disabled);
+  // When the keyboard hides the field, a line above the keys shows the field's label and text
+  // (like the text box at the top of AgOpenGPS's keyboard form).
+  const pv = document.createElement('div'); pv.className = 'osk-row osk-pv'; pv.hidden = true;
+  pv.innerHTML = '<span class="osk-pv-lbl"></span><span class="osk-pv-txt"></span>';
+  const [pvLbl, pvTxt] = pv.children, caret = document.createElement('i');
   function render() {
     const num = !!(target && target.dataset.numField);
     root.classList.toggle('num', num);
     const rows = (num ? NUM : TEXT).map(r => [...r].map(c => ({ k: c, t: shift ? c.toUpperCase() : c })));
     if (num) rows.push([{ k: 'BS', t: '⌫', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
     else {
-      rows[3].unshift({ k: 'SH', t: shift ? '⇧' : '⇪', c: 'wide' });
+      rows[3].unshift({ k: 'SH', t: shift === 2 ? '⇪' : '⇧', c: ['wide', 'wide on', 'wide on lock'][shift] });
       rows[3].push({ k: 'BS', t: '⌫', c: 'wide' });
       rows.push([{ k: '-', t: '-' }, { k: '_', t: '_' }, { k: ' ', t: 'space', c: 'xwide' }, { k: '.', t: '.' }, { k: 'CLR', t: 'Clear', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
     }
-    root.innerHTML = '';
+    root.replaceChildren(pv);
     for (const r of rows) {
       const row = document.createElement('div'); row.className = 'osk-row';
       for (const b of r) {
@@ -1222,9 +1307,27 @@ const OSK = (() => {
     try { el.setRangeText(s, a, b, 'end'); } catch (_) { el.value += s; }
     el.dispatchEvent(new Event('input', { bubbles: true }));
   }
+  function echo() {
+    const el = target; if (!el || pv.hidden) return;
+    const v = el.type === 'password' ? '•'.repeat(el.value.length) : el.value;
+    const a = Math.min(el.selectionEnd ?? v.length, v.length);
+    pvTxt.replaceChildren(v.slice(0, a), caret, v.slice(a));
+    pvTxt.scrollLeft = Math.max(0, caret.offsetLeft - pvTxt.clientWidth + 24); // keep the caret in sight
+  }
+  function place() {
+    pv.hidden = true;
+    pv.hidden = target.getBoundingClientRect().bottom <= root.getBoundingClientRect().top;
+    const lb = (target.labels && target.labels[0]) || target.previousElementSibling; // <label for> or <label></label><input>
+    pvLbl.textContent = lb && lb.tagName === 'LABEL' ? lb.textContent.trim() : '';
+    echo();
+  }
   function key(k) {
     const el = target; if (!el) return;
-    if (k === 'SH') { shift = !shift; render(); return; }
+    if (k === 'SH') {
+      const now = performance.now();
+      shift = shift === 1 && now - shiftAt < SHIFT_LOCK_MS ? 2 : shift ? 0 : 1;
+      shiftAt = now; render(); return;
+    }
     if (k === 'OK') {
       el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1238,13 +1341,13 @@ const OSK = (() => {
       return;
     }
     insert(shift ? k.toUpperCase() : k);
-    if (shift) { shift = false; render(); }
+    if (shift === 1) { shift = 0; render(); }
   }
   function open(el) {
-    target = el; shift = false;
+    target = el; shift = 0;
     if (!el.dataset.oskIm) el.dataset.oskIm = el.getAttribute('inputmode') ?? '';
     el.setAttribute('inputmode', 'none'); // no OS keyboard on top of ours
-    render(); root.hidden = false;
+    render(); root.hidden = false; place();
   }
   function close() {
     if (target && target.dataset.oskIm !== undefined) {
@@ -1256,13 +1359,14 @@ const OSK = (() => {
   // Keep focus in the field while tapping keys (pointerdown would blur it), and don't pan the map.
   root.addEventListener('pointerdown', e => {
     e.preventDefault(); e.stopPropagation();
-    const b = e.target.closest('button'); if (b) key(b.dataset.k);
+    const b = e.target.closest('button'); if (b) { key(b.dataset.k); echo(); }
   });
   document.addEventListener('focusin', e => { if (on() && isField(e.target)) open(e.target); else if (!root.contains(e.target)) close(); });
   document.addEventListener('focusout', e => {
     if (e.target !== target) return;
     setTimeout(() => { if (document.activeElement !== target) close(); }, 0);
   });
+  window.addEventListener('resize', () => { if (target) place(); });
   return { close };
 })();
 // Uniform numeric input, everywhere. A tablet's decimal keypad (Android Samsung / iOS) has no
@@ -1428,7 +1532,7 @@ sectionBar.addEventListener('pointerdown', e => {
 
 // ---- bottom nav (Phase 8) — field-tools toolbar + Flags/AB-line flyouts ----
 // Direct-action field tools. Tier-2 ids (data-t2: track.* / headland.* / youturn.skip*)
-// fire only while we hold control (the host re-gates); the rest are Tier-1. Toggle
+// are dimmed and fire only while we hold control; every other command needs it too (#397). Toggle
 // READ state rides the Tick (tick.tools); AB-dependent buttons key off activeTrackName.
 const bottomNav = document.getElementById('bottomnav');
 const bnFlags = document.getElementById('bn-flyout-flags');
@@ -1652,20 +1756,20 @@ function showAbBar(setPoint, undo, finish) {
   drawBar.querySelector('#draw-finish').style.display = finish ? '' : 'none';
   drawBar.classList.add('show');
 }
-function startDrawTrack(mode) {           // map-tap straight/curve (ungated — creating data)
+function startDrawTrack(mode) {           // map-tap straight/curve
   abFlow = mode; drawMode = mode; drawPts = [];
   transport.send(mode === 'straight' ? 'track.drawStraight' : 'track.drawCurve');
   showAbBar(false, mode === 'curve', mode === 'curve');
   startMapTap({ hint: abHint(), onTap: drawTap });
 }
-function startDriveAB() {                  // GPS: set A then B at the vehicle (ungated)
+function startDriveAB() {                  // GPS: set A then B at the vehicle
   abFlow = 'driveAB'; driveStep = 0; drawPts = []; driveRaw = []; // drawPts holds the dropped A/B markers
   transport.send('track.driveAB');
   showAbBar(true, false, false);
   document.getElementById('draw-setpoint').textContent = tr('Set Point A');
   hintEl.classList.add('show'); setAbHint();
 }
-function startRecordCurve() {              // GPS: record by driving — Set Start → Set End (ungated)
+function startRecordCurve() {              // GPS: record by driving — Set Start → Set End
   abFlow = 'recordCurve'; driveStep = 0; curveMarks = []; _lastCurveMark = null;
   // Recording doesn't begin until "Set Start" (deferred track.recordCurve), so the operator
   // can position at the curve's start first. The set-point button drives the two-step.
@@ -1673,20 +1777,66 @@ function startRecordCurve() {              // GPS: record by driving — Set Sta
   document.getElementById('draw-setpoint').textContent = tr('Set Point A');
   hintEl.classList.add('show'); setAbHint();
 }
-// "Bnd. Curve" — tap point A then point B on the boundary; the host walks the shorter arc
-// between them and builds a curve following the boundary. Each tap lands on the fence where
-// it's nearest (a corner when one is close) for display; the host projects it again.
+// "Bnd. Curve" — tap point A then point B on the boundary, then pick which way round the
+// curve goes (#450): A → B runs on from A in the boundary's own order, B → A the other way;
+// the shorter one is picked first and drawn on the map. Each tap lands on the fence where
+// it's nearest (a corner when one is close); the host projects A and B again and takes the
+// way round that passes the chosen arc's midpoint.
+let bcArcs = null, bcSel = 0;  // the two ways round on the outer boundary, [A→B, B→A]
 function startBoundaryCurve() {
-  abFlow = 'boundaryCurve'; drawPts = [];
+  abFlow = 'boundaryCurve'; drawPts = []; bcArcs = null;
   showAbBar(false, false, false);          // draw toolbar shows just Cancel
   startMapTap({ hint: tr('Tap point A on the boundary'), onTap: boundaryCurveTap });
 }
 function boundaryCurveTap(e, n) {
   drawPts.push(snapToFence(e, n, Infinity)); // A/B on the fence (dot shown)
   if (drawPts.length < 2) { hintEl.textContent = tr('Tap point B on the boundary'); return; }
-  const a = drawPts[0], b = drawPts[1];
-  transport.send('track.boundaryCurveSeg|' + a.e.toFixed(3) + ',' + a.n.toFixed(3) + ',' + b.e.toFixed(3) + ',' + b.n.toFixed(3));
-  endAbFlow();
+  const ring = scene && scene.boundaries && scene.boundaries[0];
+  bcArcs = ring && ring.length >= 3 ? boundaryArcs(ring, drawPts[0], drawPts[1]) : null;
+  if (!bcArcs) { abFinish(); return; }     // no ring to choose on: the host takes the shorter
+  bcSel = polyLen(bcArcs[0]) <= polyLen(bcArcs[1]) ? 0 : 1;
+  mapTap = null; document.getElementById('maptap-hint').classList.remove('show'); // no more taps
+  showAbBar(false, false, true);
+  document.getElementById('draw-finish').textContent = tr('Create');
+  for (const b of bcDirBtns) b.style.display = '';
+  setBcDir(bcSel);
+}
+const bcDirBtns = [document.getElementById('draw-dir-ab'), document.getElementById('draw-dir-ba')];
+bcDirBtns.forEach((b, i) => b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); setBcDir(i); }));
+function setBcDir(i) {
+  bcSel = i;
+  bcDirBtns.forEach((b, k) => b.classList.toggle('active', k === i));
+  hintEl.textContent = tr('Pick which way round, then Create'); hintEl.classList.add('show');
+}
+function polyLen(pts) { let l = 0; for (let i = 1; i < pts.length; i++) l += Math.hypot(pts[i].e - pts[i - 1].e, pts[i].n - pts[i - 1].n); return l; }
+// The two ways round a ring between points a and b on it: [a on in ring order to b, b on to a].
+function boundaryArcs(ring, a, b) {
+  const m = ring.length;
+  const at = (p) => {                      // the side (i → i+1) a point lies on, and how far along
+    let best = { i: 0, t: 0 }, bd = Infinity;
+    for (let i = 0; i < m; i++) {
+      const p0 = ring[i], p1 = ring[(i + 1) % m];
+      const dx = p1.e - p0.e, dn = p1.n - p0.n, l2 = dx * dx + dn * dn;
+      const t = l2 > 0 ? Math.max(0, Math.min(1, ((p.e - p0.e) * dx + (p.n - p0.n) * dn) / l2)) : 0;
+      const d = Math.hypot(p0.e + t * dx - p.e, p0.n + t * dn - p.n);
+      if (d < bd) { bd = d; best = { i, t }; }
+    }
+    return best;
+  };
+  const walk = (p, pa, q, qa) => {         // from p on in ring order to q
+    const out = [p];
+    if (!(pa.i === qa.i && pa.t <= qa.t))
+      for (let k = (pa.i + 1) % m; ; k = (k + 1) % m) { out.push(ring[k]); if (k === qa.i) break; }
+    out.push(q);
+    return out;
+  };
+  const sa = at(a), sb = at(b);
+  return [walk(a, sa, b, sb), walk(b, sb, a, sa)];
+}
+// The chosen way round, drawn while picking (#450).
+function drawBoundaryCurvePreviewSk(canvas) {
+  if (abFlow !== 'boundaryCurve' || !bcArcs) return;
+  strokePtsSk(canvas, bcArcs[bcSel], false, SKP.track);
 }
 // A drawn line is the edge between passes (PassGeometry), as in AgOpenGPS's FormABDraw,
 // whose taps all land on fence points. A tap near the fence snaps onto it (a corner when
@@ -1726,7 +1876,7 @@ function drawTap(e, n) {                    // map-tap point captured (straight/
 let driveRaw = [];       // Drive-AB A/B at the vehicle, to re-place both on the A→B heading
 function refEdgePt(e, n, h) {
   const t = config && config.tool;
-  const half = (toolWidthM() - ((t && t.overlap) || 0)) * 0.5;
+  const half = Math.max(0, toolWidthM() - ((t && t.overlap) || 0)) * 0.5;
   const d = (qabSide === 'right' ? half : -half) + ((t && t.offset) || 0);
   return { e: e + Math.sin(h + Math.PI / 2) * d, n: n + Math.cos(h + Math.PI / 2) * d };
 }
@@ -1776,7 +1926,23 @@ function abUndo() {
   setAbHint();
 }
 function abFinish() {
-  if (abFlow === 'curve') transport.send('track.drawFinish');
+  if (abFlow === 'boundaryCurve') {
+    if (drawPts.length < 2) return;
+    const a = drawPts[0], b = drawPts[1], f = (v) => v.toFixed(3);
+    let msg = 'track.boundaryCurveSeg|' + f(a.e) + ',' + f(a.n) + ',' + f(b.e) + ',' + f(b.n);
+    if (bcArcs) {                          // + a point halfway along the chosen way round
+      const arc = bcArcs[bcSel], half = polyLen(arc) / 2;
+      let run = 0, via = arc[0];
+      for (let i = 1; i < arc.length; i++) {
+        const l = Math.hypot(arc[i].e - arc[i - 1].e, arc[i].n - arc[i - 1].n);
+        if (run + l >= half) { const u = l > 0 ? (half - run) / l : 0; via = { e: arc[i - 1].e + u * (arc[i].e - arc[i - 1].e), n: arc[i - 1].n + u * (arc[i].n - arc[i - 1].n) }; break; }
+        run += l;
+      }
+      msg += ',' + f(via.e) + ',' + f(via.n);
+    }
+    transport.send(msg);
+  }
+  else if (abFlow === 'curve') transport.send('track.drawFinish');
   else if (abFlow === 'recordCurve') transport.send('track.finishCurve');
   else return;
   endAbFlow();
@@ -1788,6 +1954,8 @@ function abCancel() {
 }
 function endAbFlow() {
   abFlow = null; drawMode = null; drawPts = []; driveRaw = []; driveStep = 0;
+  bcArcs = null; for (const b of bcDirBtns) b.style.display = 'none';
+  document.getElementById('draw-finish').textContent = tr('Finish');
   curveMarks = []; _lastCurveMark = null; // clear record-curve path dots
   drawBar.classList.remove('show');
   endMapTap();
@@ -2025,7 +2193,7 @@ let trkSel = -1; // index into scene.trackList, or -1
 function openTracksManager() { trkSel = -1; renderTracksList(); openDialog('dlg-tracks'); }
 function renderTracksList() {
   // Dim the guidance-affecting actions when we're not the operator. Delete/swap/activate
-  // change the active line; import, visibility and rec-path display are data → ungated.
+  // change the active line (every action needs control, #397; these are dimmed).
   for (const id of ['trk-delete', 'trk-swap', 'trk-activate'])
     document.getElementById(id).classList.toggle('disabled', !iHoldControl);
   const list = document.getElementById('trk-list');
@@ -2055,7 +2223,7 @@ function renderTracksList() {
     });
     const cb = row.querySelector('.trk-vis');
     cb.addEventListener('change', e => {
-      e.stopPropagation(); // visibility is display-only → ungated (any browser)
+      e.stopPropagation();
       transport.send('track.setVisible|' + t.index + ',' + (cb.checked ? 1 : 0));
     });
     list.appendChild(row);
@@ -2093,7 +2261,7 @@ document.getElementById('dlg-tracks-close').addEventListener('pointerdown', e =>
 // ---- left nav (Phase 9) — config/settings panels via the config bridge ----
 // Vertical button bar; each button toggles a non-modal panel (only one open at a
 // time). Panels READ from the config frame (or existing frames, e.g. units =
-// Status.isMetric) and WRITE via `config.set|key:value` (Tier-1; the host applies it
+// Status.isMetric) and WRITE via `config.set|key:value` (needs control; the host applies it
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
@@ -2118,6 +2286,8 @@ function lnCloseAll() {
   document.getElementById('ln-fieldtools').classList.remove('active');
 }
 function lnOpen(panelId, navBtnId, onOpen) {
+  // Opening a menu leaves an AB line being drawn on the map, like Esc (#399).
+  if (abFlow === 'straight' || abFlow === 'curve') abCancel();
   lnCloseAll();
   document.getElementById(panelId).classList.add('open');
   if (!NO_SCRIM.has(panelId)) lnScrim.classList.add('open'); // transparent light-dismiss
@@ -2340,14 +2510,14 @@ document.getElementById('fb-trk-rename').addEventListener('pointerdown', e => {
   input.addEventListener('blur', commit);
 });
 // ---- Field Builder Headland tab (stage 2) — segment list + build ----------------------
-// Building is field-data editing (Tier-1, ungated). Line/Curve = tap two boundary points
+// Line/Curve = tap two boundary points
 // on the main map (host snaps + builds the inward offset + the headland polygon); Whole
 // Boundary = the entire boundary offset inward. The host runs ALL geometry — the client
 // only captures the two taps + the offset and ships them (no headland math in JS).
 let fbHlSel = -1;        // selected segment index in the Headland tab
-function fbDefaultOffset() {  // tool width × 2 (host re-defaults to the same if 0 is sent)
+function fbDefaultOffset() {  // tool width × 2; 0 = no tool width to go by
   const tw = toolWidthM();
-  return tw > 0 ? +(tw * 2).toFixed(1) : 12;
+  return tw > 0 ? +(tw * 2).toFixed(1) : 0;
 }
 function renderFbHeadland() {
   const list = document.getElementById('fb-hllist');
@@ -2382,7 +2552,12 @@ document.getElementById('fb-hl-off').addEventListener('change', e => {
 // editing the metre box directly flips the dropdown to Custom.
 const fbTwSel = document.getElementById('fb-hl-tw');
 const fbNewOff = document.getElementById('fb-hl-newoff');
-function fbApplyTw() { const n = parseInt(fbTwSel.value); if (n > 0) writeUnitInput(fbNewOff, n * toolWidthM()); }
+function fbApplyTw() {
+  const n = parseInt(fbTwSel.value), tw = toolWidthM();
+  if (!(n > 0)) return;
+  if (tw > 0) writeUnitInput(fbNewOff, n * tw);
+  else fbNewOff.value = '';   // no tool width: the operator enters the inset
+}
 fbTwSel.addEventListener('change', e => { e.stopPropagation(); fbApplyTw(); });
 fbNewOff.addEventListener('input', e => { e.stopPropagation(); fbTwSel.value = '0'; });
 document.getElementById('fb-hl-add').addEventListener('pointerdown', e => {
@@ -2397,6 +2572,7 @@ for (const b of document.querySelectorAll('#fb-addhl .fb-addbtn'))
     e.stopPropagation();
     const off = readUnitInput(document.getElementById('fb-hl-newoff'));
     const offset = (Number.isFinite(off) && off > 0) ? off : fbDefaultOffset();
+    if (!(offset > 0)) { showToast(tr('Tool width not set: enter the headland width')); return; }
     const m = b.dataset.fbhl;
     showFbTab('headland');
     if (m === 'whole') transport.send('headland.wholeBoundary|' + offset);
@@ -2427,7 +2603,7 @@ document.getElementById('fb-hl-rename').addEventListener('pointerdown', e => {
 });
 // ---- Field Builder Tram tab (stage 3) — system list + per-system editor --------------
 // Systems live in ConfigStore.Tram.Systems (host SoT); the browser sends field edits and
-// the host regenerates the lines + persists. Tram building is field-data editing (Tier-1).
+// the host regenerates the lines + persists.
 let fbTramSel = -1;
 let fbTramPendingEdit = false; // open the editor on the system we just added (native parity)
 function openTramEditor() {
@@ -2542,7 +2718,7 @@ document.getElementById('bp-leftright').addEventListener('pointerdown', e => { e
 document.getElementById('bp-antennatool').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.toggleAntennaTool'); });
 document.getElementById('bp-stop').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.stop'); transport.send('boundary.refresh'); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu); });
 document.getElementById('bp-record').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.toggleRecording'); });
-// Offset Fix D-pad (argless Tier-1 commands).
+// Offset Fix D-pad (argless commands).
 for (const b of document.querySelectorAll('#offsetfix .of-btn'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
 // Manual Easting/Northing entry → absolute set (offset.set|E,N).
@@ -2931,8 +3107,8 @@ function populateSmartWas() {
 }
 
 // ---- Network IO (Phase 9) — modules / scan / subnet / host IPs / NTRIP. Reads ride
-// the Status frame; writes are config.set (module-present, Tier-1), net.scan (Tier-1),
-// net.subnet (Tier-2 gated), and ntrip.* profile CRUD. The NTRIP editor keeps its
+// the Status frame; writes are config.set (module-present), net.scan, net.subnet and
+// ntrip.* profile CRUD, all needing control. The NTRIP editor keeps its
 // editing buffer client-side; Save sends every field at once. ----
 const nioPanel = document.getElementById('networkio');
 nioPanel.addEventListener('pointerdown', e => e.stopPropagation());
@@ -3228,7 +3404,8 @@ document.getElementById('nte-test').addEventListener('pointerdown', e => {
   if (!mount) { st.textContent = tr('Error: Mount point is required'); return; }
   _nteTestActive = true;
   st.textContent = tr('Testing connection...');
-  transport.send('ntrip.test|' + [host, port, mount, user, pass].join('\t'));
+  // pass is the host's mask for a stored password; the id lets the host use that one (#397)
+  transport.send('ntrip.test|' + [host, port, mount, user, pass, (nteBuf && nteBuf.id) || ''].join('\t'));
 });
 document.getElementById('nte-save').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -3252,7 +3429,7 @@ document.getElementById('nte-save').addEventListener('pointerdown', e => {
 // ---- Field Operations (Phase 9) — field/job lifecycle. Fly-out launches the
 // Fields-and-Jobs chain panel (fields table + jobs + new-job form) and New Field.
 // Reads ride the FieldOps frame; writes are field.* commands (host-driven via the real
-// StartWorkSessionDialogViewModel). Tier-1 (data management); deletes confirm client-side.
+// StartWorkSessionDialogViewModel); deletes confirm client-side.
 const JOB_STATUS = [tr('In progress'), tr('Done'), tr('Abandoned')];
 let fjSelField = null, fjSelJob = null;
 
@@ -3485,6 +3662,7 @@ function renderAgSettings() {
   document.getElementById('ag-teststatus').textContent = agShare.status || '';
 }
 document.getElementById('ag-server').addEventListener('change', () => cfgSend('conn.agShareServer', document.getElementById('ag-server').value.trim()));
+// The field holds the host's mask while a key is stored; sending the mask back keeps it (#397).
 document.getElementById('ag-key').addEventListener('change', () => cfgSend('conn.agShareApiKey', document.getElementById('ag-key').value.trim()));
 document.getElementById('ag-enabled').addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend('conn.agShareEnabled', e.currentTarget.classList.contains('active') ? '0' : '1'); });
 document.getElementById('ag-test').addEventListener('pointerdown', e => {
@@ -3721,19 +3899,105 @@ function renderBugReport() {
     : '';
   brIssueUrl = issueUrl || null;
   document.getElementById('br-openissue').style.display = brIssueUrl ? '' : 'none';
-  document.getElementById('br-send').disabled = ['sending', 'queued', 'sent', 'accepted'].includes(kind);
+  brSendBusy = ['sending', 'queued', 'sent', 'accepted'].includes(kind);
+  if (brFile !== brFilesFor) { brFiles = []; brFilesFor = brFile; renderBrFiles(); }
+  document.getElementById('br-attach').disabled = brSendBusy || brAttaching;
+  brUpdateSend();
 }
-let brIssueUrl = null;
-try { document.getElementById('br-ghuser').value = localStorage.getItem('agopenweb.bugReportGitHub') || ''; } catch (_) { }
+// Screenshots and files: each one is posted to the host as it is picked and goes into the
+// dump under attachments/ (BugReportAttachments). Only the screen holding control may add.
+let brFiles = [], brFilesFor = null, brAttaching = false;
+const brSize = n => n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+function renderBrFiles() {
+  const box = document.getElementById('br-files'); box.innerHTML = '';
+  for (const f of brFiles) {
+    const row = document.createElement('div'); row.className = 'br-filerow';
+    const nm = document.createElement('span'); nm.className = 'br-fname'; nm.textContent = f.name; nm.translate = false;
+    const sz = document.createElement('span'); sz.className = 'br-fsize'; sz.textContent = brSize(f.size);
+    const x = document.createElement('button'); x.className = 'ln-x'; x.textContent = '✕'; x.title = tr('Remove');
+    x.disabled = brSendBusy;
+    x.addEventListener('pointerdown', e => { e.stopPropagation(); brChangeFiles('detach', f.name, new Uint8Array(0)); });
+    row.append(nm, sz, x); box.appendChild(row);
+  }
+}
+async function brChangeFiles(op, name, body) {
+  const st = document.getElementById('br-attachstatus');
+  const q = new URLSearchParams({ zip: brFile, name, client: myClientId || '' });
+  let res, reply = null;
+  try {
+    res = await fetch('/bugreports/' + op + '?' + q, { method: 'POST', body });
+    if (res.ok) reply = await res.json();
+  } catch (_) { st.textContent = tr('Could not add {name}', { name }); return false; }
+  if (res.status === 403) { st.textContent = tr('View only: another screen has control'); return false; }
+  if (res.status === 413) { st.textContent = tr('{name} is too large (20 MB at most)', { name }); return false; }
+  if (!reply) { st.textContent = tr('Could not add {name}', { name }); return false; }
+  const why = {
+    TooLarge: tr('{name} is too large (20 MB at most)', { name }),
+    TotalTooLarge: tr('Attachments are limited to 25 MB in all'),
+    TooMany: tr('At most 10 attachments'),
+    Empty: tr('{name} is empty', { name }),
+    Busy: tr('The report is being sent; try again in a moment'),
+  }[reply.refusal];
+  if (reply.refusal !== 'Busy') { brFiles = reply.files; renderBrFiles(); }
+  st.textContent = why || tr('Like the rest of the report, attachments go only to the maintainers.');
+  return !why;
+}
+document.getElementById('br-attach').addEventListener('click', e => {
+  e.stopPropagation();
+  if (brFile && !brSendBusy && !brAttaching) document.getElementById('br-file').click();
+});
+document.getElementById('br-file').addEventListener('change', async e => {
+  const picked = [...e.target.files]; e.target.value = '';
+  if (!picked.length || !brFile) return;
+  brAttaching = true; document.getElementById('br-attach').disabled = true;
+  for (const f of picked) {
+    document.getElementById('br-attachstatus').textContent = tr('Adding {name}…', { name: f.name });
+    if (f.size > 20 * 1048576) { document.getElementById('br-attachstatus').textContent = tr('{name} is too large (20 MB at most)', { name: f.name }); break; }
+    if (!await brChangeFiles('attach', f.name, f)) break;
+  }
+  brAttaching = false; document.getElementById('br-attach').disabled = brSendBusy;
+});
+let brIssueUrl = null, brSendBusy = false;
+// Send needs what the bug report service checks too (Tools/bugreport-worker reports.js):
+// a title and description long enough to act on, and a GitHub username or an email to reply
+// to. Create needs nothing: it captures the moment.
+const BR_MIN_TITLE = 15, BR_MIN_DESC = 40;
+const brOne = id => document.getElementById(id).value.replace(/\t/g, ' ').trim();
+const brChars = s => [...s].length;
+function brMissing() {
+  const t = BR_MIN_TITLE - brChars(brOne('br-title'));
+  if (t > 0) return tr('Title: {n} more characters', { n: t });
+  const d = BR_MIN_DESC - brChars(document.getElementById('br-desc').value.trim());
+  if (d > 0) return tr('Description: {n} more characters', { n: d });
+  const gh = brOne('br-ghuser').replace(/^@/, ''), em = brOne('br-email');
+  if (gh && !/^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/.test(gh)) return tr('Not a GitHub username');
+  if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) return tr('Not an email address');
+  if (!gh && !em) return tr('Add your GitHub username or email so we can reply');
+  return '';
+}
+function brUpdateSend() {
+  const need = brMissing();
+  document.getElementById('br-need').textContent = brSendBusy ? '' : need;
+  document.getElementById('br-send').disabled = brSendBusy || !!need;
+}
+for (const id of ['br-title', 'br-desc', 'br-ghuser', 'br-email'])
+  document.getElementById(id).addEventListener('input', brUpdateSend);
+try {
+  document.getElementById('br-ghuser').value = localStorage.getItem('agopenweb.bugReportGitHub') || '';
+  document.getElementById('br-email').value = localStorage.getItem('agopenweb.bugReportEmail') || '';
+} catch (_) { }
 document.getElementById('br-send').addEventListener('pointerdown', e => {
   e.stopPropagation();
-  if (!brFile) return;
-  const one = id => document.getElementById(id).value.replace(/\t/g, ' ').trim();
-  const gh = one('br-ghuser').replace(/^@/, '');
-  try { localStorage.setItem('agopenweb.bugReportGitHub', gh); } catch (_) { }
+  if (!brFile || brMissing()) return;
+  const gh = brOne('br-ghuser').replace(/^@/, ''), em = brOne('br-email');
+  try { localStorage.setItem('agopenweb.bugReportGitHub', gh); localStorage.setItem('agopenweb.bugReportEmail', em); } catch (_) { }
   document.getElementById('br-sendstatus').textContent = tr('Sending…');
   document.getElementById('br-send').disabled = true;
-  transport.send('app.bugReport.send|' + [brFile, gh, one('br-title'), document.getElementById('br-desc').value].join('\t'));
+  transport.send('app.bugReport.send|' + [brFile, gh, em, brOne('br-title'), document.getElementById('br-desc').value].join('\t'));
+});
+document.getElementById('br-docs').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  openExternal('https://docs.agopengps.com/');
 });
 document.getElementById('br-openissue').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -4102,6 +4366,7 @@ function renderRole() {
 }
 function updateControlUi() {
   iHoldControl = lastControl.held && lastControl.holderId === myClientId;
+  if (iHoldControl) { applyMobileQualityCap(); reportMaxTexture(); } // host-wide: sent once we may (#397)
   if (typeof renderHostPrompt === 'function') renderHostPrompt(); // who may answer
   if (typeof updateAsGated === 'function') updateAsGated(); // re-gate AutoSteer actions
   if (document.getElementById('recpath').classList.contains('open')) renderRecPath(); // re-gate Play
@@ -4471,11 +4736,9 @@ function xteText(xte) {
 // Lightbar readout text → DOM overlay (the LED strip itself is drawn by lightbarSk).
 // Updated every frame from the latest tick; hidden when guidance is off.
 const lbEl = document.getElementById('lb');
-// Arrow + text as two spans, so the arrow can take the colour of the lit cells; the
-// pass number goes on its own line below.
+// Arrow + text as two spans, so the arrow can take the colour of the lit cells.
 const lbArrow = lbEl.appendChild(document.createElement('span'));
 const lbText = lbEl.appendChild(document.createElement('span'));
-const lbPass = lbEl.appendChild(document.createElement('div'));
 const LB_LEFT = '#ff7a3d', LB_RIGHT = '#39FF6A'; // as lightbarSk: steer left / steer right, on line
 function updateLightbarText() {
   const cfg = config && config.autosteer;
@@ -4491,20 +4754,45 @@ function updateLightbarText() {
     lbArrow.textContent = err === 0 ? '' : err > 0 ? '◀ ' : '▶ ';
     lbArrow.style.color = err > 0 ? LB_LEFT : LB_RIGHT;
     lbText.textContent = err === 0 ? '> 0 <' : `${Math.abs(err).toFixed(1)}°`;
-    lbPass.textContent = '';
   } else {
     // Light bar: cross-track distance.
     const xte = tick.crossTrackError || 0;
     const onLine = Math.abs(xte) < 0.05;
     lbArrow.textContent = (onLine ? '●' : xte > 0 ? '◀' : '▶') + ' '; // arrow = steer direction
     lbArrow.style.color = !onLine && xte > 0 ? LB_LEFT : LB_RIGHT;
-    // 1-based pass label (human counting): the reference AB line is "Pass 1", one over is
-    // "Pass 2", etc. — magnitude only (the arrow already shows which way to steer).
-    const pass = (tick.op ? tick.op.passNumber : 0) | 0;
     lbText.textContent = fmtUnit(Math.abs(xte) * 100, 'cm', 0);
-    lbPass.textContent = tick.op && tick.op.contour ? '' : tr('Pass {n}', { n: Math.abs(pass) + 1 }); // no passes on a contour (#110)
   }
   lbEl.style.display = 'block';
+}
+
+// Tram lights (#451): AgOpenGPS's two dots, left and right of the light bar. The host sends
+// whether to show them (Tram tab Display, a tram mode on, a tool wider than the wheel track),
+// which wheel is on a tram track, and which side is forced on; a tap toggles the force.
+const tramLightsEl = document.getElementById('tram-lights');
+const tramL = document.getElementById('tram-l'), tramR = document.getElementById('tram-r');
+tramL.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('tram.manualLeft'); });
+tramR.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('tram.manualRight'); });
+function updateTramLights() {
+  const b = tick && tick.tools ? tick.tools.tramLights | 0 : 0;
+  tramLightsEl.classList.toggle('show', (b & 16) !== 0);
+  tramR.classList.toggle('on', (b & 1) !== 0);
+  tramL.classList.toggle('on', (b & 2) !== 0);
+  tramR.classList.toggle('manual', (b & 4) !== 0);
+  tramL.classList.toggle('manual', (b & 8) !== 0);
+}
+
+// Pass HUD → DOM overlay under the lightbar readout, as AgOpenGPS's DrawTrackInfo: shown
+// with any track, whatever the Light bar / Steer bar settings. The reference line is the
+// edge between two passes (PassGeometry), so each side counts from 1: pass 0 is "1R" (first
+// pass right of A→B), pass −1 is "1L". The side is fixed in the field, whichever way you drive.
+const passHud = document.getElementById('pass-hud');
+function updatePassHud() {
+  // No passes on a contour (#110).
+  if (!tick || !tick.guidanceActive || !tick.op || tick.op.contour) { passHud.style.display = 'none'; return; }
+  const pass = tick.op.passNumber | 0;
+  const label = pass >= 0 ? `${pass + 1}R` : `${-pass}L`;
+  if (passHud.textContent !== label) passHud.textContent = label;
+  passHud.style.display = 'block';
 }
 
 // Headland-distance HUD → DOM overlay (mirrors the native SkiaMapControl HUD).
@@ -4577,7 +4865,9 @@ function moduleAggColor(s) {
 }
 // Area/rate formatting — matches MainViewModel.FormatArea / WorkRateDisplay.
 function fmtArea(m2) { return fmtUnit(m2 * 0.0001, 'ha'); }
-function fmtRate(haPerHr) { return fmtUnit(haPerHr, 'ha', 1) + '/hr'; }
+function fmtRate(haPerHr) { return haPerHr == null ? '—' : fmtUnit(haPerHr, 'ha', 1) + '/hr'; }
+// Work rate from speed (m/s) × tool width; null without a tool width (#398).
+function workRateHa(speedMs) { const tw = toolWidthM(); return tw > 0 ? speedMs * 3600 * tw / 10000 : null; }
 // Workable area (m²) from the Scene the client already has: headland polygon if
 // present, else the outer boundary (shoelace) — matches WorkableAreaSqM.
 function shoelace(pts) {
@@ -4611,7 +4901,7 @@ function rotatingLineText() {
     if (!scene || !scene.hasField) return '—';
     const workable = workableAreaSqM(), worked = s.workedAreaSqM || 0;
     const leftPct = workable > 0 ? ((workable - worked) * 100 / workable) : 100;
-    const haPerHr = (lastTick ? lastTick.speed : 0) * 3600 * toolWidthM() / 10000;
+    const haPerHr = workRateHa(lastTick ? lastTick.speed : 0);
     return tr('Done {area}  Left {pct}%  Rate {rate}', { area: fmtArea(worked), pct: leftPct.toFixed(0), rate: fmtRate(haPerHr) });
   }
   const name = tick && tick.activeTrackName; // AB-line page
@@ -4717,7 +5007,7 @@ function renderFieldCard() {
   // catches up, so keep Actual within Worked.
   const actual = Math.min(fd.actualAreaSqM, worked);
   const speedKmh = (lastTick ? lastTick.speed : 0) * 3.6;
-  const haPerHr = speedKmh * toolWidthM() / 10;
+  const haPerHr = workRateHa(lastTick ? lastTick.speed : 0);
   for (const r of FC.card.querySelectorAll('.fc-bnd')) r.classList.toggle('fc-hide', !(total > 0));
   FC.name.textContent = scene.fieldName + (s.jobName ? '  ·  ' + s.jobName : '');
   FC.worked.textContent = fmtArea(worked);
@@ -5020,9 +5310,15 @@ const UTI = {
   dist: document.getElementById('uti-distval'),
   typePath: document.getElementById('uti-typepath'),
 };
+// A tap on the arrow swaps the planned turn's direction, as in AgOpenGPS (SwapDirection, #411).
+// The host replans the turn and the arrow follows the new path's side.
+if (UTI.arrow) UTI.arrow.parentElement.addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation(); rnSend('youturn.direction');
+});
 const UTURN_GLYPH = {
   0: 'M7 34 Q7 20 20 20 Q33 20 33 34',         // Sagitta (default) — flatter rounded arch
   1: 'M9 34 L9 22 A11 11 0 0 1 31 22 L31 34',  // K-turn — squared/tighter inverted-U
+  2: 'M15 34 A9 9 0 1 1 25 34',                 // Keyhole — loop centred over a narrow neck
 };
 function renderUTurnIndicator() {
   if (!UTI.root) return;
@@ -5317,7 +5613,7 @@ function renderImportTracks() {
   }
 }
 
-// Recorded Path: GPS-driven record (Tier-1) + playback (Play is gated). All state
+// Recorded Path: GPS-driven record + playback. All state
 // comes from the host-driven RecordedPath frame; the name field is local input.
 function renderRecPath() {
   const r = recPath || { recFiles: [], isRecording: false, isPlaying: false, hasUnsaved: false, recordedPathInfo: '', resumeModeLabel: 'Start' };
@@ -5406,32 +5702,749 @@ function renderBoundaryPlayer() {
 }
 
 // Drag chart cards by the header (web docks ln-panels, but charts are free overlays
-// like the native FloatingPanel so the operator can move them out of the way).
-(function wireChartDrag() {
-  for (const key of ['steer', 'heading', 'xte']) {
-    const card = document.getElementById('chart-' + key);
-    const hdr = card.querySelector('.chart-hdr');
-    let drag = false, sx = 0, sy = 0, ox = 0, oy = 0;
-    card.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
-    hdr.addEventListener('pointerdown', e => {
-      if (e.target.classList.contains('chart-x')) return;
-      e.stopPropagation();
-      const r = zoomRect(card);
-      // zoomRect and clientX are screen pixels; left/top are in the card's own (zoomed)
-      // pixels.
-      drag = true; sx = e.clientX; sy = e.clientY; ox = r.left / uiZoom; oy = r.top / uiZoom;
-      card.style.left = ox + 'px'; card.style.top = oy + 'px'; card.style.right = 'auto';
-      try { hdr.setPointerCapture(e.pointerId); } catch (_) {}
-    });
-    hdr.addEventListener('pointermove', e => {
-      if (!drag) return;
-      card.style.left = (ox + (e.clientX - sx) / uiZoom) + 'px';
-      card.style.top = (oy + (e.clientY - sy) / uiZoom) + 'px';
-    });
-    const end = e => { drag = false; try { hdr.releasePointerCapture(e.pointerId); } catch (_) {} };
-    hdr.addEventListener('pointerup', end);
-    hdr.addEventListener('pointercancel', end);
+// like the native FloatingPanel so the operator can move them out of the way). The VT cards,
+// made later, use wireCardDrag too.
+// The card touched last is on top of the other cards (29, the cards' layer; the others one
+// below it, still above the map's overlays at 20 and under the panels from 30 up).
+function raiseCard(card) {
+  // Every card each time: one added since (a VT card) starts at the stylesheet's 29 too.
+  for (const c of document.querySelectorAll('.chart-card')) c.style.zIndex = c === card ? '29' : '28';
+}
+function wireCardDrag(card) {
+  const hdr = card.querySelector('.chart-hdr');
+  let drag = false, sx = 0, sy = 0, ox = 0, oy = 0;
+  card.addEventListener('pointerdown', e => { e.stopPropagation(); raiseCard(card); }); // don't pan the map
+  hdr.addEventListener('pointerdown', e => {
+    raiseCard(card); // the card's own handler doesn't hear it
+    if (e.target.closest('button, select')) return;
+    e.stopPropagation();
+    const r = zoomRect(card);
+    // zoomRect and clientX are screen pixels; left/top are in the card's own (zoomed)
+    // pixels.
+    drag = true; sx = e.clientX; sy = e.clientY; ox = r.left / uiZoom; oy = r.top / uiZoom;
+    card.style.left = ox + 'px'; card.style.top = oy + 'px'; card.style.right = 'auto';
+    try { hdr.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  hdr.addEventListener('pointermove', e => {
+    if (!drag) return;
+    card.style.left = (ox + (e.clientX - sx) / uiZoom) + 'px';
+    card.style.top = (oy + (e.clientY - sy) / uiZoom) + 'px';
+  });
+  const end = e => { drag = false; try { hdr.releasePointerCapture(e.pointerId); } catch (_) {} };
+  hdr.addEventListener('pointerup', end);
+  hdr.addEventListener('pointercancel', end);
+}
+for (const id of ['chart-steer', 'chart-heading', 'chart-xte']) wireCardDrag(document.getElementById(id));
+
+// ---- VT painter ----
+// The virtual terminal's draw list (screens, soft keys, list options) painted in Canvas 2D: no
+// ISOBUS knowledge, the items in order. From SharpIsoTerm's reference painter
+// (painter/vtpaint.js, bc508cf, MIT); keep the two in step when the draw list changes.
+//   images.add(id, w, h, rgba) · vtPaintMask(ctx, screen, images) · vtPaintKey(ctx, keys, i, images)
+//   vtPaintItems(ctx, items, images) · vtHit(items, x, y)
+
+class VtImages {
+  constructor() { this.byId = new Map(); }
+  add(id, w, h, rgba) {
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    c.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(rgba), w, h), 0, 0);
+    this.byId.set(id, c);
   }
+  get(id) { return this.byId.get(id); }
+}
+
+// The 16 pixel line art pattern as dash lengths, most significant bit first.
+function vtDash(pattern) {
+  const runs = [];
+  let bit = (pattern >> 15) & 1, run = 0;
+  if (!bit) runs.push(0); // a dash list starts with a drawn run
+  for (let i = 15; i >= 0; i--) {
+    const b = (pattern >> i) & 1;
+    if (b === bit) run++;
+    else { runs.push(run); bit = b; run = 1; }
+  }
+  runs.push(run);
+  return runs;
+}
+
+function vtStroke(ctx, it) {
+  if (!it.line || !it.lw) return false;
+  ctx.strokeStyle = it.line;
+  ctx.lineWidth = it.lw;
+  ctx.setLineDash(it.dash !== undefined ? vtDash(it.dash) : []);
+  return true;
+}
+
+function vtFill(ctx, it, images) {
+  if (it.pat) {
+    const img = images.get(it.pat);
+    if (!img) return false;
+    ctx.fillStyle = ctx.createPattern(img, "repeat");
+    return true;
+  }
+  if (!it.fill) return false;
+  ctx.fillStyle = it.fill;
+  return true;
+}
+
+// Text in a box of fixed font cells: a monospace face stretched to the cell.
+function vtText(ctx, it) {
+  const style = it.style || 0;
+  let c = it.c || "#000000", bg = it.bg;
+  if (style & 16 && bg) [c, bg] = [bg, c]; // inverted
+  if (bg) { ctx.fillStyle = bg; ctx.fillRect(it.x, it.y, it.w, it.h); }
+  const fw = it.fw || 8, fh = it.fh || 8;
+  const perLine = Math.max(1, Math.floor(it.w / fw));
+  let lines = [];
+  for (const para of it.s.split(/\r\n|\n|\r/)) {
+    if (!it.wrap || para.length <= perLine) { lines.push(para); continue; }
+    let rest = para;
+    while (rest.length > perLine) {
+      let cut = rest.lastIndexOf(" ", perLine);
+      if (cut <= 0) cut = perLine;
+      lines.push(rest.slice(0, cut));
+      rest = rest.slice(cut).replace(/^ /, "");
+    }
+    lines.push(rest);
+  }
+  lines = lines.slice(0, Math.max(1, Math.floor(it.h / fh)));
+  const total = lines.length * fh;
+  let y = it.vj === 1 ? it.y + (it.h - total) / 2 : it.vj === 2 ? it.y + it.h - total : it.y;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(it.x, it.y, it.w, it.h);
+  ctx.clip();
+  ctx.font = `${style & 8 ? "italic " : ""}${style & 1 ? "bold " : ""}${fh}px ui-monospace, Menlo, Consolas, monospace`;
+  ctx.textBaseline = "alphabetic";
+  const advance = ctx.measureText("M").width || fh / 2;
+  const sx = fw / advance;
+  ctx.fillStyle = c;
+  ctx.strokeStyle = c;
+  ctx.lineWidth = Math.max(1, fh / 12);
+  for (const line of lines) {
+    const width = line.length * fw;
+    const x = it.hj === 1 ? it.x + (it.w - width) / 2 : it.hj === 2 ? it.x + it.w - width : it.x;
+    ctx.save();
+    ctx.translate(x, y + fh * 0.8);
+    ctx.scale(sx, 1);
+    ctx.fillText(line, 0, 0);
+    ctx.restore();
+    if (style & 4) { ctx.beginPath(); ctx.moveTo(x, y + fh - 1); ctx.lineTo(x + width, y + fh - 1); ctx.stroke(); }
+    if (style & 2) { ctx.beginPath(); ctx.moveTo(x, y + fh / 2); ctx.lineTo(x + width, y + fh / 2); ctx.stroke(); }
+    y += fh;
+  }
+  ctx.restore();
+}
+
+function vtItem(ctx, it, images) {
+  switch (it.t) {
+    case "clip":
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(it.x, it.y, it.w, it.h);
+      ctx.clip();
+      break;
+    case "unclip":
+      ctx.restore();
+      break;
+    case "rect": {
+      if (vtFill(ctx, it, images)) ctx.fillRect(it.x, it.y, it.w, it.h);
+      if (!vtStroke(ctx, it)) break;
+      // The line lies inside the rectangle.
+      const h = it.lw / 2, x0 = it.x + h, y0 = it.y + h, x1 = it.x + it.w - h, y1 = it.y + it.h - h;
+      const sides = it.sides === undefined ? 15 : it.sides;
+      if (sides === 15) { ctx.strokeRect(x0, y0, x1 - x0, y1 - y0); break; }
+      ctx.beginPath();
+      if (sides & 1) { ctx.moveTo(x0, y0); ctx.lineTo(x1, y0); }
+      if (sides & 2) { ctx.moveTo(x1, y0); ctx.lineTo(x1, y1); }
+      if (sides & 4) { ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); }
+      if (sides & 8) { ctx.moveTo(x0, y0); ctx.lineTo(x0, y1); }
+      ctx.stroke();
+      break;
+    }
+    case "line":
+      if (!vtStroke(ctx, it)) break;
+      ctx.beginPath();
+      ctx.moveTo(it.x1, it.y1);
+      ctx.lineTo(it.x2, it.y2);
+      ctx.stroke();
+      break;
+    case "ellipse": {
+      // Angles count anticlockwise from 3 o'clock; the canvas's y axis points down.
+      const rx = it.w / 2, ry = it.h / 2, cx = it.x + rx, cy = it.y + ry;
+      const kind = it.kind || 0;
+      const full = !kind || it.a0 === it.a1;
+      const a0 = full ? 0 : (-it.a0 * Math.PI) / 180, a1 = full ? 2 * Math.PI : (-it.a1 * Math.PI) / 180;
+      ctx.beginPath();
+      if (kind === 3 && !full) ctx.moveTo(cx, cy);
+      ctx.ellipse(cx, cy, Math.max(0, rx - (it.lw || 0) / 2), Math.max(0, ry - (it.lw || 0) / 2), 0, a0, a1, !full);
+      if (kind !== 1) ctx.closePath();
+      if (kind !== 1 && vtFill(ctx, it, images)) ctx.fill();
+      if (vtStroke(ctx, it)) ctx.stroke();
+      break;
+    }
+    case "poly": {
+      const p = it.pts;
+      if (p.length < 4) break;
+      ctx.beginPath();
+      ctx.moveTo(p[0], p[1]);
+      for (let i = 2; i < p.length; i += 2) ctx.lineTo(p[i], p[i + 1]);
+      if (it.closed) ctx.closePath();
+      if (it.closed && vtFill(ctx, it, images)) ctx.fill("evenodd");
+      if (vtStroke(ctx, it)) ctx.stroke();
+      break;
+    }
+    case "text":
+      vtText(ctx, it);
+      break;
+    case "image": {
+      const img = images.get(it.img);
+      if (img) { ctx.imageSmoothingEnabled = false; ctx.drawImage(img, it.x, it.y, it.w, it.h); }
+      break;
+    }
+    case "hit":
+      if (!it.on) { ctx.fillStyle = "rgba(128,128,128,0.5)"; ctx.fillRect(it.x, it.y, it.w, it.h); }
+      if (it.sel) {
+        // The focus: a frame around the field, solid while it is open for input.
+        ctx.setLineDash(it.open ? [] : [4, 3]);
+        ctx.strokeStyle = "#ff8c00";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(it.x + 1, it.y + 1, it.w - 2, it.h - 2);
+        ctx.setLineDash([]);
+      }
+      break;
+    case "box":
+      ctx.setLineDash([4, 3]);
+      ctx.strokeStyle = "#ff00ff";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(it.x + 0.5, it.y + 0.5, it.w - 1, it.h - 1);
+      ctx.setLineDash([]);
+      ctx.fillStyle = "#ff00ff";
+      ctx.font = "10px sans-serif";
+      ctx.fillText(it.label, it.x + 3, it.y + 12);
+      break;
+  }
+}
+
+function vtPaintItems(ctx, items, images) {
+  ctx.save();
+  for (const it of items) vtItem(ctx, it, images);
+  ctx.restore();
+}
+
+function vtPaintMask(ctx, screen, images) {
+  ctx.fillStyle = screen.bg || "#000000";
+  ctx.fillRect(0, 0, screen.w, screen.h);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, screen.w, screen.h);
+  ctx.clip();
+  vtPaintItems(ctx, screen.items, images);
+  ctx.restore();
+}
+
+// Soft key i of the screen's key mask; an empty place (null) shows the mask's background.
+function vtPaintKey(ctx, keys, i, images) {
+  const key = keys.keys[i];
+  ctx.fillStyle = key ? key.bg : keys.bg;
+  ctx.fillRect(0, 0, keys.w, keys.h);
+  if (!key) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, keys.w, keys.h);
+  ctx.clip();
+  vtPaintItems(ctx, key.items, images);
+  ctx.restore();
+}
+
+// The topmost touchable item at x, y (mask pixels), or null.
+function vtHit(items, x, y) {
+  for (let i = items.length - 1; i >= 0; i--) {
+    const it = items[i];
+    if (it.t === "hit" && x >= it.x && x < it.x + it.w && y >= it.y && y < it.y + it.h) return it;
+  }
+  return null;
+}
+
+// Virtual terminal cards: ISOBUS implements' own screens, one card per terminal (the host runs
+// one to four, as displays in one cab; each implement chooses its terminal in its own menu). A
+// terminal flattens its implement's object pool into draw lists (screen, soft keys, input
+// editors) that the VT painter above paints; its card shows them and sends the operator's
+// touches back (vt.* commands naming the terminal, which need control). The host repeats a held
+// key and ends it if control goes. Hidden unless the host has terminals (its first link message
+// says so, with how many).
+const Vt = (() => {
+  const navBtn = document.getElementById('ln-vt'), tpl = document.getElementById('vt-card-tpl');
+  const SIZES = [320, 400, 480, 600];
+  const PAGE = 12; // soft keys shown at once (the terminal's PhysicalKeys): two columns of six, 1-6 beside the mask
+  let link = null, session = -1, images = new VtImages(); // picture ids are unique across terminals
+  let audioCtx = null;
+  const terms = []; // one per terminal: its card and what it shows
+
+  // The cards to show: the link's count (one while there is no link, for the gateway editor).
+  // The cards added after this browser's Connect open with the card it was pressed on.
+  let openAdded = false;
+  function setCount(n) {
+    while (terms.length < n) {
+      const term = makeTerminal(terms.length);
+      terms.push(term);
+      if (openAdded) term.setOpen(true);
+    }
+    while (terms.length > n) terms.pop().remove();
+  }
+
+  function message(m, t) {
+    if (t < 0) { // the link: for every terminal
+      if (m.type !== 'link') return;
+      if (m.session !== session) { // new terminals: their pictures and screens start over
+        session = m.session; images = new VtImages();
+        for (const term of terms) term.reset();
+      }
+      link = m;
+      navBtn.style.display = '';
+      setCount(m.state === 'off' ? 1 : Math.max(1, Math.min(4, m.count || 1)));
+      if (m.state !== 'off') openAdded = false;
+      render();
+      return;
+    }
+    if (terms[t]) terms[t].message(m);
+  }
+
+  function image(id, w, h, rgba) { images.add(id, w, h, rgba); }
+
+  function render() {
+    navBtn.classList.toggle('active', terms.some(term => term.open()));
+    for (const term of terms) term.render();
+  }
+
+  // The nav button: closes every card when any is open, else opens them all.
+  navBtn.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    const any = terms.some(term => term.open());
+    for (const term of terms) term.setOpen(!any);
+  });
+
+  // Control Audio Signal: the implement's beeps, as tones (activations 0 stops them).
+  function playAudio(m, term) {
+    clearTimeout(term.audioTimer);
+    if (!m.activations) return;
+    try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); } catch (_) { return; }
+    let n = Math.min(m.activations, 20);
+    const beep = () => {
+      const osc = audioCtx.createOscillator(), g = audioCtx.createGain();
+      osc.frequency.value = Math.max(200, Math.min(m.frequency || 1000, 8000));
+      g.gain.value = 0.2;
+      osc.connect(g); g.connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime + Math.max(20, m.on || 200) / 1000);
+      if (--n > 0) term.audioTimer = setTimeout(beep, Math.max(20, m.on || 200) + Math.max(20, m.off || 100));
+    };
+    beep();
+  }
+
+  function makeTerminal(index) {
+    const card = tpl.content.firstElementChild.cloneNode(true);
+    card.id = 'vt-card-' + index;
+    // Each card a little below and right of the one before, so every header can be reached.
+    card.style.top = 'calc(' + (70 + index * 36) + 'px + var(--sat))';
+    card.style.left = 'calc(' + (80 + index * 36) + 'px + var(--sal))';
+    tpl.parentNode.insertBefore(card, tpl); // beside the chart cards
+    wireCardDrag(card);
+    const q = sel => card.querySelector(sel);
+    const maskCv = q('.vt-mask'), mctx = maskCv.getContext('2d');
+    const keysEl = q('.vt-keys'), msgEl = q('.vt-msg'), editEl = q('.vt-edit'), wsSel = q('.vt-ws');
+    const dot = q('.vt-dot'), nameEl = q('.vt-name'), identEl = q('.vt-ident');
+    const alarmEl = q('.vt-alarm'), alarmText = q('.vt-alarm-text');
+    const sizeKey = 'vt.size' + (index ? '.' + index : '');
+    let screen = null, edit = null, workingSets = null, alarms = [];
+    let keyPage = 0, showGateway = false, selecting = null, sizeIx = 1, identTimer = null;
+    try { sizeIx = SIZES.indexOf(+localStorage.getItem(sizeKey)); if (sizeIx < 0) sizeIx = 1; } catch (_) {}
+    card.style.setProperty('--vt', SIZES[sizeIx] + 'px');
+    const send = (cmd, arg) => transport.send('vt.' + cmd + '|' + index + (arg !== undefined ? ',' + arg : ''));
+
+    const term = {
+      audioTimer: null,
+      open: () => card.style.display !== 'none',
+      setOpen(on) {
+        card.style.display = on ? '' : 'none';
+        navBtn.classList.toggle('active', terms.some(x => x.open()));
+        if (on) this.render();
+      },
+      reset() { screen = null; edit = null; workingSets = null; alarms = []; },
+      remove() { clearTimeout(term.audioTimer); clearTimeout(identTimer); card.remove(); },
+      message(m) {
+        switch (m.type) {
+          case 'screen': screen = m; break;
+          case 'edit': onEdit(m); break;
+          case 'workingSets': workingSets = m; break;
+          case 'alarms': onAlarms(m.list || []); break;
+          case 'audio': playAudio(m, term); return;
+          case 'identify': identify(); break;
+          default: return; // volume and later additions: nothing to show yet
+        }
+        if (term.open()) term.render();
+        else navBtn.classList.toggle('active', terms.some(x => x.open()));
+      },
+      render,
+    };
+
+    // A new alarm reaches the operator with the card closed: the card opens, and an alarm
+    // from an implement that isn't shown offers to show it.
+    function onAlarms(list) {
+      const before = new Set(alarms.map(a => a.ws + ':' + a.mask));
+      alarms = list;
+      if (list.some(a => !before.has(a.ws + ':' + a.mask)) && !term.open()) term.setOpen(true);
+    }
+
+    // Identify VT: an implement asks every terminal to show its number while the operator picks
+    // one in its menu. The card opens and shows its number for 3 s.
+    function identify() {
+      identEl.textContent = tr('VT {n}', { n: index + 1 });
+      identEl.classList.add('show');
+      clearTimeout(identTimer);
+      identTimer = setTimeout(() => identEl.classList.remove('show'), 3000);
+      if (!term.open()) term.setOpen(true);
+    }
+
+    function onEdit(m) {
+      edit = m.o === null ? null : m;
+      // A boolean toggles without an editor, when this browser asked for it.
+      if (edit && edit.kind === 'bool' && selecting === edit.o && iHoldControl) {
+        send('number', edit.o + ',' + (edit.value ? 0 : 1));
+        edit = null;
+      }
+      selecting = null;
+    }
+
+    function wsLabel(ws) { return tr('Implement') + ' ' + ws.address + (ws.state === 'transferring' ? ' (' + ws.progress + '%)' : ''); }
+
+    function renderHeader() {
+      nameEl.textContent = tr('VT {n}', { n: index + 1 }); // the same with one terminal or four
+      const st = link ? link.state : 'off';
+      dot.className = 'vt-dot ' + (st === 'connected' ? 'ok' : st === 'connecting' || st === 'busy' ? 'wait' : st === 'failed' ? 'bad' : '');
+      dot.title = st === 'connected' ? (link.name || link.gateway) + (link.rtt != null ? ' · ' + link.rtt + ' ms' : '') + (link.bus ? ' · ' + link.bus : '')
+        : st === 'busy' ? tr('In use by {who}', { who: link.why })
+        : st === 'connecting' ? (link.adapter ? tr('Waiting for the CAN adapter on {port}', { port: link.adapter }) : tr('Connecting to {gw}', { gw: link.gatewayName || link.gateway })) + (link.why ? ' (' + link.why + ')' : '') : '';
+    }
+
+    function render() {
+      renderHeader();
+      if (!term.open()) return;
+      // Implement picker: shown with two or more implements on this terminal.
+      const list = (workingSets && workingSets.list || []).filter(w => w.selectable !== false);
+      wsSel.style.display = list.length > 1 ? '' : 'none';
+      if (list.length > 1) {
+        wsSel.innerHTML = '';
+        for (const w of list) {
+          const o = document.createElement('option');
+          o.value = w.name; o.textContent = wsLabel(w); o.title = w.name;
+          o.selected = workingSets.active === w.name;
+          wsSel.appendChild(o);
+        }
+      }
+      // Alarm from an implement that isn't shown.
+      const away = alarms.find(a => !screen || a.ws !== screen.ws);
+      alarmEl.classList.toggle('show', !!away);
+      if (away) { alarmText.textContent = tr('Alarm') + ': ' + tr('Implement') + ' ' + away.address; alarmEl.dataset.ws = away.ws; }
+
+      const msg = statusMessage();
+      msgEl.style.display = msg ? '' : 'none';
+      if (msg) { if (msgEl.dataset.msg !== msg.key) { msgEl.dataset.msg = msg.key; msgEl.innerHTML = ''; msg.build(msgEl); } }
+      else msgEl.dataset.msg = '';
+      paint();
+      renderEdit();
+    }
+
+    // What covers the mask instead of a screen, or null when there's a screen to show. The
+    // gateway editor is on the first card only: one connection serves every terminal.
+    function statusMessage() {
+      const text = (t, sub) => el => {
+        const d = document.createElement('div'); d.textContent = t; el.appendChild(d);
+        if (sub) { const s = document.createElement('div'); s.className = 'vt-sub'; s.textContent = sub; el.appendChild(s); }
+      };
+      if (index === 0 && (showGateway || !link || link.state === 'off')) return { key: 'gw:' + (link ? [link.session, link.state, link.gateway, link.gatewayName, link.adapter, link.count].concat(link.ports || [], (link.gateways || []).map(g => g.name + '@' + g.address)).join('|') : ''), build: buildGateway }; // rebuilt when what it shows changes
+      if (!link || link.state === 'off') return { key: 'off', build: text(tr('No gateway')) };
+      if (link.state === 'failed') return { key: 'failed' + link.why, build: text(tr('The terminal could not start.'), link.why) };
+      if (link.state === 'busy')
+        return { key: 'busy' + link.why, build: text(tr('{gw} is in use by {who}', { gw: link.gatewayName || link.gateway, who: link.why }),
+          tr('This card connects when the other terminal lets it go.')) };
+      if (link.state !== 'connected')
+        return { key: 'conn' + link.why, build: link.adapter
+          ? text(tr('Waiting for the CAN adapter on {port}', { port: link.adapter }), link.why)
+          : text(tr('Connecting to {gw}', { gw: link.gatewayName || link.gateway }), link.why) };
+      if (!screen || !screen.ws || !screen.kind) {
+        const ws = workingSets && workingSets.list && workingSets.list[0];
+        if (ws && ws.state === 'transferring') return { key: 'up' + ws.progress, build: text(tr('Loading the implement\'s screens: {p}%', { p: ws.progress })) };
+        if (ws && ws.state === 'parsing') return { key: 'parse', build: text(tr('Loading the implement\'s screens')) };
+        if (ws && ws.state === 'failed') return { key: 'bad', build: text(tr('The implement\'s screens were refused.')) };
+        return { key: 'none', build: text(tr('No implement'), terms.length > 1 ? tr('Choose this VT in the implement\'s own settings.') : link.name || link.gateway) };
+      }
+      return null;
+    }
+
+    // The gear: how the terminals reach the bus (a gateway on the network, or an slcan adapter
+    // plugged into this device) and how many there are.
+    function buildGateway(el) {
+      const d = document.createElement('div'); d.textContent = tr('ISOBUS connection'); el.appendChild(d);
+      const kind = document.createElement('select'); kind.className = 'vt-ws';
+      for (const [v, label] of [['gateway', tr('Gateway on the network')], ['adapter', tr('CAN adapter on this device')]]) {
+        const o = document.createElement('option'); o.value = v; o.textContent = label; kind.appendChild(o);
+      }
+      kind.value = link && link.adapter ? 'adapter' : 'gateway';
+      if (link && link.adapters === false && !link.adapter) kind.style.display = 'none'; // no USB adapters here (iOS)
+      el.appendChild(kind);
+      // Gateway: one of those announcing themselves on the network, by name, or an address typed.
+      const found = (link && link.gateways || []).slice();
+      const gwRow = document.createElement('div'); gwRow.className = 'vt-row';
+      const pick = document.createElement('select'); pick.className = 'vt-ws';
+      for (const g of found) {
+        const o = document.createElement('option'); o.value = g.address; o.textContent = g.name; o.dataset.name = g.name;
+        pick.appendChild(o);
+      }
+      const other = document.createElement('option'); other.value = ''; other.textContent = tr('Other address…');
+      pick.appendChild(other);
+      const mine = link && link.gateway ? found.find(g => (link.gatewayName && g.name === link.gatewayName) || g.address === link.gateway) : found[0];
+      pick.value = mine ? mine.address : '';
+      const gwAgain = document.createElement('button'); gwAgain.className = 'fo-btn'; gwAgain.textContent = tr('Refresh');
+      gwAgain.addEventListener('pointerdown', e => { e.preventDefault(); transport.send('vt.ports'); });
+      gwRow.append(pick, gwAgain);
+      const inp = document.createElement('input');
+      inp.placeholder = '192.168.1.10'; inp.value = link && link.gateway && !mine ? link.gateway : '';
+      inp.autocapitalize = 'off'; inp.spellcheck = false;
+      // Adapter: its serial port, from the host's list (refreshed when the gear opens).
+      const portRow = document.createElement('div'); portRow.className = 'vt-row';
+      const port = document.createElement('select'); port.className = 'vt-ws';
+      const ports = (link && link.ports || []).slice();
+      if (link && link.adapter && !ports.includes(link.adapter)) ports.unshift(link.adapter);
+      for (const p of ports) {
+        const o = document.createElement('option'); o.value = p; o.textContent = p; o.selected = link && p === link.adapter;
+        port.appendChild(o);
+      }
+      const again = document.createElement('button'); again.className = 'fo-btn'; again.textContent = tr('Refresh');
+      again.addEventListener('pointerdown', e => { e.preventDefault(); transport.send('vt.ports'); });
+      portRow.append(port, again);
+      const sub = document.createElement('div'); sub.className = 'vt-sub';
+      const show = () => {
+        const adapter = kind.value === 'adapter', typed = !pick.value;
+        gwRow.style.display = adapter ? 'none' : '';
+        inp.style.display = adapter || !typed ? 'none' : '';
+        portRow.style.display = adapter ? '' : 'none';
+        sub.textContent = adapter
+          ? (ports.length ? tr('An slcan adapter (CANable) on the implement bus, 250 kbit/s.') : tr('No adapter found: plug it in, then Refresh.'))
+          : !typed ? tr('A gateway on this network, on the implement bus.')
+          : found.length ? tr('Address of the AOW link gateway on the implement bus (port 2323).')
+          : tr('No gateway found on this network. Type its address (port 2323), or Refresh.');
+      };
+      kind.addEventListener('change', show);
+      pick.addEventListener('change', show);
+      el.append(gwRow, inp, portRow, sub);
+      show();
+      // How many terminals: one card each, as displays in one cab.
+      const countRow = document.createElement('div'); countRow.className = 'vt-row';
+      const countLabel = document.createElement('span'); countLabel.textContent = tr('Terminals');
+      const count = document.createElement('select'); count.className = 'vt-ws';
+      const have = link && link.count || 1;
+      for (let n = 1; n <= 4; n++) {
+        const o = document.createElement('option'); o.value = n; o.textContent = n; o.selected = n === have;
+        count.appendChild(o);
+      }
+      countRow.append(countLabel, count);
+      el.appendChild(countRow);
+      const row = document.createElement('div'); row.className = 'vt-row';
+      const ok = document.createElement('button'); ok.className = 'fo-btn'; ok.textContent = tr('Connect');
+      ok.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        if (+count.value > 1) openAdded = true;
+        if (+count.value !== have) transport.send('vt.count|' + count.value);
+        const picked = pick.value ? pick.selectedOptions[0].dataset.name : '';
+        const address = pick.value || inp.value.trim();
+        if (kind.value === 'adapter') { if (port.value) transport.send('vt.adapter|' + port.value); }
+        else if (+count.value === have || address !== (link && link.gateway || '') || picked !== (link && link.gatewayName || '') || (link && link.adapter))
+          transport.send('vt.gateway|' + address + (picked ? '\t' + picked : ''));
+        showGateway = false; msgEl.dataset.msg = ''; render();
+      });
+      row.appendChild(ok);
+      if (link && link.state !== 'off') {
+        // Disconnect: every terminal off, until Connect.
+        const off = document.createElement('button'); off.className = 'fo-btn'; off.textContent = tr('Disconnect');
+        off.addEventListener('pointerdown', e => { e.preventDefault(); transport.send('vt.gateway|'); showGateway = false; msgEl.dataset.msg = ''; render(); });
+        row.appendChild(off);
+        const cancel = document.createElement('button'); cancel.className = 'fo-btn'; cancel.textContent = tr('Cancel');
+        cancel.addEventListener('pointerdown', e => { e.preventDefault(); showGateway = false; render(); });
+        row.appendChild(cancel);
+      }
+      el.appendChild(row);
+    }
+
+    function paint() {
+      if (!screen || !screen.kind) { keysEl.innerHTML = ''; return; }
+      maskCv.width = screen.w; maskCv.height = screen.h;
+      mctx.setTransform(1, 0, 0, 1, 0, 0);
+      vtPaintMask(mctx, screen, images);
+      // Soft keys: a page of PAGE at a time, with a pager when the mask holds more.
+      const keys = screen.keys ? screen.keys.keys : [];
+      const pages = Math.max(1, Math.ceil(keys.length / PAGE));
+      if (keyPage >= pages) keyPage = 0;
+      const want = PAGE + (pages > 1 ? 1 : 0);
+      if (keysEl.childElementCount !== want || keysEl.dataset.pages !== String(pages)) {
+        keysEl.innerHTML = ''; keysEl.dataset.pages = pages;
+        for (let i = 0; i < PAGE; i++) { const c = document.createElement('canvas'); c.dataset.slot = i; keysEl.appendChild(c); wireKey(c); }
+        if (pages > 1) {
+          const b = document.createElement('button'); b.textContent = '⇣';
+          b.addEventListener('pointerdown', e => { e.preventDefault(); keyPage = (keyPage + 1) % pages; paint(); });
+          keysEl.appendChild(b);
+        }
+      }
+      for (let i = 0; i < PAGE; i++) {
+        const c = keysEl.children[i], k = keyPage * PAGE + i;
+        const kw = screen.keys ? screen.keys.w : 80, kh = screen.keys ? screen.keys.h : 80;
+        c.width = kw; c.height = kh;
+        const kc = c.getContext('2d');
+        kc.setTransform(1, 0, 0, 1, 0, 0);
+        if (screen.keys && k < keys.length) vtPaintKey(kc, screen.keys, k, images);
+        else { kc.fillStyle = screen.keys ? screen.keys.bg : '#808080'; kc.fillRect(0, 0, kw, kh); }
+      }
+    }
+
+    // Press, then release or abort: pointer up over the same thing releases; leaving it or a
+    // cancelled touch aborts. A press must always end, so a lost pointer aborts too.
+    function trackPress(el, kind, o, still) {
+      send('key', kind + ',' + o + ',p');
+      let done = false;
+      const end = state => {
+        if (done) return; done = true;
+        send('key', kind + ',' + o + ',' + state);
+        el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', cancel);
+        el.removeEventListener('pointermove', move); el.removeEventListener('lostpointercapture', cancel);
+      };
+      const up = e => end(still(e) ? 'r' : 'a');
+      const cancel = () => end('a');
+      const move = e => { if (!still(e)) end('a'); };
+      el.addEventListener('pointerup', up); el.addEventListener('pointercancel', cancel);
+      el.addEventListener('pointermove', move); el.addEventListener('lostpointercapture', cancel);
+    }
+
+    function wireKey(c) {
+      c.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        if (!iHoldControl || !screen || !screen.keys) return;
+        const key = screen.keys.keys[keyPage * PAGE + (+c.dataset.slot)];
+        if (!key) return;
+        try { c.setPointerCapture(e.pointerId); } catch (_) {}
+        const r = c.getBoundingClientRect();
+        trackPress(c, 's', key.o, ev => ev.clientX >= r.left && ev.clientX < r.right && ev.clientY >= r.top && ev.clientY < r.bottom);
+      });
+    }
+
+    function maskPoint(e) {
+      const r = maskCv.getBoundingClientRect();
+      return { x: (e.clientX - r.left) * screen.w / r.width, y: (e.clientY - r.top) * screen.h / r.height };
+    }
+
+    maskCv.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (!iHoldControl || !screen || !screen.kind) return;
+      const p = maskPoint(e);
+      const hit = vtHit(screen.items, p.x, p.y);
+      if (!hit || !hit.on) return;
+      if (hit.kind === 'input') { selecting = hit.o; send('select', hit.o); return; }
+      if (hit.kind !== 'button') return;
+      try { maskCv.setPointerCapture(e.pointerId); } catch (_) {}
+      trackPress(maskCv, 'b', hit.o, ev => {
+        const q = maskPoint(ev);
+        return q.x >= hit.x && q.x < hit.x + hit.w && q.y >= hit.y && q.y < hit.y + hit.h;
+      });
+    });
+
+    // The editor for an open input field (only for the browser holding control).
+    function renderEdit() {
+      const show = !!edit && iHoldControl && term.open() && !(msgEl.style.display !== 'none');
+      editEl.classList.toggle('show', show);
+      if (!show) { editEl.dataset.o = ''; editEl.innerHTML = ''; return; }
+      const key = edit.ws + ':' + edit.o + ':' + edit.kind + ':' + edit.value;
+      if (editEl.dataset.o === key) return;
+      editEl.dataset.o = key; editEl.innerHTML = '';
+      const row = document.createElement('div'); row.className = 'vt-row';
+      const btn = (label, fn) => {
+        const b = document.createElement('button'); b.className = 'fo-btn'; b.textContent = label;
+        b.addEventListener('pointerdown', ev => { ev.preventDefault(); fn(); }); row.appendChild(b);
+      };
+      const esc = () => send('escape');
+      if (edit.kind === 'number') {
+        const inp = document.createElement('input');
+        inp.inputMode = 'decimal'; inp.value = edit.text;
+        const lo = (edit.min + edit.offset) * edit.scale, hi = (edit.max + edit.offset) * edit.scale;
+        const sub = document.createElement('div'); sub.className = 'vt-sub';
+        sub.textContent = Math.min(lo, hi).toFixed(edit.decimals) + ' … ' + Math.max(lo, hi).toFixed(edit.decimals);
+        const enter = () => {
+          const shown = parseFloat(inp.value.replace(',', '.'));
+          if (!isFinite(shown) || !edit.scale) return;
+          const raw = Math.round(shown / edit.scale) - edit.offset;
+          if (raw < edit.min || raw > edit.max) { sub.textContent = tr('Out of range') + ': ' + sub.textContent; return; }
+          send('number', edit.o + ',' + raw);
+        };
+        inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') enter(); else if (ev.key === 'Escape') esc(); });
+        editEl.append(inp, sub);
+        btn(tr('OK'), enter); btn(tr('Cancel'), esc);
+        editEl.appendChild(row);
+        setTimeout(() => { inp.focus(); inp.select(); }, 0);
+      } else if (edit.kind === 'string') {
+        const inp = document.createElement('input');
+        inp.value = edit.value; inp.maxLength = edit.length; inp.autocapitalize = 'off'; inp.spellcheck = false;
+        const enter = () => send('string', edit.o + ',' + inp.value);
+        inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') enter(); else if (ev.key === 'Escape') esc(); });
+        editEl.appendChild(inp);
+        btn(tr('OK'), enter); btn(tr('Cancel'), esc);
+        editEl.appendChild(row);
+        setTimeout(() => inp.focus(), 0);
+      } else if (edit.kind === 'list') {
+        const opts = document.createElement('div'); opts.className = 'vt-opts';
+        edit.options.forEach((items, i) => {
+          if (!items) return;
+          const c = document.createElement('canvas');
+          c.width = edit.w; c.height = edit.h;
+          if (i === edit.value) c.classList.add('sel');
+          const cx = c.getContext('2d');
+          cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, edit.w, edit.h);
+          vtPaintItems(cx, items, images);
+          c.addEventListener('pointerdown', ev => { ev.preventDefault(); send('number', edit.o + ',' + i); });
+          opts.appendChild(c);
+        });
+        editEl.appendChild(opts);
+        btn(tr('Cancel'), esc);
+        editEl.appendChild(row);
+      } else { // bool opened by the implement or another browser
+        btn(edit.value ? tr('Off') : tr('On'), () => send('number', edit.o + ',' + (edit.value ? 0 : 1)));
+        btn(tr('Cancel'), esc);
+        editEl.appendChild(row);
+      }
+    }
+
+    if (index) q('.vt-gear').style.display = 'none'; // the connection is set on VT 1
+    q('.vt-x').addEventListener('pointerdown', e => { e.preventDefault(); term.setOpen(false); });
+    q('.vt-gear').addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (!iHoldControl) return;
+      showGateway = !showGateway; msgEl.dataset.msg = ''; render();
+      if (showGateway) transport.send('vt.ports');
+    });
+    q('.vt-size').addEventListener('pointerdown', e => {
+      e.preventDefault();
+      sizeIx = (sizeIx + 1) % SIZES.length;
+      card.style.setProperty('--vt', SIZES[sizeIx] + 'px');
+      try { localStorage.setItem(sizeKey, SIZES[sizeIx]); } catch (_) {}
+    });
+    wsSel.addEventListener('change', () => { if (iHoldControl) send('activate', wsSel.value); });
+    q('.vt-alarm-show').addEventListener('pointerdown', e => {
+      e.preventDefault();
+      if (iHoldControl && alarmEl.dataset.ws) send('activate', alarmEl.dataset.ws);
+    });
+
+    return term;
+  }
+
+  return { message, image, render };
 })();
 
 // Clock — browser-local 24h HH:MM:SS.
@@ -5460,7 +6473,9 @@ function toolWidthM() {
     for (const s of ts) { if (s.left < lo) lo = s.left; if (s.right > hi) hi = s.right; }
     if (hi > lo) return hi - lo;
   }
-  return 6;
+  // No sections: the host's tool width (#398); 0 when that isn't set either, never a guess.
+  const w = config && config.tool && config.tool.totalWidth;
+  return w > 0 ? w : 0;
 }
 // HUD text (DOM). Built each frame from the latest tick/scene.
 // ---- Skia (CanvasKit) render — Phase A: vector layers at parity. Works in CSS
@@ -5772,7 +6787,7 @@ function drawGridSk(canvas) {
   const minE = Math.max(camE - halfW, -G), maxE = Math.min(camE + halfW, G);
   const minN = Math.max(camN - halfH, -G), maxN = Math.min(camN + halfH, G);
   if (minE >= maxE || minN >= maxN) return;
-  const toolW = toolWidthM();
+  const toolW = toolWidthM() || 1; // no tool width: plain metres
   // Spacing = tool-width × NiceStep125(viewSpan / (toolW·30)) — same as native.
   const spacing = toolW * niceStep125(Math.max(vw, vh) / pxPerM / (toolW * 30));
   const major = k => k % 10 === 0 ? SKP.gridMajor : SKP.gridMinor;
@@ -6246,11 +7261,7 @@ function makeCovGrid(init) {
   let canvas = null, cctx = null, covPaint = null;
   if (surface) {
     surface.getCanvas().clear(CK.TRANSPARENT);
-    covPaint = new CK.Paint(); covPaint.setStyle(CK.PaintStyle.Fill); covPaint.setAntiAlias(false);
-    // Src (replace), not SrcOver: cells carry a coverage-fraction alpha (edge cells < 1), and a
-    // cell is re-emitted with rising alpha as it fills — replace sets the exact value each time;
-    // SrcOver would blend re-draws and creep edges toward opaque.
-    covPaint.setBlendMode(CK.BlendMode.Src);
+    covPaint = makeCovPaint();
   } else {
     canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; cctx = canvas.getContext('2d');
   }
@@ -6259,6 +7270,32 @@ function makeCovGrid(init) {
     width: w, height: h, surface, covPaint, pending: [],
     canvas, cctx, dirty: true, skImg: null, lastBuild: 0,
   };
+}
+function makeCovPaint() {
+  const p = new CK.Paint(); p.setStyle(CK.PaintStyle.Fill); p.setAntiAlias(false);
+  // Src (replace), not SrcOver: cells carry a coverage-fraction alpha (edge cells < 1), and a
+  // cell is re-emitted with rising alpha as it fills — replace sets the exact value each time;
+  // SrcOver would blend re-draws and creep edges toward opaque.
+  p.setBlendMode(CK.BlendMode.Src);
+  return p;
+}
+// A page that loads with a job open gets its coverage before CanvasKit is ready, so the grid
+// is built on the 2D fallback and would stay there. Once the GPU context exists, copy it onto
+// a render target (once) and carry on with the GPU path. Both paths flip y the same way
+// (row 0 = highest northing), so the copy lines up as is.
+function upgradeCovToGpu() {
+  if (!cov || cov.surface || !cov.canvas || !CK || !grCtx) return;
+  let surface = null;
+  try { surface = CK.MakeRenderTarget(grCtx, cov.width, cov.height); } catch (e) { surface = null; }
+  if (!surface) return; // bigger than a texture: stays on the 2D path
+  const sk = surface.getCanvas();
+  sk.clear(CK.TRANSPARENT);
+  const img = CK.MakeImageFromCanvasImageSource(cov.canvas);
+  if (img) { sk.drawImageOptions(img, 0, 0, CK.FilterMode.Nearest, CK.MipmapMode.None, null); img.delete(); }
+  surface.flush();
+  if (cov.skImg) cov.skImg.delete();
+  cov.surface = surface; cov.covPaint = makeCovPaint();
+  cov.canvas = null; cov.cctx = null; cov.skImg = null; cov.dirty = true;
 }
 
 // Re-anchor existing coverage into a grown grid (bounds expansion, SAME cell size). The old
@@ -6541,6 +7578,7 @@ function renderSkia(canvas, rp) {
   drawSatBoundarySk(canvas); // live boundary-on-satellite polygon being drawn
   drawAbDrawPreviewSk(canvas); // #40 — A/B (orange/blue) dots for the AB/curve being drawn
   drawCurveMarksSk(canvas); // record-curve path dots (Set Point A → B)
+  drawBoundaryCurvePreviewSk(canvas); // Bnd. Curve: the chosen way round (#450)
   drawDrawingSk(canvas); // live draw-on-map AB/curve preview (Phase MT)
   drawHeadlandDrawSk(canvas); // live headland draw preview (Field Builder stage 2)
   drawHeadlandSegEditLinesSk(canvas); // headland-editor offset lines (yellow/red) while editing
@@ -6580,6 +7618,8 @@ function skFrame(ts) {
   }
   // DOM overlays (independent of the GL surface).
   updateLightbarText();
+  updateTramLights();
+  updatePassHud();
   updateHeadlandHud();
   renderStatusBar();
   renderSimBar();

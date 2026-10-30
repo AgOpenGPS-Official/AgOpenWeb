@@ -69,6 +69,10 @@ public class CoverageMapService : ICoverageMapService
     // resolution.
     private const long MAX_DISPLAY_PIXELS = 25_000_000;
 
+    // Largest display grid side the web clients can hold as one texture (0 = no limit
+    // reported yet). See LimitDisplaySide.
+    private int _maxDisplaySide;
+
     // Per-zone cell counters for acreage calculation (zone index -> cell count)
     private readonly Dictionary<int, long> _cellCountPerZone = new();
 
@@ -797,6 +801,7 @@ public class CoverageMapService : ICoverageMapService
     /// </summary>
     private bool IsCellCovered(int cellE, int cellN)
     {
+        WorkCounters.CoverageLookups++;
         if (_detectionBits == null || !_fieldBoundsSet)
             return false;
 
@@ -1312,7 +1317,45 @@ public class CoverageMapService : ICoverageMapService
         double multiplier = _configStore.Display.DisplayResolutionMultiplier;
         if (multiplier > 1.0) cellSize *= multiplier;
 
+        // Keep each side within the largest texture a browser can hold. A bigger grid can't be
+        // a GPU render target, and the web client's 2D fallback then copies the whole image
+        // several times over (about 100 MB per copy at 5000 x 5000), enough to get a tablet
+        // killed. SetDisplayGrid snaps to the world grid, which can add a pixel at each end.
+        if (_maxDisplaySide > 2)
+        {
+            double needed = Math.Max(worldWidthM, worldHeightM) / (_maxDisplaySide - 2);
+            if (needed > cellSize) cellSize = SnapDisplayCellUp(needed);
+        }
+
         return cellSize;
+    }
+
+    /// <summary>The next display cell size at or above <paramref name="cellSize"/>, from a
+    /// short list of steps, so saved display tiles keep to a few predictable cell sizes.</summary>
+    private static double SnapDisplayCellUp(double cellSize)
+    {
+        foreach (double step in DisplayCellSteps)
+            if (cellSize <= step + 1e-9) return step;
+        return Math.Ceiling(cellSize);
+    }
+
+    private static readonly double[] DisplayCellSteps = { 0.15, 0.2, 0.25, 0.35, 0.5, 0.75 };
+
+    /// <summary>
+    /// Limit both sides of the display grid to <paramref name="maxSide"/> pixels (a web
+    /// client's largest texture). Only ever tightens: a second browser with a bigger GPU
+    /// doesn't lift the limit the tablet set. An open field is regridded at once.
+    /// </summary>
+    public void LimitDisplaySide(int maxSide)
+    {
+        if (maxSide <= 2) return;
+        lock (_coverageLock)
+        {
+            if (_maxDisplaySide != 0 && _maxDisplaySide <= maxSide) return;
+            _maxDisplaySide = maxSide;
+        }
+        Console.WriteLine($"[Coverage] Display grid limited to {maxSide} px a side (the web client's largest texture)");
+        RebuildDisplayForResolutionChange();
     }
 
     /// <summary>

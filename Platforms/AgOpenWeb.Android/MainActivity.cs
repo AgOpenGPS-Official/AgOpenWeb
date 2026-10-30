@@ -101,21 +101,7 @@ public class MainActivity : Activity
 #if DEBUG
         WebView.SetWebContentsDebuggingEnabled(true); // chrome://inspect
 #endif
-        var web = new WebView(this);
-        var s = web.Settings;
-        s.JavaScriptEnabled = true;
-        s.DomStorageEnabled = true;
-        s.MediaPlaybackRequiresUserGesture = false; // alarms must sound before the first tap
-        s.LoadWithOverviewMode = true;
-        s.UseWideViewPort = true;
-        s.TextZoom = 100; // the system font-size setting must not scale the UI
-        s.SetSupportMultipleWindows(true); // window.open → LauncherWebChromeClient.OnCreateWindow
-        s.JavaScriptCanOpenWindowsAutomatically = true;
-        web.SetBackgroundColor(global::Android.Graphics.Color.ParseColor("#0b1020"));
-        web.SetWebViewClient(new LauncherWebViewClient(LauncherPort, OnLoadFinished));
-        web.SetWebChromeClient(new LauncherWebChromeClient());
-        // window.agnative.hideKeyboard(). Must be added before the first load.
-        web.AddJavascriptInterface(new WebKeyboardBridge(), "agnative");
+        var web = CreateWebView();
 
         var splash = new TextView(this)
         {
@@ -136,6 +122,44 @@ public class MainActivity : Activity
 
         _web = web;
         _splash = splash;
+    }
+
+    private WebView CreateWebView()
+    {
+        var web = new WebView(this);
+        var s = web.Settings;
+        s.JavaScriptEnabled = true;
+        s.DomStorageEnabled = true;
+        s.MediaPlaybackRequiresUserGesture = false; // alarms must sound before the first tap
+        s.LoadWithOverviewMode = true;
+        s.UseWideViewPort = true;
+        s.TextZoom = 100; // the system font-size setting must not scale the UI
+        s.SetSupportMultipleWindows(true); // window.open → LauncherWebChromeClient.OnCreateWindow
+        s.JavaScriptCanOpenWindowsAutomatically = true;
+        web.SetBackgroundColor(global::Android.Graphics.Color.ParseColor("#0b1020"));
+        web.SetWebViewClient(new LauncherWebViewClient(LauncherPort, OnLoadFinished, OnRenderProcessGone));
+        _chromeClient = new LauncherWebChromeClient(this);
+        web.SetWebChromeClient(_chromeClient);
+        // window.agnative.hideKeyboard(). Must be added before the first load.
+        web.AddJavascriptInterface(new WebKeyboardBridge(), "agnative");
+        return web;
+    }
+
+    // UI thread. The page's renderer died, and a WebView can't be used again after that: swap in
+    // a new one and load the page. The guidance host lives in this process and keeps running;
+    // the page coming back reconnects to it (its deadman will have turned AutoSteer and the
+    // sections off, as for any lost connection).
+    private void OnRenderProcessGone(WebView dead)
+    {
+        var root = dead.Parent as ViewGroup;
+        root?.RemoveView(dead);
+        dead.Destroy();
+        if (_destroyed || !ReferenceEquals(dead, _web) || root == null) return;
+
+        var web = CreateWebView();
+        root.AddView(web, 0, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent));
+        _web = web;
+        web.LoadUrl($"http://localhost:{LauncherPort}/");
     }
 
     // ---- startup: wait for the host, then load the page --------------------------------------
@@ -323,7 +347,17 @@ public class MainActivity : Activity
         }
     }
 
-    protected override void OnResume()
+    private LauncherWebChromeClient? _chromeClient;
+
+    // The system file picker's answer (bug report attachments) goes back to the page.
+    protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
+    {
+        base.OnActivityResult(requestCode, resultCode, data);
+        if (requestCode == LauncherWebChromeClient.FileChooserRequest)
+            _chromeClient?.OnFileChosen(resultCode, data);
+    }
+
+        protected override void OnResume()
     {
         base.OnResume();
 
