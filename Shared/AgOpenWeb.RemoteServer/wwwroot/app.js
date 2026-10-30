@@ -2197,8 +2197,9 @@ document.getElementById('dlg-qab-cancel').addEventListener('pointerdown', e => {
 
 // ---- Tracks manager (mirrors native TracksDialogPanel) ----
 // View-only without control (just reads scene.trackList); the actions are Tier-2.
-// Like AgOpenGPS's track list: tapping a row only highlights it (trkSel); guidance
-// changes when Activate is pressed. Delete / Swap act on the highlighted row (#109).
+// Tapping a row highlights it (trkSel) and makes it the active track at once (#148), where
+// AgOpenGPS waits for Use; Activate on the active track turns guidance off. Delete / Swap act
+// on the highlighted row (#109).
 let trkSel = -1; // index into scene.trackList, or -1
 function openTracksManager() { trkSel = -1; renderTracksList(); openDialog('dlg-tracks'); }
 function renderTracksList() {
@@ -2499,7 +2500,10 @@ document.getElementById('fb-trk-edit').addEventListener('pointerdown', e => { e.
 document.getElementById('fb-trk-delete').addEventListener('pointerdown', e => {
   e.stopPropagation();
   const tl = scene && scene.trackList; if (fbSel < 0 || !tl || !tl[fbSel] || !iHoldControl) return;
-  transport.send('track.delete|' + tl[fbSel].index); fbSel = -1;
+  const t = tl[fbSel];
+  // Asks first, as the Tracks manager does: a track can't be brought back.
+  showConfirm(tr('Delete Track'), tr("Delete '{name}'? This cannot be undone.", { name: t.name }),
+    () => { transport.send('track.delete|' + t.index); fbSel = -1; });
 });
 document.getElementById('fb-trk-deleteall').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -4782,15 +4786,20 @@ function updateTramLights() {
 }
 
 // Pass HUD → DOM overlay under the lightbar readout, as AgOpenGPS's DrawTrackInfo: shown
-// with any track, whatever the Light bar / Steer bar settings. The reference line is the
-// edge between two passes (PassGeometry), so each side counts from 1: pass 0 is "1R" (first
-// pass right of A→B), pass −1 is "1L". The side is fixed in the field, whichever way you drive.
+// with any track, whatever the Light bar / Steer bar settings. The host's label is an arrow
+// for the way you drive (↑ A→B, ↓ B→A) and the pass: the reference line is the edge between
+// two passes (PassGeometry), so each side counts from 1: pass 0 is "1R" (first pass right of
+// A→B), pass −1 is "1L". The side is fixed in the field, whichever way you drive. A nudge
+// follows, with its side as the nudge window shows it: "<12 cm" left, "12 cm>" right.
 const passHud = document.getElementById('pass-hud');
 function updatePassHud() {
   // No passes on a contour (#110).
   if (!tick || !tick.guidanceActive || !tick.op || tick.op.contour) { passHud.style.display = 'none'; return; }
   const pass = tick.op.passNumber | 0;
-  const label = pass >= 0 ? `${pass + 1}R` : `${-pass}L`;
+  const nudgeM = tick.op.nudgeOffset || 0;
+  const nudge = Math.round(Math.abs(nudgeM) * (isMetric() ? 100 : 39.3701));
+  const nudgeText = nudge === 0 ? '' : nudgeM < 0 ? ` <${nudge} ${unitLabel('cm')}` : ` ${nudge} ${unitLabel('cm')}>`;
+  const label = (tick.lineLabel || (pass >= 0 ? `${pass + 1}R` : `${-pass}L`)) + nudgeText;
   if (passHud.textContent !== label) passHud.textContent = label;
   passHud.style.display = 'block';
 }

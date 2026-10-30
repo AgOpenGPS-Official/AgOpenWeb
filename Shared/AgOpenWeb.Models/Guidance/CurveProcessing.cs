@@ -597,6 +597,24 @@ namespace AgOpenWeb.Models.Guidance
             - m[0, 1] * (m[1, 0] * m[2, 2] - m[1, 2] * m[2, 0])
             + m[0, 2] * (m[1, 0] * m[2, 1] - m[1, 1] * m[2, 0]);
 
+        /// <summary>
+        /// Each point averaged with the <paramref name="half"/> points either side (fewer at the ends,
+        /// whose first and last points stay put), with headings: takes the wobble out of a driven line.
+        /// </summary>
+        public static List<Vec3> SmoothMovingAverage(IReadOnlyList<Vec3> points, int half)
+        {
+            int n = points.Count;
+            var result = new List<Vec3>(n);
+            for (int i = 0; i < n; i++)
+            {
+                int k = Math.Min(half, Math.Min(i, n - 1 - i)); // a symmetric window that fits
+                double e = 0, no = 0;
+                for (int j = i - k; j <= i + k; j++) { e += points[j].Easting; no += points[j].Northing; }
+                result.Add(new Vec3(e / (2 * k + 1), no / (2 * k + 1), 0));
+            }
+            return n < 2 ? result : CalculateHeadings(result);
+        }
+
         // Below this many points the plain scan is as quick as building a grid.
         private const int NearGridMinPoints = 64;
 

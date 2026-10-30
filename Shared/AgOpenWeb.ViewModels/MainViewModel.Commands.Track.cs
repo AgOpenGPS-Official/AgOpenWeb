@@ -445,6 +445,16 @@ public partial class MainViewModel
                 return;
             }
 
+            // The curve runs to where B was pressed, not to the last point recorded up to a metre
+            // before it (AgOpenGPS records every fix, so its last point is the B press).
+            var v = State.Vehicle;
+            if ((v.Easting != 0 || v.Northing != 0) && _recordedCurvePoints.Count > 0)
+            {
+                var lastRec = _recordedCurvePoints[^1];
+                if (Math.Sqrt(Math.Pow(v.Easting - lastRec.Easting, 2) + Math.Pow(v.Northing - lastRec.Northing, 2)) >= 0.3)
+                    _recordedCurvePoints.Add(new Vec3(v.Easting, v.Northing, v.Heading * Math.PI / 180.0));
+            }
+
             // Need at least 3 points for a valid curve
             if (_recordedCurvePoints.Count < 3)
             {
@@ -471,9 +481,15 @@ public partial class MainViewModel
                 existingTrack.IsActive = false;
             }
 
+            // As AgOpenGPS finishes a driven curve: gaps over 1.6 m filled (a GPS dropout), then a
+            // moving average over a few points takes the steering wobble out (SmoothAB(4); centred
+            // here, where AgOpenGPS's window sits a point behind and shifts the curve back).
+            var driven = Models.Guidance.CurveProcessing.SmoothMovingAverage(
+                Models.Guidance.CurveProcessing.Densify(_recordedCurvePoints, 1.6), 2);
+
             // A driven curve is a pass: move the reference to the implement's edge (#345)
             var refPoints = Models.Guidance.CurveProcessing.CreateOffsetCurve(
-                Models.Guidance.CurveProcessing.CalculateHeadings(new List<Vec3>(_recordedCurvePoints)), RefSideOffset());
+                Models.Guidance.CurveProcessing.CalculateHeadings(driven), RefSideOffset());
 
             // Extend curve ends past boundary for U-turn detection
             var extendedPoints = ExtendCurvePastBoundary(refPoints);

@@ -136,4 +136,26 @@ public class CurveOffsetCornerTests
             }
         }
     }
+
+    // A driven line's moving average keeps a straight line where it is (centred, unlike
+    // AgOpenGPS's SmoothAB, whose window sits a point behind) and evens out a wobble.
+    [Test]
+    public void Moving_average_keeps_a_straight_line_and_evens_a_wobble()
+    {
+        var straight = Enumerable.Range(0, 30).Select(i => new Vec3(5, i * 1.0, 0)).ToList();
+        var wobble = Enumerable.Range(0, 30).Select(i => new Vec3(5 + (i % 2 == 0 ? 0.2 : -0.2), i * 1.0, 0)).ToList();
+
+        var s = CurveProcessing.SmoothMovingAverage(straight, 2);
+        var w = CurveProcessing.SmoothMovingAverage(wobble, 2);
+
+        Assert.Multiple(() =>
+        {
+            for (int i = 0; i < s.Count; i++)
+            {
+                Assert.That(s[i].Easting, Is.EqualTo(5).Within(1e-9));
+                Assert.That(s[i].Northing, Is.EqualTo(i).Within(1e-9), "not shifted along the line");
+            }
+            Assert.That(w.Skip(2).Take(w.Count - 4).Max(p => Math.Abs(p.Easting - 5)), Is.LessThan(0.05));
+        });
+    }
 }

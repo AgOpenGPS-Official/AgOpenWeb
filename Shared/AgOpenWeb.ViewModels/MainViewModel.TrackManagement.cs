@@ -291,6 +291,21 @@ public partial class MainViewModel
     /// </summary>
     public void OnTrackVisibilityChanged()
     {
+        // A hidden track can't be the one guided on: the tractor would follow a line that isn't
+        // drawn. Guidance stops, as when the active track is deleted.
+        if (SelectedTrack is { IsVisible: false } hidden)
+        {
+            if (IsAutoSteerEngaged)
+            {
+                IsAutoSteerEngaged = false;
+                _autoSteerService.Disengage();
+                _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
+                LogAutoSteerOff("track hidden");
+            }
+            if (IsYouTurnEnabled) IsYouTurnEnabled = false;
+            SelectedTrack = null;
+            ReportFailure($"Guidance stopped: '{hidden.Name}' is hidden");
+        }
         SaveTracksToFile();
         RebuildRecordedPathsAndContours();
     }
