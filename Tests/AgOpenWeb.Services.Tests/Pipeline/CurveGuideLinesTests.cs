@@ -129,6 +129,9 @@ public class CurveGuideLinesTests
     [Test]
     public void Guidelines_of_a_boundary_curve_round_off_close_and_alternate_the_tool_offset()
     {
+        // A small turn radius: the innermost line is a 10 m square, whose sides a larger one
+        // would round as well (the corner rounding is tested in TurnRadiusLimitTests).
+        ConfigurationStore.Instance.Guidance.UTurnRadius = 2;
         var track = BoundaryCurve();
         var g = Cycle(track, pass: 4);
         var lines = g.GuideLines!;

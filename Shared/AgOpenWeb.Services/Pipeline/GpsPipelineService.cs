@@ -1100,8 +1100,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             else
             {
                 var offsetPoints = extendDisp
-                    ? CurveProcessing.ExtendCurveEnds(_offsetPasses.Get(track, distAway).Points)
-                    : new List<Vec3>(_offsetPasses.Get(track, distAway).Points);
+                    ? CurveProcessing.ExtendCurveEnds(_offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius).Points)
+                    : new List<Vec3>(_offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius).Points);
                 displayTrack = new Models.Track.Track
                 {
                     Name = $"{track.Name} (path {passNumber})",
@@ -1604,7 +1604,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
         else
         {
-            var (cachedPoints, percentRemoved) = _offsetPasses.Get(track, distAway);
+            var (cachedPoints, percentRemoved) = _offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius);
             var offsetPoints = extendCurve ? CurveProcessing.ExtendCurveEnds(cachedPoints) : new List<Vec3>(cachedPoints);
 
             // Warn on tight curves
@@ -1866,7 +1866,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     lines.Add(new List<Vec3> { new(a.Easting + de, a.Northing + dn, a.Heading), new(b.Easting + de, b.Northing + dn, b.Heading) });
                     continue;
                 }
-                var points = Math.Abs(dist) < 0.01 ? track.Points : _offsetPasses.Get(track, dist).Points;
+                var points = Math.Abs(dist) < 0.01 ? track.Points : _offsetPasses.Get(track, dist, _configStore.Guidance.UTurnRadius).Points;
                 lines.Add(extend ? CurveProcessing.ExtendCurveEnds(points) : points);
             }
         _guideKey = key;
@@ -1913,7 +1913,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
         else
         {
-            var offsetPoints = new List<Vec3>(_offsetPasses.Get(track, distAway).Points);
+            var offsetPoints = new List<Vec3>(_offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius).Points);
             resultTrack = new Models.Track.Track
             {
                 Name = $"{track.Name} (pass {nearestPass})",

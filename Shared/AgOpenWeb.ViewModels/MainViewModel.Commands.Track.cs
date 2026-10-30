@@ -75,22 +75,12 @@ public partial class MainViewModel
             ReportFailure("Load a field with a boundary first");
             return;
         }
-        // Offset the boundary inward by half the tool width PLUS half the U-turn clearance so the
-        // curve sits a half-implement inside the fence AND clears the turn line (which is
-        // UTurnDistanceFromBoundary inside) with margin — following it keeps the whole implement in
-        // the field (#422) while the pass stays inside the cultivated/turn zone. Fall back to the
-        // raw boundary if the offset fails.
-        double insetDistance = ConfigStore.ActualToolWidth / 2.0
-            + ConfigStore.Guidance.UTurnDistanceFromBoundary / 2.0;
-        var rawVec2 = new System.Collections.Generic.List<Models.Base.Vec2>(boundary.Points.Count);
-        foreach (var p in boundary.Points) rawVec2.Add(new Models.Base.Vec2(p.Easting, p.Northing));
-        var offset = insetDistance > 0.05 ? _polygonOffsetService.CreateInwardOffset(rawVec2, insetDistance) : null;
-        var ring = (offset != null && offset.Count >= 3) ? offset : rawVec2;
-        // Round the corners to the U-turn radius (what the operator says the rig can turn), so
-        // the curve cuts a corner no more than the vehicle has to. Rounding by cutting each
-        // corner a share of its sides made arcs hundreds of metres across on long sides.
-        var rounded = _polygonOffsetService.RoundCorners(ring, ConfigStore.Guidance.UTurnRadius);
-        if (rounded != null && rounded.Count >= 3) ring = rounded;
+        // The fence itself between A and B, as AgOpenGPS's FormABDraw: passes lie half a width
+        // either side of it (PassGeometry), so the first one inside has the tool's edge on the
+        // fence, and the pass shown follows the tractor. A corner too tight for the rig is rounded
+        // on each pass (the U-turn radius, OffsetPassCache), not on this line (#450).
+        var ring = new System.Collections.Generic.List<Models.Base.Vec2>(boundary.Points.Count);
+        foreach (var p in boundary.Points) ring.Add(new Models.Base.Vec2(p.Easting, p.Northing));
         if (ring.Count > 3 && ring[0].Easting == ring[^1].Easting && ring[0].Northing == ring[^1].Northing)
             ring = ring.GetRange(0, ring.Count - 1); // a closing duplicate would be a zero-length side
         int n = ring.Count;
@@ -153,11 +143,6 @@ public partial class MainViewModel
         var arc = via is { } v
             ? (Reach(fwd, v) <= Reach(back, v) ? fwd : back)
             : (Length(fwd) <= Length(back) ? fwd : back);
-        // A tap on a corner lands partway round its rounding: the curve would end mid-turn and
-        // run on at that diagonal. Each end is taken back to where the corner starts, so it runs
-        // on along the side instead.
-        TrimCornerEnd(arc, ConfigStore.Guidance.UTurnRadius);
-        arc.Reverse(); TrimCornerEnd(arc, ConfigStore.Guidance.UTurnRadius); arc.Reverse();
         var seg = new System.Collections.Generic.List<Models.Base.Vec3>(arc.Count + 1);
         foreach (var p in arc)
         {
@@ -186,43 +171,11 @@ public partial class MainViewModel
             Type = Models.Track.TrackType.Curve,
             IsVisible = true,
             IsClosed = false,
-            // Drive the boundary itself: this curve isn't worked in parallel passes, so the
-            // guidance follows it directly (pass 0) instead of free-drive snapping to an inner pass.
-            NoPassOffset = true
         };
         SavedTracks.Add(track);
         SelectedTrack = track;
         SaveTracksToFile();
-        StatusMessage = $"Created boundary curve ({curvePoints.Count} points, {insetDistance:F1} m inside fence)";
-    }
-
-    /// <summary>
-    /// Takes the end of a boundary-curve path back to the start of a rounded corner it stops
-    /// partway round (#450): while its last segments turn nearly as tightly as the corner
-    /// rounding (radius <paramref name="radius"/>), they go, up to half a circle's length. A
-    /// gentle bend in a curved field boundary turns far less and is kept.
-    /// </summary>
-    internal static void TrimCornerEnd(System.Collections.Generic.List<Models.Base.Vec2> path, double radius)
-    {
-        if (radius <= 0 || path.Count < 3) return;
-        static double Heading(Models.Base.Vec2 a, Models.Base.Vec2 b) =>
-            Math.Atan2(b.Easting - a.Easting, b.Northing - a.Northing);
-        int end = path.Count - 1;
-        double walked = 0;
-        while (end >= 2 && walked <= Math.PI * radius)
-        {
-            var b = path[end]; var a = path[end - 1]; var z = path[end - 2];
-            double len = GeometryMath.Distance(a, b);
-            if (len < 0.01 || GeometryMath.Distance(z, a) < 0.01) { end--; continue; }
-            double turn = Math.Abs(Math.IEEERemainder(Heading(a, b) - Heading(z, a), 2 * Math.PI));
-            // A rounding turns len/radius per segment, its first one about half that (it leaves
-            // the side on a tangent); a quarter keeps both and still passes a gentle bend.
-            if (turn < 0.25 * len / radius || turn < 0.2 * Math.PI / 180) break; // straight here
-            walked += len;
-            end--;
-        }
-        if (end < path.Count - 1 && end >= 1 && walked <= Math.PI * radius)
-            path.RemoveRange(end + 1, path.Count - end - 1);
+        StatusMessage = $"Created boundary curve ({curvePoints.Count} points)";
     }
 
     private void InitializeTrackCommands()
