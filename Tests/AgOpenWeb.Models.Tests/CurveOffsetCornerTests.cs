@@ -67,12 +67,54 @@ public class CurveOffsetCornerTests
         Assert.That(pass.Min(ToSides), Is.LessThan(1.0));
     }
 
-    // The point grid finds the same points as scanning them all, on curves long enough to use it.
+    // The largest change of heading from one segment of a line to the next (degrees).
+    private static double SharpestTurn(IReadOnlyList<Vec3> pts)
+    {
+        double worst = 0;
+        for (int i = 1; i + 1 < pts.Count; i++)
+        {
+            double h1 = Math.Atan2(pts[i].Easting - pts[i - 1].Easting, pts[i].Northing - pts[i - 1].Northing);
+            double h2 = Math.Atan2(pts[i + 1].Easting - pts[i].Easting, pts[i + 1].Northing - pts[i].Northing);
+            worst = Math.Max(worst, Math.Abs(Math.IEEERemainder(h2 - h1, 2 * Math.PI)) * 180 / Math.PI);
+        }
+        return worst;
+    }
+
+    // A driven curve with a right-angle bend, offset to the outside of the bend: the offset jumped
+    // from one leg's normal to the other's, leaving a chord with a 45° kink at each end that the
+    // tractor overshot. It is now an arc about the bend, as a true parallel offset is.
     [Test]
-    public void Offset_with_the_point_grid_matches_the_plain_scan()
+    public void Outside_of_a_bend_is_an_arc_not_a_chord([Values(6.0, 20.0, 60.0)] double d)
+    {
+        var bend = CurveProcessing.Densify(new List<Vec3> { new(0, -100, 0), new(0, 0, 0), new(100, 0, 0) }, 1.0);
+        var pass = CurveProcessing.CreateOffsetCurve(bend, -d); // left of travel: the outside of a right turn
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(SharpestTurn(pass), Is.LessThan(12), "no kink");
+            var gaps = pass.Zip(pass.Skip(1), (a, b) => Math.Sqrt(Math.Pow(b.Easting - a.Easting, 2) + Math.Pow(b.Northing - a.Northing, 2)));
+            Assert.That(gaps.Max(), Is.LessThan(3.5), "no chord across the corner (it was d·√2)");
+            // Every point is the offset from the bend's line: no point closer, none further at the corner.
+            Assert.That(pass.Min(p => Math.Min(Math.Abs(p.Easting) + (p.Northing > 0 ? 1e9 : 0), Math.Sqrt(p.Easting * p.Easting + p.Northing * p.Northing))),
+                Is.GreaterThan(d - 0.01));
+        });
+    }
+
+    // The inside of the same bend keeps its corner: the collision test removes the points there.
+    [Test]
+    public void Inside_of_a_bend_gets_no_arc()
+    {
+        var bend = CurveProcessing.Densify(new List<Vec3> { new(0, -100, 0), new(0, 0, 0), new(100, 0, 0) }, 1.0);
+        var pass = CurveProcessing.CreateOffsetCurve(bend, 10);
+        Assert.That(pass.All(p => p.Easting >= 9.5 && p.Northing <= -9.5), "nothing toward the corner");
+    }
+
+    // The point grid gives the plain scan's answer, for random curves and offsets.
+    [Test]
+    public void Point_grid_answers_like_the_plain_scan()
     {
         var rng = new Random(450);
-        for (int run = 0; run < 300; run++)
+        for (int run = 0; run < 200; run++)
         {
             int n = rng.Next(65, 400);
             var pts = new List<Vec3>(n);
@@ -84,43 +126,14 @@ public class CurveOffsetCornerTests
                 nn += Math.Cos(h) * (0.5 + rng.NextDouble() * 3);
                 pts.Add(new Vec3(e, nn, 0));
             }
-            CurveProcessing.CalculateHeadings(pts);
-            double d = (rng.NextDouble() < 0.5 ? -1 : 1) * (0.2 + rng.NextDouble() * 60);
-
-            var (actual, percent) = CurveProcessing.CreateOffsetCurveWithInfo(pts, d);
-            if (PlainScan(pts, d) is not var (expected, expectedPercent)) continue; // nothing left: the two-point fallback
-
-            Assert.That(percent, Is.EqualTo(expectedPercent), $"run {run}");
-            Assert.That(actual.Count, Is.EqualTo(expected.Count), $"run {run}");
-            for (int i = 0; i < actual.Count; i++)
+            double d = 0.2 + rng.NextDouble() * 60;
+            var grid = new CurveProcessing.PointGrid(pts, d);
+            for (int q = 0; q < 200; q++)
             {
-                Assert.That(actual[i].Easting, Is.EqualTo(expected[i].Easting), $"run {run} point {i}");
-                Assert.That(actual[i].Northing, Is.EqualTo(expected[i].Northing), $"run {run} point {i}");
+                var p = pts[rng.Next(n)];
+                double qe = p.Easting + (rng.NextDouble() - 0.5) * 3 * d, qn = p.Northing + (rng.NextDouble() - 0.5) * 3 * d;
+                Assert.That(grid.AnyCloser(pts, qe, qn, d * d - 0.01), Is.EqualTo(CurveProcessing.AnyCloser(pts, qe, qn, d * d - 0.01)), $"run {run}");
             }
         }
-    }
-
-    // CreateOffsetCurveWithInfo before the point grid: every offset point tested against every point.
-    private static (List<Vec3>, double)? PlainScan(IReadOnlyList<Vec3> pts, double d)
-    {
-        double distSqAway = d * d - 0.01;
-        int skipped = 0;
-        var result = new List<Vec3>();
-        foreach (var pt in pts)
-        {
-            double a = pt.Heading + Math.PI / 2;
-            double e = pt.Easting + Math.Sin(a) * d, n = pt.Northing + Math.Cos(a) * d;
-            if (pts.Any(t => (e - t.Easting) * (e - t.Easting) + (n - t.Northing) * (n - t.Northing) < distSqAway)) { skipped++; continue; }
-            if (result.Count > 0)
-            {
-                var last = result[^1];
-                if ((e - last.Easting) * (e - last.Easting) + (n - last.Northing) * (n - last.Northing) < 1.0) continue;
-            }
-            result.Add(new Vec3(e, n, pt.Heading));
-        }
-        if (result.Count < 2) return null;
-        if (skipped > 0 && result.Count > 2) result = CurveProcessing.ChaikinsSmooth(result, 1);
-        CurveProcessing.CalculateHeadings(result);
-        return (result, skipped * 100.0 / pts.Count);
     }
 }
