@@ -59,7 +59,8 @@ public record SceneDto(
     IReadOnlyList<IReadOnlyList<Vec2Dto>> RecordedPaths, // saved recorded paths, when "Rec paths" is on (#110)
     IReadOnlyList<IReadOnlyList<Vec2Dto>> ContourStrips, // saved contour strips (#110)
     IReadOnlyList<Vec2Dto>? ContourRef, // contour mode: the strip being followed (points) (#110)
-    bool ContourLocked); // contour lock on
+    bool ContourLocked, // contour lock on
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> GuideLines); // a curve's extra guidelines, built by the host (#450)
 
 /// <summary>A field flag marker: field-local position (m) + display colour hex + name.</summary>
 public record FlagDto(double E, double N, string ColorHex, string Name);

@@ -35,6 +35,14 @@ public class GuidanceState : ObservableObject
         set => SetProperty(ref _displayLine, value);
     }
 
+    // The extra guidelines of the curve being followed (GuidanceSnapshot.GuideLines); null for none.
+    private System.Collections.Generic.IReadOnlyList<System.Collections.Generic.IReadOnlyList<Vec3>>? _guideLines;
+    public System.Collections.Generic.IReadOnlyList<System.Collections.Generic.IReadOnlyList<Vec3>>? GuideLines
+    {
+        get => _guideLines;
+        set => SetProperty(ref _guideLines, value);
+    }
+
     private bool _isGuidanceActive;
     public bool IsGuidanceActive
     {
@@ -189,6 +197,7 @@ public class GuidanceState : ObservableObject
     {
         ActiveTrack = null;
         DisplayLine = null;
+        GuideLines = null;
         IsGuidanceActive = false;
         CrossTrackError = HeadingError = SteerAngle = 0;
         SteerAngleRaw = DistanceOffRaw = 0;

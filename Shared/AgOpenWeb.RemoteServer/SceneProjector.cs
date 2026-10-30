@@ -201,6 +201,12 @@ public sealed class SceneProjector
         var cref = _state.Operation.IsContourOn ? _state.Operation.ContourRef : null;
         IReadOnlyList<Vec2Dto>? contourRef = cref?.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
 
+        // A curve's extra guidelines: the passes either side, built on the host from the
+        // reference like the pass itself, so they keep its shape at corners (#450).
+        var guideLines = (_state.Guidance.GuideLines ?? System.Array.Empty<IReadOnlyList<AgOpenWeb.Models.Base.Vec3>>())
+            .Select(l => (IReadOnlyList<Vec2Dto>)l.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList())
+            .ToList();
+
         return new SceneDto(
             version,
             f.OriginLatitude,
@@ -224,7 +230,8 @@ public sealed class SceneProjector
             recordedPaths,
             contourStrips,
             contourRef,
-            _state.Operation.IsContourOn && _state.Operation.IsContourLocked);
+            _state.Operation.IsContourOn && _state.Operation.IsContourLocked,
+            guideLines);
     }
 
     // Tracks-manager display label — mirrors native TracksDialog (Contour → Path →
@@ -1026,6 +1033,10 @@ public sealed class SceneProjector
             h = h * 31 + (long)System.Math.Round(p0.Easting * 10);
             h = h * 31 + (long)System.Math.Round(p0.Northing * 10);
         }
+
+        // Extra guidelines: a new list per pass, or when the setting changes.
+        var gl = _state.Guidance.GuideLines;
+        h = h * 31 + (gl is null ? -1 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(gl));
 
         // Section layout — re-send on count or a span change (tool/section config).
         int nSec = _sections.NumSections;
