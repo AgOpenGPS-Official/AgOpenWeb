@@ -28,7 +28,7 @@ window.RemoteTransport = {
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
 
-    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19, COVERAGE_EDGE: 20, VIEW_PREFS: 21, PROMPT: 22, TOAST: 23, DRIVE_PICK: 24, HW_MSG: 25, VT: 26, VT_IMAGE: 27 };
+    const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19, COVERAGE_EDGE: 20, VIEW_PREFS: 21, PROMPT: 22, TOAST: 23, DRIVE_PICK: 24, HW_MSG: 25, VT: 26, VT_IMAGE: 27, NTRIP_MOUNTPOINTS: 28 };
     const td = new TextDecoder();
 
     function decode(buffer) {
@@ -205,6 +205,13 @@ window.RemoteTransport = {
           const sendCorrectedPosition = !!u8();
           // Network IO: the subnet the scan came from (append-only, #334).
           const scanReplySubnet = str();
+          // NTRIP session (append-only): null without a client. state: 0 Stopped, 1 Connecting,
+          // 2 Connected, 3 Streaming, 4 Waiting, 5 GaveUp; lastError: NtripCategory, -1 none.
+          let ntripSession = null;
+          if (u8()) {
+            ntripSession = { usingFallback: !!u8(), mainIsBack: !!u8(), hasFallback: !!u8(), profilePerField: !!u8(),
+              state: u8(), lastError: i32(), attempts: i32(), retrySeconds: f32(), notice: str(), profile: str(), service: str() };
+          }
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -216,7 +223,7 @@ window.RemoteTransport = {
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripEnabled, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
-            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet,
+            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet, ntripSession,
           });
           break;
         }
@@ -227,11 +234,20 @@ window.RemoteTransport = {
             const username = str(), password = str(), autoConnect = !!u8(), isDefault = !!u8();
             const ac = i32(); const associatedFields = new Array(ac);
             for (let j = 0; j < ac; j++) associatedFields[j] = str();
-            profiles[k] = { id, name, casterHost, casterPort, mountPoint, username, password, autoConnect, isDefault, associatedFields };
+            let fallback = null;
+            if (u8()) fallback = { host: str(), port: i32(), mount: str(), username: str(), password: str(), autoSwitch: !!u8(), after: i32() };
+            profiles[k] = { id, name, casterHost, casterPort, mountPoint, username, password, autoConnect, isDefault, associatedFields, fallback };
           }
           const af = i32(); const availableFields = new Array(af);
           for (let k = 0; k < af; k++) availableFields[k] = str();
           handlers.onNtripProfiles && handlers.onNtripProfiles({ profiles, availableFields });
+          break;
+        }
+        case TYPE.NTRIP_MOUNTPOINTS: {
+          const seq = i32(), forService = str(), status = str();
+          const n = i32(); const items = new Array(n);
+          for (let k = 0; k < n; k++) items[k] = { mount: str(), name: str(), format: str(), systems: str(), country: str(), km: f32(), needsPosition: !!u8() };
+          handlers.onNtripMountpoints && handlers.onNtripMountpoints({ seq, forService, status, items });
           break;
         }
         case TYPE.FIELD_OPS: {

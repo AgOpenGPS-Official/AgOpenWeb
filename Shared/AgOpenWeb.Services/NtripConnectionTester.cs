@@ -4,15 +4,15 @@
 
 using System;
 using System.Threading.Tasks;
+using AgOpenWeb.Services.Interfaces;
 
 namespace AgOpenWeb.Services;
 
 /// <summary>
-/// One-shot NTRIP caster reachability probe: opens a TCP connection, sends an
-/// NTRIP/2.0 GET for the mount point, and classifies the response. Returns a
-/// human-readable status string (success / auth-failed / not-found / timeout /
-/// error). Pure network IO with no UI or VM dependency, so the native profile
-/// editor and the remote (web) Network IO editor share the exact same logic.
+/// One-shot NTRIP caster probe: opens a connection exactly as the client does (NTRIP 2.0, then
+/// 1.0 for a caster that does not understand it) and returns a human-readable result. A passing
+/// test therefore means the real connection passes too. Pure network IO with no UI or VM
+/// dependency, so the profile editor and the remote (web) Network IO editor share the same logic.
 /// </summary>
 public static class NtripConnectionTester
 {
@@ -24,41 +24,15 @@ public static class NtripConnectionTester
 
         try
         {
-            using var tcpClient = new System.Net.Sockets.TcpClient();
-            var connectTask = tcpClient.ConnectAsync(host, port);
-
-            if (await Task.WhenAny(connectTask, Task.Delay(5000)) != connectTask)
-                return "Error: Connection timed out";
-            if (!tcpClient.Connected)
-                return "Error: Could not connect to caster";
-
-            using var stream = tcpClient.GetStream();
-            var request = $"GET /{mountPoint} HTTP/1.1\r\n" +
-                          $"Host: {host}\r\n" +
-                          $"Ntrip-Version: Ntrip/2.0\r\n" +
-                          $"User-Agent: NTRIP AgOpenWeb/Test\r\n";
-
-            // As the client logs in: a password with no user name used to be left out here (#443)
-            if (NtripCredentials.BasicAuthorization(username, password) is { } authorization)
-                request += $"Authorization: {authorization}\r\n";
-            request += "\r\n";
-
-            var requestBytes = System.Text.Encoding.ASCII.GetBytes(request);
-            await stream.WriteAsync(requestBytes, 0, requestBytes.Length);
-
-            var buffer = new byte[1024];
-            var readTask = stream.ReadAsync(buffer, 0, buffer.Length);
-            if (await Task.WhenAny(readTask, Task.Delay(3000)) != readTask)
-                return "Error: No reply from the caster";
-            var bytesRead = await readTask;
-            if (bytesRead == 0)
-                return "Error: Caster closed the connection without answering";
-
-            var response = System.Text.Encoding.ASCII.GetString(buffer, 0, bytesRead);
-            var (reply, reason) = NtripResponse.Classify(response);
-            return reply == NtripReply.Accepted
+            var config = new NtripConfiguration
+            {
+                CasterAddress = host.Trim(), CasterPort = port, MountPoint = mountPoint.Trim(),
+                Username = username, Password = password,
+            };
+            using var connection = await NtripConnection.OpenAsync(config, NtripVersion.V2, () => null, new NtripTimeouts(), default);
+            return connection.Outcome.IsAccepted
                 ? "Success: Connected to caster and mount point"
-                : "Error: " + reason;
+                : "Error: " + connection.Outcome.Message;
         }
         catch (Exception ex)
         {

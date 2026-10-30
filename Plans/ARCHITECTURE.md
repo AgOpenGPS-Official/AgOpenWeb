@@ -984,28 +984,25 @@ UDP Port 9999 (Module responses)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      NtripClientService                          │
+│                  NtripSession (Services/Ntrip)                  │
 │                                                                 │
-│  HTTP/1.1 GET /mountpoint                                      │
-│  Authorization: Basic base64(user:pass)                        │
-│  Ntrip-Version: Ntrip/2.0                                      │
+│  HTTP/1.1 GET /mountpoint, Ntrip-Version: Ntrip/2.0             │
+│  (NTRIP 1.0 once, for a caster that does not understand 2.0)    │
+│  Classifies the reply, retries with a backoff, keeps            │
+│  NtripSessionStatus                                             │
 └─────────────────────────────────────────────────────────────────┘
-         │ TCP stream
+         │ TCP stream (bytes)
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│              RTCM3 correction data (continuous)                 │
+│                      NtripClientService                         │
 │                                                                 │
-│  Fire RtcmDataReceived event with byte[]                       │
-│  Fire ConnectionStatusChanged on connect/disconnect            │
+│  ChunkedDecoder → RtcmFramer → RtcmQueue (paced datagrams)      │
+│  Fire RtcmDataReceived, ConnectionStatusChanged                 │
 └─────────────────────────────────────────────────────────────────┘
-         │ Event
+         │ UDP 2233: the GPS module's address, else the subnet broadcast
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  MainViewModel.OnRtcmDataReceived()             │
-│                                                                 │
-│  Forward to UdpCommunicationService.SendToModules()            │
-│  → Broadcasts RTCM to AiO board on 192.168.5.255:8888         │
-│  → AiO forwards to GPS receiver                                │
+│                  AiO board → GPS receiver                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

@@ -22,6 +22,7 @@ public class NtripFieldCloseTests
         var b = new MainViewModelBuilder();
         var vm = b.Build();
         ConfigurationStore.Instance.Connections.NtripEnabled = true;
+        ConfigurationStore.Instance.Connections.NtripProfilePerField = true;   // a field close only matters in this mode
         b.NtripProfileService.DefaultProfile.Returns(defaultProfile);
         b.NtripService.IsActive.Returns(true);
         b.NtripService.IsConnected.Returns(true);

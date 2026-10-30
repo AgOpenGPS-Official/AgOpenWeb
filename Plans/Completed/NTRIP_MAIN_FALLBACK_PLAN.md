@@ -1,6 +1,6 @@
 # NTRIP: main and fallback service, a sturdier client, and a report that explains itself
 
-**Status:** proposed 2026-10-29. Nothing is built. Needs the approval of the maintainers (see "Decisions taken") before Phase 1.
+**Status:** approved 2026-10-29 (#463). All phases built (#464). The decisions below are as built; later changes after a first look in the app are under "Built as" of Phase 4.
 **Prompted by:** #443 (NTRIP "not working": the reporter and the maintainers had to guess whether it was the login, the mount point or the position), #285 and #385 (silent stops and retries), and a rebuild of the NTRIP client in AgIO (AgOpenGPS) that was tested against recorded casters and a caster of our own. This plan brings what that rebuild learned to AgOpenWeb, in AgOpenWeb's own architecture.
 **Related:** `Plans/RTCM_FORWARDING_PLAN.md` (the forwarding half, already in), `Plans/Completed/NTRIP_PROFILES_PLAN.md` (profiles per field), `Plans/BUG_REPORT_SUBMISSION_PLAN.md` (what a report carries), #278 (NTRIP on/off), #397 (observers), #444 (position sent to the caster).
 
@@ -70,7 +70,7 @@ caster(s) ──► NtripSession (state machine, timeouts, retry policy)
                                                                              └─► ntrip_session.txt in the Bug Report dump
 ```
 
-New files (`Shared/AgOpenWeb.Services/Ntrip/`, Apache header, `CultureInfo.InvariantCulture` throughout, added to the `CA1305` error globs in `.editorconfig`): `NtripSession`, `NtripOutcome` (categories), `RetryPolicy`, `NtripRequest` (builds the request, Auto/1.0/2.0), `NtripHeaderScanner` (ICY/HTTP/source table), `CorrectionSourceManager`, `NtripStatus`, `CorrectionChecks`, `NtripSupportReport`. `NtripResponse` is extended, not replaced. `NtripConnectionTester` (the editor's Test button) runs the same session code for one attempt, so Test and the real thing cannot disagree.
+New files (`Shared/AgOpenWeb.Services/Ntrip/`, Apache header, `CultureInfo.InvariantCulture` throughout; `CA1305` is already an error for all production code): `NtripSession`, `NtripOutcome` (categories), `RetryPolicy`, `NtripRequest` (builds the request, Auto/1.0/2.0), `NtripHeaderScanner` (ICY/HTTP/source table), `CorrectionSourceManager`, `NtripStatus`, `CorrectionChecks`, `NtripSupportReport`. `NtripResponse` is extended, not replaced. `NtripConnectionTester` (the editor's Test button) runs the same session code for one attempt, so Test and the real thing cannot disagree.
 
 Wire: `Contracts.cs` (`NtripStatusDto`, `NtripProfileDto.Fallback...`), `SceneProjector`, `WireCodec` + `transport.js` in the same order, `app.js` (card, editor, prompt). Commands: `ntrip.mode|main|field`, `ntrip.switch|main|fallback`, `ntrip.answer|yes|no` (the switch-back prompt, existing prompt frame), `ntrip.save` extended with the fallback fields. All need control (none are in `ObserverIds`); observers see the card and the prompt, change nothing. Passwords in the profiles frame stay masked as `ntrip.test` already treats them (#397).
 
@@ -87,23 +87,52 @@ Reviewed by the maintainers on a docs-only PR. Answers to the open questions go 
 - `NtripStatus` filled and logged; `State.Connections.NtripStatus` fed from its headline.
 - Tests (NUnit, `AgOpenWeb.Services.Tests`): a fake caster on 127.0.0.1 for each outcome and for each rule of decision 11 (accepted 2.0, accepted 1.0 after a 2.0 refusal, no 1.0 retry after 401, 404, a source table or a timeout, the remembered version, ICY, chunked, wrong login, wrong mount point with a source table, busy, silent, closes after 200, not RTCM), a fake clock for the retry policy and every timeout, `NtripHandshakeTests` and `NtripHeaderBufferCapTests` kept green.
 - **Outcome:** same behaviour as today for a caster that works; a failure now has a name. The first thing in the PR is an audit table: each defect found in the rebuild against `NtripClientService` as it is, "still applies" or "already fine", so the maintainers see what is a change and what is not.
+- **Built as** (differences from the sketch above, all to keep it smaller):
+  - `NtripSession` is the connection and the retry loop in one; there is no separate `RetryPolicy` class. The backoff is the one the client already had (1, 2, 4, 8, 15 s), without jitter, and a wrong login or mount point still ends the session at once, so nothing waits on attempts that cannot help (see decision 4).
+  - The status type is `NtripSessionStatus` (a record), so it is not confused with the `NtripStatus` string property of the state classes. The headline, light and checks come with the card in Phase 4.
+  - `NtripReply` stays, derived from the new `NtripOutcome`, so `NtripResponse.Classify` is the one classification. Its messages keep the wording the client had.
+  - The no-data limit is 30 s, as the stall watchdog it replaces; the connect limit is 10 s and the reply limit 15 s. `ConnectAsync` now returns when the session has started and no longer throws for an unreachable caster: the session reports it and retries.
+  - The position goes in the NTRIP 2.0 request (`Ntrip-GGA`) or, for NTRIP 1.0, right after the answer, then on the interval; before, the first one went out 5 s after connecting.
 
 ### Phase 2: the report (straight after Phase 1)
 Phases 1 and 2 together answer #443: a failure has a name and a maintainer can read it from the dump. They go to testers before any fallback UI exists.
 - `ntrip_session.txt`, the `system_info.txt` line, `NtripSupportReport`; the redaction test (decision 8) over status, events, log lines, the dump and the profile frame.
 - A dump made in each failure state of Phase 1 is read as a maintainer: the cause must be readable from `ntrip_session.txt` alone.
+- **Built as:**
+  - `NtripSupportReport` (`Services/Ntrip/`) builds `ntrip_session.txt` and the `NTRIP:` line of `system_info.txt` from what `INtripClientService` now exposes: `Status`, `Service` (host, port, mount, whether a login is set) and `Events` (the last 40 steps, kept across sessions in an `NtripEventLog`; a repeat of the last step is not written again, but the same text at another attempt is).
+  - Masking: the password, the Basic value and, in what the caster said, the user name are replaced by `***` as typed, upper case and URL-escaped, longest first. The text the client writes itself keeps the user name, because a mount point can be the same word; host and mount are shown as set. A login under three characters is not masked, as that would mangle ordinary words.
+  - After the user disconnects, the summary and the report still carry the last failure (`Stopped by the user, ...; before that GaveUp, LoginRejected`).
+  - A `401` now says "check username, password and mount point": some casters (our own) answer 401 for an unknown mount point.
 
 ### Phase 3: profiles with a fallback, and the mode
 - `NtripProfile.Fallback`, `Connections.NtripMode` (`config.set|conn.ntripMode`), `CorrectionSourceManager`, `SwitchTo`, the notices.
 - `MainViewModel.Ntrip.cs`: `HandleNtripProfileForFieldAsync`, `RestoreDefaultNtripProfileAsync` and `ReconnectNtripIfConnectedAsync` act in per-field mode only; in main-and-fallback mode the default profile is connected at start and on edit.
 - Tests: the existing `NtripFieldCloseTests` unchanged for per-field mode; new ones for the other mode (field load and close do nothing); switch after N failures; an outcome retrying cannot fix switches at once with Auto-switch on and not with it off; no auto-return; the same-account rule, including two mount points of one login (no probe, no "main is back"); mode change deletes nothing.
+- **Built as** (differences from the sketch above):
+  - The mode is one setting, `NtripProfilePerField` (`config.set|conn.ntripProfilePerField`), false by default; no `NtripMode` enum.
+  - There is no separate `CorrectionSourceManager`: `NtripClientService` starts the session for the service in use and `NtripFailover` holds the rules (when to switch, the same-account test, the notice texts). `NtripFallback` has the main service's fields plus Auto-switch and the count; no `Enabled`, `Version` or `RawTcp`.
+  - A switch restarts the session and clears the pacer. Manual switch: `INtripClientService.SwitchToAsync` / `ntrip.switch|main|fallback`. The service raises `Notice` (switched to the fallback, by itself or by the operator; switched to the main; the main service answers again) and the state carries `NtripUsingFallback`, `NtripMainIsBack`, `NtripNotice` for the card of Phase 4.
+  - The background try of the main service runs only after a failing main service (not after a switch away from a healthy one), slowly (30, 60, 120, 300 s), starts over after a final answer, sends the position like the real connection, and is never started for the same login on the same caster.
+  - `ntrip.save` keeps the fallback of the profile it edits until the editor of Phase 4 carries it.
+  - `ConnectToNtripAsync` uses the fallback only for the main service it was made for, so a caster typed in by hand does not inherit one. A mode change reconnects when the fallback part of the session differs, also on the same caster.
 
 ### Phase 4: the Network IO card and the editor
 - Card: one headline and the checks, the service in use, **Switch to fallback / main**, a mode switch with one sentence on each mode, the switch-back prompt, the same-login sentence (decision 5), the notice. Editor: Main and Fallback tabs, *Test* per tab, the auto-switch toggle and count, the warning that the fallback is ignored in per-field mode. Touch sizes as the other Network IO controls.
 - Verified in the headless app with the fake caster and in a browser (Playwright), once on each head's web view where it differs.
+- **Built as:**
+  - Wire (all append-only): the Status frame ends with an `NtripSessionDto` (service in use, main is back, fallback present, mode, state, last failure, failed attempts, retry time, last notice); each profile in the profiles frame ends with its fallback (password masked like the main one). `ntrip.save` carries the fallback block after the associated fields (read by `NtripProfileFields.FallbackFrom`, tested without a server); `ntrip.test` takes a flag for the fallback; `ntrip.switch|main|fallback` and `config.set|conn.ntripProfilePerField` were added in Phase 3.
+  - The headline, the advice sentence and the six checks are made by the client from that state and the RTCM table it already has, so they are translated with the rest (`tr()`); the host sends no sentences except the notice.
+  - A switch is a toast; "the main service answers again" is the host's confirmation dialog ("Switch back" / "Stay on fallback"), shown on every browser and answered by the one with control. The note for installations that had profiles tied to fields is a toast once (`NtripModeNoticeShown`) and stays in the card.
+  - The switch button always asks first; no switch is possible without control (commands are not in `ObserverIds`).
+  - **Changed after a first look in the app** (the card was too busy): the Network IO card keeps the first lines (headline, bytes, where the corrections go, the receiver's age) and two buttons, *NTRIP Settings* and the one switch; headline advice, notice, checks, RTCM table, mode, *NTRIP on*, *Broadcast corrections* and the profiles moved to a screen of their own, **NTRIP Settings**. A notice fades after five minutes. NTRIP Settings, the profiles and the editor are not light-dismissed (no scrim): a tap beside them is a slip on a screen this size.
+  - **Find mount points** in the profile editor (main and fallback): the host reads the caster's source table with the client's own connection code (NTRIP 2.0, then 1.0), nearest first when the receiver has a position, and sends it in a frame of its own (`NtripMountpoints`, type 28); a long list shows the nearest 200 with a search. A header followed at once by a large table is not held to the header cap (it was, and kadaster and centipede failed).
+  - **Choosing and starting a profile** (after use in the app): the first profile ever saved becomes the default one and connects at once when NTRIP is on and nothing is connected, whatever its *Auto connect with associated field* says (that only concerns field loads and startup); the *NTRIP on* box became a button, **NTRIP active / NTRIP disabled**, and switching it on connects the default profile even with auto-connect off. The profile list has **Use** (`ntrip.use|id`, `MainViewModel.UseNtripProfileAsync`): it connects with the selected profile now, asks first when a session runs, and in the one-profile mode also makes it the default; the list marks the profile in use and shows `Main:` and `FB:` when a fallback is set. The card and NTRIP Settings name the profile and the service in use (the session frame ends with both).
+  - `en.json` was regenerated with a port of `Tools/i18n-extract.py` (checked identical on the unchanged tree first), as this machine has no Python.
+  - Checked in the running app with a browser (Playwright) against two fake casters: refused login with advice and checks, the confirmed switch, the toast, the "main is back" question with both answers, the switch back, both modes, the editor (stored fallback shown, passwords masked, saved with the stored passwords kept, removal by an empty host, Test on the fallback), and the automatic switch with a fallback typed into the editor.
 
 ### Phase 5: docs
 `CLAUDE.md` (the NTRIP sections), `Plans/ARCHITECTURE.md` (NTRIP data flow), `Docs/INTERFACE_GUIDE.md` (Network IO), this plan to `Plans/Completed/`, `RTCM_FORWARDING_PLAN.md` "Still to check" list unchanged.
+- **Built as:** all four done in #464; `CLAUDE.md` and `ARCHITECTURE.md` now say NTRIP 2.0 first with one try of 1.0 (decision 2); references to this plan point to `Plans/Completed/`.
 
 ## Verification
 
@@ -129,6 +158,5 @@ These were open questions in the first draft; the maintainers can still overrule
 ## Out of scope
 
 - Serial or USB connection to a receiver; a radio source.
-- Caster selection from a source table beyond what Test already shows (the rebuild has a mount point picker; it can follow separately).
 - Changes to the RTCM forwarding, the queue or the Worker.
 - Changes to AgIO (AgOpenGPS): the rebuild there is its own pull request.

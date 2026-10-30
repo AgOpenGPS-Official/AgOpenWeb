@@ -49,6 +49,12 @@ public class NtripProfile
     public string Password { get; set; } = string.Empty;
 
     /// <summary>
+    /// The service to fall back to (the fields above are the main service); null for none.
+    /// Used in the "main + fallback" mode only.
+    /// </summary>
+    public NtripFallback? Fallback { get; set; }
+
+    /// <summary>
     /// List of field directory names associated with this profile.
     /// When a field in this list is loaded, this profile will be used.
     /// </summary>

@@ -110,6 +110,46 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _ntripRtcmUnicast, value);
     }
 
+    // The mount points last asked for in the NTRIP profile editor (empty until then).
+    private AgOpenWeb.Models.Ntrip.NtripMountpointList _ntripMountpoints = AgOpenWeb.Models.Ntrip.NtripMountpointList.None;
+    public AgOpenWeb.Models.Ntrip.NtripMountpointList NtripMountpoints
+    {
+        get => _ntripMountpoints;
+        set => SetProperty(ref _ntripMountpoints, value);
+    }
+
+    // The corrections come from the fallback service, the main service answers again while it is
+    // in use (the operator decides about going back), and the last switch notice (empty = none).
+    private bool _ntripUsingFallback;
+    public bool NtripUsingFallback
+    {
+        get => _ntripUsingFallback;
+        set => SetProperty(ref _ntripUsingFallback, value);
+    }
+
+    private bool _ntripMainIsBack;
+    public bool NtripMainIsBack
+    {
+        get => _ntripMainIsBack;
+        set => SetProperty(ref _ntripMainIsBack, value);
+    }
+
+    // Which profile and services the client was started with, for the cards ("MOUNT@host:port"; the
+    // profile name is empty for a caster typed in by hand). Never holds a login.
+    private string _ntripProfileName = string.Empty;
+    public string NtripProfileName { get => _ntripProfileName; set => SetProperty(ref _ntripProfileName, value); }
+    private string _ntripMainText = string.Empty;
+    public string NtripMainText { get => _ntripMainText; set => SetProperty(ref _ntripMainText, value); }
+    private string _ntripFallbackText = string.Empty;
+    public string NtripFallbackText { get => _ntripFallbackText; set => SetProperty(ref _ntripFallbackText, value); }
+
+    private string _ntripNotice = string.Empty;
+    public string NtripNotice
+    {
+        get => _ntripNotice;
+        set => SetProperty(ref _ntripNotice, value);
+    }
+
     // Result of the most recent NTRIP "Test Connection" probe (e.g. from the remote
     // Network IO editor). Set on the UI thread by the test runner; projected on the
     // Status frame so the browser editor can show it. Empty = no test run.
@@ -246,6 +286,10 @@ public class ConnectionState : ObservableObject
         NtripBytesReceived = 0;
         NtripRtcmDestination = "";
         NtripRtcmUnicast = false;
+        NtripUsingFallback = NtripMainIsBack = false;
+        NtripNotice = "";
+        NtripProfileName = NtripMainText = NtripFallbackText = "";
+        NtripMountpoints = AgOpenWeb.Models.Ntrip.NtripMountpointList.None;
         IsAutoSteerConnected = IsAutoSteerDataOk = IsAutoSteerEngaged = false;
         IsMachineConnected = IsMachineDataOk = false;
         IsImuConnected = IsImuDataOk = false;

@@ -314,7 +314,9 @@ public record StatusDto(
     // Network IO: PGN 100 (corrected position) is sent (#337).
     bool SendCorrectedPosition = false,
     // Bytes 9–11 of the last scan reply: the subnet the scan came from (#334); "" = none.
-    string ScanReplySubnet = "");
+    string ScanReplySubnet = "",
+    // The NTRIP session: which service is in use, the failover state, the last failure (NTRIP plan).
+    NtripSessionDto? NtripSession = null);
 
 /// <summary>What the field data card shows beyond the worked area the status frame already
 /// carries: the boundary area less inner boundaries (0 = no boundary), the ground covered
@@ -364,6 +366,23 @@ public record NtripRtcmDto(
 
 /// <param name="EverySeconds">Mean spacing; NaN after a single message.</param>
 public record NtripRtcmTypeDto(int Type, long Count, double EverySeconds, double LastSeconds);
+
+/// <summary>Which NTRIP service the corrections come from and how the connection is doing, for the
+/// Network IO card. State is <c>NtripState</c> (0 Stopped, 1 Connecting, 2 Connected, 3 Streaming,
+/// 4 Waiting, 5 GaveUp); LastError is <c>NtripCategory</c>, -1 for none. Notice is the last switch
+/// message ("" for none).</summary>
+public record NtripSessionDto(
+    bool UsingFallback,
+    bool MainIsBack,
+    bool HasFallback,
+    bool ProfilePerField,
+    int State,
+    int LastError,
+    int Attempts,
+    double RetryInSeconds,
+    string Notice,
+    string Profile = "",
+    string Service = "");
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and
@@ -540,7 +559,21 @@ public record NtripProfilesDto(
 public record NtripProfileDto(
     string Id, string Name, string CasterHost, int CasterPort, string MountPoint,
     string Username, string Password, bool AutoConnectOnFieldLoad, bool IsDefault,
-    IReadOnlyList<string> AssociatedFields);
+    IReadOnlyList<string> AssociatedFields,
+    NtripFallbackDto? Fallback = null);
+
+/// <summary>A profile's fallback service. Like the profile's own, its password goes out only as <see cref="Secrets.Mask"/>.</summary>
+public record NtripFallbackDto(
+    string CasterHost, int CasterPort, string MountPoint, string Username, string Password,
+    bool AutoSwitch, int SwitchAfterFailures);
+
+/// <summary>The mount points last asked for in the NTRIP profile editor: its own frame, sent when a new
+/// list (or a new status) is ready. For is "main" or "fallback"; Status is the sentence to show.</summary>
+public record NtripMountpointsDto(int Seq, string For, string Status, IReadOnlyList<NtripMountpointDto> Items);
+
+/// <param name="DistanceKm">NaN when the position of the mount point or of the receiver is unknown.</param>
+public record NtripMountpointDto(string Mount, string Name, string Format, string Systems, string Country,
+    double DistanceKm, bool NeedsPosition);
 
 /// <summary>Field Operations read-frame (Phase 9 Field Ops) — the field/job lifecycle
 /// lists for the Fields-and-Jobs dialog. Fields = every field on disk (distance enriched

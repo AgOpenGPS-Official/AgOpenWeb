@@ -483,6 +483,7 @@ public partial class MainViewModel
         RollDegrees = _latestRollDegrees;
         FixQuality = GetFixQualityString(v.FixQuality);
         GpsToPgnLatencyMs = _latestGpsToPgnLatencyMs;
+        ExpireNtripNotice();
     }
 
     #endregion

@@ -49,6 +49,8 @@ public class ProfilePersistenceGuardTests
         ["Connections.RtcmBroadcast"] = "AppSettings",
         ["Connections.SendCorrectedPosition"] = "AppSettings",
         ["Connections.NtripEnabled"] = "AppSettings",
+        ["Connections.NtripProfilePerField"] = "AppSettings",
+        ["Connections.NtripModeNoticeShown"] = "AppSettings",
         ["Connections.GpsUpdateRate"] = "AppSettings",
         ["Connections.UseRtk"] = "AppSettings",
         ["Connections.IsGpsConfigured"] = "AppSettings",

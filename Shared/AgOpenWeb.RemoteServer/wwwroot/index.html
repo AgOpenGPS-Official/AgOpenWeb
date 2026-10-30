@@ -605,6 +605,23 @@
     .nio-bcrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
     .nio-warn { color: #ef4444; font: 600 12px system-ui, sans-serif; margin-top: 4px; }
     .nio-aged { color: #ef4444; }
+    .nio-find { margin-top: 2px; min-height: 44px; }
+    .ntm-card { max-width: 520px; width: calc(100vw - 32px); gap: 8px; }
+    .ntm-list { max-height: calc(100 * var(--vh) - 300px); overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    .ntm-row { display: flex; flex-direction: column; align-items: stretch; gap: 2px; text-align: left; min-height: 48px; padding: 6px 10px;
+      border: 0; border-radius: 6px; background: rgba(var(--ov),0.08); color: var(--text); cursor: pointer; font: 500 13px system-ui, sans-serif; }
+    .ntm-row:hover { background: rgba(var(--ov),0.16); }
+    .ntm-top { display: flex; justify-content: space-between; gap: 8px; }
+    .ntm-mount { font-weight: 700; }
+    .ntm-km, .ntm-sub { color: var(--text-muted); font-size: 11px; }
+    .nio-btnrow { display: flex; gap: 8px; margin-top: 8px; }
+    .nio-btnrow .cfg-act { flex: 1; min-height: 44px; }
+    .nio-note { color: var(--text); background: rgba(241,196,15,0.14); border-left: 3px solid #F1C40F; border-radius: 4px;
+      font: 500 12px system-ui, sans-serif; margin-top: 6px; padding: 6px 8px; }
+    .nio-chk-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; font: 500 12px system-ui, sans-serif; color: var(--text); }
+    .nio-chk-row .mark { width: 14px; text-align: center; font-weight: 700; }
+    .nio-chk-row.ok .mark { color: #22c55e; } .nio-chk-row.bad .mark { color: #ef4444; } .nio-chk-row.wait .mark { color: var(--text-muted); }
+    #nio-mode .cfg-act { min-height: 44px; }
     .nio-rtcm { margin-top: 6px; }
     .nio-rtcm summary { color: var(--text-2); font: 500 12px system-ui, sans-serif; cursor: pointer; }
     .nio-rtcmscroll { max-height: calc(30 * var(--vh)); overflow-y: auto; }
@@ -616,6 +633,7 @@
     .nio-ntstatus { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
     /* NTRIP chain sub-panels (ln-panels that replace their parent). */
     .nio-ntmodal { width: 520px; }
+    .nio-ntset { width: 460px; max-height: calc(100 * var(--vh) - 72px); overflow: auto; }
     .nio-ntedit { width: 480px; max-height: calc(100 * var(--vh) - 72px); overflow: auto; }
     .nio-nttoolbar { display: flex; align-items: center; gap: 6px; background: rgba(var(--ov),0.05);
       border-radius: 8px; padding: 6px; margin-bottom: 12px; }
@@ -623,8 +641,9 @@
       color: var(--text); font: 700 20px system-ui, sans-serif; cursor: pointer; }
     .nio-tbtn:hover { background: rgba(var(--ov),0.18); }
     .nio-tbtn-x { color: #ff7a6b; } .nio-tbtn-star { color: #F1C40F; font-size: 22px; }
+    .nio-tbtn-use { width: auto; padding: 0 12px; font-weight: 700; }
     .nio-tbsep { width: 1px; height: 28px; background: var(--border); margin: 0 4px; }
-    .nio-nthead, .nio-ntrow { display: grid; grid-template-columns: 1fr 160px 60px; align-items: center; }
+    .nio-nthead, .nio-ntrow { display: grid; grid-template-columns: 1fr 230px 60px; align-items: center; }
     .nio-nthead { color: var(--text-muted); font: 600 12px system-ui, sans-serif; padding: 8px 12px; background: rgba(var(--ov),0.05); border-radius: 6px 6px 0 0; }
     .nio-nthead span:last-child, .nio-ntrow .nt-def { text-align: center; }
     .nio-ntlist { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 6px 6px; min-height: 120px; max-height: 320px; overflow: auto; }
@@ -633,7 +652,8 @@
     .nio-ntrow.sel { background: var(--sel); }
     .nio-ntrow .nt-name { color: var(--text); font: 600 14px system-ui, sans-serif; }
     .nio-ntrow .nt-mount { color: var(--text-dim); font: 400 12px system-ui, sans-serif; }
-    .nio-ntrow .nt-caster { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
+    .nio-ntrow .nt-caster { color: var(--text-2); font: 500 13px system-ui, sans-serif; min-width: 0; }
+    .nio-ntrow .nt-caster div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .nio-ntrow .nt-def { color: #F1C40F; font: 700 20px system-ui, sans-serif; }
     /* NTRIP editor modal */
     .nio-fld { margin-bottom: 8px; }
@@ -2107,10 +2127,33 @@
       <span class="nio-mod" style="font-weight:700">NTRIP</span>
       <span class="nio-ntstatus" id="nio-ntrip-status">Not Connected</span>
     </div>
+    <div class="sa-hint" id="nio-ntrip-who" translate="no" hidden></div>
     <div class="sa-hint" id="nio-ntrip-bytes" translate="no">0 KB</div>
     <div class="sa-hint" id="nio-ntrip-dest"></div>
     <div class="sa-hint" id="nio-ntrip-rx"></div>
+    <div class="nio-btnrow">
+      <button id="nio-ntset" class="cfg-act">NTRIP Settings</button>
+      <button id="nio-svc-switch" class="cfg-act rn-gated" hidden></button>
+    </div>
+  </div>
+  <!-- NTRIP Settings — chain sub-panel of Network IO, opened from its NTRIP line: the connection in
+       detail (headline and advice, the checks, the RTCM messages), the mode, the options and the
+       profiles. Back reopens Network IO. -->
+  <div id="ntripsettings" class="ln-panel nio-ntset">
+    <div class="ln-hdr"><button class="ln-x" id="nts-back" title="Back">←</button><span class="ln-hdr-title">NTRIP Settings</span><button class="ln-x" id="nts-x" title="Close">✕</button></div>
+    <div class="nio-ntriprow">
+      <span class="nio-dot" id="nts-dot"></span>
+      <span class="nio-mod" style="font-weight:700">NTRIP</span>
+      <span class="nio-ntstatus" id="nts-status">Not Connected</span>
+    </div>
+    <div class="sa-hint" id="nio-ntrip-advice"></div>
+    <div class="nio-mod" id="nio-svc-text" hidden></div>
+    <div class="nio-note" id="nio-ntrip-notice" hidden></div>
     <div class="nio-warn" id="nio-ntrip-warn" hidden></div>
+    <details class="nio-rtcm" id="nio-checks" hidden>
+      <summary id="nio-checks-sum">Checks</summary>
+      <div id="nio-checks-rows"></div>
+    </details>
     <details class="nio-rtcm" id="nio-rtcm" hidden>
       <summary id="nio-rtcm-sum"></summary>
       <div class="nio-rtcmscroll">
@@ -2120,15 +2163,19 @@
         </table>
       </div>
     </details>
+    <div class="cfg-label" style="margin-top:10px">NTRIP profile in use</div>
+    <div class="ln-seg" id="nio-mode">
+      <button class="cfg-act rn-gated" data-v="0">One profile + fallback</button>
+      <button class="cfg-act rn-gated" data-v="1">Profile per field</button>
+    </div>
+    <div class="sa-hint" id="nio-mode-hint"></div>
+    <button id="nio-ntrip-on" class="cfg-act cfg-actwide rn-gated" style="margin-top:10px"
+      title="Disabled: no connection to the NTRIP caster, for work without mobile coverage">NTRIP active</button>
     <label class="nio-bcrow" title="Send corrections to every device on the module subnet, not only to the GPS module">
       <input type="checkbox" class="nio-chk" id="nio-rtcm-bc" data-key="conn.rtcmBroadcast">
       <span class="nio-mod">Broadcast corrections</span>
     </label>
-    <label class="nio-bcrow" title="Off: no connection to the NTRIP caster, for work without mobile coverage">
-      <input type="checkbox" class="nio-chk" id="nio-ntrip-on" data-key="conn.ntripEnabled" checked>
-      <span class="nio-mod">NTRIP on</span>
-    </label>
-    <button id="nio-ntprofiles" class="cfg-act cfg-actwide" style="margin-top:8px">NTRIP Profiles</button>
+    <button id="nio-ntprofiles" class="cfg-act cfg-actwide" style="margin-top:10px">NTRIP Profiles</button>
   </div>
   <!-- System Data — chain sub-panel of Network IO, opened from the GPS line's arrow. The
        AgIO / AgOpenGPS "System Data" forms in one card: parsed values, each heading source
@@ -2185,6 +2232,7 @@
       <button id="nt-edit" class="nio-tbtn" title="Edit Selected Profile">⚙</button>
       <button id="nt-del" class="nio-tbtn nio-tbtn-x" title="Delete Selected Profile">✕</button>
       <span class="nio-tbsep"></span>
+      <button id="nt-use" class="nio-tbtn nio-tbtn-use" title="Connect with the Selected Profile">Use</button>
       <button id="nt-default" class="nio-tbtn nio-tbtn-star" title="Set as Default Profile">★</button>
     </div>
     <div class="nio-nthead"><span>Profile Name</span><span>Caster</span><span>Default</span></div>
@@ -2200,6 +2248,7 @@
         <div class="nio-fld"><label>Port</label><input class="cfg-num nio-tx" id="nte-port" type="number" placeholder="2101"></div>
         <div class="nio-fld"><label>Mount</label><input class="cfg-num nio-tx" id="nte-mount" placeholder="NEAR-RTCM3" translate="no"></div>
       </div>
+      <button id="nte-find" class="cfg-act cfg-actwide nio-find">Find mount points</button>
       <div class="nio-row2">
         <div class="nio-fld"><label>User</label><input class="cfg-num nio-tx" id="nte-user" placeholder="(optional)"></div>
         <div class="nio-fld"><label>Pass</label><input class="cfg-num nio-tx" id="nte-pass" type="password" placeholder="(optional)"></div>
@@ -2208,9 +2257,28 @@
         <button id="nte-test" class="sw-b sw-grey" style="flex:none;padding:8px 16px">Test Connection</button>
         <span id="nte-teststatus" class="sa-hint"></span>
       </div>
+      <div class="cfg-label" style="margin-top:12px">Fallback service (optional)</div>
+      <div class="sa-hint">Used when the main service fails. Only with "One profile + fallback". Leave the host empty for none.</div>
+      <div class="nio-fld"><label>Host</label><input class="cfg-num nio-tx" id="nte-fb-host" placeholder="e.g., rtk2go.com"></div>
+      <div class="nio-row2">
+        <div class="nio-fld"><label>Port</label><input class="cfg-num nio-tx" id="nte-fb-port" type="number" placeholder="2101"></div>
+        <div class="nio-fld"><label>Mount</label><input class="cfg-num nio-tx" id="nte-fb-mount" placeholder="NEAR-RTCM3" translate="no"></div>
+      </div>
+      <button id="nte-fb-find" class="cfg-act cfg-actwide nio-find">Find mount points</button>
+      <div class="nio-row2">
+        <div class="nio-fld"><label>User</label><input class="cfg-num nio-tx" id="nte-fb-user" placeholder="(optional)"></div>
+        <div class="nio-fld"><label>Pass</label><input class="cfg-num nio-tx" id="nte-fb-pass" type="password" placeholder="(optional)"></div>
+      </div>
+      <div class="nio-testrow">
+        <button id="nte-fb-test" class="sw-b sw-grey" style="flex:none;padding:8px 16px">Test fallback</button>
+        <span id="nte-fb-teststatus" class="sa-hint"></span>
+      </div>
+      <label class="nio-cklbl"><input type="checkbox" id="nte-fb-auto"> Switch to the fallback by itself when the main service fails</label>
+      <div class="nio-fld" style="margin-top:6px"><label>After this many failed attempts</label><input class="cfg-num nio-tx" id="nte-fb-after" type="number" min="1" max="20" placeholder="2"></div>
+      <div class="sa-hint">A wrong login or mount point switches at once. Going back to the main service is always your choice.</div>
       <div class="cfg-label" style="margin-top:6px">Associated Fields</div>
       <div id="nte-fields" class="nio-fieldlist"></div>
-      <div class="sa-hint">Fields not selected will use the default profile (if set).</div>
+      <div class="sa-hint">Fields not selected will use the default profile (if set). Only with "Profile per field".</div>
       <label class="nio-cklbl"><input type="checkbox" id="nte-auto"> Auto-connect when associated field is loaded</label>
       <label class="nio-cklbl"><input type="checkbox" id="nte-default"> Set as default profile (for fields without specific association)</label>
       <div class="sw-btns" style="margin-top:14px; justify-content:flex-end">
@@ -3021,6 +3089,17 @@
       <div class="dlg-buttons">
         <button id="dlgc-cancel" class="dlg-btn dlg-cancel">Cancel</button>
         <button id="dlgc-ok" class="dlg-btn dlg-ok">Confirm</button>
+      </div>
+    </div>
+    <!-- Mount points of a caster (NTRIP profile editor → Find mount points): the host reads the caster's
+         source table; a tap on a row fills the Mount field. -->
+    <div id="dlg-ntmounts" class="dlg-card ntm-card sticky">
+      <div class="dlg-title">Mount points</div>
+      <input class="cfg-num nio-tx" id="ntm-filter" placeholder="Search" autocomplete="off">
+      <div class="sa-hint" id="ntm-status"></div>
+      <div class="ntm-list" id="ntm-list"></div>
+      <div class="dlg-buttons">
+        <button id="ntm-close" class="dlg-btn dlg-cancel">Close</button>
       </div>
     </div>
     <!-- Unsaved-coverage guard (server-driven via Status.unsavedCoveragePrompt): coverage

@@ -451,7 +451,19 @@ public sealed class SceneProjector
             IsobusProvider?.Invoke(),
             FieldDataProvider?.Invoke(),
             cfg.SendCorrectedPosition,
-            c.ScanReplySubnet ?? "");
+            c.ScanReplySubnet ?? "",
+            BuildNtripSession(cfg.NtripProfilePerField, c));
+    }
+
+    // The NTRIP session for the Network IO card, read live for every status frame.
+    private NtripSessionDto? BuildNtripSession(bool profilePerField, ConnectionState c)
+    {
+        if (_ntrip == null) return null;
+        var status = _ntrip.Status;
+        bool fallback = _ntrip.Using == NtripService.Fallback;
+        return new NtripSessionDto(fallback, _ntrip.MainIsBack, _ntrip.HasFallback, profilePerField,
+            (int)status.State, status.LastError is { } error ? (int)error : -1, status.Attempts, status.RetryInSeconds, c.NtripNotice ?? "",
+            c.NtripProfileName ?? "", (fallback ? c.NtripFallbackText : c.NtripMainText) ?? "");
     }
 
     // Read live for every status frame, so "seconds since the last one" keeps counting
@@ -474,9 +486,24 @@ public sealed class SceneProjector
             .Select(p => new NtripProfileDto(
                 p.Id, p.Name, p.CasterHost, p.CasterPort, p.MountPoint,
                 p.Username, Secrets.Masked(p.Password), p.AutoConnectOnFieldLoad, p.IsDefault,
-                p.AssociatedFields.ToList()))
+                p.AssociatedFields.ToList(),
+                p.Fallback is { } f ? new NtripFallbackDto(f.CasterHost, f.CasterPort, f.MountPoint, f.Username, Secrets.Masked(f.Password), f.AutoSwitch, f.SwitchAfterFailures) : null))
             .ToList();
         return new NtripProfilesDto(profiles, _ntripProfiles.GetAvailableFields().ToList());
+    }
+
+    // The mount points last asked for in the profile editor. Re-sent when a request starts or finishes.
+    public NtripMountpointsDto BuildNtripMountpoints()
+    {
+        var list = _state.Connections.NtripMountpoints;
+        return new NtripMountpointsDto(list.Seq, list.For, list.Status,
+            list.Items.Select(m => new NtripMountpointDto(m.Mount, m.Name, m.Format, m.Systems, m.Country, m.DistanceKm, m.NeedsPosition)).ToList());
+    }
+
+    public long NtripMountpointsFingerprint()
+    {
+        var list = _state.Connections.NtripMountpoints;
+        return list.Seq * 31L + list.Status.GetHashCode() + list.Items.Count;
     }
 
     // Re-send the NTRIP profiles frame on add / edit / delete / set-default.
@@ -492,6 +519,16 @@ public sealed class SceneProjector
             h = h * 31 + (p.MountPoint?.GetHashCode() ?? 0);
             h = h * 31 + (p.Username?.GetHashCode() ?? 0);
             h = h * 31 + (p.IsDefault ? 1 : 0) + (p.AutoConnectOnFieldLoad ? 2 : 0);
+            if (p.Fallback is { } fb)
+            {
+                h = h * 31 + (fb.CasterHost?.GetHashCode() ?? 0);
+                h = h * 31 + fb.CasterPort;
+                h = h * 31 + (fb.MountPoint?.GetHashCode() ?? 0);
+                h = h * 31 + (fb.Username?.GetHashCode() ?? 0);
+                h = h * 31 + Secrets.Masked(fb.Password).GetHashCode();   // set or not: that is what the frame shows
+                h = h * 31 + (fb.AutoSwitch ? 1 : 0);
+                h = h * 31 + fb.SwitchAfterFailures;
+            }
             h = h * 31 + p.AssociatedFields.Count;
             foreach (var f in p.AssociatedFields) h = h * 31 + (f?.GetHashCode() ?? 0);
         }

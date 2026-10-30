@@ -50,7 +50,9 @@ public class DebugDumpService
         ISettingsService settingsService,
         RuntimeStateCapture runtime,
         ConfigurationStore configStore,
-        string? ntripRtcmReport = null)
+        string? ntripRtcmReport = null,
+        string? ntripSessionReport = null,
+        string? ntripSummary = null)
     {
         string? profileName = null;
         try { profileName = configStore.ActiveVehicleProfileName; } catch { }
@@ -58,7 +60,7 @@ public class DebugDumpService
         var entries = snap.Entries;
 
         // 1. System info
-        entries.Add(("system_info.txt", BuildSystemInfo()));
+        entries.Add(("system_info.txt", BuildSystemInfo(ntripSummary)));
 
         // 2. App settings
         try
@@ -104,6 +106,10 @@ public class DebugDumpService
         // 5a. What the NTRIP caster sent, by RTCM message, and the receiver's differential age.
         if (!string.IsNullOrEmpty(ntripRtcmReport))
             entries.Add(("ntrip_rtcm.txt", ntripRtcmReport));
+
+        // 5a2. What the NTRIP connection did and why it failed (no login in it).
+        if (!string.IsNullOrEmpty(ntripSessionReport))
+            entries.Add(("ntrip_session.txt", ntripSessionReport));
 
         // 5b. GPS data recorder (last 5 minutes of position/guidance/YouTurn/heading inputs)
         try
@@ -158,8 +164,10 @@ public class DebugDumpService
         string filePrefix = "debug_dump",
         IReadOnlyList<string>? userAttachments = null,
         string? activeJobTaskName = null,
-        string? ntripRtcmReport = null) =>
-        WriteDump(Capture(settingsService, runtime, configStore, ntripRtcmReport),
+        string? ntripRtcmReport = null,
+        string? ntripSessionReport = null,
+        string? ntripSummary = null) =>
+        WriteDump(Capture(settingsService, runtime, configStore, ntripRtcmReport, ntripSessionReport, ntripSummary),
             additionalNotes, screenshotPng, outputDirectory, filePrefix, userAttachments, activeJobTaskName);
 
     /// <summary>
@@ -342,7 +350,7 @@ public class DebugDumpService
         return finalPath;
     }
 
-    private static string BuildSystemInfo()
+    private static string BuildSystemInfo(string? ntripSummary)
     {
         var sb = new StringBuilder();
 
@@ -369,6 +377,7 @@ public class DebugDumpService
         sb.AppendLine(inv, $"Machine: {Environment.MachineName}");
         sb.AppendLine(inv, $"Processors: {Environment.ProcessorCount}");
         sb.AppendLine(inv, $"Working Set: {Environment.WorkingSet / 1024 / 1024}MB");
+        if (!string.IsNullOrEmpty(ntripSummary)) sb.AppendLine(inv, $"NTRIP: {ntripSummary}");
         return sb.ToString();
     }
 

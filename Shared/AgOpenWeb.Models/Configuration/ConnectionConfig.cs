@@ -106,6 +106,22 @@ public class ConnectionConfig : ObservableObject
         set => SetProperty(ref _ntripEnabled, value);
     }
 
+    // NTRIP profile per field (a loaded field switches the profile) instead of one profile
+    // with a fallback service.
+    private bool _ntripProfilePerField;
+    public bool NtripProfilePerField
+    {
+        get => _ntripProfilePerField;
+        set => SetProperty(ref _ntripProfilePerField, value);
+    }
+
+    private bool _ntripModeNoticeShown;
+    public bool NtripModeNoticeShown
+    {
+        get => _ntripModeNoticeShown;
+        set => SetProperty(ref _ntripModeNoticeShown, value);
+    }
+
     // GPS Mode
     private bool _isDualGps;
     public bool IsDualGps

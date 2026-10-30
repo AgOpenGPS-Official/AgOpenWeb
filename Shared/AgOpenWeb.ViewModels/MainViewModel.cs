@@ -474,6 +474,7 @@ public partial class MainViewModel : ObservableObject
         _udpService.ModuleConnectionChanged += OnModuleConnectionChanged;
         _ntripService.ConnectionStatusChanged += OnNtripConnectionChanged;
         _ntripService.RtcmDataReceived += OnRtcmDataReceived;
+        _ntripService.Notice += OnNtripNotice;
         ConfigStore.Connections.PropertyChanged += OnNtripEnabledChanged;
         _fieldService.ActiveFieldChanged += OnActiveFieldChanged;
         FieldFullyLoaded += OnFieldFullyLoaded;
