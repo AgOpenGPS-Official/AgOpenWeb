@@ -35,6 +35,22 @@ public class GuidanceState : ObservableObject
         set => SetProperty(ref _displayLine, value);
     }
 
+    // The extra guidelines of the curve being followed (GuidanceSnapshot.GuideLines); null for none.
+    private System.Collections.Generic.IReadOnlyList<System.Collections.Generic.IReadOnlyList<Vec3>>? _guideLines;
+    public System.Collections.Generic.IReadOnlyList<System.Collections.Generic.IReadOnlyList<Vec3>>? GuideLines
+    {
+        get => _guideLines;
+        set => SetProperty(ref _guideLines, value);
+    }
+
+    // Where the tool runs on the pass shown (GuidanceSnapshot.ToolPass); null for none.
+    private System.Collections.Generic.IReadOnlyList<Vec3>? _toolPass;
+    public System.Collections.Generic.IReadOnlyList<Vec3>? ToolPass
+    {
+        get => _toolPass;
+        set => SetProperty(ref _toolPass, value);
+    }
+
     private bool _isGuidanceActive;
     public bool IsGuidanceActive
     {
@@ -189,6 +205,8 @@ public class GuidanceState : ObservableObject
     {
         ActiveTrack = null;
         DisplayLine = null;
+        GuideLines = null;
+        ToolPass = null;
         IsGuidanceActive = false;
         CrossTrackError = HeadingError = SteerAngle = 0;
         SteerAngleRaw = DistanceOffRaw = 0;

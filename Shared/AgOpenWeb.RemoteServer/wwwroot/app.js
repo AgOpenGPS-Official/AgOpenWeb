@@ -848,7 +848,7 @@ function buildSkPaints() {
     // updateLineWidths() (world metres × pxPerM, like native's world-space strokes).
     boundary: mk('rgba(242,112,89,0.8)', 5), boundaryInner: mk('rgb(245,245,77)', 5), headland: mk('rgb(251,235,107)', 4),
     track: mk('#ffd24a', 4), reference: mk('rgb(180,100,255)', 5, [9, 7]),
-    guidance: mk('rgb(252,86,186)', 5), uturn: mk('rgb(77,242,77)', 5), next: mk('rgb(0,200,200)', 4),
+    guidance: mk('rgb(252,86,186)', 5), guidanceOutline: mk('rgb(0,0,0)', 15), uturn: mk('rgb(77,242,77)', 5), next: mk('rgb(0,200,200)', 4),
     // Extra guidelines (adjacent passes) — native _extraGuidePaint green(51,153,50,153)
     // over a black shadow, both 0.3 m. Widths set per frame in updateLineWidths.
     extraGuide: mk('rgba(51,153,50,0.6)', 1), extraGuideShadow: mk('rgba(0,0,0,0.5)', 1),
@@ -862,6 +862,9 @@ function buildSkPaints() {
     hlEdit: mk('rgba(245,235,90,0.95)', 3), hlEditOff: mk('rgba(232,86,74,0.95)', 3),
     // Tram lines (wheel tracks) — orange, set per frame in drawTramLinesSk.
     tram: mk('rgba(255,140,60,0.9)', 2),
+    // AgOpenGPS's shadow on the current line: where the tool will land. Lighter than its 20 %
+    // grey (shadowAreaGray), with clear edges, so it reads over the aerial image.
+    toolBand: fill('rgba(220,220,220,0.3)'), toolBandEdge: mk('rgba(240,240,240,0.75)', 1.5),
     // Saved recorded paths / contour strips — AgOpenGPS's pale-yellow lines (#110).
     recPath: mk('rgb(250,235,117)', 2), contourStrip: mk('rgb(250,235,107)', 2),
   };
@@ -942,6 +945,34 @@ addEventListener('touchend', e => {
   if (now - _lastTapEnd <= 300) e.preventDefault();
   _lastTapEnd = now;
 }, { passive: false });
+
+// #465: some Linux touch stacks follow a finger tap with an emulated mouse press when the
+// finger lifts. The UI acts on pointerdown, so that second press shut the menu the finger had
+// just opened (a stylus sends one press, and a second finger cancels the emulation). Drop it,
+// before any other handler sees it: a mouse press right after a touch ended near the same
+// spot, and a second press from a pointer that is already down (a real one never does that).
+const GHOST_PRESS_MS = 800, GHOST_PRESS_PX = 30;
+let _touchEnd = null;
+const _pointersDown = new Set();
+function noteTouchEnd(t, x, y) { _touchEnd = { t, x, y }; }
+addEventListener('pointerup', e => {
+  _pointersDown.delete(e.pointerId);
+  if (e.pointerType === 'touch') noteTouchEnd(e.timeStamp, e.clientX, e.clientY);
+}, true);
+addEventListener('pointercancel', e => _pointersDown.delete(e.pointerId), true);
+addEventListener('blur', () => _pointersDown.clear()); // a release we never saw
+addEventListener('touchend', e => {
+  const t = e.changedTouches[0];
+  if (t) noteTouchEnd(e.timeStamp, t.clientX, t.clientY);
+}, true);
+addEventListener('pointerdown', e => {
+  // Forget a pointer once it is caught pressing twice, so a lost release costs one press at most.
+  const ghost = _pointersDown.delete(e.pointerId) || (e.pointerType === 'mouse' && _touchEnd
+    && e.timeStamp - _touchEnd.t < GHOST_PRESS_MS
+    && Math.hypot(e.clientX - _touchEnd.x, e.clientY - _touchEnd.y) < GHOST_PRESS_PX);
+  if (ghost) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+  _pointersDown.add(e.pointerId);
+}, true);
 
 // A tap on the vehicle resets its direction, as in AgOpenGPS: the heading is learned again
 // from the next forward travel. It is the way out when the first heading was taken while
@@ -1415,9 +1446,10 @@ function llFill(pt) {
 }
 function openLatLonLine(mode) {
   llMode = mode;
-  const ab = mode === 'latLonAB';
-  llEl('ll-title').textContent = ab ? tr('AB Line from Two Points') : tr('AB Line from Point and Heading');
-  llEl('ll-heading-row').hidden = ab;
+  const ab = mode === 'latLonAB', pivot = mode === 'latLonPivot';
+  llEl('ll-title').textContent = pivot ? tr('Water Pivot from its Centre') : ab ? tr('AB Line from Two Points') : tr('AB Line from Point and Heading');
+  llEl('ll-a-label').textContent = pivot ? tr('Centre') : 'A';
+  llEl('ll-heading-row').hidden = ab || pivot;
   llEl('ll-b-row').hidden = !ab;
   for (const id of ['ll-lat-a', 'll-lon-a', 'll-heading', 'll-lat-b', 'll-lon-b']) llEl(id).value = '';
   llEl('ll-err').textContent = '';
@@ -1436,7 +1468,8 @@ llEl('ll-ok').addEventListener('pointerdown', e => {
   const latA = num('ll-lat-a'), lonA = num('ll-lon-a');
   let err = !okLat(latA) || !okLon(lonA) ? tr('Point A needs a latitude (−90 to 90) and longitude (−180 to 180)') : '';
   let cmd = '';
-  if (!err && llMode === 'latLonAB') {
+  if (!err && llMode === 'latLonPivot') cmd = 'track.latLonPivot|' + [latA, lonA].join(',');
+  else if (!err && llMode === 'latLonAB') {
     const latB = num('ll-lat-b'), lonB = num('ll-lon-b');
     if (!okLat(latB) || !okLon(lonB)) err = tr('Point B needs a latitude (−90 to 90) and longitude (−180 to 180)');
     else cmd = 'track.latLonAB|' + [latA, lonA, latB, lonB].join(',');
@@ -1656,7 +1689,11 @@ document.getElementById('flag-deleteall').addEventListener('pointerdown', e => {
   showConfirm(tr('Delete All Flags'), tr('Delete all flags? This cannot be undone.'), () => transport.send('flag.deleteAll'));
 });
 document.getElementById('flag-close').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
-document.getElementById('bn-abmenu').addEventListener('pointerdown', e => { e.stopPropagation(); bnToggleFly(bnAb, e.currentTarget); });
+document.getElementById('bn-abmenu').addEventListener('pointerdown', e => {
+  e.stopPropagation(); bnToggleFly(bnAb, e.currentTarget);
+  populateCfgControls(bnAb, true); // the snap distance
+});
+wireCfgControls(bnAb);
 
 // ---- AB-line creation (mirrors native QuickABSelector + DrawAB dialogs) ----
 // All four modes run the REAL native commands on the host (no geometry in JS):
@@ -1679,7 +1716,9 @@ function abHint() {
     case 'straight': return drawPts.length === 0 ? tr('Tap Point A') : tr('Tap Point B');
     case 'curve': return tr('Tap points ({n}) — Finish when done', { n: drawPts.length });
     case 'driveAB': return driveStep === 0 ? tr('Drive to A, then Set Point') : tr('Drive to B, then Set Point');
-    case 'recordCurve': return driveStep === 0 ? tr('Drive to A, then Set Point A') : tr('Drive the curve to B, then Set Point B');
+    case 'recordCurve': return recPivot
+      ? (driveStep === 0 ? tr('Drive onto the pivot track, then Start') : tr('Drive part of the way round the pivot, then Finish'))
+      : (driveStep === 0 ? tr('Drive to A, then Set Point A') : tr('Drive the curve to B, then Set Point B'));
   }
   return '';
 }
@@ -1710,14 +1749,16 @@ function updateAbCursorLabel(x, y) {
 // frame from drawPts (world→screen); cleared when the draw ends. DOM (CanvasKit has no text).
 function renderAbDotLabels() {
   if (!abDotLabelsEl) return;
-  const n = drawPts.length || 0; // letters for map-tap AND Drive-AB markers (drawMode may be null)
+  // Letters for map-tap AND Drive-AB markers (drawMode may be null), else the active line's A/B.
+  const active = activeAbPoints(), pts = drawPts.length ? drawPts : (active || []);
+  const n = pts.length;
   while (abDotLabelsEl.children.length < n) abDotLabelsEl.appendChild(document.createElement('span'));
   for (let i = 0; i < abDotLabelsEl.children.length; i++) {
     const span = abDotLabelsEl.children[i];
-    if (i >= n || pw(drawPts[i].e, drawPts[i].n) < 1.0) { span.style.display = 'none'; continue; }
-    const xy = w2s(drawPts[i].e, drawPts[i].n);
+    if (i >= n || pw(pts[i].e, pts[i].n) < 1.0) { span.style.display = 'none'; continue; }
+    const xy = w2s(pts[i].e, pts[i].n);
     span.textContent = abLetter(i);
-    span.style.color = abLabelColor(i);
+    span.style.color = drawPts.length ? abLabelColor(i) : (i ? ACTIVE_B_COLOR : ACTIVE_A_COLOR);
     span.style.left = xy[0] + 'px';
     span.style.top = xy[1] + 'px';
     span.style.display = 'block';
@@ -1743,12 +1784,15 @@ function startDriveAB() {                  // GPS: set A then B at the vehicle
   document.getElementById('draw-setpoint').textContent = tr('Set Point A');
   hintEl.classList.add('show'); setAbHint();
 }
-function startRecordCurve() {              // GPS: record by driving — Set Start → Set End
-  abFlow = 'recordCurve'; driveStep = 0; curveMarks = []; _lastCurveMark = null;
+// A water pivot is recorded the same way: Start, drive part of the way round, Finish; the host
+// fits the circle (AgOpenGPS adds three points round it by hand).
+let recPivot = false;
+function startRecordCurve(pivot = false) { // GPS: record by driving — Set Start → Set End
+  abFlow = 'recordCurve'; driveStep = 0; curveMarks = []; _lastCurveMark = null; recPivot = pivot;
   // Recording doesn't begin until "Set Start" (deferred track.recordCurve), so the operator
   // can position at the curve's start first. The set-point button drives the two-step.
   showAbBar(true, false, false);
-  document.getElementById('draw-setpoint').textContent = tr('Set Point A');
+  document.getElementById('draw-setpoint').textContent = pivot ? tr('Start') : tr('Set Point A');
   hintEl.classList.add('show'); setAbHint();
 }
 // "Bnd. Curve" — tap point A then point B on the boundary, then pick which way round the
@@ -1806,6 +1850,27 @@ function boundaryArcs(ring, a, b) {
   };
   const sa = at(a), sb = at(b);
   return [walk(a, sa, b, sb), walk(b, sb, a, sa)];
+}
+// A drawn curve as the host will make it: between two taps in a row on the fence it follows
+// the fence the shorter way round (AgOpenGPS FormABDraw); elsewhere it runs from tap to tap.
+function drawnCurvePreview() {
+  const ring = scene && scene.boundaries && scene.boundaries[0];
+  if (!ring || ring.length < 3) return drawPts;
+  const onFence = p => ring.some((a, i) => {
+    const b = ring[(i + 1) % ring.length], dx = b.e - a.e, dn = b.n - a.n, l2 = dx * dx + dn * dn;
+    const t = l2 > 0 ? Math.max(0, Math.min(1, ((p.e - a.e) * dx + (p.n - a.n) * dn) / l2)) : 0;
+    return Math.hypot(a.e + t * dx - p.e, a.n + t * dn - p.n) < 0.01;
+  });
+  const out = [drawPts[0]];
+  for (let i = 1; i < drawPts.length; i++) {
+    const a = drawPts[i - 1], b = drawPts[i];
+    if (onFence(a) && onFence(b)) {
+      const arcs = boundaryArcs(ring, a, b);
+      const run = polyLen(arcs[0]) <= polyLen(arcs[1]) ? arcs[0] : arcs[1].slice().reverse();
+      out.push(...run.slice(1));
+    } else out.push(b);
+  }
+  return out;
 }
 // The chosen way round, drawn while picking (#450).
 function drawBoundaryCurvePreviewSk(canvas) {
@@ -1878,8 +1943,8 @@ function abSetPoint() {                     // Set-point button — drives Drive
   } else if (abFlow === 'recordCurve') {
     if (driveStep > 1) return;              // guard a double-B while B lingers
     if (driveStep === 0) {                  // Set Point A → drop the A endpoint + begin recording
-      transport.send('track.recordCurve');
-      driveStep = 1; btn.textContent = tr('Set Point B');
+      transport.send(recPivot ? 'track.recordPivot' : 'track.recordCurve');
+      driveStep = 1; btn.textContent = recPivot ? tr('Finish') : tr('Set Point B');
       if (tick && tick.pose) {
         drawPts.push(poseEdgePt());                          // labeled "A" endpoint dot (orange)
         _lastCurveMark = { e: tick.pose.e, n: tick.pose.n }; // seed green-dot spacing; no dot at A itself
@@ -2148,7 +2213,8 @@ document.getElementById('dlg-quickab').querySelectorAll('[data-qab]').forEach(b 
       transport.send('track.aPlus' + (v !== '' && isFinite(+v) ? '|' + (+v) : ''));
     }
   }
-  else if (m === 'latLonHeading' || m === 'latLonAB') openLatLonLine(m);
+  else if (m === 'latLonHeading' || m === 'latLonAB' || m === 'latLonPivot') openLatLonLine(m);
+  else if (m === 'recordPivot') startRecordCurve(true);
   else if (m === 'driveAB') startDriveAB();
   else if (m === 'recordCurve') startRecordCurve();
   else if (m === 'boundaryEdge') transport.send('track.createFromBoundary');
@@ -2161,8 +2227,9 @@ document.getElementById('dlg-qab-cancel').addEventListener('pointerdown', e => {
 
 // ---- Tracks manager (mirrors native TracksDialogPanel) ----
 // View-only without control (just reads scene.trackList); the actions are Tier-2.
-// Like AgOpenGPS's track list: tapping a row only highlights it (trkSel); guidance
-// changes when Activate is pressed. Delete / Swap act on the highlighted row (#109).
+// Tapping a row highlights it (trkSel) and makes it the active track at once (#148), where
+// AgOpenGPS waits for Use; Activate on the active track turns guidance off. Delete / Swap act
+// on the highlighted row (#109).
 let trkSel = -1; // index into scene.trackList, or -1
 function openTracksManager() { trkSel = -1; renderTracksList(); openDialog('dlg-tracks'); }
 function renderTracksList() {
@@ -2463,7 +2530,10 @@ document.getElementById('fb-trk-edit').addEventListener('pointerdown', e => { e.
 document.getElementById('fb-trk-delete').addEventListener('pointerdown', e => {
   e.stopPropagation();
   const tl = scene && scene.trackList; if (fbSel < 0 || !tl || !tl[fbSel] || !iHoldControl) return;
-  transport.send('track.delete|' + tl[fbSel].index); fbSel = -1;
+  const t = tl[fbSel];
+  // Asks first, as the Tracks manager does: a track can't be brought back.
+  showConfirm(tr('Delete Track'), tr("Delete '{name}'? This cannot be undone.", { name: t.name }),
+    () => { transport.send('track.delete|' + t.index); fbSel = -1; });
 });
 document.getElementById('fb-trk-deleteall').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -5028,15 +5098,20 @@ function updateTramLights() {
 }
 
 // Pass HUD → DOM overlay under the lightbar readout, as AgOpenGPS's DrawTrackInfo: shown
-// with any track, whatever the Light bar / Steer bar settings. The reference line is the
-// edge between two passes (PassGeometry), so each side counts from 1: pass 0 is "1R" (first
-// pass right of A→B), pass −1 is "1L". The side is fixed in the field, whichever way you drive.
+// with any track, whatever the Light bar / Steer bar settings. The host's label is an arrow
+// for the way you drive (↑ A→B, ↓ B→A) and the pass: the reference line is the edge between
+// two passes (PassGeometry), so each side counts from 1: pass 0 is "1R" (first pass right of
+// A→B), pass −1 is "1L". The side is fixed in the field, whichever way you drive. A nudge
+// follows, with its side as the nudge window shows it: "<12 cm" left, "12 cm>" right.
 const passHud = document.getElementById('pass-hud');
 function updatePassHud() {
   // No passes on a contour (#110).
   if (!tick || !tick.guidanceActive || !tick.op || tick.op.contour) { passHud.style.display = 'none'; return; }
   const pass = tick.op.passNumber | 0;
-  const label = pass >= 0 ? `${pass + 1}R` : `${-pass}L`;
+  const nudgeM = tick.op.nudgeOffset || 0;
+  const nudge = Math.round(Math.abs(nudgeM) * (isMetric() ? 100 : 39.3701));
+  const nudgeText = nudge === 0 ? '' : nudgeM < 0 ? ` <${nudge} ${unitLabel('cm')}` : ` ${nudge} ${unitLabel('cm')}>`;
+  const label = (tick.lineLabel || (pass >= 0 ? `${pass + 1}R` : `${-pass}L`)) + nudgeText;
   if (passHud.textContent !== label) passHud.textContent = label;
   passHud.style.display = 'block';
 }
@@ -6894,40 +6969,26 @@ function drawBoundaryRecordingSk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
   }
 }
-// Live boundary draw-on-map preview (Phase MT) — the polygon vertices tapped on the
-// satellite imagery so far. Closed white outline + outlined dots; client-side only.
-// Extra guidelines (Phase MT parity) — the adjacent passes ±tool-width × i from the
-// followed line, when Display.ExtraGuidelines is on. Mirrors native DrawExtraGuidelinesSk:
-// offset the active/display line by ±toolW·i and stroke faint green (over a shadow), with
-// a zoom gate so the lines don't collapse into a band.
-function offsetLine(pts, offset) {
-  const out = new Array(pts.length);
-  for (let i = 0; i < pts.length; i++) {
-    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
-    const dx = b.e - a.e, dy = b.n - a.n, len = Math.hypot(dx, dy);
-    if (len < 1e-6) { out[i] = pts[i]; continue; }
-    out[i] = { e: pts[i].e + (-dy / len) * offset, n: pts[i].n + (dx / len) * offset };
-  }
-  return out;
-}
+// Extra guidelines (Phase MT parity) — the adjacent passes either side of the followed line,
+// when Display.ExtraGuidelines is on, faint green over a shadow, with a zoom gate so the lines
+// don't collapse into a band. The host builds them from the reference like the pass itself
+// (#450): a curve keeps its shape at corners, and the spacing is width − overlap with the tool
+// offset on alternate sides. An AB line's come as two points each and are drawn across the field.
 function drawExtraGuidelinesSk(canvas) {
   const d = config && config.display;
   if (!d || !d.extraGuidelines) return;
-  const count = d.extraGuidelinesCount || 0;
-  if (count < 1) return;
-  const line = scene && scene.guidanceLine; // the followed pass (native offsets ActiveTrack)
+  const line = scene && scene.guidanceLine; // the followed pass
   if (!line || line.length < 2) return;
   const toolW = toolWidthM();
   if (toolW < 0.1 || toolW * pxPerM < 3) return; // zoom gate: skip when passes < ~3 px apart
-  const baseLine = extendAbLine(line);
-  for (let i = 1; i <= count; i++) {
-    for (const off of [toolW * i, -toolW * i]) {
-      const ol = offsetLine(baseLine, off);
-      strokePtsSk(canvas, ol, false, SKP.extraGuideShadow);
-      strokePtsSk(canvas, ol, false, SKP.extraGuide);
-    }
+  for (const gl of scene.guideLines || []) {
+    const pts = extendAbLine(gl);
+    strokePtsSk(canvas, pts, false, SKP.extraGuideShadow);
+    strokePtsSk(canvas, pts, false, SKP.extraGuide);
   }
 }
+// Live boundary draw-on-map preview (Phase MT) — the polygon vertices tapped on the
+// satellite imagery so far. Closed white outline + outlined dots; client-side only.
 function drawSatBoundarySk(canvas) {
   if (!satBnd || !satPts.length) return;
   if (satPts.length >= 2) strokePtsSk(canvas, satPts, satPts.length >= 3, SKP.boundary);
@@ -6954,6 +7015,61 @@ function drawAbDrawPreviewSk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
   }
+}
+// AgOpenGPS's shadow on the current line (CABLine.DrawABLines): the tool's width along the pass
+// shown, so you see where the tool will land. The host sends the pass's centre (the tool offset
+// already in it); on a curve it follows the pass, corners rounded as the tractor drives them. One
+// path of quads along it, skipping any behind the camera, so a tilted view draws no ghost.
+function drawToolBandSk(canvas) {
+  const c = scene && scene.toolPass;
+  const w = toolWidthM();
+  if (!c || c.length < 2 || w < 0.1 || !(tick && tick.guidanceActive)) return;
+  let pts = extendAbLine(c);
+  if (pts.length === 2) {                  // a straight line: pieces, so the far ones can be skipped
+    const [a, b] = pts, len = Math.hypot(b.e - a.e, b.n - a.n), k = Math.max(1, Math.ceil(len / 20));
+    pts = Array.from({ length: k + 1 }, (_, i) => ({ e: a.e + (b.e - a.e) * i / k, n: a.n + (b.n - a.n) * i / k }));
+  }
+  const n = pts.length, half = w / 2, L = new Array(n), R = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+    const dx = b.e - a.e, dy = b.n - a.n, len = Math.hypot(dx, dy) || 1;
+    const re = dy / len, rn = -dx / len;   // right of the way the line runs
+    L[i] = { e: pts[i].e - re * half, n: pts[i].n - rn * half };
+    R[i] = { e: pts[i].e + re * half, n: pts[i].n + rn * half };
+  }
+  const cmds = [];
+  for (let i = 0; i + 1 < n; i++) {
+    const q = [L[i], L[i + 1], R[i + 1], R[i]];
+    if (q.some(p => pw(p.e, p.n) < 1.0)) continue; // behind the camera
+    q.forEach((p, k) => { const xy = w2s(p.e, p.n); cmds.push(k ? CK.LINE_VERB : CK.MOVE_VERB, xy[0], xy[1]); });
+    cmds.push(CK.CLOSE_VERB);
+  }
+  if (cmds.length) {
+    const path = CK.Path.MakeFromCmds(cmds);
+    if (path) { canvas.drawPath(path, SKP.toolBand); path.delete(); }
+  }
+  strokePtsSk(canvas, L, false, SKP.toolBandEdge);
+  strokePtsSk(canvas, R, false, SKP.toolBandEdge);
+}
+// The active line's A and B, as AgOpenGPS marks them: a red A and a cyan B at its ends (labels
+// in renderAbDotLabels), so you see which way A→B runs. Not while a line is being made.
+const ACTIVE_A_COLOR = 'rgb(242,0,0)', ACTIVE_B_COLOR = 'rgb(0,230,242)'; // CABLine pointARed / pointBCyan
+function activeAbPoints() {
+  if (drawPts.length || abFlow || !scene || !scene.tracks || !scene.tracks.length) return null;
+  const p = scene.tracks[0].points;
+  return p && p.length >= 2 ? [p[0], p[p.length - 1]] : null;
+}
+function drawActiveAbPointsSk(canvas) {
+  const ab = activeAbPoints();
+  if (!ab) return;
+  const rad = Math.max(4, 0.4 * pxPerM);
+  ab.forEach((p, i) => {
+    if (pw(p.e, p.n) < 1.0) return;
+    const xy = w2s(p.e, p.n);
+    SKP.flagFill.setColor(ckColor(i ? ACTIVE_B_COLOR : ACTIVE_A_COLOR));
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
+  });
 }
 // Tram lines (wheel tracks) generated from the tram systems. Drawn when the tram display is
 // on (bottom-nav tram mode > 0) or while the Field Builder Tram tab is open (so you see the
@@ -7002,7 +7118,7 @@ function drawHeadlandDrawSk(canvas) {
 // finish/cancel. Cyan line through the points + an outlined dot at each.
 function drawDrawingSk(canvas) {
   if (!drawMode || !drawPts.length) return;
-  if (drawPts.length >= 2) strokePtsSk(canvas, drawPts, false, SKP.track);
+  if (drawPts.length >= 2) strokePtsSk(canvas, abFlow === 'curve' ? drawnCurvePreview() : drawPts, false, SKP.track);
   const rad = Math.max(4, 0.5 * pxPerM);
   SKP.flagFill.setColor(ckColor('#40E0FF'));
   for (const p of drawPts) {
@@ -7143,6 +7259,7 @@ function updateLineWidths() {
   SKP.boundaryInner.setStrokeWidth(wb(3.0)); // boundaryInner 1 × 3
   SKP.headland.setStrokeWidth(w(3.0));   // headland 1 × 3
   SKP.guidance.setStrokeWidth(w(1.5));   // trackActive 0.5 × 3
+  SKP.guidanceOutline.setStrokeWidth(w(1.5) * 3); // AgOpenGPS draws the current line over black, 3 × its width
   SKP.reference.setStrokeWidth(w(0.9));  // trackBaseDash 0.3 × 3
   SKP.next.setStrokeWidth(w(1.2));       // trackNext 0.4 × 3
   SKP.uturn.setStrokeWidth(w(3.0));      // youTurn 1 × 3
@@ -7810,13 +7927,19 @@ function renderSkia(canvas, rp) {
     // (PassGeometry), so pass 0 lies half a width from it; only a track driven on the line
     // itself (boundary-follow) puts the magenta guidance on top of it, and then just the one
     // line shows. Matches the host's baseTrack = (display track is the reference) ? null : track.
+    drawToolBandSk(canvas); // where the tool will land, under the lines
     const _onRef = scene.guidanceLine && scene.tracks.some(t => onPolyline(scene.guidanceLine, t.points));
     if (!_onRef) for (const tr of scene.tracks)
       strokePtsSk(canvas, extendAbLine(tr.points), false, SKP.reference);
     // Magenta current pass, extended across the field. The host's DisplayLine is only ~track
     // length (a 2-point offset AB); extendAbLine spans it full-field, so an offset pass isn't a
     // short stub. Curves are >2 points and already host-extended, so they pass through unchanged.
-    if (scene.guidanceLine) strokePtsSk(canvas, extendAbLine(scene.guidanceLine), false, SKP.guidance);
+    if (scene.guidanceLine) {
+      const gl = extendAbLine(scene.guidanceLine);
+      strokePtsSk(canvas, gl, false, SKP.guidanceOutline);
+      strokePtsSk(canvas, gl, false, SKP.guidance);
+    }
+    drawActiveAbPointsSk(canvas);
     drawFlagsSk(canvas, scene.flags);
   }
   drawRecordingMarkersSk(canvas); // live recorded-path dots (independent of the Scene)
@@ -7840,7 +7963,30 @@ function renderSkia(canvas, rp) {
 // The single render loop. Window rAF (not surface.requestAnimationFrame) so it
 // survives surface recreation on resize and runs even before CanvasKit finishes
 // loading (DOM overlays update regardless; the GL map draws once skSurface exists).
-function skFrame() {
+// Frame cap (#408): the picture changes with the 10 Hz pose and its extrapolation at field
+// speeds, so the map is drawn at 30 fps; drawing at the display's rate (60-120 Hz) only heats
+// the tablet. While the operator handles it (a press, a drag or pinch, the wheel, a key) and
+// shortly after, every frame is drawn, so panning and zooming stay smooth.
+const FRAME_CAP_FPS = 30, FULL_RATE_AFTER_INPUT_MS = 300;
+let _frameLast = 0, _fullRateUntil = 0;
+function noteInput(e) {
+  if (e.type === 'pointermove' && !e.buttons) return; // a hover is not handling the map
+  _fullRateUntil = performance.now() + FULL_RATE_AFTER_INPUT_MS;
+}
+for (const t of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown'])
+  addEventListener(t, noteInput, { capture: true, passive: true });
+function skFrame(ts) {
+  // rAF runs at the display's rate; a frame that comes too soon is skipped whole (map and DOM
+  // overlays). _frameLast advances by the interval, so the average holds on any refresh rate
+  // (30 on a 144 Hz screen); the 2 ms tolerance absorbs rAF jitter.
+  if (typeof ts === 'number') {
+    if (ts < _fullRateUntil) _frameLast = ts;
+    else {
+      const interval = 1000 / FRAME_CAP_FPS, since = ts - _frameLast;
+      if (since < interval - 2) { requestAnimationFrame(skFrame); return; }
+      _frameLast = since > interval * 2 ? ts : _frameLast + interval;
+    }
+  }
   // Client render rate over a ~500 ms window (shown on the GPS-detail card).
   const _now = performance.now();
   if (_fpsT0 === 0) _fpsT0 = _now;

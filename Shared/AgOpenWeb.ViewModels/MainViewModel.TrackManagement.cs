@@ -289,8 +289,30 @@ public partial class MainViewModel
     /// <summary>
     /// Called by TracksDialogPanel when a track visibility checkbox is toggled.
     /// </summary>
+    /// <summary>
+    /// The active track is going (hidden or deleted): AutoSteer and U-turn off, with the reason,
+    /// and no track active. Clearing the track alone left AutoSteer engaged with nothing to follow.
+    /// </summary>
+    private void StopGuidanceOnActiveTrack(string logReason, string message)
+    {
+        if (IsAutoSteerEngaged)
+        {
+            IsAutoSteerEngaged = false;
+            _autoSteerService.Disengage();
+            _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
+            LogAutoSteerOff(logReason);
+            ReportFailure(message);
+        }
+        if (IsYouTurnEnabled) IsYouTurnEnabled = false;
+        SelectedTrack = null;
+    }
+
     public void OnTrackVisibilityChanged()
     {
+        // A hidden track can't be the one guided on: the tractor would follow a line that isn't
+        // drawn. Guidance stops, as when the active track is deleted.
+        if (SelectedTrack is { IsVisible: false } hidden)
+            StopGuidanceOnActiveTrack("track hidden", $"Guidance stopped: '{hidden.Name}' is hidden");
         SaveTracksToFile();
         RebuildRecordedPathsAndContours();
     }
@@ -459,7 +481,8 @@ private List<TrackModel> TransformImportedTracks(IReadOnlyList<TrackModel> sourc
     {
         var trackName = trackToRemove.Name;
         bool wasRecPath = trackToRemove.Type == TrackType.RecordedPath;
-        if (SelectedTrack == trackToRemove) SelectedTrack = null;
+        if (SelectedTrack == trackToRemove)
+            StopGuidanceOnActiveTrack("track deleted", $"Guidance stopped: '{trackName}' was deleted");
         SavedTracks.Remove(trackToRemove); // mirrors into State.Field.Tracks
         RebuildRecordedPathsAndContours();
         SaveTracksToFile();

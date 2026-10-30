@@ -143,8 +143,9 @@ public class ToolPositionService : IToolPositionService
                 CalculateFixedToolPosition(vehiclePivot, vehicleHeading, tool);
             }
 
-            // Apply lateral offset
-            ApplyLateralOffset(tool.Offset);
+            // No lateral offset here: the section spans carry it (SectionControlService,
+            // as AgOpenGPS's section positions do), so this is the tool's point on the
+            // tractor's line. Shifting it as well painted the coverage at twice the offset (#446).
 
             PublishSnapshot();
         }
@@ -381,23 +382,6 @@ public class ToolPositionService : IToolPositionService
         _lastTankPos = _tankPosition;
         _lastToolPivotPos = _toolPivotPosition;
         _lastHitchPos = _hitchPosition;
-    }
-
-    /// <summary>
-    /// Apply lateral offset to tool position
-    /// </summary>
-    private void ApplyLateralOffset(double offset)
-    {
-        if (Math.Abs(offset) < 0.001) return;
-
-        // Perpendicular to tool heading (right is positive)
-        double perpHeading = _toolHeading + Math.PI / 2.0;
-
-        _toolPosition = new Vec3(
-            _toolPosition.Easting + Math.Sin(perpHeading) * offset,
-            _toolPosition.Northing + Math.Cos(perpHeading) * offset,
-            _toolPosition.Heading
-        );
     }
 
     public (Vec3 left, Vec3 right) GetToolEdgePositions()

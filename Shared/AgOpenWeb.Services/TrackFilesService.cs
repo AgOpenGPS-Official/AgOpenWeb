@@ -158,8 +158,13 @@ namespace AgOpenWeb.Services
                         IsClosed = mode == TrackMode.WaterPivot
                     };
 
-                    // Use curve points if available, otherwise use A/B points
-                    if (curvePoints.Count > 0)
+                    // Use curve points if available, otherwise use A/B points. A water pivot has
+                    // only its centre (A); the field load makes its circle, which needs the tool.
+                    if (mode == TrackMode.WaterPivot && curvePoints.Count == 0)
+                    {
+                        track.Points = new List<Vec3> { new(aEasting, aNorthing, 0), new(aEasting, aNorthing, 0) };
+                    }
+                    else if (curvePoints.Count > 0)
                     {
                         track.Points = new List<Vec3>(curvePoints);
                     }

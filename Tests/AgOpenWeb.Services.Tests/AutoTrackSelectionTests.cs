@@ -178,4 +178,21 @@ public class AutoTrackSelectionTests
 
         Assert.That(result!.Name, Is.EqualTo("Curve1"));
     }
+
+    // Recorded paths and contour strips share the track list but are not lines to guide on.
+    [TestCase(TrackType.RecordedPath)]
+    [TestCase(TrackType.Contour)]
+    public void FindClosestTrack_SkipsRecordedPathsAndContours(TrackType type)
+    {
+        var near = new TrackModel
+        {
+            Name = "Near", Type = type, IsVisible = true,
+            Points = new List<Vec3> { new(1, -50, 0), new(1, 0, 0), new(1, 50, 0) },
+        };
+        var tracks = new List<TrackModel> { near, MakeABLine("AB", 20, -50, 20, 50) };
+
+        var result = AutoTrackSelectionService.FindClosestTrack(tracks, new Vec2(0, 0), 0);
+
+        Assert.That(result!.Name, Is.EqualTo("AB"));
+    }
 }

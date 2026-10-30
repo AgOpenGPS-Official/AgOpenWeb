@@ -119,6 +119,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private Models.Track.Track? _cachedOffsetTrack;
     private Models.Track.Track? _cachedOffsetSourceTrack;
     private double _cachedOffsetDistAway;
+    private readonly OffsetPassCache _offsetPasses = new();
     // Phase D D3: passNumber / nudgeOffset live on _guidanceWorking as the single
     // source of truth. The separate _passNumber / _nudgeOffset fields used to be
     // pushed here by SetActiveTrack; that path now writes directly to the
@@ -535,7 +536,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 ? (_guidanceWorking.IsHeadingSameWay ? -1 : 1)
                 : (_guidanceWorking.IsHeadingSameWay ? 1 : -1);
             _guidanceWorking.HowManyPathsAway += delta;
-            _guidanceWorking.NudgeOffset = 0;
+            // The nudge stays: a lateral move is a pass, not a reset (AgOpenGPS BuildManualYouLateral).
             _trackGuidanceState = null;
 
             // #408. If a u-turn is plotted but not yet executing, drop it
@@ -1055,6 +1056,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
         string? statusMessage = null;
         Models.Track.Track? displayTrack = null;
         Models.Track.Track? baseTrack = null;
+        IReadOnlyList<IReadOnlyList<Vec3>>? guideLines = null;
+        (double Width, double Shift, bool Extend, int Count)? guideArgs = null;
+        IReadOnlyList<Vec3>? toolPass = null;
+        (double Width, bool Extend)? toolPassArgs = null;
 
         // Always compute the display track when we have a track (for map visualization)
         if (hasTrack)
@@ -1096,8 +1101,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
             else
             {
-                var offsetPoints = CurveProcessing.CreateOffsetCurve(track.Points, distAway);
-                if (extendDisp) offsetPoints = CurveProcessing.ExtendCurveEnds(offsetPoints);
+                var offsetPoints = extendDisp
+                    ? CurveProcessing.ExtendCurveEnds(_offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius).Points)
+                    : new List<Vec3>(_offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius).Points);
                 displayTrack = new Models.Track.Track
                 {
                     Name = $"{track.Name} (path {passNumber})",
@@ -1107,6 +1113,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     IsActive = true
                 };
                 baseTrack = track;
+            }
+
+            toolPassArgs = (widthMinusOverlap, extendDisp);
+            toolPass = ToolPass(track, passNumber, widthMinusOverlap, nudgeOffset, extendDisp);
+
+            if (config2.Display.ExtraGuidelines)
+            {
+                guideArgs = (widthMinusOverlap, toolShift, extendDisp, config2.Display.ExtraGuidelinesCount);
+                guideLines = GuideLines(track, passNumber, widthMinusOverlap, nudgeOffset, toolShift, extendDisp,
+                    config2.Display.ExtraGuidelinesCount);
             }
         }
 
@@ -1227,6 +1243,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 // was non-zero) stays pointing at the reference track, and the UI
                 // renders baseTrack + displayTrack at the same position (overlap).
                 baseTrack = ReferenceEquals(nearestDisplayTrack, track) ? null : track;
+                // The guidelines go either side of the pass shown.
+                if (guideArgs is { } ga)
+                    guideLines = GuideLines(track!, nearestPass, ga.Width, nudgeOffset, ga.Shift, ga.Extend, ga.Count);
+                if (toolPassArgs is { } ta)
+                    toolPass = ToolPass(track!, nearestPass, ta.Width, nudgeOffset, ta.Extend);
 
                 // #95: show where Pure Pursuit would aim if engaged now, so the operator
                 // can see the target (field vs. ditch) before engaging.
@@ -1391,8 +1412,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 _youTurn,
                 justCompleted: youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false)),
             Guidance = BuildGuidanceSnapshot(
-                _guidanceWorking, displayTrack, baseTrack, hasGuidance,
-                diagPathAnchorA, diagPathAnchorB, diagTurnPathCount, diagAntiTangentGuardFired),
+                WithLineLabel(_guidanceWorking), displayTrack, baseTrack, hasGuidance,
+                diagPathAnchorA, diagPathAnchorB, diagTurnPathCount, diagAntiTangentGuardFired) with { GuideLines = guideLines, ToolPass = toolPass },
 
             // Sections
             SectionStates = secStatesArr,
@@ -1479,6 +1500,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
         NextUTurnDirectionLeftOverride = src.NextUTurnDirectionLeftOverride,
         JustCompleted = justCompleted,
     };
+
+    // The pass label, as AgOpenGPS's DrawTrackInfo: an arrow for the way you drive (up = A→B, its
+    // font's '{'; down = B→A, its '}') and the pass counted from the reference line, which is the
+    // edge between passes: pass 0 is 1R, pass −1 is 1L. The map adds the nudge in its own units.
+    private static GuidanceWorkingState WithLineLabel(GuidanceWorkingState g)
+    {
+        int pass = g.HowManyPathsAway;
+        g.CurrentLineLabel = (g.IsHeadingSameWay ? "↑" : "↓") + (pass >= 0 ? $"{pass + 1}R" : $"{-pass}L");
+        return g;
+    }
 
     private static GuidanceSnapshot BuildGuidanceSnapshot(
         GuidanceWorkingState src,
@@ -1580,8 +1611,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
         else
         {
-            var (offsetPoints, percentRemoved) = CurveProcessing.CreateOffsetCurveWithInfo(track.Points, distAway);
-            if (extendCurve) offsetPoints = CurveProcessing.ExtendCurveEnds(offsetPoints);
+            var (cachedPoints, percentRemoved) = _offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius);
+            var offsetPoints = extendCurve ? CurveProcessing.ExtendCurveEnds(cachedPoints) : new List<Vec3>(cachedPoints);
 
             // Warn on tight curves
             if (percentRemoved > 10 && passNumber != _lastWarnedPathsAway)
@@ -1809,6 +1840,84 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// Returns the detected nearest pass number, the offset display track and the pivot's
     /// cross-track error to it (m, the engaged guidance's sign) for the light bar.
     /// </summary>
+    private (Models.Track.Track Track, int Pass, double Width, double Nudge, bool Extend, double Radius) _toolPassKey;
+    private IReadOnlyList<Vec3>? _toolPass;
+
+    /// <summary>
+    /// Where the tool runs on the pass shown: the pass's centre, without the tool shift the
+    /// tractor's line has (PassGeometry). The map draws the tool's width along it, as AgOpenGPS's
+    /// shadow on the current AB line shows where the tool will land; on a curve it follows the
+    /// pass, its corners rounded as the tractor will drive them. The same list until the pass
+    /// changes.
+    /// </summary>
+    private IReadOnlyList<Vec3> ToolPass(Models.Track.Track track, int pass, double widthMinusOverlap, double nudge, bool extend)
+    {
+        double radius = _configStore.Guidance.UTurnRadius;
+        var key = (track, pass, widthMinusOverlap, nudge, extend, radius);
+        if (_toolPass != null && _toolPassKey.Equals(key)) return _toolPass;
+        double dist = Models.Track.PassGeometry.Offset(track, pass, widthMinusOverlap, nudge);
+        IReadOnlyList<Vec3> line;
+        if (track.Points.Count == 2)
+        {
+            var a = track.Points[0];
+            var b = track.Points[1];
+            double right = Math.Atan2(b.Easting - a.Easting, b.Northing - a.Northing) + Math.PI / 2;
+            double de = Math.Sin(right) * dist, dn = Math.Cos(right) * dist;
+            line = new List<Vec3> { new(a.Easting + de, a.Northing + dn, a.Heading), new(b.Easting + de, b.Northing + dn, b.Heading) };
+        }
+        else
+        {
+            var points = Math.Abs(dist) < 0.01 ? track.Points : _offsetPasses.Get(track, dist, radius).Points;
+            line = extend ? CurveProcessing.ExtendCurveEnds(points) : points;
+        }
+        _toolPassKey = key;
+        return _toolPass = line;
+    }
+
+    private (Models.Track.Track Track, int Pass, double Width, double Nudge, double Shift, bool Extend, int Count) _guideKey;
+    private IReadOnlyList<IReadOnlyList<Vec3>>? _guideLines;
+
+    /// <summary>
+    /// The extra guidelines of a track: <paramref name="count"/> passes each side of
+    /// <paramref name="pass"/>, offset from the reference with the collision test like the pass
+    /// itself, so they round off at corners instead of pinching into spikes or folding over on a
+    /// tight bend (#450). Adjacent passes are driven the other way, so the tool offset moves to
+    /// the other side on every other one, as in AgOpenGPS (CABCurve.BuildCurveGuidelines). The
+    /// same list is returned until the pass or the setting changes.
+    /// </summary>
+    private IReadOnlyList<IReadOnlyList<Vec3>> GuideLines(Models.Track.Track track, int pass, double widthMinusOverlap,
+        double nudge, double toolShift, bool extend, int count)
+    {
+        var key = (track, pass, widthMinusOverlap, nudge, toolShift, extend, count);
+        if (_guideLines != null && _guideKey.Equals(key)) return _guideLines;
+
+        var lines = new List<IReadOnlyList<Vec3>>(2 * count);
+        for (int k = 1; k <= count; k++)
+            foreach (int side in new[] { -1, 1 })
+            {
+                double shift = k % 2 == 1 ? -toolShift : toolShift;
+                double dist = Models.Track.PassGeometry.Offset(track, pass + side * k, widthMinusOverlap, nudge, shift);
+                if (track.Points.Count == 2)
+                {
+                    // An AB line: A and B moved sideways; the map draws it across the field.
+                    var a = track.Points[0];
+                    var b = track.Points[1];
+                    double right = Math.Atan2(b.Easting - a.Easting, b.Northing - a.Northing) + Math.PI / 2;
+                    double de = Math.Sin(right) * dist, dn = Math.Cos(right) * dist;
+                    lines.Add(new List<Vec3> { new(a.Easting + de, a.Northing + dn, a.Heading), new(b.Easting + de, b.Northing + dn, b.Heading) });
+                    continue;
+                }
+                var points = Math.Abs(dist) < 0.01 ? track.Points : _offsetPasses.Get(track, dist, _configStore.Guidance.UTurnRadius).Points;
+                lines.Add(extend ? CurveProcessing.ExtendCurveEnds(points) : points);
+            }
+        _guideKey = key;
+        return _guideLines = lines;
+    }
+
+    private const double PassPickIntervalSeconds = 0.66;
+    private Models.Track.Track? _passPickTrack;
+    private long _lastPassPick;
+
     private (int nearestPass, Models.Track.Track? displayTrack, double xte) UpdateDisplayTrack(
         Position pos, Models.Track.Track track, int passNumber, double nudgeOffset,
         double pivotEasting, double pivotNorthing,
@@ -1831,6 +1940,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // the tractor steers to put the tool on it (#446).
         double toolShift = Models.Track.PassGeometry.ToolShift(config.Tool.Offset, _guidanceWorking.IsHeadingSameWay);
         int nearestPass = Models.Track.PassGeometry.Nearest(track, sampleDist, widthMinusOverlap, nudgeOffset, toolShift);
+        // The pass is picked again at most every 0.66 s, as AgOpenGPS (CABLine / CABCurve
+        // BuildCurrentLine): between picks the line stays put, so it doesn't flick between two
+        // passes when the tractor is halfway. A new track is picked at once.
+        long now = Clock.Current.GetTimestamp();
+        if (!ReferenceEquals(track, _passPickTrack) || Clock.Current.ElapsedSeconds(_lastPassPick, now) >= PassPickIntervalSeconds)
+        {
+            _passPickTrack = track;
+            _lastPassPick = now;
+        }
+        else nearestPass = passNumber;
         double distAway = Models.Track.PassGeometry.Offset(track, nearestPass, widthMinusOverlap, nudgeOffset, toolShift);
 
         Models.Track.Track? resultTrack = null;
@@ -1849,7 +1968,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
         else
         {
-            var (offsetPoints, _) = CurveProcessing.CreateOffsetCurveWithInfo(track.Points, distAway);
+            var offsetPoints = new List<Vec3>(_offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius).Points);
             resultTrack = new Models.Track.Track
             {
                 Name = $"{track.Name} (pass {nearestPass})",

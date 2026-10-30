@@ -597,6 +597,9 @@ public static class WireCodec
         foreach (var line in s.ContourStrips) WritePts(w, line);
         WriteOptPts(w, s.ContourRef);
         w.Write((byte)(s.ContourLocked ? 1 : 0));
+        w.Write(s.GuideLines.Count);                              // #450
+        foreach (var line in s.GuideLines) WritePts(w, line);
+        WriteOptPts(w, s.ToolPass);
 
         return ms.ToArray();
     }

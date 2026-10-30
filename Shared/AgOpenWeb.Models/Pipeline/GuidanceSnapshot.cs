@@ -79,6 +79,19 @@ public record GuidanceSnapshot
     /// </summary>
     public Track.Track? BaseTrack { get; init; }
 
+    /// <summary>
+    /// The extra guidelines (Display → Extra guidelines): the passes either side of
+    /// <see cref="DisplayTrack"/>, built from the reference like the pass itself so they keep its
+    /// shape (#450) and its spacing (width − overlap, the tool offset on alternate sides). An AB
+    /// line's are two points each, which the map draws across the field. The same list until the
+    /// pass or the setting changes; null with the setting off.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<Base.Vec3>>? GuideLines { get; init; }
+
+    /// <summary>The centre of the pass shown, where the tool runs (no tool shift); the map draws
+    /// the tool's width along it. The same list until the pass changes; null with no track.</summary>
+    public IReadOnlyList<Base.Vec3>? ToolPass { get; init; }
+
     // ── Cycle-only U-turn pure-pursuit diagnostics ────────────────────────
     // Produced by the YouTurn guidance branch; surfaced here so the debug
     // recorder can correlate per-cycle anchor advancement, lookahead-wrap

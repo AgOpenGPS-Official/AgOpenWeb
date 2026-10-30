@@ -356,6 +356,9 @@
     #bottomnav .bn-ic { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
     #bn-skipnum { font-size: 22px; font-weight: 700; }
     #bn-nudgeval { font-size: 14px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    #bottomnav .bn-txt { font-size: 15px; font-weight: 700; white-space: nowrap; }
+    .bn-snapdist { align-items: center; gap: 8px; font-size: 14px; }
+    .bn-snapdist input { width: 72px; }
     #bottomnav.locked .bn-btn[data-t2] { opacity: 0.45; } /* dim Tier-2 when we lack control */
     .bn-flyout { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
       margin-bottom: 6px; display: none; flex-direction: column; gap: 5px; padding: 8px;
@@ -2997,10 +3000,26 @@
           <button class="bn-btn" data-cmd="track.shrinkB" data-t2 title="Shorten line at B (−5 m)"><img class="bn-ic" src="/icons/APlusMinusB.png" alt="Shorten B"></button>
         </div>
         <div class="bn-flysep bn-abdep"></div>
+        <!-- Nudge, as AgOpenGPS's nudge window (FormNudge): by the snap distance, the current
+             nudge (tap for zero), half a tool, snap to pivot, a whole pass, and the snap
+             distance itself. The bottom bar's Snap buttons nudge by the snap distance too. -->
         <div class="bn-flyrow bn-abdep">
-          <button class="bn-btn" data-cmd="track.nudgeLeft" data-t2 title="Nudge line left">&lt;&lt;</button>
+          <button class="bn-btn" data-cmd="track.nudgeLeft" data-t2 title="Nudge line left by the snap distance">&lt;&lt;</button>
           <button class="bn-btn" id="bn-nudge" data-cmd="track.resetNudge" data-t2 title="Current nudge — tap to reset to 0"><span id="bn-nudgeval">0</span></button>
-          <button class="bn-btn" data-cmd="track.nudgeRight" data-t2 title="Nudge line right">&gt;&gt;</button>
+          <button class="bn-btn" data-cmd="track.nudgeRight" data-t2 title="Nudge line right by the snap distance">&gt;&gt;</button>
+        </div>
+        <div class="bn-flyrow bn-abdep">
+          <button class="bn-btn bn-txt" data-cmd="track.halfNudgeLeft" data-t2 title="Nudge line left by half a tool width">&lt; ½</button>
+          <button class="bn-btn" data-cmd="track.snapPivot" data-t2 title="Snap line to pivot"><img class="bn-ic" src="/icons/SnapToPivot.png" alt="Snap pivot"></button>
+          <button class="bn-btn bn-txt" data-cmd="track.halfNudgeRight" data-t2 title="Nudge line right by half a tool width">½ &gt;</button>
+        </div>
+        <div class="bn-flyrow bn-abdep">
+          <button class="bn-btn bn-txt" data-cmd="track.snapLeft" data-t2 title="Move to the pass on the left">&lt; Pass</button>
+          <button class="bn-btn bn-txt" data-cmd="track.snapRight" data-t2 title="Move to the pass on the right">Pass &gt;</button>
+        </div>
+        <div class="bn-flyrow bn-abdep bn-snapdist">
+          <label for="bn-snapdist">Snap (<span class="u" data-unit="cm"></span>)</label>
+          <input id="bn-snapdist" class="cfg-num" data-unit="cm" data-key="autosteer.nudgeDistance" type="number" step="1" min="1">
         </div>
       </div>
       <div class="bn-bar">
@@ -3011,8 +3030,8 @@
         <button class="bn-btn" id="bn-secheadland" data-cmd="headland.sectionToggle" data-t2 title="Section control in headland"><img class="bn-ic" id="bn-secheadland-ic" alt="Section in headland"></button>
         <button class="bn-btn" id="bn-headland" data-cmd="headland.toggle" data-t2 title="Headland on/off"><img class="bn-ic" id="bn-headland-ic" alt="Headland"></button>
         <button class="bn-btn bn-menu" id="bn-flags" title="Flags"><img class="bn-ic" src="/icons/FlagRed.png" alt="Flags"></button>
-        <button class="bn-btn bn-abdep" data-cmd="track.snapLeft" data-t2 title="Snap to left track"><img class="bn-ic" src="/icons/SnapLeft.png" alt="Snap L"></button>
-        <button class="bn-btn bn-abdep" data-cmd="track.snapRight" data-t2 title="Snap to right track"><img class="bn-ic" src="/icons/SnapRight.png" alt="Snap R"></button>
+        <button class="bn-btn bn-abdep" data-cmd="track.nudgeLeft" data-t2 title="Nudge line left by the snap distance"><img class="bn-ic" src="/icons/SnapLeft.png" alt="Snap L"></button>
+        <button class="bn-btn bn-abdep" data-cmd="track.nudgeRight" data-t2 title="Nudge line right by the snap distance"><img class="bn-ic" src="/icons/SnapRight.png" alt="Snap R"></button>
         <button class="bn-btn bn-abdep" data-cmd="track.snapPivot" data-t2 title="Snap to pivot"><img class="bn-ic" src="/icons/SnapToPivot.png" alt="Snap pivot"></button>
         <button class="bn-btn" id="bn-tram" data-cmd="tram.cycle" title="Tram lines display mode"><img class="bn-ic" id="bn-tram-ic" alt="Tram"></button>
         <button class="bn-btn bn-menu" id="bn-abmenu" title="AB line options"><img class="bn-ic" src="/icons/TrackOn.png" alt="AB line"></button>
@@ -3133,6 +3152,12 @@
         <button class="dlg-mode" data-qab="latLonHeading" title="AB line from a latitude/longitude and a heading"><span class="dlg-bigtxt">A+</span><span>Lat/Lon + Heading</span></button>
         <button class="dlg-mode" data-qab="latLonAB" title="AB line through two latitude/longitude points"><span class="dlg-bigtxt">AB</span><span>Lat/Lon A, B</span></button>
       </div>
+      <!-- Water pivot (AgOpenGPS TrackMode.waterPivot): its passes are circles about the centre. -->
+      <div class="dlg-sub">Water Pivot</div>
+      <div class="dlg-modes">
+        <button class="dlg-mode" data-qab="recordPivot" title="Drive part of the way round a water pivot"><span class="dlg-bigtxt">◯</span><span>Drive Round</span></button>
+        <button class="dlg-mode" data-qab="latLonPivot" title="Water pivot from the latitude/longitude of its centre"><span class="dlg-bigtxt">◯</span><span>Lat/Lon Centre</span></button>
+      </div>
       <div class="dlg-buttons"><button id="dlg-qab-cancel" class="dlg-btn dlg-cancel">Cancel</button></div>
     </div>
     <!-- Coordinates line (#335): A + heading, or A + B. The fill buttons put in the
@@ -3140,7 +3165,7 @@
     <div id="dlg-latlonab" class="dlg-card">
       <div class="dlg-title" id="ll-title"></div>
       <div class="ll-pt">
-        <div class="ll-hdr"><span>A</span><button class="dlg-btn ll-fill" data-ll-fill="a">Use current position</button></div>
+        <div class="ll-hdr"><span id="ll-a-label">A</span><button class="dlg-btn ll-fill" data-ll-fill="a">Use current position</button></div>
         <label class="dlg-label" for="ll-lat-a">Latitude (−90 to 90)</label>
         <input id="ll-lat-a" class="dlg-input num-field" type="text" placeholder="0.00000000">
         <label class="dlg-label" for="ll-lon-a">Longitude (−180 to 180)</label>
