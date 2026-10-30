@@ -7592,7 +7592,30 @@ function renderSkia(canvas, rp) {
 // The single render loop. Window rAF (not surface.requestAnimationFrame) so it
 // survives surface recreation on resize and runs even before CanvasKit finishes
 // loading (DOM overlays update regardless; the GL map draws once skSurface exists).
-function skFrame() {
+// Frame cap (#408): the picture changes with the 10 Hz pose and its extrapolation at field
+// speeds, so the map is drawn at 30 fps; drawing at the display's rate (60-120 Hz) only heats
+// the tablet. While the operator handles it (a press, a drag or pinch, the wheel, a key) and
+// shortly after, every frame is drawn, so panning and zooming stay smooth.
+const FRAME_CAP_FPS = 30, FULL_RATE_AFTER_INPUT_MS = 300;
+let _frameLast = 0, _fullRateUntil = 0;
+function noteInput(e) {
+  if (e.type === 'pointermove' && !e.buttons) return; // a hover is not handling the map
+  _fullRateUntil = performance.now() + FULL_RATE_AFTER_INPUT_MS;
+}
+for (const t of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown'])
+  addEventListener(t, noteInput, { capture: true, passive: true });
+function skFrame(ts) {
+  // rAF runs at the display's rate; a frame that comes too soon is skipped whole (map and DOM
+  // overlays). _frameLast advances by the interval, so the average holds on any refresh rate
+  // (30 on a 144 Hz screen); the 2 ms tolerance absorbs rAF jitter.
+  if (typeof ts === 'number') {
+    if (ts < _fullRateUntil) _frameLast = ts;
+    else {
+      const interval = 1000 / FRAME_CAP_FPS, since = ts - _frameLast;
+      if (since < interval - 2) { requestAnimationFrame(skFrame); return; }
+      _frameLast = since > interval * 2 ? ts : _frameLast + interval;
+    }
+  }
   // Client render rate over a ~500 ms window (shown on the GPS-detail card).
   const _now = performance.now();
   if (_fpsT0 === 0) _fpsT0 = _now;
