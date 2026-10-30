@@ -1250,14 +1250,20 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     toolPass = ToolPass(track!, nearestPass, ta.Width, nudgeOffset, ta.Extend);
 
                 // #95: show where Pure Pursuit would aim if engaged now, so the operator
-                // can see the target (field vs. ditch) before engaging.
-                var displayGoal = CalculateDisplayGoalPoint(
+                // can see the target (field vs. ditch) before engaging. The steer angle it
+                // would command feeds the steer bar, as AgOpenGPS computes it whether or not
+                // AutoSteer is on (#479); nothing steers from it here.
+                var display = CalculateDisplayGuidance(
                     pos, nearestDisplayTrack, driftedEasting, driftedNorthing, headingRad);
-                if (displayGoal is { } dg)
+                if (display is { } dg)
                 {
-                    goalE = dg.Easting;
-                    goalN = dg.Northing;
-                    hasGoal = true;
+                    steerAngle = dg.SteerAngle;
+                    if (dg.Goal is { } goal)
+                    {
+                        goalE = goal.Easting;
+                        goalN = goal.Northing;
+                        hasGoal = true;
+                    }
                 }
             }
             _guidanceWorking.HowManyPathsAway = nearestPass;
@@ -1798,18 +1804,19 @@ public sealed class GpsPipelineService : IGpsPipelineService
     }
 
     /// <summary>
-    /// Display-only Pure Pursuit goal point for free-drive (#95): the target the steering
-    /// would chase if engaged right now, on the pass the display line shows. Stateless —
-    /// no PreviousState and a fresh global nearest search — so the PP integral and the
-    /// nearest-segment memory the engaged path keeps in _trackGuidanceState are untouched.
-    /// Returns null when the track is degenerate.
+    /// Display-only guidance for free-drive: the steer angle the steering would command if
+    /// engaged right now (the steer bar, #479) and the Pure Pursuit goal point it would chase
+    /// (#95), on the pass the display line shows. Stateless — no PreviousState and a fresh
+    /// global nearest search — so the integrals and the nearest-segment memory the engaged
+    /// path keeps in _trackGuidanceState are untouched. Returns null when the track is
+    /// degenerate; Goal is null under Stanley, which has no look-ahead target (#99).
     /// </summary>
-    private Vec2? CalculateDisplayGoalPoint(
+    private (double SteerAngle, Vec2? Goal)? CalculateDisplayGuidance(
         Position pos, Models.Track.Track displayTrack,
         double pivotEasting, double pivotNorthing, double headingRad)
     {
         var config = _configStore;
-        if (config.Guidance.IsStanley) return null; // Stanley has no look-ahead target (#99)
+        bool stanley = config.Guidance.IsStanley;
         double speedKmh = pos.Speed * 3.6;
         var output = _trackGuidanceService.CalculateGuidance(new Models.Track.TrackGuidanceInput
         {
@@ -1819,7 +1826,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 pivotEasting + Math.Sin(headingRad) * config.Vehicle.Wheelbase,
                 pivotNorthing + Math.Cos(headingRad) * config.Vehicle.Wheelbase,
                 headingRad),
-            UseStanley = false,
+            UseStanley = stanley,
+            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
+            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
             Wheelbase = config.Vehicle.Wheelbase,
             MaxSteerAngle = config.Vehicle.MaxSteerAngle,
             GoalPointDistance = GoalLookAhead(speedKmh),
@@ -1832,7 +1841,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         });
         // CalculateGuidance flags an unusable track/segment with a 32000 m distance.
         if (output.DistanceFromLinePivot >= 32000) return null;
-        return output.GoalPoint;
+        return (output.SteerAngle, stanley ? null : output.GoalPoint);
     }
 
     /// <summary>

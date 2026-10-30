@@ -260,17 +260,17 @@ public static partial class RemoteServerWiring
             case "autosteer.manualTurnsSpeed": if (D(out var a25)) { ast.ManualTurnsSpeed = Math.Clamp(a25, 0, 20); store.MarkChanged(); } return; // km/h, AgOpenGPS range (#112)
             case "autosteer.minSteerSpeed": if (D(out var a26)) { ast.MinSteerSpeed = Math.Clamp(a26, 0, 10); store.MarkChanged(); } return; // km/h, AgOpenGPS range (#112)
             case "autosteer.maxSteerSpeed": if (D(out var a27)) { ast.MaxSteerSpeed = Math.Clamp(a27, 0, 50); store.MarkChanged(); } return; // km/h, AgOpenGPS range (#112)
-            // Tab 9 — Display
-            case "autosteer.lineWidth": if (I(out var a28)) { ast.LineWidth = a28; store.MarkChanged(); } return;
-            case "autosteer.nudgeDistance": if (I(out var a29)) { ast.NudgeDistance = a29; store.MarkChanged(); } return;
-            case "autosteer.nextGuidanceTime": if (D(out var a30)) { ast.NextGuidanceTime = a30; store.MarkChanged(); } return;
-            case "autosteer.cmPerPixel": if (I(out var a31)) { ast.CmPerPixel = a31; store.MarkChanged(); } return;
-            // AgOpenGPS: "Light bar" turns the bar on/off (isLightbarOn), "Steer bar" picks
-            // its style (isLightBarNotSteerBar). Choosing the steer bar also turns the bar
-            // on, or nothing would show (#219).
-            case "autosteer.lightbarEnabled": ast.LightbarEnabled = B(); store.MarkChanged(); return;
-            case "autosteer.steerBarEnabled": ast.SteerBarEnabled = B(); if (ast.SteerBarEnabled) ast.LightbarEnabled = true; store.MarkChanged(); return;
-            case "autosteer.guidanceBarOn": ast.GuidanceBarOn = B(); store.MarkChanged(); return;
+            // Tab 9 — Display. Nothing here goes to the steer module, so each is saved at once,
+            // as AgOpenGPS does; Send+Save is for the steering settings (#479).
+            case "autosteer.lineWidth": if (I(out var a28)) { ast.LineWidth = a28; cfg.SaveAutoSteerDisplaySettings(); } return;
+            case "autosteer.nudgeDistance": if (I(out var a29)) { ast.NudgeDistance = a29; cfg.SaveAutoSteerDisplaySettings(); } return;
+            case "autosteer.nextGuidanceTime": if (D(out var a30)) { ast.NextGuidanceTime = a30; cfg.SaveAutoSteerDisplaySettings(); } return;
+            case "autosteer.cmPerPixel": if (I(out var a31)) { ast.CmPerPixel = a31; cfg.SaveAutoSteerDisplaySettings(); } return;
+            // AgOpenGPS: the guidance bar's On/Off (isLightbarOn) and its style, light bar or
+            // steer bar (isLightBarNotSteerBar), are separate settings (#479).
+            case "autosteer.lightbarEnabled": ast.LightbarEnabled = B(); cfg.SaveAutoSteerDisplaySettings(); return;
+            case "autosteer.steerBarEnabled": ast.SteerBarEnabled = B(); cfg.SaveAutoSteerDisplaySettings(); return;
+            case "autosteer.guidanceBarOn": ast.GuidanceBarOn = B(); cfg.SaveAutoSteerDisplaySettings(); return;
             // unknown key → ignored
         }
     }

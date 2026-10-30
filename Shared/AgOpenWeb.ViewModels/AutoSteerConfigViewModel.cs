@@ -639,9 +639,8 @@ public partial class AutoSteerConfigViewModel : ObservableObject
                 v => AutoSteer.CmPerPixel = (int)v,
                 "", integerOnly: true, allowNegative: false, min: 1, max: 20));
 
-        // AgOpenGPS: "Light bar" turns the bar on/off (isLightbarOn), "Steer bar" picks
-        // its style (isLightBarNotSteerBar). Choosing the steer bar also turns the bar
-        // on, or nothing would show (#219).
+        // AgOpenGPS: the guidance bar's On/Off (isLightbarOn) and its style, light bar or
+        // steer bar (isLightBarNotSteerBar), are separate settings (#479).
         ToggleLightbarCommand = new RelayCommand(() =>
         {
             AutoSteer.LightbarEnabled = !AutoSteer.LightbarEnabled;
@@ -652,7 +651,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         ToggleSteerBarCommand = new RelayCommand(() =>
         {
             AutoSteer.SteerBarEnabled = !AutoSteer.SteerBarEnabled;
-            if (AutoSteer.SteerBarEnabled) AutoSteer.LightbarEnabled = true;
             Config.MarkChanged();
             OnPropertyChanged(nameof(IsBarEnabled));
         });

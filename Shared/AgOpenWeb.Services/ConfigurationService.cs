@@ -648,6 +648,35 @@ public class ConfigurationService(
         }
     }
 
+    /// <inheritdoc/>
+    public void SaveAutoSteerDisplaySettings()
+    {
+        try
+        {
+            var path = GetAutoSteerConfigPath(Store.ActiveVehicleProfileName);
+            var a = Store.AutoSteer;
+            var saved = File.Exists(path)
+                ? JsonSerializer.Deserialize<AutoSteerConfigDto>(File.ReadAllText(path))
+                : null;
+            // No file yet: everything as it is now, as a profile save would write it.
+            var dto = (saved ?? a.ToDto()) with
+            {
+                LineWidth = a.LineWidth,
+                NudgeDistance = a.NudgeDistance,
+                NextGuidanceTime = a.NextGuidanceTime,
+                CmPerPixel = a.CmPerPixel,
+                LightbarEnabled = a.LightbarEnabled,
+                SteerBarEnabled = a.SteerBarEnabled,
+                GuidanceBarOn = a.GuidanceBarOn,
+            };
+            File.WriteAllText(path, JsonSerializer.Serialize(dto, JsonOptions));
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to save AutoSteer display settings: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Load AutoSteerConfig from JSON file. If not found, keeps defaults.
     /// </summary>

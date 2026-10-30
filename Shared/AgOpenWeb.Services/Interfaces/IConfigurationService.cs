@@ -81,6 +81,13 @@ public interface IConfigurationService
     void SaveProfiles(string vehicleName, string toolName);
 
     /// <summary>
+    /// Saves the AutoSteer Display tab's settings (line width, nudge, next guidance, cm per
+    /// pixel, the guidance bar) into the active vehicle's AutoSteer file at once, leaving the
+    /// steering settings there as they were: those wait for Send+Save (#479).
+    /// </summary>
+    void SaveAutoSteerDisplaySettings();
+
+    /// <summary>
     /// Creates a new profile with default values
     /// </summary>
     /// <param name="name">Profile name</param>
