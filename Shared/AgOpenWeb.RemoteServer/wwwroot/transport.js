@@ -82,11 +82,12 @@ window.RemoteTransport = {
           const contourRef = optPts(), contourLocked = !!u8();
           const glc = i32(); const guideLines = new Array(glc); // #450
           for (let k = 0; k < glc; k++) guideLines[k] = pts();
+          const toolPass = optPts();
           handlers.onScene && handlers.onScene({
             version, originLat, originLon, fieldName, hasField, boundaries, boundaryInner, tracks,
             headland, guidanceLine, toolSections, uTurnPath, nextTrack, flags, imagery, trackList,
             headlandSegs, tramSystems, tramLines, recordedPaths, contourStrips, contourRef, contourLocked,
-            guideLines,
+            guideLines, toolPass,
           });
           break;
         }

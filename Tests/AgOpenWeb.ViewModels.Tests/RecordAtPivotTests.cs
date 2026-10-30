@@ -39,4 +39,30 @@ public class RecordAtPivotTests
         Assert.That(recorded, Is.Not.Null.And.Count.EqualTo(4));
         Assert.That(recorded!.Select(p => p.Easting), Is.All.EqualTo(10.0));
     }
+
+    // Deleting or hiding the active track turns AutoSteer off, as cycling to another track does:
+    // clearing the track alone left AutoSteer engaged with nothing to follow.
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Deleting_or_hiding_the_active_track_turns_AutoSteer_off(bool delete)
+    {
+        var b = new MainViewModelBuilder();
+        var vm = b.Build();
+        var track = AgOpenWeb.Models.Track.Track.FromABLine("AB", new AgOpenWeb.Models.Base.Vec3(0, -100, 0), new AgOpenWeb.Models.Base.Vec3(0, 100, 0));
+        vm.SavedTracks.Add(track);
+        vm.SelectedTrack = track;
+        vm.IsAutoSteerAvailable = true;
+        vm.ToggleAutoSteerCommand!.Execute(null);
+        Assume.That(vm.IsAutoSteerEngaged, Is.True);
+
+        if (delete) vm.DeleteTrackAt(0);
+        else { track.IsVisible = false; vm.OnTrackVisibilityChanged(); }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(vm.IsAutoSteerEngaged, Is.False);
+            Assert.That(vm.SelectedTrack, Is.Null);
+        });
+        b.AutoSteerService.Received().Disengage();
+    }
 }

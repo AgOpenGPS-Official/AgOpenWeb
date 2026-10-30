@@ -231,7 +231,8 @@ public sealed class SceneProjector
             contourStrips,
             contourRef,
             _state.Operation.IsContourOn && _state.Operation.IsContourLocked,
-            guideLines);
+            guideLines,
+            _state.Guidance.ToolPass?.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList());
     }
 
     // Tracks-manager display label — mirrors native TracksDialog (Contour → Path →
@@ -1036,6 +1037,8 @@ public sealed class SceneProjector
         }
 
         // Extra guidelines: a new list per pass, or when the setting changes.
+        var tpass = _state.Guidance.ToolPass;
+        h = h * 31 + (tpass is null ? -1 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(tpass));
         var gl = _state.Guidance.GuideLines;
         h = h * 31 + (gl is null ? -1 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(gl));
 

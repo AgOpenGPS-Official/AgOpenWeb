@@ -846,7 +846,7 @@ function buildSkPaints() {
     // updateLineWidths() (world metres × pxPerM, like native's world-space strokes).
     boundary: mk('rgba(242,112,89,0.8)', 5), boundaryInner: mk('rgb(245,245,77)', 5), headland: mk('rgb(251,235,107)', 4),
     track: mk('#ffd24a', 4), reference: mk('rgb(180,100,255)', 5, [9, 7]),
-    guidance: mk('rgb(252,86,186)', 5), uturn: mk('rgb(77,242,77)', 5), next: mk('rgb(0,200,200)', 4),
+    guidance: mk('rgb(252,86,186)', 5), guidanceOutline: mk('rgb(0,0,0)', 15), uturn: mk('rgb(77,242,77)', 5), next: mk('rgb(0,200,200)', 4),
     // Extra guidelines (adjacent passes) — native _extraGuidePaint green(51,153,50,153)
     // over a black shadow, both 0.3 m. Widths set per frame in updateLineWidths.
     extraGuide: mk('rgba(51,153,50,0.6)', 1), extraGuideShadow: mk('rgba(0,0,0,0.5)', 1),
@@ -860,6 +860,9 @@ function buildSkPaints() {
     hlEdit: mk('rgba(245,235,90,0.95)', 3), hlEditOff: mk('rgba(232,86,74,0.95)', 3),
     // Tram lines (wheel tracks) — orange, set per frame in drawTramLinesSk.
     tram: mk('rgba(255,140,60,0.9)', 2),
+    // AgOpenGPS's shadow on the current line: where the tool will land. Lighter than its 20 %
+    // grey (shadowAreaGray), with clear edges, so it reads over the aerial image.
+    toolBand: fill('rgba(220,220,220,0.3)'), toolBandEdge: mk('rgba(240,240,240,0.75)', 1.5),
     // Saved recorded paths / contour strips — AgOpenGPS's pale-yellow lines (#110).
     recPath: mk('rgb(250,235,117)', 2), contourStrip: mk('rgb(250,235,107)', 2),
   };
@@ -1742,14 +1745,16 @@ function updateAbCursorLabel(x, y) {
 // frame from drawPts (world→screen); cleared when the draw ends. DOM (CanvasKit has no text).
 function renderAbDotLabels() {
   if (!abDotLabelsEl) return;
-  const n = drawPts.length || 0; // letters for map-tap AND Drive-AB markers (drawMode may be null)
+  // Letters for map-tap AND Drive-AB markers (drawMode may be null), else the active line's A/B.
+  const active = activeAbPoints(), pts = drawPts.length ? drawPts : (active || []);
+  const n = pts.length;
   while (abDotLabelsEl.children.length < n) abDotLabelsEl.appendChild(document.createElement('span'));
   for (let i = 0; i < abDotLabelsEl.children.length; i++) {
     const span = abDotLabelsEl.children[i];
-    if (i >= n || pw(drawPts[i].e, drawPts[i].n) < 1.0) { span.style.display = 'none'; continue; }
-    const xy = w2s(drawPts[i].e, drawPts[i].n);
+    if (i >= n || pw(pts[i].e, pts[i].n) < 1.0) { span.style.display = 'none'; continue; }
+    const xy = w2s(pts[i].e, pts[i].n);
     span.textContent = abLetter(i);
-    span.style.color = abLabelColor(i);
+    span.style.color = drawPts.length ? abLabelColor(i) : (i ? ACTIVE_B_COLOR : ACTIVE_A_COLOR);
     span.style.left = xy[0] + 'px';
     span.style.top = xy[1] + 'px';
     span.style.display = 'block';
@@ -6725,6 +6730,61 @@ function drawAbDrawPreviewSk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
   }
 }
+// AgOpenGPS's shadow on the current line (CABLine.DrawABLines): the tool's width along the pass
+// shown, so you see where the tool will land. The host sends the pass's centre (the tool offset
+// already in it); on a curve it follows the pass, corners rounded as the tractor drives them. One
+// path of quads along it, skipping any behind the camera, so a tilted view draws no ghost.
+function drawToolBandSk(canvas) {
+  const c = scene && scene.toolPass;
+  const w = toolWidthM();
+  if (!c || c.length < 2 || w < 0.1 || !(tick && tick.guidanceActive)) return;
+  let pts = extendAbLine(c);
+  if (pts.length === 2) {                  // a straight line: pieces, so the far ones can be skipped
+    const [a, b] = pts, len = Math.hypot(b.e - a.e, b.n - a.n), k = Math.max(1, Math.ceil(len / 20));
+    pts = Array.from({ length: k + 1 }, (_, i) => ({ e: a.e + (b.e - a.e) * i / k, n: a.n + (b.n - a.n) * i / k }));
+  }
+  const n = pts.length, half = w / 2, L = new Array(n), R = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+    const dx = b.e - a.e, dy = b.n - a.n, len = Math.hypot(dx, dy) || 1;
+    const re = dy / len, rn = -dx / len;   // right of the way the line runs
+    L[i] = { e: pts[i].e - re * half, n: pts[i].n - rn * half };
+    R[i] = { e: pts[i].e + re * half, n: pts[i].n + rn * half };
+  }
+  const cmds = [];
+  for (let i = 0; i + 1 < n; i++) {
+    const q = [L[i], L[i + 1], R[i + 1], R[i]];
+    if (q.some(p => pw(p.e, p.n) < 1.0)) continue; // behind the camera
+    q.forEach((p, k) => { const xy = w2s(p.e, p.n); cmds.push(k ? CK.LINE_VERB : CK.MOVE_VERB, xy[0], xy[1]); });
+    cmds.push(CK.CLOSE_VERB);
+  }
+  if (cmds.length) {
+    const path = CK.Path.MakeFromCmds(cmds);
+    if (path) { canvas.drawPath(path, SKP.toolBand); path.delete(); }
+  }
+  strokePtsSk(canvas, L, false, SKP.toolBandEdge);
+  strokePtsSk(canvas, R, false, SKP.toolBandEdge);
+}
+// The active line's A and B, as AgOpenGPS marks them: a red A and a cyan B at its ends (labels
+// in renderAbDotLabels), so you see which way A→B runs. Not while a line is being made.
+const ACTIVE_A_COLOR = 'rgb(242,0,0)', ACTIVE_B_COLOR = 'rgb(0,230,242)'; // CABLine pointARed / pointBCyan
+function activeAbPoints() {
+  if (drawPts.length || abFlow || !scene || !scene.tracks || !scene.tracks.length) return null;
+  const p = scene.tracks[0].points;
+  return p && p.length >= 2 ? [p[0], p[p.length - 1]] : null;
+}
+function drawActiveAbPointsSk(canvas) {
+  const ab = activeAbPoints();
+  if (!ab) return;
+  const rad = Math.max(4, 0.4 * pxPerM);
+  ab.forEach((p, i) => {
+    if (pw(p.e, p.n) < 1.0) return;
+    const xy = w2s(p.e, p.n);
+    SKP.flagFill.setColor(ckColor(i ? ACTIVE_B_COLOR : ACTIVE_A_COLOR));
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
+  });
+}
 // Tram lines (wheel tracks) generated from the tram systems. Drawn when the tram display is
 // on (bottom-nav tram mode > 0) or while the Field Builder Tram tab is open (so you see the
 // effect of edits). Orange polylines; the host owns the geometry.
@@ -6913,6 +6973,7 @@ function updateLineWidths() {
   SKP.boundaryInner.setStrokeWidth(wb(3.0)); // boundaryInner 1 × 3
   SKP.headland.setStrokeWidth(w(3.0));   // headland 1 × 3
   SKP.guidance.setStrokeWidth(w(1.5));   // trackActive 0.5 × 3
+  SKP.guidanceOutline.setStrokeWidth(w(1.5) * 3); // AgOpenGPS draws the current line over black, 3 × its width
   SKP.reference.setStrokeWidth(w(0.9));  // trackBaseDash 0.3 × 3
   SKP.next.setStrokeWidth(w(1.2));       // trackNext 0.4 × 3
   SKP.uturn.setStrokeWidth(w(3.0));      // youTurn 1 × 3
@@ -7580,13 +7641,19 @@ function renderSkia(canvas, rp) {
     // (PassGeometry), so pass 0 lies half a width from it; only a track driven on the line
     // itself (boundary-follow) puts the magenta guidance on top of it, and then just the one
     // line shows. Matches the host's baseTrack = (display track is the reference) ? null : track.
+    drawToolBandSk(canvas); // where the tool will land, under the lines
     const _onRef = scene.guidanceLine && scene.tracks.some(t => onPolyline(scene.guidanceLine, t.points));
     if (!_onRef) for (const tr of scene.tracks)
       strokePtsSk(canvas, extendAbLine(tr.points), false, SKP.reference);
     // Magenta current pass, extended across the field. The host's DisplayLine is only ~track
     // length (a 2-point offset AB); extendAbLine spans it full-field, so an offset pass isn't a
     // short stub. Curves are >2 points and already host-extended, so they pass through unchanged.
-    if (scene.guidanceLine) strokePtsSk(canvas, extendAbLine(scene.guidanceLine), false, SKP.guidance);
+    if (scene.guidanceLine) {
+      const gl = extendAbLine(scene.guidanceLine);
+      strokePtsSk(canvas, gl, false, SKP.guidanceOutline);
+      strokePtsSk(canvas, gl, false, SKP.guidance);
+    }
+    drawActiveAbPointsSk(canvas);
     drawFlagsSk(canvas, scene.flags);
   }
   drawRecordingMarkersSk(canvas); // live recorded-path dots (independent of the Scene)
