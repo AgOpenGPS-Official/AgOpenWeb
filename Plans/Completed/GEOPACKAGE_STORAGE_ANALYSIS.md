@@ -19,7 +19,7 @@ written by `Shared/AgOpenWeb.Services`:
 
 | Data | File | Format | Writer |
 |---|---|---|---|
-| Field metadata (id, name, origin, convergence) | `field.json` | JSON, schemaVersion 1 | `Fields/FieldJsonService.cs` |
+| Field metadata (id, name, origin, convergence) | `field.json` (never written; removed 2026-10-30, the `metadata` feature of `field.geojson` holds it) | JSON, schemaVersion 1 | `Fields/FieldJsonService.cs` |
 | Boundary + holes, headland, tracks, bg-image bounds | `field.geojson` | GeoJSON FeatureCollection (WGS84), `role` property per feature | `GeoJson/GeoJsonFieldService.cs` |
 | Field metadata (legacy mirror) | `Field.txt` | Fixed-line text | `FieldPlaneFileService.cs` |
 | Boundary (legacy mirror) | `Boundary.txt` | Point-list text | `BoundaryFileService.cs` |

@@ -244,7 +244,7 @@ public class CodePathContinuityTests
     {
         // Field folder (Plans/Completed/FILE_FORMAT_MODERNIZATION_PLAN.md)
         "field.geojson", "background.png", "contours.geojson", "recorded-paths.geojson", "elevation.csv",
-        "job.json", "screenshot.png", "manifest.json", "field.json", "doc.kml",
+        "job.json", "screenshot.png", "manifest.json", "doc.kml",
         "coverage_disp.bin", "coverage_detect.bin",
         // App data
         "appsettings.json", "appstate.json", "configuration.json", "runtime_state.json",
