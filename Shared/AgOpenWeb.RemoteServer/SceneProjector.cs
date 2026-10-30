@@ -880,7 +880,7 @@ public sealed class SceneProjector
             d.UTurnButtonVisible, d.LateralButtonVisible,
             d.AutoSteerSound, d.UTurnSound, d.HydraulicSound, d.SectionsSound,
             d.KeyboardEnabled, d.StartFullscreen, d.ElevationLogEnabled, rm,
-            _persist.State.IsDayMode, d.UiScale);
+            _persist.State.IsDayMode, d.UiScale, d.RefNudgeDistance);
     }
 
     // Profiles read-frame (Phase 9) — the Vehicle & Tool picker hub: available

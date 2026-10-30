@@ -499,6 +499,7 @@ public class ConfigurationService(
         store.Display.SectionLinesVisible = settings.SectionLinesVisible;
         store.Display.UTurnButtonVisible = settings.UTurnButtonVisible;
         store.Display.LateralButtonVisible = settings.LateralButtonVisible;
+        store.Display.RefNudgeDistance = settings.RefNudgeDistance;
         store.Display.HardwareMessagesEnabled = settings.HardwareMessagesEnabled;
         store.Display.DayStartHour = settings.DayStartHour;
         store.Display.NightStartHour = settings.NightStartHour;
@@ -575,6 +576,7 @@ public class ConfigurationService(
         settings.SectionLinesVisible = store.Display.SectionLinesVisible;
         settings.UTurnButtonVisible = store.Display.UTurnButtonVisible;
         settings.LateralButtonVisible = store.Display.LateralButtonVisible;
+        settings.RefNudgeDistance = store.Display.RefNudgeDistance;
         settings.HardwareMessagesEnabled = store.Display.HardwareMessagesEnabled;
         settings.DayStartHour = store.Display.DayStartHour;
         settings.NightStartHour = store.Display.NightStartHour;

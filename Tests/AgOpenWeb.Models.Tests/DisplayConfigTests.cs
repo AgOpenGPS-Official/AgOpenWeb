@@ -30,4 +30,27 @@ public class DisplayConfigTests
         var d = new DisplayConfig { UiScale = set };
         Assert.That(d.UiScale, Is.EqualTo(expected));
     }
+
+    [Test]
+    public void RefNudgeDistance_DefaultsTo5()
+    {
+        Assert.That(new DisplayConfig().RefNudgeDistance, Is.EqualTo(5));
+    }
+
+    [TestCase(20, 20)]
+    [TestCase(0, 1)]       // a broken saved value
+    [TestCase(-3, 1)]
+    [TestCase(9999, 500)]
+    public void RefNudgeDistance_IsKeptInRange(int set, int expected)
+    {
+        var d = new DisplayConfig { RefNudgeDistance = set };
+        Assert.That(d.RefNudgeDistance, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void RefNudgeDistance_MissingInSavedSettings_DefaultsTo5()
+    {
+        var settings = System.Text.Json.JsonSerializer.Deserialize<AppSettings>("{}");
+        Assert.That(settings!.RefNudgeDistance, Is.EqualTo(5));
+    }
 }

@@ -200,6 +200,7 @@ public static partial class RemoteServerWiring
             case "display.uiScale": if (I(out var us)) { disp.UiScale = us; cfg.SaveAppSettings(); } return;
             case "display.uTurnButtonVisible": disp.UTurnButtonVisible = B(); cfg.SaveAppSettings(); return;
             case "display.lateralButtonVisible": disp.LateralButtonVisible = B(); cfg.SaveAppSettings(); return;
+            case "display.refNudgeDistance": if (I(out var rnd)) { disp.RefNudgeDistance = rnd; cfg.SaveAppSettings(); } return;
             case "display.autoSteerSound": disp.AutoSteerSound = B(); cfg.SaveAppSettings(); return;
             case "display.uTurnSound": disp.UTurnSound = B(); cfg.SaveAppSettings(); return;
             case "display.hydraulicSound": disp.HydraulicSound = B(); cfg.SaveAppSettings(); return;

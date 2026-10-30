@@ -74,6 +74,7 @@ public class ConfigurationServiceMappingTests
         d.SectionLinesVisible = false;
         d.UTurnButtonVisible = false;
         d.LateralButtonVisible = false;
+        d.RefNudgeDistance = 12;
         d.AutoSteerSound = false;
         d.UTurnSound = false;
         d.HydraulicSound = false;
@@ -111,6 +112,7 @@ public class ConfigurationServiceMappingTests
             Assert.That(r.SectionLinesVisible, Is.False);
             Assert.That(r.UTurnButtonVisible, Is.False);
             Assert.That(r.LateralButtonVisible, Is.False);
+            Assert.That(r.RefNudgeDistance, Is.EqualTo(12));
             Assert.That(r.AutoSteerSound, Is.False);
             Assert.That(r.UTurnSound, Is.False);
             Assert.That(r.HydraulicSound, Is.False);
