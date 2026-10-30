@@ -259,7 +259,7 @@ a smaller follow-up could consolidate them if desired.
 of the three stores owns a value. This item is about *ambient framework coupling*: the ViewModel
 reaching into framework/global statics **out of the air** instead of receiving them through its
 constructor. It's the same "not injected, just grabbed" smell, one layer down, and it's exactly
-what `Plans/ARCHITECTURE.md` flags under "Tight Coupling Points → Historical, needs refactor" —
+what `Docs/ARCHITECTURE.md` flags under "Tight Coupling Points → Historical, needs refactor" —
 which the completed storage audit deliberately did **not** touch.
 
 ### 11.1 Injectable `IDispatcher` (the concrete item)
@@ -274,7 +274,7 @@ framework), this should be an injected `IDispatcher`:
 
 **Payoff:** (a) VM unit tests stop needing `Avalonia.Headless` *just to supply a dispatcher* — an
 inline/synchronous `IDispatcher` suffices; (b) it unblocks the headless web-UI host, which has a
-VM consumer with no UI thread (see `Plans/REMOTE_WEB_UI_SPLIT.md` §9.1 + the
+VM consumer with no UI thread (see `Plans/Completed/REMOTE_WEB_UI_SPLIT.md` §9.1 + the
 `Spikes/HeadlessHostSpike` proof — the spike had to pull in `Avalonia.Headless` purely for this).
 
 **Why it wasn't already done (and wasn't wrong to defer):** until the headless host, every VM
@@ -330,7 +330,7 @@ value-type math or null-guarded and don't block headless execution).
 marshalling hurdle cleared, but the spike still had to keep `Avalonia.Headless` purely for these
 timers. It is **not** blocking Phase 1 "alongside the Avalonia app" (the live app supplies a real
 dispatcher + timers); it is the prerequisite for the **fully Avalonia-free cab-PC host**
-(`Plans/REMOTE_WEB_UI_SPLIT.md` Phase 4/5). If the web-UI work proceeds, fix it there; otherwise it
+(`Plans/Completed/REMOTE_WEB_UI_SPLIT.md` Phase 4/5). If the web-UI work proceeds, fix it there; otherwise it
 stands as a standalone follow-up.
 
 **Status:**

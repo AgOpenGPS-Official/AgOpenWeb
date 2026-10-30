@@ -13,7 +13,7 @@ in the file's own comment syntax:
 
 and no tracked text file names another licence (GPL, MIT, BSD, ...). Third-party
 code (wwwroot/vendor), the AgOpenGPS reference copy (AgOpen_Snapshot) and Plans/
-are left alone. See Plans/LICENSE_HEADERS_PLAN.md.
+are left alone. See Plans/Completed/LICENSE_HEADERS_PLAN.md.
 
 Usage:
   Tools/license-headers.py           add or rewrite headers (old GPL headers included)

@@ -49,7 +49,7 @@ public static class ServiceCollectionExtensions
         // "UI-thread" dispatcher + timer abstraction: the VM/pipeline run on a single
         // HostLoopDispatcher, off the WKWebView's main thread, exactly as on the desktop
         // daemon/launcher.
-        // See Plans/CONFIG_STATE_AUDIT.md §11.
+        // See Plans/Completed/CONFIG_STATE_AUDIT.md §11.
         services.AddSingleton<HostLoopDispatcher>();
         services.AddSingleton<IUiDispatcher>(sp => sp.GetRequiredService<HostLoopDispatcher>());
         services.AddSingleton<IUiTimerFactory>(sp => sp.GetRequiredService<HostLoopDispatcher>());

@@ -23,8 +23,8 @@ namespace AgOpenWeb.Services.Threading;
 /// The 100 Hz control loop keeps running on its own thread (as it does in the
 /// windowed app); only the UI-thread-equivalent work is funnelled here.
 ///
-/// Framework-free (no Avalonia). See Plans/WEBUI_MIGRATION_PLAN.md Phase 10 and
-/// Plans/CONFIG_STATE_AUDIT.md §11.
+/// Framework-free (no Avalonia). See Plans/Completed/WEBUI_MIGRATION_PLAN.md Phase 10 and
+/// Plans/Completed/CONFIG_STATE_AUDIT.md §11.
 /// </summary>
 public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDisposable
 {

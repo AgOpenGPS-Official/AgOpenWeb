@@ -1,7 +1,7 @@
 # Bug report service (Cloudflare Workers + R2)
 
 Receives bug reports sent from the app, stores the dump in R2 and opens the GitHub issue.
-Design: `Plans/BUG_REPORT_SUBMISSION_PLAN.md`.
+Design: `Plans/Completed/BUG_REPORT_SUBMISSION_PLAN.md`.
 
 Two Workers share one R2 bucket:
 

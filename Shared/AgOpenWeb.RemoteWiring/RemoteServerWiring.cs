@@ -16,7 +16,7 @@ public static partial class RemoteServerWiring
     // hooks, and every state projector to a live MainViewModel. Shared by every
     // head (WebBackend) and the headless host (HeadlessHost). All of them inject the
     // single-thread HostLoopDispatcher as IUiDispatcher, resolved below.
-    // See Plans/WEBUI_MIGRATION_PLAN.md Phase 10.
+    // See Plans/Completed/WEBUI_MIGRATION_PLAN.md Phase 10.
     public static void Wire(
         AgOpenWeb.RemoteServer.RemoteServerHost server,
         AgOpenWeb.ViewModels.MainViewModel vm,

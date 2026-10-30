@@ -50,7 +50,7 @@ public static class ServiceCollectionExtensions
         // consumer of this graph is BackendHost (daemon + WebView launcher), which runs
         // the VM/pipeline on a single HostLoopDispatcher standing in for the old Avalonia
         // UI thread. BackendHost re-registers its own instance (last-wins); these defaults
-        // keep the container resolvable on its own. See Plans/CONFIG_STATE_AUDIT.md §11.
+        // keep the container resolvable on its own. See Plans/Completed/CONFIG_STATE_AUDIT.md §11.
         services.AddSingleton<HostLoopDispatcher>();
         services.AddSingleton<IUiDispatcher>(sp => sp.GetRequiredService<HostLoopDispatcher>());
         services.AddSingleton<IUiTimerFactory>(sp => sp.GetRequiredService<HostLoopDispatcher>());

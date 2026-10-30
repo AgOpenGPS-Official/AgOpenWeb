@@ -202,7 +202,7 @@ public class TramLineService(
     /// wheel tracks. Uses Clipper inward offsetting, which is concave-safe and removes
     /// the self-intersections that the per-point lateral offset produced on curved
     /// fields (the "web"). Offsets march inward until the field is consumed.
-    /// See Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md (Phase 2).
+    /// See Plans/Completed/BOUNDARY_RESOLUTION_NORMALIZATION.md (Phase 2).
     /// </summary>
     public void GenerateConcentricTramLanes(double tramWidthOverride = 0)
     {

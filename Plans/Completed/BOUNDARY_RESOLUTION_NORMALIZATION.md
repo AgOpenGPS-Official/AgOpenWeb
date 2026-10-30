@@ -2,6 +2,9 @@
 
 Status: **Phase 1 + concentric-tram landed** · Owner: boundary/guidance · Related issue: #422
 
+> Moved to Completed 2026-10-30. Phase 3 (one indexed inside-test) was never done; Phase 4 was
+> written for the native Skia map, which the web client replaced. Tram moved on with #241.
+
 Verified on the 328 ha "Res Test" field: boundary 3431→342 points, `TramLines.txt`
 14.4 MB→1.9 MB, field open 2–3 min→~12 s→fast (tram now on-demand), and the legacy
 tram "web" replaced by clean concentric controlled-traffic lanes.

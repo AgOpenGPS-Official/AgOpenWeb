@@ -27,7 +27,7 @@ public enum UiDispatcherPriority
 /// Abstraction over the "UI thread" marshaller, so the VMs depend on an injected
 /// service rather than an ambient framework static. Every host implements it with
 /// <c>HostLoopDispatcher</c>; tests supply an inline dispatcher.
-/// See Plans/CONFIG_STATE_AUDIT.md §11.
+/// See Plans/Completed/CONFIG_STATE_AUDIT.md §11.
 /// </summary>
 public interface IUiDispatcher
 {

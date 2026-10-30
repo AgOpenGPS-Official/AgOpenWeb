@@ -12,7 +12,7 @@ namespace AgOpenWeb.Services.Threading;
 /// the behaviour the VM's <c>DispatcherTimer</c>s have in tests (constructed but
 /// not pumped). Use in unit tests so VM construction is deterministic and timer
 /// callbacks don't fire spuriously; <see cref="Fire"/> lets a test trigger a
-/// tick explicitly. See Plans/CONFIG_STATE_AUDIT.md §11.3.
+/// tick explicitly. See Plans/Completed/CONFIG_STATE_AUDIT.md §11.3.
 /// </summary>
 public sealed class ManualUiTimer : IUiTimer
 {

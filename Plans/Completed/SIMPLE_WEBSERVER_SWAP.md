@@ -179,7 +179,7 @@ Productionize beyond the spike's proof-of-concept:
 The iOS/Android **all-in-one heads** need the same `WireRemoteServer` command/projector
 wiring that currently lives in `Platforms/AgOpenWeb.Desktop/App.RemoteWiring.cs`.
 Hoisting that to a Shared location (so all heads reuse one wiring) is part of the
-broader web-UI migration (`Plans/WEBUI_MIGRATION_PLAN.md`), tracked separately. This
+broader web-UI migration (`Plans/Completed/WEBUI_MIGRATION_PLAN.md`), tracked separately. This
 swap only makes `RemoteServer` referenceable by those heads; it does not move the
 wiring. Sequencing: this swap can land before or after the AgOpenWeb namespace rename
 (independent).

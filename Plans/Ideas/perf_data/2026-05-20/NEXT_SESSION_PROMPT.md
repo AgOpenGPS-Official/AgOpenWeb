@@ -10,7 +10,7 @@ Continue the PERF-05 perf audit on the AgOpenWeb app. Phase 1 (instrumentation),
 
 ## What we already know
 
-The Time Profiler trace from `Plans/perf_data/2026-05-20/instruments/2026-05-20_134912_time_profiler_s5.trace` (iPad S5, sim driving + sections off + field loaded + panel closed, post-fix Phase 2c #2 build) shows the render thread (`tid_7603`, the Avalonia compositor) at ~82% of one core. Top inclusive time on the render thread:
+The Time Profiler trace from `Plans/Ideas/perf_data/2026-05-20/instruments/2026-05-20_134912_time_profiler_s5.trace` (iPad S5, sim driving + sections off + field loaded + panel closed, post-fix Phase 2c #2 build) shows the render thread (`tid_7603`, the Avalonia compositor) at ~82% of one core. Top inclusive time on the render thread:
 
 | % render | Where |
 |---|---|
@@ -33,19 +33,19 @@ The Time Profiler trace from `Plans/perf_data/2026-05-20/instruments/2026-05-20_
 
 ## How the audit pattern works (already in place)
 
-- **PERF-05 plan**: `Plans/PERF_05_SUBSYSTEM_CHURN_AUDIT.md`
+- **PERF-05 plan**: `Plans/Ideas/PERF_05_SUBSYSTEM_CHURN_AUDIT.md`
 - **Layered tooling**: `Stopwatch` + `GC.GetAllocatedBytesForCurrentThread()` for cheap structural measurements (Phase 1 style); Xcode Instruments Time Profiler for focused attribution (Phase 2b style).
 - **DiagFlags markers**: file-presence flags in `Shared/AgOpenWeb.Models/Diagnostics/DiagFlags.cs`. Each subsystem's instrumentation is off by default; turn on by pushing a marker file to the app's Documents folder.
-- **Marker push**: `Plans/perf_data/2026-05-20/push-markers.sh` (iPad via `xcrun devicectl device copy to --domain-type appDataContainer`; Android via `adb shell run-as <pkg> cp`).
-- **Instruments capture**: `Plans/perf_data/2026-05-20/instruments-trace-ipad.sh` — attaches Time Profiler by process name, 30 s window, saves to `instruments/<timestamp>_time_profiler_s5.trace`. Override template via `TEMPLATE='Allocations' bash …` or `TEMPLATE='Metal System Trace' bash …`.
-- **Scenario protocol**: `Plans/perf_data/2026-05-20/TESTING.md` — repeatable S1–S8 captures with marker windows.
-- **Analysis writeup**: `Plans/perf_data/2026-05-20/ANALYSIS.md` (the audit log so far — read §8 and §10 for the most recent state).
+- **Marker push**: `Plans/Ideas/perf_data/2026-05-20/push-markers.sh` (iPad via `xcrun devicectl device copy to --domain-type appDataContainer`; Android via `adb shell run-as <pkg> cp`).
+- **Instruments capture**: `Plans/Ideas/perf_data/2026-05-20/instruments-trace-ipad.sh` — attaches Time Profiler by process name, 30 s window, saves to `instruments/<timestamp>_time_profiler_s5.trace`. Override template via `TEMPLATE='Allocations' bash …` or `TEMPLATE='Metal System Trace' bash …`.
+- **Scenario protocol**: `Plans/Ideas/perf_data/2026-05-20/TESTING.md` — repeatable S1–S8 captures with marker windows.
+- **Analysis writeup**: `Plans/Ideas/perf_data/2026-05-20/ANALYSIS.md` (the audit log so far — read §8 and §10 for the most recent state).
 
 ## Suggested first moves for the render audit
 
 Per the user's anti-deferral pattern, don't assume — measure. In order:
 
-1. **Read the existing trace** before doing anything new. Pull the breakdown from `Plans/perf_data/2026-05-20/instruments/2026-05-20_134912_time_profiler_s5.trace` and look at the *callers* of `DrawRectangle` and `DrawRoundRect` on the render thread. Use the `python3` regex extraction pattern from the prior session (see ANALYSIS.md §10 — `inclusive` aggregation by frame-name prefix). Goal: find out *which* control/visual is invalidating + redrawing those rectangles every frame.
+1. **Read the existing trace** before doing anything new. Pull the breakdown from `Plans/Ideas/perf_data/2026-05-20/instruments/2026-05-20_134912_time_profiler_s5.trace` and look at the *callers* of `DrawRectangle` and `DrawRoundRect` on the render thread. Use the `python3` regex extraction pattern from the prior session (see ANALYSIS.md §10 — `inclusive` aggregation by frame-name prefix). Goal: find out *which* control/visual is invalidating + redrawing those rectangles every frame.
 2. **Then** decide whether the fix is (a) reducing visual count in a specific panel, (b) caching/amortizing `SkiaMetalRenderSession`, or (c) something else the trace points at. The user wants data-driven decisions — measure first.
 3. **For SkiaMetalRenderSession.Dispose** specifically — search the Avalonia source / `Avalonia.Skia.Metal` namespace for who owns and recycles the session. The 8.5% per-frame teardown is suspicious for a value that should be amortized.
 4. **Don't propose any "fast vs slow" framings** with a bypass option (memory `feedback_no_workaround_paths`). Don't propose throttling cadences (memory `project_autosteer_decoupled_from_gps` — control cadences are intentional). Don't propose "later" or "deferred" work (memory `feedback_no_later_deferred`).
@@ -83,7 +83,7 @@ git checkout -b perf-05/render-thread-audit
 #    ANALYSIS.md §10 but modify to walk one frame deeper.
 
 # 3. Capture an Allocations trace if Time Profiler points at "everywhere"
-TEMPLATE='Allocations' bash Plans/perf_data/2026-05-20/instruments-trace-ipad.sh
+TEMPLATE='Allocations' bash Plans/Ideas/perf_data/2026-05-20/instruments-trace-ipad.sh
 ```
 
 Then iterate: data → hypothesis → fix → re-measure, the same loop the rest of this audit ran on.

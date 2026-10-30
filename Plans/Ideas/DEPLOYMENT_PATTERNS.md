@@ -463,4 +463,4 @@ Steps 1 and 2 are independent and can run in parallel.
 - Linux multi-core AMP shared memory (OpenAMP / RPMsg, single-die A+M SoC) —
   <https://www.kernel.org/doc/html/latest/staging/remoteproc.html>
 - STM32U585 datasheet (1× FDCAN) — <https://www.st.com/resource/en/datasheet/stm32u585ai.pdf>
-- Related: `Plans/WEBUI_MIGRATION_PLAN.md`, `Plans/REMOTE_WEB_UI_SPLIT.md`
+- Related: `Plans/Completed/WEBUI_MIGRATION_PLAN.md`, `Plans/Completed/REMOTE_WEB_UI_SPLIT.md`

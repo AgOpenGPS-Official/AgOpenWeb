@@ -1,12 +1,12 @@
 # GPS receivers direct: parsing multi-sentence fixes in the app
 
-**Status:** proposed 2026-10-09. Nothing implemented beyond the groundwork in #288 (decoder
-dispatch, `$KSXT`).
+**Status:** in progress. Phases 1 and 2 done (#298, #300, 2026-10-09), with the bridge and replay
+tools (#302, #303). Next: Phase 2b (board IMU). Phase 3 (Septentrio) waits for captures.
 **Prompted by:** #288 (`$KSXT` from a Bynav T1-FD through an AiO UDP passthrough) and the
 machines behind it; a coming issue with Septentrio captures (GGA/VTG/HDT/AVR); the HAT and
 ESP32 steer-only boards, which leave the receiver talking straight to the app.
 **Related:** `Plans/RTCM_FORWARDING_PLAN.md` (the corrections half of the same link),
-`Plans/IMU_HEADING_WIRING_PLAN.md` (how a heading reaches guidance), #157 (PANDA vs PAOGI
+`Plans/Completed/IMU_HEADING_WIRING_PLAN.md` (how a heading reaches guidance), #157 (PANDA vs PAOGI
 heading), the HAT software plan in the firmware repo.
 
 ## Why this changes shape

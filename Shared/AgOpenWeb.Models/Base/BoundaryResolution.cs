@@ -22,7 +22,7 @@ namespace AgOpenWeb.Models.Base;
 ///   3. Per-point heading is recomputed as the forward direction (atan2(dE, dN)),
 ///      matching the offset convention used across the app.
 ///
-/// This is curvature-adaptive (Option 1 in Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md):
+/// This is curvature-adaptive (Option 1 in Plans/Completed/BOUNDARY_RESOLUTION_NORMALIZATION.md):
 /// one deviation tolerance, shape-aware, scale-robust. If real fields ever show the
 /// fixed tolerance mis-sized, prefer a hard point-count ceiling (re-run with a larger
 /// tolerance when the result exceeds a budget) over an area-scaled tolerance curve.

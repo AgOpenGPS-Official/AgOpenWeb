@@ -12,7 +12,7 @@ namespace AgOpenWeb.Services.Interfaces;
 /// VM depends on an injected service rather than an ambient framework type —
 /// the same de-ambient pass as <see cref="IUiDispatcher"/>. This is what lets a
 /// headless host (no Avalonia dispatcher) run the VM's timers.
-/// See Plans/CONFIG_STATE_AUDIT.md §11.3.
+/// See Plans/Completed/CONFIG_STATE_AUDIT.md §11.3.
 /// </summary>
 public interface IUiTimer
 {

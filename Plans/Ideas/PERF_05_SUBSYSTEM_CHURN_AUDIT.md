@@ -5,7 +5,7 @@ app actually spends CPU and allocator time on each platform, so we can rank
 fixes by largest *unjustified* time sink — not by gut feel.
 
 **Status:** Draft. Pre-instrumentation.
-**Parent strategy:** [`PERFORMANCE_STRATEGY.md`](PERFORMANCE_STRATEGY.md)
+**Parent strategy:** [`PERFORMANCE_STRATEGY.md`](../../Docs/PERFORMANCE_STRATEGY.md)
 **Umbrella issue (churn fixes):** GitHub #403 (renaming as part of this work)
 
 ## Why this exists
@@ -139,7 +139,7 @@ Logs streamed off-device:
 
 Each measurement run captures all 7 markers active simultaneously. Output is
 one log file per (platform, scenario) — 16 files total (2 platforms × 8
-scenarios) — saved to `Plans/perf_data/<date>/<platform>/<scenario>.log`.
+scenarios) — saved to `Plans/Ideas/perf_data/<date>/<platform>/<scenario>.log`.
 
 ## Analysis framework
 
@@ -163,7 +163,7 @@ floor-device cost per second). That number goes on #403 as one task.
 
 ## Outputs
 
-1. **Raw data:** `Plans/perf_data/<date>/<platform>/<scenario>.log` (gitignored
+1. **Raw data:** `Plans/Ideas/perf_data/<date>/<platform>/<scenario>.log` (gitignored
    for size; summarized in #403 comments).
 2. **Analysis table** appended to `PERFORMANCE_STRATEGY.md` under a new
    "iPad characterization" section with per-subsystem time and alloc/cycle.

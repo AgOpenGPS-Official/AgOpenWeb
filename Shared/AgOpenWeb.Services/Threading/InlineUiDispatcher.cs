@@ -12,7 +12,7 @@ namespace AgOpenWeb.Services.Threading;
 /// Framework-free <see cref="IUiDispatcher"/> that runs callbacks synchronously
 /// on the calling thread. Intended for unit tests and headless hosts that have
 /// no separate UI thread — there is nothing to marshal to, so everything is
-/// "already on the UI thread". See Plans/CONFIG_STATE_AUDIT.md §11.
+/// "already on the UI thread". See Plans/Completed/CONFIG_STATE_AUDIT.md §11.
 /// </summary>
 public sealed class InlineUiDispatcher : IUiDispatcher
 {

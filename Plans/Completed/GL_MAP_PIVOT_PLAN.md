@@ -9,7 +9,7 @@ scheduling bucket that the existing 2D control uses, where iPad is uncapped.
 
 ## Why the pivot
 
-The decisive data (Plans/perf_data/2026-05-21/):
+The decisive data (Plans/Ideas/perf_data/2026-05-21/):
 
 | Path | iPad idle FPS | Cap source |
 |---|---|---|

@@ -466,7 +466,7 @@ public partial class MainViewModel : ObservableObject
         // Replaces Phase 2c #1's 10 Hz "display tick" — same architecture,
         // half the rate, and now also includes diagnostics like
         // GpsToPgnLatencyMs that AutoSteer was writing at 100 Hz.
-        // See Plans/perf_data/2026-05-20/ANALYSIS.md.
+        // See Plans/Ideas/perf_data/2026-05-20/ANALYSIS.md.
         _statusTickTimer = _timerFactory.Create();
         _statusTickTimer.Interval = TimeSpan.FromMilliseconds(200);
         _statusTickTimer.Tick += OnStatusTick;
@@ -1770,7 +1770,7 @@ public partial class MainViewModel : ObservableObject
                 // Migrate legacy/imported dense boundaries to normalized resolution
                 // in-memory so derived geometry (tram/headland), inside-tests, and
                 // rendering operate on a sane point count. Persisted on the next
-                // explicit boundary save. See Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
+                // explicit boundary save. See Plans/Completed/BOUNDARY_RESOLUTION_NORMALIZATION.md.
                 NormalizeBoundaryInPlace(boundary);
                 SetCurrentBoundary(boundary);
                 CenterMapOnBoundary(boundary);
@@ -1890,7 +1890,7 @@ public partial class MainViewModel : ObservableObject
             // large saved file was costing seconds on the open critical path, so they
             // aren't saved at all. The tram buttons regenerate via UpdateTramLines from
             // the current track/systems. Start clean so a prior field's lines don't linger. See
-            // Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
+            // Plans/Completed/BOUNDARY_RESOLUTION_NORMALIZATION.md.
             _tramLineService.Clear();
             _mapService.SetTramLines(
                 _tramLineService.OuterBoundaryTrack,
@@ -4685,7 +4685,7 @@ public partial class MainViewModel : ObservableObject
     /// GPS-captured or imported boundaries (e.g. ~3431 points at ~1 m for a 440-acre
     /// field) otherwise propagate that density into tram/headland generation,
     /// inside-tests, and rendering. Idempotent: an already-sparse boundary is left
-    /// essentially unchanged. See Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
+    /// essentially unchanged. See Plans/Completed/BOUNDARY_RESOLUTION_NORMALIZATION.md.
     /// </summary>
     private void NormalizeBoundaryInPlace(Boundary boundary)
     {

@@ -103,7 +103,7 @@ receives projected *state* over a binary WebSocket and sends *command ids* back 
 safe allowlist. Migration = project more state + accept more command ids + build HTML/JS.
 **Do NOT port logic into JS.** End state: headless host, browser is the only UI.
 
-- **Full plan:** `Plans/WEBUI_MIGRATION_PLAN.md` (phase list, safety/control model, cutover).
+- **Full plan:** `Plans/Completed/WEBUI_MIGRATION_PLAN.md` (phase list, safety/control model, cutover).
 - **Seam files:** `RemoteServer/{Contracts.cs, WireCodec.cs, SceneProjector.cs,
   CoverageProjector.cs, MapBroadcaster.cs, WebSocketHub.cs, ControlAuthority.cs,
   RemoteServerHost.cs}`; client `wwwroot/{app.js, transport.js, index.html}`; command map +
@@ -302,7 +302,7 @@ Wire frame **AppInfo=14**; host write `app.*` + `AgShareRemote`-style bug-report
   shared `NtripConnectionTester` (also now used by the native VM — no duplicated TCP probe),
   result projected via `ConnectionState.NtripTestStatus`. SceneProjector gained
   `IUdpCommunicationService` + `INtripProfileService` (passed through `RemoteServerHost.StartAsync`
-  → updated the Desktop call). Plan: `Plans/NETWORK_IO_PLAN.md` + memory `[[project_network_io_panel]]`.
+  → updated the Desktop call). Plan: `Plans/Completed/NETWORK_IO_PLAN.md` + memory `[[project_network_io_panel]]`.
 - **File / Application Menu** (`Panels/FileMenuPanel.axaml`) — owns Application Settings:
   Language · Reset All Settings · **App Settings (modal)** · View All Settings · Log Viewer ·
   Hotkeys · Simulator · Help · About · Bug Report Dump. ⚠ A subset of App Settings (units /

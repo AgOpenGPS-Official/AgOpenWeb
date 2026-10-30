@@ -430,7 +430,7 @@ Whole-effort:
 - `Plans/threading_model.svg` — target threading model.
 - `Plans/threading_model_current.svg` — current reality with numbered problems.
 - `Plans/threading_model_migration.svg` — phased migration.
-- `Plans/PERFORMANCE_STRATEGY.md` — overall perf umbrella;
+- `Docs/PERFORMANCE_STRATEGY.md` — overall perf umbrella;
   turn-creation cost is one of the items this plan unblocks.
 - `docs/superpowers/plans/2026-04-19-unify-gps-pipeline.md` — the other
   active architecture plan; see §6.6 for the coordination point.

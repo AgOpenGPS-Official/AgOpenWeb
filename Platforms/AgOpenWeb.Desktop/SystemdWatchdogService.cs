@@ -21,7 +21,7 @@ namespace AgOpenWeb.Desktop;
 /// A no-op in every other case: not under systemd (<see cref="ISystemdNotifier"/>
 /// not registered → null), or WATCHDOG_USEC unset (watchdog disabled). So it is
 /// safe to register unconditionally and harmless under <c>dotnet run</c>.
-/// See Plans/DEPLOYMENT_PATTERNS.md (systemd daemon) and the install unit.
+/// See Plans/Ideas/DEPLOYMENT_PATTERNS.md (systemd daemon) and the install unit.
 /// </summary>
 internal sealed class SystemdWatchdogService : BackgroundService
 {
