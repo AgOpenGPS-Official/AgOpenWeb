@@ -70,8 +70,6 @@ namespace AgOpenWeb.Models
         public bool SectionLinesVisible { get; set; } = true;
         public bool UTurnButtonVisible { get; set; } = true;
         public bool LateralButtonVisible { get; set; } = true;
-        // Step of the Ref Nudge panel (cm), its own setting apart from the AutoSteer nudge distance.
-        public int RefNudgeDistance { get; set; } = 5;
         public bool HardwareMessagesEnabled { get; set; } = true;
         public int DayStartHour { get; set; } = 6;
         public int NightStartHour { get; set; } = 20;

@@ -79,6 +79,18 @@ public class AutoSteerDisplaySaveTests
         Assert.That(ReadFile().SteerBarEnabled, Is.True);
     }
 
+    [Test]
+    public void DisplaySave_WritesTheRefNudgeStep_ApartFromTheNudgeDistance()
+    {
+        _store.AutoSteer.NudgeDistance = 30;
+        _store.AutoSteer.RefNudgeDistance = 12;
+        _configService.SaveAutoSteerDisplaySettings();
+
+        var saved = ReadFile();
+        Assert.That(saved.RefNudgeDistance, Is.EqualTo(12));
+        Assert.That(saved.NudgeDistance, Is.EqualTo(30));
+    }
+
     private sealed class TestVehicleProfileService : VehicleProfileService
     {
         public TestVehicleProfileService(string dir)

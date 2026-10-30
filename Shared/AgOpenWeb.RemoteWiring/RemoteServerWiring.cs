@@ -716,6 +716,11 @@ public static partial class RemoteServerWiring
                                 "track.halfNudgeLeft" => vm.HalfToolNudgeLeftCommand,
                                 "track.halfNudgeRight" => vm.HalfToolNudgeRightCommand,
                                 "track.resetNudge" => vm.ResetNudgeCommand,
+                                "track.refNudgeLeft" => vm.RefNudgeLeftCommand,    // Ref Nudge panel (#489)
+                                "track.refNudgeRight" => vm.RefNudgeRightCommand,
+                                "track.refHalfNudgeLeft" => vm.RefHalfNudgeLeftCommand,
+                                "track.refHalfNudgeRight" => vm.RefHalfNudgeRightCommand,
+                                "track.refNudgeBegin" => vm.RefNudgeBeginCommand,
                                 "track.extendA" => vm.ExtendTrackACommand,
                                 "track.extendB" => vm.ExtendTrackBCommand,
                                 "track.shrinkA" => vm.ShrinkTrackACommand,

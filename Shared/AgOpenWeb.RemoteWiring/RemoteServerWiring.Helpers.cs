@@ -200,7 +200,6 @@ public static partial class RemoteServerWiring
             case "display.uiScale": if (I(out var us)) { disp.UiScale = us; cfg.SaveAppSettings(); } return;
             case "display.uTurnButtonVisible": disp.UTurnButtonVisible = B(); cfg.SaveAppSettings(); return;
             case "display.lateralButtonVisible": disp.LateralButtonVisible = B(); cfg.SaveAppSettings(); return;
-            case "display.refNudgeDistance": if (I(out var rnd)) { disp.RefNudgeDistance = rnd; cfg.SaveAppSettings(); } return;
             case "display.autoSteerSound": disp.AutoSteerSound = B(); cfg.SaveAppSettings(); return;
             case "display.uTurnSound": disp.UTurnSound = B(); cfg.SaveAppSettings(); return;
             case "display.hydraulicSound": disp.HydraulicSound = B(); cfg.SaveAppSettings(); return;
@@ -266,6 +265,7 @@ public static partial class RemoteServerWiring
             // as AgOpenGPS does; Send+Save is for the steering settings (#479).
             case "autosteer.lineWidth": if (I(out var a28)) { ast.LineWidth = a28; cfg.SaveAutoSteerDisplaySettings(); } return;
             case "autosteer.nudgeDistance": if (I(out var a29)) { ast.NudgeDistance = a29; cfg.SaveAutoSteerDisplaySettings(); } return;
+            case "autosteer.refNudgeDistance": if (I(out var a29r)) { ast.RefNudgeDistance = a29r; cfg.SaveAutoSteerDisplaySettings(); } return;
             case "autosteer.nextGuidanceTime": if (D(out var a30)) { ast.NextGuidanceTime = a30; cfg.SaveAutoSteerDisplaySettings(); } return;
             case "autosteer.cmPerPixel": if (I(out var a31)) { ast.CmPerPixel = a31; cfg.SaveAutoSteerDisplaySettings(); } return;
             // AgOpenGPS: the guidance bar's On/Off (isLightbarOn) and its style, light bar or

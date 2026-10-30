@@ -419,7 +419,9 @@ public record AutoSteerConfigDto(
     bool ManualTurnsEnabled, double ManualTurnsSpeed, double MinSteerSpeed, double MaxSteerSpeed,
     // Tab 9 — Display
     int LineWidth, int NudgeDistance, double NextGuidanceTime, int CmPerPixel,
-    bool LightbarEnabled, bool SteerBarEnabled, bool GuidanceBarOn);
+    bool LightbarEnabled, bool SteerBarEnabled, bool GuidanceBarOn,
+    // Ref Nudge panel step, cm (moves the reference line; NudgeDistance offsets the guidance line).
+    int RefNudgeDistance);
 
 /// <summary>Screen &amp; Alerts panel (ConfigStore.Display): display toggles, on-screen
 /// buttons, alert sounds, plus the App-Settings device flags (keyboard / start
@@ -438,9 +440,7 @@ public record DisplayConfigDto(
     // light/dark palette + map colours on this; the Day/Night Theme button toggles it.
     bool IsDayMode,
     // UI size in percent (100/115/130/150): the client zooms its controls, not the map.
-    int UiScale,
-    // Step of the Ref Nudge panel, cm (its own device setting, apart from the AutoSteer nudge distance).
-    int RefNudgeDistance);
+    int UiScale);
 
 /// <summary>Tool/Implement tab (ConfigStore.Tool + NumSections). Type: 0 front, 1 rear,
 /// 2 TBT, 3 trailing. Arrays fixed-size (16 widths/colours, 9 zone ranges).</summary>

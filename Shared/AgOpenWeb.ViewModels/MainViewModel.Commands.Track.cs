@@ -180,6 +180,8 @@ public partial class MainViewModel
 
     private void InitializeTrackCommands()
     {
+        InitializeRefNudgeCommands();
+
         // AB Line Guidance Commands - Bottom Bar
         SnapLeftCommand = new RelayCommand(() =>
         {

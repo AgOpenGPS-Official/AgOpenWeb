@@ -355,7 +355,7 @@ window.RemoteTransport = {
             uTurnButtonVisible: !!u8(), lateralButtonVisible: !!u8(),
             autoSteerSound: !!u8(), uTurnSound: !!u8(), hydraulicSound: !!u8(), sectionsSound: !!u8(),
             keyboardEnabled: !!u8(), startFullscreen: !!u8(), elevationLogEnabled: !!u8(),
-            resolutionMultiplier: f64(), isDayMode: !!u8(), uiScale: i32(), refNudgeDistance: i32(),
+            resolutionMultiplier: f64(), isDayMode: !!u8(), uiScale: i32(),
           };
           // AutoSteer config — full 9-tab surface (positional, matches WireCodec).
           const autosteer = {
@@ -371,7 +371,7 @@ window.RemoteTransport = {
             uTurnCompensation: f64(), sideHillCompensation: f64(), steerInReverse: !!u8(),
             manualTurnsEnabled: !!u8(), manualTurnsSpeed: f64(), minSteerSpeed: f64(), maxSteerSpeed: f64(),
             lineWidth: i32(), nudgeDistance: i32(), nextGuidanceTime: f64(), cmPerPixel: i32(),
-            lightbarEnabled: !!u8(), steerBarEnabled: !!u8(), guidanceBarOn: !!u8(),
+            lightbarEnabled: !!u8(), steerBarEnabled: !!u8(), guidanceBarOn: !!u8(), refNudgeDistance: i32(),
           };
           handlers.onConfig && handlers.onConfig({ vehicle, gps, roll, tool, uturn, tram, machine, display, autosteer });
           break;

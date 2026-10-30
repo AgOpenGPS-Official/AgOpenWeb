@@ -864,7 +864,7 @@ public sealed class SceneProjector
             GuidanceConfig.UTurnCompensationToPercent(g.UTurnCompensation), a.SideHillCompensation, a.SteerInReverse,
             a.ManualTurnsEnabled, a.ManualTurnsSpeed, a.MinSteerSpeed, a.MaxSteerSpeed,
             a.LineWidth, a.NudgeDistance, a.NextGuidanceTime, a.CmPerPixel,
-            a.LightbarEnabled, a.SteerBarEnabled, a.GuidanceBarOn);
+            a.LightbarEnabled, a.SteerBarEnabled, a.GuidanceBarOn, a.RefNudgeDistance);
     }
 
     // Resolution label mirrors MainViewModel.DisplayResolutionLabel.
@@ -880,7 +880,7 @@ public sealed class SceneProjector
             d.UTurnButtonVisible, d.LateralButtonVisible,
             d.AutoSteerSound, d.UTurnSound, d.HydraulicSound, d.SectionsSound,
             d.KeyboardEnabled, d.StartFullscreen, d.ElevationLogEnabled, rm,
-            _persist.State.IsDayMode, d.UiScale, d.RefNudgeDistance);
+            _persist.State.IsDayMode, d.UiScale);
     }
 
     // Profiles read-frame (Phase 9) — the Vehicle & Tool picker hub: available
@@ -976,7 +976,7 @@ public sealed class SceneProjector
         h = h * 31 + asc.WasOffset * 3 + asc.Ackermann * 5 + (int)System.Math.Round(_config.Vehicle.MaxSteerAngle) * 7 + asc.DeadzoneDelay * 11
               + asc.ProportionalGain * 13 + asc.MaxPwm * 17 + asc.MinPwm * 19 + asc.TurnSensorCounts * 23
               + asc.PressureTripPoint * 29 + asc.CurrentTripPoint * 31 + asc.MotorDriver * 37 + asc.AdConverter * 41
-              + asc.ImuAxisSwap * 43 + asc.ExternalEnable * 47 + asc.LineWidth * 53 + asc.NudgeDistance * 59 + asc.CmPerPixel * 61;
+              + asc.ImuAxisSwap * 43 + asc.ExternalEnable * 47 + asc.LineWidth * 53 + asc.NudgeDistance * 59 + asc.CmPerPixel * 61 + asc.RefNudgeDistance * 67;
         foreach (var d in new[] { gdc.GoalPointLookAheadHold, gdc.PurePursuitIntegralGain, gdc.StanleyDistanceErrorGain,
                                   gdc.StanleyHeadingErrorGain, asc.CountsPerDegree, asc.DeadzoneHeading,
                                   gdc.GoalPointLookAheadMult, gdc.GoalPointAcquireFactor, gdc.UTurnCompensation, asc.SideHillCompensation,

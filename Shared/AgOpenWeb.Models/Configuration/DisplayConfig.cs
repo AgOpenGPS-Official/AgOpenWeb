@@ -230,15 +230,6 @@ public class DisplayConfig : ObservableObject
         set => SetProperty(ref _lateralButtonVisible, value);
     }
 
-    /// <summary>Step of the Ref Nudge panel in cm (AgOpenGPS setAS_snapDistanceRef), kept on
-    /// the device apart from the vehicle profile's AutoSteer nudge distance.</summary>
-    private int _refNudgeDistance = 5;
-    public int RefNudgeDistance
-    {
-        get => _refNudgeDistance;
-        set => SetProperty(ref _refNudgeDistance, System.Math.Clamp(value, 1, 500));
-    }
-
     // Sounds
     private bool _autoSteerSound = true;
     public bool AutoSteerSound
