@@ -3024,7 +3024,6 @@
         <button class="dlg-mode" data-qab="aPlus" title="AB line from current position &amp; heading"><img src="/icons/ABTrackAPlus.png" alt=""><span>A+</span></button>
         <button class="dlg-mode" data-qab="driveAB" title="Drive from A to B"><img src="/icons/ABTrackAB.png" alt=""><span>Drive AB</span></button>
         <button class="dlg-mode" data-qab="recordCurve" title="Drive to record a curve"><img src="/icons/ABTrackCurve.png" alt=""><span>Curve</span></button>
-        <button class="dlg-mode" data-qab="recordPivot" title="Drive part of the way round a water pivot"><span class="dlg-bigtxt">◯</span><span>Pivot</span></button>
         <!-- Ref side (#345, AgOpenGPS isRefRightSide): a driven line's reference goes to this
              edge of the implement; the reference line is the edge between passes, so a pass
              runs where the tractor drove. Only the driven modes use it, so it sits in their
@@ -3054,7 +3053,12 @@
       <div class="dlg-modes">
         <button class="dlg-mode" data-qab="latLonHeading" title="AB line from a latitude/longitude and a heading"><span class="dlg-bigtxt">A+</span><span>Lat/Lon + Heading</span></button>
         <button class="dlg-mode" data-qab="latLonAB" title="AB line through two latitude/longitude points"><span class="dlg-bigtxt">AB</span><span>Lat/Lon A, B</span></button>
-        <button class="dlg-mode" data-qab="latLonPivot" title="Water pivot from the latitude/longitude of its centre"><span class="dlg-bigtxt">◯</span><span>Pivot Centre</span></button>
+      </div>
+      <!-- Water pivot (AgOpenGPS TrackMode.waterPivot): its passes are circles about the centre. -->
+      <div class="dlg-sub">Water Pivot</div>
+      <div class="dlg-modes">
+        <button class="dlg-mode" data-qab="recordPivot" title="Drive part of the way round a water pivot"><span class="dlg-bigtxt">◯</span><span>Drive Round</span></button>
+        <button class="dlg-mode" data-qab="latLonPivot" title="Water pivot from the latitude/longitude of its centre"><span class="dlg-bigtxt">◯</span><span>Lat/Lon Centre</span></button>
       </div>
       <div class="dlg-buttons"><button id="dlg-qab-cancel" class="dlg-btn dlg-cancel">Cancel</button></div>
     </div>
