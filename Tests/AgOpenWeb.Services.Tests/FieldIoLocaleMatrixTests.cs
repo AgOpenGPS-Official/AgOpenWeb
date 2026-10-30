@@ -169,44 +169,6 @@ public class FieldIoLocaleMatrixTests
     [TestCase("en-US")]
     [TestCase("fi-FI")]
     [TestCase("de-DE")]
-    public void FieldJson_RoundTrip_PreservesOriginAcrossCultures(string cultureName)
-    {
-        SetCulture(cultureName);
-
-        var field = new Field
-        {
-            Name = "JsonLocale",
-            DirectoryPath = _tempDir,
-            Origin = new Position { Latitude = OriginLat, Longitude = OriginLon },
-            Convergence = Convergence,
-            OffsetX = OffsetX,
-            OffsetY = OffsetY,
-        };
-
-        FieldJsonService.Save(field, _tempDir);
-
-        // System.Text.Json should emit invariant numbers, but explicitly
-        // assert the on-disk form so a serializer-options regression that
-        // turns numbers into culture-formatted strings would fail here.
-        var json = File.ReadAllText(FieldJsonService.PathFor(_tempDir));
-        Assert.That(json, Does.Contain(OriginLat.ToString("R", CultureInfo.InvariantCulture)).Or
-                              .Contain(OriginLat.ToString("G17", CultureInfo.InvariantCulture)).Or
-                              .Contain("60.16985212"),
-            $"field.json does not contain invariant origin under {cultureName}");
-
-        var loaded = FieldJsonService.Load(_tempDir);
-        Assert.That(loaded, Is.Not.Null);
-        Assert.That(loaded!.Origin.Latitude, Is.EqualTo(OriginLat).Within(1e-9),
-            $"FieldJson latitude round-trip failed under {cultureName}");
-        Assert.That(loaded.Origin.Longitude, Is.EqualTo(OriginLon).Within(1e-9),
-            $"FieldJson longitude round-trip failed under {cultureName}");
-        Assert.That(loaded.Convergence, Is.EqualTo(Convergence).Within(1e-9));
-        Assert.That(loaded.OffsetX, Is.EqualTo(OffsetX).Within(1e-9));
-    }
-
-    [TestCase("en-US")]
-    [TestCase("fi-FI")]
-    [TestCase("de-DE")]
     public void GeoJsonField_RoundTrip_PreservesGeometryAcrossCultures(string cultureName)
     {
         SetCulture(cultureName);

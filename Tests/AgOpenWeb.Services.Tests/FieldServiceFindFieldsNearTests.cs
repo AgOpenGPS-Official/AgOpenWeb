@@ -122,7 +122,7 @@ public class FieldServiceFindFieldsNearTests
     [Test]
     public void FindFieldsNear_SkipsDirectoriesWithoutMetadata()
     {
-        // A bare directory under FieldsRoot (no field.json, no Field.txt) —
+        // A bare directory under FieldsRoot (no field.geojson, no Field.txt) —
         // someone mkdir'd a folder. Must not crash; just gets skipped.
         Directory.CreateDirectory(Path.Combine(_root, "empty"));
         SeedField("real", NorthportLat, NorthportLon);

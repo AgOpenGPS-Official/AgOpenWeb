@@ -86,7 +86,7 @@ Other parts of the original plan:
 - **Model consolidation: done.** The `ABLine` class is gone.
 - **Not started:** the `.agfield` sharing package (question 2), JSON Schema (3), profile
   inheritance (4), track history (5).
-- `field.json` (`FieldJsonService`) is never written by the app; remove it.
+- `field.json` (`FieldJsonService`) was never written by the app: removed 2026-10-30.
 
 The implementation phases and success criteria further down are the original plan, kept for
 history.

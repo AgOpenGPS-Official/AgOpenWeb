@@ -9,14 +9,14 @@ using AgOpenWeb.Services.Fields;
 namespace AgOpenWeb.Services.Tests;
 
 [TestFixture]
-public class FieldAndJobJsonServiceTests
+public class JobJsonServiceTests
 {
     private string _tempDir = null!;
 
     [SetUp]
     public void SetUp()
     {
-        _tempDir = Path.Combine(Path.GetTempPath(), $"agvalonia_fieldjson_{Guid.NewGuid():N}");
+        _tempDir = Path.Combine(Path.GetTempPath(), $"agopenweb_jobjson_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDir);
     }
 
@@ -25,70 +25,6 @@ public class FieldAndJobJsonServiceTests
     {
         if (Directory.Exists(_tempDir))
             Directory.Delete(_tempDir, recursive: true);
-    }
-
-    [Test]
-    public void FieldJson_SaveAndLoad_RoundTrip()
-    {
-        var field = new Models.Field
-        {
-            Name = "north40",
-            DirectoryPath = _tempDir,
-            Origin = new Position { Latitude = 32.5904, Longitude = -87.1804 },
-            Convergence = 1.234,
-            OffsetX = 10.5,
-            OffsetY = -7.25,
-            CreatedDate = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Local),
-            LastModifiedDate = new DateTime(2026, 4, 15, 12, 0, 0, DateTimeKind.Local),
-            LastOpenedDate = new DateTime(2026, 5, 1, 8, 30, 0, DateTimeKind.Local)
-        };
-        var originalId = field.Id;
-
-        FieldJsonService.Save(field, _tempDir);
-
-        Assert.That(FieldJsonService.Exists(_tempDir), Is.True);
-
-        var loaded = FieldJsonService.Load(_tempDir);
-        Assert.That(loaded, Is.Not.Null);
-        Assert.That(loaded!.Id, Is.EqualTo(originalId));
-        Assert.That(loaded.Name, Is.EqualTo("north40"));
-        Assert.That(loaded.Origin.Latitude, Is.EqualTo(32.5904).Within(1e-9));
-        Assert.That(loaded.Origin.Longitude, Is.EqualTo(-87.1804).Within(1e-9));
-        Assert.That(loaded.Convergence, Is.EqualTo(1.234).Within(1e-9));
-        Assert.That(loaded.OffsetX, Is.EqualTo(10.5).Within(1e-9));
-        Assert.That(loaded.OffsetY, Is.EqualTo(-7.25).Within(1e-9));
-        Assert.That(loaded.LastOpenedDate, Is.EqualTo(field.LastOpenedDate));
-    }
-
-    [Test]
-    public void FieldJson_LoadMissing_ReturnsNull()
-    {
-        Assert.That(FieldJsonService.Exists(_tempDir), Is.False);
-        Assert.That(FieldJsonService.Load(_tempDir), Is.Null);
-    }
-
-    [Test]
-    public void FieldJson_LoadIgnoresUnknownProperties()
-    {
-        // forward-compat: a future writer adds new fields; older readers must tolerate them
-        var json = """
-        {
-          "schemaVersion": 999,
-          "id": "11111111-1111-1111-1111-111111111111",
-          "name": "south20",
-          "origin": { "latitude": 1.0, "longitude": 2.0 },
-          "convergence": 0,
-          "offsetX": 0,
-          "offsetY": 0,
-          "futureField": "not yet defined"
-        }
-        """;
-        File.WriteAllText(Path.Combine(_tempDir, "field.json"), json);
-
-        var loaded = FieldJsonService.Load(_tempDir);
-        Assert.That(loaded, Is.Not.Null);
-        Assert.That(loaded!.Name, Is.EqualTo("south20"));
-        Assert.That(loaded.Id, Is.EqualTo(Guid.Parse("11111111-1111-1111-1111-111111111111")));
     }
 
     [Test]
