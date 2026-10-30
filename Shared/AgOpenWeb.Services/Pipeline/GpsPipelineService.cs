@@ -536,7 +536,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 ? (_guidanceWorking.IsHeadingSameWay ? -1 : 1)
                 : (_guidanceWorking.IsHeadingSameWay ? 1 : -1);
             _guidanceWorking.HowManyPathsAway += delta;
-            _guidanceWorking.NudgeOffset = 0;
+            // The nudge stays: a lateral move is a pass, not a reset (AgOpenGPS BuildManualYouLateral).
             _trackGuidanceState = null;
 
             // #408. If a u-turn is plotted but not yet executing, drop it

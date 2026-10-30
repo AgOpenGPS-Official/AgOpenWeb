@@ -55,8 +55,8 @@ public static partial class RemoteServerWiring
                             var num = System.Globalization.NumberStyles.Float;
                             // Starting a line or path turns contour off first, like AgOpenGPS's
                             // track / AB+ / draw / record / path Go buttons (#110).
-                            if (vm.IsContourModeOn && cmd is "track.activate" or "track.aPlus" or "track.latLonHeading" or "track.latLonAB" or "track.drawStraight"
-                                    or "track.drawCurve" or "track.recordCurve" or "track.driveAB" or "recpath.play")
+                            if (vm.IsContourModeOn && cmd is "track.activate" or "track.aPlus" or "track.latLonHeading" or "track.latLonAB" or "track.latLonPivot" or "track.drawStraight"
+                                    or "track.drawCurve" or "track.recordCurve" or "track.recordPivot" or "track.driveAB" or "recpath.play")
                                 vm.ToggleContourModeCommand?.Execute(null);
 
                             // Sim ids that set a property or carry an arg (all Tier-1,
@@ -277,6 +277,7 @@ public static partial class RemoteServerWiring
                                     return;
                                 case "track.latLonHeading": // Quick AB. arg = "lat,lon,heading" (#335)
                                 case "track.latLonAB":      // Quick AB. arg = "latA,lonA,latB,lonB" (#335)
+                                case "track.latLonPivot":   // Quick AB. arg = "lat,lon" of a water pivot's centre
                                 {
                                     var llParts = arg.Split(',');
                                     var ll = new double[llParts.Length];
@@ -286,6 +287,8 @@ public static partial class RemoteServerWiring
                                         vm.CreateLatLonHeadingLine(ll[0], ll[1], ll[2]);
                                     else if (cmd == "track.latLonAB" && ll.Length == 4)
                                         vm.CreateLatLonABLine(ll[0], ll[1], ll[2], ll[3]);
+                                    else if (cmd == "track.latLonPivot" && ll.Length == 2)
+                                        vm.CreateLatLonPivot(ll[0], ll[1]);
                                     return;
                                 }
                                 case "track.select": // Tracks manager / Field Builder — tap a row:
@@ -740,6 +743,7 @@ public static partial class RemoteServerWiring
                                 // DriveAB/Curve modes → uses live GPS).
                                 "track.driveAB" => vm.StartDriveABCommand,
                                 "track.recordCurve" => vm.StartCurveRecordingCommand,
+                                "track.recordPivot" => vm.StartPivotRecordingCommand,
                                 "track.finishCurve" => vm.FinishCurveRecordingCommand,
                                 "track.setABGps" => vm.SetABPointCommand,
                                 // Tracks manager toolbar (act on the active/selected track).

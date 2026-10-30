@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using AgOpenWeb.Models.Base;
 
 namespace AgOpenWeb.Models.Guidance
@@ -521,6 +522,80 @@ namespace AgOpenWeb.Models.Guidance
                 pts.Add(new Vec3(corner.Easting + Math.Sin(a) * offset, corner.Northing + Math.Cos(a) * offset, 0));
             }
         }
+
+        /// <summary>
+        /// A clockwise circle from north, closed (the last point repeats the first), with a point at
+        /// least every metre (36 to 4000 points), with headings: a water pivot's reference and passes.
+        /// </summary>
+        public static List<Vec3> Circle(Vec3 center, double radius)
+        {
+            radius = Math.Max(Math.Abs(radius), 0.1);
+            int n = Math.Clamp((int)Math.Ceiling(2 * Math.PI * radius), 36, 4000);
+            var pts = new List<Vec3>(n + 1);
+            for (int i = 0; i < n; i++)
+            {
+                double a = 2 * Math.PI * i / n;
+                pts.Add(new Vec3(center.Easting + radius * Math.Sin(a), center.Northing + radius * Math.Cos(a), 0));
+            }
+            pts.Add(pts[0]);
+            return CalculateHeadings(pts);
+        }
+
+        /// <summary>
+        /// A water pivot's pass <paramref name="offsetDistance"/> from its reference circle (+ = right of
+        /// travel, inward on the clockwise circle): the circle about the same centre, as AgOpenGPS builds
+        /// it. Past the centre it is the circle on the other side, as AgOpenGPS's negative radius is.
+        /// </summary>
+        public static List<Vec3> PivotPass(Vec3 center, double referenceRadius, double offsetDistance) =>
+            Circle(center, referenceRadius - offsetDistance);
+
+        /// <summary>
+        /// The circle through points driven round a pivot (an algebraic least-squares fit), with the
+        /// points' RMS distance from it; null when they don't define one (fewer than 3, or in a line).
+        /// </summary>
+        public static (Vec3 Center, double Radius, double Rms)? FitCircle(IReadOnlyList<Vec3> points)
+        {
+            if (points == null || points.Count < 3) return null;
+            // Relative to the mean for conditioning; solve for a, b, c in x² + y² + a·x + b·y + c = 0.
+            double mx = points.Average(p => p.Easting), my = points.Average(p => p.Northing);
+            double sxx = 0, sxy = 0, syy = 0, sx = 0, sy = 0, sxz = 0, syz = 0, sz = 0;
+            int n = points.Count;
+            foreach (var p in points)
+            {
+                double x = p.Easting - mx, y = p.Northing - my, z = x * x + y * y;
+                sxx += x * x; sxy += x * y; syy += y * y; sx += x; sy += y;
+                sxz += x * z; syz += y * z; sz += z;
+            }
+            // Normal equations of [x y 1]·[a b c] = −z.
+            double[,] m = { { sxx, sxy, sx }, { sxy, syy, sy }, { sx, sy, n } };
+            double[] rhs = { -sxz, -syz, -sz };
+            double det = Det3(m);
+            if (Math.Abs(det) < 1e-9 * Math.Max(1, sxx * syy)) return null;
+            double[] sol = new double[3];
+            for (int k = 0; k < 3; k++)
+            {
+                var mk = (double[,])m.Clone();
+                for (int r = 0; r < 3; r++) mk[r, k] = rhs[r];
+                sol[k] = Det3(mk) / det;
+            }
+            double cx = -sol[0] / 2, cy = -sol[1] / 2;
+            double r2 = cx * cx + cy * cy - sol[2];
+            if (r2 <= 0) return null;
+            double radius = Math.Sqrt(r2);
+            var center = new Vec3(cx + mx, cy + my, 0);
+            double ss = 0;
+            foreach (var p in points)
+            {
+                double d = Math.Sqrt(Math.Pow(p.Easting - center.Easting, 2) + Math.Pow(p.Northing - center.Northing, 2)) - radius;
+                ss += d * d;
+            }
+            return (center, radius, Math.Sqrt(ss / n));
+        }
+
+        private static double Det3(double[,] m) =>
+            m[0, 0] * (m[1, 1] * m[2, 2] - m[1, 2] * m[2, 1])
+            - m[0, 1] * (m[1, 0] * m[2, 2] - m[1, 2] * m[2, 0])
+            + m[0, 2] * (m[1, 0] * m[2, 1] - m[1, 1] * m[2, 0]);
 
         // Below this many points the plain scan is as quick as building a grid.
         private const int NearGridMinPoints = 64;

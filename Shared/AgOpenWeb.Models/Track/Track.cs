@@ -196,11 +196,39 @@ public class Track : INotifyPropertyChanged
         return new Track
         {
             Name = name,
-            Type = isClosed ? TrackType.WaterPivot : TrackType.Curve,
+            Type = TrackType.Curve, // closed or not: a pivot is made by FromPivot
             Points = new List<Vec3>(points),
             IsClosed = isClosed
         };
     }
+
+    /// <summary>
+    /// A water pivot track (AgOpenGPS TrackMode.waterPivot): a circle round the pivot's centre,
+    /// clockwise, closed, with a point at least every metre. Its passes are circles about the same
+    /// centre (<see cref="Guidance.CurveProcessing.PivotPass"/>), half a width either side of it like
+    /// any reference line.
+    /// </summary>
+    public static Track FromPivot(string name, Vec3 center, double radius) => new()
+    {
+        Name = name,
+        Type = TrackType.WaterPivot,
+        Points = Guidance.CurveProcessing.Circle(center, radius),
+        IsClosed = true,
+    };
+
+    /// <summary>A water pivot's centre and radius, from its circle.</summary>
+    public (Vec3 Center, double Radius) PivotCircle()
+    {
+        int n = IsClosed && Points.Count > 1 ? Points.Count - 1 : Points.Count; // the closing point repeats the first
+        double e = 0, no = 0;
+        for (int i = 0; i < n; i++) { e += Points[i].Easting; no += Points[i].Northing; }
+        var c = new Vec3(e / n, no / n, 0);
+        double r = 0;
+        for (int i = 0; i < n; i++) r += Math.Sqrt(Math.Pow(Points[i].Easting - c.Easting, 2) + Math.Pow(Points[i].Northing - c.Northing, 2));
+        return (c, r / n);
+    }
+
+    public bool IsPivot => Type == TrackType.WaterPivot;
 
     /// <summary>
     /// Create a recorded path track from a list of points.

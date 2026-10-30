@@ -239,6 +239,7 @@ public sealed class SceneProjector
     private static string TrackTypeLabel(AgOpenWeb.Models.Track.Track t) =>
         t.IsContour ? "Contour"
         : t.IsRecordedPath ? "Path"
+        : t.IsPivot ? "Pivot"
         : t.IsCurve ? "Curve"
         : "Line";
 
