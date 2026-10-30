@@ -1727,7 +1727,7 @@ document.getElementById('rf-exit').addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation();
   if (!refPending) { closeRefNudge(); return; }
   // Leaving would undo the move (the next line takes over): ask, Cancel keeps the panel for Undo.
-  showConfirm(tr('Reference line nudge'), tr('Save the moved line before closing?'), () => { transport.send('track.refNudgeSave'); closeRefNudge(); });
+  showConfirm(tr('Reference Line Nudge'), tr('Save the moved line before closing?'), () => { transport.send('track.refNudgeSave'); closeRefNudge(); });
 });
 for (const b of refPanel.querySelectorAll('button[data-cmd]'))
   b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send(b.dataset.cmd); });

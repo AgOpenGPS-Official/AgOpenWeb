@@ -233,10 +233,10 @@
     /* Ref Nudge panel (#489): beside the right nav, under the status bar. */
     #refnudge { position: fixed; top: calc(var(--bar-bottom, calc(46px + var(--sat))) + 10px); right: calc(var(--sar) + 96px); z-index: 33;
       display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px;
-      background: var(--float-bg); border: 1px solid var(--border-2); color: var(--text); }
+      background: var(--float-bg); border: 1px solid var(--border-2); color: var(--text); font-family: system-ui, sans-serif; }
     #refnudge[hidden] { display: none; }
     #refnudge .rf-name { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 16px; }
-    #refnudge .rf-name span { font-size: 13px; color: var(--text-muted); max-width: 270px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #refnudge .rf-name span { font-size: 15px; font-weight: 600; color: var(--text-2); max-width: 270px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #refnudge .rf-row { display: flex; gap: 10px; align-items: center; justify-content: center; }
     #refnudge .rf-btn { width: 84px; height: 84px; border: 0; border-radius: 10px; padding: 8px; cursor: pointer; box-sizing: border-box;
       background: rgba(var(--ov),0.08); display: flex; align-items: center; justify-content: center; }
@@ -1453,7 +1453,7 @@
        selects the next with the track buttons of the right nav, and moves that. A move is live but
        only written by Save; Undo puts the line back. Opened from the Tracks flyout. -->
   <div id="refnudge" hidden>
-    <div class="rf-name"><b>Reference line nudge</b><span id="rf-name"></span></div>
+    <div class="rf-name"><b>Reference Line Nudge</b><span id="rf-name"></span></div>
     <div class="rf-row">
       <button class="rf-btn" data-cmd="track.refNudgeLeft" title="Move the line left by the step"><img src="/icons/SnapLeft.png" alt="Left"></button>
       <div id="rf-moved" class="rf-moved">0</div>
