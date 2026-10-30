@@ -326,8 +326,10 @@ namespace AgOpenWeb.Models.Guidance
         /// <param name="originalPoints">Original curve points with headings</param>
         /// <param name="offsetDistance">Perpendicular offset distance (positive = right of heading)</param>
         /// <returns>Tuple of (cleaned curve, percentage of points removed due to self-intersection)</returns>
+        /// <param name="closed">The curve is a closed loop (its last point repeats the first): the
+        /// offset curve is closed too, so the pass does not stop short at the seam.</param>
         public static (List<Vec3> Points, double PercentRemoved) CreateOffsetCurveWithInfo(
-            IReadOnlyList<Vec3> originalPoints, double offsetDistance)
+            IReadOnlyList<Vec3> originalPoints, double offsetDistance, bool closed = false)
         {
             WorkCounters.OffsetCurvePoints += originalPoints?.Count ?? 0;
             if (originalPoints == null || originalPoints.Count < 2)
@@ -343,6 +345,9 @@ namespace AgOpenWeb.Models.Guidance
             int skippedCount = 0;
 
             var offsetPoints = new List<Vec3>(originalPoints.Count);
+            // A long curve (a boundary with a point every metre) is bucketed once, so the test
+            // looks only at the points near each offset point instead of all of them.
+            var near = refCount > NearGridMinPoints ? new PointGrid(originalPoints, Math.Abs(offsetDistance)) : null;
 
             for (int i = 0; i < refCount; i++)
             {
@@ -355,21 +360,10 @@ namespace AgOpenWeb.Models.Guidance
 
                 // AgOpenGPS collision detection: check if offset point is too close
                 // to ANY original curve point (indicates self-intersection)
-                bool addPoint = true;
-                for (int t = 0; t < refCount; t++)
-                {
-                    double dx = offsetE - originalPoints[t].Easting;
-                    double dy = offsetN - originalPoints[t].Northing;
-                    double distSq = dx * dx + dy * dy;
-
-                    if (distSq < distSqAway)
-                    {
-                        // Offset point is too close to original curve - self-intersection detected
-                        addPoint = false;
-                        skippedCount++;
-                        break;
-                    }
-                }
+                bool addPoint = near != null
+                    ? !near.AnyCloser(originalPoints, offsetE, offsetN, distSqAway)
+                    : !AnyCloser(originalPoints, offsetE, offsetN, distSqAway);
+                if (!addPoint) skippedCount++;
 
                 if (addPoint)
                 {
@@ -426,11 +420,130 @@ namespace AgOpenWeb.Models.Guidance
             if (skippedCount > 0 && offsetPoints.Count > 2)
                 offsetPoints = ChaikinsSmooth(offsetPoints, 1);
 
+            // A loop's first and last points are offset along different sides of the seam corner:
+            // join them, or the pass (and its guidelines) stop short there (#450).
+            if (closed && offsetPoints.Count > 2)
+            {
+                var first = offsetPoints[0];
+                var last = offsetPoints[^1];
+                if (Math.Abs(first.Easting - last.Easting) > 1e-6 || Math.Abs(first.Northing - last.Northing) > 1e-6)
+                    offsetPoints.Add(first);
+            }
+
             // Recalculate headings based on actual offset point positions
             CalculateHeadings(offsetPoints);
 
             double percentRemoved = refCount > 0 ? skippedCount * 100.0 / refCount : 0;
             return (offsetPoints, percentRemoved);
+        }
+
+        /// <summary>
+        /// A boundary ring as a closed curve with a point at least every <see cref="FenceSpacing"/>
+        /// metres along each side, the last point repeating the first. The collision test above
+        /// only sees the curve's points, so a corner between two long bare sides went unseen and
+        /// inward passes kept sharp, skewed corners (#450). AgOpenGPS's fence line is filled in the
+        /// same way (CFenceLine.FixFenceLine) before it becomes a boundary curve.
+        /// </summary>
+        public static List<Vec3> DensifyLoop(IReadOnlyList<Vec3> ring)
+        {
+            if (ring == null || ring.Count < 2) return new List<Vec3>();
+            var closed = new List<Vec3>(ring) { ring[0] };
+            return Densify(closed, FenceSpacing(ring));
+        }
+
+        /// <summary>
+        /// A polyline with a point at least every <paramref name="spacing"/> metres along each
+        /// segment (the given points kept), with headings. A curve's passes are offset point by
+        /// point, so a curve with long bare segments offsets badly at its corners (#450).
+        /// </summary>
+        public static List<Vec3> Densify(IReadOnlyList<Vec3> points, double spacing)
+        {
+            var result = new List<Vec3>();
+            if (points == null || points.Count == 0) return result;
+            for (int i = 0; i + 1 < points.Count; i++)
+            {
+                var a = points[i];
+                var b = points[i + 1];
+                double len = Math.Sqrt((b.Easting - a.Easting) * (b.Easting - a.Easting) + (b.Northing - a.Northing) * (b.Northing - a.Northing));
+                int steps = Math.Max(1, (int)Math.Ceiling(len / spacing));
+                for (int k = 0; k < steps; k++)
+                {
+                    double t = (double)k / steps;
+                    result.Add(new Vec3(a.Easting + (b.Easting - a.Easting) * t, a.Northing + (b.Northing - a.Northing) * t, 0));
+                }
+            }
+            result.Add(new Vec3(points[^1].Easting, points[^1].Northing, 0));
+            return result.Count < 2 ? result : CalculateHeadings(result);
+        }
+
+        /// <summary>The point spacing of a fence line, by the field's area, as AgOpenGPS FixFenceLine: 1.1 m under 20 ha, 2.2 m under 40 ha, else 3.3 m.</summary>
+        public static double FenceSpacing(IReadOnlyList<Vec3> ring)
+        {
+            double twiceArea = 0;
+            for (int i = 0; i < ring.Count; i++)
+            {
+                var a = ring[i];
+                var b = ring[(i + 1) % ring.Count];
+                twiceArea += a.Easting * b.Northing - b.Easting * a.Northing;
+            }
+            return FenceSpacing(Math.Abs(twiceArea) / 2);
+        }
+
+        /// <summary>The point spacing of a fence line around <paramref name="areaSquareMetres"/>.</summary>
+        public static double FenceSpacing(double areaSquareMetres) =>
+            areaSquareMetres < 200_000 ? 1.1 : areaSquareMetres < 400_000 ? 2.2 : 3.3;
+
+        // Below this many points the plain scan is as quick as building a grid.
+        private const int NearGridMinPoints = 64;
+
+        private static bool AnyCloser(IReadOnlyList<Vec3> points, double e, double n, double distSq)
+        {
+            for (int t = 0; t < points.Count; t++)
+            {
+                double dx = e - points[t].Easting, dy = n - points[t].Northing;
+                if (dx * dx + dy * dy < distSq) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// The curve's points bucketed in square cells as wide as the offset: a point closer than the
+        /// offset to a query point lies in its cell or one of the eight around it. The answer is the
+        /// plain scan's, found in a few cells.
+        /// </summary>
+        private sealed class PointGrid
+        {
+            private readonly double _cell;
+            private readonly Dictionary<(long, long), List<int>> _cells = new();
+
+            public PointGrid(IReadOnlyList<Vec3> points, double cell)
+            {
+                _cell = Math.Max(cell, 0.01);
+                for (int i = 0; i < points.Count; i++)
+                {
+                    var key = Key(points[i].Easting, points[i].Northing);
+                    if (!_cells.TryGetValue(key, out var list)) _cells[key] = list = new List<int>(4);
+                    list.Add(i);
+                }
+            }
+
+            private (long, long) Key(double e, double n) => ((long)Math.Floor(e / _cell), (long)Math.Floor(n / _cell));
+
+            public bool AnyCloser(IReadOnlyList<Vec3> points, double e, double n, double distSq)
+            {
+                var (cx, cy) = Key(e, n);
+                for (long x = cx - 1; x <= cx + 1; x++)
+                    for (long y = cy - 1; y <= cy + 1; y++)
+                    {
+                        if (!_cells.TryGetValue((x, y), out var list)) continue;
+                        foreach (int t in list)
+                        {
+                            double dx = e - points[t].Easting, dy = n - points[t].Northing;
+                            if (dx * dx + dy * dy < distSq) return true;
+                        }
+                    }
+                return false;
+            }
         }
 
         /// <summary>

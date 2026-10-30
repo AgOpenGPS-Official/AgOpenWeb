@@ -170,8 +170,10 @@ public partial class MainViewModel
         if (seg.Count == 2) // both taps on one side: a straight run, still a curve track
             seg.Insert(1, new Models.Base.Vec3((seg[0].Easting + seg[1].Easting) / 2, (seg[0].Northing + seg[1].Northing) / 2, 0));
 
-        // Heading per point (guidance's forward test keys off it).
-        var headed = Models.Guidance.CurveProcessing.CalculateHeadings(seg);
+        // A point every metre or so, as the fence line has in AgOpenGPS, with a heading per point
+        // (guidance's forward test keys off it): the inner passes are offset point by point, and
+        // along a bare side they cut across the corner (#450).
+        var headed = Models.Guidance.CurveProcessing.Densify(seg, Models.Guidance.CurveProcessing.FenceSpacing(boundary.AreaSquareMeters));
         // Extend both ends past the field boundary along their tangents — exactly like the
         // hand-drawn curve tool (ExtendCurvePastBoundary) and an AB line. Without this the curve
         // stops inside the field and the U-turn generator has no boundary crossing to anchor the
@@ -1424,19 +1426,16 @@ public partial class MainViewModel
 
             // The fence itself is the reference line, as in AgOpenGPS: passes lie half a
             // width either side of it (PassGeometry), so the one inside the field keeps the
-            // whole implement in (#422) and the nearest-pass pick takes it.
-            var curvePoints = new System.Collections.Generic.List<Models.Base.Vec3>(pts.Count + 1);
+            // whole implement in (#422) and the nearest-pass pick takes it. It gets a point
+            // every metre or so, as AgOpenGPS's fence line has, so inward passes round off
+            // their corners instead of keeping them sharp and skewed (#450). The loop is
+            // closed (last point = first) and the headings are recomputed in the curve-segment
+            // convention (atan2(dEast,dNorth)): guidance's "which way is forward" test keys
+            // off them, and the boundary's stored heading made it random (#422).
+            var ring = new System.Collections.Generic.List<Models.Base.Vec3>(pts.Count);
             for (int i = 0; i < pts.Count; i++)
-                curvePoints.Add(new Models.Base.Vec3(pts[i].Easting, pts[i].Northing, 0));
-            // Close the loop
-            curvePoints.Add(new Models.Base.Vec3(pts[0].Easting, pts[0].Northing, 0));
-
-            // Recompute per-point headings in the curve-segment convention
-            // (atan2(dEast,dNorth)). Guidance's "which way is forward" test keys
-            // entirely off these headings; copying the boundary's stored heading
-            // (often 0 or a different convention) made the direction decision
-            // random and the vehicle spin/reverse on the curve (#422).
-            curvePoints = Models.Guidance.CurveProcessing.CalculateHeadings(curvePoints);
+                ring.Add(new Models.Base.Vec3(pts[i].Easting, pts[i].Northing, 0));
+            var curvePoints = Models.Guidance.CurveProcessing.DensifyLoop(ring);
 
             var track = new Models.Track.Track
             {

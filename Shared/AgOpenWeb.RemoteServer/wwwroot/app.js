@@ -6661,6 +6661,16 @@ function drawExtraGuidelinesSk(canvas) {
   if (!line || line.length < 2) return;
   const toolW = toolWidthM();
   if (toolW < 0.1 || toolW * pxPerM < 3) return; // zoom gate: skip when passes < ~3 px apart
+  // A curve's guidelines come from the host, offset from the reference like the pass itself:
+  // moving a curve's points sideways here pinched them into spikes at corners and folded them
+  // over on tight bends (#450). Only a straight line is offset here.
+  if (line.length > 2) {
+    for (const gl of scene.guideLines || []) {
+      strokePtsSk(canvas, gl, false, SKP.extraGuideShadow);
+      strokePtsSk(canvas, gl, false, SKP.extraGuide);
+    }
+    return;
+  }
   const baseLine = extendAbLine(line);
   for (let i = 1; i <= count; i++) {
     for (const off of [toolW * i, -toolW * i]) {

@@ -253,6 +253,8 @@ public partial class MainViewModel
                 // consumers (remote/web map) can draw it (§ guidance projection).
                 State.Guidance.DisplayLine = g.DisplayTrack?.Points;
             }
+            if (!ReferenceEquals(State.Guidance.GuideLines, g.GuideLines))
+                State.Guidance.GuideLines = g.GuideLines;
             if (!ReferenceEquals(_lastMirroredBaseTrack, g.BaseTrack))
             {
                 _lastMirroredBaseTrack = g.BaseTrack;
