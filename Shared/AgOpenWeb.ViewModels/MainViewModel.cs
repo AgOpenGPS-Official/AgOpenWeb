@@ -718,14 +718,8 @@ public partial class MainViewModel : ObservableObject
             toolN = hitchN - Math.Cos(toolHeading) * pivotOffset;
         }
 
-        // Lateral offset perpendicular to tool heading (right is positive,
-        // matching ToolPositionService.ApplyLateralOffset).
-        if (Math.Abs(tool.Offset) > 0.001)
-        {
-            double perp = toolHeading + Math.PI / 2.0;
-            toolE += Math.Sin(perp) * tool.Offset;
-            toolN += Math.Cos(perp) * tool.Offset;
-        }
+        // No lateral offset: the section spans the map draws from this point carry it,
+        // as in ToolPositionService (#446).
 
         _mapService.SetAllPositions(
             p.Position.Easting, p.Position.Northing, p.Heading,
