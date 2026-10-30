@@ -32,6 +32,7 @@ public class StateShadowGuardTests
     private static readonly Dictionary<string, string> Classified = new()
     {
         // --- Genuine VM-local: no central-store home (editor / preview / in-flight / cache) ---
+        ["_refNudgeTrack"] = "VM-LOCAL: the track the Ref Nudge panel's moved total belongs to (a reference into SavedTracks)",
         ["_cachedClipPath"] = "VM-LOCAL: boundary-clip render cache",
         ["_drawnCurvePoints"] = "VM-LOCAL: in-progress AB-curve drawing buffer",
         ["_recordedCurvePoints"] = "VM-LOCAL: in-progress curve recording buffer",

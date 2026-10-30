@@ -176,6 +176,8 @@ public record TickDto(
     // driver's seat (GuidanceState.NudgeOffset sign-flipped when heading against the track,
     // matching how the nudge intent applies it). Shown on the AB flyout's nudge readout (#93).
     double NudgeOffset,
+    // Ref Nudge panel (#489): how far the selected track was moved since the panel opened (m, +right).
+    double RefNudgeMoved,
     // Pure Pursuit goal point (field-local m) — the steering target while engaged, or in
     // free-drive the target it would chase if engaged now. HasGoal gates the map marker (#95).
     bool HasGoal,

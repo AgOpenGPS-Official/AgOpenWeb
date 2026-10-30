@@ -230,6 +230,23 @@
     @media (pointer: fine) { #maptap-hint::after { content: '  ·  Esc to cancel'; opacity: 0.6; font-weight: 400; } }
     /* Touch cancel for bare map-tap flows (flag placement) that have no draw toolbar. Shown
        by startMapTap only when the toolbar isn't up, so it never doubles the toolbar Cancel. */
+    /* Ref Nudge panel (#489): beside the right nav, under the status bar. */
+    #refnudge { position: fixed; top: calc(var(--bar-bottom) + 10px); right: calc(var(--sar) + 96px); z-index: 33;
+      display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 10px;
+      background: var(--float-bg); border: 1px solid var(--border-2); color: var(--text); }
+    #refnudge[hidden] { display: none; }
+    #refnudge .rf-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    #refnudge .rf-name { font-size: 13px; color: var(--text-muted); max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #refnudge .rf-row { display: flex; gap: 6px; align-items: center; justify-content: center; }
+    #refnudge .rf-btn { width: 56px; height: 56px; border: 0; border-radius: 8px; padding: 0; cursor: pointer;
+      background: rgba(var(--ov),0.08); color: var(--text); font: 700 18px system-ui, sans-serif; }
+    #refnudge .rf-btn:hover { background: rgba(var(--ov),0.16); }
+    #refnudge .rf-btn:active { background: rgba(70,160,255,0.5); }
+    #refnudge .rf-txt { font-size: 15px; white-space: nowrap; }
+    #refnudge .rf-head .rf-btn { width: auto; height: 34px; padding: 0 14px; }
+    #refnudge .rf-moved { width: 84px; text-align: center; font: 700 16px system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+    #refnudge .rf-step { width: 84px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 13px; }
+    #refnudge .rf-step input { width: 52px; }
     #maptap-cancel { position: fixed; top: calc(102px + var(--sat)); left: 50%; transform: translateX(-50%);
       display: none; z-index: 41; padding: 8px 22px; border-radius: 999px; cursor: pointer;
       border: 1px solid rgba(230,120,110,0.7); background: rgba(52,22,20,0.94); color: #f3c4bd;
@@ -1432,6 +1449,23 @@
   <div id="tram-lights"><button class="tram-dot" id="tram-l" title="Left tram: tap to force on"></button><button class="tram-dot" id="tram-r" title="Right tram: tap to force on"></button></div>
   <div id="pass-hud"></div>
   <div id="headland-hud"></div>
+  <!-- Ref Nudge panel (#489, AgOpenGPS FormRefNudge): stays open while the operator moves a line,
+       selects the next with the track buttons of the right nav, and moves that. Each move is saved
+       at once; Exit closes. Opened from the AB flyout. -->
+  <div id="refnudge" hidden>
+    <div class="rf-head"><b>Reference line nudge</b><button id="rf-exit" class="rf-btn rf-txt">Exit</button></div>
+    <div id="rf-name" class="rf-name"></div>
+    <div class="rf-row">
+      <button class="rf-btn" data-cmd="track.refNudgeLeft" title="Move the line left by the step">&lt;</button>
+      <div id="rf-moved" class="rf-moved">0</div>
+      <button class="rf-btn" data-cmd="track.refNudgeRight" title="Move the line right by the step">&gt;</button>
+    </div>
+    <div class="rf-row">
+      <button class="rf-btn rf-txt" data-cmd="track.refHalfNudgeLeft" title="Move the line left by half a working width">&lt; ½</button>
+      <div class="rf-step"><input id="rf-step" class="cfg-num" data-unit="cm" data-key="autosteer.refNudgeDistance" type="number" step="1" min="1"><span class="u" data-unit="cm"></span></div>
+      <button class="rf-btn rf-txt" data-cmd="track.refHalfNudgeRight" title="Move the line right by half a working width">½ &gt;</button>
+    </div>
+  </div>
   <div id="maptap-hint"></div>
   <div id="reverse-badge" title="Reversing">&#9664; REVERSE</div>
   <button id="maptap-cancel">✕ Cancel</button>
@@ -3028,6 +3062,9 @@
           <button class="bn-btn bn-txt" data-cmd="track.halfNudgeLeft" data-t2 title="Nudge line left by half a tool width">&lt; ½</button>
           <button class="bn-btn" data-cmd="track.snapPivot" data-t2 title="Snap line to pivot"><img class="bn-ic" src="/icons/SnapToPivot.png" alt="Snap pivot"></button>
           <button class="bn-btn bn-txt" data-cmd="track.halfNudgeRight" data-t2 title="Nudge line right by half a tool width">½ &gt;</button>
+        </div>
+        <div class="bn-flyrow bn-abdep">
+          <button class="bn-btn bn-txt" id="bn-refnudge" title="Reference line nudge: move the saved line itself">Ref nudge</button>
         </div>
         <div class="bn-flyrow bn-abdep">
           <button class="bn-btn bn-txt" data-cmd="track.snapLeft" data-t2 title="Move to the pass on the left">&lt; Pass</button>

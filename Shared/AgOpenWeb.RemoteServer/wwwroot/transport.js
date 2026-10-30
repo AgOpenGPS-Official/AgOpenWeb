@@ -122,6 +122,7 @@ window.RemoteTransport = {
           op.executing = !!u8(); // #50 — u-turn arc executing (blocks on-screen U-turn/Lateral)
           op.passNumber = i32(); // guidance pass offset (0 = on reference) — reference gate + label
           op.nudgeOffset = f32(); // driver-relative line nudge (m, +right) — AB flyout readout (#93)
+          op.refNudgeMoved = f32(); // Ref Nudge panel: track moved since it opened (m, +right) — #489
           const hasGoal = !!u8(); const goalE = f64(), goalN = f64();
           const goal = hasGoal ? { e: goalE, n: goalN } : null; // Pure Pursuit target (#95)
           op.reverse = !!u8(); // #125 — vehicle reversing
