@@ -156,6 +156,39 @@ public class SectionDimensionsEmitTests
     }
 
     [Test]
+    public void UnsavedLayout_SentOnceItHasSettled()
+    {
+        // Edits apply live: a layout left unsaved (panel or page closed) is the one in use.
+        _service.SectionSettleMilliseconds = 150;
+        _service.Start();
+        _udp.ClearReceivedCalls();
+
+        var store = ConfigurationStore.Instance;
+        store.NumSections = 3;
+        Thread.Sleep(60);
+        store.Tool.SetSectionWidth(2, 200); // restarts the wait
+        Thread.Sleep(110);
+        _udp.DidNotReceive().SendToLoopback(Arg.Is<byte[]>(b => Is235(b)));
+
+        Thread.Sleep(300);
+        _udp.Received(1).SendToLoopback(Arg.Is<byte[]>(b => Is235(b) && b[37] == 3 && (b[9] | b[10] << 8) == 200));
+    }
+
+    [Test]
+    public void SaveBeforeTheLayoutSettles_SendsOnce()
+    {
+        _service.SectionSettleMilliseconds = 100;
+        _service.Start();
+        _udp.ClearReceivedCalls();
+
+        ConfigurationStore.Instance.NumSections = 1;
+        ConfigurationStore.Instance.OnProfileSaved();
+        Thread.Sleep(300);
+
+        _udp.Received(1).SendToLoopback(Arg.Is<byte[]>(b => Is235(b)));
+    }
+
+    [Test]
     public void SaveWithoutSectionChange_DoesNotResend235()
     {
         _service.Start();

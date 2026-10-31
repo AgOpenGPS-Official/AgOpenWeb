@@ -92,7 +92,12 @@ public class AutoSteerService : IAutoSteerService
     // AgOpenGPS sends it when the tool settings are saved, and only when it differs from the
     // last one sent: a rate controller asks the operator to accept every change it sees, so
     // neither each edit on the way to a new layout nor a save of other settings may repeat it.
+    // Edits apply live, so a layout left unsaved (the panel or the page closed) is in use too:
+    // it goes out once the section count and widths have stayed unchanged for a while.
     private byte[]? _lastSectionDimensions;
+    private readonly object _sectionDimensionsLock = new();
+    private readonly Timer _sectionSettleTimer;
+    private int _sectionSettleMs = 10_000;
 
     // PGN 247 (vehicle geometry) also goes out when the steer module is heard after this
     // long without PGN 253: a module (or the HAT daemon) that started after the app, or
@@ -108,6 +113,13 @@ public class AutoSteerService : IAutoSteerService
     {
         get => _configEmitDelayMs;
         set => _configEmitDelayMs = value;
+    }
+
+    /// <summary>Test seam: how long an unsaved section layout must stay unchanged before PGN 235.</summary>
+    internal int SectionSettleMilliseconds
+    {
+        get => _sectionSettleMs;
+        set => _sectionSettleMs = value;
     }
 
     public event EventHandler<VehicleStateSnapshot>? StateUpdated;
@@ -139,6 +151,10 @@ public class AutoSteerService : IAutoSteerService
         // fields in quick succession; we want exactly one PGN emit
         // pair, not one per field).
         _configEmitTimer = new Timer(_ => EmitSteerConfigPgns(),
+            state: null,
+            dueTime: Timeout.Infinite,
+            period: Timeout.Infinite);
+        _sectionSettleTimer = new Timer(_ => { if (_isEnabled) SendSectionDimensions(); },
             state: null,
             dueTime: Timeout.Infinite,
             period: Timeout.Infinite);
@@ -185,6 +201,7 @@ public class AutoSteerService : IAutoSteerService
     {
         _udpService.DataReceived -= OnUdpDataReceived;
         UnsubscribeFromConfigChanges();
+        _sectionSettleTimer.Change(Timeout.Infinite, Timeout.Infinite);
         _isEnabled = false;
         _isEngaged = false;
     }
@@ -203,9 +220,11 @@ public class AutoSteerService : IAutoSteerService
         // Vehicle geometry (PGN 247): edits and profile loads reach the modules (#387).
         _subscribedVehicle = _configStore.Vehicle;
         _subscribedVehicle.PropertyChanged += OnConfigPropertyChanged;
-        // Section widths (PGN 235): on save or load of a whole profile, not on each edit.
+        // Section widths (PGN 235): on save or load of a whole profile, not on each edit;
+        // an unsaved layout once it has settled. The section count is kept on the store.
         _configStore.ProfileSaved += OnProfileSavedOrLoaded;
         _configStore.ProfileLoaded += OnProfileSavedOrLoaded;
+        _configStore.PropertyChanged += OnStorePropertyChanged;
         _configSubscribed = true;
     }
 
@@ -222,6 +241,7 @@ public class AutoSteerService : IAutoSteerService
             _subscribedVehicle.PropertyChanged -= OnConfigPropertyChanged;
         _configStore.ProfileSaved -= OnProfileSavedOrLoaded;
         _configStore.ProfileLoaded -= OnProfileSavedOrLoaded;
+        _configStore.PropertyChanged -= OnStorePropertyChanged;
         _configSubscribed = false;
     }
 
@@ -236,11 +256,21 @@ public class AutoSteerService : IAutoSteerService
     private void OnConfigPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         _configEmitTimer.Change(_configEmitDelayMs, Timeout.Infinite);
+        if (sender is ToolConfig && e.PropertyName == nameof(ToolConfig.SectionWidths))
+            _sectionSettleTimer.Change(_sectionSettleMs, Timeout.Infinite);
+    }
+
+    private void OnStorePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ConfigurationStore.NumSections))
+            _sectionSettleTimer.Change(_sectionSettleMs, Timeout.Infinite);
     }
 
     private void OnProfileSavedOrLoaded(object? sender, EventArgs e)
     {
-        if (_isEnabled) SendSectionDimensions();
+        if (!_isEnabled) return;
+        _sectionSettleTimer.Change(Timeout.Infinite, Timeout.Infinite);
+        SendSectionDimensions();
     }
 
     private void SendVehicleGeometry() =>
@@ -584,12 +614,16 @@ public class AutoSteerService : IAutoSteerService
 
     private void SendSectionDimensions()
     {
-        var pgn = PgnBuilder.BuildSectionDimensionsPgn(_configStore.Tool, _configStore.NumSections);
-        if (_lastSectionDimensions == null || !pgn.AsSpan().SequenceEqual(_lastSectionDimensions))
+        // The settle timer and a profile save can race; one of them sends.
+        lock (_sectionDimensionsLock)
         {
-            _udpService.SendToModules(pgn);
-            _udpService.SendToLoopback(pgn);
-            _lastSectionDimensions = pgn;
+            var pgn = PgnBuilder.BuildSectionDimensionsPgn(_configStore.Tool, _configStore.NumSections);
+            if (_lastSectionDimensions == null || !pgn.AsSpan().SequenceEqual(_lastSectionDimensions))
+            {
+                _udpService.SendToModules(pgn);
+                _udpService.SendToLoopback(pgn);
+                _lastSectionDimensions = pgn;
+            }
         }
     }
 
