@@ -208,6 +208,66 @@ public class RefNudgeTests
         Assert.That(SavedEasting("C"), Is.EqualTo(0.20).Within(1e-6));
     }
 
+    // A bend with points 0.5 m apart: closer than the 1 m the offset keeps between points, so
+    // offsetting an already moved line would thin it again at every step.
+    private static List<Vec3> Bend()
+    {
+        var pts = new List<Vec3>();
+        for (int i = 0; i <= 120; i++)
+        {
+            double a = i * 0.5 / 30.0; // along an arc of radius 30 m
+            pts.Add(new Vec3(30 - 30 * Math.Cos(a), 30 * Math.Sin(a), 0));
+        }
+        return Models.Guidance.CurveProcessing.CalculateHeadings(pts);
+    }
+
+    [Test]
+    public void ACurve_MovedInSteps_IsOneOffsetOfTheSavedLine()
+    {
+        var vm = NewVm();
+        var saved = Bend();
+        vm.SavedTracks.Add(Track.FromCurve("C", saved));
+        vm.SelectedTrack = vm.SavedTracks[2];
+        var savedPoints = vm.SavedTracks[2].Points;
+
+        for (int i = 0; i < 10; i++) vm.RefNudgeRightCommand!.Execute(null); // 10 × 20 cm
+
+        var expected = Models.Guidance.CurveProcessing.CreateOffsetCurve(savedPoints, 2.0);
+        var moved = vm.SavedTracks[2].Points;
+        Assert.That(moved.Count, Is.EqualTo(expected.Count));
+        for (int i = 0; i < moved.Count; i++)
+        {
+            Assert.That(moved[i].Easting, Is.EqualTo(expected[i].Easting).Within(1e-9), $"point {i}");
+            Assert.That(moved[i].Northing, Is.EqualTo(expected[i].Northing).Within(1e-9), $"point {i}");
+        }
+    }
+
+    [Test]
+    public void ACurve_MovedRightThenLeft_IsTheSavedLineAgain()
+    {
+        var vm = NewVm();
+        vm.SavedTracks.Add(Track.FromCurve("C", Bend()));
+        vm.SelectedTrack = vm.SavedTracks[2];
+        var savedPoints = vm.SavedTracks[2].Points.ToList();
+
+        for (int i = 0; i < 10; i++) vm.RefNudgeRightCommand!.Execute(null);
+        for (int i = 0; i < 10; i++) vm.RefNudgeLeftCommand!.Execute(null);
+
+        Assert.That(vm.SavedTracks[2].Points, Is.EqualTo(savedPoints));
+    }
+
+    [Test]
+    public void TurningRoundBetweenSteps_AddsUpInTheTracksOwnFrame()
+    {
+        // Right driving A→B, then right again driving B→A: that is back where it was saved.
+        var vm = NewVm();
+        vm.RefNudgeRightCommand!.Execute(null);
+        vm.State.Guidance.IsHeadingSameWay = false;
+        vm.RefNudgeRightCommand!.Execute(null);
+
+        Assert.That(vm.SavedTracks[0].Points[0].Easting, Is.EqualTo(0).Within(1e-9));
+    }
+
     [Test]
     public void ABoundaryLoop_CantBeMoved()
     {

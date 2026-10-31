@@ -32,6 +32,12 @@ public partial class MainViewModel
     // never changed, a move builds a new one.
     private readonly Dictionary<Track, List<Vec3>> _refNudgeSaved = new();
 
+    // How far each of those tracks is moved from its saved line, m, + = right of A→B (the
+    // track's own frame: the driver may turn round between steps). Every move is one offset of
+    // the saved line by this total, so steps don't resample a curve again and again, and back
+    // to 0 is the saved line exactly.
+    private readonly Dictionary<Track, double> _refNudgeOffset = new();
+
     public ICommand? RefNudgeLeftCommand { get; private set; }
     public ICommand? RefNudgeRightCommand { get; private set; }
     public ICommand? RefHalfNudgeLeftCommand { get; private set; }
@@ -88,7 +94,9 @@ public partial class MainViewModel
 
         // Positive in the track's own frame is right of A→B; against that, the driver's right is its left.
         double alongTrack = State.Guidance.IsHeadingSameWay ? meters : -meters;
-        var moved = MoveTrackSideways(track.Points, alongTrack);
+        var saved = _refNudgeSaved.TryGetValue(track, out var s) ? s : track.Points;
+        double offset = _refNudgeOffset.GetValueOrDefault(track) + alongTrack;
+        var moved = Math.Abs(offset) < 1e-9 ? saved : MoveTrackSideways(saved, offset);
         if (moved == null)
         {
             ReportFailure("This curve can't be moved that far");
@@ -102,8 +110,9 @@ public partial class MainViewModel
         }
         State.Operation.RefNudgeMoved += meters;
 
-        _refNudgeSaved.TryAdd(track, track.Points); // the line as saved, kept for Undo and for other saves
-        track.Points = moved; // a new list: the cycle may be reading the old one
+        _refNudgeSaved.TryAdd(track, saved); // the line as saved, kept for Undo and for other saves
+        _refNudgeOffset[track] = offset;
+        track.Points = moved; // a new list (or the saved one): the cycle may be reading the old one
         State.Operation.RefNudgePending = true;
         RefreshGuidanceAfterRefNudge();
 
@@ -120,6 +129,7 @@ public partial class MainViewModel
             StatusMessage = "No reference move to save";
             return;
         }
+        _refNudgeOffset.Remove(track);
         SaveTracksToFile();
         State.Operation.RefNudgeMoved = 0;
         State.Operation.RefNudgePending = false;
@@ -150,6 +160,7 @@ public partial class MainViewModel
     private bool RestoreSavedLine(Track track)
     {
         if (!_refNudgeSaved.Remove(track, out var saved)) return false;
+        _refNudgeOffset.Remove(track);
         track.Points = saved;
         State.Operation.RefNudgeMoved = 0;
         State.Operation.RefNudgePending = false;
@@ -167,7 +178,8 @@ public partial class MainViewModel
 
     /// <summary>The track's points moved perpendicular to the line by <paramref name="distance"/>
     /// (+ = right of A→B), or null for a curve too tight to offset. A curve gets the same offset
-    /// the passes are built with, so a moved reference is the pass that was there.</summary>
+    /// the passes are built with, so a moved reference is the pass that was there. Called with
+    /// the saved line and the whole move, never with a moved line.</summary>
     private static List<Vec3>? MoveTrackSideways(List<Vec3> points, double distance)
     {
         if (points.Count == 2)

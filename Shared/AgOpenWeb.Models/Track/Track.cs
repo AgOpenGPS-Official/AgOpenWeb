@@ -159,13 +159,6 @@ public class Track : INotifyPropertyChanged
     /// </summary>
     public Vec3 PointB => Points.Count > 1 ? Points[^1] : default;
 
-    /// <summary>
-    /// Create an AB line track from two points.
-    /// </summary>
-    /// <param name="name">Track name</param>
-    /// <param name="pointA">Starting point (Easting, Northing, Heading in radians)</param>
-    /// <param name="pointB">Ending point (Easting, Northing, Heading in radians)</param>
-    /// <returns>A new Track configured as an AB line</returns>
     /// <summary>A copy that differs only in its points, e.g. to write a track as it was saved.</summary>
     public Track WithPoints(List<Vec3> points)
     {
@@ -174,6 +167,13 @@ public class Track : INotifyPropertyChanged
         return copy;
     }
 
+    /// <summary>
+    /// Create an AB line track from two points.
+    /// </summary>
+    /// <param name="name">Track name</param>
+    /// <param name="pointA">Starting point (Easting, Northing, Heading in radians)</param>
+    /// <param name="pointB">Ending point (Easting, Northing, Heading in radians)</param>
+    /// <returns>A new Track configured as an AB line</returns>
     public static Track FromABLine(string name, Vec3 pointA, Vec3 pointB)
     {
         var heading = Math.Atan2(pointB.Easting - pointA.Easting,
