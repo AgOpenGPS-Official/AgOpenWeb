@@ -1,12 +1,13 @@
-# AgOpenWeb field and coverage file formats (for AgShare)
+# AgOpenWeb field and coverage file formats
 
 As of 2026-10-01 (`develop`).
 
 ## 1. Purpose
 
-AgOpenWeb no longer reads or writes AgOpenGPS field files. A field is now one `field.geojson` plus a few sidecar files, and a job's worked area (coverage) is stored as tiles. AgShare needs to read and write all of these: a field uploaded from AgOpenWeb and downloaded again must come back with every part intact.
+AgOpenWeb no longer reads or writes AgOpenGPS field files. A field is now one `field.geojson` plus a few sidecar files, and a job's worked area (coverage) is stored as tiles. This doc is the spec for any program that reads or writes them:
 
-This doc is written for the AgShare developer and for the Claude instance working on AgShare. Hand the whole doc to that Claude session as the spec; section 7 is a checklist written for it directly.
+- **A tool that only needs the field's outline** (a rate controller, a mapping or record-keeping tool): section 3, "Reading the boundary".
+- **AgShare**, which must carry a whole field both ways: sections 2 to 6, and section 7, a checklist written for the developer's Claude session (hand it the whole doc as the spec).
 
 - **One-way import:** AgOpenWeb imports AgOpenGPS files it finds in a field folder once, on open, then deletes them. It never writes AgOpenGPS formats.
 - **No compatibility shims:** there is no installed base of older AgOpenWeb builds, so the formats below are the only ones to support.
@@ -16,7 +17,7 @@ This doc is written for the AgShare developer and for the Claude instance workin
 
 A field is a folder named after the field, under the user's Fields folder (default `Documents/AgOpenWeb/Fields/<field name>/`). Only `field.geojson` is required; every other file is optional and may be absent.
 
-| File | Holds | Format | AgShare handling |
+| File | Holds | Format | Handling (AgShare) |
 | --- | --- | --- | --- |
 | `field.geojson` | Origin, boundaries, headland polygon, tracks, flags, headland lines, background image placement | GeoJSON, WGS84 | Parse and carry every feature |
 | `field.origin` | Copy of the origin, `lat,lon` with 8 decimals, invariant culture (e.g. `32.59058587,-87.18025540`) | Text, one line | Write with every field; AgOpenWeb uses it to recover a lost origin |
@@ -52,6 +53,15 @@ N &= (\varphi - \varphi_0)\, m_{lat} \qquad E = (\lambda - \lambda_0)\, m_{lon}(
 ```
 
 φ₀ and λ₀ are the origin's latitude and longitude; φ and λ the point's, in degrees (cosines take radians). Longitude scale uses each point's own latitude, not the origin's.
+
+### Reading the boundary
+
+A tool that needs only the field's outline reads two roles and can ignore the rest:
+
+- the feature with `"role": "outer-boundary"` (none or one): the field's edge, a Polygon with one closed ring;
+- every feature with `"role": "inner-boundary"`: holes in the field (a pond, a building). `isDriveThrough: true` marks one the tractor may drive across.
+
+Their points are `[longitude, latitude, heading]`: drop the third value, which is a heading in radians, not an altitude (a generic GeoJSON to KML conversion would write it as one). There is no other projection to undo; the coordinates are WGS84 as they stand.
 
 ### Feature roles
 

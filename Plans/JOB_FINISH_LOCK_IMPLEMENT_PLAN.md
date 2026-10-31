@@ -3,7 +3,7 @@
 **Status:** proposed 2026-10-01.
 **Prompted by:** the AgShare developer's request that coverage link to a job, and the job to a
 field and an implement, with finished jobs archived (likely for European chemical-application
-record keeping). Format consumers: [Docs/AGSHARE_FILE_FORMATS.md](../Docs/AGSHARE_FILE_FORMATS.md).
+record keeping). Format consumers: [Docs/FIELD_FILE_FORMATS.md](../Docs/FIELD_FILE_FORMATS.md).
 **Builds on:** [Completed/FIELDS_AND_JOBS_PLAN.md](Completed/FIELDS_AND_JOBS_PLAN.md); this
 plan replaces its Decision #3 (resuming a `Done` job silently flips it back to in progress).
 
