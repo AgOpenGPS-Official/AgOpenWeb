@@ -40,6 +40,12 @@ public interface IAutoSteerService
     event Action<string, int, bool>? HardwareMessageReceived;
 
     /// <summary>
+    /// PGN 234 (remote section switches) arrived: its switch bytes, indexed as AgOpenGPS
+    /// <c>mc.ss</c> (1 = main … 8 = off group 1; 0 unused). Raised on the socket thread.
+    /// </summary>
+    event Action<byte[]>? RemoteSwitchesReceived;
+
+    /// <summary>
     /// AutoSteer was engaged but guidance stopped updating for longer than
     /// <c>AutoSteerService.GuidanceStaleLimit</c> (GPS input or the pipeline stalled), so the
     /// service stopped steering on its own (#169). Raised once per stall, on the control-loop

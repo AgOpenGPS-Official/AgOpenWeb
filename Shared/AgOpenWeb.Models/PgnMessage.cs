@@ -129,6 +129,13 @@ public static class PgnNumbers
     public const byte HARDWARE_MESSAGE = 221;
 
     /// <summary>
+    /// Remote section switches (0xEA = 234), AgOpenGPS "Switch Control": from a rate
+    /// controller on AgIO's loopback port 15555 or a section control switch box on the
+    /// module port. AgOpenGPS UDPComm case 234 → DoRemoteSwitches.
+    /// </summary>
+    public const byte SWITCH_CONTROL = 234;
+
+    /// <summary>
     /// ISOBUS task controller heartbeat and reported section states (0xF0 = 240), from
     /// source 0x80 (#312).
     /// </summary>

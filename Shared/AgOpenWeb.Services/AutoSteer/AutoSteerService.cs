@@ -112,6 +112,7 @@ public class AutoSteerService : IAutoSteerService
 
     public event EventHandler<VehicleStateSnapshot>? StateUpdated;
     public event Action<string, int, bool>? HardwareMessageReceived;
+    public event Action<byte[]>? RemoteSwitchesReceived;
 
     public bool IsEnabled => _isEnabled;
     public bool IsEngaged => _isEngaged;
@@ -367,6 +368,16 @@ public class AutoSteerService : IAutoSteerService
             case PgnNumbers.HARDWARE_MESSAGE: // 221 - text to show on screen
                 if (TryParseHardwareMessage(e.Data, out var text, out int seconds, out bool warning))
                     HardwareMessageReceived?.Invoke(text, seconds, warning);
+                break;
+
+            case PgnNumbers.SWITCH_CONTROL: // 234 - remote section switches
+                // AgOpenGPS takes the 14-byte packet only, bytes 5-12 into mc.ss[1..8].
+                if (e.Data.Length == 14)
+                {
+                    var ss = new byte[9];
+                    Buffer.BlockCopy(e.Data, 5, ss, 1, 8);
+                    RemoteSwitchesReceived?.Invoke(ss);
+                }
                 break;
         }
     }

@@ -41,15 +41,26 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     public const int Gps1Port = 2211;
     public const int Gps2Port = 2222;
 
+    /// <summary>
+    /// AgOpenGPS's own loopback port, where programs beside it send to it: a rate controller
+    /// sends its section switches (PGN 234) here. AgIO sends its GPS data here too (and so
+    /// does this app, for GPS_Out), so only PGN 234 is taken from it.
+    /// </summary>
+    public const int AgOpenGpsLoopbackPort = 15555;
+
     // One receive buffer and endpoint per listening socket; each socket's callbacks are
     // serial, so a listener is touched by one thread at a time.
     private sealed class Listener
     {
         public readonly Socket Socket;
         public readonly GpsSource Source;
+        public readonly bool SwitchControlOnly;
         public readonly byte[] Buffer = new byte[1024];
         public EndPoint Remote = new IPEndPoint(IPAddress.Any, 0);
-        public Listener(Socket socket, GpsSource source) { Socket = socket; Source = source; }
+        public Listener(Socket socket, GpsSource source, bool switchControlOnly = false)
+        {
+            Socket = socket; Source = source; SwitchControlOnly = switchControlOnly;
+        }
     }
     private readonly List<Listener> _listeners = new();
     private CancellationTokenSource? _cancellationTokenSource;
@@ -181,6 +192,22 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 {
                     _logger.LogWarning("[UDP] not listening on {Port} ({Source}): {Message}", port, source, ex.Message);
                 }
+            }
+
+            // A rate controller's section switches (PGN 234), on the loopback as AgOpenGPS
+            // listens. Shared, as GPS_Out listens there too; a port another program holds
+            // exclusively is logged and skipped.
+            try
+            {
+                var s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                s.Bind(new IPEndPoint(IPAddress.Loopback, AgOpenGpsLoopbackPort));
+                _listeners.Add(new Listener(s, GpsSource.ModulePort, switchControlOnly: true));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("[UDP] not listening on {Port} (rate controller switches): {Message}",
+                    AgOpenGpsLoopbackPort, ex.Message);
             }
 
             // Discover broadcast endpoints on all network interfaces
@@ -380,14 +407,23 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 // Binary PGNs take the event path below; other binary datagrams (strangers
                 // broadcasting to 9999) are ignored as they always were.
                 var datagram = l.Buffer.AsSpan(0, bytesReceived);
-                if (_autoSteerService != null && Gps.NmeaLineSplitter.IsTextDatagram(datagram))
-                    _autoSteerService.ProcessGpsDatagram(datagram, l.Source);
+                if (l.SwitchControlOnly)
+                {
+                    if (bytesReceived > 3 && datagram[0] == PgnMessage.HEADER1 && datagram[1] == PgnMessage.HEADER2
+                        && datagram[3] == PgnNumbers.SWITCH_CONTROL)
+                        ProcessReceivedData(datagram.ToArray(), (IPEndPoint)l.Remote);
+                }
+                else
+                {
+                    if (_autoSteerService != null && Gps.NmeaLineSplitter.IsTextDatagram(datagram))
+                        _autoSteerService.ProcessGpsDatagram(datagram, l.Source);
 
-                // Now copy for other consumers (events, logging, etc.)
-                byte[] data = new byte[bytesReceived];
-                Array.Copy(l.Buffer, data, bytesReceived);
+                    // Now copy for other consumers (events, logging, etc.)
+                    byte[] data = new byte[bytesReceived];
+                    Array.Copy(l.Buffer, data, bytesReceived);
 
-                ProcessReceivedData(data, (IPEndPoint)l.Remote);
+                    ProcessReceivedData(data, (IPEndPoint)l.Remote);
+                }
             }
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
@@ -600,6 +636,9 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 break;
 
             case PgnNumbers.ISOBUS_HEARTBEAT: // 240 - task controller; IsobusTaskControllerService reads it
+                break;
+
+            case PgnNumbers.SWITCH_CONTROL: // 234 - remote section switches; AutoSteerService reads it
                 break;
 
             default:
