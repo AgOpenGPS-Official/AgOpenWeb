@@ -739,15 +739,14 @@ function ckColor(s) {
   return CK.Color(m[0], m[1], m[2], m.length > 3 ? m[3] : 1);
 }
 // Day/Night theme. CSS chrome flips via [data-theme]; the Skia map (clear + grid) is
-// recoloured here. Grid greys read on dark; dark-blue greys read on the light day field.
+// recoloured here. Grid greys read on dark; dark-blue greys read on the light day field. One grid
+// colour: every line looks the same, as in AgOpenGPS (#496).
 const MAP_CLEAR = { night: '#0f1115', day: '#d7dee7' };
 const GRID_MINOR = { night: 'rgba(180,180,180,0.314)', day: 'rgba(80,92,110,0.33)' };
-const GRID_MAJOR = { night: 'rgba(200,200,200,0.47)', day: 'rgba(60,72,90,0.5)' };
 function applyMapTheme() {
   if (!CK || !SKP) return; // paints not built yet — buildSkPaints() re-applies on init
   const k = mapIsDay ? 'day' : 'night';
   SKP.gridMinor.setColor(ckColor(GRID_MINOR[k]));
-  SKP.gridMajor.setColor(ckColor(GRID_MAJOR[k]));
 }
 // UI size (Screen & Alerts): the controls are zoomed by CSS (--ui-zoom), the map is not.
 // Anything that turns screen pixels into a zoomed element's left/top divides by uiZoom.
@@ -852,9 +851,8 @@ function buildSkPaints() {
     // Extra guidelines (adjacent passes) — native _extraGuidePaint green(51,153,50,153)
     // over a black shadow, both 0.3 m. Widths set per frame in updateLineWidths.
     extraGuide: mk('rgba(51,153,50,0.6)', 1), extraGuideShadow: mk('rgba(0,0,0,0.5)', 1),
-    // Match native (night-mode) grid: grey, ~0.31/0.47 alpha, major ~2× thickness.
-    gridMinor: mk('rgba(180,180,180,0.314)', 1), gridMajor: mk('rgba(200,200,200,0.47)', 2),
-    axisX: mk('rgba(204,51,51,0.275)', 1.5), axisY: mk('rgba(51,204,51,0.275)', 1.5),
+    // Grid: grey, ~0.31 alpha, one line style (#496); its width is set per frame in drawGridSk.
+    gridMinor: mk('rgba(180,180,180,0.314)', 1),
     vehicle: fill('#39FF6A'),
     flagFill: fill('#FF0000'), flagOutline: mk('#101010', 1.5), // colour set per flag
     // Field Builder headland-editor offset lines: yellow = contributes to the closed
@@ -6804,9 +6802,9 @@ function tickClock() {
 }
 setInterval(tickClock, 1000); tickClock();
 
-// Reference grid + origin axes (procedural, client-side — no wire). Spacing is a
-// tool-width multiple on a 1-2-5 series keyed to zoom, matching the native grid
-// (#417). Axes through the field origin (local 0,0): X (N=0) red, Y (E=0) green.
+// Reference grid (procedural, client-side — no wire). Spacing is a tool-width multiple on a
+// 1-2-5 series keyed to zoom, matching the native grid (#417). One line style, 1 px wide at any
+// zoom, no major lines and no coloured axes, as AgOpenGPS (#496).
 // Matches native NiceStep125 exactly: ≤1 → 1, then 2, 5, 10, 20 … (no 1.5 step).
 function niceStep125(x) {
   if (x <= 1) return 1;
@@ -7179,29 +7177,22 @@ function drawGridSk(canvas) {
   const toolW = toolWidthM() || 1; // no tool width: plain metres
   // Spacing = tool-width × NiceStep125(viewSpan / (toolW·30)) — same as native.
   const spacing = toolW * niceStep125(Math.max(vw, vh) / pxPerM / (toolW * 30));
-  const major = k => k % 10 === 0 ? SKP.gridMajor : SKP.gridMinor;
-  const gm = 6; // gridMult = BaseStrokeMult 3 × GridExtraStrokeMult 2
 
   // Draw in WORLD coords under the perspective matrix so Skia GPU-clips at the near
   // plane. (Per-vertex screen projection garbles any line crossing behind a tilted
-  // camera.) Stroke widths in world metres (native: 0.3 px floor + 0.05 m floor).
-  const wpp = 1 / pxPerM;
-  SKP.gridMinor.setStrokeWidth(Math.max(0.3 * wpp, 0.05) * gm);
-  SKP.gridMajor.setStrokeWidth(Math.max(0.6 * wpp, 0.1) * gm);
-  SKP.axisX.setStrokeWidth(Math.max(0.9 * wpp, 0.15) * gm);
-  SKP.axisY.setStrokeWidth(Math.max(0.9 * wpp, 0.15) * gm);
+  // camera.) Every line is 1 CSS px wide at any zoom, as AgOpenGPS's 1 px grid: the width is one
+  // pixel in world metres (1 / pxPerM), with no metre floor, so zooming in doesn't thicken it (#496).
+  SKP.gridMinor.setStrokeWidth(1 / pxPerM);
   canvas.save();
   canvas.concat(perspM);
-  const line = (e1, n1, e2, n2, paint) => {
+  const line = (e1, n1, e2, n2) => {
     const c = clipNear(e1, n1, e2, n2); // returns WORLD coords
-    if (c) canvas.drawLine(c[0] - camE, c[1] - camN, c[2] - camE, c[3] - camN, paint); // camera-relative
+    if (c) canvas.drawLine(c[0] - camE, c[1] - camN, c[2] - camE, c[3] - camN, SKP.gridMinor); // camera-relative
   };
   for (let k = Math.ceil(minE / spacing); k * spacing <= maxE; k++)
-    line(k * spacing, minN, k * spacing, maxN, major(k));
+    line(k * spacing, minN, k * spacing, maxN);
   for (let k = Math.ceil(minN / spacing); k * spacing <= maxN; k++)
-    line(minE, k * spacing, maxE, k * spacing, major(k));
-  if (0 >= minE && 0 <= maxE) line(0, minN, 0, maxN, SKP.axisY);
-  if (0 >= minN && 0 <= maxN) line(minE, 0, maxE, 0, SKP.axisX);
+    line(minE, k * spacing, maxE, k * spacing);
   canvas.restore();
 }
 // Implement hitch line: yellow line from the vehicle hitch pivot to the tool, drawn
