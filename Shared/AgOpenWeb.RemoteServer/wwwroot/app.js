@@ -739,15 +739,14 @@ function ckColor(s) {
   return CK.Color(m[0], m[1], m[2], m.length > 3 ? m[3] : 1);
 }
 // Day/Night theme. CSS chrome flips via [data-theme]; the Skia map (clear + grid) is
-// recoloured here. Grid greys read on dark; dark-blue greys read on the light day field.
+// recoloured here. Grid greys read on dark; dark-blue greys read on the light day field. One grid
+// colour: every line looks the same, as in AgOpenGPS (#496).
 const MAP_CLEAR = { night: '#0f1115', day: '#d7dee7' };
 const GRID_MINOR = { night: 'rgba(180,180,180,0.314)', day: 'rgba(80,92,110,0.33)' };
-const GRID_MAJOR = { night: 'rgba(200,200,200,0.47)', day: 'rgba(60,72,90,0.5)' };
 function applyMapTheme() {
   if (!CK || !SKP) return; // paints not built yet — buildSkPaints() re-applies on init
   const k = mapIsDay ? 'day' : 'night';
   SKP.gridMinor.setColor(ckColor(GRID_MINOR[k]));
-  SKP.gridMajor.setColor(ckColor(GRID_MAJOR[k]));
 }
 // UI size (Screen & Alerts): the controls are zoomed by CSS (--ui-zoom), the map is not.
 // Anything that turns screen pixels into a zoomed element's left/top divides by uiZoom.
@@ -764,6 +763,7 @@ function applyUiScale(pct) {
   document.documentElement.style.setProperty('--ui-zoom', String(z));
   calibrateZoom();
   placeCorner();
+  placeHud();
 }
 function calibrateZoom() {
   const root = document.documentElement.style;
@@ -825,6 +825,37 @@ if (window.ResizeObserver) {
   ro.observe(document.getElementById('bottomstack'));
 }
 addEventListener('resize', placeCorner);
+// Top-centre HUD (#hud-top) and everything docked under the status bar hang from the bar's
+// measured bottom (--bar-bottom): the dev diagnostics row adds 26 px, the UI size zooms the
+// bar, iOS adds the safe area. The HUD scales with the screen height, roughly as AgOpenGPS
+// sizes its light-bar and track text: ×1 up to 540 px, ×1.33 on a 720p screen, at most ×2.
+// The map canvas isn't zoomed, so the light bar's cells (drawn on it) take hudK, the HUD
+// scale times the UI zoom, to match the readout beside them.
+let hudScale = 0, hudBarBottom = -1, hudK = 1;
+function placeHud() {
+  const root = document.documentElement.style;
+  const s = Math.min(2, Math.max(1, innerHeight / 540));
+  if (s !== hudScale) { hudScale = s; root.setProperty('--hud-s', s.toFixed(3)); }
+  hudK = hudScale * uiZoom;
+  let bottom = 0;
+  for (const id of ['statusbar', 'sb-diag']) {
+    const el = document.getElementById(id);
+    if (el) bottom = Math.max(bottom, zoomRect(el).bottom);
+  }
+  if (bottom !== hudBarBottom) {
+    hudBarBottom = bottom;
+    // No bar on screen (not connected yet): keep the CSS default, the bar's usual place.
+    if (bottom > 0) root.setProperty('--bar-bottom', (bottom / uiZoom).toFixed(2) + 'px');
+    else root.removeProperty('--bar-bottom');
+  }
+}
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(placeHud);
+  ro.observe(document.getElementById('statusbar'));
+  ro.observe(document.getElementById('sb-diag'));
+}
+addEventListener('resize', placeHud);
+placeHud();
 function applyTheme(isDay) {
   mapIsDay = !!isDay;
   document.documentElement.setAttribute('data-theme', mapIsDay ? 'day' : 'night');
@@ -852,9 +883,8 @@ function buildSkPaints() {
     // Extra guidelines (adjacent passes) — native _extraGuidePaint green(51,153,50,153)
     // over a black shadow, both 0.3 m. Widths set per frame in updateLineWidths.
     extraGuide: mk('rgba(51,153,50,0.6)', 1), extraGuideShadow: mk('rgba(0,0,0,0.5)', 1),
-    // Match native (night-mode) grid: grey, ~0.31/0.47 alpha, major ~2× thickness.
-    gridMinor: mk('rgba(180,180,180,0.314)', 1), gridMajor: mk('rgba(200,200,200,0.47)', 2),
-    axisX: mk('rgba(204,51,51,0.275)', 1.5), axisY: mk('rgba(51,204,51,0.275)', 1.5),
+    // Grid: grey, ~0.31 alpha, one line style (#496); its width is set per frame in drawGridSk.
+    gridMinor: mk('rgba(180,180,180,0.314)', 1),
     vehicle: fill('#39FF6A'),
     flagFill: fill('#FF0000'), flagOutline: mk('#101010', 1.5), // colour set per flag
     // Field Builder headland-editor offset lines: yellow = contributes to the closed
@@ -5128,6 +5158,9 @@ const lbAvg = lbEl.appendChild(document.createElement('span'));
 lbAvg.className = 'lb-avg';
 let lbAvgTick = null, lbAvgM = 0.15;
 let lbHalfW = 0; // half the readout's width, for the light bar's cells either side of it
+let lbCy = 70, steerCy = 84; // screen y of the readout row's and the steer bar slot's centres
+let lbSteerH = -1;
+const lbSteer = document.getElementById('lb-steer');
 const LB_LEFT = '#ff7a3d', LB_RIGHT = '#39FF6A'; // as lightbarSk: steer left / steer right, on line
 function updateLightbarText() {
   const cfg = config && config.autosteer;
@@ -5136,6 +5169,9 @@ function updateLightbarText() {
   const shown = !!(tick && tick.guidanceActive && cfg && cfg.guidanceBarOn && cfg.lightbarEnabled);
   document.body.classList.toggle('steerbar', shown && !!cfg.steerBarEnabled);
   document.body.classList.toggle('lightbar', shown && !cfg.steerBarEnabled);
+  // The steer bar is drawn into #lb-steer's slot under the readout; open it only for that style.
+  const steerH = shown && cfg.steerBarEnabled ? Math.round(24 * hudScale) : 0;
+  if (steerH !== lbSteerH) { lbSteerH = steerH; lbSteer.style.height = steerH + 'px'; }
   if (!shown) { lbEl.style.display = 'none'; lbAvgTick = null; lbAvgM = 0.15; return; }
   const xte = tick.crossTrackError || 0;
   const onLine = Math.abs(xte) < 0.05;
@@ -5150,7 +5186,12 @@ function updateLightbarText() {
     lbAvg.style.display = lbAvgM < 0.15 ? 'inline' : 'none';
   }
   lbEl.style.display = 'block';
-  lbHalfW = (lbArrow.offsetWidth + lbText.offsetWidth + (lbAvg.style.display === 'none' ? 0 : lbAvg.offsetWidth + 10)) / 2;
+  // Screen pixels (the canvas isn't zoomed): the readout's half width and its row's centre, for
+  // the light bar's cells; the steer bar's slot centre.
+  lbHalfW = (zoomRect(lbArrow).width + zoomRect(lbText).width + (lbAvg.style.display === 'none' ? 0 : zoomRect(lbAvg).width + 10 * hudK)) / 2;
+  const row = zoomRect(lbEl);
+  lbCy = row.top + row.height / 2;
+  if (steerH) { const st = zoomRect(lbSteer); steerCy = st.top + st.height / 2; }
 }
 
 // Tram lights (#451): AgOpenGPS's two dots, left and right of the light bar. The host sends
@@ -6850,9 +6891,9 @@ function tickClock() {
 }
 setInterval(tickClock, 1000); tickClock();
 
-// Reference grid + origin axes (procedural, client-side — no wire). Spacing is a
-// tool-width multiple on a 1-2-5 series keyed to zoom, matching the native grid
-// (#417). Axes through the field origin (local 0,0): X (N=0) red, Y (E=0) green.
+// Reference grid (procedural, client-side — no wire). Spacing is a tool-width multiple on a
+// 1-2-5 series keyed to zoom, matching the native grid (#417). One line style, 1 px wide at any
+// zoom, no major lines and no coloured axes, as AgOpenGPS (#496).
 // Matches native NiceStep125 exactly: ≤1 → 1, then 2, 5, 10, 20 … (no 1.5 step).
 function niceStep125(x) {
   if (x <= 1) return 1;
@@ -7225,29 +7266,22 @@ function drawGridSk(canvas) {
   const toolW = toolWidthM() || 1; // no tool width: plain metres
   // Spacing = tool-width × NiceStep125(viewSpan / (toolW·30)) — same as native.
   const spacing = toolW * niceStep125(Math.max(vw, vh) / pxPerM / (toolW * 30));
-  const major = k => k % 10 === 0 ? SKP.gridMajor : SKP.gridMinor;
-  const gm = 6; // gridMult = BaseStrokeMult 3 × GridExtraStrokeMult 2
 
   // Draw in WORLD coords under the perspective matrix so Skia GPU-clips at the near
   // plane. (Per-vertex screen projection garbles any line crossing behind a tilted
-  // camera.) Stroke widths in world metres (native: 0.3 px floor + 0.05 m floor).
-  const wpp = 1 / pxPerM;
-  SKP.gridMinor.setStrokeWidth(Math.max(0.3 * wpp, 0.05) * gm);
-  SKP.gridMajor.setStrokeWidth(Math.max(0.6 * wpp, 0.1) * gm);
-  SKP.axisX.setStrokeWidth(Math.max(0.9 * wpp, 0.15) * gm);
-  SKP.axisY.setStrokeWidth(Math.max(0.9 * wpp, 0.15) * gm);
+  // camera.) Every line is 1 CSS px wide at any zoom, as AgOpenGPS's 1 px grid: the width is one
+  // pixel in world metres (1 / pxPerM), with no metre floor, so zooming in doesn't thicken it (#496).
+  SKP.gridMinor.setStrokeWidth(1 / pxPerM);
   canvas.save();
   canvas.concat(perspM);
-  const line = (e1, n1, e2, n2, paint) => {
+  const line = (e1, n1, e2, n2) => {
     const c = clipNear(e1, n1, e2, n2); // returns WORLD coords
-    if (c) canvas.drawLine(c[0] - camE, c[1] - camN, c[2] - camE, c[3] - camN, paint); // camera-relative
+    if (c) canvas.drawLine(c[0] - camE, c[1] - camN, c[2] - camE, c[3] - camN, SKP.gridMinor); // camera-relative
   };
   for (let k = Math.ceil(minE / spacing); k * spacing <= maxE; k++)
-    line(k * spacing, minN, k * spacing, maxN, major(k));
+    line(k * spacing, minN, k * spacing, maxN);
   for (let k = Math.ceil(minN / spacing); k * spacing <= maxN; k++)
-    line(minE, k * spacing, maxE, k * spacing, major(k));
-  if (0 >= minE && 0 <= maxE) line(0, minN, 0, maxN, SKP.axisY);
-  if (0 >= minN && 0 <= maxN) line(minE, 0, maxE, 0, SKP.axisX);
+    line(minE, k * spacing, maxE, k * spacing);
   canvas.restore();
 }
 // Implement hitch line: yellow line from the vehicle hitch pivot to the tool, drawn
@@ -7938,24 +7972,28 @@ function lightbarSk(canvas) {
   const cfg = config && config.autosteer;
   if (!tick || !tick.guidanceActive || !cfg || !cfg.guidanceBarOn) return;
   if (!cfg.lightbarEnabled) return;
-  if (cfg.steerBarEnabled) { steerBarSk(canvas, 84); return; } // under the readout (body.steerbar #lb)
+  if (cfg.steerBarEnabled) { steerBarSk(canvas, steerCy); return; } // in #lb-steer, under the readout
   // As AgOpenGPS: the cells either side of the readout, on its row (body.lightbar #lb), lit
   // outwards from it on the side to steer. No centre cell: the readout's ● is on the line.
-  const SIDE = 7, W = 18, H = 16, GAP = 4, top = 56;
+  const SIDE = 7, W = 18, H = 16, GAP = 4;
   // AutoSteer › cm per pixel (AgOpenGPS lightbarCmPerPixel): cm of XTE per lit cell (#110).
   const cpp = Math.max(1, (cfg.cmPerPixel | 0) || 5);
   const val = tick.crossTrackError || 0, PER = cpp / 100; // + = right of line
   const lit = Math.min(Math.round(Math.abs(val) / PER), SIDE);
   const steerLeft = val > 0; // lights point the way to STEER (native convention)
   const litCol = steerLeft ? '#ff7a3d' : '#39FF6A';
-  const inner = Math.max(40, lbHalfW + 10); // clear of the readout, however wide it is
+  // Scaled with the HUD (hudK), as the readout beside it, but never wider than the screen allows.
+  const inner0 = (k) => Math.max(40 * k, lbHalfW + 10 * k); // clear of the readout, however wide it is
+  let k = hudK;
+  while (k > 0.5 && inner0(k) + SIDE * (W + GAP) * k > 0.47 * vw) k -= 0.05;
+  const inner = inner0(k), w = W * k, h = H * k, g = GAP * k, top = lbCy - h / 2;
   const p = SKP.lbFill;
   for (let i = 1; i <= SIDE; i++) {
-    const off = inner + (i - 1) * (W + GAP);
+    const off = inner + (i - 1) * (w + g);
     for (const left of [true, false]) {
       const on = left === steerLeft && i <= lit;
       p.setColor(ckColor(on ? litCol : '#1c2230'));
-      canvas.drawRect(CK.XYWHRect(left ? vw / 2 - off - W : vw / 2 + off, top, W, H), p);
+      canvas.drawRect(CK.XYWHRect(left ? vw / 2 - off - w : vw / 2 + off, top, w, h), p);
     }
   }
 }
@@ -7968,18 +8006,19 @@ function steerBarSk(canvas, cy) {
   const auto = !!(tick.op && tick.op.autoSteer);
   const err = tick.steerAngleError || 0;
   if (Math.abs(err) < (auto ? 0.5 : 0.2)) return;
+  const k = hudK;                                // HUD scale × UI zoom, as the light bar
   const spacing = Math.max(28, vw / 50);
   const cx = vw / 2;
   const turn = err > 0 ? -1 : 1;                 // + error: turn left (as the light bar)
-  const endX = cx - turn * (Math.min(Math.abs(err), 12) * spacing + 35);
+  const endX = cx - turn * (Math.min(Math.abs(err), 12) * spacing + 35 * k);
   // AgOpenGPS's shapes, sized to the light bar's strip so the readout under it stays clear.
-  const half = auto ? 7 : 10;                    // arrow half-height
-  const point = half + 14;                       // arrow length (AgOpenGPS offset + pointy)
+  const half = (auto ? 7 : 10) * k;                    // arrow half-height
+  const point = half + 14 * k;                       // arrow length (AgOpenGPS offset + pointy)
   const a = auto ? 0.5 : 1;
   const f = SKP.sbFill, l = SKP.sbLine;
   // The bar: black under yellow.
   l.setStrokeCap(CK.StrokeCap.Butt);
-  for (const [w, col] of [[auto ? 5 : 9, `rgba(0,0,0,${a})`], [auto ? 3 : 6, `rgba(242,251,102,${a})`]]) {
+  for (const [w, col] of [[(auto ? 5 : 9) * k, `rgba(0,0,0,${a})`], [(auto ? 3 : 6) * k, `rgba(242,251,102,${a})`]]) {
     l.setStrokeWidth(w); l.setColor(ckColor(col));
     canvas.drawLine(cx, cy, endX, cy, l);
   }
