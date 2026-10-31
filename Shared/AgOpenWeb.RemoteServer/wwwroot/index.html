@@ -1278,6 +1278,11 @@
       height: min(var(--wh), calc(100 * var(--vh) - 140px)); background: var(--bg-sunken); }
     .web-body iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
     .web-cover { position: absolute; inset: 0; display: none; cursor: not-allowed; }
+    /* Sites that refuse to be framed (X-Frame-Options, frame-ancestors) leave the frame blank and
+       no browser says so to the page holding it, so a chosen page always carries this line. */
+    .web-hint { padding: 3px 8px; font: 500 11px system-ui, sans-serif; color: var(--text-dim); background: var(--bg-raised);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .web-hint[hidden] { display: none; }
     .web-cover.show { display: block; }
     .web-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
       padding: 24px; text-align: center; color: var(--text-2); font-size: 14px; background: var(--panel); }
@@ -2653,6 +2658,7 @@
         <div class="web-msg"></div>
         <div class="web-edit"></div>
       </div>
+      <div class="web-hint">Blank? Some sites can't be shown in a card: open it with ↗</div>
     </div>
   </template>
   <div id="chart-steer" class="chart-card" style="display:none">
