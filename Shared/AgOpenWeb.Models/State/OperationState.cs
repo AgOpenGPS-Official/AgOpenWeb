@@ -35,4 +35,11 @@ public sealed class OperationState
 
     /// <summary>A track is available to steer to (else the AutoSteer button greys).</summary>
     public bool IsAutoSteerAvailable { get; set; }
+
+    /// <summary>Ref Nudge panel (#489): how far the selected track was moved since the panel
+    /// opened, in m, the driver's right positive.</summary>
+    public double RefNudgeMoved { get; set; }
+
+    /// <summary>The selected track has a reference move that is not saved yet.</summary>
+    public bool RefNudgePending { get; set; }
 }

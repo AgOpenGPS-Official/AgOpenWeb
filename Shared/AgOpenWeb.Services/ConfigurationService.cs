@@ -667,6 +667,7 @@ public class ConfigurationService(
             {
                 LineWidth = a.LineWidth,
                 NudgeDistance = a.NudgeDistance,
+                RefNudgeDistance = a.RefNudgeDistance,
                 NextGuidanceTime = a.NextGuidanceTime,
                 CmPerPixel = a.CmPerPixel,
                 LightbarEnabled = a.LightbarEnabled,

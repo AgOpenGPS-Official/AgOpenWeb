@@ -159,6 +159,14 @@ public class Track : INotifyPropertyChanged
     /// </summary>
     public Vec3 PointB => Points.Count > 1 ? Points[^1] : default;
 
+    /// <summary>A copy that differs only in its points, e.g. to write a track as it was saved.</summary>
+    public Track WithPoints(List<Vec3> points)
+    {
+        var copy = (Track)MemberwiseClone();
+        copy.Points = points;
+        return copy;
+    }
+
     /// <summary>
     /// Create an AB line track from two points.
     /// </summary>

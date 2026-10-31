@@ -373,6 +373,17 @@ public class AutoSteerConfig : ObservableObject
         set => SetProperty(ref _nudgeDistance, value);
     }
 
+    private int _refNudgeDistance = 5;
+    /// <summary>
+    /// Step of the Ref Nudge panel in centimeters (AgOpenGPS setAS_snapDistanceRef): moves the
+    /// reference line itself, apart from <see cref="NudgeDistance"/>, which offsets the guidance line.
+    /// </summary>
+    public int RefNudgeDistance
+    {
+        get => _refNudgeDistance;
+        set => SetProperty(ref _refNudgeDistance, Math.Clamp(value, 1, 500));
+    }
+
     private double _nextGuidanceTime = 1.5;
     /// <summary>
     /// Next guidance line look-ahead time in seconds.
@@ -534,6 +545,7 @@ public class AutoSteerConfig : ObservableObject
             MaxSteerSpeed = MaxSteerSpeed,
             LineWidth = LineWidth,
             NudgeDistance = NudgeDistance,
+            RefNudgeDistance = RefNudgeDistance,
             NextGuidanceTime = NextGuidanceTime,
             CmPerPixel = CmPerPixel,
             LightbarEnabled = LightbarEnabled,
@@ -578,6 +590,7 @@ public class AutoSteerConfig : ObservableObject
         MaxSteerSpeed = dto.MaxSteerSpeed;
         LineWidth = dto.LineWidth;
         NudgeDistance = dto.NudgeDistance;
+        RefNudgeDistance = dto.RefNudgeDistance;
         NextGuidanceTime = dto.NextGuidanceTime;
         CmPerPixel = dto.CmPerPixel;
         LightbarEnabled = dto.LightbarEnabled;
@@ -640,6 +653,7 @@ public class AutoSteerConfig : ObservableObject
         // Tab 9: Display
         LineWidth = 2;
         NudgeDistance = 20;
+        RefNudgeDistance = 5;
         NextGuidanceTime = 1.5;
         CmPerPixel = 5;
         LightbarEnabled = true;
@@ -699,6 +713,7 @@ public record AutoSteerConfigDto
     // Tab 9: Display
     public int LineWidth { get; init; } = 2;
     public int NudgeDistance { get; init; } = 20;
+    public int RefNudgeDistance { get; init; } = 5;
     public double NextGuidanceTime { get; init; } = 1.5;
     public int CmPerPixel { get; init; } = 5;
     public bool LightbarEnabled { get; init; } = true;

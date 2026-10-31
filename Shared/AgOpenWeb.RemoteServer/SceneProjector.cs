@@ -360,6 +360,8 @@ public sealed class SceneProjector
             // Driver-relative nudge (#93): the pipeline stores it in track frame and flips the
             // intent's sign when heading against the track, so flip it back the same way.
             g.IsHeadingSameWay ? g.NudgeOffset : -g.NudgeOffset,
+            _state.Operation.RefNudgeMoved, // Ref Nudge panel total (#489)
+            _state.Operation.RefNudgePending,
             // Pure Pursuit goal (#95) — only with an active track (the flag can lag a
             // track deselect by one cycle).
             g.HasGoalPoint && _state.Field.ActiveTrack != null,
@@ -864,7 +866,7 @@ public sealed class SceneProjector
             GuidanceConfig.UTurnCompensationToPercent(g.UTurnCompensation), a.SideHillCompensation, a.SteerInReverse,
             a.ManualTurnsEnabled, a.ManualTurnsSpeed, a.MinSteerSpeed, a.MaxSteerSpeed,
             a.LineWidth, a.NudgeDistance, a.NextGuidanceTime, a.CmPerPixel,
-            a.LightbarEnabled, a.SteerBarEnabled, a.GuidanceBarOn);
+            a.LightbarEnabled, a.SteerBarEnabled, a.GuidanceBarOn, a.RefNudgeDistance);
     }
 
     // Resolution label mirrors MainViewModel.DisplayResolutionLabel.
@@ -976,7 +978,7 @@ public sealed class SceneProjector
         h = h * 31 + asc.WasOffset * 3 + asc.Ackermann * 5 + (int)System.Math.Round(_config.Vehicle.MaxSteerAngle) * 7 + asc.DeadzoneDelay * 11
               + asc.ProportionalGain * 13 + asc.MaxPwm * 17 + asc.MinPwm * 19 + asc.TurnSensorCounts * 23
               + asc.PressureTripPoint * 29 + asc.CurrentTripPoint * 31 + asc.MotorDriver * 37 + asc.AdConverter * 41
-              + asc.ImuAxisSwap * 43 + asc.ExternalEnable * 47 + asc.LineWidth * 53 + asc.NudgeDistance * 59 + asc.CmPerPixel * 61;
+              + asc.ImuAxisSwap * 43 + asc.ExternalEnable * 47 + asc.LineWidth * 53 + asc.NudgeDistance * 59 + asc.CmPerPixel * 61 + asc.RefNudgeDistance * 67;
         foreach (var d in new[] { gdc.GoalPointLookAheadHold, gdc.PurePursuitIntegralGain, gdc.StanleyDistanceErrorGain,
                                   gdc.StanleyHeadingErrorGain, asc.CountsPerDegree, asc.DeadzoneHeading,
                                   gdc.GoalPointLookAheadMult, gdc.GoalPointAcquireFactor, gdc.UTurnCompensation, asc.SideHillCompensation,

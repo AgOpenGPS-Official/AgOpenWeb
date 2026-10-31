@@ -1733,6 +1733,51 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => {
 });
 wireCfgControls(bnAb);
 
+// ---- Ref Nudge panel (#489, AgOpenGPS FormRefNudge) ----
+// Moves the saved line itself (the AB flyout's nudge only offsets the guidance line). The panel
+// stays open: the right nav's track buttons pick the next line, each move is saved by the host
+// at once, Exit closes. The total and the step come from the host (tick.op.refNudgeMoved, the
+// vehicle profile's autosteer.refNudgeDistance); nothing is computed here.
+const refPanel = document.getElementById('refnudge');
+const refMoved = document.getElementById('rf-moved');
+const refName = document.getElementById('rf-name');
+let refNudgeOpen = false;
+function openRefNudge() {
+  refNudgeOpen = true;
+  transport.send('track.refNudgeBegin'); // the total starts at zero
+  refPanel.hidden = false;
+  populateCfgControls(refPanel, true);
+}
+function closeRefNudge() { refNudgeOpen = false; refPanel.hidden = true; }
+document.getElementById('bn-refnudge').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); abFlyoutClose(); openRefNudge(); });
+const refUndo = document.getElementById('rf-undo');
+const refSave = document.getElementById('rf-save');
+let refPending = false; // an unsaved move on the selected line (tick.op.refNudgePending)
+document.getElementById('rf-exit').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  if (!refPending) { closeRefNudge(); return; }
+  // Leaving would undo the move (the next line takes over): ask, Cancel keeps the panel for Undo.
+  showConfirm(tr('Reference Line Nudge'), tr('Save the moved line before closing?'), () => { transport.send('track.refNudgeSave'); closeRefNudge(); });
+});
+for (const b of refPanel.querySelectorAll('button[data-cmd]'))
+  b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send(b.dataset.cmd); });
+wireCfgControls(refPanel);
+function renderRefNudge(hasTrack) {
+  const show = refNudgeOpen && hasTrack;
+  if (refPanel.hidden === show) refPanel.hidden = !show;
+  if (!show) return;
+  const m = (tick && tick.op && tick.op.refNudgeMoved) || 0;
+  const amt = Math.round(Math.abs(m) * (isMetric() ? 100 : 39.3701));
+  const text = amt === 0 ? '0' : amt + ' ' + unitLabel('cm') + (m < 0 ? ' L' : ' R');
+  if (refMoved.textContent !== text) refMoved.textContent = text;
+  const name = tick.activeTrackName || '';
+  if (refName.textContent !== name) refName.textContent = name;
+  refPending = !!(tick.op && tick.op.refNudgePending);
+  refUndo.disabled = !refPending;
+  refSave.disabled = !refPending;
+  populateCfgControls(refPanel); // the step; not while it is being typed
+}
+
 // ---- AB-line creation (mirrors native QuickABSelector + DrawAB dialogs) ----
 // All four modes run the REAL native commands on the host (no geometry in JS):
 //   straight/curve   — DrawAB/DrawCurve: tap points on the map (s2w → track.drawPoint)
@@ -5601,10 +5646,11 @@ function renderBottomNav() {
   applyOnScreenButtons(); // U-Turn / Lateral glyphs follow field-open + display toggles
   const visible = !!(scene && scene.hasField); // native gate: IsFieldOpen
   bottomNav.classList.toggle('open', visible);
-  if (!visible) { bnFlags.classList.remove('open'); bnAb.classList.remove('open'); return; }
+  if (!visible) { bnFlags.classList.remove('open'); bnAb.classList.remove('open'); renderRefNudge(false); return; }
   // AB-line-dependent buttons appear only with an active track.
   const hasTrack = !!(tick && tick.activeTrackName);
   for (const el of bottomNav.querySelectorAll('.bn-abdep')) el.classList.toggle('hide', !hasTrack);
+  renderRefNudge(hasTrack);
   const t = (tick && tick.tools) || {};
   document.getElementById('bn-skipnum').textContent = t.skipRows || 0;
   // Nudge readout (#93): driver-relative offset, cm (metric) / in (imperial), L/R side.
