@@ -174,7 +174,7 @@ jobs:
   macos:
     needs: changed
     if: needs.changed.outputs.build == 'true'
-    runs-on: macos-14   # Apple silicon (arm64) — the .dmg is osx-arm64; needs macOS for hdiutil/codesign
+    runs-on: macos-26   # Apple silicon (arm64) — the .dmg is osx-arm64; needs macOS for hdiutil/codesign (macos-14 retired 2026-11-02)
     steps:
       - uses: actions/checkout@v4
 
