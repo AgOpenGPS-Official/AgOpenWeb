@@ -5354,8 +5354,12 @@ SB.bar.addEventListener('pointerdown', e => e.stopPropagation());
 // Start Fullscreen (#110): browsers only allow fullscreen from a user gesture, so in a
 // plain browser go fullscreen on the first tap after the page loads. The desktop
 // launcher window opens fullscreen itself.
+// In the desktop launcher (Photino) the web view ignores the Fullscreen API: the button asks
+// the launcher over its message channel, which answers with the window's state (#498).
+const inLauncher = !!(window.external && typeof window.external.sendMessage === 'function');
 document.addEventListener('click', function startFs() {
   document.removeEventListener('click', startFs, true);
+  if (inLauncher) return;
   if (!(config && config.display && config.display.startFullscreen)) return;
   if (document.fullscreenElement || document.webkitFullscreenElement) return;
   const el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
@@ -5368,6 +5372,7 @@ if (fsBtn) {
   // that pointerdown doesn't reliably grant on Android Chrome (entering took 2–3 taps).
   // exitFullscreen needs no activation, so that always worked first tap.
   fsBtn.addEventListener('click', () => {
+    if (inLauncher) { window.external.sendMessage('fullscreen|toggle'); return; }
     if (fsEl()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
     const el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
     if (req) { try { const p = req.call(el); if (p && p.catch) p.catch(() => {}); } catch (_) {} }
@@ -5383,6 +5388,13 @@ if (fsBtn) {
   };
   document.addEventListener('fullscreenchange', sync);
   document.addEventListener('webkitfullscreenchange', sync);
+  if (inLauncher && typeof window.external.receiveMessage === 'function') {
+    // No OS exit pill over a launcher window, so only the icon follows its state.
+    window.external.receiveMessage(m => {
+      if (m === 'fullscreen|1' || m === 'fullscreen|0') fsBtn.textContent = m === 'fullscreen|1' ? '🗗' : '⛶';
+    });
+    window.external.sendMessage('fullscreen|state'); // Start Fullscreen may have opened it so
+  }
 }
 SB.modBtn.addEventListener('pointerdown', e => {
   e.stopPropagation();

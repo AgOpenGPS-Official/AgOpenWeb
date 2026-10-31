@@ -18,6 +18,7 @@ internal sealed class WebViewLauncher
 {
     private readonly PhotinoWindow _window;
     private readonly string[] _args;
+    private readonly WindowFullScreen _fullScreen;
     private BackendHost? _backend;
     private bool _closing;
 
@@ -25,6 +26,7 @@ internal sealed class WebViewLauncher
     {
         _window = window;
         _args = args;
+        _fullScreen = new WindowFullScreen(window);
     }
 
     public void Show()
@@ -60,7 +62,7 @@ internal sealed class WebViewLauncher
         bool fullscreen = AgOpenWeb.Models.Configuration.ConfigurationStore.Instance.Display.StartFullscreen;
         _window.Invoke(() =>
         {
-            if (fullscreen) _window.SetFullScreen(true);
+            if (fullscreen) _fullScreen.Set(true);
             _window.Load(new Uri($"http://localhost:{port}/"));
             ScreenAwake.Hold();
         });
@@ -68,7 +70,9 @@ internal sealed class WebViewLauncher
     }
 
     // The page talks to its host through window.external.sendMessage (Photino's channel):
-    //   open|<url>   open a link in the system browser (window.open can't leave the web view)
+    //   open|<url>          open a link in the system browser (window.open can't leave the web view)
+    //   fullscreen|toggle   the status bar's fullscreen button (#498); fullscreen|state asks.
+    //                       Both answer fullscreen|1 or fullscreen|0 for the button's icon.
     private void OnWebMessage(object? sender, string message)
     {
         if (message.StartsWith("open|", StringComparison.Ordinal))
@@ -76,6 +80,13 @@ internal sealed class WebViewLauncher
             var url = message[5..];
             if (Uri.TryCreate(url, UriKind.Absolute, out var u) && (u.Scheme == "http" || u.Scheme == "https"))
                 LauncherEntry.OpenUrl(url);
+        }
+        else if (message is "fullscreen|toggle" or "fullscreen|state")
+        {
+            // The answer is the state asked for: macOS animates there and says so only after.
+            bool on = _fullScreen.IsOn;
+            if (message == "fullscreen|toggle") _fullScreen.Set(on = !on);
+            try { _window.SendWebMessage(on ? "fullscreen|1" : "fullscreen|0"); } catch { /* window going away */ }
         }
     }
 }
