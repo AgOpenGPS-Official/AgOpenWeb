@@ -5150,17 +5150,27 @@ function xteText(xte) {
 // Updated every frame from the latest tick; hidden when guidance is off.
 const lbEl = document.getElementById('lb');
 // Arrow + text as two spans, so the arrow can take the colour of the lit cells.
-const lbArrow = lbEl.appendChild(document.createElement('span'));
-const lbText = lbEl.appendChild(document.createElement('span'));
+const lbCore = lbEl.appendChild(document.createElement('span'));
+lbCore.className = 'lb-core';
+const lbArrow = lbCore.appendChild(document.createElement('span'));
+const lbText = lbCore.appendChild(document.createElement('span'));
 // Light bar style: AgOpenGPS's small yellow figure, a slow average of the error that shows
 // while it stays under 15 cm. Beside the distance, not under it: the pass HUD is there.
-const lbAvg = lbEl.appendChild(document.createElement('span'));
+const lbAvg = lbCore.appendChild(document.createElement('span'));
 lbAvg.className = 'lb-avg';
+// The widest readout (three digits and the average), so the cells keep their place (#479).
+const lbProbe = lbEl.appendChild(document.createElement('div'));
+lbProbe.className = 'lb-probe';
+const lbProbeCore = lbProbe.appendChild(document.createElement('span'));
+const lbProbeAvg = lbProbe.appendChild(document.createElement('span'));
+lbProbeAvg.className = 'lb-avg';
+let lbProbeKey = '', lbProbeHalfW = 0;
 let lbAvgTick = null, lbAvgM = 0.15;
-let lbHalfW = 0; // half the readout's width, for the light bar's cells either side of it
+let lbHalfW = 0; // from the centre to the readout's right end (average included), for the cells
 let lbCy = 70, steerCy = 84; // screen y of the readout row's and the steer bar slot's centres
 let lbSteerH = -1;
 const lbSteer = document.getElementById('lb-steer');
+const LB_TRAM_W = 38; // a tram dot and its gap from the readout, at HUD scale 1
 const LB_LEFT = '#ff7a3d', LB_RIGHT = '#39FF6A'; // as lightbarSk: steer left / steer right, on line
 function updateLightbarText() {
   const cfg = config && config.autosteer;
@@ -5186,9 +5196,19 @@ function updateLightbarText() {
     lbAvg.style.display = lbAvgM < 0.15 ? 'inline' : 'none';
   }
   lbEl.style.display = 'block';
-  // Screen pixels (the canvas isn't zoomed): the readout's half width and its row's centre, for
-  // the light bar's cells; the steer bar's slot centre.
-  lbHalfW = (zoomRect(lbArrow).width + zoomRect(lbText).width + (lbAvg.style.display === 'none' ? 0 : zoomRect(lbAvg).width + 10 * hudK)) / 2;
+  // Screen pixels (the canvas isn't zoomed): the readout's reach and its row's centre, for
+  // the light bar's cells; the steer bar's slot centre. The reach is the widest readout's, not
+  // this one's, so the cells don't jump as the digits or the average come and go; only a
+  // distance past three digits pushes them out.
+  const key = hudK + unitLabel('cm');
+  if (key !== lbProbeKey) {
+    lbProbeKey = key;
+    lbProbeCore.textContent = '▶ ' + fmtUnit(888, 'cm', 0);
+    lbProbeAvg.textContent = fmtUnit(14.9, 'cm', 1);
+    lbProbeHalfW = zoomRect(lbProbeCore).width / 2 + 10 * hudK + zoomRect(lbProbeAvg).width;
+  }
+  const liveHalfW = zoomRect(lbCore).width / 2 + (lbAvg.style.display === 'none' ? 0 : 10 * hudK + zoomRect(lbAvg).width);
+  lbHalfW = Math.max(lbProbeHalfW, liveHalfW);
   const row = zoomRect(lbEl);
   lbCy = row.top + row.height / 2;
   if (steerH) { const st = zoomRect(lbSteer); steerCy = st.top + st.height / 2; }
@@ -5208,6 +5228,10 @@ function updateTramLights() {
   tramL.classList.toggle('on', (b & 2) !== 0);
   tramR.classList.toggle('manual', (b & 4) !== 0);
   tramL.classList.toggle('manual', (b & 8) !== 0);
+  // Light bar style: the dots sit between the readout and the cells (lightbarSk leaves room).
+  const w = (b & 16) && document.body.classList.contains('lightbar')
+    ? Math.round(2 * (lbHalfW + LB_TRAM_W * hudK) / uiZoom) + 'px' : '';
+  if (tramLightsEl.style.width !== w) tramLightsEl.style.width = w;
 }
 
 // Pass HUD → DOM overlay under the lightbar readout, as AgOpenGPS's DrawTrackInfo: shown
@@ -7995,7 +8019,9 @@ function lightbarSk(canvas) {
   const steerLeft = val > 0; // lights point the way to STEER (native convention)
   const litCol = steerLeft ? '#ff7a3d' : '#39FF6A';
   // Scaled with the HUD (hudK), as the readout beside it, but never wider than the screen allows.
-  const inner0 = (k) => Math.max(40 * k, lbHalfW + 10 * k); // clear of the readout, however wide it is
+  // Clear of the readout and, when shown, the tram dots beside it.
+  const tram = tramLightsEl.classList.contains('show') ? LB_TRAM_W * hudK : 0;
+  const inner0 = (k) => Math.max(40 * k, lbHalfW + tram + 10 * k);
   let k = hudK;
   while (k > 0.5 && inner0(k) + SIDE * (W + GAP) * k > 0.47 * vw) k -= 0.05;
   const inner = inner0(k), w = W * k, h = H * k, g = GAP * k, top = lbCy - h / 2;

@@ -187,9 +187,15 @@
     #lb {
       text-align: center; display: none;
       color: var(--text-2); font: 600 calc(15px * var(--hud-s)) system-ui, sans-serif; pointer-events: none;
-      text-shadow: 0 1px 2px #000;
+      text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; position: relative;
     }
-    #lb .lb-avg { display: none; margin-left: 10px; color: #f2f366; font: 600 12px system-ui, sans-serif; }
+    /* The distance stays centred: the average hangs off its right, so its coming and going
+       moves nothing (#479). The probe, never seen, measures the widest readout. */
+    #lb .lb-core { position: relative; display: inline-block; white-space: nowrap; }
+    #lb .lb-avg { display: none; position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+      margin-left: calc(10px * var(--hud-s)); white-space: nowrap; color: #f2f366; font: 600 calc(12px * var(--hud-s)) system-ui, sans-serif; }
+    #lb .lb-probe { position: absolute; left: 0; top: 0; visibility: hidden; white-space: nowrap; }
+    #lb .lb-probe .lb-avg { display: inline; position: static; transform: none; margin: 0; }
     /* Guidance bar (#479), as AgOpenGPS. Light bar: the cells either side of the readout, on
        its row (lightbarSk), the pass under them. Steer bar: the readout, then the bar
        (steerBarSk, drawn at 84 px), then the pass. */
