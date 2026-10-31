@@ -15,20 +15,37 @@ const ckcv = document.getElementById('ck'); // CanvasKit (Skia) — the sole ren
 // retina) — otherwise thin strokes look faint and shimmer when panning. All draw
 // code works in these logical coordinates; the Skia canvas applies scale(dpr) per frame.
 let vw = innerWidth, vh = innerHeight, dpr = 1;
+// The map's area in the window: the card pane (CardPane, split layout) takes mapL screen pixels
+// on the left or mapR on the right, else both are 0 and the map is the whole window. The canvas
+// covers the map only; pointer events arrive in window pixels, so map code takes x - mapL.
+let mapL = 0, mapR = 0;
 // Skia/CanvasKit renderer state — declared before resize() (which calls
 // recreateSkSurface) to avoid a temporal-dead-zone ReferenceError.
 let CK = null, skSurface = null, skTri = null, SKP = null;
 let grCtx = null; // WebGL GrDirectContext — hoisted so the coverage render target shares it
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2); // cap: 3× phones don't need 9× fill
-  vw = innerWidth; vh = innerHeight;
+  vw = Math.max(1, innerWidth - mapL - mapR); vh = innerHeight;
   ckcv.width = Math.round(vw * dpr);
   ckcv.height = Math.round(vh * dpr);
+  ckcv.style.left = mapL + 'px';
   ckcv.style.width = vw + 'px';
   ckcv.style.height = vh + 'px';
   recreateSkSurface(); // the GL surface is tied to the canvas size
 }
 addEventListener('resize', resize); resize();
+// Give the map the window less the card pane (screen pixels each side). The overlays follow
+// through --map-l / --map-r, in their zoomed pixels.
+function setMapArea(l, r) {
+  l = Math.max(0, Math.round(l)); r = Math.max(0, Math.round(r));
+  if (l === mapL && r === mapR) return;
+  mapL = l; mapR = r;
+  const root = document.documentElement.style;
+  root.setProperty('--map-l', (l / uiZoom) + 'px');
+  root.setProperty('--map-r', (r / uiZoom) + 'px');
+  resize();
+  dispatchEvent(new Event('maparea'));
+}
 
 // ---- model (fed by the transport) ----
 let scene = null;      // SceneDto
@@ -763,9 +780,12 @@ function applyUiScale(pct) {
   if (z === uiZoom) return;
   uiZoom = z;
   document.documentElement.style.setProperty('--ui-zoom', String(z));
+  document.documentElement.style.setProperty('--map-l', (mapL / z) + 'px');
+  document.documentElement.style.setProperty('--map-r', (mapR / z) + 'px');
   calibrateZoom();
   placeCorner();
   placeHud();
+  dispatchEvent(new Event('uizoom'));
 }
 function calibrateZoom() {
   const root = document.documentElement.style;
@@ -827,6 +847,22 @@ if (window.ResizeObserver) {
   ro.observe(document.getElementById('bottomstack'));
 }
 addEventListener('resize', placeCorner);
+addEventListener('maparea', placeCorner);
+// Menu panels open beside the left nav and may cover the card pane (Plans/CARD_PANE_SPLIT_PLAN.md
+// §1.8). With the pane on the left the nav sits far to the right, so a panel too wide for the
+// rest of the window is moved left until it fits; a panel opening grows from 0, which the
+// observer sees.
+function placePanel(p) {
+  p.style.left = ''; p.classList.remove('ln-moved');
+  if (!mapL || !p.classList.contains('open')) return;
+  const r = zoomRect(p), over = r.right - (innerWidth - 16);
+  if (over > 0) { p.style.left = Math.max(16, r.left - over) / uiZoom + 'px'; p.classList.add('ln-moved'); }
+}
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(es => { for (const e of es) placePanel(e.target); });
+  for (const p of document.querySelectorAll('.ln-panel')) ro.observe(p);
+  addEventListener('maparea', () => { for (const p of document.querySelectorAll('.ln-panel.open')) placePanel(p); });
+}
 // Top-centre HUD (#hud-top) and everything docked under the status bar hang from the bar's
 // measured bottom (--bar-bottom): the dev diagnostics row adds 26 px, the UI size zooms the
 // bar, iOS adds the safe area. The HUD scales with the screen height, roughly as AgOpenGPS
@@ -857,6 +893,7 @@ if (window.ResizeObserver) {
   ro.observe(document.getElementById('sb-diag'));
 }
 addEventListener('resize', placeHud);
+addEventListener('maparea', placeHud);
 placeHud();
 function applyTheme(isDay) {
   mapIsDay = !!isDay;
@@ -1042,7 +1079,7 @@ let dragging = false, moved = false, gestureOnMap = false, lastX = 0, lastY = 0,
 addEventListener('pointerdown', e => {
   // Stage-4 edit: grab a handle if the press starts on one (else fall through to pan).
   if (editSession) {
-    const hi = editHitTest(e.clientX, e.clientY);
+    const hi = editHitTest(e.clientX - mapL, e.clientY);
     if (hi >= 0) { editDragIdx = hi; gestureOnMap = false; dragging = false; return; }
   }
   gestureOnMap = true; dragging = true; moved = false;
@@ -1056,10 +1093,10 @@ addEventListener('pointerup', e => {
   dragging = false;
   // A clean tap while a map-tap capture mode is armed → unproject and dispatch.
   if (gestureOnMap && !moved && mapTap) {
-    const w = s2w(e.clientX, e.clientY);
+    const w = s2w(e.clientX - mapL, e.clientY);
     if (w) mapTap.onTap(w.e, w.n);
   } else if (gestureOnMap && !moved && !editSession) {
-    vehicleTap(e.clientX, e.clientY);
+    vehicleTap(e.clientX - mapL, e.clientY);
   }
   gestureOnMap = false;
 });
@@ -1074,7 +1111,7 @@ addEventListener('pointermove', e => {
     else if (abLabelEl) abLabelEl.classList.remove('show');
   }
   if (editDragIdx >= 0 && editSession) {       // drag the grabbed handle
-    const w = s2w(e.clientX, e.clientY);
+    const w = s2w(e.clientX - mapL, e.clientY);
     if (w) editSession.points[editDragIdx] = editSession.kind === 'headland' ? hlSnap(w.e, w.n) : { e: w.e, n: w.n };
     return;
   }
@@ -1863,7 +1900,7 @@ function renderAbDotLabels() {
     const xy = w2s(pts[i].e, pts[i].n);
     span.textContent = abLetter(i);
     span.style.color = drawPts.length ? abLabelColor(i) : (i ? ACTIVE_B_COLOR : ACTIVE_A_COLOR);
-    span.style.left = xy[0] + 'px';
+    span.style.left = (xy[0] + mapL) + 'px';
     span.style.top = xy[1] + 'px';
     span.style.display = 'block';
   }
@@ -2900,7 +2937,14 @@ for (const b of saPanel.querySelectorAll('.sa-tgl[data-key]'))
 for (const b of saPanel.querySelectorAll('.sa-act'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
 // On click, not pointerdown: the panel resizes under the finger once the new size applies.
-for (const b of saPanel.querySelectorAll('.sa-scale'))
+// VT & Web Cards: this browser's layout, not the host's (CardPane).
+for (const b of saPanel.querySelectorAll('.sa-cardlay'))
+  b.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    CardPane.setLayout(b.dataset.lay);
+    for (const x of saPanel.querySelectorAll('.sa-cardlay')) x.classList.toggle('active', x.dataset.lay === CardPane.layout);
+  });
+for (const b of saPanel.querySelectorAll('.sa-scale:not(.sa-cardlay)'))
   b.addEventListener('click', e => { e.stopPropagation(); cfgSend('display.uiScale', b.dataset.scale); });
 // Guidance bar (#479): the vehicle's AutoSteer settings, not display.*. The style buttons
 // pick one of two; On/Off is apart from them.
@@ -2930,7 +2974,8 @@ function populateScreenAlerts() {
   saImagery.classList.toggle('active', !!d.imageryVisible && !fieldLacksImagery());
   if (document.activeElement !== saExtra) saExtra.value = d.extraGuidelinesCount;
   document.getElementById('sa-quality').textContent = d.resolutionLabel || '—';
-  for (const b of saPanel.querySelectorAll('.sa-scale')) b.classList.toggle('active', +b.dataset.scale === (d.uiScale || 100));
+  for (const b of saPanel.querySelectorAll('.sa-scale:not(.sa-cardlay)')) b.classList.toggle('active', +b.dataset.scale === (d.uiScale || 100));
+  for (const b of saPanel.querySelectorAll('.sa-cardlay')) b.classList.toggle('active', b.dataset.lay === CardPane.layout);
   const a = config.autosteer;
   if (a) {
     for (const b of saPanel.querySelectorAll('.sa-opt[data-val]'))
@@ -6299,6 +6344,7 @@ function wireCardDrag(card) {
     raiseCard(card); // the card's own handler doesn't hear it
     if (e.target.closest('button, select')) return;
     e.stopPropagation();
+    if (card.classList.contains('in-pane')) return; // the pane places it
     const r = zoomRect(card);
     // zoomRect and clientX are screen pixels; left/top are in the card's own (zoomed)
     // pixels.
@@ -6316,6 +6362,110 @@ function wireCardDrag(card) {
   hdr.addEventListener('pointercancel', end);
 }
 for (const id of ['chart-steer', 'chart-heading', 'chart-xte']) wireCardDrag(document.getElementById(id));
+
+// ---- Card pane (#456, Plans/CARD_PANE_SPLIT_PLAN.md) ----
+// The VT and web cards float over the map, or (split layout) sit in a pane on the left or right
+// with the map in the rest. In the pane the open cards go two to a tab, in the order they were
+// opened, each sized to its share of the pane; with none open the map has the whole window. The
+// layout and the pane's width are this browser's. A card moved into or out of the pane is moved in
+// the page, which reloads a web page, so that happens only when the layout changes: a tab switch
+// hides and shows cards.
+const CardPane = (() => {
+  const KEY = 'cards.pane', MIN = 1 / 3, MAX = 1 / 2, GAP = 6, DIV = 16; // DIV: the divider strip
+  let layout = 'float', frac = MIN, tab = 0;
+  try { const st = JSON.parse(localStorage.getItem(KEY) || '{}'); if (st.layout === 'left' || st.layout === 'right') layout = st.layout; if (st.frac >= MIN && st.frac <= MAX) frac = st.frac; } catch (_) {}
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ layout, frac })); } catch (_) {} };
+
+  const pane = document.createElement('div'); pane.id = 'cardpane';
+  const tabsEl = document.createElement('div'); tabsEl.className = 'cp-tabs';
+  const slots = document.createElement('div'); slots.className = 'cp-slots';
+  const divider = document.createElement('div'); divider.className = 'cp-divider';
+  pane.append(tabsEl, slots, divider);
+  document.body.insertBefore(pane, document.getElementById('vt-card-tpl'));
+  // Nothing in the pane reaches the map (the window-level pan, tap and wheel handlers).
+  for (const t of ['pointerdown', 'wheel']) pane.addEventListener(t, e => { if (!e.ctrlKey) e.stopPropagation(); });
+
+  // Every card: { card, fit(w, h) in its own pixels, name(), isOpen() }; order = when opened.
+  let cards = [], order = [];
+  const split = () => layout !== 'float';
+  const home = c => { c.card.classList.remove('in-pane', 'cp-hide'); c.card.style.order = ''; document.body.insertBefore(c.card, document.getElementById('vt-card-tpl')); c.fit(null); };
+  const into = c => { c.card.classList.add('in-pane'); if (c.card.parentNode !== slots) slots.appendChild(c.card); };
+
+  function layoutNow() {
+    order = order.filter(c => cards.includes(c) && c.isOpen());
+    const open = split() ? order : [];
+    pane.classList.toggle('show', open.length > 0);
+    pane.classList.toggle('right', layout === 'right');
+    if (!open.length) { setMapArea(0, 0); return; }
+    const w = Math.round(innerWidth * frac);
+    setMapArea(layout === 'left' ? w : 0, layout === 'right' ? w : 0);
+    pane.style.width = (w / uiZoom) + 'px';
+    const tabs = Math.ceil(open.length / 2);
+    tab = Math.min(tab, tabs - 1);
+    tabsEl.innerHTML = '';
+    tabsEl.style.display = tabs > 1 ? '' : 'none';
+    for (let t = 0; t < tabs; t++) {
+      const b = document.createElement('button');
+      b.className = 'cp-tab' + (t === tab ? ' active' : '');
+      b.textContent = open.slice(t * 2, t * 2 + 2).map(c => c.name()).join(' · ');
+      b.addEventListener('pointerdown', e => { e.preventDefault(); tab = t; layoutNow(); });
+      tabsEl.appendChild(b);
+    }
+    // Each card's share of the pane, in its own (zoomed) pixels.
+    const inTab = open.slice(tab * 2, tab * 2 + 2);
+    const sw = w / uiZoom - DIV - 2 * GAP;
+    const sh = (innerHeight / uiZoom - (tabs > 1 ? tabsEl.offsetHeight : 0) - GAP * (inTab.length + 1)) / inTab.length;
+    for (const c of cards) {
+      const k = inTab.indexOf(c);
+      c.card.classList.toggle('cp-hide', k < 0);
+      if (k >= 0) { c.card.style.order = String(k); c.fit(sw, sh); }
+    }
+  }
+
+  // Width: dragging the divider, a third to a half of the window.
+  let drag = null;
+  divider.addEventListener('pointerdown', e => {
+    e.preventDefault(); drag = { x: e.clientX, w: innerWidth * frac };
+    try { divider.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  divider.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = (e.clientX - drag.x) * (layout === 'left' ? 1 : -1);
+    const f = Math.min(MAX, Math.max(MIN, (drag.w + dx) / innerWidth));
+    if (Math.abs(f - frac) * innerWidth >= 2) { frac = f; layoutNow(); }
+  });
+  const end = () => { if (drag) { drag = null; save(); } };
+  divider.addEventListener('pointerup', end); divider.addEventListener('pointercancel', end);
+  for (const t of ['resize', 'uizoom']) addEventListener(t, () => { if (split()) layoutNow(); });
+
+  return {
+    get layout() { return layout; },
+    setLayout(l) {
+      if (l === layout) return;
+      layout = l; save();
+      for (const c of cards) if (split()) into(c); else home(c);
+      layoutNow();
+    },
+    // A card made: into the pane in the split layout. fit(null) means floating again.
+    track(card, opts) {
+      const c = Object.assign({ card }, opts);
+      cards.push(c);
+      if (split()) into(c);
+      return c;
+    },
+    untrack(c) { cards = cards.filter(x => x !== c); order = order.filter(x => x !== c); if (split()) layoutNow(); },
+    // A card opened (shown at once, on its tab) or closed.
+    shown(c, on) {
+      order = order.filter(x => x !== c);
+      if (on) order.push(c);
+      if (!split()) return;
+      if (on) tab = Math.floor(order.filter(x => x.isOpen()).indexOf(c) / 2);
+      layoutNow();
+    },
+    // A card's name changed (its tab's label).
+    renamed() { if (split()) layoutNow(); },
+  };
+})();
 
 // ---- VT painter ----
 // The virtual terminal's draw list (screens, soft keys, list options) painted in Canvas 2D: no
@@ -6642,6 +6792,17 @@ const Vt = (() => {
     let keyPage = 0, showGateway = false, selecting = null, sizeIx = 1, identTimer = null;
     try { sizeIx = SIZES.indexOf(+localStorage.getItem(sizeKey)); if (sizeIx < 0) sizeIx = 1; } catch (_) {}
     card.style.setProperty('--vt', SIZES[sizeIx] + 'px');
+    // In the card pane the mask is the largest square that fits beside its soft key columns
+    // (a third of the mask wide) under the header.
+    const pc = CardPane.track(card, {
+      name: () => tr('VT {n}', { n: index + 1 }),
+      isOpen: () => card.style.display !== 'none',
+      fit(w, h) {
+        if (w == null) { card.style.setProperty('--vt', SIZES[sizeIx] + 'px'); return; }
+        const hdr = card.querySelector('.chart-hdr').offsetHeight || 30;
+        card.style.setProperty('--vt', Math.max(120, Math.floor(Math.min((w - 12) * 3 / 4, h - hdr - 12))) + 'px');
+      },
+    });
     const send = (cmd, arg) => transport.send('vt.' + cmd + '|' + index + (arg !== undefined ? ',' + arg : ''));
 
     const term = {
@@ -6650,10 +6811,11 @@ const Vt = (() => {
       setOpen(on) {
         card.style.display = on ? '' : 'none';
         navBtn.classList.toggle('active', terms.some(x => x.open()));
+        CardPane.shown(pc, on);
         if (on) this.render();
       },
       reset() { screen = null; edit = null; workingSets = null; alarms = []; },
-      remove() { clearTimeout(term.audioTimer); clearTimeout(identTimer); card.remove(); },
+      remove() { clearTimeout(term.audioTimer); clearTimeout(identTimer); CardPane.untrack(pc); card.remove(); },
       message(m) {
         switch (m.type) {
           case 'screen': screen = m; break;
@@ -7062,6 +7224,17 @@ const WebCards = (() => {
       card.style.setProperty('--ww', w + 'px'); card.style.setProperty('--wh', h + 'px');
     };
     applySize();
+    // In the card pane the page fills the card's share of it.
+    c.pc = CardPane.track(card, {
+      name: () => (state.url && pick.selectedOptions[0] ? pick.selectedOptions[0].textContent : tr('Web')),
+      isOpen: () => cards.includes(c),
+      fit(w, h) {
+        if (w == null) { applySize(); return; }
+        const hdr = card.querySelector('.chart-hdr').offsetHeight || 30;
+        const hint = card.querySelector('.web-hint').offsetHeight;
+        card.style.setProperty('--ww', Math.floor(w - 2) + 'px'); card.style.setProperty('--wh', Math.floor(h - hdr - hint - 2) + 'px');
+      },
+    });
 
     c.render = () => {
       // The picker: the bookmarks, the card's page chosen.
@@ -7085,7 +7258,7 @@ const WebCards = (() => {
       if (c.editing) renderEdit(c, editEl);
     };
 
-    pick.addEventListener('change', () => { state.url = pick.value; save(); c.render(); });
+    pick.addEventListener('change', () => { state.url = pick.value; save(); c.render(); CardPane.renamed(); });
     // Another card, a little below and right of this one, so both headers can be reached.
     q('.web-add').addEventListener('pointerdown', e => {
       e.preventDefault();
@@ -7104,6 +7277,7 @@ const WebCards = (() => {
     q('.web-x').addEventListener('pointerdown', e => {
       e.preventDefault();
       card.remove(); cards = cards.filter(x => x !== c);
+      CardPane.untrack(c.pc);
       if (!cards.length) shown = false;
       save(); render();
     });
@@ -7157,6 +7331,7 @@ const WebCards = (() => {
     const c = makeCard(state);
     cards.push(c); shown = true;
     save(); render();
+    CardPane.shown(c.pc, true);
   }
 
   function render() {
@@ -7169,6 +7344,7 @@ const WebCards = (() => {
     // An editor open on a bookmark that moved or went: back to the list.
     for (const c of cards) if (c.editIx != null && c.editIx >= list.length) c.editIx = null;
     for (const c of cards) if (!c.editing || document.activeElement?.closest('.web-edit') !== c.card.querySelector('.web-edit')) c.render();
+    CardPane.renamed(); // the tabs show the pages' names
   }
 
   // The nav button: hides every web card when any is open, else brings back the last ones.
@@ -7177,7 +7353,7 @@ const WebCards = (() => {
     if (shown && cards.length) {
       shown = false;
       save(); // kept for the next tap
-      for (const c of cards) c.card.remove();
+      for (const c of cards) { c.card.remove(); CardPane.untrack(c.pc); }
       cards = [];
       render();
       return;

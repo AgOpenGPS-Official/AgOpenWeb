@@ -20,8 +20,16 @@
     :root {
       --sat: calc(env(safe-area-inset-top, 0px) / var(--ui-zoom));
       --sab: calc(env(safe-area-inset-bottom, 0px) / var(--ui-zoom));
-      --sal: calc(env(safe-area-inset-left, 0px) / var(--ui-zoom));
-      --sar: calc(env(safe-area-inset-right, 0px) / var(--ui-zoom));
+      /* The window's left/right safe-area insets, and the map's: in the split layout the card
+         pane takes one side (--map-l / --map-r, set by CardPane in app.js) and the map's
+         overlays keep clear of it as of a notch. Plans/CARD_PANE_SPLIT_PLAN.md §2. */
+      --win-sal: calc(env(safe-area-inset-left, 0px) / var(--ui-zoom));
+      --win-sar: calc(env(safe-area-inset-right, 0px) / var(--ui-zoom));
+      --map-l: 0px; --map-r: 0px;
+      --sal: max(var(--win-sal), var(--map-l));
+      --sar: max(var(--win-sar), var(--map-r));
+      /* Added to left: 50% to centre on the map instead of the window. */
+      --map-dx: calc((var(--map-l) - var(--map-r)) / 2);
       /* UI size (Screen & Alerts): every control is zoomed by this, the map is not.
          zoom multiplies viewport units and the insets above too, so rules inside the
          zoomed UI use --vw/--vh (one viewport percent divided back) instead of vw/vh. */
@@ -81,12 +89,12 @@
       --flyout-bg: rgba(245,248,252,0.98);
     }
     html, body { margin: 0; height: 100%; background: var(--bg-input); overflow: hidden; touch-action: manipulation; }
-    #ck { position: fixed; inset: 0; display: block; touch-action: none; } /* CanvasKit (Skia) — the only renderer */
+    #ck { position: fixed; top: 0; bottom: 0; left: 0; display: block; touch-action: none; } /* CanvasKit (Skia) — the only renderer */
     /* Top status bar (Phase 1) — mirrors the native StatusBarPanel: pause + two-line
        left stack (Fix/Age over a rotating Field/Stats/AB line), aggregate Modules
        (with per-module popup), and big Speed on the right. */
     #statusbar {
-      position: fixed; top: var(--sat); left: 0; right: 0; height: 46px; display: none;
+      position: fixed; top: var(--sat); left: var(--map-l); right: var(--map-r); height: 46px; display: none;
       z-index: 33; /* above #leftnav (32) so the Modules / GPS popups aren't clipped under it (#94) */
       align-items: center; gap: 10px; padding: 0 12px; box-sizing: border-box;
       background: var(--float-bg); border-bottom: 1px solid var(--border-2);
@@ -94,7 +102,7 @@
       user-select: none; -webkit-user-select: none;
     }
     #sb-diag {
-      position: fixed; top: calc(var(--sat) + 46px); left: 0; right: 0; height: 26px; display: none;
+      position: fixed; top: calc(var(--sat) + 46px); left: var(--map-l); right: var(--map-r); height: 26px; display: none;
       align-items: center; gap: 22px; padding: 0 14px 0 69px; box-sizing: border-box;
       background: var(--float-bg); border-bottom: 1px solid var(--border-2);
       color: var(--text-muted); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -176,7 +184,7 @@
        of the status bar (--bar-bottom), so nothing sits behind the bar when the diagnostics row
        or a bigger UI size makes it taller, and it scales with the screen height (--hud-s) so a
        720p screen reads at a glance. Hidden rows collapse; only the tram dots take taps. */
-    #hud-top { position: fixed; top: var(--bar-bottom); left: 0; right: 0; z-index: 10;
+    #hud-top { position: fixed; top: var(--bar-bottom); left: var(--map-l); right: var(--map-r); z-index: 10;
       display: flex; flex-direction: column; align-items: center; gap: calc(2px * var(--hud-s));
       padding-top: calc(6px * var(--hud-s)); pointer-events: none; }
     /* Empty slot the canvas draws the steer bar into (steerBarSk), under the readout; its height
@@ -221,7 +229,7 @@
     /* Map-tap capture hint (Phase MT) — top-centre pill shown while a feature is
        capturing an on-map tap (place-flag, boundary draw, AB, …). Esc cancels. */
     #maptap-hint {
-      position: fixed; top: calc(var(--bar-bottom) + 14px); left: 50%; transform: translateX(-50%); display: none;
+      position: fixed; top: calc(var(--bar-bottom) + 14px); left: calc(50% + var(--map-dx)); transform: translateX(-50%); display: none;
       padding: 7px 20px; border-radius: 999px; border: 1px solid rgba(120,200,255,0.6);
       background: rgba(18,40,64,0.92); color: #d6ecff; font: 600 15px system-ui, sans-serif;
       pointer-events: none; z-index: 40; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
@@ -268,7 +276,7 @@
     #refnudge .rf-moved { width: 96px; text-align: center; font: 700 20px system-ui, sans-serif; font-variant-numeric: tabular-nums; }
     #refnudge .rf-step { width: 96px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 14px; }
     #refnudge .rf-step input { width: 58px; font-size: 18px; }
-    #maptap-cancel { position: fixed; top: calc(var(--bar-bottom) + 56px); left: 50%; transform: translateX(-50%);
+    #maptap-cancel { position: fixed; top: calc(var(--bar-bottom) + 56px); left: calc(50% + var(--map-dx)); transform: translateX(-50%);
       display: none; z-index: 41; padding: 8px 22px; border-radius: 999px; cursor: pointer;
       border: 1px solid rgba(230,120,110,0.7); background: rgba(52,22,20,0.94); color: #f3c4bd;
       font: 700 14px system-ui, sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
@@ -291,7 +299,7 @@
        (#maptap-hint at top:60px) so the action buttons sit with the prompt, not across
        the screen from it. (The distance HUD is hidden during these flows — updateHeadlandHud.) */
     #draw-toolbar {
-      position: fixed; top: calc(var(--bar-bottom) + 54px); left: 50%; transform: translateX(-50%); display: none;
+      position: fixed; top: calc(var(--bar-bottom) + 54px); left: calc(50% + var(--map-dx)); transform: translateX(-50%); display: none;
       gap: 10px; z-index: 41;
     }
     #draw-toolbar.show { display: flex; }
@@ -336,7 +344,7 @@
     /* Bottom-centre stack (Phase 6/7) — vertical column mirroring the native
        StackPanel (sim bar / section bar / bottom nav). Bottom-anchored; rows toggle
        independently and the column re-flows. */
-    #bottomstack { position: fixed; bottom: var(--sab); left: 50%; transform: translateX(-50%);
+    #bottomstack { position: fixed; bottom: var(--sab); left: calc(50% + var(--map-dx)); transform: translateX(-50%);
       display: flex; flex-direction: column; align-items: center; gap: 6px;
       pointer-events: none; z-index: 10; }
     /* Simulator bar (Phase 6) — a single horizontal bar. Hidden until launched. */
@@ -438,7 +446,7 @@
     .ln-panel { position: fixed; left: calc(80px + var(--sal)); top: calc(var(--bar-bottom) + 10px); display: none; min-width: 220px;
       /* Kept inside the screen (left/top offset, 30px padding + border, 16px gutter) and
          scrolled when taller: at a bigger UI size the dialogs no longer fit as drawn. */
-      max-width: calc(100 * var(--vw) - 126px - var(--sal) - var(--sar));
+      max-width: calc(100 * var(--vw) - 126px - var(--win-sal) - var(--win-sar));
       max-height: calc(100 * var(--vh) - var(--bar-bottom) - 56px - var(--sab)); overflow-y: auto;
       color: var(--text);
       background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
@@ -452,6 +460,8 @@
     .cfg-diaggrid .vc-diag { width: 110px; height: 72px; }
     .cfg-diaggrid .vc-diagrow { margin-bottom: 6px; }
     .ln-panel.open { display: block; }
+    /* Moved left over the nav (placePanel): above it, as the nav can't be reached past it anyway. */
+    .ln-panel.ln-moved { z-index: 32; }
     .ln-title { color: var(--text); font: 700 16px system-ui, sans-serif; margin-bottom: 12px; }
     .ln-section { margin-bottom: 12px; }
     .ln-label { color: var(--text-muted); font: 600 12px system-ui, sans-serif; margin-bottom: 6px; }
@@ -483,7 +493,7 @@
     /* #41: grow WIDER not taller so tall tabs fit a 1200x700 landscape tablet without
        scrolling. Capped so it doesn't balloon on a big desktop monitor, and clamped to
        the viewport (minus the left nav) on smaller screens. */
-    .ln-wide { width: min(980px, calc(100 * var(--vw) - 126px - var(--sal) - var(--sar))); }
+    .ln-wide { width: min(980px, calc(100 * var(--vw) - 126px - var(--win-sal) - var(--win-sar))); }
     .ln-savebtn { margin-top: 14px; width: 100%; height: 40px; border: 0; border-radius: 8px;
       background: #1f6fb2; color: #fff; font: 700 14px system-ui, sans-serif; cursor: pointer; }
     .ln-savebtn:active { background: #195c95; }
@@ -1043,8 +1053,8 @@
     #hp-wait { color: var(--text-muted); font: 500 13px system-ui, sans-serif; text-align: center; margin-top: 10px; }
     .dlg-btn:disabled { opacity: 0.4; cursor: default; }
     /* Failure notification (#109): a refused/failed action says why. */
-    #toast { position: fixed; bottom: calc(90px + var(--sab, 0px)); left: 50%; transform: translateX(-50%);
-      max-width: min(560px, calc(100 * var(--vw) - 32px)); display: none; padding: 10px 20px; border-radius: 10px;
+    #toast { position: fixed; bottom: calc(90px + var(--sab, 0px)); left: calc(50% + var(--map-dx)); transform: translateX(-50%);
+      max-width: min(560px, calc(100 * var(--vw) - var(--map-l) - var(--map-r) - 32px)); display: none; padding: 10px 20px; border-radius: 10px;
       border: 1px solid rgba(255,190,90,0.7); background: rgba(58,38,8,0.94); color: #ffe2b0;
       font: 600 15px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 70;
       box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
@@ -1052,15 +1062,15 @@
     /* GPS data lost: a red panel over the map (the map stays; AgOpenGPS blanks it). Below
        the nav and dialogs, no pointer events, so the operator can reach the Modules panel
        or the simulator switch to clear it. */
-    #gpslost { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9;
-      width: min(420px, calc(100 * var(--vw) - 32px)); padding: 26px 24px; border-radius: 14px; display: none;
+    #gpslost { position: fixed; top: 50%; left: calc(50% + var(--map-dx)); transform: translate(-50%, -50%); z-index: 9;
+      width: min(420px, calc(100 * var(--vw) - var(--map-l) - var(--map-r) - 32px)); padding: 26px 24px; border-radius: 14px; display: none;
       background: rgba(190,24,24,0.94); border: 2px solid #ff8a8a; color: #fff; text-align: center;
       pointer-events: none; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
     #gpslost.show { display: block; }
     #gpslost .gl-title { font: 800 28px system-ui, sans-serif; letter-spacing: 0.02em; margin-bottom: 10px; }
     #gpslost .gl-body { font: 500 16px/1.4 system-ui, sans-serif; }
-    #hwmsg { position: fixed; top: calc(var(--bar-bottom) + 50px); left: 50%; transform: translateX(-50%);
-      max-width: min(560px, calc(100 * var(--vw) - 32px)); display: none; padding: 8px 18px; border-radius: 8px;
+    #hwmsg { position: fixed; top: calc(var(--bar-bottom) + 50px); left: calc(50% + var(--map-dx)); transform: translateX(-50%);
+      max-width: min(560px, calc(100 * var(--vw) - var(--map-l) - var(--map-r) - 32px)); display: none; padding: 8px 18px; border-radius: 8px;
       color: #000; font: 700 16px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 70;
       box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
     #hwmsg.show { display: block; }
@@ -1271,6 +1281,30 @@
     /* Web cards (Plans/ADDON_WEB_CARDS_PLAN.md): an add-on's own page from the bookmark list, in
        a frame. Never wider or taller than the screen leaves room for. */
     .web-card { top: calc(var(--bar-bottom) + 24px); width: auto; --ww: 640px; --wh: 420px; }
+    /* Card pane (CardPane in app.js): the split layout's VT and web cards beside the map, two
+       to a tab. Its outer side takes the window's safe-area inset; the divider is on the map's. */
+    #cardpane { position: fixed; top: 0; bottom: 0; left: 0; display: none; flex-direction: column; z-index: 29;
+      box-sizing: border-box; padding: var(--sat) 0 var(--sab) var(--win-sal); background: var(--bg-raised);
+      border-right: 1px solid var(--border-2); }
+    #cardpane.right { left: auto; right: 0; padding: var(--sat) var(--win-sar) var(--sab) 0; border-right: 0; border-left: 1px solid var(--border-2); }
+    #cardpane.show { display: flex; }
+    #cardpane .cp-tabs { display: flex; gap: 4px; padding: 6px 6px 0; flex: none; }
+    #cardpane .cp-tab { flex: 1; min-width: 0; height: 34px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px;
+      background: rgba(var(--ov),0.06); color: var(--text-2); font: 600 13px system-ui, sans-serif; cursor: pointer;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #cardpane .cp-tab.active { background: var(--sel); border-color: #4A90D9; color: var(--text); }
+    #cardpane .cp-slots { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; overflow: hidden; }
+    /* The divider is the pane's own strip on the map's side, clear of the map's side nav. */
+    #cardpane { padding-right: 16px; }
+    #cardpane.right { padding-right: var(--win-sar); padding-left: 16px; }
+    #cardpane .cp-divider { position: absolute; top: 0; bottom: 0; right: 0; width: 16px; cursor: ew-resize; touch-action: none; }
+    #cardpane.right .cp-divider { right: auto; left: 0; }
+    #cardpane .cp-divider::after { content: ''; position: absolute; top: 50%; left: 5px; width: 6px; height: 64px; margin-top: -32px;
+      border-radius: 3px; background: var(--border-2); }
+    .chart-card.in-pane { position: static; flex: none; box-shadow: none; }
+    .chart-card.in-pane.cp-hide { display: none !important; }
+    .chart-card.in-pane .chart-hdr { cursor: default; }
+    .chart-card.in-pane .vt-size, .chart-card.in-pane .web-size { display: none; }
     .web-card .web-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
     .web-pick { max-width: 220px; height: 22px; font-size: 12px; background: var(--bg-sunken); color: var(--text-2);
       border: 1px solid var(--border); border-radius: 4px; }
@@ -1678,6 +1712,13 @@
       <button class="sa-scale" data-scale="115">115%</button>
       <button class="sa-scale" data-scale="130">130%</button>
       <button class="sa-scale" data-scale="150">150%</button>
+    </div>
+    <!-- Where the VT and web cards go on this screen (CardPane in app.js, kept by the browser). -->
+    <div class="cfg-label">VT &amp; Web Cards</div>
+    <div class="sa-grid sa-uiscale">
+      <button class="sa-scale sa-cardlay" data-lay="float" title="Over the map">Floating</button>
+      <button class="sa-scale sa-cardlay" data-lay="left" title="In a pane left of the map">Left</button>
+      <button class="sa-scale sa-cardlay" data-lay="right" title="In a pane right of the map">Right</button>
     </div>
     <div class="cfg-label">On-Screen Buttons</div>
     <div class="sa-grid">
