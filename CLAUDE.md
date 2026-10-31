@@ -383,6 +383,28 @@ release's. To work on SharpIsoTerm itself, build against a checkout instead:
 is disposed with the backend: on Android and iOS the process outlives it, and the library allows
 one stack per process.
 
+## Web cards and the card pane
+**Web cards** show an add-on's own web page (the HAT's pages, a rate controller's) in a card, picked
+from a bookmark list kept on the host (`AppSettings.WebCards`, `webcard.save` / `webcard.delete`,
+the `WebCards` frame); `{host}` in a URL is the AgOpenWeb host as the browser reaches it. The page
+loads from the add-on on its own origin, never through AgOpenWeb; observers get a cover over it.
+Which cards are open, and where, is the browser's (`localStorage`). `WebCards` in `app.js`; plan:
+`Plans/ADDON_WEB_CARDS_PLAN.md`.
+
+**Card pane** (#456): Screen & Alerts › VT & Web Cards sets Floating (the default), Left or Right,
+per browser. In a split layout the open VT and web cards sit in a pane on that side, two to a
+tab, and the map has the rest of the window (`CardPane` in `app.js`; cards call `track`, `shown`
+and `untrack`). The map's area is set by `setMapArea(l, r)`; what that means for new code:
+- An overlay on the map keeps clear of the pane through `--sal` / `--sar` (the map's insets: the
+  pane's width on its side, else the safe area), a full-width bar uses `--map-l` / `--map-r`, and
+  one centred with `left: 50%` adds `var(--map-dx)`. Something spanning the window (a menu panel,
+  a dialog) uses `--win-sal` / `--win-sar`.
+- `vw` is the map's width, not the window's, and the canvas starts at `mapL`: a pointer's
+  `clientX` is `clientX - mapL` on the map (`s2w`, hit tests), and a DOM label placed from `w2s`
+  adds `mapL`.
+- A card moved in the page reloads its iframe, so the pane hides and shows cards on a tab switch
+  and moves them only when the layout changes. Plan: `Plans/CARD_PANE_SPLIT_PLAN.md`.
+
 ## Debugging Tips
 
 1. **iOS simulator issues**: Use `xcrun simctl` commands directly if `dotnet build -t:Run` fails

@@ -1,6 +1,6 @@
 # Card pane: split screen
 
-**Status:** agreed 2026-10-31; steps 1 and 2 built, in test.
+**Status:** steps 1 and 2 merged (#513, 2026-10-31), docs in `CLAUDE.md`; the device checks (step 3) are left, then this moves to `Completed/`.
 **Date:** 2026-10-31
 **Issue:** #456 (VT: split screen with the terminals on the left or right), widened to the web
 cards (`Plans/ADDON_WEB_CARDS_PLAN.md`).
@@ -47,10 +47,11 @@ overlays centred on the window (`left: 50%`) centre on the map with `--map-cx`. 
 
 ## 3. Steps
 
-1. **Map area** (§2), with a developer switch to show an empty pane. Floating must be
-   unchanged: same positions, same hit tests.
+1. **Map area** (§2). Floating must be unchanged: same positions, same hit tests. Done (#513);
+   `setMapArea(l, r)` from the console shows an empty map area for checks.
 2. **Card pane**: the layout setting (Screen & Alerts › VT & Web Cards: Floating, Left, Right), the pane with its
-   tabs and divider, VT and web cards moved into it and sized to their slots.
+   tabs and divider, VT and web cards moved into it and sized to their slots. Done (#513).
 3. **Check** at 1280×800 on the macOS, Windows and Linux launchers, iPad and Galaxy Tab: 1, 2, 3
    and 8 cards, both sides, VT soft keys and input editors, a web page's controls, an observer.
-4. **Docs:** `CLAUDE.md` (the VT card and web card sections), move this plan to `Completed/`.
+4. **Docs:** `CLAUDE.md` ("Web cards and the card pane"). Done; this plan moves to `Completed/`
+   after step 3.
