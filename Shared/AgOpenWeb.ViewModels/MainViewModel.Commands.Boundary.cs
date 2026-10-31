@@ -848,6 +848,12 @@ public partial class MainViewModel
         }
     }
 
+    /// <summary>The open field's outer boundary (E/N), for Get Aerial Imagery; null without one.</summary>
+    public System.Collections.Generic.IReadOnlyList<(double E, double N)>? OuterBoundaryPoints() =>
+        IsFieldOpen && State.Field.CurrentBoundary?.OuterBoundary is { IsValid: true } outer
+            ? outer.Points.Select(p => (p.Easting, p.Northing)).ToList()
+            : null;
+
     /// <summary>
     /// Padded WGS84 + Web-Mercator bounds for the aerial that should cover a drawn
     /// boundary (E/N field-local). The host fetches/assembles Bing tiles for these bounds;

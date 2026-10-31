@@ -118,6 +118,14 @@ public class DisplayConfig : ObservableObject
         set => SetProperty(ref _svennArrowVisible, value);
     }
 
+    // The field's aerial imagery on the map (#500); off hides it, the image stays in the field.
+    private bool _imageryVisible = true;
+    public bool ImageryVisible
+    {
+        get => _imageryVisible;
+        set => SetProperty(ref _imageryVisible, value);
+    }
+
     private bool _startFullscreen;
     public bool StartFullscreen
     {

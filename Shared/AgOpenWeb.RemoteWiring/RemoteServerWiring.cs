@@ -48,6 +48,32 @@ public static partial class RemoteServerWiring
                     var vt = services.GetService<IVirtualTerminalService>();
                     if (vt is not null) VirtualTerminalRemote.Start(server, vt);
 
+                    // Capture + save the aerial imagery covering a boundary in a
+                    // CRASH-ISOLATED child process — SkiaSharp can hard-crash on a
+                    // headless board and must never take the host down. On success,
+                    // apply the background back on the UI thread. A drawn boundary gets
+                    // it at once; any other gets it on request (#500).
+                    void CaptureBoundaryImagery(System.Collections.Generic.IReadOnlyList<(double E, double N)> pts)
+                    {
+                        if (vm.GetBoundaryImageryBounds(pts) is not { } bb) return;
+                        _ = System.Threading.Tasks.Task.Run(async () =>
+                        {
+                            var outPath = System.IO.Path.Combine(
+                                System.IO.Path.GetTempPath(), "AgOpenWeb_SatCap",
+                                "BackPic_" + System.Guid.NewGuid().ToString("N") + ".png");
+                            var ok = await imageryCapture.TryCaptureAsync(
+                                bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY, outPath);
+                            dispatcher.Post(() =>
+                            {
+                                if (!ok) { server.ShowToast("No aerial imagery: no internet?"); return; }
+                                vm.ApplyCapturedBackground(outPath,
+                                    bb.nwLat, bb.nwLon, bb.seLat, bb.seLon,
+                                    bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY);
+                                server.ShowToast("Aerial imagery saved");
+                            });
+                        });
+                    }
+
                     server.CommandHandler = (cmd, arg) =>
                         dispatcher.Post(() =>
                         {
@@ -412,26 +438,14 @@ public static partial class RemoteServerWiring
                                             bmp.Add((pe, pn));
                                     }
                                     vm.RemoteCreateBoundaryFromMapPoints(bmp);
-                                    // Capture + save the aerial imagery covering the boundary in a
-                                    // CRASH-ISOLATED child process — SkiaSharp can hard-crash on a
-                                    // headless board and must never take the host down. On success,
-                                    // apply the background back on the UI thread.
-                                    if (vm.GetBoundaryImageryBounds(bmp) is { } bb)
-                                        _ = System.Threading.Tasks.Task.Run(async () =>
-                                        {
-                                            var outPath = System.IO.Path.Combine(
-                                                System.IO.Path.GetTempPath(), "AgOpenWeb_SatCap",
-                                                "BackPic_" + System.Guid.NewGuid().ToString("N") + ".png");
-                                            var ok = await imageryCapture.TryCaptureAsync(
-                                                bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY, outPath);
-                                            if (ok)
-                                                dispatcher.Post(() =>
-                                                    vm.ApplyCapturedBackground(outPath,
-                                                        bb.nwLat, bb.nwLon, bb.seLat, bb.seLon,
-                                                        bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY));
-                                        });
+                                    CaptureBoundaryImagery(bmp);
                                     return;
                                 }
+                                case "boundary.captureImagery": // Boundary menu: the aerial for the
+                                    if (vm.OuterBoundaryPoints() is { } obp) // field's boundary, however
+                                        CaptureBoundaryImagery(obp);         // it was made (#500).
+                                    else server.ShowToast("The field has no boundary");
+                                    return;
                                 case "track.drawPoint": // Phase MT — map-tap AB/curve point.
                                 {                       // arg = "e,n" (m, from s2w). Routes to the
                                     var tp = arg.Split(','); // native SetABPointCommand (DrawAB =

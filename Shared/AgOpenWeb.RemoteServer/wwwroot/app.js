@@ -332,6 +332,7 @@ const transport = RemoteTransport.create({
     } else {
       imageryRect = null; imageryImg = null; imageryVer = null;
     }
+    if (saPanel.classList.contains('open')) populateScreenAlerts(); // Aerial Imagery follows the field
     // Keep the Tracks manager list live (activate/add/delete/hide change the Scene).
     if (document.getElementById('dlg-tracks').classList.contains('open')) renderTracksList();
     if (document.getElementById('fieldbuilder').classList.contains('open') && fbTab === 'tracks'
@@ -2806,6 +2807,14 @@ document.getElementById('bm-delete').addEventListener('pointerdown', e => {
     () => transport.send('boundary.delete'));
 });
 document.getElementById('bm-buildtracks').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.buildFromTracks'); });
+// The aerial covering the field's boundary, however it was made (driven, KML, AgShare), into
+// the field background; replaces any it has. Needs the internet (#500).
+document.getElementById('bm-imagery').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (!imageryImg) { transport.send('boundary.captureImagery'); return; }
+  showConfirm(tr('Get Aerial Imagery'), tr('Replace the field\'s aerial imagery with a new one for its boundary?'),
+    () => transport.send('boundary.captureImagery'));
+});
 document.getElementById('bm-drawmap').addEventListener('pointerdown', e => { e.stopPropagation(); startSatBoundary(); });
 // Import-KML boundary picker: lists KML/KMZ from the Import folder (FieldOps frame),
 // tapping one imports it as the field boundary (host parses + imports, replacing the outer).
@@ -2866,7 +2875,7 @@ for (const b of document.querySelectorAll('.ln-closex'))
 const saPanel = document.getElementById('screenalerts');
 // Units + device settings (keyboard/fullscreen/elevation) moved to App Settings (File menu).
 // Screen & Alerts toggles → config.set|display.X; action rows (theme/quality) → command.
-for (const b of saPanel.querySelectorAll('.sa-tgl'))
+for (const b of saPanel.querySelectorAll('.sa-tgl[data-key]'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(b.dataset.key, b.classList.contains('active') ? '0' : '1'); });
 for (const b of saPanel.querySelectorAll('.sa-act'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
@@ -2880,12 +2889,25 @@ for (const b of saPanel.querySelectorAll('.sa-opt[data-val]'))
 const saBarOn = document.getElementById('sa-baron'), saCmpp = document.getElementById('sa-cmpp');
 saBarOn.addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend(saBarOn.dataset.key, saBarOn.classList.contains('active') ? '0' : '1'); });
 saCmpp.addEventListener('change', () => { const v = parseInt(saCmpp.value); if (Number.isFinite(v)) cfgSend('autosteer.cmPerPixel', v); });
+// Aerial Imagery (#500): an open field without imagery shows off, and a tap offers to get it
+// for the field's boundary; otherwise the button shows and flips the setting.
+const saImagery = document.getElementById('sa-imagery');
+const fieldLacksImagery = () => !!(scene && scene.hasField) && !scene.imagery;
+saImagery.addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (!fieldLacksImagery()) { cfgSend('display.imageryVisible', saImagery.classList.contains('active') ? '0' : '1'); return; }
+  showConfirm(tr('Aerial Imagery'), tr('This field has no aerial imagery. Get it for the field boundary now?'), () => {
+    if (!config.display.imageryVisible) cfgSend('display.imageryVisible', '1');
+    transport.send('boundary.captureImagery');
+  });
+});
 const saExtra = document.getElementById('sa-extracount');
 saExtra.addEventListener('change', () => { const v = parseInt(saExtra.value); if (Number.isFinite(v)) cfgSend('display.extraGuidelinesCount', v); });
 function populateScreenAlerts() {
   if (!config || !config.display) return;
   const d = config.display;
-  for (const b of saPanel.querySelectorAll('.sa-tgl')) b.classList.toggle('active', !!d[b.dataset.key.split('.')[1]]);
+  for (const b of saPanel.querySelectorAll('.sa-tgl[data-key]')) b.classList.toggle('active', !!d[b.dataset.key.split('.')[1]]);
+  saImagery.classList.toggle('active', !!d.imageryVisible && !fieldLacksImagery());
   if (document.activeElement !== saExtra) saExtra.value = d.extraGuidelinesCount;
   document.getElementById('sa-quality').textContent = d.resolutionLabel || '—';
   for (const b of saPanel.querySelectorAll('.sa-scale')) b.classList.toggle('active', +b.dataset.scale === (d.uiScale || 100));
@@ -7585,6 +7607,7 @@ function drawGroundTextureSk(canvas) {
 let skImagery = null, skImageryVer = null, skImageryMult = -1;
 function drawImagerySk(canvas) {
   if (!imageryImg || !imageryRect) return;
+  if (config && config.display && config.display.imageryVisible === false) return; // Screen & Alerts › Aerial Imagery (#500)
   // Quality button: scale the imagery LOD by DisplayResolutionMultiplier so the background
   // degrades with quality like native's Apple composite path (which bakes imagery into the
   // multiplier-sized coverage bitmap). Ultra = full res; lower quality = downsampled (also a

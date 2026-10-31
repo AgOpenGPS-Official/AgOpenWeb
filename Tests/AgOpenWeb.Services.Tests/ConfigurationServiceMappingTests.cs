@@ -65,6 +65,7 @@ public class ConfigurationServiceMappingTests
         d.AutoDayNight = false;
         d.SvennArrowVisible = true;
         d.StartFullscreen = true;
+        d.ImageryVisible = false; // default on
         d.ElevationLogEnabled = true;
         d.FieldTextureVisible = false;
         d.FieldTextureMoveable = true;
@@ -102,6 +103,7 @@ public class ConfigurationServiceMappingTests
             Assert.That(r.AutoDayNight, Is.False);
             Assert.That(r.SvennArrowVisible, Is.True);
             Assert.That(r.StartFullscreen, Is.True);
+            Assert.That(r.ImageryVisible, Is.False);
             Assert.That(r.ElevationLogEnabled, Is.True);
             Assert.That(r.FieldTextureVisible, Is.False);
             Assert.That(r.FieldTextureMoveable, Is.True);
