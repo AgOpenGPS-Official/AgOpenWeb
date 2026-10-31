@@ -1308,13 +1308,15 @@ const dlgLat = document.getElementById('dlg-lat'), dlgLon = document.getElementB
 // FormNumeric for numbers) (#110). For touch boxes with no OS keyboard (kiosk/Linux): when
 // on, focusing a text field opens a QWERTY panel, a numeric field a number pad, and the OS
 // keyboard is suppressed (inputmode=none). Keys edit the field in place and fire 'input', so
-// every existing handler sees them; OK sends Enter and closes. Shift works as on a phone: one
-// tap capitalises the next letter, a second tap straight after locks it (caps lock) until Shift
-// is tapped again.
+// every existing handler sees them; OK sends Enter and closes. Leaving the field another way
+// (tapping the next box, a button, the map) also commits it, as the OS keyboard does. Shift
+// works as on a phone: one tap capitalises the next letter, a second tap straight after locks
+// it (caps lock) until Shift is tapped again.
 const OSK = (() => {
   const root = document.getElementById('osk');
   const SHIFT_LOCK_MS = 400;                  // second Shift tap within this locks caps
   let target = null, shift = 0, shiftAt = 0;  // shift: 0 off, 1 next letter, 2 caps lock
+  let edited = false;                         // keys changed the field since its last 'change'
   const TEXT = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
   const NUM = ['789', '456', '123', '-0.'];
   const on = () => !!(config && config.display && config.display.keyboardEnabled);
@@ -1350,7 +1352,16 @@ const OSK = (() => {
     const el = target; if (!el) return;
     const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
     try { el.setRangeText(s, a, b, 'end'); } catch (_) { el.value += s; }
+    edited = true;
     el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  // The browser only fires 'change' on blur after a user edit, and text set by these keys does
+  // not count as one, so a value typed here and left without OK never reached its handler (the
+  // box showed it, the host never got it). Fire 'change' once on the way out instead.
+  function commit(el) {
+    if (!edited) return;
+    edited = false;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
   }
   function echo() {
     const el = target; if (!el || pv.hidden) return;
@@ -1374,22 +1385,23 @@ const OSK = (() => {
       shiftAt = now; render(); return;
     }
     if (k === 'OK') {
+      edited = false; // the 'change' below commits it
       el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
       close(); el.blur(); return;
     }
-    if (k === 'CLR') { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); return; }
+    if (k === 'CLR') { el.value = ''; edited = true; el.dispatchEvent(new Event('input', { bubbles: true })); return; }
     if (k === 'BS') {
       const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
       if (a !== b) insert('');
-      else if (a > 0) { try { el.setRangeText('', a - 1, a, 'end'); } catch (_) { el.value = el.value.slice(0, -1); } el.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (a > 0) { try { el.setRangeText('', a - 1, a, 'end'); } catch (_) { el.value = el.value.slice(0, -1); } edited = true; el.dispatchEvent(new Event('input', { bubbles: true })); }
       return;
     }
     insert(shift ? k.toUpperCase() : k);
     if (shift === 1) { shift = 0; render(); }
   }
   function open(el) {
-    target = el; shift = 0;
+    target = el; shift = 0; edited = false;
     if (!el.dataset.oskIm) el.dataset.oskIm = el.getAttribute('inputmode') ?? '';
     el.setAttribute('inputmode', 'none'); // no OS keyboard on top of ours
     render(); root.hidden = false; place();
@@ -1409,6 +1421,7 @@ const OSK = (() => {
   document.addEventListener('focusin', e => { if (on() && isField(e.target)) open(e.target); else if (!root.contains(e.target)) close(); });
   document.addEventListener('focusout', e => {
     if (e.target !== target) return;
+    commit(target); // now, not in the timeout: a Save pressed next must see the value first
     setTimeout(() => { if (document.activeElement !== target) close(); }, 0);
   });
   window.addEventListener('resize', () => { if (target) place(); });
@@ -2944,6 +2957,14 @@ function cfgGet(key) {
   const p = key.split('.'); return config[p[0]] && config[p[0]][p[1]];
 }
 function cfgSend(key, val) { transport.send('config.set|' + key + ':' + val); }
+// Save Profile acts on press, but the box still being typed in sends its value only when it loses
+// focus, which comes after the press: the save went out first and missed the last edit. Blur it
+// before saving so its 'change' reaches the host ahead of the save.
+function saveProfile() {
+  const a = document.activeElement;
+  if (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement) a.blur();
+  transport.send('profile.save');
+}
 // Tabs.
 for (const t of vcPanel.querySelectorAll('.cfg-tab'))
   t.addEventListener('pointerdown', e => {
@@ -3040,7 +3061,7 @@ vcHitchSel.addEventListener('change', () => cfgSend('vehicle.hitchType', vcHitch
 // Heading fusion = GPS share (0–1), shown like AgOpenGPS: "GPS 30% · IMU 70%" (#112).
 const fusionLabel = w => tr('GPS {gps}% · IMU {imu}%', { gps: Math.round(w * 100), imu: 100 - Math.round(w * 100) });
 vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = fusionLabel(+vcFw.value); cfgSend('gps.headingFusionWeight', vcFw.value); });
-document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('profile.save'); });
+document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); saveProfile(); });
 // Zero Now captures the current roll as the offset, like AgOpenGPS Zero Roll and
 // Tools › Roll Correction; it used to clear the offset (that's Remove Offset, #111).
 document.getElementById('vc-rollzero').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('roll.zeroCalibrate'); });
@@ -3087,7 +3108,7 @@ wireTabStrip(tcPanel, 'tc-mac');
 tcHitchSel.addEventListener('change', () => cfgSend('tool.hitchType', tcHitchSel.value));
 tcSingleColor.addEventListener('change', () => cfgSend('tool.singleCoverageColor', tcSingleColor.value.slice(1)));
 document.getElementById('tc-resetpins').addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend('machine.resetPins', '1'); });
-document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('profile.save'); });
+document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stopPropagation(); saveProfile(); });
 // PinFunction enum labels (mirror MachineConfig.PinFunction).
 const PIN_FUNCS = ['None', 'Sec1', 'Sec2', 'Sec3', 'Sec4', 'Sec5', 'Sec6', 'Sec7', 'Sec8', 'Sec9', 'Sec10',
   'Sec11', 'Sec12', 'Sec13', 'Sec14', 'Sec15', 'Sec16', 'HydUp', 'HydDown', 'TramLeft', 'TramRight', 'GeoStop'];
