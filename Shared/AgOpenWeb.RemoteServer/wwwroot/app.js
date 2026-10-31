@@ -2992,7 +2992,67 @@ function wireCfgControls(panel) {
     const ro = panel.querySelector('.cfg-ro[data-for="' + s.dataset.key + '"]');
     s.addEventListener('input', () => { if (ro) ro.textContent = fmtRo(s.value, s.dataset.fmt); });
     s.addEventListener('change', () => cfgSend(s.dataset.key, s.value));
+    wireSliderNudge(s, ro);
   }
+}
+// A slider is hard to set to one exact value with a finger, so each gets − / + buttons (one
+// step a tap, repeating while held; sent once on release) and its value box can be tapped to
+// type the value. Typed values are in the readout's terms (p0: percent) and are clamped and
+// snapped to the slider's range and step.
+function sliderSnap(s, v) {
+  const min = Number(s.min), max = Number(s.max), step = Number(s.step) || 1;
+  const dec = (String(s.step).split('.')[1] || '').length;
+  return Number(Math.min(max, Math.max(min, min + Math.round((v - min) / step) * step)).toFixed(dec));
+}
+function wireSliderNudge(s, ro) {
+  const show = () => { if (ro) ro.textContent = fmtRo(s.value, s.dataset.fmt); };
+  const set = v => { s.value = sliderSnap(s, v); show(); };
+  for (const dir of [-1, 1]) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'as-nudge'; b.textContent = dir < 0 ? '−' : '+';
+    b.title = dir < 0 ? tr('Down one step') : tr('Up one step');
+    let timer = null;
+    const stop = () => {
+      if (timer === null) return;
+      clearTimeout(timer); timer = null; delete s.dataset.nudging;
+      cfgSend(s.dataset.key, s.value);
+    };
+    b.addEventListener('pointerdown', e => {
+      e.preventDefault(); e.stopPropagation();
+      b.setPointerCapture?.(e.pointerId);
+      s.dataset.nudging = '1';                                     // populateCfgControls leaves it alone
+      const nudge = () => set(Number(s.value) + dir * (Number(s.step) || 1));
+      nudge();
+      const repeat = () => { nudge(); timer = setTimeout(repeat, 80); };
+      timer = setTimeout(repeat, 450);
+    });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, stop);
+    if (dir < 0) s.before(b); else s.after(b);
+  }
+  if (!ro) return;
+  ro.classList.add('as-valedit');
+  ro.title = tr('Tap to type a value');
+  ro.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation();
+    if (ro.hidden) return;
+    const pct = s.dataset.fmt === 'p0';
+    const input = document.createElement('input');
+    input.className = 'as-valbox num-field';
+    input.value = pct ? Math.round(Number(s.value) * 100) : s.value;
+    makeNumericField(input);
+    ro.hidden = true; ro.after(input); input.focus(); input.select();
+    input.addEventListener('click', () => input.select(), { once: true }); // the tap's release lands here and drops the selection
+    let done = false;
+    const close = commit => {
+      if (done) return;
+      done = true;
+      const v = parseFloat(input.value);
+      if (commit && Number.isFinite(v)) { set(pct ? v / 100 : v); cfgSend(s.dataset.key, s.value); }
+      input.remove(); ro.hidden = false;
+    };
+    input.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter') close(true); else if (ev.key === 'Escape') close(false); });
+    input.addEventListener('blur', () => close(true));
+  });
 }
 function populateCfgControls(panel, force) {
   for (const inp of panel.querySelectorAll('.cfg-num')) {
@@ -3011,7 +3071,7 @@ function populateCfgControls(panel, force) {
   for (const b of panel.querySelectorAll('.ln-seg .cfg-act[data-key][data-val]'))
     b.classList.toggle('active', String(cfgGet(b.dataset.key)) === b.dataset.val);
   for (const s of panel.querySelectorAll('.cfg-slider[data-fmt]')) {
-    if (!force && document.activeElement === s) continue;
+    if ((!force && document.activeElement === s) || s.dataset.nudging) continue;
     const val = cfgGet(s.dataset.key);
     if (typeof val === 'number') {
       s.value = val;
