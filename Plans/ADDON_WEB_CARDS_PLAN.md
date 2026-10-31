@@ -1,6 +1,6 @@
 # Add-on web cards
 
-**Status:** plan, agreed in outline 2026-10-31; nothing is built yet.
+**Status:** step 1 merged (#503, with the hint line #512 and the card pane #513); `CLAUDE.md` section done. Left: the heads (step 2) and a page for add-on authors (step 3).
 **Date:** 2026-10-31
 **Purpose:** Tools and add-ons reach the operator in AgOpenWeb two ways. An ISOBUS implement
 draws its screens in a VT card (`CLAUDE.md`, "ISOBUS virtual terminal"). An add-on with a web
