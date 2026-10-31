@@ -105,6 +105,14 @@ public interface IAutoSteerService
     void SendCorrectedPosition(double latitude, double longitude, double headingDegrees);
 
     /// <summary>
+    /// Copy PGN 254 to AgIO's loopback port, and with a field open PGN 239 and 229 too,
+    /// once per fix: AgOpenGPS sends every module PGN there, where rate controllers listen
+    /// for speed and section states. The modules keep getting theirs from the 100 Hz control
+    /// loop; this copy goes at the fix rate, as AgOpenGPS's does.
+    /// </summary>
+    void SendLoopbackPgns(bool hasActiveField);
+
+    /// <summary>
     /// Send PGN 214, the fix as the receiver (or the simulator) gave it, to AgIO's GPS
     /// loopback port, as AgIO does after parsing each sentence. GPS_Out needs it (#364).
     /// </summary>

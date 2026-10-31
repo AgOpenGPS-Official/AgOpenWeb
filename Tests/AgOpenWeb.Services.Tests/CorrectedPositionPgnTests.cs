@@ -154,7 +154,7 @@ public class CorrectedPositionPgnPipelineTests
         udp.When(u => u.SendToModules(Arg.Any<byte[]>()))
             .Do(c => { var d = c.Arg<byte[]>(); if (d[3] == 0x64) _toModules.Add((byte[])d.Clone()); });
         udp.When(u => u.SendToLoopback(Arg.Any<byte[]>()))
-            .Do(c => _toLoopback.Add((byte[])c.Arg<byte[]>().Clone()));
+            .Do(c => { var d = c.Arg<byte[]>(); if (d[3] == 0x64) _toLoopback.Add((byte[])d.Clone()); });
         udp.When(u => u.SendGpsDataToLoopback(Arg.Any<byte[]>()))
             .Do(c => _toGpsLoopback.Add((byte[])c.Arg<byte[]>().Clone()));
 
