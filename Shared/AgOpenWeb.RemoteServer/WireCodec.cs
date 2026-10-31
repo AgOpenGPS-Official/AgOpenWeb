@@ -24,7 +24,7 @@ public static class WireCodec
         ControlState = 6, Hello = 7, Config = 8, Profiles = 9, Wizard = 10, NtripProfiles = 11,
         FieldOps = 12, AgShare = 13, AppInfo = 14, FieldTools = 15, RecordedPath = 16, Boundary = 17,
         Sound = 18, Pong = 19, CoverageEdge = 20, ViewPrefs = 21, Prompt = 22, Toast = 23, DrivePick = 24, HardwareMessage = 25,
-        Vt = 26, VtImage = 27, NtripMountpoints = 28;
+        Vt = 26, VtImage = 27, NtripMountpoints = 28, WebCards = 29;
 
     /// <summary>One-shot alert: tells the client to play sound effect
     /// <paramref name="effectId"/> (the <c>SoundEffect</c> enum value). Pushed
@@ -252,6 +252,16 @@ public static class WireCodec
 
     // The mount points last asked for in the profile editor: [i32 seq] str for, str status,
     // [i32 n][ per mount point: str mount, name, format, systems, country, f32 km (NaN = unknown), u8 needs position ].
+    public static byte[] EncodeWebCards(WebCardsDto d)
+    {
+        using var ms = new MemoryStream();
+        using var w = new BinaryWriter(ms);
+        w.Write(WebCards);
+        w.Write(d.Cards.Count);
+        foreach (var c in d.Cards) { WriteStr(w, c.Name); WriteStr(w, c.Url); }
+        return ms.ToArray();
+    }
+
     public static byte[] EncodeNtripMountpoints(NtripMountpointsDto d)
     {
         using var ms = new MemoryStream();
