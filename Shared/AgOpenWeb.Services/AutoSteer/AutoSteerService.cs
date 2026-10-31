@@ -88,9 +88,10 @@ public class AutoSteerService : IAutoSteerService
     private MachineConfig? _subscribedMachine;
     private VehicleConfig? _subscribedVehicle;
 
-    // PGN 235 (section widths) goes out only when it differs from the last one sent: a rate
-    // controller asks the operator to accept every change it sees, so a steer setting edit
-    // must not repeat it.
+    // PGN 235 (section widths) goes out at start and when a profile is saved or loaded, as
+    // AgOpenGPS sends it when the tool settings are saved, and only when it differs from the
+    // last one sent: a rate controller asks the operator to accept every change it sees, so
+    // neither each edit on the way to a new layout nor a save of other settings may repeat it.
     private byte[]? _lastSectionDimensions;
 
     // PGN 247 (vehicle geometry) also goes out when the steer module is heard after this
@@ -176,6 +177,7 @@ public class AutoSteerService : IAutoSteerService
         // config dialog" symptom — the simulator reads switch-type from
         // PGN 251 byte 5 and we'd previously never send it on startup.
         EmitSteerConfigPgns();
+        SendSectionDimensions();
     }
 
     public void Stop()
@@ -200,8 +202,9 @@ public class AutoSteerService : IAutoSteerService
         // Vehicle geometry (PGN 247): edits and profile loads reach the modules (#387).
         _subscribedVehicle = _configStore.Vehicle;
         _subscribedVehicle.PropertyChanged += OnConfigPropertyChanged;
-        // Section count (PGN 235): kept on the store, not on Tool.
-        _configStore.PropertyChanged += OnStorePropertyChanged;
+        // Section widths (PGN 235): on save or load of a whole profile, not on each edit.
+        _configStore.ProfileSaved += OnProfileSavedOrLoaded;
+        _configStore.ProfileLoaded += OnProfileSavedOrLoaded;
         _configSubscribed = true;
     }
 
@@ -216,7 +219,8 @@ public class AutoSteerService : IAutoSteerService
             _subscribedMachine.PropertyChanged -= OnConfigPropertyChanged;
         if (_subscribedVehicle != null)
             _subscribedVehicle.PropertyChanged -= OnConfigPropertyChanged;
-        _configStore.PropertyChanged -= OnStorePropertyChanged;
+        _configStore.ProfileSaved -= OnProfileSavedOrLoaded;
+        _configStore.ProfileLoaded -= OnProfileSavedOrLoaded;
         _configSubscribed = false;
     }
 
@@ -233,10 +237,9 @@ public class AutoSteerService : IAutoSteerService
         _configEmitTimer.Change(_configEmitDelayMs, Timeout.Infinite);
     }
 
-    private void OnStorePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnProfileSavedOrLoaded(object? sender, EventArgs e)
     {
-        if (e.PropertyName == nameof(ConfigurationStore.NumSections))
-            _configEmitTimer.Change(_configEmitDelayMs, Timeout.Infinite);
+        if (_isEnabled) SendSectionDimensions();
     }
 
     private void SendVehicleGeometry() =>
@@ -255,7 +258,6 @@ public class AutoSteerService : IAutoSteerService
             SendMachineConfig();
             SendMachinePinConfig();
             SendVehicleGeometry();
-            SendSectionDimensions();
         }
         catch (Exception ex)
         {

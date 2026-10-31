@@ -67,9 +67,10 @@ public class SectionDimensionsPgnLayoutTests
 }
 
 /// <summary>
-/// PGN 235 and 238 reach AgIO's loopback port, where rate controllers listen. 235 only goes
-/// out when the section count or widths change: a rate controller asks the operator to
-/// accept each change, so other settings must not repeat it.
+/// PGN 235 and 238 reach AgIO's loopback port, where rate controllers listen. 235 goes out at
+/// start and on profile save or load, as AgOpenGPS sends it on saving the tool settings, and
+/// only when the layout changed: a rate controller asks the operator to accept each change, so
+/// neither the edits on the way to a layout nor a save of other settings may repeat it.
 /// </summary>
 [TestFixture]
 [NonParallelizable] // ConfigurationStore is a singleton.
@@ -133,25 +134,47 @@ public class SectionDimensionsEmitTests
     }
 
     [Test]
-    public void SectionWidthChange_Resends235()
+    public void SectionEdits_NotSentUntilSave_ThenTheWholeLayoutOnce()
     {
         _service.Start();
         _udp.ClearReceivedCalls();
 
-        ConfigurationStore.Instance.Tool.SetSectionWidth(1, 450);
+        var store = ConfigurationStore.Instance;
+        store.NumSections = 3;
+        store.Tool.SetSectionWidth(1, 450);
+        store.Tool.SetSectionWidth(2, 200);
         WaitForEmit();
 
-        _udp.Received(1).SendToLoopback(Arg.Is<byte[]>(b => Is235(b) && (b[7] | b[8] << 8) == 450));
+        _udp.DidNotReceive().SendToLoopback(Arg.Is<byte[]>(b => Is235(b)));
+        _udp.DidNotReceive().SendToModules(Arg.Is<byte[]>(b => Is235(b)));
+
+        store.OnProfileSaved();
+
+        _udp.Received(1).SendToLoopback(Arg.Is<byte[]>(b =>
+            Is235(b) && b[37] == 3 && (b[7] | b[8] << 8) == 450 && (b[9] | b[10] << 8) == 200));
+        _udp.Received(1).SendToModules(Arg.Is<byte[]>(b => Is235(b)));
     }
 
     [Test]
-    public void SectionCountChange_Resends235()
+    public void SaveWithoutSectionChange_DoesNotResend235()
+    {
+        _service.Start();
+        _udp.ClearReceivedCalls();
+
+        ConfigurationStore.Instance.AutoSteer.InvertWas = true;
+        ConfigurationStore.Instance.OnProfileSaved();
+
+        _udp.DidNotReceive().SendToLoopback(Arg.Is<byte[]>(b => Is235(b)));
+    }
+
+    [Test]
+    public void ProfileLoad_SendsTheNewLayout()
     {
         _service.Start();
         _udp.ClearReceivedCalls();
 
         ConfigurationStore.Instance.NumSections = 1;
-        WaitForEmit();
+        ConfigurationStore.Instance.OnProfileLoaded();
 
         _udp.Received(1).SendToLoopback(Arg.Is<byte[]>(b => Is235(b) && b[37] == 1));
     }
