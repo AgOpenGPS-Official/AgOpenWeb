@@ -8,6 +8,7 @@ This file provides guidance to Claude Code when working with this repository.
 - **[PGN.md](PGN.md)** - UDP packet protocol for hardware communication
 - **[Docs/TRANSLATIONS.md](Docs/TRANSLATIONS.md)** - UI strings and Weblate
 - **[Docs/GPS_RECEIVERS.md](Docs/GPS_RECEIVERS.md)** - Receivers, sentence families, the bridge contract, per-receiver setup
+- **[Docs/FIELD_FILE_FORMATS.md](Docs/FIELD_FILE_FORMATS.md)** - `field.geojson`, sidecars and coverage tiles: the spec for tools that read or write fields
 
 ## Project Overview
 
@@ -203,7 +204,7 @@ public class Track
 ### File Format Philosophy
 AgOpenWeb may use different/improved formats from AgOpenGPS when it benefits code simplicity or features. Provide **one-way import** from AgOpenGPS formats rather than maintaining full backwards compatibility.
 
-- **Formats**: a field is `field.geojson` (origin, boundaries, headland, tracks, flags, headland lines, background image placement) beside `background.png`, `contours.geojson`, `recorded-paths.geojson` and `elevation.csv`; a job's coverage is world-anchored tiles under `jobs/<task>/coverage/`. Profiles are JSON.
+- **Formats**: a field is `field.geojson` (origin, boundaries, headland, tracks, flags, headland lines, background image placement) beside `background.png`, `contours.geojson`, `recorded-paths.geojson` and `elevation.csv`; a job's coverage is world-anchored tiles under `jobs/<task>/coverage/`. Profiles are JSON; the spec for other programs is `Docs/FIELD_FILE_FORMATS.md` (keep it in step with the code).
 - **Migration**: AgOpenGPS files found in a field folder are imported once (on open) and **deleted**; AgOpenWeb never writes AgOpenGPS formats. No compatibility code for files from older AgOpenWeb builds (no installed base yet). See `Plans/Completed/FILE_FORMAT_MODERNIZATION_PLAN.md`.
 
 ## Technology Stack
