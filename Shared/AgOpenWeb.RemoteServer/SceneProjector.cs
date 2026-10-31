@@ -508,6 +508,17 @@ public sealed class SceneProjector
         return list.Seq * 31L + list.Status.GetHashCode() + list.Items.Count;
     }
 
+    // The web cards' bookmarks. The list is replaced whole on a change, so reading it here is safe.
+    public WebCardsDto BuildWebCards() =>
+        new(_settings.Settings.WebCards.Select(b => new WebCardDto(b.Name, b.Url)).ToList());
+
+    public long WebCardsFingerprint()
+    {
+        long h = 17;
+        foreach (var b in _settings.Settings.WebCards) h = h * 31 + HashCode.Combine(b.Name, b.Url);
+        return h;
+    }
+
     // Re-send the NTRIP profiles frame on add / edit / delete / set-default.
     public long NtripProfilesFingerprint()
     {

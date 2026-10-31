@@ -397,6 +397,20 @@ public static partial class RemoteServerWiring
                                         vm.RemoteSetTramField(tsi, arg[(t1 + 1)..t2], arg[(t2 + 1)..]);
                                     return;
                                 }
+                                case "webcard.save":   // Web card bookmarks: "index\tname\turl", index −1 adds.
+                                case "webcard.delete": // "index".
+                                {
+                                    var st = services.GetRequiredService<ISettingsService>();
+                                    var wp = arg.Split('\t');
+                                    var edited = !int.TryParse(wp[0], out var wi) ? null
+                                        : cmd == "webcard.delete" ? AgOpenWeb.Models.WebCardBookmarks.Delete(st.Settings.WebCards, wi)
+                                        : wp.Length == 3 ? AgOpenWeb.Models.WebCardBookmarks.Save(st.Settings.WebCards, wi, wp[1], wp[2])
+                                        : null;
+                                    if (edited is null) { server.ShowToast("Bookmark not saved: a name and an http:// or https:// address"); return; }
+                                    st.Settings.WebCards = edited; // replaced whole: the broadcaster reads it
+                                    st.Save();
+                                    return;
+                                }
                                 case "boundary.importKmlFile": // Import-KML picker. arg = KML file name.
                                     vm.RemoteImportKmlBoundary(arg);
                                     return;

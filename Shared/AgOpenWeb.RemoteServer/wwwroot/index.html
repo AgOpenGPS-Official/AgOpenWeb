@@ -1260,6 +1260,30 @@
     .vt-ws { max-width: 180px; height: 22px; font-size: 12px; background: var(--bg-sunken); color: var(--text-2);
       border: 1px solid var(--border); border-radius: 4px; }
     .vt-body { position: relative; display: flex; gap: 4px; padding: 4px; }
+    /* Web cards (Plans/ADDON_WEB_CARDS_PLAN.md): an add-on's own page from the bookmark list, in
+       a frame. Never wider or taller than the screen leaves room for. */
+    .web-card { top: calc(var(--bar-bottom) + 24px); width: auto; --ww: 640px; --wh: 420px; }
+    .web-card .web-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .web-pick { max-width: 220px; height: 22px; font-size: 12px; background: var(--bg-sunken); color: var(--text-2);
+      border: 1px solid var(--border); border-radius: 4px; }
+    .web-body { position: relative; width: min(var(--ww), calc(100 * var(--vw) - 120px));
+      height: min(var(--wh), calc(100 * var(--vh) - 140px)); background: var(--bg-sunken); }
+    .web-body iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+    .web-cover { position: absolute; inset: 0; display: none; cursor: not-allowed; }
+    .web-cover.show { display: block; }
+    .web-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      padding: 24px; text-align: center; color: var(--text-2); font-size: 14px; background: var(--panel); }
+    .web-edit { position: absolute; inset: 0; display: none; flex-direction: column; gap: 8px; padding: 12px;
+      background: var(--panel); overflow: auto; font-size: 13px; color: var(--text-2); }
+    .web-edit.show { display: flex; }
+    .web-edit input { height: 34px; font-size: 14px; padding: 0 8px; background: var(--bg-sunken); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px; }
+    .web-edit .web-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .web-edit .web-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .web-edit .web-row small { color: var(--text-muted); }
+    .web-edit button { height: 30px; padding: 0 12px; border: 1px solid var(--border); border-radius: 6px;
+      background: rgba(var(--ov),0.08); color: var(--text-2); cursor: pointer; }
+    .web-edit .web-sub { color: var(--text-muted); font-size: 12px; }
     .vt-mask { display: block; width: var(--vt); height: var(--vt); background: #000; touch-action: none; }
     .vt-keys { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(6, auto); grid-auto-flow: column;
       gap: 4px; align-content: start; width: calc(var(--vt) / 3 - 4px); }
@@ -1583,6 +1607,14 @@
         <rect x="37" y="20" width="7" height="6" rx="1" stroke-width="2"/>
         <rect x="37" y="32" width="7" height="6" rx="1" stroke-width="2"/>
         <text x="19.5" y="28" text-anchor="middle" font-size="12" font-weight="700" font-family="system-ui, sans-serif" style="fill:currentColor;stroke:none">VT</text>
+      </svg>
+    </button>
+    <button id="ln-web" class="ln-btn" title="Web Cards">
+      <svg class="ln-ic" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style="fill:none;stroke:currentColor">
+        <circle cx="24" cy="24" r="17" stroke-width="2.5"/>
+        <ellipse cx="24" cy="24" rx="7.5" ry="17" stroke-width="2"/>
+        <line x1="7" y1="24" x2="41" y2="24" stroke-width="2"/>
+        <path d="M10 15 H38 M10 33 H38" stroke-width="2"/>
       </svg>
     </button>
     <button id="ln-network" class="ln-btn" title="Network IO">
@@ -2596,6 +2628,21 @@
         <div class="vt-msg"></div>
         <div class="vt-edit"></div>
         <div class="vt-ident"></div>
+      </div>
+    </div>
+  </template>
+  <!-- Web cards: add-ons' own pages, picked from the bookmarks (WebCards in app.js). -->
+  <template id="web-card-tpl">
+    <div class="chart-card web-card">
+      <div class="chart-hdr">
+        <span class="web-title"><select class="web-pick"></select></span>
+        <span><button class="web-add vt-hbtn" title="Another web card">＋</button><button class="web-ext vt-hbtn" title="Open in browser">↗</button><button class="web-size vt-hbtn" title="Size">⤢</button><button class="web-gear vt-hbtn" title="Bookmarks">⚙</button><button class="web-x chart-x" title="Close">✕</button></span>
+      </div>
+      <div class="web-body">
+        <iframe sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads" referrerpolicy="no-referrer"></iframe>
+        <div class="web-cover" title="View only: this browser doesn't hold control"></div>
+        <div class="web-msg"></div>
+        <div class="web-edit"></div>
       </div>
     </div>
   </template>

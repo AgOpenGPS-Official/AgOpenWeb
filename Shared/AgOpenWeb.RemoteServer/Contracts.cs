@@ -577,6 +577,10 @@ public record NtripFallbackDto(
 /// list (or a new status) is ready. For is "main" or "fallback"; Status is the sentence to show.</summary>
 public record NtripMountpointsDto(int Seq, string For, string Status, IReadOnlyList<NtripMountpointDto> Items);
 
+/// <summary>The web cards' bookmarks (AppSettings.WebCards), in their own frame.</summary>
+public record WebCardsDto(IReadOnlyList<WebCardDto> Cards);
+public record WebCardDto(string Name, string Url);
+
 /// <param name="DistanceKm">NaN when the position of the mount point or of the receiver is unknown.</param>
 public record NtripMountpointDto(string Mount, string Name, string Format, string Systems, string Country,
     double DistanceKm, bool NeedsPosition);
