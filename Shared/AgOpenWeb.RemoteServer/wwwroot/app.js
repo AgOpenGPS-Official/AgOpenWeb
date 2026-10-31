@@ -2944,6 +2944,13 @@ function cfgGet(key) {
   const p = key.split('.'); return config[p[0]] && config[p[0]][p[1]];
 }
 function cfgSend(key, val) { transport.send('config.set|' + key + ':' + val); }
+// A number field sends its value on 'change', when it loses focus. Save acts on
+// pointerdown, before that, so it commits the field being edited first: otherwise
+// the profile is saved without the last value typed.
+function commitFocusedField(panel) {
+  const a = document.activeElement;
+  if (a && a !== document.body && panel.contains(a)) a.blur();
+}
 // Tabs.
 for (const t of vcPanel.querySelectorAll('.cfg-tab'))
   t.addEventListener('pointerdown', e => {
@@ -3100,7 +3107,7 @@ vcHitchSel.addEventListener('change', () => cfgSend('vehicle.hitchType', vcHitch
 // Heading fusion = GPS share (0–1), shown like AgOpenGPS: "GPS 30% · IMU 70%" (#112).
 const fusionLabel = w => tr('GPS {gps}% · IMU {imu}%', { gps: Math.round(w * 100), imu: 100 - Math.round(w * 100) });
 vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = fusionLabel(+vcFw.value); cfgSend('gps.headingFusionWeight', vcFw.value); });
-document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('profile.save'); });
+document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); commitFocusedField(vcPanel); transport.send('profile.save'); });
 // Zero Now captures the current roll as the offset, like AgOpenGPS Zero Roll and
 // Tools › Roll Correction; it used to clear the offset (that's Remove Offset, #111).
 document.getElementById('vc-rollzero').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('roll.zeroCalibrate'); });
@@ -3147,7 +3154,7 @@ wireTabStrip(tcPanel, 'tc-mac');
 tcHitchSel.addEventListener('change', () => cfgSend('tool.hitchType', tcHitchSel.value));
 tcSingleColor.addEventListener('change', () => cfgSend('tool.singleCoverageColor', tcSingleColor.value.slice(1)));
 document.getElementById('tc-resetpins').addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend('machine.resetPins', '1'); });
-document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('profile.save'); });
+document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stopPropagation(); commitFocusedField(tcPanel); transport.send('profile.save'); });
 // PinFunction enum labels (mirror MachineConfig.PinFunction).
 const PIN_FUNCS = ['None', 'Sec1', 'Sec2', 'Sec3', 'Sec4', 'Sec5', 'Sec6', 'Sec7', 'Sec8', 'Sec9', 'Sec10',
   'Sec11', 'Sec12', 'Sec13', 'Sec14', 'Sec15', 'Sec16', 'HydUp', 'HydDown', 'TramLeft', 'TramRight', 'GeoStop'];

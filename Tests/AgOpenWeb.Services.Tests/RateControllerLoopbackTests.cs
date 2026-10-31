@@ -193,6 +193,7 @@ public class LoopbackMachinePgnPipelineTests
 
     private GpsService _gps = null!;
     private GpsPipelineService _pipeline = null!;
+    private SectionControlService _sections = null!;
     private AutoSteerService _autoSteer = null!;
     private ConfigurationStore _config = null!;
     private readonly List<byte[]> _toLoopback = new();
@@ -221,6 +222,7 @@ public class LoopbackMachinePgnPipelineTests
         var toolPosition = new ToolPositionService(_config);
         var coverage = new CoverageMapService(_config);
         var sectionControl = new SectionControlService(toolPosition, coverage, _config);
+        _sections = sectionControl;
         _autoSteer = new AutoSteerService(new TrackGuidanceService(), udp, _gps, _config);
         _autoSteer.Start();
 
@@ -288,6 +290,21 @@ public class LoopbackMachinePgnPipelineTests
         Assert.That(Count(0xFE), Is.EqualTo(2));
         Assert.That(Count(0xEF), Is.EqualTo(2));
         Assert.That(Count(0xE5), Is.EqualTo(2), "229 whatever the section count, as AgOpenGPS");
+    }
+
+    [Test]
+    public void SectionSwitchedOn_ReachesTheLoopbackCopies()
+    {
+        _pipeline.SetHasActiveField(true);
+        _sections.MasterState = SectionMasterState.Manual;
+        _sections.SetSectionState(0, SectionButtonState.On);
+
+        _gps.UpdateGpsData(Fix());
+        _gps.UpdateGpsData(Fix());
+
+        Assert.That(_toLoopback.Last(d => d[3] == 0xFE)[11] & 1, Is.EqualTo(1), "254 SC1to8");
+        Assert.That(_toLoopback.Last(d => d[3] == 0xEF)[11] & 1, Is.EqualTo(1), "239 SC1to8");
+        Assert.That(_toLoopback.Last(d => d[3] == 0xE5)[5] & 1, Is.EqualTo(1), "229 sections 1-8");
     }
 
     [Test]
