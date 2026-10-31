@@ -444,7 +444,9 @@ public record DisplayConfigDto(
     // light/dark palette + map colours on this; the Day/Night Theme button toggles it.
     bool IsDayMode,
     // UI size in percent (100/115/130/150): the client zooms its controls, not the map.
-    int UiScale);
+    int UiScale,
+    // The field's aerial imagery shown on the map (#500).
+    bool ImageryVisible);
 
 /// <summary>Tool/Implement tab (ConfigStore.Tool + NumSections). Type: 0 front, 1 rear,
 /// 2 TBT, 3 trailing. Arrays fixed-size (16 widths/colours, 9 zone ranges).</summary>

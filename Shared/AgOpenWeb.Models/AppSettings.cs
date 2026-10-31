@@ -16,6 +16,7 @@ namespace AgOpenWeb.Models
         // application STATE, not config — it now lives in PersistentAppState
         // (appstate.json), not here.
         public bool StartFullscreen { get; set; } = false;
+        public bool ImageryVisible { get; set; } = true;
         public bool SvennArrowVisible { get; set; } = false;
         public bool KeyboardEnabled { get; set; } = false;
         public bool HeadlandDistanceVisible { get; set; } = true;
