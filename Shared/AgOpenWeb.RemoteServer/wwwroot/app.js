@@ -1317,6 +1317,10 @@ const OSK = (() => {
   let target = null, shift = 0, shiftAt = 0;  // shift: 0 off, 1 next letter, 2 caps lock
   const TEXT = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
   const NUM = ['789', '456', '123', '-0.'];
+  // #+= swaps the letter rows for symbols, for web addresses, caster logins and passwords (the
+  // digits and - _ . stay). It stays until abc is tapped; each new field starts on the letters.
+  const SYM = [':/?=&@#%+~', '()[]{}<>!', ',;\'"^|\\$*`'];
+  let sym = false;
   const on = () => !!(config && config.display && config.display.keyboardEnabled);
   const isField = el => el instanceof HTMLTextAreaElement
     || (el instanceof HTMLInputElement && ['text', 'password', 'search', 'email', 'url', ''].includes(el.type) && !el.readOnly && !el.disabled);
@@ -1328,12 +1332,12 @@ const OSK = (() => {
   function render() {
     const num = !!(target && target.dataset.numField);
     root.classList.toggle('num', num);
-    const rows = (num ? NUM : TEXT).map(r => [...r].map(c => ({ k: c, t: shift ? c.toUpperCase() : c })));
+    const rows = (num ? NUM : sym ? [TEXT[0], ...SYM] : TEXT).map(r => [...r].map(c => ({ k: c, t: shift ? c.toUpperCase() : c })));
     if (num) rows.push([{ k: 'BS', t: '⌫', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
     else {
-      rows[3].unshift({ k: 'SH', t: shift === 2 ? '⇪' : '⇧', c: ['wide', 'wide on', 'wide on lock'][shift] });
+      if (!sym) rows[3].unshift({ k: 'SH', t: shift === 2 ? '⇪' : '⇧', c: ['wide', 'wide on', 'wide on lock'][shift] });
       rows[3].push({ k: 'BS', t: '⌫', c: 'wide' });
-      rows.push([{ k: '-', t: '-' }, { k: '_', t: '_' }, { k: ' ', t: 'space', c: 'xwide' }, { k: '.', t: '.' }, { k: 'CLR', t: 'Clear', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
+      rows.push([{ k: 'SYM', t: sym ? 'abc' : '#+=', c: 'wide' }, { k: '-', t: '-' }, { k: '_', t: '_' }, { k: ' ', t: 'space', c: 'xwide' }, { k: '.', t: '.' }, { k: 'CLR', t: 'Clear', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
     }
     root.replaceChildren(pv);
     for (const r of rows) {
@@ -1373,6 +1377,7 @@ const OSK = (() => {
       shift = shift === 1 && now - shiftAt < SHIFT_LOCK_MS ? 2 : shift ? 0 : 1;
       shiftAt = now; render(); return;
     }
+    if (k === 'SYM') { sym = !sym; render(); return; }
     if (k === 'OK') {
       el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1392,6 +1397,7 @@ const OSK = (() => {
     target = el; shift = 0;
     if (!el.dataset.oskIm) el.dataset.oskIm = el.getAttribute('inputmode') ?? '';
     el.setAttribute('inputmode', 'none'); // no OS keyboard on top of ours
+    sym = false;
     render(); root.hidden = false; place();
   }
   function close() {
