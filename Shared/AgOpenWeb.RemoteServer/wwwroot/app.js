@@ -7079,6 +7079,7 @@ const WebCards = (() => {
       cover.classList.toggle('show', !iHoldControl);
       q('.web-add').style.display = cards.length < MAX ? '' : 'none';
       q('.web-ext').style.display = state.url ? '' : 'none';
+      q('.web-hint').hidden = !state.url;
       if (c.editing && !iHoldControl) c.editing = false;
       editEl.classList.toggle('show', c.editing);
       if (c.editing) renderEdit(c, editEl);
