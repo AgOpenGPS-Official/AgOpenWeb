@@ -10,7 +10,7 @@ Weblate; nobody edits the language files by hand.
 | `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/en.json` | The English source strings. Generated — do not edit. |
 | `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/<code>.json` | One language (`de.json`, `pt-BR.json`, `zh-Hans.json`). Written by Weblate. |
 | `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n.js` | The loader. |
-| `Tools/i18n-extract.py` | Regenerates `en.json` from `index.html` and `app.js`. |
+| `Tools/i18n-extract.py` | Regenerates `en.json` from `index.html` and the scripts in `js/`. |
 | `Tools/i18n-limits.py` | Length limits for labels (Weblate) and the CI check that translations fit. |
 | `Tools/i18n-limits.json` | Each label's limit in characters, and the screen that sets it. |
 | `Tools/i18n-fit-baseline.json` | Translations known not to fit, waiting for the translator. |
@@ -27,7 +27,7 @@ switches the UI at once, with no reload.
 Text in `index.html` needs nothing: write it in English. This covers element text and
 the `title`, `placeholder` and `aria-label` attributes.
 
-Text in `app.js`:
+Text in the scripts (`js/*.js`):
 
 ```js
 el.textContent = tr('Save');                         // a plain string

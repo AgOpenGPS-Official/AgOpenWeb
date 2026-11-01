@@ -8,6 +8,7 @@ This file provides guidance to Claude Code when working with this repository.
 - **[PGN.md](PGN.md)** - UDP packet protocol for hardware communication
 - **[Docs/TRANSLATIONS.md](Docs/TRANSLATIONS.md)** - UI strings and Weblate
 - **[Docs/GPS_RECEIVERS.md](Docs/GPS_RECEIVERS.md)** - Receivers, sentence families, the bridge contract, per-receiver setup
+- **[Docs/WEB_CLIENT.md](Docs/WEB_CLIENT.md)** - The web client's files (`js/`, `css/`), how the scripts load, adding a panel
 - **[Docs/FIELD_FILE_FORMATS.md](Docs/FIELD_FILE_FORMATS.md)** - `field.geojson`, sidecars and coverage tiles: the spec for tools that read or write fields
 
 ## Project Overview
@@ -29,7 +30,8 @@ platform and the UI a single web client.
 ## Architecture
 
 **The web client is the only UI.** `AgOpenWeb.RemoteServer` embeds a web server and serves
-the `wwwroot` CanvasKit PWA (`index.html`, `app.js`, `transport.js`, `i18n.js`). Every head
+the `wwwroot` CanvasKit PWA (`index.html`, the client in `js/`, its styles in `css/`, `transport.js`,
+`i18n.js`; map in `Docs/WEB_CLIENT.md`). Every head
 boots the same guidance backend (`AgOpenWeb.RemoteWiring.WebBackend`: the `MainViewModel`
 "brain" on a `HostLoopDispatcher`, plus the embedded `RemoteServerHost`) and shows that page
 in the platform's own web view; any browser on the LAN can open `http://<host>:5174` too.
@@ -228,7 +230,7 @@ AgOpenWeb may use different/improved formats from AgOpenGPS when it benefits cod
 | `Shared/AgOpenWeb.RemoteServer/RemoteServerHost.cs` | Embedded web server, routes, static assets |
 | `Shared/AgOpenWeb.RemoteServer/SceneProjector.cs` | Host state → DTOs |
 | `Shared/AgOpenWeb.RemoteServer/WireCodec.cs` | Binary wire encoding (pair with `wwwroot/transport.js`) |
-| `Shared/AgOpenWeb.RemoteServer/wwwroot/app.js` | The web client |
+| `Shared/AgOpenWeb.RemoteServer/wwwroot/js/` | The web client, one classic script per feature (`Docs/WEB_CLIENT.md`) |
 | `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n.js` | Client-side translation |
 | `Shared/AgOpenWeb.Models/Track/Track.cs` | Unified track model (AB lines + curves) |
 | `Shared/AgOpenWeb.Models/Base/GeometryMath.cs` | Shared geometry utilities |
@@ -297,17 +299,17 @@ to the system browser, keep the screen awake, localhost HTTP) is listed in
 ## Common Tasks
 
 ### Adding a web command
-1. In `app.js`, send it: `transport.send('mything.do|' + arg)`.
+1. In the feature's file in `js/`, send it: `transport.send('mything.do|' + arg)`.
 2. Route it in `RemoteServerWiring.cs` (or a `config.set` key in `RemoteServerWiring.Helpers.cs`) to a VM method or command.
 3. It needs control automatically; add it to `ObserverIds` only if it changes nothing.
 
 ### Showing new state in the client
 1. Add it to the DTO in `Contracts.cs`, fill it in `SceneProjector` (or the relevant projector).
 2. Encode it in `WireCodec.cs` and decode it in the same order in `transport.js`.
-3. Render it in `app.js`. Frames are versioned by content hash where that matters (`SceneProjector`).
+3. Render it in the feature's file in `js/`. Frames are versioned by content hash where that matters (`SceneProjector`).
 
 ### Adding UI text
-Write it in English; `index.html` needs nothing more, and `app.js` strings use `tr('…')`
+Write it in English; `index.html` needs nothing more, and strings in `js/` use `tr('…')`
 (`tr('Pass {n}', { n })` for values). Then run `Tools/i18n-extract.py` and commit `en.json`.
 See `Docs/TRANSLATIONS.md`.
 
@@ -345,7 +347,7 @@ directions at any time (`ntrip.switch|main|fallback`, `INtripClientService.Switc
 while the fallback is in use after a failure, the main service is tried slowly in the background and a `MainBack` notice
 says when it answers; not when both are one login on one caster. Every switch raises `Notice` and says that RTK may be lost.
 In the web client the Network IO card keeps to the first lines and the switch; NTRIP Settings (`renderNtripSettings` in
-`app.js`: headline, advice, checks, the mode) shows the rest, from the `NtripSessionDto` that ends the Status frame;
+`js/network.js`: headline, advice, checks, the mode) shows the rest, from the `NtripSessionDto` that ends the Status frame;
 `ntrip.use|id` connects with a profile now (`MainViewModel.UseNtripProfileAsync`; the default too in the one-profile mode); the session frame carries
 the profile name and the service in use (`ConnectionState.NtripProfileName/MainText/FallbackText`). A new default profile connects at once; the
 *NTRIP active / disabled* button (`conn.ntripEnabled`) connects the default profile even with its auto-connect off. `ntrip.mountpoints` asks the caster for its
@@ -372,7 +374,7 @@ themselves by DNS-SD (`_aowlink._tcp`) are listed in the card's gear by name (`A
 picked from the list is kept by name too (`VtGatewayName`) and followed to a new address. One to four
 terminals (`AppSettings.VtCount`), as displays in one cab, each implement choosing its terminal in
 its own menu, one card each. Their messages and pictures go to the browsers as `Vt` (with the
-terminal) and `VtImage` frames (`VirtualTerminalRemote`), the painter is in `app.js`, and each
+terminal) and `VtImage` frames (`VirtualTerminalRemote`), the painter is in `js/vt.js`, and each
 card sends `vt.*` commands naming its terminal. Every head has it (iOS: device builds). SharpIsoTerm
 comes as its NuGet package from its GitHub release, pinned by version and SHA-256 in
 `Shared/AgOpenWeb.VirtualTerminal/AgOpenWeb.VirtualTerminal.csproj` and fetched by the build into
@@ -388,12 +390,12 @@ one stack per process.
 from a bookmark list kept on the host (`AppSettings.WebCards`, `webcard.save` / `webcard.delete`,
 the `WebCards` frame); `{host}` in a URL is the AgOpenWeb host as the browser reaches it. The page
 loads from the add-on on its own origin, never through AgOpenWeb; observers get a cover over it.
-Which cards are open, and where, is the browser's (`localStorage`). `WebCards` in `app.js`; plan:
+Which cards are open, and where, is the browser's (`localStorage`). `WebCards` in `js/web-cards.js`; plan:
 `Plans/ADDON_WEB_CARDS_PLAN.md`.
 
 **Card pane** (#456): Screen & Alerts › VT & Web Cards sets Floating (the default), Left or Right,
 per browser. In a split layout the open VT and web cards sit in a pane on that side, two to a
-tab, and the map has the rest of the window (`CardPane` in `app.js`; cards call `track`, `shown`
+tab, and the map has the rest of the window (`CardPane` in `js/card-pane.js`; cards call `track`, `shown`
 and `untrack`). The map's area is set by `setMapArea(l, r)`; what that means for new code:
 - An overlay on the map keeps clear of the pane through `--sal` / `--sar` (the map's insets: the
   pane's width on its side, else the safe area), a full-width bar uses `--map-l` / `--map-r`, and
@@ -417,7 +419,7 @@ and `untrack`). The map's area is set by `setMapArea(l, r)`; what that means for
 ## Code Style
 
 - **Cross-platform parity is mandatory.** All code MUST go in `Shared/` unless it requires platform-specific APIs. Platform projects contain only the shell, DI setup and platform services. See `CONTRIBUTING.md`.
-- The web client is plain HTML/JS: no framework, no build step. Keep `app.js` idioms (DOM overlays for text, CanvasKit for the map).
+- The web client is plain HTML/JS: no framework, no build step. Keep its idioms (DOM overlays for text, CanvasKit for the map). Its scripts are classic scripts sharing one scope: code that runs while loading uses only earlier files, and anything asynchronous starts in `js/frame.js` (`Docs/WEB_CLIENT.md`).
 - Use dependency injection for services
 - Use shared `GeometryMath` utilities instead of duplicating distance/angle calculations
 - Anything written to disk or a wire uses `CultureInfo.InvariantCulture` (see `CONTRIBUTING.md`)

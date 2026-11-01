@@ -22,7 +22,7 @@ namespace AgOpenWeb.Services.Tests;
 /// <item>Project dependencies flow Models → Services → ViewModels / RemoteServer → RemoteWiring.</item>
 /// <item>The web client is <c>index.html</c>, <c>transport.js</c>, <c>i18n.js</c> and its own scripts
 /// (<c>js/</c>) and styles (<c>css/</c>): classic scripts, every one loaded by
-/// <c>index.html</c>, no modules, no workers (Plans/WEB_CLIENT_SPLIT_PLAN.md).</item>
+/// <c>index.html</c>, no modules, no workers (Docs/WEB_CLIENT.md).</item>
 /// <item>Client → host is an <c>id|arg</c> text frame routed in <c>RemoteServerWiring</c>;
 /// host → client is a binary frame from <c>WireCodec</c>. The hub never sends text.</item>
 /// <item>Every command id the client sends has a handler on the host.</item>
@@ -90,7 +90,7 @@ public class CodePathContinuityTests
     // ── The web client ────────────────────────────────────────────────────
 
     // The client's files outside vendor/: the loader and the transport, and the client's own
-    // scripts (js/) and styles (css/) (Plans/WEB_CLIENT_SPLIT_PLAN.md).
+    // scripts (js/) and styles (css/) (Docs/WEB_CLIENT.md).
     private static readonly string[] FixedScripts = { "transport.js", "i18n.js" };
 
     private static string WwwRoot() => Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.RemoteServer", "wwwroot");
