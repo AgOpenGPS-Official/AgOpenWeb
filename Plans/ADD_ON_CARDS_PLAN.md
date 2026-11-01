@@ -1,8 +1,8 @@
 # Add-on cards: VT and web cards, the card pane and the drawer
 
-**Status:** web cards (#503, #512) and the card pane (#513) are merged, with the `CLAUDE.md` section
-"Web cards and the card pane". Left: the drawer, one device run for all of it, the add-on author
-page (§6). Then #456 closes and this plan moves to `Completed/`.
+**Status:** web cards (#503, #512), the card pane (#513) and the drawer (§3) are built, with the
+`CLAUDE.md` section "Web cards and the card pane". Left: one device run for all of it, the add-on
+author page (§6). Then #456 closes and this plan moves to `Completed/`.
 **Date:** 2026-11-01 (from `ADDON_WEB_CARDS_PLAN.md` and `CARD_PANE_SPLIT_PLAN.md`, 2026-10-31)
 **Issue:** #456 (VT: split screen with the terminals on the left or right), widened to the web cards
 and the drawer.
@@ -92,7 +92,9 @@ a split layout the pane is a **drawer**.
   **Full**. A tap toggles Closed and the last open position. With no card open there is no drawer.
 - **Closed.** The pane is hidden (`visibility`/`display`, never moved in the page), so its cards
   keep their state and pages don't reload; the map has the full width. The handle stays on the
-  edge with a count of the open cards.
+  edge with a count of the open cards. The drawer appears Closed when the first card opens
+  (on a VT or Web tap, a layout change, a reload): nothing flies out unasked; the operator
+  pulls it.
 - **Full.** The pane covers the map's width. A **guidance strip** stays along the map side: the
   steer bar or cross-track figure, master and section state, speed; above walking pace it is taller,
   with the light bar. The map stops drawing while covered (a battery saving on a tablet) and redraws
@@ -123,7 +125,7 @@ a split layout the pane is a **drawer**.
 ## 6. Steps left
 
 1. **Drawer** (§3): handle, the three positions and their snapping, the guidance strip, the map
-   paused under Full, the speed context. `CLAUDE.md` section updated.
+   paused under Full, the speed context. `CLAUDE.md` section updated. Done.
 2. **One device run** at 1280×800 on the Galaxy Tab, iPad, and the Windows, macOS and Linux
    (WebKitGTK, on the CM4) launchers:
    - Floating and Split on both sides with 1, 2, 3 and 8 cards;

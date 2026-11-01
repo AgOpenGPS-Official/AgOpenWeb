@@ -405,7 +405,14 @@ and `untrack`). The map's area is set by `setMapArea(l, r)`; what that means for
   `clientX` is `clientX - mapL` on the map (`s2w`, hit tests), and a DOM label placed from `w2s`
   adds `mapL`.
 - A card moved in the page reloads its iframe, so the pane hides and shows cards on a tab switch
-  and moves them only when the layout changes. Plan: `Plans/ADD_ON_CARDS_PLAN.md`.
+  and moves them only when the layout changes.
+- The pane is a **drawer**: Closed (the handle on the window's edge, with the count of open
+  cards), Split (⅓ to ½) or Full (over the map, which the frame loop then doesn't draw:
+  `CardPane.coversMap`; a guidance strip along the top keeps speed, distance from the line,
+  AutoSteer and sections, plus the light/steer bar above walking pace). Only the operator moves
+  it (a drag of the handle snaps on release, a tap toggles Closed); above 2 km/h it can't be
+  pulled to Full; it appears Closed when the first card opens and never closes by itself. Full sets both map insets, so everything on the
+  map is off-screen. Plan: `Plans/ADD_ON_CARDS_PLAN.md`.
 
 ## Debugging Tips
 

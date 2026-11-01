@@ -101,11 +101,14 @@ function skFrame(ts) {
   const rp = updateCamera(); // follow mode + rotation + perspM, once per frame
   maybeSaveView();           // persist tilt/zoom changes (debounced) — issue #35
   sampleCurveMark();         // drop record-curve path dots as the vehicle drives
-  if (skSurface) {
+  // Under a full card drawer the map isn't seen, so it isn't drawn (a tablet's battery); the
+  // first frame after it opens draws from the latest state.
+  if (skSurface && !CardPane.coversMap) {
     try { renderSkia(skSurface.getCanvas(), rp); skSurface.flush(); }
     catch (e) { ckStatus = 'render err: ' + (e && e.message || e); }
   }
   // DOM overlays (independent of the GL surface).
+  CardPane.render();
   updateLightbarText();
   updateTramLights();
   updatePassHud();
