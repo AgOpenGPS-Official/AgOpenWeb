@@ -32,6 +32,8 @@
        - host prompt, toast, GPS lost, on-screen keyboard, the dialog host and its cards;
        - the scripts: CanvasKit, transport, i18n, then js/ in load order. -->
   <canvas id="ck"></canvas>
+  <!-- The letters on the track's points: on the map, under everything else (#522). -->
+  <div id="ab-dot-labels"></div>
   <div id="statusbar">
     <!-- LEFT/RIGHT groups swapped so the fullscreen exit "✕" pill (top-left) only ever
          sits beside the NON-tappable Operator indicator. Left group = Operator indicator,
@@ -148,7 +150,6 @@
   <div id="maptap-hint"></div>
   <button id="maptap-cancel">✕ Cancel</button>
   <div id="maptap-ab">A</div>
-  <div id="ab-dot-labels"></div>
   <!-- Draw-track toolbar. Shown while drawing an AB/curve on the map.
        Undo/Finish appear only in curve mode; Cancel always. -->
   <div id="draw-toolbar">
