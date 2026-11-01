@@ -178,6 +178,7 @@ are suggestions for the maintainers, any of which can be declined without affect
 | A test that the hot-path budgets hold with an observer attached and a file reader running | It guards against any slow or extra client |
 | A check that a stalled or slow observer cannot affect the host | A slow browser is the same case |
 | A CI check that nothing in `Shared/` or `Platforms/` references an add-on (§8) | It keeps the core independent of every add-on |
+| A generic add-on notice in AOW's own page (a banner or toast an add-on can raise: consent, "someone is watching", "order ready"), shown whether or not a card is open or visible | The VT gateway and rate controllers need to tell the driver things too; a card in a Closed drawer cannot |
 | Optional: start a job from a template file; publish AOW's host, port and data root so add-ons need not guess | Repeating jobs; easier add-on setup |
 
 ## 8. Keeping it true: checks
@@ -209,7 +210,7 @@ are suggestions for the maintainers, any of which can be declined without affect
 - [ ] **Web card limits:** is a page that needs the operator's control (pairing, consent) acceptable,
   as for other cards?
 - [ ] **Hidden card:** with the drawer Closed the card is hidden but loaded. Can a card learn that it
-  is hidden (page visibility), so it can refuse watching? Otherwise the generic add-on banner (§7)
+  is hidden (page visibility), so it can refuse watching? Otherwise the generic add-on notice (§7)
   is the only reliable indicator.
 
 ## 10. Phases (the connector and the cloud)
