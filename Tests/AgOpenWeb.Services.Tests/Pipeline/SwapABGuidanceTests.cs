@@ -121,7 +121,7 @@ public class SwapABGuidanceTests
             Name = "T", Points = pts,
             Type = pts.Count == 2 ? Models.Track.TrackType.ABLine : Models.Track.TrackType.Curve,
         };
-        _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         _gpsService.UpdateGpsData(new GpsData
         {

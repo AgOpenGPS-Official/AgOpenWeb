@@ -107,7 +107,7 @@ public class SteeringAlgorithmSelectionTests
         g.StanleyDistanceErrorGain = stanleyDistanceGain;
         _pipeline.SetActiveTrack(
             PassAt(0.5),
-            passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+            passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         _gpsService.UpdateGpsData(new GpsData
         {
@@ -165,7 +165,7 @@ public class SteeringAlgorithmSelectionTests
         ConfigurationStore.Instance.Guidance.IsPurePursuit = false;
         _pipeline.SetActiveTrack(
             Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0)),
-            passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+            passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(false);
         _gpsService.UpdateGpsData(new GpsData
         {
@@ -189,7 +189,7 @@ public class SteeringAlgorithmSelectionTests
         g.StanleyDistanceErrorGain = 5;
         _pipeline.SetActiveTrack(
             PassAt(8),
-            passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+            passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         _gpsService.UpdateGpsData(new GpsData
         {

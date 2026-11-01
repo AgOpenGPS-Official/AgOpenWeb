@@ -43,7 +43,7 @@ public interface IGpsPipelineService
     /// <summary>
     /// Set the active track and current pass info.
     /// </summary>
-    void SetActiveTrack(Models.Track.Track? track, int passNumber, double nudgeOffset, bool isOnBoundary);
+    void SetActiveTrack(Models.Track.Track? track, int passNumber, double nudgeOffset);
 
     /// <summary>
     /// Enable/disable YouTurn processing.

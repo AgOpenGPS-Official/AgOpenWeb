@@ -462,6 +462,7 @@ function updateLineWidths() {
   const wb = (m) => Math.min(Math.max(m * z, 1), 3.5);
   SKP.boundary.setStrokeWidth(wb(3.0));   // boundaryOuter 1 × 3
   SKP.boundaryInner.setStrokeWidth(wb(3.0)); // boundaryInner 1 × 3
+  SKP.boundaryOut.setStrokeWidth(3 * 2 * k);  // out of bounds: AgOpenGPS ABLine.lineWidth × 3 (#494)
   SKP.headland.setStrokeWidth(w(3.0));   // headland 1 × 3
   SKP.guidance.setStrokeWidth(w(1.5));   // trackActive 0.5 × 3
   SKP.guidanceOutline.setStrokeWidth(w(1.5) * 3); // AgOpenGPS draws the current line over black, 3 × its width

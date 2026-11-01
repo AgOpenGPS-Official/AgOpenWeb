@@ -130,6 +130,7 @@ window.RemoteTransport = {
           op.moduleNotSteering = !!u8(); // #126 — engaged, module reports not steering
           const chartGpsHeading = f32(); // #111 — heading chart, GPS fix-to-fix
           tools.tramLights = u8(); // #451 — bit 0/1 R/L on a tram, 2/3 R/L forced, 4 show
+          op.outOfBounds = !!u8(); // #494 — pivot outside the field: red boundary, orange frame
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool, op, roll, tools,

@@ -107,7 +107,7 @@ public class FreeDriveCrossTrackTests
     private void SetNorthLine(double easting) =>
         _pipeline.SetActiveTrack(
             Models.Track.Track.FromABLine("AB", new Vec3(easting - 3, -100, 0), new Vec3(easting - 3, 100, 0)),
-            passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+            passNumber: 0, nudgeOffset: 0);
 
     [Test]
     public void FreeDrive_ReportsTheDistanceToThePass()

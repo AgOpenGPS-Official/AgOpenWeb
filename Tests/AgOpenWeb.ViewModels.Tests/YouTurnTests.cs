@@ -169,8 +169,7 @@ public class YouTurnTests
         builder.GpsPipelineService.Received().SetActiveTrack(
             Arg.Any<Track?>(),
             Arg.Any<int>(),
-            Arg.Any<double>(),
-            Arg.Any<bool>());
+            Arg.Any<double>());
     }
 
     // ── Phase D D4/D5 — guidance-command intent channel locks ──────────

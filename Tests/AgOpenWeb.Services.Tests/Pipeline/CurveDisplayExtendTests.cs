@@ -104,7 +104,7 @@ public class CurveDisplayExtendTests
     // reselect: false, as the host does: the cycle keeps the pass it picked.
     private GuidanceSnapshot Cycle(Models.Track.Track track, int pass, bool autoSteer, double east = 0, bool reselect = true)
     {
-        if (reselect) _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0, isOnBoundary: false);
+        if (reselect) _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(autoSteer);
         for (int i = 0; i < 3; i++)
             _gpsService.UpdateGpsData(new GpsData

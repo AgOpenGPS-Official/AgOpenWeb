@@ -194,7 +194,10 @@ public record TickDto(
     // Tram lights (#451, FieldToolsState.TramLights): bit 0/1 right/left on a tram track,
     // bit 2/3 right/left forced on by hand, bit 4 = show the lights (Tram tab "Display"
     // on, a tram display mode on, and a tool wider than the wheel track).
-    int TramLights);
+    int TramLights,
+    // The pivot is outside the field (#494, FieldState.IsOutOfBounds): the boundary is drawn
+    // thick and red and the map gets an orange frame, as AgOpenGPS.
+    bool IsOutOfBounds);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed

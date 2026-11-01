@@ -256,46 +256,4 @@ public partial class MainViewModel
     }
 
     #endregion
-
-    #region VM utilities (used outside YouTurn too)
-
-    /// <summary>
-    /// Check if a track runs along the outer boundary (high percentage of points within
-    /// <paramref name="threshold"/> meters). Tracks that do skip the boundary-disengage check
-    /// on the first pass.
-    /// </summary>
-    private bool IsTrackOnBoundary(Track? track, double threshold = 5.0, double minOverlapPercent = 0.5)
-    {
-        if (track == null || track.Points.Count == 0) return false;
-        if (State.Field.CurrentBoundary?.OuterBoundary == null || !State.Field.CurrentBoundary.OuterBoundary.IsValid) return false;
-
-        int pointsNearBoundary = 0;
-        foreach (var point in track.Points)
-        {
-            if (DistanceToBoundary(point.Easting, point.Northing) < threshold)
-                pointsNearBoundary++;
-        }
-
-        return (double)pointsNearBoundary / track.Points.Count >= minOverlapPercent;
-    }
-
-    private double DistanceToBoundary(double easting, double northing)
-    {
-        if (State.Field.CurrentBoundary?.OuterBoundary == null || !State.Field.CurrentBoundary.OuterBoundary.IsValid)
-            return double.MaxValue;
-
-        var points = State.Field.CurrentBoundary.OuterBoundary.Points;
-        double minDist = double.MaxValue;
-        for (int i = 0; i < points.Count; i++)
-        {
-            var p1 = points[i];
-            var p2 = points[(i + 1) % points.Count];
-            double dist = GeometryMath.PointToSegmentDistance(
-                easting, northing, p1.Easting, p1.Northing, p2.Easting, p2.Northing);
-            if (dist < minDist) minDist = dist;
-        }
-        return minDist;
-    }
-
-    #endregion
 }
