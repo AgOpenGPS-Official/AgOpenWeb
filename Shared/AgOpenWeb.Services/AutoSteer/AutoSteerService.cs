@@ -634,11 +634,12 @@ public class AutoSteerService : IAutoSteerService
         _udpService.SendToModules(pgn);
     }
 
-    public void SetMachineState(ulong sectionBits, bool isInUTurn, byte hydLiftState = 0)
+    public void SetMachineState(ulong sectionBits, bool isInUTurn, byte hydLiftState = 0, bool outOfBounds = false)
     {
         _state.SectionStates = sectionBits;
         _state.IsInUTurn = isInUTurn;
         _state.HydLiftState = hydLiftState;
+        _state.GeoStopState = outOfBounds ? (byte)1 : (byte)0; // PGN 239 byte 9 (#494)
     }
 
     public void SetSectionBits(ulong sectionBits) => _state.SectionStates = sectionBits;

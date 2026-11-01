@@ -102,7 +102,7 @@ public class CurveGuideLinesTests
     // at the origin heading north, guiding.
     private GuidanceSnapshot Cycle(Models.Track.Track track, int pass)
     {
-        _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         for (int i = 0; i < 3; i++)
             _gpsService.UpdateGpsData(new GpsData

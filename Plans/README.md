@@ -4,8 +4,7 @@ Work being done or agreed, one file per plan. Each starts with a **Status** line
 
 | Plan | Status |
 |---|---|
-| [ADDON_WEB_CARDS_PLAN.md](ADDON_WEB_CARDS_PLAN.md) | Step 1 done (#503), `CLAUDE.md` section done; heads and the add-on author page left |
-| [CARD_PANE_SPLIT_PLAN.md](CARD_PANE_SPLIT_PLAN.md) | Built (#513); device checks left: VT and web cards in a pane beside the map (#456) |
+| [ADD_ON_CARDS_PLAN.md](ADD_ON_CARDS_PLAN.md) | Web cards and the card pane built (#503, #513); the drawer, one device run and the add-on author page left (#456) |
 | [FIELD_SELECTION_AND_CLIENTS_PLAN.md](FIELD_SELECTION_AND_CLIENTS_PLAN.md) | Proposed, for maintainer approval: ISOXML customer/farm per field, then the Field Selection and Jobs screens |
 | [GPS_RECEIVER_SENTENCES_PLAN.md](GPS_RECEIVER_SENTENCES_PLAN.md) | In progress: receivers straight to the app |
 | [ISOBUS_VT_TRANSPORTS.md](ISOBUS_VT_TRANSPORTS.md) | In progress: how the VT reaches the implement bus |

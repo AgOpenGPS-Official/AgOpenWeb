@@ -108,7 +108,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     private bool _autoSteerEngaged;
     private Models.Track.Track? _activeTrack;
-    private bool _isTrackOnBoundary;
 
     // Cached offset-display-track. UpdateDisplayTrack used to allocate a fresh
     // Models.Track.Track every GPS cycle while shifted off pass 0; the
@@ -200,7 +199,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     // ── Headland proximity ──────────────────────────────────────────────
     private readonly HeadlandDetectionService _headlandDetector = new();
-    private readonly PolygonIndexCache _headlandIndex = new(); // the hydraulic lift's test
+    private readonly PolygonIndexCache _headlandIndex = new(); // the hydraulic lift's and out-of-bounds tests
+
+    // Out of bounds (#494): the pivot outside the field. Kept between cycles: during a U-turn
+    // outside the turn area it holds its last value, as AgOpenGPS's mc.isOutOfBounds does.
+    private bool _isOutOfBounds;
 
     // ── RTK quality tracking ────────────────────────────────────────────
     private int _previousFixQuality;
@@ -283,14 +286,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
     }
 
-    public void SetActiveTrack(Models.Track.Track? track, int passNumber, double nudgeOffset, bool isOnBoundary)
+    public void SetActiveTrack(Models.Track.Track? track, int passNumber, double nudgeOffset)
     {
         lock (_stateLock)
         {
             _activeTrack = track;
             _guidanceWorking.HowManyPathsAway = passNumber;
             _guidanceWorking.NudgeOffset = nudgeOffset;
-            _isTrackOnBoundary = isOnBoundary;
             // Reset guidance state when track changes so we do a global search
             _trackGuidanceState = null;
             _lastCrossTrackError = 0; // a new line has no previous XTE for the look-ahead (#110)
@@ -596,7 +598,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
         Models.Track.Track? track;
         int passNumber;
         double nudgeOffset;
-        bool isTrackOnBoundary;
         bool youTurnEnabled;
         int uTurnSkipRows;
         bool isSkipWorkedMode;
@@ -626,7 +627,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // SetActiveTrack (UI-thread) writes them under the same lock.
             passNumber = _guidanceWorking.HowManyPathsAway;
             nudgeOffset = _guidanceWorking.NudgeOffset;
-            isTrackOnBoundary = _isTrackOnBoundary;
             youTurnEnabled = _youTurnEnabled;
             uTurnSkipRows = _uTurnSkipRows;
             isSkipWorkedMode = _isSkipWorkedMode;
@@ -982,22 +982,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // Map positions are now sent via GpsCycleResult → ViewModel → MapRenderState.
         // The pipeline does NOT call _mapService directly.
 
-        // ── (5) Boundary check — auto-disengage if outside ──────────────
+        // ── (5) Out of bounds (#494) ────────────────────────────────────
+        // Leaving the field never switches autosteer off. As AgOpenGPS (Position.designer.cs,
+        // "Youturn"): the boundary shows it and PGN 239 carries geoStop for the machine module.
         bool autoSteerDisengaged = false;
         string? disengageReason = null;
-
-        // During U-turns the tractor may go slightly outside the headland but
-        // must NEVER leave the outer field boundary. Only skip for on-boundary pass 0.
-        bool skipBoundaryCheck = isTrackOnBoundary && passNumber == 0;
-        if (autoSteerEngaged && !skipBoundaryCheck
-            && boundary?.OuterBoundary is { IsValid: true } outer
-            && !outer.IsPointInside(driftedEasting, driftedNorthing))
-        {
-            autoSteerEngaged = false;
-            autoSteerDisengaged = true;
-            disengageReason = "AutoSteer disengaged - outside boundary";
-            lock (_stateLock) _autoSteerEngaged = false;
-        }
+        _isOutOfBounds = OutOfBounds(boundary, headlandLine, youTurnEnabled && hasValidHeadlandLine,
+            driftedEasting, driftedNorthing);
 
         // (5b) Steering speed limits (#106) — like AgOpenGPS, and like it not on the simulator.
         if (autoSteerEngaged && !simulatorEnabled)
@@ -1302,7 +1293,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _autoSteerService.SetMachineState(
             _sectionControlService.GetSectionBits64(),
             isInYouTurn,
-            hydLiftState);
+            hydLiftState,
+            _isOutOfBounds);
 
         // ── (9) AutoSteer pipeline (PGN/latency) ────────────────────────
         _autoSteerService.ProcessSimulatedPosition(
@@ -1412,6 +1404,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             IsAutoSteerEngaged = autoSteerEngaged,
             AutoSteerDisengagedThisCycle = autoSteerDisengaged,
             HydLiftState = hydLiftState,
+            IsOutOfBounds = _isOutOfBounds,
             ContourRef = _contourRefShown,
             IsContourLocked = _contourLockedShown,
             HasContoursToSave = _contourHasPending,
@@ -2243,6 +2236,28 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var output = _headlandDetector.DetectHeadland(input);
         distance = output.HeadlandDistance;
         warning = output.ShouldTriggerWarning;
+    }
+
+    /// <summary>
+    /// Is the pivot out of bounds (#494)? AgOpenGPS mc.isOutOfBounds (CFence.IsPointInsideFenceArea):
+    /// outside the outer boundary or inside any inner one, drive-through or not (an inner boundary
+    /// is an obstacle: a creek, a wet hole, a pylon); no boundary, never. With automatic U-turns on, inside the turn area
+    /// (the headland line) is in bounds, and outside it the test is made only when no turn is
+    /// under way: a turn reaching past the turn line keeps the last answer.
+    /// </summary>
+    private bool OutOfBounds(Boundary? boundary, List<Vec3>? headlandLine, bool youTurnArea,
+        double easting, double northing)
+    {
+        if (boundary?.OuterBoundary is not { IsValid: true }) return false;
+        if (youTurnArea)
+        {
+            if (_headlandIndex.Contains(headlandLine!, easting, northing)) return false;
+            if (_youTurn.IsTriggered || _youTurn.IsExecuting) return _isOutOfBounds;
+        }
+        if (!boundary.OuterBoundary.IsPointInside(easting, northing)) return true;
+        foreach (var inner in boundary.InnerBoundaries)
+            if (inner.IsPointInside(easting, northing)) return true;
+        return false;
     }
 
     /// <summary>

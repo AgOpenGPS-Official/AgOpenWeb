@@ -499,7 +499,7 @@ public class AutoSteerUTurnNUnitTests
             SendGpsAt(abEasting, HEADLAND + 5, heading: 0, count: 20);
         }
 
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         _pipeline.SetYouTurnEnabled(true);
 
@@ -673,7 +673,7 @@ public class AutoSteerUTurnNUnitTests
             },
             Type = AgOpenWeb.Models.Track.TrackType.ABLine
         };
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         _pipeline.SetYouTurnEnabled(true);
 
@@ -851,7 +851,7 @@ public class AutoSteerUTurnNUnitTests
             Type = AgOpenWeb.Models.Track.TrackType.ABLine
         };
         SendGpsAt(abEasting, 45, heading: 0, count: 20);
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         _pipeline.SetYouTurnEnabled(youTurnEnabled);
         lock (_results) _results.Clear();
@@ -906,7 +906,7 @@ public class AutoSteerUTurnNUnitTests
             Type = AgOpenWeb.Models.Track.TrackType.ABLine
         };
         SendGpsAt(abEasting, 45, heading: 0, count: 20);
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         _pipeline.SetYouTurnEnabled(true);
         lock (_results) _results.Clear();
@@ -963,7 +963,7 @@ public class AutoSteerUTurnNUnitTests
         };
         double startN = heading < 90 ? 40 : 160;
         SendGpsAt(abEasting, startN, heading: heading, count: 20);
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         _pipeline.SetYouTurnEnabled(false);
         lock (_results) _results.Clear();

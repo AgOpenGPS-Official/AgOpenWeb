@@ -98,7 +98,7 @@ public class PassModelTests
 
     private GuidanceSnapshot FreeDriveOn(Models.Track.Track track, int pass = 0)
     {
-        _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(false);
         _gpsService.UpdateGpsData(new GpsData
         {

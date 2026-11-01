@@ -170,7 +170,7 @@ namespace AgOpenWeb.Models
         /// gateway.</summary>
         public string VtAdapter { get; set; } = string.Empty;
 
-        /// <summary>The add-on pages a web card can show (Plans/ADDON_WEB_CARDS_PLAN.md): the same
+        /// <summary>The add-on pages a web card can show (Plans/ADD_ON_CARDS_PLAN.md): the same
         /// list on every browser. Replaced whole on a change, never edited in place.</summary>
         public List<WebCardBookmark> WebCards { get; set; } = new();
 

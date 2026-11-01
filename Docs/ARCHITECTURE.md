@@ -741,7 +741,8 @@ Byte 5:  U-turn state
 Byte 6:  Speed × 10 (single byte)
 Byte 7:  Hydraulic lift state
 Byte 8:  Tramline state
-Byte 9:  Geo Stop
+Byte 9:  Geo Stop: 1 while the pivot is outside the field (outside the outer
+         boundary or inside an inner one), else 0. Autosteer stays on (#494).
 Byte 10: Reserved
 Byte 11: SC1to8
 Byte 12: SC9to16

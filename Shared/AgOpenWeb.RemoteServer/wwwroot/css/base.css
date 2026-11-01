@@ -10,7 +10,7 @@
   --sab: calc(env(safe-area-inset-bottom, 0px) / var(--ui-zoom));
   /* The window's left/right safe-area insets, and the map's: in the split layout the card
      pane takes one side (--map-l / --map-r, set by CardPane in js/card-pane.js) and the map's
-     overlays keep clear of it as of a notch. Plans/CARD_PANE_SPLIT_PLAN.md §2. */
+     overlays keep clear of it as of a notch. Plans/ADD_ON_CARDS_PLAN.md §2. */
   --win-sal: calc(env(safe-area-inset-left, 0px) / var(--ui-zoom));
   --win-sar: calc(env(safe-area-inset-right, 0px) / var(--ui-zoom));
   --map-l: 0px; --map-r: 0px;

@@ -5,7 +5,7 @@
 // Web cards.
 
 // ---- Web cards ----
-// Add-ons' own web pages in cards (Plans/ADDON_WEB_CARDS_PLAN.md), apart from the VT cards. The
+// Add-ons' own web pages in cards (Plans/ADD_ON_CARDS_PLAN.md), apart from the VT cards. The
 // bookmarks (name + URL) are the host's, the same on every browser; which cards are open, their
 // page, size and place are this browser's (localStorage). {host} in a URL is the AgOpenWeb host
 // as this browser reaches it. The page loads from the add-on itself, on its own origin. A browser

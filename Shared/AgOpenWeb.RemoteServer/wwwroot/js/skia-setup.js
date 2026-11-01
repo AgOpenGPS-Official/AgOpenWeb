@@ -103,7 +103,7 @@ if (window.ResizeObserver) {
 }
 addEventListener('resize', placeCorner);
 addEventListener('maparea', placeCorner);
-// Menu panels open beside the left nav and may cover the card pane (Plans/CARD_PANE_SPLIT_PLAN.md
+// Menu panels open beside the left nav and may cover the card pane (Plans/ADD_ON_CARDS_PLAN.md
 // §1.8). With the pane on the left the nav sits far to the right, so a panel too wide for the
 // rest of the window is moved left until it fits; a panel opening grows from 0, which the
 // observer sees.
@@ -171,6 +171,9 @@ function buildSkPaints() {
   SKP = {
     // Widths are set per frame in updateLineWidths() (world metres × pxPerM).
     boundary: mk('rgba(242,112,89,0.8)', 5), boundaryInner: mk('rgb(245,245,77)', 5), headland: mk('rgb(251,235,107)', 4),
+    // Out of bounds (#494, AgOpenGPS CFence / OpenGL.Designer): every boundary thick and red,
+    // and an orange frame round the map.
+    boundaryOut: mk('rgb(242,64,64)', 6), outFrame: mk('rgb(255,168,84)', 8),
     track: mk('#ffd24a', 4), reference: mk('rgb(180,100,255)', 5, [9, 7]),
     guidance: mk('rgb(252,86,186)', 5), guidanceOutline: mk('rgb(0,0,0)', 15), uturn: mk('rgb(77,242,77)', 5), next: mk('rgb(0,200,200)', 4),
     // Extra guidelines (adjacent passes) — green(51,153,50,153)

@@ -12,7 +12,7 @@
 .vt-ws { max-width: 180px; height: 22px; font-size: 12px; background: var(--bg-sunken); color: var(--text-2);
   border: 1px solid var(--border); border-radius: 4px; }
 .vt-body { position: relative; display: flex; gap: 4px; padding: 4px; }
-/* Web cards (Plans/ADDON_WEB_CARDS_PLAN.md): an add-on's own page from the bookmark list, in
+/* Web cards (Plans/ADD_ON_CARDS_PLAN.md): an add-on's own page from the bookmark list, in
    a frame. Never wider or taller than the screen leaves room for. */
 .web-card { top: calc(var(--bar-bottom) + 24px); width: auto; --ww: 640px; --wh: 420px; }
 /* Card pane (CardPane in js/card-pane.js): the split layout's VT and web cards beside the map, two
@@ -28,13 +28,71 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #cardpane .cp-tab.active { background: var(--sel); border-color: #4A90D9; color: var(--text); }
 #cardpane .cp-slots { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; overflow: hidden; }
-/* The divider is the pane's own strip on the map's side, clear of the map's side nav. */
+/* The handle is the pane's own strip on the map's side, clear of the map's side nav: dragged,
+   it moves the pane's edge (Closed / Split / Full); tapped, it toggles Closed. */
 #cardpane { padding-right: 16px; }
 #cardpane.right { padding-right: var(--win-sar); padding-left: 16px; }
-#cardpane .cp-divider { position: absolute; top: 0; bottom: 0; right: 0; width: 16px; cursor: ew-resize; touch-action: none; }
-#cardpane.right .cp-divider { right: auto; left: 0; }
-#cardpane .cp-divider::after { content: ''; position: absolute; top: 50%; left: 5px; width: 6px; height: 64px; margin-top: -32px;
-  border-radius: 3px; background: var(--border-2); }
+#cardpane .cp-handle { position: absolute; top: 0; bottom: 0; right: 0; width: 16px; cursor: ew-resize; touch-action: none; }
+#cardpane.right .cp-handle { right: auto; left: 0; }
+#cardpane .cp-handle::after { content: ''; position: absolute; top: 50%; left: 5px; width: 6px; height: 64px; margin-top: -32px;
+  border-radius: 3px; background: rgba(var(--ov),0.35); }
+/* The grab tab: a finger's worth, styled as the side nav and sitting just under it, sticking
+   out of the handle over the map (CardPane sets its top); the chevron points the way a tap
+   moves the drawer. In Full the handle is as wide as the tab and the tab sits inside it. */
+#cardpane .cp-grab { position: absolute; left: 100%; top: 80px; width: 64px; height: 120px; box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  background: var(--float-bg); border: 1px solid var(--border-2); border-left: 0; border-radius: 0 10px 10px 0;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5); color: var(--text); cursor: pointer; }
+#cardpane .cp-grab svg { display: block; }
+#cardpane .cp-grab.flip svg { transform: scaleX(-1); }
+#cardpane.right .cp-grab { left: auto; right: 100%; border-left: 1px solid var(--border-2); border-right: 0; border-radius: 10px 0 0 10px; }
+#cardpane.full .cp-handle { width: 64px; }
+#cardpane.full .cp-grab { left: auto; right: 0; border-left: 1px solid var(--border-2); border-right: 0; border-radius: 10px 0 0 10px; }
+#cardpane.full.right .cp-grab { right: auto; left: 0; border-right: 1px solid var(--border-2); border-left: 0; border-radius: 0 10px 10px 0; }
+/* While the handle is dragged (CardPane showGuides / dragZone): the guide lines at a third and
+   a half of the window, the lit one for the zone the edge is in, and the halo round the tab. */
+#cp-guides { display: none; position: fixed; inset: 0; z-index: 30; pointer-events: none; }
+#cp-guides.show { display: block; }
+.cp-guide { position: absolute; top: var(--bar-bottom); bottom: var(--sab); width: 0; border-left: 2px dashed rgba(var(--ov),0.35); }
+.cp-guide span { position: absolute; top: 14px; left: 10px; padding: 4px 12px; border-radius: 999px; white-space: nowrap;
+  background: rgba(var(--ov),0.12); color: var(--text-2); font: 700 15px system-ui, sans-serif; }
+.cp-guide[data-zone="split"].lit { border-left: 4px solid #4A90D9; }
+.cp-guide[data-zone="full"].lit { border-left: 4px solid #2ecc71; }
+.cp-guide.lit span { color: #fff; }
+.cp-guide[data-zone="split"].lit span { background: #4A90D9; }
+.cp-guide[data-zone="full"].lit span { background: #2ecc71; }
+#cardpane.drag-closed .cp-grab { box-shadow: 0 0 0 8px rgba(160,160,160,0.55); }
+#cardpane.drag-split .cp-grab { box-shadow: 0 0 0 8px rgba(74,144,217,0.75); }
+#cardpane.drag-full .cp-grab { box-shadow: 0 0 0 8px rgba(46,204,113,0.75); }
+/* Closed: only the handle and its tab show, with the count of the open cards; the cards stay
+   in the page (hidden, not moved) so a web page keeps its state. */
+#cardpane .cp-count { display: none; min-width: 20px; height: 20px; padding: 0 5px; box-sizing: border-box; border-radius: 10px;
+  background: #4A90D9; color: #fff; font: 700 12px/20px system-ui, sans-serif; text-align: center; }
+#cardpane.closed .cp-count { display: block; }
+#cardpane.closed .cp-tabs, #cardpane.closed .cp-slots { visibility: hidden; }
+/* Full: over the map, the handle on the window's far edge, two cards to a tab side by side, and
+   the guidance strip along the top (CardPane.render): speed, distance from the line, AutoSteer,
+   sections; above walking pace (.moving) the light bar's cells or the steer bar on a second row. */
+#cardpane.full { padding-right: calc(64px + var(--win-sar)); }
+#cardpane.full.right { padding-left: calc(64px + var(--win-sal)); padding-right: var(--win-sar); }
+#cardpane.full .cp-slots { flex-direction: row; justify-content: center; align-items: center; }
+#cardpane .cp-strip { display: none; flex: none; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 4px 12px;
+  min-height: 40px; box-sizing: border-box; border-bottom: 1px solid var(--border); color: var(--text-2);
+  font: 600 15px system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+#cardpane.full .cp-strip { display: flex; }
+.cp-speed b { font-size: 22px; color: var(--text); }
+.cp-speed small { font-size: 11px; color: var(--text-dim); }
+.cp-xte { min-width: 96px; }
+.cp-xte .cp-arrow { margin-right: 5px; }
+.cp-dot { display: inline-block; width: 13px; height: 13px; border-radius: 50%; background: #6b7280; vertical-align: -1px; }
+.cp-secs { display: flex; gap: 3px; }
+.cp-secs i { display: block; width: 16px; height: 16px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.5); }
+.cp-bar { display: none; flex-basis: 100%; height: 20px; justify-content: center; align-items: center; gap: 4px; }
+#cardpane.full.moving .cp-bar { display: flex; }
+.cp-bar i { display: block; width: 18px; height: 14px; border-radius: 2px; background: #1c2230; }
+.cp-bar .cp-mid { width: 20px; }
+.cp-sbar { position: relative; width: 60%; height: 8px; background: rgba(var(--ov),0.1); border-radius: 4px; }
+.cp-sbar i { position: absolute; top: 0; height: 8px; width: 0; border-radius: 4px; background: #f2fb66; }
 .chart-card.in-pane { position: static; flex: none; box-shadow: none; }
 .chart-card.in-pane.cp-hide { display: none !important; }
 .chart-card.in-pane .chart-hdr { cursor: default; }

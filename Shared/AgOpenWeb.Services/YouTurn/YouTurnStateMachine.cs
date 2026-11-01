@@ -73,6 +73,13 @@ public sealed class YouTurnStateMachine
     private readonly Dictionary<int, bool> _coveredPasses = new();
     private (List<int>? Plan, Models.Track.Track? Track, double Nudge, Boundary? Boundary, IReadOnlyList<Vec3>? Headland) _coveredPassesKey;
 
+    // Which way the last turn stepped across the field (+1 to a higher pass, -1 lower) and on
+    // which track (by name: a nudge or edit makes a new Track). A normal turn keeps stepping that
+    // way, as AgOpenGPS does by flipping isTurnLeft after each turn, so the work goes on across
+    // the field and a swapped turn (the U-turn arrow) carries on to the new side (#523).
+    private int _lastStep;
+    private string? _lastStepTrack;
+
     public YouTurnStateMachine(
         YouTurnCreationService creation,
         YouTurnPathingService pathing,
@@ -943,8 +950,9 @@ public sealed class YouTurnStateMachine
         YouTurnWorkingState turn,
         YouTurnEffects effects)
     {
+        bool? keepPositive = _lastStep != 0 && _lastStepTrack == track.Name ? _lastStep > 0 : null;
         var (nextLineInside, positiveDirection) = _pathing.WouldNextLineBeInsideBoundary(
-            track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows);
+            track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive);
 
         _logger.LogDebug("[YouTurn] Creating turn? nextLineInside={Inside} positiveDir={Dir}", nextLineInside, positiveDirection);
         if (!nextLineInside)
@@ -1056,6 +1064,7 @@ public sealed class YouTurnStateMachine
         }
 
         var config = _configStore;
+        int passBefore = guidance.HowManyPathsAway;
 
         if (turn.ReturnPassTargetPath.HasValue)
         {
@@ -1097,6 +1106,9 @@ public sealed class YouTurnStateMachine
             _logger.LogDebug("[YouTurn] Turn complete! Normal: offset {Sign} by {Change}",
                 positiveOffset ? "positive" : "negative", offsetChange);
         }
+
+        _lastStep = Math.Sign(guidance.HowManyPathsAway - passBefore);
+        _lastStepTrack = ctx.SelectedTrack?.Name;
 
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         _logger.LogDebug("[YouTurn] Now on path {Path} ({Off:F1}m from reference)",

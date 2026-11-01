@@ -15,10 +15,11 @@ function renderSkia(canvas, rp) {
   drawCoverageSk(canvas);
   drawCoverageEdgeSk(canvas); // crisp vector perimeter over the raster (server-fed)
   drawGridSk(canvas);
+  const outOfBounds = !!(tick && tick.op && tick.op.outOfBounds); // #494
   if (scene) {
     for (let bi = 0; bi < scene.boundaries.length; bi++)
-      strokePtsSk(canvas, scene.boundaries[bi], true,
-        (scene.boundaryInner && scene.boundaryInner[bi]) ? SKP.boundaryInner : SKP.boundary);
+      strokePtsSk(canvas, scene.boundaries[bi], true, outOfBounds ? SKP.boundaryOut
+        : (scene.boundaryInner && scene.boundaryInner[bi]) ? SKP.boundaryInner : SKP.boundary);
     // Headland line shows only when the headland is ON (the bottom-nav headland button).
     if (scene.headland && tick && tick.tools && tick.tools.headlandOn)
       strokePtsSk(canvas, scene.headland, true, SKP.headland);
@@ -63,6 +64,7 @@ function renderSkia(canvas, rp) {
   if (rp) { vehicleSk(canvas, rp); svennArrowSk(canvas, rp); }
   drawGoalSk(canvas); // #95 — Pure Pursuit target (over the vehicle)
   lightbarSk(canvas); // screen-space overlay, still inside the dpr scale
+  if (outOfBounds) canvas.drawRect(CK.LTRBRect(4, 4, vw - 4, vh - 4), SKP.outFrame); // #494
   canvas.restore();
 }
 // The single render loop. Window rAF (not surface.requestAnimationFrame) so it
@@ -99,11 +101,14 @@ function skFrame(ts) {
   const rp = updateCamera(); // follow mode + rotation + perspM, once per frame
   maybeSaveView();           // persist tilt/zoom changes (debounced) — issue #35
   sampleCurveMark();         // drop record-curve path dots as the vehicle drives
-  if (skSurface) {
+  // Under a full card drawer the map isn't seen, so it isn't drawn (a tablet's battery); the
+  // first frame after it opens draws from the latest state.
+  if (skSurface && !CardPane.coversMap) {
     try { renderSkia(skSurface.getCanvas(), rp); skSurface.flush(); }
     catch (e) { ckStatus = 'render err: ' + (e && e.message || e); }
   }
   // DOM overlays (independent of the GL surface).
+  CardPane.render();
   updateLightbarText();
   updateTramLights();
   updatePassHud();

@@ -133,6 +133,16 @@ public class FieldState : ObservableObject
         set => SetProperty(ref _headlandProximityWarning, value);
     }
 
+    /// <summary>
+    /// The pivot is outside the field (#494; GpsCycleResult.IsOutOfBounds).
+    /// </summary>
+    private bool _isOutOfBounds;
+    public bool IsOutOfBounds
+    {
+        get => _isOutOfBounds;
+        set => SetProperty(ref _isOutOfBounds, value);
+    }
+
     public bool HasHeadland => HeadlandLine != null && HeadlandLine.Count > 0;
 
     // Field origin (local plane reference)
@@ -193,6 +203,7 @@ public class FieldState : ObservableObject
         HeadlandDistance = 0;
         HeadlandProximityDistance = null;
         HeadlandProximityWarning = false;
+        IsOutOfBounds = false;
         DriftNorthing = DriftEasting = 0;
         OriginLatitude = OriginLongitude = 0;
         LocalPlane = null;

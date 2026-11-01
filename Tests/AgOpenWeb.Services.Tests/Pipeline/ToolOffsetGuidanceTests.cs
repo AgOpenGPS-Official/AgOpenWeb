@@ -110,7 +110,7 @@ public class ToolOffsetGuidanceTests
             Name = "T", Points = pts,
             Type = pts.Count == 2 ? Models.Track.TrackType.ABLine : Models.Track.TrackType.Curve,
         };
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         for (int i = 0; i < 3; i++) // the first cycle learns the direction of travel
             _gpsService.UpdateGpsData(new GpsData

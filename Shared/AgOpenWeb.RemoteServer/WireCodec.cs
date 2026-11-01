@@ -682,6 +682,7 @@ public static class WireCodec
         w.Write((byte)(t.ModuleNotSteering ? 1 : 0)); // #126 — engaged but module not steering
         w.Write((float)t.ChartGpsHeading); // f32 — heading chart GPS fix-to-fix (#111)
         w.Write((byte)t.TramLights);  // #451 — tram lights bits
+        w.Write((byte)(t.IsOutOfBounds ? 1 : 0)); // #494 — pivot outside the field
         return ms.ToArray();
     }
 
