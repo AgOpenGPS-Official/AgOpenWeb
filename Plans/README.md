@@ -6,6 +6,9 @@ Work being done or agreed, one file per plan. Each starts with a **Status** line
 |---|---|
 | [ADDON_WEB_CARDS_PLAN.md](ADDON_WEB_CARDS_PLAN.md) | Step 1 done (#503), `CLAUDE.md` section done; heads and the add-on author page left |
 | [CARD_PANE_SPLIT_PLAN.md](CARD_PANE_SPLIT_PLAN.md) | Built (#513); device checks left: VT and web cards in a pane beside the map (#456) |
+| [ASL_MASTERPLAN.md](ASL_MASTERPLAN.md) | Proposed, awaiting maintainer approval: AgShareLive, the cloud side of AOW (organisations and roles, file-faithful sync, jobs, live fleet, several machines on a field) |
+| [AGSHARE_JOBS_SYNC_PLAN.md](AGSHARE_JOBS_SYNC_PLAN.md) | Superseded by ASL_MASTERPLAN.md |
+| [FIELD_SELECTION_AND_CLIENTS_PLAN.md](FIELD_SELECTION_AND_CLIENTS_PLAN.md) | Proposed, awaiting maintainer approval: ISOXML Customer/Farm per field, then Field Selection + Jobs screens |
 | [GPS_RECEIVER_SENTENCES_PLAN.md](GPS_RECEIVER_SENTENCES_PLAN.md) | In progress: receivers straight to the app |
 | [ISOBUS_VT_TRANSPORTS.md](ISOBUS_VT_TRANSPORTS.md) | In progress: how the VT reaches the implement bus |
 | [JOB_FINISH_LOCK_IMPLEMENT_PLAN.md](JOB_FINISH_LOCK_IMPLEMENT_PLAN.md) | Agreed, not started: implement on the job, Finish locks it |
