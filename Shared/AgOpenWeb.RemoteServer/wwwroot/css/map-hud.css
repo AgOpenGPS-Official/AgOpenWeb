@@ -203,8 +203,10 @@ body.maptap #ck { cursor: crosshair; }
 /* The crosshair letter is mouse-only (no hover to ride on touch); the dot letters +
    banner cover touch. Belt-and-suspenders with the pointerType gate in JS. */
 @media (pointer: coarse) { #maptap-ab { display: none !important; } }
-/* Persistent letter next to each dropped AB/curve point (#40). Positioned per-frame. */
-#ab-dot-labels span { position: fixed; z-index: 41; display: none; pointer-events: none;
+/* Persistent letter next to each dropped AB/curve point (#40) and on the active line's A and B.
+   Positioned per-frame. Part of the map: z-index 0 and first after #ck in the page, so every
+   panel, bar and button paints over it (#522). */
+#ab-dot-labels span { position: fixed; z-index: 0; display: none; pointer-events: none;
   font: 900 20px system-ui, sans-serif; transform: translate(11px, -26px);
   text-shadow: 0 0 3px #000, 0 1px 5px rgba(0,0,0,0.95); }
 /* Draw-track toolbar — top-centre, directly under the instruction pill
