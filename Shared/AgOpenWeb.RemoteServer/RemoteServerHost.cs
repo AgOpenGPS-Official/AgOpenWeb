@@ -336,7 +336,6 @@ public sealed class RemoteServerHost
         // Force a fresh fetch every load.
         var noStore = new[] { ("Cache-Control", "no-store") };
         server.MapGet("/", () => SimpleWebServer.Response.Text(ReadAsset("index.html"), "text/html", noStore));
-        server.MapGet("/app.js", () => SimpleWebServer.Response.Text(ReadAsset("app.js"), "text/javascript", noStore));
         server.MapGet("/transport.js", () => SimpleWebServer.Response.Text(ReadAsset("transport.js"), "text/javascript", noStore));
         // The client's scripts and styles, one file per feature (Plans/WEB_CLIENT_SPLIT_PLAN.md).
         // Filename-only (no path traversal); unknown names 404.

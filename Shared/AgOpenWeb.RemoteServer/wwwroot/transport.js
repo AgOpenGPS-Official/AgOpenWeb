@@ -8,7 +8,7 @@
 // the server-side WireCodec. The renderer never sees this: it only gets the
 // { onScene, onTick, onCoverageInit, onCoverageCells, onStatus } interface and
 // plain JS objects (identical shapes to the old SignalR/JSON path), so swapping
-// the wire here left app.js untouched. That decoupling is the whole point.
+// the wire here left the client's scripts untouched. That decoupling is the whole point.
 
 window.RemoteTransport = {
   /**

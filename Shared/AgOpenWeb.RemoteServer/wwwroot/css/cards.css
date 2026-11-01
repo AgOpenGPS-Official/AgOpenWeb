@@ -15,7 +15,7 @@
 /* Web cards (Plans/ADDON_WEB_CARDS_PLAN.md): an add-on's own page from the bookmark list, in
    a frame. Never wider or taller than the screen leaves room for. */
 .web-card { top: calc(var(--bar-bottom) + 24px); width: auto; --ww: 640px; --wh: 420px; }
-/* Card pane (CardPane in app.js): the split layout's VT and web cards beside the map, two
+/* Card pane (CardPane in js/card-pane.js): the split layout's VT and web cards beside the map, two
    to a tab. Its outer side takes the window's safe-area inset; the divider is on the map's. */
 #cardpane { position: fixed; top: 0; bottom: 0; left: 0; display: none; flex-direction: column; z-index: 29;
   box-sizing: border-box; padding: var(--sat) 0 var(--sab) var(--win-sal); background: var(--bg-raised);

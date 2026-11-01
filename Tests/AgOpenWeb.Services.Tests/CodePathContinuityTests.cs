@@ -21,7 +21,7 @@ namespace AgOpenWeb.Services.Tests;
 /// <list type="bullet">
 /// <item>Project dependencies flow Models → Services → ViewModels / RemoteServer → RemoteWiring.</item>
 /// <item>The web client is <c>index.html</c>, <c>transport.js</c>, <c>i18n.js</c> and its own scripts
-/// (<c>app.js</c>, moving to <c>js/</c>) and styles (<c>css/</c>): classic scripts, every one loaded by
+/// (<c>js/</c>) and styles (<c>css/</c>): classic scripts, every one loaded by
 /// <c>index.html</c>, no modules, no workers (Plans/WEB_CLIENT_SPLIT_PLAN.md).</item>
 /// <item>Client → host is an <c>id|arg</c> text frame routed in <c>RemoteServerWiring</c>;
 /// host → client is a binary frame from <c>WireCodec</c>. The hub never sends text.</item>
@@ -90,13 +90,13 @@ public class CodePathContinuityTests
     // ── The web client ────────────────────────────────────────────────────
 
     // The client's files outside vendor/: the loader and the transport, and the client's own
-    // scripts and styles. app.js stays at the top until it is split into js/ (Plans/WEB_CLIENT_SPLIT_PLAN.md).
+    // scripts (js/) and styles (css/) (Plans/WEB_CLIENT_SPLIT_PLAN.md).
     private static readonly string[] FixedScripts = { "transport.js", "i18n.js" };
 
     private static string WwwRoot() => Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.RemoteServer", "wwwroot");
 
     private static bool IsAppScript(string rel) =>
-        rel == "app.js" || Regex.IsMatch(rel, @"^js/[a-z0-9-]+\.js$");
+        Regex.IsMatch(rel, @"^js/[a-z0-9-]+\.js$");
 
     private static bool IsStylesheet(string rel) => Regex.IsMatch(rel, @"^css/[a-z0-9-]+\.css$");
 
@@ -105,7 +105,7 @@ public class CodePathContinuityTests
         Regex.Matches(html, @"<script\b[^>]*\bsrc=""/?([^""]+)""").Select(m => m.Groups[1].Value)
             .Where(src => !src.StartsWith("vendor/")).ToList();
 
-    /// <summary>The client's own code (app.js or js/*.js), in the order index.html loads it.</summary>
+    /// <summary>The client's own code (js/*.js), in the order index.html loads it.</summary>
     private static string AppSource(string www)
     {
         var html = File.ReadAllText(Path.Combine(www, "index.html"));
@@ -233,7 +233,7 @@ public class CodePathContinuityTests
         var html = File.ReadAllText(Path.Combine(www, "index.html"));
 
         // Command ids the client can send: literal ids in transport.send(...), data-cmd
-        // attributes in the page and in app.js markup, and the hotkey → command table.
+        // attributes in the page and in the scripts' markup, and the hotkey → command table.
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (Match m in Regex.Matches(app, @"transport\.send\([^)]*?'([a-z][A-Za-z0-9_.-]*\.[A-Za-z][A-Za-z0-9_.-]*)"))
             ids.Add(m.Groups[1].Value);

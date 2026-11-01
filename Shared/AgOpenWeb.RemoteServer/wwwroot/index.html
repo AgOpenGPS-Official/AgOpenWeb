@@ -281,7 +281,7 @@
       <button class="sa-scale" data-scale="130">130%</button>
       <button class="sa-scale" data-scale="150">150%</button>
     </div>
-    <!-- Where the VT and web cards go on this screen (CardPane in app.js, kept by the browser). -->
+    <!-- Where the VT and web cards go on this screen (CardPane in js/card-pane.js, kept by the browser). -->
     <div class="cfg-label">VT &amp; Web Cards</div>
     <div class="sa-grid sa-uiscale">
       <button class="sa-scale sa-cardlay" data-lay="float" title="Over the map">Floating</button>
@@ -1237,7 +1237,7 @@
   </div>
   <!-- Diagnostic chart cards (floating overlays, drawn by renderCharts each frame).
        Each can be open independently; map stays interactive. Drag by the header. -->
-  <!-- VT cards: one per terminal, made from this (Vt in app.js). -->
+  <!-- VT cards: one per terminal, made from this (Vt in js/vt.js). -->
   <template id="vt-card-tpl">
     <div class="chart-card vt-card" style="display:none">
       <div class="chart-hdr">
@@ -1254,7 +1254,7 @@
       </div>
     </div>
   </template>
-  <!-- Web cards: add-ons' own pages, picked from the bookmarks (WebCards in app.js). -->
+  <!-- Web cards: add-ons' own pages, picked from the bookmarks (WebCards in js/web-cards.js). -->
   <template id="web-card-tpl">
     <div class="chart-card web-card">
       <div class="chart-hdr">
@@ -1972,6 +1972,33 @@
   <!-- Binary-WebSocket transport — no external client lib (works offline in-cab). -->
   <script src="/transport.js"></script>
   <script src="/i18n.js"></script>
-  <script src="/app.js"></script>
+  <script src="/js/core.js"></script>
+  <script src="/js/alerts.js"></script>
+  <script src="/js/skia-setup.js"></script>
+  <script src="/js/map-input.js"></script>
+  <script src="/js/sim-bar.js"></script>
+  <script src="/js/dialogs.js"></script>
+  <script src="/js/osk.js"></script>
+  <script src="/js/bars.js"></script>
+  <script src="/js/cfg-controls.js"></script>
+  <script src="/js/tracks.js"></script>
+  <script src="/js/left-nav.js"></script>
+  <script src="/js/field-builder.js"></script>
+  <script src="/js/settings-panels.js"></script>
+  <script src="/js/config-panels.js"></script>
+  <script src="/js/network.js"></script>
+  <script src="/js/fields.js"></script>
+  <script src="/js/app-menu.js"></script>
+  <script src="/js/wizards.js"></script>
+  <script src="/js/control.js"></script>
+  <script src="/js/projection.js"></script>
+  <script src="/js/overlays.js"></script>
+  <script src="/js/hud-tools.js"></script>
+  <script src="/js/card-pane.js"></script>
+  <script src="/js/vt.js"></script>
+  <script src="/js/web-cards.js"></script>
+  <script src="/js/map-draw.js"></script>
+  <script src="/js/map-layers.js"></script>
+  <script src="/js/frame.js"></script>
 </body>
 </html>
