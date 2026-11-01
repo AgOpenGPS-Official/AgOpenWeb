@@ -135,7 +135,7 @@ public sealed class HotPathHarness : IDisposable
         if (fieldWorked)
             _coverage.MarkRectangleCovered(-FieldWidth / 2, FieldWidth / 2, -FieldLength / 2, FieldLength / 2);
 
-        _pipeline.SetActiveTrack(track, Pass, 0, false);
+        _pipeline.SetActiveTrack(track, Pass, 0);
         _pipeline.SetYouTurnConfig(
             uTurnSkipRows: skip == Skip.Normal ? 0 : 1,
             isSkipWorkedMode: skip == Skip.SkipWorked,

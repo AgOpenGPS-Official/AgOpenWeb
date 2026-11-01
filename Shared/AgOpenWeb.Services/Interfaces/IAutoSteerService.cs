@@ -219,7 +219,7 @@ public interface IAutoSteerService
     /// when more than 16 sections are configured, PGN 229 (all 64 sections).
     /// Called by ViewModel after section control updates.
     /// </summary>
-    void SetMachineState(ulong sectionBits, bool isInUTurn, byte hydLiftState = 0);
+    void SetMachineState(ulong sectionBits, bool isInUTurn, byte hydLiftState = 0, bool outOfBounds = false);
 
     /// <summary>
     /// Update only the section bits carried by PGN 254, 239 and 229. Called by the

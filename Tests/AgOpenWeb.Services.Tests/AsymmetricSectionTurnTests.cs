@@ -198,7 +198,7 @@ public class AsymmetricSectionTurnTests
             },
             Type = AgOpenWeb.Models.Track.TrackType.ABLine
         };
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
 
         // Set inner section (0) to manual ON, outer section (1) to OFF

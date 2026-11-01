@@ -126,7 +126,6 @@ public partial class MainViewModel : ObservableObject
     }
 
     // Track-on-boundary detection: skip boundary disengage on first pass
-    private bool _isSelectedTrackOnBoundary;
 
     // Track guidance state is now in MainViewModel.Guidance.cs
     // YouTurn state is now in MainViewModel.YouTurn.cs
@@ -2397,13 +2396,6 @@ public partial class MainViewModel : ObservableObject
                         _logger.LogDebug("[NUDGE] SelectedTrack setter: '{TrackName}' widthMinusOverlap too small, pathsAway=0", value.Name);
                     }
 
-                    // Check if track runs along boundary (skip disengage on first pass)
-                    _isSelectedTrackOnBoundary = IsTrackOnBoundary(value);
-                    if (_isSelectedTrackOnBoundary)
-                    {
-                        _logger.LogDebug($"[SelectedTrack] Track '{value.Name}' is ON boundary - will skip boundary check on pass 0");
-                    }
-
                     // For curved tracks, calculate and display max inward passes
                     if (value.Points.Count > 2)
                     {
@@ -2430,7 +2422,6 @@ public partial class MainViewModel : ObservableObject
                     // (the web's magenta offset line) — its cache is left alone so that change is seen.
                     _lastMirroredBaseTrack = null;
                     _mapService.SetGuidancePoints(0, 0, false);
-                    _isSelectedTrackOnBoundary = false;
                     // Clear any U-turn state associated with the deactivated track
                     ClearYouTurnState();
                 }

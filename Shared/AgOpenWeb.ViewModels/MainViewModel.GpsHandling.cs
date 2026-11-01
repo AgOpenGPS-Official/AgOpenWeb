@@ -396,9 +396,6 @@ public partial class MainViewModel
     private void SyncGuidanceStateToPipeline()
     {
         var track = SelectedTrack;
-        bool isOnBoundary = track != null && State.Field.Tracks.IndexOf(track) == 0
-            && CurrentBoundary?.OuterBoundary != null;
-
         // Use pending initial values if the SelectedTrack setter just seeded
         // them; otherwise re-push the current State.Guidance (which the cycle
         // wrote on the last snapshot). The pipeline's SetActiveTrack is
@@ -409,7 +406,7 @@ public partial class MainViewModel
         _pendingInitialNudgeOffset = null;
 
         _gpsPipelineService.SetAutoSteerEngaged(_isAutoSteerEngaged);
-        _gpsPipelineService.SetActiveTrack(track, pathsAway, nudgeOffset, isOnBoundary);
+        _gpsPipelineService.SetActiveTrack(track, pathsAway, nudgeOffset);
         _gpsPipelineService.SetBoundary(CurrentBoundary);
         _gpsPipelineService.SetHeadlandLine(State.Field.HeadlandLine);
         SyncFieldContextToSectionControl();

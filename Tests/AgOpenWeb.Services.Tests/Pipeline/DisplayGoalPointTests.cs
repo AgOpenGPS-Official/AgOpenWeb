@@ -108,7 +108,7 @@ public class DisplayGoalPointTests
     private void SetNorthLine(double easting = 0) =>
         _pipeline.SetActiveTrack(
             Models.Track.Track.FromABLine("AB", new Vec3(easting - 3, -100, 0), new Vec3(easting - 3, 100, 0)),
-            passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+            passNumber: 0, nudgeOffset: 0);
 
     [Test]
     public void FreeDrive_WithTrack_ReportsGoalAheadOnTheLine()
@@ -161,7 +161,7 @@ public class DisplayGoalPointTests
     {
         // #107: lets the VM tell a mirror of the current track's pass/nudge from a stale one.
         var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
 
         _gpsService.UpdateGpsData(FixAtOrigin());
 

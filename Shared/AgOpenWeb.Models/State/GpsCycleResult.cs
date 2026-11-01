@@ -53,6 +53,8 @@ public record GpsCycleResult
     public bool AutoSteerDisengagedThisCycle { get; init; }
     /// <summary>PGN 239 hydraulic lift: 0 off, 1 down (working), 2 up (headland).</summary>
     public byte HydLiftState { get; init; }
+    /// <summary>The pivot is outside the field (#494): the boundary is drawn red, PGN 239 geoStop.</summary>
+    public bool IsOutOfBounds { get; init; }
 
     /// <summary>Contour (#110): the reference strip being followed (AgOpenGPS draws its
     /// points), null when none. Same instance while unchanged.</summary>

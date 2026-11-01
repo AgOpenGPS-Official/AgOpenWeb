@@ -103,6 +103,8 @@ public partial class MainViewModel
         State.Operation.ContourRef = result.ContourRef;
         if (result.HasContoursToSave) SaveContoursToField();
 
+        State.Field.IsOutOfBounds = result.IsOutOfBounds;
+
         // Hydraulic lift sounds on each up/down change (AgOpenGPS CHead.SetHydPosition;
         // gated by the Hydraulic sound setting in the audio service, #110).
         if (result.HydLiftState != _lastHydLiftState)

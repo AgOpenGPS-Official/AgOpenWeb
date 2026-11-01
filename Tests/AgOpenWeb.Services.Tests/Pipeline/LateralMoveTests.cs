@@ -108,7 +108,7 @@ public class LateralMoveTests
     public void Moving_a_pass_keeps_the_nudge()
     {
         var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         Cycle();
         _intents.RequestGuidanceNudge(0.3);
@@ -134,7 +134,7 @@ public class LateralMoveTests
     public void Pass_label_shows_the_way_you_drive_and_the_pass(double headingDeg, int pass, string label)
     {
         var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
-        _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         GuidanceSnapshot g = null!;
         for (int i = 0; i < 3; i++)
@@ -169,7 +169,7 @@ public class LateralMoveTests
     {
         // Real time: the pipeline's GPS handling waits on the clock, which a test clock stalls.
         var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(false);
         Assert.That(FreeDriveAt(4).HowManyPathsAway, Is.EqualTo(0), "picked at once on a new track");
 
@@ -186,7 +186,7 @@ public class LateralMoveTests
     {
         ConfigurationStore.Instance.Tool.Offset = 0.8;
         var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         GuidanceSnapshot g = null!;
         for (int i = 0; i < 3; i++) g = FreeDriveAt(2);
