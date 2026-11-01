@@ -249,7 +249,10 @@ window.RemoteTransport = {
         case TYPE.WEB_CARDS: {
           const n = i32(); const cards = new Array(n);
           for (let k = 0; k < n; k++) cards[k] = { name: str(), url: str() };
-          handlers.onWebCards && handlers.onWebCards(cards);
+          const scan = { seq: i32(), status: str(), networks: str() };
+          const np = i32(); scan.pages = new Array(np);
+          for (let k = 0; k < np; k++) scan.pages[k] = { title: str(), url: str() };
+          handlers.onWebCards && handlers.onWebCards(cards, scan);
           break;
         }
         case TYPE.NTRIP_MOUNTPOINTS: {

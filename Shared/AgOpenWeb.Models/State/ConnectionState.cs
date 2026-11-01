@@ -118,6 +118,14 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _ntripMountpoints, value);
     }
 
+    // The web cards' last "Search the network" (empty until then).
+    private WebPageScan _webPageScan = WebPageScan.None;
+    public WebPageScan WebPageScan
+    {
+        get => _webPageScan;
+        set => SetProperty(ref _webPageScan, value);
+    }
+
     // The corrections come from the fallback service, the main service answers again while it is
     // in use (the operator decides about going back), and the last switch notice (empty = none).
     private bool _ntripUsingFallback;
@@ -290,6 +298,7 @@ public class ConnectionState : ObservableObject
         NtripNotice = "";
         NtripProfileName = NtripMainText = NtripFallbackText = "";
         NtripMountpoints = AgOpenWeb.Models.Ntrip.NtripMountpointList.None;
+        WebPageScan = WebPageScan.None;
         IsAutoSteerConnected = IsAutoSteerDataOk = IsAutoSteerEngaged = false;
         IsMachineConnected = IsMachineDataOk = false;
         IsImuConnected = IsImuDataOk = false;

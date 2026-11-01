@@ -250,8 +250,8 @@ public static class WireCodec
         return ms.ToArray();
     }
 
-    // The mount points last asked for in the profile editor: [i32 seq] str for, str status,
-    // [i32 n][ per mount point: str mount, name, format, systems, country, f32 km (NaN = unknown), u8 needs position ].
+    // The web cards' bookmarks: [i32 n][ per bookmark: str name, url ], then the last search for pages:
+    // [i32 seq] str status, str networks, [i32 n][ per page: str title, url ].
     public static byte[] EncodeWebCards(WebCardsDto d)
     {
         using var ms = new MemoryStream();
@@ -259,8 +259,16 @@ public static class WireCodec
         w.Write(WebCards);
         w.Write(d.Cards.Count);
         foreach (var c in d.Cards) { WriteStr(w, c.Name); WriteStr(w, c.Url); }
+        w.Write(d.Scan.Seq);
+        WriteStr(w, d.Scan.Status);
+        WriteStr(w, d.Scan.Networks);
+        w.Write(d.Scan.Pages.Count);
+        foreach (var p in d.Scan.Pages) { WriteStr(w, p.Name); WriteStr(w, p.Url); }
         return ms.ToArray();
     }
+
+    // The mount points last asked for in the profile editor: [i32 seq] str for, str status,
+    // [i32 n][ per mount point: str mount, name, format, systems, country, f32 km (NaN = unknown), u8 needs position ].
 
     public static byte[] EncodeNtripMountpoints(NtripMountpointsDto d)
     {

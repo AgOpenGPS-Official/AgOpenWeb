@@ -756,6 +756,41 @@ public static partial class RemoteServerWiring
         });
     }
 
+    // The web cards' "Search the network": one at a time, a new press while one runs is ignored.
+    private static int _webScanSeq, _webScanRunning;
+
+    // Asks the host's own networks for web pages off the UI thread (WebPageScanner) and puts what it
+    // found in the state, for the bookmark editor to offer.
+    private static async Task ScanWebPagesAsync(IUiDispatcher dispatcher,
+        AgOpenWeb.Models.State.ApplicationState state, AgOpenWeb.Services.Interfaces.ILocalNetworkInfoProvider net)
+    {
+        if (Interlocked.Exchange(ref _webScanRunning, 1) == 1) return;
+        try
+        {
+            int seq = Interlocked.Increment(ref _webScanSeq);
+            var local = net.GetIPv4Addresses();
+            var (targets, networks) = AgOpenWeb.Services.Network.WebPageScanner.Targets(local);
+            string nets = string.Join(", ", networks);
+            state.Connections.WebPageScan = new AgOpenWeb.Models.WebPageScan(seq, "searching", nets, []);
+            var own = new HashSet<System.Net.IPAddress>(local.Select(a => a.Address));
+            List<AgOpenWeb.Models.FoundWebPage> pages;
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                pages = await Task.Run(() => AgOpenWeb.Services.Network.WebPageScanner.ScanAsync(targets, own, cts.Token));
+            }
+            catch (Exception)
+            {
+                pages = [];
+            }
+            dispatcher.Post(() => state.Connections.WebPageScan = new AgOpenWeb.Models.WebPageScan(seq, "done", nets, pages));
+        }
+        finally
+        {
+            Volatile.Write(ref _webScanRunning, 0);
+        }
+    }
+
     private static async Task TestNtripAndReportAsync(
         IUiDispatcher dispatcher, AgOpenWeb.Models.State.ApplicationState state,
         string host, int port, string mount, string user, string pass)

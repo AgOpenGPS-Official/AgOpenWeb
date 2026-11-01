@@ -149,10 +149,13 @@ a split layout the pane is a **drawer**.
   2. `postMessage` both ways, with the target origin checked: to the page theme, language, units
      and whether this browser holds control, on change; from the page a title, an attention badge
      (an alarm while the card is closed, behind others or in a closed drawer), a preferred size.
-- **Discovery:** add-ons announcing themselves by DNS-SD (e.g. `_aowcard._tcp`, TXT `path=`,
-  `name=`) in the picker without typing, as the VT gateways are. SharpIsoTerm's `AowLinkBrowser`
-  has `_aowlink._tcp` fixed and would need the service type as a parameter; iOS needs the type in
-  `NSBonjourServices`. Not before the bookmarks are in use.
+- **Discovery:** the bookmark editor's *Search the network* is built: on a press the host asks every
+  address of its own private networks (at most the /24 around its address) for a page on port 80
+  (`WebPageScanner`, about 3 s) and lists each with its `<title>`, added with one tap; an add-on
+  needs nothing for it. Later, add-ons announcing themselves by DNS-SD (e.g. `_aowcard._tcp`, TXT
+  `path=`, `name=`) in the picker without typing, as the VT gateways are. SharpIsoTerm's
+  `AowLinkBrowser` has `_aowlink._tcp` fixed and would need the service type as a parameter; iOS
+  needs the type in `NSBonjourServices`.
 - **Moving cards between tabs**, if asked for.
 
 ## 8. Not doing

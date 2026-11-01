@@ -455,7 +455,7 @@ const transport = RemoteTransport.create({
   onWizard(w) { wizard = w; wizardDirty = true; },
   onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); Vt.render(); WebCards.render(); },
   onControlState(s) { lastControl = s; updateControlUi(); claimSeatIfFree(); Vt.render(); WebCards.render(); },
-  onWebCards(list) { WebCards.setBookmarks(list); },
+  onWebCards(list, scan) { WebCards.setBookmarks(list, scan); },
   onSound(id) { Sounds.play(id); },
   onPrompt(p) { hostPrompt = p; renderHostPrompt(); },
   onToast(msg) { showToast(msg); },
