@@ -1,0 +1,589 @@
+/* Left nav and its menu panels: config controls, AutoSteer, Smart WAS, Network IO and NTRIP,
+   Field Operations, the app menu, the steer wizard, vehicle and tool config, the picker hub. */
+
+/* Left nav (Phase 9) — vertical button bar + non-modal flyout panels. */
+#leftnav { position: fixed; left: var(--sal); top: calc(var(--bar-bottom) + 10px); display: flex; flex-direction: column;
+  gap: 6px; padding: 8px 8px 8px 0; background: var(--float-bg);
+  border: 1px solid var(--border-2); border-left: 0; border-radius: 0 10px 10px 0; z-index: 32;
+  /* At a big UI size the bar can be taller than the screen: it scrolls instead. */
+  max-height: calc(100 * var(--vh) - var(--bar-bottom) - 44px - var(--sab)); overflow-y: auto; scrollbar-width: none; }
+#leftnav::-webkit-scrollbar, #rightnav::-webkit-scrollbar { display: none; }
+/* Transparent light-dismiss scrim behind an open chain panel: map stays visible,
+   an outside tap closes the chain and is CONSUMED (no map pan / no background
+   actuation) — the blocking safety, minus the dimming. Sits above the map +
+   operational toolbars but below the left-nav bar (one-tap panel switching) and
+   the panels. Watch-the-tractor panels (Smart-WAS) opt out — see NO_SCRIM. */
+.ln-scrim { position: fixed; inset: 0; z-index: 30; display: none; background: transparent; }
+.ln-scrim.open { display: block; }
+.ln-btn { width: 56px; height: 56px; border: 0; border-radius: 8px; padding: 8px;
+  background: rgba(var(--ov),0.08); color: var(--text); cursor: pointer; box-sizing: border-box; }
+.ln-btn:hover { background: rgba(var(--ov),0.16); }
+.ln-btn.active { background: var(--sel); }
+.ln-ic { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.ln-panel { position: fixed; left: calc(80px + var(--sal)); top: calc(var(--bar-bottom) + 10px); display: none; min-width: 220px;
+  /* Kept inside the screen (left/top offset, 30px padding + border, 16px gutter) and
+     scrolled when taller: at a bigger UI size the dialogs no longer fit as drawn. */
+  max-width: calc(100 * var(--vw) - 126px - var(--win-sal) - var(--win-sar));
+  max-height: calc(100 * var(--vh) - var(--bar-bottom) - 56px - var(--sab)); overflow-y: auto;
+  color: var(--text);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.5); z-index: 31; }
+/* Lay tall tabs out across the width so they fit a 1200x700 tablet without scroll. */
+.cfg-cols2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 22px; align-items: start; }
+/* Without min-width:0 a column's content (e.g. the dynamic section-widths grid)
+   forces the track wider than 1fr, pushing the other column out of the dialog. */
+.cfg-cols2 > div { min-width: 0; }
+.cfg-diaggrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 22px; }
+.cfg-diaggrid .vc-diag { width: 110px; height: 72px; }
+.cfg-diaggrid .vc-diagrow { margin-bottom: 6px; }
+.ln-panel.open { display: block; }
+/* Moved left over the nav (placePanel): above it, as the nav can't be reached past it anyway. */
+.ln-panel.ln-moved { z-index: 32; }
+.ln-title { color: var(--text); font: 700 16px system-ui, sans-serif; margin-bottom: 12px; }
+.ln-section { margin-bottom: 12px; }
+.ln-label { color: var(--text-muted); font: 600 12px system-ui, sans-serif; margin-bottom: 6px; }
+.ln-seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; width: fit-content; }
+.ln-segbtn { padding: 8px 18px; border: 0; background: transparent; color: var(--text-2);
+  cursor: pointer; font: 600 13px system-ui, sans-serif; }
+.ln-segbtn.active { background: #1f6fb2; color: #fff; }
+/* Screen & Alerts toggle grid (3-up, native UniformGrid Columns=3). */
+.sa-panel { width: 480px; }
+.sa-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 4px; }
+.sa-tgl, .sa-act, .sa-opt { height: 40px; border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(var(--ov),0.06); color: var(--text-2); cursor: pointer;
+  font: 600 12px system-ui, sans-serif; text-align: left; padding: 0 8px;
+  display: flex; align-items: center; gap: 6px; }
+.sa-ic { width: 22px; height: 22px; object-fit: contain; flex: none; }
+.sa-uiscale { grid-template-columns: repeat(4, 1fr); }
+.sa-scale { height: 40px; border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(var(--ov),0.06); color: var(--text-2); cursor: pointer;
+  font: 600 12px system-ui, sans-serif; }
+.sa-scale.active { background: #1f6fb2; border-color: #4A90D9; color: #fff; }
+.sa-tgl:hover, .sa-act:hover, .sa-opt:hover { background: rgba(var(--ov),0.14); }
+.sa-tgl.active, .sa-opt.active { background: #1f6fb2; border-color: #4A90D9; color: #fff; }
+.sa-lbl { align-self: center; color: var(--text-2); font: 600 12px system-ui, sans-serif; }
+.sa-act { background: rgba(var(--ov),0.10); }
+.sa-grid .cfg-num { height: 40px; }
+.sa-grid .sa-newrow { grid-column: 1; } /* starts its own row: keeps a pair together */
+.sa-hint { color: var(--text-muted); font: 400 11px system-ui, sans-serif; }
+.ln-sub { color: var(--text-muted); font: 600 12px system-ui, sans-serif; margin-bottom: 12px; }
+/* #41: grow WIDER not taller so tall tabs fit a 1200x700 landscape tablet without
+   scrolling. Capped so it doesn't balloon on a big desktop monitor, and clamped to
+   the viewport (minus the left nav) on smaller screens. */
+.ln-wide { width: min(980px, calc(100 * var(--vw) - 126px - var(--win-sal) - var(--win-sar))); }
+.ln-savebtn { margin-top: 14px; width: 100%; height: 40px; border: 0; border-radius: 8px;
+  background: #1f6fb2; color: #fff; font: 700 14px system-ui, sans-serif; cursor: pointer; }
+.ln-savebtn:active { background: #195c95; }
+/* Generic config controls (tabs / grid / number / toggle / select / slider). */
+.cfg-tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.cfg-tab { padding: 7px 14px; border: 0; background: transparent; color: var(--text-muted);
+  cursor: pointer; font: 600 13px system-ui, sans-serif; border-bottom: 2px solid transparent; }
+.cfg-tab.active { color: var(--text); border-bottom-color: #4A90D9; }
+.cfg-label { color: var(--text-muted); font: 600 12px system-ui, sans-serif; margin-bottom: 6px; }
+.cfg-seg-full { width: 100%; margin-bottom: 12px; }
+.cfg-seg-full .cfg-typebtn { flex: 1; }
+.cfg-typebtn { padding: 8px 10px; border: 0; background: transparent; color: var(--text-2);
+  cursor: pointer; font: 600 12px system-ui, sans-serif; }
+.cfg-typebtn.active { background: #1f6fb2; color: #fff; }
+.cfg-grid { display: grid; grid-template-columns: auto max-content; gap: 7px 12px; align-items: center; }
+.cfg-grid label { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
+/* Right-sized to expected data (#41): ~5-6 digits (e.g. "12.34", "360.0", "-0.35").
+   Wider boxes just waste horizontal space. Spinners removed (useless on touch, eat width). */
+.cfg-num { width: 68px; height: 34px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input);
+  color: var(--text); font: 600 14px ui-monospace, monospace; padding: 0 8px; box-sizing: border-box; text-align: right;
+  appearance: textfield; -moz-appearance: textfield; }
+.cfg-num::-webkit-outer-spin-button, .cfg-num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.cfg-num:focus { outline: none; border-color: #4A90D9; }
+.cfg-sel, .cfg-isel { height: 34px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-input);
+  color: var(--text); font: 600 12px system-ui, sans-serif; padding: 0 6px; box-sizing: border-box; }
+.cfg-tgl { height: 34px; border-radius: 6px; border: 1px solid var(--border); background: rgba(var(--ov),0.06);
+  color: var(--text-muted); cursor: pointer; font: 700 12px system-ui, sans-serif; }
+.cfg-tgl.active { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
+.cfg-act { padding: 8px 10px; border: 0; border-radius: 6px; background: rgba(var(--ov),0.10);
+  color: var(--text); cursor: pointer; font: 600 12px system-ui, sans-serif; flex: 1; }
+.cfg-act:hover { background: rgba(var(--ov),0.18); }
+.cfg-act:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+.ln-seg .cfg-act.active, .ln-seg .cfg-act.active:hover { background: #1f6fb2; color: #fff; }
+.cfg-actwide { width: 100%; flex: none; }
+.cfg-slider { width: 100%; accent-color: #4A90D9; }
+.as-valrow .cfg-actwide { width: auto; flex: 1 1 auto; min-width: 0; }
+/* ===== AutoSteer panel — mirrors native AutoSteerConfigPanel: a title bar, a
+   left pane (4 horizontal icon tabs + value cards + Test Mode), a right pane
+   (5 icon tabs of cards) revealed in expanded mode, and a Set/Act/Err status
+   bar with the expand/collapse toggle. Collapsed = left pane only. ===== */
+.as-shell { width: 452px; padding: 0; overflow: hidden; }
+.as-shell.expanded { width: 852px; }
+.as-titlebar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; }
+.as-titlebar .as-title2 { color: var(--text); font: 700 16px system-ui, sans-serif; }
+.as-x { background: none; border: 0; color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 2px 8px; }
+.as-body { display: flex; align-items: stretch; }
+.as-left { width: 452px; box-sizing: border-box; padding: 6px 16px 14px; flex: none; }
+.as-right { width: 400px; box-sizing: border-box; padding: 6px 16px 14px; border-left: 1px solid var(--border); flex: none; }
+.as-shell:not(.expanded) .as-right, .as-shell:not(.expanded) .as-testmode { display: none; }
+.as-tabrow { display: flex; gap: 6px; margin-bottom: 12px; }
+.as-tabrow .cfg-tab { width: 58px; height: 52px; margin: 0; padding: 0; border: 1px solid var(--border);
+  border-radius: 8px; background: rgba(var(--ov),0.04); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.as-tabrow .cfg-tab img { width: 38px; height: 38px; object-fit: contain; }
+.as-tabrow .cfg-tab.active { border-color: #4A90D9; background: var(--sel); }
+.as-content .cfg-body { display: block; }
+.as-content .cfg-body[hidden] { display: none; }
+.as-modetitle { color: #39FF6A; font: 700 18px system-ui, sans-serif; text-align: center; margin: 2px 0 14px; }
+.as-modes { display: flex; gap: 8px; margin-bottom: 14px; }
+.as-modes .cfg-typebtn { flex: 1; padding: 7px; border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(var(--ov),0.04); color: var(--text-2); cursor: pointer; font: 600 12px system-ui, sans-serif; }
+.as-modes .cfg-typebtn.active { background: var(--sel); border-color: #4A90D9; color: var(--text); }
+.as-modesw { min-width: 120px; padding: 8px 12px; border: 1px solid #4A90D9; border-radius: 6px;
+  background: var(--sel); color: #4A90D9; font: 700 13px system-ui, sans-serif; cursor: pointer; }
+.as-modesw.stanley { border-color: #39FF6A; color: #39FF6A; }
+/* Steer-response style header: Fast (green) — label (bold) — Slow (red). */
+.as-lblrow { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 8px; }
+.as-lblrow .lblfast { color: #39FF6A; font: 600 13px system-ui, sans-serif; }
+.as-lblrow .lblmid { color: var(--text); font: 700 15px system-ui, sans-serif; text-align: center; }
+.as-lblrow .lblslow { color: #ff5b5b; font: 600 13px system-ui, sans-serif; text-align: right; }
+.as-caphdr { color: var(--text); font: 700 15px system-ui, sans-serif; text-align: center; margin-bottom: 8px; }
+/* Value box (dark, bold) + slider, native ParamCard row. */
+.as-valrow { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.as-valbox { background: var(--bg-sunken); border: 1px solid var(--border); border-radius: 8px; min-width: 80px;
+  padding: 9px 14px; color: var(--text); font: 700 19px ui-monospace, monospace; text-align: center; }
+.as-valrow .cfg-slider { flex: 1; min-width: 0; }
+/* − / + beside each slider; the value box takes a typed value (wireSliderNudge). */
+.as-valrow .as-nudge { flex: none; width: 38px; height: 38px; margin: 0 -6px; padding: 0; border: 1px solid var(--border);
+  border-radius: 8px; background: rgba(var(--ov),0.08); color: var(--text); font: 700 20px system-ui, sans-serif;
+  cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
+.as-valrow .as-nudge:active { background: var(--sel); border-color: #4A90D9; }
+.as-valedit { cursor: text; }
+input.as-valbox { width: 80px; box-sizing: content-box; }
+.as-valrow img.as-dia { width: 44px; height: 34px; object-fit: contain; background: #fff; border-radius: 4px; flex: none; }
+.as-caption { color: var(--text-dim); font: 500 12px system-ui, sans-serif; text-align: center; margin: -6px 0 14px; }
+.as-hint { color: var(--text-dim); font-size: 11px; font-weight: 400; }
+/* Right-pane cards (Turn / Pressure / Current, etc.). */
+.as-card { border: 1px solid var(--border); border-radius: 8px; background: rgba(var(--ov),0.03); padding: 10px 12px; margin-bottom: 10px; }
+.as-card .as-cardtitle { color: #39FF6A; font: 700 14px system-ui, sans-serif; margin-bottom: 8px; }
+.as-togcard { display: flex; align-items: center; gap: 10px; }
+.as-togcard img { width: 44px; height: 34px; object-fit: contain; background: #fff; border-radius: 4px; flex: none; }
+.as-togcard label { flex: 1; color: var(--text-2); font: 500 13px system-ui, sans-serif; }
+.as-note { color: #f0a868; font: 500 11px system-ui, sans-serif; margin-top: 6px; }
+/* Test Mode (left pane, expanded only): Free Drive + Left/0/Right + actual angle. */
+.as-testmode { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.as-tmtitle { color: #F39C12; font: 700 14px system-ui, sans-serif; text-align: center; margin-bottom: 8px; }
+.as-fd-btn { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: 8px; background: rgba(var(--ov),0.05); color: var(--text); font: 600 14px system-ui, sans-serif; cursor: pointer; }
+.as-fd-btn img { width: 30px; height: 30px; object-fit: contain; }
+.as-fd-btn.on { background: #1f8f3f; border-color: #39FF6A; }
+.as-fd-row { display: flex; gap: 6px; justify-content: center; margin-top: 8px; }
+.as-fd-row .cfg-act { flex: none; padding: 8px 18px; }
+.as-angbox { margin-top: 8px; text-align: center; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: rgba(var(--ov),0.03); }
+.as-angbox .big { color: var(--text); font: 700 18px ui-monospace, monospace; }
+.as-angbox .lbl { color: var(--text-dim); font: 500 10px system-ui, sans-serif; }
+/* Right-pane action buttons (icon-on-top, native colours). */
+.as-actions { display: flex; gap: 10px; margin-top: 12px; justify-content: space-between; }
+.as-actbtn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px;
+  border: 0; border-radius: 8px; cursor: pointer; color: #fff; font: 600 11px system-ui, sans-serif; }
+.as-actbtn img { width: 28px; height: 28px; object-fit: contain; }
+.as-actbtn.blue { background: #2f6fb0; } .as-actbtn.red { background: #b54430; }
+.as-actbtn.green { background: #2e9e4f; }
+/* Status bar (always visible): Set / Act / Err live + expand/collapse toggle. */
+.as-statusbar { display: flex; align-items: center; gap: 20px; padding: 9px 16px; border-top: 1px solid var(--border); background: rgba(0,0,0,0.28); }
+.as-stat { color: var(--text-dim); font: 600 12px system-ui, sans-serif; }
+.as-stat b { color: var(--text); font: 700 16px ui-monospace, monospace; margin-left: 5px; }
+.as-stat.err b { color: #ff5b5b; }
+.as-toggle { margin-left: auto; background: #2f6fb0; border: 0; border-radius: 6px; color: #fff;
+  font: 700 13px system-ui, sans-serif; padding: 7px 12px; cursor: pointer; }
+.as-confirm { display: flex; align-items: center; gap: 10px; margin: 0 16px 12px; padding: 10px;
+  border: 1px solid #c24; border-radius: 8px; background: rgba(180,40,40,0.12); color: #ffd9d9; font: 600 13px system-ui, sans-serif; }
+.as-confirm[hidden] { display: none; } /* display: flex would show it while hidden */
+.as-confirm .cfg-act { flex: none; padding: 8px 16px; }
+/* Gated (Tier-2) controls dim until the client holds control. */
+.rn-gated.disabled { opacity: 0.4; pointer-events: none; }
+/* ===== Smart WAS Calibration modal ===== */
+.sw-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 40; display: none; align-items: center; justify-content: center; }
+.sw-backdrop.open { display: flex; }
+.sw-modal { width: 430px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px 20px; box-shadow: 0 12px 40px rgba(0,0,0,0.6); }
+/* Smart-WAS as a chain panel (ln-panel) rather than a centred modal. */
+.sw-panel { width: 420px; }
+.sw-title { text-align: center; color: var(--text); font: 700 18px system-ui, sans-serif; margin-bottom: 6px; }
+.sw-status { text-align: center; color: var(--text-2); font: 500 13px system-ui, sans-serif; margin-bottom: 14px; }
+.sw-status b { color: var(--text); }
+.sw-card { border: 1px solid var(--border); border-radius: 8px; background: rgba(var(--ov),0.03); padding: 10px 14px; margin-bottom: 12px; }
+.sw-cardtitle { color: var(--text-muted); font: 700 12px system-ui, sans-serif; margin-bottom: 6px; }
+.sw-row { display: flex; justify-content: space-between; padding: 3px 0; }
+.sw-row .k { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
+.sw-row .v { color: var(--text); font: 700 14px ui-monospace, monospace; }
+.sw-info { color: var(--text-dim); font: 500 12px system-ui, sans-serif; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin-bottom: 14px; }
+.sw-btns { display: flex; gap: 8px; }
+.sw-b { flex: 1; padding: 9px 4px; border: 0; border-radius: 8px; cursor: pointer; color: #fff; font: 600 13px system-ui, sans-serif; }
+.sw-grey { background: rgba(var(--ov),0.12); color: var(--text); }
+.sw-green { background: #2e9e4f; } .sw-blue { background: #2f6fb0; }
+/* ===== Network IO panel + NTRIP modals ===== */
+.nio-panel { width: 360px; max-height: calc(100 * var(--vh) - var(--bar-bottom) - 26px); overflow-y: auto; box-sizing: border-box; }
+.nio-modgrid { display: grid; grid-template-columns: auto auto 1fr auto auto; gap: 7px 8px; align-items: center; margin-bottom: 10px; }
+.nio-more { width: 30px; height: 26px; border: 0; border-radius: 6px; background: rgba(var(--ov),0.10); color: var(--text-2);
+  font: 700 18px/1 system-ui, sans-serif; cursor: pointer; padding: 0; }
+.nio-more:hover { background: rgba(var(--ov),0.18); }
+/* System Data — chain sub-panel of Network IO (GPS line → arrow). */
+.nio-sysdata { width: 440px; max-height: calc(100 * var(--vh) - var(--bar-bottom) - 26px); overflow-y: auto; box-sizing: border-box; }
+.sd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 20px; margin-bottom: 12px; }
+.sd-row { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
+.sd-k { color: var(--text-muted); font: 400 12px system-ui, sans-serif; }
+.sd-v { color: var(--text-2); font: 700 13px system-ui, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sd-v.sd-bad { color: #ef4444; }
+.sd-sent { margin-bottom: 8px; }
+.sd-senthead { display: flex; justify-content: space-between; color: var(--text-muted); font: 600 11px system-ui, sans-serif; }
+.sd-senttext { color: var(--text); font: 400 11px ui-monospace, monospace; word-break: break-all; -webkit-user-select: text; user-select: text;
+  background: rgba(var(--ov),0.05); border-radius: 6px; padding: 4px 6px; margin-top: 2px; }
+.sd-sent.stale .sd-senttext, .sd-sent.stale .sd-senthead { color: var(--text-dim); }
+.nio-chk { width: 18px; height: 18px; accent-color: #4A90D9; margin: 0; }
+.nio-dot { width: 12px; height: 12px; border-radius: 50%; background: #6b7280; }
+.nio-mod { color: var(--text); font: 500 13px system-ui, sans-serif; }
+.nio-ip { color: var(--text-2); font: 600 12px ui-monospace, monospace; text-align: right; }
+.nio-subnet { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+.nio-oct { width: 56px; text-align: center; }
+.nio-dotsep { color: var(--text); font-weight: 700; }
+.nio-x { color: var(--text-dim); margin-left: 4px; }
+.nio-hostips { color: var(--text-2); font: 600 12px ui-monospace, monospace; white-space: pre-line; line-height: 1.5; }
+.nio-rule { border: 0; border-top: 1px solid var(--border); margin: 14px 0 10px; }
+.nio-ntriprow { display: flex; align-items: center; gap: 8px; }
+.nio-bcrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.nio-warn { color: #ef4444; font: 600 12px system-ui, sans-serif; margin-top: 4px; }
+.nio-aged { color: #ef4444; }
+.nio-find { margin-top: 2px; min-height: 44px; }
+.ntm-card { max-width: 520px; width: calc(100vw - 32px); gap: 8px; }
+.ntm-list { max-height: calc(100 * var(--vh) - 300px); overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.ntm-row { display: flex; flex-direction: column; align-items: stretch; gap: 2px; text-align: left; min-height: 48px; padding: 6px 10px;
+  border: 0; border-radius: 6px; background: rgba(var(--ov),0.08); color: var(--text); cursor: pointer; font: 500 13px system-ui, sans-serif; }
+.ntm-row:hover { background: rgba(var(--ov),0.16); }
+.ntm-top { display: flex; justify-content: space-between; gap: 8px; }
+.ntm-mount { font-weight: 700; }
+.ntm-km, .ntm-sub { color: var(--text-muted); font-size: 11px; }
+.nio-btnrow { display: flex; gap: 8px; margin-top: 8px; }
+.nio-btnrow .cfg-act { flex: 1; min-height: 44px; }
+.nio-note { color: var(--text); background: rgba(241,196,15,0.14); border-left: 3px solid #F1C40F; border-radius: 4px;
+  font: 500 12px system-ui, sans-serif; margin-top: 6px; padding: 6px 8px; }
+.nio-chk-row { display: flex; align-items: baseline; gap: 8px; margin-top: 4px; font: 500 12px system-ui, sans-serif; color: var(--text); }
+.nio-chk-row .mark { width: 14px; text-align: center; font-weight: 700; }
+.nio-chk-row.ok .mark { color: #22c55e; } .nio-chk-row.bad .mark { color: #ef4444; } .nio-chk-row.wait .mark { color: var(--text-muted); }
+#nio-mode .cfg-act { min-height: 44px; }
+.nio-rtcm { margin-top: 6px; }
+.nio-rtcm summary { color: var(--text-2); font: 500 12px system-ui, sans-serif; cursor: pointer; }
+.nio-rtcmscroll { max-height: calc(30 * var(--vh)); overflow-y: auto; }
+.nio-rtcmtbl { width: 100%; border-collapse: collapse; margin-top: 4px; font: 400 11px system-ui, sans-serif; color: var(--text); }
+.nio-rtcmtbl th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 1px 6px 1px 0; }
+.nio-rtcmtbl td { padding: 1px 6px 1px 0; vertical-align: top; }
+.nio-rtcmtbl td.num, .nio-rtcmtbl th.num { text-align: right; font-family: ui-monospace, monospace; white-space: nowrap; }
+.nio-rtcmtbl tr.stale td { color: #ef4444; }
+.nio-ntstatus { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
+/* NTRIP chain sub-panels (ln-panels that replace their parent). */
+.nio-ntmodal { width: 520px; }
+.nio-ntset { width: 460px; max-height: calc(100 * var(--vh) - 72px); overflow: auto; }
+.nio-ntedit { width: 480px; max-height: calc(100 * var(--vh) - 72px); overflow: auto; }
+.nio-nttoolbar { display: flex; align-items: center; gap: 6px; background: rgba(var(--ov),0.05);
+  border-radius: 8px; padding: 6px; margin-bottom: 12px; }
+.nio-tbtn { width: 40px; height: 40px; border: 0; border-radius: 6px; background: rgba(var(--ov),0.10);
+  color: var(--text); font: 700 20px system-ui, sans-serif; cursor: pointer; }
+.nio-tbtn:hover { background: rgba(var(--ov),0.18); }
+.nio-tbtn-x { color: #ff7a6b; } .nio-tbtn-star { color: #F1C40F; font-size: 22px; }
+.nio-tbtn-use { width: auto; padding: 0 12px; font-weight: 700; }
+.nio-tbsep { width: 1px; height: 28px; background: var(--border); margin: 0 4px; }
+.nio-nthead, .nio-ntrow { display: grid; grid-template-columns: 1fr 230px 60px; align-items: center; }
+.nio-nthead { color: var(--text-muted); font: 600 12px system-ui, sans-serif; padding: 8px 12px; background: rgba(var(--ov),0.05); border-radius: 6px 6px 0 0; }
+.nio-nthead span:last-child, .nio-ntrow .nt-def { text-align: center; }
+.nio-ntlist { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 6px 6px; min-height: 120px; max-height: 320px; overflow: auto; }
+.nio-ntrow { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid rgba(var(--ov),0.04); }
+.nio-ntrow:hover { background: rgba(var(--ov),0.06); }
+.nio-ntrow.sel { background: var(--sel); }
+.nio-ntrow .nt-name { color: var(--text); font: 600 14px system-ui, sans-serif; }
+.nio-ntrow .nt-mount { color: var(--text-dim); font: 400 12px system-ui, sans-serif; }
+.nio-ntrow .nt-caster { color: var(--text-2); font: 500 13px system-ui, sans-serif; min-width: 0; }
+.nio-ntrow .nt-caster div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nio-ntrow .nt-def { color: #F1C40F; font: 700 20px system-ui, sans-serif; }
+/* NTRIP editor modal */
+.nio-fld { margin-bottom: 8px; }
+.nio-fld label { display: block; color: var(--text-muted); font: 600 12px system-ui, sans-serif; margin-bottom: 4px; }
+.nio-tx { width: 100%; height: 36px; text-align: left; box-sizing: border-box; }
+.nio-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.nio-testrow { display: flex; align-items: center; gap: 12px; margin: 10px 0; }
+.nio-fieldlist { border: 1px solid var(--border); border-radius: 6px; max-height: 110px; overflow: auto; padding: 6px; margin-bottom: 4px; }
+.nio-fieldlist label { display: flex; align-items: center; gap: 8px; color: var(--text); font: 500 13px system-ui, sans-serif; padding: 3px 2px; cursor: pointer; }
+.nio-fieldlist input { accent-color: #4A90D9; }
+.nio-cklbl { display: flex; align-items: center; gap: 8px; color: var(--text); font: 500 13px system-ui, sans-serif; margin-top: 8px; cursor: pointer; }
+.nio-cklbl input { accent-color: #4A90D9; width: 16px; height: 16px; }
+/* ===== Field Operations ===== */
+.fo-panel { width: 360px; }
+.fo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.fo-btn { height: 44px; border: 1px solid var(--border); border-radius: 6px; background: rgba(var(--ov),0.06);
+  color: var(--text-2); cursor: pointer; font: 600 13px system-ui, sans-serif; text-align: left;
+  padding: 0 10px; display: flex; align-items: center; gap: 8px; }
+.fo-btn:hover { background: rgba(var(--ov),0.14); }
+.fo-btn.disabled { opacity: 0.4; pointer-events: none; }
+.fo-ic { width: 22px; height: 22px; object-fit: contain; flex: none; }
+.fo-pill { margin-top: 12px; background: #1E8449; color: #fff; border-radius: 6px; padding: 7px 12px;
+  font: 600 13px system-ui, sans-serif; }
+/* Fields and Jobs — three columns. */
+.fj-panel { width: 900px; }
+.fj-cols { display: grid; grid-template-columns: 1.1fr 1.4fr auto; gap: 16px; }
+.fj-col { min-width: 0; }
+.fj-creation { min-width: 150px; }
+.fj-fhead { display: grid; grid-template-columns: 1fr 70px 70px; padding: 8px 10px; gap: 6px;
+  background: rgba(var(--ov),0.05); border-radius: 6px 6px 0 0;
+  color: var(--text-muted); font: 600 11px system-ui, sans-serif; }
+.fj-fhead span:not(:first-child) { text-align: right; }
+.fj-list { border: 1px solid var(--border); border-top: 0; border-radius: 0 0 6px 6px;
+  max-height: 280px; overflow: auto; }
+.fj-joblist { border-radius: 6px; border-top: 1px solid var(--border); max-height: 200px; margin-bottom: 4px; }
+.fj-frow { display: grid; grid-template-columns: 1fr 70px 70px; gap: 6px; padding: 9px 10px; cursor: pointer;
+  border-bottom: 1px solid rgba(var(--ov),0.04); }
+.fj-frow:hover { background: rgba(var(--ov),0.06); }
+.fj-frow.sel { background: var(--sel); }
+.fj-fname { color: var(--text); font: 600 13px system-ui, sans-serif; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fj-fnum { color: var(--text-2); font: 500 13px ui-monospace, monospace; text-align: right; }
+.fj-jrow { padding: 8px 10px; cursor: pointer; border-bottom: 1px solid rgba(var(--ov),0.04); }
+.fj-jrow:hover { background: rgba(var(--ov),0.06); }
+.fj-jrow.sel { background: var(--sel); }
+.fj-jtop { display: flex; gap: 10px; align-items: baseline; }
+.fj-jname { color: var(--text); font: 600 14px system-ui, sans-serif; flex: 1; }
+.fj-jwt { color: var(--text-muted); font: 500 12px system-ui, sans-serif; }
+.fj-jst { color: var(--text-dim); font: 500 11px system-ui, sans-serif; }
+.fj-jsub { color: var(--text-dim); font: 400 11px system-ui, sans-serif; margin-top: 2px; }
+.fj-empty { color: var(--text-dim); font: 500 14px system-ui, sans-serif; text-align: center; padding: 40px 10px; }
+.fj-tx { width: 100%; height: 34px; text-align: left; box-sizing: border-box; }
+.fj-notes { width: 100%; height: 64px; box-sizing: border-box; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg-input); color: var(--text); font: 500 13px system-ui, sans-serif; padding: 6px 8px; resize: none; }
+.fj-noteshdr { display: flex; align-items: center; justify-content: space-between; }
+.fj-namerow { display: flex; gap: 6px; }
+.fj-mini { flex: none; padding: 6px 10px; }
+.fj-btnrow { display: flex; gap: 6px; margin-top: 10px; }
+.fj-jbtns { margin-top: 12px; }
+.fj-primary { background: #1f6fb2; color: #fff; }
+.fj-danger { background: #b54430; color: #fff; }
+.nf-panel { width: 320px; }
+.nf-pos { color: var(--text-2); font: 600 14px ui-monospace, monospace; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--bg-input); }
+.fj-crbtn { display: flex; align-items: center; gap: 8px; justify-content: flex-start; margin-bottom: 6px; }
+.fe-toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* AgShare upload/download. */
+.agu-tools { display: flex; gap: 6px; align-items: center; }
+.agu-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; cursor: pointer;
+  border-bottom: 1px solid rgba(var(--ov),0.04); }
+.agu-row:hover { background: rgba(var(--ov),0.06); }
+.agu-row input { accent-color: #4A90D9; }
+.agu-name { flex: 1; color: var(--text); font: 600 13px system-ui, sans-serif; }
+.agu-bd { font: 500 11px system-ui, sans-serif; }
+.agu-bd.ok { color: #39FF6A; } .agu-bd.no { color: #ff7a6b; }
+/* ===== File / Application Menu ===== */
+.fm-panel { width: 340px; }
+#bugreport.fm-panel { width: 510px; } /* room to describe the problem */
+.br-filerow { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border);
+  font: 14px system-ui, sans-serif; }
+.br-filerow .br-fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.br-filerow .br-fsize { opacity: 0.7; font-size: 12px; }
+.fm-wide { width: 560px; }
+/* View All Settings fills the tablet viewport so every setting shows for a screenshot. */
+.fm-full { width: calc(100 * var(--vw) - 110px); height: calc(100 * var(--vh) - 84px); box-sizing: border-box; }
+.fm-full .vs-tree { max-height: calc(100 * var(--vh) - 150px); columns: 280px; column-gap: 22px; }
+.vs-section { break-inside: avoid; -webkit-column-break-inside: avoid; margin-bottom: 12px; }
+.as-dirs { display: flex; flex-direction: column; gap: 6px; }
+.as-dir { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+.as-dirname { color: var(--text-2); font: 600 12px system-ui, sans-serif; }
+.as-dirpath { color: var(--text-dim); font: 500 11px ui-monospace, monospace; word-break: break-all; }
+.lang-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; max-height: 420px; overflow: auto; }
+.lang-btn { height: 38px; border: 1px solid var(--border); border-radius: 6px; background: rgba(var(--ov),0.06);
+  color: var(--text-2); cursor: pointer; font: 600 12px system-ui, sans-serif; }
+.lang-btn:hover { background: rgba(var(--ov),0.14); }
+.lang-btn.active { background: #1f6fb2; border-color: #4A90D9; color: #fff; }
+.vs-tree { max-height: 460px; overflow: auto; }
+.vs-group { color: #39FF6A; font: 700 13px system-ui, sans-serif; margin: 10px 0 4px; }
+.vs-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 3px 4px; border-bottom: 1px solid rgba(var(--ov),0.04); }
+.vs-k { color: var(--text-2); font: 500 12px system-ui, sans-serif; }
+.vs-v { color: var(--text); font: 600 12px ui-monospace, monospace; }
+.log-filts { display: flex; gap: 4px; margin-bottom: 8px; }
+.log-filt { flex: 1; padding: 6px 4px; border: 1px solid var(--border); border-radius: 6px; background: rgba(var(--ov),0.06);
+  color: var(--text-muted); cursor: pointer; font: 600 11px system-ui, sans-serif; }
+.log-filt.active { background: #1f6fb2; color: #fff; border-color: #4A90D9; }
+.log-list { max-height: 440px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; padding: 4px; }
+.log-row { display: grid; grid-template-columns: 64px 38px 1fr; gap: 6px; padding: 2px 4px; font: 500 11px ui-monospace, monospace; }
+.log-t { color: var(--text-dim); } .log-l { color: var(--text-muted); } .log-m { color: var(--text-2); word-break: break-word; }
+.log-row.lvl3 .log-l, .log-row.lvl3 .log-m { color: #F39C12; }
+.log-row.lvl4 .log-l, .log-row.lvl4 .log-m, .log-row.lvl5 .log-l, .log-row.lvl5 .log-m { color: #ff7a6b; }
+.hk-list { max-height: 420px; overflow: auto; }
+.hk-row { display: flex; align-items: center; gap: 10px; padding: 5px 4px; border-bottom: 1px solid rgba(var(--ov),0.04); }
+.hk-label { flex: 1; color: var(--text-2); font: 500 13px system-ui, sans-serif; }
+.hk-key { min-width: 64px; height: 30px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-input);
+  color: var(--text); font: 700 13px ui-monospace, monospace; cursor: pointer; }
+.hk-key.capturing { border-color: #4A90D9; color: #4A90D9; }
+.ab-title { color: var(--text); font: 700 20px system-ui, sans-serif; text-align: center; margin-bottom: 4px; }
+.ab-version { color: var(--text-2); font: 600 14px system-ui, sans-serif; text-align: center; }
+.ab-git { color: var(--text-dim); font: 500 11px ui-monospace, monospace; text-align: center; margin-bottom: 10px; word-break: break-all; }
+.ab-desc { color: var(--text-muted); font: 500 12px system-ui, sans-serif; text-align: center; margin-top: 4px; }
+/* ===== Steer Wizard (full-screen) ===== */
+.wz-overlay { position: fixed; inset: 0; z-index: 50; background: var(--bg-raised); display: none; flex-direction: column; }
+.wz-overlay.open { display: flex; }
+.wz-header { position: relative; padding: 16px 22px; background: var(--panel); }
+.wz-title { color: #4A90D9; font: 800 18px system-ui, sans-serif; }
+.wz-step { position: absolute; right: 22px; top: 18px; color: var(--text-dim); font: 500 13px system-ui, sans-serif; }
+.wz-progress { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--border); }
+.wz-progressbar { height: 100%; width: 0; background: #4A90D9; transition: width 0.2s; }
+.wz-body { flex: 1; overflow: auto; padding: 22px 26px; }
+#wz-content { max-width: 1100px; margin: 0 auto; }
+.wz-h1 { color: var(--text); font: 700 22px system-ui, sans-serif; margin-bottom: 8px; }
+.wz-desc { color: var(--text-2); font: 400 14px system-ui, sans-serif; line-height: 1.5; margin-bottom: 18px; white-space: pre-line; }
+.wz-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: 200px; }
+/* Selection cards (hardware / vehicle type). */
+.wz-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 24px auto; max-width: 900px; }
+.wz-card { border: 2px solid var(--border); border-radius: 12px; background: rgba(var(--ov),0.03); padding: 18px;
+  display: flex; flex-direction: column; align-items: center; gap: 10px; cursor: pointer; }
+.wz-card img { width: 96px; height: 96px; object-fit: contain; background: var(--bg-sunken); border-radius: 8px; padding: 6px; }
+.wz-card .t { color: var(--text); font: 700 16px system-ui, sans-serif; }
+.wz-card .s { color: var(--text-dim); font: 400 12px system-ui, sans-serif; }
+.wz-card.active { border-color: #4A90D9; background: var(--sel); }
+/* Diagram + value panels (dimensions / antenna). */
+.wz-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.wz-panel { border: 1px solid var(--border); border-radius: 10px; background: rgba(var(--ov),0.02); padding: 16px; }
+.wz-panel img.dia { width: 100%; height: 220px; object-fit: contain; background: var(--bg-sunken); border-radius: 8px; }
+.wz-fld { margin-top: 12px; }
+.wz-fld label { display: block; color: var(--text); font: 700 14px system-ui, sans-serif; }
+.wz-fld .sub { color: var(--text-dim); font: 400 12px system-ui, sans-serif; margin-bottom: 6px; }
+.wz-num { width: 120px; height: 40px; border-radius: 8px; border: 1px solid #4A90D9; background: var(--bg-sunken);
+  color: var(--text); font: 700 18px ui-monospace, monospace; text-align: center; }
+.wz-unit { color: var(--text-dim); margin-left: 8px; }
+/* Rows of settings (hardware config / speed / gains). */
+.wz-rows { display: flex; flex-direction: column; gap: 10px; }
+.wz-row { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px solid var(--border); border-radius: 10px; background: rgba(var(--ov),0.03); padding: 12px 16px; }
+.wz-row .lbl { color: var(--text); font: 700 14px system-ui, sans-serif; }
+.wz-row .lbl .sub { color: var(--text-dim); font: 400 12px system-ui, sans-serif; font-weight: 400; }
+.wz-seg { display: flex; gap: 8px; }
+.wz-seg button { padding: 8px 14px; border: 1px solid var(--border); border-radius: 8px; background: rgba(var(--ov),0.06);
+  color: var(--text-2); cursor: pointer; font: 600 13px system-ui, sans-serif; }
+.wz-seg button.active { background: #2f6fb0; border-color: #4A90D9; color: #fff; }
+.wz-tgl { min-width: 64px; height: 34px; border-radius: 17px; border: 1px solid var(--border);
+  background: rgba(var(--ov),0.08); color: var(--text-muted); cursor: pointer; font: 700 12px system-ui, sans-serif; }
+.wz-tgl.on { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
+/* Calibration widgets (gauge / live angle / test buttons). */
+.wz-live { text-align: center; margin: 18px 0; }
+.wz-live .big { color: #4A90D9; font: 800 44px ui-monospace, monospace; }
+.wz-live .lbl { color: var(--text-dim); font: 500 12px system-ui, sans-serif; }
+.wz-testbtn { padding: 12px 28px; border: 0; border-radius: 8px; background: #2f6fb0; color: #fff;
+  font: 700 15px system-ui, sans-serif; cursor: pointer; }
+.wz-testbtn.disabled { opacity: 0.4; pointer-events: none; }
+.wz-circle { min-height: 0; margin: 4px 0 16px; gap: 10px; }
+.wz-btnrow { display: flex; gap: 12px; }
+.wz-hint { color: #f59e0b; font: 600 13px system-ui, sans-serif; text-align: center; min-height: 18px; }
+.wz-phase { margin: 0; text-align: center; }
+.wz-result { color: var(--text); font: 600 14px system-ui, sans-serif; text-align: center; max-width: 560px; }
+.wz-prereq { border: 1px solid var(--border); border-radius: 10px; background: rgba(var(--ov),0.03); padding: 12px 16px; margin-bottom: 16px; }
+.wz-prereq .ttl { color: var(--text); font: 700 13px system-ui, sans-serif; margin-bottom: 6px; }
+.wz-prereq .it { color: var(--text-2); font: 500 12px system-ui, sans-serif; padding: 2px 0; }
+.wz-prereq .it b { color: #4A90D9; }
+.wz-okcard { background: var(--sel); border-radius: 10px; padding: 22px; text-align: center; }
+.wz-okcard .ok { display: inline-flex; width: 56px; height: 56px; border-radius: 50%; background: #2f6fb0;
+  align-items: center; justify-content: center; color: #fff; font: 800 18px system-ui; margin-bottom: 10px; }
+.wz-okcard .t { color: var(--text); font: 700 16px system-ui, sans-serif; }
+.wz-okcard .s { color: var(--text-dim); font: 400 12px system-ui, sans-serif; margin-top: 4px; }
+.wz-statusbar { display: flex; gap: 26px; justify-content: center; padding: 10px; background: var(--panel); border-top: 1px solid var(--border); }
+.wz-statusbar span { color: var(--text-dim); font: 500 13px system-ui, sans-serif; }
+.wz-statusbar b { color: var(--text); font-weight: 700; margin-left: 5px; }
+.wz-footer { display: flex; align-items: center; gap: 10px; padding: 14px 22px; background: var(--panel); border-top: 1px solid var(--border); }
+.wz-spacer { flex: 1; }
+.wz-btn { padding: 12px 26px; border: 0; border-radius: 8px; cursor: pointer; color: #fff; font: 700 14px system-ui, sans-serif; }
+.wz-red { background: #b54430; } .wz-grey { background: rgba(var(--ov),0.14); color: var(--text); } .wz-blue { background: #2f6fb0; }
+.wz-btn.disabled { opacity: 0.4; pointer-events: none; }
+/* Fit the wizard without vertical scrolling on smaller / high-DPI-scaled screens
+   (#154: a 2736x1716 laptop at 225% gives ~1216x735 CSS px). Fields and toggle rows
+   go two-up when there's width; spacing tightens when height is short. */
+@media (min-width: 860px) {
+  .wz-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; align-items: start; }
+  .wz-rows > .wz-fld { margin-top: 0; }
+  /* Circle tests: prerequisites and the live steer angle share a row. */
+  .wz-testtop { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; }
+  .wz-testtop > .wz-prereq { margin-bottom: 0; }
+  .wz-testtop > .wz-live { margin: 0 24px 0 0; }
+}
+@media (max-height: 820px) {
+  .wz-header { padding: 10px 22px; } .wz-step { top: 12px; }
+  .wz-body { padding: 12px 22px; }
+  .wz-h1 { font-size: 20px; margin-bottom: 4px; }
+  .wz-desc { margin-bottom: 10px; line-height: 1.4; }
+  .wz-center { min-height: 140px; gap: 10px; }
+  .wz-cards { margin: 12px auto; }
+  .wz-panel { padding: 12px; } .wz-panel img.dia { height: 150px; }
+  .wz-live { margin: 6px 0; } .wz-live .big { font-size: 34px; }
+  .wz-prereq { padding: 8px 14px; margin-bottom: 10px; }
+  .wz-fld { margin-top: 8px; } .wz-num { height: 36px; }
+  .wz-statusbar { padding: 6px; }
+  .wz-footer { padding: 8px 22px; } .wz-btn { padding: 9px 22px; }
+}
+/* Vehicle config diagrams (type cards + per-field measurement diagrams). */
+.vc-typecards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.vc-typecard { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px;
+  border: 1px solid var(--border); border-radius: 8px; background: rgba(var(--ov),0.04);
+  color: var(--text-2); cursor: pointer; font: 600 12px system-ui, sans-serif; }
+.vc-typecard img { width: 100%; height: 56px; object-fit: contain; background: #fff; border-radius: 4px; }
+.vc-typecard.active { border-color: #4A90D9; background: var(--sel); color: var(--text); }
+.vc-diagrow { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+.vc-diag { width: 150px; height: 96px; object-fit: contain; background: #fff; border-radius: 6px; flex: none; }
+.vc-fieldcol { flex: 1; min-width: 0; display: grid; grid-template-columns: auto max-content; gap: 6px 10px; align-items: center; }
+.vc-fieldcol label { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
+/* Segmented controls (3 buttons) don't fit the 110px value column — let them
+   span the full field width on their own row instead of overflowing the dialog. */
+.vc-fieldcol .ln-seg { grid-column: 1 / -1; width: 100%; }
+.vc-diag-wide { width: 100%; max-height: 120px; object-fit: contain; background: #fff; border-radius: 6px; margin: 6px 0; }
+/* Two-column section layout (Antenna beside Hitch/Wheelbase/Track) to save height. */
+.vc-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.vc-2col .vc-diag { width: 120px; height: 80px; }
+.vc-2col .vc-fieldcol { grid-template-columns: auto max-content; }
+/* Tool config: sub-tabs, dynamic grids (section widths/zones/colours/pins), notes. */
+.cfg-subtabs { font-size: 12px; flex-wrap: wrap; }
+.cfg-subtabs .cfg-tab { padding: 5px 9px; }
+.cfg-note { color: #f0a868; font: 500 12px system-ui, sans-serif; margin-top: 8px; }
+.tc-dyngrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; min-width: 0; }
+.tc-dyngrid .tc-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tc-dyngrid .tc-cell span { color: var(--text-muted); font: 500 11px system-ui, sans-serif; }
+.tc-dyngrid input { width: 100%; min-width: 0; height: 30px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-input);
+  color: var(--text); font: 600 12px ui-monospace, monospace; padding: 0 4px; box-sizing: border-box; text-align: right; }
+.tc-dyngrid input[type=color] { padding: 1px; height: 30px; }
+/* Section-width / zone-end boxes hold a ~4-digit cm value — size to that (#41). Fixed rows
+   of 8 so 16 sections = two even rows (no stragglers); only a non-multiple-of-8 count
+   leaves a short last row. */
+#tc-sectionwidths, #tc-zoneends, #tc-sectioncolors { grid-template-columns: repeat(8, 58px); justify-content: start; }
+#tc-sectionwidths input, #tc-zoneends input { width: 52px; }
+.cfg-color { width: 60px; height: 32px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-input); padding: 1px; }
+.tc-pingrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tc-pingrid .tc-cell { display: flex; flex-direction: column; gap: 2px; }
+.tc-pingrid .tc-cell span { color: var(--text-muted); font: 500 11px system-ui, sans-serif; }
+.tc-pingrid select { height: 30px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-input);
+  color: var(--text); font: 600 11px system-ui, sans-serif; padding: 0 2px; }
+.ln-back { border: 0; background: rgba(var(--ov),0.10); color: var(--text-2); cursor: pointer;
+  border-radius: 6px; width: 26px; height: 26px; font: 700 15px system-ui; margin-right: 6px; }
+/* Standard header for every panel/dialog: top-level = title + X (top-right);
+   sub-panel = ← Back (top-left) + title + X. One pattern → consistent navigation. */
+.ln-hdr { display: flex; align-items: center; margin-bottom: 12px; }
+.ln-hdr-title { color: var(--text); font: 700 16px system-ui, sans-serif; flex: 1; }
+.ln-x { border: 0; background: rgba(var(--ov),0.10); color: var(--text-2); cursor: pointer;
+  border-radius: 6px; width: 26px; height: 26px; font: 700 15px system-ui, sans-serif; flex: none; }
+.ln-x:hover { background: rgba(var(--ov),0.18); }
+/* Vehicle & Tool picker hub. */
+.ln-hub { min-width: 600px; }
+.hub-banner { background: #1E8449; color: #fff; border-radius: 6px; padding: 7px 12px;
+  text-align: center; font: 700 14px system-ui, sans-serif; margin-bottom: 12px; }
+.hub-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.hub-colhdr { color: #4A90D9; font: 700 15px system-ui, sans-serif; margin-bottom: 6px; }
+.hub-cur { color: var(--text-muted); font-weight: 500; font-size: 12px; }
+.hub-list { width: 100%; box-sizing: border-box; background: var(--bg-input); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; font: 600 13px system-ui, sans-serif; padding: 2px; }
+.hub-list option { padding: 5px 8px; }
+.hub-prev { background: rgba(var(--ov),0.04); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text-2); font: 500 12px ui-monospace, monospace; padding: 8px; margin: 8px 0 0;
+  min-height: 96px; white-space: pre-wrap; }
+.hub-config { width: 100%; margin-top: 8px; height: 36px; border: 0; border-radius: 8px;
+  background: #1f6fb2; color: #fff; font: 700 13px system-ui, sans-serif; cursor: pointer; }
+.hub-name { width: 100%; box-sizing: border-box; margin-top: 8px; height: 32px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--bg-input); color: var(--text); font: 600 13px system-ui; padding: 0 8px; }
+.hub-crud { display: flex; gap: 5px; margin-top: 6px; }
+.hub-cbtn { flex: 1; height: 32px; border: 0; border-radius: 6px; background: rgba(var(--ov),0.10);
+  color: var(--text-2); cursor: pointer; font: 600 12px system-ui, sans-serif; }
+.hub-cbtn:hover { background: rgba(var(--ov),0.18); }
+.hub-danger { background: rgba(231,76,60,0.30); }
+.hub-foot { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.hub-status { flex: 1; color: var(--text-muted); font: 500 12px system-ui, sans-serif; }
+.hub-load { width: auto; padding: 0 22px; margin-top: 0; }
