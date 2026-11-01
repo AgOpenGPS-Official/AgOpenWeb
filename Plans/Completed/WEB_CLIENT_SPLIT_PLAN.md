@@ -1,6 +1,7 @@
 # Web client: split app.js and index.html
 
-**Status:** proposed, not started.
+**Status:** done (2026-11-01): #526 (routes and guard), #527 (CSS), #528 (`app.js` into 28 files),
+#529 (comments), #531 (four misplaced blocks), docs in `Docs/WEB_CLIENT.md`. See *Outcome* at the end.
 **Date:** 2026-11-01
 **Purpose:** `app.js` is 8,710 lines (504 KB) and `index.html` 3,412 lines (268 KB: 1,440 of
 CSS, the rest the markup of ~85 panels and dialogs). Finding the code for one panel means
@@ -102,3 +103,24 @@ A move conflicts with every open branch that touches `app.js` or `index.html`. S
 ES modules, a bundler, a framework, TypeScript, a component system, moving markup out of
 `index.html`, any change of behaviour. Each can be its own decision later, with this split
 done first.
+
+## Outcome
+
+- `app.js` became 28 files in one PR (#528), not two or three: the cut was scripted (at
+  top-level statement boundaries, verified by rejoining) and one switch meant one round of
+  conflicts. The files differ from §2's list where the section banners fell (`card-pane.js` and
+  `web-cards.js` separate, `cfg-controls.js` new, `frame.js` for the loop and start); the map is
+  in `Docs/WEB_CLIENT.md`.
+- **Not only moves**, two kinds of exception, both kept behaviour:
+  - Function declarations moved to an earlier file where code that runs while loading called
+    them before their file loaded (`recreateSkSurface` into `core.js`; the shared config
+    controls into `cfg-controls.js`).
+  - `transport.start()` and the CanvasKit load run at the end of `js/frame.js`. With several
+    files the browser may run callbacks between two of them; the first browser run failed so
+    (`renderRole is not defined`). This is rule 2 in `Docs/WEB_CLIENT.md`.
+- Checks that worked: a parser pass (acorn) for load-time uses of later files, including
+  callbacks; computed styles of every element compared with `develop`; panels opened and a
+  simulator drive on both builds; Galaxy Tab (Chrome over slow WiFi, the Android app) and iPad.
+- #530 was stacked on #529's branch and, merged seconds after it, landed there instead of in
+  `develop`; #531 is the same commit against `develop`.
+

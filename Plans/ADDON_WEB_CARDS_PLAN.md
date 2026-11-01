@@ -56,7 +56,7 @@ What is kept where:
 - Commands: `webcard.save|<index>\t<name>\t<url>` (index −1 adds) and `webcard.delete|<index>`.
   Both need control (not in `ObserverIds`). The host checks the scheme and the lengths.
 
-**Client** (`index.html`, `app.js`)
+**Client** (`index.html`, `js/web-cards.js`)
 - A card template like `vt-card-tpl`; header picker, ↗, ⤢, gear, ✕; body iframe and cover.
 - `{host}` replaced with `location.hostname` when the card loads the page.
 - The iframe: `sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"`
