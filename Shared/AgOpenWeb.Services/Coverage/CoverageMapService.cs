@@ -195,7 +195,7 @@ public class CoverageMapService : ICoverageMapService
     private int _edgePointCount;
     private const double EDGE_GATE = 2.0;          // metres between committed edge vertex pairs
     private const int EDGE_MAX_POINTS = 200_000;   // safety cap on total accumulated points
-    private const double EDGE_STROKE_WIDTH = 0.6;  // metres; the stroke in app.js drawCoverageEdgeSk
+    private const double EDGE_STROKE_WIDTH = 0.6;  // metres; the stroke in js/map-layers.js drawCoverageEdgeSk
 
     private void ClearEdges()
     {

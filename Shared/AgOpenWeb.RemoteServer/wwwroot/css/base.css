@@ -9,7 +9,7 @@
   --sat: calc(env(safe-area-inset-top, 0px) / var(--ui-zoom));
   --sab: calc(env(safe-area-inset-bottom, 0px) / var(--ui-zoom));
   /* The window's left/right safe-area insets, and the map's: in the split layout the card
-     pane takes one side (--map-l / --map-r, set by CardPane in app.js) and the map's
+     pane takes one side (--map-l / --map-r, set by CardPane in js/card-pane.js) and the map's
      overlays keep clear of it as of a notch. Plans/CARD_PANE_SPLIT_PLAN.md §2. */
   --win-sal: calc(env(safe-area-inset-left, 0px) / var(--ui-zoom));
   --win-sar: calc(env(safe-area-inset-right, 0px) / var(--ui-zoom));
@@ -23,7 +23,7 @@
      zoomed UI use --vw/--vh (one viewport percent divided back) instead of vw/vh. */
   --ui-zoom: 1;
   /* Bottom edge of the top status bar (+ dev diagnostics row), measured by placeHud() in
-     app.js; everything docked under the bar hangs from it. Default: the bar alone. */
+     js/skia-setup.js; everything docked under the bar hangs from it. Default: the bar alone. */
   --bar-bottom: calc(46px + var(--sat));
   /* Top-centre HUD scale from the screen height (placeHud): 1 up to 540 px, 1.33 at 720p. */
   --hud-s: 1;
@@ -37,7 +37,7 @@ body > :not(#ck, #maptap-ab, #ab-dot-labels, script) { zoom: var(--ui-zoom); }
    stylesheet used, so night is unchanged; [data-theme="day"] swaps the whole
    surface/text/border/overlay palette to light. Accent/status colours (blue/green/
    red/yellow + white-on-accent text) stay literal — they read on both themes.
-   Driven by config.display.isDayMode (see applyTheme() in app.js). */
+   Driven by config.display.isDayMode (see applyTheme() in js/skia-setup.js). */
 :root {
   --text: #e7eef9;          /* primary text */
   --text-2: #cfe3ff;        /* secondary text / labels / values */
