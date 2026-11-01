@@ -1511,7 +1511,10 @@ const OSK = (() => {
       }, { once: true });
       return;
     }
-    if (e.target.closest && e.target.closest(CONTROL)) return;             // another field or a button: confirm (focusout)
+    // Another field or a button: confirm (focusout). Focus moves by itself to a field; a button
+    // may stop that on its pointerdown (the slider nudges), so the field is left now.
+    const c = e.target.closest && e.target.closest(CONTROL);
+    if (c) { if (!isField(c)) el.blur(); return; }
     restore(); close(); el.blur();                                          // empty spot, map, backdrop: cancel
   }, true);
   document.addEventListener('focusin', e => { if (on() && isField(e.target)) open(e.target); else if (!root.contains(e.target)) close(); });
