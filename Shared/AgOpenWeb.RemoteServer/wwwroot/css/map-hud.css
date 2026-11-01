@@ -1,0 +1,337 @@
+/* Overlays on the map: status bar, GPS and field cards, heading, light bar and steer bar,
+   pass and headland HUDs, map-tap hints, Ref Nudge, AB letters, draw toolbar, U-turn buttons,
+   bottom stack (simulator bar, section bar, bottom nav). */
+
+/* Top status bar: pause + two-line
+   left stack (Fix/Age over a rotating Field/Stats/AB line), aggregate Modules
+   (with per-module popup), and big Speed on the right. */
+#statusbar {
+  position: fixed; top: var(--sat); left: var(--map-l); right: var(--map-r); height: 46px; display: none;
+  z-index: 33; /* above #leftnav (32) so the Modules / GPS popups aren't clipped under it (#94) */
+  align-items: center; gap: 10px; padding: 0 12px; box-sizing: border-box;
+  background: var(--float-bg); border-bottom: 1px solid var(--border-2);
+  color: var(--text-2); font: 600 15px system-ui, sans-serif;
+  user-select: none; -webkit-user-select: none;
+}
+#sb-diag {
+  position: fixed; top: calc(var(--sat) + 46px); left: var(--map-l); right: var(--map-r); height: 26px; display: none;
+  align-items: center; gap: 22px; padding: 0 14px 0 69px; box-sizing: border-box;
+  background: var(--float-bg); border-bottom: 1px solid var(--border-2);
+  color: var(--text-muted); font: 600 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+  user-select: none; -webkit-user-select: none;
+}
+#sb-diag .sbd-k { color: var(--text-muted); margin-right: 6px; letter-spacing: 0.04em; }
+#sb-diag .sbd-v { color: var(--text-2); font-variant-numeric: tabular-nums; }
+#statusbar button { background: transparent; border: 0; color: inherit; cursor: pointer;
+  font: inherit; padding: 2px 6px; display: inline-flex; align-items: center; gap: 6px; }
+#statusbar button:hover { background: rgba(var(--ov),0.06); border-radius: 6px; }
+#statusbar .dot { width: 13px; height: 13px; border-radius: 50%; display: inline-block;
+  background: #6b7280; vertical-align: middle; }
+/* Modules dot: steady green only when every configured module is present; amber or
+   red flashes so a missing module is noticed without reading the strip. */
+#statusbar .dot.flash { animation: sb-flash 1s steps(1, end) infinite; }
+@keyframes sb-flash { 50% { opacity: 0.15; } }
+#sb-pause { font-size: 12px; color: var(--text-2); }
+/* 360px wide so the rotating line doesn't jiggle, but it gives way (the line ellipsizes)
+   before the bar pushes the fullscreen button off a narrow or zoomed screen. */
+.sb-left { position: relative; display: flex; flex-direction: column; justify-content: center; line-height: 1.25;
+  flex: 0 1 360px; min-width: 0; }
+/* Fullscreen: the OS draws an exit "✕" pill at the top-left (e.g. iPad Safari). The
+   status bar is laid out so only the non-tappable Operator indicator sits there — nudge
+   it clear of the pill so it stays readable. Fullscreen-only (body.fs-on, toggled on
+   fullscreenchange). */
+body.fs-on #sb-role { margin-left: 75px; }
+.sb-row1 { display: flex; align-items: center; gap: 8px; }
+.sb-sec { color: var(--text-muted); font-weight: 500; }
+.sb-rot { color: #3498DB; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-spacer { flex: 1; }
+.sb-mods-wrap { position: relative; }
+#sb-modpop { display: none; position: absolute; top: 36px; left: 0; min-width: 230px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 10; }
+.sb-modrow { display: grid; grid-template-columns: 16px 84px 1fr; align-items: center;
+  gap: 6px; padding: 3px 2px; font-weight: 500; font-size: 13px; }
+.sb-modname { color: var(--text-2); }
+.sb-modd { color: var(--text-muted); text-align: right; font-size: 12px; }
+.sb-speed-wrap { display: flex; flex-direction: column; align-items: center; min-width: 70px; }
+#sb-speed { color: #E67E22; font-size: 24px; font-weight: 700; line-height: 1; }
+#sb-unit { color: var(--text-muted); font-size: 10px; font-weight: 500; margin-top: 1px; }
+/* Heading readout — AgOpen-style big pink degrees + small HDG label,
+   right of the speed slot in the strip. Fixed width so 000.0° never reflows. */
+.sb-hdg-wrap { display: flex; flex-direction: column; align-items: center; min-width: 76px; }
+#sb-hdg { color: #E91E90; font-size: 24px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+#sb-hdglabel { color: var(--text-muted); font-size: 10px; font-weight: 500; margin-top: 1px; }
+#sb-fs { flex: none; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 8px;
+  background: rgba(var(--ov),0.06); color: var(--text-2); font-size: 18px; cursor: pointer; }
+#sb-fs:hover { background: rgba(var(--ov),0.14); }
+/* GPS-detail card — popup toggled by the fix dot. */
+#sb-fixbtn { padding: 0; }
+#sb-gpscard { display: none; position: absolute; top: calc(100% + 8px); left: 0; min-width: 180px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 10; font-weight: 500; }
+#sb-gpscard .gc-ll { color: #F1C40F; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+#sb-gpscard .gc-rule { height: 1px; background: var(--border); margin: 5px 0; }
+#sb-gpscard .gc-row { display: flex; justify-content: space-between; gap: 16px; padding: 1px 0; }
+#sb-gpscard .gc-k { color: var(--text-muted); font-size: 12px; }
+#sb-gpscard .gc-v { color: var(--text-2); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Field data card (#321): same look, toggled by the rotating field line under the fix. */
+#sb-rot { cursor: pointer; }
+#sb-fieldcard { display: none; position: absolute; top: calc(100% + 8px); left: 0; min-width: 230px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 10; font-weight: 500; }
+#sb-fieldcard .gc-ll { color: #3498DB; font-size: 13px; font-weight: 700; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+#sb-fieldcard .gc-rule { height: 1px; background: var(--border); margin: 5px 0; }
+#sb-fieldcard .gc-row { display: flex; justify-content: space-between; gap: 16px; padding: 1px 0; }
+#sb-fieldcard .gc-row.fc-hide { display: none; }
+#sb-fieldcard .gc-k { color: var(--text-muted); font-size: 12px; }
+#sb-fieldcard .gc-v { color: var(--text-2); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+#fc-reset { margin-top: 6px; width: 100%; text-align: center; height: 34px; border: 1px solid var(--border); border-radius: 8px;
+  background: rgba(var(--ov),0.06); color: var(--text-2); font: 600 12px system-ui, sans-serif; cursor: pointer; }
+#fc-reset:hover { background: rgba(var(--ov),0.14); }
+/* Lightbar readout (arrow + cm) — DOM overlay so it renders identically under both the
+   2D and Skia map renderers (CanvasKit has no bundled font). Sits just below the LED strip. */
+/* Top-centre HUD column: the light-bar readout (+ tram lights), the
+   pass label, the headland distance and the reverse badge. It hangs from the measured bottom
+   of the status bar (--bar-bottom), so nothing sits behind the bar when the diagnostics row
+   or a bigger UI size makes it taller, and it scales with the screen height (--hud-s) so a
+   720p screen reads at a glance. Hidden rows collapse; only the tram dots take taps. */
+#hud-top { position: fixed; top: var(--bar-bottom); left: var(--map-l); right: var(--map-r); z-index: 10;
+  display: flex; flex-direction: column; align-items: center; gap: calc(2px * var(--hud-s));
+  padding-top: calc(6px * var(--hud-s)); pointer-events: none; }
+/* Empty slot the canvas draws the steer bar into (steerBarSk), under the readout; its height
+   is set by updateLightbarText, only in the steer-bar style. */
+#lb-steer { height: 0; flex: none; }
+#lb-row { position: relative; align-self: stretch; display: flex; flex-direction: column; justify-content: center; }
+#lb-row:has(#tram-lights.show) { min-height: calc(34px * var(--hud-s)); }
+#lb {
+  text-align: center; display: none;
+  color: var(--text-2); font: 600 calc(15px * var(--hud-s)) system-ui, sans-serif; pointer-events: none;
+  text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; position: relative;
+}
+/* The distance stays centred: the average hangs off its right, so its coming and going
+   moves nothing (#479). The probe, never seen, measures the widest readout. */
+#lb .lb-core { position: relative; display: inline-block; white-space: nowrap; }
+#lb .lb-avg { display: none; position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+  margin-left: calc(10px * var(--hud-s)); white-space: nowrap; color: #f2f366; font: 600 calc(12px * var(--hud-s)) system-ui, sans-serif; }
+#lb .lb-probe { position: absolute; left: 0; top: 0; visibility: hidden; white-space: nowrap; }
+#lb .lb-probe .lb-avg { display: inline; position: static; transform: none; margin: 0; }
+/* Guidance bar (#479), as AgOpenGPS. Light bar: the cells either side of the readout, on
+   its row (lightbarSk), the pass under them. Steer bar: the readout, then the bar
+   (steerBarSk, drawn at 84 px), then the pass. */
+/* Pass HUD ("1R" / "2L") under the lightbar readout, as big as the headland distance and
+   shown whatever the bar settings (updatePassHud). Ends above the headland HUD. */
+#pass-hud {
+  text-align: center; display: none;
+  color: #fff; font: 700 calc(19px * var(--hud-s))/1.25 system-ui, sans-serif; pointer-events: none;
+  text-shadow: 0 1px 2px #000;
+}
+/* Headland-distance HUD — screen-space box at top-centre (below the light bar's two lines).
+   Green when clear, red on warning.
+   Gated by Display.HeadlandDistanceVisible + a live distance ≥ 0, AND hidden while a
+   map-tap creation flow is active (updateHeadlandHud) so it doesn't clutter the top-centre
+   instruction pill / draw toolbar. */
+#headland-hud {
+  display: none; margin-top: calc(4px * var(--hud-s));
+  padding: calc(6px * var(--hud-s)) calc(18px * var(--hud-s)); border-radius: 8px; border: 1px solid rgba(var(--ov),0.25);
+  background: rgba(20,46,28,0.85); color: #fff; font: 700 calc(19px * var(--hud-s)) ui-monospace, monospace;
+  pointer-events: none; z-index: 10; text-shadow: 0 1px 2px #000;
+}
+#headland-hud.warn { background: rgba(130,32,32,0.9); border-color: #ff6b5b; }
+/* Map-tap capture hint — top-centre pill shown while a feature is
+   capturing an on-map tap (place-flag, boundary draw, AB, …). Esc cancels. */
+#maptap-hint {
+  position: fixed; top: calc(var(--bar-bottom) + 14px); left: calc(50% + var(--map-dx)); transform: translateX(-50%); display: none;
+  padding: 7px 20px; border-radius: 999px; border: 1px solid rgba(120,200,255,0.6);
+  background: rgba(18,40,64,0.92); color: #d6ecff; font: 600 15px system-ui, sans-serif;
+  pointer-events: none; z-index: 40; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+}
+#maptap-hint.show { display: block; }
+/* AutoSteer engaged but the module isn't steering (#126): red, like AgOpenGPS. */
+#rn-steer.not-steering { background: rgba(220,30,30,0.85); box-shadow: 0 0 0 3px #ff4040; animation: rn-ns 1s ease-in-out infinite alternate; }
+@keyframes rn-ns { from { box-shadow: 0 0 0 3px #ff4040; } to { box-shadow: 0 0 0 6px rgba(255,64,64,0.35); } }
+/* Reverse indicator (#125, AgOpenGPS DrawReverse). */
+#reverse-badge { margin-top: calc(4px * var(--hud-s));
+  display: none; padding: calc(6px * var(--hud-s)) calc(18px * var(--hud-s)); border-radius: 999px; border: 1px solid rgba(255,90,90,0.8);
+  background: rgba(70,10,10,0.9); color: #ffd0d0; font: 700 calc(15px * var(--hud-s)) system-ui, sans-serif;
+  letter-spacing: 0.05em; pointer-events: none; z-index: 40; }
+#reverse-badge.show { display: block; }
+/* Tram lights (#451, AgOpenGPS DrawTramMarkers): one each side of the light bar's text.
+   Green = that wheel is on a tram track, red = not, flashing yellow = forced on by a tap. */
+#tram-lights { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: calc(240px * var(--hud-s)); display: none; justify-content: space-between; z-index: 10; pointer-events: none; }
+#tram-lights.show { display: flex; }
+.tram-dot { width: calc(30px * var(--hud-s)); height: calc(30px * var(--hud-s)); border-radius: 50%; border: 2px solid rgba(0,0,0,0.6);
+  background: rgba(230,0,0,0.55); pointer-events: auto; cursor: pointer; padding: 0; }
+.tram-dot.on { background: rgb(74,252,74); }
+.tram-dot.manual { animation: tram-flash 1s steps(1) infinite; }
+@keyframes tram-flash { 0% { background: rgb(252,252,0); } 50% { background: #000; } }
+/* "Esc to cancel" only on pointer devices with a keyboard; touch cancels via the red
+   Cancel button in the draw toolbar (no Esc key on a tablet). */
+@media (pointer: fine) { #maptap-hint::after { content: '  ·  Esc to cancel'; opacity: 0.6; font-weight: 400; } }
+/* Touch cancel for bare map-tap flows (flag placement) that have no draw toolbar. Shown
+   by startMapTap only when the toolbar isn't up, so it never doubles the toolbar Cancel. */
+/* Ref Nudge panel (#489): beside the right nav, under the status bar. */
+#refnudge { position: fixed; top: calc(var(--bar-bottom) + 10px); right: calc(var(--sar) + 96px); z-index: 33;
+  display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px;
+  background: var(--float-bg); border: 1px solid var(--border-2); color: var(--text); font-family: system-ui, sans-serif; }
+#refnudge[hidden] { display: none; }
+#refnudge .rf-name { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 16px; }
+#refnudge .rf-name span { font-size: 15px; font-weight: 600; color: var(--text-2); max-width: 270px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#refnudge .rf-row { display: flex; gap: 10px; align-items: center; justify-content: center; }
+#refnudge .rf-btn { width: 84px; height: 84px; border: 0; border-radius: 10px; padding: 8px; cursor: pointer; box-sizing: border-box;
+  background: rgba(var(--ov),0.08); display: flex; align-items: center; justify-content: center; }
+#refnudge .rf-btn img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+#refnudge .rf-btn:hover { background: rgba(var(--ov),0.16); }
+#refnudge .rf-btn:active { background: rgba(70,160,255,0.5); }
+#refnudge .rf-btn:disabled { opacity: 0.35; cursor: default; }
+#refnudge .rf-moved { width: 96px; text-align: center; font: 700 20px system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+#refnudge .rf-step { width: 96px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 14px; }
+#refnudge .rf-step input { width: 58px; font-size: 18px; }
+#maptap-cancel { position: fixed; top: calc(var(--bar-bottom) + 56px); left: calc(50% + var(--map-dx)); transform: translateX(-50%);
+  display: none; z-index: 41; padding: 8px 22px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(230,120,110,0.7); background: rgba(52,22,20,0.94); color: #f3c4bd;
+  font: 700 14px system-ui, sans-serif; box-shadow: 0 2px 10px rgba(0,0,0,0.4); }
+#maptap-cancel.show { display: block; }
+body.maptap #ck { cursor: crosshair; }
+/* A/B letter that rides the crosshair while drawing a straight AB line (#40): shows
+   which point the next tap places. Colour matches the placed dots (A orange, B blue). */
+#maptap-ab { position: fixed; z-index: 41; display: none; pointer-events: none;
+  font: 900 24px system-ui, sans-serif; transform: translate(15px, -30px);
+  text-shadow: 0 0 3px #000, 0 1px 5px rgba(0,0,0,0.95); }
+#maptap-ab.show { display: block; }
+/* The crosshair letter is mouse-only (no hover to ride on touch); the dot letters +
+   banner cover touch. Belt-and-suspenders with the pointerType gate in JS. */
+@media (pointer: coarse) { #maptap-ab { display: none !important; } }
+/* Persistent letter next to each dropped AB/curve point (#40). Positioned per-frame. */
+#ab-dot-labels span { position: fixed; z-index: 41; display: none; pointer-events: none;
+  font: 900 20px system-ui, sans-serif; transform: translate(11px, -26px);
+  text-shadow: 0 0 3px #000, 0 1px 5px rgba(0,0,0,0.95); }
+/* Draw-track toolbar — top-centre, directly under the instruction pill
+   (#maptap-hint at top:60px) so the action buttons sit with the prompt, not across
+   the screen from it. (The distance HUD is hidden during these flows — updateHeadlandHud.) */
+#draw-toolbar {
+  position: fixed; top: calc(var(--bar-bottom) + 54px); left: calc(50% + var(--map-dx)); transform: translateX(-50%); display: none;
+  gap: 10px; z-index: 41;
+}
+#draw-toolbar.show { display: flex; }
+#draw-toolbar button {
+  padding: 9px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25);
+  background: rgba(28,40,56,0.95); color: #e6eefc; font: 600 15px system-ui, sans-serif;
+  cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.45);
+}
+#draw-toolbar button:active { background: rgba(50,80,120,0.95); }
+#draw-toolbar button.active { background: rgba(255,210,74,0.25); border-color: #ffd24a; color: #ffe9a6; }
+#draw-finish, #draw-setpoint { border-color: rgba(110,220,150,0.7) !important; color: #b6f0cd !important; }
+#draw-cancel { border-color: rgba(230,120,110,0.7) !important; color: #f3c4bd !important; }
+/* On-screen U-Turn / Lateral buttons — bare glyphs over the map, docked
+   upper-left: 30px right of the left-nav bar (~66px wide) and 40px below the status
+   bar (--bar-bottom). Container is click-through; only the glyphs are
+   tappable so the map still pans. */
+#onscreenbtns { position: fixed; top: calc(var(--bar-bottom) + 50px); left: calc(126px + var(--sal));
+  display: flex; flex-direction: column; gap: 12px; z-index: 20; pointer-events: none; }
+.osb-row { display: flex; gap: 56px; justify-content: flex-start; }
+.osb-row[hidden] { display: none; }
+.osb-btn { pointer-events: auto; width: 56px; height: 56px; padding: 0; border: 0;
+  background: none; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.85)); transition: transform 0.05s; }
+.osb-btn:active { transform: scale(0.9); }
+.osb-btn svg { width: 100%; height: 100%; display: block; pointer-events: none; }
+/* Auto-U-turn approach indicator — upper-right, symmetric to #onscreenbtns. Click-through
+   except the direction arrow (with its distance), which a tap swaps, as in AgOpenGPS.
+   Direction arrow flips for a left turn; distance below it; the turn-type glyph
+   (Sagitta/K-turn/Keyhole) to the right. */
+#uturn-indicator { position: fixed; top: calc(var(--bar-bottom) + 50px); right: calc(126px + var(--sar));
+  display: flex; align-items: center; gap: 14px; z-index: 20; pointer-events: none;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.85)); }
+#uturn-indicator[hidden] { display: none; }
+/* Padding widens the tap target towards AgOpenGPS's 160x60 zone; the negative margin
+   keeps the layout as it was. */
+.uti-distbox { display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 10px 24px; margin: -10px -24px; pointer-events: auto; cursor: pointer; }
+.uti-arrow { width: 60px; height: 24px; display: block; }
+.uti-arrow.left { transform: scaleX(-1); }
+#uti-distval { color: #EDF7E8; font: 700 16px ui-monospace, monospace; text-shadow: 0 1px 2px #000; white-space: nowrap; }
+.uti-type { width: 40px; height: 40px; display: block; }
+/* Bottom-centre stack — a vertical column (sim bar / section bar / bottom nav). Bottom-anchored; rows toggle
+   independently and the column re-flows. */
+#bottomstack { position: fixed; bottom: var(--sab); left: calc(50% + var(--map-dx)); transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  pointer-events: none; z-index: 10; }
+/* Simulator bar — a single horizontal bar. Hidden until launched. */
+#simbar { display: none; align-items: center; gap: 4px; padding: 6px 8px; box-sizing: border-box;
+  background: var(--float-bg2); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5); touch-action: manipulation; pointer-events: auto;
+  -webkit-user-select: none; user-select: none; }
+#simbar.open { display: flex; }
+.sim-btn { min-width: 38px; height: 40px; padding: 0 8px; border-radius: 6px;
+  border: 0; background: rgba(var(--ov),0.10); color: var(--text);
+  font: 700 13px system-ui, sans-serif; cursor: pointer; }
+.sim-btn:hover { background: rgba(var(--ov),0.18); }
+.sim-btn:active { background: rgba(70,160,255,0.5); }
+.sim-stopbtn { background: rgba(231,76,60,0.32); text-transform: uppercase; }
+.sim-closebtn { background: transparent; color: var(--text-muted); min-width: 32px; }
+.sim-toggle { min-width: 42px; height: 40px; border-radius: 6px; border: 1px solid var(--border);
+  background: rgba(var(--ov),0.06); color: var(--text-muted); font: 700 12px system-ui, sans-serif;
+  cursor: pointer; }
+.sim-toggle.on { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
+.sim-sep { width: 1px; height: 28px; background: var(--border); margin: 0 2px; }
+.sim-slider { width: 150px; accent-color: #4A90D9; cursor: pointer; }
+.sim-val { width: 46px; text-align: center; color: var(--text-muted); font: 600 11px ui-monospace, monospace; }
+.sim-speed { width: 78px; text-align: center; color: var(--text); font: 700 12px system-ui, sans-serif; }
+/* Launcher chip — visible only while the sim bar is closed (top stack slot). */
+#sim-launch { display: none; height: 34px; padding: 0 16px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--chip-bg); color: var(--text-2);
+  font: 700 13px system-ui, sans-serif; cursor: pointer; touch-action: manipulation;
+  pointer-events: auto; }
+#sim-launch.show { display: block; }
+/* Section bar — colour-coded per-section buttons, one or more rows. */
+#sectionbar { display: none; flex-direction: column; align-items: center; gap: 4px;
+  padding: 8px; border-radius: 10px; background: var(--float-bg2);
+  border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+  pointer-events: auto; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+#sectionbar.open { display: flex; }
+#sectionbar.locked { opacity: 0.5; } /* dimmed when this client doesn't hold control */
+#sectionbar .sec-row { display: flex; gap: 3px; }
+#sectionbar .sec-btn { width: 46px; height: 38px; border: 2px solid var(--bg-sunken); border-radius: 0;
+  color: #202020; font: 700 13px system-ui, sans-serif; cursor: pointer; padding: 0; }
+/* What the ISOBUS implement reports for its own sections, under the buttons (#312). */
+#sectionbar .sec-iso { display: flex; align-items: center; gap: 6px; align-self: stretch; }
+#sectionbar .sec-iso-label { color: var(--text-muted); font: 600 10px system-ui, sans-serif; }
+#sectionbar .sec-iso-cells { display: flex; gap: 2px; flex: 1; }
+#sectionbar .sec-iso-cell { flex: 1 1 0; min-width: 3px; height: 8px; background: #5a5a5a; }
+#sectionbar .sec-iso-cell.on { background: #39FF6A; }
+/* Bottom nav — field-tools toolbar + Flags/AB-line flyouts. */
+#bottomnav { position: relative; display: none; pointer-events: auto;
+  -webkit-user-select: none; user-select: none; }
+#bottomnav.open { display: block; }
+/* Bar chrome + button look match the left nav (the canonical style). */
+#bottomnav .bn-bar { display: flex; gap: 6px; padding: 8px; border-radius: 10px 10px 0 0;
+  background: var(--float-bg); border: 1px solid var(--border-2); border-bottom: 0;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
+#bottomnav .bn-btn { width: 56px; height: 56px; border: 0; border-radius: 8px; padding: 8px;
+  background: rgba(var(--ov),0.08); color: var(--text); cursor: pointer; box-sizing: border-box;
+  font: 700 16px system-ui, sans-serif; display: flex; align-items: center; justify-content: center; }
+#bottomnav .bn-btn:hover { background: rgba(var(--ov),0.16); }
+#bottomnav .bn-btn:active { background: rgba(70,160,255,0.5); }
+#bottomnav .bn-btn.active { background: #1f8f3f; }       /* toggle-on */
+#bottomnav .bn-btn.hide { display: none; }               /* AB-dependent, no active track */
+#bottomnav .bn-menu.menuopen { background: var(--sel); }
+#bottomnav .bn-ic { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+#bn-skipnum { font-size: 22px; font-weight: 700; }
+#bn-nudgeval { font-size: 14px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#bottomnav .bn-txt { font-size: 15px; font-weight: 700; white-space: nowrap; }
+.bn-snapdist { align-items: center; gap: 8px; font-size: 14px; }
+.bn-snapdist input { width: 72px; }
+#bottomnav.locked .bn-btn[data-t2] { opacity: 0.45; } /* dim Tier-2 when we lack control */
+.bn-flyout { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  margin-bottom: 6px; display: none; flex-direction: column; gap: 5px; padding: 8px;
+  border-radius: 10px; background: var(--flyout-bg); border: 1px solid var(--border);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.6); }
+.bn-flyout.open { display: flex; }
+.bn-flyrow { display: flex; gap: 4px; justify-content: center; }
+.bn-row { display: flex; align-items: center; gap: 8px; min-width: 180px; padding: 9px 10px;
+  border: 0; border-radius: 6px; background: rgba(var(--ov),0.08); color: var(--text);
+  cursor: pointer; font: 600 13px system-ui, sans-serif; text-align: left; }
+.bn-row:hover { background: rgba(var(--ov),0.16); }
+.bn-rowic { width: 20px; height: 20px; object-fit: contain; }

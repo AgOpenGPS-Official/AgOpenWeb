@@ -1,0 +1,99 @@
+/* VT cards, web cards and the card pane. */
+
+/* Virtual terminal card: the ISOBUS implement's own screen (data or alarm mask) with its
+   soft key column, painted from the terminal's draw list by /vtpaint.js. Floating and
+   draggable like the chart cards; shown only when the host has a terminal. */
+.vt-card { top: calc(var(--bar-bottom) + 24px); width: auto; --vt: 400px; }
+.vt-card .vt-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.vt-dot { width: 10px; height: 10px; border-radius: 50%; background: #888; flex: none; }
+.vt-dot.ok { background: #2ecc71; } .vt-dot.wait { background: #f1c40f; } .vt-dot.bad { background: #e74c3c; }
+.vt-hbtn { background: none; border: 0; color: var(--text-dim); font-size: 14px; cursor: pointer; padding: 0 4px; }
+.vt-hbtn:hover { color: var(--text); }
+.vt-ws { max-width: 180px; height: 22px; font-size: 12px; background: var(--bg-sunken); color: var(--text-2);
+  border: 1px solid var(--border); border-radius: 4px; }
+.vt-body { position: relative; display: flex; gap: 4px; padding: 4px; }
+/* Web cards (Plans/ADDON_WEB_CARDS_PLAN.md): an add-on's own page from the bookmark list, in
+   a frame. Never wider or taller than the screen leaves room for. */
+.web-card { top: calc(var(--bar-bottom) + 24px); width: auto; --ww: 640px; --wh: 420px; }
+/* Card pane (CardPane in js/card-pane.js): the split layout's VT and web cards beside the map, two
+   to a tab. Its outer side takes the window's safe-area inset; the divider is on the map's. */
+#cardpane { position: fixed; top: 0; bottom: 0; left: 0; display: none; flex-direction: column; z-index: 29;
+  box-sizing: border-box; padding: var(--sat) 0 var(--sab) var(--win-sal); background: var(--bg-raised);
+  border-right: 1px solid var(--border-2); }
+#cardpane.right { left: auto; right: 0; padding: var(--sat) var(--win-sar) var(--sab) 0; border-right: 0; border-left: 1px solid var(--border-2); }
+#cardpane.show { display: flex; }
+#cardpane .cp-tabs { display: flex; gap: 4px; padding: 6px 6px 0; flex: none; }
+#cardpane .cp-tab { flex: 1; min-width: 0; height: 34px; padding: 0 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(var(--ov),0.06); color: var(--text-2); font: 600 13px system-ui, sans-serif; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#cardpane .cp-tab.active { background: var(--sel); border-color: #4A90D9; color: var(--text); }
+#cardpane .cp-slots { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px; overflow: hidden; }
+/* The divider is the pane's own strip on the map's side, clear of the map's side nav. */
+#cardpane { padding-right: 16px; }
+#cardpane.right { padding-right: var(--win-sar); padding-left: 16px; }
+#cardpane .cp-divider { position: absolute; top: 0; bottom: 0; right: 0; width: 16px; cursor: ew-resize; touch-action: none; }
+#cardpane.right .cp-divider { right: auto; left: 0; }
+#cardpane .cp-divider::after { content: ''; position: absolute; top: 50%; left: 5px; width: 6px; height: 64px; margin-top: -32px;
+  border-radius: 3px; background: var(--border-2); }
+.chart-card.in-pane { position: static; flex: none; box-shadow: none; }
+.chart-card.in-pane.cp-hide { display: none !important; }
+.chart-card.in-pane .chart-hdr { cursor: default; }
+.chart-card.in-pane .vt-size, .chart-card.in-pane .web-size { display: none; }
+.web-card .web-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.web-pick { max-width: 220px; height: 22px; font-size: 12px; background: var(--bg-sunken); color: var(--text-2);
+  border: 1px solid var(--border); border-radius: 4px; }
+.web-body { position: relative; width: min(var(--ww), calc(100 * var(--vw) - 120px));
+  height: min(var(--wh), calc(100 * var(--vh) - 140px)); background: var(--bg-sunken); }
+.web-body iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+.web-cover { position: absolute; inset: 0; display: none; cursor: not-allowed; }
+/* Sites that refuse to be framed (X-Frame-Options, frame-ancestors) leave the frame blank and
+   no browser says so to the page holding it, so a chosen page always carries this line. */
+.web-hint { padding: 3px 8px; font: 500 11px system-ui, sans-serif; color: var(--text-dim); background: var(--bg-raised);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.web-hint[hidden] { display: none; }
+.web-cover.show { display: block; }
+.web-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 24px; text-align: center; color: var(--text-2); font-size: 14px; background: var(--panel); }
+.web-edit { position: absolute; inset: 0; display: none; flex-direction: column; gap: 8px; padding: 12px;
+  background: var(--panel); overflow: auto; font-size: 13px; color: var(--text-2); }
+.web-edit.show { display: flex; }
+.web-edit input { height: 34px; font-size: 14px; padding: 0 8px; background: var(--bg-sunken); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; }
+.web-edit .web-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.web-edit .web-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.web-edit .web-row small { color: var(--text-muted); }
+.web-edit button { height: 30px; padding: 0 12px; border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(var(--ov),0.08); color: var(--text-2); cursor: pointer; }
+.web-edit .web-sub { color: var(--text-muted); font-size: 12px; }
+.vt-mask { display: block; width: var(--vt); height: var(--vt); background: #000; touch-action: none; }
+.vt-keys { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(6, auto); grid-auto-flow: column;
+  gap: 4px; align-content: start; width: calc(var(--vt) / 3 - 4px); }
+.vt-keys canvas { display: block; width: 100%; aspect-ratio: 1; touch-action: none; border-radius: 3px; }
+.vt-keys button { grid-column: 1 / -1; grid-row: 7; height: 28px; border: 1px solid var(--border); border-radius: 4px;
+  background: rgba(var(--ov),0.06); color: var(--text-2); cursor: pointer; }
+.vt-msg { position: absolute; inset: 4px; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 10px; color: var(--text-2); font-size: 14px; text-align: center; padding: 16px;
+  background: var(--panel); }
+.vt-msg input { width: 220px; height: 34px; font-size: 15px; padding: 0 8px; background: var(--bg-sunken);
+  color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
+.vt-msg .vt-sub { color: var(--text-muted); font-size: 12px; }
+.vt-row { display: flex; gap: 8px; justify-content: center; }
+.vt-alarm { display: none; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px;
+  background: #8e1b1b; color: #fff; font-size: 12px; font-weight: 600; }
+.vt-alarm.show { display: flex; }
+.vt-alarm button { border: 0; border-radius: 4px; padding: 3px 10px; background: #fff; color: #8e1b1b;
+  font-weight: 700; cursor: pointer; }
+.vt-edit { position: absolute; left: 4px; right: 4px; bottom: 4px; display: none; flex-direction: column; gap: 8px;
+  padding: 10px; background: var(--panel); border-top: 1px solid var(--border-2); max-height: 70%; overflow: auto; }
+.vt-edit.show { display: flex; }
+.vt-edit input { height: 38px; font-size: 18px; padding: 0 8px; background: var(--bg-sunken); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; }
+.vt-edit .vt-sub { color: var(--text-muted); font-size: 12px; }
+.vt-opts { display: flex; flex-direction: column; gap: 4px; }
+.vt-opts canvas { display: block; width: 100%; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+.vt-opts canvas.sel { border-color: #4a90d9; }
+.vt-ident { position: absolute; inset: 4px; display: none; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.6); color: #fff; font-size: 96px; font-weight: 700; pointer-events: none; }
+.vt-ident.show { display: flex; }
+.fo-btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+.tl-chartbtn.active { background: rgba(80,160,255,0.28); border-color: #4a90d9; }

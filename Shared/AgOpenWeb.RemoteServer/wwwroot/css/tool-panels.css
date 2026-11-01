@@ -1,0 +1,88 @@
+/* Roll correction, offset fix, recorded path, boundary recording and player. */
+
+/* Roll Correction panel. */
+.rc-gauge { display: flex; justify-content: center; padding: 6px 0 2px; }
+.rc-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.rc-row { display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; font-size: 13px; color: var(--text-2); }
+.rc-tgl { min-width: 60px; height: 32px; border: 1px solid var(--border); border-radius: 6px;
+  background: rgba(var(--ov),0.06); color: var(--text-2); cursor: pointer; font-size: 12px; }
+.rc-tgl.on { background: rgba(80,160,255,0.28); border-color: #4a90d9; color: var(--text); }
+.rc-zerobtn { height: 32px; width: auto; padding: 0 16px; }
+.rc-ro { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+/* Offset Fix D-pad. */
+.of-dpad { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 48px);
+  gap: 6px; justify-content: center; padding: 6px 0; }
+.of-btn { border: 0; border-radius: 6px; color: #fff; font-size: 17px; font-weight: 700; cursor: pointer; }
+.of-ns { background: #2E7D32; } .of-ew { background: #1565C0; } .of-zero { background: #C62828; }
+.of-btn:active { filter: brightness(1.2); }
+#of-n { grid-area: 1 / 2; } #of-w { grid-area: 2 / 1; } #of-z { grid-area: 2 / 2; }
+#of-e { grid-area: 2 / 3; } #of-s { grid-area: 3 / 2; }
+.of-manual { display: flex; gap: 10px; margin-top: 6px; }
+.of-fld { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.of-fld label { font-size: 11px; color: var(--text-muted); text-align: center; }
+.of-input { height: 34px; border: 1px solid var(--border); border-radius: 6px; background: rgba(var(--ov),0.06);
+  color: var(--text); font-size: 15px; font-weight: 700; text-align: center; }
+.of-hint { text-align: center; font-size: 10px; color: var(--text-muted); margin-top: 6px; }
+/* Recorded Path panel. */
+.rp-tabs { margin-bottom: 8px; }
+.rp-tab { flex: 1; height: 32px; }
+.rp-tab.active { background: rgba(80,160,255,0.28); border-color: #4a90d9; color: var(--text); }
+.rp-tabbody { display: none; flex-direction: column; gap: 8px; }
+.rp-tabbody.active { display: flex; }
+.rp-iconrow { display: flex; gap: 10px; justify-content: center; }
+.rp-iconbtn { display: flex; flex-direction: column; align-items: center; gap: 3px;
+  width: 72px; padding: 8px 4px; border: 1px solid var(--border); border-radius: 8px;
+  background: rgba(var(--ov),0.06); color: var(--text-2); cursor: pointer; font-size: 11px; }
+.rp-iconbtn:hover { background: rgba(var(--ov),0.12); }
+.rp-iconbtn img { width: 36px; height: 36px; }
+.rp-ab { font-size: 22px; font-weight: 700; line-height: 36px; color: var(--text); }
+.rp-recording { display: none; text-align: center; color: #ff5a5a; font-weight: 700;
+  font-size: 13px; padding: 4px; animation: rpblink 1s steps(2, start) infinite; }
+@keyframes rpblink { 50% { opacity: 0.3; } }
+.rp-saverow { display: none; align-items: center; gap: 8px; }
+.rp-saverow label { font-size: 12px; color: var(--text-muted); }
+.rp-saverow .of-input { flex: 1; text-align: left; font-weight: 400; font-size: 13px; }
+.rp-info { text-align: center; font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+.rp-frow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rp-frow .fj-jname { flex: 1; cursor: pointer; }
+.rp-del { background: none; border: 0; color: #c97c7c; font-size: 15px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+.rp-del:hover { background: rgba(220,60,60,0.25); color: var(--text); }
+/* Boundary recording menu. */
+.bm-panel { width: 470px; }
+.bm-toolbar { display: flex; gap: 6px; justify-content: space-between; margin-bottom: 10px; }
+.bm-tbtn { position: relative; width: 56px; height: 48px; border: 1px solid var(--border); border-radius: 8px;
+  background: rgba(var(--ov),0.06); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.bm-tbtn:hover { background: rgba(var(--ov),0.12); }
+.bm-tbtn img { width: 32px; height: 32px; }
+.bm-tbtn:disabled { opacity: 0.35; cursor: default; }
+.bm-plus { position: absolute; right: 4px; bottom: 2px; color: #F5F54D; font-weight: 700; font-size: 15px; }
+.bm-lhdr { display: grid; grid-template-columns: 1.2fr 1fr 1fr 0.8fr; background: #1565C0; color: #fff;
+  font-weight: 700; font-size: 12px; padding: 6px 8px; border-radius: 6px 6px 0 0; }
+.bm-lhdr span { text-align: center; }
+.bm-lhdr span:first-child { text-align: left; }
+.bm-list { background: rgba(var(--ov),0.03); border-radius: 0 0 6px 6px; max-height: 220px; overflow-y: auto; }
+.bm-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr 0.8fr; align-items: center; padding: 8px;
+  font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--bg-raised); }
+.bm-row.sel { background: var(--sel); }
+.bm-row span { text-align: center; }
+.bm-row .bm-name { text-align: left; }
+.bm-flag { padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+.bm-flag.on { background: rgba(80,200,120,0.3); color: #6de29a; }
+.bm-flag.off { color: var(--text-dim); }
+/* Boundary player. */
+.bp-offrow { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.bp-offlbl { font-weight: 700; font-size: 14px; }
+.bp-offin { width: 90px; height: 36px; border: 1px solid var(--border); border-radius: 6px; background: #fff;
+  color: #111; font-size: 20px; font-weight: 700; text-align: center; }
+.bp-offunit { font-size: 13px; color: var(--text-muted); }
+.bp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bp-btn { height: 60px; border: 1px solid var(--border); border-radius: 8px; background: rgba(var(--ov),0.06);
+  cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.bp-btn:hover { background: rgba(var(--ov),0.12); }
+.bp-btn img { width: 40px; height: 40px; }
+.bp-btn.on { background: rgba(80,160,255,0.3); border-color: #4a90d9; }
+.bp-okbtn img { width: 46px; height: 46px; }
+.bp-stat { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.bp-statlbl { font-size: 12px; color: var(--text-dim); }
+.bp-statval { font-size: 18px; font-weight: 700; }

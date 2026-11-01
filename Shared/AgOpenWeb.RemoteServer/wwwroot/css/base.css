@@ -1,0 +1,80 @@
+/* Safe-area insets, the map's area (--sal/--sar, --map-*), the theme palette. */
+
+/* iOS/iPadOS safe-area insets — a home-screen web app bleeds full-screen
+   (viewport-fit=cover) UNDER the iOS status bar (time/battery) + home
+   indicator, so every edge-docked control is offset in by these so iOS
+   chrome never overlaps our UI. On iPad (no notch) only top/bottom are
+   non-zero; left/right are included for robustness on notched devices. */
+:root {
+  --sat: calc(env(safe-area-inset-top, 0px) / var(--ui-zoom));
+  --sab: calc(env(safe-area-inset-bottom, 0px) / var(--ui-zoom));
+  /* The window's left/right safe-area insets, and the map's: in the split layout the card
+     pane takes one side (--map-l / --map-r, set by CardPane in js/card-pane.js) and the map's
+     overlays keep clear of it as of a notch. Plans/CARD_PANE_SPLIT_PLAN.md §2. */
+  --win-sal: calc(env(safe-area-inset-left, 0px) / var(--ui-zoom));
+  --win-sar: calc(env(safe-area-inset-right, 0px) / var(--ui-zoom));
+  --map-l: 0px; --map-r: 0px;
+  --sal: max(var(--win-sal), var(--map-l));
+  --sar: max(var(--win-sar), var(--map-r));
+  /* Added to left: 50% to centre on the map instead of the window. */
+  --map-dx: calc((var(--map-l) - var(--map-r)) / 2);
+  /* UI size (Screen & Alerts): every control is zoomed by this, the map is not.
+     zoom multiplies viewport units and the insets above too, so rules inside the
+     zoomed UI use --vw/--vh (one viewport percent divided back) instead of vw/vh. */
+  --ui-zoom: 1;
+  /* Bottom edge of the top status bar (+ dev diagnostics row), measured by placeHud() in
+     js/skia-setup.js; everything docked under the bar hangs from it. Default: the bar alone. */
+  --bar-bottom: calc(46px + var(--sat));
+  /* Top-centre HUD scale from the screen height (placeHud): 1 up to 540 px, 1.33 at 720p. */
+  --hud-s: 1;
+  --vw: calc(1vw / var(--ui-zoom));
+  --vh: calc(1vh / var(--ui-zoom));
+}
+/* The map canvas and the letters pinned to map points stay unscaled. */
+body > :not(#ck, #maptap-ab, #ab-dot-labels, script) { zoom: var(--ui-zoom); }
+/* ===== Theme palette =====
+   Day/Night theme. The dark (night) values below are the ORIGINAL literals the
+   stylesheet used, so night is unchanged; [data-theme="day"] swaps the whole
+   surface/text/border/overlay palette to light. Accent/status colours (blue/green/
+   red/yellow + white-on-accent text) stay literal — they read on both themes.
+   Driven by config.display.isDayMode (see applyTheme() in js/skia-setup.js). */
+:root {
+  --text: #e7eef9;          /* primary text */
+  --text-2: #cfe3ff;        /* secondary text / labels / values */
+  --text-muted: #9fb3cc;    /* muted text / captions / keys */
+  --text-dim: #8294ab;      /* dimmest text / sublabels / paths */
+  --bg-input: #0f1115;      /* inputs, deep recesses, map base */
+  --panel: #161b24;         /* panel / dialog / popup surface */
+  --bg-sunken: #11151c;     /* sunken cards / value boxes / image wells */
+  --bg-raised: #1b2333;     /* raised strips / wizard surfaces */
+  --border: #2a3550;        /* hairline borders */
+  --border-2: #222a38;      /* floating-bar borders */
+  --dot-off: #3a4660;       /* inactive status dot */
+  --sel: #1c4a7a;           /* selected row / active tint */
+  --ov: 255,255,255;        /* hover/fill overlay base (white on dark) */
+  --float-bg: rgba(15,17,21,0.85);   /* status / left-nav / right-nav / bottom-nav bars */
+  --float-bg2: rgba(20,24,33,0.92);  /* sim bar / section bar */
+  --chip-bg: rgba(28,34,48,0.82);    /* launcher chip / cam-pad buttons */
+  --flyout-bg: rgba(28,38,54,0.97);  /* AB flyout */
+}
+:root[data-theme="day"] {
+  --text: #16202e;
+  --text-2: #28384c;
+  --text-muted: #56687e;
+  --text-dim: #6b7888;
+  --bg-input: #ffffff;
+  --panel: #f4f7fb;
+  --bg-sunken: #e9eef5;
+  --bg-raised: #dfe5ee;
+  --border: #c6d1df;
+  --border-2: #d3dbe6;
+  --dot-off: #b6c1d2;
+  --sel: #bcd8f5;
+  --ov: 36,52,74;
+  --float-bg: rgba(244,247,251,0.93);
+  --float-bg2: rgba(236,241,247,0.95);
+  --chip-bg: rgba(224,231,241,0.95);
+  --flyout-bg: rgba(245,248,252,0.98);
+}
+html, body { margin: 0; height: 100%; background: var(--bg-input); overflow: hidden; touch-action: manipulation; }
+#ck { position: fixed; top: 0; bottom: 0; left: 0; display: block; touch-action: none; } /* CanvasKit (Skia) — the only renderer */
