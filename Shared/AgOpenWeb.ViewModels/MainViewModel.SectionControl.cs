@@ -150,6 +150,39 @@ public partial class MainViewModel
 
     #endregion
 
+    #region Remote Switches
+
+    private void OnRemoteSwitchesReceived(byte[] switches) =>
+        _dispatcher.Post(() => ApplyRemoteSwitches(switches));
+
+    /// <summary>
+    /// PGN 234 from a rate controller or a section control switch box (AgOpenGPS
+    /// DoRemoteSwitches), with a field open only: set the master Auto button and the
+    /// section buttons the module communication service decided on.
+    /// </summary>
+    internal void ApplyRemoteSwitches(byte[] switches)
+    {
+        if (!IsFieldOpen) return;
+
+        var sections = _sectionControlService.SectionStates;
+        var decision = _moduleCommunicationService.CheckRemoteSwitches(switches, IsSectionMasterOn, sections);
+
+        if (decision.Master != RemoteMasterCommand.None)
+        {
+            IsSectionMasterOn = decision.Master == RemoteMasterCommand.AutoOn;
+            IsManualSectionMode = false;
+            _audioService.Play(IsSectionMasterOn ? SoundEffect.SectionOn : SoundEffect.SectionOff);
+        }
+
+        for (int i = 0; i < decision.Sections.Length; i++)
+        {
+            if (sections[i].ButtonState != decision.Sections[i])
+                _sectionControlService.SetSectionState(i, decision.Sections[i]);
+        }
+    }
+
+    #endregion
+
     #region Section Event Handlers
 
     private void OnSectionStateChanged(object? sender, SectionStateChangedEventArgs e)

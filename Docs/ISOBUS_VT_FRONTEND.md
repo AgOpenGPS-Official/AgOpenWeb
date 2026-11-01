@@ -18,8 +18,8 @@ renders them and sends back ~250 string command ids (`autosteer.*`, `tool.*`, �
 backend never renders anything; that isolation is what makes a second front end
 thinkable at all.
 
-A VT is **not** a programmable client. It cannot run `app.js` (5.9 k lines) or
-`index.html` (2.7 k lines). It shows a fixed set of screens ("masks") described by an
+A VT is **not** a programmable client. It cannot run the web client (`js/`, about 9 k
+lines of script) or `index.html`. It shows a fixed set of screens ("masks") described by an
 **object pool (IOP)** that the ECU uploads once, and afterwards only accepts small
 "change this value / this string / this attribute" messages and reports soft-key,
 button and input events. Everything the browser does today — screen flow, unit
@@ -46,7 +46,7 @@ In ISOBUS terms AgOpenWeb is the **VT client** (a Working Set); the cab terminal
 
 | Web client today | VT equivalent | Notes |
 |---|---|---|
-| `index.html` + `app.js` fetched on connect | Object pool uploaded via TP/ETP on first connect; the VT stores it under a 7-char version label and later connects skip the upload (Load Version) | Pool size matters for first-connect time on a 250 kbit/s bus |
+| `index.html` + its scripts fetched on connect | Object pool uploaded via TP/ETP on first connect; the VT stores it under a 7-char version label and later connects skip the upload (Load Version) | Pool size matters for first-connect time on a 250 kbit/s bus |
 | `TickDto` 10 Hz, `StatusDto` ~2 Hz, `ConfigDto` on fingerprint change | Change Numeric Value / Change String Value / Change Attribute / Change Active Mask (ECU→VT, PGN 0xE700) | Every value change is one 8-byte frame; batch and rate-limit |
 | ~250 command ids from the browser | Soft Key Activation / Button Activation / VT Change Numeric Value / VT Select Input Object (VT→ECU, PGN 0xE600) | Presenter maps object ids → command ids |
 | `ControlAuthority` deadman (1.5 s heartbeat) | Working Set Maintenance (ECU→VT, 1 Hz) and VT Status (VT→ECU, 1 Hz); 3 s without VT Status = VT lost | VT loss maps onto the existing failsafe (disengage autosteer, sections off) |

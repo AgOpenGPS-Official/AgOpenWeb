@@ -1,0 +1,60 @@
+/* Right nav, the lower-right cluster (roll gauge, camera pad), the chart cards. */
+
+/* Right-nav operational toolbar. Vertical button stack on the right edge,
+   colour-coded by live state; its commands need control. */
+/* Bar chrome + button look match the left nav (the canonical style); state colours below. */
+#rightnav { position: fixed; right: var(--sar); top: calc(var(--bar-bottom) + 10px); display: none; flex-direction: column;
+            gap: 6px; align-items: stretch; padding: 8px; border-radius: 10px 0 0 10px;
+            background: var(--float-bg); border: 1px solid var(--border-2); border-right: 0;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.5); touch-action: manipulation;
+            max-height: calc(100 * var(--vh) - var(--bar-bottom) - 44px - var(--sab)); overflow-y: auto; scrollbar-width: none; }
+.rn-btn { width: 56px; height: 56px; border: 0; border-radius: 8px; padding: 8px; box-sizing: border-box;
+  background: rgba(var(--ov),0.08); color: var(--text); font: 600 13px system-ui, sans-serif;
+  cursor: pointer; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 2px; -webkit-user-select: none; user-select: none; }
+.rn-btn:hover { background: rgba(var(--ov),0.16); }
+.rn-btn .rn-sub { font-size: 10px; color: var(--text-muted); font-weight: 500; }
+.rn-ic { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
+.rn-btn.on-green { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
+.rn-btn.on-green .rn-sub { color: #d9ffe6; }
+.rn-btn.on-yellow { background: #9a8500; border-color: #f7d000; color: #fff; }
+.rn-btn.steer-ready { background: #1c4a7a; border-color: #3a8bd6; color: #fff; } /* armed: saturated on both themes */
+.rn-btn.steer-on { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
+.rn-btn.disabled { opacity: 0.4; }
+#rn-readonly { color: #ff7a3d; font: 600 10px ui-monospace, monospace; text-align: center; min-height: 12px; }
+/* Dimmed when this client doesn't hold control — the buttons are inert. */
+#rightnav.locked .rn-btn { opacity: 0.5; cursor: default; }
+/* Lower-right cluster: roll gauge + camera/mode pad. Clock separate. */
+#lowerright { position: fixed; right: calc(14px + var(--sar)); bottom: calc(72px + var(--sab)); display: flex; flex-direction: column;
+  align-items: flex-end; gap: 10px; pointer-events: none; }
+/* The 200px-wide gauge is wider than the 136px campad below it; nudge it right
+   by (200−136)/2 so its (centred) graphic sits over the campad, not flush-right.
+   The empty right margin of the SVG absorbs the overflow — no visible clipping. */
+#rollgauge { filter: drop-shadow(0 1px 2px #000); margin-right: -32px; }
+#campad { display: grid; grid-template-columns: 44px 44px 44px; grid-template-rows: 44px 44px 44px;
+  gap: 2px; pointer-events: auto; }
+#campad button { border: 0; cursor: pointer; color: var(--text-2); font: 700 20px system-ui, sans-serif;
+  background: var(--chip-bg); -webkit-user-select: none; user-select: none; }
+#campad button:active { background: #4A90D9; }
+.cp-up { grid-row: 1; grid-column: 2; } .cp-left { grid-row: 2; grid-column: 1; }
+.cp-center { grid-row: 2; grid-column: 2; background: #4A90D9; color: #fff; font-size: 15px; font-weight: 700; }
+.cp-center.free { background: var(--chip-bg); }
+.cp-right { grid-row: 2; grid-column: 3; } .cp-down { grid-row: 3; grid-column: 2; }
+#clock { position: fixed; right: calc(16px + var(--sar)); bottom: calc(16px + var(--sab)); color: var(--text-2);
+  font: 700 18px ui-monospace, monospace; text-shadow: 0 1px 2px #000; pointer-events: none; }
+/* Diagnostic chart cards (Tools panel). Floating, independently draggable
+   overlays; sit above the map HUD but below the left-nav chain/scrim so an
+   opened config panel covers them. */
+.chart-card { position: fixed; left: calc(80px + var(--sal)); width: 408px;
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5); z-index: 29; overflow: hidden; }
+#chart-steer { top: calc(var(--bar-bottom) + 24px); }
+#chart-heading { top: calc(var(--bar-bottom) + 200px); }
+#chart-xte { top: calc(var(--bar-bottom) + 376px); }
+.chart-hdr { display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 8px; background: var(--bg-raised); cursor: move; user-select: none;
+  font-size: 12px; font-weight: 600; color: var(--text-2); touch-action: none; }
+.chart-x { background: none; border: 0; color: var(--text-dim); font-size: 14px;
+  cursor: pointer; padding: 0 4px; line-height: 1; }
+.chart-x:hover { color: var(--text); }
+.chart-cv { display: block; width: 400px; height: 150px; margin: 4px; }

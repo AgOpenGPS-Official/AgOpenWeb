@@ -37,6 +37,7 @@ public static class PgnBuilder
     public const byte PGN_GPS_DATA = 0xD6;       // 214 - AgIO's GPS data (GPS_Out)
     public const byte SOURCE_GPS = 0x7C;         // AgIO sends PGN 214 as the GPS module
     public const byte PGN_VEHICLE_GEOMETRY = 0xF7; // 247 - Vehicle geometry (AgOpenWeb, #387)
+    public const byte PGN_SECTION_DIMENSIONS = 0xEB; // 235 - Section widths (rate controllers)
 
     // Buffer sizes: header(2) + source(1) + pgn(1) + length(1) + data(N) + crc(1)
     public const int AUTOSTEER_PGN_SIZE = 14;       // 5 header + 8 data + 1 crc
@@ -49,6 +50,7 @@ public static class PgnBuilder
     public const int CORRECTED_POSITION_PGN_SIZE = 30; // 5 header + 24 data + 1 crc
     public const int GPS_DATA_PGN_SIZE = 57;        // 5 header + 51 data + 1 crc
     public const int VEHICLE_GEOMETRY_PGN_SIZE = 25; // 5 header + 19 data + 1 crc
+    public const int SECTION_DIMENSIONS_PGN_SIZE = 39; // 5 header + 33 data + 1 crc
     public const byte VEHICLE_GEOMETRY_VERSION = 1;
 
     // Thread-local buffers to avoid allocation
@@ -467,6 +469,35 @@ public static class PgnBuilder
         {
             buf[5 + i] = (byte)(i < pins.Length ? pins[i] : 0);
         }
+
+        return WithCrc(buf);
+    }
+
+    /// <summary>
+    /// Build PGN 235 (0xEB) Section dimensions - AgOpenGPS's layout (CPGN_EB), sent when
+    /// the section count or widths change. Rate controllers read it to match their sections
+    /// to the tool's.
+    ///
+    /// Bytes 5-36: widths of sections 1-16 in cm, uint16 little-endian (0 past the last)
+    /// Byte 37:    number of sections (as AgOpenGPS, the count even above 16)
+    /// </summary>
+    public static byte[] BuildSectionDimensionsPgn(ToolConfig tool, int numSections)
+    {
+        var buf = new byte[SECTION_DIMENSIONS_PGN_SIZE];
+
+        buf[0] = HEADER1;
+        buf[1] = HEADER2;
+        buf[2] = SOURCE;
+        buf[3] = PGN_SECTION_DIMENSIONS;
+        buf[4] = 33;
+
+        for (int i = 0; i < 16 && i < numSections; i++)
+        {
+            int cm = Math.Clamp((int)Math.Round(tool.GetSectionWidth(i)), 0, ushort.MaxValue);
+            buf[5 + i * 2] = (byte)(cm & 0xFF);
+            buf[6 + i * 2] = (byte)((cm >> 8) & 0xFF);
+        }
+        buf[37] = (byte)Math.Clamp(numSections, 0, 255);
 
         return WithCrc(buf);
     }

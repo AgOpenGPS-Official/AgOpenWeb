@@ -1101,6 +1101,55 @@ Doubles are little-endian. Older AgOpenGPS sent a 16-byte version without the he
 <br>
 <br>
 
+## Rate controllers
+
+Programs running beside the app, such as [Rate Control](https://github.com/SK21/AOG_RC),
+work with it as with AgOpenGPS and AgIO, on the same computer. Close AgOpenGPS and AgIO
+first: they use the same ports.
+
+To them, on AgIO's loopback port 127.255.255.255:17777 (127.0.0.1 on macOS and iOS), as
+AgOpenGPS sends every module PGN there:
+
+| PGN | Dec | When |
+|---|---|---|
+| AutoSteer data (speed, sections 1-16) | 254 | Every fix |
+| Machine data, 64 sections | 239, 229 | Every fix with a field open (AgOpenGPS: with a job started); 229 whatever the section count |
+| Machine config (hydraulic lift times) | 238 | At start and when the machine settings change, with the module copy |
+| Section dimensions | 235 | At start, when a profile is saved or loaded, and 10 s after the last edit of an unsaved layout; only if the section count or widths changed (to the module subnet too) |
+| Corrected position | 100 | When ticked, see above |
+
+The modules keep their own 100 Hz stream of 254 and 239; the loopback copy goes at the fix
+rate, as AgOpenGPS's does. PGN 235 waits for the layout to be finished because a rate
+controller asks the operator to accept each section layout it sees; each edit on the way
+to a new layout, or a save of other settings, would ask again. The edits apply at once,
+so a layout left unsaved (the panel or the page closed) is in use too: it goes out once the
+section count and widths have stayed unchanged for 10 s.
+
+| PGN Name | Src | PGN | Dec | Len | Bytes 5-36 | Byte 37 | Byte 38 |
+|---|---|---|---|---|---|---|---|
+| Section dimensions | 7F | EB | 235 | 33 | Widths of sections 1-16, cm, uint16 little-endian (0 past the last section) | Number of sections (as AgOpenGPS, the count even above 16) | CRC |
+
+From them: PGN 234, Switch Control (layout in the Machine Module table above), on
+AgOpenGPS's loopback port 127.0.0.1:15555, where a rate controller sends its switch box.
+GPS_Out listens there too and the app's own PGN 214 goes there, so only PGN 234 is taken
+from that port. Section control switch boxes on the module subnet send it to port 9999,
+which works too. With a field open, it acts as AgOpenGPS's button hardware
+(`DoRemoteSwitches`):
+
+- Main bit 0, on a change: the master Auto button on, every section on Auto. Main bit 1:
+  the master off, every section Off.
+- An On group bit turns its section On.
+- An Off group bit holds its section Off. Released with the master on Auto, an Off section
+  goes back to Auto.
+- With zones, the group 0 bits are zones 1-8.
+- Main bit 2 marks switch hardware (level-driven switches); it isn't handled yet, and such
+  a packet changes nothing.
+
+Only the 14-byte packet is taken. Its CRC isn't checked, as in AgOpenGPS.
+
+<br>
+<br>
+
 ## Vehicle geometry
 
 An AgOpenWeb PGN (#387): what a module may need to know about the vehicle. A steer module

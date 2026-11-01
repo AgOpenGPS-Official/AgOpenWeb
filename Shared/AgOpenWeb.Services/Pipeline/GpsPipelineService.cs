@@ -1328,6 +1328,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _autoSteerService.SendCorrectedPosition(fix.Latitude, fix.Longitude, pos.Heading);
         }
 
+        // ── (9c) Loopback copies of PGN 254, 239, 229 ───────────────────
+        // AgOpenGPS sends every module PGN to AgIO's loopback port, where rate controllers
+        // read speed and section states; once per fix, 239 and 229 only with a field open.
+        _autoSteerService.SendLoopbackPgns(hasActiveField);
+
         // ── (10) Headland proximity ─────────────────────────────────────
         double? headlandDist = null;
         bool headlandWarning = false;

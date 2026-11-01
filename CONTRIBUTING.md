@@ -63,7 +63,7 @@ AgOpenWeb follows strict MVVM layering. An earlier refactor cleaned up significa
 ### Rules
 
 1. **No domain computation in the ViewModel.** If you find yourself writing geometry, distance math, pathing, or multi-step business logic inside a `*ViewModel.cs`, stop — move it to a service and call the service from the VM. The VM's job is to coordinate, not to compute.
-2. **No domain logic in the web client.** `app.js` renders what the host sends and sends commands back. Don't recompute guidance, coverage or geometry in the browser.
+2. **No domain logic in the web client.** The client (`wwwroot/js/`) renders what the host sends and sends commands back. Don't recompute guidance, coverage or geometry in the browser.
 3. **Commands stay thin.** A command delegate should read as *"ask service X to do Y, optionally push an intent, optionally show a prompt."* If it's longer than that, the body belongs in a service method.
 4. **No direct `State.*` mutation from commands for pipeline-owned state.** Push an intent through `IPipelineIntents` — see the Threading Model section. UI-only state (dialog visibility, panel position) is fine to mutate directly.
 5. **No ViewModel references from services.** Services expose interfaces, raise events, or return results. The ViewModel subscribes/consumes. Dependency flows one direction.
@@ -144,9 +144,9 @@ UI strings live in `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/en.json` (generat
 
 ## How to Implement a Button Feature
 
-1. **Add the button** in `Shared/AgOpenWeb.RemoteServer/wwwroot/index.html` (or build it in `app.js`), written in English.
+1. **Add the button** in `Shared/AgOpenWeb.RemoteServer/wwwroot/index.html` (or build it in the feature's script in `wwwroot/js/`), written in English; its style goes in that area's file in `wwwroot/css/`. Which file holds what, and how the scripts load, is in [Docs/WEB_CLIENT.md](Docs/WEB_CLIENT.md).
 
-2. **Send a command** from `app.js`:
+2. **Send a command** from the feature's script:
    ```js
    document.getElementById('my-feature').addEventListener('pointerdown', e => {
      e.stopPropagation(); transport.send('mything.do');
@@ -155,7 +155,7 @@ UI strings live in `Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/en.json` (generat
 
 3. **Route it** in `Shared/AgOpenWeb.RemoteWiring/RemoteServerWiring.cs` to a ViewModel command or method (a `config.set` key goes in `RemoteServerWiring.Helpers.cs`). Every command needs control: a browser without it is an observer that sees everything and changes nothing. Only a request that changes no setting, data or machine state may go in `ObserverIds` (`RemoteServerWiring.Helpers.cs`).
 
-4. **Show new state** by adding it to the DTO in `RemoteServer/Contracts.cs`, filling it in `SceneProjector`, encoding it in `WireCodec.cs` and decoding it in the same order in `wwwroot/transport.js`, then rendering it in `app.js`.
+4. **Show new state** by adding it to the DTO in `RemoteServer/Contracts.cs`, filling it in `SceneProjector`, encoding it in `WireCodec.cs` and decoding it in the same order in `wwwroot/transport.js`, then rendering it in the feature's script.
 
 5. **Strings:** run `Tools/i18n-extract.py` so `en.json` includes any new text (CI checks this).
 

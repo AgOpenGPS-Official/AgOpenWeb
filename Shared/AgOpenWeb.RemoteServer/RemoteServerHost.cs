@@ -336,8 +336,11 @@ public sealed class RemoteServerHost
         // Force a fresh fetch every load.
         var noStore = new[] { ("Cache-Control", "no-store") };
         server.MapGet("/", () => SimpleWebServer.Response.Text(ReadAsset("index.html"), "text/html", noStore));
-        server.MapGet("/app.js", () => SimpleWebServer.Response.Text(ReadAsset("app.js"), "text/javascript", noStore));
         server.MapGet("/transport.js", () => SimpleWebServer.Response.Text(ReadAsset("transport.js"), "text/javascript", noStore));
+        // The client's scripts and styles, one file per feature (Docs/WEB_CLIENT.md).
+        // Filename-only (no path traversal); unknown names 404.
+        server.MapGetPrefix("/js/", file => ClientFile(file, ".js", "js.", "text/javascript", noStore));
+        server.MapGetPrefix("/css/", file => ClientFile(file, ".css", "css.", "text/css", noStore));
         // Translations (#143): the loader, and one JSON file per language (en.json is the
         // source Weblate reads). Filename-only (no path traversal); unknown names 404.
         server.MapGet("/i18n.js", () => SimpleWebServer.Response.Text(ReadAsset("i18n.js"), "text/javascript", noStore));
@@ -536,6 +539,16 @@ public sealed class RemoteServerHost
             return new WebImage(jpg, "image/jpeg");
         }
         catch { return null; }
+    }
+
+    private static SimpleWebServer.Response ClientFile(string file, string ext, string folder,
+        string contentType, (string, string)[] headers)
+    {
+        if (file.Contains('/') || file.Contains('\\') || file.Contains("..")
+            || !file.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+            return SimpleWebServer.Response.NotFound;
+        try { return SimpleWebServer.Response.Text(ReadAsset(folder + file), contentType, headers); }
+        catch (FileNotFoundException) { return SimpleWebServer.Response.NotFound; }
     }
 
     private static string ReadAsset(string name)
