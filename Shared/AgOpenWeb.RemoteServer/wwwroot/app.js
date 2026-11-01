@@ -1349,11 +1349,20 @@ const dlgLat = document.getElementById('dlg-lat'), dlgLon = document.getElementB
 // (tapping the next box, a button, the map) also commits it, as the OS keyboard does. Shift
 // works as on a phone: one tap capitalises the next letter, a second tap straight after locks
 // it (caps lock) until Shift is tapped again.
+// Replace or edit (#516): the keyboard opens with the value selected ("fresh"). The first
+// character key replaces the whole value; ⌫ first, or a tap in the field, keeps the value to
+// correct it. Cancel puts back the value the field had when the keyboard opened. A tap outside
+// on another field, a button or another control confirms (so Save right after typing saves the
+// typed value); a tap on an empty spot, the map or a dialog backdrop cancels.
 const OSK = (() => {
   const root = document.getElementById('osk');
   const SHIFT_LOCK_MS = 400;                  // second Shift tap within this locks caps
   let target = null, shift = 0, shiftAt = 0;  // shift: 0 off, 1 next letter, 2 caps lock
   let edited = false;                         // keys changed the field since its last 'change'
+  let orig = '';                              // the value when the keyboard opened (Cancel)
+  // The first key replaces the value. Kept apart from the selection: a tap's release can
+  // collapse the selection on mobile engines, and the first key must replace it even then.
+  let fresh = false;
   const TEXT = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
   const NUM = ['789', '456', '123', '-0.'];
   // #+= swaps the letter rows for symbols, for web addresses, caster logins and passwords (the
@@ -1372,11 +1381,12 @@ const OSK = (() => {
     const num = !!(target && target.dataset.numField);
     root.classList.toggle('num', num);
     const rows = (num ? NUM : sym ? [TEXT[0], ...SYM] : TEXT).map(r => [...r].map(c => ({ k: c, t: shift ? c.toUpperCase() : c })));
-    if (num) rows.push([{ k: 'BS', t: '⌫', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
+    const cancel = { k: 'ESC', t: tr('Cancel'), c: 'wide esc' };
+    if (num) rows.push([{ k: 'CLR', t: 'Clear' }, { k: 'BS', t: '⌫' }, { k: 'ESC', t: tr('Cancel'), c: 'esc' }, { k: 'OK', t: 'OK', c: 'ok' }]);
     else {
       if (!sym) rows[3].unshift({ k: 'SH', t: shift === 2 ? '⇪' : '⇧', c: ['wide', 'wide on', 'wide on lock'][shift] });
       rows[3].push({ k: 'BS', t: '⌫', c: 'wide' });
-      rows.push([{ k: 'SYM', t: sym ? 'abc' : '#+=', c: 'wide' }, { k: '-', t: '-' }, { k: '_', t: '_' }, { k: ' ', t: 'space', c: 'xwide' }, { k: '.', t: '.' }, { k: 'CLR', t: 'Clear', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
+      rows.push([{ k: 'SYM', t: sym ? 'abc' : '#+=', c: 'wide' }, { k: '-', t: '-' }, { k: '_', t: '_' }, { k: ' ', t: 'space', c: 'xwide' }, { k: '.', t: '.' }, { k: 'CLR', t: 'Clear', c: 'wide' }, cancel, { k: 'OK', t: 'OK', c: 'wide ok' }]);
     }
     root.replaceChildren(pv);
     for (const r of rows) {
@@ -1391,6 +1401,7 @@ const OSK = (() => {
   }
   function insert(s) {
     const el = target; if (!el) return;
+    if (fresh) { fresh = false; selectAll(el); }  // the first key replaces the whole value
     const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
     try { el.setRangeText(s, a, b, 'end'); } catch (_) { el.value += s; }
     edited = true;
@@ -1404,9 +1415,22 @@ const OSK = (() => {
     edited = false;
     el.dispatchEvent(new Event('change', { bubbles: true }));
   }
+  function selectAll(el) { try { el.setSelectionRange(0, el.value.length); } catch (_) {} }
+  function caretToEnd(el) { const n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) {} }
+  // Put the value back as it was when the keyboard opened. 'input' lets live handlers (the
+  // numeric filter, previews) follow; no 'change', so nothing is committed.
+  function restore() {
+    const el = target; if (!el) return;
+    fresh = false; edited = false;
+    if (el.value !== orig) { el.value = orig; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  }
   function echo() {
     const el = target; if (!el || pv.hidden) return;
     const v = el.type === 'password' ? '•'.repeat(el.value.length) : el.value;
+    if (fresh && v) {  // the value is selected: the first key replaces it
+      const sel = document.createElement('span'); sel.className = 'sel'; sel.textContent = v;
+      pvTxt.replaceChildren(sel); pvTxt.scrollLeft = 0; return;
+    }
     const a = Math.min(el.selectionEnd ?? v.length, v.length);
     pvTxt.replaceChildren(v.slice(0, a), caret, v.slice(a));
     pvTxt.scrollLeft = Math.max(0, caret.offsetLeft - pvTxt.clientWidth + 24); // keep the caret in sight
@@ -1427,13 +1451,15 @@ const OSK = (() => {
     }
     if (k === 'SYM') { sym = !sym; render(); return; }
     if (k === 'OK') {
-      edited = false; // the 'change' below commits it
+      edited = false; fresh = false; // the 'change' below commits it
       el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
       close(); el.blur(); return;
     }
-    if (k === 'CLR') { el.value = ''; edited = true; el.dispatchEvent(new Event('input', { bubbles: true })); return; }
+    if (k === 'ESC') { restore(); close(); el.blur(); return; }
+    if (k === 'CLR') { fresh = false; el.value = ''; edited = true; el.dispatchEvent(new Event('input', { bubbles: true })); return; }
     if (k === 'BS') {
+      if (fresh) { fresh = false; caretToEnd(el); } // ⌫ first: keep the value, remove its last character
       const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
       if (a !== b) insert('');
       else if (a > 0) { try { el.setRangeText('', a - 1, a, 'end'); } catch (_) { el.value = el.value.slice(0, -1); } edited = true; el.dispatchEvent(new Event('input', { bubbles: true })); }
@@ -1443,24 +1469,54 @@ const OSK = (() => {
     if (shift === 1) { shift = 0; render(); }
   }
   function open(el) {
+    if (el === target) return; // focus came back to the field the keyboard is already on
     target = el; shift = 0; edited = false;
+    orig = el.value; fresh = true;
     if (!el.dataset.oskIm) el.dataset.oskIm = el.getAttribute('inputmode') ?? '';
     el.setAttribute('inputmode', 'none'); // no OS keyboard on top of ours
     sym = false;
     render(); root.hidden = false; place();
+    // Show the value selected. The tap that focused the field may still drop a caret on its
+    // release, so select again once that has landed.
+    selectAll(el);
+    const again = () => { if (target === el && fresh) { selectAll(el); echo(); } };
+    el.addEventListener('click', again, { once: true });
+    setTimeout(again, 0);
   }
   function close() {
     if (target && target.dataset.oskIm !== undefined) {
       if (target.dataset.oskIm) target.setAttribute('inputmode', target.dataset.oskIm); else target.removeAttribute('inputmode');
       delete target.dataset.oskIm;
     }
-    target = null; root.hidden = true;
+    target = null; fresh = false; root.hidden = true;
   }
   // Keep focus in the field while tapping keys (pointerdown would blur it), and don't pan the map.
   root.addEventListener('pointerdown', e => {
     e.preventDefault(); e.stopPropagation();
     const b = e.target.closest('button'); if (b) { key(b.dataset.k); echo(); }
   });
+  // A tap anywhere else while the keyboard is up. Runs capturing on window, before focus moves
+  // and before handlers that stop the event (the dialog backdrop): the value must be back
+  // before the field's own blur handlers (rename flows, the steer value box) commit it.
+  const CONTROL = 'input, textarea, select, button, a[href], label, [role="button"], [role="tab"], [role="checkbox"], [role="switch"], [role="option"], [contenteditable="true"]';
+  window.addEventListener('pointerdown', e => {
+    const el = target; if (!el || root.contains(e.target)) return;
+    if (e.target === el) {                                                  // tap in the field: edit, caret where tapped
+      if (!fresh) return;
+      fresh = false; echo();
+      // A touch on a selected value can leave the selection in place (Chromium on Android
+      // shows handles instead of a caret); then the next key would still replace it all.
+      el.addEventListener('click', () => {
+        if (target === el && el.value && el.selectionStart === 0 && el.selectionEnd === el.value.length) { caretToEnd(el); echo(); }
+      }, { once: true });
+      return;
+    }
+    // Another field or a button: confirm (focusout). Focus moves by itself to a field; a button
+    // may stop that on its pointerdown (the slider nudges), so the field is left now.
+    const c = e.target.closest && e.target.closest(CONTROL);
+    if (c) { if (!isField(c)) el.blur(); return; }
+    restore(); close(); el.blur();                                          // empty spot, map, backdrop: cancel
+  }, true);
   document.addEventListener('focusin', e => { if (on() && isField(e.target)) open(e.target); else if (!root.contains(e.target)) close(); });
   document.addEventListener('focusout', e => {
     if (e.target !== target) return;

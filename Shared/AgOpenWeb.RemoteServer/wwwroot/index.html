@@ -1085,6 +1085,8 @@
     #osk button:active { background: #34405a; }
     #osk button.wide { flex-grow: 2; } #osk button.xwide { flex-grow: 5; }
     #osk button.ok { background: #1f6f3a; border-color: #2e9a53; }
+    #osk button.esc { background: #4a2a2a; border-color: #8a4646; font-size: 15px;  /* Cancel: back to the value it had (#516) */
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 4px; }
     #osk button.on { background: #1f6fb2; border-color: #4A90D9; color: #fff; }  /* Shift: next letter */
     #osk button.lock { box-shadow: inset 0 -4px 0 #9cc8ff; }                    /* Shift: caps lock */
     #osk.num .osk-row { max-width: 360px; }
@@ -1097,6 +1099,7 @@
     #osk .osk-pv i { display: inline-block; width: 2px; height: 1.1em; margin-right: -2px; vertical-align: text-bottom;
       background: #4A90D9; animation: osk-caret 1s steps(1) infinite; }
     @keyframes osk-caret { 50% { opacity: 0; } }
+    #osk .osk-pv .sel { background: #1f6fb2; color: #fff; border-radius: 3px; padding: 0 2px; } /* selected: the first key replaces it (#516) */
     /* AB creation selectors (Quick AB / Draw AB) — mode-button grid. */
     .dlg-wide { max-width: 460px; min-width: 420px; }
     .dlg-sub { color: var(--text-muted); font: 700 13px system-ui, sans-serif; text-align: center; margin: 12px 0 6px; }
