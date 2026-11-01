@@ -18,7 +18,9 @@ rows, later wizard steps) is left out too.
               characters, never less than the English; written to Tools/i18n-limits.json
   --push      give each English source string on Weblate the flag max-length:<limit> from
               that file (and take it off strings without one). The check warns translators;
-              it blocks only if added to the component's enforced checks.
+              don't add it to the component's enforced checks: characters are too rough for
+              short words, and every translation over its limit would lose its approval.
+              CI pushes after each merge to develop (.github/workflows/i18n-limits.yml).
               Token: $WEBLATE_TOKEN or ~/.weblate-token.
   --check     every language with translations: each label's translation must fit, in
               pixels. Translations listed in Tools/i18n-fit-baseline.json (known, waiting
@@ -109,14 +111,18 @@ MEASURE_JS = r"""
     const others = all.filter(e => e !== el && !el.contains(e));
     const sideways = others.map(e => e.contains(el) || (!e.textContent.trim() && !e.querySelector('img, input, select, canvas')));
     const snap = others.map(e => e.getBoundingClientRect());
+    const box0 = box.getBoundingClientRect();
     const lead = src.match(/^\s*/)[0];
     const fitsText = text => {
       node.nodeValue = lead + text + tail;
       const l = lines(node), b = box.getBoundingClientRect(), cs = getComputedStyle(box);
       if (l.n > 1 || l.right > b.right - parseFloat(cs.paddingRight) - parseFloat(cs.borderRightWidth) + 1) return false;
       if (box.scrollWidth > box.clientWidth + 1 && cs.overflowX !== 'visible') return false;
+      // Something narrower counts only when the label's box grew: a shorter label may narrow a
+      // neighbour kept at its width (two buttons sharing a row equally) without squeezing it.
+      const grew = b.width > box0.width + 0.5;
       for (let i = 0; i < others.length; i++) { const r = others[i].getBoundingClientRect(), s = snap[i];
-        if (Math.abs(r.top - s.top) > 0.5 || Math.abs(r.height - s.height) > 0.5 || (!sideways[i] && r.width < s.width - 0.5)
+        if (Math.abs(r.top - s.top) > 0.5 || Math.abs(r.height - s.height) > 0.5 || (grew && !sideways[i] && r.width < s.width - 0.5)
             || (r.right > innerWidth + 0.5 && r.right > s.right + 0.5)) return false; }
       return true;
     };
@@ -206,12 +212,18 @@ def measure(a, keys):
             cur["places"].append(place)
 
     limits = {k: v for k, v in found.items() if v.get("label", True)}
+    # A label still in en.json that the sweep didn't reach keeps the limit it was measured with;
+    # dropping it would take its max-length flag off Weblate. A label now read as a sentence loses it.
+    kept = {k: v for k, v in (json.loads(LIMITS.read_text(encoding="utf-8")) if LIMITS.exists() else {}).items()
+            if k in keys and k not in found}
+    limits.update(kept)
+    limits = dict(sorted(limits.items()))
     Path(a.out).write_text(json.dumps(limits, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
 
     sentences = sum(1 for v in found.values() if not v.get("label", True))
     print(f"en.json keys: {len(keys)}  reached on screen: {len(found)}  "
           f"labels with a limit: {len(limits)}  sentences (no limit): {sentences}  "
-          f"not reached: {len(keys) - len(found)}")
+          f"not reached: {len(keys) - len(found)}  kept from before (not reached): {len(kept)}")
     tight = sum(1 for k, v in limits.items() if v["limit"] == len(k))
     print(f"labels whose limit is the English length (no room to spare): {tight}")
     for f in sorted(I18N.glob("*.json")):
