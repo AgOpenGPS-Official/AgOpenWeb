@@ -84,6 +84,24 @@ The connector uses only what AOW already exposes.
   proxy it and does not know what it is.
 - As for every web card, a browser **without control** sees it covered. Pairing, consent and
   settings therefore need the operator who holds control.
+- **The card pane and its drawer** (`Plans/CARD_PANE_SPLIT_PLAN.md`, #513 and the drawer step). In a
+  split layout the card sits in a pane that can be **Closed**: it is hidden, not unloaded, so the
+  connector page keeps running, but the driver cannot see it. A card that is hidden is not an
+  indicator. The connector page therefore reports whether it is visible (page visibility), and
+  watching is only allowed while it is visible, or while *always allow* is set and the driver has
+  accepted that the indicator can be hidden. Switching between Floating and Split reloads the page
+  once, so the page must restore its state from the connector, not keep it in the page.
+- **No keyboard inside the card.** AOW's on-screen keyboard (`js/osk.js`) belongs to AOW's own page
+  and does not reach into a card's iframe, which is on its own origin. On a kiosk box with no OS
+  keyboard nothing can be typed in the card. Pairing is therefore a **device code**: the card
+  shows a code and a QR/URL, and the sign-in happens on the user's phone or PC. No text field is
+  needed in the card for pairing or consent.
+- **Tests and CI.** The web client is now many classic scripts sharing one scope
+  (`Docs/WEB_CLIENT.md`). The connector never loads or patches them: the copy it serves to
+  watchers is the files as the host serves them (`index.html` plus `js/`, `css/`, `transport.js`),
+  taken per AOW version, and the connector's version check refuses an AOW version it has not
+  tested. A client that changes its file layout is no problem as long as `index.html` is the entry
+  point.
 
 ### 3.4 Where the connector runs
 
@@ -190,6 +208,9 @@ are suggestions for the maintainers, any of which can be declined without affect
   the maintainers, not part of ASL.
 - [ ] **Web card limits:** is a page that needs the operator's control (pairing, consent) acceptable,
   as for other cards?
+- [ ] **Hidden card:** with the drawer Closed the card is hidden but loaded. Can a card learn that it
+  is hidden (page visibility), so it can refuse watching? Otherwise the generic add-on banner (§7)
+  is the only reliable indicator.
 
 ## 10. Phases (the connector and the cloud)
 
