@@ -2,7 +2,7 @@
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
 // SPDX-License-Identifier: Apache-2.0
 //
-// Skia map layers: lines and tracks, recording and drawing previews, flags, grid, hitch, vehicle, ground texture, imagery.
+// Skia map layers: lines and tracks, recording and drawing previews, flags, grid (and its step), hitch, vehicle, ground texture, imagery.
 
 // ---- Skia (CanvasKit) render: the vector layers. Works in CSS px (canvas.scale(dpr)),
 //      reusing w2s. ----
@@ -342,6 +342,16 @@ function drawFlagsSk(canvas, flags) {
     canvas.drawCircle(xy[0], xy[1], r, SKP.flagFill);
     canvas.drawCircle(xy[0], xy[1], r, SKP.flagOutline);
   }
+}
+// Reference grid (procedural, client-side — no wire). Spacing is a tool-width multiple on a
+// 1-2-5 series keyed to zoom (#417). One line style, 1 px wide at any
+// zoom, no major lines and no coloured axes, as AgOpenGPS (#496).
+// ≤1 → 1, then 2, 5, 10, 20 … (no 1.5 step).
+function niceStep125(x) {
+  if (x <= 1) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(x)));
+  const f = x / pow;
+  return (f <= 2 ? 2 : f <= 5 ? 5 : 10) * pow;
 }
 function drawGridSk(canvas) {
   const disp = config && config.display;

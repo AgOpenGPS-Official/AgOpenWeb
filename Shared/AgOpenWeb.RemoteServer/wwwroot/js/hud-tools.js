@@ -2,7 +2,7 @@
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
 // SPDX-License-Identifier: Apache-2.0
 //
-// Lower-right cluster (roll gauge, camera pad), charts, the tool panels (roll correction, offset fix, import tracks, recorded path, boundary recording), card dragging.
+// Lower-right cluster (roll gauge, camera pad), the clock, charts, the tool panels (roll correction, offset fix, import tracks, recorded path, boundary recording), card dragging.
 
 // ---- Lower-right cluster: roll gauge + camera/mode pad + clock ----
 const rollBar = document.getElementById('roll-bar');
@@ -407,3 +407,12 @@ function wireCardDrag(card) {
   hdr.addEventListener('pointercancel', end);
 }
 for (const id of ['chart-steer', 'chart-heading', 'chart-xte']) wireCardDrag(document.getElementById(id));
+
+// Clock — browser-local 24h HH:MM:SS.
+const clockEl = document.getElementById('clock');
+function tickClock() {
+  if (!clockEl) return;
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  clockEl.textContent = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+setInterval(tickClock, 1000); tickClock();

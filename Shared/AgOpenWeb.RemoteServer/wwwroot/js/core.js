@@ -2,7 +2,7 @@
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
 // SPDX-License-Identifier: Apache-2.0
 //
-// The map canvas and its area, the model the transport feeds, units, render and camera state, the transport wiring.
+// The map canvas and its area, the model the transport feeds, units, render and camera state, the transport wiring, the tool width.
 
 // The client takes plain Scene + Tick objects from the transport interface and knows
 // nothing of the wire format (see transport.js).
@@ -498,4 +498,16 @@ function recreateSkSurface() {
   }
   if (grCtx) skSurface = CK.MakeOnScreenGLSurface(grCtx, ckcv.width, ckcv.height, null);
   if (!skSurface) skSurface = CK.MakeWebGLCanvasSurface(ckcv);
+}
+// The tool's width (m) from its sections, else the host's tool width.
+function toolWidthM() {
+  const ts = scene && scene.toolSections;
+  if (ts && ts.length) {
+    let lo = Infinity, hi = -Infinity;
+    for (const s of ts) { if (s.left < lo) lo = s.left; if (s.right > hi) hi = s.right; }
+    if (hi > lo) return hi - lo;
+  }
+  // No sections: the host's tool width (#398); 0 when that isn't set either, never a guess.
+  const w = config && config.tool && config.tool.totalWidth;
+  return w > 0 ? w : 0;
 }

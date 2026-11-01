@@ -2,7 +2,7 @@
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
 // SPDX-License-Identifier: Apache-2.0
 //
-// The on-screen keyboard.
+// The on-screen keyboard; numeric fields take digits, one point and a leading minus.
 
 // On-screen keyboard (App Settings › On-screen Kbd; AgOpenGPS FormKeyboard for text,
 // FormNumeric for numbers) (#110). For touch boxes with no OS keyboard (kiosk/Linux): when
@@ -240,78 +240,3 @@ document.addEventListener('input', e => {
 scanNumericFields(document);
 new MutationObserver(muts => { for (const m of muts) for (const n of m.addedNodes) scanNumericFields(n); })
   .observe(document.documentElement, { childList: true, subtree: true });
-function openSimCoords() {
-  // Pre-fill with the current vehicle position (from the Status frame).
-  dlgLat.value = statusBar && statusBar.lat != null ? statusBar.lat.toFixed(8) : '';
-  dlgLon.value = statusBar && statusBar.lon != null ? statusBar.lon.toFixed(8) : '';
-  openDialog('dlg-simcoords');
-  dlgLat.focus();
-}
-document.getElementById('dlg-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
-// Coordinates line (#335, AgOpenGPS Build Tracks "Lat/Lon + Heading" / "Lat/Lon"): A is
-// pre-filled with the vehicle's position, as AgOpenGPS does; the host converts through the
-// field's local plane and reports anything it refuses.
-let llMode = 'latLonHeading';
-const llEl = id => document.getElementById(id);
-function llFill(pt) {
-  if (!statusBar || statusBar.lat == null || (!statusBar.lat && !statusBar.lon)) return;
-  llEl('ll-lat-' + pt).value = statusBar.lat.toFixed(8);
-  llEl('ll-lon-' + pt).value = statusBar.lon.toFixed(8);
-}
-function openLatLonLine(mode) {
-  llMode = mode;
-  const ab = mode === 'latLonAB', pivot = mode === 'latLonPivot';
-  llEl('ll-title').textContent = pivot ? tr('Water Pivot from its Centre') : ab ? tr('AB Line from Two Points') : tr('AB Line from Point and Heading');
-  llEl('ll-a-label').textContent = pivot ? tr('Centre') : 'A';
-  llEl('ll-heading-row').hidden = ab || pivot;
-  llEl('ll-b-row').hidden = !ab;
-  for (const id of ['ll-lat-a', 'll-lon-a', 'll-heading', 'll-lat-b', 'll-lon-b']) llEl(id).value = '';
-  llEl('ll-err').textContent = '';
-  llFill('a');
-  openDialog('dlg-latlonab');
-}
-document.querySelectorAll('[data-ll-fill]').forEach(b => b.addEventListener('pointerdown', e => {
-  e.preventDefault(); e.stopPropagation(); llFill(b.dataset.llFill);
-}));
-llEl('ll-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
-llEl('ll-ok').addEventListener('pointerdown', e => {
-  e.preventDefault(); e.stopPropagation();
-  if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); // commit the edit
-  const num = id => { const v = llEl(id).value.trim(); return v === '' ? NaN : +v; };
-  const okLat = v => Number.isFinite(v) && Math.abs(v) <= 90, okLon = v => Number.isFinite(v) && Math.abs(v) <= 180;
-  const latA = num('ll-lat-a'), lonA = num('ll-lon-a');
-  let err = !okLat(latA) || !okLon(lonA) ? tr('Point A needs a latitude (−90 to 90) and longitude (−180 to 180)') : '';
-  let cmd = '';
-  if (!err && llMode === 'latLonPivot') cmd = 'track.latLonPivot|' + [latA, lonA].join(',');
-  else if (!err && llMode === 'latLonAB') {
-    const latB = num('ll-lat-b'), lonB = num('ll-lon-b');
-    if (!okLat(latB) || !okLon(lonB)) err = tr('Point B needs a latitude (−90 to 90) and longitude (−180 to 180)');
-    else cmd = 'track.latLonAB|' + [latA, lonA, latB, lonB].join(',');
-  } else if (!err) {
-    const h = num('ll-heading');
-    if (!Number.isFinite(h)) err = tr('Enter a heading in degrees');
-    else cmd = 'track.latLonHeading|' + [latA, lonA, h].join(',');
-  }
-  if (err) { llEl('ll-err').textContent = err; return; }
-  closeDialog();
-  transport.send(cmd);
-});
-
-document.getElementById('dlg-ok').addEventListener('pointerdown', e => {
-  e.preventDefault(); e.stopPropagation();
-  // Commit any in-progress field edit before reading: type=text inputs can hold uncommitted
-  // text until blur, and preventDefault above keeps focus on the field.
-  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  const lat = parseFloat(dlgLat.value), lon = parseFloat(dlgLon.value);
-  if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180)
-    transport.send('sim.setCoords|' + lat + ',' + lon);
-  closeDialog();
-});
-document.getElementById('dlgc-cancel').addEventListener('pointerdown', e => {
-  e.preventDefault(); e.stopPropagation();
-  const back = _confirmBack; closeDialog(); if (back) back();
-});
-document.getElementById('dlgc-ok').addEventListener('pointerdown', e => {
-  e.preventDefault(); e.stopPropagation();
-  const cb = _confirmCb, back = _confirmBack; closeDialog(); if (cb) cb(); if (back) back();
-});
