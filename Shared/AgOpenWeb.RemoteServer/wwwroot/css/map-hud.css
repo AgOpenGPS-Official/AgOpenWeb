@@ -2,7 +2,7 @@
    pass and headland HUDs, map-tap hints, Ref Nudge, AB letters, draw toolbar, U-turn buttons,
    bottom stack (simulator bar, section bar, bottom nav). */
 
-/* Top status bar (Phase 1) — mirrors the native StatusBarPanel: pause + two-line
+/* Top status bar: pause + two-line
    left stack (Fix/Age over a rotating Field/Stats/AB line), aggregate Modules
    (with per-module popup), and big Speed on the right. */
 #statusbar {
@@ -56,7 +56,7 @@ body.fs-on #sb-role { margin-left: 75px; }
 .sb-speed-wrap { display: flex; flex-direction: column; align-items: center; min-width: 70px; }
 #sb-speed { color: #E67E22; font-size: 24px; font-weight: 700; line-height: 1; }
 #sb-unit { color: var(--text-muted); font-size: 10px; font-weight: 500; margin-top: 1px; }
-/* Heading readout (Phase 5) — AgOpen-style big pink degrees + small HDG label,
+/* Heading readout — AgOpen-style big pink degrees + small HDG label,
    right of the speed slot in the strip. Fixed width so 000.0° never reflows. */
 .sb-hdg-wrap { display: flex; flex-direction: column; align-items: center; min-width: 76px; }
 #sb-hdg { color: #E91E90; font-size: 24px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -64,7 +64,7 @@ body.fs-on #sb-role { margin-left: 75px; }
 #sb-fs { flex: none; width: 34px; height: 34px; border: 1px solid var(--border); border-radius: 8px;
   background: rgba(var(--ov),0.06); color: var(--text-2); font-size: 18px; cursor: pointer; }
 #sb-fs:hover { background: rgba(var(--ov),0.14); }
-/* GPS-detail card (Phase 5) — popup toggled by the fix dot; mirrors GpsDetailPanel. */
+/* GPS-detail card — popup toggled by the fix dot. */
 #sb-fixbtn { padding: 0; }
 #sb-gpscard { display: none; position: absolute; top: calc(100% + 8px); left: 0; min-width: 180px;
   background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
@@ -126,8 +126,8 @@ body.fs-on #sb-role { margin-left: 75px; }
   color: #fff; font: 700 calc(19px * var(--hud-s))/1.25 system-ui, sans-serif; pointer-events: none;
   text-shadow: 0 1px 2px #000;
 }
-/* Headland-distance HUD — screen-space box at top-centre (below the light bar's two lines),
-   mirroring the native SkiaMapControl HUD. Green when clear, red on warning.
+/* Headland-distance HUD — screen-space box at top-centre (below the light bar's two lines).
+   Green when clear, red on warning.
    Gated by Display.HeadlandDistanceVisible + a live distance ≥ 0, AND hidden while a
    map-tap creation flow is active (updateHeadlandHud) so it doesn't clutter the top-centre
    instruction pill / draw toolbar. */
@@ -138,7 +138,7 @@ body.fs-on #sb-role { margin-left: 75px; }
   pointer-events: none; z-index: 10; text-shadow: 0 1px 2px #000;
 }
 #headland-hud.warn { background: rgba(130,32,32,0.9); border-color: #ff6b5b; }
-/* Map-tap capture hint (Phase MT) — top-centre pill shown while a feature is
+/* Map-tap capture hint — top-centre pill shown while a feature is
    capturing an on-map tap (place-flag, boundary draw, AB, …). Esc cancels. */
 #maptap-hint {
   position: fixed; top: calc(var(--bar-bottom) + 14px); left: calc(50% + var(--map-dx)); transform: translateX(-50%); display: none;
@@ -207,7 +207,7 @@ body.maptap #ck { cursor: crosshair; }
 #ab-dot-labels span { position: fixed; z-index: 41; display: none; pointer-events: none;
   font: 900 20px system-ui, sans-serif; transform: translate(11px, -26px);
   text-shadow: 0 0 3px #000, 0 1px 5px rgba(0,0,0,0.95); }
-/* Draw-track toolbar (Phase MT) — top-centre, directly under the instruction pill
+/* Draw-track toolbar — top-centre, directly under the instruction pill
    (#maptap-hint at top:60px) so the action buttons sit with the prompt, not across
    the screen from it. (The distance HUD is hidden during these flows — updateHeadlandHud.) */
 #draw-toolbar {
@@ -224,7 +224,7 @@ body.maptap #ck { cursor: crosshair; }
 #draw-toolbar button.active { background: rgba(255,210,74,0.25); border-color: #ffd24a; color: #ffe9a6; }
 #draw-finish, #draw-setpoint { border-color: rgba(110,220,150,0.7) !important; color: #b6f0cd !important; }
 #draw-cancel { border-color: rgba(230,120,110,0.7) !important; color: #f3c4bd !important; }
-/* On-screen U-Turn / Lateral buttons — bare glyphs over the map (native look), docked
+/* On-screen U-Turn / Lateral buttons — bare glyphs over the map, docked
    upper-left: 30px right of the left-nav bar (~66px wide) and 40px below the status
    bar (--bar-bottom). Container is click-through; only the glyphs are
    tappable so the map still pans. */
@@ -253,13 +253,12 @@ body.maptap #ck { cursor: crosshair; }
 .uti-arrow.left { transform: scaleX(-1); }
 #uti-distval { color: #EDF7E8; font: 700 16px ui-monospace, monospace; text-shadow: 0 1px 2px #000; white-space: nowrap; }
 .uti-type { width: 40px; height: 40px; display: block; }
-/* Bottom-centre stack (Phase 6/7) — vertical column mirroring the native
-   StackPanel (sim bar / section bar / bottom nav). Bottom-anchored; rows toggle
+/* Bottom-centre stack — a vertical column (sim bar / section bar / bottom nav). Bottom-anchored; rows toggle
    independently and the column re-flows. */
 #bottomstack { position: fixed; bottom: var(--sab); left: calc(50% + var(--map-dx)); transform: translateX(-50%);
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   pointer-events: none; z-index: 10; }
-/* Simulator bar (Phase 6) — a single horizontal bar. Hidden until launched. */
+/* Simulator bar — a single horizontal bar. Hidden until launched. */
 #simbar { display: none; align-items: center; gap: 4px; padding: 6px 8px; box-sizing: border-box;
   background: var(--float-bg2); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 6px 20px rgba(0,0,0,0.5); touch-action: manipulation; pointer-events: auto;
@@ -286,7 +285,7 @@ body.maptap #ck { cursor: crosshair; }
   font: 700 13px system-ui, sans-serif; cursor: pointer; touch-action: manipulation;
   pointer-events: auto; }
 #sim-launch.show { display: block; }
-/* Section bar (Phase 7) — colour-coded per-section buttons, one or more rows. */
+/* Section bar — colour-coded per-section buttons, one or more rows. */
 #sectionbar { display: none; flex-direction: column; align-items: center; gap: 4px;
   padding: 8px; border-radius: 10px; background: var(--float-bg2);
   border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0,0,0,0.5);
@@ -302,7 +301,7 @@ body.maptap #ck { cursor: crosshair; }
 #sectionbar .sec-iso-cells { display: flex; gap: 2px; flex: 1; }
 #sectionbar .sec-iso-cell { flex: 1 1 0; min-width: 3px; height: 8px; background: #5a5a5a; }
 #sectionbar .sec-iso-cell.on { background: #39FF6A; }
-/* Bottom nav (Phase 8) — field-tools toolbar + Flags/AB-line flyouts. */
+/* Bottom nav — field-tools toolbar + Flags/AB-line flyouts. */
 #bottomnav { position: relative; display: none; pointer-events: auto;
   -webkit-user-select: none; user-select: none; }
 #bottomnav.open { display: block; }
@@ -315,7 +314,7 @@ body.maptap #ck { cursor: crosshair; }
   font: 700 16px system-ui, sans-serif; display: flex; align-items: center; justify-content: center; }
 #bottomnav .bn-btn:hover { background: rgba(var(--ov),0.16); }
 #bottomnav .bn-btn:active { background: rgba(70,160,255,0.5); }
-#bottomnav .bn-btn.active { background: #1f8f3f; }       /* toggle-on (matches native Active) */
+#bottomnav .bn-btn.active { background: #1f8f3f; }       /* toggle-on */
 #bottomnav .bn-btn.hide { display: none; }               /* AB-dependent, no active track */
 #bottomnav .bn-menu.menuopen { background: var(--sel); }
 #bottomnav .bn-ic { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }

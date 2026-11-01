@@ -4,9 +4,9 @@
 //
 // Field Builder: tracks, headland and tram tabs; KML boundary; offset fix.
 
-// ---- Field Builder (Phase MT) — Tracks / Headland / Tram editor (NO_SCRIM: the map
-// stays interactive so you draw/edit on it). Stage 1 = Tracks tab; reuses the existing
-// AB-draw / create-from-boundary flows on the main map. ----
+// ---- Field Builder — Tracks / Headland / Tram editor (NO_SCRIM: the map stays
+// interactive so you draw/edit on it). The Tracks tab uses the AB-draw /
+// create-from-boundary flows on the main map. ----
 let fbTab = 'tracks';   // active FB tab
 let fbSel = -1;         // selected track index in the Tracks tab
 document.getElementById('ft-fieldbuilder').addEventListener('pointerdown', e => {
@@ -190,7 +190,7 @@ document.getElementById('fb-hl-rename').addEventListener('pointerdown', e => {
 // Systems live in ConfigStore.Tram.Systems (host SoT); the browser sends field edits and
 // the host regenerates the lines + persists.
 let fbTramSel = -1;
-let fbTramPendingEdit = false; // open the editor on the system we just added (native parity)
+let fbTramPendingEdit = false; // open the editor on the system we just added
 function openTramEditor() {
   for (const p of document.querySelectorAll('#fieldbuilder .fb-pane[data-fbpane]')) p.hidden = true;
   document.getElementById('fb-tramedit').hidden = false;

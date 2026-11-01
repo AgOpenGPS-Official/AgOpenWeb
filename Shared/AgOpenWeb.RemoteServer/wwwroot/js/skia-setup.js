@@ -4,9 +4,8 @@
 //
 // CanvasKit start, map theme, UI scale and the placement of the corner pad, panels and HUD, Skia paints.
 
-// ---- CanvasKit (Skia) renderer — built alongside Canvas2D for A/B (toggle K).
-//      Phase A: vector layers at parity; coverage/imagery/tool/lightbar next.
-//      (State declared near the top so resize() can call recreateSkSurface.) ----
+// ---- CanvasKit (Skia) renderer: colours, paints, UI scale and placement. Its state is
+//      declared in js/core.js, beside resize(), which calls recreateSkSurface. ----
 // Hex (#rrggbb) or rgb(a)(...) → CanvasKit color (CK.Color: r,g,b 0-255, a 0-1).
 function ckColor(s) {
   if (s[0] === '#') return CK.Color(parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16), 1);
@@ -170,12 +169,11 @@ function buildSkPaints() {
   };
   const fill = (color) => { const p = new CK.Paint(); p.setStyle(CK.PaintStyle.Fill); p.setColor(ckColor(color)); p.setAntiAlias(true); return p; };
   SKP = {
-    // Colours mirror native SkiaMapControl paints; widths are set per frame in
-    // updateLineWidths() (world metres × pxPerM, like native's world-space strokes).
+    // Widths are set per frame in updateLineWidths() (world metres × pxPerM).
     boundary: mk('rgba(242,112,89,0.8)', 5), boundaryInner: mk('rgb(245,245,77)', 5), headland: mk('rgb(251,235,107)', 4),
     track: mk('#ffd24a', 4), reference: mk('rgb(180,100,255)', 5, [9, 7]),
     guidance: mk('rgb(252,86,186)', 5), guidanceOutline: mk('rgb(0,0,0)', 15), uturn: mk('rgb(77,242,77)', 5), next: mk('rgb(0,200,200)', 4),
-    // Extra guidelines (adjacent passes) — native _extraGuidePaint green(51,153,50,153)
+    // Extra guidelines (adjacent passes) — green(51,153,50,153)
     // over a black shadow, both 0.3 m. Widths set per frame in updateLineWidths.
     extraGuide: mk('rgba(51,153,50,0.6)', 1), extraGuideShadow: mk('rgba(0,0,0,0.5)', 1),
     // Grid: grey, ~0.31 alpha, one line style (#496); its width is set per frame in drawGridSk.
@@ -204,8 +202,7 @@ function buildSkPaints() {
     p.setAntiAlias(true);
     return p;
   });
-  // Section footprint as native: filled 2 m-deep rects per ColorCode + a thin black
-  // outline (DrawToolSk DrawRect fill + _sectionOutlinePaint).
+  // Section footprint: filled 2 m-deep rects per ColorCode + a thin black outline.
   SKP.sectionFill = SECTION_COLORS.map((c) => fill(c));
   SKP.sectionOutline = mk('#000000', 1.2);
   SKP.sectionOutline.setStrokeCap(CK.StrokeCap.Butt);

@@ -20,6 +20,17 @@
   <link rel="stylesheet" href="/css/tool-panels.css">
 </head>
 <body>
+  <!-- Contents, top to bottom (each panel's look is in css/, its code in js/):
+       - the map (#ck) and what sits on it: status bar, light bar (#hud-top), Ref Nudge,
+         map-tap hints, draw toolbar, on-screen buttons, U-turn indicator;
+       - the left nav and its menu panels (.ln-panel): Screen & Alerts, vehicle & tool,
+         AutoSteer, Network IO and NTRIP, Field Operations (fields, jobs, imports, AgShare),
+         the app menu and Tools (with the VT / web card templates and the charts), Field
+         Tools (Field Builder, boundaries, recorded path), the app menu's own panels, Smart WAS;
+       - the steer wizard, right nav, lower-right cluster, clock, bottom stack (simulator bar,
+         section bar, bottom nav);
+       - host prompt, toast, GPS lost, on-screen keyboard, the dialog host and its cards;
+       - the scripts: CanvasKit, transport, i18n, then js/ in load order. -->
   <canvas id="ck"></canvas>
   <div id="statusbar">
     <!-- LEFT/RIGHT groups swapped so the fullscreen exit "✕" pill (top-left) only ever
@@ -56,7 +67,7 @@
         <span id="sb-age" class="sb-sec"></span>
       </div>
       <div id="sb-rot" class="sb-rot" title="Field data">—</div>
-      <!-- GPS-detail card (Phase 5): toggled by the fix dot. Nested in .sb-left so it
+      <!-- GPS-detail card: toggled by the fix dot. Nested in .sb-left so it
            anchors under the fix readout now that the readout lives on the right. -->
       <div id="sb-gpscard">
         <div class="gc-ll" id="gc-lat">—</div>
@@ -138,7 +149,7 @@
   <button id="maptap-cancel">✕ Cancel</button>
   <div id="maptap-ab">A</div>
   <div id="ab-dot-labels"></div>
-  <!-- Phase MT — draw-track toolbar. Shown while drawing an AB/curve on the map.
+  <!-- Draw-track toolbar. Shown while drawing an AB/curve on the map.
        Undo/Finish appear only in curve mode; Cancel always. -->
   <div id="draw-toolbar">
     <button id="draw-setpoint">Set Point</button>
@@ -149,7 +160,7 @@
     <button id="draw-cancel">Cancel</button>
   </div>
   <!-- On-screen U-Turn (yellow) + Lateral (cyan) buttons — bare glyphs over the map,
-       mirroring native AgOpenGPS. Gated on Display.UTurnButtonVisible / LateralButtonVisible
+       as in AgOpenGPS. Gated on Display.UTurnButtonVisible / LateralButtonVisible
        (Screen & Alerts → On-Screen Buttons). The container passes pointer events through to
        the map; only the glyphs themselves are tappable. -->
   <div id="onscreenbtns">
@@ -182,7 +193,7 @@
       </button>
     </div>
   </div>
-  <!-- Auto-U-turn approach indicator (native look) — green direction arrow + distance to
+  <!-- Auto-U-turn approach indicator — green direction arrow + distance to
        trigger + turn-type glyph (Sagitta / K-turn / Keyhole). Upper-right, symmetric to the on-screen
        U-turn/Lateral buttons. Shown while an auto U-turn is armed; a tap on the arrow swaps
        the turn's direction. -->
@@ -205,8 +216,7 @@
   </div>
   <!-- Transparent light-dismiss scrim for open chain panels (unified nav model). -->
   <div id="ln-scrim" class="ln-scrim"></div>
-  <!-- Left nav (Phase 9) — vertical button bar mirroring LeftNavigationPanel; grows
-       button-by-button as sub-phases land. Each opens a non-modal panel to its right. -->
+  <!-- Left nav — vertical button bar. Each button opens a non-modal panel to its right. -->
   <div id="leftnav">
     <button id="ln-filemenu" class="ln-btn" title="File / Application Menu"><img class="ln-ic" src="/icons/fileMenu.png" alt="File Menu"></button>
     <button id="ln-screenalerts" class="ln-btn" title="Screen &amp; Alerts"><img class="ln-ic" src="/icons/NavigationSettings.png" alt="Screen & Alerts"></button>
@@ -244,8 +254,8 @@
       </svg>
     </button>
   </div>
-  <!-- Screen & Alerts (Phase 9a) — non-modal flyout. Units toggle proves the config
-       bridge (config.set|units:…); more settings accrue here in later sub-phases. -->
+  <!-- Screen & Alerts — non-modal flyout; display, units, alerts and the card layout
+       (config.set|…). -->
   <div id="screenalerts" class="ln-panel sa-panel">
     <div class="ln-hdr"><span class="ln-hdr-title">Screen &amp; Alerts</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="cfg-label">Display</div>
@@ -301,8 +311,7 @@
       <button class="sa-tgl" data-key="display.sectionsSound"><img class="sa-ic" src="/icons/ConF_SoundSections.png" alt="">Sections</button>
     </div>
   </div>
-  <!-- Vehicle & Tool picker hub (Phase 9) — mirrors LoadVehicleToolDialogPanel:
-       two columns (vehicle / tool) each with a profile list, preview, New/Delete/
+  <!-- Vehicle & Tool picker hub: two columns (vehicle / tool) each with a profile list, preview, New/Delete/
        Rename/Reset + name field + Configure…, and a bottom Load Selected. -->
   <div id="vehtoolhub" class="ln-panel ln-hub">
     <div class="ln-hdr"><span class="ln-hdr-title">Vehicle &amp; Tool</span><button class="ln-x ln-closex" title="Close">✕</button></div>
@@ -340,8 +349,7 @@
       <button id="vth-load" class="ln-savebtn hub-load">Load Selected</button>
     </div>
   </div>
-  <!-- Vehicle Configuration (Phase 9b) — full native VehicleConfigDialog surface:
-       Vehicle / Data-Sources(GPS) / Roll tabs. Reads the config frame; writes via
+  <!-- Vehicle Configuration: Vehicle / Data-Sources(GPS) / Roll tabs. Reads the config frame; writes via
        config.set|<section>.<field>; Save Profile persists with profile.save. -->
   <div id="vehiclecfg" class="ln-panel ln-wide">
     <div class="ln-hdr"><button class="ln-back" data-back="vehiclecfg">←</button><span class="ln-hdr-title">Vehicle Configuration</span><button class="ln-x ln-closex" title="Close">✕</button></div>
@@ -449,8 +457,7 @@
     </div>
     <button id="vc-save" class="ln-savebtn">Save Profile</button>
   </div>
-  <!-- Tool Configuration (Phase 9b 3/3) — full native ToolConfigDialog surface:
-       Tool/Implement (Type/Hitch/Timing/Offset/Pivot/Sections/Switches) + U-Turn +
+  <!-- Tool Configuration: Tool/Implement (Type/Hitch/Timing/Offset/Pivot/Sections/Switches) + U-Turn +
        Machine + Tram. Generic data-key controls; diagrams + dynamic lists. -->
   <div id="toolcfg" class="ln-panel ln-wide">
     <div class="ln-hdr"><button class="ln-back" data-back="toolcfg">←</button><span class="ln-hdr-title">Tool Configuration</span><button class="ln-x ln-closex" title="Close">✕</button></div>
@@ -633,8 +640,7 @@
     </div>
     <button id="tc-save" class="ln-savebtn">Save Profile</button>
   </div>
-  <!-- AutoSteer Configuration (Phase 9) — mirrors native AutoSteerConfigPanel: title
-       bar, left pane (4 icon tabs + value cards + Test Mode), right pane (5 icon tabs)
+  <!-- AutoSteer Configuration: title bar, left pane (4 icon tabs + value cards + Test Mode), right pane (5 icon tabs)
        revealed when expanded, and a Set/Act/Err status bar with the expand toggle.
        Field edits ride config.set|autosteer.*; hardware-push actions (Send&Save /
        Zero-WAS / Reset / free-drive) are gated autosteer.* commands. -->
@@ -818,7 +824,7 @@
   <!-- Smart WAS Calibration — modal launched from the AutoSteer panel. Live stats ride
        the Status frame (ISmartWasCalibrationService snapshot); Start/Stop/Reset/Apply
        are gated smartwas.* commands routed through SmartWasViewModel. -->
-  <!-- Network IO (Phase 9) — non-modal flyout mirroring NetworkIoPanel: modules
+  <!-- Network IO — non-modal flyout: modules
        (present checkbox + status dot + IP), Scan, global subnet change (PGN 201),
        host IPs, and the NTRIP status + Profiles launcher. -->
   <div id="networkio" class="ln-panel nio-panel">
@@ -954,10 +960,8 @@
     <div class="cfg-label">Sentences from the GPS module</div>
     <div id="sd-sentences"></div>
   </div>
-  <!-- NTRIP Profiles — chain sub-panel of Network IO. Per the native chain model
-       (MainViewModel.Navigation.Chain): opening REPLACES the parent (single panel
-       visible); Back reopens the parent fly-out, Close → map. Mirrors
-       NtripProfilesDialogPanel (DialogChrome: Back · Title · Close). -->
+  <!-- NTRIP Profiles — chain sub-panel of Network IO: opening REPLACES the parent (single
+       panel visible); Back reopens the parent fly-out, Close → map (Back · Title · Close). -->
   <div id="ntripprofiles" class="ln-panel nio-ntmodal">
     <div class="ln-hdr"><button class="ln-x" id="nt-back" title="Back">←</button><span class="ln-hdr-title">NTRIP Profiles</span><button class="ln-x" id="nt-x" title="Close">✕</button></div>
     <div class="nio-nttoolbar">
@@ -1018,7 +1022,7 @@
         <button id="nte-save" class="sw-b sw-blue" style="flex:none; padding:9px 22px">Save Profile</button>
       </div>
   </div>
-  <!-- Field Operations (Phase 9) — fly-out launcher (field/job lifecycle). -->
+  <!-- Field Operations — fly-out launcher (field/job lifecycle). -->
   <div id="fieldops" class="ln-panel fo-panel">
     <div class="ln-hdr"><span class="ln-hdr-title">Field Operations</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="fo-grid">
@@ -1036,8 +1040,7 @@
     </div>
     <div class="fo-pill" id="fo-current" style="display:none"></div>
   </div>
-  <!-- Fields and Jobs — chain sub-panel (replaces Field Operations). Mirrors
-       StartWorkSessionDialogPanel: Fields table | Jobs+new-job form | Creation. -->
+  <!-- Fields and Jobs — chain sub-panel (replaces Field Operations): Fields table | Jobs+new-job form | Creation. -->
   <div id="fieldsandjobs" class="ln-panel fj-panel">
     <div class="ln-hdr"><button class="ln-x" id="fj-back" title="Back">←</button><span class="ln-hdr-title">Fields and Jobs</span><button class="ln-x ln-closex" id="fj-x" title="Close">✕</button></div>
     <div class="fj-cols">
@@ -1172,7 +1175,7 @@
       <button class="cfg-act fj-primary" id="agd-downloadall">Download All</button>
     </div>
   </div>
-  <!-- File / Application Menu (Phase 9) — fly-out launcher. -->
+  <!-- File / Application Menu — fly-out launcher. -->
   <div id="filemenu" class="ln-panel fm-panel">
     <div class="ln-hdr"><span class="ln-hdr-title">File / Application Menu</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="cfg-label">General</div>
@@ -1198,7 +1201,7 @@
       <button class="fo-btn" id="fm-bugreport">Bug Report Dump</button>
     </div>
   </div>
-  <!-- Tools fly-out (native ToolsPanel): Steer Wizard / Log Viewer / Roll Correction
+  <!-- Tools fly-out: Steer Wizard / Log Viewer / Roll Correction
        on the left, the three diagnostic charts on the right. -->
   <div id="tools" class="ln-panel fm-panel">
     <div class="ln-hdr"><span class="ln-hdr-title">Tools</span><button class="ln-x ln-closex" title="Close">✕</button></div>
@@ -1282,9 +1285,8 @@
     <div class="chart-hdr"><span>XTE</span><button class="chart-x" data-chart="xte" title="Close">✕</button></div>
     <canvas class="chart-cv" width="400" height="150"></canvas>
   </div>
-  <!-- Field Tools fly-out (native FieldToolsPanel). Field Builder + Boundary draw-on-map
-       are Phase MT (map-tap); Import Tracks / Recorded Path / Boundary recording build in
-       follow-up increments. Offset Fix + Delete Applied Area are live now. -->
+  <!-- Field Tools fly-out: Field Builder, Boundary, Delete Applied Area, Import Tracks,
+       Recorded Path, Offset Fix. -->
   <div id="fieldtools" class="ln-panel fm-panel">
     <div class="ln-hdr"><span class="ln-hdr-title">Field Tools</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="fo-grid">
@@ -1296,7 +1298,7 @@
       <button class="fo-btn" id="ft-offsetfix">Offset Fix</button>
     </div>
   </div>
-  <!-- Field Builder (native FieldBuilderDialogPanel) — Tracks / Headland / Tram editor.
+  <!-- Field Builder — Tracks / Headland / Tram editor.
        Reuses the main map + s2w for drawing/editing; this panel is the control surface. -->
   <div id="fieldbuilder" class="ln-panel fb-panel">
     <div class="ln-hdr"><button class="ln-x fb-back" title="Back">←</button><span class="ln-hdr-title">Field Builder</span><button class="ln-x ln-closex" title="Close">✕</button></div>
@@ -1456,8 +1458,8 @@
     </div>
     <div id="rp-info" class="rp-info">No path loaded</div>
   </div>
-  <!-- Boundary recording menu ("Start or Delete Boundary"). Draw-on-Map is Phase MT and
-       Import-KML needs the KML picker (follow-up) — both disabled here. -->
+  <!-- Boundary recording menu ("Start or Delete Boundary"): delete, import KML/KMZ, draw on
+       the imagery, get imagery, build from tracks, drive around (outer / inner). -->
   <div id="boundarymenu" class="ln-panel bm-panel">
     <div class="ln-hdr"><button class="ln-x" id="bm-back" title="Back">←</button><span class="ln-hdr-title">Start or Delete Boundary</span><button class="ln-x ln-closex" title="Close">✕</button></div>
     <div class="bm-toolbar">
@@ -1658,7 +1660,7 @@
     <button id="rn-steer" class="rn-btn"><img id="rn-steer-i" class="rn-ic" alt="AutoSteer"></button>
     <div id="rn-readonly"></div>
   </div>
-  <!-- Lower-right: roll gauge (SVG paths reused from the native gauge) + camera pad. -->
+  <!-- Lower-right: roll gauge (SVG) + camera pad. -->
   <div id="lowerright">
     <svg id="rollgauge" width="200" height="80" viewBox="0 0 200 80">
       <path fill="none" stroke="#E91E90" stroke-width="2.5" stroke-linecap="round"
@@ -1678,12 +1680,12 @@
     </div>
   </div>
   <div id="clock">--:--:--</div>
-  <!-- Bottom-centre stack (mirrors the native StackPanel): simulator bar above the
-       section bar above the bottom nav (Phase 8). Each row toggles its own
+  <!-- Bottom-centre stack: simulator bar above the section bar above the bottom nav.
+       Each row toggles its own
        visibility; the column re-flows. -->
   <div id="bottomstack">
     <button id="sim-launch" title="Open simulator">SIM</button>
-    <!-- Simulator bar (Phase 6): mirrors the native SimulatorPanel. Toggled open by
+    <!-- Simulator bar. Toggled open by
          #sim-launch; drives the host sim via client->host commands. Sim is Tier-1
          (hardware-safe), so these aren't gated by control authority. -->
     <div id="simbar">
@@ -1707,17 +1709,15 @@
       <button id="sim-reverse" class="sim-btn" data-cmd="sim.reverseDir" title="Reverse direction (flip 180°)">⇅</button>
       <button id="sim-close" class="sim-btn sim-closebtn" title="Close">✕</button>
     </div>
-    <!-- Section bar (Phase 7): per-section colour buttons (rebuilt to match the
+    <!-- Section bar: per-section colour buttons (rebuilt to match the
          section count); each tap cycles that section Off->Auto->On (Tier-2, gated).
          Shown when a field is open AND a master (auto/manual) is engaged. Rows are
-         built dynamically by renderSectionBar (≤16/row, split like the native). -->
+         built dynamically by renderSectionBar (≤16/row). -->
     <div id="sectionbar"></div>
-    <!-- Bottom nav: field-tools toolbar (Phase 8) — mirrors BottomNavigationPanel.
+    <!-- Bottom nav: field-tools toolbar.
          Shown when a field is open; AB-dependent buttons (.bn-abdep) appear only with
          an active track. Two flyouts (Flags / AB-line) pop up above the bar. Tier-2
-         buttons carry data-t2 and fire only while this client holds control. The
-         dialog-launchers (Tracks / QuickAB / DrawAB / FlagList / place-on-map) land in
-         Phase 9 with their dialogs. -->
+         buttons carry data-t2 and fire only while this client holds control. -->
     <div id="bottomnav">
       <div id="bn-flyout-flags" class="bn-flyout">
         <button class="bn-row" data-cmd="flag.placeHere"><img class="bn-rowic" src="/icons/FlagRed.png" alt=""><span>Place Flag Here</span></button>
@@ -1725,7 +1725,7 @@
         <button class="bn-row" id="bn-flag-list"><img class="bn-rowic" src="/icons/FlagRed.png" alt=""><span>Flag List</span></button>
       </div>
       <div id="bn-flyout-ab" class="bn-flyout">
-        <!-- Mirrors native BottomNavigationPanel AB flyout. Row 1: Tracks manager /
+        <!-- AB flyout. Row 1: Tracks manager /
              Quick-AB (the single creation hub — GPS-driven, from-boundary, and draw-on-map
              all live in its dialog). Then the active-track ops (smooth/delete, A/B end
              length, nudge), shown only with an active track (.bn-abdep). Length and nudge
@@ -1789,9 +1789,7 @@
       </div>
     </div>
   </div>
-  <!-- Dialog host (Phase 6): the web mirror of DialogOverlayHost — one modal at a
-       time over a dimming backdrop. SimCoords is the first dialog; later phases add
-       more cards into this same host. -->
+  <!-- Dialog host: one modal at a time over a dimming backdrop; the dialog cards below. -->
   <!-- Host prompt (#109): the host's pending confirm/error dialog (Prompt frame). Only the
        browser holding control can answer; others see who can. -->
   <div id="hostprompt">
@@ -1832,7 +1830,7 @@
         <button id="dp-cancel" class="dlg-btn dlg-cancel">Cancel</button>
       </div>
     </div>
-    <!-- Shared confirm (replaces browser confirm() + native ShowConfirmationDialog).
+    <!-- Shared confirm (instead of the browser's confirm()).
          Transparent light-dismiss scrim; outside-tap / Cancel = no action. -->
     <div id="dlg-confirm" class="dlg-card">
       <div class="dlg-title" id="dlgc-title">Confirm</div>
@@ -1939,7 +1937,7 @@
         <button id="ll-ok" class="dlg-btn dlg-ok">Create</button>
       </div>
     </div>
-    <!-- Tracks manager (mirrors native TracksDialogPanel) — list + toolbar. -->
+    <!-- Tracks manager — list + toolbar. -->
     <div id="dlg-tracks" class="dlg-card dlg-wide">
       <div class="dlg-title">AB Line Tracks</div>
       <div class="trk-toolbar">
@@ -1954,7 +1952,7 @@
       <div id="trk-list" class="trk-list"></div>
       <div class="dlg-buttons"><button id="dlg-tracks-close" class="dlg-btn dlg-cancel">Close</button></div>
     </div>
-    <!-- Flag list (mirrors native FlagListDialogPanel) — colour/rename/locate/delete. -->
+    <!-- Flag list — colour/rename/locate/delete. -->
     <div id="dlg-flags" class="dlg-card dlg-wide">
       <div class="dlg-title">Flags</div>
       <div id="flag-list" class="trk-list"></div>
@@ -1967,7 +1965,7 @@
     </div>
   </div>
   <!-- CanvasKit (WASM Skia) — bundled locally, no CDN (offline in-cab). Defines
-       CanvasKitInit; the renderer migration (Phase A/B) uses it for true 3D. -->
+       CanvasKitInit, started at the end of js/frame.js. -->
   <script src="/vendor/canvaskit.js"></script>
   <!-- Binary-WebSocket transport — no external client lib (works offline in-cab). -->
   <script src="/transport.js"></script>

@@ -4,13 +4,10 @@
 //
 // The map canvas and its area, the model the transport feeds, units, render and camera state, the transport wiring.
 
-// Renderer — consumes plain Scene + Tick objects via the transport interface.
-// It has NO knowledge of SignalR or the wire format (see transport.js); swapping
-// the transport at Phase 2 leaves this file untouched. Canvas2D for now; the
-// CanvasKit swap (and client-side dead-reckoning) slot in here without touching
-// the transport seam.
+// The client takes plain Scene + Tick objects from the transport interface and knows
+// nothing of the wire format (see transport.js).
 
-const ckcv = document.getElementById('ck'); // CanvasKit (Skia) — the sole renderer (matches native)
+const ckcv = document.getElementById('ck'); // CanvasKit (Skia) — the sole renderer
 
 // Logical (CSS-pixel) canvas size. The backing store is scaled by the device
 // pixel ratio so vectors render at native resolution on hi-DPI screens (tablets,
@@ -115,7 +112,7 @@ let fps = 0;           // smoothed client render rate (for the GPS-detail card)
 let _fpsFrames = 0, _fpsT0 = 0;
 let _diagT0 = 0;       // throttle (~4 Hz) for the marker-gated diag line's DOM writes
 let linkRttMs = null;  // EMA of server↔client round-trip (ms), from diag.ping/PONG
-// Remote actuation authority (Phase 2 safety layer): our connection id (from the
+// Control authority (#397): our connection id (from the
 // Hello frame), the latest broadcast control state, and whether we hold control.
 let myClientId = null;
 let lastControl = { held: false, holderId: '', holderName: '' };
@@ -124,8 +121,7 @@ let iHoldControl = false;
 // ---- Units (issue #65) -------------------------------------------------------
 // Everything the host sends and accepts is METRIC — vehicle/tool geometry in m,
 // section widths / nudge / coverage margin in cm, speeds in km/h, areas in ha.
-// Imperial is a *display/input boundary* conversion only, mirroring the native
-// UnitConversion helper: convert when filling a control or formatting a readout,
+// Imperial is a *display/input boundary* conversion only: convert when filling a control or formatting a readout,
 // convert back before sending. Never store or transmit imperial.
 //
 // Markup contract (index.html):
@@ -223,7 +219,7 @@ function onUnitsChanged() {
 applyUnits();   // fill the static labels now (metric default) — the first Status frame corrects it
 
 
-// ---- coverage offscreen (Phase 2): cells painted into a cell-grid canvas,
+// ---- coverage offscreen: cells painted into a cell-grid canvas,
 //      blitted to world space each frame. Snapshot on connect, deltas after. ----
 let cov = null;        // { cellSize, originE, originN, width, height, canvas, cctx }
 let covCells = 0;
@@ -244,13 +240,13 @@ groundImgNight.src = '/icons/GroundTextureDark.png';
 groundImgDay.src = '/icons/GroundTextureLight.png';
 
 // ---- tractor sprite (TractorAoG.png) — drawn world-sized on the ground, replacing the
-//      fallback triangle. Sized from the vehicle track-width/wheelbase like native. ----
+//      fallback triangle. Sized from the vehicle track-width/wheelbase. ----
 const tractorImg = new Image();
 let tractorReady = false, skTractor = null;
 tractorImg.onload = () => { tractorReady = true; };
 tractorImg.src = '/icons/TractorAoG.png';
 // Steerable front-wheel sprite (single wheel, drawn at both front-axle ends, rotated by
-// the live wheel angle) — matches native SkiaMapControl's FrontWheels.png.
+// the live wheel angle) — FrontWheels.png.
 const frontWheelImg = new Image();
 let frontWheelReady = false, skFrontWheel = null;
 frontWheelImg.onload = () => { frontWheelReady = true; };
@@ -280,13 +276,13 @@ let satEnabled = false;  // true while drawing a boundary on satellite imagery
 // ---- client-owned camera (never crosses the wire) ----
 let pxPerM = 4.0;
 let camE = 0, camN = 0;
-// Camera follow mode, matching native SkiaMapControl: 0 NorthUp (lock to vehicle),
+// Camera follow mode: 0 NorthUp (lock to vehicle),
 // 1 HeadingUp (lock + rotate map to heading), 2 Free (manual pan holds), 3 Map
-// (map-centric auto-pan with a safe zone). Default Map, like native.
+// (map-centric auto-pan with a safe zone). Default Map.
 let cameraMode = 3;
 let mapRotation = 0;          // radians the map is rotated (−heading in HeadingUp)
 let _cosRR = 1, _sinRR = 0;   // cos/sin of the screen rotation (−mapRotation), per frame
-const AUTO_PAN_SAFE = 0.65, AUTO_PAN_SMOOTH = 0.15; // match native tuning
+const AUTO_PAN_SAFE = 0.65, AUTO_PAN_SMOOTH = 0.15;
 // Map-rotation easing (HeadingUp). ADAPTIVE: heavily damp SMALL heading errors so the
 // whole heading-up map doesn't wobble with autosteer line-holding dither, but stay
 // responsive for LARGE errors (real headland turns). alpha ramps MIN→MAX as the heading
@@ -296,8 +292,7 @@ const ROT_SMOOTH_MIN = 0.035; // ~0.5 s settle — kills line-holding dither (~0
 const ROT_SMOOTH_MAX = 0.35;  // crisp on real turns (≈ the old fixed 0.3)
 const ROT_SMOOTH_FULL = 0.12; // rad (~7°) error at which we're fully responsive
 function isFollowMode() { return cameraMode !== 2; }
-// 3D perspective tilt (Skia only — Canvas2D can't do true perspective). pitch 0 =
-// top-down (identical to the ortho path); up to MAX_PITCH tilts toward the horizon.
+// 3D perspective tilt. pitch 0 = top-down (the same scale as a flat map); up to MAX_PITCH tilts toward the horizon.
 // perspM is the world→CSS-px matrix for the current frame (null when top-down).
 let pitch = 0;          // radians
 let perspM = null;      // 16-elem M44 (world→CSS px) or null
@@ -327,7 +322,7 @@ function maybeSaveView() {
   _viewSaveT = now; _savedPitch = pitch; _savedZoom = pxPerM; _savedMode = mode;
   transport.send('view.save|' + pitch + '|' + pxPerM + '|' + mode); // host writes it to appstate.json
 }
-const PERSP_FOV = 0.7;                     // rad, matches native SkiaMapControl
+const PERSP_FOV = 0.7;                     // rad
 
 // ---- transport wiring (the only coupling point) ----
 const transport = RemoteTransport.create({

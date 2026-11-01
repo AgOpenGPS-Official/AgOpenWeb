@@ -14,8 +14,7 @@
 // branch dropped top-down into an axis-aligned raster path that couldn't rotate, so
 // imagery/coverage skewed away under HeadingUp/Map as heading changed.
 function active3D() { return !!CK; }
-// Build the world→CSS-px screen matrix, mirroring the native camera model
-// (SkiaMapControl.BuildPerspectiveScreenMatrix): view = T(0,0,-distance)·Rx(-pitch)
+// Build the world→CSS-px screen matrix: view = T(0,0,-distance)·Rx(-pitch)
 // ·T(-cam), a FOV-PERSP_FOV perspective, then an NDC(-1..1, y-up)→pixel(y-down)
 // viewport. distance is derived from pxPerM so pitch=0 matches the ortho scale
 // exactly (no jump when tilting in). CanvasKit M44 is column-vector / row-major /
@@ -31,8 +30,7 @@ function buildScreenMatrix() {
   // numbers each frame → the result steps in f32 ULPs as the camera moves → the whole
   // world jitters a sub-mm fraction ("floating-origin" jitter, visible on high-frequency
   // imagery). Instead w2s / pw / the raster sites subtract camE,camN in f64 (JS) and feed
-  // only small relative coords here. Mirrors native (SkiaMapControl: double relX =
-  // _vehicleX - _cameraX before its f32 SKMatrix44).
+  // only small relative coords here.
   const view = CK.M44.multiply(
     CK.M44.translated([0, 0, -distance]),
     CK.M44.rotated([1, 0, 0], -pitch),
@@ -56,7 +54,7 @@ function buildScreenMatrix() {
 }
 function updatePerspective() {
   perspM = active3D() ? buildScreenMatrix() : null;
-  // Cache the inverse once per frame (Phase MT s2w foundation). perspM is row-major
+  // Cache the inverse once per frame (for s2w). perspM is row-major
   // (CanvasKit M44); the inverse is the screen-px→world-ray map used by s2w.
   perspMInv = perspM ? invertM44(perspM) : null;
 }
@@ -75,8 +73,7 @@ function clipNear(e1, n1, e2, n2) {
   return w1 < EPS ? [ce, cn, e2, n2] : [e1, n1, ce, cn];
 }
 // Map-mode auto-pan: keep the vehicle inside a centred safe zone, smoothing the
-// camera toward it (snap if it leaves the viewport). Mirrors native ApplyAutoPan
-// (rotation 0 in Map mode). World units; rotation 0.
+// camera toward it (snap if it leaves the viewport); rotation 0 in Map mode. World units; rotation 0.
 function applyAutoPan(rp) {
   const viewHalfW = (vw / 2) / pxPerM, viewHalfH = (vh / 2) / pxPerM;
   const relE = rp.e - camE, relN = rp.n - camN;
@@ -131,7 +128,7 @@ function w2s(e, n) {
 function pw(e, n) {
   return perspM[12] * (e - camE) + perspM[13] * (n - camN) + perspM[15];
 }
-// ---- screen→world unprojection (Phase MT foundation) ----
+// ---- screen→world unprojection ----
 // w2s only ever does world→screen; map-tap features need the inverse: turn a CSS-px tap
 // into a field coordinate (E,N) on the ground plane z=0. perspM bakes the viewport in, so
 // a tap (px,py) is already in perspM's output space — no NDC pre-step. We unproject the

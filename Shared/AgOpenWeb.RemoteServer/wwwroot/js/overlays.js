@@ -4,8 +4,7 @@
 //
 // Per-frame DOM overlays: tool and pose, light bar text, tram lights, pass and headland HUDs, status bar, GPS and field cards, simulator / section / bottom / right nav state, U-turn indicator.
 
-// Section display palette by ColorCode — matches the native
-// SectionColorCodeToBackgroundConverter exactly.
+// Section display palette by ColorCode.
 const SECTION_COLORS = [
   'rgba(242,51,51,0.85)',  // 0 off          (red)
   'rgba(247,247,0,0.9)',   // 1 manual on    (yellow)
@@ -211,7 +210,7 @@ function updatePassHud() {
   passHud.style.display = 'block';
 }
 
-// Headland-distance HUD → DOM overlay (mirrors the native SkiaMapControl HUD).
+// Headland-distance HUD → DOM overlay.
 // Shown only when Display.HeadlandDistanceVisible is on and a live distance ≥ 0
 // (−1 = no headland / not driving). Metric/imperial follows the status bar.
 const hlHud = document.getElementById('headland-hud');
@@ -228,7 +227,7 @@ function updateHeadlandHud() {
   hlHud.style.display = 'block';
 }
 
-// Top status bar — DOM overlay mirroring the native StatusBarPanel: a two-line
+// Top status bar — DOM overlay: a two-line
 // left stack (Fix dot + text + Age on top, a rotating Field/Stats/AB-line below
 // with a pause toggle), and a right cluster (aggregate Modules dot + per-module
 // popup, then big Speed + unit). Updated each frame from the latest StatusDto plus
@@ -246,7 +245,7 @@ const SB = {
   mAs: document.getElementById('sb-as'), mMa: document.getElementById('sb-ma'),
   dGps: document.getElementById('sb-gps-d'), dImu: document.getElementById('sb-imu-d'),
   dAs: document.getElementById('sb-as-d'), dMa: document.getElementById('sb-ma-d'),
-  // GPS-detail card (Phase 5).
+  // GPS-detail card.
   fixBtn: document.getElementById('sb-fixbtn'), gpsCard: document.getElementById('sb-gpscard'),
   gcLat: document.getElementById('gc-lat'), gcLon: document.getElementById('gc-lon'),
   gcElev: document.getElementById('gc-elev'), gcSats: document.getElementById('gc-sats'),
@@ -259,7 +258,7 @@ const SB = {
   sbdFps: document.getElementById('sbd-fps'), sbdLink: document.getElementById('sbd-link'),
   sbdCtrl: document.getElementById('sbd-ctrl'),
 };
-// GPS fix-quality → dot colour (matches the native FixQualityToColor intent).
+// GPS fix-quality → dot colour.
 function fixColor(q) {
   switch (q) {
     case 4: return '#22c55e';  // RTK fixed — green
@@ -305,7 +304,7 @@ function activeTrackHeadingDeg() {
   const a = tr.points[0], b = tr.points[1];
   return Math.atan2(b.e - a.e, b.n - a.n) * 180 / Math.PI;
 }
-// Rotating bottom line — the three native pages (Field / Stats / AB-line).
+// Rotating bottom line — three pages (Field / Stats / AB-line).
 let sbPage = 0, sbPaused = false;
 function rotatingLineText() {
   const s = statusBar; if (!s) return '';
@@ -327,7 +326,7 @@ function rotatingLineText() {
   const primary = ((h % 360) + 360) % 360, recip = (primary + 180) % 360;
   return tr('AB Line: {name}', { name }) + '  ' + primary.toFixed(1) + '°, ' + recip.toFixed(1) + '°';
 }
-setInterval(() => { if (!sbPaused) sbPage = (sbPage + 1) % 3; }, 5000); // native 5 s cycle
+setInterval(() => { if (!sbPaused) sbPage = (sbPage + 1) % 3; }, 5000); // a page every 5 s
 SB.pause.addEventListener('click', () => { sbPaused = !sbPaused; SB.pause.textContent = sbPaused ? '▶' : '❚❚'; });
 // Bar interaction must not pan the map (the camera listens on window pointerdown).
 SB.bar.addEventListener('pointerdown', e => e.stopPropagation());
@@ -528,7 +527,7 @@ function fmtHdg(deg) {
   const d = ((deg % 360) + 360) % 360;
   return d.toFixed(1).padStart(5, '0') + '°';
 }
-// Simulator bar (Phase 6) — reflect host sim state onto the bar each frame.
+// Simulator bar — reflect host sim state onto the bar each frame.
 function renderSimBar() {
   const s = statusBar;
   if (!s || s.simPanelVisible === false) return;
@@ -543,12 +542,12 @@ function renderSimBar() {
   // Speed readout: apply 10× then format per units (mirrors SimulatorSpeedDisplay).
   const eff = (s.simSpeedKph || 0) * (s.sim10x ? 10 : 1);
   SIM.speedVal.textContent = fmtUnit(eff, 'kmh', 1);
-  // GPS (teleport) only while sim disabled — matches the native IsEnabled binding.
+  // GPS (teleport) only while sim disabled.
   SIM.gps.disabled = !!s.simEnabled;
   SIM.gps.style.opacity = s.simEnabled ? '0.4' : '1';
 }
-// Section bar (Phase 7). Rebuild rows when the count changes; split rows like the
-// native RebuildSectionRows: ceil(n/16) rows, top rows get the extra when uneven.
+// Section bar. Rebuild rows when the count changes; ceil(n/16) rows, the top rows get the
+// extra when uneven.
 let _secCount = -1;
 function buildSectionRows(n) {
   sectionBar.innerHTML = '';
@@ -593,7 +592,7 @@ function buildZoneRow(zones) {
   sectionBar.appendChild(row);
 }
 function renderSectionBar() {
-  // Native gate: field open AND a master (auto or manual) engaged.
+  // Only with a field open AND a master (auto or manual) engaged.
   const secs = tick && tick.sections;
   const visible = !!(scene && scene.hasField && tick && tick.op
     && (tick.op.sectionManual || tick.op.sectionAuto) && secs && secs.length);
@@ -633,12 +632,12 @@ function renderIsobusSections() {
   const cells = row.querySelectorAll('.sec-iso-cell');
   for (let i = 0; i < cells.length; i++) cells[i].classList.toggle('on', !!iso.reported[i]);
 }
-// Bottom nav (Phase 8). Swap icons only on change; reflect Tick toggle state.
+// Bottom nav. Swap icons only on change; reflect Tick toggle state.
 function bnIcon(img, name) { const p = '/icons/' + name; if (img && !img.src.endsWith(p)) img.src = p; }
 const TRAM_ICONS = ['TramOff.png', 'TramAll.png', 'TramLines.png', 'TramOuter.png'];
 function renderBottomNav() {
   applyOnScreenButtons(); // U-Turn / Lateral glyphs follow field-open + display toggles
-  const visible = !!(scene && scene.hasField); // native gate: IsFieldOpen
+  const visible = !!(scene && scene.hasField); // only with a field open
   bottomNav.classList.toggle('open', visible);
   if (!visible) { bnFlags.classList.remove('open'); bnAb.classList.remove('open'); renderRefNudge(false); return; }
   // AB-line-dependent buttons appear only with an active track.
@@ -663,8 +662,8 @@ function renderBottomNav() {
   bottomNav.classList.toggle('locked', !iHoldControl);
 }
 
-// Right-nav operational toolbar (Phase 3a: read-only live indicators; 3b wires the
-// Tier-2 commands). Colour-coded from the Tick's operational state.
+// Right-nav operational toolbar: live indicators, colour-coded from the Tick's operational
+// state; its buttons send the commands (js/control.js).
 const RN = {
   root: document.getElementById('rightnav'),
   contourI: document.getElementById('rn-contour-i'), manualI: document.getElementById('rn-manual-i'),
@@ -685,7 +684,7 @@ function renderRightNav() {
   // Dim + hint when we don't hold control (buttons are no-ops then; the host also gates).
   RN.root.classList.toggle('locked', !iHoldControl);
   if (RN.readonly) RN.readonly.textContent = iHoldControl ? '' : tr('observing');
-  // State carried by the icon image (native uses the same On/Off/Gray PNGs).
+  // State carried by the icon image (On/Off/Gray PNGs).
   rnIcon(RN.contourI, op.contour ? 'ContourOn.png' : 'ContourOff.png');
   // Contour lock shows only in contour mode, and U-turn hides then (AgOpenGPS) (#110).
   RN.contourLock.style.display = op.contour ? '' : 'none';
@@ -730,7 +729,7 @@ function renderRightNav() {
 }
 
 // Auto-U-turn approach indicator (upper-right): green direction arrow + distance to
-// trigger + turn-type glyph. Mirrors native's on-map readout; shown while auto U-turn is
+// trigger + turn-type glyph; shown while auto U-turn is
 // armed with a pending turn. Turn type comes from config (Omega / Sagitta); distance honours
 // the metric/imperial unit like the headland HUD.
 const UTI = {

@@ -4,7 +4,7 @@
 //
 // Satellite tiles, coverage, tool footprint, light bar and steer bar.
 
-// ---- satellite tile underlay (Phase MT — Draw boundary on map) ----
+// ---- satellite tile underlay (drawing a boundary on the map) ----
 // A slippy-map of keyless Bing aerial tiles drawn world-positioned under the field, so
 // the existing pan/zoom frames it and the s2w tap primitive draws the boundary on it.
 // Tiles are proxied through the host (/sattile/<quadkey>) to avoid CORS taint. Flat-earth
@@ -333,7 +333,7 @@ function drawCoverageEdgeSk(canvas) {
 // Tool/section footprint — section bars perpendicular to the (dead-reckoned) tool
 // heading, coloured by ColorCode. Same geometry as the 2D toolFootprint().
 // Tool footprint: each section a filled 2 m-deep rect (coloured by ColorCode) with a
-// thin black outline + a 0.05 m inter-section gap, matching native DrawToolSk. The four
+// thin black outline + a 0.05 m inter-section gap. The four
 // world corners come from the perpendicular (left/right) and forward (depth) directions;
 // all four are projected via w2s (the tool is always near the camera, so no near-plane
 // clipping is needed) and filled/stroked as a quad.
@@ -386,7 +386,7 @@ function lightbarSk(canvas) {
   const cpp = Math.max(1, (cfg.cmPerPixel | 0) || 5);
   const val = tick.crossTrackError || 0, PER = cpp / 100; // + = right of line
   const lit = Math.min(Math.round(Math.abs(val) / PER), SIDE);
-  const steerLeft = val > 0; // lights point the way to STEER (native convention)
+  const steerLeft = val > 0; // lights point the way to STEER
   const litCol = steerLeft ? '#ff7a3d' : '#39FF6A';
   // Scaled with the HUD (hudK), as the readout beside it, but never wider than the screen allows.
   // Clear of the readout and, when shown, the tram dots beside it.

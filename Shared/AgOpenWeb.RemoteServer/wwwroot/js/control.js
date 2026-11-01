@@ -4,7 +4,7 @@
 //
 // Control authority (operator / observer) and the right nav's actions.
 
-// ---- remote actuation control (Phase 2 safety layer) ----
+// ---- control authority: operator / observer (#397) ----
 // Take/Release single-holder control + a Tier-2 stub. Only the holder may
 // actuate; the holder must heartbeat (presence) or the host revokes it (deadman).
 // Control is implicit and by connection order: the first browser to connect is the
@@ -48,10 +48,9 @@ function claimSeatIfFree() {
 setInterval(() => { if (iHoldControl) transport.send('control.presence'); }, 500);
 updateControlUi();
 
-// Right-nav toolbar actuation (Phase 3b). Each button sends its Tier-2 command,
+// Right-nav toolbar actuation. Each button sends its Tier-2 command,
 // but only while we hold control — the host hub enforces the same gate. No
-// per-action confirm: holding control IS the deliberate gate (matches the native
-// single-tap), and the deadman + failsafe cover a lost controller.
+// per-action confirm: holding control IS the deliberate gate (a single tap), and the deadman + failsafe cover a lost controller.
 function rnSend(cmd) { if (iHoldControl) transport.send(cmd); }
 // NB: use a direct lookup here, not the RN object — RN is a `const` defined later
 // in the render section, so referencing it here would hit the temporal dead zone
@@ -60,8 +59,8 @@ let rnCycleAt = 0, rnLastTrack = null; // last cycle tap (ms), track name seen t
 const rnRoot = document.getElementById('rightnav');
 if (rnRoot) {
   rnRoot.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
-  // pointerdown, like the rest of the touch UI: the NativeWebView launcher doesn't
-  // reliably fire 'click' (#56, #111).
+  // pointerdown, like the rest of the touch UI: a touch web view doesn't reliably fire
+  // 'click' (#56, #111).
   const wireRn = (id, cmd) => { const el = document.getElementById(id); if (el) el.addEventListener('pointerdown', e => { e.preventDefault(); rnSend(cmd); }); };
   wireRn('rn-contour', 'contour.toggle');
   wireRn('rn-contourlock', 'contour.lock'); // #110

@@ -1,8 +1,7 @@
 /* Right nav, the lower-right cluster (roll gauge, camera pad), the chart cards. */
 
-/* Right-nav operational toolbar (Phase 3). Vertical button stack on the right
-   edge, colour-coded by live state. (Phase 3a: read-only indicators; 3b wires
-   the Tier-2 commands through the control gate.) */
+/* Right-nav operational toolbar. Vertical button stack on the right edge,
+   colour-coded by live state; its commands need control. */
 /* Bar chrome + button look match the left nav (the canonical style); state colours below. */
 #rightnav { position: fixed; right: var(--sar); top: calc(var(--bar-bottom) + 10px); display: none; flex-direction: column;
             gap: 6px; align-items: stretch; padding: 8px; border-radius: 10px 0 0 10px;
@@ -25,7 +24,7 @@
 #rn-readonly { color: #ff7a3d; font: 600 10px ui-monospace, monospace; text-align: center; min-height: 12px; }
 /* Dimmed when this client doesn't hold control — the buttons are inert. */
 #rightnav.locked .rn-btn { opacity: 0.5; cursor: default; }
-/* Lower-right cluster (Phase 4): roll gauge + camera/mode pad. Clock separate. */
+/* Lower-right cluster: roll gauge + camera/mode pad. Clock separate. */
 #lowerright { position: fixed; right: calc(14px + var(--sar)); bottom: calc(72px + var(--sab)); display: flex; flex-direction: column;
   align-items: flex-end; gap: 10px; pointer-events: none; }
 /* The 200px-wide gauge is wider than the 136px campad below it; nudge it right

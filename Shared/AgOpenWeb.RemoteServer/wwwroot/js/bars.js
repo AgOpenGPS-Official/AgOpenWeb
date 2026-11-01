@@ -25,7 +25,7 @@ document.getElementById('ucov-save').addEventListener('pointerdown', e => { e.pr
 document.getElementById('ucov-discard').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); ucovResolve('coverage.discardClose'); });
 document.getElementById('ucov-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); ucovResolve('coverage.cancelClose'); });
 
-// ---- section bar (Phase 7) — per-section colour strip + manual toggle ----
+// ---- section bar — per-section colour strip + manual toggle ----
 // Read state (per-section ColorCode + master/manual mode) already rides the Tick;
 // each tap cycles one section Off->Auto->On (Tier-2 — gated by control authority on
 // both ends). Buttons are (re)built when the section count changes; colours update
@@ -39,7 +39,7 @@ sectionBar.addEventListener('pointerdown', e => {
   if (btn && iHoldControl) transport.send('section.toggle|' + btn.dataset.idx);
 });
 
-// ---- bottom nav (Phase 8) — field-tools toolbar + Flags/AB-line flyouts ----
+// ---- bottom nav — field-tools toolbar + Flags/AB-line flyouts ----
 // Direct-action field tools. Tier-2 ids (data-t2: track.* / headland.* / youturn.skip*)
 // are dimmed and fire only while we hold control; every other command needs it too (#397). Toggle
 // READ state rides the Tick (tick.tools); AB-dependent buttons key off activeTrackName.
@@ -61,7 +61,7 @@ document.getElementById('bn-delcontours').addEventListener('pointerdown', e => {
     () => transport.send('track.deleteContours'));
 });
 // ---- On-screen U-Turn (yellow) / Lateral (cyan) buttons over the map ----
-// Bare glyph buttons mirroring native AgOpenGPS; shown per the Screen & Alerts
+// Bare glyph buttons as in AgOpenGPS; shown per the Screen & Alerts
 // "On-Screen Buttons" toggles. U-turn → manual you-turn L/R, lateral → snap the track
 // one pass (1 tool width) L/R.
 const onScreenBtns = document.getElementById('onscreenbtns');
@@ -77,7 +77,7 @@ onScreenBtns.addEventListener('pointerdown', e => {
 });
 function applyOnScreenButtons() {
   const d = config && config.display;
-  const hasField = !!(scene && scene.hasField); // native gate: IsFieldOpen
+  const hasField = !!(scene && scene.hasField); // only with a field open
   // U-turn (manual you-turn) and Lateral (snap track) only act while AutoSteer is engaged,
   // so hide them otherwise (issue #36). Runs every frame via renderBottomNav, so it tracks
   // engage/disengage live.
@@ -94,7 +94,7 @@ function bnToggleFly(fly, btn) {
   if (open) { fly.classList.add('open'); btn.classList.add('menuopen'); }
 }
 document.getElementById('bn-flags').addEventListener('pointerdown', e => { e.stopPropagation(); bnToggleFly(bnFlags, e.currentTarget); });
-// "Place Flag on Map" (Phase MT) — arm tap capture; the next map tap drops a flag at the
+// "Place Flag on Map" — arm tap capture; the next map tap drops a flag at the
 // tapped field point via flag.placeAt (host PlaceFlagAtWorldPosition). No data-cmd, so the
 // bottomNav delegate ignores it. Closes the flyout, then captures one tap.
 function armPlaceFlagOnMap() {

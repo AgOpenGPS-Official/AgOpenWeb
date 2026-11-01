@@ -4,7 +4,7 @@
 //
 // The application menu: settings and tools, language, About, bug report.
 
-// ---- File / Application Menu (Phase 9) — settings/tools launcher. Reads ride the AppInfo
+// ---- File / Application Menu — settings/tools launcher. Reads ride the AppInfo
 // frame + config/status; writes are config.set (App Settings) + app.* (language/reset/
 // hotkeys/bug-report). Sub-panels are chain panels (replace the menu; Back reopens it).
 document.getElementById('ln-filemenu').addEventListener('pointerdown', e => {

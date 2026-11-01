@@ -4,9 +4,8 @@
 //
 // Skia map layers: lines and tracks, recording and drawing previews, flags, grid, hitch, vehicle, ground texture, imagery.
 
-// HUD text (DOM). Built each frame from the latest tick/scene.
-// ---- Skia (CanvasKit) render — Phase A: vector layers at parity. Works in CSS
-//      px (canvas.scale(dpr)), reusing w2s. Coverage/imagery/tool/lightbar TODO. ----
+// ---- Skia (CanvasKit) render: the vector layers. Works in CSS px (canvas.scale(dpr)),
+//      reusing w2s. ----
 // CanvasKit 0.41: Path is immutable (no moveTo/reset) — build via MakeFromCmds
 // (flat [VERB,x,y,...]) for polylines; drawLine for single segments.
 // True when line `a` lies on polyline `b`: its middle point is within 5 cm of it.
@@ -126,11 +125,11 @@ function strokePtsSk3D(canvas, pts, close, paint) {
   }
   flush();
 }
-// Field flags — filled dot (0.8 m radius like native, min 4 px) + dark outline,
+// Field flags — filled dot (0.8 m radius, min 4 px) + dark outline,
 // coloured by the flag's hex. Skips flags behind the tilted camera (near-plane).
 // Live recorded-path markers (Recorded Path → Record). The host streams the points
 // captured so far on the RecordedPath frame; draw each as a dot so the path is visible
-// as it's driven, like native's growing "Recording…" track.
+// as it's driven.
 function drawRecordingMarkersSk(canvas) {
   const r = recPath;
   if (!r || !r.recordingPoints || r.recordingPoints.length < 2) return;
@@ -159,7 +158,7 @@ function drawContourRefSk(canvas) {
 }
 // Live drive-around boundary (Boundary → Drive Around): the points captured so far,
 // streamed on the Boundary frame. Draw a connecting line + dots so it's visible as it's
-// driven, like native's growing recording.
+// driven.
 function drawBoundaryRecordingSk(canvas) {
   const b = boundary;
   if (!b || !b.recordingPoints || b.recordingPoints.length < 2) return;
@@ -175,7 +174,7 @@ function drawBoundaryRecordingSk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
   }
 }
-// Extra guidelines (Phase MT parity) — the adjacent passes either side of the followed line,
+// Extra guidelines — the adjacent passes either side of the followed line,
 // when Display.ExtraGuidelines is on, faint green over a shadow, with a zoom gate so the lines
 // don't collapse into a band. The host builds them from the reference like the pass itself
 // (#450): a curve keeps its shape at corners, and the spacing is width − overlap with the tool
@@ -193,7 +192,7 @@ function drawExtraGuidelinesSk(canvas) {
     strokePtsSk(canvas, pts, false, SKP.extraGuide);
   }
 }
-// Live boundary draw-on-map preview (Phase MT) — the polygon vertices tapped on the
+// Live boundary draw-on-map preview — the polygon vertices tapped on the
 // satellite imagery so far. Closed white outline + outlined dots; client-side only.
 function drawSatBoundarySk(canvas) {
   if (!satBnd || !satPts.length) return;
@@ -207,7 +206,7 @@ function drawSatBoundarySk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
   }
 }
-// #40: preview the AB/curve points being drawn as native-style dots — orange A (first),
+// #40: preview the AB/curve points being drawn as dots — orange A (first),
 // blue B (last), white interior — so the placed A point is visible before B is set. The
 // host holds the real point list; drawPts is the client's tap echo (preview only).
 function drawAbDrawPreviewSk(canvas) {
@@ -290,8 +289,7 @@ function drawTramLinesSk(canvas) {
 }
 // Field Builder Headland editor — draw each segment's offset line + overshoot extensions
 // (yellow = contributes to the closed headland, red = doesn't yet) ONLY while the Headland
-// tab is open, so the operator can watch the lines cross and enclose the area, mirroring
-// native's "Create and Edit Headland" view. The built headland polygon draws separately.
+// tab is open, so the operator can watch the lines cross and enclose the area. The built headland polygon draws separately.
 function drawHeadlandSegEditLinesSk(canvas) {
   if (!scene || !scene.headlandSegs || !scene.headlandSegs.length) return;
   const fb = document.getElementById('fieldbuilder');
@@ -319,7 +317,7 @@ function drawHeadlandDrawSk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
   }
 }
-// Live draw-track preview (Phase MT) — the points tapped so far while drawing an AB/curve
+// Live draw-track preview — the points tapped so far while drawing an AB/curve
 // on the map. Client-side only (the host holds the authoritative list); cleared on
 // finish/cancel. Cyan line through the points + an outlined dot at each.
 function drawDrawingSk(canvas) {
@@ -347,7 +345,7 @@ function drawFlagsSk(canvas, flags) {
 }
 function drawGridSk(canvas) {
   const disp = config && config.display;
-  if (!disp || !disp.gridVisible) return; // honour Display.GridVisible (mirrors native)
+  if (!disp || !disp.gridVisible) return; // honour Display.GridVisible
   const G = 2000;
   let halfW = (vw / 2) / pxPerM, halfH = (vh / 2) / pxPerM;
   halfW = Math.max(halfW, 180); halfH = Math.max(halfH, 180); // see far enough under tilt
@@ -356,7 +354,7 @@ function drawGridSk(canvas) {
   const minN = Math.max(camN - halfH, -G), maxN = Math.min(camN + halfH, G);
   if (minE >= maxE || minN >= maxN) return;
   const toolW = toolWidthM() || 1; // no tool width: plain metres
-  // Spacing = tool-width × NiceStep125(viewSpan / (toolW·30)) — same as native.
+  // Spacing = tool-width × niceStep125(viewSpan / (toolW·30)).
   const spacing = toolW * niceStep125(Math.max(vw, vh) / pxPerM / (toolW * 30));
 
   // Draw in WORLD coords under the perspective matrix so Skia GPU-clips at the near
@@ -377,8 +375,7 @@ function drawGridSk(canvas) {
   canvas.restore();
 }
 // Implement hitch line: yellow line from the vehicle hitch pivot to the tool, drawn
-// under the perspective path so it clips/tilts like the other vectors. Mirrors native
-// DrawToolSk's hitch segment (hitch → tool).
+// under the perspective path so it clips/tilts like the other vectors.
 function drawHitchSk(canvas) {
   const tool = renderTool(), p = renderPose();
   if (!tool || !p || (!tool.e && !tool.n)) return;
@@ -401,12 +398,12 @@ function drawHitchSk(canvas) {
   }
   // Mounted (front/rear 3-point): two arms from the tractor mount (rear axle, or
   // wheelbase ahead for front-mount) ± a lateral spread, converging on the tool.
-  // Mirrors native: spread = trackWidth*0.3; base = pivot (+wheelbase ahead if front).
+  // spread = trackWidth*0.3; base = pivot (+wheelbase ahead if front).
   const spread = veh.trackWidth * 0.3;
   const front = type === 0;
   const baseE = p.e + (front ? Math.sin(p.heading) * veh.wheelbase : 0);
   const baseN = p.n + (front ? Math.cos(p.heading) * veh.wheelbase : 0);
-  const ps = Math.cos(p.heading), pc = -Math.sin(p.heading); // perpendicular (= native cosV,sinV)
+  const ps = Math.cos(p.heading), pc = -Math.sin(p.heading); // perpendicular
   strokePtsSk(canvas, [{ e: baseE - ps * spread, n: baseN - pc * spread }, { e: tool.e, n: tool.n }], false, SKP.hitch);
   strokePtsSk(canvas, [{ e: baseE + ps * spread, n: baseN + pc * spread }, { e: tool.e, n: tool.n }], false, SKP.hitch);
 }
@@ -434,15 +431,14 @@ function drawGoalSk(canvas) {
   canvas.drawRect(r, SKP.goalOutline);
 }
 // Vehicle: the TractorAoG sprite drawn world-sized on the ground (scales with zoom,
-// foreshortens under tilt), sized from track-width/wheelbase via the same normalized
-// sprite proportions as native (BitmapTractorSize). Falls back to the screen-space
-// triangle until the image/config is ready. Native sequence: translate→rotate(-heading)
+// foreshortens under tilt), sized from track-width/wheelbase via fixed
+// normalized sprite proportions. Falls back to the screen-space triangle until the
+// image/config is ready. Sequence: translate→rotate(-heading)
 // →flip Y→draw bitmap into the rear-axle-anchored rect.
-const SPR_REAR = 0.245, SPR_FRONT = 0.75, SPR_HALFX = 0.245; // bitmap norm anchors (native)
-// Vector line weights: native uses world-metre stroke widths × strokeMult (3) drawn in
-// world space, so they scale with zoom (no per-pixel factor — that's only the grid). We
-// stroke in screen space, so set px = worldMetres × pxPerM each frame (min 1 px so lines
-// don't vanish when zoomed far out). Values = native SkiaMapControl widths × 3.
+const SPR_REAR = 0.245, SPR_FRONT = 0.75, SPR_HALFX = 0.245; // bitmap norm anchors
+// Vector line weights: world-metre stroke widths (× 3), so they scale with zoom (no
+// per-pixel factor — that's only the grid). We stroke in screen space, so set
+// px = worldMetres × pxPerM each frame (min 1 px so lines don't vanish when zoomed far out).
 function updateLineWidths() {
   // World-metre widths scaled by zoom, but CAPPED at MAXW px so a line can't balloon when
   // zoomed in and swallow the implement/vehicle (issue #38: a 3 m boundary line covered a
@@ -526,7 +522,7 @@ function beginVehicleFrame(canvas, p) {
   canvas.save();
   canvas.concat(perspM);
   canvas.translate(p.e - camE, p.n - camN); // camera-relative (f64) — see buildScreenMatrix
-  canvas.rotate(-p.heading * 180 / Math.PI, 0, 0); // vehicle frame: +Y forward, +X right (matches native)
+  canvas.rotate(-p.heading * 180 / Math.PI, 0, 0); // vehicle frame: +Y forward, +X right
 }
 // Svenn arrow (AgOpenGPS CVehicle): a yellow chevron ahead of the front axle that keeps
 // its size on screen, so the heading reads at any zoom (#110).
@@ -569,8 +565,8 @@ function vehicleSk(canvas, p) {
         CK.FilterMode.Linear, CK.MipmapMode.None, null);
       canvas.restore();
       // Steerable front wheels: one sprite drawn at both front-axle ends, rotated by the
-      // live wheel angle. Mirrors native DrawVehicleSk (translate ±trackWidth/2, wheelbase
-      // −0.05; rotate −steer; scale 1,-1; centred dst). Tire sizing = native constants.
+      // live wheel angle (translate ±trackWidth/2, wheelbase −0.05; rotate −steer;
+      // scale 1,-1; centred dst).
       if (frontWheelReady && (skFrontWheel || (skFrontWheel = CK.MakeImageFromCanvasImageSource(frontWheelImg)))) {
         const steerDeg = -(tick ? tick.vehicleSteerAngle : 0); // tick angle already in degrees, +right
         const woX = veh.trackWidth / 2, woY = veh.wheelbase - 0.05;
@@ -602,9 +598,8 @@ function vehicleSk(canvas, p) {
 // 2D path's <img> swap). drawImageRectOptions with Linear filtering = the 2D
 // path's imageSmoothingEnabled=true.
 // Tiled ground texture: a repeating shader over a camera-centred world rect, drawn under
-// the perspective matrix so it foreshortens with tilt. One tile = 50 m, matching native
-// SkiaMapControl.DrawGroundTextureSk. CanvasKit's makeShaderOptions localMatrix maps
-// texel→local(world) (the inverse of native SkShader.CreateBitmap), so W texels span 50 m
+// the perspective matrix so it foreshortens with tilt. One tile = 50 m. CanvasKit's
+// makeShaderOptions localMatrix maps texel→local(world), so W texels span 50 m
 // when the scale is 50/W. Shader + paint are built once (world-anchored — no per-frame
 // rebuild; the tiles stay fixed in the world and scroll under the vehicle).
 function drawGroundTextureSk(canvas) {
@@ -643,8 +638,7 @@ function drawImagerySk(canvas) {
   if (!imageryImg || !imageryRect) return;
   if (config && config.display && config.display.imageryVisible === false) return; // Screen & Alerts › Aerial Imagery (#500)
   // Quality button: scale the imagery LOD by DisplayResolutionMultiplier so the background
-  // degrades with quality like native's Apple composite path (which bakes imagery into the
-  // multiplier-sized coverage bitmap). Ultra = full res; lower quality = downsampled (also a
+  // degrades with quality. Ultra = full res; lower quality = downsampled (also a
   // real GPU/memory win on the tablet). Downsample via a 2D canvas (reliable browser scaling).
   const mult = (config && config.display && config.display.resolutionMultiplier) || 1;
   if (skImageryVer !== imageryVer || skImageryMult !== mult || !skImagery) {
@@ -680,7 +674,7 @@ function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter, mipMode) 
   const imgToWorld = [(maxE - minE) / w, 0, minE - camE, 0, -(maxN - minN) / h, maxN - camN, 0, 0, 1];
   // Photo layers (imagery / satellite tiles, Linear filter) recede to the horizon
   // under perspective → heavy minification → shimmer/crawl under motion without a
-  // mip chain. Trilinear mipmaps fix it (matches native's mipmapped imagery). Callers
+  // mip chain. Trilinear mipmaps fix it. Callers
   // may override the mip mode: coverage uses Linear sampling but mip-free, so its edges
   // smooth (bilinear) without paying the per-update mip-regen on a multi-MP texture.
   const mip = (mipMode !== undefined) ? mipMode

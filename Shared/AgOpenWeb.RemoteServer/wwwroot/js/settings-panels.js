@@ -60,7 +60,7 @@ function populateScreenAlerts() {
     if (document.activeElement !== saCmpp) saCmpp.value = a.cmPerPixel;
   }
 }
-// Vehicle config panel — full native VehicleConfigDialog surface (Vehicle/GPS/Roll).
+// Vehicle config panel (Vehicle/GPS/Roll).
 // Generic config controls keyed by data-key="<section>.<field>"; reused by later
 // sub-phases. Writes via config.set; Save Profile via profile.save.
 const vcPanel = document.getElementById('vehiclecfg'), vcName = document.getElementById('vc-name');
@@ -96,8 +96,7 @@ function populateVehicleCfg(force) {
   if (!config || !config.vehicle) return;
   vcName.textContent = config.vehicle.name || '—';
   populateCfgControls(vcPanel, force);
-  // Type-dependent measurement diagrams (mirror VehicleConfig.*ImageSource switches:
-  // index by VehicleType 0 Tractor / 1 Harvester / 2 FourWD; '' = no image).
+  // Type-dependent measurement diagrams (index by VehicleType 0 Tractor / 1 Harvester / 2 FourWD; '' = no image).
   const ty = Math.max(0, Math.min(2, cfgGet('vehicle.type') | 0));
   const setImg = (id, names) => {
     const el = document.getElementById(id), n = names[ty];
@@ -113,8 +112,7 @@ function populateVehicleCfg(force) {
   vcHitchSel.value = cfgGet('vehicle.hitchType');
   const w = cfgGet('gps.headingFusionWeight') || 0;
   vcFw.value = w; document.getElementById('vc-hfw').textContent = fusionLabel(w);
-  // Dual-only fields are live only in Dual GPS mode; reverse detection only in single
-  // (mirrors the native enable/disable gating).
+  // Dual-only fields are live only in Dual GPS mode; reverse detection only in single.
   const dual = !!cfgGet('gps.isDualGps');
   const setEn = (key, en) => { const el = vcPanel.querySelector('[data-key="' + key + '"]'); if (el) { el.disabled = !en; el.style.opacity = en ? '1' : '0.4'; } };
   ['gps.dualHeadingOffset', 'gps.dualReverseDistance', 'gps.autoDualFix', 'gps.dualSwitchSpeed'].forEach(k => setEn(k, dual));
