@@ -79,6 +79,31 @@ public class DirectionSwapTests
         });
     }
 
+    // ── Normal: the work goes on across the field (#523) ──────────────────
+
+    [Test]
+    public void Normal_FromTheFieldEdge_KeepsSteppingAcrossTheField()
+    {
+        var bench = new Bench(skipRows: 0);
+        var (guidance, turn) = bench.OnPass(-7); // the westmost pass: the only way on is east
+
+        Assert.That(bench.TurnAndComplete(guidance, turn), Is.EqualTo(-6));
+        // Both neighbours of -6 are inside the field; -7 is the pass just worked.
+        Assert.That(bench.TurnAndComplete(guidance, turn), Is.EqualTo(-5), "on east, not back onto pass -7");
+        Assert.That(bench.TurnAndComplete(guidance, turn), Is.EqualTo(-4));
+    }
+
+    [Test]
+    public void Normal_AfterASwappedTurn_CarriesOnToTheNewSide()
+    {
+        var bench = new Bench(skipRows: 0);
+        var (guidance, turn) = bench.OnPass(-3);
+
+        Assert.That(bench.TurnAndComplete(guidance, turn), Is.EqualTo(-4), "the scenario: the first turn goes west");
+        Assert.That(bench.TurnAndComplete(guidance, turn, swap: true), Is.EqualTo(-3), "swapped: east");
+        Assert.That(bench.TurnAndComplete(guidance, turn), Is.EqualTo(-2), "on east, not back onto pass -4");
+    }
+
     // ── Skip worked passes (snake) ───────────────────────────────────────
 
     [Test]
@@ -277,5 +302,21 @@ public class DirectionSwapTests
 
         public void Complete(GuidanceWorkingState guidance, YouTurnWorkingState turn) =>
             _sm.CompleteFromGuidance(Ctx(), guidance, turn);
+
+        /// <summary>Plan a turn (swapped to the other side if asked), drive it, and stand on the
+        /// pass it lands on, 64 m before the turn line again.</summary>
+        public int TurnAndComplete(GuidanceWorkingState guidance, YouTurnWorkingState turn, bool swap = false)
+        {
+            Tick(guidance, turn);
+            if (swap)
+            {
+                turn.NextUTurnDirectionLeftOverride = !turn.IsTurnLeft;
+                Tick(guidance, turn);
+            }
+            turn.IsTriggered = turn.IsExecuting = true;
+            Complete(guidance, turn);
+            _x = PassX(guidance.HowManyPathsAway);
+            return guidance.HowManyPathsAway;
+        }
     }
 }

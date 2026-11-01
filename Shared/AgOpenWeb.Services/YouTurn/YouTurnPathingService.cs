@@ -140,7 +140,8 @@ public sealed class YouTurnPathingService
     /// <summary>
     /// Check if the next pass line (in either direction) falls inside the cultivated area.
     /// Returns (isInside, positiveDirection) where positiveDirection indicates which
-    /// offset direction has cultivated area.
+    /// offset direction has cultivated area. With both sides inside, <paramref name="keepPositive"/>
+    /// (the way the last turn stepped) wins; without it, the side away from the reference line.
     /// </summary>
     public (bool isInside, bool positiveDirection) WouldNextLineBeInsideBoundary(
         Models.Track.Track currentTrack,
@@ -148,7 +149,8 @@ public sealed class YouTurnPathingService
         GuidanceWorkingState guidance,
         Boundary? boundary,
         IReadOnlyList<Vec3>? headlandLine,
-        int uTurnSkipRows)
+        int uTurnSkipRows,
+        bool? keepPositive = null)
     {
         if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
             return (true, false);
@@ -167,11 +169,11 @@ public sealed class YouTurnPathingService
 
         if (negInside && posInside)
         {
-            // Both directions work — prefer the one that continues advancing
-            // (same direction as the current pass offset from 0).
-            // If on pass 0, prefer negative (original convention).
-            bool preferPositive = guidance.HowManyPathsAway > 0;
-            return (true, preferPositive);
+            // Both directions work: keep stepping the way the last turn went. The pass number's
+            // sign says nothing about which side is worked: started from the field's edge on the
+            // negative side, "away from 0" sent every turn back over worked passes (#523). Before
+            // the first turn, away from the reference line (on pass 0, negative).
+            return (true, keepPositive ?? guidance.HowManyPathsAway > 0);
         }
         if (negInside) return (true, false);
         if (posInside) return (true, true);
