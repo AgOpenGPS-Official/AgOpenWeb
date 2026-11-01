@@ -65,8 +65,9 @@ jobs:
       # The client has no build step, so a syntax error would otherwise surface in the browser.
       - name: Check client scripts parse
         run: |
-          for f in app.js transport.js i18n.js; do
-            node --check "Shared/AgOpenWeb.RemoteServer/wwwroot/$f"
+          cd Shared/AgOpenWeb.RemoteServer/wwwroot
+          for f in *.js js/*.js; do
+            if [ -e "$f" ]; then node --check "$f"; fi
           done
 
       # The bug report Workers (Tools/bugreport-worker): plain node --test, no packages needed.

@@ -20,8 +20,9 @@ namespace AgOpenWeb.Services.Tests;
 /// What is pinned, and where the one way lives:
 /// <list type="bullet">
 /// <item>Project dependencies flow Models → Services → ViewModels / RemoteServer → RemoteWiring.</item>
-/// <item>The web client is <c>index.html</c> + <c>app.js</c> + <c>transport.js</c> + <c>i18n.js</c>:
-/// classic scripts, no modules, no workers, no extra script or stylesheet files.</item>
+/// <item>The web client is <c>index.html</c>, <c>transport.js</c>, <c>i18n.js</c> and its own scripts
+/// (<c>app.js</c>, moving to <c>js/</c>) and styles (<c>css/</c>): classic scripts, every one loaded by
+/// <c>index.html</c>, no modules, no workers (Plans/WEB_CLIENT_SPLIT_PLAN.md).</item>
 /// <item>Client → host is an <c>id|arg</c> text frame routed in <c>RemoteServerWiring</c>;
 /// host → client is a binary frame from <c>WireCodec</c>. The hub never sends text.</item>
 /// <item>Every command id the client sends has a handler on the host.</item>
@@ -88,39 +89,66 @@ public class CodePathContinuityTests
 
     // ── The web client ────────────────────────────────────────────────────
 
-    private static readonly string[] ClientScripts = { "app.js", "transport.js", "i18n.js" };
+    // The client's files outside vendor/: the loader and the transport, and the client's own
+    // scripts and styles. app.js stays at the top until it is split into js/ (Plans/WEB_CLIENT_SPLIT_PLAN.md).
+    private static readonly string[] FixedScripts = { "transport.js", "i18n.js" };
+
+    private static string WwwRoot() => Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.RemoteServer", "wwwroot");
+
+    private static bool IsAppScript(string rel) =>
+        rel == "app.js" || Regex.IsMatch(rel, @"^js/[a-z0-9-]+\.js$");
+
+    private static bool IsStylesheet(string rel) => Regex.IsMatch(rel, @"^css/[a-z0-9-]+\.css$");
+
+    /// <summary>The scripts index.html loads, in order, without vendor/.</summary>
+    private static List<string> LoadedScripts(string html) =>
+        Regex.Matches(html, @"<script\b[^>]*\bsrc=""/?([^""]+)""").Select(m => m.Groups[1].Value)
+            .Where(src => !src.StartsWith("vendor/")).ToList();
+
+    /// <summary>The client's own code (app.js or js/*.js), in the order index.html loads it.</summary>
+    private static string AppSource(string www)
+    {
+        var html = File.ReadAllText(Path.Combine(www, "index.html"));
+        return string.Join("\n", LoadedScripts(html).Where(IsAppScript)
+            .Select(rel => File.ReadAllText(Path.Combine(www, rel))));
+    }
 
     [Test]
-    public void WebClient_IsIndexAppTransportI18n_NoModulesNoWorkers()
+    public void WebClient_ClassicScriptsLoadedByIndex_NoModulesNoWorkers()
     {
-        var www = Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.RemoteServer", "wwwroot");
+        var www = WwwRoot();
         var violations = new List<string>();
+        var html = File.ReadAllText(Path.Combine(www, "index.html"));
+        var scripts = LoadedScripts(html);
+        var sheets = Regex.Matches(html, @"<link\b[^>]*rel=""stylesheet""[^>]*href=""/?(?!https?://)([^""]+)""")
+            .Select(m => m.Groups[1].Value).ToList();
 
-        // Script and stylesheet files outside vendor/: only the three scripts. Styles live in index.html.
+        // Script and stylesheet files outside vendor/: the fixed scripts, the client's scripts
+        // and styles, each one loaded by index.html (a file nothing loads is dead or forgotten).
         foreach (var file in Directory.EnumerateFiles(www, "*", SearchOption.AllDirectories))
         {
             var rel = Path.GetRelativePath(www, file).Replace('\\', '/');
             if (rel.StartsWith("vendor/")) continue;
             var ext = Path.GetExtension(rel);
-            if ((ext == ".js" || ext == ".mjs" || ext == ".css") && !ClientScripts.Contains(rel))
-                violations.Add($"{rel}: extra client file; the client is index.html + app.js + transport.js + i18n.js");
+            if (ext != ".js" && ext != ".mjs" && ext != ".css") continue;
+            if (!FixedScripts.Contains(rel) && !IsAppScript(rel) && !IsStylesheet(rel))
+                violations.Add($"{rel}: not a client file; scripts go in js/ (lower-case-name.js), styles in css/");
+            else if (ext == ".css" ? !sheets.Contains(rel) : !scripts.Contains(rel))
+                violations.Add($"{rel}: index.html doesn't load it");
         }
 
-        // index.html loads exactly those scripts, as classic scripts.
-        var html = File.ReadAllText(Path.Combine(www, "index.html"));
-        var tags = Regex.Matches(html, @"<script\b[^>]*>").Select(m => m.Value).ToList();
-        foreach (var tag in tags)
-        {
-            if (tag.Contains("type=\"module\"")) violations.Add($"index.html: {tag} — module scripts are not used; app.js is a classic script");
-            var src = Regex.Match(tag, @"src=""/?([^""]+)""").Groups[1].Value;
-            if (src.Length > 0 && !src.StartsWith("vendor/") && !ClientScripts.Contains(src))
-                violations.Add($"index.html: {tag} — not one of the client's scripts");
-        }
-        if (Regex.IsMatch(html, @"<link\b[^>]*rel=""stylesheet""[^>]*href=""/?(?!https?://)[^""]+"""))
-            violations.Add("index.html: a local stylesheet link; styles live inline in index.html");
+        // index.html loads only those, as classic scripts, and only files that exist.
+        foreach (var tag in Regex.Matches(html, @"<script\b[^>]*>").Select(m => m.Value))
+            if (tag.Contains("type=\"module\"")) violations.Add($"index.html: {tag} — module scripts are not used; the client's scripts are classic scripts");
+        foreach (var rel in scripts)
+            if (!FixedScripts.Contains(rel) && !IsAppScript(rel)) violations.Add($"index.html: loads {rel}, not one of the client's scripts");
+            else if (!File.Exists(Path.Combine(www, rel))) violations.Add($"index.html: loads {rel}, which doesn't exist");
+        foreach (var rel in sheets)
+            if (!IsStylesheet(rel)) violations.Add($"index.html: stylesheet {rel}; styles go in css/");
+            else if (!File.Exists(Path.Combine(www, rel))) violations.Add($"index.html: stylesheet {rel}, which doesn't exist");
 
         // The scripts don't import or spawn anything.
-        foreach (var name in ClientScripts)
+        foreach (var name in scripts.Where(r => File.Exists(Path.Combine(www, r))))
         {
             var lines = File.ReadAllLines(Path.Combine(www, name));
             for (int i = 0; i < lines.Length; i++)
@@ -128,7 +156,7 @@ public class CodePathContinuityTests
                 var l = lines[i].TrimStart();
                 if (l.StartsWith("//") || l.StartsWith("*")) continue;
                 if (Regex.IsMatch(l, @"^import\s|^export\s|\bimport\(|\bnew Worker\(|\bimportScripts\("))
-                    violations.Add($"{name}:{i + 1}: {l.Trim()} — no modules or workers; add to app.js directly");
+                    violations.Add($"{name}:{i + 1}: {l.Trim()} — no modules or workers; a classic script in js/ shares the page's scope");
             }
         }
 
@@ -170,15 +198,15 @@ public class CodePathContinuityTests
         Assert.That(hostBlock.Success, "ObserverIds not found in RemoteServerWiring.Helpers.cs");
         var host = Regex.Matches(hostBlock.Groups[1].Value, @"""([^""]+)""").Select(m => m.Groups[1].Value);
 
-        var app = File.ReadAllText(Path.Combine(root, "Shared", "AgOpenWeb.RemoteServer", "wwwroot", "app.js"));
+        var app = AppSource(WwwRoot());
         var clientBlock = Regex.Match(app, @"OBSERVER_IDS\s*=\s*new Set\(\[(.*?)\]\)", RegexOptions.Singleline);
-        Assert.That(clientBlock.Success, "OBSERVER_IDS not found in app.js");
+        Assert.That(clientBlock.Success, "OBSERVER_IDS not found in the client's scripts");
         var client = Regex.Matches(clientBlock.Groups[1].Value, @"'([^']+)'").Select(m => m.Groups[1].Value);
 
         // The hub answers these itself, before the gate.
         var hub = new[] { "control.acquire", "control.release", "control.presence", "diag.ping" };
         Assert.That(client.OrderBy(x => x), Is.EqualTo(host.Concat(hub).OrderBy(x => x)),
-            "app.js OBSERVER_IDS must be the host's ObserverIds plus the hub's control.* and diag.ping.");
+            "The client's OBSERVER_IDS must be the host's ObserverIds plus the hub's control.* and diag.ping.");
     }
 
     [Test]
@@ -200,8 +228,8 @@ public class CodePathContinuityTests
     public void EveryClientCommand_HasAHostHandler()
     {
         var root = RepoRoot();
-        var www = Path.Combine(root, "Shared", "AgOpenWeb.RemoteServer", "wwwroot");
-        var app = File.ReadAllText(Path.Combine(www, "app.js"));
+        var www = WwwRoot();
+        var app = AppSource(www);
         var html = File.ReadAllText(Path.Combine(www, "index.html"));
 
         // Command ids the client can send: literal ids in transport.send(...), data-cmd
@@ -230,7 +258,7 @@ public class CodePathContinuityTests
 
         var unhandled = ids.Where(id => !handled.Contains(id.Split('|')[0]) && !id.StartsWith("control.")).OrderBy(x => x).ToList();
         Assert.That(unhandled, Is.Empty,
-            "app.js / index.html send command ids with no handler in RemoteServerWiring. " +
+            "The client's scripts / index.html send command ids with no handler in RemoteServerWiring. " +
             "Route them there (a `case` or a `\"id\" => vm.Command` arm); that is the only " +
             "client → host path:\n  " + string.Join("\n  ", unhandled));
     }
