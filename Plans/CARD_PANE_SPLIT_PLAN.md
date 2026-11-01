@@ -1,6 +1,7 @@
 # Card pane: split screen
 
-**Status:** steps 1 and 2 merged (#513, 2026-10-31), docs in `CLAUDE.md`; the device checks (step 3) are left, then this moves to `Completed/`.
+**Status:** steps 1 and 2 merged (#513, 2026-10-31), docs in `CLAUDE.md`; the drawer (step 3, §3) is
+planned, then the device checks (step 4) cover both, then this moves to `Completed/`.
 **Date:** 2026-10-31
 **Issue:** #456 (VT: split screen with the terminals on the left or right), widened to the web
 cards (`Plans/ADDON_WEB_CARDS_PLAN.md`).
@@ -24,6 +25,10 @@ open VT and web cards, and the map in the rest.
 | 8 | Menu panels and dialogs | **Over the whole window**, anchored at the left nav (shifted left when the map is too narrow for them), covering the pane while open. The map only holds what lives on it. |
 | 9 | Safe-area insets (notches) | The window's outer edges: the pane's outer side takes them; the map's edge beside the pane has none. |
 | 10 | Tab switch | Hides and shows cards; never moves them in the page (an iframe moved in the page reloads). Switching between Floating and Split does move them, so web pages reload once then. |
+| 11 | Drawer | In a split layout the pane is a **drawer** with a handle on its inner edge: **Closed** (handle only), **Split** (⅓ to ½, as today) or **Full** (covers the map). §3. |
+| 12 | Who moves the drawer | **The operator, always.** Nothing opens or closes it by itself: not a U-turn, not an alarm (alarms, prompts and dialogs already show over the whole window). |
+| 13 | Speed | Context, not control: above a walking pace (2 km/h) the drawer can't be dragged *to* Full and a full drawer shows a larger guidance strip, but it never closes itself. (As a navigation app limits what it offers while driving.) |
+| 14 | Kept | The drawer's position per browser, with the layout and width. |
 
 ## 2. How the map gets its own area
 
@@ -45,13 +50,39 @@ overlays centred on the window (`left: 50%`) centre on the map with `--map-cx`. 
 - No containing block (`contain`/`transform`) is used: it would make the map one stacking
   context and put the left nav and status bar under the menu panels.
 
-## 3. Steps
+## 3. Drawer
+
+Add-on pages that are a whole application (a planning screen, the HAT's setup, a rate
+controller's set-up page) want more room than half the window for a while, then the map back.
+
+- **Positions.** Dragging the handle (a grip on the pane's inner edge, the divider of today)
+  moves the pane's edge freely; on release it snaps: under ⅓ to **Closed**, ⅓ to ½ stays where
+  it was dropped (**Split**), past ½ to **Full**. A tap on the handle toggles Closed and the last
+  open position. With no card open there is no drawer (decision 6).
+- **Closed.** The pane is hidden (`visibility`/`display`, never moved in the page), so its cards
+  keep their state and pages don't reload; the map has the full width. The handle stays on the
+  edge with a count of the open cards.
+- **Full.** The pane covers the map's width. A **guidance strip** stays along the map side: the
+  steer bar or cross-track figure, master and section state, speed; at speed (decision 13) it
+  is taller with the light bar. The map stops drawing while covered (a battery saving on a
+  tablet) and redraws from the latest state when uncovered. Two cards in a tab sit side by side
+  at this width, not stacked.
+- **Nothing changes on the host.** Guidance, section control, alarms and sounds run as before;
+  this is the browser's layout only. Observers have their own drawer.
+- **Code.** `CardPane` gets the position (`closed` / `split` / `full`); `setMapArea(l, r)` takes
+  the drawer's width (0 when Closed); Full sets a flag the render loop checks before drawing.
+  The speed comes from the tick (`tick.pose.speed`).
+
+## 4. Steps
 
 1. **Map area** (§2). Floating must be unchanged: same positions, same hit tests. Done (#513);
    `setMapArea(l, r)` from the console shows an empty map area for checks.
 2. **Card pane**: the layout setting (Screen & Alerts › VT & Web Cards: Floating, Left, Right), the pane with its
    tabs and divider, VT and web cards moved into it and sized to their slots. Done (#513).
-3. **Check** at 1280×800 on the macOS, Windows and Linux launchers, iPad and Galaxy Tab: 1, 2, 3
-   and 8 cards, both sides, VT soft keys and input editors, a web page's controls, an observer.
-4. **Docs:** `CLAUDE.md` ("Web cards and the card pane"). Done; this plan moves to `Completed/`
-   after step 3.
+3. **Drawer** (§3): handle, the three positions and their snapping, the guidance strip, the
+   map paused under Full, the speed context.
+4. **Check** at 1280×800 on the macOS, Windows and Linux launchers, iPad and Galaxy Tab: 1, 2, 3
+   and 8 cards, both sides, VT soft keys and input editors, a web page's controls, an observer;
+   the drawer in each position, a page keeping its state across Closed and Full, the strip at speed.
+5. **Docs:** `CLAUDE.md` ("Web cards and the card pane"). Done; the drawer added after step 3;
+   this plan moves to `Completed/` after step 4.
