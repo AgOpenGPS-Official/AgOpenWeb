@@ -60,5 +60,30 @@ namespace AgOpenWeb.Services.Interfaces
         /// Check work and steer switch states, raising events when UI actions are needed.
         /// </summary>
         void CheckSwitches(ModuleSwitchState currentState);
+
+        /// <summary>
+        /// Remote section switches, PGN 234, as AgOpenGPS DoRemoteSwitches (button hardware):
+        /// what the packet does to the master Auto button and the section buttons, given the
+        /// current states and the previous packet (<see cref="PreviousSectionControlBytes"/>).
+        /// Call it with a field open only, as AgOpenGPS acts with a job started only.
+        /// </summary>
+        /// <param name="switches">The switch bytes, indexed as AgOpenGPS mc.ss (SW_MAIN …).</param>
+        /// <param name="masterAuto">The master Auto button is on.</param>
+        /// <param name="sections">The section buttons now.</param>
+        RemoteSwitchDecision CheckRemoteSwitches(byte[] switches, bool masterAuto,
+            System.Collections.Generic.IReadOnlyList<SectionControlState> sections);
     }
+
+    public enum RemoteMasterCommand
+    {
+        None,
+        AutoOn,
+        AutoOff,
+    }
+
+    /// <summary>
+    /// The master Auto button to set, and every section button's state afterwards
+    /// (one per configured section).
+    /// </summary>
+    public readonly record struct RemoteSwitchDecision(RemoteMasterCommand Master, SectionButtonState[] Sections);
 }

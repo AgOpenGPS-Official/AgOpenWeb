@@ -229,5 +229,118 @@ namespace AgOpenWeb.Services
                 }
             }
         }
+
+        /// <summary>
+        /// AgOpenGPS DoRemoteSwitches → HandleButtonHardware (MTZ8302): the main byte works on
+        /// a change, an On bit turns its section On, an Off bit holds it Off, and an Off bit
+        /// released with the master on Auto puts the section back on Auto. Switch hardware
+        /// (main bit 2, hagre's level-driven box) is not handled: those packets change nothing.
+        /// </summary>
+        public RemoteSwitchDecision CheckRemoteSwitches(byte[] switches, bool masterAuto,
+            System.Collections.Generic.IReadOnlyList<SectionControlState> sections)
+        {
+            var ss = SectionControlBytes;
+            var ssP = PreviousSectionControlBytes;
+            Array.Copy(switches, 1, ss, 1, 8);
+
+            int n = Math.Min(_configStore.NumSections, sections.Count);
+            var state = new SectionButtonState[n];
+            for (int i = 0; i < n; i++) state[i] = sections[i].ButtonState;
+
+            var master = RemoteMasterCommand.None;
+            if ((ss[SW_MAIN] & 0x04) == 0)
+            {
+                if (ss[SW_MAIN] != ssP[SW_MAIN])
+                {
+                    // The master Auto button, with every section to its state.
+                    if ((ss[SW_MAIN] & 1) == 1)
+                    {
+                        master = RemoteMasterCommand.AutoOn;
+                        masterAuto = true;
+                        Array.Fill(state, SectionButtonState.Auto);
+                    }
+                    if ((ss[SW_MAIN] & 2) == 2)
+                    {
+                        master = RemoteMasterCommand.AutoOff;
+                        masterAuto = false;
+                        Array.Fill(state, SectionButtonState.Off);
+                    }
+                    ssP[SW_MAIN] = ss[SW_MAIN];
+                }
+
+                if (Tool.IsSectionsNotZones)
+                {
+                    RemoteOn(state, ss[SW_ON_GR0], 0);
+                    RemoteOn(state, ss[SW_ON_GR1], 8);
+                    ssP[SW_ON_GR0] = ss[SW_ON_GR0];
+                    ssP[SW_ON_GR1] = ss[SW_ON_GR1];
+
+                    if (masterAuto)
+                    {
+                        RemoteOffReleased(state, ssP[SW_OFF_GR0], ss[SW_OFF_GR0], 0);
+                        RemoteOffReleased(state, ssP[SW_OFF_GR1], ss[SW_OFF_GR1], 8);
+                    }
+                    ssP[SW_OFF_GR0] = ss[SW_OFF_GR0];
+                    ssP[SW_OFF_GR1] = ss[SW_OFF_GR1];
+
+                    RemoteOff(state, ss[SW_OFF_GR0], 0);
+                    RemoteOff(state, ss[SW_OFF_GR1], 8);
+                }
+                else
+                {
+                    RemoteZones(state, masterAuto, ssP[SW_OFF_GR0]);
+                    ssP[SW_ON_GR0] = ss[SW_ON_GR0];
+                    ssP[SW_OFF_GR0] = ss[SW_OFF_GR0];
+                }
+            }
+
+            return new RemoteSwitchDecision(master, state);
+        }
+
+        private static bool Bit(byte b, int i) => (b & (1 << i)) != 0;
+
+        private static void RemoteOn(SectionButtonState[] state, byte on, int first)
+        {
+            for (int i = 0; i < 8 && first + i < state.Length; i++)
+                if (Bit(on, i)) state[first + i] = SectionButtonState.On;
+        }
+
+        private static void RemoteOffReleased(SectionButtonState[] state, byte offBefore, byte off, int first)
+        {
+            for (int i = 0; i < 8 && first + i < state.Length; i++)
+                if (Bit(offBefore, i) && !Bit(off, i) && state[first + i] == SectionButtonState.Off)
+                    state[first + i] = SectionButtonState.Auto;
+        }
+
+        private static void RemoteOff(SectionButtonState[] state, byte off, int first)
+        {
+            for (int i = 0; i < 8 && first + i < state.Length; i++)
+                if (Bit(off, i)) state[first + i] = SectionButtonState.Off;
+        }
+
+        /// <summary>
+        /// Zones, group 0 only: zone z's state is its last section's, as in AgOpenGPS. An On bit
+        /// turns a zone that isn't on Auto On; an Off bit released with the master on Auto puts
+        /// an Off zone on Auto; an Off bit holds the zone Off.
+        /// </summary>
+        private void RemoteZones(SectionButtonState[] state, bool masterAuto, byte offBefore)
+        {
+            var ss = SectionControlBytes;
+            var ranges = Tool.ZoneRanges;
+            int zones = Math.Clamp(Tool.Zones, 0, 8);
+            for (int z = 0; z < zones && z + 1 < ranges.Length; z++)
+            {
+                int start = ranges[z];
+                int end = Math.Min(ranges[z + 1], state.Length);
+                if (end <= start) continue;
+
+                if (Bit(ss[SW_ON_GR0], z) && state[end - 1] != SectionButtonState.Auto)
+                    Array.Fill(state, SectionButtonState.On, start, end - start);
+                if (masterAuto && Bit(offBefore, z) && !Bit(ss[SW_OFF_GR0], z) && state[end - 1] == SectionButtonState.Off)
+                    Array.Fill(state, SectionButtonState.Auto, start, end - start);
+                if (Bit(ss[SW_OFF_GR0], z))
+                    Array.Fill(state, SectionButtonState.Off, start, end - start);
+            }
+        }
     }
 }
