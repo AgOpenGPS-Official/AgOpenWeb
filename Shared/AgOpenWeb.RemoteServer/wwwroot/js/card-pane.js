@@ -4,7 +4,7 @@
 //
 // The card pane (split layout).
 
-// ---- Card pane (#456, Plans/CARD_PANE_SPLIT_PLAN.md) ----
+// ---- Card pane (#456, Plans/ADD_ON_CARDS_PLAN.md) ----
 // The VT and web cards float over the map, or (split layout) sit in a pane on the left or right
 // with the map in the rest. In the pane the open cards go two to a tab, in the order they were
 // opened, each sized to its share of the pane; with none open the map has the whole window. The

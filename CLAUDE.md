@@ -391,7 +391,7 @@ from a bookmark list kept on the host (`AppSettings.WebCards`, `webcard.save` / 
 the `WebCards` frame); `{host}` in a URL is the AgOpenWeb host as the browser reaches it. The page
 loads from the add-on on its own origin, never through AgOpenWeb; observers get a cover over it.
 Which cards are open, and where, is the browser's (`localStorage`). `WebCards` in `js/web-cards.js`; plan:
-`Plans/ADDON_WEB_CARDS_PLAN.md`.
+`Plans/ADD_ON_CARDS_PLAN.md`.
 
 **Card pane** (#456): Screen & Alerts › VT & Web Cards sets Floating (the default), Left or Right,
 per browser. In a split layout the open VT and web cards sit in a pane on that side, two to a
@@ -405,7 +405,7 @@ and `untrack`). The map's area is set by `setMapArea(l, r)`; what that means for
   `clientX` is `clientX - mapL` on the map (`s2w`, hit tests), and a DOM label placed from `w2s`
   adds `mapL`.
 - A card moved in the page reloads its iframe, so the pane hides and shows cards on a tab switch
-  and moves them only when the layout changes. Plan: `Plans/CARD_PANE_SPLIT_PLAN.md`.
+  and moves them only when the layout changes. Plan: `Plans/ADD_ON_CARDS_PLAN.md`.
 
 ## Debugging Tips
 

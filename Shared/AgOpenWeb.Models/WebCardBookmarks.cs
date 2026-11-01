@@ -8,7 +8,7 @@ using System.Collections.Generic;
 namespace AgOpenWeb.Models;
 
 /// <summary>
-/// Edits of the web cards' bookmark list (AppSettings.WebCards, Plans/ADDON_WEB_CARDS_PLAN.md).
+/// Edits of the web cards' bookmark list (AppSettings.WebCards, Plans/ADD_ON_CARDS_PLAN.md).
 /// Each returns a new list, so a reader holding the old one is never disturbed, or null when the
 /// edit is refused.
 /// </summary>
