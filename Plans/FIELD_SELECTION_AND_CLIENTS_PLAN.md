@@ -13,7 +13,7 @@ locked jobs). Format consumers: [Docs/FIELD_FILE_FORMATS.md](../Docs/FIELD_FILE_
 
 ## Problem
 
-1. **One dialog does too much.** `fieldsandjobs` (`app.js` `renderFieldsAndJobs`, `index.html`
+1. **One dialog does too much.** `fieldsandjobs` (`js/fields.js` `renderFieldsAndJobs`, `index.html`
    `#fj-*`) shows the field list, field actions, the job list, the new-job form, and four
    creation buttons (New, From Existing, ISO-XML, KML) at once. Picking a field is mixed up with
    working on a job.
