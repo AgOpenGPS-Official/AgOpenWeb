@@ -4,9 +4,8 @@
 //
 // The dialog host.
 
-// ---- dialog host (Phase 6) — the web mirror of DialogOverlayHost ----
-// One modal at a time over a dimming backdrop. SimCoords is the first card; later
-// phases add more cards into the same host and reuse openDialog/closeDialog.
+// ---- dialog host ----
+// One modal at a time over a dimming backdrop; every card uses openDialog/closeDialog.
 const dialogHost = document.getElementById('dialoghost');
 let _confirmCb = null;
 let _confirmBack = null; // reopens the dialog the confirm was asked from, after OK or Cancel
@@ -41,8 +40,7 @@ document.addEventListener('focusout', e => {
     if (!stillEditing) nativeKeyboardHide();
   }, 0);
 });
-// Shared confirm (unified nav model) — replaces browser confirm() + the native
-// ShowConfirmationDialog. Transparent light-dismiss scrim (backdrop tap / Cancel = no
+// Shared confirm (instead of the browser's confirm()). Transparent light-dismiss scrim (backdrop tap / Cancel = no
 // action); Confirm runs the callback. Hosted in the dialog host (now a transparent leaf).
 function showConfirm(title, message, onConfirm, onBack) {
   _confirmCb = onConfirm || null;

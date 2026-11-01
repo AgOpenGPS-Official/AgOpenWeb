@@ -4,7 +4,7 @@
 //
 // Network IO, NTRIP profiles and settings.
 
-// ---- Network IO (Phase 9) — modules / scan / subnet / host IPs / NTRIP. Reads ride
+// ---- Network IO — modules / scan / subnet / host IPs / NTRIP. Reads ride
 // the Status frame; writes are config.set (module-present), net.scan, net.subnet and
 // ntrip.* profile CRUD, all needing control. The NTRIP editor keeps its
 // editing buffer client-side; Save sends every field at once. ----
@@ -40,7 +40,7 @@ function renderNetworkIo() {
   setMod('nio-ma-cfg', 'nio-ma-dot', 'nio-ma-ip', s.machineConf, s.machineOk, s.machineIp);
   setMod('nio-imu-cfg', 'nio-imu-dot', 'nio-imu-ip', s.imuConf, s.imuOk, s.imuIp);
   // Seed the subnet octets from the detected /24 when it changes (a PGN 203 reply),
-  // unless the operator is editing that box — mirrors the native ModuleSubnet binding.
+  // unless the operator is editing that box.
   // A module on a subnet this device isn't on (a phone hotspot, #334) can answer a scan
   // but its data never arrives. Offer the subnet to move it to, as AgIO's Auto Set does:
   // the scan reply's bytes 9–11, the subnet the scan came from (AgOpenGPS firmware). AiO
@@ -370,8 +370,8 @@ function renderSystemData() {
   if (!(sel && !sel.isCollapsed && SD.sentences.contains(sel.anchorNode))) SD.sentences.innerHTML = html;
 }
 
-// NTRIP Profiles — chain sub-panel of Network IO (mirrors NtripProfilesDialogPanel).
-// Native chain model: opening REPLACES the parent (lnOpen closes everything else);
+// NTRIP Profiles — chain sub-panel of Network IO.
+// Chain model: opening REPLACES the parent (lnOpen closes everything else);
 // Back reopens the parent fly-out (Network IO); Close → map.
 let ntSelId = null;
 function openNtripProfiles() { lnOpen('ntripprofiles', 'ln-network', renderNtripList); }
@@ -434,9 +434,8 @@ function renderNtripList() {
   }
 }
 
-// Edit NTRIP Profile — chain sub-panel of the profiles list (mirrors
-// NtripProfileEditorPanel). Opening REPLACES the list; Back reopens the list; Close →
-// map; Save returns to the list (native NavigateBack). Client-side buffer.
+// Edit NTRIP Profile — chain sub-panel of the profiles list. Opening REPLACES the list;
+// Back reopens the list; Close → map; Save returns to the list. Client-side buffer.
 let nteBuf = null, _nteTestActive = false, _nteTestWhich = '';   // which Test button ran: '' main, 'fb' fallback
 function openNtripEditor(p) {
   nteBuf = p
@@ -599,5 +598,5 @@ document.getElementById('nte-save').addEventListener('pointerdown', e => {
     document.getElementById('nte-fb-after').value || '2',
   ];
   transport.send('ntrip.save|' + fields.join('\t'));
-  openNtripProfiles(); // native SaveNtripProfileCommand ends in NavigateBack → list
+  openNtripProfiles(); // back to the list
 });

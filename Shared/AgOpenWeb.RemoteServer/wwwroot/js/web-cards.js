@@ -197,9 +197,9 @@ function tickClock() {
 setInterval(tickClock, 1000); tickClock();
 
 // Reference grid (procedural, client-side — no wire). Spacing is a tool-width multiple on a
-// 1-2-5 series keyed to zoom, matching the native grid (#417). One line style, 1 px wide at any
+// 1-2-5 series keyed to zoom (#417). One line style, 1 px wide at any
 // zoom, no major lines and no coloured axes, as AgOpenGPS (#496).
-// Matches native NiceStep125 exactly: ≤1 → 1, then 2, 5, 10, 20 … (no 1.5 step).
+// ≤1 → 1, then 2, 5, 10, 20 … (no 1.5 step).
 function niceStep125(x) {
   if (x <= 1) return 1;
   const pow = Math.pow(10, Math.floor(Math.log10(x)));

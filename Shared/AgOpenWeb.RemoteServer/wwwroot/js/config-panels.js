@@ -4,7 +4,7 @@
 //
 // Tool configuration, AutoSteer, Smart WAS calibration.
 
-// ---- Tool config panel (full native ToolConfigDialog) ----
+// ---- Tool config panel ----
 const tcPanel = document.getElementById('toolcfg'), tcName = document.getElementById('tc-name');
 const tcHitchSel = tcPanel.querySelector('.cfg-sel[data-key="tool.hitchType"]');
 HITCH_OPTS.forEach((label, i) => { const o = document.createElement('option'); o.value = i - 1; o.textContent = label; tcHitchSel.appendChild(o); });
@@ -17,7 +17,7 @@ tcHitchSel.addEventListener('change', () => cfgSend('tool.hitchType', tcHitchSel
 tcSingleColor.addEventListener('change', () => cfgSend('tool.singleCoverageColor', tcSingleColor.value.slice(1)));
 document.getElementById('tc-resetpins').addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend('machine.resetPins', '1'); });
 document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stopPropagation(); saveProfile(); });
-// PinFunction enum labels (mirror MachineConfig.PinFunction).
+// PinFunction enum labels (as the host's PinFunction).
 const PIN_FUNCS = ['None', 'Sec1', 'Sec2', 'Sec3', 'Sec4', 'Sec5', 'Sec6', 'Sec7', 'Sec8', 'Sec9', 'Sec10',
   'Sec11', 'Sec12', 'Sec13', 'Sec14', 'Sec15', 'Sec16', 'HydUp', 'HydDown', 'TramLeft', 'TramRight', 'GeoStop'];
 const _tcBuilt = { sw: -1, ze: -1, sc: false, pins: false };
@@ -87,7 +87,7 @@ function populateToolCfg(force) {
   document.getElementById('tc-totalwidth').textContent = tr('Total width: {width}', { width: fmtUnit(t.totalWidth || 0, 'm') });
 }
 
-// ---- AutoSteer config panel (Phase 9) — full native 9-tab surface + live Test Mode ----
+// ---- AutoSteer config panel — 9 tabs + live Test Mode ----
 // Field edits ride the generic config bridge (config.set|autosteer.*). Hardware-push
 // actions (Send&Save / Zero-WAS / Reset / free-drive) are gated autosteer.* commands —
 // routed through AutoSteerConfigViewModel host-side so PGN/free-drive logic isn't dupd.
@@ -104,18 +104,18 @@ for (const b of asPanel.querySelectorAll('.rn-gated[data-cmd]'))
 // OK (green check) = Send&Save then close the panel.
 document.getElementById('as-apply').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
 document.getElementById('as-close').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
-// Expand / collapse (native IsFullMode): collapsed = left pane only.
+// Expand / collapse: collapsed = left pane only.
 document.getElementById('as-expand').addEventListener('pointerdown', e => {
   e.stopPropagation();
   const exp = asPanel.classList.toggle('expanded');
   e.currentTarget.textContent = exp ? tr('◀ Less') : tr('▶ Full');
 });
-// Reset → inline confirm bar (mirrors native ResetToDefaults confirmation).
+// Reset → inline confirm bar.
 document.getElementById('as-reset').addEventListener('pointerdown', e => { e.stopPropagation(); asResetConfirm.hidden = false; });
 document.getElementById('as-reset-no').addEventListener('pointerdown', e => { e.stopPropagation(); hideAsResetConfirm(); });
 document.getElementById('as-reset-yes').addEventListener('pointerdown', e => { e.stopPropagation(); hideAsResetConfirm(); rnSend('autosteer.reset'); });
-// Algorithm mode switch (Pure Pursuit ↔ Stanley) — native puts this on the Algorithm
-// tab as a single tap-to-toggle button.
+// Algorithm mode switch (Pure Pursuit ↔ Stanley): one tap-to-toggle button on the
+// Algorithm tab.
 document.getElementById('as-modeswitch').addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (config && config.autosteer) cfgSend('autosteer.isStanleyMode', config.autosteer.isStanleyMode ? '0' : '1');
@@ -140,7 +140,7 @@ function populateAutoSteer(force) {
   const msw = document.getElementById('as-modeswitch');
   if (msw) { msw.textContent = a.isStanleyMode ? tr('Stanley') : tr('Pure Pursuit'); msw.classList.toggle('stanley', a.isStanleyMode); }
   asSetText('as-wasoffset', a.wasOffset);
-  // Conditional sections (data-show) mirror native enable/visibility gating.
+  // Conditional sections (data-show): shown or enabled by another setting.
   const show = (name, on) => { for (const el of asPanel.querySelectorAll('[data-show="' + name + '"]')) el.style.display = on ? '' : 'none'; };
   show('purepursuit', !a.isStanleyMode);
   show('stanley', a.isStanleyMode);

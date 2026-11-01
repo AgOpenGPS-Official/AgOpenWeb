@@ -4,7 +4,7 @@
 //
 // Lower-right cluster (roll gauge, camera pad), charts, the tool panels (roll correction, offset fix, import tracks, recorded path, boundary recording), card dragging.
 
-// ---- Lower-right cluster (Phase 4): roll gauge + camera/mode pad + clock ----
+// ---- Lower-right cluster: roll gauge + camera/mode pad + clock ----
 const rollBar = document.getElementById('roll-bar');
 const rollDeg = document.getElementById('roll-deg');
 function renderRoll() {
@@ -16,7 +16,7 @@ const cpMode = document.getElementById('cp-mode');
 function camModeLabel() { return cameraMode === 1 ? 'H' : cameraMode === 0 ? 'N' : cameraMode === 3 ? 'M' : 'C'; }
 function renderCampad() {
   if (!cpMode) return;
-  cpMode.textContent = camModeLabel();          // H / N / M / C (native labels)
+  cpMode.textContent = camModeLabel();          // H / N / M / C
   cpMode.classList.toggle('free', cameraMode === 2);
 }
 // Camera pad drives the client-owned camera (pitch / zoom / follow) — no host commands.
@@ -24,7 +24,7 @@ function renderCampad() {
   const pad = document.getElementById('campad');
   if (!pad) return;
   pad.addEventListener('pointerdown', e => e.stopPropagation()); // don't pan the map
-  // Bind on POINTERDOWN, not click: the NativeWebView launcher (touch) doesn't reliably fire
+  // Bind on POINTERDOWN, not click: a touch web view doesn't reliably fire
   // `click`, so these camera buttons — notably the mode/heading cycle — did nothing when tapped
   // on the launcher build (issue #56). pointerdown is the same event the rest of the touch UI
   // uses; the pad's stopPropagation above already keeps it from panning the map.
@@ -34,17 +34,16 @@ function renderCampad() {
   });
   document.getElementById('cp-zoomin').addEventListener('pointerdown', () => { pxPerM = Math.min(200, pxPerM * 1.2); });
   document.getElementById('cp-zoomout').addEventListener('pointerdown', () => { pxPerM = Math.max(0.2, pxPerM * 0.83); });
-  // Center: cycle the four native modes H → N → M → C → H; recenter on follow modes.
+  // Center: cycle the four modes H → N → M → C → H; recenter on follow modes.
   document.getElementById('cp-mode').addEventListener('pointerdown', () => {
     cameraMode = cameraMode === 1 ? 0 : cameraMode === 0 ? 3 : cameraMode === 3 ? 2 : 1;
     if (cameraMode !== 2) { const rp = renderPose(); if (rp) { camE = rp.e; camN = rp.n; } }
   });
 })();
 // ── Diagnostic charts (Tools panel) ─────────────────────────────────────────
-// Thin-client port of the native ChartControl: the host streams the scalar
-// series sources on each Tick (see TickDto chart fields); we keep a rolling
-// display buffer per series and redraw the open chart cards each frame to a 2D
-// canvas. Configs mirror the native *ChartPanel.ConfigureChart() calls 1:1.
+// Charts: the host streams the scalar series sources on each Tick (see TickDto chart
+// fields); we keep a rolling display buffer per series and redraw the open chart cards
+// each frame to a 2D canvas.
 const CHART_WINDOW = 20; // seconds (IChartDataService.TimeWindowSeconds default)
 const CHARTS = {
   steer: {
@@ -135,7 +134,7 @@ function drawChart(cv, c) {
   const cw = cr - cl, ch = cbot - ctop;
   if (cw <= 0 || ch <= 0) return;
 
-  // Y range (auto-scale mirrors native ComputeAutoScale: 10% pad + nice step).
+  // Y range (auto-scale: 10% pad + nice step).
   let minY = c.minY, maxY = c.maxY, step = c.step;
   if (c.auto) {
     let dmin = Infinity, dmax = -Infinity;
@@ -236,7 +235,7 @@ function renderCharts() {
 }
 
 // Roll Correction panel: live gauge + offset/invert readouts (only when open).
-// Mirrors the wizard roll-cal step; the bar rotates by the live (post-calibration)
+// As the wizard's roll-cal step; the bar rotates by the live (post-calibration)
 // roll the same way the map roll gauge does.
 function renderRollCorr() {
   const panel = document.getElementById('rollcorr');
@@ -299,7 +298,7 @@ function renderRecPath() {
   document.getElementById('rp-stop').style.display = r.isRecording ? '' : 'none';
   document.getElementById('rp-recind').style.display = r.isRecording ? 'block' : 'none';
   document.getElementById('rp-saverow').style.display = r.hasUnsaved ? 'flex' : 'none';
-  // Auto-fill the Save-as name from the host's generated default (native parity), but
+  // Auto-fill the Save-as name from the host's generated default, but
   // don't clobber the user mid-edit.
   const nameIn = document.getElementById('rp-name');
   if (document.activeElement !== nameIn && r.recordedPathName) nameIn.value = r.recordedPathName;
@@ -374,9 +373,8 @@ function renderBoundaryPlayer() {
   document.getElementById('bp-recimg').src = b.isRecording ? '/icons/boundaryPause.png' : '/icons/BoundaryRecord.png';
 }
 
-// Drag chart cards by the header (web docks ln-panels, but charts are free overlays
-// like the native FloatingPanel so the operator can move them out of the way). The VT cards,
-// made later, use wireCardDrag too.
+// Drag chart cards by the header (menu panels are docked, but charts are free overlays
+// the operator can move out of the way). The VT cards use wireCardDrag too.
 // The card touched last is on top of the other cards (29, the cards' layer; the others one
 // below it, still above the map's overlays at 20 and under the panels from 30 up).
 function raiseCard(card) {

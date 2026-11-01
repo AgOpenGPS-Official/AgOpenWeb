@@ -155,7 +155,7 @@ addEventListener('pointermove', e => {
   camN += (_sinRR * dsx + _cosRR * dsy) / pxPerM;
   lastX = e.clientX; lastY = e.clientY;
 });
-// ---- map-tap capture mode (Phase MT) — the reusable on-map point-picking primitive ----
+// ---- map-tap capture mode — the reusable on-map point-picking primitive ----
 // A feature arms capture with startMapTap({hint, onTap}); the next clean tap unprojects via
 // s2w and calls onTap(e,n) (field metres). One mode at a time; the map stays pan/zoomable
 // (only a tap captures) so the operator can frame the view first. Esc / endMapTap() exits.
@@ -214,7 +214,7 @@ addEventListener('keydown', e => {
 // Bindings live on the host (File → Hotkeys, ConfigStore.Hotkeys) and arrive on the AppInfo
 // frame. The client resolves key → action and sends the SAME command id as the matching
 // button, so Tier-2 gating and the host allowlist apply unchanged. Screen actions open the
-// web panel here — the host's HandleHotkey would open a native dialog the web never renders.
+// web panel here, not through the host's HandleHotkey.
 // A bound key takes priority over the built-in map/sim keys above (F, 3, [, ], arrows, space).
 const HOTKEY_CMD = {
   AutoSteer: 'autosteer.toggle', CycleLines: 'track.cycle', SnapPivot: 'track.snapPivot',
@@ -237,8 +237,7 @@ function boundHotkey(e) {
   const hk = appInfo.hotkeys.find(h => h.key && normHotkey(h.key) === key);
   return hk ? hk.action : null;
 }
-// Hotkeys are off while typing, capturing a binding, or behind a modal (native blocked
-// them while any dialog was open).
+// Hotkeys are off while typing, capturing a binding, or behind a modal.
 function hotkeysBlocked() {
   return isTyping()
     || document.getElementById('hotkeys').classList.contains('open')

@@ -4,7 +4,7 @@
 //
 // Steer wizard, vehicle and tool picker.
 
-// ---- Steer Wizard (Phase 9) — full-screen, host-driven. The host runs the real
+// ---- Steer Wizard — full-screen, host-driven. The host runs the real
 // SteerWizardViewModel; we rebuild #wz-content per step from the Wizard frame, edit via
 // the existing config.set bridge, and forward nav (wizard.*) + gated calibration
 // (wizard.action). Editable values display from the Config frame. ----
@@ -261,7 +261,7 @@ function renderSettings() {
   }
 }
 
-// ---- Vehicle & Tool picker hub (Phase 9) — mirrors LoadVehicleToolDialogViewModel ----
+// ---- Vehicle & Tool picker hub ----
 const HUB = {
   summary: document.getElementById('vth-summary'),
   curVeh: document.getElementById('vth-curveh'), curTool: document.getElementById('vth-curtool'),
@@ -326,7 +326,7 @@ HUB.load.addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (HUB.load.disabled || !profiles) return;
   hubSend('profile.load', (HUB.vehList.value || profiles.activeVehicle) + '\t' + (HUB.toolList.value || profiles.activeTool));
-  lnCloseAll(); // native closes the picker on load
+  lnCloseAll(); // loading closes the picker
 });
 document.getElementById('vth-vehconfig').addEventListener('pointerdown', e => {
   e.stopPropagation();

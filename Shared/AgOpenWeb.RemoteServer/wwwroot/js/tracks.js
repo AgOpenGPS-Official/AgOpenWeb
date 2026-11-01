@@ -4,7 +4,7 @@
 //
 // Flags, Ref Nudge, AB line creation, drawing on the map (boundary, headland, point edit), the tracks manager.
 
-// ---- flag list (mirrors native FlagListDialogPanel) ----
+// ---- flag list ----
 // Colour swatch (tap → 10-colour picker), name (tap → inline rename), distance+bearing
 // from the vehicle (computed here off the Tick), locate (pan the camera to the flag),
 // delete. Footer: Place Here / Place on Map / Delete All / Close. Reads scene.flags
@@ -136,8 +136,8 @@ function renderRefNudge(hasTrack) {
   populateCfgControls(refPanel); // the step; not while it is being typed
 }
 
-// ---- AB-line creation (mirrors native QuickABSelector + DrawAB dialogs) ----
-// All four modes run the REAL native commands on the host (no geometry in JS):
+// ---- AB-line creation (Quick AB / Draw AB) ----
+// All four modes run the host's own commands (no geometry in JS):
 //   straight/curve   — DrawAB/DrawCurve: tap points on the map (s2w → track.drawPoint)
 //   driveAB          — set A then B at the vehicle's live GPS (track.setABGps)
 //   recordCurve      — record a curve by driving, Finish to create
@@ -165,8 +165,8 @@ function abHint() {
 }
 function setAbHint() { hintEl.textContent = abHint(); }
 // #40: while drawing a straight AB line, ride an "A"/"B" letter on the crosshair so it's
-// clear which point the next tap places, and render the placed points as native-style dots
-// (orange A / blue B, matching FormABDraw's DrawABTouchPoints colours).
+// clear which point the next tap places, and render the placed points as dots
+// (orange A / blue B, AgOpenGPS FormABDraw's DrawABTouchPoints colours).
 const AB_A_COLOR = '#FFBF59', AB_B_COLOR = '#8080FF';
 const abLabelEl = document.getElementById('maptap-ab');
 const abDotLabelsEl = document.getElementById('ab-dot-labels');
@@ -461,7 +461,7 @@ function drawCurveMarksSk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
   }
 }
-// ---- boundary draw-on-map (Phase MT) — native BoundaryMapDialog equivalent ----
+// ---- boundary draw-on-map ----
 // Shows a Bing aerial underlay (satEnabled) and captures the boundary polygon by tapping
 // the imagery (s2w → field E/N). On finish the host builds the boundary AND assembles the
 // covered Bing tiles into the field-background PNG (boundary.fromMapPoints). Client-side
@@ -518,7 +518,7 @@ function hlTap(e, n) {
   hlPts.push(hlSnap(e, n));
   if (hlPts.length >= 2) {
     // Ship this edge line and immediately re-arm for the NEXT edge — headland drawing is
-    // continuous (one line per edge) until the operator taps Finish, mirroring native.
+    // continuous (one line per edge) until the operator taps Finish.
     transport.send('headland.fromMapPoints|' + hlFlow + ',' + hlOffset + ',' +
       hlPts[0].e.toFixed(3) + ',' + hlPts[0].n.toFixed(3) + ',' +
       hlPts[1].e.toFixed(3) + ',' + hlPts[1].n.toFixed(3));
@@ -666,7 +666,7 @@ document.getElementById('dlg-quickab').querySelectorAll('[data-qab]').forEach(b 
 }));
 document.getElementById('dlg-qab-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
 
-// ---- Tracks manager (mirrors native TracksDialogPanel) ----
+// ---- Tracks manager ----
 // View-only without control (just reads scene.trackList); the actions are Tier-2.
 // Tapping a row highlights it (trkSel) and makes it the active track at once (#148), where
 // AgOpenGPS waits for Use; Activate on the active track turns guidance off. Delete / Swap act

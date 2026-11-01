@@ -241,8 +241,7 @@ scanNumericFields(document);
 new MutationObserver(muts => { for (const m of muts) for (const n of m.addedNodes) scanNumericFields(n); })
   .observe(document.documentElement, { childList: true, subtree: true });
 function openSimCoords() {
-  // Pre-fill with the current vehicle position (from the Status frame), matching
-  // the native dialog's GetSimulatorPosition() seed.
+  // Pre-fill with the current vehicle position (from the Status frame).
   dlgLat.value = statusBar && statusBar.lat != null ? statusBar.lat.toFixed(8) : '';
   dlgLon.value = statusBar && statusBar.lon != null ? statusBar.lon.toFixed(8) : '';
   openDialog('dlg-simcoords');

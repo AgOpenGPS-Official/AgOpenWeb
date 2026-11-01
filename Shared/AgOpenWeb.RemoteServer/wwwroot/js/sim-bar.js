@@ -4,9 +4,9 @@
 //
 // The simulator bar.
 
-// ---- simulator bar (Phase 6) — mirrors the native SimulatorPanel ----
+// ---- simulator bar ----
 // Like every command, the bar's need control (an observer changes nothing, #397). Panel *visibility* is client-local
-// (the host's IsSimulatorPanelVisible is a native-only concept); enabled/speed/
+// (not the host's IsSimulatorPanelVisible); enabled/speed/
 // steer are host state, mirrored back over the Status frame.
 const SIM = {
   bar: document.getElementById('simbar'), launch: document.getElementById('sim-launch'),
@@ -43,7 +43,7 @@ SIM.steer.addEventListener('change', () => { _steerDragging = false; });
 // GPS button opens the SimCoords dialog (client-local open; OK sends sim.setCoords).
 SIM.gps.addEventListener('pointerdown', e => {
   e.preventDefault(); e.stopPropagation();
-  if (statusBar && statusBar.simEnabled) return; // native guard: disable sim first
+  if (statusBar && statusBar.simEnabled) return; // disable the sim first
   openSimCoords();
 });
 document.getElementById('sim-close').addEventListener('pointerdown', e => {

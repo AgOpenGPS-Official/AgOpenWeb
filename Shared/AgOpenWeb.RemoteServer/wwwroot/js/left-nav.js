@@ -4,7 +4,7 @@
 //
 // The left nav and its menu panels (open, close, chain).
 
-// ---- left nav (Phase 9) — config/settings panels via the config bridge ----
+// ---- left nav — config/settings panels via the config bridge ----
 // Vertical button bar; each button toggles a non-modal panel (only one open at a
 // time). Panels READ from the config frame (or existing frames, e.g. units =
 // Status.isMetric) and WRITE via `config.set|key:value` (needs control; the host applies it
@@ -58,7 +58,7 @@ document.getElementById('ln-autosteer').addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (document.getElementById('autosteercfg').classList.contains('open')) lnCloseAll();
   else lnOpen('autosteercfg', 'ln-autosteer', () => {
-    // Always open collapsed (left pane only), like the native panel.
+    // Always open collapsed (left pane only).
     asPanel.classList.remove('expanded');
     document.getElementById('as-expand').textContent = tr('▶ Full');
     populateAutoSteer(true);
@@ -80,8 +80,7 @@ document.getElementById('ln-tools').addEventListener('pointerdown', e => {
   else lnOpen('tools', 'ln-tools', renderToolsPanel);
 });
 // Tools fly-out items. Steer Wizard + Log Viewer reuse existing flows; Roll
-// Correction is an inert placeholder (matches the native button, which has no
-// command bound). The three chart buttons toggle their floating chart cards.
+// Correction is an inert placeholder (no command yet). The three chart buttons toggle their floating chart cards.
 document.getElementById('tl-wizard').addEventListener('pointerdown', e => {
   e.stopPropagation(); lnCloseAll();
   if (typeof openSteerWizard === 'function') openSteerWizard();

@@ -8,7 +8,7 @@ function renderSkia(canvas, rp) {
   canvas.clear(ckColor(mapIsDay ? MAP_CLEAR.day : MAP_CLEAR.night));
   canvas.save();
   canvas.scale(dpr, dpr); // work in CSS px so w2s + stroke widths match
-  updateLineWidths(); // world-metre line weights × current zoom (matches native)
+  updateLineWidths(); // world-metre line weights × current zoom
   drawGroundTextureSk(canvas); // ground backdrop (under everything)
   drawSatelliteSk(canvas); // Bing aerial underlay while drawing a boundary on map
   drawImagerySk(canvas); // imagery overlays the ground where present
@@ -19,8 +19,7 @@ function renderSkia(canvas, rp) {
     for (let bi = 0; bi < scene.boundaries.length; bi++)
       strokePtsSk(canvas, scene.boundaries[bi], true,
         (scene.boundaryInner && scene.boundaryInner[bi]) ? SKP.boundaryInner : SKP.boundary);
-    // Headland line shows only when the headland is ON — mirrors the native
-    // SetHeadlandVisible gate (IsHeadlandOn). The bottom-nav headland button drives it.
+    // Headland line shows only when the headland is ON (the bottom-nav headland button).
     if (scene.headland && tick && tick.tools && tick.tools.headlandOn)
       strokePtsSk(canvas, scene.headland, true, SKP.headland);
     drawExtraGuidelinesSk(canvas); // faint adjacent passes (under the bold lines)
@@ -54,7 +53,7 @@ function renderSkia(canvas, rp) {
   drawAbDrawPreviewSk(canvas); // #40 — A/B (orange/blue) dots for the AB/curve being drawn
   drawCurveMarksSk(canvas); // record-curve path dots (Set Point A → B)
   drawBoundaryCurvePreviewSk(canvas); // Bnd. Curve: the chosen way round (#450)
-  drawDrawingSk(canvas); // live draw-on-map AB/curve preview (Phase MT)
+  drawDrawingSk(canvas); // live draw-on-map AB/curve preview
   drawHeadlandDrawSk(canvas); // live headland draw preview (Field Builder stage 2)
   drawHeadlandSegEditLinesSk(canvas); // headland-editor offset lines (yellow/red) while editing
   drawTramLinesSk(canvas); // generated tram lines (orange) when tram display on / editing

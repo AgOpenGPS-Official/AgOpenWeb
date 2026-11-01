@@ -4,7 +4,7 @@
 //
 // Field Operations (fields and jobs), AgShare.
 
-// ---- Field Operations (Phase 9) — field/job lifecycle. Fly-out launches the
+// ---- Field Operations — field/job lifecycle. Fly-out launches the
 // Fields-and-Jobs chain panel (fields table + jobs + new-job form) and New Field.
 // Reads ride the FieldOps frame; writes are field.* commands (host-driven via the real
 // StartWorkSessionDialogViewModel); deletes confirm client-side.
@@ -56,7 +56,7 @@ function showDrivePick(fields) {
 document.getElementById('dp-cancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
 document.getElementById('fo-close').addEventListener('pointerdown', e => { e.stopPropagation(); if (scene && scene.hasField) { transport.send('field.close'); lnCloseAll(); } });
 
-// Fields-and-Jobs chain panel (mirrors StartWorkSessionDialogPanel).
+// Fields-and-Jobs chain panel.
 function openFieldsAndJobs() {
   if (fieldOps && !fjSelField)
     fjSelField = fieldOps.activeField || (fieldOps.fields[0] && fieldOps.fields[0].name) || null;
