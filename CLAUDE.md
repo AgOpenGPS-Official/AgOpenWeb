@@ -388,7 +388,9 @@ one stack per process.
 ## Web cards and the card pane
 **Web cards** show an add-on's own web page (the HAT's pages, a rate controller's) in a card, picked
 from a bookmark list kept on the host (`AppSettings.WebCards`, `webcard.save` / `webcard.delete`,
-the `WebCards` frame); `{host}` in a URL is the AgOpenWeb host as the browser reaches it. The page
+the `WebCards` frame; ⚙ › *Search the network*, `webcard.scan`, has the host ask each address of its
+own private networks (at most the /24 around it) for a page on port 80, listed with its title:
+`WebPageScanner`); `{host}` in a URL is the AgOpenWeb host as the browser reaches it. The page
 loads from the add-on on its own origin, never through AgOpenWeb; observers get a cover over it.
 Which cards are open, and where, is the browser's (`localStorage`). `WebCards` in `js/web-cards.js`; plan:
 `Plans/ADD_ON_CARDS_PLAN.md`.

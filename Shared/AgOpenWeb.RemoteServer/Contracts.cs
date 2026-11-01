@@ -582,9 +582,13 @@ public record NtripFallbackDto(
 /// list (or a new status) is ready. For is "main" or "fallback"; Status is the sentence to show.</summary>
 public record NtripMountpointsDto(int Seq, string For, string Status, IReadOnlyList<NtripMountpointDto> Items);
 
-/// <summary>The web cards' bookmarks (AppSettings.WebCards), in their own frame.</summary>
-public record WebCardsDto(IReadOnlyList<WebCardDto> Cards);
+/// <summary>The web cards' bookmarks (AppSettings.WebCards), in their own frame, with the last
+/// "Search the network" from the bookmark editor (ConnectionState.WebPageScan).</summary>
+public record WebCardsDto(IReadOnlyList<WebCardDto> Cards, WebPageScanDto Scan);
 public record WebCardDto(string Name, string Url);
+/// <summary>Status is "" (none yet), "searching" or "done"; Networks the networks searched; Pages
+/// the pages found (Name = the page's title, empty when it has none).</summary>
+public record WebPageScanDto(int Seq, string Status, string Networks, IReadOnlyList<WebCardDto> Pages);
 
 /// <param name="DistanceKm">NaN when the position of the mount point or of the receiver is unknown.</param>
 public record NtripMountpointDto(string Mount, string Name, string Format, string Systems, string Country,

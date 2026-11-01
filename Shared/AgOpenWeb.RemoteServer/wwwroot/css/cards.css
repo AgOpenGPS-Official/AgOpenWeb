@@ -123,6 +123,8 @@
 .web-edit button { height: 30px; padding: 0 12px; border: 1px solid var(--border); border-radius: 6px;
   background: rgba(var(--ov),0.08); color: var(--text-2); cursor: pointer; }
 .web-edit .web-sub { color: var(--text-muted); font-size: 12px; }
+.web-edit button:disabled { opacity: 0.5; cursor: default; }
+.web-edit .web-search { margin-top: 12px; }
 .vt-mask { display: block; width: var(--vt); height: var(--vt); background: #000; touch-action: none; }
 .vt-keys { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(6, auto); grid-auto-flow: column;
   gap: 4px; align-content: start; width: calc(var(--vt) / 3 - 4px); }

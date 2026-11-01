@@ -509,15 +509,21 @@ public sealed class SceneProjector
         return list.Seq * 31L + list.Status.GetHashCode() + list.Items.Count;
     }
 
-    // The web cards' bookmarks. The list is replaced whole on a change, so reading it here is safe.
-    public WebCardsDto BuildWebCards() =>
-        new(_settings.Settings.WebCards.Select(b => new WebCardDto(b.Name, b.Url)).ToList());
+    // The web cards' bookmarks and the last search for pages. Both are replaced whole on a change, so
+    // reading them here is safe.
+    public WebCardsDto BuildWebCards()
+    {
+        var scan = _state.Connections.WebPageScan;
+        return new(_settings.Settings.WebCards.Select(b => new WebCardDto(b.Name, b.Url)).ToList(),
+            new WebPageScanDto(scan.Seq, scan.Status, scan.Networks, scan.Pages.Select(p => new WebCardDto(p.Title, p.Url)).ToList()));
+    }
 
     public long WebCardsFingerprint()
     {
         long h = 17;
         foreach (var b in _settings.Settings.WebCards) h = h * 31 + HashCode.Combine(b.Name, b.Url);
-        return h;
+        var scan = _state.Connections.WebPageScan;
+        return h * 31 + HashCode.Combine(scan.Seq, scan.Status);
     }
 
     // Re-send the NTRIP profiles frame on add / edit / delete / set-default.
