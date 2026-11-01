@@ -325,6 +325,11 @@ curve, never a breadcrumb trail.
 - `CloudLinkService` and a pairing screen replace the AgShare menu items (Upload, Download, API)
   and `Shared/AgOpenWeb.Services/AgShare/`. Field folders stay the same.
 - **Switching over:** pair, then *Move my account / import my fields* (§11).
+- **Test environment:** ASL has a test service next to the live one. AOW gets a server choice in
+  its developer settings (live by default) and registers a terminal per environment, so a test
+  build never touches live data.
+- **Terms:** new users accept the terms of use and privacy statement when they sign up in ASL (a
+  versioned acceptance); AOW shows nothing new, the OAuth login does.
 - **Changes in AOW for watching** (need the maintainers' approval): `ControlAuthority` refuses
   remote clients; `WebSocketHub` gets a virtual client for the live channel; `transport.js` gets a
   configurable URL and relative asset paths.
