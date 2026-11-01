@@ -9,7 +9,7 @@ The key of every entry is the English text itself (see Docs/TRANSLATIONS.md). St
 come from:
   * index.html — text and title / placeholder / aria-label attributes, outside
     <script>, <style> and translate="no" elements;
-  * app.js — tr('…') calls, and text inside HTML that the script builds (">text<").
+  * app.js and js/*.js — tr('…') calls, and text inside HTML that the script builds (">text<").
 
 Usage:
   Tools/i18n-extract.py           rewrite en.json
@@ -103,10 +103,17 @@ def js_strings(src):
     return found
 
 
+def client_scripts():
+    """The client's own scripts: app.js until it is split, then js/*.js."""
+    return [p for p in [WWW / "app.js"] if p.exists()] + sorted((WWW / "js").glob("*.js"))
+
+
 def collect():
     html = HtmlStrings()
     html.feed((WWW / "index.html").read_text(encoding="utf-8"))
-    strings = html.found | js_strings((WWW / "app.js").read_text(encoding="utf-8"))
+    strings = set(html.found)
+    for script in client_scripts():
+        strings |= js_strings(script.read_text(encoding="utf-8"))
     return {s: s for s in sorted(strings, key=lambda s: (s.lower(), s))}
 
 
