@@ -12,7 +12,7 @@
 .vt-ws { max-width: 180px; height: 22px; font-size: 12px; background: var(--bg-sunken); color: var(--text-2);
   border: 1px solid var(--border); border-radius: 4px; }
 .vt-body { position: relative; display: flex; gap: 4px; padding: 4px; }
-/* Web cards (Plans/ADDON_WEB_CARDS_PLAN.md): an add-on's own page from the bookmark list, in
+/* Web cards (Plans/ADD_ON_CARDS_PLAN.md): an add-on's own page from the bookmark list, in
    a frame. Never wider or taller than the screen leaves room for. */
 .web-card { top: calc(var(--bar-bottom) + 24px); width: auto; --ww: 640px; --wh: 420px; }
 /* Card pane (CardPane in js/card-pane.js): the split layout's VT and web cards beside the map, two

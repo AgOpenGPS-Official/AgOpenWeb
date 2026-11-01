@@ -103,7 +103,7 @@ if (window.ResizeObserver) {
 }
 addEventListener('resize', placeCorner);
 addEventListener('maparea', placeCorner);
-// Menu panels open beside the left nav and may cover the card pane (Plans/CARD_PANE_SPLIT_PLAN.md
+// Menu panels open beside the left nav and may cover the card pane (Plans/ADD_ON_CARDS_PLAN.md
 // §1.8). With the pane on the left the nav sits far to the right, so a panel too wide for the
 // rest of the window is moved left until it fits; a panel opening grows from 0, which the
 // observer sees.
