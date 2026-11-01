@@ -5,8 +5,8 @@ Work being done or agreed, one file per plan. Each starts with a **Status** line
 | Plan | Status |
 |---|---|
 | [ADD_ON_CARDS_PLAN.md](ADD_ON_CARDS_PLAN.md) | Web cards and the card pane built (#503, #513); the drawer, one device run and the add-on author page left (#456) |
-| [ASL_MASTERPLAN.md](ASL_MASTERPLAN.md) | Proposed, awaiting maintainer approval: AgShareLive as an add-on to AgOpenWeb (own process, public interfaces only, off by default, failures stay in the add-on) |
 | [GPS_RECEIVER_SENTENCES_PLAN.md](GPS_RECEIVER_SENTENCES_PLAN.md) | In progress: receivers straight to the app |
+| [ASL_MASTERPLAN.md](ASL_MASTERPLAN.md) | Proposed, awaiting maintainer approval: AgShareLive as an add-on; spike first, then four standalone AOW PRs (protocol version, N watching, reference coverage, job inbox and staging) |
 | [ISOBUS_VT_TRANSPORTS.md](ISOBUS_VT_TRANSPORTS.md) | In progress: how the VT reaches the implement bus |
 | [JOB_FINISH_LOCK_IMPLEMENT_PLAN.md](JOB_FINISH_LOCK_IMPLEMENT_PLAN.md) | Agreed, not started: implement on the job, Finish locks it |
 | [RTCM_FORWARDING_PLAN.md](RTCM_FORWARDING_PLAN.md) | Built; open bench checks |
