@@ -10,6 +10,7 @@ Work being done or agreed, one file per plan. Each starts with a **Status** line
 | [ISOBUS_VT_TRANSPORTS.md](ISOBUS_VT_TRANSPORTS.md) | In progress: how the VT reaches the implement bus |
 | [JOB_FINISH_LOCK_IMPLEMENT_PLAN.md](JOB_FINISH_LOCK_IMPLEMENT_PLAN.md) | Agreed, not started: implement on the job, Finish locks it |
 | [RTCM_FORWARDING_PLAN.md](RTCM_FORWARDING_PLAN.md) | Built; open bench checks |
+| [WEB_CLIENT_SPLIT_PLAN.md](WEB_CLIENT_SPLIT_PLAN.md) | Proposed: `app.js` and `index.html` split by feature, no build step |
 
 - **[Ideas/](Ideas/)**: written up but not started or on hold. Nothing there is agreed.
 - **[Completed/](Completed/)**: done, decided, or overtaken (much of it from the Avalonia UI). Code
