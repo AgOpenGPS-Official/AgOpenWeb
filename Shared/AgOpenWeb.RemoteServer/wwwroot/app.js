@@ -15,20 +15,37 @@ const ckcv = document.getElementById('ck'); // CanvasKit (Skia) — the sole ren
 // retina) — otherwise thin strokes look faint and shimmer when panning. All draw
 // code works in these logical coordinates; the Skia canvas applies scale(dpr) per frame.
 let vw = innerWidth, vh = innerHeight, dpr = 1;
+// The map's area in the window: the card pane (CardPane, split layout) takes mapL screen pixels
+// on the left or mapR on the right, else both are 0 and the map is the whole window. The canvas
+// covers the map only; pointer events arrive in window pixels, so map code takes x - mapL.
+let mapL = 0, mapR = 0;
 // Skia/CanvasKit renderer state — declared before resize() (which calls
 // recreateSkSurface) to avoid a temporal-dead-zone ReferenceError.
 let CK = null, skSurface = null, skTri = null, SKP = null;
 let grCtx = null; // WebGL GrDirectContext — hoisted so the coverage render target shares it
 function resize() {
   dpr = Math.min(window.devicePixelRatio || 1, 2); // cap: 3× phones don't need 9× fill
-  vw = innerWidth; vh = innerHeight;
+  vw = Math.max(1, innerWidth - mapL - mapR); vh = innerHeight;
   ckcv.width = Math.round(vw * dpr);
   ckcv.height = Math.round(vh * dpr);
+  ckcv.style.left = mapL + 'px';
   ckcv.style.width = vw + 'px';
   ckcv.style.height = vh + 'px';
   recreateSkSurface(); // the GL surface is tied to the canvas size
 }
 addEventListener('resize', resize); resize();
+// Give the map the window less the card pane (screen pixels each side). The overlays follow
+// through --map-l / --map-r, in their zoomed pixels.
+function setMapArea(l, r) {
+  l = Math.max(0, Math.round(l)); r = Math.max(0, Math.round(r));
+  if (l === mapL && r === mapR) return;
+  mapL = l; mapR = r;
+  const root = document.documentElement.style;
+  root.setProperty('--map-l', (l / uiZoom) + 'px');
+  root.setProperty('--map-r', (r / uiZoom) + 'px');
+  resize();
+  dispatchEvent(new Event('maparea'));
+}
 
 // ---- model (fed by the transport) ----
 let scene = null;      // SceneDto
@@ -763,9 +780,12 @@ function applyUiScale(pct) {
   if (z === uiZoom) return;
   uiZoom = z;
   document.documentElement.style.setProperty('--ui-zoom', String(z));
+  document.documentElement.style.setProperty('--map-l', (mapL / z) + 'px');
+  document.documentElement.style.setProperty('--map-r', (mapR / z) + 'px');
   calibrateZoom();
   placeCorner();
   placeHud();
+  dispatchEvent(new Event('uizoom'));
 }
 function calibrateZoom() {
   const root = document.documentElement.style;
@@ -827,6 +847,22 @@ if (window.ResizeObserver) {
   ro.observe(document.getElementById('bottomstack'));
 }
 addEventListener('resize', placeCorner);
+addEventListener('maparea', placeCorner);
+// Menu panels open beside the left nav and may cover the card pane (Plans/CARD_PANE_SPLIT_PLAN.md
+// §1.8). With the pane on the left the nav sits far to the right, so a panel too wide for the
+// rest of the window is moved left until it fits; a panel opening grows from 0, which the
+// observer sees.
+function placePanel(p) {
+  p.style.left = ''; p.classList.remove('ln-moved');
+  if (!mapL || !p.classList.contains('open')) return;
+  const r = zoomRect(p), over = r.right - (innerWidth - 16);
+  if (over > 0) { p.style.left = Math.max(16, r.left - over) / uiZoom + 'px'; p.classList.add('ln-moved'); }
+}
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(es => { for (const e of es) placePanel(e.target); });
+  for (const p of document.querySelectorAll('.ln-panel')) ro.observe(p);
+  addEventListener('maparea', () => { for (const p of document.querySelectorAll('.ln-panel.open')) placePanel(p); });
+}
 // Top-centre HUD (#hud-top) and everything docked under the status bar hang from the bar's
 // measured bottom (--bar-bottom): the dev diagnostics row adds 26 px, the UI size zooms the
 // bar, iOS adds the safe area. The HUD scales with the screen height, roughly as AgOpenGPS
@@ -857,6 +893,7 @@ if (window.ResizeObserver) {
   ro.observe(document.getElementById('sb-diag'));
 }
 addEventListener('resize', placeHud);
+addEventListener('maparea', placeHud);
 placeHud();
 function applyTheme(isDay) {
   mapIsDay = !!isDay;
@@ -1042,7 +1079,7 @@ let dragging = false, moved = false, gestureOnMap = false, lastX = 0, lastY = 0,
 addEventListener('pointerdown', e => {
   // Stage-4 edit: grab a handle if the press starts on one (else fall through to pan).
   if (editSession) {
-    const hi = editHitTest(e.clientX, e.clientY);
+    const hi = editHitTest(e.clientX - mapL, e.clientY);
     if (hi >= 0) { editDragIdx = hi; gestureOnMap = false; dragging = false; return; }
   }
   gestureOnMap = true; dragging = true; moved = false;
@@ -1056,10 +1093,10 @@ addEventListener('pointerup', e => {
   dragging = false;
   // A clean tap while a map-tap capture mode is armed → unproject and dispatch.
   if (gestureOnMap && !moved && mapTap) {
-    const w = s2w(e.clientX, e.clientY);
+    const w = s2w(e.clientX - mapL, e.clientY);
     if (w) mapTap.onTap(w.e, w.n);
   } else if (gestureOnMap && !moved && !editSession) {
-    vehicleTap(e.clientX, e.clientY);
+    vehicleTap(e.clientX - mapL, e.clientY);
   }
   gestureOnMap = false;
 });
@@ -1074,7 +1111,7 @@ addEventListener('pointermove', e => {
     else if (abLabelEl) abLabelEl.classList.remove('show');
   }
   if (editDragIdx >= 0 && editSession) {       // drag the grabbed handle
-    const w = s2w(e.clientX, e.clientY);
+    const w = s2w(e.clientX - mapL, e.clientY);
     if (w) editSession.points[editDragIdx] = editSession.kind === 'headland' ? hlSnap(w.e, w.n) : { e: w.e, n: w.n };
     return;
   }
@@ -1308,15 +1345,21 @@ const dlgLat = document.getElementById('dlg-lat'), dlgLon = document.getElementB
 // FormNumeric for numbers) (#110). For touch boxes with no OS keyboard (kiosk/Linux): when
 // on, focusing a text field opens a QWERTY panel, a numeric field a number pad, and the OS
 // keyboard is suppressed (inputmode=none). Keys edit the field in place and fire 'input', so
-// every existing handler sees them; OK sends Enter and closes. Shift works as on a phone: one
-// tap capitalises the next letter, a second tap straight after locks it (caps lock) until Shift
-// is tapped again.
+// every existing handler sees them; OK sends Enter and closes. Leaving the field another way
+// (tapping the next box, a button, the map) also commits it, as the OS keyboard does. Shift
+// works as on a phone: one tap capitalises the next letter, a second tap straight after locks
+// it (caps lock) until Shift is tapped again.
 const OSK = (() => {
   const root = document.getElementById('osk');
   const SHIFT_LOCK_MS = 400;                  // second Shift tap within this locks caps
   let target = null, shift = 0, shiftAt = 0;  // shift: 0 off, 1 next letter, 2 caps lock
+  let edited = false;                         // keys changed the field since its last 'change'
   const TEXT = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
   const NUM = ['789', '456', '123', '-0.'];
+  // #+= swaps the letter rows for symbols, for web addresses, caster logins and passwords (the
+  // digits and - _ . stay). It stays until abc is tapped; each new field starts on the letters.
+  const SYM = [':/?=&@#%+~', '()[]{}<>!', ',;\'"^|\\$*`'];
+  let sym = false;
   const on = () => !!(config && config.display && config.display.keyboardEnabled);
   const isField = el => el instanceof HTMLTextAreaElement
     || (el instanceof HTMLInputElement && ['text', 'password', 'search', 'email', 'url', ''].includes(el.type) && !el.readOnly && !el.disabled);
@@ -1328,12 +1371,12 @@ const OSK = (() => {
   function render() {
     const num = !!(target && target.dataset.numField);
     root.classList.toggle('num', num);
-    const rows = (num ? NUM : TEXT).map(r => [...r].map(c => ({ k: c, t: shift ? c.toUpperCase() : c })));
+    const rows = (num ? NUM : sym ? [TEXT[0], ...SYM] : TEXT).map(r => [...r].map(c => ({ k: c, t: shift ? c.toUpperCase() : c })));
     if (num) rows.push([{ k: 'BS', t: '⌫', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
     else {
-      rows[3].unshift({ k: 'SH', t: shift === 2 ? '⇪' : '⇧', c: ['wide', 'wide on', 'wide on lock'][shift] });
+      if (!sym) rows[3].unshift({ k: 'SH', t: shift === 2 ? '⇪' : '⇧', c: ['wide', 'wide on', 'wide on lock'][shift] });
       rows[3].push({ k: 'BS', t: '⌫', c: 'wide' });
-      rows.push([{ k: '-', t: '-' }, { k: '_', t: '_' }, { k: ' ', t: 'space', c: 'xwide' }, { k: '.', t: '.' }, { k: 'CLR', t: 'Clear', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
+      rows.push([{ k: 'SYM', t: sym ? 'abc' : '#+=', c: 'wide' }, { k: '-', t: '-' }, { k: '_', t: '_' }, { k: ' ', t: 'space', c: 'xwide' }, { k: '.', t: '.' }, { k: 'CLR', t: 'Clear', c: 'wide' }, { k: 'OK', t: 'OK', c: 'wide ok' }]);
     }
     root.replaceChildren(pv);
     for (const r of rows) {
@@ -1350,7 +1393,16 @@ const OSK = (() => {
     const el = target; if (!el) return;
     const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
     try { el.setRangeText(s, a, b, 'end'); } catch (_) { el.value += s; }
+    edited = true;
     el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  // The browser only fires 'change' on blur after a user edit, and text set by these keys does
+  // not count as one, so a value typed here and left without OK never reached its handler (the
+  // box showed it, the host never got it). Fire 'change' once on the way out instead.
+  function commit(el) {
+    if (!edited) return;
+    edited = false;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
   }
   function echo() {
     const el = target; if (!el || pv.hidden) return;
@@ -1373,25 +1425,28 @@ const OSK = (() => {
       shift = shift === 1 && now - shiftAt < SHIFT_LOCK_MS ? 2 : shift ? 0 : 1;
       shiftAt = now; render(); return;
     }
+    if (k === 'SYM') { sym = !sym; render(); return; }
     if (k === 'OK') {
+      edited = false; // the 'change' below commits it
       el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
       close(); el.blur(); return;
     }
-    if (k === 'CLR') { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); return; }
+    if (k === 'CLR') { el.value = ''; edited = true; el.dispatchEvent(new Event('input', { bubbles: true })); return; }
     if (k === 'BS') {
       const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
       if (a !== b) insert('');
-      else if (a > 0) { try { el.setRangeText('', a - 1, a, 'end'); } catch (_) { el.value = el.value.slice(0, -1); } el.dispatchEvent(new Event('input', { bubbles: true })); }
+      else if (a > 0) { try { el.setRangeText('', a - 1, a, 'end'); } catch (_) { el.value = el.value.slice(0, -1); } edited = true; el.dispatchEvent(new Event('input', { bubbles: true })); }
       return;
     }
     insert(shift ? k.toUpperCase() : k);
     if (shift === 1) { shift = 0; render(); }
   }
   function open(el) {
-    target = el; shift = 0;
+    target = el; shift = 0; edited = false;
     if (!el.dataset.oskIm) el.dataset.oskIm = el.getAttribute('inputmode') ?? '';
     el.setAttribute('inputmode', 'none'); // no OS keyboard on top of ours
+    sym = false;
     render(); root.hidden = false; place();
   }
   function close() {
@@ -1409,6 +1464,7 @@ const OSK = (() => {
   document.addEventListener('focusin', e => { if (on() && isField(e.target)) open(e.target); else if (!root.contains(e.target)) close(); });
   document.addEventListener('focusout', e => {
     if (e.target !== target) return;
+    commit(target); // now, not in the timeout: a Save pressed next must see the value first
     setTimeout(() => { if (document.activeElement !== target) close(); }, 0);
   });
   window.addEventListener('resize', () => { if (target) place(); });
@@ -1844,7 +1900,7 @@ function renderAbDotLabels() {
     const xy = w2s(pts[i].e, pts[i].n);
     span.textContent = abLetter(i);
     span.style.color = drawPts.length ? abLabelColor(i) : (i ? ACTIVE_B_COLOR : ACTIVE_A_COLOR);
-    span.style.left = xy[0] + 'px';
+    span.style.left = (xy[0] + mapL) + 'px';
     span.style.top = xy[1] + 'px';
     span.style.display = 'block';
   }
@@ -2881,7 +2937,14 @@ for (const b of saPanel.querySelectorAll('.sa-tgl[data-key]'))
 for (const b of saPanel.querySelectorAll('.sa-act'))
   b.addEventListener('pointerdown', e => { e.stopPropagation(); transport.send(b.dataset.cmd); });
 // On click, not pointerdown: the panel resizes under the finger once the new size applies.
-for (const b of saPanel.querySelectorAll('.sa-scale'))
+// VT & Web Cards: this browser's layout, not the host's (CardPane).
+for (const b of saPanel.querySelectorAll('.sa-cardlay'))
+  b.addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    CardPane.setLayout(b.dataset.lay);
+    for (const x of saPanel.querySelectorAll('.sa-cardlay')) x.classList.toggle('active', x.dataset.lay === CardPane.layout);
+  });
+for (const b of saPanel.querySelectorAll('.sa-scale:not(.sa-cardlay)'))
   b.addEventListener('click', e => { e.stopPropagation(); cfgSend('display.uiScale', b.dataset.scale); });
 // Guidance bar (#479): the vehicle's AutoSteer settings, not display.*. The style buttons
 // pick one of two; On/Off is apart from them.
@@ -2911,7 +2974,8 @@ function populateScreenAlerts() {
   saImagery.classList.toggle('active', !!d.imageryVisible && !fieldLacksImagery());
   if (document.activeElement !== saExtra) saExtra.value = d.extraGuidelinesCount;
   document.getElementById('sa-quality').textContent = d.resolutionLabel || '—';
-  for (const b of saPanel.querySelectorAll('.sa-scale')) b.classList.toggle('active', +b.dataset.scale === (d.uiScale || 100));
+  for (const b of saPanel.querySelectorAll('.sa-scale:not(.sa-cardlay)')) b.classList.toggle('active', +b.dataset.scale === (d.uiScale || 100));
+  for (const b of saPanel.querySelectorAll('.sa-cardlay')) b.classList.toggle('active', b.dataset.lay === CardPane.layout);
   const a = config.autosteer;
   if (a) {
     for (const b of saPanel.querySelectorAll('.sa-opt[data-val]'))
@@ -2944,12 +3008,13 @@ function cfgGet(key) {
   const p = key.split('.'); return config[p[0]] && config[p[0]][p[1]];
 }
 function cfgSend(key, val) { transport.send('config.set|' + key + ':' + val); }
-// A number field sends its value on 'change', when it loses focus. Save acts on
-// pointerdown, before that, so it commits the field being edited first: otherwise
-// the profile is saved without the last value typed.
-function commitFocusedField(panel) {
+// Save Profile acts on press, but the box still being typed in sends its value only when it loses
+// focus, which comes after the press: the save went out first and missed the last edit. Blur it
+// before saving so its 'change' reaches the host ahead of the save.
+function saveProfile() {
   const a = document.activeElement;
-  if (a && a !== document.body && panel.contains(a)) a.blur();
+  if (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement) a.blur();
+  transport.send('profile.save');
 }
 // Tabs.
 for (const t of vcPanel.querySelectorAll('.cfg-tab'))
@@ -3107,7 +3172,7 @@ vcHitchSel.addEventListener('change', () => cfgSend('vehicle.hitchType', vcHitch
 // Heading fusion = GPS share (0–1), shown like AgOpenGPS: "GPS 30% · IMU 70%" (#112).
 const fusionLabel = w => tr('GPS {gps}% · IMU {imu}%', { gps: Math.round(w * 100), imu: 100 - Math.round(w * 100) });
 vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = fusionLabel(+vcFw.value); cfgSend('gps.headingFusionWeight', vcFw.value); });
-document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); commitFocusedField(vcPanel); transport.send('profile.save'); });
+document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); saveProfile(); });
 // Zero Now captures the current roll as the offset, like AgOpenGPS Zero Roll and
 // Tools › Roll Correction; it used to clear the offset (that's Remove Offset, #111).
 document.getElementById('vc-rollzero').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('roll.zeroCalibrate'); });
@@ -3154,7 +3219,7 @@ wireTabStrip(tcPanel, 'tc-mac');
 tcHitchSel.addEventListener('change', () => cfgSend('tool.hitchType', tcHitchSel.value));
 tcSingleColor.addEventListener('change', () => cfgSend('tool.singleCoverageColor', tcSingleColor.value.slice(1)));
 document.getElementById('tc-resetpins').addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend('machine.resetPins', '1'); });
-document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stopPropagation(); commitFocusedField(tcPanel); transport.send('profile.save'); });
+document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stopPropagation(); saveProfile(); });
 // PinFunction enum labels (mirror MachineConfig.PinFunction).
 const PIN_FUNCS = ['None', 'Sec1', 'Sec2', 'Sec3', 'Sec4', 'Sec5', 'Sec6', 'Sec7', 'Sec8', 'Sec9', 'Sec10',
   'Sec11', 'Sec12', 'Sec13', 'Sec14', 'Sec15', 'Sec16', 'HydUp', 'HydDown', 'TramLeft', 'TramRight', 'GeoStop'];
@@ -6279,6 +6344,7 @@ function wireCardDrag(card) {
     raiseCard(card); // the card's own handler doesn't hear it
     if (e.target.closest('button, select')) return;
     e.stopPropagation();
+    if (card.classList.contains('in-pane')) return; // the pane places it
     const r = zoomRect(card);
     // zoomRect and clientX are screen pixels; left/top are in the card's own (zoomed)
     // pixels.
@@ -6296,6 +6362,110 @@ function wireCardDrag(card) {
   hdr.addEventListener('pointercancel', end);
 }
 for (const id of ['chart-steer', 'chart-heading', 'chart-xte']) wireCardDrag(document.getElementById(id));
+
+// ---- Card pane (#456, Plans/CARD_PANE_SPLIT_PLAN.md) ----
+// The VT and web cards float over the map, or (split layout) sit in a pane on the left or right
+// with the map in the rest. In the pane the open cards go two to a tab, in the order they were
+// opened, each sized to its share of the pane; with none open the map has the whole window. The
+// layout and the pane's width are this browser's. A card moved into or out of the pane is moved in
+// the page, which reloads a web page, so that happens only when the layout changes: a tab switch
+// hides and shows cards.
+const CardPane = (() => {
+  const KEY = 'cards.pane', MIN = 1 / 3, MAX = 1 / 2, GAP = 6, DIV = 16; // DIV: the divider strip
+  let layout = 'float', frac = MIN, tab = 0;
+  try { const st = JSON.parse(localStorage.getItem(KEY) || '{}'); if (st.layout === 'left' || st.layout === 'right') layout = st.layout; if (st.frac >= MIN && st.frac <= MAX) frac = st.frac; } catch (_) {}
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({ layout, frac })); } catch (_) {} };
+
+  const pane = document.createElement('div'); pane.id = 'cardpane';
+  const tabsEl = document.createElement('div'); tabsEl.className = 'cp-tabs';
+  const slots = document.createElement('div'); slots.className = 'cp-slots';
+  const divider = document.createElement('div'); divider.className = 'cp-divider';
+  pane.append(tabsEl, slots, divider);
+  document.body.insertBefore(pane, document.getElementById('vt-card-tpl'));
+  // Nothing in the pane reaches the map (the window-level pan, tap and wheel handlers).
+  for (const t of ['pointerdown', 'wheel']) pane.addEventListener(t, e => { if (!e.ctrlKey) e.stopPropagation(); });
+
+  // Every card: { card, fit(w, h) in its own pixels, name(), isOpen() }; order = when opened.
+  let cards = [], order = [];
+  const split = () => layout !== 'float';
+  const home = c => { c.card.classList.remove('in-pane', 'cp-hide'); c.card.style.order = ''; document.body.insertBefore(c.card, document.getElementById('vt-card-tpl')); c.fit(null); };
+  const into = c => { c.card.classList.add('in-pane'); if (c.card.parentNode !== slots) slots.appendChild(c.card); };
+
+  function layoutNow() {
+    order = order.filter(c => cards.includes(c) && c.isOpen());
+    const open = split() ? order : [];
+    pane.classList.toggle('show', open.length > 0);
+    pane.classList.toggle('right', layout === 'right');
+    if (!open.length) { setMapArea(0, 0); return; }
+    const w = Math.round(innerWidth * frac);
+    setMapArea(layout === 'left' ? w : 0, layout === 'right' ? w : 0);
+    pane.style.width = (w / uiZoom) + 'px';
+    const tabs = Math.ceil(open.length / 2);
+    tab = Math.min(tab, tabs - 1);
+    tabsEl.innerHTML = '';
+    tabsEl.style.display = tabs > 1 ? '' : 'none';
+    for (let t = 0; t < tabs; t++) {
+      const b = document.createElement('button');
+      b.className = 'cp-tab' + (t === tab ? ' active' : '');
+      b.textContent = open.slice(t * 2, t * 2 + 2).map(c => c.name()).join(' · ');
+      b.addEventListener('pointerdown', e => { e.preventDefault(); tab = t; layoutNow(); });
+      tabsEl.appendChild(b);
+    }
+    // Each card's share of the pane, in its own (zoomed) pixels.
+    const inTab = open.slice(tab * 2, tab * 2 + 2);
+    const sw = w / uiZoom - DIV - 2 * GAP;
+    const sh = (innerHeight / uiZoom - (tabs > 1 ? tabsEl.offsetHeight : 0) - GAP * (inTab.length + 1)) / inTab.length;
+    for (const c of cards) {
+      const k = inTab.indexOf(c);
+      c.card.classList.toggle('cp-hide', k < 0);
+      if (k >= 0) { c.card.style.order = String(k); c.fit(sw, sh); }
+    }
+  }
+
+  // Width: dragging the divider, a third to a half of the window.
+  let drag = null;
+  divider.addEventListener('pointerdown', e => {
+    e.preventDefault(); drag = { x: e.clientX, w: innerWidth * frac };
+    try { divider.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  divider.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = (e.clientX - drag.x) * (layout === 'left' ? 1 : -1);
+    const f = Math.min(MAX, Math.max(MIN, (drag.w + dx) / innerWidth));
+    if (Math.abs(f - frac) * innerWidth >= 2) { frac = f; layoutNow(); }
+  });
+  const end = () => { if (drag) { drag = null; save(); } };
+  divider.addEventListener('pointerup', end); divider.addEventListener('pointercancel', end);
+  for (const t of ['resize', 'uizoom']) addEventListener(t, () => { if (split()) layoutNow(); });
+
+  return {
+    get layout() { return layout; },
+    setLayout(l) {
+      if (l === layout) return;
+      layout = l; save();
+      for (const c of cards) if (split()) into(c); else home(c);
+      layoutNow();
+    },
+    // A card made: into the pane in the split layout. fit(null) means floating again.
+    track(card, opts) {
+      const c = Object.assign({ card }, opts);
+      cards.push(c);
+      if (split()) into(c);
+      return c;
+    },
+    untrack(c) { cards = cards.filter(x => x !== c); order = order.filter(x => x !== c); if (split()) layoutNow(); },
+    // A card opened (shown at once, on its tab) or closed.
+    shown(c, on) {
+      order = order.filter(x => x !== c);
+      if (on) order.push(c);
+      if (!split()) return;
+      if (on) tab = Math.floor(order.filter(x => x.isOpen()).indexOf(c) / 2);
+      layoutNow();
+    },
+    // A card's name changed (its tab's label).
+    renamed() { if (split()) layoutNow(); },
+  };
+})();
 
 // ---- VT painter ----
 // The virtual terminal's draw list (screens, soft keys, list options) painted in Canvas 2D: no
@@ -6622,6 +6792,17 @@ const Vt = (() => {
     let keyPage = 0, showGateway = false, selecting = null, sizeIx = 1, identTimer = null;
     try { sizeIx = SIZES.indexOf(+localStorage.getItem(sizeKey)); if (sizeIx < 0) sizeIx = 1; } catch (_) {}
     card.style.setProperty('--vt', SIZES[sizeIx] + 'px');
+    // In the card pane the mask is the largest square that fits beside its soft key columns
+    // (a third of the mask wide) under the header.
+    const pc = CardPane.track(card, {
+      name: () => tr('VT {n}', { n: index + 1 }),
+      isOpen: () => card.style.display !== 'none',
+      fit(w, h) {
+        if (w == null) { card.style.setProperty('--vt', SIZES[sizeIx] + 'px'); return; }
+        const hdr = card.querySelector('.chart-hdr').offsetHeight || 30;
+        card.style.setProperty('--vt', Math.max(120, Math.floor(Math.min((w - 12) * 3 / 4, h - hdr - 12))) + 'px');
+      },
+    });
     const send = (cmd, arg) => transport.send('vt.' + cmd + '|' + index + (arg !== undefined ? ',' + arg : ''));
 
     const term = {
@@ -6630,10 +6811,11 @@ const Vt = (() => {
       setOpen(on) {
         card.style.display = on ? '' : 'none';
         navBtn.classList.toggle('active', terms.some(x => x.open()));
+        CardPane.shown(pc, on);
         if (on) this.render();
       },
       reset() { screen = null; edit = null; workingSets = null; alarms = []; },
-      remove() { clearTimeout(term.audioTimer); clearTimeout(identTimer); card.remove(); },
+      remove() { clearTimeout(term.audioTimer); clearTimeout(identTimer); CardPane.untrack(pc); card.remove(); },
       message(m) {
         switch (m.type) {
           case 'screen': screen = m; break;
@@ -7042,6 +7224,17 @@ const WebCards = (() => {
       card.style.setProperty('--ww', w + 'px'); card.style.setProperty('--wh', h + 'px');
     };
     applySize();
+    // In the card pane the page fills the card's share of it.
+    c.pc = CardPane.track(card, {
+      name: () => (state.url && pick.selectedOptions[0] ? pick.selectedOptions[0].textContent : tr('Web')),
+      isOpen: () => cards.includes(c),
+      fit(w, h) {
+        if (w == null) { applySize(); return; }
+        const hdr = card.querySelector('.chart-hdr').offsetHeight || 30;
+        const hint = card.querySelector('.web-hint').offsetHeight;
+        card.style.setProperty('--ww', Math.floor(w - 2) + 'px'); card.style.setProperty('--wh', Math.floor(h - hdr - hint - 2) + 'px');
+      },
+    });
 
     c.render = () => {
       // The picker: the bookmarks, the card's page chosen.
@@ -7059,12 +7252,13 @@ const WebCards = (() => {
       cover.classList.toggle('show', !iHoldControl);
       q('.web-add').style.display = cards.length < MAX ? '' : 'none';
       q('.web-ext').style.display = state.url ? '' : 'none';
+      q('.web-hint').hidden = !state.url;
       if (c.editing && !iHoldControl) c.editing = false;
       editEl.classList.toggle('show', c.editing);
       if (c.editing) renderEdit(c, editEl);
     };
 
-    pick.addEventListener('change', () => { state.url = pick.value; save(); c.render(); });
+    pick.addEventListener('change', () => { state.url = pick.value; save(); c.render(); CardPane.renamed(); });
     // Another card, a little below and right of this one, so both headers can be reached.
     q('.web-add').addEventListener('pointerdown', e => {
       e.preventDefault();
@@ -7083,6 +7277,7 @@ const WebCards = (() => {
     q('.web-x').addEventListener('pointerdown', e => {
       e.preventDefault();
       card.remove(); cards = cards.filter(x => x !== c);
+      CardPane.untrack(c.pc);
       if (!cards.length) shown = false;
       save(); render();
     });
@@ -7136,6 +7331,7 @@ const WebCards = (() => {
     const c = makeCard(state);
     cards.push(c); shown = true;
     save(); render();
+    CardPane.shown(c.pc, true);
   }
 
   function render() {
@@ -7148,6 +7344,7 @@ const WebCards = (() => {
     // An editor open on a bookmark that moved or went: back to the list.
     for (const c of cards) if (c.editIx != null && c.editIx >= list.length) c.editIx = null;
     for (const c of cards) if (!c.editing || document.activeElement?.closest('.web-edit') !== c.card.querySelector('.web-edit')) c.render();
+    CardPane.renamed(); // the tabs show the pages' names
   }
 
   // The nav button: hides every web card when any is open, else brings back the last ones.
@@ -7156,7 +7353,7 @@ const WebCards = (() => {
     if (shown && cards.length) {
       shown = false;
       save(); // kept for the next tap
-      for (const c of cards) c.card.remove();
+      for (const c of cards) { c.card.remove(); CardPane.untrack(c.pc); }
       cards = [];
       render();
       return;
