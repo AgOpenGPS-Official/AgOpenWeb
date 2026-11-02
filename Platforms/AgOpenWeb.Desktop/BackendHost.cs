@@ -112,6 +112,9 @@ internal sealed class BackendHost
             // with it still running (macOS quits once the window is gone), it locks a mutex
             // the C++ static destructors have already torn down and the app aborts.
             Step("VT stack stop", () => virtualTerminal?.Dispose());
+            // The open field first, as a close would save it (coverage to its job; worked with
+            // no job, to a new one), while the host loop is still running.
+            Step("save field", () => backend.ViewModel.SaveOpenFieldForExit(TimeSpan.FromSeconds(10)));
             Step("save config", configService.SaveAppSettings);
             Step("save state", () => persistentState.Save());
             Step("web server stop", () => remoteServer.StopAsync().GetAwaiter().GetResult());
