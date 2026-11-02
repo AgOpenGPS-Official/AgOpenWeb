@@ -129,14 +129,14 @@ public partial class YouTurnCreationService
             {
                 var path = output.TurnPath;
 
-                // Smooth FIRST, then validate. The spiral/pretzel guard must judge the path
-                // that is actually driven, not raw construction artifacts: the curve generator
-                // can leave sub-metre folds at arc/leg seams that produce spurious 180° heading
-                // flips. Those inflate the cumulative-turn metric and false-reject a perfectly
-                // good curved U-turn (net 180°), dropping it to the straight fallback — the
-                // "south end misaligned" report. Smoothing removes the folds; a genuine spiral
-                // survives it.
-                TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
+                // Smooth FIRST, then validate: the spiral/pretzel guard judges the path that is
+                // driven. The smoothing is AgOpenGPS's (SmoothYouTurn with 6 points, one pass, a
+                // U turn only): a wider or repeated average pulls a tight arc inward, so the turn
+                // ended a metre short of the turn line and bent tighter than the set radius at a
+                // 5 m radius. The legs meet the arc without a fold (WalkLegByDistance), so there
+                // is nothing for a heavier smoothing to hide.
+                if (input.TurnType != YouTurnType.KStyle)
+                    TurnPathSmoothing.SmoothYouTurn(path, 6);
 
                 // Measure turning from SEGMENT DIRECTIONS (positions), not the stored per-point
                 // headings — smoothing only moves positions (it preserves the stale headings),
@@ -169,8 +169,11 @@ public partial class YouTurnCreationService
                     }
                 }
 
-                // ~π expected for U-turn; tolerate ±30° slack to account for approach angle.
-                bool netIsUTurnLike = Math.Abs(Math.Abs(netHeadingChange) - Math.PI) < Math.PI / 6.0;
+                // ~π expected for a U-turn; tolerate ±30° slack to account for approach angle.
+                // A K-turn's path is AgOpenGPS's KStyleTurn: an arc of 2.2 rad and a straight tail,
+                // the rest of the turn made backing up, so its net turn is 2.2 rad (126°), not π.
+                double expectedNet = input.TurnType == YouTurnType.KStyle ? 2.2 : Math.PI;
+                bool netIsUTurnLike = Math.Abs(Math.Abs(netHeadingChange) - expectedNet) < Math.PI / 6.0;
                 bool cumulativeRunaway = totalHeadingChange > Math.PI * 4.0;
 
                 if (!netIsUTurnLike || cumulativeRunaway)
