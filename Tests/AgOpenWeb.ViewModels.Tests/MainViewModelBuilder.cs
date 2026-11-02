@@ -32,7 +32,8 @@ public class MainViewModelBuilder
     public IAutoSteerService AutoSteerService { get; } = Substitute.For<IAutoSteerService>();
     public IMapService MapService { get; } = Substitute.For<IMapService>();
     public ICoverageMapService CoverageMapService { get; } = Substitute.For<ICoverageMapService>();
-    public ISectionControlService SectionControlService { get; } = Substitute.For<ISectionControlService>();
+    public ISectionControlService SectionControlService { get; set; } = Substitute.For<ISectionControlService>();
+    public IBoundaryRecordingService BoundaryRecordingService { get; set; } = Substitute.For<IBoundaryRecordingService>();
     public IToolPositionService ToolPositionService { get; } = Substitute.For<IToolPositionService>();
     public IGpsSimulationService SimulatorService { get; } = Substitute.For<IGpsSimulationService>();
     public IGpsPipelineService GpsPipelineService { get; } = Substitute.For<IGpsPipelineService>();
@@ -70,7 +71,7 @@ public class MainViewModelBuilder
             simulatorService: SimulatorService,
             settingsService: SettingsService,
             mapService: MapService,
-            boundaryRecordingService: Substitute.For<IBoundaryRecordingService>(),
+            boundaryRecordingService: BoundaryRecordingService,
             boundaryBuilderService: Substitute.For<IBoundaryBuilderService>(),
             headlandBuilderService: Substitute.For<AgOpenWeb.Services.Headland.IHeadlandBuilderService>(),
             trackGuidanceService: TrackGuidanceService,

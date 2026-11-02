@@ -653,12 +653,9 @@ public class SectionControlService : ISectionControlService
             _yawRate = 0;
             _instantYawRate = 0;
 
-            // For the FIRST point of a new patch, use straight perpendicular (no yaw adjustment).
-            var (expandedLeft, expandedRight) = ApplyCoverageMarginStraight(leftEdge, rightEdge, toolHeading);
-
             // Get zone index (for multi-colored sections or zones)
             int zoneIndex = GetZoneIndex(index);
-            _coverageMapService.StartMapping(zoneIndex, expandedLeft, expandedRight);
+            _coverageMapService.StartMapping(zoneIndex, leftEdge, rightEdge);
 
             // Record initial position for minimum distance filtering
             var center = new Vec2(
@@ -690,85 +687,16 @@ public class SectionControlService : ISectionControlService
 
         int zoneIndex = GetZoneIndex(index);
 
-        // Apply coverage margin (always — the curve-skip in ApplyCoverageMargin
-        // was the cause of the dotted seam pattern when coverage overlapped
-        // itself in turns).
-        var (expandedLeft, expandedRight) = ApplyCoverageMargin(leftEdge, rightEdge, toolHeading);
-
-        _coverageMapService.AddCoveragePoint(zoneIndex, expandedLeft, expandedRight);
+        // The section's own edges: the coverage service paints them widened by the coverage
+        // margin (no hairline seams between sections or quads) and counts the worked area
+        // without it, as AgOpenGPS's patches do.
+        _coverageMapService.AddCoveragePoint(zoneIndex, leftEdge, rightEdge);
 
         // Update last position for this zone (kept for any downstream readers
         // even though it's no longer used as a skip threshold).
         _lastCoveragePosition[zoneIndex] = new Vec2(
             (leftEdge.Easting + rightEdge.Easting) / 2,
             (leftEdge.Northing + rightEdge.Northing) / 2);
-    }
-
-    /// <summary>
-    /// Apply coverage margin with straight perpendicular (no yaw adjustment).
-    /// Used for the first point of a new coverage patch.
-    /// </summary>
-    private (Vec2 left, Vec2 right) ApplyCoverageMarginStraight(Vec2 leftEdge, Vec2 rightEdge, double toolHeading)
-    {
-        var tool = _configStore.Tool;
-        double margin = tool.CoverageMarginMeters;
-
-        if (margin <= 0)
-            return (leftEdge, rightEdge);
-
-        // Straight perpendicular direction (no yaw adjustment)
-        double perpHeading = toolHeading + Math.PI / 2.0;
-        double perpSin = Math.Sin(perpHeading);
-        double perpCos = Math.Cos(perpHeading);
-
-        // Expand left edge outward (negative direction)
-        var expandedLeft = new Vec2(
-            leftEdge.Easting - perpSin * margin,
-            leftEdge.Northing - perpCos * margin);
-
-        // Expand right edge outward (positive direction)
-        var expandedRight = new Vec2(
-            rightEdge.Easting + perpSin * margin,
-            rightEdge.Northing + perpCos * margin);
-
-        return (expandedLeft, expandedRight);
-    }
-
-    /// <summary>
-    /// Apply coverage margin to expand section edges outward. Always applies
-    /// — the legacy "skip during yaw / heading mismatch" gating was the cause
-    /// of the dotted seam pattern when coverage overlapped itself, because
-    /// the strip would alternate between expanded and raw widths cycle to
-    /// cycle. Consistent margin = consistent strip width = clean overlap.
-    /// </summary>
-    private (Vec2 left, Vec2 right) ApplyCoverageMargin(Vec2 leftEdge, Vec2 rightEdge, double toolHeading)
-    {
-        var tool = _configStore.Tool;
-        double margin = tool.CoverageMarginMeters;
-
-        if (margin <= 0)
-            return (leftEdge, rightEdge);
-
-        // For smoother alignment on curves, bias the perpendicular by half
-        // the smoothed yaw rate.
-        double curveAdjustedHeading = toolHeading + _yawRate * 0.5;
-
-        // Perpendicular direction (rotated 90° from adjusted heading)
-        double perpHeading = curveAdjustedHeading + Math.PI / 2.0;
-        double perpSin = Math.Sin(perpHeading);
-        double perpCos = Math.Cos(perpHeading);
-
-        // Expand left edge outward (negative direction)
-        var expandedLeft = new Vec2(
-            leftEdge.Easting - perpSin * margin,
-            leftEdge.Northing - perpCos * margin);
-
-        // Expand right edge outward (positive direction)
-        var expandedRight = new Vec2(
-            rightEdge.Easting + perpSin * margin,
-            rightEdge.Northing + perpCos * margin);
-
-        return (expandedLeft, expandedRight);
     }
 
     /// <summary>

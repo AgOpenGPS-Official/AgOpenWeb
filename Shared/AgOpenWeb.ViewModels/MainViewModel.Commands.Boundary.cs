@@ -500,8 +500,13 @@ public partial class MainViewModel
 
         AddBoundaryPointCommand = new RelayCommand(() =>
         {
-            double headingRadians = Heading * Math.PI / 180.0;
-            var (offsetEasting, offsetNorthing) = CalculateOffsetPosition(Easting, Northing, headingRadians);
+            // The point goes where the drive would record one (AgOpenGPS btnAddPoint calls the
+            // same AddBoundaryPoint): at the pivot plus the offset, or at the tool's edge, from
+            // the cycle's pivot (the 5 Hz mirror used here was up to 200 ms behind, and the Tool
+            // setting was ignored).
+            var v = State.Vehicle;
+            double headingRadians = v.Heading * Math.PI / 180.0;
+            var (offsetEasting, offsetNorthing) = BoundaryRecordPoint(v.Easting, v.Northing, headingRadians);
             _boundaryRecordingService.AddPointManual(offsetEasting, offsetNorthing, headingRadians);
             StatusMessage = $"Point added ({_boundaryRecordingService.PointCount} total)";
         });
@@ -738,11 +743,9 @@ public partial class MainViewModel
             {
                 if (currentIndex == SelectedBoundaryIndex)
                 {
-                    boundary.OuterBoundary.IsDriveThrough = !boundary.OuterBoundary.IsDriveThrough;
-                    SaveFieldBoundary(boundary, fieldPath);
-                    SetCurrentBoundary(boundary);
-                    RefreshBoundaryList();
-                    StatusMessage = $"Outer boundary drive-through: {(boundary.OuterBoundary.IsDriveThrough ? "On" : "Off")}";
+                    // Drive-through is an inner boundary's flag (an obstacle the U-turn and the
+                    // headland may cross). AgOpenGPS keeps the outer one off and offers no toggle.
+                    StatusMessage = "The outer boundary can't be drive-through";
                     return;
                 }
                 currentIndex++;
