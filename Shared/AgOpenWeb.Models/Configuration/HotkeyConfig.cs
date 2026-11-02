@@ -80,21 +80,28 @@ public class HotkeyConfig : ObservableObject
         return _reverseMap.TryGetValue(key, out var action) ? action : null;
     }
 
-    public void SetKeyForAction(HotkeyAction action, string key)
+    /// <summary>Bind <paramref name="key"/> to <paramref name="action"/>. False, and nothing
+    /// changed, when the key is another action's (checklist 12.9: a conflict is refused; it used
+    /// to take the key away from the other action without a word).</summary>
+    public bool SetKeyForAction(HotkeyAction action, string key)
     {
-        // Remove any existing binding for this key
-        var existing = _bindings.FirstOrDefault(kvp =>
-            string.Equals(kvp.Value, key, StringComparison.OrdinalIgnoreCase));
-        if (existing.Value != null && existing.Key != action)
-        {
-            _bindings[existing.Key] = "";
-        }
+        if (BoundTo(key) is { } other && other != action) return false;
 
         // Letters are stored upper-case; named keys keep their name ("ArrowUp", "F1") so
         // they read properly. Lookups are case-insensitive either way (#111).
         _bindings[action] = key.Length == 1 ? key.ToUpperInvariant() : key;
         _reverseMap = null;
         OnPropertyChanged(nameof(Bindings));
+        return true;
+    }
+
+    /// <summary>The action <paramref name="key"/> is bound to, if any.</summary>
+    public HotkeyAction? BoundTo(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        foreach (var kvp in _bindings)
+            if (string.Equals(kvp.Value, key, StringComparison.OrdinalIgnoreCase)) return kvp.Key;
+        return null;
     }
 
     public void ResetToDefaults()

@@ -582,7 +582,7 @@ public static partial class RemoteServerWiring
 
     // File / Application Menu write-side. Reset (client-confirmed), hotkey edits, and bug-report
     // dump go straight to the services / ConfigStore (no native dialogs). Language rides the VM.
-    private static void ApplyAppCommand(IServiceProvider services, string cmd, string arg)
+    private static void ApplyAppCommand(IServiceProvider services, AgOpenWeb.ViewModels.MainViewModel vm, string cmd, string arg)
     {
         var configService = services.GetRequiredService<IConfigurationService>();
         var store = services.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>();
@@ -603,8 +603,9 @@ public static partial class RemoteServerWiring
                 var ci = arg.IndexOf(':');
                 if (ci > 0 && System.Enum.TryParse<AgOpenWeb.Models.Configuration.HotkeyAction>(arg[..ci], out var act))
                 {
-                    store.Hotkeys.SetKeyForAction(act, arg[(ci + 1)..]);
-                    configService.SaveAppSettings();
+                    var key = arg[(ci + 1)..];
+                    if (store.Hotkeys.SetKeyForAction(act, key)) configService.SaveAppSettings();
+                    else vm.ReportFailure($"{key} is already the key for {store.Hotkeys.BoundTo(key)}");
                 }
                 return;
             }

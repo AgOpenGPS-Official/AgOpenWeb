@@ -43,10 +43,10 @@ public class GuidanceConfigTests
         Assert.Multiple(() =>
         {
             Assert.That(g.IsPurePursuit, Is.True);
-            Assert.That(g.GoalPointLookAheadHold, Is.EqualTo(4.0));
-            Assert.That(g.GoalPointLookAheadMult, Is.EqualTo(1.4));
+            Assert.That(g.GoalPointLookAheadHold, Is.EqualTo(3.0)); // AgOpenGPS's defaults (checklist 10.7)
+            Assert.That(g.GoalPointLookAheadMult, Is.EqualTo(1.5));
             Assert.That(g.PurePursuitIntegralGain, Is.EqualTo(0.0));
-            Assert.That(g.StanleyDistanceErrorGain, Is.EqualTo(0.8));
+            Assert.That(g.StanleyDistanceErrorGain, Is.EqualTo(1.0));
             Assert.That(g.StanleyHeadingErrorGain, Is.EqualTo(1.0));
             Assert.That(g.UTurnCompensation, Is.EqualTo(1.0));
             Assert.That(g.UTurnRadius, Is.EqualTo(12), "Not a steering-tuning value — must be left alone");

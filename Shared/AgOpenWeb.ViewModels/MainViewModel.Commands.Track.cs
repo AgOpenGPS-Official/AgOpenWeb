@@ -329,10 +329,11 @@ public partial class MainViewModel
             _recordedCurvePoints.Clear();
             _lastCurvePoint = null;
 
-            if (Easting != 0 || Northing != 0)
+            var v0 = State.Vehicle; // the cycle's pivot, as the points that follow (AgOpenGPS ptAa = pivotAxlePos)
+            if (v0.Easting != 0 || v0.Northing != 0)
             {
-                var headingRadians = Heading * Math.PI / 180.0;
-                var firstPoint = new Vec3(Easting, Northing, headingRadians);
+                var headingRadians = v0.Heading * Math.PI / 180.0;
+                var firstPoint = new Vec3(v0.Easting, v0.Northing, headingRadians);
                 _recordedCurvePoints.Add(firstPoint);
                 _lastCurvePoint = firstPoint;
 
@@ -375,10 +376,11 @@ public partial class MainViewModel
             _lastCurvePoint = null;
 
             // Capture first point immediately at current position
-            if (Easting != 0 || Northing != 0)
+            var v0 = State.Vehicle; // the cycle's pivot, as the points that follow (AgOpenGPS ptAa = pivotAxlePos)
+            if (v0.Easting != 0 || v0.Northing != 0)
             {
-                var headingRadians = Heading * Math.PI / 180.0;
-                var firstPoint = new Vec3(Easting, Northing, headingRadians);
+                var headingRadians = v0.Heading * Math.PI / 180.0;
+                var firstPoint = new Vec3(v0.Easting, v0.Northing, headingRadians);
                 _recordedCurvePoints.Add(firstPoint);
                 _lastCurvePoint = firstPoint;
 
@@ -639,13 +641,16 @@ public partial class MainViewModel
 
             if (CurrentABCreationMode == ABCreationMode.DriveAB)
             {
+                // The pivot the cycle wrote (AgOpenGPS btnALine/btnBLine take pivotAxlePos), not
+                // the 5 Hz status mirror, which sat up to 200 ms behind the tractor.
+                var v = State.Vehicle;
                 pointToSet = new Position
                 {
-                    Latitude = Latitude,
-                    Longitude = Longitude,
-                    Easting = Easting,
-                    Northing = Northing,
-                    Heading = Heading
+                    Latitude = v.Latitude,
+                    Longitude = v.Longitude,
+                    Easting = v.Easting,
+                    Northing = v.Northing,
+                    Heading = v.Heading
                 };
                 _logger.LogDebug($"[SetABPointCommand] DriveAB - GPS position: E={Easting:F2}, N={Northing:F2}");
             }
@@ -1815,15 +1820,14 @@ public partial class MainViewModel
     public void CreateAPlusLine(double? headingDeg)
     {
         State.UI.CloseDialog();
-
-        if (Easting == 0 && Northing == 0)
+        var v = State.Vehicle; // the cycle's pivot (AgOpenGPS pivotAxlePos), not the 5 Hz status mirror
+        if (v.Easting == 0 && v.Northing == 0)
         {
             ReportFailure("No GPS position - cannot create A+ line");
             return;
         }
-
-        double deg = headingDeg is double h && double.IsFinite(h) ? WrapDegrees(h) : Heading;
-        var (e, n) = ShiftRight(Easting, Northing, deg * Math.PI / 180.0, RefSideOffset());
+        double deg = headingDeg is double h && double.IsFinite(h) ? WrapDegrees(h) : v.Heading;
+        var (e, n) = ShiftRight(v.Easting, v.Northing, deg * Math.PI / 180.0, RefSideOffset());
         var track = AddABTrack($"A+ {DateTime.Now:HH:mm}", e, n, deg);
         StatusMessage = $"A+ line '{track.Name}' created at heading {deg:F1}";
     }

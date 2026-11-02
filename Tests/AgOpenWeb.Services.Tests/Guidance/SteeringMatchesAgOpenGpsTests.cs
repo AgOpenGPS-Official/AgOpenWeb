@@ -23,8 +23,12 @@ public class SteeringMatchesAgOpenGpsTests
 {
     private const double Wheelbase = 2.8;
     private const double MaxSteer = 35;
-    private const double LookAhead = 4.0;
-    private const double HeadingGain = 1.0, DistanceGain = 0.8, IntegralGain = 0.5;
+    private double LookAhead = 4.0;
+    private double HeadingGain = 1.0, DistanceGain = 0.8;
+    private const double IntegralGain = 0.5;
+
+    [SetUp]
+    public void SetUp() { LookAhead = 4.0; HeadingGain = 1.0; DistanceGain = 0.8; }
     private const double SideHill = 0.3;
     private const double Exact = 1e-9;      // the same arithmetic in the same order
 
@@ -59,7 +63,7 @@ public class SteeringMatchesAgOpenGpsTests
         FindGlobalNearest = global, CurrentLocationIndex = state?.CurrentLocationIndex ?? 0,
     };
 
-    private static AgOpenGpsSteeringOracle.PurePursuitInput TheirPurePursuit(Vec3 pivot, double speed, bool against,
+    private AgOpenGpsSteeringOracle.PurePursuitInput TheirPurePursuit(Vec3 pivot, double speed, bool against,
         bool reverse, double roll, double integralGain, TrackGuidanceState? s) => new()
     {
         PivotPosition = pivot, CurrentLinePtA = LineA, CurrentLinePtB = LineB, ABHeading = 0,
@@ -70,7 +74,7 @@ public class SteeringMatchesAgOpenGpsTests
         PreviousPivotDistanceErrorLast = s?.PivotDistanceErrorLast ?? 0, PreviousCounter = s?.Counter ?? 0,
     };
 
-    private static AgOpenGpsSteeringOracle.StanleyInput TheirStanley(Vec3 pivot, Vec3 steer, double speed,
+    private AgOpenGpsSteeringOracle.StanleyInput TheirStanley(Vec3 pivot, Vec3 steer, double speed,
         bool reverse, double roll, double integralGain, TrackGuidanceState? s) => new()
     {
         PivotPosition = pivot, SteerPosition = steer, StanleyHeadingErrorGain = HeadingGain,
@@ -131,7 +135,7 @@ public class SteeringMatchesAgOpenGpsTests
     /// so the integrals have work to do. Both controllers see the same poses (ours drives) and
     /// each keeps its own history: integral, filters, counters.
     /// </summary>
-    private void DriveAPass(bool stanley, bool against, double integralGain, double tolerance)
+    private void DriveAPass(bool stanley, bool against, double integralGain, double tolerance, bool mustEndNearTheLine = true)
     {
         const double speed = 7.0, biasDeg = 2.0, dt = 0.1;
         double v = speed / 3.6;
@@ -177,7 +181,7 @@ public class SteeringMatchesAgOpenGpsTests
             x += v * Math.Sin(h) * dt; y += v * Math.Cos(h) * dt;
         }
         Assert.That(worst, Is.LessThan(tolerance), $"largest difference {worst:E2}° at step {worstAt} of {steps}");
-        Assert.That(Math.Abs(x), Is.LessThan(0.5), "the pass should have ended near the line");
+        if (mustEndNearTheLine) Assert.That(Math.Abs(x), Is.LessThan(0.5), "the pass should have ended near the line");
     }
 
     [TestCase(false, TestName = "PurePursuit_AbLine_WholePass_WithTheIntegral_IsAgOpenGps")]
@@ -186,6 +190,27 @@ public class SteeringMatchesAgOpenGpsTests
 
     [Test]
     public void Stanley_AbLine_WholePass_WithTheIntegral_IsAgOpenGps() => DriveAPass(true, false, IntegralGain, Exact);
+
+    /// <summary>
+    /// Checklist 2.3: the look-ahead, the integral and the gains change the steering as AgOpenGPS's
+    /// tooltips describe, because for every setting the steer angle is AgOpenGPS's over a whole pass.
+    /// </summary>
+    [TestCase(2.0, 0.0), TestCase(2.0, 1.0), TestCase(4.0, 0.3), TestCase(8.0, 0.0), TestCase(8.0, 1.0)]
+    public void PurePursuit_LookAheadAndIntegral_Sweep_IsAgOpenGps(double lookAhead, double integral)
+    {
+        LookAhead = lookAhead;
+        // A long look-ahead with a strong integral is still settling at 300 m in this bare
+        // kinematic drive; the steer angle, not the settling, is what is held here.
+        DriveAPass(false, false, integral, Exact, mustEndNearTheLine: false);
+    }
+
+    [TestCase(0.5, 0.5, 0.0), TestCase(0.5, 2.0, 0.5), TestCase(2.0, 0.5, 0.5), TestCase(2.0, 2.0, 1.0), TestCase(1.0, 1.0, 1.0)]
+    public void Stanley_GainsAndIntegral_Sweep_IsAgOpenGps(double headingGain, double distanceGain, double integral)
+    {
+        HeadingGain = headingGain;
+        DistanceGain = distanceGain;
+        DriveAPass(true, false, integral, Exact, mustEndNearTheLine: false);
+    }
 
     // Against the line the integral offset is mirrored on purpose (StanleyIntegralDirectionTests),
     // so this pass runs without it: everything else must still be AgOpenGPS's.

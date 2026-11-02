@@ -38,10 +38,10 @@ public class GuidanceConfig : ObservableObject
     public void ResetSteeringTuning()
     {
         IsPurePursuit = true;
-        GoalPointLookAheadHold = 4.0;
-        GoalPointLookAheadMult = 1.4;
+        GoalPointLookAheadHold = 3.0;
+        GoalPointLookAheadMult = 1.5;
         PurePursuitIntegralGain = 0.0;
-        StanleyDistanceErrorGain = 0.8;
+        StanleyDistanceErrorGain = 1.0;
         StanleyHeadingErrorGain = 1.0;
         UTurnCompensation = 1.0;
     }
@@ -54,14 +54,14 @@ public class GuidanceConfig : ObservableObject
     public static double UTurnCompensationFromPercent(double percent) => 1.0 + percent / 100.0;
 
     // Look-ahead parameters (both algorithms)
-    private double _goalPointLookAheadHold = 4.0;
+    private double _goalPointLookAheadHold = 3.0; // AgOpenGPS setVehicle_goalPointLookAheadHold
     public double GoalPointLookAheadHold
     {
         get => _goalPointLookAheadHold;
         set => SetProperty(ref _goalPointLookAheadHold, value);
     }
 
-    private double _goalPointLookAheadMult = 1.4;
+    private double _goalPointLookAheadMult = 1.5; // AgOpenGPS setVehicle_goalPointLookAheadMult
     public double GoalPointLookAheadMult
     {
         get => _goalPointLookAheadMult;
@@ -91,7 +91,7 @@ public class GuidanceConfig : ObservableObject
     }
 
     // Stanley specific
-    private double _stanleyDistanceErrorGain = 0.8;
+    private double _stanleyDistanceErrorGain = 1.0; // AgOpenGPS stanleyDistanceErrorGain
     public double StanleyDistanceErrorGain
     {
         get => _stanleyDistanceErrorGain;
