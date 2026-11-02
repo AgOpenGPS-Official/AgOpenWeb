@@ -21,7 +21,8 @@ internal sealed record ToolPositionSnapshot(
     double ToolHeading,
     Vec3 TankPosition,
     Vec3 HitchPosition,
-    bool IsToolPositionReady);
+    bool IsToolPositionReady,
+    bool HasPosition);
 
 /// <summary>
 /// Calculates tool/implement position relative to vehicle pivot point.
@@ -62,7 +63,7 @@ public class ToolPositionService : IToolPositionService
     // Read snapshot — atomically swapped after each writer completes.
     // Readers never lock; they observe a fully-consistent record.
     private ToolPositionSnapshot _snapshot = new(
-        default, default, 0, default, default, false);
+        default, default, 0, default, default, false, false);
 
     // Serializes the two writers (Update from control loop, ResetTrailingState
     // from UI/MainViewModel). Brief — contains only field updates and snapshot
@@ -88,12 +89,20 @@ public class ToolPositionService : IToolPositionService
     /// </summary>
     public bool IsToolPositionReady => Volatile.Read(ref _snapshot).IsToolPositionReady;
 
+    /// <summary>
+    /// True once <see cref="Update"/> has run: the tool has a position. A fixed tool's position
+    /// is right from the first update; <see cref="IsToolPositionReady"/> waits for a trailing
+    /// tool's heading to settle and never turns true for a fixed one.
+    /// </summary>
+    public bool HasPosition => Volatile.Read(ref _snapshot).HasPosition;
+
     private void PublishSnapshot()
     {
         Interlocked.Exchange(ref _snapshot, new ToolPositionSnapshot(
             _toolPosition, _toolPivotPosition, _toolHeading,
             _tankPosition, _hitchPosition,
-            _startCounter >= STARTUP_FRAMES));
+            _startCounter >= STARTUP_FRAMES,
+            HasPosition: true));
     }
 
     public void Update(Vec3 vehiclePivot, double vehicleHeading)
