@@ -632,6 +632,109 @@ public class AutoSteerUTurnNUnitTests
         TestContext.Out.WriteLine($"Coverage CSV: {covCsvPath}");
     }
 
+    /// <summary>
+    /// Checklist 3.13 / 3.14: a pass, an automatic U-turn and the next pass, with headland
+    /// section control and the hydraulic lift on. As in AgOpenGPS: no section paints while the
+    /// whole tool is in the headland; the lift goes 1 (down) → 2 (up) → 1, raising only once
+    /// both tool corners have crossed the headland line (the pass is finished) and lowering
+    /// before the tool reaches it again (look-ahead), never 0 (which cancels the module's timing).
+    /// </summary>
+    [Test]
+    public void UTurn_SectionsOffInTheHeadland_LiftUpAfterTheLineAndDownBeforeIt()
+    {
+        CreateFreshPipeline();
+        var config = ConfigurationStore.Instance;
+        config.Tool.IsHeadlandSectionControl = true;
+        config.Machine.HydraulicLiftEnabled = true;
+        config.Machine.LookAhead = 2.0;
+
+        _pipeline.SetLocalPlane(new LocalPlane(new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties()));
+        var outerPoly = new BoundaryPolygon();
+        outerPoly.Points.Add(new BoundaryPoint { Easting = 0, Northing = 0 });
+        outerPoly.Points.Add(new BoundaryPoint { Easting = FIELD_W, Northing = 0 });
+        outerPoly.Points.Add(new BoundaryPoint { Easting = FIELD_W, Northing = FIELD_H });
+        outerPoly.Points.Add(new BoundaryPoint { Easting = 0, Northing = FIELD_H });
+        outerPoly.UpdateBounds();
+        var boundary = new Boundary { OuterBoundary = outerPoly };
+        var headlandLine = new List<Vec3>
+        {
+            new(HEADLAND, HEADLAND, 0), new(FIELD_W - HEADLAND, HEADLAND, 0),
+            new(FIELD_W - HEADLAND, FIELD_H - HEADLAND, 0), new(HEADLAND, FIELD_H - HEADLAND, 0),
+            new(HEADLAND, HEADLAND, 0),
+        };
+        _pipeline.SetBoundary(boundary);
+        _pipeline.SetHeadlandLine(headlandLine);
+        _pipeline.SetHeadlandOn(true);
+        _sectionControl.SetFieldContext(new AgOpenWeb.Models.Sections.SectionFieldContext(boundary, headlandLine, true, true));
+
+        double abNorthing = HEADLAND + TOOL_WIDTH / 2.0;
+        var track = new AgOpenWeb.Models.Track.Track
+        {
+            Name = "AB",
+            Points = new List<Vec3> { new(HEADLAND, abNorthing, Math.PI / 2), new(FIELD_W - HEADLAND, abNorthing, Math.PI / 2) },
+            Type = AgOpenWeb.Models.Track.TrackType.ABLine,
+        };
+        SendGpsAt(HEADLAND + 40, abNorthing, heading: 90, count: 20);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
+        _pipeline.SetAutoSteerEngaged(true);
+        _pipeline.SetYouTurnEnabled(true);
+        lock (_results) _results.Clear();
+
+        var all = new List<(string phase, GpsCycleResult r)>();
+        double lat = ORIGIN_LAT + abNorthing / MetersPerDegLat;
+        double lon = ORIGIN_LON + (HEADLAND + 40) / MetersPerDegLon;
+        double hdg = 90;
+        DriveWithFeedback(ref lat, ref lon, ref hdg, speedKmh: 10, maxSteps: 600, phase: "pass1", allResults: all,
+            stopCondition: r => r?.YouTurn is { IsExecuting: true });
+        DriveWithFeedback(ref lat, ref lon, ref hdg, speedKmh: 10, maxSteps: 600, phase: "turn", allResults: all,
+            stopCondition: r => r?.YouTurn is { IsExecuting: false, IsTriggered: false });
+        DriveWithFeedback(ref lat, ref lon, ref hdg, speedKmh: 10, maxSteps: 250, phase: "pass2", allResults: all);
+
+        Assert.That(all.Any(x => x.phase == "turn"), Is.True, "the turn should have run");
+        Assert.That(all.Where(x => x.phase == "pass2").Select(x => x.r.Heading).DefaultIfEmpty(90).Last(),
+            Is.InRange(225.0, 315.0), "pass 2 heads back west");
+
+        bool InWorkArea(double e, double n) => e > HEADLAND && e < FIELD_W - HEADLAND && n > HEADLAND && n < FIELD_H - HEADLAND;
+        (double e, double n) Corner(GpsCycleResult r, int side) =>
+            (r.ToolEasting + side * Math.Cos(r.ToolHeadingRadians) * TOOL_WIDTH / 2,
+             r.ToolNorthing - side * Math.Sin(r.ToolHeadingRadians) * TOOL_WIDTH / 2);
+        bool WhollyInHeadland(GpsCycleResult r)
+        {
+            var (le, ln) = Corner(r, -1); var (re, rn) = Corner(r, +1);
+            return !InWorkArea(le, ln) && !InWorkArea(re, rn) && !InWorkArea(r.ToolEasting, r.ToolNorthing);
+        }
+
+        var cycles = all.Select(x => x.r).Where(r => r.IsToolPositionReady).ToList();
+        var lifts = cycles.Select(r => r.HydLiftState).ToList();
+        var runs = new List<byte>();
+        foreach (var l in lifts) if (runs.Count == 0 || runs[^1] != l) runs.Add(l);
+        TestContext.Out.WriteLine($"lift runs: {string.Join(" → ", runs)}");
+
+        int up = lifts.IndexOf(2);
+        int down = up < 0 ? -1 : lifts.FindIndex(up, l => l == 1);
+        Assert.Multiple(() =>
+        {
+            Assert.That(runs, Is.EqualTo(new byte[] { 1, 2, 1 }), "down, up for the turn, down again");
+            Assert.That(up, Is.GreaterThan(0));
+            Assert.That(WhollyInHeadland(cycles[up]), Is.True,
+                $"raised before the whole tool had crossed the line: tool at ({cycles[up].ToolEasting:F1}, {cycles[up].ToolNorthing:F1})");
+            Assert.That(down, Is.GreaterThan(up));
+            Assert.That(WhollyInHeadland(cycles[down]), Is.True,
+                "lowered with the tool still in the headland: the look-ahead lowers it before the line");
+
+            // Sections: none on while the tool is wholly in the headland (a cycle's grace after it enters).
+            for (int i = 1; i < cycles.Count; i++)
+            {
+                if (!WhollyInHeadland(cycles[i]) || !WhollyInHeadland(cycles[i - 1])) continue;
+                var on = cycles[i].SectionStates;
+                Assert.That(on == null || on.All(s => !s), Is.True,
+                    $"a section on in the headland at cycle {i}: tool ({cycles[i].ToolEasting:F1}, {cycles[i].ToolNorthing:F1})");
+            }
+            Assert.That(cycles.Any(r => r.SectionStates?.Any(s => s) == true && InWorkArea(r.ToolEasting, r.ToolNorthing)),
+                Is.True, "sections work in the field");
+        });
+    }
+
     [Test]
     public void DriveEntireField_EastWest_MeasureCoverage()
     {
