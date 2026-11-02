@@ -169,6 +169,36 @@ public class DeleteFieldAndBoundaryTests
     }
 
     [Test]
+    public void DeleteBoundary_TheOuterOne_WhileIslandsRemain_IsRefused()
+    {
+        // AgOpenGPS FormBoundary: Delete is enabled for the outer boundary only when it is the only one.
+        var (vm, b, _) = FieldWithIslands();
+        string? failure = null;
+        vm.FailureReported += m => failure = m;
+        vm.SelectedBoundaryIndex = 0;
+
+        vm.DeleteBoundaryCommand!.Execute(null);
+
+        b.FieldService.DidNotReceive().SaveField(Arg.Any<Field>());
+        Assert.That(failure, Does.Contain("inner boundaries first"));
+        Assert.That(vm.State.Field.CurrentBoundary!.OuterBoundary, Is.Not.Null);
+    }
+
+    [Test]
+    public void DeleteBoundary_TheOuterOne_WhenItIsTheLast_IsDeleted()
+    {
+        var (vm, _, saved) = FieldWithIslands();
+        var boundary = vm.State.Field.CurrentBoundary!;
+        boundary.InnerBoundaries.RemoveAll(i => i.IsValid);   // the unlisted stub stays: not a boundary
+        vm.SelectedBoundaryIndex = 0;
+
+        vm.DeleteBoundaryCommand!.Execute(null);
+
+        Assert.That(saved(), Is.Not.Null);
+        Assert.That(saved()!.OuterBoundary, Is.Null);
+    }
+
+    [Test]
     public void DeleteBoundary_NothingPicked_DeletesNothing()
     {
         var (vm, b, _) = FieldWithIslands();

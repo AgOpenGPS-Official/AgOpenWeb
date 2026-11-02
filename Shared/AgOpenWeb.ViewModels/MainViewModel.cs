@@ -4657,6 +4657,13 @@ public partial class MainViewModel : ObservableObject
         {
             if (currentIndex == SelectedBoundaryIndex)
             {
+                // AgOpenGPS (FormBoundary): the outer boundary can be deleted only when it is the
+                // last one. Islands left without a field around them would be no field at all.
+                if (boundary.InnerBoundaries.Any(b => b.IsValid))
+                {
+                    ReportFailure("Delete the inner boundaries first");
+                    return;
+                }
                 boundary.OuterBoundary = null;
                 deleted = true;
             }
