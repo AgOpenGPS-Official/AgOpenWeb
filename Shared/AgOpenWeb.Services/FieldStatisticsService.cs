@@ -198,25 +198,6 @@ public class FieldStatisticsService : IFieldStatisticsService
     }
 
     /// <summary>
-    /// Calculate overlap statistics
-    /// </summary>
-    public void CalculateOverlap()
-    {
-        if (_statistics.WorkedAreaTotal > 0)
-        {
-            // This is simplified - actual implementation would need section data
-            // to calculate actual vs theoretical coverage
-            _statistics.ActualAreaCovered = _statistics.WorkedAreaTotal * 0.95; // Placeholder
-            _statistics.OverlapPercent = ((_statistics.WorkedAreaTotal - _statistics.ActualAreaCovered) / _statistics.WorkedAreaTotal) * 100;
-        }
-        else
-        {
-            _statistics.ActualAreaCovered = 0;
-            _statistics.OverlapPercent = 0;
-        }
-    }
-
-    /// <summary>
     /// Get remaining area to work in hectares
     /// </summary>
     public double GetRemainingAreaHectares()
