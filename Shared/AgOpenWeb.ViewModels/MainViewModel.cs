@@ -5041,6 +5041,16 @@ public partial class MainViewModel : ObservableObject
                             }
                         }
 
+                        // A KML ring repeats its first point at the end; a boundary doesn't (AgOpenGPS
+                        // FixFenceLine drops points that close together), so drop it here.
+                        if (polygonPoints.Count >= 4 && polygonPoints[0] == polygonPoints[^1])
+                        {
+                            sumLat -= polygonPoints[^1].Latitude;
+                            sumLon -= polygonPoints[^1].Longitude;
+                            totalValidPoints--;
+                            polygonPoints.RemoveAt(polygonPoints.Count - 1);
+                        }
+
                         if (polygonPoints.Count >= 3)
                         {
                             _kmlParsedPolygons.Add(polygonPoints);

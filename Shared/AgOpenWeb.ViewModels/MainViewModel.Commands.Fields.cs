@@ -195,11 +195,12 @@ public partial class MainViewModel
 
         ConfirmNewFieldDialogCommand = new AsyncRelayCommand(async () =>
         {
-            if (string.IsNullOrWhiteSpace(NewFieldName))
+            if (!FieldNames.TryCheck(NewFieldName, out var checkedName, out var nameProblem))
             {
-                StatusMessage = "Please enter a field name";
+                ReportFailure(nameProblem);
                 return;
             }
+            NewFieldName = checkedName;
 
             var fieldsDir = _settingsService.Settings.FieldsDirectory;
             if (string.IsNullOrWhiteSpace(fieldsDir))
@@ -211,7 +212,7 @@ public partial class MainViewModel
             var fieldPath = Path.Combine(fieldsDir, NewFieldName);
             if (Directory.Exists(fieldPath))
             {
-                StatusMessage = $"Field '{NewFieldName}' already exists";
+                ReportFailure($"Field '{NewFieldName}' already exists");
                 return;
             }
 
@@ -272,10 +273,9 @@ public partial class MainViewModel
                 return;
             }
 
-            var newFieldName = FromExistingFieldName.Trim();
-            if (string.IsNullOrWhiteSpace(newFieldName))
+            if (!FieldNames.TryCheck(FromExistingFieldName, out var newFieldName, out var nameProblem))
             {
-                StatusMessage = "Please enter a field name";
+                ReportFailure(nameProblem);
                 return;
             }
 
@@ -291,7 +291,7 @@ public partial class MainViewModel
 
             if (Directory.Exists(newFieldPath))
             {
-                StatusMessage = $"Field '{newFieldName}' already exists";
+                ReportFailure($"Field '{newFieldName}' already exists");
                 return;
             }
 
@@ -396,10 +396,9 @@ public partial class MainViewModel
             }
 
             // Create new field mode (opened from field creation)
-            var newFieldName = KmlImportFieldName.Trim();
-            if (string.IsNullOrWhiteSpace(newFieldName))
+            if (!FieldNames.TryCheck(KmlImportFieldName, out var newFieldName, out var nameProblem))
             {
-                StatusMessage = "Please enter a field name";
+                ReportFailure(nameProblem);
                 return;
             }
 
@@ -413,7 +412,7 @@ public partial class MainViewModel
             var newFieldPath = Path.Combine(fieldsDir, newFieldName);
             if (Directory.Exists(newFieldPath))
             {
-                StatusMessage = $"Field '{newFieldName}' already exists";
+                ReportFailure($"Field '{newFieldName}' already exists");
                 return;
             }
 
@@ -511,10 +510,9 @@ public partial class MainViewModel
                 return;
             }
 
-            var newFieldName = IsoXmlImportFieldName.Trim();
-            if (string.IsNullOrWhiteSpace(newFieldName))
+            if (!FieldNames.TryCheck(IsoXmlImportFieldName, out var newFieldName, out var nameProblem))
             {
-                StatusMessage = "Please enter a field name";
+                ReportFailure(nameProblem);
                 return;
             }
 
@@ -528,7 +526,7 @@ public partial class MainViewModel
             var newFieldPath = Path.Combine(fieldsDir, newFieldName);
             if (Directory.Exists(newFieldPath))
             {
-                StatusMessage = $"Field '{newFieldName}' already exists";
+                ReportFailure($"Field '{newFieldName}' already exists");
                 return;
             }
 
