@@ -31,7 +31,7 @@ namespace AgOpenWeb.Models.Tool
     /// <param name="VehicleHitchLength">Axle → tractor hitch pin (used by Trailing/TBT).</param>
     /// <param name="ToolHitchLength">Axle → implement working centre (used by rigid tools).</param>
     /// <param name="TrailingHitchLength">Hitch → tool pivot, along the tool.</param>
-    /// <param name="TrailingToolToPivotLength">Tool pivot → tool working centre.</param>
+    /// <param name="TrailingToolToPivotLength">Tool pivot → tool working centre, AgOpenGPS's sign: positive with the tool behind its wheels.</param>
     /// <param name="TankTrailingHitchLength">Hitch → tank pivot (TBT only).</param>
     /// <param name="Length">
     /// Fore-aft length of the implement body, from its attachment to the
@@ -134,7 +134,7 @@ namespace AgOpenWeb.Models.Tool
                         if (!seeded) { lastToolPivot = Behind(hitch, heading, geom.TrailingHitchLength); seeded = true; }
                         toolHeading = DirectionFrom(lastToolPivot, hitch, heading);
                         attachment = Behind(hitch, toolHeading, geom.TrailingHitchLength);
-                        toolCenter = Behind(hitch, toolHeading, geom.TrailingHitchLength - geom.TrailingToolToPivotLength);
+                        toolCenter = Behind(hitch, toolHeading, geom.TrailingHitchLength + geom.TrailingToolToPivotLength);
                         lastToolPivot = attachment;
                         break;
                     }
@@ -150,7 +150,7 @@ namespace AgOpenWeb.Models.Tool
                         Vec3 tank = Behind(hitch, tankHeading, geom.TankTrailingHitchLength);
                         toolHeading = DirectionFrom(lastToolPivot, tank, tankHeading);
                         attachment = Behind(tank, toolHeading, geom.TrailingHitchLength);
-                        toolCenter = Behind(tank, toolHeading, geom.TrailingHitchLength - geom.TrailingToolToPivotLength);
+                        toolCenter = Behind(tank, toolHeading, geom.TrailingHitchLength + geom.TrailingToolToPivotLength);
                         lastTank = tank;
                         lastToolPivot = attachment;
                         break;
