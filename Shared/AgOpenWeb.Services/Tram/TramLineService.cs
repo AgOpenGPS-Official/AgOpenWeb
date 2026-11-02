@@ -541,28 +541,41 @@ public class TramLineService(
     /// Check if a position is on or near a tram line
     /// </summary>
     public bool IsOnTramLine(Vec3 position, double tolerance)
+        => IsOnTramLine(position, tolerance, TramDisplayMode.All);
+
+    /// <summary>
+    /// As <see cref="IsOnTramLine(Vec3, double)"/>, counting only the lines the display mode
+    /// shows: Lines only has no boundary tracks, Outer only no parallel lines (AgOpenGPS reads
+    /// its tram control byte off the drawn lines, so a hidden line never lights a wheel; #541).
+    /// Off counts nothing.
+    /// </summary>
+    public bool IsOnTramLine(Vec3 position, double tolerance, TramDisplayMode mode)
     {
+        if (mode == TramDisplayMode.Off) return false;
         double distSq = tolerance * tolerance;
 
-        // Check boundary tracks
-        if (IsOnPolyline(_outerBoundaryTrack, position, distSq))
-            return true;
-
-        if (IsOnPolyline(_innerBoundaryTrack, position, distSq))
-            return true;
-
-        // Check parallel tram lines
-        foreach (var tramLine in _parallelTramLines)
+        if (mode != TramDisplayMode.LinesOnly)
         {
-            if (IsOnPolyline(tramLine, position, distSq))
+            if (IsOnPolyline(_outerBoundaryTrack, position, distSq))
                 return true;
+
+            if (IsOnPolyline(_innerBoundaryTrack, position, distSq))
+                return true;
+
+            foreach (var tramLine in _boundaryExtraLines)
+            {
+                if (IsOnPolyline(tramLine, position, distSq))
+                    return true;
+            }
         }
 
-        // Check boundary extra passes
-        foreach (var tramLine in _boundaryExtraLines)
+        if (mode != TramDisplayMode.OuterOnly)
         {
-            if (IsOnPolyline(tramLine, position, distSq))
-                return true;
+            foreach (var tramLine in _parallelTramLines)
+            {
+                if (IsOnPolyline(tramLine, position, distSq))
+                    return true;
+            }
         }
 
         return false;
@@ -636,11 +649,14 @@ public class TramLineService(
     /// Detect which wheels are on tram lines, checked where the tram wheel tracks run under
     /// the tool (AgOpenGPS): ± half the wheel track about the tool's centre, or that far in
     /// from its edges when the trams are outer (<see cref="IsOuter"/>). Only a tool wider
-    /// than the wheel track has tram control. Returns a byte: bit 0 = right, bit 1 = left.
+    /// than the wheel track has tram control, and only the lines the display mode shows count
+    /// (<see cref="IsOnTramLine(Vec3, double, TramDisplayMode)"/>). Returns a byte: bit 0 =
+    /// right, bit 1 = left.
     /// </summary>
     public byte DetectTramWheels(Vec3 toolPosition, double toolHeading, double tolerance)
     {
         var config = configStore;
+        var mode = config.Tram.DisplayMode;
         double halfTrack = config.Vehicle.TrackWidth / 2.0;
         double toolWidth = config.ActualToolWidth;
         if (toolWidth <= config.Vehicle.TrackWidth) return 0;
@@ -666,8 +682,8 @@ public class TramLineService(
 
         byte result = 0;
 
-        bool rightOn = IsOnTramLine(rightWheel, tolerance) || _isRightManualOn;
-        bool leftOn = IsOnTramLine(leftWheel, tolerance) || _isLeftManualOn;
+        bool rightOn = IsOnTramLine(rightWheel, tolerance, mode) || _isRightManualOn;
+        bool leftOn = IsOnTramLine(leftWheel, tolerance, mode) || _isLeftManualOn;
 
         if (rightOn) result |= 1;
         if (leftOn) result |= 2;

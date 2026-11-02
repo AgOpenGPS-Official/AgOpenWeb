@@ -29,6 +29,12 @@ public interface IToolPositionService
     double ToolHeading { get; }
 
     /// <summary>
+    /// True once the service has been updated: the tool has a position. Unlike
+    /// <c>IsToolPositionReady</c> it is true for a fixed tool too.
+    /// </summary>
+    bool HasPosition { get; }
+
+    /// <summary>
     /// Tank trailer position for TBT mode (zero if not TBT)
     /// </summary>
     Vec3 TankPosition { get; }

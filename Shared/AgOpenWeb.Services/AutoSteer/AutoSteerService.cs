@@ -34,6 +34,7 @@ public class AutoSteerService : IAutoSteerService
     private readonly IGpsService _gpsService;
     private readonly ConfigurationStore _configStore;
     private ITramLineService? _tramLineService;
+    private IToolPositionService? _toolPositionService;
     private ISmartWasCalibrationService? _smartWas;
 
     // Drift compensation applied to the local coordinates the cycle hands over
@@ -166,6 +167,15 @@ public class AutoSteerService : IAutoSteerService
     public void SetTramLineService(ITramLineService tramLineService)
     {
         _tramLineService = tramLineService;
+    }
+
+    /// <summary>
+    /// Set the tool position service: the tram wheels are checked where the tool is (#541).
+    /// It is updated by the host control loop; this service only reads it.
+    /// </summary>
+    public void SetToolPositionService(IToolPositionService toolPositionService)
+    {
+        _toolPositionService = toolPositionService;
     }
 
     /// <summary>
@@ -872,20 +882,16 @@ public class AutoSteerService : IAutoSteerService
         if (_tramLineService != null && _tramLineService.HasTramLines &&
             _configStore.Tram.DisplayMode != Models.Configuration.TramDisplayMode.Off)
         {
-            // Use approximate tool position so detection matches implement indicators.
-            // Rigid tools sit at Tool.HitchLength (working center); trailing/TBT project
-            // from Vehicle.HitchLength (tractor hitch pin) plus the trailing arm.
-            var config = _configStore;
-            double hitchBase = (config.Tool.IsToolFrontFixed || config.Tool.IsToolRearFixed)
-                ? config.Tool.HitchLength
-                : config.Vehicle.HitchLength;
-            double hitchLen = hitchBase + config.Tool.TrailingHitchLength;
-            double toolE = _state.Easting + Math.Sin(_state.HeadingRadians) * hitchLen;
-            double toolN = _state.Northing + Math.Cos(_state.HeadingRadians) * hitchLen;
-
-            _state.TramState = _tramLineService.DetectTramWheels(
-                new Models.Base.Vec3(toolE, toolN, _state.Heading),
-                _state.HeadingRadians, 0.5);
+            // The wheels are checked where the tool is, as AgOpenGPS reads its control byte
+            // off the pixels under the tool: the tool position service's point and heading
+            // (the same ones the sections and the coverage use), not a projection from the
+            // pivot. A projection here once ran the hitch length ahead of the tractor instead
+            // of behind it, so the lights came on as the tractor crossed a tram, not the
+            // implement (#541). Before the first control tick there is no tool position.
+            var tool = _toolPositionService;
+            _state.TramState = tool != null && tool.HasPosition
+                ? _tramLineService.DetectTramWheels(tool.ToolPosition, tool.ToolHeading, 0.5)
+                : (byte)0;
         }
         else
         {

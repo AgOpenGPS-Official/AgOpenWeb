@@ -36,6 +36,7 @@ public class TramLineTests
         config.Vehicle.TrackWidth = 1.8;
         config.Tool.Width = 12.0;
         config.Tram.IsOuterInverted = false;
+        config.Tram.DisplayMode = TramDisplayMode.All; // the wheel checks count only shown lines (#541)
         _savedSections = config.NumSections;
         _savedSection0 = config.Tool.GetSectionWidth(0);
         _savedOffset = config.Tool.Offset;
@@ -56,6 +57,7 @@ public class TramLineTests
         config.Tool.Offset = _savedOffset;
         config.Tram.IsOuterInverted = false;
         config.Tram.TramWidth = 24.0;
+        config.Tram.DisplayMode = TramDisplayMode.Off;
     }
 
     private static void UseTool(double toolWidth, double tramWidth, double offset = 0)
@@ -244,6 +246,43 @@ public class TramLineTests
         byte result = _service.DetectTramWheels(new Vec3(0, 50, 0), 0, 0.5);
 
         Assert.That(result, Is.EqualTo(0), "No wheels on tram = 0");
+    }
+
+    // #541: AgOpenGPS reads its tram control byte off the lines it draws, so a line the
+    // display mode hides never lights a wheel. Lines only hides the boundary tracks, Outer
+    // only hides the parallel lines.
+    [Test]
+    public void DetectTramWheels_OuterOnly_IgnoresParallelLines()
+    {
+        _service.AddTramLine(new List<Vec2> { new Vec2(-0.9, 0), new Vec2(-0.9, 100) });
+        _service.AddTramLine(new List<Vec2> { new Vec2(0.9, 0), new Vec2(0.9, 100) });
+
+        ConfigurationStore.Instance.Tram.DisplayMode = TramDisplayMode.OuterOnly;
+        Assert.That(_service.DetectTramWheels(new Vec3(0, 50, 0), 0, 0.5), Is.EqualTo(0),
+            "Outer only: the parallel lines are hidden, so they don't light");
+
+        ConfigurationStore.Instance.Tram.DisplayMode = TramDisplayMode.LinesOnly;
+        Assert.That(_service.DetectTramWheels(new Vec3(0, 50, 0), 0, 0.5), Is.EqualTo(3),
+            "Lines only shows the parallel lines");
+    }
+
+    [Test]
+    public void IsOnTramLine_LinesOnly_IgnoresBoundaryTracks()
+    {
+        var fence = new List<Vec3>
+        {
+            new Vec3(0, 0, 0), new Vec3(200, 0, 0), new Vec3(200, 200, 0), new Vec3(0, 200, 0),
+        };
+        _service.GenerateBoundaryTramTracks(fence);
+        Assume.That(_service.OuterBoundaryTrack.Count, Is.GreaterThan(1));
+        var p = _service.OuterBoundaryTrack[_service.OuterBoundaryTrack.Count / 2];
+        var on = new Vec3(p.Easting, p.Northing, 0);
+
+        Assert.That(_service.IsOnTramLine(on, 0.5, TramDisplayMode.All), Is.True);
+        Assert.That(_service.IsOnTramLine(on, 0.5, TramDisplayMode.OuterOnly), Is.True);
+        Assert.That(_service.IsOnTramLine(on, 0.5, TramDisplayMode.LinesOnly), Is.False,
+            "Lines only: the boundary tracks are hidden");
+        Assert.That(_service.IsOnTramLine(on, 0.5, TramDisplayMode.Off), Is.False);
     }
 
     [Test]
