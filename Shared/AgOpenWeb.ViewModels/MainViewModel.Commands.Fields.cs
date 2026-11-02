@@ -534,10 +534,7 @@ public partial class MainViewModel
             {
                 // Locate TASKDATA.XML inside the selected dataset folder (case-insensitive
                 // so real-world uppercase datasets work on Linux too).
-                var taskDataPath = Directory.Exists(SelectedIsoXmlFile.FullPath)
-                    ? Directory.EnumerateFiles(SelectedIsoXmlFile.FullPath)
-                        .FirstOrDefault(f => string.Equals(Path.GetFileName(f), "TASKDATA.XML", StringComparison.OrdinalIgnoreCase))
-                    : null;
+                var taskDataPath = IsoXmlImportCatalog.FindTaskData(SelectedIsoXmlFile.FullPath);
                 if (taskDataPath == null)
                 {
                     StatusMessage = "TASKDATA.XML not found in the selected folder";
@@ -546,12 +543,15 @@ public partial class MainViewModel
 
                 var doc = new XmlDocument();
                 doc.Load(taskDataPath);
-                var pfd = doc.SelectSingleNode("//PFD");
-                if (pfd == null)
+                // The partfield picked in the list: a TASKDATA.XML can hold a whole farm, and AgOpenGPS
+                // lists every PFD and imports the one chosen (IsoXmlImportCatalog).
+                var pfds = doc.GetElementsByTagName("PFD");
+                if (pfds.Count == 0)
                 {
                     ReportFailure("ISO-XML file contains no field (PFD)");
                     return;
                 }
+                var pfd = pfds[Math.Clamp(SelectedIsoXmlFile.FieldIndex, 0, pfds.Count - 1)]!;
                 var fieldParts = pfd.ChildNodes;
 
                 // The local plane needs an origin. ISO-XML stores absolute WGS84, so use
@@ -564,37 +564,43 @@ public partial class MainViewModel
                 var localPlane = new LocalPlane(new Wgs84(originLat, originLon), new SharedFieldProperties());
 
                 var parsedBoundaries = IsoXmlParserHelpers.ParseBoundaries(fieldParts, localPlane);
-                if (parsedBoundaries.Count == 0 || parsedBoundaries[0].FenceLine.Count < 3)
-                {
-                    ReportFailure("ISO-XML file has no usable boundary");
-                    return;
-                }
                 var parsedHeadland = IsoXmlParserHelpers.ParseHeadland(fieldParts, localPlane);
                 var parsedTracks = IsoXmlParserHelpers.ParseAllGuidanceLines(fieldParts, localPlane);
-
+                // AgOpenGPS imports a partfield with a boundary or with guidance lines ("Missing Outer
+                // Boundary or AB line" is its one refusal): lines alone make a field without a boundary.
+                bool hasBoundary = parsedBoundaries.Count > 0 && parsedBoundaries[0].FenceLine.Count >= 3;
+                if (!hasBoundary && parsedTracks.Count == 0)
+                {
+                    ReportFailure("ISO-XML field has no boundary and no guidance line");
+                    return;
+                }
                 Directory.CreateDirectory(newFieldPath);
                 WriteNewFieldSkeleton(newFieldPath, newFieldName, originLat, originLon);
 
-                // Build the boundary (first = outer, rest = inner holes).
-                var boundary = new Boundary();
-                for (int i = 0; i < parsedBoundaries.Count; i++)
+                // Build the boundary (first = outer, rest = inner holes); the headland goes with it.
+                Boundary? boundary = null;
+                if (hasBoundary)
                 {
-                    var poly = new BoundaryPolygon { IsDriveThrough = parsedBoundaries[i].IsDriveThru };
-                    foreach (var v in parsedBoundaries[i].FenceLine)
-                        poly.Points.Add(new BoundaryPoint(v.Easting, v.Northing, 0));
-                    poly.UpdateBounds();
-                    if (i == 0)
-                        boundary.OuterBoundary = poly;
-                    else
-                        boundary.InnerBoundaries.Add(poly);
-                }
-                if (parsedHeadland.Count >= 3)
-                {
-                    var hp = new BoundaryPolygon();
-                    foreach (var v in parsedHeadland)
-                        hp.Points.Add(new BoundaryPoint(v.Easting, v.Northing, 0));
-                    hp.UpdateBounds();
-                    boundary.HeadlandPolygon = hp;
+                    boundary = new Boundary();
+                    for (int i = 0; i < parsedBoundaries.Count; i++)
+                    {
+                        var poly = new BoundaryPolygon { IsDriveThrough = parsedBoundaries[i].IsDriveThru };
+                        foreach (var v in parsedBoundaries[i].FenceLine)
+                            poly.Points.Add(new BoundaryPoint(v.Easting, v.Northing, 0));
+                        poly.UpdateBounds();
+                        if (i == 0)
+                            boundary.OuterBoundary = poly;
+                        else
+                            boundary.InnerBoundaries.Add(poly);
+                    }
+                    if (parsedHeadland.Count >= 3)
+                    {
+                        var hp = new BoundaryPolygon();
+                        foreach (var v in parsedHeadland)
+                            hp.Points.Add(new BoundaryPoint(v.Easting, v.Northing, 0));
+                        hp.UpdateBounds();
+                        boundary.HeadlandPolygon = hp;
+                    }
                 }
 
                 // Convert guidance lines into Tracks.
@@ -621,21 +627,21 @@ public partial class MainViewModel
 
                 // Persist the boundary + tracks, then open through the normal path, which closes
                 // (and saves) the current field first and loads the new one (#107).
-                SaveFieldBoundary(boundary, newFieldPath);
+                if (boundary != null) SaveFieldBoundary(boundary, newFieldPath);
                 if (tracks.Count > 0)
                     GeoJsonFieldService.SaveTracks(newFieldPath, tracks);
                 await OpenCreatedFieldAsync(newFieldPath, newFieldName);
 
                 // The headland save writes to the ACTIVE field, so it runs once the new field is
                 // open; then reload it into the live state.
-                if (boundary.HeadlandPolygon != null)
+                if (boundary?.HeadlandPolygon != null)
                 {
                     SaveHeadlandToFile(boundary.HeadlandPolygon.Points
                         .Select(p => new Vec3(p.Easting, p.Northing, 0)).ToList());
                     LoadHeadlandFromField(_fieldService.ActiveField);
                 }
 
-                var innerCount = parsedBoundaries.Count - 1;
+                var innerCount = hasBoundary ? parsedBoundaries.Count - 1 : 0;
                 var extras = new List<string>();
                 if (innerCount > 0) extras.Add($"{innerCount} inner");
                 if (tracks.Count > 0) extras.Add($"{tracks.Count} track{(tracks.Count == 1 ? "" : "s")}");
@@ -942,8 +948,11 @@ public partial class MainViewModel
     public void RemoteCreateFromIsoXml(string fileName, string newName)
     {
         PopulateAvailableIsoXmlFiles();
+        // The picker's entry; a bare dataset folder name (an older client, a script) is its first field.
         SelectedIsoXmlFile = AvailableIsoXmlFiles.FirstOrDefault(f =>
-            string.Equals(f.Name, fileName, StringComparison.OrdinalIgnoreCase));
+                string.Equals(f.Name, fileName, StringComparison.OrdinalIgnoreCase))
+            ?? AvailableIsoXmlFiles.FirstOrDefault(f =>
+                string.Equals(Path.GetFileName(f.FullPath), fileName, StringComparison.OrdinalIgnoreCase));
         IsoXmlImportFieldName = newName;
         ConfirmIsoXmlImportDialogCommand.Execute(null);
     }

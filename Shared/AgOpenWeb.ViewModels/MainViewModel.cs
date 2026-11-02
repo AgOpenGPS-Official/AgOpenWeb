@@ -5211,37 +5211,27 @@ public partial class MainViewModel : ObservableObject
     private void PopulateAvailableIsoXmlFiles()
     {
         AvailableIsoXmlFiles.Clear();
-
         // Import folder lives under the shared AgOpenWeb data root (honors
         // AGOPENWEB_DATA on the headless appliance), same as Fields/Tools/Vehicles —
         // NOT MyDocuments, which diverges from the data root on headless installs and
         // left the KML/ISO import list empty even when files were present.
         var importDir = Path.Combine(AppDataRoot.Documents, "Import");
-
         if (!Directory.Exists(importDir))
         {
             Directory.CreateDirectory(importDir);
             return;
         }
-
-        // Search for directories containing a TASKDATA file. Match the name
-        // case-insensitively: the ISO 11783 convention and our own exporter write
-        // "TASKDATA.XML" (uppercase), which a case-sensitive FS (Linux) would otherwise miss.
-        foreach (var dir in Directory.GetDirectories(importDir))
+        // One entry per partfield of every TASKDATA.XML (the web picker shows the same list).
+        foreach (var e in Services.IsoXml.IsoXmlImportCatalog.Scan(importDir))
         {
-            var taskDataFile = Directory.EnumerateFiles(dir)
-                .FirstOrDefault(f => string.Equals(Path.GetFileName(f), "TASKDATA.XML", StringComparison.OrdinalIgnoreCase));
-            if (taskDataFile != null)
+            AvailableIsoXmlFiles.Add(new IsoXmlFileItem
             {
-                var dirInfo = new DirectoryInfo(dir);
-                AvailableIsoXmlFiles.Add(new IsoXmlFileItem
-                {
-                    Name = dirInfo.Name,
-                    FullPath = dir,
-                    ModifiedDate = dirInfo.LastWriteTime,
-                    IsTaskData = true
-                });
-            }
+                Name = e.Name,
+                FullPath = e.Folder,
+                FieldIndex = e.FieldIndex,
+                ModifiedDate = new DirectoryInfo(e.Folder).LastWriteTime,
+                IsTaskData = true
+            });
         }
     }
 
@@ -6450,6 +6440,8 @@ public class IsoXmlFileItem
 {
     public string Name { get; set; } = string.Empty;
     public string FullPath { get; set; } = string.Empty;
+    /// <summary>Which partfield (PFD) of the TASKDATA.XML, in file order.</summary>
+    public int FieldIndex { get; set; }
     public DateTime ModifiedDate { get; set; }
     public bool IsTaskData { get; set; }
 }
