@@ -313,6 +313,8 @@ namespace AgOpenWeb.Services.IsoXml
             return localPlane.ConvertWgs84ToGeoCoord(new Wgs84(lat, lon));
         }
 
+        // The 100 m extension of each end, along the end segment. (The AgOpenGPS.Core copy this
+        // was ported from built the new points as Vec3(northing, easting): transposed.)
         private static List<Vec3> ExtendEnds(List<Vec3> pts, double extendMeters)
         {
             if (pts == null || pts.Count < 2 || extendMeters <= 0) return pts;
@@ -329,8 +331,8 @@ namespace AgOpenWeb.Services.IsoXml
             {
                 dxF /= lenF; dyF /= lenF;
                 list.Insert(0, new Vec3(
-                    first.Northing + dyF * extendMeters,
                     first.Easting + dxF * extendMeters,
+                    first.Northing + dyF * extendMeters,
                     0
                 ));
             }
@@ -345,8 +347,8 @@ namespace AgOpenWeb.Services.IsoXml
             {
                 dxL /= lenL; dyL /= lenL;
                 list.Add(new Vec3(
-                    last.Northing + dyL * extendMeters,
                     last.Easting + dxL * extendMeters,
+                    last.Northing + dyL * extendMeters,
                     0
                 ));
             }
