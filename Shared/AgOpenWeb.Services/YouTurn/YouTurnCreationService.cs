@@ -1359,6 +1359,19 @@ namespace AgOpenWeb.Services.YouTurn
             double length, bool insertFront)
         {
             if (points == null || points.Count == 0) return;
+            // The arc was seated by MoveTurnInsideTurnLine after the curve index was taken, so
+            // the nearest curve point can lie beyond the seated arc start (or end): a leg
+            // beginning there doubled back up to a metre into the arc, a fold the path kept.
+            // Skip the points that lie behind the start, against the direction the leg walks.
+            while (idx >= 0 && idx < points.Count && idx + step >= 0 && idx + step < points.Count)
+            {
+                double walkE = points[idx + step].Easting - points[idx].Easting;
+                double walkN = points[idx + step].Northing - points[idx].Northing;
+                double toE = points[idx].Easting - start.Easting;
+                double toN = points[idx].Northing - start.Northing;
+                if (toE * walkE + toN * walkN >= 0) break;
+                idx += step;
+            }
             double distSoFar = 0;
             Vec3 point = start;
             while (true)

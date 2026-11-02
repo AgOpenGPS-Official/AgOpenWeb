@@ -85,12 +85,15 @@ public class KeyholeTurnDepthTests
     [Test]
     public void Sagitta_keeps_its_one_sided_shape()
     {
-        // Brian's turn: leaves at 75.0 m, lands on the next pass already heading back at 88.9 m.
+        // Brian's turn: the arc starts 22.8 m before the turn line (75.2 m) and is 10 cm off the
+        // pass 1.3 m later; it lands on the next pass already heading back at 91.3 m. (Measured
+        // at 75.0 / 88.9 while the turn was smoothed with 14 passes of a 3-point average, which
+        // spread the bends 1.5 m into the legs; the smoothing is AgOpenGPS's 6-point one now.)
         var (leave, rejoin) = LeaveAndRejoin(Turn(YouTurnType.SagittaStyle));
         Assert.Multiple(() =>
         {
-            Assert.That(leave, Is.EqualTo(75.0).Within(0.5));
-            Assert.That(rejoin, Is.EqualTo(88.9).Within(0.5));
+            Assert.That(leave, Is.EqualTo(76.5).Within(0.5));
+            Assert.That(rejoin, Is.EqualTo(91.3).Within(0.5));
         });
     }
 
