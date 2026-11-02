@@ -119,6 +119,20 @@ public class TramTriggerAtToolTests
     }
 
     [Test]
+    public void ToolInTheHeadland_NothingLights()
+    {
+        // AgOpenGPS (OpenGL.Designer.cs): with the tool wholly in the headland, tram.controlByte = 0,
+        // so a boundary tram track under it doesn't light during the turn.
+        SettleToolPosition();
+        TramAcrossAt(-HitchLength);
+        _autoSteer.SetMachineState(0, isInUTurn: true, hydLiftState: 2, outOfBounds: false, toolInHeadland: true);
+        Assert.That(TramStateAfterAFix(), Is.EqualTo(0), "in the headland");
+
+        _autoSteer.SetMachineState(0, isInUTurn: false, hydLiftState: 1, outOfBounds: false, toolInHeadland: false);
+        Assert.That(TramStateAfterAFix(), Is.EqualTo(3), "back in the field");
+    }
+
+    [Test]
     public void NoToolPositionYet_NothingLights()
     {
         // The control loop hasn't run yet: there is no tool position to check.

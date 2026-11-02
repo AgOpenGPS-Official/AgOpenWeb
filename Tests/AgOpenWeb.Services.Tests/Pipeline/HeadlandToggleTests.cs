@@ -143,19 +143,52 @@ public class HeadlandToggleTests
         Assert.That(state, Is.EqualTo(expected));
     }
 
-    [TestCase(0.0, 1)]  // no look-ahead: tool still in the worked area → down
-    [TestCase(2.0, 2)]  // 3 m/s × 2 s = 6 m ahead crosses the headland line → up early
-    public void HydraulicLift_LooksAheadByMachineLookAhead(double lookAheadSec, int expected)
+    private byte Lift(double e, double n, double headingDeg, double speed = 3.0, double lookAheadSec = 2.0)
     {
         ConfigurationStore.Instance.Machine.HydraulicLiftEnabled = true;
         ConfigurationStore.Instance.Machine.LookAhead = lookAheadSec;
+        var m = typeof(GpsPipelineService).GetMethod("ComputeHydLiftState", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        double h = headingDeg * Math.PI / 180;
+        // A 6 m tool; the work area (inside the headland line) is ±100, the boundary ±200.
+        return (byte)m.Invoke(_pipeline, new object?[] { new Vec3(e, n, h), h, speed, Square(100), Boundary(200), true })!;
+    }
 
-        var m = typeof(GpsPipelineService).GetMethod("ComputeHydLiftState",
-            BindingFlags.NonPublic | BindingFlags.Instance)!;
-        // Tool 4 m short of the headland line (cultivated area = ±100), heading north at 3 m/s.
-        var state = (byte)m.Invoke(_pipeline, new object?[] { new Vec3(0, 96, 0), 0.0, 3.0, Square(100), Boundary(200), true })!;
+    // AgOpenGPS (CHead, OpenGL.Designer.cs): the lift raises only once both outer corners of the
+    // tool are past the headland line; the look-ahead brings it down early, it never raises early.
+    // A raise a look-ahead short of the line left that much of every pass unworked.
+    [TestCase(0.0)]
+    [TestCase(2.0)]
+    public void HydraulicLift_StaysDown_UntilTheToolHasCrossedTheLine(double lookAheadSec)
+        => Assert.That(Lift(0, 96, 0, lookAheadSec: lookAheadSec), Is.EqualTo(1), "4 m short of the line, heading out");
 
-        Assert.That(state, Is.EqualTo(expected));
+    [Test]
+    public void HydraulicLift_Raises_OnceTheWholeToolIsPastTheLine()
+        => Assert.That(Lift(0, 101, 0), Is.EqualTo(2));
+
+    [Test]
+    public void HydraulicLift_StaysDown_WhileHalfTheToolIsStillInTheField()
+        // Running north along the east headland line with the tool's centre 2 m outside it:
+        // its west corner is still over the field. One probe off the centre raised it here.
+        => Assert.That(Lift(102, 0, 0), Is.EqualTo(1));
+
+    [TestCase(2.0, 1)]  // 3 m/s × 2 s = 6 m: the field 4 m ahead → down before the line
+    [TestCase(0.0, 2)]  // no look-ahead: down only once the tool is over the line
+    public void HydraulicLift_ComingBackIn_LowersByTheLookAhead(double lookAheadSec, int expected)
+        => Assert.That(Lift(0, 104, 180, lookAheadSec: lookAheadSec), Is.EqualTo(expected));
+
+    [Test]
+    public void HydraulicLift_PastTheBoundary_IsStillUp()
+        // Outside the boundary is headland (AgOpenGPS); a 0 there cancelled the raise mid-turn.
+        => Assert.That(Lift(0, 210, 0), Is.EqualTo(2));
+
+    [Test]
+    public void HydraulicLift_Stopped_HoldsTheLastValue()
+    {
+        Assert.That(Lift(0, 101, 0), Is.EqualTo(2));
+        Assert.That(Lift(0, 101, 0, speed: 0.01), Is.EqualTo(2),
+            "stopped in the headland: AgOpenGPS keeps the byte; a 0 stops the module's raise timer");
+        Assert.That(Lift(0, 50, 0, speed: 0.01), Is.EqualTo(2), "still held, whatever the pose");
+        Assert.That(Lift(0, 50, 0), Is.EqualTo(1), "moving again: follows the pose");
     }
 
     [TestCase(true, true)]

@@ -1289,12 +1289,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // hyd-lift state) are all written by the cycle, before the PGN
         // build in (9) reads them. Between cycles the control loop keeps the
         // section bits current itself (SetSectionBits, #311).
-        byte hydLiftState = ComputeHydLiftState(toolPos, toolHeading, pos.Speed, headlandLine, boundary, headlandOn);
+        // The tool in the headland raises the lift and, as in AgOpenGPS, turns the tram lights off.
+        bool toolInHeadland = IsToolInHeadland(toolPos, toolHeading, pos.Speed, headlandLine, headlandOn);
+        byte hydLiftState = HydLiftFor(toolInHeadland, pos.Speed, headlandLine, boundary, headlandOn);
         _autoSteerService.SetMachineState(
             _sectionControlService.GetSectionBits64(),
             isInYouTurn,
             hydLiftState,
-            _isOutOfBounds);
+            _isOutOfBounds,
+            toolInHeadland);
 
         // ── (9) AutoSteer pipeline (PGN/latency) ────────────────────────
         _autoSteerService.ProcessSimulatedPosition(
@@ -2261,39 +2264,70 @@ public sealed class GpsPipelineService : IGpsPipelineService
     }
 
     /// <summary>
-    /// Compute PGN 239 hydraulic-lift state. Migrated from
-    /// MainViewModel.CalculateHydLiftState (Phase B completion). The boundary and
-    /// headland are the cycle's own copies (SetBoundary / SetHeadlandLine / SetHeadlandOn).
-    ///
-    /// Returns: 0 = off, 1 = lower (in cultivated area), 2 = raise (in headland zone).
+    /// Is the tool in the headland, as AgOpenGPS decides it for the lift and the tram lights
+    /// (OpenGL.Designer.cs, CHead / HeadlandDetectionService): both outer corners of the tool
+    /// out of the work area (inside the headland line), and no work area in the band ahead of
+    /// the tool out to the lift look-ahead (speed × Machine look-ahead time, at most 20 m).
+    /// Outside the boundary counts as headland. So the tool is "in" only once all of it has
+    /// crossed the line, and "out" as soon as work area comes within the look-ahead: the
+    /// implement goes up late enough to finish the pass and comes down early enough to start
+    /// the next. False with the headland off or no headland line.
     /// </summary>
+    private bool IsToolInHeadland(Vec3 toolPosition, double toolHeading, double speed,
+        List<Vec3>? headlandLine, bool headlandOn)
+    {
+        if (!headlandOn || headlandLine == null || headlandLine.Count < 3) return false;
+        int n = _sectionControlService.NumSections;
+        if (n <= 0) return false;
+
+        var (left, _) = _sectionControlService.GetSectionWorldPosition(0, toolPosition, toolHeading);
+        var (_, right) = _sectionControlService.GetSectionWorldPosition(n - 1, toolPosition, toolHeading);
+        if (InWorkArea(left) || InWorkArea(right)) return false;
+
+        // The look-ahead band: AgOpenGPS scans every pixel across the tool out to the look-ahead
+        // at each edge (the edges' own speeds; the tool's speed here). Three columns, four steps.
+        double ahead = Math.Min(Math.Abs(speed) * Math.Max(0, _configStore.Machine.LookAhead), 20.0);
+        double se = Math.Sin(toolHeading), ce = Math.Cos(toolHeading);
+        var centre = new Vec2((left.Easting + right.Easting) / 2, (left.Northing + right.Northing) / 2);
+        if (InWorkArea(centre)) return false;
+        if (ahead > 0)
+        {
+            for (int step = 1; step <= 4; step++)
+            {
+                double d = ahead * step / 4;
+                if (InWorkArea(new Vec2(left.Easting + se * d, left.Northing + ce * d)) ||
+                    InWorkArea(new Vec2(centre.Easting + se * d, centre.Northing + ce * d)) ||
+                    InWorkArea(new Vec2(right.Easting + se * d, right.Northing + ce * d)))
+                    return false;
+            }
+        }
+        return true;
+
+        bool InWorkArea(Vec2 p) => _headlandIndex.Contains(headlandLine, p.Easting, p.Northing);
+    }
+
+    /// <summary>
+    /// PGN 239's hydraulic-lift byte, AgOpenGPS CHead.SetHydPosition: 2 (raise) with the tool in
+    /// the headland, 1 (lower) out of it; 0 with the lift or the headland off. Slow (under
+    /// 0.2 km/h) or in reverse it holds the last value: a 0 there would cancel a raise or lower
+    /// the machine module is still timing (Machine_UDP_v5 stops both on anything but 1 or 2).
+    /// </summary>
+    private byte HydLiftFor(bool toolInHeadland, double speed, List<Vec3>? headlandLine, Boundary? boundary, bool headlandOn)
+    {
+        if (!_configStore.Machine.HydraulicLiftEnabled || !headlandOn ||
+            headlandLine == null || headlandLine.Count < 3 || boundary == null || !boundary.IsValid)
+            return _lastHydLift = 0;
+        if (Math.Abs(speed) * 3.6 <= 0.2 || _isReverse) return _lastHydLift;
+        return _lastHydLift = toolInHeadland ? (byte)2 : (byte)1;
+    }
+
+    private byte _lastHydLift;
+
+    /// <summary>The lift byte for a tool at this pose (the headland test and the lift together).</summary>
     private byte ComputeHydLiftState(Vec3 toolPosition, double toolHeading, double speed, List<Vec3>? headlandLine,
         Boundary? boundary, bool headlandOn)
-    {
-        var machine = _configStore.Machine;
-        if (!machine.HydraulicLiftEnabled) return 0;
-        // AgOpenGPS turns the hydraulic lift off with the headland (#106).
-        if (!headlandOn) return 0;
-
-        // Don't operate at very low speed or in reverse (AgOpenGPS CHead: !isReverse, #125)
-        if (speed < 0.2 || _isReverse) return 0;
-
-        if (headlandLine == null || headlandLine.Count < 3) return 0;
-        if (boundary == null || !boundary.IsValid) return 0;
-
-        bool inBoundary = boundary.IsPointInside(toolPosition.Easting, toolPosition.Northing);
-        if (!inBoundary) return 0;
-
-        // Look ahead by speed × Machine look-ahead time (AgOpenGPS hydLiftLookAheadTime,
-        // capped at 20 m), so the lift moves before the tool reaches the headland line and
-        // the hydraulics' delay is absorbed (#110).
-        double ahead = Math.Min(Math.Abs(speed) * Math.Max(0, _configStore.Machine.LookAhead), 20.0);
-        var probe = new Vec2(toolPosition.Easting + Math.Sin(toolHeading) * ahead,
-                             toolPosition.Northing + Math.Cos(toolHeading) * ahead);
-        bool inCultivatedArea = _headlandIndex.Contains(headlandLine, probe.Easting, probe.Northing);
-
-        return inCultivatedArea ? (byte)1 : (byte)2;
-    }
+        => HydLiftFor(IsToolInHeadland(toolPosition, toolHeading, speed, headlandLine, headlandOn),
+            speed, headlandLine, boundary, headlandOn);
 
     // Monotonic ms clock; tests substitute it to step past the below-min-speed grace period.
     internal Func<long> NowMs { get; set; } = () => Environment.TickCount64;

@@ -644,13 +644,18 @@ public class AutoSteerService : IAutoSteerService
         _udpService.SendToModules(pgn);
     }
 
-    public void SetMachineState(ulong sectionBits, bool isInUTurn, byte hydLiftState = 0, bool outOfBounds = false)
+    public void SetMachineState(ulong sectionBits, bool isInUTurn, byte hydLiftState = 0, bool outOfBounds = false,
+        bool toolInHeadland = false)
     {
         _state.SectionStates = sectionBits;
         _state.IsInUTurn = isInUTurn;
         _state.HydLiftState = hydLiftState;
         _state.GeoStopState = outOfBounds ? (byte)1 : (byte)0; // PGN 239 byte 9 (#494)
+        _toolInHeadland = toolInHeadland;
     }
+
+    // The tool wholly in the headland: no tram lights (AgOpenGPS OpenGL.Designer.cs zeroes tram.controlByte).
+    private bool _toolInHeadland;
 
     public void SetSectionBits(ulong sectionBits) => _state.SectionStates = sectionBits;
 
@@ -889,7 +894,7 @@ public class AutoSteerService : IAutoSteerService
             // of behind it, so the lights came on as the tractor crossed a tram, not the
             // implement (#541). Before the first control tick there is no tool position.
             var tool = _toolPositionService;
-            _state.TramState = tool != null && tool.HasPosition
+            _state.TramState = tool != null && tool.HasPosition && !_toolInHeadland
                 ? _tramLineService.DetectTramWheels(tool.ToolPosition, tool.ToolHeading, 0.5)
                 : (byte)0;
         }
