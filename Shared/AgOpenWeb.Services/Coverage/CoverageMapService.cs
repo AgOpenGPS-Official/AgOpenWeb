@@ -461,11 +461,14 @@ public class CoverageMapService : ICoverageMapService
             return;
         }
 
-        // Form quad: prevLeft -> prevRight -> currRight -> currLeft
-        var p0 = lastEdges.Left;
-        var p1 = lastEdges.Right;
-        var p2 = currRight;
-        var p3 = currLeft;
+        // The coverage margin (Tool settings) widens what is painted by a few centimetres each
+        // side so adjacent sections and successive quads leave no hairline gap in the cells. It
+        // is a painting margin only: the worked area and the vector edges are the section's own
+        // edges, as AgOpenGPS's patches are (checklist 4.11/4.12; counted into the area it
+        // inflated the worked area by the margin per section, 3 % on a 10 m tool in three).
+        double margin = _configStore.Tool.CoverageMarginMeters;
+        var (p0, p1) = Widen(lastEdges.Left, lastEdges.Right, margin);   // prevLeft, prevRight
+        var (p3, p2) = Widen(currLeft, currRight, margin);               // currLeft, currRight
 
         // Find bounding box
         double minE = Math.Min(Math.Min(p0.E, p1.E), Math.Min(p2.E, p3.E));
@@ -507,6 +510,18 @@ public class CoverageMapService : ICoverageMapService
     /// Check if a point is inside a quad (4-point polygon).
     /// Uses cross product sign test - point is inside if all cross products have same sign.
     /// </summary>
+    /// <summary>The edge pair moved apart by <paramref name="margin"/> along its own line.</summary>
+    private static ((double E, double N) left, (double E, double N) right) Widen(
+        (double E, double N) left, (double E, double N) right, double margin)
+    {
+        if (margin <= 0) return (left, right);
+        double dE = right.E - left.E, dN = right.N - left.N;
+        double len = Math.Sqrt(dE * dE + dN * dN);
+        if (len < 1e-9) return (left, right);
+        dE *= margin / len; dN *= margin / len;
+        return ((left.E - dE, left.N - dN), (right.E + dE, right.N + dN));
+    }
+
     private static bool IsPointInQuad(double px, double py,
         (double E, double N) p0, (double E, double N) p1,
         (double E, double N) p2, (double E, double N) p3)

@@ -35,6 +35,9 @@ public class FieldDataFiguresMatchAgOpenGpsTests
     {
         _store = new ConfigurationStore();
         ConfigurationStore.SetInstance(_store);
+        // The coverage margin widens what is painted by a few centimetres (no seams between
+        // sections); AgOpenGPS paints the section's own edges, so none here.
+        _store.Tool.CoverageMargin = 0;
         _dir = Path.Combine(Path.GetTempPath(), "aow-fielddata-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dir);
     }
