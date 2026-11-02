@@ -297,7 +297,12 @@ public class TrackGuidanceService : ITrackGuidanceService
     }
 
     /// <summary>
-    /// Calculate Stanley steering guidance.
+    /// Calculate Stanley steering guidance: AgOpenGPS's StanleyGuidanceService (the AB line
+    /// routine and CalculateSteerAngle), here serving curves too, segment by segment. The
+    /// cross-track term is damped by speed and filtered 50/50 with the last cycle's, the angle
+    /// is halved more than 0.5 m off the line and scaled by 1 − |d| closer in, and the integral
+    /// has its own blend, gate and decay. Tests/…/Guidance/SteeringMatchesAgOpenGpsTests holds
+    /// it to the snapshot's code.
     /// </summary>
     private void CalculateStanleyGuidance(
         TrackGuidanceInput input,
@@ -308,13 +313,16 @@ public class TrackGuidanceService : ITrackGuidanceService
         double dx, double dz,
         bool isHeadingSameWay)
     {
+        var state = output.State;
+        var prev = input.PreviousState ?? new TrackGuidanceState();
+
         // Apply integral offset to create virtual offset line. The integral is accumulated
         // from the pivot distance, which is flipped when driving against the track — it is
         // vehicle-relative — but ptA.Heading + 90° is line-relative. Flip the offset to match,
         // or driving against the track shifts the line toward the tractor and the integral
         // cancels the correction instead of adding to it (XTE holds one way, drifts the other).
-        // Inherited from AgOpenGPS StanleyGuidanceABLine; here the same routine serves curves.
-        double integral = (input.PreviousState?.Integral ?? 0) * (isHeadingSameWay ? 1.0 : -1.0);
+        // AgOpenGPS StanleyGuidanceABLine has that asymmetry; this is the one place the two differ.
+        double integral = prev.Integral * (isHeadingSameWay ? 1.0 : -1.0);
         Vec3 steerA = new Vec3(
             ptA.Easting + Math.Sin(ptA.Heading + PIBy2) * integral,
             ptA.Northing + Math.Cos(ptA.Heading + PIBy2) * integral,
@@ -359,22 +367,45 @@ public class TrackGuidanceService : ITrackGuidanceService
         output.CrossTrackError = output.DistanceFromLinePivot;
         output.HeadingErrorDegrees = GeometryMath.ToDegrees(steerHeadingError);
 
-        // Stanley integral calculation
-        CalculateStanleyIntegral(input, output);
+        // Heading component (the overshoot setting); backing up it works the other way
+        if (input.IsReverse)
+            steerHeadingError *= -1;
+        steerHeadingError *= input.StanleyHeadingErrorGain;
 
-        // Stanley steering formula
-        double speedMs = input.AvgSpeed * 0.27778; // km/h to m/s
-        if (speedMs < 0.1) speedMs = 0.1;
+        // Speed damping: 1 up to walking pace, then 0.277 more per km/h
+        double sped = Math.Abs(input.AvgSpeed);
+        sped = sped > 1 ? 1 + 0.277 * (sped - 1) : 1;
 
-        // Heading component
-        double headingComponent = steerHeadingError * input.StanleyHeadingErrorGain;
+        // Cross-track component, filtered 50/50 with the last cycle's
+        double xteCorrection = Math.Atan(output.DistanceFromLineSteer * input.StanleyDistanceErrorGain / sped);
+        state.XTrackSteerCorrection = prev.XTrackSteerCorrection * 0.5 + xteCorrection * 0.5;
 
-        // Cross-track error component
-        double xteComponent = Math.Atan(
-            input.StanleyDistanceErrorGain * output.DistanceFromLineSteer / speedMs);
+        // Its derivative, sampled every 6th cycle: gates the integral below
+        state.DistSteerError = prev.DistSteerError * 0.95 + (state.XTrackSteerCorrection * 60) * 0.05;
+        state.Counter = prev.Counter + 1;
+        if (state.Counter > 5)
+        {
+            state.DerivativeDistError = state.DistSteerError - prev.LastDistSteerError;
+            state.LastDistSteerError = state.DistSteerError;
+            state.Counter = 0;
+        }
+        else
+        {
+            state.DerivativeDistError = 0;
+            state.LastDistSteerError = prev.LastDistSteerError;
+        }
 
         // Stanley uses inverted angle (matches original AOG implementation)
-        output.SteerAngle = GeometryMath.ToDegrees((headingComponent + xteComponent) * -1.0);
+        output.SteerAngle = GeometryMath.ToDegrees((state.XTrackSteerCorrection + steerHeadingError) * -1.0);
+
+        // Distance damping: half the angle far off the line, eased in close to it
+        if (Math.Abs(output.DistanceFromLineSteer) > 0.5)
+            output.SteerAngle *= 0.5;
+        else
+            output.SteerAngle *= 1 - Math.Abs(output.DistanceFromLineSteer);
+
+        // Stanley integral calculation
+        CalculateStanleyIntegral(input, output, prev);
 
         // Side hill compensation
         if (input.ImuRoll != 88888)
@@ -453,63 +484,41 @@ public class TrackGuidanceService : ITrackGuidanceService
     }
 
     /// <summary>
-    /// Calculate the integral term for Stanley.
+    /// The integral term for Stanley (AgOpenGPS CalculateSteerAngle's "pivot PID"): it builds
+    /// from the pivot distance only when the tractor is close (under 0.25 m), moving and settled,
+    /// and decays fast otherwise.
     /// </summary>
-    private void CalculateStanleyIntegral(TrackGuidanceInput input, TrackGuidanceOutput output)
+    private void CalculateStanleyIntegral(TrackGuidanceInput input, TrackGuidanceOutput output, TrackGuidanceState prev)
     {
         var state = output.State;
-        var prev = input.PreviousState ?? new TrackGuidanceState();
+        double pivotDistance = output.DistanceFromLinePivot;
 
-        if (input.StanleyIntegralGain != 0 && !input.IsReverse)
+        state.PivotDistanceError = prev.PivotDistanceError * 0.6 + pivotDistance * 0.4;
+
+        if (input.AvgSpeed > 1 && input.IsAutoSteerOn &&
+            Math.Abs(state.DerivativeDistError) < 1 && Math.Abs(state.PivotDistanceError) < 0.25)
         {
-            state.PivotDistanceError = output.DistanceFromLinePivot * 0.2 + prev.PivotDistanceError * 0.8;
-            state.Counter = prev.Counter + 1;
-
-            if (state.Counter > 4)
+            if ((prev.Integral < 0 && pivotDistance < 0) ||
+                (prev.Integral > 0 && pivotDistance > 0))
             {
-                state.PivotDerivative = state.PivotDistanceError - prev.PivotDistanceErrorLast;
-                state.PivotDistanceErrorLast = state.PivotDistanceError;
-                state.Counter = 0;
+                // Over the line heading the wrong way: unwind quickly
+                state.Integral = prev.Integral + state.PivotDistanceError * input.StanleyIntegralGain * -0.03;
             }
             else
             {
-                state.PivotDerivative = 0;
-                state.PivotDistanceErrorLast = prev.PivotDistanceErrorLast;
+                state.Integral = prev.Integral + state.PivotDistanceError * input.StanleyIntegralGain * -0.01;
             }
 
-            // Integral update
-            if (input.IsAutoSteerOn && input.AvgSpeed > 2.5 && Math.Abs(state.PivotDerivative) < 0.1)
-            {
-                if ((prev.Integral < 0 && output.DistanceFromLinePivot < 0) ||
-                    (prev.Integral > 0 && output.DistanceFromLinePivot > 0))
-                {
-                    state.Integral = prev.Integral + state.PivotDistanceError * input.StanleyIntegralGain * -0.06;
-                }
-                else
-                {
-                    if (Math.Abs(output.DistanceFromLinePivot) > 0.02)
-                    {
-                        state.Integral = prev.Integral + state.PivotDistanceError * input.StanleyIntegralGain * -0.02;
-                        state.Integral = Math.Clamp(state.Integral, -2.0, 2.0);
-                    }
-                    else
-                    {
-                        state.Integral = prev.Integral;
-                    }
-                }
-            }
-            else
-            {
-                state.Integral = prev.Integral * 0.97;
-            }
+            if (input.StanleyIntegralGain == 0)
+                state.Integral = 0;
         }
         else
         {
-            state.Integral = 0;
-            state.PivotDistanceError = 0;
-            state.PivotDistanceErrorLast = prev.PivotDistanceErrorLast;
-            state.Counter = prev.Counter;
+            state.Integral = prev.Integral * 0.7;
         }
+
+        if (input.IsReverse)
+            state.Integral = 0;
     }
 
     /// <summary>
