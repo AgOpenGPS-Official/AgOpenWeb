@@ -60,7 +60,9 @@ public class Boundary
 
     /// <summary>
     /// Check if a point is inside the boundary area (inside outer, outside inner holes)
-    /// Ported from AOG_Dev CBoundary.IsPointInsideFenceArea()
+    /// AgOpenGPS FenceAreaService.IsPointInsideFenceArea: every inner boundary is out, drive-through
+    /// or not. The drive-through flag lets a U-turn pass (CTurn), nothing more; section control,
+    /// which uses this, applies nothing on an inner boundary (checklist 4.5).
     /// </summary>
     /// <param name="easting">Point easting coordinate</param>
     /// <param name="northing">Point northing coordinate</param>
@@ -76,7 +78,7 @@ public class Boundary
         // Check if inside any inner boundary (hole) - if so, it's outside the usable area
         foreach (var innerBoundary in InnerBoundaries)
         {
-            if (!innerBoundary.IsDriveThrough && innerBoundary.IsPointInside(easting, northing))
+            if (innerBoundary.IsPointInside(easting, northing))
             {
                 return false;
             }
@@ -114,13 +116,12 @@ public class Boundary
         if (outerResult.IsFullyOutside)
             return outerResult;
 
-        // Check inner boundaries (holes) - subtract their inside portions
+        // Check inner boundaries (holes) - subtract their inside portions. Drive-through ones
+        // too: as in AgOpenGPS, the flag is for U-turns, and nothing is applied on an inner boundary.
         double effectiveInsidePercent = outerResult.InsidePercent;
 
         foreach (var innerBoundary in InnerBoundaries)
         {
-            if (innerBoundary.IsDriveThrough) continue; // Skip drive-through boundaries
-
             var innerResult = innerBoundary.GetSegmentBoundaryStatus(sectionCenter, heading, halfWidth);
 
             // Portion inside inner boundary is "outside" the usable area
