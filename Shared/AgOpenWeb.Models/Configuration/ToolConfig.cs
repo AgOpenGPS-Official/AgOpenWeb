@@ -89,6 +89,9 @@ public class ToolConfig : ObservableObject
     }
 
     private double _trailingToolToPivotLength;
+    /// <summary>Trailing / TBT: the tool's working centre from its wheels (the pivot), AgOpenGPS's
+    /// setTool_trailingToolToPivotLength: positive behind them, negative ahead (the Tool panel's
+    /// Behind / Ahead).</summary>
     public double TrailingToolToPivotLength
     {
         get => _trailingToolToPivotLength;
