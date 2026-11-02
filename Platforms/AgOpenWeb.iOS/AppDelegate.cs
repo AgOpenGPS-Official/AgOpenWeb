@@ -55,14 +55,12 @@ public class AppDelegate : UIApplicationDelegate
             services.GetRequiredService<IPersistentStateService>().Save();
             Console.WriteLine("[AppDelegate] Saved configuration on app background/terminate");
 
-            // Save coverage to the active field
-            var fieldService = services.GetRequiredService<IFieldService>();
-            var coverageService = services.GetRequiredService<ICoverageMapService>();
-            if (fieldService.ActiveField != null && !string.IsNullOrEmpty(fieldService.ActiveField.DirectoryPath))
-            {
-                coverageService.SaveToFile(fieldService.ActiveField.DirectoryPath);
-                Console.WriteLine($"[Coverage] Saved coverage on app background/terminate to {fieldService.ActiveField.DirectoryPath}");
-            }
+            // The open field, as a close would save it: coverage to its job's folder (worked with
+            // no job, to a new job), tracks, tram, field.geojson. This used to write the coverage
+            // to the field's root folder, which the job loader never reads.
+            var vm = services.GetService<AgOpenWeb.ViewModels.MainViewModel>();
+            if (vm != null && vm.SaveOpenFieldForExit(TimeSpan.FromSeconds(4)))
+                Console.WriteLine("[AppDelegate] Saved the open field on app background/terminate");
         }
         catch (Exception ex)
         {

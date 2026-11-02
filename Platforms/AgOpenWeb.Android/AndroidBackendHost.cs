@@ -36,6 +36,7 @@ internal sealed class AndroidBackendHost
     private AgOpenWeb.RemoteServer.RemoteServerHost? _remoteServer;
     private IConfigurationService? _configService;
     private IPersistentStateService? _persistentState;
+    private AgOpenWeb.ViewModels.MainViewModel? _viewModel;
 
     public bool IsRunning { get; private set; }
 
@@ -74,6 +75,7 @@ internal sealed class AndroidBackendHost
         _provider = provider;
         _remoteServer = remoteServer;
         _configService = configService;
+        _viewModel = backend.ViewModel;
         _persistentState = persistentState;
         IsRunning = true;
         Console.WriteLine($"[android-backend] started, serving on :{Port}.");
@@ -85,6 +87,8 @@ internal sealed class AndroidBackendHost
     {
         if (!IsRunning) return;
         Console.WriteLine("[android-backend] stopping — saving config + state…");
+        // The open field first, as a close would save it, while the host loop still runs.
+        try { _viewModel?.SaveOpenFieldForExit(TimeSpan.FromSeconds(10)); } catch (Exception ex) { Console.WriteLine($"[android-backend] save field failed: {ex.Message}"); }
         try { _configService?.SaveAppSettings(); } catch (Exception ex) { Console.WriteLine($"[android-backend] save config failed: {ex.Message}"); }
         try { _persistentState?.Save(); } catch (Exception ex) { Console.WriteLine($"[android-backend] save state failed: {ex.Message}"); }
         if (_remoteServer is { } server)
@@ -98,6 +102,7 @@ internal sealed class AndroidBackendHost
         _remoteServer = null;
         _configService = null;
         _persistentState = null;
+        _viewModel = null;
         IsRunning = false;
         Console.WriteLine("[android-backend] stopped.");
     }

@@ -1671,8 +1671,18 @@ public partial class MainViewModel : ObservableObject
     /// <summary>
     /// Opens a field from the specified path. This is the single entry point for all field opening.
     /// Handles: closing previous field, loading boundary, background, coverage, tracks, headland.
+    /// Leaving a field worked with no job asks first, as Close Field does: opening another field
+    /// (from the list, Drive In, New, From Existing, KML, ISO-XML) used to drop that coverage
+    /// without a word (checklist 7.9). The open runs from the prompt's Save or Discard.
     /// </summary>
     public async Task OpenFieldAsync(string fieldPath, string fieldName)
+    {
+        if (TryShowUnsavedCoverageGuard(() => _ = OpenFieldCoreAsync(fieldPath, fieldName)))
+            return;
+        await OpenFieldCoreAsync(fieldPath, fieldName);
+    }
+
+    private async Task OpenFieldCoreAsync(string fieldPath, string fieldName)
     {
         _logger.LogDebug($"[Field] OpenFieldAsync: {fieldName} at {fieldPath}");
 
@@ -1955,6 +1965,57 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>The field's own files, as a close writes them: tram systems and settings, the
+    /// elevation log, the tracks and field.geojson. Coverage is the caller's (it needs the job).</summary>
+    private void SaveFieldFiles(Field field)
+    {
+        if (ConfigStore.Tram.Systems.Count > 0)
+        {
+            Services.Tram.TramSystemFileService.Save(field.DirectoryPath, ConfigStore.Tram.Systems);
+            _logger.LogDebug($"[Tram] Saved {ConfigStore.Tram.Systems.Count} tram systems");
+        }
+        Services.Tram.TramConfigFileService.Save(field.DirectoryPath, ConfigStore.Tram);
+        _elevationLogService.Flush(field.DirectoryPath);
+        SaveTracksToFile();
+        _fieldService.SaveField(field);
+    }
+
+    /// <summary>
+    /// Save the open field as a close would, without closing it: when the app stops or goes to
+    /// the background. The active job's coverage goes to its job folder. Coverage painted with
+    /// no job goes to a new job: nobody is there to answer the unsaved-coverage question, and
+    /// dropping it loses the work. Callable from any thread: it runs on the host loop and waits
+    /// up to <paramref name="timeout"/>. Returns false if it didn't finish in time or failed.
+    /// </summary>
+    public bool SaveOpenFieldForExit(TimeSpan timeout)
+    {
+        try
+        {
+            if (_dispatcher.CheckAccess()) { SaveOpenFieldNow(); return true; }
+            return _dispatcher.InvokeAsync(SaveOpenFieldNow).Wait(timeout);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Field] Saving the open field at exit failed");
+            return false;
+        }
+    }
+
+    private void SaveOpenFieldNow()
+    {
+        var field = ActiveField;
+        if (field == null || string.IsNullOrEmpty(field.DirectoryPath)) return;
+        if (_jobService.ActiveJob == null && _coverageMapService.PatchCount > 0)
+        {
+            var job = _jobService.CreateJob(field.Name, workType: string.Empty, notes: string.Empty);
+            _logger.LogInformation("[Field] Exit: saved coverage worked with no job to a new job '{TaskName}'", job.TaskName);
+        }
+        if (_jobService.ActiveJob is { } active)
+            _coverageMapService.SaveToFile(field.DirectoryPath, active.TaskName);
+        SaveFieldFiles(field);
+        _logger.LogDebug("[Field] Saved '{FieldName}' at exit", field.Name);
+    }
+
     /// <summary>
     /// Closes the current field. This is the single entry point for all field closing.
     /// Handles: saving coverage, saving tracks, clearing all field state.
@@ -2003,25 +2064,8 @@ public partial class MainViewModel : ObservableObject
                 _logger.LogDebug("[Coverage] No active job; skipping coverage save (field-only open)");
             }
 
-            // Save tram systems
-            if (ConfigStore.Tram.Systems.Count > 0)
-            {
-                Services.Tram.TramSystemFileService.Save(ActiveField.DirectoryPath, ConfigStore.Tram.Systems);
-                _logger.LogDebug($"[Tram] Saved {ConfigStore.Tram.Systems.Count} tram systems");
-            }
-
-            // Save field-scoped tram scalar settings.
-            Services.Tram.TramConfigFileService.Save(ActiveField.DirectoryPath, ConfigStore.Tram);
-
-            // Flush elevation log
-            _elevationLogService.Flush(ActiveField.DirectoryPath);
+            SaveFieldFiles(ActiveField);
             _elevationLogService.Clear();
-
-            // Save tracks
-            SaveTracksToFile();
-
-            // Save field (writes geojson + legacy formats)
-            _fieldService.SaveField(ActiveField);
 
             // Suspend rather than close. M2 has no explicit "Close Job"
             // operator action — closing a field should leave the job
