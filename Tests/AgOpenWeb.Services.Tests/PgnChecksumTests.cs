@@ -81,7 +81,7 @@ public class PgnChecksumTests
             Ackermann = 150
         }));
 
-        yield return Case("BuildSteerConfigPgn", 11, () => PgnBuilder.BuildSteerConfigPgn(new AutoSteerConfig
+        yield return Case("BuildSteerConfigPgn", 14, () => PgnBuilder.BuildSteerConfigPgn(new AutoSteerConfig
         {
             InvertWas = true,
             DanfossEnabled = true,
