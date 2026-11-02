@@ -29,16 +29,17 @@ public class TrackRefSideTests
         store.Tool.Overlap = 0;
         store.Tool.Offset = 0;
         _vm = new MainViewModelBuilder().Build();
-        _vm.Easting = 500;
-        _vm.Northing = 1000;
-        _vm.Heading = 0; // north: right is +E
+        // The cycle's pivot (what A and B are taken from, as AgOpenGPS's pivotAxlePos).
+        _vm.State.Vehicle.Easting = 500;
+        _vm.State.Vehicle.Northing = 1000;
+        _vm.State.Vehicle.Heading = 0; // north: right is +E
     }
 
     private void DriveAB()
     {
         _vm.StartDriveABCommand!.Execute(null);
         _vm.SetABPointCommand!.Execute(null);
-        _vm.Northing = 1100;
+        _vm.State.Vehicle.Northing = 1100;
         _vm.SetABPointCommand!.Execute(null);
     }
 
@@ -88,6 +89,7 @@ public class TrackRefSideTests
     {
         _vm.StartCurveRecordingCommand!.Execute(null);
         for (int n = 1003; n <= 1040; n += 3) _vm.AddCurvePoint(500, n, 0);
+        _vm.State.Vehicle.Northing = 1040; // Finish adds the pivot where the tractor is
         _vm.FinishCurveRecordingCommand!.Execute(null);
         AssertAllEasting(503);
     }

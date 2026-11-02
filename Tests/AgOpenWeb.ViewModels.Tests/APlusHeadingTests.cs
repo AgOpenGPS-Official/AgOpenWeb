@@ -22,9 +22,10 @@ public class APlusHeadingTests
     private static MainViewModel AtPosition(double heading)
     {
         var vm = new MainViewModelBuilder().Build();
-        vm.Easting = 500;
-        vm.Northing = 1000;
-        vm.Heading = heading;
+        // The cycle's pivot: what the A+ line is made from (AgOpenGPS pivotAxlePos).
+        vm.State.Vehicle.Easting = 500;
+        vm.State.Vehicle.Northing = 1000;
+        vm.State.Vehicle.Heading = heading;
         return vm;
     }
 

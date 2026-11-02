@@ -20,7 +20,7 @@ public class AutoSteerConfig : ObservableObject
     // Tab 2: Steering Sensor Calibration
     // ============================================
 
-    private int _wasOffset = 0;
+    private int _wasOffset = 3;
     /// <summary>
     /// Wheel Angle Sensor zero offset (raw counts).
     /// Used to zero the WAS when wheels are straight.
@@ -31,7 +31,7 @@ public class AutoSteerConfig : ObservableObject
         set => SetProperty(ref _wasOffset, value);
     }
 
-    private double _countsPerDegree = 100;
+    private double _countsPerDegree = 110;
     /// <summary>
     /// WAS counts per degree of steering angle.
     /// Range: 1 - 255
@@ -99,7 +99,7 @@ public class AutoSteerConfig : ObservableObject
     // Tab 4: Gain / PWM Settings
     // ============================================
 
-    private int _proportionalGain = 10;
+    private int _proportionalGain = 50;
     /// <summary>
     /// Proportional gain (Kp) for steering PID.
     /// Range: 1 - 100
@@ -110,7 +110,7 @@ public class AutoSteerConfig : ObservableObject
         set => SetProperty(ref _proportionalGain, value);
     }
 
-    private int _maxPwm = 235;
+    private int _maxPwm = 180;
     /// <summary>
     /// Maximum PWM output (high steer PWM).
     /// Range: 50 - 255
@@ -121,7 +121,7 @@ public class AutoSteerConfig : ObservableObject
         set => SetProperty(ref _maxPwm, value);
     }
 
-    private int _minPwm = 5;
+    private int _minPwm = 25;
     /// <summary>
     /// Minimum PWM to overcome static friction.
     /// Range: 1 - 50
@@ -605,11 +605,13 @@ public class AutoSteerConfig : ObservableObject
     /// <summary>
     /// Reset all settings to factory defaults.
     /// </summary>
+    /// <summary>The steer page back to AgOpenGPS's defaults (its Settings.cs values; FormSteer's own
+    /// reset button sets max steer 45 and acquire 0.85, which its defaults don't): checklist 10.7.</summary>
     public void ResetToDefaults()
     {
         // Tab 2: Steering Sensor
-        WasOffset = 0;
-        CountsPerDegree = 100;
+        WasOffset = 3;
+        CountsPerDegree = 110;
         Ackermann = 100;
 
         // Tab 3: Deadzone / Timing
@@ -618,9 +620,9 @@ public class AutoSteerConfig : ObservableObject
         AcquireFactor = 0.9;
 
         // Tab 4: Gain / PWM
-        ProportionalGain = 10;
-        MaxPwm = 235;
-        MinPwm = 5;
+        ProportionalGain = 50;
+        MaxPwm = 180;
+        MinPwm = 25;
 
         // Tab 5: Turn Sensors
         TurnSensorEnabled = false;
@@ -668,8 +670,8 @@ public class AutoSteerConfig : ObservableObject
 public record AutoSteerConfigDto
 {
     // Tab 2: Steering Sensor
-    public int WasOffset { get; init; } = 0;
-    public double CountsPerDegree { get; init; } = 100;
+    public int WasOffset { get; init; } = 3;
+    public double CountsPerDegree { get; init; } = 110;
     public int Ackermann { get; init; } = 100;
 
     // Tab 3: Deadzone / Timing
@@ -678,9 +680,9 @@ public record AutoSteerConfigDto
     public double AcquireFactor { get; init; } = 0.9;
 
     // Tab 4: Gain / PWM
-    public int ProportionalGain { get; init; } = 10;
-    public int MaxPwm { get; init; } = 235;
-    public int MinPwm { get; init; } = 5;
+    public int ProportionalGain { get; init; } = 50;
+    public int MaxPwm { get; init; } = 180;
+    public int MinPwm { get; init; } = 25;
 
     // Tab 5: Turn Sensors
     public bool TurnSensorEnabled { get; init; } = false;
