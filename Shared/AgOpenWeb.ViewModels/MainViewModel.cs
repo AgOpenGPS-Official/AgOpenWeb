@@ -1896,12 +1896,11 @@ public partial class MainViewModel : ObservableObject
             // to start unconditionally here.
             StartCoverageAutosave();
 
-            // Tram lines are computed on demand (when the user presses Build/Toggle
-            // tram), not eagerly on field open: they are rarely used, and parsing a
-            // large saved file was costing seconds on the open critical path, so they
-            // aren't saved at all. The tram buttons regenerate via UpdateTramLines from
-            // the current track/systems. Start clean so a prior field's lines don't linger. See
-            // Plans/Completed/BOUNDARY_RESOLUTION_NORMALIZATION.md.
+            // Tram lines aren't saved (parsing a large saved file was costing seconds on the
+            // open critical path, see Plans/Completed/BOUNDARY_RESOLUTION_NORMALIZATION.md):
+            // they are regenerated from the tram systems and the track, below, once those are
+            // loaded. Start clean so a prior field's lines don't linger (the track restore above
+            // built lines with the previous field's systems).
             _tramLineService.Clear();
             _mapService.SetTramLines(
                 _tramLineService.OuterBoundaryTrack,
@@ -1926,6 +1925,12 @@ public partial class MainViewModel : ObservableObject
             {
                 _logger.LogWarning(ex, "Failed to load tram systems");
             }
+
+            // The trams come back with the field, as AgOpenGPS reads its Tram.txt back on open
+            // (checklist 6.10): the same lines, regenerated from the systems and the restored
+            // track. Nothing is built for a field that had neither.
+            if (ConfigStore.Tram.Systems.Count > 0 || SelectedTrack != null)
+                UpdateTramLines(SelectedTrack);
 
             // Handle NTRIP profile
             _ = HandleNtripProfileForFieldAsync(fieldName);
@@ -2417,8 +2422,9 @@ public partial class MainViewModel : ObservableObject
                     // Show the track on the map when activated
                     _mapService.SetActiveTrack(value);
 
-                    // Generate tram lines from the selected track
-                    UpdateTramLines(value);
+                    // Generate tram lines from the selected track. A field open restores the
+                    // track before its tram systems are loaded and builds the lines once after.
+                    if (!_restoringTrack) UpdateTramLines(value);
 
                     // Phase D D6: compute the initial pass number + nudge offset
                     // locally from the track's persisted NudgeDistance (inverse of

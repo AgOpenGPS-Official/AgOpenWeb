@@ -38,10 +38,10 @@ public class MainViewModelBuilder
     public IGpsPipelineService GpsPipelineService { get; } = Substitute.For<IGpsPipelineService>();
     public IModuleCommunicationService ModuleCommunicationService { get; set; } = Substitute.For<IModuleCommunicationService>();
     public IConfigurationService ConfigurationService { get; set; } = Substitute.For<IConfigurationService>();
-    public IFieldService FieldService { get; } = Substitute.For<IFieldService>();
+    public IFieldService FieldService { get; set; } = Substitute.For<IFieldService>();
     public IJobService JobService { get; set; } = Substitute.For<IJobService>();
     public ILogger<MainViewModel> Logger { get; set; } = NullLogger<MainViewModel>.Instance;
-    public AgOpenWeb.Services.Interfaces.ITramLineService TramLineService { get; } = Substitute.For<AgOpenWeb.Services.Interfaces.ITramLineService>();
+    public AgOpenWeb.Services.Interfaces.ITramLineService TramLineService { get; set; } = Substitute.For<AgOpenWeb.Services.Interfaces.ITramLineService>();
     public AgOpenWeb.Services.Pipeline.PipelineIntents Intents { get; } = new();
     public AgOpenWeb.Services.Geometry.IPolygonOffsetService PolygonOffsetService { get; set; } = Substitute.For<AgOpenWeb.Services.Geometry.IPolygonOffsetService>();
 
