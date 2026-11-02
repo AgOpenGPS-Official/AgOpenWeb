@@ -4,7 +4,10 @@ name: Bug report check
 # on its own: it holds the version, platform, the user's notes and the logs. Without one the
 # issue is labeled `needs-info` and gets one reminder (edited in place on later checks, never
 # repeated). Once a dump is attached the label comes off and the reminder says so.
-# Maintainers' issues are skipped.
+# Maintainers' issues are skipped: the job's `if` drops public members, owners and collaborators
+# from the event payload, and the script then asks the repository for the author's permission,
+# since a private org membership never shows as MEMBER in a payload (#546). Anyone with write
+# or admin access is a maintainer; an error from that call counts as "not one".
 #
 # Runs again when the issue is edited, labeled `bug` later, or someone comments, so a dump
 # attached in a comment counts.
@@ -43,6 +46,22 @@ jobs:
             // The issue as it is now (the payload of a labeled/comment event can be stale).
             const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number });
             const body = issue.body || '';
+
+            // A maintainer's issue is skipped (#546). The event payload's author_association says
+            // MEMBER only for a public org membership, so ask for the author's permission instead;
+            // write and admin are maintainers, anything else (or an error) is a reporter.
+            try {
+              const { data: p } = await github.rest.repos.getCollaboratorPermissionLevel(
+                { owner, repo, username: issue.user.login });
+              core.info(`#${issue_number}: ${issue.user.login} has ${p.permission} (${issue.author_association} in the payload)`);
+              if (p.permission === 'admin' || p.permission === 'write') {
+                core.notice(`#${issue_number}: a maintainer's issue, not checked`);
+                return;
+              }
+            } catch (e) {
+              core.info(`#${issue_number}: permission lookup failed (${e.message}); treated as a reporter`);
+            }
+
             const comments = await github.paginate(github.rest.issues.listComments,
               { owner, repo, issue_number, per_page: 100 });
             const humanText = comments

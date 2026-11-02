@@ -409,6 +409,7 @@ public partial class MainViewModel : ObservableObject
         _autoSteerService.GuidanceLost += OnGuidanceLost;
         _autoSteerService.SensorKickout += OnSensorKickout;
         (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetTramLineService(_tramLineService);
+        (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetToolPositionService(_toolPositionService);
         (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetSmartWasService(_smartWasService);
         _autoSteerService.Start(); // Enable zero-copy GPS pipeline
 

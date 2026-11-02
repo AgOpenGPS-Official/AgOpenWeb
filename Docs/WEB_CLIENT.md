@@ -43,7 +43,7 @@ wwwroot/
 | `js/projection.js` | The screen matrix, `w2s` / `s2w` |
 | `js/overlays.js` | The per-frame DOM overlays: light bar text, HUDs, status bar, GPS and field cards, the bars' state, U-turn indicator |
 | `js/hud-tools.js` | Lower-right cluster, the clock, charts, the tool panels (roll correction, offset fix, import tracks, recorded path, boundary recording), card dragging |
-| `js/card-pane.js` | The card pane (split layout, #456) |
+| `js/card-pane.js` | The card pane (split layout, #456) and its drawer: Closed / Split / Full, the guidance strip |
 | `js/vt.js` | The VT painter and VT cards |
 | `js/web-cards.js` | Web cards |
 | `js/map-draw.js` | Skia map layers: lines and tracks, previews, flags, grid, hitch, vehicle, ground, imagery |

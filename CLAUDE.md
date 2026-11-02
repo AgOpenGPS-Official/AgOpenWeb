@@ -405,7 +405,14 @@ and `untrack`). The map's area is set by `setMapArea(l, r)`; what that means for
   `clientX` is `clientX - mapL` on the map (`s2w`, hit tests), and a DOM label placed from `w2s`
   adds `mapL`.
 - A card moved in the page reloads its iframe, so the pane hides and shows cards on a tab switch
-  and moves them only when the layout changes. Plan: `Plans/ADD_ON_CARDS_PLAN.md`.
+  and moves them only when the layout changes.
+- The pane is a **drawer**: Closed (the handle on the window's edge, with the count of open
+  cards), Split (⅓ to ½) or Full (over the map, which the frame loop then doesn't draw:
+  `CardPane.coversMap`; a guidance strip along the top keeps speed, distance from the line,
+  AutoSteer and sections, plus the light/steer bar above walking pace). Only the operator moves
+  it (a drag of the handle snaps on release, a tap toggles Closed); above 2 km/h it can't be
+  pulled to Full; it appears Closed when the first card opens and never closes by itself. Full sets both map insets, so everything on the
+  map is off-screen. Plan: `Plans/ADD_ON_CARDS_PLAN.md`.
 
 ## Debugging Tips
 
@@ -453,6 +460,7 @@ CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/
 U-turns are planned by `YouTurnStateMachine` (automatic turns at the headland, and manual
 turns from the on-screen buttons) with paths built by `YouTurnCreationService`:
 - Automatic: entry leg into the headland, arc, exit leg back to the next track; triggered when the tractor reaches the turn start, with an approach alarm 20 m out.
+- Rows wider than twice the turn radius (a wide spreader, skipped rows) get AgOpenGPS's wide turn (`CreateCurveWideTurn`): a quarter circle out of the pass, tangent to the turn line, the turn line itself, a quarter circle into the next pass, so the distance from the boundary holds on an angled headland (#544). The omega turn (one shape square to the track) is the fallback when it can't be built.
 - Manual: a Dubins path at the configured `UTurnRadius` from 4 m ahead of the tractor to the point abreast on the target pass (an omega when the radius exceeds half the pass offset), laid out along the track's local heading (the curve's heading at the nearest point); the path's first point is the tractor itself. Like AgOpenGPS `BuildManualYouTurn`.
 - The turn hands back to line guidance with 4 m of arc remaining (`EarlyCompletionLookahead`).
 
