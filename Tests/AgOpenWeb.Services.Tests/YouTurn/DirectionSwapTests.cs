@@ -118,6 +118,30 @@ public class DirectionSwapTests
         Assert.That(turn.NextUTurnDirectionLeftOverride, Is.Null, "a later plan is not swapped");
     }
 
+    // ── Normal: no pass to turn onto (#570, Graeme's later dump) ─────────
+
+    [Test]
+    public void Normal_NoPassToTurnOnto_SoundsOnce_UntilUTurnIsSwitchedOff()
+    {
+        // 20 rows skipped: the passes 21 away either side are outside the field.
+        var bench = new Bench(skipRows: 20);
+        var (guidance, turn) = bench.OnPass(0);
+
+        var first = bench.Tick(guidance, turn);
+        var second = bench.Tick(guidance, turn);
+        bench.SwitchedOff();
+        var afterOff = bench.Tick(guidance, turn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.TurnPath, Is.Null);
+            Assert.That(first.StatusMessage, Does.Contain("End of field"));
+            Assert.That(first.TurnCreationFailedSound, Is.True, "the operator must take over: say so");
+            Assert.That(second.TurnCreationFailedSound, Is.False, "once, not every cycle");
+            Assert.That(afterOff.TurnCreationFailedSound, Is.True, "U-turn off and on: again");
+        });
+    }
+
     // ── Normal: the work goes on across the field (#523) ──────────────────
 
     [Test]
@@ -340,6 +364,8 @@ public class DirectionSwapTests
             Assert.That(turn.IsExecuting, Is.False, "the tractor is still far short of the turn");
             return effects;
         }
+
+        public void SwitchedOff() => _sm.OnYouTurnSwitchedOff();
 
         public void Complete(GuidanceWorkingState guidance, YouTurnWorkingState turn) =>
             _sm.CompleteFromGuidance(Ctx(), guidance, turn);
