@@ -60,7 +60,9 @@ public sealed class YouTurnStateMachine
 
     private readonly YouTurnCreationService _creation;
     // U-turn sound latches (AgOpenGPS turnTooCloseTrigger / isBoundAlarming) (#110).
-    private bool _creationFailSounded, _approachAlarmed;
+    // _missedSounded: a missed turn sounds once (#570). Not re-armed by a new plan, which a
+    // missed turn is followed by at once: only when a turn starts or U-turn is switched off.
+    private bool _creationFailSounded, _approachAlarmed, _missedSounded;
     private readonly YouTurnPathingService _pathing;
     private readonly PolygonIndexCache _headlandIndex = new(); // the zone test, every GPS cycle
     private readonly ILogger<YouTurnStateMachine> _logger;
@@ -263,6 +265,7 @@ public sealed class YouTurnStateMachine
             {
                 turn.IsTriggered = true;
                 turn.IsExecuting = true;
+                _missedSounded = false;
                 effects.StatusMessage = "YouTurn triggered!";
                 _logger.LogDebug("[YouTurn] Triggered on the path, {Dist:F1}m from the arc", distToArcStart);
             }
@@ -282,6 +285,7 @@ public sealed class YouTurnStateMachine
                     turn.YouTurnCounter = 0;
                     turn.IsTriggered = true;
                     turn.IsExecuting = true;
+                    _missedSounded = false;
                     effects.StatusMessage = "YouTurn started from here: the planned arc was already behind the tractor";
                     _logger.LogDebug("[YouTurn] Arc start {Dist:F1}m behind the tractor - turning from here ({Count} points)",
                         distToArcStart, fromHere.Count);
@@ -291,7 +295,7 @@ public sealed class YouTurnStateMachine
                     _logger.LogDebug("[YouTurn] Arc start {Dist:F1}m behind the tractor and no room to turn from here - turn missed",
                         distToArcStart);
                     DiscardPlannedTurn(turn);
-                    effects.TurnCreationFailedSound = true;
+                    SoundMissed(effects);
                     effects.StatusMessage = "U-turn missed: too close to the headland to turn. Take over manually.";
                 }
                 effects.SyncTurnPathToMap = true;
@@ -306,7 +310,7 @@ public sealed class YouTurnStateMachine
                 // tractor then enters the headland on its pass before it reaches the path.
                 _logger.LogDebug("[YouTurn] In the headland past the path's start without joining it - turn missed");
                 DiscardPlannedTurn(turn);
-                effects.TurnCreationFailedSound = true;
+                SoundMissed(effects);
                 effects.StatusMessage = "U-turn missed: entered the headland off the turn path. Take over manually.";
                 effects.SyncTurnPathToMap = true;
                 effects.SyncNextTrackToMap = true;
@@ -640,6 +644,7 @@ public sealed class YouTurnStateMachine
             // Manual turns trigger immediately — no proximity check against the turn start.
             turn.IsTriggered = true;
             turn.IsExecuting = true;
+            _missedSounded = false;
             effects.StatusMessage = $"Manual {(turnLeft ? "left" : "right")} U-turn started";
         }
         else
@@ -1009,6 +1014,18 @@ public sealed class YouTurnStateMachine
     }
 
     /// <summary>The swapped side has no pass inside the field: keep the planned turn.</summary>
+    /// <summary>The missed-turn sound, once until a turn starts or U-turn is switched off (#570).</summary>
+    private void SoundMissed(YouTurnEffects effects)
+    {
+        if (_missedSounded) return;
+        _missedSounded = true;
+        effects.TurnCreationFailedSound = true;
+    }
+
+    /// <summary>U-turn switched off: the next missed turn sounds again (AgOpenGPS resets
+    /// turnTooCloseTrigger on the U-turn button).</summary>
+    public void OnYouTurnSwitchedOff() => _missedSounded = false;
+
     private void RefuseDirectionSwap(int swappedPath, YouTurnEffects effects)
     {
         _logger.LogDebug("[YouTurn] Direction swap refused: path {Path} is outside the field", swappedPath);

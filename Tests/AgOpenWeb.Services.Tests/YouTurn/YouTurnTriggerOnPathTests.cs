@@ -236,6 +236,38 @@ public class YouTurnTriggerOnPathTests
         Assert.That(turn.IsExecuting, Is.True, "the turn starts when the tractor reaches the path");
     }
 
+    /// <summary>
+    /// #570: the missed-turn sound sounded over and over until U-turn was switched off. A
+    /// missed turn sounds once, as AgOpenGPS's turnTooCloseTrigger; the next turn that starts,
+    /// or switching U-turn off, lets the next miss sound again.
+    /// </summary>
+    [Test]
+    public void AMissedTurn_SoundsOnce_UntilATurnStartsOrUTurnIsSwitchedOff()
+    {
+        var sm = BuildStateMachine();
+        int Miss()
+        {
+            // The same miss as InTheHeadlandOffThePath: a path on another line, the tractor past
+            // its start in the headland.
+            var turn = new YouTurnWorkingState { TurnPath = LegThenArc(easting: 20), ArcStart = new Vec3(20, 20, 0) };
+            var fx = sm.Tick(Ctx(0, 47, headingDeg: 0), new GuidanceWorkingState(), turn);
+            Assert.That(turn.TurnPath, Is.Null, "missed");
+            return fx.TurnCreationFailedSound ? 1 : 0;
+        }
+
+        Assert.That(Miss() + Miss() + Miss() + Miss(), Is.EqualTo(1), "four misses in a row, one sound");
+
+        // A turn starts: the next miss is news.
+        var driven = new YouTurnWorkingState { TurnPath = LegThenArc(), ArcStart = new Vec3(0, 20, 0) };
+        sm.Tick(Ctx(0, 8, headingDeg: 0), new GuidanceWorkingState(), driven);
+        Assert.That(driven.IsExecuting, Is.True);
+        Assert.That(Miss(), Is.EqualTo(1), "after a turn started");
+        Assert.That(Miss(), Is.EqualTo(0));
+
+        sm.OnYouTurnSwitchedOff();
+        Assert.That(Miss(), Is.EqualTo(1), "after U-turn was switched off and on");
+    }
+
     // ── Fixtures ─────────────────────────────────────────────────────────
 
     /// <summary>A 20 m leg north from (easting, northing), then a quarter arc of 8 m radius to the east.</summary>
