@@ -100,6 +100,13 @@ public class YouTurnWorkingState
     /// </summary>
     public bool? HeldDirectionLeft { get; set; }
 
+    /// <summary>
+    /// The pass a normal (or skip-worked) turn was built to land on, set when its next track is
+    /// planned. The turn completes onto it, so a skip changed while the turn is driven applies
+    /// from the next turn on, not to the one already laid out (#585).
+    /// </summary>
+    public int? PlannedNextPath { get; set; }
+
     public void Reset()
     {
         IsTriggered = false;
@@ -122,6 +129,7 @@ public class YouTurnWorkingState
         CurrentZone = TractorZone.OutsideBoundary;
         NextUTurnDirectionLeftOverride = null;
         HeldDirectionLeft = null;
+        PlannedNextPath = null;
     }
 
     public void CompleteTurn()
@@ -132,6 +140,7 @@ public class YouTurnWorkingState
         ArcStart = null;
         LastTurnWasLeft = IsTurnLeft;
         HeldDirectionLeft = null;
+        PlannedNextPath = null;
         HasCompletedFirstTurn = true;
         YouTurnCounter = 0;
     }

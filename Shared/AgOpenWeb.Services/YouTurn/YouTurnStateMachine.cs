@@ -681,6 +681,7 @@ public sealed class YouTurnStateMachine
         turn.NextTrack = null;
         turn.IsTriggered = false;
         turn.ReturnPassTargetPath = null;
+        turn.PlannedNextPath = null;
         // The operator's side from the U-turn arrow goes into the next plan too (#577).
         if (!turn.IsExecuting && turn.HeldDirectionLeft is { } held)
             turn.NextUTurnDirectionLeftOverride ??= held;
@@ -1132,6 +1133,15 @@ public sealed class YouTurnStateMachine
                 _coveredPasses.Clear(); // decided again for the next turn
             }
         }
+        else if (turn.PlannedNextPath is { } planned)
+        {
+            // Onto the pass the turn was built to reach. The skip may have changed while the
+            // turn was driven; that applies from the next turn on (#585). AgOpenGPS adds the
+            // current skip here, which leaves the line the tractor just turned onto.
+            _logger.LogDebug("[YouTurn] Turn complete! Onto the planned path {Target} (was {Cur})",
+                planned, guidance.HowManyPathsAway);
+            guidance.HowManyPathsAway = planned;
+        }
         else
         {
             int pathsToMove = ctx.UTurnSkipRows + 1;
@@ -1164,6 +1174,7 @@ public sealed class YouTurnStateMachine
             guidance.HowManyPathsAway, widthMinusOverlap * guidance.HowManyPathsAway);
 
         turn.LastTurnWasLeft = turn.IsTurnLeft;
+        turn.PlannedNextPath = null;
         ForgetDirectionChoice(turn);
         turn.HasCompletedFirstTurn = true;
         turn.IsTriggered = false;
