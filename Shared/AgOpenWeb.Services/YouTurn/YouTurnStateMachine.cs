@@ -358,9 +358,32 @@ public sealed class YouTurnStateMachine
     {
         var effects = new YouTurnEffects();
         if (!turn.IsExecuting) return effects;
+        if (guidance.IsReverse && _configStore.Guidance.UTurnStyle != 1) // a K-turn reverses as part of it
+        {
+            // Off the path while reversing: the operator backed out of the turn, so it didn't
+            // happen. Stay on this pass; the turn is planned again from here (#588). AgOpenGPS
+            // completes it (it changed pass when the turn started), leaving guidance on the
+            // pass the turn was going to.
+            _logger.LogDebug("[YouTurn] Left the turn path in reverse - turn cancelled, staying on path {Cur}",
+                guidance.HowManyPathsAway);
+            CancelTurn(turn, effects);
+            return effects;
+        }
         _logger.LogDebug("[YouTurn] Guidance reached end of turn path — completing turn");
         CompleteTurn(in ctx, guidance, turn, effects);
         return effects;
+    }
+
+    /// <summary>Drop the turn being driven without moving to another pass (#588).</summary>
+    private static void CancelTurn(YouTurnWorkingState turn, YouTurnEffects effects)
+    {
+        DiscardPlannedTurn(turn);
+        turn.IsExecuting = false;
+        turn.YouTurnCounter = 0;
+        effects.SyncTurnPathToMap = true;
+        effects.SyncNextTrackToMap = true;
+        effects.IsInYouTurnMapFlag = false;
+        effects.StatusMessage = "U-turn cancelled: reversed out of the turn";
     }
 
     private void CheckCompletion(in TickContext ctx, GuidanceWorkingState guidance, YouTurnWorkingState turn, YouTurnEffects effects)
@@ -1136,8 +1159,8 @@ public sealed class YouTurnStateMachine
         else if (turn.PlannedNextPath is { } planned)
         {
             // Onto the pass the turn was built to reach. The skip may have changed while the
-            // turn was driven; that applies from the next turn on (#585). AgOpenGPS adds the
-            // current skip here, which leaves the line the tractor just turned onto.
+            // turn was driven; that applies from the next turn on (#585). AgOpenGPS lands there
+            // too: it moves to the next pass when the turn starts (YouTurnTrigger).
             _logger.LogDebug("[YouTurn] Turn complete! Onto the planned path {Target} (was {Cur})",
                 planned, guidance.HowManyPathsAway);
             guidance.HowManyPathsAway = planned;

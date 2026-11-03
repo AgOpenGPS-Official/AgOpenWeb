@@ -144,6 +144,48 @@ public class DirectionSwapTests
         Assert.That(Math.Abs(next - landed), Is.EqualTo(1), "the next turn moves by the new skip");
     }
 
+    // #588: stopped in the turn and reversed back out of it. Guidance reports the path left;
+    // the turn didn't happen, so guidance stays on the pass and the turn is planned again.
+    [Test]
+    public void ReversedOutOfTheTurn_StaysOnThePass_AndPlansTheTurnAgain()
+    {
+        var bench = new Bench(skipRows: 3);
+        var (guidance, turn) = bench.OnPass(-1);
+        bench.Tick(guidance, turn);
+        turn.IsTriggered = turn.IsExecuting = true;
+
+        guidance.IsReverse = true;
+        var effects = bench.Complete(guidance, turn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(guidance.HowManyPathsAway, Is.EqualTo(-1), "still on the pass it backed out to");
+            Assert.That(turn.IsExecuting, Is.False);
+            Assert.That(turn.TurnPath, Is.Null);
+            Assert.That(effects.TurnCompleted, Is.False, "nothing was completed");
+        });
+
+        guidance.IsReverse = false;
+        bench.Tick(guidance, turn);
+        Assert.That(turn.TurnPath, Is.Not.Null, "driving forward again, the turn is planned again");
+        int planned = (int)Math.Round((turn.NextTrack!.Points[0].Easting - Width / 2) / Width);
+        Assert.That(Math.Abs(planned - -1), Is.EqualTo(4), "to the same pass as before");
+    }
+
+    [Test]
+    public void KTurn_InReverse_StillCompletes()
+    {
+        var bench = new Bench(skipRows: 0);
+        ConfigurationStore.Instance.Guidance.UTurnStyle = 1;
+        var (guidance, turn) = bench.OnPass(-1);
+        bench.Tick(guidance, turn);
+        turn.IsTriggered = turn.IsExecuting = true;
+
+        guidance.IsReverse = true;
+        bench.Complete(guidance, turn);
+        Assert.That(guidance.HowManyPathsAway, Is.Not.EqualTo(-1), "a K-turn's reversing is part of the turn");
+    }
+
     [Test]
     public void Normal_Swap_IsForTheOneTurn()
     {
@@ -408,7 +450,7 @@ public class DirectionSwapTests
 
         public void SwitchedOff() => _sm.OnYouTurnSwitchedOff();
 
-        public void Complete(GuidanceWorkingState guidance, YouTurnWorkingState turn) =>
+        public YouTurnEffects Complete(GuidanceWorkingState guidance, YouTurnWorkingState turn) =>
             _sm.CompleteFromGuidance(Ctx(), guidance, turn);
 
         /// <summary>Plan a turn (swapped to the other side if asked), drive it, and stand on the
