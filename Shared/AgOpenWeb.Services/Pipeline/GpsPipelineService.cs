@@ -954,6 +954,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // isYouTurnBtnOn), and a manual turn started then completes through
         // TickExecutingTurn above. Clearing every cycle while off used to kill
         // manual turns the moment they were created.
+        if (!youTurnEnabled && _youTurnWasEnabled) _youTurnStateMachine.OnYouTurnSwitchedOff();
         if (!youTurnEnabled && _youTurnWasEnabled
             && (_youTurn.IsTriggered || _youTurn.IsExecuting || _youTurn.TurnPath != null))
         {
