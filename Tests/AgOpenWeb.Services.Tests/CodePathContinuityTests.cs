@@ -278,6 +278,7 @@ public class CodePathContinuityTests
         "appsettings.json", "appstate.json", "configuration.json", "runtime_state.json",
         "active_profile_name.txt", "user_notes.txt", "agshare.txt", "turn_path.json",
         "TramSystems.json", "TramConfig.json", "HeadlandSegments.json",
+        "window.json", // the desktop window's size, place and maximized state, as AgOpenGPS keeps them (#571)
         ".AutoSteer.json", ".tool.xml", ".env.xml",
         // Bug report dump
         "gps_data_log.csv", "logs.txt", "system_info.txt", "ntrip_rtcm.txt",
