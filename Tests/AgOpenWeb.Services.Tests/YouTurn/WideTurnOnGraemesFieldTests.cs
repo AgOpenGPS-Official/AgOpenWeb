@@ -58,6 +58,13 @@ public class WideTurnOnGraemesFieldTests
     [TestCase(-8, 5, true, false, 60)]
     [TestCase(-10, 7, true, true, 60)]
     [TestCase(-10, 7, true, false, 60)]
+    // #577: heading north-east on pass -6 with 7 or 8 rows skipped. The next pass ends before
+    // the tractor's place there, so from 140 m on (80 m with 8) the wide turn failed and the
+    // omega began behind the tractor: the turn started at once, or was called missed.
+    [TestCase(-6, 7, true, true, 140)]
+    [TestCase(-6, 7, true, true, 160)]
+    [TestCase(-6, 8, true, true, 80)]
+    [TestCase(-6, 8, true, true, 109)]   // the dump's place, 86.6 m from the headland
     public void BothEnds_TheWideTurnIsBuilt(int pass, int skip, bool northEast, bool left, double along)
     {
         var log = new ListLogger();

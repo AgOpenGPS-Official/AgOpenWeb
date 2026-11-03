@@ -266,6 +266,7 @@ public sealed class YouTurnStateMachine
                 turn.IsTriggered = true;
                 turn.IsExecuting = true;
                 _missedSounded = false;
+                ForgetDirectionChoice(turn);
                 effects.StatusMessage = "YouTurn triggered!";
                 _logger.LogDebug("[YouTurn] Triggered on the path, {Dist:F1}m from the arc", distToArcStart);
             }
@@ -286,6 +287,7 @@ public sealed class YouTurnStateMachine
                     turn.IsTriggered = true;
                     turn.IsExecuting = true;
                     _missedSounded = false;
+                    ForgetDirectionChoice(turn);
                     effects.StatusMessage = "YouTurn started from here: the planned arc was already behind the tractor";
                     _logger.LogDebug("[YouTurn] Arc start {Dist:F1}m behind the tractor - turning from here ({Count} points)",
                         distToArcStart, fromHere.Count);
@@ -645,6 +647,7 @@ public sealed class YouTurnStateMachine
             turn.IsTriggered = true;
             turn.IsExecuting = true;
             _missedSounded = false;
+            ForgetDirectionChoice(turn);
             effects.StatusMessage = $"Manual {(turnLeft ? "left" : "right")} U-turn started";
         }
         else
@@ -660,6 +663,7 @@ public sealed class YouTurnStateMachine
     /// </summary>
     public static void ClearState(YouTurnWorkingState turn)
     {
+        ForgetDirectionChoice(turn);
         DiscardPlannedTurn(turn);
         turn.IsExecuting = false;
         turn.YouTurnCounter = 0;
@@ -677,6 +681,16 @@ public sealed class YouTurnStateMachine
         turn.NextTrack = null;
         turn.IsTriggered = false;
         turn.ReturnPassTargetPath = null;
+        // The operator's side from the U-turn arrow goes into the next plan too (#577).
+        if (!turn.IsExecuting && turn.HeldDirectionLeft is { } held)
+            turn.NextUTurnDirectionLeftOverride ??= held;
+    }
+
+    /// <summary>A turn has started: the arrow's side was for this turn, not the next.</summary>
+    private static void ForgetDirectionChoice(YouTurnWorkingState turn)
+    {
+        turn.HeldDirectionLeft = null;
+        turn.NextUTurnDirectionLeftOverride = null;
     }
 
     // ── Private helpers ─────────────────────────────────────────────────
@@ -1008,6 +1022,7 @@ public sealed class YouTurnStateMachine
     {
         if (turn.NextUTurnDirectionLeftOverride is not { } overrideLeft) return false;
         turn.NextUTurnDirectionLeftOverride = null;
+        turn.HeldDirectionLeft = overrideLeft;
         // Same rule as CreateTurnToPath: a higher pass number lies right of the AB heading.
         bool plannedLeft = (plannedPath > guidance.HowManyPathsAway) ^ guidance.IsHeadingSameWay;
         return overrideLeft != plannedLeft;
@@ -1132,6 +1147,7 @@ public sealed class YouTurnStateMachine
             guidance.HowManyPathsAway, widthMinusOverlap * guidance.HowManyPathsAway);
 
         turn.LastTurnWasLeft = turn.IsTurnLeft;
+        ForgetDirectionChoice(turn);
         turn.HasCompletedFirstTurn = true;
         turn.IsTriggered = false;
         turn.IsExecuting = false;
