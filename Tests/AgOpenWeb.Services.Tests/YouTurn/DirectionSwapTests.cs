@@ -79,6 +79,45 @@ public class DirectionSwapTests
         });
     }
 
+    // ── Normal: the side holds while the turn is planned again (#577) ─────
+
+    [TestCase(1)]
+    [TestCase(3)]
+    public void Normal_Swap_HoldsWhenTheSkipChanges(int newSkip)
+    {
+        var bench = new Bench(skipRows: 0);
+        var (guidance, turn) = bench.OnPass(-1);
+
+        bench.Tick(guidance, turn);
+        Assert.That(turn.IsTurnLeft, Is.True, "the scenario: the planner turns left");
+        turn.NextUTurnDirectionLeftOverride = false;
+        bench.Tick(guidance, turn);
+        Assert.That(turn.IsTurnLeft, Is.False, "swapped to the right");
+
+        // The skip buttons: the pipeline drops the planned turn and the next tick plans again.
+        bench.SkipRows = newSkip;
+        YouTurnStateMachine.DiscardPlannedTurn(turn);
+        bench.Tick(guidance, turn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.IsTurnLeft, Is.False, "still to the right, as the operator set it");
+            Assert.That(turn.NextTrack!.Points[0].Easting, Is.EqualTo(PassX(-1 + newSkip + 1)).Within(0.01));
+        });
+    }
+
+    [Test]
+    public void Normal_Swap_IsForTheOneTurn()
+    {
+        var bench = new Bench(skipRows: 0);
+        var (guidance, turn) = bench.OnPass(-3);
+
+        Assert.That(bench.TurnAndComplete(guidance, turn, swap: true), Is.EqualTo(-2), "the scenario: swapped east");
+        Assert.That(turn.HeldDirectionLeft, Is.Null, "the side was for that turn");
+        YouTurnStateMachine.DiscardPlannedTurn(turn);
+        Assert.That(turn.NextUTurnDirectionLeftOverride, Is.Null, "a later plan is not swapped");
+    }
+
     // ── Normal: the work goes on across the field (#523) ──────────────────
 
     [Test]
@@ -239,8 +278,10 @@ public class DirectionSwapTests
         private readonly YouTurnStateMachine _sm;
         private readonly Boundary _boundary;
         private readonly List<Vec3> _turnLine;
-        private readonly int _skipRows;
         private readonly bool _skipWorked, _alternate;
+
+        /// <summary>The skip; changing it is what the pipeline does on the skip buttons.</summary>
+        public int SkipRows { get; set; }
         private double _x;
 
         public Models.Track.Track Track { get; }
@@ -274,7 +315,7 @@ public class DirectionSwapTests
             };
             _turnLine = offset.CalculatePointHeadings(offset.CreateInwardOffset(outer, 16.0)!);
             Track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
-            _skipRows = skipRows;
+            SkipRows = skipRows;
             _skipWorked = skipWorked;
             _alternate = alternate;
         }
@@ -289,7 +330,7 @@ public class DirectionSwapTests
         private YouTurnStateMachine.TickContext Ctx() => new(
             new Position { Easting = _x, Northing = -20, Heading = 0, Speed = 2.78 },
             Track, _boundary, _turnLine,
-            UTurnSkipRows: _skipRows, IsSkipWorkedMode: _skipWorked,
+            UTurnSkipRows: SkipRows, IsSkipWorkedMode: _skipWorked,
             HeadlandCalculatedWidth: 16.0, HeadlandDistance: 16.0,
             IsAlternateSkipMode: _alternate);
 

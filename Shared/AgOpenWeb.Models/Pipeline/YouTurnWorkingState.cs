@@ -92,6 +92,14 @@ public class YouTurnWorkingState
     /// </summary>
     public bool? NextUTurnDirectionLeftOverride { get; set; }
 
+    /// <summary>
+    /// The side the operator picked with the U-turn arrow for the coming turn, kept from when
+    /// the override is taken until a turn starts. A planned turn dropped before then (the skip
+    /// changed, a nudge, a lateral move) is planned again on that side, as AgOpenGPS keeps
+    /// <c>yt.isTurnLeft</c> when the skip changes (#577).
+    /// </summary>
+    public bool? HeldDirectionLeft { get; set; }
+
     public void Reset()
     {
         IsTriggered = false;
@@ -113,6 +121,7 @@ public class YouTurnWorkingState
         AltSign = 0;
         CurrentZone = TractorZone.OutsideBoundary;
         NextUTurnDirectionLeftOverride = null;
+        HeldDirectionLeft = null;
     }
 
     public void CompleteTurn()
@@ -122,6 +131,7 @@ public class YouTurnWorkingState
         TurnPath = null;
         ArcStart = null;
         LastTurnWasLeft = IsTurnLeft;
+        HeldDirectionLeft = null;
         HasCompletedFirstTurn = true;
         YouTurnCounter = 0;
     }

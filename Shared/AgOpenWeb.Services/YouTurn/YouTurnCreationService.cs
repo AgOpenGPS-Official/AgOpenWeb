@@ -1490,9 +1490,20 @@ namespace AgOpenWeb.Services.YouTurn
             // narrowing toward this end (#544). Walk on to where it comes in; the crossing is
             // where it leaves again. Without this the first point counted as the crossing, no
             // turn-line segment met it, and the omega was built instead.
-            int start = _currentInput.CurrentLocationIndex;
+            // With more rows skipped the next pass can end before the tractor's place, where the
+            // field narrows toward this end (#577): nothing ahead is inside, so walk back to its
+            // nearest part inside and take the crossing from there. AgOpenGPS starts at the
+            // tractor's index too; its omega fallback then began the turn behind the tractor.
+            int here = _currentInput.CurrentLocationIndex;
+            int start = here;
             while (start > 0 && start < nextCurve.Count && _currentInput.IsPointInsideTurnArea(nextCurve[start]) != 0)
                 start += count;
+            if (start <= 0 || start >= nextCurve.Count)
+            {
+                start = here;
+                while (start > 0 && start < nextCurve.Count && _currentInput.IsPointInsideTurnArea(nextCurve[start]) != 0)
+                    start -= count;
+            }
 
             for (int j = start; j > 0 && j < nextCurve.Count; j += count)
             {
