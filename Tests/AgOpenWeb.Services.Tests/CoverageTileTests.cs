@@ -257,6 +257,42 @@ public class CoverageTileTests
     }
 
     [Test]
+    [Platform(Exclude = "Win", Reason = "Made undeletable with Unix permissions")]
+    public void An_old_display_folder_that_cannot_be_removed_does_not_fail_the_save()
+    {
+        // A fields folder in OneDrive refused to let the old display folder go: every autosave
+        // threw, after the tiles and the manifest were written (#544 logs).
+        _store.Display.DisplayResolutionMultiplier = 1.0;
+        var svc = new CoverageMapService(_store);
+        svc.SetFieldBounds(-100, 100, -100, 100);
+        PaintStrip(svc, 10, 16, 10, 40);
+        svc.SaveToFile(_jobDir);
+        var oldDisplayDir = Directory.GetDirectories(CoverageDir, "s*").Single();
+
+        File.SetUnixFileMode(oldDisplayDir, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            _store.Display.DisplayResolutionMultiplier = 2.5;
+            svc.RebuildDisplayForResolutionChange();
+            Assert.DoesNotThrow(() => svc.SaveToFile(_jobDir));
+
+            var reopened = Reopen();
+            Assert.That(reopened.IsPointCovered(13, 30), Is.True);
+            Assert.That(reopened.DisplayDimensions!.Value.CellSize, Is.EqualTo(svc.DisplayDimensions!.Value.CellSize), "the manifest names the new folder");
+        }
+        finally
+        {
+            File.SetUnixFileMode(oldDisplayDir, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        // Once it can go, the next full save removes it.
+        _store.Display.DisplayResolutionMultiplier = 1.0;
+        svc.RebuildDisplayForResolutionChange();
+        svc.SaveToFile(_jobDir);
+        Assert.That(Directory.GetDirectories(CoverageDir, "s*"), Has.Length.EqualTo(1));
+    }
+
+    [Test]
     public void Display_tiles_at_another_cell_size_are_resampled_on_load()
     {
         _store.Display.DisplayResolutionMultiplier = 1.0;

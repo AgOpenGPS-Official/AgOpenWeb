@@ -295,15 +295,29 @@ internal sealed class CoverageTileStore
             File.Delete(path);
     }
 
-    /// <summary>Delete display folders other than the one in use.</summary>
+    /// <summary>
+    /// Delete display folders other than the one in use. Best effort: by now the tiles and the
+    /// manifest are written, and the manifest names the folder in use, so a folder that can't
+    /// be removed is only left over. A synced folder (OneDrive) can refuse it for a while (#544
+    /// logs); it is tried again at the next full save, and the save is not reported as failed.
+    /// </summary>
     public void DeleteOtherDisplayDirs(double keepCellSize)
     {
         if (!Directory.Exists(Root))
             return;
         var keep = Path.GetFileName(DisplayDir(keepCellSize));
         foreach (var dir in Directory.EnumerateDirectories(Root, "s*"))
-            if (Path.GetFileName(dir) != keep)
+        {
+            if (Path.GetFileName(dir) == keep) continue;
+            try
+            {
                 Directory.Delete(dir, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Console.WriteLine($"[Coverage] Old display folder {Path.GetFileName(dir)} not removed yet: {ex.Message}");
+            }
+        }
     }
 
     /// <summary>
