@@ -115,6 +115,7 @@ public sealed class YouTurnPathingService
         }
         nextTrack.IsActive = false;
         turn.NextTrack = nextTrack;
+        turn.PlannedNextPath = nextPathsAway; // the turn lands here, whatever the skip is by then (#585)
 
         _logger.LogDebug("[YouTurn] Turn {Dir}, heading {Way} way",
             turn.IsTurnLeft ? "LEFT" : "RIGHT",
