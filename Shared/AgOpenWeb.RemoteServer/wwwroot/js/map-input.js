@@ -52,6 +52,8 @@ addEventListener('touchend', e => {
 // before any other handler sees it: a mouse press right after a touch ended near the same
 // spot, and a second press from a pointer that is already down (a real one never does that).
 const GHOST_PRESS_MS = 800, GHOST_PRESS_PX = 30;
+const GHOST_PRESS_KEEPS_DEFAULT = 'textarea, select, input:not([type=checkbox]):not([type=radio])'
+  + ':not([type=button]):not([type=submit]):not([type=reset]):not([type=range]):not([type=file])';
 let _touchEnd = null;
 const _pointersDown = new Set();
 function noteTouchEnd(t, x, y) { _touchEnd = { t, x, y }; }
@@ -70,7 +72,14 @@ addEventListener('pointerdown', e => {
   const ghost = _pointersDown.delete(e.pointerId) || (e.pointerType === 'mouse' && _touchEnd
     && e.timeStamp - _touchEnd.t < GHOST_PRESS_MS
     && Math.hypot(e.clientX - _touchEnd.x, e.clientY - _touchEnd.y) < GHOST_PRESS_PX);
-  if (ghost) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+  if (ghost) {
+    // In WebKitGTK (the Linux launcher) that emulated press is also what focuses a text field
+    // or opens a list: a finger's own press doesn't. So on those its default goes ahead; only
+    // the handlers are kept from it. No handler here acts on mouse presses (#465, 2nd report).
+    if (!(e.target.closest && e.target.closest(GHOST_PRESS_KEEPS_DEFAULT))) e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
   _pointersDown.add(e.pointerId);
 }, true);
 
