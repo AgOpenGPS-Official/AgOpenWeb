@@ -3,7 +3,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using AgOpenWeb.Services;
 using Photino.NET;
 
 namespace AgOpenWeb.Desktop.Launcher;
@@ -31,12 +33,63 @@ internal sealed class WebViewLauncher
 
     public void Show()
     {
+        // The size and place it had when it last closed, or 1280 × 800 centred: what Restore
+        // returns to (#571; with none it collapsed to its title bar). The screens aren't known
+        // until the window exists, so the saved place is checked against them there.
+        _saved = WindowPlacement.Load(AppDataRoot.Documents);
+        var start = WindowPlacement.Fit(_saved, Array.Empty<System.Drawing.Rectangle>());
+        _restored = start.Bounds;
+        _maximized = start.Maximized;
         _window
-            .SetMaximized(true)
+            .SetMinSize(WindowPlacement.MinWidth, WindowPlacement.MinHeight)
+            .SetSize(start.Width, start.Height)
+            .SetLocation(new System.Drawing.Point(start.Left, start.Top))
+            .SetMaximized(start.Maximized)
+            .RegisterSizeChangedHandler((_, size) => { if (IsRestored()) _restored.Size = size; })
+            .RegisterLocationChangedHandler((_, at) => { if (IsRestored()) _restored.Location = at; })
+            .RegisterMaximizedHandler((_, _) => { if (!_fullScreen.IsOn) _maximized = true; })
+            .RegisterRestoredHandler((_, _) => { if (!_fullScreen.IsOn) _maximized = false; })
             .RegisterWebMessageReceivedHandler(OnWebMessage)
-            .RegisterWindowClosingHandler((_, _) => LauncherEntry.StopThenClose(_window, _backend, ref _closing))
-            .RegisterWindowCreatedHandler((_, _) => _ = StartAsync())
+            .RegisterWindowClosingHandler((_, _) => OnClosing())
+            .RegisterWindowCreatedHandler((_, _) => { FitToScreens(); _ = StartAsync(); })
             .LoadRawString(LauncherEntry.SplashHtml("Starting AgOpenWeb…"));
+    }
+
+    private WindowPlacement? _saved;
+    private System.Drawing.Rectangle _restored;
+    private bool _maximized;
+
+    /// <summary>A plain window: its size and place are the ones Restore goes back to.</summary>
+    private bool IsRestored()
+    {
+        try { return !_window.Maximized && !_window.Minimized && !_fullScreen.IsOn; }
+        catch { return false; }
+    }
+
+    /// <summary>A saved place on a screen that's gone (a monitor unplugged): the default instead.</summary>
+    private void FitToScreens()
+    {
+        if (_saved == null) return;
+        try
+        {
+            var areas = new List<System.Drawing.Rectangle>();
+            foreach (var m in _window.Monitors) areas.Add(m.WorkArea);
+            var fit = WindowPlacement.Fit(_saved, areas);
+            if (fit.Bounds == _saved.Bounds) return;
+            _restored = fit.Bounds;
+            if (_maximized) return;   // the OS maximizes on a screen it has; Restore then uses _restored next time
+            _window.SetSize(fit.Width, fit.Height).SetLocation(new System.Drawing.Point(fit.Left, fit.Top));
+        }
+        catch (Exception ex) { Console.WriteLine($"[launcher] window placement: {ex.Message}"); }
+    }
+
+    private bool OnClosing()
+    {
+        bool stay = LauncherEntry.StopThenClose(_window, _backend, ref _closing);
+        if (!stay)
+            new WindowPlacement(_restored.Left, _restored.Top, _restored.Width, _restored.Height, _maximized)
+                .Save(AppDataRoot.Documents);
+        return stay;
     }
 
     private async Task StartAsync()
