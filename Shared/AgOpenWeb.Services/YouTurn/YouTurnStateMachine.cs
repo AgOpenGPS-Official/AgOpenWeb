@@ -780,6 +780,7 @@ public sealed class YouTurnStateMachine
         {
             _logger.LogDebug("[YouTurn] Snake sequence complete — field done");
             effects.StatusMessage = "Field complete — all tracks worked";
+            SoundCreationFailed(effects);
             return;
         }
 
@@ -939,6 +940,7 @@ public sealed class YouTurnStateMachine
         if (!_pathing.IsPathInsideCultivated(track, abHeading, nextPath, ctx.Boundary, ctx.HeadlandLine))
         {
             effects.StatusMessage = "End of field reached";
+            SoundCreationFailed(effects);
             return;
         }
         CreateTurnToPath(in ctx, track, abHeading, headingRadians, guidance, turn, effects, nextPath, "Alternative");
@@ -978,6 +980,7 @@ public sealed class YouTurnStateMachine
         {
             _logger.LogDebug("[YouTurn] Next line would be outside boundary - stopping U-turns");
             effects.StatusMessage = "End of field reached";
+            SoundCreationFailed(effects);
             return;
         }
 
@@ -1037,9 +1040,23 @@ public sealed class YouTurnStateMachine
         effects.TurnCreationFailedSound = true;
     }
 
-    /// <summary>U-turn switched off: the next missed turn sounds again (AgOpenGPS resets
-    /// turnTooCloseTrigger on the U-turn button).</summary>
-    public void OnYouTurnSwitchedOff() => _missedSounded = false;
+    /// <summary>U-turn switched off: the next missed or failed turn sounds again (AgOpenGPS
+    /// resets turnTooCloseTrigger on the U-turn button).</summary>
+    public void OnYouTurnSwitchedOff() => _missedSounded = _creationFailSounded = false;
+
+    /// <summary>
+    /// No turn can be made: the turn would not build, or there is no pass to turn onto (the end of
+    /// the field, every pass worked). Sounds once until a turn is built or U-turn is switched off,
+    /// as AgOpenGPS plays sndUTurnTooClose for every FailCreate, the next pass outside the field
+    /// included. Before, the end of the field showed only a status line and the tractor drove into
+    /// the headland in silence.
+    /// </summary>
+    private void SoundCreationFailed(YouTurnEffects effects)
+    {
+        if (_creationFailSounded) return;
+        _creationFailSounded = true;
+        effects.TurnCreationFailedSound = true;
+    }
 
     private void RefuseDirectionSwap(int swappedPath, YouTurnEffects effects)
     {
@@ -1067,7 +1084,7 @@ public sealed class YouTurnStateMachine
 
         if (result.Path == null)
         {
-            if (!_creationFailSounded) { _creationFailSounded = true; effects.TurnCreationFailedSound = true; }
+            SoundCreationFailed(effects);
             return;
         }
         _creationFailSounded = false;

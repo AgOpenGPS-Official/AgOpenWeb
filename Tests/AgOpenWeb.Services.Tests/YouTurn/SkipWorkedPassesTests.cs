@@ -120,6 +120,7 @@ public class SkipWorkedPassesTests
             Assert.That(turn.TurnPath, Is.Null);
             Assert.That(turn.ReturnPassTargetPath, Is.Null);
             Assert.That(effects.StatusMessage, Does.Contain("Field complete"));
+            Assert.That(effects.TurnCreationFailedSound, Is.True, "no turn: the operator is told (#570)");
         });
     }
 
