@@ -1486,7 +1486,15 @@ namespace AgOpenWeb.Services.YouTurn
 
             closestTurnPt = new TurnClosePoint();
 
-            for (int j = _currentInput.CurrentLocationIndex; j > 0 && j < nextCurve.Count; j += count)
+            // Abreast of the tractor the next pass can be outside the field: rows skipped, a field
+            // narrowing toward this end (#544). Walk on to where it comes in; the crossing is
+            // where it leaves again. Without this the first point counted as the crossing, no
+            // turn-line segment met it, and the omega was built instead.
+            int start = _currentInput.CurrentLocationIndex;
+            while (start > 0 && start < nextCurve.Count && _currentInput.IsPointInsideTurnArea(nextCurve[start]) != 0)
+                start += count;
+
+            for (int j = start; j > 0 && j < nextCurve.Count; j += count)
             {
                 if (j < 0 || j >= nextCurve.Count) break;
 
