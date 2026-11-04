@@ -123,6 +123,17 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private double _cachedOffsetDistAway;
     private double _cachedOffsetTurnRadius;
     private readonly OffsetPassCache _offsetPasses = new();
+
+    // Going round obstacles chosen as Go around: the pass bent round them, for the line steered
+    // and the line shown. The bend steered last cycle (a new one re-finds the nearest point),
+    // the bend shown with its track (kept so the display gate sees the same object), and the
+    // obstacles last reported as having no room.
+    private readonly Track.ObstacleDetour _obstacleDetour = new(new PolygonOffsetService());
+    private List<Vec3>? _lastSteerBend;
+    private List<Vec3>? _shownBendPoints;
+    private Models.Track.Track? _shownBendTrack;
+    private string? _blockedNoticeKey;
+    private string? _obstacleNotice;
     // Phase D D3: passNumber / nudgeOffset live on _guidanceWorking as the single
     // source of truth. The separate _passNumber / _nudgeOffset fields used to be
     // pushed here by SetActiveTrack; that path now writes directly to the
@@ -1122,6 +1133,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 baseTrack = track;
             }
 
+            // The line shown is the line steered: bent round the Go around obstacles.
+            if (GoRoundLine(track, distAway, displayTrack.Points, boundary) is { } bentShown)
+            {
+                displayTrack = BendTrack(bentShown, displayTrack.Name, track);
+                baseTrack = track;
+            }
+
             toolPassArgs = (widthMinusOverlap, extendDisp);
             toolPass = ToolPass(track, passNumber, widthMinusOverlap, nudgeOffset, extendDisp);
 
@@ -1195,7 +1213,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 // Normal track guidance
                 var guidanceResult = CalculateTrackGuidance(
                     pos, track!, passNumber, nudgeOffset, driftedEasting, driftedNorthing, headingRad,
-                    isYouTurnTriggered);
+                    isYouTurnTriggered, boundary);
                 if (guidanceResult != null)
                 {
                     steerAngle = guidanceResult.Value.steerAngle;
@@ -1238,7 +1256,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             var (nearestPass, nearestDisplayTrack, displayXte, onReference) = UpdateDisplayTrack(
                 pos, track!, passNumber, nudgeOffset,
                 driftedEasting, driftedNorthing,
-                lookE, lookN);
+                lookE, lookN, boundary);
             // The light bar shows the distance to the line in free-drive too, as AgOpenGPS
             // does (it computes the line's distance whether or not AutoSteer is on).
             crossTrackError = displayXte;
@@ -1458,7 +1476,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             FarFromFieldWarning = farFromFieldWarning,
 
             // Status
-            StatusMessage = statusMessage ?? youTurnTickEffects?.StatusMessage ?? fixRejectionReason
+            StatusMessage = statusMessage ?? youTurnTickEffects?.StatusMessage ?? fixRejectionReason,
+            ObstacleNotice = Interlocked.Exchange(ref _obstacleNotice, null),
         };
 
         CycleCompleted?.Invoke(result);
@@ -1588,7 +1607,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         CalculateTrackGuidance(
             Position currentPosition, Models.Track.Track track, int passNumber, double nudgeOffset,
             double driftedEasting, double driftedNorthing, double headingRad,
-            bool isYouTurnTriggered)
+            bool isYouTurnTriggered, Boundary? boundary)
     {
         var config = _configStore;
 
@@ -1665,6 +1684,17 @@ public sealed class GpsPipelineService : IGpsPipelineService
             };
         }
 
+        // Round the Go around obstacles on this pass, tractor and implement kept out of them.
+        var bent = GoRoundLine(track, distAway, currentTrack.Points, boundary, report: true);
+        if (bent != null)
+            currentTrack = new Models.Track.Track
+            {
+                Name = currentTrack.Name, Points = bent, Type = track.Type, IsVisible = true, IsActive = true
+            };
+        // A line bent or straightened has other points: find the nearest one afresh.
+        bool lineChanged = !ReferenceEquals(bent, _lastSteerBend);
+        _lastSteerBend = bent;
+
         if (_cycleCounter % 50 == 0 && currentTrack.Points.Count >= 2)
         {
             var p0 = currentTrack.Points[0];
@@ -1701,7 +1731,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // travel direction along the track flips — otherwise a stranded local
             // index can't recover and the vehicle keeps steering off the wrong
             // part of the loop (#422). Steady-state stays local.
-            FindGlobalNearest = _trackGuidanceState == null || isHeadingSameWay != _lastHeadingSameWay,
+            FindGlobalNearest = _trackGuidanceState == null || isHeadingSameWay != _lastHeadingSameWay || lineChanged,
             CurrentLocationIndex = _trackGuidanceState?.CurrentLocationIndex ?? 0
         };
         _lastHeadingSameWay = isHeadingSameWay;
@@ -1955,7 +1985,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private (int nearestPass, Models.Track.Track? displayTrack, double xte, bool onReference) UpdateDisplayTrack(
         Position pos, Models.Track.Track track, int passNumber, double nudgeOffset,
         double pivotEasting, double pivotNorthing,
-        double sampleEasting, double sampleNorthing)
+        double sampleEasting, double sampleNorthing, Boundary? boundary)
     {
         var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
@@ -2031,9 +2061,19 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _cachedOffsetTrack = resultTrack;
         }
 
+        // The pass bent round its Go around obstacles is the line shown, and the light bar
+        // shows the distance to it: driving by hand, the operator follows the bend.
+        var bent = GoRoundLine(track, distAway, resultTrack.Points, boundary);
+        if (bent != null)
+        {
+            resultTrack = BendTrack(bent, resultTrack.Name, track);
+            onReference = false;
+        }
+
         // Update XTE display — actual pivot distance to the selected pass line.
-        double pivotPerp = CalculatePerpendicularDistance(track, pivotEasting, pivotNorthing);
-        double xte = pivotPerp - distAway;
+        double xte = bent != null
+            ? CalculatePerpendicularDistance(resultTrack, pivotEasting, pivotNorthing)
+            : CalculatePerpendicularDistance(track, pivotEasting, pivotNorthing) - distAway;
         if (!_guidanceWorking.IsHeadingSameWay) xte = -xte; // set for this cycle before any line (#172, #446)
 
         _autoSteerService.UpdateGuidanceResults(0, xte);
@@ -2157,6 +2197,50 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
 
         return points[nearestIdx].Heading;
+    }
+
+    /// <summary>
+    /// The pass bent round the obstacles chosen as Go around that it runs into, or null when it
+    /// runs into none (or has no room for any). Open tracks only: a closed loop is a boundary
+    /// pass. With <paramref name="report"/>, obstacles with no room either side are told to the
+    /// operator, once for each pass.
+    /// </summary>
+    private List<Vec3>? GoRoundLine(Models.Track.Track track, double distAway, IReadOnlyList<Vec3> pass,
+        Boundary? boundary, bool report = false)
+    {
+        if (track.IsClosed || boundary == null || boundary.InnerBoundaries.Count == 0) return null;
+        var c = _configStore;
+        double keepOut = Track.ObstacleDetour.KeepOutFor(c.ActualToolWidth, c.Tool.Offset, c.Vehicle.TrackWidth);
+        var bend = _obstacleDetour.For(track, distAway, pass, boundary, keepOut, c.Guidance.UTurnRadius);
+        if (bend == null) return null;
+        if (report && bend.Blocked.Count > 0)
+        {
+            string key = $"{track.GetHashCode()}|{distAway:F2}|{string.Join(",", bend.Blocked)}";
+            if (key != _blockedNoticeKey)
+            {
+                _blockedNoticeKey = key;
+                var names = string.Join(", ", bend.Blocked.Select(i => $"Inner {i + 1}"));
+                _obstacleNotice = bend.Blocked.Count == 1
+                    ? $"No room to go around {names} on this pass: steer around it by hand"
+                    : $"No room to go around {names} on this pass: steer around them by hand";
+                _logger.LogInformation("[Obstacles] {Notice}", _obstacleNotice);
+            }
+        }
+        return bend.GoneRound.Count > 0 ? bend.Points : null;
+    }
+
+    // The track drawn for a bent pass, kept while the bend is the same.
+    private Models.Track.Track BendTrack(List<Vec3> points, string name, Models.Track.Track track)
+    {
+        if (!ReferenceEquals(points, _shownBendPoints) || _shownBendTrack == null)
+        {
+            _shownBendPoints = points;
+            _shownBendTrack = new Models.Track.Track
+            {
+                Name = name, Points = points, Type = track.Type, IsVisible = true, IsActive = true
+            };
+        }
+        return _shownBendTrack;
     }
 
     private static double CalculatePerpendicularDistance(Models.Track.Track track, double easting, double northing)

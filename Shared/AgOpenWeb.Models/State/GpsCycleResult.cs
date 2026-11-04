@@ -114,6 +114,12 @@ public record GpsCycleResult
 
     // Status
     public string? StatusMessage { get; init; }
+
+    /// <summary>
+    /// Non-null on the cycle where the pass steered first runs into obstacles chosen as Go
+    /// round with no room to go round them: shown to the operator.
+    /// </summary>
+    public string? ObstacleNotice { get; init; }
 }
 
 /// <summary>

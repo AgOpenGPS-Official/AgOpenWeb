@@ -343,6 +343,10 @@ public partial class MainViewModel
         if (result.StatusMessage != null)
             StatusMessage = result.StatusMessage;
 
+        // A pass that runs into Go around obstacles with no room either side (a toast).
+        if (result.ObstacleNotice != null)
+            ReportFailure(result.ObstacleNotice);
+
         // Map vehicle/tool/hitch positions are pushed by OnRenderPullTick at
         // 30 Hz (vehicle dead-reckoned to "now" from the estimator, tool/hitch
         // from the live ToolPositionService snapshot updated at 100 Hz by the

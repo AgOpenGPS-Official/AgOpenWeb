@@ -472,6 +472,19 @@ Key parameters:
 
 The arc must fit between the headland boundary (green line) and outer boundary (yellow line). If the headland is too narrow for the turn radius, the arc will extend past the outer boundary.
 
+## Going around obstacles
+Inner boundaries chosen as *Go around* (`ObstacleAction.GoRound`) bend the pass round them
+(`ObstacleDetour` in `Services/Track`). Each is grown by half the implement (and its offset, or half
+the tractor's track if wider) plus 1 m, and the pass is moved sideways as far as the grown outline
+reaches across it, on the side needing the smaller move; obstacles close together along the pass
+are gone round together, on one side. The sideways offset rises no steeper than 1 in 2 and is
+rounded so the bend is no tighter than the U-turn radius, never less than the obstacle needs. A
+bend that enters another grown obstacle, a *U-turn* obstacle, or comes closer to the field's edge
+tries the other side; with no room either way the obstacle is driven through and the operator gets a
+toast (`GpsCycleResult.ObstacleNotice`). The bend is built once per pass and cached; it is the line
+steered (`CalculateTrackGuidance`), the line shown and the light bar's line, AutoSteer on or off.
+U-turn planning and pass numbering keep the straight pass. Closed tracks are not bent.
+
 ## CI/CD
 
 Two GitHub Actions workflows, split by purpose:
