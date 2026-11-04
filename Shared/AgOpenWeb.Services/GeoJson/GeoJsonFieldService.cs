@@ -257,6 +257,7 @@ public partial class GeoJsonFieldService
                         inner.AtObstacle = ObstacleActionNames.Parse(GetStringProp(feature, FieldPropertyKeys.AtObstacle))
                             ?? (GetBoolProp(feature, FieldPropertyKeys.IsDriveThrough) ? ObstacleAction.DriveThrough : ObstacleAction.Turn);
                         inner.IsHard = GetBoolProp(feature, FieldPropertyKeys.IsHard);
+                        inner.Circle = ReadCircle(geo, feature, inner);
                         boundary.InnerBoundaries.Add(inner);
                     }
                     break;
@@ -366,8 +367,31 @@ public partial class GeoJsonFieldService
             }
         };
         if (role == FeatureRoles.InnerBoundary)
+        {
             feature.Properties[FieldPropertyKeys.AtObstacle] = polygon.AtObstacle.ToName();
+            if (polygon.Circle is { } circle && circle.Matches(polygon.Points))
+            {
+                var (lat, lon) = geo.ToWgs84(new Vec2(circle.CenterEasting, circle.CenterNorthing));
+                feature.Properties[FieldPropertyKeys.CircleCenter] = new[] { lon, lat };
+                feature.Properties[FieldPropertyKeys.CircleDiameter] = circle.Diameter;
+            }
+        }
         return feature;
+    }
+
+    // A round obstacle's circle, kept only while the polygon is still that circle's: a polygon
+    // edited in another program keeps its shape and loses the circle.
+    private static ObstacleCircle? ReadCircle(Projection geo, GeoJsonFeature feature, BoundaryPolygon polygon)
+    {
+        if (!feature.Properties.TryGetValue(FieldPropertyKeys.CircleCenter, out var val)
+            || val is not JsonElement je || je.ValueKind != JsonValueKind.Array || je.GetArrayLength() < 2)
+            return null;
+        if (je[0].ValueKind != JsonValueKind.Number || je[1].ValueKind != JsonValueKind.Number) return null;
+        double diameter = GetDoubleProp(feature, FieldPropertyKeys.CircleDiameter);
+        if (!ObstacleCircle.IsValidDiameter(diameter)) return null;
+        var centre = geo.ToLocal(je[1].GetDouble(), je[0].GetDouble());
+        var circle = new ObstacleCircle(centre.Easting, centre.Northing, diameter);
+        return circle.Matches(polygon.Points) ? circle : null;
     }
 
     private static GeoJsonFeature BuildTrackFeature(Projection geo, Models.Track.Track track)

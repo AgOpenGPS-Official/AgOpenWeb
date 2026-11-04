@@ -69,7 +69,7 @@ Their points are `[longitude, latitude, heading]`: drop the third value, which i
 | --- | --- | --- | --- |
 | `metadata` | Point at the origin | Exactly 1, first | `name`, `originLatitude`, `originLongitude`, `convergence`, `areaHectares`, `createdDate`, `lastModifiedDate` |
 | `outer-boundary` | Polygon, 1 ring, closed, with headings | 0 or 1 | `isDriveThrough`, `isHard`, `areaHectares` |
-| `inner-boundary` | Polygon, as above | 0 or more | `atObstacle`, `isDriveThrough`, `isHard`, `areaHectares` |
+| `inner-boundary` | Polygon, as above | 0 or more | `atObstacle`, `isDriveThrough`, `isHard`, `areaHectares`, `circleCenter`, `circleDiameter` |
 | `headland` | Polygon, as above | 0 or 1 | `isDriveThrough`, `isHard`, `areaHectares` (only geometry is read) |
 | `track` | LineString with headings, ≥ 2 points | 0 or more | `name`, `trackType`, `isClosed`, `noPassOffset`, `nudgeDistance`, `isVisible` |
 | `flag` | Point `[lon, lat]` | 0 or more | `name`, `color`, `id`, `notes` (optional) |
@@ -84,6 +84,7 @@ Property details:
 - **`areaHectares`:** informational, written by AgOpenWeb, ignored on read.
 - **`isHard`:** hard boundary (autosteer stops at it). **`isDriveThrough`:** an inner boundary the tractor may drive through.
 - **`atObstacle`** (inner boundaries only): `"turn"` (a U-turn before it, the default, as AgOpenGPS's Drive thru = No), `"goRound"` (the tractor goes round it, tractor and implement outside it) or `"driveThrough"` (no turn, as `isDriveThrough: true`). Chosen in the boundary list. `isDriveThrough` is still written, true exactly for `driveThrough`; a file without `atObstacle` is read from `isDriveThrough` (true = `driveThrough`, else `turn`).
+- **`circleCenter`**, **`circleDiameter`** (inner boundaries only, together or not at all): a round obstacle, such as a tree. `circleCenter` is `[lon, lat]`, `circleDiameter` metres (0.5 to 100). The geometry is still written: a regular 24-sided polygon round the centre whose sides touch the circle, so all of the circle is inside it. A reader that does not know circles uses the polygon. On reading, the circle is kept only while the polygon is still that circle's (24 corners, each at the corner distance within 5 cm); a polygon edited in another program keeps its shape and loses the circle.
 - **`trackType`:** integer. `2` AB line (2 points, infinite extension), `4` curve, `8` boundary outer, `16` boundary inner, `32` boundary curve, `64` water pivot, `128` recorded path, `256` contour. Unknown values read as `2`. AgShare's AB and curve lines map to `2` and `4`.
 - **`isClosed`:** the curve is a loop. **`noPassOffset`:** don't offset this track by pass width. **`nudgeDistance`:** metres, signed. **`isVisible`:** defaults to `true` when absent.
 - **Flag `color`:** `0` red, `1` green, `2` yellow, `3` blue, `4` orange, `5` purple, `6` cyan, `7` pink, `8` white, `9` black. **`id`:** the flag's unique number.

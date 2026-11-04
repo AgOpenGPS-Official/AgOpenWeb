@@ -158,6 +158,21 @@ public class BoundaryPolygon
     public ObstacleAction AtObstacle { get; set; } = ObstacleAction.Turn;
 
     /// <summary>
+    /// The circle this inner boundary was made from (a tree), or null for a drawn shape. The
+    /// points are its polygon (<see cref="ObstacleCircle.ToPoints"/>); set both together with
+    /// <see cref="SetCircle"/>.
+    /// </summary>
+    public ObstacleCircle? Circle { get; set; }
+
+    /// <summary>This boundary becomes <paramref name="circle"/>: its polygon and the circle.</summary>
+    public void SetCircle(ObstacleCircle circle)
+    {
+        Points = circle.ToPoints();
+        Circle = circle;
+        UpdateBounds();
+    }
+
+    /// <summary>
     /// Whether this is a drive-through boundary (true) or avoid boundary (false): the
     /// <see cref="ObstacleAction.DriveThrough"/> choice, as AgOpenGPS's flag. Clearing it makes
     /// a drive-through boundary a U-turn one and leaves the other choices as they are.
