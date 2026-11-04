@@ -1475,8 +1475,15 @@
       <button id="bm-driveinner" class="bm-tbtn" title="Drive around obstacle (inner boundary)"><img src="/icons/Boundary.png" alt=""><span class="bm-plus">+</span></button>
       <button id="bm-accept" class="bm-tbtn" title="Accept and close"><img src="/icons/OK64.png" alt=""></button>
     </div>
-    <div class="bm-lhdr"><span>Boundary</span><span>Area</span><span>Drive Thru</span><span>Hard</span></div>
+    <!-- What the tractor does at each obstacle: one choice per row; a choice's column title
+         gives it to every obstacle. Coloured as the obstacles on the map. -->
+    <div class="bm-lhdr"><span>Boundary</span><span>Size</span>
+      <button class="bm-colhdr" data-all="turn" title="Give every obstacle a U-turn"><span class="bm-dot k1"></span>U-turn</button>
+      <button class="bm-colhdr" data-all="goRound" title="Go round every obstacle"><span class="bm-dot k2"></span>Go round</button>
+      <button class="bm-colhdr" data-all="driveThrough" title="Drive through every obstacle"><span class="bm-dot k3"></span>Drive through</button>
+      <span>Hard</span></div>
     <div id="bm-list" class="bm-list"></div>
+    <div class="bm-hint">Tap a column title to give every obstacle that choice, or an obstacle on the map to find its row.</div>
   </div>
   <!-- Boundary Player ("Stop Record Pause Boundary") — GPS drive-around recording. -->
   <div id="boundaryplayer" class="ln-panel bp-panel">
