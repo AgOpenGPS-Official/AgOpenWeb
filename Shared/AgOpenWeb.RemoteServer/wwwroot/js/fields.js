@@ -185,6 +185,7 @@ function openImport(panelId, selId, fileArr) {
     fillSelect(document.getElementById(selId), fieldOps ? fieldOps[fileArr] : []);
     document.getElementById(panelId === 'isoimport' ? 'iso-name' : 'kml-name').value = '';
   });
+  scanImportFolder(); // the list comes back in the FieldOps frame (wizards.js refills it)
 }
 document.getElementById('iso-back').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
 document.getElementById('kml-back').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });

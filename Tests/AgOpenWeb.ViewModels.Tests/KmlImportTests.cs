@@ -13,8 +13,8 @@ namespace AgOpenWeb.ViewModels.Tests;
 /// Checklist 5.3 / 7.4: a field from KML. Files as Google Earth and GIS tools write them go
 /// through the real From KML command (RemoteCreateFromKml, the files under the data root's
 /// Import folder) and the field's boundary is checked in metres: the outer ring and its
-/// island, a Point placemark ignored, the ring's repeated closing point dropped, and the
-/// numbers read the same in a comma-decimal culture.
+/// island (also when both are on one line), a Point placemark ignored, the ring's repeated
+/// closing point dropped, and the numbers read the same in a comma-decimal culture.
 /// </summary>
 [TestFixture]
 [NonParallelizable] // AGOPENWEB_DATA and the current culture are process-wide
@@ -62,6 +62,14 @@ public class KmlImportTests
         "<kml><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>\n" +
         Ring(0, 0, 100, "\n", alt: false, closed: false) +
         "\n</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>";
+
+    /// <summary>GDAL's KML driver (a QGIS export): the whole polygon, outer ring and island,
+    /// on one line.</summary>
+    private static string OneLinePolygon() =>
+        "<kml><Document><Placemark><name>North</name>\n" +
+        $"<Polygon><outerBoundaryIs><LinearRing><coordinates>{Ring(0, 0, 100, " ")}</coordinates></LinearRing></outerBoundaryIs>" +
+        $"<innerBoundaryIs><LinearRing><coordinates>{Ring(40, 40, 20, " ")}</coordinates></LinearRing></innerBoundaryIs></Polygon>\n" +
+        "</Placemark></Document></kml>";
 
     [SetUp]
     public void SetUp()
@@ -134,6 +142,23 @@ public class KmlImportTests
             Assert.That(w, Is.EqualTo(100).Within(0.2));
             Assert.That(h, Is.EqualTo(100).Within(0.2));
             Assert.That(boundary.InnerBoundaries, Is.Empty);
+        });
+    }
+
+    [Test]
+    public void OneLinePolygon_KeepsTheIsland()
+    {
+        // Only the first ring of each line was read, so the island was lost.
+        var boundary = Import(OneLinePolygon(), "qgis.kml");
+        Assert.Multiple(() =>
+        {
+            var (w, h) = Size(boundary.OuterBoundary!);
+            Assert.That(w, Is.EqualTo(100).Within(0.2), "outer width");
+            Assert.That(h, Is.EqualTo(100).Within(0.2), "outer height");
+            Assert.That(boundary.InnerBoundaries, Has.Count.EqualTo(1), "the island on the same line");
+            var (iw, ih) = Size(boundary.InnerBoundaries[0]);
+            Assert.That(iw, Is.EqualTo(20).Within(0.1));
+            Assert.That(ih, Is.EqualTo(20).Within(0.1));
         });
     }
 

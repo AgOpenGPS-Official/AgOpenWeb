@@ -273,9 +273,26 @@ document.getElementById('bm-imagery').addEventListener('pointerdown', e => {
     () => transport.send('boundary.captureImagery'));
 });
 document.getElementById('bm-drawmap').addEventListener('pointerdown', e => { e.stopPropagation(); startSatBoundary(); });
+// The Import folder's pickers (From KML, From ISO-XML, Import KML Boundary) get their lists in
+// the FieldOps frame. The host lists the folder only when asked: when a picker opens, and every
+// 3 s while one stays open, so a file copied in meanwhile shows up. Nothing is listed while
+// none is open.
+const IMPORT_PICKERS = ['kmlimport', 'isoimport', 'kmlboundary'];
+let importScanTimer = 0;
+function scanImportFolder() {
+  transport.send('import.scan');
+  clearTimeout(importScanTimer);
+  importScanTimer = setTimeout(() => {
+    if (IMPORT_PICKERS.some(id => document.getElementById(id).classList.contains('open'))) scanImportFolder();
+  }, 3000);
+}
 // Import-KML boundary picker: lists KML/KMZ from the Import folder (FieldOps frame),
 // tapping one imports it as the field boundary (host parses + imports, replacing the outer).
-document.getElementById('bm-importkml').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('kmlboundary', 'ln-fieldtools', renderKmlBoundary); });
+document.getElementById('bm-importkml').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  lnOpen('kmlboundary', 'ln-fieldtools', renderKmlBoundary);
+  scanImportFolder();
+});
 document.getElementById('kb-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('boundarymenu', 'ln-fieldtools', renderBoundaryMenu); });
 function renderKmlBoundary() {
   const list = document.getElementById('kb-list'); list.innerHTML = '';

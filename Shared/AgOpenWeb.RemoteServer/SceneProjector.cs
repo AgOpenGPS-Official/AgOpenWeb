@@ -606,43 +606,29 @@ public sealed class SceneProjector : System.IDisposable
             .ToList();
         var suggestions = _jobs.SuggestWorkTypes().ToList();
 
-        var (iso, kml) = ScanImportFolder();
-        return new FieldOpsDto(fields, jobs, suggestions, iso, kml, _fields.ActiveField?.Name ?? "");
+        // The Import folder as last listed when a picker opened (import.scan): a field or job
+        // change re-sends this frame and must not walk the folder.
+        var listing = ImportScan.Latest;
+        return new FieldOpsDto(fields, jobs, suggestions, listing.IsoXml, listing.Kml, _fields.ActiveField?.Name ?? "");
     }
 
-    // ISO-XML (subdirs with TASKDATA.xml) + KML/KMZ files under <data root>/Import.
-    // Mirrors MainViewModel.PopulateAvailableIsoXmlFiles / PopulateAvailableKmlFiles.
-    private static (System.Collections.Generic.List<string> iso, System.Collections.Generic.List<string> kml) ScanImportFolder()
-    {
-        var iso = new System.Collections.Generic.List<string>();
-        var kml = new System.Collections.Generic.List<string>();
-        try
-        {
-            // Resolve the Import folder from the shared AgOpenWeb data root (honors
-            // AGOPENWEB_DATA), same as Fields/Tools/Vehicles/NtripProfiles. Using
-            // MyDocuments directly diverged from the data root on headless installs,
-            // so the scanned folder never matched where files actually live.
-            var importDir = System.IO.Path.Combine(AppDataRoot.Documents, "Import");
-            if (!System.IO.Directory.Exists(importDir)) return (iso, kml);
-            // One entry per partfield of every TASKDATA.XML (case-insensitive: ISOBUS writes
-            // TASKDATA.XML, which File.Exists misses on Linux, #111); a farm export holds many.
-            foreach (var e in AgOpenWeb.Services.IsoXml.IsoXmlImportCatalog.Scan(importDir))
-                iso.Add(e.Name);
-            foreach (var fp in System.IO.Directory.GetFiles(importDir, "*.kml", System.IO.SearchOption.AllDirectories)
-                .Concat(System.IO.Directory.GetFiles(importDir, "*.kmz", System.IO.SearchOption.AllDirectories)))
-                kml.Add(System.IO.Path.GetFileName(fp));
-        }
-        catch { /* import dir optional */ }
-        return (iso, kml);
-    }
+    /// <summary>
+    /// The Import folder's listing for the pickers. The From KML, From ISO-XML and Import KML
+    /// Boundary pickers ask for a scan when they open (<c>import.scan</c>); it runs off the host
+    /// thread, and a new listing moves <see cref="ImportFolderScanner.Version"/>, which
+    /// <see cref="FieldOpsFingerprint"/> carries. The broadcast tick never touches the folder.
+    /// </summary>
+    public ImportFolderScanner ImportScan { get; } = new();
 
     // Re-send FieldOps when a field or job is added, deleted, opened or saved (the Fields
-    // folder changed) or the open field changes. No disk here: it runs every tick (#604).
+    // folder changed), the open field changes, or a picker's scan of the Import folder found a
+    // different listing. No disk here: it runs every tick (#604).
     public long FieldOpsFingerprint()
     {
         WatchLists();
         long h = 17;
         h = h * 31 + _lists.FieldsVersion;
+        h = h * 31 + ImportScan.Version; // a picker's scan found a different listing (#603)
         h = h * 31 + (_fields.ActiveField?.Name?.GetHashCode() ?? 0);
         return h;
     }
