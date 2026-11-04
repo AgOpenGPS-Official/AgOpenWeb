@@ -354,7 +354,7 @@ function renderBoundaryMenu() {
     if (sel) selRow = row;
     const name = document.createElement('span'); name.className = 'bm-name'; name.textContent = it.boundaryType;
     const size = document.createElement('span'); size.className = 'bm-area';
-    size.textContent = it.isInner ? fmtUnit(it.sizeM, 'm', 1) : fmtUnit(it.areaHa, 'ha');
+    size.textContent = it.circleD > 0 ? '⌀ ' + fmtUnit(it.circleD, 'm', 1) : it.isInner ? fmtUnit(it.sizeM, 'm', 1) : fmtUnit(it.areaHa, 'ha');
     row.append(name, size);
     if (it.isInner) {
       OBSTACLE_ACTIONS.forEach((act, k) => {
@@ -387,6 +387,7 @@ function renderBoundaryMenu() {
   const selIndex = b ? b.selectedIndex : -1;
   if (selRow && selIndex !== bmShownSel) selRow.scrollIntoView({ block: 'nearest' });
   bmShownSel = selIndex;
+  renderCircleBar();
 }
 function choiceLabel(k) { return k === 1 ? tr('Go round') : k === 2 ? tr('Drive through') : tr('U-turn'); }
 for (const h of document.querySelectorAll('#boundarymenu .bm-colhdr')) h.addEventListener('pointerdown', e => {
@@ -396,6 +397,82 @@ for (const h of document.querySelectorAll('#boundarymenu .bm-colhdr')) h.addEven
   if (!n) { showToast(tr('The field has no obstacles')); return; }
   showConfirm(tr('Every obstacle'), tr('Give all {n} obstacles "{choice}"?', { n, choice: choiceLabel(k) }),
     () => transport.send('boundary.atObstacleAll|' + h.dataset.all));
+});
+// Round obstacles (trees), under the list. The box holds the selected circle's diameter, else
+// the diameter for new circles (kept per browser); a new circle takes what the box shows, so
+// the next tree gets the size of the one just placed. "+ Circles" stays armed: every tap on the
+// map puts a circle centred there, until it is tapped again or the menu closes. "Round" makes
+// the selected drawn obstacle the smallest circle that holds it, "Round all" every Go round one.
+const CIRCLE_D_KEY = 'aow.newCircleDiameter';
+let bmNewD = 6;
+try { const v = parseFloat(localStorage.getItem(CIRCLE_D_KEY)); if (v >= 0.5 && v <= 100) bmNewD = v; } catch (_) {}
+const bmCircD = document.getElementById('bm-circ-d');
+function bmSelItem() {
+  return boundary && boundary.selectedIndex >= 0 ? boundary.items.find(i => i.index === boundary.selectedIndex) || null : null;
+}
+function renderCircleBar() {
+  const it = bmSelItem(), inner = !!(it && it.isInner), circle = inner && it.circleD > 0;
+  document.getElementById('bm-circ-lbl').textContent = circle ? it.boundaryType : tr('New circles');
+  if (document.activeElement !== bmCircD) writeUnitInput(bmCircD, circle ? it.circleD : bmNewD);
+  document.getElementById('bm-circ-add').classList.toggle('on', !!(mapTap && mapTap.bmTool === 'add'));
+  document.getElementById('bm-circ-move').classList.toggle('on', !!(mapTap && mapTap.bmTool === 'move'));
+  document.getElementById('bm-circ-move').disabled = !circle;
+  document.getElementById('bm-circ-round').disabled = !inner || circle;
+}
+function circleDiameterOk(d) { return d >= 0.5 && d <= 100; }
+bmCircD.addEventListener('change', () => {
+  const d = readUnitInput(bmCircD);
+  if (!circleDiameterOk(d)) {
+    showToast(tr('A circle is {min} to {max} across', { min: fmtUnit(0.5, 'm', 1), max: fmtUnit(100, 'm', 0) }));
+    renderCircleBar(); return;
+  }
+  bmNewD = d;
+  try { localStorage.setItem(CIRCLE_D_KEY, String(d)); } catch (_) {}
+  const it = bmSelItem();
+  if (it && it.isInner && it.circleD > 0 && Math.abs(it.circleD - d) > 0.001) transport.send('boundary.circle.diameter|' + it.index + ':' + d);
+});
+function endCircleTaps() { endMapTap(); renderCircleBar(); }
+document.getElementById('bm-circ-add').addEventListener('pointerdown', ev => {
+  ev.stopPropagation();
+  if (mapTap && mapTap.bmTool === 'add') { endCircleTaps(); return; }
+  if (mapTap) endMapTap();
+  startMapTap({
+    bmTool: 'add', hint: tr('Tap the centre of each tree. Tap "+ Circles" again to stop.'), onCancel: endCircleTaps,
+    onTap: (te, tn) => {
+      const d = readUnitInput(bmCircD);
+      transport.send('boundary.circle.add|' + te.toFixed(2) + ',' + tn.toFixed(2) + ',' + (circleDiameterOk(d) ? d : bmNewD));
+    },
+  });
+  renderCircleBar();
+});
+document.getElementById('bm-circ-move').addEventListener('pointerdown', ev => {
+  ev.stopPropagation();
+  const it = bmSelItem();
+  if (!it || !(it.circleD > 0)) return;
+  if (mapTap && mapTap.bmTool === 'move') { endCircleTaps(); return; }
+  if (mapTap) endMapTap();
+  startMapTap({
+    bmTool: 'move', hint: tr('Tap the new centre of {name}', { name: it.boundaryType }), onCancel: endCircleTaps,
+    onTap: (te, tn) => {
+      endCircleTaps();
+      transport.send('boundary.circle.move|' + it.index + ':' + te.toFixed(2) + ',' + tn.toFixed(2));
+    },
+  });
+  renderCircleBar();
+});
+document.getElementById('bm-circ-round').addEventListener('pointerdown', ev => {
+  ev.stopPropagation();
+  const it = bmSelItem();
+  if (it && it.isInner && !(it.circleD > 0)) transport.send('boundary.circle.round|' + it.index);
+});
+document.getElementById('bm-circ-all').addEventListener('pointerdown', ev => {
+  ev.stopPropagation();
+  // There is no undo; a long, thin obstacle keeps its shape (the host decides, from its area).
+  const n = boundary ? boundary.items.filter(i => i.isInner && i.atObstacle === 1 && !(i.circleD > 0)).length : 0;
+  if (!n) { showToast(tr('No "Go round" obstacle to make round')); return; }
+  showConfirm(tr('Round obstacles'),
+    tr('Make the {n} "Go round" obstacles round? Each becomes the smallest circle that holds it; long, thin ones keep their shape. This cannot be undone.', { n }),
+    () => transport.send('boundary.circle.roundAll'));
 });
 // With the boundary menu open, a tap on an obstacle on the map selects its row: the smallest
 // obstacle holding the point, else the one whose edge is within reach of the finger (a tree is

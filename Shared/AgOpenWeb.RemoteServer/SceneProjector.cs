@@ -989,7 +989,8 @@ public sealed class SceneProjector : System.IDisposable
         var bnd = f.ActiveField?.Boundary;
         h = h * 31 + (bnd?.OuterBoundary?.Points.Count ?? 0);
         if (bnd?.InnerBoundaries != null)
-            foreach (var inner in bnd.InnerBoundaries.ToArray()) h = (h * 31 + inner.Points.Count) * 31 + (int)inner.AtObstacle;
+            foreach (var inner in bnd.InnerBoundaries.ToArray()) // a circle resized or moved keeps its point count
+                h = ((h * 31 + inner.Points.Count) * 31 + (int)inner.AtObstacle) * 31 + (inner.Circle?.GetHashCode() ?? 0);
         h = h * 31 + (f.HeadlandLine?.Count ?? 0);
         h = h * 31 + (_state.FieldTools.ShowRecordedPaths ? 1 : 0); // #110
         // Contour reference strip (a new list per change) + lock.

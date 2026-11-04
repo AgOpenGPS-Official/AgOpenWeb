@@ -138,6 +138,7 @@ public static class WireCodec
             w.Write((byte)(it.IsInner ? 1 : 0));
             w.Write((byte)it.AtObstacle);  // ObstacleAction
             w.Write((float)it.SizeM);      // f32, metres
+            w.Write((float)it.CircleD);    // f32, metres (0: not a circle)
         }
         w.Write(b.SelectedIndex);         // i32
         w.Write((byte)(b.PlayerVisible ? 1 : 0));

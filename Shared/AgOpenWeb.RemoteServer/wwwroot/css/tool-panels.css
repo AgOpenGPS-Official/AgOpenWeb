@@ -89,6 +89,16 @@
 .bm-choice.on .bm-dot.k2 { background: rgb(77,208,245); }
 .bm-choice.on .bm-dot.k3 { background: rgb(176,176,176); }
 .bm-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+/* Round obstacles: the diameter box and the circle buttons under the list. */
+.bm-circ { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.bm-circlbl { font-size: 13px; color: var(--text-muted); min-width: 84px; }
+.bm-circin { width: 64px; height: 40px; box-sizing: border-box; padding: 0 6px; font-size: 15px; text-align: right;
+  border: 1px solid var(--border); border-radius: 6px; background: rgba(var(--ov),0.06); color: inherit; }
+.bm-cbtn { height: 40px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: transparent;
+  color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
+.bm-cbtn:hover { background: rgba(var(--ov),0.12); }
+.bm-cbtn.on { background: rgba(77,208,245,0.25); border-color: rgb(77,208,245); }
+.bm-cbtn:disabled { opacity: 0.35; cursor: default; }
 /* Boundary player. */
 .bp-offrow { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .bp-offlbl { font-weight: 700; font-size: 14px; }

@@ -672,9 +672,9 @@ public record RecordedPathDto(
 /// mirror the live drive-around recording (State.BoundaryRec + the VM toggles). Re-sent on
 /// a fingerprint change. Draw-on-map point drawing is Phase MT and not here.</summary>
 // IsInner: an obstacle, with AtObstacle (ObstacleAction: 0 turn, 1 go round, 2 drive through)
-// and SizeM, its longest distance across.
+// and SizeM, its longest distance across; CircleD, a round obstacle's diameter (0: a drawn shape).
 public record BoundaryItemDto(int Index, string BoundaryType, double AreaHa, bool DriveThru, bool Hard,
-    bool IsInner = false, int AtObstacle = 0, double SizeM = 0);
+    bool IsInner = false, int AtObstacle = 0, double SizeM = 0, double CircleD = 0);
 
 public record BoundaryDto(
     IReadOnlyList<BoundaryItemDto> Items,

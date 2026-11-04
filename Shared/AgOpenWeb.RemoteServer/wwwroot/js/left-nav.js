@@ -21,6 +21,7 @@ const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'field
 const NO_SCRIM = new Set(['smartwas', 'recpath', 'boundaryplayer', 'boundarymenu', 'fieldbuilder', 'bugreport', 'ntripsettings', 'ntripprofiles', 'ntripeditor']);
 const lnScrim = document.getElementById('ln-scrim');
 function lnCloseAll() {
+  if (mapTap && mapTap.bmTool) endMapTap(); // the boundary menu's circle taps end with it
   for (const id of LN_NAV_PANELS) document.getElementById(id).classList.remove('open');
   lnScrim.classList.remove('open');
   document.getElementById('ln-screenalerts').classList.remove('active');

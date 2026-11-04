@@ -4624,7 +4624,8 @@ public partial class MainViewModel : ObservableObject
                     IsHard = inner.IsHard,
                     IsInner = true,
                     AtObstacle = inner.AtObstacle,
-                    SizeMeters = inner.LongestSpan(),
+                    SizeMeters = inner.Circle?.Diameter ?? inner.LongestSpan(),
+                    CircleDiameter = inner.Circle?.Diameter ?? 0,
                 });
             }
         }
@@ -6390,6 +6391,8 @@ public class BoundaryListItem
     public ObstacleAction AtObstacle { get; set; }
     /// <summary>An obstacle's longest distance across, metres (0 for the outer boundary).</summary>
     public double SizeMeters { get; set; }
+    /// <summary>A round obstacle's diameter, metres; 0 for a drawn shape.</summary>
+    public double CircleDiameter { get; set; }
     public string DriveThruDisplay => IsDriveThrough ? "Yes" : "--";
     public string HardDisplay => IsHard ? "Hard" : "Soft";
 }

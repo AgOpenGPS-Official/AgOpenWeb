@@ -297,6 +297,39 @@ public static partial class RemoteServerWiring
                                     if (AgOpenWeb.Models.ObstacleActionNames.Parse(arg) is { } baa) // obstacle (a
                                         vm.RemoteSetAllObstacleActions(baa);                     // column title)
                                     return;
+                                case "boundary.circle.add": // arg = "e,n,d": a round obstacle centred at
+                                {                           // (e, n) field metres, d metres across
+                                    var bca = arg.Split(',');
+                                    if (bca.Length == 3 && double.TryParse(bca[0], num, inv, out var bce)
+                                        && double.TryParse(bca[1], num, inv, out var bcn)
+                                        && double.TryParse(bca[2], num, inv, out var bcd))
+                                        vm.RemoteAddObstacleCircle(bce, bcn, bcd);
+                                    return;
+                                }
+                                case "boundary.circle.diameter": // arg = "row:d": that obstacle becomes a
+                                {                                // circle d metres across
+                                    var bcc = arg.IndexOf(':');
+                                    if (bcc > 0 && int.TryParse(arg[..bcc], out var bcr)
+                                        && double.TryParse(arg[(bcc + 1)..], num, inv, out var bcdd))
+                                        vm.RemoteSetObstacleCircleDiameter(bcr, bcdd);
+                                    return;
+                                }
+                                case "boundary.circle.move": // arg = "row:e,n": that obstacle becomes a
+                                {                            // circle centred there
+                                    var bcc = arg.IndexOf(':');
+                                    var bcm = bcc > 0 ? arg[(bcc + 1)..].Split(',') : System.Array.Empty<string>();
+                                    if (bcm.Length == 2 && int.TryParse(arg[..bcc], out var bcr)
+                                        && double.TryParse(bcm[0], num, inv, out var bme)
+                                        && double.TryParse(bcm[1], num, inv, out var bmn))
+                                        vm.RemoteMoveObstacleCircle(bcr, bme, bmn);
+                                    return;
+                                }
+                                case "boundary.circle.round": // arg = row: the smallest circle holding it
+                                    if (int.TryParse(arg, out var bro)) vm.RemoteMakeObstacleRound(bro);
+                                    return;
+                                case "boundary.circle.roundAll": // every "Go round" obstacle
+                                    vm.RemoteMakeGoRoundObstaclesRound();
+                                    return;
                                 case "boundary.setOffset": // arg = recording offset cm (Tier-1)
                                     if (double.TryParse(arg, num, inv, out var boff)) vm.BoundaryOffset = boff;
                                     return;
@@ -962,7 +995,7 @@ public static partial class RemoteServerWiring
                         foreach (var it in vm.BoundaryItems)
                             items.Add(new AgOpenWeb.RemoteServer.BoundaryItemDto(
                                 it.Index, it.BoundaryType, it.AreaHectares, it.IsDriveThrough, it.IsHard,
-                                it.IsInner, (int)it.AtObstacle, it.SizeMeters));
+                                it.IsInner, (int)it.AtObstacle, it.SizeMeters, it.CircleDiameter));
                         var bpts = new System.Collections.Generic.List<double>(brs.RecordedPoints.Count * 2);
                         foreach (var p in brs.RecordedPoints) { bpts.Add(p.Easting); bpts.Add(p.Northing); }
                         return new AgOpenWeb.RemoteServer.BoundaryDto(

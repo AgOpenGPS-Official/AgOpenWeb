@@ -313,7 +313,7 @@ window.RemoteTransport = {
         }
         case TYPE.BOUNDARY: {
           const ic = i32(); const items = new Array(ic);
-          for (let k = 0; k < ic; k++) items[k] = { index: i32(), boundaryType: str(), areaHa: f64(), driveThru: !!u8(), hard: !!u8(), isInner: !!u8(), atObstacle: u8(), sizeM: f32() };
+          for (let k = 0; k < ic; k++) items[k] = { index: i32(), boundaryType: str(), areaHa: f64(), driveThru: !!u8(), hard: !!u8(), isInner: !!u8(), atObstacle: u8(), sizeM: f32(), circleD: f32() };
           const selectedIndex = i32(), playerVisible = !!u8(), isRecording = !!u8(), isPaused = !!u8();
           const pointCount = i32(), areaHa = f64(), offsetCm = f64();
           const drawRightSide = !!u8(), drawAtPivot = !!u8(), sectionControlOn = !!u8();
