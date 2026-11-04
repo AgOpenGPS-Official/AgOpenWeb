@@ -148,7 +148,11 @@ public sealed class YouTurnStateMachine
         double headingDiff = headingRadians - abHeading;
         while (headingDiff > Math.PI) headingDiff -= 2 * Math.PI;
         while (headingDiff < -Math.PI) headingDiff += 2 * Math.PI;
-        guidance.IsHeadingSameWay = Math.Abs(headingDiff) < Math.PI / 2;
+        bool headingSameWay = Math.Abs(headingDiff) < Math.PI / 2;
+        // Held while a turn is driven, as the pipeline holds it: the turn and the old pass's
+        // line were placed for the old direction, and flipping it halfway round the arc moved
+        // that line by twice the tool offset (#591). The first cycle after the turn takes the new one.
+        if (!turn.IsExecuting) guidance.IsHeadingSameWay = headingSameWay;
 
         bool alignedForward = Math.Abs(headingDiff) < AlignmentTolerance;
         bool alignedReverse = Math.Abs(headingDiff) > (Math.PI - AlignmentTolerance);
@@ -157,14 +161,14 @@ public sealed class YouTurnStateMachine
         // Distance-to-headland raycast is valid only when the tractor is aligned with the track;
         // otherwise heading swings mid-turn create spurious proximity readings.
         double travelHeading = abHeading;
-        if (!guidance.IsHeadingSameWay)
+        if (!headingSameWay)
         {
             travelHeading += Math.PI;
             if (travelHeading >= Math.PI * 2) travelHeading -= Math.PI * 2;
         }
 
         turn.DistanceToHeadland = isAlignedWithABLine
-            ? RaycastDistanceToHeadland(currentPosition, travelHeading, ctx.HeadlandLine, guidance.IsHeadingSameWay, turn.YouTurnCounter)
+            ? RaycastDistanceToHeadland(currentPosition, travelHeading, ctx.HeadlandLine, headingSameWay, turn.YouTurnCounter)
             : double.MaxValue;
 
         turn.CurrentZone = DetermineZone(currentPosition.Easting, currentPosition.Northing, ctx.Boundary, ctx.HeadlandLine);
@@ -875,7 +879,8 @@ public sealed class YouTurnStateMachine
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         // The next pass is driven the other way: the tool shift changes sign (#446).
         double toolShift = Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay);
-        double nextDistAway = Models.Track.PassGeometry.Offset(track, nextPath, widthMinusOverlap, 0, -toolShift);
+        // With the nudge, as the exit leg and the line steered after the turn (#591).
+        double nextDistAway = Models.Track.PassGeometry.Offset(track, nextPath, widthMinusOverlap, guidance.NudgeOffset, -toolShift);
         int pathDiff = nextPath - guidance.HowManyPathsAway;
 
         // The planned path dictates pathDiff (snake / alternative), not the regular skip logic.

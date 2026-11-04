@@ -80,4 +80,20 @@ public class PassGeometryTests
         Assert.That(PassGeometry.Nearest(Line, 5.5, 6, 0, PassGeometry.ToolShift(0.8, true)), Is.EqualTo(1));
         Assert.That(PassGeometry.Nearest(Line, 5.5, 6, 0, PassGeometry.ToolShift(0.8, false)), Is.EqualTo(0));
     }
+
+    // #591: neighbours are driven the other way, but with skip rows the pass a turn lands on can
+    // be 4 passes over and still driven the other way: while a turn is planned, the passes are
+    // counted from its target, so its guideline is where the turn ends.
+    [TestCase(-29, -30, null, true)]
+    [TestCase(-28, -30, null, false)]
+    [TestCase(-34, -30, null, false)]
+    [TestCase(-34, -30, -34, true)]   // the turn's target, 4 over
+    [TestCase(-33, -30, -34, false)]
+    [TestCase(-32, -30, -34, true)]
+    [TestCase(-35, -30, -35, true)]   // 5 over: as without a turn
+    [TestCase(-31, -30, -35, true)]
+    public void DrivenOtherWay_CountsFromTheTurnsTarget(int pass, int current, int? target, bool otherWay)
+    {
+        Assert.That(PassGeometry.IsDrivenOtherWay(pass, current, target), Is.EqualTo(otherWay));
+    }
 }
