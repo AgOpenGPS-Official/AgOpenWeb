@@ -33,7 +33,13 @@ public sealed class LogStore
     private readonly object _lock = new();
     private readonly List<LogEntry> _entries = new(MaxEntries);
 
+    private long _version;
+
     public event Action? LogAdded;
+
+    /// <summary>Lines added (or the log cleared) so far: a cheap "did it change" for a loop,
+    /// without copying the log (#604).</summary>
+    public long Version => System.Threading.Interlocked.Read(ref _version);
 
     public void Add(LogEntry entry)
     {
@@ -42,6 +48,7 @@ public sealed class LogStore
             if (_entries.Count >= MaxEntries)
                 _entries.RemoveAt(0);
             _entries.Add(entry);
+            System.Threading.Interlocked.Increment(ref _version);
         }
         LogAdded?.Invoke();
     }
@@ -55,7 +62,10 @@ public sealed class LogStore
     public void Clear()
     {
         lock (_lock)
+        {
             _entries.Clear();
+            System.Threading.Interlocked.Increment(ref _version);
+        }
         LogAdded?.Invoke();
     }
 }

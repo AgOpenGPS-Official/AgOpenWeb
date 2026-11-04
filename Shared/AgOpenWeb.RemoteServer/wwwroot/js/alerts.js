@@ -232,7 +232,7 @@ function reportMaxTexture() {
 // An observer (a browser without control) sees everything and changes nothing (#397): the
 // host drops its commands, so say why when a tap of its own was refused. The host's
 // ObserverIds plus the hub's own control.* / diag.ping are what it may send.
-const OBSERVER_IDS = new Set(['control.acquire', 'control.release', 'control.presence', 'diag.ping', 'boundary.refresh']);
+const OBSERVER_IDS = new Set(['control.acquire', 'control.release', 'control.presence', 'diag.ping', 'boundary.refresh', 'lists.refresh']);
 let _viewOnlyToastT = -Infinity;
 const _send = transport.send;
 transport.send = cmd => {

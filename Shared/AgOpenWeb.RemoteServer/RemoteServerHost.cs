@@ -300,6 +300,7 @@ public sealed class RemoteServerHost
         // before start (identical wiring to the old host).
         _ws.CommandHandler = _commandHandler;
         _ws.IsRestrictedCommand = _isRestricted;
+        _ws.CommandAccepted = sceneProjector.OnCommand;
         _broadcaster.WizardProvider = _wizardProvider;
         _broadcaster.PromptProvider = _promptProvider;
         _broadcaster.VtSeedProvider = _vtSeedProvider;

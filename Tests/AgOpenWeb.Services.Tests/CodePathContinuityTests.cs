@@ -87,6 +87,46 @@ public class CodePathContinuityTests
             "last GPS cycle, and a section edge waits up to one GPS period (#311).");
     }
 
+    // ── The broadcast loop ────────────────────────────────────────────────
+
+    /// <summary>
+    /// The fingerprints run every broadcast tick (10 Hz, browser or not). Loops are for work
+    /// that always needs doing; a list on disk changes only on a user action. Listing the
+    /// Fields folder and parsing every job.json here cost 15.7 ms and 5.7 MB a tick at
+    /// 100 fields × 5 jobs (#604). A fingerprint compares numbers (ListsWatch's versions,
+    /// the log's Version); the Build* methods read the disk when one moved.
+    /// </summary>
+    [Test]
+    public void BroadcastFingerprints_ReadNoDisk()
+    {
+        var src = File.ReadAllText(Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.RemoteServer", "SceneProjector.cs"));
+        string[] banned =
+        {
+            "System.IO.", "Directory.", "File.", "GetAvailable", "ListAllJobs", "ListJobs",
+            "GetSnapshot", "Peek", "FindFieldsNear", "SuggestWorkTypes", "ScanImportFolder",
+        };
+        var offenders = new List<string>();
+        int found = 0;
+        foreach (Match m in Regex.Matches(src, @"public long (\w+Fingerprint)\(\)"))
+        {
+            found++;
+            int open = src.IndexOf('{', m.Index), depth = 0, end = open;
+            for (; end < src.Length; end++)
+            {
+                if (src[end] == '{') depth++;
+                else if (src[end] == '}' && --depth == 0) break;
+            }
+            var body = src[open..end];
+            foreach (var b in banned)
+                if (body.Contains(b, StringComparison.Ordinal))
+                    offenders.Add($"{m.Groups[1].Value}: {b}");
+        }
+        Assert.That(found, Is.GreaterThanOrEqualTo(8), "the fingerprints were not found");
+        Assert.That(offenders, Is.Empty,
+            "A broadcast fingerprint reads the disk every tick (#604). Compare a version " +
+            "(ListsWatch, LogStore.Version) and read the disk in the Build* method.");
+    }
+
     // ── The web client ────────────────────────────────────────────────────
 
     // The client's files outside vendor/: the loader and the transport, and the client's own
