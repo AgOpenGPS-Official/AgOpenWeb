@@ -139,7 +139,6 @@ function populateAutoSteer(force) {
   if (modeIc) modeIc.src = a.isStanleyMode ? '/icons/ModeStanley.png' : '/icons/ModePurePursuit.png';
   const msw = document.getElementById('as-modeswitch');
   if (msw) { msw.textContent = a.isStanleyMode ? tr('Stanley') : tr('Pure Pursuit'); msw.classList.toggle('stanley', a.isStanleyMode); }
-  asSetText('as-wasoffset', a.wasOffset);
   // Conditional sections (data-show): shown or enabled by another setting.
   const show = (name, on) => { for (const el of asPanel.querySelectorAll('[data-show="' + name + '"]')) el.style.display = on ? '' : 'none'; };
   show('purepursuit', !a.isStanleyMode);
