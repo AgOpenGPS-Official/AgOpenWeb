@@ -17,7 +17,8 @@ const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'field
 // the header (Back / ✕).
 // The bug report panel too: leave it open while driving and press the button the
 // moment a problem shows, since the dump holds only the last 60 s of GPS data.
-const NO_SCRIM = new Set(['smartwas', 'recpath', 'boundaryplayer', 'fieldbuilder', 'bugreport', 'ntripsettings', 'ntripprofiles', 'ntripeditor']);
+// boundarymenu: the map stays live beside it, to pick an obstacle's row by tapping it.
+const NO_SCRIM = new Set(['smartwas', 'recpath', 'boundaryplayer', 'boundarymenu', 'fieldbuilder', 'bugreport', 'ntripsettings', 'ntripprofiles', 'ntripeditor']);
 const lnScrim = document.getElementById('ln-scrim');
 function lnCloseAll() {
   for (const id of LN_NAV_PANELS) document.getElementById(id).classList.remove('open');

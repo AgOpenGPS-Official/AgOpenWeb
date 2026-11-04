@@ -82,6 +82,8 @@ public static class FieldPropertyKeys
     public const string IsVisible = "isVisible";
     public const string IsDriveThrough = "isDriveThrough";
     public const string IsHard = "isHard";
+    /// <summary>An inner boundary's <see cref="ObstacleAction"/>: "turn", "goRound" or "driveThrough".</summary>
+    public const string AtObstacle = "atObstacle";
     public const string OriginLatitude = "originLatitude";
     public const string OriginLongitude = "originLongitude";
     public const string Convergence = "convergence";

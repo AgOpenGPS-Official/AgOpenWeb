@@ -253,7 +253,9 @@ public partial class GeoJsonFieldService
                     var inner = ReadBoundaryPolygon(geo, feature);
                     if (inner != null)
                     {
-                        inner.IsDriveThrough = GetBoolProp(feature, FieldPropertyKeys.IsDriveThrough);
+                        // The choice, or for a file written before it the drive-through flag.
+                        inner.AtObstacle = ObstacleActionNames.Parse(GetStringProp(feature, FieldPropertyKeys.AtObstacle))
+                            ?? (GetBoolProp(feature, FieldPropertyKeys.IsDriveThrough) ? ObstacleAction.DriveThrough : ObstacleAction.Turn);
                         inner.IsHard = GetBoolProp(feature, FieldPropertyKeys.IsHard);
                         boundary.InnerBoundaries.Add(inner);
                     }
@@ -348,7 +350,7 @@ public partial class GeoJsonFieldService
     private static GeoJsonFeature BuildBoundaryFeature(Projection geo, BoundaryPolygon polygon, string role)
     {
         var ring = BoundaryToGeoJsonRing(geo, polygon);
-        return new GeoJsonFeature
+        var feature = new GeoJsonFeature
         {
             Geometry = new GeoJsonGeometry
             {
@@ -363,6 +365,9 @@ public partial class GeoJsonFieldService
                 [FieldPropertyKeys.AreaHectares] = polygon.AreaHectares,
             }
         };
+        if (role == FeatureRoles.InnerBoundary)
+            feature.Properties[FieldPropertyKeys.AtObstacle] = polygon.AtObstacle.ToName();
+        return feature;
     }
 
     private static GeoJsonFeature BuildTrackFeature(Projection geo, Models.Track.Track track)

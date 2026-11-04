@@ -4621,7 +4621,10 @@ public partial class MainViewModel : ObservableObject
                     BoundaryType = $"Inner {i + 1}",
                     AreaHectares = inner.AreaHectares,
                     IsDriveThrough = inner.IsDriveThrough,
-                    IsHard = inner.IsHard
+                    IsHard = inner.IsHard,
+                    IsInner = true,
+                    AtObstacle = inner.AtObstacle,
+                    SizeMeters = inner.LongestSpan(),
                 });
             }
         }
@@ -6382,6 +6385,11 @@ public class BoundaryListItem
     public double AreaHectares { get; set; }
     public bool IsDriveThrough { get; set; }
     public bool IsHard { get; set; }
+    /// <summary>An inner boundary (an obstacle), which has an <see cref="AtObstacle"/> choice.</summary>
+    public bool IsInner { get; set; }
+    public ObstacleAction AtObstacle { get; set; }
+    /// <summary>An obstacle's longest distance across, metres (0 for the outer boundary).</summary>
+    public double SizeMeters { get; set; }
     public string DriveThruDisplay => IsDriveThrough ? "Yes" : "--";
     public string HardDisplay => IsHard ? "Hard" : "Soft";
 }

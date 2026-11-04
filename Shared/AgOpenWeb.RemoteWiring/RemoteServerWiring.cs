@@ -285,6 +285,18 @@ public static partial class RemoteServerWiring
                                 case "boundary.select": // arg = boundary list index (Tier-1)
                                     if (int.TryParse(arg, out var bsi)) vm.SelectedBoundaryIndex = bsi;
                                     return;
+                                case "boundary.atObstacle": // arg = "index:turn|goRound|driveThrough": the
+                                {                           // obstacle on that list row (field data)
+                                    var bc = arg.IndexOf(':');
+                                    if (bc > 0 && int.TryParse(arg[..bc], out var boi)
+                                        && AgOpenWeb.Models.ObstacleActionNames.Parse(arg[(bc + 1)..]) is { } boa)
+                                        vm.RemoteSetObstacleAction(boi, boa);
+                                    return;
+                                }
+                                case "boundary.atObstacleAll": // arg = turn|goRound|driveThrough: every
+                                    if (AgOpenWeb.Models.ObstacleActionNames.Parse(arg) is { } baa) // obstacle (a
+                                        vm.RemoteSetAllObstacleActions(baa);                     // column title)
+                                    return;
                                 case "boundary.setOffset": // arg = recording offset cm (Tier-1)
                                     if (double.TryParse(arg, num, inv, out var boff)) vm.BoundaryOffset = boff;
                                     return;
@@ -949,7 +961,8 @@ public static partial class RemoteServerWiring
                         var items = new System.Collections.Generic.List<AgOpenWeb.RemoteServer.BoundaryItemDto>();
                         foreach (var it in vm.BoundaryItems)
                             items.Add(new AgOpenWeb.RemoteServer.BoundaryItemDto(
-                                it.Index, it.BoundaryType, it.AreaHectares, it.IsDriveThrough, it.IsHard));
+                                it.Index, it.BoundaryType, it.AreaHectares, it.IsDriveThrough, it.IsHard,
+                                it.IsInner, (int)it.AtObstacle, it.SizeMeters));
                         var bpts = new System.Collections.Generic.List<double>(brs.RecordedPoints.Count * 2);
                         foreach (var p in brs.RecordedPoints) { bpts.Add(p.Easting); bpts.Add(p.Northing); }
                         return new AgOpenWeb.RemoteServer.BoundaryDto(
