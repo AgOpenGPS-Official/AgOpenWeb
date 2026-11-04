@@ -818,6 +818,14 @@ public sealed class YouTurnStateMachine
         // Never onto a worked pass: the next pass of the order that is still to do.
         var isWorked = WorkedPasses(in ctx, track, guidance, turn);
         int? nextPath = _pathing.GetNextSnakePath(turn, isWorked);
+        // An order planned before the headland or boundary changed can go on to a pass that is
+        // no longer in the field: plan it again for the field as it is.
+        if (nextPath is { } stale && !_pathing.IsPathInsideCultivated(track, abHeading, stale, ctx.Boundary, ctx.HeadlandLine))
+        {
+            _logger.LogDebug("[YouTurn] Snake pass {Pass} is outside the field - planning the snake again", stale);
+            _pathing.BuildSnakeSequence(track, abHeading, guidance, turn, ctx.Boundary, ctx.HeadlandLine);
+            nextPath = _pathing.GetNextSnakePath(turn, isWorked);
+        }
         if (nextPath == null)
         {
             _logger.LogDebug("[YouTurn] Snake sequence complete — field done");
