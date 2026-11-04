@@ -157,12 +157,22 @@ public class ManualTurnRadiusTests
     }
 
     [Test]
-    public void ManualTurn_ignores_a_target_pass_that_is_not_one_offset_away()
+    public void ManualTurn_ends_on_a_planned_pass_further_over()
     {
-        // A stale next-track (here 30 m away) must not drag the turn there.
+        // A skip-worked, snake or alternative plan can be passes further than the skip; the
+        // turn completes onto it, so it ends there. (It used to be ignored beyond half a pass
+        // from one offset over: the turn ended on one pass and guidance moved to another.)
         var path = TurnFrom(tractorE: 0.9, passE: -30);
         Assume.That(path.Count, Is.GreaterThan(10));
-        Assert.That(path[^1].Easting, Is.EqualTo(0.9 - 12.0).Within(0.05));
+        Assert.That(path[^1].Easting, Is.EqualTo(-30.0).Within(0.05));
+    }
+
+    [Test]
+    public void ManualTurn_ignores_a_target_pass_on_the_other_side()
+    {
+        var path = TurnFrom(tractorE: 0.9, passE: 12);
+        Assume.That(path.Count, Is.GreaterThan(10));
+        Assert.That(path[^1].Easting, Is.EqualTo(0.9 - 12.0).Within(0.05), "one offset over on the turn side");
     }
 
     [Test]
