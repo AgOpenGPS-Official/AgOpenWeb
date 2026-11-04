@@ -62,6 +62,13 @@ public sealed class ImportFolderScanner
             {
                 listing = ImportFolder.Listing.Empty; // no data root to make it in
             }
+            catch
+            {
+                // Anything else: keep the last listing, and let the next picker ask again
+                // (left set, _scanning would refuse every scan until the app restarts).
+                lock (_gate) { _scanning = false; _again = false; }
+                throw;
+            }
             if (!listing.SameAs(Latest))
             {
                 Volatile.Write(ref _latest, listing);
