@@ -49,6 +49,10 @@ public sealed class RemoteServerHost
     public void ShowToast(string message)
         => _ = _ws?.BroadcastAsync(WireCodec.EncodeToast(message));
 
+    /// <summary>List the Import folder for the pickers, in the background (<c>import.scan</c>);
+    /// a new listing goes out in the next FieldOps frame.</summary>
+    public void RequestImportScan() => _broadcaster?.Projector.ImportScan.Request();
+
     /// <summary>Broadcast a module hardware message (PGN 221, #110).</summary>
     public void ShowHardwareMessage(string text, int seconds, bool warning)
         => _ = _ws?.BroadcastAsync(WireCodec.EncodeHardwareMessage(text, seconds, warning));
