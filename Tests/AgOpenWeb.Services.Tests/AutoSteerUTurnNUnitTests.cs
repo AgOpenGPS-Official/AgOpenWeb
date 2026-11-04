@@ -844,7 +844,17 @@ public class AutoSteerUTurnNUnitTests
             // Safety: stop if tractor leaves field by more than 20m
             double tractorE = (lon - ORIGIN_LON) * MetersPerDegLon;
             double tractorN = (lat - ORIGIN_LAT) * MetersPerDegLat;
-            if (tractorE < -20 || tractorE > FIELD_W + 20 || tractorN < -20 || tractorN > FIELD_H + 20)
+
+            // The end of the field: at the end of a pass in the headland with no turn planned,
+            // the operator stops. (The last turn used to go back onto the pass just worked.)
+            bool inEndHeadland = tractorE < HEADLAND - 2 || tractorE > FIELD_W - HEADLAND + 2;
+            if (inEndHeadland && lastResult?.YouTurn is { IsExecuting: false, TurnPath: null } && totalSteps > 100)
+            {
+                TestContext.Out.WriteLine($"  END OF FIELD at step {totalSteps}: E={tractorE:F0} N={tractorN:F0} pass={lastResult.Guidance?.HowManyPathsAway}");
+                Assert.That(tractorN, Is.GreaterThan(FIELD_H - HEADLAND - TOOL_WIDTH), "the field ends on its last pass");
+                fieldDone = true;
+            }
+            else if (tractorE < -20 || tractorE > FIELD_W + 20 || tractorN < -20 || tractorN > FIELD_H + 20)
             {
                 TestContext.Out.WriteLine($"  SAFETY STOP at step {totalSteps}: E={tractorE:F0} N={tractorN:F0}");
                 fieldDone = true;

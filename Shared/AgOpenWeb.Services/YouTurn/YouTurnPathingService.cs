@@ -276,20 +276,11 @@ public sealed class YouTurnPathingService
         if (widthMinusOverlap < 0.5) return;
 
         // Walk outwards perpendicular to the reference track to find the pass-number range
-        // that fits inside the cultivated area (tested at the track's middle).
-        var pointA = referenceTrack.Points[0];
-        var pointB = referenceTrack.Points[referenceTrack.Points.Count - 1];
-        double perpAngle = abHeading + Math.PI / 2;
-        double midE = (pointA.Easting + pointB.Easting) / 2;
-        double midN = (pointA.Northing + pointB.Northing) / 2;
-
-        bool Inside(int pass)
-        {
-            double offsetDist = PassGeometry.Offset(referenceTrack, pass, widthMinusOverlap);
-            return IsPointInsideCultivatedArea(
-                midE + Math.Sin(perpAngle) * offsetDist, midN + Math.Cos(perpAngle) * offsetDist,
-                boundary, headlandLine);
-        }
+        // in the cultivated area: a pass counts when it is inside anywhere along its length, as
+        // for the normal turn's next pass. Tested at one point abreast of the middle of A and B,
+        // the passes of an L-shaped field's arm were left out, and on a curve the chord's
+        // middle can be far from the curve.
+        bool Inside(int pass) => IsPathInsideCultivated(referenceTrack, abHeading, pass, boundary, headlandLine);
 
         // Start from the nearest pass inside the area. A line drawn on the fence (All Edges,
         // a boundary edge) has pass 0 half a tool in, inside a headland wider than that: the

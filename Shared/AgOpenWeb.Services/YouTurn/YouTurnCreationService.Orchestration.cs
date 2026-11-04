@@ -936,7 +936,12 @@ public partial class YouTurnCreationService
         var config = _configStore;
 
         double trackWidth = config.ActualToolWidth - config.Tool.Overlap;
-        double turnOffset = trackWidth * (uTurnSkipRows + 1);
+        // From the line steered now to the one steered on the next pass: the passes apart, and
+        // with a tool offset twice the offset more or less, since the next pass is driven the
+        // other way (AgOpenGPS BuildManualYouTurn: rowSkipsWidth ± tool.offset * 2).
+        int side = (turnLeft ^ guidance.IsHeadingSameWay) ? 1 : -1;
+        double toolShift = Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay);
+        double turnOffset = trackWidth * (uTurnSkipRows + 1) + 2 * toolShift * side;
         if (turnOffset < 0.1)
         {
             _logger.LogWarning("[ManualYouTurn] Tool width is zero — cannot compute offset");
@@ -967,7 +972,9 @@ public partial class YouTurnCreationService
         // The goal is on the target pass abreast of the start, so the turn ends on the pass
         // even when the tractor is off its own line at the press (AgOpenGPS anchors on the
         // line, not the tractor). Seen on #156: 0.9 m off at the press, the turn ended 0.9 m
-        // beside the next pass. Without a usable target pass, go one offset over from the start.
+        // beside the next pass. The planned pass decides where the turn ends: a skip-worked,
+        // snake or alternative plan can be another number of passes over than the skip, and
+        // the turn completes onto it. Without a usable target pass, go one offset over.
         double perpAngle = turnLeft ? (lineHeading - Math.PI / 2) : (lineHeading + Math.PI / 2);
         var goal = new Vec3
         {
@@ -978,9 +985,8 @@ public partial class YouTurnCreationService
         if (TryProjectOntoPass(targetPass, start, out double passE, out double passN))
         {
             double across = (passE - start.Easting) * Math.Sin(perpAngle) + (passN - start.Northing) * Math.Cos(perpAngle);
-            // Only a pass on the turn side, within half a pass of where it should be: a
-            // stale or mismatched target must not drag the turn somewhere else.
-            if (Math.Abs(across - turnOffset) <= trackWidth / 2)
+            // Only a pass on the turn side, at least half a pass over.
+            if (across >= trackWidth / 2)
             {
                 goal.Easting = passE;
                 goal.Northing = passN;
