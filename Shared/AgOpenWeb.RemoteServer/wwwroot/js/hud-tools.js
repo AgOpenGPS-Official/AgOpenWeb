@@ -389,7 +389,7 @@ function renderBoundaryMenu() {
   bmShownSel = selIndex;
   renderCircleBar();
 }
-function choiceLabel(k) { return k === 1 ? tr('Go round') : k === 2 ? tr('Drive through') : tr('U-turn'); }
+function choiceLabel(k) { return k === 1 ? tr('Go around') : k === 2 ? tr('Drive through') : tr('U-turn'); }
 for (const h of document.querySelectorAll('#boundarymenu .bm-colhdr')) h.addEventListener('pointerdown', e => {
   e.stopPropagation();
   const k = OBSTACLE_ACTIONS.indexOf(h.dataset.all);
@@ -402,7 +402,7 @@ for (const h of document.querySelectorAll('#boundarymenu .bm-colhdr')) h.addEven
 // the diameter for new circles (kept per browser); a new circle takes what the box shows, so
 // the next tree gets the size of the one just placed. "+ Circles" stays armed: every tap on the
 // map puts a circle centred there, until it is tapped again or the menu closes. "Round" makes
-// the selected drawn obstacle the smallest circle that holds it, "Round all" every Go round one.
+// the selected drawn obstacle the smallest circle that holds it, "Round all" every Go around one.
 const CIRCLE_D_KEY = 'aow.newCircleDiameter';
 let bmNewD = 6;
 try { const v = parseFloat(localStorage.getItem(CIRCLE_D_KEY)); if (v >= 0.5 && v <= 100) bmNewD = v; } catch (_) {}
@@ -469,9 +469,9 @@ document.getElementById('bm-circ-all').addEventListener('pointerdown', ev => {
   ev.stopPropagation();
   // There is no undo; a long, thin obstacle keeps its shape (the host decides, from its area).
   const n = boundary ? boundary.items.filter(i => i.isInner && i.atObstacle === 1 && !(i.circleD > 0)).length : 0;
-  if (!n) { showToast(tr('No "Go round" obstacle to make round')); return; }
+  if (!n) { showToast(tr('No "Go around" obstacle to make round')); return; }
   showConfirm(tr('Round obstacles'),
-    tr('Make the {n} "Go round" obstacles round? Each becomes the smallest circle that holds it; long, thin ones keep their shape. This cannot be undone.', { n }),
+    tr('Make the {n} "Go around" obstacles round? Each becomes the smallest circle that holds it; long, thin ones keep their shape. This cannot be undone.', { n }),
     () => transport.send('boundary.circle.roundAll'));
 });
 // With the boundary menu open, a tap on an obstacle on the map selects its row: the smallest

@@ -23,7 +23,7 @@ public readonly record struct ObstacleCircle(double CenterEasting, double Center
     public const double MaxDiameter = 100.0;
 
     /// <summary>
-    /// How much bigger, by area, a circle made for every "Go round" obstacle at once may be than
+    /// How much bigger, by area, a circle made for every "Go around" obstacle at once may be than
     /// the drawn shape: a tree drawn by hand is 1.6 to 2.5 times smaller than its circle, a ditch
     /// or a row of stones far more, and keeps its shape.
     /// </summary>
