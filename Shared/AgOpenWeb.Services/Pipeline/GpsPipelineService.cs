@@ -195,6 +195,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // TriggerManual / ClearState. ApplyGpsCycleResult mirrors back to the
     // observable State.* on the UI thread.
     private readonly YouTurnWorkingState _youTurn = new();
+    private Models.Track.Track? _youTurnTrack; // the track _youTurn was planned on
     private readonly GuidanceWorkingState _guidanceWorking = new();
 
     // ── Headland proximity ──────────────────────────────────────────────
@@ -648,6 +649,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // hasn't yet armed the current one — last-wins.
             nextUTurnDirectionOverride = _nextUTurnDirectionLeftOverride;
             _nextUTurnDirectionLeftOverride = null;
+        }
+
+        // Another track (or none: the field closed). The turn, the pass it lands on and the snake
+        // order were the old track's; kept, they started a turn mid-field on the new one and
+        // landed on the old pass number. AgOpenGPS resets the U-turn on a track change
+        // (FormBuildTracks: yt.ResetYouTurn).
+        if (!ReferenceEquals(track, _youTurnTrack))
+        {
+            _youTurnTrack = track;
+            _youTurnStateMachine.ForgetTrack(_youTurn);
         }
 
         if (resetSnake)
