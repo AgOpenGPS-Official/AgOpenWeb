@@ -22,8 +22,9 @@ namespace AgOpenWeb.Models.YouTurn
         public List<BoundaryTurnLine> BoundaryTurnLines { get; set; } = new List<BoundaryTurnLine>();
 
         /// <summary>
-        /// Function to check if a point is inside the turn area.
-        /// Returns: 0 if inside field, non-zero boundary index if inside turn area.
+        /// Function to check if a point is inside the turn area, as AgOpenGPS's
+        /// IsPointInsideTurnArea: 0 in the workable area, -1 outside the outer turn line
+        /// (<see cref="BoundaryTurnLines"/>[0]), k inside obstacle turn line k.
         /// </summary>
         public Func<Vec3, int> IsPointInsideTurnArea { get; set; }
 
