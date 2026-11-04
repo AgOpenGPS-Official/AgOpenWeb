@@ -681,7 +681,9 @@
         <!-- Tab 2: Steering Sensor -->
         <div id="as-sensor" class="cfg-body" data-strip="as-left" hidden>
           <div class="as-caphdr">WAS Offset</div>
-          <div class="as-valrow"><span class="as-valbox" id="as-wasoffset">—</span><button class="cfg-act cfg-actwide rn-gated" data-cmd="autosteer.zeroWas">Zero WAS</button></div>
+          <!-- Set by hand or zeroed, in counts, as AgOpenGPS FormSteer (hsbarWasOffset, #599) -->
+          <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.wasOffset" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.wasOffset" data-fmt="f0" type="range" min="-4000" max="4000" step="1"></div>
+          <div class="as-valrow"><button class="cfg-act cfg-actwide rn-gated" data-cmd="autosteer.zeroWas">Zero WAS</button></div>
           <div class="as-caphdr">Counts Per Degree</div>
           <div class="as-valrow"><span class="as-valbox cfg-ro" data-for="autosteer.countsPerDegree" data-fmt="f0">—</span><input class="cfg-slider" data-key="autosteer.countsPerDegree" data-fmt="f0" type="range" min="1" max="255" step="1"></div>
           <div class="as-caphdr">Ackermann</div>
