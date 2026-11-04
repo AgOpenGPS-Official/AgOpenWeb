@@ -4991,92 +4991,67 @@ public partial class MainViewModel : ObservableObject
             double sumLat = 0, sumLon = 0;
             int totalValidPoints = 0;
 
-            string? line;
-            while ((line = reader.ReadLine()) != null)
+            // Every <coordinates> block, wherever the lines break. GDAL's KML driver (so a
+            // QGIS export) writes a whole polygon on one line, outer ring and holes together,
+            // and reading only the first block of each line kept the outer ring and lost
+            // every hole.
+            const string Open = "<coordinates>", Close = "</coordinates>";
+            string text = reader.ReadToEnd();
+            int at = 0;
+            while ((at = text.IndexOf(Open, at, StringComparison.Ordinal)) != -1)
             {
+                int start = at + Open.Length;
+                int end = text.IndexOf(Close, start, StringComparison.Ordinal);
+                if (end == -1) break;
+                at = end + Close.Length;
+                string coordinates = text.Substring(start, end - start);
 
-                int startIndex = line.IndexOf("<coordinates>");
+                // Parse coordinate pairs: format is "lon,lat,alt lon,lat,alt ..."
+                char[] delimiterChars = { ' ', '\t', '\r', '\n' };
+                string[] numberSets = coordinates.Split(delimiterChars, StringSplitOptions.RemoveEmptyEntries);
 
-                if (startIndex != -1)
+                if (numberSets.Length >= 3)
                 {
-                    string? coordinates = null;
+                    var polygonPoints = new List<(double Latitude, double Longitude)>();
 
-                    // Found start of coordinates block
-                    while (true)
+                    foreach (string item in numberSets)
                     {
-                        int endIndex = line.IndexOf("</coordinates>");
+                        if (item.Length < 3) continue;
 
-                        if (endIndex == -1)
+                        string[] parts = item.Split(',');
+                        if (parts.Length >= 2 &&
+                            double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double lon) &&
+                            double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double lat))
                         {
-                            if (startIndex == -1)
-                                coordinates += " " + line.Substring(0);
-                            else
-                                coordinates += line.Substring(startIndex + 13);
+                            polygonPoints.Add((lat, lon));
+                            sumLat += lat;
+                            sumLon += lon;
+                            totalValidPoints++;
                         }
-                        else
-                        {
-                            if (startIndex == -1)
-                                coordinates += " " + line.Substring(0, endIndex);
-                            else
-                                coordinates += line.Substring(startIndex + 13, endIndex - (startIndex + 13));
-                            break;
-                        }
-
-                        line = reader.ReadLine();
-                        if (line == null) break;
-                        line = line.Trim();
-                        startIndex = -1;
                     }
 
-                    if (coordinates == null) continue;
-
-                    // Parse coordinate pairs: format is "lon,lat,alt lon,lat,alt ..."
-                    char[] delimiterChars = { ' ', '\t', '\r', '\n' };
-                    string[] numberSets = coordinates.Split(delimiterChars, StringSplitOptions.RemoveEmptyEntries);
-
-                    if (numberSets.Length >= 3)
+                    // A KML ring repeats its first point at the end; a boundary doesn't (AgOpenGPS
+                    // FixFenceLine drops points that close together), so drop it here.
+                    if (polygonPoints.Count >= 4 && polygonPoints[0] == polygonPoints[^1])
                     {
-                        var polygonPoints = new List<(double Latitude, double Longitude)>();
+                        sumLat -= polygonPoints[^1].Latitude;
+                        sumLon -= polygonPoints[^1].Longitude;
+                        totalValidPoints--;
+                        polygonPoints.RemoveAt(polygonPoints.Count - 1);
+                    }
 
-                        foreach (string item in numberSets)
+                    if (polygonPoints.Count >= 3)
+                    {
+                        _kmlParsedPolygons.Add(polygonPoints);
+
+                        // First polygon also populates _kmlBoundaryPoints for backwards compatibility
+                        if (_kmlParsedPolygons.Count == 1)
                         {
-                            if (item.Length < 3) continue;
-
-                            string[] parts = item.Split(',');
-                            if (parts.Length >= 2 &&
-                                double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double lon) &&
-                                double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double lat))
-                            {
-                                polygonPoints.Add((lat, lon));
-                                sumLat += lat;
-                                sumLon += lon;
-                                totalValidPoints++;
-                            }
-                        }
-
-                        // A KML ring repeats its first point at the end; a boundary doesn't (AgOpenGPS
-                        // FixFenceLine drops points that close together), so drop it here.
-                        if (polygonPoints.Count >= 4 && polygonPoints[0] == polygonPoints[^1])
-                        {
-                            sumLat -= polygonPoints[^1].Latitude;
-                            sumLon -= polygonPoints[^1].Longitude;
-                            totalValidPoints--;
-                            polygonPoints.RemoveAt(polygonPoints.Count - 1);
-                        }
-
-                        if (polygonPoints.Count >= 3)
-                        {
-                            _kmlParsedPolygons.Add(polygonPoints);
-
-                            // First polygon also populates _kmlBoundaryPoints for backwards compatibility
-                            if (_kmlParsedPolygons.Count == 1)
-                            {
-                                _kmlBoundaryPoints.AddRange(polygonPoints);
-                            }
+                            _kmlBoundaryPoints.AddRange(polygonPoints);
                         }
                     }
-                    // Continue to parse additional coordinate blocks (inner boundaries)
                 }
+                // Continue to parse additional coordinate blocks (inner boundaries)
             }
 
             if (totalValidPoints > 0)

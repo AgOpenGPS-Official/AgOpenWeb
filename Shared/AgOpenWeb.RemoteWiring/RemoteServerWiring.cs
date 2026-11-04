@@ -274,6 +274,9 @@ public static partial class RemoteServerWiring
                                     if (vm.DeleteRecordedPathCommand?.CanExecute(arg) == true)
                                         vm.DeleteRecordedPathCommand.Execute(arg);
                                     return;
+                                case "import.scan": // a picker opened: list the Import folder, off the
+                                    server.RequestImportScan(); // host thread (observers too: a read)
+                                    return;
                                 case "boundary.refresh": // rebuild the menu list from the field (Tier-1)
                                     vm.RefreshBoundaryList();
                                     return;

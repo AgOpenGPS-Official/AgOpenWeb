@@ -242,6 +242,12 @@ function renderSettings() {
     fieldOpsDirty = false;
     if (document.getElementById('fieldsandjobs').classList.contains('open')) renderFieldsAndJobs();
     if (document.getElementById('resumejob').classList.contains('open')) renderResumeJob();
+    // The Import folder's files: one copied in while a picker is open shows up in it.
+    if (fieldOps) {
+      if (document.getElementById('kmlimport').classList.contains('open')) fillSelect(document.getElementById('kml-file'), fieldOps.kmlFiles);
+      if (document.getElementById('isoimport').classList.contains('open')) fillSelect(document.getElementById('iso-file'), fieldOps.isoFiles);
+      if (document.getElementById('kmlboundary').classList.contains('open')) renderKmlBoundary();
+    }
   }
   if (agShareDirty) {
     agShareDirty = false;
