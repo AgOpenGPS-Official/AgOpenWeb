@@ -1118,7 +1118,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             {
                 guideArgs = (widthMinusOverlap, toolShift, extendDisp, config2.Display.ExtraGuidelinesCount);
                 guideLines = GuideLines(track, passNumber, widthMinusOverlap, nudgeOffset, toolShift, extendDisp,
-                    config2.Display.ExtraGuidelinesCount);
+                    config2.Display.ExtraGuidelinesCount, TurnTargetPass());
             }
         }
 
@@ -1241,7 +1241,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 baseTrack = onReference ? null : track;
                 // The guidelines go either side of the pass shown.
                 if (guideArgs is { } ga)
-                    guideLines = GuideLines(track!, nearestPass, ga.Width, nudgeOffset, ga.Shift, ga.Extend, ga.Count);
+                    guideLines = GuideLines(track!, nearestPass, ga.Width, nudgeOffset, ga.Shift, ga.Extend, ga.Count, TurnTargetPass());
                 if (toolPassArgs is { } ta)
                     toolPass = ToolPass(track!, nearestPass, ta.Width, nudgeOffset, ta.Extend);
 
@@ -1889,7 +1889,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
         return _toolPass = line;
     }
 
-    private (Models.Track.Track Track, int Pass, double Width, double Nudge, double Shift, bool Extend, int Count) _guideKey;
+    /// <summary>The pass a planned or driven U-turn lands on, if one is planned.</summary>
+    private int? TurnTargetPass() =>
+        _youTurn.TurnPath is { Count: > 0 } ? _youTurn.ReturnPassTargetPath ?? _youTurn.PlannedNextPath : null;
+
+    private (Models.Track.Track Track, int Pass, double Width, double Nudge, double Shift, bool Extend, int Count, int? Target) _guideKey;
     private IReadOnlyList<IReadOnlyList<Vec3>>? _guideLines;
 
     /// <summary>
@@ -1898,20 +1902,23 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// itself, so they round off at corners instead of pinching into spikes or folding over on a
     /// tight bend (#450). Adjacent passes are driven the other way, so the tool offset moves to
     /// the other side on every other one, as in AgOpenGPS (CABCurve.BuildCurveGuidelines). The
-    /// same list is returned until the pass or the setting changes.
+    /// same list is returned until the pass or the setting changes. With skip rows the pass a
+    /// turn lands on can be driven either way, so while a turn is planned the alternation starts
+    /// from its <paramref name="turnTarget"/>, driven the other way: the turn ends on a line (#591).
     /// </summary>
     private IReadOnlyList<IReadOnlyList<Vec3>> GuideLines(Models.Track.Track track, int pass, double widthMinusOverlap,
-        double nudge, double toolShift, bool extend, int count)
+        double nudge, double toolShift, bool extend, int count, int? turnTarget)
     {
-        var key = (track, pass, widthMinusOverlap, nudge, toolShift, extend, count);
+        var key = (track, pass, widthMinusOverlap, nudge, toolShift, extend, count, turnTarget);
         if (_guideLines != null && _guideKey.Equals(key)) return _guideLines;
 
         var lines = new List<IReadOnlyList<Vec3>>(2 * count);
         for (int k = 1; k <= count; k++)
             foreach (int side in new[] { -1, 1 })
             {
-                double shift = k % 2 == 1 ? -toolShift : toolShift;
-                double dist = Models.Track.PassGeometry.Offset(track, pass + side * k, widthMinusOverlap, nudge, shift);
+                int q = pass + side * k;
+                double shift = Models.Track.PassGeometry.IsDrivenOtherWay(q, pass, turnTarget) ? -toolShift : toolShift;
+                double dist = Models.Track.PassGeometry.Offset(track, q, widthMinusOverlap, nudge, shift);
                 if (track.Points.Count == 2)
                 {
                     // An AB line: A and B moved sideways; the map draws it across the field.

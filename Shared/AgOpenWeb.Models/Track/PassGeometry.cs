@@ -27,6 +27,14 @@ public static class PassGeometry
     public static double ToolShift(double toolOffset, bool isHeadingSameWay) =>
         isHeadingSameWay ? toolOffset : -toolOffset;
 
+    /// <summary>Whether <paramref name="pass"/> is driven the other way from the pass the tractor
+    /// is on (<paramref name="current"/>), so its tool shift has the other sign. Neighbours
+    /// alternate. With skip rows the pass a turn lands on can be either, so while a turn is
+    /// planned the alternation counts from its <paramref name="turnTarget"/>, driven the other
+    /// way (#591).</summary>
+    public static bool IsDrivenOtherWay(int pass, int current, int? turnTarget) =>
+        turnTarget is { } t ? (pass - t) % 2 == 0 : (pass - current) % 2 != 0;
+
     /// <summary>Signed distance (m, + = right of A→B) from the reference line to pass
     /// <paramref name="pass"/>; with a <paramref name="toolShift"/>, to the line the tractor
     /// steers so that the tool runs on the pass.</summary>

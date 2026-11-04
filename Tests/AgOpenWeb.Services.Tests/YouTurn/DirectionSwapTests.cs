@@ -374,6 +374,56 @@ public class DirectionSwapTests
         });
     }
 
+    // ── The lines shown with a turn (#591) ──────────────────────────────
+
+    // An alternative-skip turn: the next pass shown (cyan) is where the turn ends and the line
+    // steered after it, nudge included. It used to leave the nudge out and sat beside the turn.
+    [TestCase(false)]
+    [TestCase(true)]
+    public void PlannedPass_NextPassShown_HasTheNudge(bool alternate)
+    {
+        var bench = new Bench(skipRows: 1, skipWorked: !alternate, alternate: alternate);
+        var (guidance, turn) = bench.OnPass(0);
+        guidance.NudgeOffset = 2.0;
+
+        bench.Tick(guidance, turn);
+        int target = turn.ReturnPassTargetPath!.Value;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.NextTrack!.Points[0].Easting, Is.EqualTo(PassX(target) + 2.0).Within(0.01));
+            Assert.That(turn.TurnPath![^1].Easting, Is.EqualTo(PassX(target) + 2.0).Within(0.5), "the turn ends there too");
+        });
+    }
+
+    // Halfway round the turn the tractor heads the other way. Which way the pass is driven stays
+    // as it was until the turn completes: it places the old pass's line with a tool offset, which
+    // jumped by twice the offset halfway round the arc.
+    [Test]
+    public void DrivingTheTurn_TheDirectionIsHeldUntilItCompletes()
+    {
+        var bench = new Bench(skipRows: 0);
+        var (guidance, turn) = bench.OnPass(0);
+        bench.Tick(guidance, turn);
+        Assert.That(guidance.IsHeadingSameWay, Is.True, "the scenario: heading north along the line");
+
+        turn.IsTriggered = turn.IsExecuting = true;
+        bench.Heading = 180; // round the arc, heading south
+        bench.TickAny(guidance, turn);
+
+        Assert.That(guidance.IsHeadingSameWay, Is.True);
+    }
+
+    [Test]
+    public void AfterTheTurn_TheNewDirectionIsTaken()
+    {
+        var bench = new Bench(skipRows: 0);
+        var (guidance, turn) = bench.OnPass(0);
+        bench.Heading = 180;
+        bench.TickAny(guidance, turn);
+        Assert.That(guidance.IsHeadingSameWay, Is.False);
+    }
+
     // ── Bench ────────────────────────────────────────────────────────────
 
     /// <summary>The real planner on a 120 m square field (6 m tool, 8 m radius, 16 m legs).</summary>
@@ -390,6 +440,9 @@ public class DirectionSwapTests
         /// <summary>The skip; changing it is what the pipeline does on the skip buttons.</summary>
         public int SkipRows { get; set; }
         private double _x;
+
+        /// <summary>The tractor's heading (degrees); north, along the line, unless a test turns it.</summary>
+        public double Heading { get; set; }
 
         public Models.Track.Track Track { get; }
 
@@ -435,7 +488,7 @@ public class DirectionSwapTests
         }
 
         private YouTurnStateMachine.TickContext Ctx() => new(
-            new Position { Easting = _x, Northing = -20, Heading = 0, Speed = 2.78 },
+            new Position { Easting = _x, Northing = -20, Heading = Heading, Speed = 2.78 },
             Track, _boundary, _turnLine,
             UTurnSkipRows: SkipRows, IsSkipWorkedMode: _skipWorked,
             HeadlandCalculatedWidth: 16.0, HeadlandDistance: 16.0,
@@ -447,6 +500,9 @@ public class DirectionSwapTests
             Assert.That(turn.IsExecuting, Is.False, "the tractor is still far short of the turn");
             return effects;
         }
+
+        /// <summary>One cycle, whatever the turn is doing.</summary>
+        public YouTurnEffects TickAny(GuidanceWorkingState guidance, YouTurnWorkingState turn) => _sm.Tick(Ctx(), guidance, turn);
 
         public void SwitchedOff() => _sm.OnYouTurnSwitchedOff();
 
