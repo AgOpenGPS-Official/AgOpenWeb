@@ -133,9 +133,9 @@ public class PgnFramesMatchAgOpenGpsTests
     {
         var wrong = new List<string>();
         int n = 0;
-        foreach (int kp in new[] { 1, 10, 55, 100 })
+        foreach (int kp in new[] { 1, 10, 55, 100, 150, 200 })
             foreach (int highPwm in new[] { 50, 120, 235, 255 })
-                foreach (int minPwm in new[] { 1, 5, 25, 50 })
+                foreach (int minPwm in new[] { 1, 5, 25, 50, 80, 100, 200 })
                     foreach (double cpd in new[] { 1, 50, 100, 110.9, 255 })
                         foreach (int wasOffset in new[] { -32768, -1000, -1, 0, 1, 255, 256, 1000, 32767 })
                             foreach (int ackermann in new[] { 0, 80, 100, 200 })
