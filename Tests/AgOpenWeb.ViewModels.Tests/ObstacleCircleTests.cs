@@ -13,7 +13,7 @@ namespace AgOpenWeb.ViewModels.Tests;
 
 /// <summary>
 /// Round obstacles (trees) from the boundary list: a circle placed at a tapped centre, a drawn
-/// obstacle made round, every "Go round" one at once, a circle's diameter and centre changed.
+/// obstacle made round, every "Go around" one at once, a circle's diameter and centre changed.
 /// The circle is saved in the field's file beside its polygon and lost when the polygon is
 /// changed in another program.
 /// </summary>
@@ -125,7 +125,7 @@ public class ObstacleCircleTests
     [Test]
     public async Task RoundAll_MakesEveryGoRoundTreeRound_AndLeavesTheOthers()
     {
-        // A strip of stones 30 m by 2 m, also Go round: as a circle it would be 30 m across.
+        // A strip of stones 30 m by 2 m, also Go around: as a circle it would be 30 m across.
         var fs = new FieldService();
         var field = fs.LoadField(_dir);
         var strip = new BoundaryPolygon { AtObstacle = ObstacleAction.GoRound };

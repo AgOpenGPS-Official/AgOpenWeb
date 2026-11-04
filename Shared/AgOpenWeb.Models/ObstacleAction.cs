@@ -13,7 +13,7 @@ public enum ObstacleAction
     /// <summary>A U-turn in front of it, as at the field edge (AgOpenGPS: Drive thru = No).</summary>
     Turn = 0,
 
-    /// <summary>Steer round it and back onto the same pass, tractor and implement kept out of it.</summary>
+    /// <summary>Steer around it and back onto the same pass, tractor and implement kept out of it.</summary>
     GoRound = 1,
 
     /// <summary>Drive on across it; only the sections switch off over it (AgOpenGPS: Drive thru = Yes).</summary>

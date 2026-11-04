@@ -93,7 +93,7 @@ public partial class MainViewModel
 
     private static string Describe(ObstacleAction action) => action switch
     {
-        ObstacleAction.GoRound => "go round",
+        ObstacleAction.GoRound => "go around",
         ObstacleAction.DriveThrough => "drive through",
         _ => "U-turn",
     };

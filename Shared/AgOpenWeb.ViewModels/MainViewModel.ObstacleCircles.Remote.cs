@@ -10,14 +10,14 @@ namespace AgOpenWeb.ViewModels;
 /// <summary>
 /// MainViewModel partial: round obstacles (trees) in the boundary list. A circle is placed by a
 /// tap on its centre with a diameter, a drawn obstacle is made round (the smallest circle that
-/// holds it), one at a time or every "Go round" one at once, and a circle's diameter or centre is
+/// holds it), one at a time or every "Go around" one at once, and a circle's diameter or centre is
 /// changed. The circle and its polygon are saved with the field (<see cref="ObstacleCircle"/>).
 /// </summary>
 public partial class MainViewModel
 {
     /// <summary>
     /// A new round obstacle at (<paramref name="easting"/>, <paramref name="northing"/>), field
-    /// metres, <paramref name="diameter"/> metres across; its choice is Go round, as a tree's
+    /// metres, <paramref name="diameter"/> metres across; its choice is Go around, as a tree's
     /// would be. Its row is selected.
     /// </summary>
     public void RemoteAddObstacleCircle(double easting, double northing, double diameter)
@@ -86,7 +86,7 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Every "Go round" obstacle that is not a circle yet becomes the smallest circle that holds
+    /// Every "Go around" obstacle that is not a circle yet becomes the smallest circle that holds
     /// it. One that is long and thin (its circle more than <see cref="ObstacleCircle.MaxAreaRatio"/>
     /// times its area) or too big for a circle keeps its shape.
     /// </summary>
@@ -109,7 +109,7 @@ public partial class MainViewModel
         }
         if (made == 0)
         {
-            ReportFailure(kept > 0 ? $"No obstacle made round: {kept} long and thin or too big, kept as drawn" : "No \"Go round\" obstacle to make round");
+            ReportFailure(kept > 0 ? $"No obstacle made round: {kept} long and thin or too big, kept as drawn" : "No \"Go around\" obstacle to make round");
             return;
         }
 
