@@ -281,7 +281,8 @@ public sealed class YouTurnStateMachine
                 // The arc already begins behind the tractor, so this path cannot be joined.
                 // Turn from here instead, the way a manual turn does; when there is no room
                 // for that either, say so, because the operator has to turn by hand now.
-                var fromHere = _creation.CreateManualArcPath(
+                // Not before an obstacle: a turn from here would swing into it.
+                var fromHere = turn.TurnAtObstacle ? new List<Vec3>() : _creation.CreateManualArcPath(
                     currentPosition, abHeading, turn.IsTurnLeft,
                     ctx.Boundary, guidance, ctx.UTurnSkipRows, turn.NextTrack);
                 if (fromHere.Count > 2)
@@ -301,9 +302,12 @@ public sealed class YouTurnStateMachine
                 {
                     _logger.LogDebug("[YouTurn] Arc start {Dist:F1}m behind the tractor and no room to turn from here - turn missed",
                         distToArcStart);
+                    bool atObstacle = turn.TurnAtObstacle;
                     DiscardPlannedTurn(turn);
                     SoundMissed(effects);
-                    effects.StatusMessage = "U-turn missed: too close to the headland to turn. Take over manually.";
+                    effects.StatusMessage = atObstacle
+                        ? "U-turn missed: too close to the obstacle to turn. Take over manually."
+                        : "U-turn missed: too close to the headland to turn. Take over manually.";
                 }
                 effects.SyncTurnPathToMap = true;
                 effects.SyncNextTrackToMap = true;
@@ -719,6 +723,7 @@ public sealed class YouTurnStateMachine
     public static void DiscardPlannedTurn(YouTurnWorkingState turn)
     {
         turn.TurnPath = null;
+        turn.TurnAtObstacle = false;
         turn.NextTrack = null;
         turn.IsTriggered = false;
         turn.ReturnPassTargetPath = null;
@@ -1142,6 +1147,8 @@ public sealed class YouTurnStateMachine
 
         if (result.ClearanceBlocked && effects.StatusMessage == null)
             effects.StatusMessage = "U-turn blocked: implement would swing into a hard boundary — take over manually.";
+        if (result.Path == null && result.AtObstacle && effects.StatusMessage == null)
+            effects.StatusMessage = "No room for a U-turn before the obstacle. Take over manually.";
 
         if (result.Path == null)
         {
@@ -1153,6 +1160,7 @@ public sealed class YouTurnStateMachine
 
         turn.TurnPath = result.Path;
         turn.ArcStart = result.ArcStart;
+        turn.TurnAtObstacle = result.AtObstacle;
         turn.YouTurnCounter = 0;
         if (!result.UsedFallback && effects.StatusMessage == null)
             effects.StatusMessage = $"YouTurn path created ({result.Path.Count} points)";
