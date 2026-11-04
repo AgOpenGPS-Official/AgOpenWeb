@@ -603,8 +603,9 @@ public sealed class SceneProjector
             // AGOPENWEB_DATA), same as Fields/Tools/Vehicles/NtripProfiles. Using
             // MyDocuments directly diverged from the data root on headless installs,
             // so the scanned folder never matched where files actually live.
-            var importDir = System.IO.Path.Combine(AppDataRoot.Documents, "Import");
-            if (!System.IO.Directory.Exists(importDir)) return (iso, kml);
+            // Created here as the native dialogs did: the web pickers name the folder,
+            // and without this the user had to make it by hand.
+            var importDir = ImportFolder.Ensure();
             // One entry per partfield of every TASKDATA.XML (case-insensitive: ISOBUS writes
             // TASKDATA.XML, which File.Exists misses on Linux, #111); a farm export holds many.
             foreach (var e in AgOpenWeb.Services.IsoXml.IsoXmlImportCatalog.Scan(importDir))
@@ -617,11 +618,13 @@ public sealed class SceneProjector
         return (iso, kml);
     }
 
-    // Re-send FieldOps on a field/job add/delete/open/area change (NOT on import-folder
-    // changes — those refresh on connect / any field-job change, cheap enough).
+    // Re-send FieldOps on a field/job add/delete/open/area change, and when a file is copied
+    // into (or removed from) the Import folder: without that, a KML copied in while the page
+    // was open never showed in the pickers until the page was reloaded.
     public long FieldOpsFingerprint()
     {
         long h = 17;
+        h = h * 31 + ImportFolder.Stamp(ImportFolder.Path);
         var root = _settings.Settings.FieldsDirectory ?? "";
         if (!string.IsNullOrEmpty(root))
             foreach (var n in _fields.GetAvailableFields(root)) h = h * 31 + n.GetHashCode();
