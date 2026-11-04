@@ -81,6 +81,7 @@ public sealed class YouTurnStateMachine
     // the field and a swapped turn (the U-turn arrow) carries on to the new side (#523).
     private int _lastStep;
     private string? _lastStepTrack;
+    private int _lastStepPass; // the pass that turn landed on
 
     public YouTurnStateMachine(
         YouTurnCreationService creation,
@@ -1018,6 +1019,16 @@ public sealed class YouTurnStateMachine
             track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive);
 
         _logger.LogDebug("[YouTurn] Creating turn? nextLineInside={Inside} positiveDir={Dir}", nextLineInside, positiveDirection);
+        // The turns step one way across the field (#523). When that side has no pass left, the
+        // turn back lands on the pass it came from, just worked: the field is done, as AgOpenGPS
+        // ends it (the next pass out of bounds: FailCreate). Before the first turn on this track
+        // the inside side is the way to go, and the operator's arrow still turns either way.
+        // Skipped passes are filled with the alternative or ignore-worked modes. Only on the pass
+        // the last turn landed on: moved to another pass, or the field opened again, the tractor
+        // may start from this edge.
+        if (nextLineInside && keepPositive is { } stepping && guidance.HowManyPathsAway == _lastStepPass
+            && positiveDirection != stepping && turn.NextUTurnDirectionLeftOverride is null)
+            nextLineInside = false;
         if (!nextLineInside)
         {
             _logger.LogDebug("[YouTurn] Next line would be outside boundary - stopping U-turns");
@@ -1209,6 +1220,7 @@ public sealed class YouTurnStateMachine
 
         _lastStep = Math.Sign(guidance.HowManyPathsAway - passBefore);
         _lastStepTrack = ctx.SelectedTrack?.Name;
+        _lastStepPass = guidance.HowManyPathsAway;
 
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         _logger.LogDebug("[YouTurn] Now on path {Path} ({Off:F1}m from reference)",
