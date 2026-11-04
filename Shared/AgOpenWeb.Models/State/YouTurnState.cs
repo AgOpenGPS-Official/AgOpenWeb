@@ -59,6 +59,15 @@ public class YouTurnState : ObservableObject
         set => SetProperty(ref _arcStart, value);
     }
 
+    // The planned turn is made before an obstacle (an inner boundary chosen for a U-turn), not at
+    // the field's edge: a turn missed there is not turned from where the tractor is.
+    private bool _turnAtObstacle;
+    public bool TurnAtObstacle
+    {
+        get => _turnAtObstacle;
+        set => SetProperty(ref _turnAtObstacle, value);
+    }
+
     // Direction
     private bool _isTurnLeft;
     public bool IsTurnLeft
@@ -234,6 +243,7 @@ public class YouTurnState : ObservableObject
         IsExecuting = false;
         TurnPath = null;
         ArcStart = null;
+        TurnAtObstacle = false;
         PathIndex = 0;
         DistanceToHeadland = double.MaxValue;
         DistanceToTrigger = 0;
@@ -258,6 +268,7 @@ public class YouTurnState : ObservableObject
         IsTriggered = false;
         TurnPath = null;
         ArcStart = null;
+        TurnAtObstacle = false;
         LastTurnWasLeft = IsTurnLeft;
         HeldDirectionLeft = null;
         PlannedNextPath = null;

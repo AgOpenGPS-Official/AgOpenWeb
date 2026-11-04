@@ -142,6 +142,7 @@ public class YouTurnWorkingState
         IsTriggered = false;
         TurnPath = null;
         ArcStart = null;
+        TurnAtObstacle = false;
         LastTurnWasLeft = IsTurnLeft;
         HeldDirectionLeft = null;
         PlannedNextPath = null;

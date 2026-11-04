@@ -1501,6 +1501,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         TurnPath = src.TurnPath,
         PathIndex = src.PathIndex,
         ArcStart = src.ArcStart,
+        TurnAtObstacle = src.TurnAtObstacle,
         IsTurnLeft = src.IsTurnLeft,
         LastTurnWasLeft = src.LastTurnWasLeft,
         DistanceToHeadland = src.DistanceToHeadland,
