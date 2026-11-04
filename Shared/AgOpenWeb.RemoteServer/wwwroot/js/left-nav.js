@@ -31,6 +31,11 @@ function lnCloseAll() {
   document.getElementById('ln-tools').classList.remove('active');
   document.getElementById('ln-fieldtools').classList.remove('active');
 }
+// Panels that show fields, jobs, tracks or profiles from disk. The host reads those lists when
+// they change, not in its loop (#604); opening one asks it to read them again, which also shows
+// a folder copied in by hand. (The Import folder's pickers ask with import.scan, #603.)
+const LIST_PANELS = new Set(['fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'resumejob',
+  'agupload', 'agdownload', 'importtracks', 'ntripprofiles', 'ntripeditor', 'vehtoolhub']);
 function lnOpen(panelId, navBtnId, onOpen) {
   // Opening a menu leaves an AB line being drawn on the map, like Esc (#399).
   if (abFlow === 'straight' || abFlow === 'curve') abCancel();
@@ -38,6 +43,7 @@ function lnOpen(panelId, navBtnId, onOpen) {
   document.getElementById(panelId).classList.add('open');
   if (!NO_SCRIM.has(panelId)) lnScrim.classList.add('open'); // transparent light-dismiss
   if (navBtnId) document.getElementById(navBtnId).classList.add('active');
+  if (LIST_PANELS.has(panelId)) transport.send('lists.refresh');
   if (onOpen) onOpen();
 }
 // Outside tap on the scrim closes the chain and is CONSUMED (stopPropagation keeps the

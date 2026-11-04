@@ -15,7 +15,7 @@ using AgOpenWeb.Services.Interfaces;
 
 namespace AgOpenWeb.RemoteServer;
 
-public sealed class SceneProjector
+public sealed class SceneProjector : System.IDisposable
 {
     private readonly ApplicationState _state;
     private readonly ISectionControlService _sections;
@@ -86,6 +86,25 @@ public sealed class SceneProjector
         _udp = udp;
         _ntripProfiles = ntripProfiles;
     }
+
+    // What the lists read from disk last changed (#604). The fingerprints below run every
+    // broadcast tick and compare these numbers; the Build* methods read the disk, and only
+    // run when a number moved (a user action, a panel opening, a folder copied in).
+    private readonly ListsWatch _lists = new();
+    internal ListsWatch Lists => _lists;
+
+    private void WatchLists() => _lists.Watch(_settings.Settings.FieldsDirectory,
+        _vehicleProfiles.VehiclesDirectory, _configService.ToolsDirectory);
+
+    /// <summary>A command accepted from a browser. <c>lists.refresh</c> comes from a panel
+    /// that shows a list as it opens.</summary>
+    public void OnCommand(string id)
+    {
+        if (id == "lists.refresh") _lists.Refresh();
+        else _lists.NoteCommand();
+    }
+
+    public void Dispose() => _lists.Dispose();
 
     public SceneDto BuildScene(long version)
     {
@@ -546,8 +565,8 @@ public sealed class SceneProjector
             h = h * 31 + p.AssociatedFields.Count;
             foreach (var f in p.AssociatedFields) h = h * 31 + (f?.GetHashCode() ?? 0);
         }
-        foreach (var f in _ntripProfiles.GetAvailableFields()) h = h * 31 + (f?.GetHashCode() ?? 0);
-        return h;
+        WatchLists();
+        return h * 31 + _lists.FieldsVersion; // the field names the profiles can be tied to
     }
 
     // Field Operations read-frame (Phase 9). Mirrors StartWorkSessionDialogViewModel.Refresh:
@@ -601,22 +620,15 @@ public sealed class SceneProjector
     /// </summary>
     public ImportFolderScanner ImportScan { get; } = new();
 
-    // Re-send FieldOps on a field/job add/delete/open/area change, and when a picker's scan of
-    // the Import folder found a different listing (ImportScan).
+    // Re-send FieldOps when a field or job is added, deleted, opened or saved (the Fields
+    // folder changed), the open field changes, or a picker's scan of the Import folder found a
+    // different listing. No disk here: it runs every tick (#604).
     public long FieldOpsFingerprint()
     {
+        WatchLists();
         long h = 17;
-        h = h * 31 + ImportScan.Version;
-        var root = _settings.Settings.FieldsDirectory ?? "";
-        if (!string.IsNullOrEmpty(root))
-            foreach (var n in _fields.GetAvailableFields(root)) h = h * 31 + n.GetHashCode();
-        foreach (var j in _jobs.ListAllJobs())
-        {
-            h = h * 31 + (j.FieldName?.GetHashCode() ?? 0);
-            h = h * 31 + (j.TaskName?.GetHashCode() ?? 0);
-            h = h * 31 + (int)j.Status;
-            h = h * 31 + j.LastOpenedAt.Ticks.GetHashCode();
-        }
+        h = h * 31 + _lists.FieldsVersion;
+        h = h * 31 + ImportScan.Version; // a picker's scan found a different listing (#603)
         h = h * 31 + (_fields.ActiveField?.Name?.GetHashCode() ?? 0);
         return h;
     }
@@ -638,23 +650,14 @@ public sealed class SceneProjector
         return new FieldToolsDto(importFields);
     }
 
+    // A field's tracks saved, a field added or removed, or another field opened. No disk
+    // here: it runs every tick; BuildFieldTools reads the tracks when this changes (#604).
     public long FieldToolsFingerprint()
     {
+        WatchLists();
         long h = 17;
-        var root = _settings.Settings.FieldsDirectory ?? "";
-        var active = _fields.ActiveField?.Name;
-        if (!string.IsNullOrEmpty(root))
-            foreach (var name in _fields.GetAvailableFields(root))
-            {
-                if (name == active) continue;
-                // Cheap (runs every broadcast tick): file times, not contents. BuildFieldTools
-                // reads the tracks when this changes.
-                var dir = System.IO.Path.Combine(root, name);
-                h = h * 31 + name.GetHashCode();
-                h = h * 31 + System.IO.File.GetLastWriteTimeUtc(System.IO.Path.Combine(dir, "field.geojson")).Ticks;
-                h = h * 31 + System.IO.File.GetLastWriteTimeUtc(System.IO.Path.Combine(dir, AgOpenWeb.Services.TrackFilesService.FileName)).Ticks;
-            }
-        h = h * 31 + (active?.GetHashCode() ?? 0);
+        h = h * 31 + _lists.FieldsVersion;
+        h = h * 31 + (_fields.ActiveField?.Name?.GetHashCode() ?? 0);
         return h;
     }
 
@@ -770,9 +773,7 @@ public sealed class SceneProjector
         long h = 17;
         h = h * 31 + (_settings.Settings.Language?.GetHashCode() ?? 0);
         foreach (var kv in _config.Hotkeys.Bindings) h = h * 31 + kv.Key.GetHashCode() * 7 + (kv.Value?.GetHashCode() ?? 0);
-        var snap = AgOpenWeb.Services.Logging.LogStore.Instance.GetSnapshot();
-        h = h * 31 + snap.Count;
-        if (snap.Count > 0) h = h * 31 + snap[snap.Count - 1].Timestamp.Ticks.GetHashCode();
+        h = h * 31 + AgOpenWeb.Services.Logging.LogStore.Instance.Version; // a line logged (no copy of the log, #604)
         h = h * 31 + (_state.BugReportStatus?.GetHashCode() ?? 0);
         h = h * 31 + (_state.BugReportSendStatus?.GetHashCode() ?? 0);
         return h;
@@ -790,14 +791,8 @@ public sealed class SceneProjector
         h = h * 31 + (ag.Busy ? 1 : 0);
         h = h * 31 + ag.CloudFields.Count;
         foreach (var f in ag.CloudFields) h = h * 31 + (f.Id?.GetHashCode() ?? 0);
-        var root = _settings.Settings.FieldsDirectory ?? "";
-        try
-        {
-            if (!string.IsNullOrEmpty(root) && System.IO.Directory.Exists(root))
-                foreach (var d in System.IO.Directory.GetDirectories(root)) h = h * 31 + System.IO.Path.GetFileName(d).GetHashCode();
-        }
-        catch { }
-        return h;
+        WatchLists();
+        return h * 31 + _lists.FieldsVersion; // the local fields (no disk here, #604)
     }
 
     // Config read-frame (Phase 9). Projects editable ConfigurationStore values for
@@ -897,10 +892,9 @@ public sealed class SceneProjector
     // changes (so the active profile's preview stays live). Names + active + config fp.
     public long ProfilesFingerprint()
     {
+        WatchLists();
         long h = 17;
-        foreach (var n in _configService.GetAvailableProfiles()) h = h * 31 + n.GetHashCode();
-        h = h * 31 + 7;
-        foreach (var n in _configService.GetAvailableToolProfiles()) h = h * 31 + n.GetHashCode();
+        h = h * 31 + _lists.ProfilesVersion; // a profile saved, added or removed (no disk here, #604)
         h = h * 31 + _config.ActiveVehicleProfileName.GetHashCode();
         h = h * 31 + _config.ActiveToolProfileName.GetHashCode();
         // The previews are host-rendered strings carrying units, so a metric/imperial

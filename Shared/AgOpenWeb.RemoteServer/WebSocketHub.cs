@@ -48,6 +48,10 @@ public sealed class WebSocketHub
     /// </summary>
     public Action<string, string>? CommandHandler { get; set; }
 
+    /// <summary>Told the id of every command that passed the authority gate, before
+    /// <see cref="CommandHandler"/> runs it (the projector's lists, #604).</summary>
+    public Action<string>? CommandAccepted { get; set; }
+
     public int ClientCount => _clients.Count;
 
     /// <summary>Owns the socket for its lifetime: seed, then drain until close.</summary>
@@ -122,6 +126,7 @@ public sealed class WebSocketHub
         if (IsRestrictedCommand is { } restricted && restricted(id) && !_authority.HoldsFresh(conn))
             return; // no fresh authority → dropped (an observer changes nothing)
 
+        CommandAccepted?.Invoke(id);
         CommandHandler?.Invoke(id, arg);
     }
 

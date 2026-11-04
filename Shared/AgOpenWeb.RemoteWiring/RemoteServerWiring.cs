@@ -274,6 +274,8 @@ public static partial class RemoteServerWiring
                                     if (vm.DeleteRecordedPathCommand?.CanExecute(arg) == true)
                                         vm.DeleteRecordedPathCommand.Execute(arg);
                                     return;
+                                case "lists.refresh": // a list panel opened: the projector re-reads its lists (SceneProjector.OnCommand, #604)
+                                    return;
                                 case "import.scan": // a picker opened: list the Import folder, off the
                                     server.RequestImportScan(); // host thread (observers too: a read)
                                     return;

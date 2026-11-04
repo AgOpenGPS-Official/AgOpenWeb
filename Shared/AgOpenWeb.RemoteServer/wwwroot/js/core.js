@@ -442,7 +442,12 @@ const transport = RemoteTransport.create({
   onProfiles(p) { profiles = p; profilesDirty = true; },
   onNtripProfiles(p) { ntripProfiles = p; ntripDirty = true; },
   onNtripMountpoints(m) { ntripMounts = m; renderNtripMounts(); },
-  onFieldOps(f) { fieldOps = f; fieldOpsDirty = true; },
+  onFieldOps(f) {
+    fieldOps = f; fieldOpsDirty = true;
+    // The list re-read as From Existing opened (#604) lands after it drew; keep the choice made.
+    if (document.getElementById('fromexisting').classList.contains('open'))
+      fillSelect(document.getElementById('fe-source'), f.fields.map(x => x.name));
+  },
   onAgShare(a) { agShare = a; agShareDirty = true; },
   onAppInfo(a) { appInfo = a; appInfoDirty = true; I18n.setLanguage(a.currentLanguage); },
   onFieldTools(f) { fieldTools = f; fieldToolsDirty = true; if (document.getElementById('importtracks').classList.contains('open')) renderImportTracks(); },
