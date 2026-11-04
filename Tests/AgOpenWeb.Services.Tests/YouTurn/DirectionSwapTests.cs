@@ -424,6 +424,29 @@ public class DirectionSwapTests
         Assert.That(guidance.IsHeadingSameWay, Is.False);
     }
 
+    // ── A snake order made for another field ────────────────────────────
+
+    // The order was planned before the headland or boundary changed: its next pass (9, x = 57)
+    // is now outside the turn line (passes -7..6 are inside). The turn must not go there: the
+    // snake is planned again for the field as it is.
+    [Test]
+    public void Snake_NextPassOfTheOrderOutsideTheField_PlansTheOrderAgain()
+    {
+        var bench = new Bench(skipRows: 0, skipWorked: true);
+        var (guidance, turn) = bench.OnPass(0);
+        turn.SnakeSequence = new List<int> { 0, 9, -1 };
+        turn.SnakeIndex = 0;
+
+        bench.Tick(guidance, turn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.ReturnPassTargetPath, Is.Not.EqualTo(9));
+            Assert.That(turn.ReturnPassTargetPath, Is.InRange(-7, 6), "a pass inside the field");
+            Assert.That(turn.SnakeSequence, Does.Not.Contain(9));
+        });
+    }
+
     // ── Bench ────────────────────────────────────────────────────────────
 
     /// <summary>The real planner on a 120 m square field (6 m tool, 8 m radius, 16 m legs).</summary>
