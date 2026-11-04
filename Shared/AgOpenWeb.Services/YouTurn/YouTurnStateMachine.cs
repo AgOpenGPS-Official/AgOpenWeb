@@ -698,6 +698,19 @@ public sealed class YouTurnStateMachine
     }
 
     /// <summary>
+    /// The active track changed: everything planned or driven on the old one goes (the turn,
+    /// the pass it lands on, the snake order, the alternate pattern, the worked-pass cache).
+    /// </summary>
+    public void ForgetTrack(YouTurnWorkingState turn)
+    {
+        ClearState(turn);
+        turn.SnakeSequence = null;
+        turn.SnakeIndex = -1;
+        turn.AltSign = 0;
+        _coveredPasses.Clear();
+    }
+
+    /// <summary>
     /// Drop a planned turn that isn't being driven yet: the path, the next track and the
     /// snake / alternate target pass (#1203). The next tick plans a fresh one. Without the
     /// target reset, a later Normal or manual turn would complete onto the stale pass.
