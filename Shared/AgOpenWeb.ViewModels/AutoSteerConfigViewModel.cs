@@ -442,7 +442,7 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         EditProportionalGainCommand = new RelayCommand(() =>
             ShowNumericInput("Proportional Gain", AutoSteer.ProportionalGain,
                 v => AutoSteer.ProportionalGain = (int)v,
-                "", integerOnly: true, allowNegative: false, min: 1, max: 100));
+                "", integerOnly: true, allowNegative: false, min: 1, max: 200));
 
         EditMaxPwmCommand = new RelayCommand(() =>
             ShowNumericInput("Max PWM", AutoSteer.MaxPwm,
@@ -452,7 +452,7 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         EditMinPwmCommand = new RelayCommand(() =>
             ShowNumericInput("Min PWM", AutoSteer.MinPwm,
                 v => AutoSteer.MinPwm = (int)v,
-                "", integerOnly: true, allowNegative: false, min: 1, max: 50));
+                "", integerOnly: true, allowNegative: false, min: 1, max: 200));
     }
 
     #endregion

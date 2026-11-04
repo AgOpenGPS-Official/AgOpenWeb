@@ -683,8 +683,8 @@ public static class PgnBuilder
         buf[3] = PGN_STEER_SETTINGS;
         buf[4] = 8;  // Data length
 
-        // Proportional gain (1-100)
-        buf[5] = (byte)Math.Clamp(config.ProportionalGain, 1, 100);
+        // Proportional gain (1-200, AgOpenGPS's slider)
+        buf[5] = (byte)Math.Clamp(config.ProportionalGain, 1, 200);
 
         // High PWM (max PWM, 50-255)
         buf[6] = (byte)Math.Clamp(config.MaxPwm, 50, 255);
@@ -692,8 +692,8 @@ public static class PgnBuilder
         // Low PWM (typically highPWM / 3)
         buf[7] = (byte)(buf[6] / 3);
 
-        // Min PWM to move (1-50)
-        buf[8] = (byte)Math.Clamp(config.MinPwm, 1, 50);
+        // Min PWM to move (1-200, AgOpenGPS's slider; #600)
+        buf[8] = (byte)Math.Clamp(config.MinPwm, 1, 200);
 
         // Counts per degree (1-255, sent as-is)
         // Round, not truncate: the CPD test can give 110.9, which must go out as 111 (#112).

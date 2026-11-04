@@ -102,7 +102,7 @@ public class AutoSteerConfig : ObservableObject
     private int _proportionalGain = 50;
     /// <summary>
     /// Proportional gain (Kp) for steering PID.
-    /// Range: 1 - 100
+    /// Range: 1 - 200 (AgOpenGPS's slider)
     /// </summary>
     public int ProportionalGain
     {
@@ -124,7 +124,7 @@ public class AutoSteerConfig : ObservableObject
     private int _minPwm = 25;
     /// <summary>
     /// Minimum PWM to overcome static friction.
-    /// Range: 1 - 50
+    /// Range: 1 - 200 (AgOpenGPS's slider)
     /// </summary>
     public int MinPwm
     {

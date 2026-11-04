@@ -138,9 +138,9 @@ public class SteeringGainsStepViewModel : WizardStepViewModel
 
     public override Task<bool> ValidateAsync()
     {
-        if (ProportionalGain < 1 || ProportionalGain > 100)
+        if (ProportionalGain < 1 || ProportionalGain > 200)
         {
-            SetValidationError("Proportional Gain must be between 1 and 100");
+            SetValidationError("Proportional Gain must be between 1 and 200");
             return Task.FromResult(false);
         }
 
