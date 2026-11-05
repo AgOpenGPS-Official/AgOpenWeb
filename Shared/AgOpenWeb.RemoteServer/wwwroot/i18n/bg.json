@@ -87,5 +87,15 @@
   "XTE Chart": "XTE-Графика",
   "YouTube Tutorials": "Уроци в YouTube",
   "Zero Roll": "Стр.наклон 0°",
-  "Zones": "Зони"
+  "Zones": "Зони",
+  "# Sats:": "#Сателити:",
+  "(aim for ~{speed})": "(цел: ~{speed})",
+  "(Boundary)": "(Граница)",
+  "(no dual heading)": "(без двойна антена)",
+  "(not set)": "(не е зададено)",
+  "(optional)": "(опционално)",
+  "(RTK Fixed recommended)": "(Препоръчва се RTK Fixed)",
+  "({n} sats)": "({n} Сателита)",
+  "(− out / + in)": "(− намали / + увеличи)",
+  "1 cm per click": "1 см на клик"
 }
