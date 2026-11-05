@@ -5,12 +5,14 @@
   "Steer Wizard"
  ],
  "cs": [
+  "First pass",
   "Off"
  ],
  "de": [
   "AgShare Download",
   "Delete Applied Area",
   "Drive In",
+  "First pass",
   "Lat/Lon + Heading",
   "Latitude (−90 to 90)",
   "Longest Edge",
@@ -33,11 +35,25 @@
   "Off",
   "Right"
  ],
+ "hu": [
+  "Coupling type",
+  "Delete All"
+ ],
  "ja": [
   "Field Texture",
   "Off",
   "Remove Offset",
   "Steer Response"
+ ],
+ "lt": [
+  "Coupling type",
+  "Drive AB",
+  "First pass"
+ ],
+ "lv": [
+  "Coupling type",
+  "First pass",
+  "Latitude (−90 to 90)"
  ],
  "nl": [
   "Coupling type",
@@ -48,12 +64,25 @@
   "✎ Edit"
  ],
  "pl": [
+  "Coupling type",
+  "Delete All",
   "Delete Applied Area",
-  "Right"
+  "First pass",
+  "Latitude (−90 to 90)",
+  "Right",
+  "Steer Chart"
+ ],
+ "pt": [
+  "Coupling type",
+  "First pass",
+  "Latitude (−90 to 90)"
  ],
  "ru": [
+  "App Settings",
   "Area",
   "Offset Fix",
+  "Reset All Settings",
+  "Resume Job",
   "Right"
  ],
  "sr": [
