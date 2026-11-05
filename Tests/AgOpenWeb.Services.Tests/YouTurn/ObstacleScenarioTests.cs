@@ -75,13 +75,13 @@ public class ObstacleScenarioTests
                             var leg = new Leg(o.Name, kind, forward, tool, width, 0, -1);
                             if (Wanted(leg)) yield return new TestCaseData(leg).SetName($"Normal({leg})");
                         }
-        // Implements running beside the tractor (a mower conditioner): rigid and trailed, 3 m, 1 m to either
+        // Implements running beside the tractor (a mower conditioner): rigid and trailed, 3 m, 2.5 m to either
         // side. (Half the width to one side makes the tractor's return line the line it came on, a turn with
         // no lateral span, which the generator does not build: kickout at every obstacle, see the report.)
         foreach (var o in field.UTurnObstacles)
             foreach (bool forward in new[] { true, false })
                 foreach (var tool in new[] { "rear", "trailing" })
-                    foreach (double offset in new[] { -1.0, 1.0 })
+                    foreach (double offset in new[] { -2.5, 2.5 })
                     {
                         var leg = new Leg(o.Name, "AB 0°", forward, tool, 3, offset, -1);
                         if (Wanted(leg)) yield return new TestCaseData(leg).SetName($"Normal({leg})");
