@@ -9,6 +9,7 @@ This file provides guidance to Claude Code when working with this repository.
 - **[Docs/TRANSLATIONS.md](Docs/TRANSLATIONS.md)** - UI strings and Weblate
 - **[Docs/GPS_RECEIVERS.md](Docs/GPS_RECEIVERS.md)** - Receivers, sentence families, the bridge contract, per-receiver setup
 - **[Docs/WEB_CLIENT.md](Docs/WEB_CLIENT.md)** - The web client's files (`js/`, `css/`), how the scripts load, adding a panel
+- **[Docs/ADD_ON_CARDS.md](Docs/ADD_ON_CARDS.md)** - For add-on developers: web cards and VT cards, gateways, discovery
 - **[Docs/FIELD_FILE_FORMATS.md](Docs/FIELD_FILE_FORMATS.md)** - `field.geojson`, sidecars and coverage tiles: the spec for tools that read or write fields
 
 ## Project Overview

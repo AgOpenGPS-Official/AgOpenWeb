@@ -136,9 +136,7 @@ a split layout the pane is a **drawer**.
    - the drawer in each position, a page keeping its state across Closed and Full, the strip at
      speed;
    - an observer.
-3. **Add-on author page** (`Docs/ADD_ON_WEB_CARDS.md`): what the card gives an add-on, `{host}`,
-   framing headers to avoid, what observers see, the sizes a page should work at (a half-window
-   slot, a quarter, full).
+3. **Add-on author page**: `Docs/ADD_ON_CARDS.md`, for web and VT cards. Done.
 4. Close #456; move this plan to `Completed/`.
 
 ## 7. Later
