@@ -5,7 +5,6 @@
   "Drive In",
   "Lat/Lon + Heading",
   "Latitude (−90 to 90)",
-  "Left",
   "Longest Edge",
   "Next Boundary Dist",
   "Off",
@@ -18,5 +17,13 @@
   "Save to Job",
   "✎ Edit",
   "＋ Add"
+ ],
+ "nl": [
+  "Coupling type",
+  "Latitude (−90 to 90)",
+  "Place on Map",
+  "Playback",
+  "Right",
+  "✎ Edit"
  ]
 }
