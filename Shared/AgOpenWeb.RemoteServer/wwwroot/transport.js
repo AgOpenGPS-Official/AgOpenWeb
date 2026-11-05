@@ -47,7 +47,7 @@ window.RemoteTransport = {
         case TYPE.SCENE: {
           const version = i64(), originLat = f64(), originLon = f64();
           const hasField = !!u8(), fieldName = str();
-          // boundaryKind: 0 = outer, else an obstacle, 1 + its choice (1 U-turn, 2 go round, 3 drive through).
+          // boundaryKind: 0 = outer, else an obstacle, 1 + its choice (1 U-turn, 3 drive through).
           const bc = i32(); const boundaries = new Array(bc); const boundaryInner = new Array(bc); const boundaryKind = new Array(bc);
           for (let k = 0; k < bc; k++) { boundaryKind[k] = u8(); boundaryInner[k] = boundaryKind[k] > 0; boundaries[k] = pts(); }
           const tc = i32(); const tracks = new Array(tc);

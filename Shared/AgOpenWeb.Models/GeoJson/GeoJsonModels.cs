@@ -82,7 +82,7 @@ public static class FieldPropertyKeys
     public const string IsVisible = "isVisible";
     public const string IsDriveThrough = "isDriveThrough";
     public const string IsHard = "isHard";
-    /// <summary>An inner boundary's <see cref="ObstacleAction"/>: "turn", "goRound" or "driveThrough".</summary>
+    /// <summary>An inner boundary's <see cref="ObstacleAction"/>: "turn" or "driveThrough".</summary>
     public const string AtObstacle = "atObstacle";
     /// <summary>A round inner boundary's centre, [lon, lat] (with <see cref="CircleDiameter"/>).</summary>
     public const string CircleCenter = "circleCenter";

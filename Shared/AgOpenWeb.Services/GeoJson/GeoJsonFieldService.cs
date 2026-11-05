@@ -253,9 +253,12 @@ public partial class GeoJsonFieldService
                     var inner = ReadBoundaryPolygon(geo, feature);
                     if (inner != null)
                     {
-                        // The choice, or for a file written before it the drive-through flag.
-                        inner.AtObstacle = ObstacleActionNames.Parse(GetStringProp(feature, FieldPropertyKeys.AtObstacle))
+                        // The choice, or for a file written before it the drive-through flag; an
+                        // obstacle that then gets a U-turn is counted, and the operator told.
+                        var choice = ObstacleActionNames.Parse(GetStringProp(feature, FieldPropertyKeys.AtObstacle));
+                        inner.AtObstacle = choice
                             ?? (GetBoolProp(feature, FieldPropertyKeys.IsDriveThrough) ? ObstacleAction.DriveThrough : ObstacleAction.Turn);
+                        if (choice == null && inner.AtObstacle == ObstacleAction.Turn) boundary.ObstaclesNowUTurn++;
                         inner.IsHard = GetBoolProp(feature, FieldPropertyKeys.IsHard);
                         inner.Circle = ReadCircle(geo, feature, inner);
                         boundary.InnerBoundaries.Add(inner);

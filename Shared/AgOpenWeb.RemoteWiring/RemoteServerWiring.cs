@@ -285,7 +285,7 @@ public static partial class RemoteServerWiring
                                 case "boundary.select": // arg = boundary list index (Tier-1)
                                     if (int.TryParse(arg, out var bsi)) vm.SelectedBoundaryIndex = bsi;
                                     return;
-                                case "boundary.atObstacle": // arg = "index:turn|goRound|driveThrough": the
+                                case "boundary.atObstacle": // arg = "index:turn|driveThrough": the
                                 {                           // obstacle on that list row (field data)
                                     var bc = arg.IndexOf(':');
                                     if (bc > 0 && int.TryParse(arg[..bc], out var boi)
@@ -293,7 +293,7 @@ public static partial class RemoteServerWiring
                                         vm.RemoteSetObstacleAction(boi, boa);
                                     return;
                                 }
-                                case "boundary.atObstacleAll": // arg = turn|goRound|driveThrough: every
+                                case "boundary.atObstacleAll": // arg = turn|driveThrough: every
                                     if (AgOpenWeb.Models.ObstacleActionNames.Parse(arg) is { } baa) // obstacle (a
                                         vm.RemoteSetAllObstacleActions(baa);                     // column title)
                                     return;
@@ -327,8 +327,8 @@ public static partial class RemoteServerWiring
                                 case "boundary.circle.round": // arg = row: the smallest circle holding it
                                     if (int.TryParse(arg, out var bro)) vm.RemoteMakeObstacleRound(bro);
                                     return;
-                                case "boundary.circle.roundAll": // every "Go around" obstacle
-                                    vm.RemoteMakeGoRoundObstaclesRound();
+                                case "boundary.circle.roundAll": // every obstacle up to a tree's size
+                                    vm.RemoteMakeObstaclesRound();
                                     return;
                                 case "boundary.setOffset": // arg = recording offset cm (Tier-1)
                                     if (double.TryParse(arg, num, inv, out var boff)) vm.BoundaryOffset = boff;

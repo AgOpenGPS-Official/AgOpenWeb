@@ -968,8 +968,23 @@ public partial class YouTurnCreationService
         Boundary? boundary,
         GuidanceWorkingState guidance,
         int uTurnSkipRows,
-        Models.Track.Track? targetPass = null)
+        Models.Track.Track? targetPass = null) =>
+        CreateManualArcPath(currentPosition, abHeading, turnLeft, boundary, guidance, uTurnSkipRows,
+            targetPass, out _);
+
+    /// <param name="obstacleInTheWay">True when the turn was refused because it would cross an
+    /// obstacle chosen as U-turn.</param>
+    public List<Vec3> CreateManualArcPath(
+        Position currentPosition,
+        double abHeading,
+        bool turnLeft,
+        Boundary? boundary,
+        GuidanceWorkingState guidance,
+        int uTurnSkipRows,
+        Models.Track.Track? targetPass,
+        out bool obstacleInTheWay)
     {
+        obstacleInTheWay = false;
         var path = new List<Vec3>();
         var config = _configStore;
 
@@ -1068,6 +1083,17 @@ public partial class YouTurnCreationService
         {
             _logger.LogWarning("[ManualYouTurn] Implement would swing into hard boundary (intrusion {I:F2}m) — refusing",
                 intrusion);
+            path.Clear();
+            return path;
+        }
+
+        // Obstacles chosen as U-turn: a manual turn is anchored at the tractor, so one that
+        // crosses an obstacle's turn line, or swings the implement into a hard obstacle, is
+        // refused, as the automatic turn keeps out of them.
+        if (boundary != null && !ClearsTurnObstacles(path, boundary, config, out int inner))
+        {
+            _logger.LogWarning("[ManualYouTurn] The turn would cross obstacle {I} - refusing", inner + 1);
+            obstacleInTheWay = true;
             path.Clear();
             return path;
         }

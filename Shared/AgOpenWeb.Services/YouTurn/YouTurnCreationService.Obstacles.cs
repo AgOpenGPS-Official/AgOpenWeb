@@ -8,6 +8,9 @@ using System.Linq;
 
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
+using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Models.Guidance;
+using AgOpenWeb.Models.Tool;
 using AgOpenWeb.Models.YouTurn;
 
 namespace AgOpenWeb.Services.YouTurn;
@@ -36,7 +39,7 @@ public partial class YouTurnCreationService
     private List<TurnObstacle> TurnObstacles(Boundary boundary, double distance)
     {
         if (boundary.InnerBoundaries.Count == 0) return EmptyObstacles;
-        long key = ObstacleKey(boundary);
+        long key = ObstacleStamp(boundary);
         var cached = _turnObstacles;
         if (ReferenceEquals(cached.Boundary, boundary) && cached.Distance == distance && cached.Key == key)
             return cached.List;
@@ -66,14 +69,33 @@ public partial class YouTurnCreationService
 
     private static readonly List<TurnObstacle> EmptyObstacles = new();
 
-    // A choice changed on the same boundary object, or an obstacle was redrawn.
-    private static long ObstacleKey(Boundary boundary)
+    /// <summary>
+    /// A fingerprint of the field's obstacles as a turn sees them: how many there are, each one's
+    /// choice, Hard and outline (its point count and two of its points, so a circle that is moved
+    /// or resized counts too). A planned turn is planned again when it changes, and the obstacle
+    /// turn lines are built again. Every cycle while a turn is planned, so it reads two points of
+    /// each obstacle, not its outline.
+    /// </summary>
+    public static long ObstacleStamp(Boundary? boundary)
     {
+        if (boundary == null) return 0;
         long h = boundary.InnerBoundaries.Count;
         foreach (var inner in boundary.InnerBoundaries)
-            h = ((h * 31 + inner.Points.Count) * 31 + (int)inner.AtObstacle) * 31 + (inner.IsHard ? 1 : 0);
+        {
+            var pts = inner.Points;
+            h = ((h * 31 + pts.Count) * 31 + (int)inner.AtObstacle) * 31 + (inner.IsHard ? 1 : 0);
+            if (pts.Count == 0) continue;
+            var a = pts[0];
+            var b = pts[pts.Count / 2];
+            h = h * 31 + Cm(a.Easting);
+            h = h * 31 + Cm(a.Northing);
+            h = h * 31 + Cm(b.Easting);
+            h = h * 31 + Cm(b.Northing);
+        }
         return h;
     }
+
+    private static long Cm(double metres) => (long)Math.Round(metres * 100);
 
     /// <summary>
     /// The turn area test with the obstacles, AgOpenGPS's IsPointInsideTurnArea: -1 outside the
@@ -91,6 +113,77 @@ public partial class YouTurnCreationService
                 if (obstacles[k].Area.Contains(point.Easting, point.Northing)) return k + 1;
             return 0;
         };
+    }
+
+    /// <summary>
+    /// The first obstacle chosen as U-turn (its index in <see cref="Boundary.InnerBoundaries"/>)
+    /// whose turn line is within <paramref name="distance"/> straight ahead of the tractor, or
+    /// -1. When the tractor is already inside a turn line, that obstacle counts only if the
+    /// obstacle itself is ahead.
+    /// </summary>
+    public int TurnObstacleAhead(Boundary? boundary, double easting, double northing, double heading, double distance)
+    {
+        if (boundary == null || boundary.InnerBoundaries.Count == 0) return -1;
+        var obstacles = TurnObstacles(boundary, _configStore.Guidance.UTurnDistanceFromBoundary);
+        if (obstacles.Count == 0) return -1;
+        double se = Math.Sin(heading), ce = Math.Cos(heading);
+        int steps = Math.Max(1, (int)Math.Ceiling(distance / 0.5));
+        for (int k = 0; k <= steps; k++)
+        {
+            double t = distance * k / steps, e = easting + se * t, n = northing + ce * t;
+            foreach (var o in obstacles)
+            {
+                if (!o.Area.Contains(e, n)) continue;
+                if (!o.Area.Contains(easting, northing)) return o.InnerIndex;
+                if (GeometryMath.IsPointInPolygon(o.Fence, new Vec2(e, n))) return o.InnerIndex;
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>
+    /// Whether a turn path keeps out of every obstacle chosen as U-turn: the tractor outside its
+    /// turn line, and on a hard one the implement outside it by the distance from boundary.
+    /// </summary>
+    private bool ClearsTurnObstacles(IReadOnlyList<Vec3> path, Boundary boundary, ConfigurationStore config,
+        out int innerIndex)
+    {
+        innerIndex = -1;
+        var obstacles = TurnObstacles(boundary, config.Guidance.UTurnDistanceFromBoundary);
+        if (obstacles.Count == 0 || path.Count < 2) return true;
+        ImplementSweptPathResult? swept = null;
+        double margin = Math.Max(0.0, config.Guidance.UTurnDistanceFromBoundary);
+        foreach (var o in obstacles)
+        {
+            if (Densified(path, 0.5).Any(p => o.Area.Contains(p.Easting, p.Northing)))
+            {
+                innerIndex = o.InnerIndex;
+                return false;
+            }
+            if (!o.IsHard) continue;
+            swept ??= ImplementSweptPath.Compute(path, BuildToolGeometry(config));
+            if (!TurnClearance.Evaluate(swept, o.Fence, TurnClearance.KeepSide.Outside, margin).IsClear)
+            {
+                innerIndex = o.InnerIndex;
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // The path's points with more between any two further apart than the step, so a turn line
+    // is not stepped over.
+    private static IEnumerable<Vec3> Densified(IReadOnlyList<Vec3> path, double step)
+    {
+        yield return path[0];
+        for (int i = 1; i < path.Count; i++)
+        {
+            Vec3 a = path[i - 1], b = path[i];
+            double d = Math.Sqrt((b.Easting - a.Easting) * (b.Easting - a.Easting) + (b.Northing - a.Northing) * (b.Northing - a.Northing));
+            int n = (int)Math.Ceiling(d / step);
+            for (int k = 1; k <= n; k++)
+                yield return new Vec3(a.Easting + (b.Easting - a.Easting) * k / n, a.Northing + (b.Northing - a.Northing) * k / n, b.Heading);
+        }
     }
 
     /// <summary>

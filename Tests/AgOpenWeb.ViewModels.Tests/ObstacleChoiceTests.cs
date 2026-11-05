@@ -94,36 +94,36 @@ public class ObstacleChoiceTests
         await vm.OpenFieldAsync(_dir, "F");
         vm.RefreshBoundaryList();
 
-        vm.RemoteSetObstacleAction(2, ObstacleAction.GoRound); // Inner 2, the first tree
+        vm.RemoteSetObstacleAction(2, ObstacleAction.DriveThrough); // Inner 2, the first tree
 
         Assert.That(OnDisk(_dir).InnerBoundaries.Select(i => i.AtObstacle),
-            Is.EqualTo(new[] { ObstacleAction.Turn, ObstacleAction.GoRound, ObstacleAction.Turn }).AsCollection);
-        Assert.That(AtObstacleInFile(_dir), Is.EqualTo(new[] { "turn", "goRound", "turn" }).AsCollection);
-        Assert.That(vm.State.Field.CurrentBoundary!.InnerBoundaries[1].AtObstacle, Is.EqualTo(ObstacleAction.GoRound), "in the live boundary");
-        Assert.That(vm.BoundaryItems[2].AtObstacle, Is.EqualTo(ObstacleAction.GoRound), "shown in the list");
+            Is.EqualTo(new[] { ObstacleAction.Turn, ObstacleAction.DriveThrough, ObstacleAction.Turn }).AsCollection);
+        Assert.That(AtObstacleInFile(_dir), Is.EqualTo(new[] { "turn", "driveThrough", "turn" }).AsCollection);
+        Assert.That(vm.State.Field.CurrentBoundary!.InnerBoundaries[1].AtObstacle, Is.EqualTo(ObstacleAction.DriveThrough), "in the live boundary");
+        Assert.That(vm.BoundaryItems[2].AtObstacle, Is.EqualTo(ObstacleAction.DriveThrough), "shown in the list");
         Assert.That(vm.SelectedBoundaryIndex, Is.EqualTo(2), "the row stays selected");
 
         await vm.CloseFieldAsync();
         await vm.OpenFieldAsync(_dir, "F");
         vm.RefreshBoundaryList();
-        Assert.That(vm.BoundaryItems[2].AtObstacle, Is.EqualTo(ObstacleAction.GoRound), "after a reopen");
+        Assert.That(vm.BoundaryItems[2].AtObstacle, Is.EqualTo(ObstacleAction.DriveThrough), "after a reopen");
     }
 
     [Test]
     public async Task AColumnTitle_GivesEveryObstacleTheChoice_AndARowThenChangesOne()
     {
-        // Renato's case: most of the obstacles are trees to go round, a few are big.
+        // Most of the obstacles are trees to drive through, a few are big.
         var vm = _b.Build();
         await vm.OpenFieldAsync(_dir, "F");
         vm.RefreshBoundaryList();
 
-        vm.RemoteSetAllObstacleActions(ObstacleAction.GoRound);
-        Assert.That(OnDisk(_dir).InnerBoundaries.Select(i => i.AtObstacle), Is.All.EqualTo(ObstacleAction.GoRound));
+        vm.RemoteSetAllObstacleActions(ObstacleAction.DriveThrough);
+        Assert.That(OnDisk(_dir).InnerBoundaries.Select(i => i.AtObstacle), Is.All.EqualTo(ObstacleAction.DriveThrough));
         Assert.That(vm.StatusMessage, Does.Contain("3"));
 
         vm.RemoteSetObstacleAction(1, ObstacleAction.Turn); // the big patch
         Assert.That(OnDisk(_dir).InnerBoundaries.Select(i => i.AtObstacle),
-            Is.EqualTo(new[] { ObstacleAction.Turn, ObstacleAction.GoRound, ObstacleAction.GoRound }).AsCollection);
+            Is.EqualTo(new[] { ObstacleAction.Turn, ObstacleAction.DriveThrough, ObstacleAction.DriveThrough }).AsCollection);
     }
 
     [Test]
@@ -144,10 +144,7 @@ public class ObstacleChoiceTests
     public void DriveThrough_IsTheDriveThroughFlag_BothWays()
     {
         var p = Square(0, 0, 5);
-        p.AtObstacle = ObstacleAction.GoRound;
         Assert.That(p.IsDriveThrough, Is.False);
-        p.IsDriveThrough = false;
-        Assert.That(p.AtObstacle, Is.EqualTo(ObstacleAction.GoRound), "clearing the flag keeps go around");
         p.IsDriveThrough = true;
         Assert.That(p.AtObstacle, Is.EqualTo(ObstacleAction.DriveThrough));
         p.IsDriveThrough = false;
@@ -174,5 +171,51 @@ public class ObstacleChoiceTests
 
         Assert.That(inner.Select(i => i.AtObstacle),
             Is.EqualTo(new[] { ObstacleAction.DriveThrough, ObstacleAction.Turn, ObstacleAction.Turn }).AsCollection);
+    }
+
+    [Test]
+    public async Task AFieldWhoseObstaclesHadNoChoice_SaysOnOpeningHowManyNowGetAUTurn_Once()
+    {
+        var path = Path.Combine(_dir, "field.geojson");
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!;
+        int k = 0;
+        foreach (var f in node["features"]!.AsArray())
+        {
+            var props = f!["properties"]!.AsObject();
+            if ((string?)props["role"] != "inner-boundary") continue;
+            props.Remove("atObstacle");
+            props["isDriveThrough"] = k++ == 0; // the big patch was driven through, the trees not
+        }
+        File.WriteAllText(path, node.ToJsonString());
+
+        var vm = _b.Build();
+        await vm.OpenFieldAsync(_dir, "F");
+        Assert.That(vm.ErrorDialogTitle, Is.EqualTo("U-turn at obstacles"));
+        Assert.That(vm.ErrorDialogMessage, Does.StartWith("2 obstacles in this field now get a U-turn"));
+
+        // The close saves the choices; the next open says nothing.
+        await vm.CloseFieldAsync();
+        var again = _b.Build();
+        await again.OpenFieldAsync(_dir, "F");
+        Assert.That(again.ErrorDialogTitle, Is.Not.EqualTo("U-turn at obstacles"));
+        Assert.That(AtObstacleInFile(_dir), Is.EqualTo(new[] { "driveThrough", "turn", "turn" }).AsCollection);
+    }
+
+    [Test]
+    public async Task AFieldWithItsChoicesSaved_SaysNothingOnOpening()
+    {
+        var vm = _b.Build();
+        await vm.OpenFieldAsync(_dir, "F");
+        Assert.That(vm.ErrorDialogTitle, Is.Not.EqualTo("U-turn at obstacles"));
+    }
+
+    [Test]
+    public void AnObstacleAddedNow_IsHard_AndOneReadFromTheFileKeepsItsOwn()
+    {
+        var b = new Boundary();
+        b.AddNewObstacle(Square(0, 0, 5));
+        Assert.That(b.InnerBoundaries[0].IsHard, Is.True);
+
+        Assert.That(OnDisk(_dir).InnerBoundaries.Select(i => i.IsHard), Is.All.False, "saved Soft, read Soft");
     }
 }

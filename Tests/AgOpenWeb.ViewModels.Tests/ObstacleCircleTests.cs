@@ -13,7 +13,7 @@ namespace AgOpenWeb.ViewModels.Tests;
 
 /// <summary>
 /// Round obstacles (trees) from the boundary list: a circle placed at a tapped centre, a drawn
-/// obstacle made round, every "Go around" one at once, a circle's diameter and centre changed.
+/// obstacle made round, every one up to a tree's size at once, a circle's diameter and centre changed.
 /// The circle is saved in the field's file beside its polygon and lost when the polygon is
 /// changed in another program.
 /// </summary>
@@ -43,8 +43,8 @@ public class ObstacleCircleTests
         Directory.CreateDirectory(_dir);
         var b = new Boundary { OuterBoundary = Square(0, 0, 200) };
         b.InnerBoundaries.Add(Square(50, 50, 30)); // a big patch, U-turn
-        b.InnerBoundaries.Add(Square(120, 120, 4, ObstacleAction.GoRound)); // a tree drawn as a square
-        b.InnerBoundaries.Add(Square(150, 40, 3, ObstacleAction.GoRound)); // another
+        b.InnerBoundaries.Add(Square(120, 120, 4, ObstacleAction.DriveThrough)); // a tree drawn as a square
+        b.InnerBoundaries.Add(Square(150, 40, 3, ObstacleAction.DriveThrough)); // another
         GeoJsonFieldService.Save(new Field
         {
             Name = "F", DirectoryPath = _dir, Origin = new Position { Latitude = 39.42, Longitude = -7.53 }, Boundary = b,
@@ -71,7 +71,7 @@ public class ObstacleCircleTests
     }
 
     [Test]
-    public async Task ACircle_PlacedOnTheMap_IsAGoRoundObstacle_SavedAndSelected()
+    public async Task ACircle_PlacedOnTheMap_IsAHardDriveThroughObstacle_SavedAndSelected()
     {
         var vm = await Open();
 
@@ -84,7 +84,8 @@ public class ObstacleCircleTests
         Assert.That(c!.Value.CenterEasting, Is.EqualTo(80).Within(0.005));
         Assert.That(c.Value.CenterNorthing, Is.EqualTo(150).Within(0.005));
         Assert.That(c.Value.Diameter, Is.EqualTo(7.5));
-        Assert.That(inner[3].AtObstacle, Is.EqualTo(ObstacleAction.GoRound), "a tree is gone round");
+        Assert.That(inner[3].AtObstacle, Is.EqualTo(ObstacleAction.DriveThrough), "a tree is driven through");
+        Assert.That(inner[3].IsHard, Is.True, "a new obstacle is Hard");
         Assert.That(inner[3].IsPointInside(80 + 3.7, 150), Is.True, "the polygon holds the circle");
         Assert.That(vm.State.Field.CurrentBoundary!.InnerBoundaries, Has.Count.EqualTo(4), "in the live boundary");
         Assert.That(vm.SelectedBoundaryIndex, Is.EqualTo(4), "its row is selected");
@@ -118,31 +119,38 @@ public class ObstacleCircleTests
         Assert.That(c!.Value.CenterEasting, Is.EqualTo(122).Within(0.005));
         Assert.That(c.Value.CenterNorthing, Is.EqualTo(122).Within(0.005));
         Assert.That(c.Value.Diameter, Is.EqualTo(5.7), "4 x sqrt 2, rounded up to 10 cm");
-        Assert.That(OnDisk(_dir).InnerBoundaries[1].AtObstacle, Is.EqualTo(ObstacleAction.GoRound), "the choice is kept");
+        Assert.That(OnDisk(_dir).InnerBoundaries[1].AtObstacle, Is.EqualTo(ObstacleAction.DriveThrough), "the choice is kept");
         Assert.That(vm.SelectedBoundaryIndex, Is.EqualTo(2), "the row stays selected");
     }
 
     [Test]
-    public async Task RoundAll_MakesEveryGoRoundTreeRound_AndLeavesTheOthers()
+    public async Task RoundAll_MakesEveryTreeRound_AndLeavesTheOthers()
     {
-        // A strip of stones 30 m by 2 m, also Go around: as a circle it would be 30 m across.
+        // A strip of stones 20 m by 1 m (its circle 15 times its area), and a ditch 60 m by 20 m:
+        // a 63 m circle, only 2.6 times its area, but no tree is that big.
         var fs = new FieldService();
         var field = fs.LoadField(_dir);
-        var strip = new BoundaryPolygon { AtObstacle = ObstacleAction.GoRound };
-        foreach (var (e, n) in new[] { (20.0, 170.0), (50.0, 170.0), (50.0, 172.0), (20.0, 172.0) })
+        var strip = new BoundaryPolygon { AtObstacle = ObstacleAction.DriveThrough };
+        foreach (var (e, n) in new[] { (20.0, 170.0), (40.0, 170.0), (40.0, 171.0), (20.0, 171.0) })
             strip.Points.Add(new BoundaryPoint(e, n, 0));
         strip.UpdateBounds();
         field.Boundary!.InnerBoundaries.Add(strip);
+        var ditch = new BoundaryPolygon();
+        foreach (var (e, n) in new[] { (100.0, 10.0), (160.0, 10.0), (160.0, 30.0), (100.0, 30.0) })
+            ditch.Points.Add(new BoundaryPoint(e, n, 0));
+        ditch.UpdateBounds();
+        field.Boundary!.InnerBoundaries.Add(ditch);
         fs.SaveField(field);
         var vm = await Open();
 
-        vm.RemoteMakeGoRoundObstaclesRound();
+        vm.RemoteMakeObstaclesRound();
 
         var inner = OnDisk(_dir).InnerBoundaries;
-        Assert.That(inner.Select(i => i.Circle.HasValue), Is.EqualTo(new[] { false, true, true, false }).AsCollection);
-        Assert.That(inner[0].Points, Has.Count.EqualTo(4), "the U-turn patch keeps its shape");
+        Assert.That(inner.Select(i => i.Circle.HasValue), Is.EqualTo(new[] { false, true, true, false, false }).AsCollection);
+        Assert.That(inner[0].Points, Has.Count.EqualTo(4), "the 30 m patch keeps its shape");
         Assert.That(inner[3].Points, Has.Count.EqualTo(4), "the long, thin strip keeps its shape");
-        Assert.That(vm.StatusMessage, Does.Contain("2 obstacles made round").And.Contain("1 long and thin"));
+        Assert.That(inner[4].Points, Has.Count.EqualTo(4), "the ditch keeps its shape");
+        Assert.That(vm.StatusMessage, Does.Contain("2 obstacles made round").And.Contain("3 long and thin or too big"));
     }
 
     [Test]
