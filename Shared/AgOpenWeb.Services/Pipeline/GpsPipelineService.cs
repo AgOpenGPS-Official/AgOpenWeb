@@ -2263,23 +2263,25 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// <summary>
     /// Is the pivot out of bounds (#494)? AgOpenGPS mc.isOutOfBounds (CFence.IsPointInsideFenceArea):
     /// outside the outer boundary or inside any inner one, drive-through or not (an inner boundary
-    /// is an obstacle: a creek, a wet hole, a pylon); no boundary, never. With automatic U-turns on, inside the turn area
-    /// (the headland line) is in bounds, and outside it the test is made only when no turn is
-    /// under way: a turn reaching past the turn line keeps the last answer.
+    /// is an obstacle: a creek, a wet hole, a pylon); no boundary, never. With automatic U-turns on,
+    /// inside the turn area (the headland line) is in bounds, and outside it the test is made only
+    /// when no turn is under way: a turn reaching past the turn line keeps the last answer.
+    /// Inside an inner boundary is out of bounds whatever U-turns are doing (#611): AgOpenGPS
+    /// counts it as turn area with U-turns on (IsPointInsideTurnArea != -1), so a tractor in a
+    /// ditch sent no geoStop there; an inner boundary is never driven through.
     /// </summary>
     private bool OutOfBounds(Boundary? boundary, List<Vec3>? headlandLine, bool youTurnArea,
         double easting, double northing)
     {
         if (boundary?.OuterBoundary is not { IsValid: true }) return false;
+        foreach (var inner in boundary.InnerBoundaries)
+            if (inner.IsPointInside(easting, northing)) return true;
         if (youTurnArea)
         {
             if (_headlandIndex.Contains(headlandLine!, easting, northing)) return false;
             if (_youTurn.IsTriggered || _youTurn.IsExecuting) return _isOutOfBounds;
         }
-        if (!boundary.OuterBoundary.IsPointInside(easting, northing)) return true;
-        foreach (var inner in boundary.InnerBoundaries)
-            if (inner.IsPointInside(easting, northing)) return true;
-        return false;
+        return !boundary.OuterBoundary.IsPointInside(easting, northing);
     }
 
     /// <summary>
