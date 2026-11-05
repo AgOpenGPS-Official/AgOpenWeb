@@ -27,7 +27,7 @@ namespace AgOpenWeb.Services.Tests.Pipeline;
 /// #494: leaving the field never switches autosteer off, as in AgOpenGPS. The pivot outside the
 /// outer boundary or inside an inner one is out of bounds: the cycle says so (the web draws the
 /// boundary red) and PGN 239 carries geoStop = 1 for the machine module. With automatic U-turns
-/// on, inside the turn area (the headland line) is always in bounds.
+/// on, inside the turn area (the headland line) is in bounds, except inside an inner boundary (#611).
 /// </summary>
 [TestFixture]
 [NonParallelizable] // ConfigurationStore is a singleton.
@@ -205,9 +205,11 @@ public class OutOfBoundsTests
     }
 
     [Test]
-    public void WithUTurnsOn_InsideTheTurnArea_IsInBounds_EvenOverAnInnerBoundary()
+    public void WithUTurnsOn_InsideTheTurnArea_IsInBounds_ButNotInsideAnInnerBoundary()
     {
-        // AgOpenGPS: IsPointInsideTurnArea != -1 counts an inner boundary's area too.
+        // #611: AgOpenGPS counts an inner boundary's area as turn area (IsPointInsideTurnArea != -1),
+        // so with U-turns on a tractor in a ditch was in bounds and sent no geoStop. An inner
+        // boundary is an obstacle, never driven through (#494).
         var pond = new Boundary { OuterBoundary = Square(50) };
         pond.InnerBoundaries.Add(Square(10));
         _pipeline.SetBoundary(pond);
@@ -216,9 +218,23 @@ public class OutOfBoundsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(DriveAt(0).IsOutOfBounds, Is.False, "in the turn area");
+            Assert.That(DriveAt(20).IsOutOfBounds, Is.False, "in the turn area, clear of the pond");
+            Assert.That(DriveAt(0).IsOutOfBounds, Is.True, "inside the pond");
+            Assert.That(GeoStop(), Is.EqualTo(1));
             Assert.That(DriveAt(42).IsOutOfBounds, Is.False, "in the headland, inside the fence");
             Assert.That(DriveAt(80).IsOutOfBounds, Is.True, "outside the fence, no turn under way");
         });
+    }
+
+    [Test]
+    public void WithUTurnsOn_ADriveThroughInnerBoundary_IsOutOfBoundsToo()
+    {
+        var drive = new Boundary { OuterBoundary = Square(50) };
+        drive.InnerBoundaries.Add(Square(10, driveThrough: true));
+        _pipeline.SetBoundary(drive);
+        _pipeline.SetHeadlandLine(SquareLine(35));
+        _pipeline.SetYouTurnEnabled(true);
+
+        Assert.That(DriveAt(0).IsOutOfBounds, Is.True);
     }
 }
