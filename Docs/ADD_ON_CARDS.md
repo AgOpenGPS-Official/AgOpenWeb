@@ -8,7 +8,7 @@ kinds, and an add-on uses one or the other:
 | For | ISOBUS implements (a sprayer, a seeder, a baler) | Anything with a web page: a rate controller, a section or machine module, a camera, the HAT's own pages |
 | What the operator sees | The implement's own screens (its object pool), as on any ISO 11783-6 virtual terminal | Your web page, live, in a frame |
 | What you build | An implement ECU that speaks ISOBUS VT, or a gateway that carries CAN frames to AgOpenWeb | A web server on your device, at an address on the machine network |
-| How AgOpenWeb finds it | Through a gateway (announced by DNS-SD) or a USB CAN adapter | A bookmark the operator adds; DNS-SD later (see [Discovery](#discovery)) |
+| How AgOpenWeb finds it | Through a gateway (announced by DNS-SD) or a USB CAN adapter | A bookmark the operator adds; your device's `_aowcard._tcp` announcement once listing is built (see [Discovery](#discovery)) |
 
 The two kinds stay separate: no web pages in a VT card, no VT screens in a web card. Both kinds
 share the card frame, the floating and split layouts, and the drawer, so most of
@@ -64,8 +64,9 @@ referrerpolicy="no-referrer"
 - **Plain HTTP on the machine network is fine**, and is what most modules serve. AgOpenWeb itself
   is served over HTTP. HTTPS works only with a certificate the browser trusts: a self-signed one
   gives a blank card, with no way for the operator to accept it inside the frame.
-- **Serve the page at a fixed address.** A module on DHCP whose address moves breaks the
-  bookmark. Until [discovery](#discovery) is built, give the operator a fixed address or a name.
+- **Announce the page** as `_aowcard._tcp` ([Discovery](#discovery)), and until AgOpenWeb lists
+  announced pages, serve it at a fixed address: a module on DHCP whose address moves breaks a
+  typed bookmark.
 - **iOS** asks the operator once for local network access the first time a card loads a page on
   the LAN. That prompt is the system's; nothing is needed from your page.
 
@@ -213,10 +214,73 @@ AgOpenWeb **doesn't scan the network** for add-ons, on any address or port. Add-
 themselves with standard mDNS / DNS-SD, and AgOpenWeb lists what is announced.
 
 - **VT gateways:** built. Announce `_aowlink._tcp` as above.
-- **Web cards:** planned, not built. The operator adds a bookmark by hand for now. The plan is a
-  service type such as `_aowcard._tcp`, with the page's path and a name in TXT, listed in the
-  bookmark editor. The name and TXT keys aren't fixed yet; if you are building a device that will
-  announce a page, open an issue and we'll settle them with you.
+- **Web cards:** `_aowcard._tcp`, below. The format is fixed; AgOpenWeb's side (listing the pages
+  in the bookmark editor) is not built yet, so the operator adds a bookmark by hand for now. A
+  device that announces itself today will be listed when it is.
+
+### Announcing a web page: `_aowcard._tcp`
+
+One DNS-SD service instance per page:
+
+| Record | Content |
+|---|---|
+| Service type | `_aowcard._tcp` |
+| Instance name | What the operator sees in the list, UTF-8, at most 63 bytes: "Sprayer rate control", "Camera rear". Unique on the network; give each unit something the operator can tell apart (a serial or the last digits of the MAC). |
+| SRV | The host and the **port your web server listens on**: any port, 80 or not. |
+| TXT | The keys below. |
+
+TXT keys AgOpenWeb reads:
+
+| Key | | Content | Default |
+|---|---|---|---|
+| `v` | required | The version of this TXT format: `1`. An instance with another or no `v` is not listed. | |
+| `path` | optional | The page's path on your server, starting with `/`; may carry a query (`/rate?view=cab`). | `/` |
+| `scheme` | optional | `http` or `https`. Use `https` only with a certificate the browser trusts (see [Your server](#your-server)). | `http` |
+
+AgOpenWeb builds the page's URL as `scheme://host:port/path` from the SRV record and these keys.
+The rules, from RFC 6763:
+
+- Keys are case-insensitive and ASCII; values are UTF-8. Each `key=value` string is at most
+  255 bytes; keep the whole TXT record under 400 bytes.
+- AgOpenWeb **ignores keys it doesn't know**, so you may add your own (a firmware version, a
+  model). Keys beginning with `aow` are reserved for this format.
+- A device with several pages (a setup page and a run page) announces one instance per page,
+  with different instance names; they may share a port.
+- Announce only on the machine network, as a gateway does, and only while the page is served.
+
+AgOpenWeb keeps a page added from the list by its instance name, so the bookmark follows the
+device to a new address.
+
+On an ESP32 (Arduino):
+
+```cpp
+#include <ESPmDNS.h>
+
+MDNS.begin("ratectl-1234");                 // host name
+MDNS.setInstanceName("Sprayer rate control"); // what the operator sees
+MDNS.addService("aowcard", "tcp", 80);
+MDNS.addServiceTxt("aowcard", "tcp", "v", "1");
+MDNS.addServiceTxt("aowcard", "tcp", "path", "/");
+```
+
+On Linux with Avahi, a file in `/etc/avahi/services/`, for example `aowcard.service`:
+
+```xml
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name>Sprayer rate control</name>
+  <service>
+    <type>_aowcard._tcp</type>
+    <port>8080</port>
+    <txt-record>v=1</txt-record>
+    <txt-record>path=/</txt-record>
+  </service>
+</service-group>
+```
+
+To check what your device announces: `dns-sd -B _aowcard._tcp` then `dns-sd -L "<instance name>"
+_aowcard._tcp` on a Mac, or `avahi-browse -r _aowcard._tcp` on Linux.
 
 ## Later
 
