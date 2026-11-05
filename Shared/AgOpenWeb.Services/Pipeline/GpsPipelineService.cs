@@ -2263,23 +2263,26 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// <summary>
     /// Is the pivot out of bounds (#494)? AgOpenGPS mc.isOutOfBounds (CFence.IsPointInsideFenceArea):
     /// outside the outer boundary or inside any inner one, drive-through or not (an inner boundary
-    /// is an obstacle: a creek, a wet hole, a pylon); no boundary, never. With automatic U-turns on, inside the turn area
-    /// (the headland line) is in bounds, and outside it the test is made only when no turn is
-    /// under way: a turn reaching past the turn line keeps the last answer.
+    /// is an obstacle: a creek, a wet hole, a pylon); no boundary, never. The inner boundaries are
+    /// tested first (#611): with automatic U-turns on, the rest of the turn area (the headland
+    /// line, which is the outer boundary's) is in bounds, and outside it the test is made only
+    /// when no turn is under way: a turn reaching past the turn line keeps the last answer. (In
+    /// AgOpenGPS the turn area covers the inner boundaries too, so there a pivot in a pond with
+    /// U-turns on is in bounds; here it is out, as #494 says.) Each inner test is a lookup in
+    /// the polygon's slab index, not a walk of its edges.
     /// </summary>
     private bool OutOfBounds(Boundary? boundary, List<Vec3>? headlandLine, bool youTurnArea,
         double easting, double northing)
     {
         if (boundary?.OuterBoundary is not { IsValid: true }) return false;
+        foreach (var inner in boundary.InnerBoundaries)
+            if (inner.IsPointInside(easting, northing)) return true;
         if (youTurnArea)
         {
             if (_headlandIndex.Contains(headlandLine!, easting, northing)) return false;
             if (_youTurn.IsTriggered || _youTurn.IsExecuting) return _isOutOfBounds;
         }
-        if (!boundary.OuterBoundary.IsPointInside(easting, northing)) return true;
-        foreach (var inner in boundary.InnerBoundaries)
-            if (inner.IsPointInside(easting, northing)) return true;
-        return false;
+        return !boundary.OuterBoundary.IsPointInside(easting, northing);
     }
 
     /// <summary>
