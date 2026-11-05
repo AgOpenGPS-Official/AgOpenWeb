@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
+using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Services.Geometry;
 using AgOpenWeb.Services.Track;
 
@@ -254,5 +255,104 @@ public class ObstacleDetourTests
         var moved = detour.For(track, 0, North, field, KeepOut, Radius, 1.0);
         Assert.That(moved, Is.Not.SameAs(first));
         Assert.That(ClearanceFrom(moved!.Points, 0, 120), Is.GreaterThanOrEqualTo(3.0 + KeepOut - 0.05));
+    }
+
+    private static ToolConfig Trailed(string type, double hitch, double toPivot = 0, double tank = 3.0)
+    {
+        var tool = new ToolConfig { TrailingHitchLength = hitch, TrailingToolToPivotLength = toPivot, TankTrailingHitchLength = tank };
+        tool.SetToolType(type);
+        return tool;
+    }
+
+    [TestCase("rear")]
+    [TestCase("front")]
+    public void A_fixed_tool_does_not_cut_inside_the_bend(string type)
+    {
+        Assert.That(ObstacleDetour.TrailedCutIn(Trailed(type, 2.5), 1.8, 6.0), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void A_trailed_tool_cuts_in_as_far_as_its_wheels_settle_inside_the_curve()
+    {
+        // Hitch 1.8 m behind the axle on a 6 m curve: sqrt(36 + 3.24) from the centre. The
+        // wheels 2.5 m behind it: sqrt(39.24 - 6.25) = 5.744, so 0.256 m inside the line.
+        Assert.That(ObstacleDetour.TrailedCutIn(Trailed("trailing", 2.5), 1.8, 6.0), Is.EqualTo(0.256).Within(0.001));
+        // A longer drawbar cuts in further, a wider curve less.
+        Assert.That(ObstacleDetour.TrailedCutIn(Trailed("trailing", 5.0), 1.8, 6.0), Is.GreaterThan(2.0));
+        Assert.That(ObstacleDetour.TrailedCutIn(Trailed("trailing", 2.5), 1.8, 12.0), Is.LessThan(0.15));
+        // A working centre behind the wheels swings back out: as far behind as the drawbar is
+        // long, it runs on the hitch's own circle, outside the line.
+        Assert.That(ObstacleDetour.TrailedCutIn(Trailed("trailing", 2.5, toPivot: 2.5), 1.8, 6.0), Is.EqualTo(0));
+    }
+
+    [Test]
+    public void A_tow_between_tank_cuts_in_further_than_the_tool_alone()
+    {
+        double alone = ObstacleDetour.TrailedCutIn(Trailed("trailing", 2.5), 1.8, 6.0);
+        double behindTank = ObstacleDetour.TrailedCutIn(Trailed("tbt", 2.5, tank: 3.0), 1.8, 6.0);
+        Assert.That(behindTank, Is.GreaterThan(alone + 0.5));
+    }
+
+    // Drives the tractor's pivot along the line and trails the tool behind it as
+    // ToolPositionService does (the wheels follow the hitch, Torriem), and returns how close its
+    // working bar comes to a circle.
+    private static double TrailedBarClearance(IReadOnlyList<Vec3> line, ToolConfig tool, double vehicleHitch,
+        double width, double e, double n, double r)
+    {
+        var path = new List<(double E, double N)>();
+        for (int i = 0; i + 1 < line.Count; i++)
+        {
+            double d = Dist(line[i], line[i + 1]);
+            int steps = Math.Max(1, (int)Math.Ceiling(d / 0.05));
+            for (int k = 0; k < steps; k++)
+                path.Add((line[i].Easting + (line[i + 1].Easting - line[i].Easting) * k / steps,
+                          line[i].Northing + (line[i + 1].Northing - line[i].Northing) * k / steps));
+        }
+        double tank = tool.IsToolTBT ? tool.TankTrailingHitchLength : 0;
+        double l = tool.TrailingHitchLength, p = tool.TrailingToolToPivotLength;
+        // Settled straight behind on the pass to begin with.
+        (double E, double N) tankPos = (path[0].E, path[0].N - vehicleHitch - tank);
+        (double E, double N) wheels = (tankPos.E, tankPos.N - l);
+        double best = double.MaxValue;
+        for (int i = 0; i + 1 < path.Count; i++)
+        {
+            double th = Math.Atan2(path[i + 1].E - path[i].E, path[i + 1].N - path[i].N);
+            (double E, double N) hitch = (path[i].E - Math.Sin(th) * vehicleHitch, path[i].N - Math.Cos(th) * vehicleHitch);
+            if (tool.IsToolTBT)
+            {
+                double tt = Math.Atan2(hitch.E - tankPos.E, hitch.N - tankPos.N);
+                tankPos = (hitch.E - Math.Sin(tt) * tank, hitch.N - Math.Cos(tt) * tank);
+            }
+            else tankPos = hitch;
+            double ph = Math.Atan2(tankPos.E - wheels.E, tankPos.N - wheels.N);
+            wheels = (tankPos.E - Math.Sin(ph) * l, tankPos.N - Math.Cos(ph) * l);
+            double ce = tankPos.E - Math.Sin(ph) * (l + p), cn = tankPos.N - Math.Cos(ph) * (l + p);
+            double half = width / 2, ce0 = Math.Cos(ph) * half, cn0 = -Math.Sin(ph) * half;
+            var a = new Vec3(ce - ce0, cn - cn0, 0);
+            var b = new Vec3(ce + ce0, cn + cn0, 0);
+            best = Math.Min(best, DistanceToSegment(a, b, e, n) - r);
+        }
+        return best;
+    }
+
+    [TestCase("trailing", 5.0)]
+    [TestCase("tbt", 3.0)]
+    public void A_trailed_implement_keeps_the_margin_round_the_tree(string type, double drawbar)
+    {
+        // A 6 m trailed implement round a 6 m tree with a 1 m margin and a 6 m curve. Without the
+        // cut-in its wheels follow the hitch inside the bend and the bar comes nearer the tree
+        // than the margin; with it the bar keeps the margin.
+        var tool = Trailed(type, drawbar);
+        const double hitch = 1.8, width = 6.0, margin = 1.0, radius = 6.0, treeR = 3.03;
+        var field = Field(-100, 100, Tree(0, 100, 6));
+        double cutIn = ObstacleDetour.TrailedCutIn(tool, hitch, radius);
+        double Clearance(double m) => TrailedBarClearance(
+            Detour.Compute(North, field, ObstacleDetour.KeepOutFor(width, 0, 2.0, m), radius, m)!.Points,
+            tool, hitch, width, 0, 100, treeR);
+
+        double without = Clearance(margin), with = Clearance(margin + cutIn);
+        TestContext.Out.WriteLine($"{type} {drawbar} m: cut-in {cutIn:F2} m, bar {without:F2} m from the tree without it, {with:F2} m with it");
+        Assert.That(without, Is.LessThan(margin - 0.2));
+        Assert.That(with, Is.GreaterThanOrEqualTo(margin - 0.1));
     }
 }

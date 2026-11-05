@@ -127,6 +127,27 @@ public sealed class ObstacleDetour
     }
 
     /// <summary>
+    /// How far a trailed tool's working centre runs inside the tractor's line on a curve of this
+    /// radius, once it has settled on it: the hitch is behind the tractor's pivot, the tool's
+    /// wheels (and a TBT tank's) cut the corner, and a working centre ahead of or behind its
+    /// wheels swings back out. Around a Go around obstacle the inside of the curve is the
+    /// obstacle's side, so this is added to the safety margin. Zero for a front or rear fixed
+    /// tool, which never runs inside the line. The same geometry as <c>ToolPositionService</c>:
+    /// the hitch <paramref name="vehicleHitch"/> behind the pivot, the wheels the trailing hitch
+    /// length behind it (a TBT tank's axle first, its own length behind the hitch), the working
+    /// centre the pivot distance from the wheels.
+    /// </summary>
+    public static double TrailedCutIn(Models.Configuration.ToolConfig tool, double vehicleHitch, double radius)
+    {
+        if (radius <= 0 || !(tool.IsToolTrailing || tool.IsToolTBT) || tool.IsToolFrontFixed || tool.IsToolRearFixed)
+            return 0;
+        double h = Math.Abs(vehicleHitch), l = Math.Abs(tool.TrailingHitchLength), p = tool.TrailingToolToPivotLength;
+        double r2 = radius * radius + h * h - l * l + p * p;
+        if (tool.IsToolTBT) r2 -= tool.TankTrailingHitchLength * tool.TankTrailingHitchLength;
+        return Math.Max(0, radius - Math.Sqrt(Math.Max(0, r2)));
+    }
+
+    /// <summary>
     /// How far the line keeps from a Go around obstacle: half the implement (and its offset), or
     /// half the tractor's track if that is wider, plus the safety margin.
     /// </summary>

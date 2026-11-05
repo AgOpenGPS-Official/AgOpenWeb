@@ -481,7 +481,9 @@ along the pass are gone round together, on one side. The sideways offset rises n
 and is rounded (Lasry-Lions: parabolas of 2R over it, then of R under it) so the bend is as short
 as the curve radius allows and never less than the obstacle needs. The radius and the margin are
 U-turn settings saved with the tool profile (`GuidanceConfig.GoAroundRadius` / `GoAroundMargin`,
-`uturn.goAroundRadius` / `uturn.goAroundMargin`; 6 m and 1 m by default). A
+`uturn.goAroundRadius` / `uturn.goAroundMargin`; 6 m and 1 m by default). A trailing or TBT
+tool adds how far its working centre settles inside a curve of that radius (`ObstacleDetour.TrailedCutIn`,
+the `ToolPositionService` geometry) to the margin, since round the obstacle the inside is its side. A
 bend that enters another grown obstacle, a *U-turn* obstacle, or comes closer to the field's edge
 tries the other side; with no room either way the obstacle is driven through and the operator gets a
 toast (`GpsCycleResult.ObstacleNotice`). The bend is built once per pass and cached; it is the line
