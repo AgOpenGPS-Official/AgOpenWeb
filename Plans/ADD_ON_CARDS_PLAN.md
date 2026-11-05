@@ -162,3 +162,5 @@ a split layout the pane is a **drawer**.
 - Add-ons sending AgOpenWeb commands. An add-on that needs guidance data talks to the modules'
   protocol (PGN / process data), not to the web client.
 - Opening or closing the drawer automatically (§3, decision 2).
+- Scanning the network (addresses or ports) for add-on pages (#543). AgOpenWeb is not a network
+  scanner; add-ons announce themselves by mDNS / DNS-SD (§7 Discovery).
