@@ -1,4 +1,12 @@
 {
+ "bg": [
+  "Field Texture",
+  "Right",
+  "Steer Wizard"
+ ],
+ "cs": [
+  "Off"
+ ],
  "de": [
   "AgShare Download",
   "Delete Applied Area",
@@ -18,6 +26,19 @@
   "✎ Edit",
   "＋ Add"
  ],
+ "fi": [
+  "Right"
+ ],
+ "hr": [
+  "Off",
+  "Right"
+ ],
+ "ja": [
+  "Field Texture",
+  "Off",
+  "Remove Offset",
+  "Steer Response"
+ ],
  "nl": [
   "Coupling type",
   "Latitude (−90 to 90)",
@@ -25,5 +46,24 @@
   "Playback",
   "Right",
   "✎ Edit"
+ ],
+ "pl": [
+  "Delete Applied Area",
+  "Right"
+ ],
+ "ru": [
+  "Area",
+  "Offset Fix",
+  "Right"
+ ],
+ "sr": [
+  "Off",
+  "Right"
+ ],
+ "sv": [
+  "Right"
+ ],
+ "ta": [
+  "Off"
  ]
 }
