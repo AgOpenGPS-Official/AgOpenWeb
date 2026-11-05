@@ -28,8 +28,13 @@ public partial class YouTurnCreationService
     /// <param name="TurnLine">The turn line, with headings (the generator walks it).</param>
     /// <param name="Area">Inside the turn line: no part of a turn may be there.</param>
     /// <param name="Fence">The obstacle itself, for the hard-boundary clearance.</param>
+    /// <param name="Tight">Inside the turn line less <see cref="ArcTolerance"/>: what the turn made
+    /// at this obstacle is held to, since the generator lays its arc along the turn line and the
+    /// smoothing moves it a few centimetres either way.</param>
     private sealed record TurnObstacle(int InnerIndex, List<Vec3> TurnLine, PolygonSlabIndex Area,
-        List<Vec2> Fence, bool IsHard);
+        List<Vec2> Fence, bool IsHard, PolygonSlabIndex Tight);
+
+    private const double ArcTolerance = 0.3;
 
     // Built once per boundary, choice and distance: a turn is planned again every cycle while it
     // fails, and a field may have dozens of obstacles.
@@ -60,7 +65,13 @@ public partial class YouTurnCreationService
             var withHeadings = _polygonOffsetService.CalculatePointHeadings(line);
             var area = PolygonSlabIndex.Build(withHeadings);
             if (area == null) continue;
-            list.Add(new TurnObstacle(i, withHeadings, area, fence, inner.IsHard));
+            double tightDistance = distance - ArcTolerance;
+            List<Vec2>? tightLine = tightDistance > 0.1 ? _polygonOffsetService.CreateOutwardOffset(fence, tightDistance)
+                : tightDistance < -0.1 ? _polygonOffsetService.CreateInwardOffset(fence, -tightDistance)
+                : fence;
+            var tight = (tightLine != null && tightLine.Count >= 3
+                ? PolygonSlabIndex.Build(_polygonOffsetService.CalculatePointHeadings(tightLine)) : null) ?? area;
+            list.Add(new TurnObstacle(i, withHeadings, area, fence, inner.IsHard, tight));
         }
 
         _turnObstacles = (boundary, distance, key, list);
@@ -142,20 +153,44 @@ public partial class YouTurnCreationService
     }
 
     /// <summary>
+    /// How far past the end of an automatic turn the next pass must be clear of every turn line
+    /// (<see cref="ClearsTurnObstacles"/>): the pipeline takes AutoSteer off with an obstacle
+    /// 10 m plus 2 s of travel ahead and no turn before it, 18 m at 15 km/h, so a turn whose
+    /// exit lands closer than that to the next obstacle ends in that alarm with no room to stop.
+    /// </summary>
+    private const double ExitReach = 20.0;
+
+    /// <summary>
     /// Whether a turn path keeps out of every obstacle chosen as U-turn: the tractor outside its
-    /// turn line, and on a hard one the implement outside it by the distance from boundary.
+    /// turn line, and on a hard one the implement outside it by the distance from boundary. With
+    /// <paramref name="exitReach"/>, the tractor also stays outside every turn line for that far
+    /// past the end of the path, straight on along the next pass. The obstacle the turn is made at
+    /// (<paramref name="turnedAt"/>, its inner index) is tested with <see cref="ArcTolerance"/>: the
+    /// generator lays the arc along its turn line and the smoothing moves it a few centimetres;
+    /// the exit leg it does not test, and a pass that grazes the turn line of a tree can have its
+    /// neighbour run through the tree.
     /// </summary>
     private bool ClearsTurnObstacles(IReadOnlyList<Vec3> path, Boundary boundary, ConfigurationStore config,
-        out int innerIndex)
+        out int innerIndex, double exitReach = 0, int turnedAt = -1)
     {
         innerIndex = -1;
         var obstacles = TurnObstacles(boundary, config.Guidance.UTurnDistanceFromBoundary);
         if (obstacles.Count == 0 || path.Count < 2) return true;
+        var pivot = Densified(path, 0.5).ToList();
+        if (exitReach > 0)
+        {
+            Vec3 a = path[^2], b = path[^1];
+            double de = b.Easting - a.Easting, dn = b.Northing - a.Northing, len = Math.Sqrt(de * de + dn * dn);
+            if (len > 1e-6)
+                for (double d = 0.5; d <= exitReach; d += 0.5)
+                    pivot.Add(new Vec3(b.Easting + de / len * d, b.Northing + dn / len * d, b.Heading));
+        }
         ImplementSweptPathResult? swept = null;
         double margin = Math.Max(0.0, config.Guidance.UTurnDistanceFromBoundary);
         foreach (var o in obstacles)
         {
-            if (Densified(path, 0.5).Any(p => o.Area.Contains(p.Easting, p.Northing)))
+            var area = o.InnerIndex == turnedAt ? o.Tight : o.Area;
+            if (pivot.Any(p => area.Contains(p.Easting, p.Northing)))
             {
                 innerIndex = o.InnerIndex;
                 return false;

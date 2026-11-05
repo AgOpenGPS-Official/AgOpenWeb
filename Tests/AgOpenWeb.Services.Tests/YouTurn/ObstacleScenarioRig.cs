@@ -136,7 +136,11 @@ public sealed class ObstacleScenarioRig : IDisposable
     public double Heading => _h;
 
     // What the run saw.
+    private Dictionary<string, bool>? _hardAtTurnStart;
     public double WorstClearance { get; private set; } = double.MaxValue;
+    /// <summary>The nearest while a turn was driven or after it ended: what the turn did, not what the pass runs beside.</summary>
+    public double WorstClearanceInTurn { get; private set; } = double.MaxValue;
+    public string? WorstObstacleInTurn { get; private set; }
     public string? WorstObstacle { get; private set; }
     /// <summary>The nearest the tractor's wheels came to a Soft U-turn obstacle while engaged: the
     /// planner keeps the pivot out of a Soft one, the wheels are the distance-from-boundary setting's job.</summary>
@@ -227,10 +231,23 @@ public sealed class ObstacleScenarioRig : IDisposable
             Note($"turn planned {(r.YouTurn.TurnAtObstacle ? "at an obstacle" : "at the field's edge")}, " +
                 $"{(r.YouTurn.IsTurnLeft ? "left" : "right")}, {path.Count} points, arc from ({r.YouTurn.ArcStart?.Easting ?? path[0].Easting:F0},{r.YouTurn.ArcStart?.Northing ?? path[0].Northing:F0}), " +
                 $"path n {path.Min(p => p.Northing):F0}..{path.Max(p => p.Northing):F0} e {path.Min(p => p.Easting):F0}..{path.Max(p => p.Easting):F0}");
+            // The planned path's nearest approach to every U-turn obstacle it comes near (the pivot, not the implement).
+            foreach (var o in _obstacles.Where(o => o.IsUTurn))
+            {
+                double near = path.Min(p => ObstacleTestField.SignedDistance(o.Polygon, p.Easting, p.Northing));
+                if (near < 2.5) Note($"  the path comes {near:F2} m from {o.Name}");
+            }
         }
         if (!planned && _wasPlanned && !executing) Note("planned turn dropped");
         _wasPlanned = planned;
-        if (executing && ArcStartedAt == null) { ArcStartedAt = Time; Turns++; Note(r.YouTurn!.TurnAtObstacle ? "turn starts at an obstacle" : "turn starts at the field's edge"); }
+        if (executing && ArcStartedAt == null)
+        {
+            ArcStartedAt = Time; Turns++;
+            Note(r.YouTurn!.TurnAtObstacle ? "turn starts at an obstacle" : "turn starts at the field's edge");
+            // The turn is judged by the contract it was planned under: an obstacle made Hard while the
+            // arc is being driven cannot be planned for again (the operator who does everything wrong).
+            _hardAtTurnStart = _obstacles.ToDictionary(o => o.Name, o => o.IsHard);
+        }
         if (!executing && ArcStartedAt != null) { ArcStartedAt = null; TurnEndedAt = Time; Note("turn over"); }
         if (executing && r.YouTurn!.TurnAtObstacle) TurnedAtObstacle = true;
         if (r.AutoSteerDisengagedThisCycle && Engaged)
@@ -255,7 +272,10 @@ public sealed class ObstacleScenarioRig : IDisposable
         if (Engaged)
         {
             var (d, name, wheelsAtSoft) = Clearance();
+            bool inTurn = executing || TurnEndedAt != null;
+            if (d < 0 && WorstClearance >= 0) Note($"inside {name} by {-d:F2} m" + (inTurn ? " in the turn" : " on the pass itself"));
             if (d < WorstClearance) { WorstClearance = d; WorstObstacle = name; }
+            if (inTurn && d < WorstClearanceInTurn) { WorstClearanceInTurn = d; WorstObstacleInTurn = name; }
             WorstWheelsAtSoft = Math.Min(WorstWheelsAtSoft, wheelsAtSoft);
             if (executing && r.YouTurn!.TurnPath is { Count: > 1 } path)
                 MaxPathError = Math.Max(MaxPathError, DistanceToPath(path, _e, _n));
@@ -317,7 +337,8 @@ public sealed class ObstacleScenarioRig : IDisposable
             if (!o.IsUTurn) continue;
             if (Math.Abs(o.CentreE - _e) > 120 || Math.Abs(o.CentreN - _n) > 120) continue;
             double d;
-            if (o.IsHard)
+            bool hard = _hardAtTurnStart != null && _hardAtTurnStart.TryGetValue(o.Name, out bool was) ? was : o.IsHard;
+            if (hard)
                 d = tractor.Concat(bar).Min(p => ObstacleTestField.SignedDistance(o.Polygon, p.E, p.N));
             else
             {

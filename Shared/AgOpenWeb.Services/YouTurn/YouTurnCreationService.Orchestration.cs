@@ -244,6 +244,18 @@ public partial class YouTurnCreationService
                         clearanceMargin - clearance.MaxIntrusion, clearanceMargin, extraSetback);
                 }
 
+                // The whole path, and the first metres of the next pass after it, against every
+                // obstacle chosen as U-turn. The generator keeps the arc outside the turn line it
+                // turns at, not the legs outside the others: at a lone tree the path crossed the
+                // next tree's turn line 8 m away, and a turn whose exit landed just before another
+                // obstacle ended in the AutoSteer-off alarm with no room. No such turn is made;
+                // the operator is told and takes over before the obstacle.
+                if (boundary != null && !ClearsTurnObstacles(path, boundary, config, out int crossed, ExitReach, obstacle?.InnerIndex ?? -1))
+                {
+                    _logger.LogWarning("[YouTurn] The turn would cross obstacle {I}, or end right before it; no turn.", crossed + 1);
+                    return new TurnPathResult(null, UsedFallback: false) { AtObstacle = true };
+                }
+
                 _logger.LogDebug("[YouTurn] Path created with {Count} points, net={Net:F0}° cumulative={Cum:F0}° (setback {S:F2}m){At}",
                     path.Count, netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI, extraSetback,
                     atObstacle ? $", before obstacle {obstacle!.InnerIndex + 1}" : "");

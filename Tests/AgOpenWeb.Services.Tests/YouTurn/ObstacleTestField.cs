@@ -16,8 +16,9 @@ namespace AgOpenWeb.Services.Tests.YouTurn;
 /// scenarios. An irregular outer boundary about 350 × 480 m with a 20 m headland; ditches
 /// square to the passes and at 15°, 45° and 75° to them; a wall 80 m long and a metre wide; a
 /// round pond and a U-shaped one; a ditch from the fence into the field; a ditch from the
-/// headland into the field; poles and three clumps of trees drawn by hand as trapezoids. The big ones are
-/// U-turn obstacles (one of them Soft, the rest Hard); the poles and trees are driven through.
+/// headland into the field; thirty lone trees as 6 m circles; poles and three clumps of trees drawn by hand
+/// as trapezoids. The big ones are U-turn obstacles (one of them Soft, the rest Hard), the lone trees Soft
+/// U-turn obstacles; the poles and tree clumps are driven through.
 /// Field metres, origin at the centre.
 /// </summary>
 public static class ObstacleTestField
@@ -75,6 +76,20 @@ public static class ObstacleTestField
         // A ditch from the east fence 43 m into the field, and one from the south headland 43 m into the field.
         Add("Ditch from the fence", Box(146.5, -100, 43, 12, 90), ObstacleAction.Turn, true, 146.5, -100);
         Add("Ditch from the headland", Box(-15, -205, 50, 10, 0), ObstacleAction.Turn, true, -15, -205);
+
+        // Thirty lone trees Renato placed by hand in the app as 6 m circles, singly and in clumps of
+        // two to four (as close as 8 m apart): the small U-turn obstacles, Soft like his. A U-turn at a
+        // tree smaller than the turn itself, with the next tree in the way of the turn.
+        int circle = 0;
+        foreach (var (e, n) in new[]
+        {
+            (-57.8, 65.4), (-81.1, -8.9), (-149.8, 31.6), (-155.9, 23.0), (-160.8, 37.7), (40.4, -29.7), (1.8, 14.4),
+            (-10.5, 22.4), (-18.5, -2.1), (52.7, -70.2), (20.8, -85.0), (4.8, -77.0), (-12.3, -94.8), (41.6, -145.7),
+            (64.3, -172.7), (35.5, -170.3), (11.0, -187.4), (77.4, 74.5), (102.7, 32.6), (19.9, 128.4), (25.1, 143.1),
+            (36.4, 168.7), (16.0, 173.3), (-31.8, 211.3), (-15.9, 199.6), (-79.0, 113.0), (-89.2, 105.4), (-87.4, 117.0),
+            (101.0, -9.9), (121.5, -43.4),
+        })
+            Add($"Tree circle {++circle}", Circle(e, n, 3), ObstacleAction.Turn, false, e, n);
 
         // Poles.
         int pole = 0;

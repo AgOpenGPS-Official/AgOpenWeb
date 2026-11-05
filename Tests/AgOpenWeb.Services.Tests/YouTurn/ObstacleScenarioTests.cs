@@ -72,13 +72,18 @@ public class ObstacleScenarioTests
                             // wide on the curve; the 6 m rear one on the angled lines.
                             if (kind != "AB 0°" && width != DefaultWidth) continue;
                             if (kind != "AB 0°" && kind != "Curve" && tool != "rear") continue;
+                            // The thirty lone trees get a shorter list: the 6 m rear and trailed implements and the
+                            // 3 m front one on the straight line, the 6 m rear one on the curve.
+                            if (IsLoneTree(o) && !(kind == "AB 0°" && (tool == "rear" || tool == "trailing") && width == DefaultWidth
+                                || kind == "AB 0°" && tool == "front" && width == 3
+                                || kind == "Curve" && tool == "rear")) continue;
                             var leg = new Leg(o.Name, kind, forward, tool, width, 0, -1);
                             if (Wanted(leg)) yield return new TestCaseData(leg).SetName($"Normal({leg})");
                         }
         // Implements running beside the tractor (a mower conditioner): rigid and trailed, 3 m, 2.5 m to either
         // side. (Half the width to one side makes the tractor's return line the line it came on, a turn with
         // no lateral span, which the generator does not build: kickout at every obstacle, see the report.)
-        foreach (var o in field.UTurnObstacles)
+        foreach (var o in field.UTurnObstacles.Where(o => !IsLoneTree(o)))
             foreach (bool forward in new[] { true, false })
                 foreach (var tool in new[] { "rear", "trailing" })
                     foreach (double offset in new[] { -2.5, 2.5 })
@@ -88,6 +93,8 @@ public class ObstacleScenarioTests
                     }
     }
 
+    private static bool IsLoneTree(ObstacleTestField.Obstacle o) => o.Name.StartsWith("Tree circle", StringComparison.Ordinal);
+
     public static IEnumerable<TestCaseData> BadLegs()
     {
         var field = ObstacleTestField.Build();
@@ -96,6 +103,7 @@ public class ObstacleScenarioTests
             foreach (var kind in ObstacleTestField.TrackKinds)
                 for (int k = 0; k < 2; k++)
                 {
+                    if (IsLoneTree(o) && kind != "AB 0°") continue; // one seed each way for the lone trees
                     var leg = new Leg(o.Name, kind, k == 0, "rear", DefaultWidth, 0, seed++);
                     if (Wanted(leg)) yield return new TestCaseData(leg).SetName($"Bad({leg})");
                 }
@@ -118,7 +126,7 @@ public class ObstacleScenarioTests
         Assert.That(field.Outer.IsValid, Is.True);
         Assert.That(field.Outer.AreaHectares, Is.InRange(10, 20));
         Assert.That(field.Boundary.HeadlandPolygon, Is.Not.Null);
-        Assert.That(field.UTurnObstacles.Count(), Is.EqualTo(9));
+        Assert.That(field.UTurnObstacles.Count(), Is.EqualTo(39));
         foreach (var o in field.Obstacles)
         {
             Assert.That(o.Polygon.IsValid, Is.True, o.Name);
@@ -211,8 +219,11 @@ public class ObstacleScenarioTests
 
         // The two rules.
         string? failure = null;
-        if (rig.WorstClearance < 0)
-            failure = $"AutoSteer took the tractor or the implement {-rig.WorstClearance:F2} m into {rig.WorstObstacle}";
+        // A pass laid beside an obstacle can run the implement's edge into it before any turn (the
+        // line, not the turn, puts it there; the log says "on the pass itself"); the turn is judged
+        // by what happened from the moment it was driven.
+        if (rig.WorstClearanceInTurn < 0)
+            failure = $"AutoSteer took the tractor or the implement {-rig.WorstClearanceInTurn:F2} m into {rig.WorstObstacleInTurn}";
         else if (rig.KickoutReason != null && rig.ObstacleAheadAtKickout is { } ahead && !double.IsInfinity(ahead))
         {
             double required = Math.Min(StopRoom, rig.RoomAtLastArm - 1.5);
