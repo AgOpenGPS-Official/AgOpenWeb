@@ -190,6 +190,8 @@ function updateAbCursorLabel(x, y) {
 // frame from drawPts (world→screen); cleared when the draw ends. DOM (CanvasKit has no text).
 function renderAbDotLabels() {
   if (!abDotLabelsEl) return;
+  // Until CanvasKit is up there is no projection (perspM): no letters yet, and no error.
+  if (!perspM) { for (const span of abDotLabelsEl.children) span.style.display = 'none'; return; }
   // Letters for map-tap AND Drive-AB markers (drawMode may be null), else the active line's A/B.
   const active = activeAbPoints(), pts = drawPts.length ? drawPts : (active || []);
   const n = pts.length;
