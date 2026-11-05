@@ -147,7 +147,7 @@ public class ObstacleChoiceTests
         p.AtObstacle = ObstacleAction.GoRound;
         Assert.That(p.IsDriveThrough, Is.False);
         p.IsDriveThrough = false;
-        Assert.That(p.AtObstacle, Is.EqualTo(ObstacleAction.GoRound), "clearing the flag keeps go round");
+        Assert.That(p.AtObstacle, Is.EqualTo(ObstacleAction.GoRound), "clearing the flag keeps go around");
         p.IsDriveThrough = true;
         Assert.That(p.AtObstacle, Is.EqualTo(ObstacleAction.DriveThrough));
         p.IsDriveThrough = false;
