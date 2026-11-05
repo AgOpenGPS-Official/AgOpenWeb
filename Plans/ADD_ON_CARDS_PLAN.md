@@ -136,9 +136,7 @@ a split layout the pane is a **drawer**.
    - the drawer in each position, a page keeping its state across Closed and Full, the strip at
      speed;
    - an observer.
-3. **Add-on author page** (`Docs/ADD_ON_WEB_CARDS.md`): what the card gives an add-on, `{host}`,
-   framing headers to avoid, what observers see, the sizes a page should work at (a half-window
-   slot, a quarter, full).
+3. **Add-on author page**: `Docs/ADD_ON_CARDS.md`, for web and VT cards. Done.
 4. Close #456; move this plan to `Completed/`.
 
 ## 7. Later
@@ -149,8 +147,9 @@ a split layout the pane is a **drawer**.
   2. `postMessage` both ways, with the target origin checked: to the page theme, language, units
      and whether this browser holds control, on change; from the page a title, an attention badge
      (an alarm while the card is closed, behind others or in a closed drawer), a preferred size.
-- **Discovery:** add-ons announcing themselves by DNS-SD (e.g. `_aowcard._tcp`, TXT `path=`,
-  `name=`) in the picker without typing, as the VT gateways are. SharpIsoTerm's `AowLinkBrowser`
+- **Discovery:** add-ons announcing themselves by DNS-SD as `_aowcard._tcp` (format fixed
+  2026-11-05 in `Docs/ADD_ON_CARDS.md`: instance name shown, TXT `v=1`, `path`, `scheme`) in the
+  picker without typing, as the VT gateways are. SharpIsoTerm's `AowLinkBrowser`
   has `_aowlink._tcp` fixed and would need the service type as a parameter; iOS needs the type in
   `NSBonjourServices`. Not before the bookmarks are in use.
 - **Moving cards between tabs**, if asked for.
