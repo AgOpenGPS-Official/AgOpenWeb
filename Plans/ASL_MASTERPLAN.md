@@ -89,13 +89,19 @@ The connector uses only what AOW already exposes.
 
 ### 3.3 UI: a web card
 
-- Everything the operator needs is a **web card** (`Plans/ADDON_WEB_CARDS_PLAN.md`): a page served
+- Everything the operator needs is a **web card** (`Docs/ADD_ON_CARDS.md`, plan `Plans/ADD_ON_CARDS_PLAN.md`): a page served
   by the connector (pairing and unpairing, status, consent, who is watching, planned orders, the
-  group map of other machines). The user adds it with the existing bookmark list. AOW does not
+  group map of other machines). The connector announces it as `_aowcard._tcp` (DNS-SD, format fixed in the guide; no network scanning, #543); until AOW lists announced pages the user adds a bookmark. AOW does not
   proxy it and does not know what it is.
 - As for every web card, a browser **without control** sees it covered. Pairing, consent and
   settings therefore need the operator who holds control.
-- **The card pane as a drawer** (`Plans/CARD_PANE_SPLIT_PLAN.md`, #513 and the drawer step): Closed
+- **The card is reachable from the whole machine network, and the observer cover is not security**
+  (`Docs/ADD_ON_CARDS.md`: it is a courtesy in AOW's UI; anyone on the network can open the page in
+  a tab). So the connector enforces its own rules: anything that changes something (pair, unpair,
+  consent and watching settings, accepting a staged order) needs a short **local PIN** set at
+  pairing, and the page binds to the machine network only, never an uplink. The guide also warns
+  that a hidden frame may be throttled; the card is never relied on for anything time-critical.
+- **The card pane as a drawer** (built, `Plans/ADD_ON_CARDS_PLAN.md`, #456): Closed
   (map full), Split (⅓ to ½) or Full; in Full a guidance strip stays visible and alarms show over
   everything; only the operator moves it, and above walking pace it cannot be pulled to Full. That
   gives a planning page all the room it needs and keeps ASL a plain web card. A Closed drawer hides
@@ -135,7 +141,7 @@ The connector uses only what AOW already exposes.
 | The identity file (machine id, tokens, device key; encrypted, bound to the device) | The connector's own data folder | Deleted |
 | The connector's sidecar files | In each field folder it has touched | Deleted (§5) |
 | Its queue and cache | The connector's own data folder | Deleted |
-| A bookmark for its web card | AOW's web card list (added by the user through AOW's own bookmark editor) | The user removes it; the card shows how |
+| A bookmark for its web card, until announced cards are listed | AOW's web card list (added by the user through AOW's own bookmark editor) | The user removes it; the card shows how |
 
 The connector never writes AOW's settings. Unpairing never touches a field's own files, jobs or
 coverage.
@@ -182,10 +188,10 @@ after the spike (§10, phase 0).
 | A | **Protocol version in the handshake**, bumped when the frames change, and the **wire docs** (a spec of the frames kept in step with `WireCodec`/`transport.js`, like `FIELD_FILE_FORMATS.md`) | A cached or mismatched web client against a newer host is a problem today; every add-on that reads frames needs it |
 | B | **"N watching" in the status bar** and a **remote watching allowed** setting; a remote client says so at connect (a label) | LAN viewers (a second tablet, an adviser) are watchers too; the driver sees them without any card |
 | C | **Reference coverage layer**: tiles from another job or folder, display only, own colour | Last season's pass; the sprayer seen from the spreader |
-| D | **Job inbox and field staging folder**: a `job.json` with status *Planned* is listed in the job list; new versions of a field's files put in its incoming folder are checked on open and applied only with the operator's OK, the old file kept. Fields generic and optional in `FIELD_FILE_FORMATS.md`; after Field Selection (#520) | Planned work from any tool; any outside tool can deliver a field safely |
+| D | **Job inbox and field staging folder**: a `job.json` with status *Planned* is listed in the job list; new versions of a field's files put in its incoming folder are checked on open and applied only with the operator's OK, the old file kept. Fields generic and optional in `FIELD_FILE_FORMATS.md`; after Field Selection (#520). The inbox is listed when the job list opens or on a version change, never in the broadcast loop (as #604) | Planned work from any tool; any outside tool can deliver a field safely |
 
-Also useful and still open for the maintainers, independent of ASL: a page for add-on authors in
-`Docs/` (step 3 of `ADDON_WEB_CARDS_PLAN.md`); the hot-path budget test and a stalled-observer test
+Also useful and still open for the maintainers, independent of ASL: sections in the add-on guide (`Docs/ADD_ON_CARDS.md`, which covers cards today) on the field folders and the observer feed, with the wire docs of PR A;
+the hot-path budget test and a stalled-observer test
 with an observer attached (§8); a CI check that core references no add-on (§8); publishing AOW's
 host, port and data root so add-ons need not guess.
 
