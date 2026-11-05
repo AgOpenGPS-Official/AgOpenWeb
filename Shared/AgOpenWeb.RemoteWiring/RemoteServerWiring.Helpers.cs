@@ -170,6 +170,7 @@ public static partial class RemoteServerWiring
             case "uturn.smoothing": if (I(out var u3)) gd.UTurnSmoothing = u3; return;
             case "uturn.radius": if (D(out var u4)) gd.UTurnRadius = u4; return;
             case "uturn.distanceFromBoundary": if (D(out var u5)) gd.UTurnDistanceFromBoundary = u5; return;
+            case "uturn.crossGap": if (D(out var u6)) gd.UTurnCrossGap = Math.Max(0, u6); return;
             // --- Tram (ConfigStore.Guidance + Tram.TramWidth; saved with the tool profile, #330) ---
             case "tram.passes": if (I(out var tp)) gd.TramPasses = tp; return;
             case "tram.display": gd.TramDisplay = B(); return;

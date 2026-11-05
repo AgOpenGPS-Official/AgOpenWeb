@@ -361,6 +361,17 @@ public partial class YouTurnCreationService
         Func<Vec3, int> isPointInsideTurnArea = point =>
             turnArea != null && turnArea.Contains(point.Easting, point.Northing) ? 0 : 1;
 
+        // The strip a pass may be driven across with the sections off instead of turned at
+        // (GuidanceConfig.UTurnCrossGap): inside the field, outside the headland line and outside
+        // every obstacle that is not driven through. Built once per plan, asked per sample.
+        var headlandArea = PolygonSlabIndex.Build(headlandLine);
+        var obstacles = boundary.InnerBoundaries.Where(b => b.IsValid && !b.IsDriveThrough).ToList();
+        var outerBoundary = boundary.OuterBoundary;
+        Func<Vec3, bool> isPointInHeadlandStrip = point =>
+            outerBoundary.IsPointInside(point.Easting, point.Northing)
+            && !(headlandArea?.Contains(point.Easting, point.Northing) ?? false)
+            && obstacles.All(b => !b.IsPointInside(point.Easting, point.Northing));
+
         var pivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians);
 
         // ONE turn generator. "An AB line is just a curve with 2 points": a 2-point AB
@@ -406,6 +417,8 @@ public partial class YouTurnCreationService
             GuidanceType = GuidanceLineType.Curve,
             BoundaryTurnLines = boundaryTurnLines,
             IsPointInsideTurnArea = isPointInsideTurnArea,
+            MaxGapCrossing = config.Guidance.UTurnCrossGap,
+            IsPointInHeadlandStrip = isPointInHeadlandStrip,
 
             // The single generator walks these points (the current offset pass).
             GuidancePoints = currentCurvePoints,

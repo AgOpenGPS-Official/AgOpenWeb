@@ -302,6 +302,7 @@ public class GuidanceConfig : ReactiveObject
     public double UTurnRadius { get; set; }
     public double UTurnExtension { get; set; }
     public double UTurnDistanceFromBoundary { get; set; }
+    public double UTurnCrossGap { get; set; }   // drive across a headland gap up to this many metres; 0 = turn
     public double UTurnSmoothing { get; set; }
 
     // Tram Lines
