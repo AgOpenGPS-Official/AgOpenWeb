@@ -195,7 +195,31 @@ the hot-path budget test and a stalled-observer test
 with an observer attached (§8); a CI check that core references no add-on (§8); publishing AOW's
 host, port and data root so add-ons need not guess.
 
-## 8. Keeping it true: checks
+## 8. If something goes wrong, and keeping it true
+
+### 8.1 If something goes wrong
+
+The code owner's main concern: a failure on the ASL side, or in the AOW changes made for it, must
+not affect how AOW works. For each place where the two touch, the worst thing that can happen to
+AOW and what prevents it:
+
+| Touch point | Worst case for AOW | What prevents it |
+|---|---|---|
+| **Cloud, network or connector fails** | None: AOW never calls the connector, never waits for it, sends nothing to the cloud | Design (§2, requirement 4). Errors appear only in the connector's card and log |
+| **The connector as an observer** (an ordinary client of the frame feed) | A stalled or slow observer, or many of them, costs CPU, memory or bandwidth on the host | The spike measures the cost of 1, 5 and 20 observers at 10 Hz (§10); a stalled-observer test; a hard limit on observers from outside; remote observers are dropped first under load; *remote watching allowed* is off by default (PR B). The connector never takes control: control is only given when a client asks (`ControlAuthority.Acquire`), and it never asks; a client without control cannot change anything (#397) |
+| **Reading the feed is a use the add-on guide does not yet name** | `Docs/ADD_ON_CARDS.md` says an add-on never sends AOW commands and takes guidance data from the modules' protocol (PGN), not from the web client. The connector sends no command, but it does read the web client's feed as an observer | Stated openly here for the maintainers to accept or refuse, and written into the guide with the wire docs (PR A). If refused, live status and watching are not possible and the rest of the plan (files, orders) is unaffected |
+| **PR A: protocol version** | A bug breaks the connection of every client | Small change; a test that old and new clients and the host agree; the connector refuses a version it does not know |
+| **PR B: "N watching"** | A wrong count or a missing label | Display only; it changes nothing the guidance does |
+| **PR C: reference coverage layer** | Slow drawing, or a wrong layer misleading the operator | Display only, its own colour, never read by section control; large or damaged tile files are skipped with a size limit; drawn within the map's existing budget |
+| **PR D: job inbox and staging folder** | A damaged, huge or hostile file from outside crashes AOW, or silently changes a field AOW steers on | Treated like any import (KML): size limits, each file read on its own so one bad file is skipped, no crash path, read off the hot path and never in the broadcast loop (#604). Nothing is applied by itself: the old file is kept and the operator confirms on open. The connector never writes AOW's own files |
+| **The connector's web card** | A card that is slow, blank or hostile | A card runs in a sandboxed frame on its own origin (`Docs/ADD_ON_CARDS.md`) and never goes through AOW. The cover over it for observers is not security, so the card protects its own actions with a local PIN |
+| **Updating AOW or the connector** | A newer AOW changes the frames or files | The protocol version; the connector shows "live view unavailable" on a version it does not know and keeps working with files |
+
+What this means for the plan: the isolation holds for the add-on. The remaining risk is in the four
+AOW PRs. They are ordinary AOW changes and meet the bar of any feature (review, CI, hot-path
+budgets, the tests named above), and each is useful without ASL.
+
+### 8.2 Checks
 
 - **No reference from core.** A CI check in AOW fails if any project, package or source file under
   `Shared/` or `Platforms/` refers to ASL or the connector. (The connector is not in this
@@ -212,6 +236,7 @@ host, port and data root so add-ons need not guess.
 
 ## 9. Open questions for the maintainers
 
+- [ ] **Observer use (§8.1):** the add-on guide says add-ons never send commands and take guidance data from PGN. Is the connector reading the frame feed as a read-only observer acceptable, with the limits in §8.1? If not, live status and watching drop out of the plan.
 - [ ] **Remote label (PR B):** how a remote watcher says so at connect, and whether *remote watching
   allowed* off refuses the connection or only the label.
 - [ ] **Staging folder name and rules (PR D):** the name, what is checked on open, and what the
