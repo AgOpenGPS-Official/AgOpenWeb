@@ -10,8 +10,9 @@ text that is a key in i18n/en.json and shows as a label (one line, at most 40
 characters), it puts other text in its place and sees whether that still fits: the label
 stays on one line inside its box, and nothing else on the screen moves up or down,
 changes height, is squeezed narrower or pushed off the screen (sliding sideways is fine,
-as is a panel growing within the screen). Sentences (several lines, or longer than 40
-characters) are left out: their boxes grow. Text the sweep can't reach (toasts, list
+as is a panel growing within the screen, and so are the few pixels up or down that the
+taller fonts of Chinese, Japanese or Tamil add to a line). Sentences (several lines, or
+longer than 40 characters) are left out: their boxes grow. Text the sweep can't reach (toasts, list
 rows, later wizard steps) is left out too.
 
   (default)   measure: sample text of growing length gives each label's room in
@@ -113,6 +114,7 @@ MEASURE_JS = r"""
     const snap = others.map(e => e.getBoundingClientRect());
     const box0 = box.getBoundingClientRect();
     const lead = src.match(/^\s*/)[0];
+    const VTOL = 6;   // px, under half a line
     const fitsText = text => {
       node.nodeValue = lead + text + tail;
       const l = lines(node), b = box.getBoundingClientRect(), cs = getComputedStyle(box);
@@ -121,8 +123,11 @@ MEASURE_JS = r"""
       // Something narrower counts only when the label's box grew: a shorter label may narrow a
       // neighbour kept at its width (two buttons sharing a row equally) without squeezing it.
       const grew = b.width > box0.width + 0.5;
+      // Up and down by a few pixels is the script's font, not the text's length: Chinese,
+      // Japanese, Tamil and Gujarati fonts have taller lines than Roboto, so even one
+      // character moves its row a little. A wrap moves things a whole line and still fails.
       for (let i = 0; i < others.length; i++) { const r = others[i].getBoundingClientRect(), s = snap[i];
-        if (Math.abs(r.top - s.top) > 0.5 || Math.abs(r.height - s.height) > 0.5 || (grew && !sideways[i] && r.width < s.width - 0.5)
+        if (Math.abs(r.top - s.top) > VTOL || Math.abs(r.height - s.height) > VTOL || (grew && !sideways[i] && r.width < s.width - 0.5)
             || (r.right > innerWidth + 0.5 && r.right > s.right + 0.5)) return false; }
       return true;
     };
