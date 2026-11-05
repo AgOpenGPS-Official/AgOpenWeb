@@ -596,6 +596,11 @@
         <div class="vc-diagrow"><img src="/icons/ConU_UturnRadius.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Radius (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="uturn.radius" type="number" step="0.1"></div></div>
         <div class="vc-diagrow"><img src="/icons/ConU_UturnDistance.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Distance from boundary (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="uturn.distanceFromBoundary" type="number" step="0.1"></div></div>
       </div>
+      <div class="cfg-label" style="margin-top:12px">Going around obstacles</div>
+      <div class="cfg-grid">
+        <label>Curve radius (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="uturn.goAroundRadius" type="number" step="0.5" title="The tightest the line bends round a Go around obstacle: smaller starts and ends the curve nearer the obstacle">
+        <label>Safety margin (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="uturn.goAroundMargin" type="number" step="0.1" title="Room kept between the implement and a Go around obstacle">
+      </div>
     </div>
     <!-- ===== MACHINE ===== -->
     <div id="tc-machine" class="cfg-body" data-strip="tc-top" hidden>

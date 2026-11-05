@@ -468,7 +468,10 @@ public record ToolConfigDto(
     double TotalWidth);
 
 /// <summary>U-Turn tab (ConfigStore.Guidance). Style: 0 Omega, 1 Sagitta.</summary>
-public record UturnConfigDto(int Style, double Extension, int Smoothing, double Radius, double DistanceFromBoundary);
+/// <param name="GoAroundRadius">The tightest a line bends round a Go around obstacle, m.</param>
+/// <param name="GoAroundMargin">Room kept between the implement and a Go around obstacle, m.</param>
+public record UturnConfigDto(int Style, double Extension, int Smoothing, double Radius, double DistanceFromBoundary,
+    double GoAroundRadius, double GoAroundMargin);
 
 /// <summary>Tram Lines tab (ConfigStore.Guidance tram fields).</summary>
 public record TramConfigDto(int Passes, bool Display, int Line, double Width, bool OuterInverted);

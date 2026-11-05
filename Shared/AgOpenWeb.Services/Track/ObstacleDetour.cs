@@ -22,8 +22,8 @@ namespace AgOpenWeb.Services.Track;
 /// and the pass is moved sideways by an offset that changes along it: as far as the grown
 /// obstacle reaches across the pass at that point, on the side that needs the smaller move.
 /// The offset then rises and falls no steeper than <see cref="MaxSlope"/> and is rounded so
-/// that its curves are no tighter than the given radius; it is never less than what the
-/// obstacle needs. A bent line is checked against every obstacle and the field's edge: an
+/// that its curves are no tighter than the given radius, as short as that allows; it is never
+/// less than what the obstacle needs. A bent line is checked against every obstacle and the field's edge: an
 /// obstacle with no room on either side is not gone round (<see cref="Bend.Blocked"/>).
 /// </para>
 /// Built once per pass and kept while the pass, the boundary and the settings are the same.
@@ -33,8 +33,8 @@ public sealed class ObstacleDetour
     /// <summary>The distance between the bent line's points, metres.</summary>
     public const double SampleStep = 0.25;
 
-    /// <summary>The steepest the line leaves or rejoins the pass: 1 m sideways in 2 m (27°).</summary>
-    public const double MaxSlope = 0.5;
+    /// <summary>The steepest the line leaves or rejoins the pass: 1 m sideways in 1 m (45°).</summary>
+    public const double MaxSlope = 1.0;
 
     /// <summary>A straight pass (an AB line, two points) is taken this far past its ends, metres.</summary>
     private const double LineExtension = 2000.0;
@@ -49,7 +49,7 @@ public sealed class ObstacleDetour
     public ObstacleDetour(IPolygonOffsetService offset) => _offset = offset;
 
     private readonly record struct Entry(object Track, object Points, double DistAway, Boundary Boundary, long Key,
-        double KeepOut, double Radius, Bend? Result);
+        double KeepOut, double Radius, double Margin, Bend? Result);
 
     // The last few passes asked for: the line steered and the line shown can be two passes for
     // a moment, and each would otherwise throw the other's bend away.
@@ -62,18 +62,18 @@ public sealed class ObstacleDetour
     /// none: the same result while the inputs are the same, so a cycle costs a comparison.
     /// </summary>
     public Bend? For(Models.Track.Track track, double distAway, IReadOnlyList<Vec3> pass, Boundary? boundary,
-        double keepOut, double radius)
+        double keepOut, double radius, double margin)
     {
         if (boundary == null || boundary.InnerBoundaries.Count == 0) return null;
         long key = ObstacleKey(boundary);
         foreach (var e in _cache)
             if (e is { } c && ReferenceEquals(c.Track, track) && ReferenceEquals(c.Points, track.Points)
                 && c.DistAway == distAway && ReferenceEquals(c.Boundary, boundary) && c.Key == key
-                && c.KeepOut == keepOut && c.Radius == radius)
+                && c.KeepOut == keepOut && c.Radius == radius && c.Margin == margin)
                 return c.Result;
 
-        var result = Compute(pass, boundary, keepOut, radius);
-        _cache[_next] = new Entry(track, track.Points, distAway, boundary, key, keepOut, radius, result);
+        var result = Compute(pass, boundary, keepOut, radius, margin);
+        _cache[_next] = new Entry(track, track.Points, distAway, boundary, key, keepOut, radius, margin, result);
         _next = (_next + 1) % _cache.Length;
         return result;
     }
@@ -126,20 +126,19 @@ public sealed class ObstacleDetour
         public int Last => First + MinL.Length - 1;
     }
 
-    /// <summary>Added to half the implement for the distance kept from an obstacle, metres.</summary>
-    public const double Margin = 1.0;
-
     /// <summary>
     /// How far the line keeps from a Go around obstacle: half the implement (and its offset), or
-    /// half the tractor's track if that is wider, plus <see cref="Margin"/>.
+    /// half the tractor's track if that is wider, plus the safety margin.
     /// </summary>
-    public static double KeepOutFor(double toolWidth, double toolOffset, double trackWidth) =>
-        Math.Max(toolWidth / 2 + Math.Abs(toolOffset), trackWidth / 2 + 0.3) + Margin;
+    public static double KeepOutFor(double toolWidth, double toolOffset, double trackWidth, double margin) =>
+        Math.Max(toolWidth / 2 + Math.Abs(toolOffset), trackWidth / 2 + 0.3) + Math.Max(0, margin);
 
     /// <summary>The bend, computed (no cache). Null when the pass runs into no Go around obstacle.</summary>
-    /// <param name="keepOut">How far the line keeps from a Go around obstacle: half the implement and a margin.</param>
-    /// <param name="radius">The tightest the line may bend (the U-turn radius).</param>
-    public Bend? Compute(IReadOnlyList<Vec3> pass, Boundary boundary, double keepOut, double radius)
+    /// <param name="keepOut">How far the line keeps from a Go around obstacle: half the implement and the margin.</param>
+    /// <param name="radius">The tightest the line may bend.</param>
+    /// <param name="margin">The safety margin in <paramref name="keepOut"/>: the bend keeps half the
+    /// implement (keepOut less the margin) inside the field's edge.</param>
+    public Bend? Compute(IReadOnlyList<Vec3> pass, Boundary boundary, double keepOut, double radius, double margin = 1.0)
     {
         if (pass.Count < 2 || keepOut <= 0) return null;
         var line = pass.Count == 2 ? ExtendLine(pass[0], pass[1]) : pass;
@@ -162,17 +161,17 @@ public sealed class ObstacleDetour
             if (Across(frame, fence, force: false) is { } hit) hits.Add(hit);
         }
         if (hits.Count == 0) return null;
-        double window = 2.0 * MaxSlope * Math.Max(radius, 1.0); // the rounding: curvature <= 2 slope / window
-        Group(hits, window);
+        radius = Math.Max(radius, 1.0);
+        Group(hits, radius);
 
         var outer = boundary.OuterBoundary is { IsValid: true } ob
             ? ob.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList() : null;
-        double edge = Math.Max(0, keepOut - Margin);
+        double edge = Math.Max(0, keepOut - Math.Max(0, margin));
 
         var blocked = new List<int>();
         for (int attempt = 0; attempt < 3 * fences.Count + 3 && hits.Count > 0; attempt++)
         {
-            var (first, offsets) = Profile(hits, window);
+            var (first, offsets) = Profile(hits, radius);
             var (points, bases) = BentLine(frame, first, offsets);
             var conflict = FirstConflict(points, bases, fences, others, outer, edge);
             if (conflict == null)
@@ -208,7 +207,7 @@ public sealed class ObstacleDetour
 
     // Obstacles close together along the pass are gone round in one bend, on one side: the side
     // where the farthest any of them reaches across the pass is the nearer.
-    private static void Group(List<Hit> hits, double window)
+    private static void Group(List<Hit> hits, double radius)
     {
         hits.Sort((a, b) => a.First.CompareTo(b.First));
         int group = 0, reach = int.MinValue;
@@ -216,7 +215,7 @@ public sealed class ObstacleDetour
         foreach (var h in hits)
         {
             // The bend for an obstacle starts and ends this far (in stations) before and after it.
-            int lead = (int)Math.Ceiling((Math.Max(h.NeedLeft, h.NeedRight) / MaxSlope + window) / SampleStep);
+            int lead = (int)Math.Ceiling(Lead(Math.Max(h.NeedLeft, h.NeedRight), radius) / SampleStep);
             if (groups.Count == 0 || h.First - lead > reach) { groups.Add(new List<Hit>()); group = groups.Count - 1; }
             h.Group = group;
             groups[group].Add(h);
@@ -291,12 +290,17 @@ public sealed class ObstacleDetour
         };
     }
 
+    // How far before an obstacle (and after it) the bend for a sideways move of `need` metres
+    // can start, at most.
+    private static double Lead(double need, double radius) =>
+        need / MaxSlope + Math.Sqrt(4 * radius * need) + Math.Sqrt(2 * radius * need) + 1.0;
+
     // The sideways offset along the pass, from station index `first`: what every obstacle needs
-    // on its side, rising and falling no steeper than MaxSlope, then rounded over `window`.
-    private static (int First, double[] Offsets) Profile(List<Hit> hits, double window)
+    // on its side, rising and falling no steeper than MaxSlope, rounded to `radius`.
+    private static (int First, double[] Offsets) Profile(List<Hit> hits, double radius)
     {
         double most = hits.Max(h => h.Side > 0 ? h.NeedLeft : h.NeedRight);
-        int pad = (int)Math.Ceiling((most / MaxSlope + window + 2.0) / SampleStep);
+        int pad = (int)Math.Ceiling(Lead(most, radius) / SampleStep);
         int first = hits.Min(h => h.First) - pad;
         int last = hits.Max(h => h.First + h.MinL.Length - 1) + pad;
         int n = last - first + 1;
@@ -309,35 +313,59 @@ public sealed class ObstacleDetour
                 if (h.Side > 0) left[j] = Math.Max(left[j], Math.Max(0, h.MaxL[i]));
                 else right[j] = Math.Max(right[j], Math.Max(0, -h.MinL[i]));
             }
-        Round(left, window); Round(right, window);
+        left = Round(left, radius); right = Round(right, radius);
         var offsets = new double[n];
         for (int i = 0; i < n; i++) offsets[i] = left[i] - right[i];
         return (first, offsets);
     }
 
-    // Never below what is needed: a slope-limited rise and fall, a flat widening by half the
-    // window, then the mean over the window (each mean holds values at least the need at its
-    // centre, so it is too; and it bends no tighter than 2 x MaxSlope / window).
-    private static void Round(double[] need, double window)
+    // The smallest smooth offset over what is needed, near enough: no steeper than MaxSlope, and
+    // bending no tighter than `radius` either way. The need is limited in slope, then widened by
+    // parabolas of radius 2R (each value spread as a cap: the tops get rounded) and narrowed again
+    // by parabolas of radius R (each value lifted as a cup: the feet get rounded). That is the
+    // Lasry-Lions smoothing: the result is never below the need (the cups are narrower than the
+    // caps), curves no tighter than R on either side and keeps the slope limit.
+    private static double[] Round(double[] need, double radius)
     {
         int n = need.Length;
-        double drop = MaxSlope * SampleStep;
+        double drop = MaxSlope * SampleStep, most = 0;
         for (int i = 1; i < n; i++) need[i] = Math.Max(need[i], need[i - 1] - drop);
         for (int i = n - 2; i >= 0; i--) need[i] = Math.Max(need[i], need[i + 1] - drop);
-        int half = Math.Max(1, (int)Math.Round(window / 2 / SampleStep));
+        for (int i = 0; i < n; i++) most = Math.Max(most, need[i]);
+        if (most <= 0) return need;
+
+        // Caps: wide[i] = max over j of need[j] - d^2 / (4R).
         var wide = new double[n];
+        int reach = (int)Math.Ceiling(Math.Sqrt(4 * radius * most) / SampleStep);
+        double capK = SampleStep * SampleStep / (4 * radius);
         for (int i = 0; i < n; i++)
         {
-            double m = 0;
-            for (int j = Math.Max(0, i - half); j <= Math.Min(n - 1, i + half); j++) m = Math.Max(m, need[j]);
+            double m = need[i];
+            for (int j = Math.Max(0, i - reach); j <= Math.Min(n - 1, i + reach); j++)
+            {
+                int d = j - i;
+                double v = need[j] - d * d * capK;
+                if (v > m) m = v;
+            }
             wide[i] = m;
         }
+
+        // Cups: out[i] = min over j of wide[j] + d^2 / (2R); past the ends the offset is 0.
+        var result = new double[n];
+        reach = (int)Math.Ceiling(Math.Sqrt(2 * radius * most) / SampleStep);
+        double cupK = SampleStep * SampleStep / (2 * radius);
         for (int i = 0; i < n; i++)
         {
-            double sum = 0;
-            for (int j = i - half; j <= i + half; j++) sum += j >= 0 && j < n ? wide[j] : 0;
-            need[i] = sum / (2 * half + 1);
+            double m = wide[i];
+            for (int j = i - reach; j <= i + reach; j++)
+            {
+                int d = j - i;
+                double v = (j >= 0 && j < n ? wide[j] : 0) + d * d * cupK;
+                if (v < m) m = v;
+            }
+            result[i] = m;
         }
+        return result;
     }
 
     // The pass with every stretch that has an offset replaced by its offset points; `bases`

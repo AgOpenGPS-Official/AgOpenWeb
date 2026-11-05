@@ -141,6 +141,23 @@ public class GuidanceConfig : ObservableObject
         set => SetProperty(ref _uTurnDistanceFromBoundary, value);
     }
 
+    // Going around obstacles chosen as Go around (ObstacleDetour): the tightest the line bends
+    // round one, and the room kept between the implement and the obstacle. Saved with the tool
+    // profile, as the U-turn settings are.
+    private double _goAroundRadius = 6.0;
+    public double GoAroundRadius
+    {
+        get => _goAroundRadius;
+        set => SetProperty(ref _goAroundRadius, value);
+    }
+
+    private double _goAroundMargin = 1.0;
+    public double GoAroundMargin
+    {
+        get => _goAroundMargin;
+        set => SetProperty(ref _goAroundMargin, value);
+    }
+
     // Sagitta (offset-semicircle) by default — matches Twol, which dropped Dubins
     // for U-turns because the shortest-path solution loops ("np" shape) whenever the
     // next row is closer than 2× the turn radius. SagittaStyle == 0, so profiles

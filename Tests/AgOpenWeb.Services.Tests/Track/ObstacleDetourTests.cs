@@ -112,6 +112,53 @@ public class ObstacleDetourTests
         Assert.That(TightestRadius(bend.Points), Is.GreaterThanOrEqualTo(Radius * 0.9));
     }
 
+    // Where the line leaves the pass before the tree and rejoins it after, as distances from
+    // the tree's centre along the pass.
+    private static (double Before, double After) BendEnds(IReadOnlyList<Vec3> line, double treeN)
+    {
+        var off = line.Where(p => Math.Abs(p.Easting) > 0.01).ToList();
+        return (treeN - off.Min(p => p.Northing), off.Max(p => p.Northing) - treeN);
+    }
+
+    [TestCase(4.0)]
+    [TestCase(6.0)]
+    [TestCase(10.0)]
+    public void The_bend_is_as_short_as_its_radius_allows(double radius)
+    {
+        // A 6 m tree and 4 m kept: the line moves 7 m aside. Two arcs of the radius need about
+        // 2 x sqrt(7 R) along the pass, plus the 7 m the grown tree reaches before its centre.
+        var bend = Detour.Compute(North, Field(-100, 100, Tree(0, 100, 6)), KeepOut, radius)!;
+        var (before, after) = BendEnds(bend.Points, 100);
+        double ideal = 7.0 + 2 * Math.Sqrt(7.0 * radius);
+        Assert.That(before, Is.LessThanOrEqualTo(ideal * 1.3), "starts near the tree");
+        Assert.That(after, Is.LessThanOrEqualTo(ideal * 1.3), "ends near the tree");
+        Assert.That(TightestRadius(bend.Points), Is.GreaterThanOrEqualTo(radius * 0.9));
+        Assert.That(ClearanceFrom(bend.Points, 0, 100), Is.GreaterThanOrEqualTo(3.0 + KeepOut - 0.05));
+        TestContext.Out.WriteLine($"R {radius}: leaves {before:F1} m before the centre, back {after:F1} m after");
+    }
+
+    [Test]
+    public void A_tighter_radius_starts_the_bend_nearer_the_obstacle()
+    {
+        var field = Field(-100, 100, Tree(0, 100, 6));
+        var wide = BendEnds(Detour.Compute(North, field, KeepOut, 10.0)!.Points, 100);
+        var tight = BendEnds(Detour.Compute(North, field, KeepOut, 4.0)!.Points, 100);
+        Assert.That(tight.Before, Is.LessThan(wide.Before - 2));
+    }
+
+    [Test]
+    public void Near_the_edge_only_half_the_implement_must_stay_inside_the_field()
+    {
+        // 3 m of half implement and a 2 m margin; the tree 1 m right of the line, the field's
+        // edge 10 m left. Going left (the shorter way) puts the line 6 m left, 4 m from the edge:
+        // the implement still fits in the field, though not with the margin, and that is allowed.
+        var field = Field(-10, 100, Tree(1, 100, 4));
+        var bend = Detour.Compute(North, field, 3.0 + 2.0, Radius, margin: 2.0)!;
+        Assert.That(bend.GoneRound, Is.EqualTo(new[] { 0 }));
+        Assert.That(bend.Points.Min(p => p.Easting), Is.LessThan(-5.5));
+        Assert.That(bend.Points.Min(p => p.Easting), Is.GreaterThanOrEqualTo(-10 + 3.0));
+    }
+
     [Test]
     public void It_goes_round_on_the_side_that_needs_the_smaller_move()
     {
@@ -200,11 +247,11 @@ public class ObstacleDetourTests
         var detour = new ObstacleDetour(new PolygonOffsetService());
         var track = new AgOpenWeb.Models.Track.Track { Points = new List<Vec3>(North) };
         var field = Field(-100, 100, Tree(0, 100, 6));
-        var first = detour.For(track, 0, North, field, KeepOut, Radius);
-        Assert.That(detour.For(track, 0, North, field, KeepOut, Radius), Is.SameAs(first));
+        var first = detour.For(track, 0, North, field, KeepOut, Radius, 1.0);
+        Assert.That(detour.For(track, 0, North, field, KeepOut, Radius, 1.0), Is.SameAs(first));
 
         field.InnerBoundaries[0].SetCircle(new ObstacleCircle(0, 120, 6)); // moved
-        var moved = detour.For(track, 0, North, field, KeepOut, Radius);
+        var moved = detour.For(track, 0, North, field, KeepOut, Radius, 1.0);
         Assert.That(moved, Is.Not.SameAs(first));
         Assert.That(ClearanceFrom(moved!.Points, 0, 120), Is.GreaterThanOrEqualTo(3.0 + KeepOut - 0.05));
     }

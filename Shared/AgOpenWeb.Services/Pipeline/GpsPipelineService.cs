@@ -2210,8 +2210,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
     {
         if (track.IsClosed || boundary == null || boundary.InnerBoundaries.Count == 0) return null;
         var c = _configStore;
-        double keepOut = Track.ObstacleDetour.KeepOutFor(c.ActualToolWidth, c.Tool.Offset, c.Vehicle.TrackWidth);
-        var bend = _obstacleDetour.For(track, distAway, pass, boundary, keepOut, c.Guidance.UTurnRadius);
+        double margin = c.Guidance.GoAroundMargin;
+        double keepOut = Track.ObstacleDetour.KeepOutFor(c.ActualToolWidth, c.Tool.Offset, c.Vehicle.TrackWidth, margin);
+        var bend = _obstacleDetour.For(track, distAway, pass, boundary, keepOut, c.Guidance.GoAroundRadius, margin);
         if (bend == null) return null;
         if (report && bend.Blocked.Count > 0)
         {
