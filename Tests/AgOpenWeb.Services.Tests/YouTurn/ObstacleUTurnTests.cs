@@ -21,7 +21,7 @@ namespace AgOpenWeb.Services.Tests.YouTurn;
 /// The automatic U-turn at an obstacle whose choice is a U-turn (<see cref="ObstacleAction.Turn"/>),
 /// as AgOpenGPS turns at the turn line round every inner boundary with Drive thru = No: a pass that
 /// runs into the obstacle turns before it, and no part of the turn comes nearer the obstacle than
-/// the U-turn distance from boundary. Go round and drive through obstacles are passed (for now)
+/// the U-turn distance from boundary. Go around and drive through obstacles get no U-turn
 /// and the turn is at the field's edge.
 /// </summary>
 [TestFixture]
