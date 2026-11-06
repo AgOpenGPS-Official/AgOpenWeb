@@ -2382,6 +2382,7 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public void PlaceFlagAtWorldPosition(double easting, double northing, FlagColor? color = null)
     {
+        if (!FieldIsOpen()) return;
         var actualColor = color ?? NextAutoColor();
         var id = _nextFlagId++;
         var flag = new Flag(easting, northing, actualColor, id, $"Flag {id}");
@@ -2631,9 +2632,30 @@ public partial class MainViewModel : ObservableObject
         return allColors[Flags.Count % allColors.Length];
     }
 
+    /// <summary>
+    /// Tracks, flags and tram systems belong to a field: made with none open they stayed in
+    /// the lists and were saved into the next field opened (AgOpenGPS shows these buttons only
+    /// with a field open). Says so and returns false when no field is open.
+    /// </summary>
+    private bool FieldIsOpen()
+    {
+        if (IsFieldOpen) return true;
+        ReportFailure("Open a field first");
+        return false;
+    }
+
+    /// <summary>
+    /// A position to act on. E 0, N 0 alone isn't "no GPS": it is the field's origin, where the
+    /// tractor stands when the field was just created there. Only with no GPS data coming in
+    /// is 0, 0 the empty position the app starts with.
+    /// </summary>
+    private bool HasGpsPosition(double easting, double northing) =>
+        easting != 0 || northing != 0 || _gpsService.IsGpsDataOk();
+
     private void PlaceFlag(FlagColor color)
     {
-        if (Easting == 0 && Northing == 0)
+        if (!FieldIsOpen()) return;
+        if (!HasGpsPosition(Easting, Northing))
         {
             ReportFailure("No GPS position - cannot place flag");
             return;
@@ -2898,11 +2920,45 @@ public partial class MainViewModel : ObservableObject
             : $"All tracks deleted, and the {dropped.Count} tram system(s) that followed them";
     }
 
+    /// <summary>
+    /// Every way of adding a track comes here: its name is made unique first ("A+ 21:00",
+    /// "A+ 21:00 (2)"). Tram systems and the last used track find a track by name, so two
+    /// tracks with one name put tram lines on the wrong one, reopened a field on the wrong
+    /// line, and a delete or rename of one left its tram system on the other. A+ and drawn
+    /// tracks are named after the time or the heading, so two in one minute shared a name.
+    /// </summary>
+    private void AddSavedTrack(Track track)
+    {
+        track.Name = UniqueTrackName(track.Name);
+        SavedTracks.Add(track);
+    }
+
+    private string UniqueTrackName(string name)
+    {
+        name = string.IsNullOrWhiteSpace(name) ? "Track" : name.Trim();
+        if (!SavedTracks.Any(t => t.Name == name)) return name;
+        for (int i = 2; ; i++)
+        {
+            var candidate = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{name} ({i})");
+            if (!SavedTracks.Any(t => t.Name == candidate)) return candidate;
+        }
+    }
+
     /// <summary>Rename a saved track by index (remote/web Field Builder). Persists.</summary>
     public void RenameTrackAt(int index, string name)
     {
-        if (index < 0 || index >= SavedTracks.Count || string.IsNullOrWhiteSpace(name)) return;
+        if (index < 0 || index >= SavedTracks.Count) return;
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            ReportFailure("Type a name for the track");
+            return;
+        }
         var track = SavedTracks[index];
+        if (SavedTracks.Any(t => !ReferenceEquals(t, track) && t.Name == name.Trim()))
+        {
+            ReportFailure($"There is already a track called '{name.Trim()}'");
+            return;
+        }
         var oldName = track.Name;
         bool wasActive = ReferenceEquals(track, SelectedTrack);
         track.Name = name.Trim();
@@ -6359,7 +6415,7 @@ public partial class MainViewModel : ObservableObject
                     track.Points = Models.Guidance.CurveProcessing.Circle(new Vec3(c.Easting, c.Northing, 0), PassWidth);
                     track.IsClosed = true;
                 }
-                SavedTracks.Add(track); // mirrors into State.Field.Tracks
+                AddSavedTrack(track); // mirrors into State.Field.Tracks
 
                 // Debug: log track details
                 _logger.LogDebug("[TrackFiles] Track: '{TrackName}', Points: {PointCount}, Type: {TrackType}, IsCurve: {IsCurve}", track.Name, track.Points.Count, track.Type, track.IsCurve);
@@ -6398,7 +6454,7 @@ public partial class MainViewModel : ObservableObject
                 recPath = null;
             if (recPath != null)
             {
-                SavedTracks.Add(recPath);
+                AddSavedTrack(recPath);
                 RecordedPathTracks.Add(recPath);
                 UpdateRecordedPathsOnMap();
                 _logger.LogDebug($"[RecPath] Loaded recorded path with {recPath.Points.Count} points");
