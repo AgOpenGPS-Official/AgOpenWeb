@@ -1,0 +1,78 @@
+name: Vehicle & Tool Scenarios
+
+# The Vehicle & Tool scenario harness (Tests/AgOpenWeb.VehicleToolScenarios.Tests): a simulated
+# machine (steering, implement linkage, antenna on a slope, the Boards simulator's GPS, IMU and
+# steering motor) drives the whole backend in process, set up by a careful and a careless
+# operator. It takes minutes, so it runs nightly on develop, not on every PR (CI only builds it).
+# The run fails when the harness breaks; the findings are in the report, kept as an artifact
+# and shown in the run's summary.
+#
+#   - schedule (nightly): only when develop has a commit from the last day;
+#   - manual dispatch: always, on the branch picked.
+
+on:
+  schedule:
+    - cron: '0 4 * * *'   # 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.401'   # as build-and-release.yml
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+concurrency:
+  group: vehicle-tool-scenarios
+  cancel-in-progress: true
+
+jobs:
+  scenarios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Anything new since the last night?
+        id: fresh
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          last=$(git log -1 --format=%ct HEAD)
+          age=$(( $(date +%s) - last ))
+          if [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No commit on develop in the last 25 hours; nothing to run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Setup .NET
+        if: steps.fresh.outputs.run == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Run the Vehicle & Tool scenarios
+        if: steps.fresh.outputs.run == 'true'
+        env:
+          AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/vehicle-tool-scenarios-report.md
+        run: dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ --filter "FullyQualifiedName~VehicleToolScenarioTests" --verbosity normal
+
+      - name: Report to the summary
+        if: always() && steps.fresh.outputs.run == 'true'
+        run: |
+          f="${{ runner.temp }}/vehicle-tool-scenarios-report.md"
+          if [ -f "$f" ]; then
+            # The summary has a size limit; the whole report is in the artifact.
+            head -c 900000 "$f" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report written." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep the report
+        if: always() && steps.fresh.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vehicle-tool-scenarios-report
+          path: ${{ runner.temp }}/vehicle-tool-scenarios-report.md
+          if-no-files-found: ignore
+          retention-days: 30
