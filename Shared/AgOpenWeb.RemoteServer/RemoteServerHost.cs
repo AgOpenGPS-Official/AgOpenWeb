@@ -44,6 +44,10 @@ public sealed class RemoteServerHost
     public void PlaySound(AgOpenWeb.Services.Interfaces.SoundEffect effect)
         => _ = _ws?.BroadcastAsync(WireCodec.EncodeSound((byte)effect));
 
+    /// <summary>Send the Config frame again on the next tick even if nothing changed, so a
+    /// box holding a refused value shows the one that was kept.</summary>
+    public void ResendConfig() => _broadcaster?.ResendConfig();
+
     /// <summary>Broadcast a one-shot notification (a refusal or failure, #109) to every
     /// connected client.</summary>
     public void ShowToast(string message)

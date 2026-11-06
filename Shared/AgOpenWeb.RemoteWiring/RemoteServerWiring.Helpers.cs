@@ -38,6 +38,42 @@ public static partial class RemoteServerWiring
         return true;
     }
 
+    // config.set as the web client sends it, with the Vehicle & Tool values no machine has
+    // refused (VehicleToolLimits: a negative wheelbase steers away from the line, an overlap as
+    // wide as the implement puts every pass on one line). Returns why a value was refused, or
+    // what the app changed on its own, for the operator; null when it was simply applied.
+    private static string? ApplyCheckedConfigSet(AgOpenWeb.Models.Configuration.ConfigurationStore store,
+        AgOpenWeb.Services.Interfaces.IConfigurationService cfg, string key, string val)
+    {
+        if (AgOpenWeb.Models.Configuration.VehicleToolLimits.Check(key, val, store) is { } refused)
+            return refused;
+
+        var tool = store.Tool;
+        bool harvester = store.Vehicle.Type == AgOpenWeb.Models.VehicleType.Harvester;
+        bool wasFront = tool.IsToolFrontFixed;
+        int sections = store.NumSections;
+        int widthIdx = key == "tool.sectionWidth" && int.TryParse(val.Split(',')[0], System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out var wi) ? wi : -1;
+        double width = widthIdx >= 0 ? tool.GetSectionWidth(widthIdx) : 0;
+
+        ApplyConfigSet(store, cfg, key, val);
+
+        // Fewer or narrower sections must still leave the passes apart (the overlap is less
+        // than the implement): otherwise put the section back.
+        if ((key == "tool.numSections" || widthIdx >= 0) && store.ActualToolWidth - tool.Overlap <= 0.01)
+        {
+            if (widthIdx >= 0) tool.SetSectionWidth(widthIdx, width);
+            else store.NumSections = sections;
+            return "The implement must stay wider than the overlap: lower the overlap first";
+        }
+        // A harvester's header is front-mounted (#111): say so rather than ignore the choice.
+        if (key == "tool.type" && harvester && !string.Equals(val, "front", System.StringComparison.OrdinalIgnoreCase))
+            return "A combine takes only a front implement (its header)";
+        if (key == "vehicle.type" && !harvester && store.Vehicle.Type == AgOpenWeb.Models.VehicleType.Harvester && !wasFront)
+            return "Implement set to front: a combine takes only a front implement";
+        return null;
+    }
+
     // Config bridge (Phase 9a+): apply one "key:value" config write from the web client.
     // Device settings (e.g. units) persist immediately via SaveAppSettings; profile
     // settings (vehicle dims) take live effect only — the client persists them with a
