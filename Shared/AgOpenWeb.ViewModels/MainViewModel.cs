@@ -2866,6 +2866,7 @@ public partial class MainViewModel : ObservableObject
             ReportFailure("No tracks to delete");
             return;
         }
+        var names = SavedTracks.Select(t => t.Name).ToList();
         SavedTracks.Clear();
         SelectedTrack = null;
         RebuildRecordedPathsAndContours(); // clear rec-path/contour display
@@ -2873,17 +2874,36 @@ public partial class MainViewModel : ObservableObject
         // Also remove the recorded path in use, else it reloads on next open.
         if (_fieldService.ActiveField is { } f)
             Services.GeoJson.GeoJsonFieldService.DeleteCurrentRecordedPath(f.DirectoryPath);
-        StatusMessage = "All tracks deleted";
+        var dropped = DropTramSystemsFollowing(names);
+        StatusMessage = dropped.Count == 0
+            ? "All tracks deleted"
+            : $"All tracks deleted, and the {dropped.Count} tram system(s) that followed them";
     }
 
     /// <summary>Rename a saved track by index (remote/web Field Builder). Persists.</summary>
     public void RenameTrackAt(int index, string name)
     {
         if (index < 0 || index >= SavedTracks.Count || string.IsNullOrWhiteSpace(name)) return;
-        bool wasActive = ReferenceEquals(SavedTracks[index], SelectedTrack);
-        SavedTracks[index].Name = name.Trim();
+        var track = SavedTracks[index];
+        var oldName = track.Name;
+        bool wasActive = ReferenceEquals(track, SelectedTrack);
+        track.Name = name.Trim();
         SaveTracksToFile();
         if (wasActive) SaveLastUsedTrack(); // the remembered name follows the rename (#148)
+
+        // Tram systems follow their track by name: carry them along, or their lines vanish
+        // with the old name and the systems point at nothing.
+        var following = TramSystemsFollowing(oldName);
+        if (following.Count > 0 && !SavedTracks.Any(t => !ReferenceEquals(t, track) && t.Name == oldName))
+        {
+            foreach (var s in following)
+            {
+                s.ReferenceTrackName = track.Name;
+                s.Name = $"Tram {TramSystems.IndexOf(s) + 1} ({track.Name})";
+            }
+            RebuildAndSaveTram();
+            StatusMessage = $"Renamed '{oldName}' to '{track.Name}'; {following.Count} tram system(s) follow it";
+        }
     }
 
     // Track management commands

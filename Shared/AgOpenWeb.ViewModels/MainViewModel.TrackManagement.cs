@@ -491,7 +491,34 @@ private List<TrackModel> TransformImportedTracks(IReadOnlyList<TrackModel> sourc
         // it reappears after restart.
         if (wasRecPath && _fieldService.ActiveField is { } f)
             Services.GeoJson.GeoJsonFieldService.DeleteCurrentRecordedPath(f.DirectoryPath);
-        StatusMessage = $"Deleted track '{trackName}'";
+        var dropped = DropTramSystemsFollowing(new[] { trackName });
+        StatusMessage = dropped.Count == 0
+            ? $"Deleted track '{trackName}'"
+            : $"Deleted track '{trackName}' and the tram system(s) that followed it: {string.Join(", ", dropped)}";
+    }
+
+    /// <summary>The tram systems that follow the track called <paramref name="trackName"/>
+    /// (a system names its track; a rename or a delete must not leave it pointing at nothing).</summary>
+    private List<Models.Tram.TramSystem> TramSystemsFollowing(string trackName) =>
+        TramSystems.Where(s => s.ReferenceBoundaryIndex < 0
+            && string.Equals(s.ReferenceTrackName, trackName, StringComparison.Ordinal)).ToList();
+
+    /// <summary>Remove the tram systems that followed tracks that are gone (and no remaining
+    /// track has the name), rebuild the lines and save. Returns the names of the systems removed.</summary>
+    private List<string> DropTramSystemsFollowing(IEnumerable<string> deletedTrackNames)
+    {
+        var dropped = new List<string>();
+        foreach (var name in deletedTrackNames.Distinct(StringComparer.Ordinal))
+        {
+            if (SavedTracks.Any(t => t.Name == name)) continue; // another track still has the name
+            foreach (var s in TramSystemsFollowing(name))
+            {
+                TramSystems.Remove(s);
+                dropped.Add(s.Name);
+            }
+        }
+        if (dropped.Count > 0) RebuildAndSaveTram();
+        return dropped;
     }
 
     /// <summary>Tracks manager / Field Builder Delete (web, #109): delete the track the
