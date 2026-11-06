@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Globalization;
 using System.Threading.Tasks;
 using System.Windows.Input;
 
@@ -85,23 +86,78 @@ public class RollCalibrationStepViewModel : WizardStepViewModel
 
     public ICommand ZeroRollCommand { get; }
 
+    /// <summary>What the last press of Zero Roll did, or why it did nothing, for the operator.</summary>
+    public string TestResult
+    {
+        get => _testResult;
+        private set => SetProperty(ref _testResult, value);
+    }
+    private string _testResult = "";
+
+    /// <summary>After a zero, presses are ignored until the roll reads level again (or this long).</summary>
+    public static readonly TimeSpan SettleWindow = TimeSpan.FromSeconds(1.5);
+    /// <summary>A roll this large is more likely a slope than a crooked IMU: it needs a second press.</summary>
+    public const double ConfirmDeg = 5;
+    /// <summary>How long the second press has to come.</summary>
+    public static readonly TimeSpan ConfirmWindow = TimeSpan.FromSeconds(15);
+
+    private DateTime _zeroSentUtc;
+    private bool _zeroPending;
+    private DateTime _confirmUtc;
+    private double _confirmRoll;
+
+    /// <summary>The clock the timing above runs on; tests set it.</summary>
+    internal Func<DateTime> Clock { get; set; } = () => DateTime.UtcNow;
+
     public RollCalibrationStepViewModel(IConfigurationService configService,
         IAutoSteerService? autoSteerService = null)
     {
         _configService = configService;
         _autoSteerService = autoSteerService;
 
-        ZeroRollCommand = new RelayCommand(() =>
+        ZeroRollCommand = new RelayCommand(ZeroRoll);
+    }
+
+    private void ZeroRoll()
+    {
+        var now = Clock();
+        if (!HasLiveData)
         {
-            // LiveRoll is the *post-calibration* angle: the NMEA parser
-            // already applies IsRollInvert and subtracts the current
-            // RollZero before publishing. Replacing the offset would
-            // throw away the prior calibration on a second press —
-            // matches the WAS Zero accumulator bug (#385 F/G). The
-            // invert sign is already baked in upstream, so the Zero
-            // formula here is plain addition.
-            RollZero = _configService.Store.Ahrs.RollZero + LiveRoll;
-        });
+            TestResult = "No roll reading yet: the IMU is not reporting.";
+            return;
+        }
+        // A second press before the parser applies the new zero would add the same roll again.
+        if (_zeroPending && now - _zeroSentUtc < SettleWindow)
+        {
+            TestResult = "Zeroing: wait for the roll to read 0° before pressing again.";
+            return;
+        }
+        _zeroPending = false;
+
+        double roll = LiveRoll;
+        // Level ground rarely reads this much: say what it reads and take it only on a second press.
+        if (Math.Abs(roll) > ConfirmDeg
+            && !(now - _confirmUtc <= ConfirmWindow && Math.Abs(roll - _confirmRoll) < ConfirmDeg))
+        {
+            _confirmUtc = now;
+            _confirmRoll = roll;
+            TestResult = string.Create(CultureInfo.InvariantCulture,
+                $"The roll reads {roll:F1}°. Is the ground level? Press Zero Roll again within {ConfirmWindow.TotalSeconds:F0} s to take this as level.");
+            return;
+        }
+        _confirmUtc = default;
+
+        // LiveRoll is the *post-calibration* angle: the NMEA parser
+        // already applies IsRollInvert and subtracts the current
+        // RollZero before publishing. Replacing the offset would
+        // throw away the prior calibration on a second press —
+        // matches the WAS Zero accumulator bug (#385 F/G). The
+        // invert sign is already baked in upstream, so the Zero
+        // formula here is plain addition.
+        RollZero = _configService.Store.Ahrs.RollZero + roll;
+        _zeroPending = true;
+        _zeroSentUtc = now;
+        TestResult = "Level set: the roll now reads 0° here.";
     }
 
     protected override void OnEntering()
@@ -109,6 +165,9 @@ public class RollCalibrationStepViewModel : WizardStepViewModel
         var ahrs = _configService.Store.Ahrs;
         IsRollInvert = ahrs.IsRollInvert;
         RollZero = ahrs.RollZero;
+        TestResult = "";
+        _zeroPending = false;
+        _confirmUtc = default;
 
         if (_autoSteerService != null)
             _autoSteerService.StateUpdated += OnStateUpdated;
@@ -128,6 +187,9 @@ public class RollCalibrationStepViewModel : WizardStepViewModel
     {
         LiveRoll = Math.Round(snapshot.Roll, 2);
         HasLiveData = true;
+        // The new zero is applied: the next press is a new zero, not a repeat.
+        if (_zeroPending && Math.Abs(snapshot.Roll) < 0.3)
+            _zeroPending = false;
     }
 
     public override Task<bool> ValidateAsync()

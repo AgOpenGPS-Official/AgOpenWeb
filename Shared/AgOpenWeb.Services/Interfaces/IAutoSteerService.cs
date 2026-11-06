@@ -240,6 +240,13 @@ public interface IAutoSteerService
     SteerModuleData LastSteerData { get; }
 
     /// <summary>
+    /// When <see cref="LastSteerData"/> arrived (UTC); <see cref="DateTime.MinValue"/> before
+    /// the first PGN 253. A calibration that reads the module (Zero WAS) checks it is recent:
+    /// with the module unplugged the last reading stays, and a zero taken from it is wrong.
+    /// </summary>
+    DateTime LastSteerDataUtc => DateTime.MinValue;
+
+    /// <summary>
     /// Latest sensor data from module (PGN 250).
     /// Contains pressure/current sensor reading.
     /// </summary>

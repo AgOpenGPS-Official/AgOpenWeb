@@ -28,6 +28,7 @@ public class RollCalibrationStepViewModelTests
 {
     private IConfigurationService _configService = null!;
     private ConfigurationStore _store = null!;
+    private IAutoSteerService _autoSteer = null!;
 
     [SetUp]
     public void SetUp()
@@ -37,7 +38,16 @@ public class RollCalibrationStepViewModelTests
 
         _configService = Substitute.For<IConfigurationService>();
         _configService.Store.Returns(_store);
+
+        _autoSteer = Substitute.For<IAutoSteerService>();
     }
+
+    private RollCalibrationStepViewModel NewStep() =>
+        new(_configService, _autoSteer) { IsActive = true };
+
+    /// <summary>The parser publishes this post-calibration roll, as one state update.</summary>
+    private void GivenRoll(double roll) =>
+        _autoSteer.StateUpdated += Raise.Event<EventHandler<VehicleStateSnapshot>>(_autoSteer, new VehicleStateSnapshot { Roll = roll });
 
     [Test]
     public void ZeroRoll_AppliedTwiceAtDifferentTilts_LandsAtZero()
@@ -47,8 +57,8 @@ public class RollCalibrationStepViewModelTests
         // next LiveRoll would read (3 - 3) = 0°.
         _store.Ahrs.IsRollInvert = false;
         _store.Ahrs.RollZero = 0;
-        var step = new RollCalibrationStepViewModel(_configService);
-        step.LiveRoll = 3.0;
+        var step = NewStep();
+        GivenRoll(3.0);
 
         ((ICommand)step.ZeroRollCommand).Execute(null);
 
@@ -59,7 +69,8 @@ public class RollCalibrationStepViewModelTests
         // production code path) and the operator tilting another 2°:
         // raw=5°, parser publishes LiveRoll = (5 - 3) = 2°.
         _store.Ahrs.RollZero = step.RollZero;
-        step.LiveRoll = 2.0;
+        GivenRoll(0.0); // the parser applied the new zero
+        GivenRoll(2.0);
 
         ((ICommand)step.ZeroRollCommand).Execute(null);
 
@@ -78,16 +89,17 @@ public class RollCalibrationStepViewModelTests
         // arithmetic correct.
         _store.Ahrs.IsRollInvert = true;
         _store.Ahrs.RollZero = 0;
-        var step = new RollCalibrationStepViewModel(_configService);
+        var step = NewStep();
         // Raw=-3° with invert -> live = (-(-3)) - 0 = 3°.
-        step.LiveRoll = 3.0;
+        GivenRoll(3.0);
 
         ((ICommand)step.ZeroRollCommand).Execute(null);
         Assert.That(step.RollZero, Is.EqualTo(3.0));
 
         // Operator tilts further; parser publishes 2°.
         _store.Ahrs.RollZero = step.RollZero;
-        step.LiveRoll = 2.0;
+        GivenRoll(0.0); // the parser applied the new zero
+        GivenRoll(2.0);
 
         ((ICommand)step.ZeroRollCommand).Execute(null);
 
@@ -102,9 +114,8 @@ public class RollCalibrationStepViewModelTests
         // must preserve the existing calibration rather than wipe it.
         _store.Ahrs.IsRollInvert = false;
         _store.Ahrs.RollZero = 1.5;
-        var step = new RollCalibrationStepViewModel(_configService);
-        step.RollZero = 1.5;
-        step.LiveRoll = 0.0;
+        var step = NewStep();
+        GivenRoll(0.0);
 
         ((ICommand)step.ZeroRollCommand).Execute(null);
 
