@@ -98,6 +98,25 @@ fields: a tree made drive-through and Go around again 5 m ahead while the entry 
 it, and a ditch made a U-turn obstacle again 13 m ahead with the turn's exit landing on its turn
 line, both ended with the alarm at 0 m.
 
+**P10. The arc is seated where a turn may be.** The generator seats an arc by walking back from
+the crossing until nothing of it is blocked, then slides it forward to touch the turn line. On the
+real fields a wall stood 14 m past a tree the pass went round: the arc was seated inside the bend
+(nothing blocked it there), and slid along the bend's heading, 24° off the pass, for 127 m until it
+met the field's edge, a turn planned in the next field. Now the room round every Go around
+obstacle blocks the arc as a turn line does (`IsPointBlockedForTurn`, the same keep-out P4 holds
+the path to), the slide is bounded by the distance walked back plus a step (`MoveTurnInsideTurnLine`),
+and an arc that slides off without touching the line is seated further back, before the tree.
+
+**P11. A hard obstacle's turn line counts the implement.** The turn line of a U-turn obstacle is
+the obstacle offset by the U-turn distance, as AgOpenGPS lays it, for the tractor. A hard obstacle's
+stands the implement's reach beyond the pivot's line (half its width plus its offset, `HardReach`)
+further out, so the pass itself keeps the implement, not only the tractor, that distance from a
+wall or a ditch: with the tractor's line alone, a trailed 3 m tool offset 2.5 m passed a wall with
+the pivot clear of its turn line and the tool 0.56 m into the wall, with no turn and no alarm, and
+an 8 m boom ran a metre into a ditch beside its pass. A soft obstacle the implement may pass over
+keeps the tractor's distance, as the field's edge does. The planner's own hard-obstacle clearance
+(the implement the U-turn distance off the fence along the turn) is the same rule seen from the turn.
+
 ## Geometry
 
 Unchanged from #610 (`ObstacleDetour`): each Go around obstacle grown by the keep-out distance

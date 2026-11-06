@@ -425,7 +425,7 @@ public partial class YouTurnCreationService
 
         // The obstacles a U-turn is made at, turn lines 1..n after the outer one. The extra
         // setback the clearance loop asks for moves them out from the obstacle the same way.
-        obstacles = TurnObstacles(boundary, distanceFromBoundary, promoted);
+        obstacles = TurnObstacles(boundary, distanceFromBoundary, promoted, HardReach(config));
         foreach (var o in obstacles)
             boundaryTurnLines.Add(new BoundaryTurnLine { Points = o.TurnLine, BoundaryIndex = o.InnerIndex + 1 });
 
@@ -434,6 +434,20 @@ public partial class YouTurnCreationService
         // Asked for every candidate path point: the turn line's strip index, built once per plan.
         var turnArea = PolygonSlabIndex.Build(turnBoundaryVec3);
         Func<Vec3, int> isPointInsideTurnArea = TurnAreaTest(turnArea, obstacles);
+
+        // A turn keeps out of the room round every Go around obstacle too (ClearsTurnObstacles
+        // holds the path to it), so the generator seats its arcs and slides them to the turn
+        // line by that test as well: at a U-turn obstacle just past a tree the pass goes round,
+        // the arc then stops before the tree, where it was seated inside the bend and slid along
+        // the bend's heading, away from the pass.
+        var keepOut = boundary != null ? RoundObstacles(boundary, config.Vehicle.TrackWidth / 2 + 0.3 + _goAround.SafetyMargin) : EmptyRound;
+        Func<Vec3, bool>? blockedForTurn = keepOut.Count == 0 ? null : p =>
+        {
+            if (isPointInsideTurnArea(p) != 0) return true;
+            foreach (var r in keepOut)
+                if (r.Clear.Contains(p.Easting, p.Northing)) return true;
+            return false;
+        };
 
         var pivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians);
 
@@ -471,6 +485,7 @@ public partial class YouTurnCreationService
             GuidanceType = GuidanceLineType.Curve,
             BoundaryTurnLines = boundaryTurnLines,
             IsPointInsideTurnArea = isPointInsideTurnArea,
+            IsPointBlockedForTurn = blockedForTurn,
 
             // The single generator walks these points (the current offset pass).
             GuidancePoints = currentCurvePoints,

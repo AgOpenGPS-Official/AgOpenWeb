@@ -173,9 +173,11 @@ public class ObstacleUTurnTests
         Assert.That(result.Path, Is.Null, "no turn: the operator is told");
         Assert.That(result.AtObstacle, Is.True);
 
-        // The ditch 1.5 m further off (the implement 1.5 m clear, more than the 1 m safety margin): the turn is made.
+        // The ditch 2.5 m further off (the implement 2 m clear, more than the 1 m safety margin; the
+        // pass's pivot a metre outside the ditch's turn line, which stands the implement's reach of 3 m
+        // plus the metre off a hard obstacle): the turn is made.
         boundary.InnerBoundaries.Remove(ditch);
-        var further = Rect(-30, 0, -7, 30);
+        var further = Rect(-30, 0, -8, 30);
         further.AtObstacle = ObstacleAction.Turn;
         further.IsHard = true;
         boundary.InnerBoundaries.Add(further);

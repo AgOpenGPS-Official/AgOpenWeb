@@ -40,21 +40,32 @@ public partial class YouTurnCreationService
 
     private const double ArcTolerance = 0.3;
 
-    // Built once per boundary, choice, distance and promoted set: a turn is planned again every
+    // Built once per boundary, choice, distances and promoted set: a turn is planned again every
     // cycle while it fails, and a field may have dozens of obstacles.
-    private (Boundary? Boundary, double Distance, long Key, long Promoted, List<TurnObstacle> List) _turnObstacles =
-        (null, 0, 0, 0, new List<TurnObstacle>());
+    private (Boundary? Boundary, double Distance, double HardExtra, long Key, long Promoted, List<TurnObstacle> List) _turnObstacles =
+        (null, 0, 0, 0, 0, new List<TurnObstacle>());
+
+    /// <summary>
+    /// How much further a hard obstacle's turn line stands off the obstacle than a soft one's: the
+    /// implement's reach beyond the pivot's line, half its width and its offset. The pass itself then
+    /// keeps the implement, not only the tractor, the U-turn distance from a wall or a ditch; with a
+    /// turn line laid for the tractor alone, a pass beside a ditch ran an 8 m boom a metre into it
+    /// with no turn and no alarm. An obstacle the implement may pass over (soft) keeps the tractor's
+    /// distance alone, as the field's edge does.
+    /// </summary>
+    internal static double HardReach(ConfigurationStore config) => config.Tool.Width / 2 + Math.Abs(config.Tool.Offset);
 
     /// <param name="promoted">Go around obstacles (inner indices) with no room on the pass steered
     /// now: they get a turn line on this pass.</param>
-    private List<TurnObstacle> TurnObstacles(Boundary boundary, double distance, IReadOnlyList<int>? promoted = null)
+    /// <param name="hardExtra">Added to <paramref name="distance"/> for a hard obstacle (<see cref="HardReach"/>).</param>
+    private List<TurnObstacle> TurnObstacles(Boundary boundary, double distance, IReadOnlyList<int>? promoted = null, double hardExtra = 0)
     {
         if (boundary.InnerBoundaries.Count == 0) return EmptyObstacles;
         long key = ObstacleStamp(boundary);
         long promotedKey = 0;
         if (promoted != null) foreach (int p in promoted) promotedKey = promotedKey * 31 + p + 1;
         var cached = _turnObstacles;
-        if (ReferenceEquals(cached.Boundary, boundary) && cached.Distance == distance && cached.Key == key
+        if (ReferenceEquals(cached.Boundary, boundary) && cached.Distance == distance && cached.HardExtra == hardExtra && cached.Key == key
             && cached.Promoted == promotedKey)
             return cached.List;
 
@@ -67,15 +78,16 @@ public partial class YouTurnCreationService
 
             var fence = inner.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList();
             // > 0: the turn stays that far from the obstacle; < 0: it may reach that far into it.
-            List<Vec2>? line = distance > 0.1 ? _polygonOffsetService.CreateOutwardOffset(fence, distance)
-                : distance < -0.1 ? _polygonOffsetService.CreateInwardOffset(fence, -distance)
+            double off = distance + (inner.IsHard ? hardExtra : 0);
+            List<Vec2>? line = off > 0.1 ? _polygonOffsetService.CreateOutwardOffset(fence, off)
+                : off < -0.1 ? _polygonOffsetService.CreateInwardOffset(fence, -off)
                 : fence;
             if (line == null || line.Count < 3) continue; // shrunk away: nothing left to turn at
 
             var withHeadings = _polygonOffsetService.CalculatePointHeadings(line);
             var area = PolygonSlabIndex.Build(withHeadings);
             if (area == null) continue;
-            double tightDistance = distance - ArcTolerance;
+            double tightDistance = off - ArcTolerance;
             List<Vec2>? tightLine = tightDistance > 0.1 ? _polygonOffsetService.CreateOutwardOffset(fence, tightDistance)
                 : tightDistance < -0.1 ? _polygonOffsetService.CreateInwardOffset(fence, -tightDistance)
                 : fence;
@@ -84,7 +96,7 @@ public partial class YouTurnCreationService
             list.Add(new TurnObstacle(i, withHeadings, area, fence, inner.IsHard, tight));
         }
 
-        _turnObstacles = (boundary, distance, key, promotedKey, list);
+        _turnObstacles = (boundary, distance, hardExtra, key, promotedKey, list);
         return list;
     }
 
@@ -176,7 +188,7 @@ public partial class YouTurnCreationService
         IReadOnlyList<int>? promoted = null)
     {
         if (boundary == null || boundary.InnerBoundaries.Count == 0) return -1;
-        var obstacles = TurnObstacles(boundary, _configStore.Guidance.UTurnDistanceFromBoundary, promoted);
+        var obstacles = TurnObstacles(boundary, _configStore.Guidance.UTurnDistanceFromBoundary, promoted, HardReach(_configStore));
         if (obstacles.Count == 0) return -1;
         double se = Math.Sin(heading), ce = Math.Cos(heading);
         int steps = Math.Max(1, (int)Math.Ceiling(distance / 0.5));
@@ -224,7 +236,7 @@ public partial class YouTurnCreationService
         IReadOnlyList<int>? promoted = null)
     {
         innerIndex = -1;
-        obstacles ??= TurnObstacles(boundary, config.Guidance.UTurnDistanceFromBoundary, promoted);
+        obstacles ??= TurnObstacles(boundary, config.Guidance.UTurnDistanceFromBoundary, promoted, HardReach(config));
         double goAroundMargin = _goAround.SafetyMargin;
         var round = RoundObstacles(boundary, config.Vehicle.TrackWidth / 2 + 0.3 + goAroundMargin);
         if ((obstacles.Count == 0 && round.Count == 0) || path.Count < 2) return true;

@@ -28,6 +28,15 @@ namespace AgOpenWeb.Models.YouTurn
         /// </summary>
         public Func<Vec3, int> IsPointInsideTurnArea { get; set; }
 
+        /// <summary>
+        /// Whether a point of a turn being laid out is blocked: inside a turn line
+        /// (<see cref="IsPointInsideTurnArea"/> not 0) or in the room kept round a Go around
+        /// obstacle, which a turn keeps out of as the bent pass does. The generator seats its
+        /// arcs and slides them to the turn line by this test; the crossing a turn is made at
+        /// is still found by the turn lines. Null: the turn lines alone.
+        /// </summary>
+        public Func<Vec3, bool>? IsPointBlockedForTurn { get; set; }
+
         // Guidance line data
         /// <summary>
         /// For curves: List of curve points.
