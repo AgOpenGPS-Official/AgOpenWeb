@@ -27,7 +27,7 @@
 
   <PropertyGroup>
     <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
-    <Version>26.7.0</Version>
+    <Version>26.7.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
