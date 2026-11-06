@@ -122,4 +122,41 @@ public class VehicleToolLimitsTests
         s.Vehicle.AntennaOffset = double.NaN;
         Assert.That(VehicleToolLimits.WhyCannotSteer(s), Does.Contain("antenna"));
     }
+
+    // Checked before the change: a refused section count used to be undone afterwards, and the
+    // sections brought back came at the default width (8 × 76.2 cm with a 1 m overlap, set to
+    // 1 section: the boom grew from 6.1 m to 7.76 m).
+    [Test]
+    public void Fewer_sections_than_the_overlap_needs_are_refused_before_anything_changes()
+    {
+        var s = new ConfigurationStore();
+        s.NumSections = 8;
+        for (int i = 0; i < 8; i++) s.Tool.SetSectionWidth(i, 76.2);
+        s.Tool.Overlap = 1.0;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(VehicleToolLimits.Check("tool.numSections", "1", s), Does.Contain("wider than the overlap"));
+            Assert.That(VehicleToolLimits.Check("tool.numSections", "2", s), Is.Null, "1.52 m is wider than the 1 m overlap");
+            Assert.That(VehicleToolLimits.Check("tool.numSections", "12", s), Is.Null, "more sections");
+            Assert.That(s.NumSections, Is.EqualTo(8));
+            Assert.That(s.ActualToolWidth, Is.EqualTo(8 * 0.762).Within(1e-9), "the widths are untouched");
+        });
+    }
+
+    [Test]
+    public void A_section_narrowed_below_the_overlap_is_refused_and_one_not_in_use_is_not_counted()
+    {
+        var s = new ConfigurationStore();
+        s.NumSections = 1;
+        s.Tool.SetSectionWidth(0, 300);
+        s.Tool.Overlap = 1.0;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(VehicleToolLimits.Check("tool.sectionWidth", "0,90", s), Does.Contain("wider than the overlap"));
+            Assert.That(VehicleToolLimits.Check("tool.sectionWidth", "0,150", s), Is.Null);
+            Assert.That(VehicleToolLimits.Check("tool.sectionWidth", "3,10", s), Is.Null, "section 4 is not in use");
+        });
+    }
 }

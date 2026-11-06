@@ -99,7 +99,32 @@ public static class VehicleToolLimits
         // The passes are the implement width less the overlap apart: they must stay apart.
         if (key == "tool.overlap" && v >= store.ActualToolWidth - 0.01)
             return $"Overlap must be less than the implement width ({Show(store.ActualToolWidth, Unit.Metre, metric)} {Symbol(Unit.Metre, metric)})";
+        // Fewer or narrower sections must leave the implement wider than the overlap too. Checked
+        // before anything changes: undoing a section count afterwards brought the sections back
+        // at the default width, not their own.
+        if (key is "tool.numSections" or "tool.sectionWidth"
+            && ImplementWidthAfter(key, value, v, store) - store.Tool.Overlap <= 0.01)
+            return "The implement must stay wider than the overlap: lower the overlap first";
         return null;
+    }
+
+    // The implement width (m) the change would leave: a section count keeps the first sections'
+    // widths and seeds new ones at the default width (ConfigurationStore.NumSections); a width
+    // counts only for a section in use.
+    private static double ImplementWidthAfter(string key, string value, double v, ConfigurationStore store)
+    {
+        var tool = store.Tool;
+        int now = store.NumSections;
+        if (key == "tool.numSections")
+        {
+            int n = Math.Clamp((int)v, 1, ToolConfig.MaxSections);
+            double cm = 0;
+            for (int i = 0; i < n; i++) cm += i < now ? tool.GetSectionWidth(i) : tool.DefaultSectionWidth;
+            return cm > 0 ? cm / 100.0 : tool.Width;
+        }
+        int idx = int.Parse(value[..value.IndexOf(',')], NumberStyles.Integer, CultureInfo.InvariantCulture);
+        if (idx >= now) return store.ActualToolWidth;
+        return store.ActualToolWidth + (v - tool.GetSectionWidth(idx)) / 100.0;
     }
 
     /// <summary>

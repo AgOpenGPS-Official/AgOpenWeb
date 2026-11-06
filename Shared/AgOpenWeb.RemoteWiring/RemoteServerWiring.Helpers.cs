@@ -51,21 +51,9 @@ public static partial class RemoteServerWiring
         var tool = store.Tool;
         bool harvester = store.Vehicle.Type == AgOpenWeb.Models.VehicleType.Harvester;
         bool wasFront = tool.IsToolFrontFixed;
-        int sections = store.NumSections;
-        int widthIdx = key == "tool.sectionWidth" && int.TryParse(val.Split(',')[0], System.Globalization.NumberStyles.Integer,
-            System.Globalization.CultureInfo.InvariantCulture, out var wi) ? wi : -1;
-        double width = widthIdx >= 0 ? tool.GetSectionWidth(widthIdx) : 0;
 
         ApplyConfigSet(store, cfg, key, val);
 
-        // Fewer or narrower sections must still leave the passes apart (the overlap is less
-        // than the implement): otherwise put the section back.
-        if ((key == "tool.numSections" || widthIdx >= 0) && store.ActualToolWidth - tool.Overlap <= 0.01)
-        {
-            if (widthIdx >= 0) tool.SetSectionWidth(widthIdx, width);
-            else store.NumSections = sections;
-            return "The implement must stay wider than the overlap: lower the overlap first";
-        }
         // A harvester's header is front-mounted (#111): say so rather than ignore the choice.
         if (key == "tool.type" && harvester && !string.Equals(val, "front", System.StringComparison.OrdinalIgnoreCase))
             return "A combine takes only a front implement (its header)";
