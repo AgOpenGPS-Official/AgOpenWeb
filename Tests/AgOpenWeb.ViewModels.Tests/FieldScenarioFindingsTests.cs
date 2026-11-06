@@ -158,6 +158,7 @@ public class FieldScenarioFindingsTests
     [TestCase("passes", "-3", "Tram passes must be")]
     [TestCase("passes", "1.5", "Tram passes must be a whole number")]
     [TestCase("ref", "No such line", "There is no track called 'No such line'")]
+    [TestCase("offset", "NaN", "Tram offset must be a number")]
     public void A_tram_value_out_of_range_or_naming_no_track_is_refused(string field, string value, string why)
     {
         TwoPointTrack();

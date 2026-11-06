@@ -78,8 +78,12 @@ public partial class MainViewModel
                 sys.TramWidth = double.Parse(value, System.Globalization.NumberStyles.Float, inv);
                 break;
             case "offset":
-                if (double.TryParse(value, System.Globalization.NumberStyles.Float, inv, out var o))
-                    sys.Offset = o;
+                if (!double.TryParse(value, System.Globalization.NumberStyles.Float, inv, out var o) || !double.IsFinite(o))
+                {
+                    ReportFailure("Tram offset must be a number"); // NaN parsed, and moved the lines nowhere
+                    return;
+                }
+                sys.Offset = o;
                 break;
             case "passes":
                 if (TramValueRefused("tram.passes", value)) return;
