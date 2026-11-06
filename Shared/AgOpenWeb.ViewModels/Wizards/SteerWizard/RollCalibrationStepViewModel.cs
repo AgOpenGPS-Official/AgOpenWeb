@@ -76,6 +76,9 @@ public class RollCalibrationStepViewModel : WizardStepViewModel
         set => SetProperty(ref _liveRoll, value);
     }
 
+    /// <summary>Zero Roll was pressed in this wizard (the Finish page lists the tests not run).</summary>
+    public bool ZeroDone => Touched(nameof(RollZero));
+
     private bool _hasLiveData;
     public bool HasLiveData
     {

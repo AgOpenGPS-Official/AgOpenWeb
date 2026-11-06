@@ -85,6 +85,9 @@ public class WasCalibrationStepViewModel : WizardStepViewModel
 
     public ICommand ZeroWasCommand { get; }
 
+    /// <summary>Zero WAS was pressed in this wizard (the Finish page lists the tests not run).</summary>
+    public bool ZeroDone => Touched(nameof(WasOffset));
+
     public WasCalibrationStepViewModel(IConfigurationService configService,
         IAutoSteerService? autoSteerService = null)
     {

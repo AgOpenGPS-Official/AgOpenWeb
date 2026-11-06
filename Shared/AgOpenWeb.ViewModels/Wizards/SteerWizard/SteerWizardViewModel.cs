@@ -2,6 +2,7 @@
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using AgOpenWeb.Services.Interfaces;
 
@@ -84,7 +85,7 @@ public class SteerWizardViewModel : WizardViewModel
         AddStep(new SpeedAndSensorsStepViewModel(configService));
 
         // Step 12: Finish
-        AddStep(new FinishStepViewModel());
+        AddStep(new FinishStepViewModel(() => NotTested(hardwareStep, rollCal, wasCal, autoCal, maxSteer, cpdCircle, ackermannTest)));
 
         // Initialize navigation
         Initialize();
@@ -96,5 +97,21 @@ public class SteerWizardViewModel : WizardViewModel
         var store = _configService.Store;
         _configService.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
         return Task.CompletedTask;
+    }
+
+    /// <summary>The tests not run in this wizard, for the Finish page (none with GPS only: it has no tests).</summary>
+    private static IReadOnlyList<string> NotTested(HardwareInstalledStepViewModel hardware,
+        RollCalibrationStepViewModel roll, WasCalibrationStepViewModel was, AutoMotorCalibrationStepViewModel motor,
+        MaxSteeringAngleStepViewModel maxAngle, CpdCircleTestStepViewModel cpd, AckermannTestStepViewModel ackermann)
+    {
+        var missing = new List<string>();
+        if (hardware.HardwareLevel == 0) return missing;
+        if (!was.ZeroDone) missing.Add("the WAS zero");
+        if (!roll.ZeroDone) missing.Add("the roll zero");
+        if (!motor.TestDone) missing.Add("the motor direction test");
+        if (!maxAngle.TestDone) missing.Add("the max steer angle test");
+        if (!cpd.TestCompleted) missing.Add("the CPD circle");
+        if (!ackermann.TestCompleted) missing.Add("the Ackermann circle");
+        return missing;
     }
 }

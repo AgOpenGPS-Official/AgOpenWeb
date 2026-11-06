@@ -212,6 +212,9 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         set => SetProperty(ref _calibrationCompleted, value);
     }
 
+    /// <summary>A motor test ran to its end in this wizard (the Finish page lists the tests not run).</summary>
+    public bool TestDone { get; internal set; }
+
     // =========================================================================
     // Live feedback
     // =========================================================================
@@ -519,6 +522,7 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
             MaxSteerAngle = (int)(Math.Min(DetectedMaxAngleRight, DetectedMaxAngleLeft) * 0.9);
 
             CalibrationCompleted = true;
+            TestDone = true;
             Phase = CalibrationPhase.Complete;
             PhaseResult = $"Right max: {DetectedMaxAngleRight:F1}\n" +
                           $"Left max: {DetectedMaxAngleLeft:F1}\n" +

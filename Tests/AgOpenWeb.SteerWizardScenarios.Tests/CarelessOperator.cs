@@ -159,12 +159,20 @@ public static class CarelessOperator
     {
         await using var s = await WizardScenario.StartAsync(j, name, "careless", m => m.TruthWasReversed = true);
         await s.StepAsync("Open the wizard", s.OpenAsync);
+        bool warned = false;
         await s.StepAsync("Press Next on every step without doing anything, then Finish", async () =>
         {
             int n = 0;
             while (await WizardOpen(s) && n++ < 20)
             {
                 var kind = await s.KindAsync();
+                if (kind == "finish")
+                {
+                    // The Finish page should say which tests were skipped before the last press.
+                    var f = await s.Rig.FrameAsync();
+                    warned = (f?.TestResult ?? "").Contains("Not tested", StringComparison.Ordinal);
+                    s.Rig.Note("Finish page: " + (warned ? f!.TestResult : "no word about the tests not run"));
+                }
                 if (!await s.NextAsync()) { s.Rig.Note("Next did nothing on " + kind); break; }
             }
             bool stillOpen = await WizardOpen(s);
@@ -173,7 +181,7 @@ public static class CarelessOperator
         await s.StepAsync("What the wizard let through", async () =>
         {
             var a = s.Rig.Store.AutoSteer;
-            await s.CheckAsync(!(!await WizardOpen(s) && a.InvertWas != s.Module.TruthWasReversed),
+            await s.CheckAsync(warned || !(!await WizardOpen(s) && a.InvertWas != s.Module.TruthWasReversed),
                 new Finding(Severity.Improvement, "FINISH_WITH_NO_TEST",
                     "The wizard finishes with no step tested (WAS direction, motor, max angle, CPD, Ackermann all skipped by Next) and says nothing about it: the steer sensor here is mounted the other way and nothing caught it."));
         }, Expect.Any);
