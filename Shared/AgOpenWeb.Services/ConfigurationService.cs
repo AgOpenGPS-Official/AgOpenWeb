@@ -225,6 +225,18 @@ public class ConfigurationService(
         ProfileSaved?.Invoke(this, vehicleName);
     }
 
+    public void SaveProfilesAs(string vehicleName, string toolName)
+    {
+        Store.ActiveVehicleProfileName = vehicleName;
+        Store.ActiveVehicleProfilePath = Path.Combine(profileService.VehiclesDirectory, $"{vehicleName}.json");
+        Store.ActiveToolProfileName = toolName;
+        Store.ActiveToolProfilePath = Path.Combine(toolProfileService.ToolsDirectory, $"{toolName}.json");
+        settingsService.Settings.LastUsedVehicleProfile = vehicleName;
+        settingsService.Settings.LastUsedToolProfile = toolName;
+        settingsService.Save();
+        SaveProfiles(vehicleName, toolName);
+    }
+
     public void CreateProfile(string name) => CreateProfile(name, vehicle: true, tool: true);
 
     public void CreateProfile(string name, bool vehicle, bool tool)
