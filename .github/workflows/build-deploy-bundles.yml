@@ -353,6 +353,27 @@ jobs:
             echo "banner=> **Use the [Beta](${REPO_URL}/releases/tag/beta)** — it is rebuilt from \`${DEFAULT_BRANCH}\` on demand and daily when there are changes, and is the build to report issues against." >> "$GITHUB_OUTPUT"
           fi
 
+      # A numbered release lists every PR merged since the previous numbered tag (GitHub's
+      # generated notes, grouped by .github/release.yml). The previous tag is found among the
+      # version tags ("v26.7.1", and the older "26.7.0" spelling), not by GitHub's default,
+      # which would pick the rolling beta and list almost nothing.
+      - name: Changes since the previous release
+        if: steps.meta.outputs.beta != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          git fetch --tags --quiet origin
+          # The version tag just below this one (a rebuild of an older tag gets its own range).
+          PREV=$( { git tag; echo "$TAG"; } | sort -u | awk '/^v?[0-9]+\.[0-9]+\.[0-9]+$/ { v=$0; sub(/^v/, "", v); print v "\t" $0 }' \
+            | sort -V | awk -F'\t' -v cur="$TAG" '$2 == cur { print prev; exit } { prev=$2 }')
+          ARGS=(-f "tag_name=$TAG" -f "target_commitish=$GITHUB_SHA")
+          if [ -n "$PREV" ]; then ARGS+=(-f "previous_tag_name=$PREV"); fi
+          echo "Notes from ${PREV:-the first commit} to $TAG"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" "${ARGS[@]}" --jq .body > "$RUNNER_TEMP/changes.md"
+          { echo 'body<<CHANGES_EOF'; cat "$RUNNER_TEMP/changes.md"; echo; echo 'CHANGES_EOF'; } >> "$GITHUB_OUTPUT"
+        id: changes
+
       - name: List bundles
         run: find dist -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.dmg' -o -name '*.apk' \)
 
@@ -401,6 +422,8 @@ jobs:
             | Android | `agopenweb-android.apk` | sideload |
 
             See each download's bundled `README` for full prerequisites and details.
+
+            ${{ steps.changes.outputs.body }}
           draft: false
           files: |
             dist/**/*.tar.gz

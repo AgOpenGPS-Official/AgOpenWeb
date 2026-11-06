@@ -85,6 +85,8 @@ A translation that doesn't fit has to be shortened (a shorter word or an abbrevi
   width, so this is the check that counts. A label that gets shorter never fails for
   narrowing a neighbour that shares its row. A translation that fails and isn't in
   `Tools/i18n-fit-baseline.json` fails the job, naming the screen and the limit.
+  It runs only when a change touches the web client (`wwwroot/`), `Tools/i18n-limits.py`,
+  the baseline or the CI workflow; for other changes it is skipped, which counts as passed.
 - **The baseline** lists translations approved before the limits existed. When the
   translator shortens one, CI warns that it fits now: take it out of the file.
 

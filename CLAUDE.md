@@ -453,7 +453,7 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.IntegrationTests` - test-support library (fake settings etc.); not a standalone test run
 - `AgOpenWeb.FieldScenarios.Tests` - end-to-end field scenarios: the whole backend in-process, a careful and a careless operator on five real field shapes, a findings report; about 4 minutes, not in CI (its `README.md`)
 
-CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/license-headers.py --check` for the licence headers, and `Tools/i18n-limits.py --check` (job `translations-fit`) so every translated label fits the English layout.
+CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/license-headers.py --check` for the licence headers, and `Tools/i18n-limits.py --check` (job `translations-fit`, only when a change touches `wwwroot/`, the check, its baseline or the workflow; otherwise skipped, which counts as passed) so every translated label fits the English layout.
 
 **Hot-path budgets** (job `hot-path-budgets`, `Tests/AgOpenWeb.Services.Tests/Performance`): a 300 × 500 m field, with a headland and with only the outer boundary, is driven through the real GPS cycle and the 100 Hz control tick, and every cycle is held to a budget of `WorkCounters` (polygon edges, coverage lookups, offset points, bytes allocated). Counts don't depend on the machine, so CI can enforce them. A failure means new work runs every cycle: do it once and keep the result. `HotPathBudgetTests.Report` (explicit) prints the counts. Run locally: `dotnet test Tests/AgOpenWeb.Services.Tests/ -c Release --filter TestCategory=HotPath`.
 
@@ -484,14 +484,15 @@ Two GitHub Actions workflows, split by purpose:
   - on a **`v*` tag** (or manual dispatch with a tag) → publishes one complete Release, marked
     prerelease so it never shows as "Latest" (the beta is the build users run), with every
     artifact: Linux daemon (x64/arm64) + desktop launcher (x64/arm64) tarballs, Windows zip
-    (launcher + service installer), macOS `.dmg`, and the Android APK;
+    (launcher + service installer), macOS `.dmg`, and the Android APK; its notes end with every
+    PR merged since the previous version tag (GitHub's generated notes, `.github/release.yml`);
   - on a **daily schedule** → refreshes a rolling `beta` prerelease with the same artifacts, only
     when `develop` has moved on since the beta was built (otherwise the run builds nothing);
   - on a manual dispatch, by its `publish` input: `beta` (default) refreshes the rolling
     beta from `develop` right away (title carries build time + commit); `release` publishes
     the Release named by `release_tag`; `none` builds + uploads artifacts only (dry run).
 
-To cut a release: bump `sys/version.h`, then push a tag — `git tag v26.6.x && git push origin v26.6.x`.
+To cut a release (about weekly, so each one stays small): bump `sys/version.h` and the three heads' display versions, then push a tag — `git tag v26.7.x && git push origin v26.7.x`. A summary on top of the generated list goes in with `gh release edit`.
 
 ## Legacy Code
 
