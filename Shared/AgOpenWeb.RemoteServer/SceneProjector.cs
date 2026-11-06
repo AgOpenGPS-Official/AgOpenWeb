@@ -859,12 +859,11 @@ public sealed class SceneProjector : System.IDisposable
             a.LightbarEnabled, a.SteerBarEnabled, a.GuidanceBarOn, a.RefNudgeDistance);
     }
 
-    // Resolution label mirrors MainViewModel.DisplayResolutionLabel.
     private DisplayConfigDto BuildDisplay()
     {
         var d = _config.Display;
         var rm = d.DisplayResolutionMultiplier;
-        string res = rm < 1.25 ? "Ultra" : rm < 2.0 ? "High" : rm < 3.25 ? "Med" : rm < 5.0 ? "Low" : "Min";
+        string res = AgOpenWeb.Models.Configuration.DisplayConfig.QualityLabel(rm);
         return new DisplayConfigDto(
             d.GridVisible, d.FieldTextureVisible, d.FieldTextureMoveable, d.SvennArrowVisible,
             d.HeadlandDistanceVisible, d.LineSmoothEnabled, d.AutoDayNight, d.HardwareMessagesEnabled,

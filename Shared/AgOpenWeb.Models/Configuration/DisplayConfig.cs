@@ -290,6 +290,16 @@ public class DisplayConfig : ObservableObject
     // and visual quality is close enough to Ultra that it's the right
     // first-launch default for tablets. Users can dial up to Ultra in
     // Display config when running on faster hardware.
+    /// <summary>The name the Display settings show for a resolution multiplier.</summary>
+    public static string QualityLabel(double multiplier) => multiplier switch
+    {
+        < 1.25 => "Ultra",
+        < 2.0 => "High",
+        < 3.25 => "Med",
+        < 5.0 => "Low",
+        _ => "Min",
+    };
+
     private static double GetDefaultResolutionMultiplier() =>
         OperatingSystem.IsAndroid() || OperatingSystem.IsIOS() ? 1.5 : 1.0;
 }

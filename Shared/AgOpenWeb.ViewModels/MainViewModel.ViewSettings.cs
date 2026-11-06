@@ -310,14 +310,8 @@ public partial class MainViewModel
         }
     }
 
-    public string DisplayResolutionLabel => ConfigStore.Display.DisplayResolutionMultiplier switch
-    {
-        < 1.25 => "Ultra",
-        < 2.0  => "High",
-        < 3.25 => "Med",
-        < 5.0  => "Low",
-        _ => "Min",
-    };
+    public string DisplayResolutionLabel =>
+        AgOpenWeb.Models.Configuration.DisplayConfig.QualityLabel(ConfigStore.Display.DisplayResolutionMultiplier);
 
     #endregion
 

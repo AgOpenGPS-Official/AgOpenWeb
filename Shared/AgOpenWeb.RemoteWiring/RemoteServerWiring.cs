@@ -699,7 +699,7 @@ public static partial class RemoteServerWiring
                                     return;
                                 case "app.resetSettings": case "app.setHotkey":
                                 case "app.resetHotkeys": case "app.bugReport": case "app.bugReport.send":
-                                    ApplyAppCommand(services, vm, cmd, arg);
+                                    ApplyAppCommand(services, vm, cmd, arg, server.ClientDiagnosticsSummary);
                                     return;
                             }
 

@@ -36,6 +36,9 @@ public sealed class RemoteServerHost
     /// <summary>Number of connected browser clients — drives the launcher's live status.</summary>
     public int ClientCount => _ws?.ClientCount ?? 0;
 
+    /// <summary>How each browser draws the map, for the bug report dump's <c>system_info.txt</c>.</summary>
+    public string ClientDiagnosticsSummary() => _ws?.DiagnosticsSummary() ?? "";
+
     /// <summary>
     /// Broadcast a one-shot alert sound to every connected client. The host never
     /// plays audio itself (it may be a headless box with no speaker); the operator's
