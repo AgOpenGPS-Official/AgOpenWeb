@@ -10,6 +10,7 @@ using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.Sections;
 using AgOpenWeb.Models.State;
+using AgOpenWeb.Models.Timing;
 using AgOpenWeb.Services.AutoSteer;
 using AgOpenWeb.Services.Coverage;
 using AgOpenWeb.Services.Geometry;
@@ -48,8 +49,11 @@ public sealed class ObstacleScenarioRig : IDisposable
 
     // The tractor: pivot (rear axle centre), heading (radians, clockwise from north), wheel angle (degrees, + right).
     private double _e, _n, _h, _steer;
+    private readonly TestClock _clock;
 
-    public ObstacleScenarioRig(ObstacleTestField.Built field, string toolType, double toolWidth = 6, double toolOffset = 0, double hitchLength = 4)
+    /// <param name="headlandWidth">The headland's width (m): the U-turn planner's room for the turn at the field's edge.</param>
+    public ObstacleScenarioRig(ObstacleTestField.Built field, string toolType, double toolWidth = 6, double toolOffset = 0, double hitchLength = 4,
+        double headlandWidth = ObstacleTestField.HeadlandWidth)
     {
         Field = field;
         ToolWidth = toolWidth;
@@ -59,6 +63,10 @@ public sealed class ObstacleScenarioRig : IDisposable
         bool verbose = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_VERBOSE") is "1" or "true";
         ILogger<T> LoggerFor<T>() => verbose ? new CapturingLogger<T>(this) : NullLogger<T>.Instance;
 
+        // The pipeline's clock: the pose estimator extrapolates between fixes by it and the pass pick
+        // is throttled by it, so on the system clock a leg came out differently in a cold process
+        // (the JIT's first cycles are slow). It advances a tenth of a second per fix, like the tractor.
+        Clock.Set(_clock = new TestClock());
         ConfigurationStore.SetInstance(new ConfigurationStore());
         var c = ConfigurationStore.Instance;
         c.Vehicle.Wheelbase = Wheelbase;
@@ -113,7 +121,7 @@ public sealed class ObstacleScenarioRig : IDisposable
         Pipeline.SetHeadlandOn(true);
         sections.SetFieldContext(new SectionFieldContext(field.Boundary, field.HeadlandLine, true, true));
         Pipeline.SetYouTurnConfig(uTurnSkipRows: 0, isSkipWorkedMode: false,
-            headlandCalculatedWidth: ObstacleTestField.HeadlandWidth, headlandDistance: ObstacleTestField.HeadlandWidth,
+            headlandCalculatedWidth: headlandWidth, headlandDistance: headlandWidth,
             isAlternateSkipMode: false);
         Pipeline.SetYouTurnEnabled(true);
     }
@@ -291,6 +299,7 @@ public sealed class ObstacleScenarioRig : IDisposable
         _e += Math.Sin(_h) * v * Dt;
         _n += Math.Cos(_h) * v * Dt;
         Time += Dt;
+        _clock.Advance(TimeSpan.FromSeconds(Dt));
 
         if (Engaged)
         {
@@ -441,6 +450,7 @@ public sealed class ObstacleScenarioRig : IDisposable
         Pipeline.Stop();
         _gps.Stop();
         ConfigurationStore.SetInstance(new ConfigurationStore());
+        Clock.Reset();
     }
 
     /// <summary>A service's own log lines, into the rig's log with the rig's clock.</summary>
