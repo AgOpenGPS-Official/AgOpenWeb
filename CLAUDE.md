@@ -451,6 +451,7 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.ViewModels.Tests` - ViewModel / control-brain logic
 - `AgOpenWeb.RemoteServer.Tests` - web host: Bing tile replies, boundary imagery capture
 - `AgOpenWeb.IntegrationTests` - test-support library (fake settings etc.); not a standalone test run
+- `AgOpenWeb.FieldScenarios.Tests` - end-to-end field scenarios: the whole backend in-process, a careful and a careless operator on five real field shapes, a findings report; about 4 minutes, not in CI (its `README.md`)
 
 CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/license-headers.py --check` for the licence headers, and `Tools/i18n-limits.py --check` (job `translations-fit`) so every translated label fits the English layout.
 
