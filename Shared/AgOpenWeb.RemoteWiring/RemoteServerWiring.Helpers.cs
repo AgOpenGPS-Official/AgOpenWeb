@@ -54,6 +54,8 @@ public static partial class RemoteServerWiring
 
         ApplyConfigSet(store, cfg, key, val);
 
+        if (AgOpenWeb.Models.Configuration.VehicleToolLimits.ApplySectionTiming(key, store) is { } timing)
+            return timing;
         // A harvester's header is front-mounted (#111): say so rather than ignore the choice.
         if (key == "tool.type" && harvester && !string.Equals(val, "front", System.StringComparison.OrdinalIgnoreCase))
             return "A combine takes only a front implement (its header)";

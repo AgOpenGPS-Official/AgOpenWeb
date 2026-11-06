@@ -159,4 +159,81 @@ public class VehicleToolLimitsTests
             Assert.That(VehicleToolLimits.Check("tool.sectionWidth", "3,10", s), Is.Null, "section 4 is not in use");
         });
     }
+
+    // The Vehicle & Tool scenarios: a 10 m gap on an 8 m boom drove the passes 18 m apart.
+    [TestCase("-10", false)]
+    [TestCase("-8", false)]
+    [TestCase("-7.9", true)]
+    [TestCase("-0.2", true)]
+    public void A_gap_must_be_less_than_the_implement(string gap, bool ok)
+    {
+        var why = VehicleToolLimits.Check("tool.overlap", gap, Sprayer());
+        Assert.That(why == null, Is.EqualTo(ok), why);
+        if (!ok) Assert.That(why, Does.StartWith("A gap must be less than the implement width"));
+    }
+
+    [TestCase("gps.minGpsStep", "0", false)]
+    [TestCase("gps.minGpsStep", "0.05", true)]
+    [TestCase("gps.minGpsStep", "0.1", true)]
+    [TestCase("gps.fixToFixDistance", "-1", false)]
+    [TestCase("gps.fixToFixDistance", "0.5", true)]
+    [TestCase("gps.fixToFixDistance", "1", true)]
+    public void The_GPS_steps_take_a_positive_distance(string key, string value, bool ok)
+    {
+        Assert.That(VehicleToolLimits.Check(key, value, Sprayer()) == null, Is.EqualTo(ok));
+    }
+
+    // AgOpenGPS ConfigTool: look ahead off at most 0.8 x look ahead on; it and the turn off delay
+    // exclude each other.
+    [Test]
+    public void Look_ahead_off_is_held_to_0_8_of_look_ahead_on()
+    {
+        var s = Sprayer();
+        s.Tool.LookAheadOnSetting = 1.0;
+        s.Tool.LookAheadOffSetting = 5.0;
+
+        var note = VehicleToolLimits.ApplySectionTiming("tool.lookAheadOff", s);
+
+        Assert.That(s.Tool.LookAheadOffSetting, Is.EqualTo(0.8).Within(1e-9));
+        Assert.That(note, Does.Contain("at most 0.8"));
+    }
+
+    [Test]
+    public void Lowering_look_ahead_on_lowers_look_ahead_off_with_it()
+    {
+        var s = Sprayer();
+        s.Tool.LookAheadOffSetting = 0.5;
+        s.Tool.LookAheadOnSetting = 0.5;
+
+        VehicleToolLimits.ApplySectionTiming("tool.lookAheadOn", s);
+
+        Assert.That(s.Tool.LookAheadOffSetting, Is.EqualTo(0.4).Within(1e-9));
+    }
+
+    [Test]
+    public void Look_ahead_off_and_the_turn_off_delay_exclude_each_other()
+    {
+        var s = Sprayer();
+        s.Tool.LookAheadOnSetting = 1.0;
+        s.Tool.TurnOffDelay = 2;
+        s.Tool.LookAheadOffSetting = 0.5;
+        VehicleToolLimits.ApplySectionTiming("tool.lookAheadOff", s);
+        Assert.That(s.Tool.TurnOffDelay, Is.EqualTo(0), "look ahead off set: the delay goes to 0");
+
+        s.Tool.TurnOffDelay = 1;
+        VehicleToolLimits.ApplySectionTiming("tool.turnOffDelay", s);
+        Assert.That(s.Tool.LookAheadOffSetting, Is.EqualTo(0), "a delay set: look ahead off goes to 0");
+    }
+
+    [Test]
+    public void Section_timing_within_the_rules_is_left_alone()
+    {
+        var s = Sprayer();
+        s.Tool.LookAheadOnSetting = 1.0;
+        s.Tool.LookAheadOffSetting = 0.5;
+        s.Tool.TurnOffDelay = 0;
+
+        Assert.That(VehicleToolLimits.ApplySectionTiming("tool.lookAheadOff", s), Is.Null);
+        Assert.That(s.Tool.LookAheadOffSetting, Is.EqualTo(0.5));
+    }
 }

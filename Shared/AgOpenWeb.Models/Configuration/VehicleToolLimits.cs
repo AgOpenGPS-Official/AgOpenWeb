@@ -36,6 +36,10 @@ public static class VehicleToolLimits
         ["vehicle.imuOffset"] = new(-5, 5, Unit.Metre, "IMU offset"),
         ["vehicle.type"] = new(0, 2, Unit.None, "Vehicle type"),
         ["gps.dualHeadingOffset"] = new(-180, 180, Unit.Degree, "Heading offset"),
+        // AgOpenGPS offers two pairs only (5 cm / 50 cm and 10 cm / 100 cm, ConfigData): any
+        // positive step a receiver can resolve is allowed here, 0 or less is not.
+        ["gps.minGpsStep"] = new(0.01, 1, Unit.Metre, "Minimum GPS step"),
+        ["gps.fixToFixDistance"] = new(0.1, 10, Unit.Metre, "Fix-to-fix heading distance"),
         ["roll.rollZero"] = new(-30, 30, Unit.Degree, "Roll zero"),
         ["roll.rollFilter"] = new(0, 0.99, Unit.None, "Roll filter"),
         ["tool.hitchLength"] = new(0, 30, Unit.Metre, "Working center"),
@@ -103,6 +107,10 @@ public static class VehicleToolLimits
         // The passes are the implement width less the overlap apart: they must stay apart.
         if (key == "tool.overlap" && v >= store.ActualToolWidth - 0.01)
             return $"Overlap must be less than the implement width ({Show(store.ActualToolWidth, Unit.Metre, metric)} {Symbol(Unit.Metre, metric)})";
+        // A gap as wide as the implement leaves a whole pass unworked between passes (an 8 m
+        // boom with a 10 m gap drove passes 18 m apart): a typing slip, not a gap.
+        if (key == "tool.overlap" && -v >= store.ActualToolWidth - 0.01)
+            return $"A gap must be less than the implement width ({Show(store.ActualToolWidth, Unit.Metre, metric)} {Symbol(Unit.Metre, metric)})";
         // Fewer or narrower sections must leave the implement wider than the overlap too. Checked
         // before anything changes: undoing a section count afterwards brought the sections back
         // at the default width, not their own.
@@ -129,6 +137,35 @@ public static class VehicleToolLimits
         int idx = int.Parse(value[..value.IndexOf(',')], NumberStyles.Integer, CultureInfo.InvariantCulture);
         if (idx >= now) return store.ActualToolWidth;
         return store.ActualToolWidth + (v - tool.GetSectionWidth(idx)) / 100.0;
+    }
+
+    /// <summary>
+    /// AgOpenGPS's section timing rules, applied after <paramref name="key"/> was set
+    /// (ConfigTool: nudLookAhead, nudLookAheadOff, nudTurnOffDelay): look ahead off is at most
+    /// 0.8 × look ahead on, and look ahead off and the turn off delay exclude each other (one
+    /// set above 0 puts the other to 0). Returns what was changed, for the operator, or null.
+    /// </summary>
+    public static string? ApplySectionTiming(string key, ConfigurationStore store)
+    {
+        var t = store.Tool;
+        var notes = new List<string>();
+        if (key is "tool.lookAheadOn" or "tool.lookAheadOff" && t.LookAheadOffSetting > t.LookAheadOnSetting * 0.8 + 1e-9)
+        {
+            t.LookAheadOffSetting = Math.Round(t.LookAheadOnSetting * 0.8, 2);
+            notes.Add(string.Create(CultureInfo.InvariantCulture,
+                $"Look ahead off set to {t.LookAheadOffSetting:0.##} s: at most 0.8 × look ahead on"));
+        }
+        if (key == "tool.lookAheadOff" && t.LookAheadOffSetting > 0 && t.TurnOffDelay > 0)
+        {
+            t.TurnOffDelay = 0;
+            notes.Add("Turn off delay set to 0: it and look ahead off don't work together");
+        }
+        if (key == "tool.turnOffDelay" && t.TurnOffDelay > 0 && t.LookAheadOffSetting > 0)
+        {
+            t.LookAheadOffSetting = 0;
+            notes.Add("Look ahead off set to 0: it and the turn off delay don't work together");
+        }
+        return notes.Count == 0 ? null : string.Join(". ", notes);
     }
 
     /// <summary>

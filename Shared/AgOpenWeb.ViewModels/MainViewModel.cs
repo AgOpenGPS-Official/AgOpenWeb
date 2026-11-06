@@ -1990,8 +1990,11 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Save the open field as a close would, without closing it: when the app stops or goes to
-    /// the background. The active job's coverage goes to its job folder. Coverage painted with
+    /// Save the vehicle and tool profiles in use, then the open field as a close would, without
+    /// closing it: when the app stops or goes to the background. Settings take effect as they
+    /// are typed and reach the profile only with Save Profile or a switch to another profile, so
+    /// closing the app lost them; AgOpenGPS saves its vehicle and tool settings when it closes
+    /// (FormGPS_FormClosing). The active job's coverage goes to its job folder. Coverage painted with
     /// no job goes to a new job: nobody is there to answer the unsaved-coverage question, and
     /// dropping it loses the work. Callable from any thread: it runs on the host loop and waits
     /// up to <paramref name="timeout"/>. Returns false if it didn't finish in time or failed.
@@ -2012,6 +2015,7 @@ public partial class MainViewModel : ObservableObject
 
     private void SaveOpenFieldNow()
     {
+        SaveActiveProfilesForExit();
         var field = ActiveField;
         if (field == null || string.IsNullOrEmpty(field.DirectoryPath)) return;
         if (_jobService.ActiveJob == null && _coverageMapService.PatchCount > 0)
@@ -2023,6 +2027,22 @@ public partial class MainViewModel : ObservableObject
             _coverageMapService.SaveToFile(field.DirectoryPath, active.TaskName);
         SaveFieldFiles(field);
         _logger.LogDebug("[Field] Saved '{FieldName}' at exit", field.Name);
+    }
+
+    private void SaveActiveProfilesForExit()
+    {
+        var vehicle = ConfigStore.ActiveVehicleProfileName;
+        var tool = ConfigStore.ActiveToolProfileName;
+        if (string.IsNullOrEmpty(vehicle) || string.IsNullOrEmpty(tool)) return; // none loaded
+        try
+        {
+            _configurationService.SaveProfiles(vehicle, tool);
+            _logger.LogDebug("[Profiles] Saved '{Vehicle}' / '{Tool}' at exit", vehicle, tool);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Profiles] Saving the profiles in use at exit failed");
+        }
     }
 
     /// <summary>
