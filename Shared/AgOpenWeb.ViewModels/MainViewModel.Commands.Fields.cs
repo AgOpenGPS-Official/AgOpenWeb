@@ -442,7 +442,7 @@ public partial class MainViewModel
                     if (polyIdx == 0)
                         boundary.OuterBoundary = polygon;
                     else
-                        boundary.InnerBoundaries.Add(polygon);
+                        boundary.AddNewObstacle(polygon);
                 }
 
                 SaveFieldBoundary(boundary, newFieldPath);
@@ -591,7 +591,7 @@ public partial class MainViewModel
                         if (i == 0)
                             boundary.OuterBoundary = poly;
                         else
-                            boundary.InnerBoundaries.Add(poly);
+                            boundary.AddNewObstacle(poly);
                     }
                     if (parsedHeadland.Count >= 3)
                     {

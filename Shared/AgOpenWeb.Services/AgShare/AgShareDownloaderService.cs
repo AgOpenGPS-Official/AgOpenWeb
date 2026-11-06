@@ -175,7 +175,7 @@ namespace AgOpenWeb.Services.AgShare
                     {
                         // Holes were written drive-through, as before.
                         polygon.IsDriveThrough = true;
-                        boundary.InnerBoundaries.Add(polygon);
+                        boundary.AddNewObstacle(polygon);
                     }
                 }
                 field.Boundary = boundary;

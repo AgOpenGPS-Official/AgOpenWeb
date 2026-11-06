@@ -128,7 +128,8 @@ addEventListener('pointerup', e => {
     const w = s2w(e.clientX - mapL, e.clientY);
     if (w) mapTap.onTap(w.e, w.n);
   } else if (gestureOnMap && !moved && !editSession) {
-    vehicleTap(e.clientX - mapL, e.clientY);
+    // With the boundary menu open a tap on an obstacle picks its row (hud-tools.js).
+    if (!boundaryMenuTap(e.clientX - mapL, e.clientY)) vehicleTap(e.clientX - mapL, e.clientY);
   }
   gestureOnMap = false;
 });
@@ -195,6 +196,7 @@ function isTyping() {
 }
 addEventListener('keydown', e => {
   if (e.key === 'Escape' && satBnd) { satCancel(); return; }  // cancel boundary draw-on-map
+  if (e.key === 'Escape' && polyDraw) { polyCancel(); return; } // cancel obstacle draw-on-map
   if (e.key === 'Escape' && abFlow) { abCancel(); return; }   // cancel AB-line creation (tells host)
   if (e.key === 'Escape' && hlFlow) { endHeadlandDraw(); return; } // cancel headland draw
   if (e.key === 'Escape' && editSession) { endEdit(); return; }    // cancel on-map edit

@@ -82,7 +82,7 @@ public partial class MainViewModel
                     }
 
                     if (PendingBoundaryType == BoundaryType.Inner)
-                        boundary.InnerBoundaries.Add(outerPolygon);
+                        boundary.AddNewObstacle(outerPolygon);
                     else
                         boundary.OuterBoundary = outerPolygon;
 
@@ -447,7 +447,7 @@ public partial class MainViewModel
                     var boundary = LoadFieldBoundary(fieldPath) ?? new Boundary();
 
                     if (_boundaryRecordingService.CurrentBoundaryType == BoundaryType.Inner)
-                        boundary.InnerBoundaries.Add(polygon);
+                        boundary.AddNewObstacle(polygon);
                     else
                         boundary.OuterBoundary = polygon;
 
@@ -652,7 +652,7 @@ public partial class MainViewModel
             var boundary = LoadFieldBoundary(fieldPath) ?? new Boundary();
 
             if (PendingBoundaryType == BoundaryType.Inner)
-                boundary.InnerBoundaries.Add(polygon);
+                boundary.AddNewObstacle(polygon);
             else
                 boundary.OuterBoundary = polygon;
 

@@ -25,6 +25,25 @@ public class Boundary
     public List<BoundaryPolygon> InnerBoundaries { get; set; } = new List<BoundaryPolygon>();
 
     /// <summary>
+    /// Adds an obstacle made or imported now (drawn, recorded, built from tracks, a circle, or
+    /// from KML, ISO-XML or AgShare) as Hard: a U-turn keeps the implement out of it, not only
+    /// the tractor. An obstacle read from a file (field.geojson, or an AgOpenGPS Boundary.txt)
+    /// keeps the Hard it was saved with.
+    /// </summary>
+    public void AddNewObstacle(BoundaryPolygon obstacle)
+    {
+        obstacle.IsHard = true;
+        InnerBoundaries.Add(obstacle);
+    }
+
+    /// <summary>
+    /// Obstacles read from a file with no choice for them (an AgOpenGPS field, or a field saved
+    /// before the choice existed) that are not drive-through, so they now get a U-turn before
+    /// them, as in AgOpenGPS. The operator is told when the field opens. Not saved.
+    /// </summary>
+    public int ObstaclesNowUTurn { get; set; }
+
+    /// <summary>
     /// Headland polygon - defines the inner working area boundary.
     /// Points INSIDE this polygon are the work area (sections ON).
     /// Points OUTSIDE (but inside outer boundary) are the headland zone (sections OFF).

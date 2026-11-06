@@ -133,6 +133,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IModuleCommunicationService, ModuleCommunicationService>();
 
         // YouTurn services
+        services.AddSingleton<AgOpenWeb.Services.Track.GoAroundPasses>(); // one bent pass for the pipeline and the planner
         services.AddSingleton<YouTurnCreationService>();
         services.AddSingleton<YouTurnGuidanceService>();
         services.AddSingleton<YouTurnPathingService>();

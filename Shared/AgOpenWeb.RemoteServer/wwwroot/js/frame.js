@@ -17,9 +17,11 @@ function renderSkia(canvas, rp) {
   drawGridSk(canvas);
   const outOfBounds = !!(tick && tick.op && tick.op.outOfBounds); // #494
   if (scene) {
-    for (let bi = 0; bi < scene.boundaries.length; bi++)
-      strokePtsSk(canvas, scene.boundaries[bi], true, outOfBounds ? SKP.boundaryOut
-        : (scene.boundaryInner && scene.boundaryInner[bi]) ? SKP.boundaryInner : SKP.boundary);
+    const selRing = boundaryMenuSelectedRing();
+    for (let bi = 0; bi < scene.boundaries.length; bi++) {
+      if (bi === selRing) strokePtsSk(canvas, scene.boundaries[bi], true, SKP.boundarySel);
+      strokePtsSk(canvas, scene.boundaries[bi], true, outOfBounds ? SKP.boundaryOut : boundaryRingPaint(bi));
+    }
     // Headland line shows only when the headland is ON (the bottom-nav headland button).
     if (scene.headland && tick && tick.tools && tick.tools.headlandOn)
       strokePtsSk(canvas, scene.headland, true, SKP.headland);
@@ -51,6 +53,7 @@ function renderSkia(canvas, rp) {
   drawRecordingMarkersSk(canvas); // live recorded-path dots (independent of the Scene)
   drawBoundaryRecordingSk(canvas); // live drive-around boundary line + dots
   drawSatBoundarySk(canvas); // live boundary-on-satellite polygon being drawn
+  drawPolyObstacleSk(canvas); // live obstacle polygon being drawn
   drawAbDrawPreviewSk(canvas); // #40 — A/B (orange/blue) dots for the AB/curve being drawn
   drawCurveMarksSk(canvas); // record-curve path dots (Set Point A → B)
   drawBoundaryCurvePreviewSk(canvas); // Bnd. Curve: the chosen way round (#450)

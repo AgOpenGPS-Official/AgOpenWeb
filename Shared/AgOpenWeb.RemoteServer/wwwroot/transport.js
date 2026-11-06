@@ -47,8 +47,9 @@ window.RemoteTransport = {
         case TYPE.SCENE: {
           const version = i64(), originLat = f64(), originLon = f64();
           const hasField = !!u8(), fieldName = str();
-          const bc = i32(); const boundaries = new Array(bc); const boundaryInner = new Array(bc);
-          for (let k = 0; k < bc; k++) { boundaryInner[k] = !!u8(); boundaries[k] = pts(); }
+          // boundaryKind: 0 = outer, else an obstacle, 1 + its choice (1 U-turn, 2 go around, 3 drive through).
+          const bc = i32(); const boundaries = new Array(bc); const boundaryInner = new Array(bc); const boundaryKind = new Array(bc);
+          for (let k = 0; k < bc; k++) { boundaryKind[k] = u8(); boundaryInner[k] = boundaryKind[k] > 0; boundaries[k] = pts(); }
           const tc = i32(); const tracks = new Array(tc);
           for (let k = 0; k < tc; k++) {
             const id = str(), name = str(), type = i32(), points = pts();
@@ -84,7 +85,7 @@ window.RemoteTransport = {
           for (let k = 0; k < glc; k++) guideLines[k] = pts();
           const toolPass = optPts();
           handlers.onScene && handlers.onScene({
-            version, originLat, originLon, fieldName, hasField, boundaries, boundaryInner, tracks,
+            version, originLat, originLon, fieldName, hasField, boundaries, boundaryInner, boundaryKind, tracks,
             headland, guidanceLine, toolSections, uTurnPath, nextTrack, flags, imagery, trackList,
             headlandSegs, tramSystems, tramLines, recordedPaths, contourStrips, contourRef, contourLocked,
             guideLines, toolPass,
@@ -312,7 +313,7 @@ window.RemoteTransport = {
         }
         case TYPE.BOUNDARY: {
           const ic = i32(); const items = new Array(ic);
-          for (let k = 0; k < ic; k++) items[k] = { index: i32(), boundaryType: str(), areaHa: f64(), driveThru: !!u8(), hard: !!u8() };
+          for (let k = 0; k < ic; k++) items[k] = { index: i32(), boundaryType: str(), areaHa: f64(), driveThru: !!u8(), hard: !!u8(), isInner: !!u8(), atObstacle: u8(), sizeM: f32(), circleD: f32() };
           const selectedIndex = i32(), playerVisible = !!u8(), isRecording = !!u8(), isPaused = !!u8();
           const pointCount = i32(), areaHa = f64(), offsetCm = f64();
           const drawRightSide = !!u8(), drawAtPivot = !!u8(), sectionControlOn = !!u8();
@@ -351,7 +352,8 @@ window.RemoteTransport = {
             isWorkSwitchEnabled: !!u8(), isWorkSwitchActiveLow: !!u8(), isWorkSwitchManualSections: !!u8(),
             isSteerSwitchEnabled: !!u8(), isSteerSwitchManualSections: !!u8(), totalWidth: f64(),
           };
-          const uturn = { style: i32(), extension: f64(), smoothing: i32(), radius: f64(), distanceFromBoundary: f64() };
+          const uturn = { style: i32(), extension: f64(), smoothing: i32(), radius: f64(), distanceFromBoundary: f64(),
+            goAroundRadius: f64(), goAroundMargin: f64() };
           const tram = { passes: i32(), display: !!u8(), line: i32(), width: f64(), outerInverted: !!u8() };
           const machine = {
             hydraulicLiftEnabled: !!u8(), raiseTime: i32(), lookAhead: f64(), lowerTime: i32(), invertRelay: !!u8(),

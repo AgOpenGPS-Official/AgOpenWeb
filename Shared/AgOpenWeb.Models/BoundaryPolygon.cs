@@ -152,9 +152,58 @@ public class BoundaryPolygon
         northing > index.MinNorthing + margin && northing < index.MaxNorthing - margin;
 
     /// <summary>
-    /// Whether this is a drive-through boundary (true) or avoid boundary (false)
+    /// What the tractor does at this inner boundary when a pass meets it (an outer boundary
+    /// keeps the default and never uses it).
     /// </summary>
-    public bool IsDriveThrough { get; set; } = false;
+    public ObstacleAction AtObstacle { get; set; } = ObstacleAction.Turn;
+
+    /// <summary>
+    /// The circle this inner boundary was made from (a tree), or null for a drawn shape. The
+    /// points are its polygon (<see cref="ObstacleCircle.ToPoints"/>); set both together with
+    /// <see cref="SetCircle"/>.
+    /// </summary>
+    public ObstacleCircle? Circle { get; set; }
+
+    /// <summary>This boundary becomes <paramref name="circle"/>: its polygon and the circle.</summary>
+    public void SetCircle(ObstacleCircle circle)
+    {
+        Points = circle.ToPoints();
+        Circle = circle;
+        UpdateBounds();
+    }
+
+    /// <summary>
+    /// Whether this is a drive-through boundary (true) or avoid boundary (false): the
+    /// <see cref="ObstacleAction.DriveThrough"/> choice, as AgOpenGPS's flag. Clearing it makes
+    /// a drive-through boundary a U-turn one and leaves the other choices as they are.
+    /// </summary>
+    public bool IsDriveThrough
+    {
+        get => AtObstacle == ObstacleAction.DriveThrough;
+        set
+        {
+            if (value) AtObstacle = ObstacleAction.DriveThrough;
+            else if (AtObstacle == ObstacleAction.DriveThrough) AtObstacle = ObstacleAction.Turn;
+        }
+    }
+
+    /// <summary>
+    /// The longest distance across the polygon, between its two farthest points, metres: an
+    /// obstacle's size in the boundary list. Every pair of points is measured, so it is for an
+    /// obstacle's few dozen points, not for the GPS cycle.
+    /// </summary>
+    public double LongestSpan()
+    {
+        double best = 0;
+        for (int i = 0; i < Points.Count; i++)
+            for (int j = i + 1; j < Points.Count; j++)
+            {
+                double de = Points[j].Easting - Points[i].Easting, dn = Points[j].Northing - Points[i].Northing;
+                double d2 = de * de + dn * dn;
+                if (d2 > best) best = d2;
+            }
+        return Math.Sqrt(best);
+    }
 
     /// <summary>
     /// Hard boundary: there are obstacles/objects (fence, building, trees) right
