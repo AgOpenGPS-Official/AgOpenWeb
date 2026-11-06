@@ -313,8 +313,12 @@ function renderKmlBoundary() {
 document.getElementById('bm-drivearound').addEventListener('pointerdown', e => {
   e.stopPropagation(); transport.send('boundary.driveAround'); lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer);
 });
+// An obstacle goes inside the field's boundary: with no outer boundary yet the host refuses
+// and says so (#621), and the recorder stays closed.
 document.getElementById('bm-driveinner').addEventListener('pointerdown', e => {
-  e.stopPropagation(); transport.send('boundary.driveAroundInner'); lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer);
+  e.stopPropagation(); transport.send('boundary.driveAroundInner');
+  const hasOuter = !!(boundary && boundary.items.some(it => it.boundaryType === 'Outer'));
+  if (hasOuter) lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer);
 });
 document.getElementById('bm-accept').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); }); // edits are already saved
 // Boundary player.
