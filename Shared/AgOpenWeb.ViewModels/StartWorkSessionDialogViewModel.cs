@@ -158,10 +158,13 @@ public partial class StartWorkSessionDialogViewModel : ObservableObject
         // Always show every field on disk. When we have a fix, enrich with
         // distance (uncapped) for sort ranking; rows whose origin is (0,0)
         // or unreadable fall through to distance 0.0 and sort to the bottom.
-        var known = (lat != 0 || lon != 0)
-            ? _fieldService.FindFieldsNear(root, lat, lon, double.MaxValue)
-                .ToDictionary(f => f.Name, f => f, StringComparer.OrdinalIgnoreCase)
-            : new Dictionary<string, NearbyField>(StringComparer.OrdinalIgnoreCase);
+        // Keyed by the folder's exact name: on Linux "Vinha" and "vinha" are two folders, and
+        // a dictionary that ignored capitals threw on the second, which left every Fields &
+        // Jobs command (open, start, resume, delete) dead until a folder was renamed by hand.
+        var known = new Dictionary<string, NearbyField>(StringComparer.Ordinal);
+        if (lat != 0 || lon != 0)
+            foreach (var f in _fieldService.FindFieldsNear(root, lat, lon, double.MaxValue))
+                known.TryAdd(f.Name, f);
 
         var rows = new List<NearbyField>(allNames.Count);
         foreach (var name in allNames)
