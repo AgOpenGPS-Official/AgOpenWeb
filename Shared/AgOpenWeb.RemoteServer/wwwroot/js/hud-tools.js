@@ -448,6 +448,37 @@ document.getElementById('bm-circ-add').addEventListener('pointerdown', ev => {
   });
   renderCircleBar();
 });
+// A drawn obstacle ("+ Polygon"): like the boundary drawn on the imagery, the corners are
+// tapped on the map and shown as they go; Finish on the draw toolbar sends them, the host adds
+// the obstacle (Hard, U-turn) and selects its row. Client-side point buffer for the preview
+// only; no geometry in JS.
+let polyDraw = false;    // drawing an obstacle on the map
+let polyPts = [];        // [{e,n}] corners tapped so far (preview only)
+function startPolyDraw() {
+  polyDraw = true; polyPts = [];
+  lnCloseAll();                           // close the boundary menu
+  showAbBar(false, true, true);           // Undo + Finish + Cancel
+  startMapTap({ hint: tr('Tap the corners of the obstacle — Finish when done'), onTap: polyTap });
+}
+function polyTap(e, n) { polyPts.push({ e, n }); setPolyHint(); }
+function setPolyHint() { hintEl.textContent = polyPts.length === 1 ? tr('Obstacle: 1 corner — Finish when done') : tr('Obstacle: {n} corners — Finish when done', { n: polyPts.length }); }
+function polyUndo() { if (polyPts.length) { polyPts.pop(); setPolyHint(); } }
+function polyFinish() {
+  if (polyPts.length >= 3)
+    transport.send('boundary.obstacle.fromMapPoints|' + polyPts.map(p => p.e.toFixed(3) + ',' + p.n.toFixed(3)).join(';'));
+  else showToast(tr('An obstacle needs at least three corners'));
+  endPolyDraw();
+}
+function polyCancel() { endPolyDraw(); }
+function endPolyDraw() {
+  polyDraw = false; polyPts = [];
+  drawBar.classList.remove('show'); endMapTap(); hintEl.classList.remove('show');
+}
+document.getElementById('bm-poly-add').addEventListener('pointerdown', ev => {
+  ev.stopPropagation();
+  if (mapTap) endMapTap();
+  startPolyDraw();
+});
 document.getElementById('bm-circ-move').addEventListener('pointerdown', ev => {
   ev.stopPropagation();
   const it = bmSelItem();

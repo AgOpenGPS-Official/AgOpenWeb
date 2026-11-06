@@ -206,6 +206,20 @@ function drawSatBoundarySk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
   }
 }
+// Live obstacle draw-on-map preview: the corners tapped so far, in the U-turn obstacle's
+// yellow (what a drawn obstacle becomes), closed from three corners on; client-side only.
+function drawPolyObstacleSk(canvas) {
+  if (!polyDraw || !polyPts.length) return;
+  if (polyPts.length >= 2) strokePtsSk(canvas, polyPts, polyPts.length >= 3, SKP.boundaryInner);
+  const rad = Math.max(4, 0.5 * pxPerM);
+  SKP.flagFill.setColor(ckColor('#FFFFFF'));
+  for (const p of polyPts) {
+    if ((pw(p.e, p.n)) < 1.0) continue;
+    const xy = w2s(p.e, p.n);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
+  }
+}
 // #40: preview the AB/curve points being drawn as dots — orange A (first),
 // blue B (last), white interior — so the placed A point is visible before B is set. The
 // host holds the real point list; drawPts is the client's tap echo (preview only).

@@ -209,4 +209,39 @@ public class ObstacleCircleTests
         Assert.That(inner.Circle, Is.Null, "no longer the circle's polygon");
         Assert.That(inner.Points, Has.Count.EqualTo(ObstacleCircle.Segments), "its shape is kept");
     }
+
+    [Test]
+    public async Task AnObstacle_DrawnOnTheMap_IsAHardUTurnObstacle_SavedAndSelected()
+    {
+        var vm = await Open();
+
+        // Five taps: a double tap on the second corner and the first corner tapped again to close.
+        vm.RemoteAddObstacleFromMapPoints(new[] { (20.0, 160.0), (40.0, 160.0), (40.05, 160.05), (40.0, 180.0), (20.0, 180.0), (20.1, 160.0) });
+
+        var inner = OnDisk(_dir).InnerBoundaries;
+        Assert.That(inner, Has.Count.EqualTo(4));
+        Assert.That(inner[3].Points, Has.Count.EqualTo(4), "a repeated corner and the closing tap are dropped");
+        Assert.That(inner[3].AtObstacle, Is.EqualTo(ObstacleAction.Turn), "what is drawn by hand gets a U-turn");
+        Assert.That(inner[3].IsHard, Is.True, "a new obstacle is Hard");
+        Assert.That(inner[3].Circle, Is.Null);
+        Assert.That(inner[3].IsPointInside(30, 170), Is.True);
+        Assert.That(vm.State.Field.CurrentBoundary!.InnerBoundaries, Has.Count.EqualTo(4), "in the live boundary");
+        Assert.That(vm.SelectedBoundaryIndex, Is.EqualTo(4), "its row is selected");
+        Assert.That(vm.StatusMessage, Does.Contain("4 corners"));
+    }
+
+    [Test]
+    public async Task AnObstacle_DrawnOutsideTheField_OrTooSmall_IsRefused()
+    {
+        var vm = await Open();
+
+        vm.RemoteAddObstacleFromMapPoints(new[] { (190.0, 100.0), (210.0, 100.0), (200.0, 120.0) });
+        Assert.That(vm.StatusMessage, Does.Contain("inside the field"));
+        vm.RemoteAddObstacleFromMapPoints(new[] { (100.0, 100.0), (100.05, 100.05), (100.1, 100.0) });
+        Assert.That(vm.StatusMessage, Does.Contain("three corners"));
+        vm.RemoteAddObstacleFromMapPoints(new[] { (100.0, 100.0), (100.5, 100.0), (101.0, 100.0) });
+        Assert.That(vm.StatusMessage, Does.Contain("no area"));
+
+        Assert.That(OnDisk(_dir).InnerBoundaries, Has.Count.EqualTo(3));
+    }
 }

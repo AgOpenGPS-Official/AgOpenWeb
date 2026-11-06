@@ -196,6 +196,7 @@ function isTyping() {
 }
 addEventListener('keydown', e => {
   if (e.key === 'Escape' && satBnd) { satCancel(); return; }  // cancel boundary draw-on-map
+  if (e.key === 'Escape' && polyDraw) { polyCancel(); return; } // cancel obstacle draw-on-map
   if (e.key === 'Escape' && abFlow) { abCancel(); return; }   // cancel AB-line creation (tells host)
   if (e.key === 'Escape' && hlFlow) { endHeadlandDraw(); return; } // cancel headland draw
   if (e.key === 'Escape' && editSession) { endEdit(); return; }    // cancel on-map edit

@@ -306,6 +306,20 @@ public static partial class RemoteServerWiring
                                         vm.RemoteAddObstacleCircle(bce, bcn, bcd);
                                     return;
                                 }
+                                case "boundary.obstacle.fromMapPoints": // arg = "e,n;e,n;…": an obstacle drawn
+                                {                                       // on the map, its corners in order
+                                    var bop = new System.Collections.Generic.List<(double, double)>();
+                                    foreach (var pair in arg.Split(';'))
+                                    {
+                                        var en = pair.Split(',');
+                                        if (en.Length == 2
+                                            && double.TryParse(en[0], num, inv, out var pe)
+                                            && double.TryParse(en[1], num, inv, out var pn))
+                                            bop.Add((pe, pn));
+                                    }
+                                    vm.RemoteAddObstacleFromMapPoints(bop);
+                                    return;
+                                }
                                 case "boundary.circle.diameter": // arg = "row:d": that obstacle becomes a
                                 {                                // circle d metres across
                                     var bcc = arg.IndexOf(':');

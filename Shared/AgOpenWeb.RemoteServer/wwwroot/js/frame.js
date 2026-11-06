@@ -53,6 +53,7 @@ function renderSkia(canvas, rp) {
   drawRecordingMarkersSk(canvas); // live recorded-path dots (independent of the Scene)
   drawBoundaryRecordingSk(canvas); // live drive-around boundary line + dots
   drawSatBoundarySk(canvas); // live boundary-on-satellite polygon being drawn
+  drawPolyObstacleSk(canvas); // live obstacle polygon being drawn
   drawAbDrawPreviewSk(canvas); // #40 — A/B (orange/blue) dots for the AB/curve being drawn
   drawCurveMarksSk(canvas); // record-curve path dots (Set Point A → B)
   drawBoundaryCurvePreviewSk(canvas); // Bnd. Curve: the chosen way round (#450)
