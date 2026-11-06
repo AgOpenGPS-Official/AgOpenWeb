@@ -393,51 +393,6 @@ public static partial class RemoteServerWiring
     // orchestration against IConfigurationService (the VM is dialog-scoped + Avalonia-
     // bound, so the web can't use it). Confirmations happen client-side. Args are
     // tab-separated; the leading field (where present) is the kind "vehicle"/"tool".
-    private static void ApplyProfileCommand(AgOpenWeb.Models.Configuration.ConfigurationStore store,
-        AgOpenWeb.Services.Interfaces.IConfigurationService cfg, string cmd, string arg)
-    {
-        var a = arg.Split('\t');
-        switch (cmd)
-        {
-            case "profile.load": // <vehicle>\t<tool> — save the outgoing pair, then load
-                if (a.Length == 2)
-                {
-                    cfg.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
-                    cfg.LoadProfiles(a[0], a[1]);
-                }
-                return;
-            case "profile.new": // <kind>\t<name> — duplicate the live store under a new name
-                if (a.Length == 2 && a[0] == "vehicle") cfg.SaveProfiles(a[1], store.ActiveToolProfileName);
-                else if (a.Length == 2 && a[0] == "tool") cfg.SaveProfiles(store.ActiveVehicleProfileName, a[1]);
-                return;
-            case "profile.delete": // <kind>\t<name>
-                if (a.Length == 2 && a[0] == "vehicle") cfg.DeleteVehicleProfile(a[1]);
-                else if (a.Length == 2 && a[0] == "tool") cfg.DeleteToolProfile(a[1]);
-                return;
-            case "profile.rename": // <kind>\t<old>\t<new>
-                if (a.Length == 3 && a[0] == "vehicle") cfg.RenameVehicleProfile(a[1], a[2]);
-                else if (a.Length == 3 && a[0] == "tool") cfg.RenameToolProfile(a[1], a[2]);
-                return;
-            case "profile.reset": // <kind> — reset only that column's Default profile (#111)
-                cfg.CreateProfile("Default", vehicle: a[0] != "tool", tool: a[0] != "vehicle");
-                return;
-            case "profile.configureVehicle": // <name> — make it active before the dialog opens
-                if (!string.Equals(arg, store.ActiveVehicleProfileName, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    cfg.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
-                    cfg.LoadProfiles(arg, store.ActiveToolProfileName);
-                }
-                return;
-            case "profile.configureTool": // <name>
-                if (!string.Equals(arg, store.ActiveToolProfileName, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    cfg.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
-                    cfg.LoadProfiles(store.ActiveVehicleProfileName, arg);
-                }
-                return;
-        }
-    }
-
     // NTRIP profile CRUD for the remote Network IO editor. Mirrors the native
     // MainViewModel NTRIP commands but calls INtripProfileService directly (the VM's
     // commands also drive Avalonia chain-dialog state we don't want here). The browser

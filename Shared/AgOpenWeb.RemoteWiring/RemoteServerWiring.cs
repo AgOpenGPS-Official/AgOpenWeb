@@ -559,9 +559,10 @@ public static partial class RemoteServerWiring
                                 case "profile.load": case "profile.new": case "profile.delete":
                                 case "profile.rename": case "profile.reset":
                                 case "profile.configureVehicle": case "profile.configureTool":
-                                    ApplyProfileCommand(
+                                    if (AgOpenWeb.Services.Profile.ProfilePicker.Apply(
                                         services.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>(),
-                                        configService, cmd, arg);
+                                        configService, cmd, arg) is { } profileNote)
+                                        vm.ReportFailure(profileNote);
                                     return;
                                 // --- AutoSteer config hardware-push actions (Phase 9). All
                                 // route through the AutoSteerConfigViewModel so the PGN /
