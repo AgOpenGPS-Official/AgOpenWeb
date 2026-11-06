@@ -335,6 +335,7 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
 
                 bool detected = false;
                 bool wrongDirection = false;
+                bool minPwmStalled = false;
 
                 for (int kp = KpRampStartInclusive; kp <= KpRampEndInclusive; kp += KpRampStep)
                 {
@@ -381,6 +382,17 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                     {
                         module = await AtRestAsync(module, token);
                         DetectedMinPwm = module.PwmDisplay;
+                        // Apply it now, as the CPD and Ackermann steps apply theirs: the
+                        // web wizard has no button for the second part of this step
+                        // (ContinueToMaxAngle), the only path that saved it, so the
+                        // measured value was dropped on Next.
+                        // Not a reading of half the maximum PWM or more: wheels that move a
+                        // little and then stall against a stop or a heavy load read near the
+                        // maximum, and as the minimum that would kick every small correction
+                        // at nearly full power.
+                        minPwmStalled = DetectedMinPwm >= autoSteerConfig.MaxPwm / 2;
+                        if (!minPwmStalled)
+                            autoSteerConfig.MinPwm = DetectedMinPwm;
                         DetectedInvertMotor = autoSteerConfig.InvertMotor;
                         detected = true;
                         directionConfirmed = true;
@@ -396,7 +408,10 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                 {
                     PhaseResult =
                         $"Motor direction: {(DetectedInvertMotor ? "Inverted" : "Normal")}\n" +
-                        $"Minimum PWM: {DetectedMinPwm}";
+                        $"Minimum PWM: {DetectedMinPwm}" +
+                        (minPwmStalled
+                            ? $"\nNot saved: half the maximum PWM or more means the wheels stalled. Minimum PWM stays {autoSteerConfig.MinPwm}. Free the wheels and run the test again."
+                            : "");
                     Phase = CalibrationPhase.RampResult;
                     return;
                 }
@@ -628,7 +643,8 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         {
             var autoSteer = _configService.Store.AutoSteer;
             autoSteer.InvertMotor = DetectedInvertMotor;
-            autoSteer.MinPwm = DetectedMinPwm;
+            if (DetectedMinPwm < autoSteer.MaxPwm / 2) // not a stalled reading (see the ramp)
+                autoSteer.MinPwm = DetectedMinPwm;
             // Vehicle max steer angle is what guidance clamps with (#106).
             _configService.Store.Vehicle.MaxSteerAngle = MaxSteerAngle;
         }
