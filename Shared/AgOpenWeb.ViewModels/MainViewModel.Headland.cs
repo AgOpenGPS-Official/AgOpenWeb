@@ -48,6 +48,13 @@ public partial class MainViewModel
                 segment.OffsetPoints = clipperResult.Select(p => new Vec3(p.Easting, p.Northing, 0)).ToList();
                 return;
             }
+            if (segment.Type == Models.Headland.HeadlandSegmentType.Boundary)
+            {
+                // The offset swallowed the field: nothing is left inside it. No line, rather
+                // than the edge-based fallback's, which lies outside the field and crosses itself.
+                segment.OffsetPoints = new List<Vec3>();
+                return;
+            }
         }
 
         // Determine offset direction (inward toward field center)
