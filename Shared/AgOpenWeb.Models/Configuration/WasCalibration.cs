@@ -17,6 +17,11 @@ namespace AgOpenWeb.Models.Configuration;
 /// <c>wasOffset' = wasOffset - angle * countsPerDegree</c> — exactly AgOpenGPS
 /// FormSteer.btnZeroWAS_Click. Invert WAS doesn't change the formula; the firmware already
 /// applies it to the reported angle.
+///
+/// Invert WAS does change what the offset means: the firmware adds it for a normal sensor and
+/// subtracts it for an inverted one, so a centre zeroed as <c>raw - 6805 = -wasOffset</c> reads
+/// <c>2 × wasOffset / countsPerDegree</c> off after the toggle. <see cref="OffsetForInvert"/>
+/// is the offset that keeps that centre.
 /// </summary>
 public static class WasCalibration
 {
@@ -28,6 +33,10 @@ public static class WasCalibration
     /// PGN 253 angle) read zero.</summary>
     public static int ZeroedOffset(int currentOffset, double reportedAngleDeg, double countsPerDegree)
         => currentOffset - (int)Math.Round(reportedAngleDeg * countsPerDegree);
+
+    /// <summary>The offset that keeps straight ahead at 0° after Invert WAS is toggled (either
+    /// way): the firmware flips the sign it applies to the offset, so the offset flips too.</summary>
+    public static int OffsetForInvert(int currentOffset) => -currentOffset;
 
     /// <summary><see cref="ZeroedOffset"/>, refused (false) when the result is out of range.</summary>
     public static bool TryZero(int currentOffset, double reportedAngleDeg, double countsPerDegree, out int newOffset)

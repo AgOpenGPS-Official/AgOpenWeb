@@ -507,7 +507,7 @@ public partial class AutoSteerConfigViewModel : ObservableObject
 
         ToggleInvertWasCommand = new RelayCommand(() =>
         {
-            AutoSteer.InvertWas = !AutoSteer.InvertWas;
+            AutoSteer.SetInvertWasKeepingCentre(!AutoSteer.InvertWas);
             Config.MarkChanged();
         });
 

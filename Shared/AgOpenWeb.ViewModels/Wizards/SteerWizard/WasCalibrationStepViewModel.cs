@@ -117,10 +117,14 @@ public class WasCalibrationStepViewModel : WizardStepViewModel
         // Start listening for live data
         if (_autoSteerService != null)
             _autoSteerService.StateUpdated += OnAutoSteerStateUpdated;
+        // The web toggles Invert WAS in the live settings (config.set), and the offset flips
+        // with it: follow both, or OnLeaving writes the offset from before the toggle back.
+        autoSteer.PropertyChanged += OnStoreChanged;
     }
 
     protected override void OnLeaving()
     {
+        _configService.Store.AutoSteer.PropertyChanged -= OnStoreChanged;
         // Stop listening
         if (_autoSteerService != null)
             _autoSteerService.StateUpdated -= OnAutoSteerStateUpdated;
@@ -128,6 +132,16 @@ public class WasCalibrationStepViewModel : WizardStepViewModel
         var autoSteer = _configService.Store.AutoSteer;
         if (Touched(nameof(InvertWas))) autoSteer.InvertWas = InvertWas;
         if (Touched(nameof(WasOffset))) autoSteer.WasOffset = WasOffset;
+    }
+
+    private void OnStoreChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        var autoSteer = _configService.Store.AutoSteer;
+        switch (e.PropertyName)
+        {
+            case nameof(AutoSteerConfig.InvertWas): SetUntouched(() => InvertWas = autoSteer.InvertWas); break;
+            case nameof(AutoSteerConfig.WasOffset): SetUntouched(() => WasOffset = autoSteer.WasOffset); break;
+        }
     }
 
     private void OnAutoSteerStateUpdated(object? sender, VehicleStateSnapshot snapshot)
