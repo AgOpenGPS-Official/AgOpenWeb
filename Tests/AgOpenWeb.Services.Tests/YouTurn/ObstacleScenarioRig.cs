@@ -138,6 +138,10 @@ public sealed class ObstacleScenarioRig : IDisposable
 
     // What the run saw.
     private Dictionary<string, bool>? _hardAtTurnStart;
+    // The choice of every obstacle when the turn being driven started: a turn planned through a
+    // drive-through obstacle is not blamed when the operator makes it a U-turn obstacle mid-turn.
+    private Dictionary<string, ObstacleAction>? _choiceAtTurnStart;
+    private bool _executing;
     public double WorstClearance { get; private set; } = double.MaxValue;
     /// <summary>The nearest while a turn was driven or after it ended: what the turn did, not what the pass runs beside.</summary>
     public double WorstClearanceInTurn { get; private set; } = double.MaxValue;
@@ -264,8 +268,10 @@ public sealed class ObstacleScenarioRig : IDisposable
             // The turn is judged by the contract it was planned under: an obstacle made Hard while the
             // arc is being driven cannot be planned for again (the operator who does everything wrong).
             _hardAtTurnStart = _obstacles.ToDictionary(o => o.Name, o => o.IsHard);
+            _choiceAtTurnStart = _obstacles.ToDictionary(o => o.Name, o => o.Polygon.AtObstacle);
         }
         if (!executing && ArcStartedAt != null) { ArcStartedAt = null; TurnEndedAt = Time; Note("turn over"); }
+        _executing = executing;
         if (executing && r.YouTurn!.TurnAtObstacle) TurnedAtObstacle = true;
         if (r.AutoSteerDisengagedThisCycle && Engaged)
         {
@@ -357,7 +363,7 @@ public sealed class ObstacleScenarioRig : IDisposable
         string? worst = null;
         foreach (var o in _obstacles)
         {
-            if (!o.IsUTurn) continue;
+            if (ChoiceNow(o) != ObstacleAction.Turn) continue;
             if (Math.Abs(o.CentreE - _e) > 120 || Math.Abs(o.CentreN - _n) > 120) continue;
             double d;
             bool hard = _hardAtTurnStart != null && _hardAtTurnStart.TryGetValue(o.Name, out bool was) ? was : o.IsHard;
@@ -372,6 +378,10 @@ public sealed class ObstacleScenarioRig : IDisposable
         }
         return (best, worst, wheelsAtSoft);
     }
+
+    // While a turn is driven, the obstacle's choice when the turn started: the turn was planned under it.
+    private ObstacleAction ChoiceNow(ObstacleTestField.Obstacle o) =>
+        _executing && _choiceAtTurnStart != null && _choiceAtTurnStart.TryGetValue(o.Name, out var was) ? was : o.Polygon.AtObstacle;
 
     /// <summary>How far the pivot would go straight ahead before it enters an avoided (U-turn or Go around) obstacle.</summary>
     public double ObstacleAhead()
@@ -397,7 +407,7 @@ public sealed class ObstacleScenarioRig : IDisposable
         var (tractor, bar) = Footprint();
         foreach (var o in _obstacles)
         {
-            if (!o.IsGoRound) continue;
+            if (ChoiceNow(o) != ObstacleAction.GoRound) continue;
             if (Math.Abs(o.CentreE - _e) > 120 || Math.Abs(o.CentreN - _n) > 120) continue;
             double dt = tractor.Min(p => ObstacleTestField.SignedDistance(o.Polygon, p.E, p.N));
             double db = o.IsHard ? bar.Min(p => ObstacleTestField.SignedDistance(o.Polygon, p.E, p.N)) : double.MaxValue;
