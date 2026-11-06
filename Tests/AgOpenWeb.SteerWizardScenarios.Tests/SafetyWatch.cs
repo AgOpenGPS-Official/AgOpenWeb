@@ -141,9 +141,11 @@ public sealed class SafetyWatch : IDisposable
                 Track("runaway", false, 0, now, angle, where, _ => null!);
             }
 
-            Track("hands", driving && hand != null, 400, now, angle, where,
+            // A test has to try the motor to learn anything, so a short push against the hands
+            // is in the nature of it; one that goes on is the test not noticing.
+            Track("hands", driving && hand != null, 3000, now, angle, where,
                 d => new Finding(Severity.Robustness, "MOTOR_AGAINST_HANDS",
-                    "The motor drove against the operator's hands on the wheel (" + d + ")."));
+                    "The motor kept driving against the operator's hands on the wheel for over 3 s (" + d + ")."));
         }
     }
 

@@ -57,6 +57,12 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
     private const double TargetAngleDeltaDeg = 5.0;
     private const double MotionThresholdDeg = 1.0;
     private const double RunawayLimitDeg = 15.0;
+    /// <summary>
+    /// Ramp steps at the module's maximum PWM with the wheels not moving before the test
+    /// stops: hands on the wheel, the wheels against a stop, or a motor not driving. The ramp
+    /// used to go on to Kp 200 (8 s at full power against the operator's hands).
+    /// </summary>
+    internal const int HeldAtFullPowerSteps = 5;
 
     private readonly IConfigurationService _configService;
     private readonly IAutoSteerService? _autoSteerService;
@@ -336,6 +342,7 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                 bool detected = false;
                 bool wrongDirection = false;
                 bool minPwmStalled = false;
+                int heldAtFullPower = 0;
 
                 for (int kp = KpRampStartInclusive; kp <= KpRampEndInclusive; kp += KpRampStep)
                 {
@@ -374,7 +381,22 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                     }
 
                     if (Math.Abs(delta) < MotionThresholdDeg)
+                    {
+                        // Full power and no movement: the wheels are held (hands, a stop) or
+                        // the motor isn't driving. More Kp changes nothing; stop pushing.
+                        heldAtFullPower = module.PwmDisplay >= autoSteerConfig.MaxPwm ? heldAtFullPower + 1 : 0;
+                        if (heldAtFullPower >= HeldAtFullPowerSteps)
+                        {
+                            NoMovementDetected = true;
+                            PhaseResult =
+                                $"The wheels don't move at full power (PWM {module.PwmDisplay}). " +
+                                "Hands on the wheel, the wheels against a stop, or the motor not driving? " +
+                                "Free them and press Start again.";
+                            Phase = CalibrationPhase.RampResult;
+                            return;
+                        }
                         continue;
+                    }
 
                     // First motion. Snapshot the PWM the module is
                     // currently driving — that's the observed MinPWM.
