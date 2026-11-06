@@ -121,6 +121,11 @@ jobs:
       - name: Run Guidance Algorithm Tests
         run: dotnet run --project TestRunner/TestRunner.csproj
 
+      # The field scenario harness takes minutes, so it runs nightly (field-scenarios.yml);
+      # here it is only built, so a backend change can't break it unnoticed.
+      - name: Build Field Scenario harness
+        run: dotnet build Tests/AgOpenWeb.FieldScenarios.Tests/ --verbosity minimal
+
   # Work budgets for the GPS cycle and the 100 Hz control tick (Performance/HotPathBudgetTests):
   # a large field driven through the real pipeline, every cycle held to a budget of polygon
   # edges, coverage lookups, offset points and bytes allocated. Counts, not time, so the

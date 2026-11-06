@@ -34,7 +34,7 @@ sent anyway, because the host is the last line: any browser on the LAN can send 
 dotnet test Tests/AgOpenWeb.FieldScenarios.Tests/ --filter "FullyQualifiedName~FieldScenarioTests"
 ```
 
-About four minutes. Not part of CI. The report goes to `field-scenarios-report.md` in the test
+About four minutes. CI only builds it; the full run is nightly on develop (`.github/workflows/field-scenarios.yml`, also run by hand from Actions), with the report kept as an artifact and in the run's summary. The report goes to `field-scenarios-report.md` in the test
 output folder, or to `AGOPENWEB_SCENARIO_REPORT`. Other switches:
 
 | Variable | Effect |
