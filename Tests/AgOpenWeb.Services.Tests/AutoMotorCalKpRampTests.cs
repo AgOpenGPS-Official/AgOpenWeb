@@ -141,6 +141,25 @@ public class AutoMotorCalKpRampTests
         Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(29));
     }
 
+    [Test]
+    public async Task MotorCal_StalledWheels_DoNotSetMinPwmNearTheMaximum()
+    {
+        // The wheels moved past the threshold and then stalled against a load: the PWM read is
+        // near the maximum, and as the minimum it would kick every small correction at full power.
+        _store.AutoSteer.ProportionalGain = 12;
+        _store.AutoSteer.MaxPwm = 180;
+        _store.AutoSteer.MinPwm = 25;
+        var step = CreateStep(kp => kp < 40 ? ModuleAt(0.0, 0) : ModuleAt(2.0, 170));
+        SetActive(step, true);
+
+        await step.RunKpRampAsync();
+        SetActive(step, false); // Next
+
+        Assert.That(step.DetectedMinPwm, Is.EqualTo(170));
+        Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(25), "a stalled reading is not the setting");
+        Assert.That(step.PhaseResult, Does.Contain("Not saved"));
+    }
+
     private static void SetActive(AgOpenWeb.ViewModels.Wizards.WizardStepViewModel step, bool active) =>
         typeof(AgOpenWeb.ViewModels.Wizards.WizardStepViewModel).GetProperty("IsActive")!.SetValue(step, active);
 
