@@ -55,6 +55,13 @@ public class VehicleDimensionsStepViewModel : WizardStepViewModel
         if (Touched(nameof(TrackWidth))) vehicle.TrackWidth = TrackWidth;
     }
 
+    protected override void ReloadFromStore()
+    {
+        var vehicle = _configService.Store.Vehicle;
+        if (!Touched(nameof(Wheelbase))) Wheelbase = vehicle.Wheelbase;
+        if (!Touched(nameof(TrackWidth))) TrackWidth = vehicle.TrackWidth;
+    }
+
     public override Task<bool> ValidateAsync()
     {
         if (Wheelbase < 0.5)

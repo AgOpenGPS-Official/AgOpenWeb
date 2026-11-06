@@ -161,6 +161,8 @@ function renderWizard() {
   next.classList.toggle('disabled', !(w.isLast || w.canNext));
   document.getElementById('wz-back').classList.toggle('disabled', !w.canBack);
   document.getElementById('wz-skip').style.display = w.canSkip ? '' : 'none';
+  // Why Next / Finish did nothing (the host's check of the step), until it passes.
+  asSetText('wz-validation', w.validation || '');
   // Rebuild content only on step change.
   const key = w.stepKind + '|' + w.stepIndex;
   if (key !== _wzKey) { _wzKey = key; wzContent.innerHTML = buildWizardContent(w); }

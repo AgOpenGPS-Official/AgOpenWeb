@@ -408,6 +408,11 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
         LiveSteerAngle = Math.Round(_autoSteerService!.LastSteerData.ActualSteerAngle, 1);
     }
 
+    protected override void ReloadFromStore()
+    {
+        if (!Touched(nameof(CountsPerDegree))) CountsPerDegree = _configService.Store.AutoSteer.CountsPerDegree;
+    }
+
     public override Task<bool> ValidateAsync()
     {
         if (CountsPerDegree < 1 || CountsPerDegree > 255)

@@ -227,7 +227,7 @@ public abstract class WizardViewModel : ObservableObject
             return;
 
         // Validate current step
-        var isValid = await CurrentStep.ValidateAsync();
+        var isValid = await CurrentStep.ValidateLiveAsync();
         if (!isValid)
             return;
 
@@ -291,7 +291,7 @@ public abstract class WizardViewModel : ObservableObject
             return;
 
         // Validate final step
-        var isValid = await CurrentStep.ValidateAsync();
+        var isValid = await CurrentStep.ValidateLiveAsync();
         if (!isValid)
             return;
 
