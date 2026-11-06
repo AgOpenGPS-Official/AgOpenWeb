@@ -379,6 +379,7 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                     // currently driving — that's the observed MinPWM.
                     if (delta > 0)
                     {
+                        module = await AtRestAsync(module, token);
                         DetectedMinPwm = module.PwmDisplay;
                         DetectedInvertMotor = autoSteerConfig.InvertMotor;
                         detected = true;
@@ -558,6 +559,37 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
     }
 
     private double GetCurrentSteerAngle() => GetCurrentModuleData().ActualSteerAngle;
+
+    private const int RestSampleMs = 100;
+    private const int RestMaxMs = 2000;
+    private const double RestStillDeg = 0.1;
+
+    /// <summary>
+    /// The module's feedback once the wheels, moving toward the nudge, have come to rest
+    /// short of it. While they move, the PWM is the gain times what is left of the nudge,
+    /// not what the motor needs: armed at the bottom of the ramp they move at its first
+    /// step, and that read 44 for a motor that moves from 28. They stop where the PWM
+    /// falls below what moves them, so the PWM at rest is the minimum. At rest on the
+    /// target itself (PWM 0: the minimum PWM set is already more than enough) the
+    /// setting is kept.
+    /// </summary>
+    private async Task<SteerModuleData> AtRestAsync(SteerModuleData moving, CancellationToken token)
+    {
+        var last = moving;
+        for (int waited = 0; waited < RestMaxMs; waited += RestSampleMs)
+        {
+            await DelayFunc(RestSampleMs, token);
+            var now = GetCurrentModuleData();
+            LiveSteerAngle = Math.Round(now.ActualSteerAngle, 1);
+            ReportedModulePwm = now.PwmDisplay;
+            bool still = Math.Abs(now.ActualSteerAngle - last.ActualSteerAngle) < RestStillDeg;
+            last = now;
+            if (still) break;
+        }
+        return last.PwmDisplay > 0
+            ? last
+            : last with { PwmDisplay = (byte)Math.Clamp(_configService.Store.AutoSteer.MinPwm, 0, 255) };
+    }
 
     protected override SteerModuleData CurrentModuleData => GetCurrentModuleData();
 

@@ -115,7 +115,8 @@ public class SteerWizardMotorDirectionTests
         await step.RunKpRampAsync();
 
         Assert.That(step.DetectedInvertMotor, Is.False, step.PhaseResult);
-        Assert.That(step.DetectedMinPwm, Is.GreaterThanOrEqualTo(sim.BreakawayPwm));
+        Assert.That(step.DetectedMinPwm, Is.InRange(sim.BreakawayPwm - 2, sim.BreakawayPwm + 3),
+            "the PWM the wheels need to move (it read 44 for a motor that moves from 28)");
         Assert.That(Math.Abs(sim.Angle), Is.LessThanOrEqualTo(SwitchGatedWizardStep.CenterToleranceDeg + 0.5),
             "a motor seen turning the right way is brought back to centre");
         Assert.That(sim.FreeDrive, Is.False);
