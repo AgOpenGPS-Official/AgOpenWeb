@@ -180,7 +180,10 @@ def push(path):
 
 
 def sweep(url, size, keys, trans=None):
-    """Every measurement from every screen, as (screen name, result)."""
+    """Open every screen once and measure it: with no translations, each label's room in
+    sample text; with {language: translations}, whether each language's translation fits.
+    The page stays in English and a translation is put in place and taken out again, so one
+    pass over the screens serves every language (opening a screen is most of the time)."""
     from playwright.sync_api import sync_playwright
     w, h = (int(v) for v in size.split("x"))
     with sync_playwright() as pw:
@@ -194,15 +197,20 @@ def sweep(url, size, keys, trans=None):
         for name, js, root in page.evaluate(SURFACES_JS):
             page.evaluate(js)
             page.wait_for_timeout(300)
-            for r in page.evaluate(MEASURE_JS, [root, keys, SAMPLE, LABEL_MAX, trans]):
-                yield name, r
+            if trans is None:
+                for r in page.evaluate(MEASURE_JS, [root, keys, SAMPLE, LABEL_MAX, None]):
+                    yield None, name, r
+            else:
+                for lang, tr in trans.items():
+                    for r in page.evaluate(MEASURE_JS, [root, keys, SAMPLE, LABEL_MAX, tr]):
+                        yield lang, name, r
         page.evaluate("lnCloseAll(); closeDialog();")
         browser.close()
 
 
 def measure(a, keys):
     found = {}   # key -> {"limit", "fit", "places"} or {"label": False}
-    for name, r in sweep(a.url, a.size, keys):
+    for _, name, r in sweep(a.url, a.size, keys):
         cur = found.get(r["key"])
         if not r["label"]:
             found[r["key"]] = {"label": False}      # a sentence anywhere: no limit
@@ -248,18 +256,21 @@ def check(a, keys):
     baseline = json.loads(BASELINE.read_text(encoding="utf-8")) if BASELINE.exists() else {}
     annotate = os.environ.get("GITHUB_ACTIONS") == "true"
     new_baseline, bad = {}, 0
+    langs = {}
     for f in sorted(I18N.glob("*.json")):
         trans = {k: v for k, v in json.loads(f.read_text(encoding="utf-8")).items() if v}
-        if f.stem == "en" or not trans:
-            continue
-        lang = f.stem
-        checked, failed = set(), {}
-        for name, r in sweep(a.url, a.size, keys, trans):
-            if not r["label"]:
-                continue        # a sentence: its box grows
-            checked.add(r["key"])
-            if not r["fits"]:
-                failed.setdefault(r["key"], []).append(f"{name} {r['where']}")
+        if f.stem != "en" and trans:
+            langs[f.stem] = trans
+    checked_by = {lang: set() for lang in langs}
+    failed_by = {lang: {} for lang in langs}
+    for lang, name, r in sweep(a.url, a.size, keys, langs):
+        if not r["label"]:
+            continue        # a sentence: its box grows
+        checked_by[lang].add(r["key"])
+        if not r["fits"]:
+            failed_by[lang].setdefault(r["key"], []).append(f"{name} {r['where']}")
+    for lang, trans in langs.items():
+        checked, failed = checked_by[lang], failed_by[lang]
         known = set(baseline.get(lang, []))
         new = sorted(set(failed) - known)
         fixed = sorted(k for k in known & checked if k not in failed)
