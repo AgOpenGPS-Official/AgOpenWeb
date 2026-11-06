@@ -16,11 +16,10 @@ namespace AgOpenWeb.Models.State;
 /// <c>UdpCommunicationService</c>) raise events from their own background
 /// threads; the ViewModel's handlers check the injected
 /// <c>IUiDispatcher</c>'s <c>CheckAccess()</c> and <c>Post</c> if needed
-/// before touching <c>State.Connections</c>. Exception: the hello-timer polling
-/// in <c>MainViewModel</c> starts on the host-loop thread, but the
-/// <c>HostLoopDispatcher</c> installs no <c>SynchronizationContext</c>, so after
-/// its first <c>await</c> it writes <c>State.Connections</c> from thread-pool
-/// threads. (Under the old Avalonia UI thread those continuations stayed on it.)
+/// before touching <c>State.Connections</c>. The hello-timer polling in
+/// <c>MainViewModel</c> starts on the host-loop thread and stays there across its
+/// <c>await</c>s: <c>HostLoopDispatcher</c> installs a <c>SynchronizationContext</c>
+/// that brings continuations back to the loop, as the old Avalonia UI thread did.
 /// </para>
 ///
 /// <para>Reader / writer table:</para>

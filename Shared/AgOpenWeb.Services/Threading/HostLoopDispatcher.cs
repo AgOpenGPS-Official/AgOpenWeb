@@ -21,7 +21,9 @@ namespace AgOpenWeb.Services.Threading;
 /// so they never overlap. The headless host has no UI thread, so this class
 /// reproduces that exact single-threaded serialization for the VM/services layer.
 /// The 100 Hz control loop keeps running on its own thread (as it does in the
-/// windowed app); only the UI-thread-equivalent work is funnelled here.
+/// windowed app); only the UI-thread-equivalent work is funnelled here. The loop
+/// thread carries a <see cref="SynchronizationContext"/>, so an <c>await</c> in work
+/// started on it resumes on it, as on a UI thread.
 ///
 /// Framework-free (no Avalonia). See Plans/Completed/WEBUI_MIGRATION_PLAN.md Phase 10 and
 /// Plans/Completed/CONFIG_STATE_AUDIT.md §11.
@@ -60,6 +62,13 @@ public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDispos
 
     private void Pump()
     {
+        // The UI thread the VM was written for brings its awaits back to itself; a bare
+        // thread does not. Without this, after `await Task.Delay(50)` in a field open the
+        // rest of the open ran on a thread-pool thread, setting IsFieldOpen, CurrentBoundary,
+        // SelectedTrack and much more while the GPS cycle and the web server read them. With
+        // the context an await started on the loop resumes on the loop (ConfigureAwait(false)
+        // still leaves it, and Task.Run still runs its work elsewhere).
+        SynchronizationContext.SetSynchronizationContext(new LoopSynchronizationContext(this));
         foreach (var work in _queue.GetConsumingEnumerable())
         {
             long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -109,6 +118,22 @@ public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDispos
             catch (Exception ex) { tcs.SetException(ex); }
         });
         return tcs.Task;
+    }
+
+    /// <summary>The loop thread's <see cref="SynchronizationContext"/>: continuations are
+    /// posted to the queue (dropped once the loop is disposed, as <see cref="Post"/> drops
+    /// work), and <see cref="Send"/> runs inline on the loop or waits for its turn.</summary>
+    private sealed class LoopSynchronizationContext(HostLoopDispatcher loop) : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state) => loop.Post(() => d(state));
+
+        public override void Send(SendOrPostCallback d, object? state)
+        {
+            if (loop.CheckAccess()) { d(state); return; }
+            loop.InvokeAsync(() => d(state)).GetAwaiter().GetResult();
+        }
+
+        public override SynchronizationContext CreateCopy() => this;
     }
 
     // --- IUiTimerFactory: timers that marshal their Tick onto this same loop ---
