@@ -55,6 +55,38 @@ public class GoAroundPassesTests
     }
 
     [Test]
+    public void The_bend_radius_never_goes_under_the_tractors_minimum_turning_radius()
+    {
+        var (passes, _, _) = Setup();
+        var c = ConfigurationStore.Instance;
+        c.Vehicle.Wheelbase = 3;
+        c.Vehicle.MaxSteerAngle = 35; // 4.28 m
+        c.Guidance.GoAroundRadius = 2;
+        Assert.That(passes.Radius, Is.EqualTo(3 / System.Math.Tan(35 * System.Math.PI / 180)).Within(0.01));
+        c.Guidance.GoAroundRadius = 10;
+        Assert.That(passes.Radius, Is.EqualTo(10));
+    }
+
+    [Test]
+    public void The_least_margin_grows_as_the_bend_tightens()
+    {
+        Assert.That(GoAroundPasses.MinMarginFor(6), Is.EqualTo(0.3).Within(1e-9));
+        Assert.That(GoAroundPasses.MinMarginFor(10), Is.EqualTo(0.3).Within(1e-9), "no less than on a 6 m bend");
+        Assert.That(GoAroundPasses.MinMarginFor(4), Is.EqualTo(0.3 * System.Math.Pow(1.5, 1.5)).Within(1e-9));
+        Assert.That(GoAroundPasses.MinMarginFor(4), Is.GreaterThan(0.4), "the scenario tractor cuts a 4 m bend by 0.4 m");
+
+        var (passes, _, _) = Setup();
+        var c = ConfigurationStore.Instance;
+        c.Vehicle.Wheelbase = 3;
+        c.Vehicle.MaxSteerAngle = 35;
+        c.Guidance.GoAroundRadius = 2;
+        c.Guidance.GoAroundMargin = 0;
+        Assert.That(passes.SafetyMargin, Is.EqualTo(GoAroundPasses.MinMarginFor(passes.Radius)).Within(1e-9), "the floor for the radius in force");
+        c.Guidance.GoAroundMargin = 1;
+        Assert.That(passes.SafetyMargin, Is.EqualTo(1));
+    }
+
+    [Test]
     public void The_two_passes_beside_the_tree_bend_away_from_each_other()
     {
         var (passes, field, track) = Setup();

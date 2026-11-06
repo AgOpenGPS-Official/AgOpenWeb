@@ -52,6 +52,9 @@ public partial class YouTurnCreationService
         /// obstacle and none is planned elsewhere; the operator has to take over.
         /// </summary>
         public bool AtObstacle { get; init; }
+
+        /// <summary>With <see cref="AtObstacle"/> and a path, the obstacle's index in the inner boundaries; else -1.</summary>
+        public int AtObstacleIndex { get; init; } = -1;
     }
 
     /// <summary>
@@ -260,7 +263,10 @@ public partial class YouTurnCreationService
                 _logger.LogDebug("[YouTurn] Path created with {Count} points, net={Net:F0}° cumulative={Cum:F0}° (setback {S:F2}m){At}",
                     path.Count, netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI, extraSetback,
                     atObstacle ? $", before obstacle {obstacle!.InnerIndex + 1}" : "");
-                return new TurnPathResult(path, UsedFallback: false) { ArcStart = output.ArcStart, AtObstacle = atObstacle };
+                return new TurnPathResult(path, UsedFallback: false)
+                {
+                    ArcStart = output.ArcStart, AtObstacle = atObstacle, AtObstacleIndex = atObstacle ? obstacle!.InnerIndex : -1,
+                };
             }
 
             // Creation failed outright.

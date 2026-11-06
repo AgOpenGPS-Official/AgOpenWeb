@@ -305,6 +305,7 @@ public sealed class YouTurnStateMachine
                 if (fromHere.Count > 2)
                 {
                     turn.TurnPath = fromHere;
+                    _plannedObstacleStamp = YouTurnCreationService.ObstacleStamp(ctx.Boundary);
                     turn.ArcStart = null;
                     turn.YouTurnCounter = 0;
                     turn.IsTriggered = true;
@@ -621,6 +622,22 @@ public sealed class YouTurnStateMachine
     }
 
     /// <summary>
+    /// An obstacle given another choice, made hard, added or moved while a turn is being driven,
+    /// with the rest of the path, or the first metres of the next pass, no longer clear of the
+    /// obstacles: a turn being driven is not planned again (that could whip the steering in the
+    /// arc), so the caller takes AutoSteer off with the alarm. Each change is judged once.
+    /// Returns the obstacle's index in the inner boundaries, or -1.
+    /// </summary>
+    public int ObstacleChangedUnderTurn(in TickContext ctx, YouTurnWorkingState turn, IReadOnlyList<int>? promoted = null)
+    {
+        if (!turn.IsExecuting || turn.TurnPath == null || ctx.Boundary == null) return -1;
+        long stamp = YouTurnCreationService.ObstacleStamp(ctx.Boundary);
+        if (stamp == _plannedObstacleStamp) return -1;
+        _plannedObstacleStamp = stamp;
+        return _creation.RestOfTurnBlockedBy(turn.TurnPath, ctx.CurrentPosition, ctx.Boundary, turn.TurnAtObstacleIndex, promoted);
+    }
+
+    /// <summary>
     /// Manually trigger a U-turn in the specified direction. Used for tracks along boundaries
     /// where automatic headland detection doesn't fire.
     /// </summary>
@@ -705,6 +722,7 @@ public sealed class YouTurnStateMachine
         if (path.Count > 2)
         {
             turn.TurnPath = path;
+            _plannedObstacleStamp = YouTurnCreationService.ObstacleStamp(ctx.Boundary);
             turn.YouTurnCounter = 0;
             effects.SyncTurnPathToMap = true;
             // Manual turns trigger immediately — no proximity check against the turn start.
@@ -760,6 +778,7 @@ public sealed class YouTurnStateMachine
     {
         turn.TurnPath = null;
         turn.TurnAtObstacle = false;
+        turn.TurnAtObstacleIndex = -1;
         turn.NextTrack = null;
         turn.IsTriggered = false;
         turn.ReturnPassTargetPath = null;
@@ -1197,6 +1216,7 @@ public sealed class YouTurnStateMachine
         turn.TurnPath = result.Path;
         turn.ArcStart = result.ArcStart;
         turn.TurnAtObstacle = result.AtObstacle;
+        turn.TurnAtObstacleIndex = result.AtObstacleIndex;
         _plannedObstacleStamp = YouTurnCreationService.ObstacleStamp(ctx.Boundary);
         turn.YouTurnCounter = 0;
         if (!result.UsedFallback && effects.StatusMessage == null)

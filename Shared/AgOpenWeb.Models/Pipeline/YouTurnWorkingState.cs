@@ -31,6 +31,8 @@ public class YouTurnWorkingState
     // The planned turn is made before an obstacle (an inner boundary chosen for a U-turn), not at
     // the field's edge: a turn missed there is not turned from where the tractor is.
     public bool TurnAtObstacle { get; set; }
+    // With TurnAtObstacle, that obstacle's index in the inner boundaries; else -1.
+    public int TurnAtObstacleIndex { get; set; } = -1;
 
     // Direction
     public bool IsTurnLeft { get; set; }
@@ -117,6 +119,7 @@ public class YouTurnWorkingState
         TurnPath = null;
         ArcStart = null;
         TurnAtObstacle = false;
+        TurnAtObstacleIndex = -1;
         PathIndex = 0;
         PreviousDistToTurnEnd = double.MaxValue;
         DistanceToHeadland = double.MaxValue;
@@ -143,6 +146,7 @@ public class YouTurnWorkingState
         TurnPath = null;
         ArcStart = null;
         TurnAtObstacle = false;
+        TurnAtObstacleIndex = -1;
         LastTurnWasLeft = IsTurnLeft;
         HeldDirectionLeft = null;
         PlannedNextPath = null;

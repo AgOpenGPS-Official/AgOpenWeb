@@ -157,6 +157,37 @@ public class ObstacleUTurnTests
     }
 
     [Test]
+    public void ATurnWhoseExitRunsTheImplementIntoAHardObstacle_IsNotMade()
+    {
+        // The turn comes out onto the next pass (E = -3, a 6 m implement) beside a hard ditch whose
+        // edge is 2.5 m from that pass: the implement would be 0.5 m in it as the turn ends. The
+        // tractor itself stays outside the ditch's turn line (1 m), so only the implement says no.
+        var boundary = Field(ObstacleAction.Turn);
+        var ditch = Rect(-30, 0, -5.5, 30);
+        ditch.AtObstacle = ObstacleAction.Turn;
+        ditch.IsHard = true;
+        boundary.InnerBoundaries.Add(ditch);
+
+        var result = Turn(boundary);
+
+        Assert.That(result.Path, Is.Null, "no turn: the operator is told");
+        Assert.That(result.AtObstacle, Is.True);
+
+        // The ditch 1.5 m further off (the implement 1.5 m clear, more than the 1 m safety margin): the turn is made.
+        boundary.InnerBoundaries.Remove(ditch);
+        var further = Rect(-30, 0, -7, 30);
+        further.AtObstacle = ObstacleAction.Turn;
+        further.IsHard = true;
+        boundary.InnerBoundaries.Add(further);
+
+        result = Turn(boundary);
+
+        Assert.That(result.Path, Is.Not.Null.And.Count.GreaterThan(10));
+        Assert.That(result.AtObstacle, Is.True);
+        Assert.That(result.AtObstacleIndex, Is.EqualTo(0));
+    }
+
+    [Test]
     public void AHardObstacle_KeepsTheImplementOutOfIt()
     {
         var c = ConfigurationStore.Instance;
@@ -338,6 +369,31 @@ public class ObstacleUTurnDriveTests
 
         _boundary.InnerBoundaries[0].AtObstacle = ObstacleAction.DriveThrough;
         Assert.That(_machine.ObstacleAheadWithoutTurn(in ctx, _turn, 16), Is.EqualTo(-1), "driven through");
+    }
+
+    [Test]
+    public void AnObstacleChangedUnderTheTurn_IsReported_WhenTheRestOfTheTurnRunsIntoIt()
+    {
+        double n = 0;
+        while (!_turn.IsExecuting && n < 39) { Tick(3, n, 0); n += Step; }
+        Assert.That(_turn.IsExecuting, Is.True, "the turn before the obstacle is being driven");
+        Assert.That(_turn.TurnAtObstacleIndex, Is.EqualTo(0));
+        var ctx = Ctx(3, n, 0);
+        Assert.That(_machine.ObstacleChangedUnderTurn(in ctx, _turn), Is.EqualTo(-1), "nothing changed");
+
+        var far = Rect(60, 100, 70, 110);
+        far.AtObstacle = ObstacleAction.Turn;
+        _boundary.InnerBoundaries.Add(far);
+        Assert.That(_machine.ObstacleChangedUnderTurn(in ctx, _turn), Is.EqualTo(-1), "changed, but the turn is clear of it");
+        Assert.That(_machine.ObstacleChangedUnderTurn(in ctx, _turn), Is.EqualTo(-1), "each change is judged once");
+
+        // A ditch across the next pass (E = -3), where the turn comes out.
+        var across = Rect(-8, 20, 2, 25);
+        across.AtObstacle = ObstacleAction.Turn;
+        across.IsHard = true;
+        _boundary.InnerBoundaries.Add(across);
+        Assert.That(_machine.ObstacleChangedUnderTurn(in ctx, _turn), Is.EqualTo(2), "the exit runs into it");
+        Assert.That(_turn.IsExecuting, Is.True, "the turn itself is left to the caller");
     }
 
     [Test]

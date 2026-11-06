@@ -55,7 +55,10 @@ around it".
 **P4. A turn is checked against the Go around obstacles too.** A planned or manual turn path
 is refused when the implement's swept path comes within the safety margin of any Go around
 obstacle, as it is for a hard U-turn obstacle in #613, and the 20 m of next pass after the turn
-is checked the same way. A headland turn refused because of a Go around obstacle promotes that
+is checked the same way: the tractor outside every turn line and, since the real-field run of
+2026-11-06 (an 8 m sprayer turning at a tree came out with the boom 0.8 m in a ditch), the
+implement the safety margin off every hard fence. How close the next pass itself runs to a fence
+is the pass's business; a turn only must not come out inside one. A headland turn refused because of a Go around obstacle promotes that
 obstacle to a U-turn obstacle for the pass (P3), so the turn is made before it instead.
 
 **P5. A safety net that does not trust the line.** With AutoSteer on and no turn being driven,
@@ -86,6 +89,15 @@ count, choices, Hard, outlines) is part of the bend's cache key, and a planned t
 again when it changes, so a changed choice or a new obstacle takes effect on the next cycle on
 every line at once.
 
+**P9. A change under a turn being driven is judged, not planned.** A turn being driven is not
+planned again (that could whip the steering in the arc). When the obstacles change under it,
+the rest of the path and the 20 m after it are checked once against the obstacles as they are
+now (`ObstacleChangedUnderTurn`, the same test as at planning), and AutoSteer goes off with the
+alarm when they run into one. The operator who does everything wrong found it on the real
+fields: a tree made drive-through and Go around again 5 m ahead while the entry leg ran through
+it, and a ditch made a U-turn obstacle again 13 m ahead with the turn's exit landing on its turn
+line, both ended with the alarm at 0 m.
+
 ## Geometry
 
 Unchanged from #610 (`ObstacleDetour`): each Go around obstacle grown by the keep-out distance
@@ -96,8 +108,11 @@ Lasry-Lions smoothing so that no curve is tighter than the set radius; obstacles
 the pass gone round together on one side; a bent line checked against every grown obstacle,
 every U-turn obstacle's turn line, and the turn area; a conflict tries the other side once, then
 the obstacle has no room (P3). The two settings stay: **Curve radius** (6 m) and **Safety
-margin** (1 m, never under 0.3 m: on the scenario field the tractor holds a bent line to about
-0.25 m, so a margin of nothing would put the implement into a hard obstacle on every bend),
+margin** (1 m, never under 0.3 m on a 6 m bend and more on a tighter one, `MinMarginFor`: on the
+scenario field the tractor holds a 6 m bend to about 0.25 m and a 4 m one to 0.4 m, so a margin
+of nothing would put the implement into a hard obstacle on every bend); the radius is never under
+the tractor's own minimum turning radius (wheelbase over the tangent of the steer angle), which
+the follower cannot hold,
 saved with the tool profile.
 
 ## Changes by component
@@ -108,8 +123,9 @@ saved with the tool profile.
   its side and is blocked, not flipped, when that side has no room) and, for every obstacle gone
   round, its side and where the tractor counts as beside it (`Bend.Rounds`).
 - **`GoAroundPasses`** (Services/Track, one singleton for the pipeline and the planner): takes the
-  settings and the tool geometry from the configuration store (the margin never under
-  `MinMargin`, 0.3 m), keeps the pins (set and released by the pipeline from the bend it steers,
+  settings and the tool geometry from the configuration store (the radius never under the
+  tractor's minimum turning radius, `Radius`; the margin never under `MinMarginFor` it,
+  `SafetyMargin`), keeps the pins (set and released by the pipeline from the bend it steers,
   `Steered`: taken beside an obstacle once the tractor is over on the bend's side, let go when it
   has left the bend or got to the other side), exposes the bend steered now (`Current`,
   `CurrentBlocked`) and the straight-ahead test for the net (P5, `ObstacleAhead`).
