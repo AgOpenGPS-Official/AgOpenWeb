@@ -61,12 +61,17 @@ public class ObstacleScenarioTests
                     : text.Contains(piece, StringComparison.OrdinalIgnoreCase)));
     }
 
+    /// <param name="Tool">rear, front, trailing, tbt, or harvester: a combine, its header a front tool
+    /// on a machine that steers with its rear axle.</param>
+    /// <param name="Hitch">The hitch length (m): a trailed tool's pin to its axle, a rigid tool's or a
+    /// header's distance from the axle; NaN for the rig's default.</param>
     public sealed record Leg(string Obstacle, string Track, bool Forward, string Tool, double Width, double Offset, int Seed,
-        bool TreesGoRound = false)
+        bool TreesGoRound = false, double Hitch = double.NaN)
     {
         public override string ToString() =>
             $"{Obstacle}, {Track}, {(Forward ? "forward" : "back")}, {Tool} {Width.ToString("0.#", CultureInfo.InvariantCulture)} m"
             + (Offset != 0 ? $" offset {Offset.ToString("+0.#;-0.#", CultureInfo.InvariantCulture)} m" : "")
+            + (double.IsNaN(Hitch) ? "" : $" hitch {Hitch.ToString("0.#", CultureInfo.InvariantCulture)} m")
             + (Seed >= 0 ? $", seed {Seed}" : "")
             + (TreesGoRound ? ", trees go around" : "");
     }
@@ -255,7 +260,7 @@ public class ObstacleScenarioTests
         double headlandWidth = ObstacleTestField.HeadlandWidth)
     {
         var target = field.Obstacles.First(o => o.Name == leg.Obstacle);
-        using var rig = new ObstacleScenarioRig(field, leg.Tool, leg.Width, leg.Offset, headlandWidth: headlandWidth);
+        using var rig = new ObstacleScenarioRig(field, leg.Tool, leg.Width, leg.Offset, leg.Hitch, headlandWidth: headlandWidth);
         rig.UseTrack(track, 0);
 
         var approach = PlanApproach(field, track, target, leg.Forward, leg.Width, leg.Offset);

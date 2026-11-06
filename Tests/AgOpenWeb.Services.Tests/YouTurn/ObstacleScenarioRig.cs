@@ -51,13 +51,21 @@ public sealed class ObstacleScenarioRig : IDisposable
     private double _e, _n, _h, _steer;
     private readonly TestClock _clock;
 
+    /// <param name="toolType">rear, front, trailing, tbt, or harvester: a combine, whose header is a front
+    /// tool and whose steering axle is behind the pivot (the fixed front axle), so its body swings the
+    /// other way in a turn. The curvature it follows for a steer angle is the tractor's (the steering
+    /// module is calibrated for the machine), so the pivot moves the same way.</param>
+    /// <param name="hitchLength">A trailed tool's hitch pin to its axle (m); for a rigid tool or a header,
+    /// the axle to the implement; NaN: 4 m for a trailed tool or a header, the app's default for a rigid tool.</param>
     /// <param name="headlandWidth">The headland's width (m): the U-turn planner's room for the turn at the field's edge.</param>
-    public ObstacleScenarioRig(ObstacleTestField.Built field, string toolType, double toolWidth = 6, double toolOffset = 0, double hitchLength = 4,
+    public ObstacleScenarioRig(ObstacleTestField.Built field, string toolType, double toolWidth = 6, double toolOffset = 0, double hitchLength = double.NaN,
         double headlandWidth = ObstacleTestField.HeadlandWidth)
     {
         Field = field;
         ToolWidth = toolWidth;
         ToolOffset = toolOffset;
+        RearSteer = toolType == "harvester";
+        if (RearSteer) toolType = "front";
         _obstacles = field.Obstacles.ToList();
         // AGOPENWEB_SCENARIO_VERBOSE=1 puts the U-turn services' own debug lines into the log.
         bool verbose = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_VERBOSE") is "1" or "true";
@@ -79,7 +87,9 @@ public sealed class ObstacleScenarioRig : IDisposable
         c.NumSections = 1;
         c.Tool.SetSectionWidth(0, (int)(toolWidth * 100));
         c.Tool.SetToolType(toolType);
-        c.Tool.TrailingHitchLength = hitchLength;
+        c.Tool.TrailingHitchLength = double.IsNaN(hitchLength) ? 4 : hitchLength;
+        if (RearSteer) c.Vehicle.Type = VehicleType.Harvester;
+        if (!double.IsNaN(hitchLength) || RearSteer) c.Tool.HitchLength = double.IsNaN(hitchLength) ? 4 : hitchLength;
         c.Guidance.UTurnRadius = 6;
         // AGOPENWEB_SCENARIO_DISTANCE overrides the U-turn distance from boundary (m) for a run.
         c.Guidance.UTurnDistanceFromBoundary = double.TryParse(Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_DISTANCE"),
@@ -128,6 +138,8 @@ public sealed class ObstacleScenarioRig : IDisposable
 
     public ObstacleTestField.Built Field { get; }
     public double ToolWidth { get; }
+    /// <summary>The machine steers with the axle behind the pivot (a combine): its body is behind the pivot.</summary>
+    public bool RearSteer { get; }
     /// <summary>The implement's lateral offset (m, + = right of the tractor), a mower conditioner's.</summary>
     public double ToolOffset { get; }
     public LocalPlane Plane { get; }
@@ -431,7 +443,7 @@ public sealed class ObstacleScenarioRig : IDisposable
     {
         var tractor = new List<(double E, double N)>();
         double se = Math.Sin(_h), ce = Math.Cos(_h);
-        foreach (double along in new[] { 0, Wheelbase })
+        foreach (double along in new[] { 0, RearSteer ? -Wheelbase : Wheelbase })
             foreach (double side in new[] { -1.0, 0, 1.0 })
                 tractor.Add((_e + se * along + ce * side, _n + ce * along - se * side));
         var bar = new List<(double E, double N)>();

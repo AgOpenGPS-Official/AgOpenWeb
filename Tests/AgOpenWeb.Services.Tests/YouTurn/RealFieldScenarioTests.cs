@@ -22,8 +22,10 @@ namespace AgOpenWeb.Services.Tests.YouTurn;
 /// field folder (<c>field.geojson</c>) under the folder named by AGOPENWEB_REAL_FIELDS, its own
 /// AB lines and the headings listed in a <c>scenario.json</c> beside it
 /// (<c>{"headings": [34], "treeMaxSize": 12, "headlandWidth": 18, "implements": ["rear 6", "tbt 12",
-/// "trailing 3 -2.5"], "treeImplements": ["rear 3"]}</c>: the implements as tool, width and offset
-/// to the right in metres, for the big obstacles and for the trees; without them the 3 m rigid and
+/// "trailing 3 -2.5", "trailing 12.5 0 7", "harvester 6 0 4"], "treeImplements": ["rear 3"]}</c>: the
+/// implements as tool (rear, front, trailing, tbt, or harvester: a combine, its header a front tool
+/// on a machine steering with its rear axle), width, offset to the right and hitch length in metres,
+/// for the big obstacles and for the trees; without them the 3 m rigid and
 /// trailed tools and the 8 m sprayer), each obstacle from both
 /// ends, with the implements of a small farm (a 3 m mounted drill, a 3 m trailed one, an 8 m
 /// sprayer), by the operator who does nothing wrong and by the one who does everything wrong.
@@ -39,8 +41,9 @@ public class RealFieldScenarioTests
     private static readonly List<LegResult> Results = new();
     private static readonly Dictionary<string, Loaded> Fields = new();
 
-    /// <summary>One implement of the matrix: the rig's tool type, its width and its lateral offset (m).</summary>
-    private sealed record Implement(string Tool, double Width, double Offset);
+    /// <summary>One implement of the matrix: the rig's tool type (rear, front, trailing, tbt, harvester), its
+    /// width, its lateral offset and its hitch length (m; NaN for the rig's default).</summary>
+    private sealed record Implement(string Tool, double Width, double Offset, double Hitch = double.NaN);
 
     private sealed record Setup(double[] Headings, double TreeMaxSize, double HeadlandWidth,
         Implement[] Implements, Implement[] TreeImplements);
@@ -131,12 +134,13 @@ public class RealFieldScenarioTests
         return new Setup(headings, treeMax, headland, implements, treeImplements ?? implements);
     }
 
-    // "rear 6", "trailing 3 -2.5": the tool, its width, and its offset to the right (m).
+    // "rear 6", "trailing 3 -2.5", "trailing 12.5 0 7", "harvester 6 0 4": the tool, its width, its offset
+    // to the right, and its hitch length (m).
     private static Implement[] Implements(JsonElement list) => list.EnumerateArray().Select(x =>
     {
         var parts = x.GetString()!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        double Num(int i) => i < parts.Length ? double.Parse(parts[i], CultureInfo.InvariantCulture) : 0;
-        return new Implement(parts[0], Num(1), Num(2));
+        double Num(int i, double dflt) => i < parts.Length ? double.Parse(parts[i], CultureInfo.InvariantCulture) : dflt;
+        return new Implement(parts[0], Num(1, 0), Num(2, 0), Num(3, double.NaN));
     }).ToArray();
 
     /// <summary>
@@ -200,9 +204,9 @@ public class RealFieldScenarioTests
                 foreach (var o in f.Field(treesGoRound).AvoidedObstacles)
                     foreach (var (trackName, _) in f.Tracks)
                         foreach (bool forward in new[] { true, false })
-                            foreach (var (tool, width, offset) in o.Name.Contains("(tree ") ? f.Setup.TreeImplements : f.Setup.Implements)
+                            foreach (var (tool, width, offset, hitch) in o.Name.Contains("(tree ") ? f.Setup.TreeImplements : f.Setup.Implements)
                             {
-                                var leg = new Leg(LegObstacle(f, o), trackName, forward, tool, width, offset, -1, treesGoRound);
+                                var leg = new Leg(LegObstacle(f, o), trackName, forward, tool, width, offset, -1, treesGoRound, hitch);
                                 if (Wanted(leg)) yield return new TestCaseData(leg).SetName($"Field({leg})");
                             }
     }
