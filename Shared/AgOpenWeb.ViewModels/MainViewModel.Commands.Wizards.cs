@@ -69,9 +69,35 @@ public partial class MainViewModel
     /// <summary>Tear down the remote wizard (Finish / Cancel from the browser).</summary>
     public void EndRemoteSteerWizard()
     {
+        var wizard = SteerWizardViewModel;
         // Cancel cannot leave a motor test running with the AutoSteer lockout lifted.
-        (SteerWizardViewModel?.CurrentStep as SwitchGatedWizardStep)?.StopFreeDriveTest();
+        (wizard?.CurrentStep as SwitchGatedWizardStep)?.StopFreeDriveTest();
         SteerWizardViewModel = null;
+        // Leave the step (a CPD / Ackermann circle stops recording) and drop the handlers.
+        wizard?.Close();
+    }
+
+    /// <summary>
+    /// The browser that held control is gone (released, disconnected, or the deadman ran
+    /// out). Nothing may keep actuating with no screen and no Stop button: AutoSteer off,
+    /// sections off, and the steer wizard closed. Closing the wizard stops a motor test
+    /// that would otherwise go on turning the wheels lock to lock; a wizard left open
+    /// would also keep AutoSteer locked out (#154) with nothing on the reloaded page to
+    /// close it. What the finished steps set stays in the live settings, as with Cancel.
+    /// </summary>
+    public void OnBrowserControlEnded(string offReason)
+    {
+        if (IsAutoSteerEngaged && ToggleAutoSteerCommand?.CanExecute(offReason) == true)
+            ToggleAutoSteerCommand.Execute(offReason);
+        if (IsManualSectionMode && ToggleManualModeCommand?.CanExecute(null) == true)
+            ToggleManualModeCommand.Execute(null);
+        if (IsSectionMasterOn && ToggleSectionMasterCommand?.CanExecute(null) == true)
+            ToggleSectionMasterCommand.Execute(null);
+        if (IsSteerWizardOpen)
+        {
+            EndRemoteSteerWizard();
+            StatusMessage = "Steer wizard closed: " + offReason;
+        }
     }
 
     private void DisengageForSteerWizard()

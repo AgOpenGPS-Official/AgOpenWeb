@@ -1074,6 +1074,16 @@ public partial class MainViewModel
                 return;
             }
 
+            // Settings the guidance cannot steer with, however they got there (a profile from
+            // before the settings had ranges, a hand-edited file): a wheelbase of 0 never steers,
+            // a negative one steers away from the line, an overlap as wide as the implement
+            // puts every pass on one line.
+            if (!IsAutoSteerEngaged && Models.Configuration.VehicleToolLimits.WhyCannotSteer(ConfigStore) is { } cannot)
+            {
+                ReportFailure("AutoSteer not available - " + cannot);
+                return;
+            }
+
             // Engagement has no boundary/headland preconditions.
             //  - No boundary: AB-lines-only workflow with manual sections.
             //  - Boundary but no headland: auto-uturn still works against a

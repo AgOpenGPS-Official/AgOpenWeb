@@ -421,7 +421,7 @@ and `untrack`). The map's area is set by `setMapArea(l, r)`; what that means for
 2. **iOS device**: `xcrun devicectl device process launch --console --terminate-existing com.agopenweb.ios` streams the app's console; its web server is reachable from the Mac over the USB link
 3. **Android**: Debug builds enable WebView debugging (`chrome://inspect`); `adb forward tcp:5599 tcp:5174` reaches the host
 4. **A client shows something a fresh connection doesn't**: compare the incremental stream with the full snapshot (coverage deltas vs `Snapshot()`)
-5. **Bug Report Dump** (main menu) zips settings, state, the field, the active job's coverage tiles and the last 5 minutes of the GPS log (10 Hz; includes the sentence type, its pre-fusion heading and the receiver's differential age); with NTRIP in use, `ntrip_rtcm.txt` lists the RTCM messages the caster sent by type and `ntrip_session.txt` what the connection did and why it failed (no login in it; `system_info.txt` has an `NTRIP:` line with the same outcome)
+5. **Bug Report Dump** (main menu) zips settings, state, the field, the active job's coverage tiles and the last 5 minutes of the GPS log (10 Hz; includes the sentence type, its pre-fusion heading and the receiver's differential age); with NTRIP in use, `ntrip_rtcm.txt` lists the RTCM messages the caster sent by type and `ntrip_session.txt` what the connection did and why it failed (no login in it; `system_info.txt` has an `NTRIP:` line with the same outcome). `system_info.txt` ends with each browser's GPU renderer, texture limit, canvas, frame rate and draw time (`diag.client`, `ClientDiagnostics`), flagged `SOFTWARE RENDERING` when the renderer is the CPU (llvmpipe, SwiftShader): such a device will not draw the map smoothly whatever the app does
 6. **iOS Release builds hang in CI**: Use Debug configuration (Release triggers AOT compilation that hangs on runners). Simulator builds run on the interpreter (`MtouchInterpreter=all` in the csproj), so they skip AOT altogether; device builds keep it
 
 ## Code Style
@@ -453,6 +453,7 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.IntegrationTests` - test-support library (fake settings etc.); not a standalone test run
 - `AgOpenWeb.VehicleToolScenarios.Tests` - Vehicle & Tool scenarios: a simulated machine (steering, implement linkage, antenna on a slope, the Boards simulator's GPS/IMU/motor) drives the whole backend; a careful operator on five vehicles and their implements, a careless one with wrong measures, signs, units, roll setup and profiles; a findings report; CI only builds it, `vehicle-tool-scenarios.yml` runs it nightly (its `README.md`)
 - `AgOpenWeb.FieldScenarios.Tests` - end-to-end field scenarios: the whole backend in-process, a careful and a careless operator on five real field shapes, a findings report; about 4 minutes, so CI only builds it and `field-scenarios.yml` runs it nightly (its `README.md`)
+- `AgOpenWeb.SteerWizardScenarios.Tests` - end-to-end steer wizard scenarios: the whole backend in-process, an emulated AiO steer module (firmware P controller, WAS formula, locks, either motor wiring) and a moving tractor, a careful and a careless operator, a safety watch on the wheels at 50 Hz, a findings report; about 10 minutes, so CI only builds it and `steer-wizard-scenarios.yml` runs it nightly (its `README.md`)
 
 CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/license-headers.py --check` for the licence headers, and `Tools/i18n-limits.py --check` (job `translations-fit`, only when a change touches `wwwroot/`, the check, its baseline or the workflow; otherwise skipped, which counts as passed) so every translated label fits the English layout.
 
@@ -496,6 +497,8 @@ Three GitHub Actions workflows, split by purpose:
 - **`field-scenarios.yml`** — nightly on `develop` (when it has a commit from the last day) or by hand:
   runs the field scenario harness (`Tests/AgOpenWeb.FieldScenarios.Tests`, real UDP included) and keeps
   its findings report as an artifact and in the run's summary. PR CI only builds the harness.
+- **`steer-wizard-scenarios.yml`** — the same for the steer wizard harness (`Tests/AgOpenWeb.SteerWizardScenarios.Tests`),
+  at 03:30 UTC; it also fails when its safety watch saw the wheels move when they shouldn't.
 
 To cut a release (about weekly, so each one stays small): bump `sys/version.h` and the three heads' display versions, then push a tag — `git tag v26.7.x && git push origin v26.7.x`. A summary on top of the generated list goes in with `gh release edit`.
 

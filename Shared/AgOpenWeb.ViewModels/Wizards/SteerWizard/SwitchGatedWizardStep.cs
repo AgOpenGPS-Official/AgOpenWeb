@@ -104,7 +104,7 @@ public abstract class SwitchGatedWizardStep : WizardStepViewModel
     }
 
     /// <summary>
-    /// Free Drive on at 0°, then wait for the module to arm: first judged after
+    /// Free Drive on, holding the wheels' current angle, then wait for the module to arm: first judged after
     /// <see cref="ArmSettleMs"/>, polled until <see cref="ArmTimeoutMs"/>. If it has not armed,
     /// Free Drive is dropped for <see cref="ArmRetryGapMs"/> and raised once more: a module
     /// that armed only on the second press of Start made the first press fail with "turn on
@@ -118,7 +118,11 @@ public abstract class SwitchGatedWizardStep : WizardStepViewModel
         {
             _armSettled = false;
             _freeDriveOn = true;
-            AutoSteerService?.EnableFreeDrive(); // status 1, 0°
+            AutoSteerService?.EnableFreeDrive(); // status 1
+            // Hold the wheels where they are while the module arms. Arming at 0° turned
+            // wheels left a few degrees off centre back at once, and with the motor wired
+            // the other way (unknown before the motor test) drove them into the lock.
+            AutoSteerService?.SetFreeDriveAngle(CurrentWasAngle);
             await DelayFunc(ArmSettleMs, token);
             for (int elapsed = ArmSettleMs; ; elapsed += ArmPollMs)
             {
@@ -146,11 +150,19 @@ public abstract class SwitchGatedWizardStep : WizardStepViewModel
     /// <see cref="CenterToleranceDeg"/> of centre or <see cref="CenterHoldTimeoutMs"/> passes,
     /// then release. Not cancellable — it is the cleanup path — but returns at once if
     /// Free Drive was already released (step left, wizard closed).
+    /// With <paramref name="centre"/> false the wheels are released where they are: when the
+    /// test saw them turn the wrong way (or never confirmed the motor direction), holding 0°
+    /// drives them away from centre and pushes them against the lock until the timeout.
     /// </summary>
-    protected async Task EndFreeDriveAsync()
+    protected async Task EndFreeDriveAsync(bool centre = true)
     {
         if (!_freeDriveOn)
             return;
+        if (!centre)
+        {
+            ReleaseFreeDrive();
+            return;
+        }
         AutoSteerService?.SetFreeDriveAngle(0);
         for (int elapsed = 0; _freeDriveOn && elapsed < CenterHoldTimeoutMs; elapsed += CenterPollMs)
         {

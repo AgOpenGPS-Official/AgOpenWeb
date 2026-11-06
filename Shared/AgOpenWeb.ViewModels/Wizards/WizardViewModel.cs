@@ -227,7 +227,7 @@ public abstract class WizardViewModel : ObservableObject
             return;
 
         // Validate current step
-        var isValid = await CurrentStep.ValidateAsync();
+        var isValid = await CurrentStep.ValidateLiveAsync();
         if (!isValid)
             return;
 
@@ -291,7 +291,7 @@ public abstract class WizardViewModel : ObservableObject
             return;
 
         // Validate final step
-        var isValid = await CurrentStep.ValidateAsync();
+        var isValid = await CurrentStep.ValidateLiveAsync();
         if (!isValid)
             return;
 
@@ -330,6 +330,19 @@ public abstract class WizardViewModel : ObservableObject
         (BackCommand as IRelayCommand)?.NotifyCanExecuteChanged();
         (SkipCommand as IRelayCommand)?.NotifyCanExecuteChanged();
         (FinishCommand as IRelayCommand)?.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// The wizard is going away (Finish, Cancel, or a new one replaces it): leave the current
+    /// step, so a test or a recording it runs stops and its event handlers come off, and let
+    /// the status bar go of the live data. Without it a CPD circle being recorded when the
+    /// wizard closed went on, and set CPD a few seconds later with no wizard on screen.
+    /// </summary>
+    public void Close()
+    {
+        if (CurrentStep is { IsActive: true } step)
+            step.IsActive = false;
+        StatusBar?.Dispose();
     }
 
     /// <summary>

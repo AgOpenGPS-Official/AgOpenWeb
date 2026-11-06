@@ -26,6 +26,7 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
     private double _startEasting;
     private double _startNorthing;
     private int _stableCounter;
+    private readonly CircleRun _run = new();
     private bool _sawNonRtkWhileRecording;
     private double _startAngle;
 
@@ -216,6 +217,7 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
 
         _startAngle = _autoSteerService!.LastSteerData.ActualSteerAngle;
         StartRecordingAt(snapshot.Value.Easting, snapshot.Value.Northing);
+        _run.Start(snapshot.Value.Easting, snapshot.Value.Northing, _startAngle);
     }
 
     /// <summary>
@@ -225,6 +227,7 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
     {
         _startEasting = easting;
         _startNorthing = northing;
+        _run.Start(easting, northing);
         Diameter = 0;
         _stableCounter = 0;
         _sawNonRtkWhileRecording = !IsRtkFixed;
@@ -253,14 +256,16 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
         double dist = Math.Sqrt(
             Math.Pow(easting - _startEasting, 2) +
             Math.Pow(northing - _startNorthing, 2));
+        bool moving = _run.Add(easting, northing, _autoSteerService?.LastSteerData.ActualSteerAngle ?? 0);
 
         if (dist > Diameter)
         {
             Diameter = dist;
             _stableCounter = 0;
         }
-        else
+        else if (moving)
         {
+            // Only while moving: a stop is not the far side of the circle.
             _stableCounter++;
         }
 
@@ -270,11 +275,17 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
             IsRecording = false;
             double wheelbase = _configService.Store.Vehicle.Wheelbase;
             double trackWidth = _configService.Store.Vehicle.TrackWidth;
-            double actualAngle = Math.Abs(_autoSteerService?.LastSteerData.ActualSteerAngle ?? 0);
+            // The angle held over the circle, not the last reading.
+            double actualAngle = Math.Abs(_run.MeanAngle);
 
             if (MeasurementError(Diameter, trackWidth, actualAngle) is { } error)
             {
                 TestResult = error + " CPD not changed.";
+                return;
+            }
+            if (_run.Error(Diameter, rightHand: true) is { } runError)
+            {
+                TestResult = runError + " CPD not changed.";
                 return;
             }
 
@@ -395,6 +406,11 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
         Speed = Math.Round(snapshot.SpeedKmh, 1);
         IsAtRecommendedSpeed = Speed >= 3.0 && Speed <= 7.0;
         LiveSteerAngle = Math.Round(_autoSteerService!.LastSteerData.ActualSteerAngle, 1);
+    }
+
+    protected override void ReloadFromStore()
+    {
+        if (!Touched(nameof(CountsPerDegree))) CountsPerDegree = _configService.Store.AutoSteer.CountsPerDegree;
     }
 
     public override Task<bool> ValidateAsync()

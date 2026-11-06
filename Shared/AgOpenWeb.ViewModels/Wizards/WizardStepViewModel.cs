@@ -144,6 +144,25 @@ public abstract class WizardStepViewModel : ObservableObject
     protected virtual void OnLeaving() { }
 
     /// <summary>
+    /// Copy what the step shows from the live settings again, just before it is checked. The
+    /// web wizard types into the live settings (config.set), not into the step, so the copies
+    /// taken when the step opened go stale: a wheelbase of 0 typed in passed the check, and
+    /// the right value typed after it was refused with the old one's message. Overrides
+    /// refresh only what the step itself didn't change (<see cref="Touched"/>).
+    /// </summary>
+    protected virtual void ReloadFromStore() { }
+
+    /// <summary>Reload the step from the live settings (<see cref="ReloadFromStore"/>), then check it.</summary>
+    public Task<bool> ValidateLiveAsync()
+    {
+        bool was = _loading;
+        _loading = true;
+        try { ReloadFromStore(); }
+        finally { _loading = was; }
+        return ValidateAsync();
+    }
+
+    /// <summary>
     /// Validates the current step before allowing navigation to next.
     /// Override to add custom validation.
     /// </summary>

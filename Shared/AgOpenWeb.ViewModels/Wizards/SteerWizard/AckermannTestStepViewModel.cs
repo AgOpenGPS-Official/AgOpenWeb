@@ -28,6 +28,7 @@ public class AckermannTestStepViewModel : WizardStepViewModel
     private double _startNorthing;
     private double _startAngle;
     private int _stableCounter;
+    private readonly CircleRun _run = new();
     private bool _sawNonRtkWhileRecording;
 
     public override string Title => "Ackermann Calibration";
@@ -237,6 +238,7 @@ public class AckermannTestStepViewModel : WizardStepViewModel
         _startEasting = easting;
         _startNorthing = northing;
         _startAngle = startAngle;
+        _run.Start(easting, northing, startAngle);
         _isSettling = false;
         Diameter = 0;
         _stableCounter = 0;
@@ -277,14 +279,16 @@ public class AckermannTestStepViewModel : WizardStepViewModel
         double dist = Math.Sqrt(
             Math.Pow(easting - _startEasting, 2) +
             Math.Pow(northing - _startNorthing, 2));
+        bool moving = _run.Add(easting, northing, _autoSteerService?.LastSteerData.ActualSteerAngle ?? _startAngle);
 
         if (dist > Diameter)
         {
             Diameter = dist;
             _stableCounter = 0;
         }
-        else
+        else if (moving)
         {
+            // Only while moving: a stop is not the far side of the circle.
             _stableCounter++;
         }
 
@@ -299,6 +303,13 @@ public class AckermannTestStepViewModel : WizardStepViewModel
             {
                 RestoreAckermann();
                 TestResult = error + " Ackermann not changed.";
+                return;
+            }
+            // The angle taken at Record must be the one held all the way round.
+            if (_run.Error(Diameter, rightHand: false) is { } runError)
+            {
+                RestoreAckermann();
+                TestResult = runError + " Ackermann not changed.";
                 return;
             }
 

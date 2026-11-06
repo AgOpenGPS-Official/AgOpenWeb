@@ -15,7 +15,7 @@ namespace AgOpenWeb.RemoteWiring;
 public static partial class RemoteServerWiring
 {
     // A browser without control is an observer: it sees everything and changes nothing
-    // (#397). Only these ids run for it; the hub handles control.* and diag.ping itself.
+    // (#397). Only these ids run for it; the hub handles control.*, diag.ping and diag.client itself.
     // Fail-closed: a new id needs control unless it is added here, and only a request
     // that changes no setting, data or machine state belongs here.
     internal static readonly System.Collections.Generic.HashSet<string> ObserverIds = new()
@@ -36,6 +36,30 @@ public static partial class RemoteServerWiring
             return false;
         i = (int)Math.Round(d, MidpointRounding.AwayFromZero);
         return true;
+    }
+
+    // config.set as the web client sends it, with the Vehicle & Tool values no machine has
+    // refused (VehicleToolLimits: a negative wheelbase steers away from the line, an overlap as
+    // wide as the implement puts every pass on one line). Returns why a value was refused, or
+    // what the app changed on its own, for the operator; null when it was simply applied.
+    private static string? ApplyCheckedConfigSet(AgOpenWeb.Models.Configuration.ConfigurationStore store,
+        AgOpenWeb.Services.Interfaces.IConfigurationService cfg, string key, string val)
+    {
+        if (AgOpenWeb.Models.Configuration.VehicleToolLimits.Check(key, val, store) is { } refused)
+            return refused;
+
+        var tool = store.Tool;
+        bool harvester = store.Vehicle.Type == AgOpenWeb.Models.VehicleType.Harvester;
+        bool wasFront = tool.IsToolFrontFixed;
+
+        ApplyConfigSet(store, cfg, key, val);
+
+        // A harvester's header is front-mounted (#111): say so rather than ignore the choice.
+        if (key == "tool.type" && harvester && !string.Equals(val, "front", System.StringComparison.OrdinalIgnoreCase))
+            return "A combine takes only a front implement (its header)";
+        if (key == "vehicle.type" && !harvester && store.Vehicle.Type == AgOpenWeb.Models.VehicleType.Harvester && !wasFront)
+            return "Implement set to front: a combine takes only a front implement";
+        return null;
     }
 
     // Config bridge (Phase 9a+): apply one "key:value" config write from the web client.
@@ -369,51 +393,6 @@ public static partial class RemoteServerWiring
     // orchestration against IConfigurationService (the VM is dialog-scoped + Avalonia-
     // bound, so the web can't use it). Confirmations happen client-side. Args are
     // tab-separated; the leading field (where present) is the kind "vehicle"/"tool".
-    private static void ApplyProfileCommand(AgOpenWeb.Models.Configuration.ConfigurationStore store,
-        AgOpenWeb.Services.Interfaces.IConfigurationService cfg, string cmd, string arg)
-    {
-        var a = arg.Split('\t');
-        switch (cmd)
-        {
-            case "profile.load": // <vehicle>\t<tool> — save the outgoing pair, then load
-                if (a.Length == 2)
-                {
-                    cfg.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
-                    cfg.LoadProfiles(a[0], a[1]);
-                }
-                return;
-            case "profile.new": // <kind>\t<name> — duplicate the live store under a new name
-                if (a.Length == 2 && a[0] == "vehicle") cfg.SaveProfiles(a[1], store.ActiveToolProfileName);
-                else if (a.Length == 2 && a[0] == "tool") cfg.SaveProfiles(store.ActiveVehicleProfileName, a[1]);
-                return;
-            case "profile.delete": // <kind>\t<name>
-                if (a.Length == 2 && a[0] == "vehicle") cfg.DeleteVehicleProfile(a[1]);
-                else if (a.Length == 2 && a[0] == "tool") cfg.DeleteToolProfile(a[1]);
-                return;
-            case "profile.rename": // <kind>\t<old>\t<new>
-                if (a.Length == 3 && a[0] == "vehicle") cfg.RenameVehicleProfile(a[1], a[2]);
-                else if (a.Length == 3 && a[0] == "tool") cfg.RenameToolProfile(a[1], a[2]);
-                return;
-            case "profile.reset": // <kind> — reset only that column's Default profile (#111)
-                cfg.CreateProfile("Default", vehicle: a[0] != "tool", tool: a[0] != "vehicle");
-                return;
-            case "profile.configureVehicle": // <name> — make it active before the dialog opens
-                if (!string.Equals(arg, store.ActiveVehicleProfileName, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    cfg.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
-                    cfg.LoadProfiles(arg, store.ActiveToolProfileName);
-                }
-                return;
-            case "profile.configureTool": // <name>
-                if (!string.Equals(arg, store.ActiveToolProfileName, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    cfg.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
-                    cfg.LoadProfiles(store.ActiveVehicleProfileName, arg);
-                }
-                return;
-        }
-    }
-
     // NTRIP profile CRUD for the remote Network IO editor. Mirrors the native
     // MainViewModel NTRIP commands but calls INtripProfileService directly (the VM's
     // commands also drive Avalonia chain-dialog state we don't want here). The browser
@@ -585,7 +564,8 @@ public static partial class RemoteServerWiring
 
     // File / Application Menu write-side. Reset (client-confirmed), hotkey edits, and bug-report
     // dump go straight to the services / ConfigStore (no native dialogs). Language rides the VM.
-    private static void ApplyAppCommand(IServiceProvider services, AgOpenWeb.ViewModels.MainViewModel vm, string cmd, string arg)
+    private static void ApplyAppCommand(IServiceProvider services, AgOpenWeb.ViewModels.MainViewModel vm, string cmd, string arg,
+        Func<string>? browsersSummary = null)
     {
         var configService = services.GetRequiredService<IConfigurationService>();
         var store = services.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>();
@@ -642,7 +622,8 @@ public static partial class RemoteServerWiring
                             services.GetService<INtripClientService>(), services.GetService<IGpsService>()),
                         ntripSessionReport: AgOpenWeb.Services.NtripSupportReport.Build(
                             services.GetService<INtripClientService>(), services.GetService<IGpsService>()),
-                        ntripSummary: AgOpenWeb.Services.NtripSupportReport.Summary(services.GetService<INtripClientService>()));
+                        ntripSummary: AgOpenWeb.Services.NtripSupportReport.Summary(services.GetService<INtripClientService>()),
+                        browsersSummary: browsersSummary?.Invoke());
                 }
                 catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; return; }
                 var job = ActiveJobForDump(services, state);

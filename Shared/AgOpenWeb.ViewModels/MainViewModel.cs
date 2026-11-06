@@ -523,6 +523,10 @@ public partial class MainViewModel : ObservableObject
         // so the right-panel distance widget shows during approach, not just mid-turn.
         WireYouTurnDistanceVisibility();
 
+        // AutoSteer goes off when what it steers by changes under it (vehicle, implement,
+        // GPS and roll settings, a profile load).
+        WatchSettingsUnderAutoSteer();
+
         // Subscribe to ConfigurationStore changes to update NumSections
         _numSections = _configStore.NumSections;
         _configStore.PropertyChanged += (s, e) =>

@@ -244,9 +244,9 @@ public class CodePathContinuityTests
         var client = Regex.Matches(clientBlock.Groups[1].Value, @"'([^']+)'").Select(m => m.Groups[1].Value);
 
         // The hub answers these itself, before the gate.
-        var hub = new[] { "control.acquire", "control.release", "control.presence", "diag.ping" };
+        var hub = new[] { "control.acquire", "control.release", "control.presence", "diag.ping", "diag.client" };
         Assert.That(client.OrderBy(x => x), Is.EqualTo(host.Concat(hub).OrderBy(x => x)),
-            "The client's OBSERVER_IDS must be the host's ObserverIds plus the hub's control.* and diag.ping.");
+            "The client's OBSERVER_IDS must be the host's ObserverIds plus the hub's control.* and diag.*.");
     }
 
     [Test]

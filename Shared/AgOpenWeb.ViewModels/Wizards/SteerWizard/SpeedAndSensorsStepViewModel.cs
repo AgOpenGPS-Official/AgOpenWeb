@@ -116,6 +116,13 @@ public class SpeedAndSensorsStepViewModel : WizardStepViewModel
         if (Touched(nameof(ManualTurnsEnabled))) autoSteer.ManualTurnsEnabled = ManualTurnsEnabled;
     }
 
+    protected override void ReloadFromStore()
+    {
+        var autoSteer = _configService.Store.AutoSteer;
+        if (!Touched(nameof(MinSteerSpeed))) MinSteerSpeed = autoSteer.MinSteerSpeed;
+        if (!Touched(nameof(MaxSteerSpeed))) MaxSteerSpeed = autoSteer.MaxSteerSpeed;
+    }
+
     public override Task<bool> ValidateAsync()
     {
         if (MinSteerSpeed < 0)
