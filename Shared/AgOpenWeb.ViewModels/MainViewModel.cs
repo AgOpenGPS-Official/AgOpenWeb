@@ -2113,6 +2113,16 @@ public partial class MainViewModel : ObservableObject
             LogAutoSteerOff("field closed");
         }
 
+        // A boundary being recorded and a line being drawn, driven or recorded belong to this
+        // field: end them unsaved. Left running, their points went on into the next field and
+        // were saved there as its boundary or line, in the wrong field's coordinates.
+        if (_boundaryRecordingService.State != BoundaryRecordingState.Idle)
+            _boundaryRecordingService.CancelRecording();
+        IsBoundaryRecording = false;
+        IsBoundaryPlayerPanelVisible = false;
+        if (CurrentABCreationMode != ABCreationMode.None)
+            CancelABCreationCommand?.Execute(null);
+
         // CurrentFieldName clears via the pass-through when SetActiveField(null)
         // runs below (State.Field.ActiveField → null).
         // Contour (#110): save finished strips, then forget them and turn contour off
@@ -2513,6 +2523,10 @@ public partial class MainViewModel : ObservableObject
                 .Select(p => new Models.Base.Vec3(p.Easting, p.Northing, p.Heading)).ToList();
             _tramLineService.SetBoundaryFence(fencePts);
         }
+        else
+        {
+            _tramLineService.SetBoundaryFence(null); // a deleted boundary no longer clips the lines
+        }
 
         double fieldWidth = 500;
         if (State.Field.CurrentBoundary?.OuterBoundary?.Points != null && State.Field.CurrentBoundary.OuterBoundary.Points.Count > 0)
@@ -2866,6 +2880,7 @@ public partial class MainViewModel : ObservableObject
             ReportFailure("No tracks to delete");
             return;
         }
+        var names = SavedTracks.Select(t => t.Name).ToList();
         SavedTracks.Clear();
         SelectedTrack = null;
         RebuildRecordedPathsAndContours(); // clear rec-path/contour display
@@ -2873,17 +2888,36 @@ public partial class MainViewModel : ObservableObject
         // Also remove the recorded path in use, else it reloads on next open.
         if (_fieldService.ActiveField is { } f)
             Services.GeoJson.GeoJsonFieldService.DeleteCurrentRecordedPath(f.DirectoryPath);
-        StatusMessage = "All tracks deleted";
+        var dropped = DropTramSystemsFollowing(names);
+        StatusMessage = dropped.Count == 0
+            ? "All tracks deleted"
+            : $"All tracks deleted, and the {dropped.Count} tram system(s) that followed them";
     }
 
     /// <summary>Rename a saved track by index (remote/web Field Builder). Persists.</summary>
     public void RenameTrackAt(int index, string name)
     {
         if (index < 0 || index >= SavedTracks.Count || string.IsNullOrWhiteSpace(name)) return;
-        bool wasActive = ReferenceEquals(SavedTracks[index], SelectedTrack);
-        SavedTracks[index].Name = name.Trim();
+        var track = SavedTracks[index];
+        var oldName = track.Name;
+        bool wasActive = ReferenceEquals(track, SelectedTrack);
+        track.Name = name.Trim();
         SaveTracksToFile();
         if (wasActive) SaveLastUsedTrack(); // the remembered name follows the rename (#148)
+
+        // Tram systems follow their track by name: carry them along, or their lines vanish
+        // with the old name and the systems point at nothing.
+        var following = TramSystemsFollowing(oldName);
+        if (following.Count > 0 && !SavedTracks.Any(t => !ReferenceEquals(t, track) && t.Name == oldName))
+        {
+            foreach (var s in following)
+            {
+                s.ReferenceTrackName = track.Name;
+                s.Name = $"Tram {TramSystems.IndexOf(s) + 1} ({track.Name})";
+            }
+            RebuildAndSaveTram();
+            StatusMessage = $"Renamed '{oldName}' to '{track.Name}'; {following.Count} tram system(s) follow it";
+        }
     }
 
     // Track management commands
@@ -4651,6 +4685,7 @@ public partial class MainViewModel : ObservableObject
 
         int currentIndex = 0;
         bool deleted = false;
+        bool outerDeleted = false;
 
         // Check if outer boundary is selected
         if (boundary.OuterBoundary != null && boundary.OuterBoundary.IsValid)
@@ -4666,6 +4701,7 @@ public partial class MainViewModel : ObservableObject
                 }
                 boundary.OuterBoundary = null;
                 deleted = true;
+                outerDeleted = true;
             }
             currentIndex++;
         }
@@ -4693,6 +4729,7 @@ public partial class MainViewModel : ObservableObject
             SaveFieldBoundary(boundary, fieldPath);
             RefreshBoundaryList();
             SetCurrentBoundary(boundary);
+            string done = outerDeleted ? OuterBoundaryChanged() : "";
 
             // If that was the last boundary, drop the field-background image
             // too — it's georeferenced against the boundary, so leaving
@@ -4702,11 +4739,11 @@ public partial class MainViewModel : ObservableObject
             if (!hasOuter && !hasInner)
             {
                 DeleteBackgroundImage(fieldPath);
-                StatusMessage = "Boundary deleted; background image removed";
+                StatusMessage = "Boundary deleted; background image removed" + (done.Length > 0 ? $", {done}" : "");
             }
             else
             {
-                StatusMessage = "Boundary deleted";
+                StatusMessage = "Boundary deleted" + (done.Length > 0 ? $"; {done}" : "");
             }
         }
     }

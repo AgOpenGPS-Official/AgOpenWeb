@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.IO;
 using System.Linq;
 
 namespace AgOpenWeb.Models;
@@ -57,4 +58,29 @@ public static class FieldNames
         }
         return true;
     }
+
+    /// <summary>
+    /// The field folder under <paramref name="fieldsDirectory"/> with this name, or with a name
+    /// that differs from it only in capitals; null when there is none. Windows and macOS keep
+    /// "Vinha" and "vinha" in one folder, Linux in two, and the field list keys fields by name
+    /// ignoring capitals: a new field never takes a name that is already there in other capitals.
+    /// </summary>
+    public static string? ExistingTwin(string? fieldsDirectory, string name)
+    {
+        if (string.IsNullOrEmpty(fieldsDirectory) || !Directory.Exists(fieldsDirectory)) return null;
+        string? twin = null;
+        foreach (var dir in Directory.EnumerateDirectories(fieldsDirectory))
+        {
+            var existing = Path.GetFileName(dir);
+            if (string.Equals(existing, name, StringComparison.Ordinal)) return existing;
+            if (twin == null && string.Equals(existing, name, StringComparison.OrdinalIgnoreCase)) twin = existing;
+        }
+        return twin;
+    }
+
+    /// <summary>The refusal for a taken name, naming the existing field when only its capitals differ.</summary>
+    public static string ExistsMessage(string name, string existing) =>
+        string.Equals(name, existing, StringComparison.Ordinal)
+            ? $"Field '{name}' already exists"
+            : $"Field '{existing}' already exists; '{name}' differs from it only in capitals";
 }

@@ -676,6 +676,18 @@ public partial class MainViewModel
             {
                 if (PendingPointA != null)
                 {
+                    // A and B on one spot have no direction: atan2(0, 0) made a line due north
+                    // that the operator never drew (a double tap on the map, Set B pressed
+                    // before moving). The same 1 m as Lat/Lon A-B; B can still be set once the
+                    // tractor has moved or the next tap lands elsewhere.
+                    double dE = pointToSet.Easting - PendingPointA.Easting;
+                    double dN = pointToSet.Northing - PendingPointA.Northing;
+                    if (dE * dE + dN * dN < 1.0)
+                    {
+                        ReportFailure("A and B must be at least 1 m apart");
+                        return;
+                    }
+
                     // Deactivate all existing tracks before adding the new one
                     foreach (var existingTrack in SavedTracks)
                     {

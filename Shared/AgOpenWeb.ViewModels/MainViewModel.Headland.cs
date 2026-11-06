@@ -48,6 +48,13 @@ public partial class MainViewModel
                 segment.OffsetPoints = clipperResult.Select(p => new Vec3(p.Easting, p.Northing, 0)).ToList();
                 return;
             }
+            if (segment.Type == Models.Headland.HeadlandSegmentType.Boundary)
+            {
+                // The offset swallowed the field: nothing is left inside it. No line, rather
+                // than the edge-based fallback's, which lies outside the field and crosses itself.
+                segment.OffsetPoints = new List<Vec3>();
+                return;
+            }
         }
 
         // Determine offset direction (inward toward field center)
@@ -70,11 +77,9 @@ public partial class MainViewModel
             var boundary = State.Field.CurrentBoundary?.OuterBoundary;
             if (boundary?.Points != null && boundary.Points.Count >= 3)
             {
-                // Calculate boundary centroid
-                double cx = 0, cy = 0;
-                foreach (var bp in boundary.Points) { cx += bp.Easting; cy += bp.Northing; }
-                cx /= boundary.Points.Count;
-                cy /= boundary.Points.Count;
+                // A point well inside the field (not the vertex average: on a bent field
+                // that lies near the edge, or outside the field)
+                var (cx, cy) = FieldInteriorPoint(boundary.Points);
 
                 // Test offset direction at midpoint
                 int mid = segment.BoundaryPoints.Count / 2;
@@ -306,14 +311,13 @@ public partial class MainViewModel
                 var closedPoly = new List<Vec3>(seg.OffsetPoints);
                 closedPoly.Add(closedPoly[0]); // close the loop
 
-                // Use centroid-based selection (same as closed loop handling)
-                double cx = 0, cy = 0;
-                var bndPts = bnd.Points;
-                foreach (var bp in bndPts) { cx += bp.Easting; cy += bp.Northing; }
-                cx /= bndPts.Count; cy /= bndPts.Count;
-
-                bool containsCentroid = GeometryMath.IsPointInPolygon(closedPoly, cx, cy);
-                if (containsCentroid)
+                // A closed inward offset is the headland line when it lies inside the boundary
+                // and is smaller than it: an inward offset always is, an outward or broken one
+                // never. The old test, "contains the average of the vertices", refused the
+                // correct offset of a bent 6 ha field whose vertex average lies 8 m from the
+                // edge; the headland then came out of the open-line fallback below, on the
+                // edge and crossing itself at 12 m, and not at all at 16 m.
+                if (IsInwardOffsetOf(closedPoly, bnd.Points))
                 {
                     headland = closedPoly;
                     seg.IsEffective = true;
@@ -519,28 +523,24 @@ public partial class MainViewModel
                 loopPoly.Add(loopPoly[0]); // close
 
                 // The headland is the boundary MINUS the loop area
-                // Keep the part containing the centroid
-                double cx = 0, cy = 0;
-                var bndPts = bnd.Points;
-                foreach (var bp in bndPts) { cx += bp.Easting; cy += bp.Northing; }
-                cx /= bndPts.Count; cy /= bndPts.Count;
+                // Keep the part holding the field's interior point
+                var (cx, cy) = FieldInteriorPoint(bnd.Points);
+                bool loopHoldsInterior = GeometryMath.IsPointInPolygon(loopPoly, cx, cy);
 
-                bool loopContainsCentroid = GeometryMath.IsPointInPolygon(loopPoly, cx, cy);
-
-                if (!loopContainsCentroid)
+                if (!loopHoldsInterior)
                 {
-                    // Loop is outside the centroid - headland is unchanged
+                    // Loop is away from the interior - headland is unchanged
                     // (the loop is in the headland area, not the working area)
                     foreach (var cs in closedSegs) cs.IsEffective = true;
-                    _logger.LogDebug($"[Headland] Closed loop found (outside centroid) - headland unchanged");
+                    _logger.LogDebug($"[Headland] Closed loop found (away from the interior) - headland unchanged");
                 }
                 else
                 {
-                    // Loop contains centroid - the loop IS the headland
+                    // Loop holds the interior - the loop IS the headland
                     headland = loopPoly;
                     foreach (var cs in closedSegs) cs.IsEffective = true;
                     cutsApplied++;
-                    _logger.LogDebug($"[Headland] Closed loop contains centroid - used as headland");
+                    _logger.LogDebug($"[Headland] Closed loop holds the interior - used as headland");
                 }
 
                 offsetLines.RemoveAt(ci);
@@ -727,6 +727,29 @@ public partial class MainViewModel
         SaveHeadlandSegments();
     }
 
+    /// <summary>A point well inside the boundary ring (<see cref="GeometryMath.TryInteriorPoint{T}"/>),
+    /// or the vertex average for a ring too thin to hold a grid point.</summary>
+    private static (double cx, double cy) FieldInteriorPoint(IReadOnlyList<Models.BoundaryPoint> ring)
+    {
+        if (GeometryMath.TryInteriorPoint(ring, out double e, out double n)) return (e, n);
+        double cx = 0, cy = 0;
+        foreach (var bp in ring) { cx += bp.Easting; cy += bp.Northing; }
+        return (cx / ring.Count, cy / ring.Count);
+    }
+
+    /// <summary>Is <paramref name="offset"/> a closed ring inside <paramref name="ring"/> and
+    /// smaller than it, as an inward offset of it is? A point on the edge can test either
+    /// way, so most of the points inside is enough.</summary>
+    private static bool IsInwardOffsetOf(IReadOnlyList<Vec3> offset, IReadOnlyList<Models.BoundaryPoint> ring)
+    {
+        if (offset.Count < 4 || ring.Count < 3) return false;
+        if (GeometryMath.PolygonArea(offset) >= GeometryMath.PolygonArea(ring)) return false;
+        int inside = 0;
+        foreach (var p in offset)
+            if (GeometryMath.IsPointInPolygon(ring, p.Easting, p.Northing)) inside++;
+        return inside * 2 > offset.Count;
+    }
+
     /// <summary>The drawable offset line for a segment — its inward-offset points plus the
     /// straight extension overshoots at each end. This is exactly what the headland build
     /// intersects/trims against neighbours, so drawing it shows the operator the lines that
@@ -897,6 +920,81 @@ public partial class MainViewModel
         {
             _logger.LogDebug($"[Headland] Failed to save headland segments: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// The operator redrew, re-recorded, rebuilt or deleted the outer boundary. The headland and
+    /// the tram lines were built on the old one and would stay where it was: a headland outside
+    /// the new field, tram lines along the old edge, a headland with no boundary at all. A
+    /// whole-boundary headland segment is rebuilt on the new boundary at its distance; a line or
+    /// curve segment named points of the old boundary and is dropped; the tram systems are
+    /// rebuilt (a boundary system follows the new boundary, a track system is clipped to it).
+    /// Returns what was done, for the status line; empty when there was nothing to do.
+    /// </summary>
+    private string OuterBoundaryChanged()
+    {
+        var done = new List<string>();
+        var droppedNames = new List<string>();
+        var outer = State.Field.CurrentBoundary?.OuterBoundary;
+        bool hasOuter = outer?.Points != null && outer.Points.Count >= 3;
+
+        if (HeadlandSegments.Count > 0 || HasHeadland)
+        {
+            if (!hasOuter)
+            {
+                SelectedHeadlandSegment = null;
+                HeadlandSegments.Clear();
+                ClearHeadland();
+                done.Add("headland removed");
+            }
+            else
+            {
+                for (int i = HeadlandSegments.Count - 1; i >= 0; i--)
+                {
+                    if (HeadlandSegments[i].Type == Models.Headland.HeadlandSegmentType.Boundary) continue;
+                    if (ReferenceEquals(SelectedHeadlandSegment, HeadlandSegments[i])) SelectedHeadlandSegment = null;
+                    droppedNames.Insert(0, HeadlandSegments[i].Name);
+                    HeadlandSegments.RemoveAt(i);
+                }
+                int dropped = droppedNames.Count;
+                if (HeadlandSegments.Count == 0)
+                {
+                    ClearHeadland();
+                    done.Add("headland removed (its lines were drawn on the old boundary)");
+                }
+                else
+                {
+                    var ring = new List<Vec3>(outer!.Points.Count + 1);
+                    foreach (var p in outer.Points) ring.Add(new Vec3(p.Easting, p.Northing, p.Heading));
+                    ring.Add(ring[0]);
+                    foreach (var seg in HeadlandSegments)
+                    {
+                        seg.BoundaryPoints = new List<Vec3>(ring);
+                        seg.BoundaryStartIndex = 0;
+                        seg.BoundaryEndIndex = outer.Points.Count - 1;
+                        ComputeSegmentOffset(seg);
+                    }
+                    BuildHeadlandFromSegments();
+                    done.Add(dropped > 0
+                        ? $"headland rebuilt on the new boundary ({dropped} line/curve segment(s) of the old one dropped)"
+                        : "headland rebuilt on the new boundary");
+                }
+            }
+        }
+
+        if (TramSystems.Count > 0 || _tramLineService.HasTramLines)
+        {
+            RebuildAndSaveTram();
+            done.Add("tram lines rebuilt");
+        }
+        string summary = string.Join(", ", done);
+
+        // A line or curve segment named points of the old boundary, so it can't be carried over.
+        // The operator drew it: say so in a notification, not only in the status line.
+        if (droppedNames.Count > 0)
+            FailureReported?.Invoke(
+                $"Headland: {string.Join(", ", droppedNames)} drawn on the old boundary, removed. Draw them again on the new boundary.");
+        return summary;
     }
 
 }

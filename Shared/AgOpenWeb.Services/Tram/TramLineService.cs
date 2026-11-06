@@ -23,10 +23,14 @@ public class TramLineService(
     ILogger<TramLineService> logger,
     ConfigurationStore configStore) : ITramLineService
 {
-    private readonly List<Vec2> _outerBoundaryTrack = new();
-    private readonly List<Vec2> _innerBoundaryTrack = new();
-    private readonly List<List<Vec2>> _parallelTramLines = new();
-    private readonly List<List<Vec2>> _boundaryExtraLines = new();
+    // The lines are read on the GPS thread (DetectTramWheels, for AutoSteer's tram byte)
+    // while the host loop rebuilds them, so a published list is never changed: a rebuild
+    // makes new lists and swaps the references, and a reader walks the list it took. A list
+    // changed under a reader throws "Collection was modified" or reads past its end.
+    private volatile List<Vec2> _outerBoundaryTrack = new();
+    private volatile List<Vec2> _innerBoundaryTrack = new();
+    private volatile List<List<Vec2>> _parallelTramLines = new();
+    private volatile List<List<Vec2>> _boundaryExtraLines = new();
     private List<Vec3>? _boundaryFence;
 
     private bool _isLeftManualOn;
@@ -90,6 +94,7 @@ public class TramLineService(
             fenceLineList.Add(fenceLineList[0]);
 
         if (passCount < 1) passCount = 1;
+        var extraLines = new List<List<Vec2>>(_boundaryExtraLines);
 
         for (int pass = 0; pass < passCount; pass++)
         {
@@ -115,18 +120,17 @@ public class TramLineService(
 
             if (pass == 0)
             {
-                _outerBoundaryTrack.Clear();
-                _outerBoundaryTrack.AddRange(outerPoints);
-                _innerBoundaryTrack.Clear();
-                _innerBoundaryTrack.AddRange(innerPoints);
+                _outerBoundaryTrack = outerPoints;
+                _innerBoundaryTrack = innerPoints;
             }
             else
             {
                 // Extra boundary passes separate from track parallel lines
-                if (outerPoints.Count > 1) _boundaryExtraLines.Add(outerPoints);
-                if (innerPoints.Count > 1) _boundaryExtraLines.Add(innerPoints);
+                if (outerPoints.Count > 1) extraLines.Add(outerPoints);
+                if (innerPoints.Count > 1) extraLines.Add(innerPoints);
             }
         }
+        _boundaryExtraLines = extraLines;
 
         TramLinesUpdated?.Invoke(this, EventArgs.Empty);
     }
@@ -215,7 +219,7 @@ public class TramLineService(
         if (tramWidth <= 0.1) return;
         double halfWheelTrack = config.Vehicle.TrackWidth / 2.0;
 
-        _parallelTramLines.Clear();
+        var lines = new List<List<Vec2>>();
 
         // Cap iterations so a misconfigured tiny tram width can't spin; inward
         // offsetting converges to the field's medial axis well before this.
@@ -228,13 +232,14 @@ public class TramLineService(
             var inner = offsetService.GenerateClipperOffsetPublic(fence, laneCenter + halfWheelTrack);
 
             bool anyThisPass = false;
-            if (outer.Count > 2) { outer.Add(outer[0]); _parallelTramLines.Add(outer); anyThisPass = true; }
-            if (inner.Count > 2) { inner.Add(inner[0]); _parallelTramLines.Add(inner); anyThisPass = true; }
+            if (outer.Count > 2) { outer.Add(outer[0]); lines.Add(outer); anyThisPass = true; }
+            if (inner.Count > 2) { inner.Add(inner[0]); lines.Add(inner); anyThisPass = true; }
 
             // Once an inward pass yields nothing the field interior is consumed.
             if (!anyThisPass)
                 break;
         }
+        _parallelTramLines = lines;
 
         TramLinesUpdated?.Invoke(this, EventArgs.Empty);
     }
@@ -254,7 +259,7 @@ public class TramLineService(
         int passes = config.Tram.Passes;
         double halfWheelTrack = config.Vehicle.TrackWidth / 2.0;
 
-        _parallelTramLines.Clear();
+        var lines = new List<List<Vec2>>();
 
         // Tram line pairs spaced by tramWidth (sprayer boom width)
         // Each pair offset: (tramWidth * 0.5) +/- halfWheelTrack + (tramWidth * i)
@@ -269,16 +274,17 @@ public class TramLineService(
 
             // Positive side: outer and inner wheel tracks (split at boundary crossings)
             foreach (var seg in OffsetTrackLaterallySegmented(referenceTrack, baseOffset - halfWheelTrack, fenceLine))
-                if (seg.Count > 1) _parallelTramLines.Add(seg);
+                if (seg.Count > 1) lines.Add(seg);
             foreach (var seg in OffsetTrackLaterallySegmented(referenceTrack, baseOffset + halfWheelTrack, fenceLine))
-                if (seg.Count > 1) _parallelTramLines.Add(seg);
+                if (seg.Count > 1) lines.Add(seg);
 
             // Negative side (mirror)
             foreach (var seg in OffsetTrackLaterallySegmented(referenceTrack, -(baseOffset - halfWheelTrack), fenceLine))
-                if (seg.Count > 1) _parallelTramLines.Add(seg);
+                if (seg.Count > 1) lines.Add(seg);
             foreach (var seg in OffsetTrackLaterallySegmented(referenceTrack, -(baseOffset + halfWheelTrack), fenceLine))
-                if (seg.Count > 1) _parallelTramLines.Add(seg);
+                if (seg.Count > 1) lines.Add(seg);
         }
+        _parallelTramLines = lines;
 
         TramLinesUpdated?.Invoke(this, EventArgs.Empty);
     }
@@ -533,8 +539,18 @@ public class TramLineService(
         if (points == null || points.Count < 2)
             return;
 
-        _parallelTramLines.Add(points.ToList());
+        _parallelTramLines = Appended(_parallelTramLines, points.ToList());
         TramLinesUpdated?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>A copy of <paramref name="lines"/> with <paramref name="line"/> at the end;
+    /// the published list itself is never changed (see the fields).</summary>
+    private static List<List<Vec2>> Appended(List<List<Vec2>> lines, List<Vec2> line)
+    {
+        var next = new List<List<Vec2>>(lines.Count + 1);
+        next.AddRange(lines);
+        next.Add(line);
+        return next;
     }
 
     /// <summary>
@@ -554,6 +570,7 @@ public class TramLineService(
         if (mode == TramDisplayMode.Off) return false;
         double distSq = tolerance * tolerance;
 
+        // Take each list once: the host loop may swap in new ones meanwhile.
         if (mode != TramDisplayMode.LinesOnly)
         {
             if (IsOnPolyline(_outerBoundaryTrack, position, distSq))
@@ -562,7 +579,8 @@ public class TramLineService(
             if (IsOnPolyline(_innerBoundaryTrack, position, distSq))
                 return true;
 
-            foreach (var tramLine in _boundaryExtraLines)
+            var extraLines = _boundaryExtraLines;
+            foreach (var tramLine in extraLines)
             {
                 if (IsOnPolyline(tramLine, position, distSq))
                     return true;
@@ -571,7 +589,8 @@ public class TramLineService(
 
         if (mode != TramDisplayMode.OuterOnly)
         {
-            foreach (var tramLine in _parallelTramLines)
+            var parallelLines = _parallelTramLines;
+            foreach (var tramLine in parallelLines)
             {
                 if (IsOnPolyline(tramLine, position, distSq))
                     return true;
@@ -617,15 +636,17 @@ public class TramLineService(
         distSq = DistanceToPolylineSquared(_innerBoundaryTrack, position);
         if (distSq < minDistSq) minDistSq = distSq;
 
-        // Check parallel tram lines
-        foreach (var tramLine in _parallelTramLines)
+        // Check parallel tram lines (each list taken once, see the fields)
+        var parallelLines = _parallelTramLines;
+        foreach (var tramLine in parallelLines)
         {
             distSq = DistanceToPolylineSquared(tramLine, position);
             if (distSq < minDistSq) minDistSq = distSq;
         }
 
         // Check boundary extra passes
-        foreach (var tramLine in _boundaryExtraLines)
+        var extraLines = _boundaryExtraLines;
+        foreach (var tramLine in extraLines)
         {
             distSq = DistanceToPolylineSquared(tramLine, position);
             if (distSq < minDistSq) minDistSq = distSq;
@@ -746,7 +767,7 @@ public class TramLineService(
     public void AddTramLine(List<Vec2> points)
     {
         if (points != null && points.Count > 1)
-            _parallelTramLines.Add(points);
+            _parallelTramLines = Appended(_parallelTramLines, points);
     }
 
     /// <summary>
@@ -754,10 +775,10 @@ public class TramLineService(
     /// </summary>
     public void Clear()
     {
-        _outerBoundaryTrack.Clear();
-        _innerBoundaryTrack.Clear();
-        _parallelTramLines.Clear();
-        _boundaryExtraLines.Clear();
+        _outerBoundaryTrack = new List<Vec2>();
+        _innerBoundaryTrack = new List<Vec2>();
+        _parallelTramLines = new List<List<Vec2>>();
+        _boundaryExtraLines = new List<List<Vec2>>();
         _isLeftManualOn = false;
         _isRightManualOn = false;
 

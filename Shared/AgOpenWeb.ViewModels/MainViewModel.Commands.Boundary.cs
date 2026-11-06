@@ -93,6 +93,7 @@ public partial class MainViewModel
                     // the user draws a boundary on the map.
 
                     SetCurrentBoundary(boundary);
+                    if (PendingBoundaryType == BoundaryType.Outer) OuterBoundaryChanged();
 
                     // Pan to boundary center only for outer boundaries
                     if (PendingBoundaryType == BoundaryType.Outer && outerPolygon.Points.Count > 0)
@@ -454,8 +455,11 @@ public partial class MainViewModel
                     SaveFieldBoundary(boundary, fieldPath);
                     SetCurrentBoundary(boundary);
                     RefreshBoundaryList();
-                    var typeLabel = _boundaryRecordingService.CurrentBoundaryType == BoundaryType.Inner ? "Inner boundary" : "Boundary";
-                    StatusMessage = $"{typeLabel} saved with {polygon.Points.Count} points, Area: {polygon.AreaHectares:F2} Ha";
+                    bool inner = _boundaryRecordingService.CurrentBoundaryType == BoundaryType.Inner;
+                    string done = inner ? "" : OuterBoundaryChanged();
+                    var typeLabel = inner ? "Inner boundary" : "Boundary";
+                    StatusMessage = $"{typeLabel} saved with {polygon.Points.Count} points, Area: {polygon.AreaHectares:F2} Ha"
+                        + (done.Length > 0 ? $"; {done}" : "");
                 }
                 else
                 {
@@ -659,9 +663,11 @@ public partial class MainViewModel
             SaveFieldBoundary(boundary, fieldPath);
             SetCurrentBoundary(boundary);
             RefreshBoundaryList();
+            string done = PendingBoundaryType == BoundaryType.Inner ? "" : OuterBoundaryChanged();
 
             var typeLabel = PendingBoundaryType == BoundaryType.Inner ? "Inner boundary" : "Boundary";
-            StatusMessage = $"{typeLabel} built from {tracks.Count} tracks ({polygon.Points.Count} points)";
+            StatusMessage = $"{typeLabel} built from {tracks.Count} tracks ({polygon.Points.Count} points)"
+                + (done.Length > 0 ? $"; {done}" : "");
             PendingBoundaryType = BoundaryType.Outer;
         });
 
@@ -690,6 +696,8 @@ public partial class MainViewModel
                 return;
             }
 
+            if (!OuterBoundaryForInner()) return;
+
             _boundaryRecordingService.StartRecording(BoundaryType.Inner);
             StatusMessage = "Recording inner boundary (obstacle)";
         });
@@ -701,6 +709,8 @@ public partial class MainViewModel
                 ReportFailure("Open a field first before recording a boundary");
                 return;
             }
+
+            if (!OuterBoundaryForInner()) return;
 
             IsBoundaryPanelVisible = false;
             IsBoundaryPlayerPanelVisible = true;
@@ -718,6 +728,7 @@ public partial class MainViewModel
                 ReportFailure("Open a field first to add boundary");
                 return;
             }
+            if (!OuterBoundaryForInner()) return;
             PendingBoundaryType = BoundaryType.Inner;
             ShowBoundaryMapDialogCommand?.Execute(null);
         });
@@ -841,7 +852,8 @@ public partial class MainViewModel
             SaveFieldBoundary(boundary, fieldPath);
             SetCurrentBoundary(boundary);
             RefreshBoundaryList();
-            StatusMessage = $"Boundary created with {points.Count} points";
+            string done = OuterBoundaryChanged();
+            StatusMessage = $"Boundary created with {points.Count} points" + (done.Length > 0 ? $"; {done}" : "");
             // The Bing aerial covering this boundary is captured + saved as the field
             // background by the host after this returns (see boundary.fromMapPoints).
         }
@@ -884,6 +896,19 @@ public partial class MainViewModel
         var (mxMin, myMax) = MercFromLonLat(nw.Longitude, nw.Latitude); // west lon, north lat
         var (mxMax, myMin) = MercFromLonLat(se.Longitude, se.Latitude); // east lon, south lat
         return (nw.Latitude, nw.Longitude, se.Latitude, se.Longitude, mxMin, mxMax, myMin, myMax);
+    }
+
+    /// <summary>
+    /// An inner boundary (an obstacle) lies inside the field's outer boundary, so the field
+    /// needs its outer first: true when it has one, else a failure and false (#621). AgOpenGPS
+    /// makes the first boundary recorded the outer and only later ones inners.
+    /// </summary>
+    private bool OuterBoundaryForInner()
+    {
+        var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
+        if (LoadFieldBoundary(fieldPath)?.OuterBoundary?.IsValid == true) return true;
+        ReportFailure("Record the field boundary first: an inner boundary goes inside it");
+        return false;
     }
 
     private static (double x, double y) MercFromLonLat(double lon, double lat)

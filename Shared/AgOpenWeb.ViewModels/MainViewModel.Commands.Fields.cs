@@ -210,9 +210,9 @@ public partial class MainViewModel
             }
 
             var fieldPath = Path.Combine(fieldsDir, NewFieldName);
-            if (Directory.Exists(fieldPath))
+            if (FieldNames.ExistingTwin(fieldsDir, NewFieldName) is { } twin)
             {
-                ReportFailure($"Field '{NewFieldName}' already exists");
+                ReportFailure(FieldNames.ExistsMessage(NewFieldName, twin));
                 return;
             }
 
@@ -410,9 +410,9 @@ public partial class MainViewModel
             }
 
             var newFieldPath = Path.Combine(fieldsDir, newFieldName);
-            if (Directory.Exists(newFieldPath))
+            if (FieldNames.ExistingTwin(fieldsDir, newFieldName) is { } twin)
             {
-                ReportFailure($"Field '{newFieldName}' already exists");
+                ReportFailure(FieldNames.ExistsMessage(newFieldName, twin));
                 return;
             }
 
@@ -524,9 +524,9 @@ public partial class MainViewModel
             }
 
             var newFieldPath = Path.Combine(fieldsDir, newFieldName);
-            if (Directory.Exists(newFieldPath))
+            if (FieldNames.ExistingTwin(fieldsDir, newFieldName) is { } twin)
             {
-                ReportFailure($"Field '{newFieldName}' already exists");
+                ReportFailure(FieldNames.ExistsMessage(newFieldName, twin));
                 return;
             }
 
