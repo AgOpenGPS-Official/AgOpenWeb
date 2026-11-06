@@ -373,6 +373,11 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                     if (delta > 0)
                     {
                         DetectedMinPwm = module.PwmDisplay;
+                        // Apply it now, as the CPD and Ackermann steps apply theirs: the
+                        // web wizard has no button for the second part of this step
+                        // (ContinueToMaxAngle), the only path that saved it, so the
+                        // measured value was dropped on Next.
+                        autoSteerConfig.MinPwm = DetectedMinPwm;
                         DetectedInvertMotor = autoSteerConfig.InvertMotor;
                         detected = true;
                     }
