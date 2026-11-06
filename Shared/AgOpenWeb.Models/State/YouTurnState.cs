@@ -68,6 +68,14 @@ public class YouTurnState : ObservableObject
         set => SetProperty(ref _turnAtObstacle, value);
     }
 
+    // With TurnAtObstacle, that obstacle's index in the inner boundaries; else -1.
+    private int _turnAtObstacleIndex = -1;
+    public int TurnAtObstacleIndex
+    {
+        get => _turnAtObstacleIndex;
+        set => SetProperty(ref _turnAtObstacleIndex, value);
+    }
+
     // Direction
     private bool _isTurnLeft;
     public bool IsTurnLeft
@@ -244,6 +252,7 @@ public class YouTurnState : ObservableObject
         TurnPath = null;
         ArcStart = null;
         TurnAtObstacle = false;
+        TurnAtObstacleIndex = -1;
         PathIndex = 0;
         DistanceToHeadland = double.MaxValue;
         DistanceToTrigger = 0;
@@ -269,6 +278,7 @@ public class YouTurnState : ObservableObject
         TurnPath = null;
         ArcStart = null;
         TurnAtObstacle = false;
+        TurnAtObstacleIndex = -1;
         LastTurnWasLeft = IsTurnLeft;
         HeldDirectionLeft = null;
         PlannedNextPath = null;

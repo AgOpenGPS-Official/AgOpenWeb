@@ -144,6 +144,7 @@ public partial class MainViewModel
             sy.PathIndex = yt.PathIndex;
             sy.ArcStart = yt.ArcStart;
             sy.TurnAtObstacle = yt.TurnAtObstacle;
+            sy.TurnAtObstacleIndex = yt.TurnAtObstacleIndex;
             sy.IsTurnLeft = yt.IsTurnLeft;
             sy.LastTurnWasLeft = yt.LastTurnWasLeft;
             sy.DistanceToHeadland = yt.DistanceToHeadland;

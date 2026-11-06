@@ -29,6 +29,7 @@ public record YouTurnSnapshot
     public int PathIndex { get; init; }
     public Vec3? ArcStart { get; init; }
     public bool TurnAtObstacle { get; init; }
+    public int TurnAtObstacleIndex { get; init; } = -1;
 
     // Direction
     public bool IsTurnLeft { get; init; }
