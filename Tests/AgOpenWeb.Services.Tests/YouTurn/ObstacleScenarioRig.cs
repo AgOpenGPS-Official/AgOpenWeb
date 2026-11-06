@@ -90,15 +90,16 @@ public sealed class ObstacleScenarioRig : IDisposable
         _headingFusion.IsReverse.Returns(_ => Reversing);
         _headingFusion.IsChangingDirection.Returns(false);
         Intents = new PipelineIntents();
+        var goAround = new GoAroundPasses(c, new PolygonOffsetService()); // one bent pass for the pipeline and the planner
         Pipeline = new GpsPipelineService(
             _gps, _tool, new TrackGuidanceService(), sections, coverage, autoSteer,
             new YouTurnGuidanceService(),
             new YouTurnStateMachine(
-                new YouTurnCreationService(LoggerFor<YouTurnCreationService>(), new PolygonOffsetService(), c),
+                new YouTurnCreationService(LoggerFor<YouTurnCreationService>(), new PolygonOffsetService(), c, goAround),
                 new YouTurnPathingService(LoggerFor<YouTurnPathingService>(), c),
                 LoggerFor<YouTurnStateMachine>(), c),
             Substitute.For<IAudioService>(), Intents, _headingFusion,
-            LoggerFor<GpsPipelineService>(), c, new PositionEstimator());
+            LoggerFor<GpsPipelineService>(), c, new PositionEstimator(), goAround);
 
         Plane = new LocalPlane(new Wgs84(39.4225, -7.5319), new SharedFieldProperties());
         Pipeline.SetLocalPlane(Plane);
@@ -152,6 +153,19 @@ public sealed class ObstacleScenarioRig : IDisposable
     /// <summary>How far the next U-turn obstacle was the last time AutoSteer was given the job (engaged, or
     /// an obstacle or the U-turn changed under it): a kickout can't be expected earlier than that.</summary>
     public double RoomAtLastArm { get; private set; } = double.PositiveInfinity;
+    /// <summary>The nearest the tractor's wheels or (Hard) the implement came to a Go around obstacle while
+    /// engaged, on the pass or in a turn: the bent pass is answerable for all of it.</summary>
+    public double WorstClearanceGoRound { get; private set; } = double.MaxValue;
+    public string? WorstGoRoundObstacle { get; private set; }
+    /// <summary>When and where the tractor was nearest to a Go around obstacle.</summary>
+    public (double Time, double E, double N)? WorstGoRoundAt { get; private set; }
+    /// <summary>The nearest to a Go around obstacle before AutoSteer had the tractor on the line (not the bend's doing).</summary>
+    public double UncountedGoRound { get; private set; } = double.MaxValue;
+    private bool _onLine;
+    private int _onLineCycles;
+    private double _lastXte;
+    /// <summary>The light bar's distance from the line, last cycle.</summary>
+    public double CrossTrack => _last?.Guidance?.CrossTrackError ?? 0;
     public bool TurnedAtObstacle { get; private set; }
     public int Turns { get; private set; }
     public double? ArcStartedAt { get; private set; }
@@ -180,6 +194,8 @@ public sealed class ObstacleScenarioRig : IDisposable
     public void Disengage()
     {
         Engaged = false;
+        _onLine = false;
+        _onLineCycles = 0;
         Pipeline.SetAutoSteerEngaged(false);
     }
 
@@ -225,14 +241,15 @@ public sealed class ObstacleScenarioRig : IDisposable
         var r = _last!;
         bool executing = r.YouTurn?.IsExecuting == true;
         bool planned = r.YouTurn?.TurnPath != null;
+        if (r.ObstacleNotice != null) Note($"host: {r.ObstacleNotice}");
         if (planned && !_wasPlanned)
         {
             var path = r.YouTurn!.TurnPath!;
             Note($"turn planned {(r.YouTurn.TurnAtObstacle ? "at an obstacle" : "at the field's edge")}, " +
                 $"{(r.YouTurn.IsTurnLeft ? "left" : "right")}, {path.Count} points, arc from ({r.YouTurn.ArcStart?.Easting ?? path[0].Easting:F0},{r.YouTurn.ArcStart?.Northing ?? path[0].Northing:F0}), " +
                 $"path n {path.Min(p => p.Northing):F0}..{path.Max(p => p.Northing):F0} e {path.Min(p => p.Easting):F0}..{path.Max(p => p.Easting):F0}");
-            // The planned path's nearest approach to every U-turn obstacle it comes near (the pivot, not the implement).
-            foreach (var o in _obstacles.Where(o => o.IsUTurn))
+            // The planned path's nearest approach to every avoided obstacle it comes near (the pivot, not the implement).
+            foreach (var o in _obstacles.Where(o => o.IsAvoided))
             {
                 double near = path.Min(p => ObstacleTestField.SignedDistance(o.Polygon, p.Easting, p.Northing));
                 if (near < 2.5) Note($"  the path comes {near:F2} m from {o.Name}");
@@ -276,6 +293,24 @@ public sealed class ObstacleScenarioRig : IDisposable
             if (d < 0 && WorstClearance >= 0) Note($"inside {name} by {-d:F2} m" + (inTurn ? " in the turn" : " on the pass itself"));
             if (d < WorstClearance) { WorstClearance = d; WorstObstacle = name; }
             if (inTurn && d < WorstClearanceInTurn) { WorstClearanceInTurn = d; WorstObstacleInTurn = name; }
+            // The bent pass answers for the Go around obstacles once AutoSteer has had the tractor on
+            // the line: an operator who engages beside a tree with the implement already in it, or
+            // moves the line under the tractor a few metres before one, is not its doing (the net
+            // takes AutoSteer off when that leaves the tractor heading into the tree off the line).
+            double xte = CrossTrack;
+            if (!inTurn && Math.Abs(xte - _lastXte) > 1.0) { _onLine = false; _onLineCycles = 0; }
+            if (!inTurn) _onLineCycles = Math.Abs(xte) <= 0.3 ? _onLineCycles + 1 : 0;
+            if (_onLineCycles >= 20) _onLine = true; // settled: 2 s within 0.3 m
+            _lastXte = xte;
+            var (dg, nameG, partG) = GoRoundClearance();
+            if (dg < 0 && WorstClearanceGoRound >= 0 && UncountedGoRound >= 0)
+                Note($"{partG} inside {nameG} (Go around) by {-dg:F2} m" + (inTurn ? " in the turn" : " on the pass") + $", {xte:F2} m off the line, heading {_h * 180 / Math.PI:F0}°"
+                    + (_onLine || inTurn ? "" : " (not counted: AutoSteer has not had the tractor on this line yet)"));
+            if (_onLine || inTurn)
+            {
+                if (dg < WorstClearanceGoRound) { WorstClearanceGoRound = dg; WorstGoRoundObstacle = nameG; WorstGoRoundAt = (Time, _e, _n); }
+            }
+            else if (dg < UncountedGoRound) UncountedGoRound = dg;
             WorstWheelsAtSoft = Math.Min(WorstWheelsAtSoft, wheelsAtSoft);
             if (executing && r.YouTurn!.TurnPath is { Count: > 1 } path)
                 MaxPathError = Math.Max(MaxPathError, DistanceToPath(path, _e, _n));
@@ -316,19 +351,7 @@ public sealed class ObstacleScenarioRig : IDisposable
     /// </summary>
     public (double Distance, string? Obstacle, double WheelsAtSoft) Clearance()
     {
-        var tractor = new List<(double E, double N)>();
-        double se = Math.Sin(_h), ce = Math.Cos(_h);
-        foreach (double along in new[] { 0, Wheelbase })
-            foreach (double side in new[] { -1.0, 0, 1.0 })
-                tractor.Add((_e + se * along + ce * side, _n + ce * along - se * side));
-        var bar = new List<(double E, double N)>();
-        var tool = _tool.ToolPosition;
-        double th = _tool.ToolHeading;
-        for (int k = 0; k <= 6; k++)
-        {
-            double side = ToolOffset - ToolWidth / 2 + ToolWidth * k / 6;
-            bar.Add((tool.Easting + Math.Cos(th) * side, tool.Northing - Math.Sin(th) * side));
-        }
+        var (tractor, bar) = Footprint();
 
         double best = double.MaxValue, wheelsAtSoft = double.MaxValue;
         string? worst = null;
@@ -350,7 +373,7 @@ public sealed class ObstacleScenarioRig : IDisposable
         return (best, worst, wheelsAtSoft);
     }
 
-    /// <summary>How far the pivot would go straight ahead before it enters a U-turn obstacle.</summary>
+    /// <summary>How far the pivot would go straight ahead before it enters an avoided (U-turn or Go around) obstacle.</summary>
     public double ObstacleAhead()
     {
         double se = Math.Sin(_h), ce = Math.Cos(_h);
@@ -358,9 +381,49 @@ public sealed class ObstacleScenarioRig : IDisposable
         {
             double e = _e + se * d, n = _n + ce * d;
             foreach (var o in _obstacles)
-                if (o.IsUTurn && o.Polygon.IsPointInside(e, n)) return d;
+                if (o.IsAvoided && o.Polygon.IsPointInside(e, n)) return d;
         }
         return double.PositiveInfinity;
+    }
+
+    /// <summary>
+    /// The nearest point of the tractor's wheels and (at a Hard one) the implement's working bar to
+    /// any Go around obstacle, inside &lt; 0: the bent pass keeps both out of it, the whole way.
+    /// </summary>
+    public (double Distance, string? Obstacle, string Part) GoRoundClearance()
+    {
+        double best = double.MaxValue;
+        string? worst = null, part = "the tractor";
+        var (tractor, bar) = Footprint();
+        foreach (var o in _obstacles)
+        {
+            if (!o.IsGoRound) continue;
+            if (Math.Abs(o.CentreE - _e) > 120 || Math.Abs(o.CentreN - _n) > 120) continue;
+            double dt = tractor.Min(p => ObstacleTestField.SignedDistance(o.Polygon, p.E, p.N));
+            double db = o.IsHard ? bar.Min(p => ObstacleTestField.SignedDistance(o.Polygon, p.E, p.N)) : double.MaxValue;
+            double d = Math.Min(dt, db);
+            if (d < best) { best = d; worst = o.Name; part = dt <= db ? "the tractor" : "the implement"; }
+        }
+        return (best, worst, part);
+    }
+
+    // The tractor's axles (2 m across) and the implement's working bar, as points.
+    private (List<(double E, double N)> Tractor, List<(double E, double N)> Bar) Footprint()
+    {
+        var tractor = new List<(double E, double N)>();
+        double se = Math.Sin(_h), ce = Math.Cos(_h);
+        foreach (double along in new[] { 0, Wheelbase })
+            foreach (double side in new[] { -1.0, 0, 1.0 })
+                tractor.Add((_e + se * along + ce * side, _n + ce * along - se * side));
+        var bar = new List<(double E, double N)>();
+        var tool = _tool.ToolPosition;
+        double th = _tool.ToolHeading;
+        for (int k = 0; k <= 6; k++)
+        {
+            double side = ToolOffset - ToolWidth / 2 + ToolWidth * k / 6;
+            bar.Add((tool.Easting + Math.Cos(th) * side, tool.Northing - Math.Sin(th) * side));
+        }
+        return (tractor, bar);
     }
 
     public void Dispose()

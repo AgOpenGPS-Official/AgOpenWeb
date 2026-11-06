@@ -20,7 +20,11 @@ namespace AgOpenWeb.Services.YouTurn;
 /// <see cref="ObstacleAction.Turn"/> gets a turn line, the obstacle offset outward by the U-turn
 /// distance from boundary, as AgOpenGPS builds a turn line round every inner boundary that is
 /// not drive-through (CTurn.BuildTurnLines). A pass that runs into one turns there, before the
-/// obstacle, the same way it turns at the outer boundary's turn line.
+/// obstacle, the same way it turns at the outer boundary's turn line. An obstacle chosen as Go
+/// around that the pass steered now has no room to go round (<see cref="Track.GoAroundPasses"/>)
+/// is promoted: it gets a turn line too, on this pass. A turn keeps out of the other Go around
+/// obstacles as well: the tractor off them by its half track and the margin, the implement off a
+/// hard one, since the pass goes round them and a turn through one would not.
 /// </summary>
 public partial class YouTurnCreationService
 {
@@ -36,24 +40,30 @@ public partial class YouTurnCreationService
 
     private const double ArcTolerance = 0.3;
 
-    // Built once per boundary, choice and distance: a turn is planned again every cycle while it
-    // fails, and a field may have dozens of obstacles.
-    private (Boundary? Boundary, double Distance, long Key, List<TurnObstacle> List) _turnObstacles =
-        (null, 0, 0, new List<TurnObstacle>());
+    // Built once per boundary, choice, distance and promoted set: a turn is planned again every
+    // cycle while it fails, and a field may have dozens of obstacles.
+    private (Boundary? Boundary, double Distance, long Key, long Promoted, List<TurnObstacle> List) _turnObstacles =
+        (null, 0, 0, 0, new List<TurnObstacle>());
 
-    private List<TurnObstacle> TurnObstacles(Boundary boundary, double distance)
+    /// <param name="promoted">Go around obstacles (inner indices) with no room on the pass steered
+    /// now: they get a turn line on this pass.</param>
+    private List<TurnObstacle> TurnObstacles(Boundary boundary, double distance, IReadOnlyList<int>? promoted = null)
     {
         if (boundary.InnerBoundaries.Count == 0) return EmptyObstacles;
         long key = ObstacleStamp(boundary);
+        long promotedKey = 0;
+        if (promoted != null) foreach (int p in promoted) promotedKey = promotedKey * 31 + p + 1;
         var cached = _turnObstacles;
-        if (ReferenceEquals(cached.Boundary, boundary) && cached.Distance == distance && cached.Key == key)
+        if (ReferenceEquals(cached.Boundary, boundary) && cached.Distance == distance && cached.Key == key
+            && cached.Promoted == promotedKey)
             return cached.List;
 
         var list = new List<TurnObstacle>();
         for (int i = 0; i < boundary.InnerBoundaries.Count; i++)
         {
             var inner = boundary.InnerBoundaries[i];
-            if (!inner.IsValid || inner.AtObstacle != ObstacleAction.Turn) continue;
+            if (!inner.IsValid) continue;
+            if (inner.AtObstacle != ObstacleAction.Turn && !(promoted != null && promoted.Contains(i))) continue;
 
             var fence = inner.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList();
             // > 0: the turn stays that far from the obstacle; < 0: it may reach that far into it.
@@ -74,9 +84,39 @@ public partial class YouTurnCreationService
             list.Add(new TurnObstacle(i, withHeadings, area, fence, inner.IsHard, tight));
         }
 
-        _turnObstacles = (boundary, distance, key, list);
+        _turnObstacles = (boundary, distance, key, promotedKey, list);
         return list;
     }
+
+    /// <summary>A Go around obstacle a turn must keep out of: the tractor outside the obstacle grown
+    /// by half its track and the margin (<see cref="Clear"/>), the implement off a hard one.</summary>
+    private sealed record RoundObstacle(int InnerIndex, List<Vec2> Fence, bool IsHard, PolygonSlabIndex Clear);
+
+    private (Boundary? Boundary, double Grow, long Key, List<RoundObstacle> List) _roundObstacles = (null, 0, 0, new());
+
+    private List<RoundObstacle> RoundObstacles(Boundary boundary, double grow)
+    {
+        if (boundary.InnerBoundaries.Count == 0) return EmptyRound;
+        long key = ObstacleStamp(boundary);
+        var cached = _roundObstacles;
+        if (ReferenceEquals(cached.Boundary, boundary) && cached.Grow == grow && cached.Key == key) return cached.List;
+        var list = new List<RoundObstacle>();
+        for (int i = 0; i < boundary.InnerBoundaries.Count; i++)
+        {
+            var inner = boundary.InnerBoundaries[i];
+            if (!inner.IsValid || inner.AtObstacle != ObstacleAction.GoRound) continue;
+            var fence = inner.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList();
+            var grown = grow > 0.05 ? _polygonOffsetService.CreateOutwardOffset(fence, grow) : fence;
+            if (grown == null || grown.Count < 3) continue;
+            var area = PolygonSlabIndex.Build(_polygonOffsetService.CalculatePointHeadings(grown));
+            if (area == null) continue;
+            list.Add(new RoundObstacle(i, fence, inner.IsHard, area));
+        }
+        _roundObstacles = (boundary, grow, key, list);
+        return list;
+    }
+
+    private static readonly List<RoundObstacle> EmptyRound = new();
 
     private static readonly List<TurnObstacle> EmptyObstacles = new();
 
@@ -132,10 +172,11 @@ public partial class YouTurnCreationService
     /// -1. When the tractor is already inside a turn line, that obstacle counts only if the
     /// obstacle itself is ahead.
     /// </summary>
-    public int TurnObstacleAhead(Boundary? boundary, double easting, double northing, double heading, double distance)
+    public int TurnObstacleAhead(Boundary? boundary, double easting, double northing, double heading, double distance,
+        IReadOnlyList<int>? promoted = null)
     {
         if (boundary == null || boundary.InnerBoundaries.Count == 0) return -1;
-        var obstacles = TurnObstacles(boundary, _configStore.Guidance.UTurnDistanceFromBoundary);
+        var obstacles = TurnObstacles(boundary, _configStore.Guidance.UTurnDistanceFromBoundary, promoted);
         if (obstacles.Count == 0) return -1;
         double se = Math.Sin(heading), ce = Math.Cos(heading);
         int steps = Math.Max(1, (int)Math.Ceiling(distance / 0.5));
@@ -168,15 +209,23 @@ public partial class YouTurnCreationService
     /// (<paramref name="turnedAt"/>, its inner index) is tested with <see cref="ArcTolerance"/>: the
     /// generator lays the arc along its turn line and the smoothing moves it a few centimetres;
     /// the exit leg it does not test, and a pass that grazes the turn line of a tree can have its
-    /// neighbour run through the tree.
+    /// neighbour run through the tree. The path (not the exit reach: the next pass is bent round
+    /// them) also keeps out of every Go around obstacle: the tractor off it by half its track
+    /// and the safety margin, the implement off a hard one by the margin.
+    /// <paramref name="obstacles"/> are the turn obstacles of the plan (with its promoted ones);
+    /// without them they are built from <paramref name="promoted"/>.
     /// </summary>
     private bool ClearsTurnObstacles(IReadOnlyList<Vec3> path, Boundary boundary, ConfigurationStore config,
-        out int innerIndex, double exitReach = 0, int turnedAt = -1)
+        out int innerIndex, double exitReach = 0, int turnedAt = -1, List<TurnObstacle>? obstacles = null,
+        IReadOnlyList<int>? promoted = null)
     {
         innerIndex = -1;
-        var obstacles = TurnObstacles(boundary, config.Guidance.UTurnDistanceFromBoundary);
-        if (obstacles.Count == 0 || path.Count < 2) return true;
+        obstacles ??= TurnObstacles(boundary, config.Guidance.UTurnDistanceFromBoundary, promoted);
+        double goAroundMargin = Math.Max(Track.GoAroundPasses.MinMargin, config.Guidance.GoAroundMargin);
+        var round = RoundObstacles(boundary, config.Vehicle.TrackWidth / 2 + 0.3 + goAroundMargin);
+        if ((obstacles.Count == 0 && round.Count == 0) || path.Count < 2) return true;
         var pivot = Densified(path, 0.5).ToList();
+        int pathPoints = pivot.Count;
         if (exitReach > 0)
         {
             Vec3 a = path[^2], b = path[^1];
@@ -200,6 +249,23 @@ public partial class YouTurnCreationService
             if (!TurnClearance.Evaluate(swept, o.Fence, TurnClearance.KeepSide.Outside, margin).IsClear)
             {
                 innerIndex = o.InnerIndex;
+                return false;
+            }
+        }
+        foreach (var r in round)
+        {
+            if (obstacles.Any(o => o.InnerIndex == r.InnerIndex)) continue; // promoted: tested above
+            for (int i = 0; i < pathPoints; i++)
+                if (r.Clear.Contains(pivot[i].Easting, pivot[i].Northing))
+                {
+                    innerIndex = r.InnerIndex;
+                    return false;
+                }
+            if (!r.IsHard) continue;
+            swept ??= ImplementSweptPath.Compute(path, BuildToolGeometry(config));
+            if (!TurnClearance.Evaluate(swept, r.Fence, TurnClearance.KeepSide.Outside, goAroundMargin).IsClear)
+            {
+                innerIndex = r.InnerIndex;
                 return false;
             }
         }

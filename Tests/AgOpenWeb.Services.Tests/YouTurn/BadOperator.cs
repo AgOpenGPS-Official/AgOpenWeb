@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using AgOpenWeb.Models;
+using AgOpenWeb.Models.Configuration;
 
 namespace AgOpenWeb.Services.Tests.YouTurn;
 
@@ -14,7 +15,7 @@ namespace AgOpenWeb.Services.Tests.YouTurn;
 /// obstacle they abort the planned turn, nudge and snap the line, ask for a manual turn, switch
 /// AutoSteer or the U-turn off and on, engage late, back up, change the obstacle's choice or
 /// its hardness while driving, add an obstacle in front of the tractor, force the turn's
-/// direction, or change the skip rows. Which of these, when and how much comes from a seed, so
+/// direction, change the skip rows, or change the Go around radius and margin beside a tree. Which of these, when and how much comes from a seed, so
 /// a run can be repeated. Everything done is logged in <see cref="ObstacleScenarioRig.Log"/>.
 /// The operator never drives into an obstacle by hand: what AutoSteer does with the mess is
 /// the host's responsibility, what the operator does with the wheel is not.
@@ -24,7 +25,7 @@ public sealed class BadOperator
     public enum Mischief
     {
         AbortTurn, Nudge, Snap, ManualUTurn, SteerOffAndOn, UTurnOffMidArc, EngageLate, Reverse,
-        ChangeChoice, AddObstacle, DirectionOverride, SkipRows, ToggleHard,
+        ChangeChoice, AddObstacle, DirectionOverride, SkipRows, ToggleHard, GoAroundSettings,
     }
 
     public static readonly Mischief[] All = (Mischief[])Enum.GetValues(typeof(Mischief));
@@ -185,6 +186,8 @@ public sealed class BadOperator
             {
                 double at = Between(25, 60), back = Between(5, 15);
                 var polygon = _target.Polygon;
+                var was = polygon.AtObstacle;
+                string name = was == ObstacleAction.GoRound ? "Go around" : "a U-turn";
                 Add(m, () => Ahead < at, () =>
                 {
                     polygon.AtObstacle = ObstacleAction.DriveThrough;
@@ -193,10 +196,25 @@ public sealed class BadOperator
                     // ... and changes their mind when it is right in front of the tractor.
                     Add(m, () => DistanceToTarget() < back, () =>
                     {
-                        polygon.AtObstacle = ObstacleAction.Turn;
-                        Say($"made the obstacle a U-turn again, {back:F0} m from it");
-                        _rig.BoundaryChanged("obstacle a U-turn again");
+                        polygon.AtObstacle = was;
+                        Say($"made the obstacle {name} again, {back:F0} m from it");
+                        _rig.BoundaryChanged($"obstacle {name} again");
                     });
+                });
+                break;
+            }
+
+            case Mischief.GoAroundSettings:
+            {
+                double at = Between(10, 40);
+                double radius = new[] { 2.0, 4.0, 10.0, 15.0 }[_rnd.Next(4)], margin = new[] { 0.0, 0.5, 2.0, 3.0 }[_rnd.Next(4)];
+                Add(m, () => DistanceToTarget() < at, () =>
+                {
+                    var g = ConfigurationStore.Instance.Guidance;
+                    g.GoAroundRadius = radius;
+                    g.GoAroundMargin = margin;
+                    Say($"set the Go around radius to {radius:F0} m and the margin to {margin:F1} m, {at:F0} m from the obstacle");
+                    _rig.Arm("Go around settings changed");
                 });
                 break;
             }

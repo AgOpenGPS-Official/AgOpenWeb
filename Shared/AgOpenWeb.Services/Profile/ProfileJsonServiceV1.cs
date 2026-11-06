@@ -184,6 +184,8 @@ public static class ProfileJsonServiceV1
                 DistanceFromBoundary = store.Guidance.UTurnDistanceFromBoundary,
                 Style = store.Guidance.UTurnStyle,
                 Smoothing = store.Guidance.UTurnSmoothing,
+                GoAroundRadius = store.Guidance.GoAroundRadius,
+                GoAroundMargin = store.Guidance.GoAroundMargin,
             },
             General = new GeneralDto
             {
@@ -241,6 +243,9 @@ public static class ProfileJsonServiceV1
         store.Guidance.UTurnDistanceFromBoundary = dto.YouTurn?.DistanceFromBoundary ?? 2.0;
         store.Guidance.UTurnStyle = dto.YouTurn?.Style ?? (int)Models.YouTurn.YouTurnType.SagittaStyle;
         store.Guidance.UTurnSmoothing = dto.YouTurn?.Smoothing ?? 14;
+        var dgo = new GuidanceConfig();
+        store.Guidance.GoAroundRadius = dto.YouTurn?.GoAroundRadius ?? dgo.GoAroundRadius;
+        store.Guidance.GoAroundMargin = dto.YouTurn?.GoAroundMargin ?? dgo.GoAroundMargin;
 
         // Tool config
         store.Tool.Width = dto.Tool?.Width ?? 6.0;
@@ -438,6 +443,9 @@ public static class ProfileJsonServiceV1
         public double TurnRadius { get; set; }
         public double ExtensionLength { get; set; }
         public double DistanceFromBoundary { get; set; }
+        // Going around obstacles; absent in profiles from before it.
+        public double? GoAroundRadius { get; set; }
+        public double? GoAroundMargin { get; set; }
         public int Style { get; set; }
         public int Smoothing { get; set; }
     }

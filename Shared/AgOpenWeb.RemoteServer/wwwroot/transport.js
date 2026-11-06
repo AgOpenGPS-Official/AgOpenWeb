@@ -47,7 +47,7 @@ window.RemoteTransport = {
         case TYPE.SCENE: {
           const version = i64(), originLat = f64(), originLon = f64();
           const hasField = !!u8(), fieldName = str();
-          // boundaryKind: 0 = outer, else an obstacle, 1 + its choice (1 U-turn, 3 drive through).
+          // boundaryKind: 0 = outer, else an obstacle, 1 + its choice (1 U-turn, 2 go around, 3 drive through).
           const bc = i32(); const boundaries = new Array(bc); const boundaryInner = new Array(bc); const boundaryKind = new Array(bc);
           for (let k = 0; k < bc; k++) { boundaryKind[k] = u8(); boundaryInner[k] = boundaryKind[k] > 0; boundaries[k] = pts(); }
           const tc = i32(); const tracks = new Array(tc);
@@ -352,7 +352,8 @@ window.RemoteTransport = {
             isWorkSwitchEnabled: !!u8(), isWorkSwitchActiveLow: !!u8(), isWorkSwitchManualSections: !!u8(),
             isSteerSwitchEnabled: !!u8(), isSteerSwitchManualSections: !!u8(), totalWidth: f64(),
           };
-          const uturn = { style: i32(), extension: f64(), smoothing: i32(), radius: f64(), distanceFromBoundary: f64() };
+          const uturn = { style: i32(), extension: f64(), smoothing: i32(), radius: f64(), distanceFromBoundary: f64(),
+            goAroundRadius: f64(), goAroundMargin: f64() };
           const tram = { passes: i32(), display: !!u8(), line: i32(), width: f64(), outerInverted: !!u8() };
           const machine = {
             hydraulicLiftEnabled: !!u8(), raiseTime: i32(), lookAhead: f64(), lowerTime: i32(), invertRelay: !!u8(),

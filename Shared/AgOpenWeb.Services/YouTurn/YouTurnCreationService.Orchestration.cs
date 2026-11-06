@@ -250,7 +250,8 @@ public partial class YouTurnCreationService
                 // next tree's turn line 8 m away, and a turn whose exit landed just before another
                 // obstacle ended in the AutoSteer-off alarm with no room. No such turn is made;
                 // the operator is told and takes over before the obstacle.
-                if (boundary != null && !ClearsTurnObstacles(path, boundary, config, out int crossed, ExitReach, obstacle?.InnerIndex ?? -1))
+                if (boundary != null && !ClearsTurnObstacles(path, boundary, config, out int crossed, ExitReach, obstacle?.InnerIndex ?? -1,
+                        obstacles))
                 {
                     _logger.LogWarning("[YouTurn] The turn would cross obstacle {I}, or end right before it; no turn.", crossed + 1);
                     return new TurnPathResult(null, UsedFallback: false) { AtObstacle = true };
@@ -399,9 +400,26 @@ public partial class YouTurnCreationService
         {
             new BoundaryTurnLine { Points = turnBoundaryVec3, BoundaryIndex = 0 }
         };
+        // The current pass as the pipeline steers it: offset, then bent round the Go around
+        // obstacles it runs into. The ones it has no room to go round get a U-turn before them
+        // on this pass (promoted), with the obstacles chosen as U-turn.
+        List<Vec3> basePoints = track.Points.Count > 2
+            ? new List<Vec3>(track.Points)
+            : DensifyAbLine(track.Points);
+
+        double widthMinusOverlap = toolWidth - config.Tool.Overlap;
+        double offsetDistance = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, widthMinusOverlap, guidance.NudgeOffset,
+            Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay));
+        List<Vec3> offsetCurve = Math.Abs(offsetDistance) < 0.01
+            ? new List<Vec3>(basePoints)
+            : CurveProcessing.CreateOffsetCurve(basePoints, offsetDistance);
+        var bend = _goAround.For(track, offsetDistance, offsetCurve, boundary);
+        if (bend != null && bend.GoneRound.Count > 0) offsetCurve = bend.Points;
+        IReadOnlyList<int> promoted = bend?.Blocked ?? Array.Empty<int>();
+
         // The obstacles a U-turn is made at, turn lines 1..n after the outer one. The extra
         // setback the clearance loop asks for moves them out from the obstacle the same way.
-        obstacles = TurnObstacles(boundary, distanceFromBoundary);
+        obstacles = TurnObstacles(boundary, distanceFromBoundary, promoted);
         foreach (var o in obstacles)
             boundaryTurnLines.Add(new BoundaryTurnLine { Points = o.TurnLine, BoundaryIndex = o.InnerIndex + 1 });
 
@@ -425,17 +443,8 @@ public partial class YouTurnCreationService
         // pruning/spacing) — that step is what made the tractor "get lost" entering the turn.
         // The tangent extension is added on TOP only so FindCurveTurnPoint can see the curve
         // cross the boundary (a bare offset curve stops at the field edge → generator fails →
-        // straight fallback).
-        List<Vec3> basePoints = track.Points.Count > 2
-            ? new List<Vec3>(track.Points)
-            : DensifyAbLine(track.Points);
-
-        double widthMinusOverlap = toolWidth - config.Tool.Overlap;
-        double offsetDistance = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, widthMinusOverlap, guidance.NudgeOffset,
-            Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay));
-        List<Vec3> offsetCurve = Math.Abs(offsetDistance) < 0.01
-            ? new List<Vec3>(basePoints)
-            : CurveProcessing.CreateOffsetCurve(basePoints, offsetDistance);
+        // straight fallback). The offset pass (bent round its Go around obstacles) is built
+        // above, before the turn lines.
         List<Vec3> currentCurvePoints = CurveProcessing.ExtendCurveEnds(offsetCurve);
 
         int currentLocationIndex = 0;
@@ -461,8 +470,10 @@ public partial class YouTurnCreationService
             GuidancePoints = currentCurvePoints,
             CurrentLocationIndex = currentLocationIndex,
             // Non-extended base; the destination (exit) curve is offset+extended from this in
-            // BuildNewOffsetCurveList so its in-field portion matches the next guidance line.
+            // BuildNewOffsetCurveList so its in-field portion matches the next guidance line,
+            // bent round the Go around obstacles as that line is.
             ReferenceCurvePoints = basePoints,
+            BendPass = (distAway, pass) => _goAround.Bent(track, distAway, pass, boundary),
 
             // Retained for diagnostics / reference-point helpers; the curve generator
             // anchors on GuidancePoints, not these.
@@ -1102,7 +1113,7 @@ public partial class YouTurnCreationService
         // Obstacles chosen as U-turn: a manual turn is anchored at the tractor, so one that
         // crosses an obstacle's turn line, or swings the implement into a hard obstacle, is
         // refused, as the automatic turn keeps out of them.
-        if (boundary != null && !ClearsTurnObstacles(path, boundary, config, out int inner))
+        if (boundary != null && !ClearsTurnObstacles(path, boundary, config, out int inner, promoted: _goAround.CurrentBlocked))
         {
             _logger.LogWarning("[ManualYouTurn] The turn would cross obstacle {I} - refusing", inner + 1);
             obstacleInTheWay = true;

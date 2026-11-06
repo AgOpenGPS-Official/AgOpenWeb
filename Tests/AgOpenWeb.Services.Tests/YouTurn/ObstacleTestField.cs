@@ -18,7 +18,8 @@ namespace AgOpenWeb.Services.Tests.YouTurn;
 /// round pond and a U-shaped one; a ditch from the fence into the field; a ditch from the
 /// headland into the field; thirty lone trees as 6 m circles; poles and three clumps of trees drawn by hand
 /// as trapezoids. The big ones are U-turn obstacles (one of them Soft, the rest Hard), the lone trees Soft
-/// U-turn obstacles; the poles and tree clumps are driven through.
+/// U-turn obstacles, or Hard Go around obstacles (<see cref="Build(bool)"/>, as a circle placed in the
+/// app is); the poles and tree clumps are driven through.
 /// Field metres, origin at the centre.
 /// </summary>
 public static class ObstacleTestField
@@ -29,6 +30,9 @@ public static class ObstacleTestField
     public sealed record Obstacle(string Name, BoundaryPolygon Polygon, double CentreE, double CentreN)
     {
         public bool IsUTurn => Polygon.AtObstacle == ObstacleAction.Turn;
+        public bool IsGoRound => Polygon.AtObstacle == ObstacleAction.GoRound;
+        /// <summary>AutoSteer must keep out of it: a U-turn or a Go around obstacle.</summary>
+        public bool IsAvoided => Polygon.AtObstacle != ObstacleAction.DriveThrough;
         public bool IsHard => Polygon.IsHard;
     }
 
@@ -38,6 +42,9 @@ public static class ObstacleTestField
         public required List<Vec3> HeadlandLine { get; init; }
         public required IReadOnlyList<Obstacle> Obstacles { get; init; }
         public IEnumerable<Obstacle> UTurnObstacles => Obstacles.Where(o => o.IsUTurn);
+        public IEnumerable<Obstacle> GoRoundObstacles => Obstacles.Where(o => o.IsGoRound);
+        /// <summary>The obstacles AutoSteer must keep out of: U-turn and Go around ones.</summary>
+        public IEnumerable<Obstacle> AvoidedObstacles => Obstacles.Where(o => o.IsAvoided);
         public BoundaryPolygon Outer => Boundary.OuterBoundary!;
     }
 
@@ -47,7 +54,9 @@ public static class ObstacleTestField
         (170, 170), (110, 235), (10, 250), (-90, 230), (-160, 170), (-180, 40), (-155, -90), (-170, -170),
     };
 
-    public static Built Build()
+    /// <param name="treesGoRound">The thirty lone trees as Hard Go around obstacles (what a circle placed in
+    /// the app is) instead of Soft U-turn ones.</param>
+    public static Built Build(bool treesGoRound = false)
     {
         var outer = Polygon(OuterRing);
         outer.IsHard = true;
@@ -89,7 +98,7 @@ public static class ObstacleTestField
             (36.4, 168.7), (16.0, 173.3), (-31.8, 211.3), (-15.9, 199.6), (-79.0, 113.0), (-89.2, 105.4), (-87.4, 117.0),
             (101.0, -9.9), (121.5, -43.4),
         })
-            Add($"Tree circle {++circle}", Circle(e, n, 3), ObstacleAction.Turn, false, e, n);
+            Add($"Tree circle {++circle}", Circle(e, n, 3), treesGoRound ? ObstacleAction.GoRound : ObstacleAction.Turn, treesGoRound, e, n);
 
         // Poles.
         int pole = 0;

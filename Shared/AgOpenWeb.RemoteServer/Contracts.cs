@@ -43,7 +43,7 @@ public record SceneDto(
     string FieldName,
     bool HasField,
     IReadOnlyList<IReadOnlyList<Vec2Dto>> Boundaries, // outer ring first, then inner holes
-    IReadOnlyList<byte> BoundaryKind, // parallel to Boundaries: 0 = outer, else an obstacle: 1 + its ObstacleAction (1 turn, 3 drive through)
+    IReadOnlyList<byte> BoundaryKind, // parallel to Boundaries: 0 = outer, else an obstacle: 1 + its ObstacleAction (1 turn, 2 go round, 3 drive through)
     IReadOnlyList<TrackDto> Tracks,
     IReadOnlyList<Vec2Dto>? Headland, // inner headland ring (green line), if any
     IReadOnlyList<Vec2Dto>? GuidanceLine, // the followed offset line (magenta), if guiding
@@ -468,7 +468,10 @@ public record ToolConfigDto(
     double TotalWidth);
 
 /// <summary>U-Turn tab (ConfigStore.Guidance). Style: 0 Omega, 1 Sagitta.</summary>
-public record UturnConfigDto(int Style, double Extension, int Smoothing, double Radius, double DistanceFromBoundary);
+/// <param name="GoAroundRadius">The tightest a pass bends round a Go around obstacle, m.</param>
+/// <param name="GoAroundMargin">Room kept between the implement and a Go around obstacle, m.</param>
+public record UturnConfigDto(int Style, double Extension, int Smoothing, double Radius, double DistanceFromBoundary,
+    double GoAroundRadius, double GoAroundMargin);
 
 /// <summary>Tram Lines tab (ConfigStore.Guidance tram fields).</summary>
 public record TramConfigDto(int Passes, bool Display, int Line, double Width, bool OuterInverted);
@@ -671,7 +674,7 @@ public record RecordedPathDto(
 /// recording menu (Outer / Inner N, area, drive-thru / hard flags). The Player.* fields
 /// mirror the live drive-around recording (State.BoundaryRec + the VM toggles). Re-sent on
 /// a fingerprint change. Draw-on-map point drawing is Phase MT and not here.</summary>
-// IsInner: an obstacle, with AtObstacle (ObstacleAction: 0 turn, 2 drive through)
+// IsInner: an obstacle, with AtObstacle (ObstacleAction: 0 turn, 1 go round, 2 drive through)
 // and SizeM, its longest distance across; CircleD, a round obstacle's diameter (0: a drawn shape).
 public record BoundaryItemDto(int Index, string BoundaryType, double AreaHa, bool DriveThru, bool Hard,
     bool IsInner = false, int AtObstacle = 0, double SizeM = 0, double CircleD = 0);

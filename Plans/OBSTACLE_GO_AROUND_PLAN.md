@@ -1,9 +1,9 @@
 # Going around obstacles: design
 
-**Status:** design, for review before the code; the first implementation is on the fork branch
-`feature/obstacle-go-around`, on top of #613 (U-turn at obstacles). Asked for in the review of
-#610, whose part 4 (go around) had two faults: the U-turn planner did not know the bent line,
-and operator actions rebuilt the bend into the obstacle.
+**Status:** implemented on the fork branch `feature/obstacle-go-around`, on top of #613 (U-turn
+at obstacles), with the scenario suite; for review upstream. Asked for in the review of #610,
+whose part 4 (go around) had two faults: the U-turn planner did not know the bent line, and
+operator actions rebuilt the bend into the obstacle.
 
 ## What it is for
 
@@ -35,9 +35,15 @@ planner get it from the same place, so they can never disagree.
 
 **P2. The side never flips beside the obstacle.** Which side a pass goes round an obstacle is
 remembered per obstacle while the tractor is within that obstacle's bend (its length along the
-pass plus the lead in and out). A rebuild for any reason keeps that side. If that side has no
-room any more (the operator nudged the line into another obstacle, or added one), the obstacle
-is not driven round the other way; it becomes a U-turn obstacle for this pass (P3).
+pass plus the lead in and out) and over on that side of the obstacle's centre. A rebuild for any
+reason keeps that side. If that side has no room any more (the operator nudged the line into
+another obstacle, or added one), the obstacle is not driven round the other way; it becomes a
+U-turn obstacle for this pass (P3). The pin is let go when the tractor gets to the other side of
+the obstacle: a U-turn next to a tree lands the tractor on the neighbouring pass, on the other
+side of it, and that pass must bend away from the tractor, not back across the tree (found by the
+scenario suite: Tree circle 18 between passes 12 and 13, the pin of pass 12 bent pass 13 across
+the tree in front of the tractor). In the lead-in, a tractor still on the line and not yet over
+on the bend's side pins nothing: a flip there is harmless.
 
 **P3. No room means a U-turn, never a drive through.** A Go around obstacle the bend cannot get
 round on the allowed side (another grown obstacle, a U-turn obstacle, half the implement out of
@@ -52,20 +58,25 @@ obstacle, as it is for a hard U-turn obstacle in #613, and the 20 m of next pass
 is checked the same way. A headland turn refused because of a Go around obstacle promotes that
 obstacle to a U-turn obstacle for the pass (P3), so the turn is made before it instead.
 
-**P5. A safety net that does not trust the line.** With AutoSteer on, if the tractor's own
-straight-ahead reach (10 m plus 2 s of travel, as in #613) meets a Go around obstacle grown by
-half the tractor's track, and the steered line within that reach is not clear of the obstacle,
-AutoSteer goes off with the alarm. Driving a sound bend never trips it: the line keeps half the
-implement plus the margin away from the obstacle, and the tractor's heading on the bend points
-along the line, not at the tree. It catches what no planning did: a line that still runs into
-the tree after an action P2 and P3 did not cover.
+**P5. A safety net that does not trust the line.** With AutoSteer on and no turn being driven,
+if the tractor's own straight-ahead reach (10 m plus 2 s of travel, as in #613) meets a Go around
+obstacle grown by half the tractor's track, and the tractor is more than 1.5 m off the steered
+line (the safety margin and the room the bend gave the implement are spent), AutoSteer goes off
+with the alarm. Driving a sound bend never trips it: the line keeps half the implement plus the
+margin away from the obstacle, and a tractor on the line, or lagging it a little on the way into
+the bend, is not off it by 1.5 m. It catches what no planning did: a tractor that is still
+heading into the tree after an action P2 and P3 did not cover. The distance from the line is the
+steering cycle's own, from the bent line steered (the shown line's only while driving by hand):
+the scenario suite found the first build reading a value only refreshed with AutoSteer off, so
+the net never fired while it mattered. With it, an obstacle made Go around again 6 m before it
+takes AutoSteer off at once ("AutoSteer off: Inner N ahead and the tractor off the line round it").
 
-**P6. Bends stay in the turn area.** A bend is only laid inside the outer turn line (the turn
-area of the U-turn planner, 2 m inside the boundary by default); a bend that would leave it is
-no room (P3). Because the planner walks the bent current pass, the turn's crossing of the turn
-line and its entry leg are found on the bent line, and the exit leg is built on the bent next
-pass. "Drive across a headland gap" (#620) composes with it: the headland strip test there
-excludes obstacles, so a bend never counts as a gap.
+**P6. Bends stay in the field.** A bend keeps half the implement inside the field's edge and
+never moves the line into a U-turn obstacle; a bend that would do either is no room (P3). Because
+the planner walks the bent current pass, the turn's crossing of the turn line and its entry leg
+are found on the bent line, and the exit leg is built on the bent next pass. "Drive across a
+headland gap" (#620) composes with it: the headland strip test there excludes obstacles, so a
+bend never counts as a gap.
 
 **P7. Trailed implements** cut inside the bend; the keep-out distance includes the cut-in for
 the bend's radius (`TrailedCutIn`), as #610 did.
@@ -85,20 +96,31 @@ Lasry-Lions smoothing so that no curve is tighter than the set radius; obstacles
 the pass gone round together on one side; a bent line checked against every grown obstacle,
 every U-turn obstacle's turn line, and the turn area; a conflict tries the other side once, then
 the obstacle has no room (P3). The two settings stay: **Curve radius** (6 m) and **Safety
-margin** (1 m), saved with the tool profile.
+margin** (1 m, never under 0.3 m: on the scenario field the tractor holds a bent line to about
+0.25 m, so a margin of nothing would put the implement into a hard obstacle on every bend),
+saved with the tool profile.
 
 ## Changes by component
 
 - **Models**: `ObstacleAction.GoRound` back (value 1, file name `goRound` as in #610 fields);
   `GuidanceConfig.GoAroundRadius` and `GoAroundMargin`.
-- **`ObstacleDetour`** (Services/Track): as #610, plus a preferred side per obstacle (P2) and the
-  list of obstacles with no room (P3) in its result.
-- **Pipeline**: the bent pass for steering, display and XTE (as #610); the side memory (P2); the
-  bend handed to the U-turn planner through the tick context, with the promoted obstacles; the
-  safety net (P5) beside #613's kickout.
-- **U-turn planner**: `GuidancePoints` and the next pass are the bent lines (P1);
-  `TurnObstacles` takes the promoted obstacles of the pass (P3); `ClearsTurnObstacles` checks the
-  Go around fences with the implement's swept path (P4), for automatic and manual turns.
+- **`ObstacleDetour`** (Services/Track): as #610, plus pinned sides (P2: a pinned obstacle keeps
+  its side and is blocked, not flipped, when that side has no room) and, for every obstacle gone
+  round, its side and where the tractor counts as beside it (`Bend.Rounds`).
+- **`GoAroundPasses`** (Services/Track, one singleton for the pipeline and the planner): takes the
+  settings and the tool geometry from the configuration store (the margin never under
+  `MinMargin`, 0.3 m), keeps the pins (set and released by the pipeline from the bend it steers,
+  `Steered`: taken beside an obstacle once the tractor is over on the bend's side, let go when it
+  has left the bend or got to the other side), exposes the bend steered now (`Current`,
+  `CurrentBlocked`) and the straight-ahead test for the net (P5, `ObstacleAhead`).
+- **Pipeline**: the bent pass for steering, display and XTE (as #610); `Steered` after each
+  steering cycle (P2); the promoted obstacles handed to #613's kickout; the net (P5) beside it;
+  the notice "No room to go around Inner N on this pass: U-turn before it".
+- **U-turn planner**: `GuidancePoints` and the next pass (`YouTurnCreationInput.BendPass`) are the
+  bent lines (P1); `TurnObstacles` takes the promoted obstacles of the pass (P3), for the turn
+  lines, the kickout and the manual turn; `ClearsTurnObstacles` keeps the tractor out of every Go
+  around obstacle grown by half its track plus the margin and the implement off a hard one (P4),
+  for automatic and manual turns.
 - **UI**: the third choice in the obstacle list, its colour on the map, the two settings on the
   U-turn tab and the notices, as #610 had them.
 - **Tests**: `ObstacleDetour` unit tests from #610; the scenario suite of #613 with the thirty

@@ -57,7 +57,7 @@
 .bm-tbtn img { width: 32px; height: 32px; }
 .bm-tbtn:disabled { opacity: 0.35; cursor: default; }
 .bm-plus { position: absolute; right: 4px; bottom: 2px; color: #F5F54D; font-weight: 700; font-size: 15px; }
-.bm-lhdr { display: grid; grid-template-columns: 1fr 0.9fr 0.95fr 0.95fr 0.75fr; align-items: center; background: #1565C0; color: #fff;
+.bm-lhdr { display: grid; grid-template-columns: 1fr 0.9fr 0.85fr 0.85fr 0.85fr 0.75fr; align-items: center; background: #1565C0; color: #fff;
   font-weight: 700; font-size: 12px; padding: 4px 8px; border-radius: 6px 6px 0 0; gap: 2px; }
 .bm-lhdr > span { text-align: center; }
 .bm-lhdr > span:first-child { text-align: left; }
@@ -67,12 +67,12 @@
   flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
 .bm-colhdr:hover { background: rgba(255,255,255,0.2); }
 .bm-list { background: rgba(var(--ov),0.03); border-radius: 0 0 6px 6px; max-height: min(46vh, 400px); overflow-y: auto; }
-.bm-row { display: grid; grid-template-columns: 1fr 0.9fr 0.95fr 0.95fr 0.75fr; align-items: center; padding: 4px 8px;
+.bm-row { display: grid; grid-template-columns: 1fr 0.9fr 0.85fr 0.85fr 0.85fr 0.75fr; align-items: center; padding: 4px 8px;
   font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--bg-raised); gap: 2px; min-height: 40px; }
 .bm-row.sel { background: var(--sel); }
 .bm-row > span { text-align: center; }
 .bm-row .bm-name { text-align: left; }
-.bm-row .bm-none { grid-column: span 2; color: var(--text-dim); }
+.bm-row .bm-none { grid-column: span 3; color: var(--text-dim); }
 .bm-flag { padding: 2px 8px; border-radius: 4px; font-size: 12px; }
 .bm-flag.on { background: rgba(80,200,120,0.3); color: #6de29a; }
 .bm-flag.off { color: var(--text-dim); }
@@ -80,11 +80,13 @@
 .bm-choice { height: 36px; border: 1px solid var(--border); border-radius: 6px; background: transparent; cursor: pointer;
   display: flex; align-items: center; justify-content: center; }
 .bm-choice.on { background: rgba(var(--ov),0.14); border-color: var(--text-muted); }
-/* The colours the obstacles have on the map (map-draw.js SKP.boundaryInner / DriveThru). */
+/* The colours the obstacles have on the map (map-draw.js SKP.boundaryInner / GoRound / DriveThru). */
 .bm-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid; box-sizing: border-box; }
 .bm-dot.k1 { border-color: rgb(245,245,77); }
+.bm-dot.k2 { border-color: rgb(77,208,245); }
 .bm-dot.k3 { border-color: rgb(176,176,176); border-style: dashed; }
 .bm-choice.on .bm-dot.k1 { background: rgb(245,245,77); }
+.bm-choice.on .bm-dot.k2 { background: rgb(77,208,245); }
 .bm-choice.on .bm-dot.k3 { background: rgb(176,176,176); }
 .bm-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
 /* Round obstacles: the diameter box and the circle buttons under the list. */

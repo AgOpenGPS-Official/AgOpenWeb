@@ -17,8 +17,8 @@ public partial class MainViewModel
 {
     /// <summary>
     /// A new round obstacle at (<paramref name="easting"/>, <paramref name="northing"/>), field
-    /// metres, <paramref name="diameter"/> metres across; its choice is Drive through, as a tree's
-    /// would be, and it is Hard. Its row is selected.
+    /// metres, <paramref name="diameter"/> metres across; its choice is Go around, as a tree's
+    /// would be, and it is Hard: the implement is kept out of it. Its row is selected.
     /// </summary>
     public void RemoteAddObstacleCircle(double easting, double northing, double diameter)
     {
@@ -29,7 +29,7 @@ public partial class MainViewModel
             return;
         }
 
-        var polygon = new BoundaryPolygon { AtObstacle = ObstacleAction.DriveThrough };
+        var polygon = new BoundaryPolygon { AtObstacle = ObstacleAction.GoRound };
         polygon.SetCircle(new ObstacleCircle(easting, northing, diameter));
         boundary.AddNewObstacle(polygon);
         int inner = boundary.InnerBoundaries.Count - 1;

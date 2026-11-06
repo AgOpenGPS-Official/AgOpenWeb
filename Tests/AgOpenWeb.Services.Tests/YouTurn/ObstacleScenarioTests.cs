@@ -25,6 +25,9 @@ namespace AgOpenWeb.Services.Tests.YouTurn;
 /// while AutoSteer is on, neither the tractor's wheels nor (at a Hard obstacle) the implement
 /// enter a U-turn obstacle; and when the host takes AutoSteer off for an obstacle there are
 /// 10 m left to stop in, unless the operator gave it less to begin with.
+/// With the thirty lone trees as Go around obstacles (<see cref="GoAroundLegs"/>) a third rule
+/// holds: while AutoSteer is on, the tractor's wheels and the implement never enter a Go around
+/// obstacle, on the pass or in a turn, and a pass that goes round one is back on its line after it.
 /// Set AGOPENWEB_SCENARIO_REPORT to a file path to get the matrix as a Markdown report, and
 /// AGOPENWEB_SCENARIO_ONLY to a piece of a leg's name (an obstacle, a track, a seed) to run only those legs.
 /// </summary>
@@ -47,17 +50,20 @@ public class ObstacleScenarioTests
         return string.IsNullOrEmpty(only) || leg.ToString().Contains(only, StringComparison.OrdinalIgnoreCase);
     }
 
-    public sealed record Leg(string Obstacle, string Track, bool Forward, string Tool, double Width, double Offset, int Seed)
+    public sealed record Leg(string Obstacle, string Track, bool Forward, string Tool, double Width, double Offset, int Seed,
+        bool TreesGoRound = false)
     {
         public override string ToString() =>
             $"{Obstacle}, {Track}, {(Forward ? "forward" : "back")}, {Tool} {Width.ToString("0.#", CultureInfo.InvariantCulture)} m"
             + (Offset != 0 ? $" offset {Offset.ToString("+0.#;-0.#", CultureInfo.InvariantCulture)} m" : "")
-            + (Seed >= 0 ? $", seed {Seed}" : "");
+            + (Seed >= 0 ? $", seed {Seed}" : "")
+            + (TreesGoRound ? ", trees go around" : "");
     }
 
     public sealed record LegResult(Leg Leg, string Outcome, string? Skipped, double WorstClearance, string? WorstObstacle,
         double WheelsAtSoft, double PathError, string? Kickout, double? AheadAtKickout, double RoomAtLastArm, double Time,
-        IReadOnlyList<string> Mischief, IReadOnlyList<string> Log, string? Failure);
+        IReadOnlyList<string> Mischief, IReadOnlyList<string> Log, string? Failure,
+        double WorstClearanceGoRound = double.NaN, string? WorstGoRoundObstacle = null);
 
     public static IEnumerable<TestCaseData> NormalLegs()
     {
@@ -119,6 +125,62 @@ public class ObstacleScenarioTests
     [TestCaseSource(nameof(BadLegs))]
     public void TheOperatorWhoDoesEverythingWrong(Leg leg) => Run(leg);
 
+    /// <summary>
+    /// The field with the thirty lone trees as Hard Go around obstacles: every tree from both ends,
+    /// the rear, trailing and tow-between 6 m implements, the 3 m front and the 12 m rear one on the
+    /// straight line, the 6 m rear one on the angled lines and the curve, and a 3 m implement 2.5 m
+    /// beside the tractor; and the big U-turn obstacles with the 6 m rear implement, since a turn at
+    /// them now has trees to keep out of.
+    /// </summary>
+    public static IEnumerable<TestCaseData> GoAroundLegs()
+    {
+        var field = ObstacleTestField.Build(treesGoRound: true);
+        foreach (var o in field.GoRoundObstacles)
+            foreach (var kind in ObstacleTestField.TrackKinds)
+                foreach (bool forward in new[] { true, false })
+                    foreach (var (tool, width, offset) in new[]
+                    {
+                        ("rear", 6.0, 0.0), ("trailing", 6.0, 0.0), ("tbt", 6.0, 0.0), ("front", 3.0, 0.0), ("rear", 12.0, 0.0),
+                        ("rear", 3.0, 2.5), ("trailing", 3.0, -2.5),
+                    })
+                    {
+                        if (kind != "AB 0°" && (tool != "rear" || width != DefaultWidth)) continue;
+                        var leg = new Leg(o.Name, kind, forward, tool, width, offset, -1, TreesGoRound: true);
+                        if (Wanted(leg)) yield return new TestCaseData(leg).SetName($"GoAround({leg})");
+                    }
+        foreach (var o in field.UTurnObstacles)
+            foreach (var kind in new[] { "AB 0°", "Curve" })
+                foreach (bool forward in new[] { true, false })
+                {
+                    var leg = new Leg(o.Name, kind, forward, "rear", DefaultWidth, 0, -1, TreesGoRound: true);
+                    if (Wanted(leg)) yield return new TestCaseData(leg).SetName($"GoAround({leg})");
+                }
+    }
+
+    public static IEnumerable<TestCaseData> GoAroundBadLegs()
+    {
+        var field = ObstacleTestField.Build(treesGoRound: true);
+        int seed = 500;
+        foreach (var o in field.AvoidedObstacles)
+            foreach (var kind in ObstacleTestField.TrackKinds)
+                for (int k = 0; k < 2; k++)
+                {
+                    if (!o.IsGoRound && kind != "AB 0°") continue; // the big ones: one seed each way on the straight line
+                    var leg = new Leg(o.Name, kind, k == 0, k == 0 ? "rear" : "trailing", DefaultWidth, 0, seed++, TreesGoRound: true);
+                    if (Wanted(leg)) yield return new TestCaseData(leg).SetName($"GoAroundBad({leg})");
+                }
+    }
+
+    [TestCaseSource(nameof(GoAroundLegs))]
+    public void TheOperatorWhoGoesAroundTrees(Leg leg)
+    {
+        var r = Run(leg);
+        Assert.That(r.Outcome, Is.Not.EqualTo("passed it").And.Not.EqualTo("timeout"), "the pass never met the obstacle");
+    }
+
+    [TestCaseSource(nameof(GoAroundBadLegs))]
+    public void TheOperatorWhoGoesAroundTreesAndDoesEverythingWrong(Leg leg) => Run(leg);
+
     [Test]
     public void TheField_IsSane()
     {
@@ -173,7 +235,7 @@ public class ObstacleScenarioTests
 
     private static LegResult Run(Leg leg)
     {
-        var field = ObstacleTestField.Build();
+        var field = ObstacleTestField.Build(leg.TreesGoRound);
         var target = field.Obstacles.First(o => o.Name == leg.Obstacle);
         var track = ObstacleTestField.Track(leg.Track);
         using var rig = new ObstacleScenarioRig(field, leg.Tool, leg.Width, leg.Offset);
@@ -200,7 +262,11 @@ public class ObstacleScenarioTests
         double extent = first.Polygon.Points.Max(p => Math.Sqrt((p.Easting - first.CentreE) * (p.Easting - first.CentreE)
             + (p.Northing - first.CentreN) * (p.Northing - first.CentreN)));
         double se = Math.Sin(approach.Heading), ce = Math.Cos(approach.Heading);
-        bool Passed() => (rig.E - first.CentreE) * se + (rig.N - first.CentreN) * ce > extent + 15;
+        // A pass that goes round the obstacle is back on its line well after it: the bend for a tree
+        // and a 6 m implement ends some 30 m past the tree.
+        bool goRound = first.IsGoRound;
+        double past = goRound ? extent + 45 : extent + 15;
+        bool Passed() => (rig.E - first.CentreE) * se + (rig.N - first.CentreN) * ce > past;
         bool Done() => rig.KickoutReason != null || (rig.TurnEndedAt is { } t && rig.Time > t + 8) || Passed();
 
         while (!Done() && rig.Time < 240)
@@ -214,26 +280,36 @@ public class ObstacleScenarioTests
             rig.TurnedAtObstacle && rig.TurnEndedAt != null ? "turned at the obstacle" :
             rig.TurnEndedAt != null ? "turned at the field's edge" :
             Passed() && first.Polygon.AtObstacle == ObstacleAction.DriveThrough ? "driven through (operator's choice)" :
+            Passed() && first.IsGoRound ? "went around it" :
             Passed() ? "passed it" :
             "timeout";
 
-        // The two rules.
+        // The rules.
         string? failure = null;
         // A pass laid beside an obstacle can run the implement's edge into it before any turn (the
         // line, not the turn, puts it there; the log says "on the pass itself"); the turn is judged
         // by what happened from the moment it was driven.
         if (rig.WorstClearanceInTurn < 0)
             failure = $"AutoSteer took the tractor or the implement {-rig.WorstClearanceInTurn:F2} m into {rig.WorstObstacleInTurn}";
+        // A Go around obstacle is the bent pass's to keep clear of, on the pass and in the turn.
+        else if (rig.WorstClearanceGoRound < 0)
+            failure = $"AutoSteer took the tractor or the implement {-rig.WorstClearanceGoRound:F2} m into {rig.WorstGoRoundObstacle} (Go around)";
         else if (rig.KickoutReason != null && rig.ObstacleAheadAtKickout is { } ahead && !double.IsInfinity(ahead))
         {
             double required = Math.Min(StopRoom, rig.RoomAtLastArm - 1.5);
             if (ahead < required)
                 failure = $"AutoSteer went off {ahead:F1} m before the obstacle; {required:F1} m were expected";
         }
+        else if (outcome == "went around it" && op == null && Math.Abs(rig.CrossTrack) > 0.5)
+            failure = $"{Math.Abs(rig.CrossTrack):F2} m off the line {past - extent:F0} m past the obstacle";
+        if (goRound) rig.Note($"{Math.Abs(rig.CrossTrack):F2} m off the line at the end");
+        if (leg.TreesGoRound && rig.WorstClearanceGoRound < double.MaxValue)
+            rig.Note($"nearest to a Go around obstacle while engaged: {rig.WorstClearanceGoRound:F2} m ({rig.WorstGoRoundObstacle})" + (rig.WorstGoRoundAt is { } at ? $" at t={at.Time:F1}s ({at.E:F0},{at.N:F0})" : ""));
 
         var result = new LegResult(leg, outcome, null, rig.WorstClearance, rig.WorstObstacle, rig.WorstWheelsAtSoft,
             rig.MaxPathError, rig.KickoutReason, rig.ObstacleAheadAtKickout, rig.RoomAtLastArm, rig.Time,
-            op?.Done ?? (IReadOnlyList<string>)Array.Empty<string>(), rig.Log.ToList(), failure);
+            op?.Done ?? (IReadOnlyList<string>)Array.Empty<string>(), rig.Log.ToList(), failure,
+            rig.WorstClearanceGoRound, rig.WorstGoRoundObstacle);
         Record(result);
 
         TestContext.Out.WriteLine(ScenarioReport.Line(result));
@@ -276,7 +352,8 @@ public class ObstacleScenarioTests
         for (double back = 0; start > 0 && back < ApproachLength; start--) back += Step(path, start - 1, start);
 
         // On into the field: inside the headland line, with the implement's 12 m behind the tractor and the
-        // host's 20 m of look-ahead in front of it clear of every U-turn obstacle's turn line (3 m from the fence).
+        // host's 20 m of look-ahead in front of it clear of every avoided obstacle's turn line (3 m from the fence;
+        // a Go around obstacle's bend starts further out, so the start keeps 35 m from one).
         var headland = field.Boundary.HeadlandPolygon!;
         bool Clear(int i)
         {
@@ -285,20 +362,22 @@ public class ObstacleScenarioTests
             for (double d = 0; behind > 0 && d < 12; behind--) d += Step(path, behind - 1, behind);
             for (double d = 0; ahead < path.Count - 1 && d < 20; ahead++) d += Step(path, ahead, ahead + 1);
             for (int k = behind; k <= ahead; k++)
-                foreach (var o in field.UTurnObstacles)
-                    if (ObstacleTestField.SignedDistance(o.Polygon, path[k].Easting, path[k].Northing) <= 3) return false;
+                foreach (var o in field.AvoidedObstacles)
+                    if (ObstacleTestField.SignedDistance(o.Polygon, path[k].Easting, path[k].Northing) <= (o.IsGoRound ? 35 : 3)) return false;
             return true;
         }
         while (start < path.Count - 1 && !Clear(start)) start++;
 
-        // The first U-turn obstacle from there, and the room before it.
+        // The first avoided obstacle from there (the pass through it, or within the implement's half width of it
+        // for a Go around one, which the pass must then go round), and the room before it.
         ObstacleTestField.Obstacle? first = null;
         double room = double.PositiveInfinity, walked = 0;
         for (int i = start + 1; i < path.Count && walked < 200 && first == null; i++)
         {
             walked += Step(path, i - 1, i);
-            foreach (var o in field.UTurnObstacles)
-                if (o.Polygon.IsPointInside(path[i].Easting, path[i].Northing)) { first = o; room = walked; break; }
+            foreach (var o in field.AvoidedObstacles)
+                if (o.IsGoRound ? ObstacleTestField.SignedDistance(o.Polygon, path[i].Easting, path[i].Northing) < toolWidth / 2
+                    : o.Polygon.IsPointInside(path[i].Easting, path[i].Northing)) { first = o; room = walked; break; }
         }
         var (he, hn) = Tangent(path, start);
         return new Approach(path[start].Easting, path[start].Northing, Math.Atan2(he, hn), first, room);
@@ -340,23 +419,26 @@ internal static class ScenarioReport
     {
         var ci = CultureInfo.InvariantCulture;
         string clearance = double.IsNaN(r.WorstClearance) || r.WorstClearance == double.MaxValue ? "-" : r.WorstClearance.ToString("F2", ci) + " m";
+        if (r.WorstObstacle != null && clearance != "-") clearance += " (" + r.WorstObstacle + ")";
         if (!double.IsNaN(r.WheelsAtSoft) && r.WheelsAtSoft < 3) clearance += $", wheels at the Soft one {r.WheelsAtSoft.ToString("F2", ci)} m";
+        if (!double.IsNaN(r.WorstClearanceGoRound) && r.WorstClearanceGoRound < double.MaxValue)
+            clearance += $"; Go around {r.WorstClearanceGoRound.ToString("F2", ci)} m ({r.WorstGoRoundObstacle})";
         string pathError = double.IsNaN(r.PathError) ? "-" : r.PathError.ToString("F2", ci) + " m";
         string kick = r.Kickout == null ? "-" : $"{(r.AheadAtKickout is { } a && !double.IsInfinity(a) ? a.ToString("F1", ci) + " m before: " : "")}{r.Kickout}";
         string mischief = r.Mischief.Count == 0 ? "-" : string.Join("; ", r.Mischief);
-        return $"| {r.Leg} | {(r.Failure != null ? "**FAIL** " : "")}{r.Outcome}{(r.Skipped != null ? ": " + r.Skipped : "")} | {clearance}{(r.WorstObstacle != null ? " (" + r.WorstObstacle + ")" : "")} | {pathError} | {kick} | {r.Time.ToString("F0", ci)} s | {mischief} |";
+        return $"| {r.Leg} | {(r.Failure != null ? "**FAIL** " : "")}{r.Outcome}{(r.Skipped != null ? ": " + r.Skipped : "")} | {clearance} | {pathError} | {kick} | {r.Time.ToString("F0", ci)} s | {mischief} |";
     }
 
     public static string Build(IReadOnlyList<ObstacleScenarioTests.LegResult> results)
     {
         var sb = new StringBuilder();
-        var ordered = results.OrderBy(r => r.Leg.Seed >= 0).ThenBy(r => r.Leg.Obstacle).ThenBy(r => r.Leg.Track).ThenByDescending(r => r.Leg.Forward).ThenBy(r => r.Leg.Tool).ThenBy(r => r.Leg.Width).ThenBy(r => r.Leg.Offset).ThenBy(r => r.Leg.Seed).ToList();
+        var ordered = results.OrderBy(r => r.Leg.TreesGoRound).ThenBy(r => r.Leg.Seed >= 0).ThenBy(r => r.Leg.Obstacle).ThenBy(r => r.Leg.Track).ThenByDescending(r => r.Leg.Forward).ThenBy(r => r.Leg.Tool).ThenBy(r => r.Leg.Width).ThenBy(r => r.Leg.Offset).ThenBy(r => r.Leg.Seed).ToList();
         int failed = ordered.Count(r => r.Failure != null), skipped = ordered.Count(r => r.Skipped != null);
         sb.AppendLine("# Obstacle scenarios on Quinta Torta");
         sb.AppendLine();
         sb.AppendLine($"{ordered.Count} legs: {ordered.Count - failed - skipped} passed, {failed} failed, {skipped} skipped.");
         sb.AppendLine();
-        foreach (var group in ordered.GroupBy(r => r.Leg.Seed >= 0 ? "The operator who does everything wrong" : "The operator who does nothing wrong"))
+        foreach (var group in ordered.GroupBy(r => (r.Leg.TreesGoRound ? "Trees as Go around obstacles: " : "") + (r.Leg.Seed >= 0 ? "the operator who does everything wrong" : "the operator who does nothing wrong")))
         {
             sb.AppendLine($"## {group.Key}");
             sb.AppendLine();

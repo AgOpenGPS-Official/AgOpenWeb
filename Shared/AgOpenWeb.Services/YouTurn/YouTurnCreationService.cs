@@ -28,15 +28,19 @@ namespace AgOpenWeb.Services.YouTurn
         private readonly ILogger<YouTurnCreationService> _logger;
         private readonly IPolygonOffsetService _polygonOffsetService;
         private readonly AgOpenWeb.Models.Configuration.ConfigurationStore _configStore;
+        // The passes bent round Go around obstacles, the same object the pipeline steers by.
+        private readonly Track.GoAroundPasses _goAround;
 
         public YouTurnCreationService(
             ILogger<YouTurnCreationService> logger,
             IPolygonOffsetService polygonOffsetService,
-            AgOpenWeb.Models.Configuration.ConfigurationStore configStore)
+            AgOpenWeb.Models.Configuration.ConfigurationStore configStore,
+            Track.GoAroundPasses? goAround = null)
         {
             _logger = logger;
             _polygonOffsetService = polygonOffsetService;
             _configStore = configStore;
+            _goAround = goAround ?? new Track.GoAroundPasses(configStore, polygonOffsetService);
         }
 
         // Current input being processed (for helper methods)
@@ -1413,8 +1417,11 @@ namespace AgOpenWeb.Services.YouTurn
             // Offset the NON-extended base, then extend the result — same order as the current
             // pass, so the exit leg's in-field portion matches the next guidance line exactly
             // (seamless turn→track handoff) while the tangent extension lets the curve reach
-            // the arc end near the boundary.
-            return CurveProcessing.ExtendCurveEnds(CurveProcessing.CreateOffsetCurve(reference, distAway));
+            // the arc end near the boundary. Bent round its Go around obstacles as the pipeline
+            // will steer it, so the exit leg lands on the line that is driven.
+            var pass = CurveProcessing.CreateOffsetCurve(reference, distAway);
+            if (input.BendPass != null) pass = input.BendPass(distAway, pass);
+            return CurveProcessing.ExtendCurveEnds(pass);
         }
 
         private void FindInnerTurnPoints(Vec3 fromPt, double heading, TurnClosePoint turnPt, bool isSameWay)

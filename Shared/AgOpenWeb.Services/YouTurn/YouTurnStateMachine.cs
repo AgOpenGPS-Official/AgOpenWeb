@@ -612,11 +612,12 @@ public sealed class YouTurnStateMachine
     /// takes AutoSteer off with the alarm, so the tractor is never steered into the obstacle.
     /// Returns the obstacle's index in the inner boundaries, or -1.
     /// </summary>
-    public int ObstacleAheadWithoutTurn(in TickContext ctx, YouTurnWorkingState turn, double lookAhead)
+    public int ObstacleAheadWithoutTurn(in TickContext ctx, YouTurnWorkingState turn, double lookAhead,
+        IReadOnlyList<int>? promoted = null)
     {
         if (turn.IsExecuting || turn.TurnPath != null) return -1;
         var p = ctx.CurrentPosition;
-        return _creation.TurnObstacleAhead(ctx.Boundary, p.Easting, p.Northing, p.Heading * Math.PI / 180.0, lookAhead);
+        return _creation.TurnObstacleAhead(ctx.Boundary, p.Easting, p.Northing, p.Heading * Math.PI / 180.0, lookAhead, promoted);
     }
 
     /// <summary>

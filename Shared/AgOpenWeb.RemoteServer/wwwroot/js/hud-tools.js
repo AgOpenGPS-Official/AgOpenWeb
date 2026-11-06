@@ -334,12 +334,11 @@ function renderRecPath() {
 
 // Boundary recording menu: the field's boundaries (Outer / Inner N). The outer one shows its
 // area and the Hard flag; each obstacle (inner boundary) its size and what the tractor does at
-// it: a U-turn or drive through, one lit cell of two. The obstacles are listed by
+// it: a U-turn, go around, or drive through, one lit cell of three. The obstacles are listed by
 // size, smallest first, so the few big ones sit together at the end. Tap a row to select it
 // (its obstacle is outlined on the map), a cell to give that obstacle the choice, a column
 // title to give it to all of them.
-// ObstacleAction: 0 U-turn, 2 drive through (1 is left for going around, not part of this yet).
-const OBSTACLE_ACTIONS = { turn: 0, driveThrough: 2 };
+const OBSTACLE_ACTIONS = ['turn', 'goRound', 'driveThrough']; // ObstacleAction 0, 1, 2
 let bmShownSel = -1;
 function renderBoundaryMenu() {
   const b = boundary;
@@ -358,7 +357,7 @@ function renderBoundaryMenu() {
     size.textContent = it.circleD > 0 ? '⌀ ' + fmtUnit(it.circleD, 'm', 1) : it.isInner ? fmtUnit(it.sizeM, 'm', 1) : fmtUnit(it.areaHa, 'ha');
     row.append(name, size);
     if (it.isInner) {
-      Object.entries(OBSTACLE_ACTIONS).forEach(([act, k]) => {
+      OBSTACLE_ACTIONS.forEach((act, k) => {
         const c = document.createElement('button');
         c.className = 'bm-choice' + (it.atObstacle === k ? ' on' : '');
         c.innerHTML = '<span class="bm-dot k' + (k + 1) + '"></span>';
@@ -390,10 +389,10 @@ function renderBoundaryMenu() {
   bmShownSel = selIndex;
   renderCircleBar();
 }
-function choiceLabel(k) { return k === 2 ? tr('Drive through') : tr('U-turn'); }
+function choiceLabel(k) { return k === 1 ? tr('Go around') : k === 2 ? tr('Drive through') : tr('U-turn'); }
 for (const h of document.querySelectorAll('#boundarymenu .bm-colhdr')) h.addEventListener('pointerdown', e => {
   e.stopPropagation();
-  const k = OBSTACLE_ACTIONS[h.dataset.all];
+  const k = OBSTACLE_ACTIONS.indexOf(h.dataset.all);
   const n = boundary ? boundary.items.filter(i => i.isInner).length : 0;
   if (!n) { showToast(tr('The field has no obstacles')); return; }
   showConfirm(tr('Every obstacle'), tr('Give all {n} obstacles "{choice}"?', { n, choice: choiceLabel(k) }),

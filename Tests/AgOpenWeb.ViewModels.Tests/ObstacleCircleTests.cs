@@ -84,7 +84,7 @@ public class ObstacleCircleTests
         Assert.That(c!.Value.CenterEasting, Is.EqualTo(80).Within(0.005));
         Assert.That(c.Value.CenterNorthing, Is.EqualTo(150).Within(0.005));
         Assert.That(c.Value.Diameter, Is.EqualTo(7.5));
-        Assert.That(inner[3].AtObstacle, Is.EqualTo(ObstacleAction.DriveThrough), "a tree is driven through");
+        Assert.That(inner[3].AtObstacle, Is.EqualTo(ObstacleAction.GoRound), "a tree is gone round");
         Assert.That(inner[3].IsHard, Is.True, "a new obstacle is Hard");
         Assert.That(inner[3].IsPointInside(80 + 3.7, 150), Is.True, "the polygon holds the circle");
         Assert.That(vm.State.Field.CurrentBoundary!.InnerBoundaries, Has.Count.EqualTo(4), "in the live boundary");

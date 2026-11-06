@@ -50,6 +50,13 @@ namespace AgOpenWeb.Models.YouTurn
         public List<Vec3> ReferenceCurvePoints { get; set; } = new List<Vec3>();
 
         /// <summary>
+        /// Bends a pass (offset that far from the reference) round the field's Go around
+        /// obstacles, as the pipeline steers it: the pass a turn lands on is built with it, so
+        /// the exit leg joins the line that is driven. Null: passes are not bent.
+        /// </summary>
+        public Func<double, List<Vec3>, List<Vec3>>? BendPass { get; set; }
+
+        /// <summary>
         /// For curves: Is vehicle heading same way as curve direction?
         /// For AB: Is vehicle heading same way as AB line direction?
         /// </summary>
