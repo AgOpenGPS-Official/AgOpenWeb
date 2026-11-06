@@ -387,7 +387,8 @@ public static class CarelessOperator
                 r.Stored = list.Contains("Puma 180/CVX") ? "listed" : "not listed";
                 bool sub = Directory.Exists(Path.Combine(vehDir, "Puma 180"));
                 r.Effect = sub ? "a folder 'Puma 180' made in Vehicles, the profile inside it" : "";
-                if (!list.Contains("Puma 180/CVX"))
+                // Refused with the reason is right: a slash is a folder on every head.
+                if (!list.Contains("Puma 180/CVX") && (sub || r.Said.Count == 0))
                     Add(journal, r, new Finding("PROFILE-NAME-SLASH", Severity.Bug,
                         "a vehicle named with a slash ('Puma 180/CVX') is not saved as a profile" + (sub ? " (it goes into a sub-folder)" : "") + (r.Said.Count == 0 ? ", and nothing says so" : ": " + r.Said[0])), "profiles: name with a slash");
 
