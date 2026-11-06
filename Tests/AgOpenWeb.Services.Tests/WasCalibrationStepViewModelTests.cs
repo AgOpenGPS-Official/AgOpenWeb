@@ -46,7 +46,14 @@ public class WasCalibrationStepViewModelTests
         _configService.Store.Returns(_store);
 
         _autoSteer = Substitute.For<IAutoSteerService>();
+        _clock = new AgOpenWeb.Models.Timing.TestClock();
+        AgOpenWeb.Models.Timing.Clock.Set(_clock);
     }
+
+    private AgOpenWeb.Models.Timing.TestClock _clock = null!;
+
+    [TearDown]
+    public void TearDown() => AgOpenWeb.Models.Timing.Clock.Reset();
 
     /// <summary>
     /// Stub <c>LastSteerData</c> to return a fresh
@@ -56,6 +63,9 @@ public class WasCalibrationStepViewModelTests
     /// </summary>
     private void GivenReportedAngle(double angleDeg)
     {
+        // A fresh reading, after the last zero has settled (a quick second tap is ignored).
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        _autoSteer.LastSteerDataTime.Returns(_clock.Now);
         _autoSteer.LastSteerData.Returns(new SteerModuleData(
             ActualSteerAngle: angleDeg, ImuHeading: 0, ImuRoll: 0,
             WorkSwitchActive: false, SteerSwitchActive: false,

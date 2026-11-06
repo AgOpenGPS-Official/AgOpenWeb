@@ -24,6 +24,18 @@ public partial class MainViewModel
     {
         if (index < 0 || index >= SavedTracks.Count || pts.Count < 2) return;
         var track = SavedTracks[index];
+        // A point that isn't a number would be saved and break guidance on this track; A and B on
+        // one spot give it no heading (the same rule as Drive AB / Draw AB, #627).
+        if (pts.Any(p => !double.IsFinite(p.e) || !double.IsFinite(p.n)))
+        {
+            ReportFailure($"'{track.Name}' not changed: a point has no position");
+            return;
+        }
+        if (pts.Count == 2 && GeometryMath.Distance(pts[0].e, pts[0].n, pts[1].e, pts[1].n) < 1.0)
+        {
+            ReportFailure("A and B must be at least 1 m apart");
+            return;
+        }
 
         var newPts = new List<Vec3>(pts.Count);
         if (pts.Count == 2)
