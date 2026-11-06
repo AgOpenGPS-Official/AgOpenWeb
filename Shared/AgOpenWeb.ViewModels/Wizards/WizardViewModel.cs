@@ -333,9 +333,6 @@ public abstract class WizardViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Override to perform actions when wizard is cancelled.
-    /// </summary>
-    /// <summary>
     /// The wizard is going away (Finish, Cancel, or a new one replaces it): leave the current
     /// step, so a test or a recording it runs stops and its event handlers come off, and let
     /// the status bar go of the live data. Without it a CPD circle being recorded when the
@@ -348,6 +345,9 @@ public abstract class WizardViewModel : ObservableObject
         StatusBar?.Dispose();
     }
 
+    /// <summary>
+    /// Override to perform actions when wizard is cancelled.
+    /// </summary>
     protected virtual void OnCancelled() { }
 
     /// <summary>
