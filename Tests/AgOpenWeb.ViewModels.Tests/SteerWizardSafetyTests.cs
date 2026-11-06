@@ -380,6 +380,45 @@ public class SteerWizardSafetyTests
         Assert.That(step.RecordHint, Does.Contain("steer switch"));
     }
 
+    [Test]
+    public void Closing_the_wizard_mid_circle_stops_the_recording()
+    {
+        // Cancel (or a second tablet opening the wizard) while the CPD circle was being
+        // recorded left the step recording with no wizard on screen: it set CPD 110 → 94
+        // a few seconds later.
+        var b = new MainViewModelBuilder { ConfigurationService = Config() };
+        var vm = b.Build();
+        vm.StartRemoteSteerWizard();
+        var w = vm.SteerWizardViewModel!;
+        var cpd = w.Steps.OfType<CpdCircleTestStepViewModel>().Single();
+        w.GoToStep(w.Steps.IndexOf(cpd));
+        cpd.StartRecordingAt(0, 0);
+        Assume.That(cpd.IsRecording, Is.True);
+
+        vm.EndRemoteSteerWizard();
+
+        Assert.That(cpd.IsRecording, Is.False, "the closed wizard's step went on recording");
+        Assert.That(cpd.IsActive, Is.False);
+    }
+
+    [Test]
+    public void Opening_the_wizard_again_stops_the_old_ones_recording()
+    {
+        var b = new MainViewModelBuilder { ConfigurationService = Config() };
+        var vm = b.Build();
+        vm.StartRemoteSteerWizard();
+        var w = vm.SteerWizardViewModel!;
+        var ack = w.Steps.OfType<AckermannTestStepViewModel>().Single();
+        w.GoToStep(w.Steps.IndexOf(ack));
+        ack.StartRecordingAt(0, 0, -20);
+        Assume.That(ack.IsRecording, Is.True);
+
+        vm.StartRemoteSteerWizard();
+
+        Assert.That(ack.IsRecording, Is.False);
+        Assert.That(vm.SteerWizardViewModel, Is.Not.SameAs(w));
+    }
+
     /// <summary>Drives the shared Free Drive lifecycle directly.</summary>
     private sealed class Probe : SwitchGatedWizardStep
     {

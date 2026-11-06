@@ -69,9 +69,12 @@ public partial class MainViewModel
     /// <summary>Tear down the remote wizard (Finish / Cancel from the browser).</summary>
     public void EndRemoteSteerWizard()
     {
+        var wizard = SteerWizardViewModel;
         // Cancel cannot leave a motor test running with the AutoSteer lockout lifted.
-        (SteerWizardViewModel?.CurrentStep as SwitchGatedWizardStep)?.StopFreeDriveTest();
+        (wizard?.CurrentStep as SwitchGatedWizardStep)?.StopFreeDriveTest();
         SteerWizardViewModel = null;
+        // Leave the step (a CPD / Ackermann circle stops recording) and drop the handlers.
+        wizard?.Close();
     }
 
     /// <summary>
