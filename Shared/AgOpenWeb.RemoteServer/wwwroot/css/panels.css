@@ -468,6 +468,8 @@ input.as-valbox { width: 80px; box-sizing: content-box; }
 .wz-testbtn.disabled { opacity: 0.4; pointer-events: none; }
 .wz-circle { min-height: 0; margin: 4px 0 16px; gap: 10px; }
 .wz-btnrow { display: flex; gap: 12px; }
+.wz-validation { color: #f87171; font: 600 14px system-ui, sans-serif; text-align: center; padding: 6px 26px; }
+.wz-validation:empty { display: none; }
 .wz-hint { color: #f59e0b; font: 600 13px system-ui, sans-serif; text-align: center; min-height: 18px; }
 .wz-phase { margin: 0; text-align: center; }
 .wz-result { color: var(--text); font: 600 14px system-ui, sans-serif; text-align: center; max-width: 560px; }

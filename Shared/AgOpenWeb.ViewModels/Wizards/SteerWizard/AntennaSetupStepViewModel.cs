@@ -89,6 +89,14 @@ public class AntennaSetupStepViewModel : WizardStepViewModel
         if (Touched(nameof(AntennaOffset))) vehicle.AntennaOffset = AntennaOffset;
     }
 
+    protected override void ReloadFromStore()
+    {
+        var vehicle = _configService.Store.Vehicle;
+        if (!Touched(nameof(AntennaPivot))) AntennaPivot = vehicle.AntennaPivot;
+        if (!Touched(nameof(AntennaHeight))) AntennaHeight = vehicle.AntennaHeight;
+        if (!Touched(nameof(AntennaOffset))) AntennaOffset = vehicle.AntennaOffset;
+    }
+
     public override Task<bool> ValidateAsync()
     {
         if (AntennaPivot < -10 || AntennaPivot > 15)

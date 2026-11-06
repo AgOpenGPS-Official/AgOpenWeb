@@ -136,6 +136,17 @@ public class SteeringGainsStepViewModel : WizardStepViewModel
         LiveSteerError = Math.Round(Math.Abs(snapshot.SteerAngle - actual), 1);
     }
 
+    protected override void ReloadFromStore()
+    {
+        var autoSteer = _configService.Store.AutoSteer;
+        var guidance = _configService.Store.Guidance;
+        if (!Touched(nameof(SteerResponseHold))) SteerResponseHold = guidance.GoalPointLookAheadHold;
+        if (!Touched(nameof(StanleyAggressiveness))) StanleyAggressiveness = guidance.StanleyDistanceErrorGain;
+        if (!Touched(nameof(ProportionalGain))) ProportionalGain = autoSteer.ProportionalGain;
+        if (!Touched(nameof(IntegralGain))) IntegralGain = guidance.PurePursuitIntegralGain;
+        if (!Touched(nameof(SideHillCompensation))) SideHillCompensation = autoSteer.SideHillCompensation;
+    }
+
     public override Task<bool> ValidateAsync()
     {
         if (ProportionalGain < 1 || ProportionalGain > 200)
