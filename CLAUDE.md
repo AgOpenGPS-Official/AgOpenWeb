@@ -483,14 +483,15 @@ Two GitHub Actions workflows, split by purpose:
   - on a **`v*` tag** (or manual dispatch with a tag) → publishes one complete Release, marked
     prerelease so it never shows as "Latest" (the beta is the build users run), with every
     artifact: Linux daemon (x64/arm64) + desktop launcher (x64/arm64) tarballs, Windows zip
-    (launcher + service installer), macOS `.dmg`, and the Android APK;
+    (launcher + service installer), macOS `.dmg`, and the Android APK; its notes end with every
+    PR merged since the previous version tag (GitHub's generated notes, `.github/release.yml`);
   - on a **daily schedule** → refreshes a rolling `beta` prerelease with the same artifacts, only
     when `develop` has moved on since the beta was built (otherwise the run builds nothing);
   - on a manual dispatch, by its `publish` input: `beta` (default) refreshes the rolling
     beta from `develop` right away (title carries build time + commit); `release` publishes
     the Release named by `release_tag`; `none` builds + uploads artifacts only (dry run).
 
-To cut a release: bump `sys/version.h`, then push a tag — `git tag v26.6.x && git push origin v26.6.x`.
+To cut a release (about weekly, so each one stays small): bump `sys/version.h` and the three heads' display versions, then push a tag — `git tag v26.7.x && git push origin v26.7.x`. A summary on top of the generated list goes in with `gh release edit`.
 
 ## Legacy Code
 
