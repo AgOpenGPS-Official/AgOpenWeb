@@ -182,6 +182,14 @@ public class ProfilePickerTests
     [TestCase("a\tb", false)]
     [TestCase(".hidden", false)]
     [TestCase(" Puma", false)]
+    [TestCase("Puma.AutoSteer", false)]
+    [TestCase("Puma.autosteer", false)]
+    [TestCase("AutoSteer", true)]
+    [TestCase("CON", false)]
+    [TestCase("nul", false)]
+    [TestCase("com1.x", false)]
+    [TestCase("Console", true)]
+    [TestCase("COM10", true)]
     public void Profile_names(string name, bool ok)
     {
         Assert.That(ProfileNames.WhyNot(name) == null, Is.EqualTo(ok));

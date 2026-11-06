@@ -32,8 +32,23 @@ public static class ProfileNames
             return "A profile name can't contain / \\ : * ? \" < > |";
         if (name != name.Trim() || name.EndsWith('.') || name.StartsWith('.'))
             return "A profile name can't start or end with a space or a dot";
+        // "<profile>.AutoSteer.json" is a vehicle's AutoSteer settings: a profile named
+        // "Puma.AutoSteer" would overwrite Puma's, and the picker never lists it.
+        if (name.EndsWith(".AutoSteer", StringComparison.OrdinalIgnoreCase))
+            return "A profile name can't end with .AutoSteer";
+        // Windows keeps these for devices, with any extension after them (CON.json is no file).
+        var stem = name.Split('.')[0].TrimEnd();
+        if (Reserved.Contains(stem))
+            return $"{stem} can't be a profile name: Windows keeps it for a device";
         return null;
     }
+
+    private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    };
 
     /// <summary>
     /// The existing profile <paramref name="name"/> would be the same file as on Windows and
