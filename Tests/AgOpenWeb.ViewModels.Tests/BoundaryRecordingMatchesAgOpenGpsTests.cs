@@ -57,6 +57,7 @@ public class BoundaryRecordingMatchesAgOpenGpsTests
         _b.SectionControlService = _sections;
         _b.SettingsService.Settings.Returns(new AppSettings { FieldsDirectory = _root });
         _vm = _b.Build();
+        _failure = null; // NUnit keeps one fixture instance across its tests
         _vm.FailureReported += m => _failure = m;
         _vm.ActiveField = field;
         _vm.IsFieldOpen = true;
@@ -320,6 +321,36 @@ public class BoundaryRecordingMatchesAgOpenGpsTests
         Assert.That(_theirs.bndList, Has.Count.EqualTo(2));
         Assert.That(boundary.InnerBoundaries[0].AreaHectares * 10000, Is.EqualTo(_theirs.bndList[1].area).Within(_theirs.bndList[1].area * 0.005));
         Assert.That(boundary.InnerBoundaries[0].IsDriveThrough, Is.False, "a recorded inner boundary starts as an obstacle");
+    }
+
+    [Test]
+    public void AnInnerBoundary_WithNoOuter_IsRefused()
+    {
+        // #621: the obstacle button on a field with no boundary saved an inner boundary only,
+        // and the headland builder then found no boundary. AgOpenGPS's first boundary is the outer.
+        _vm.DriveAroundInnerBoundaryCommand!.Execute(null);
+
+        Assert.That(_failure, Does.Contain("field boundary first"));
+        Assert.That(_rec.State, Is.EqualTo(BoundaryRecordingState.Idle), "no recording started");
+        Assert.That(_vm.IsBoundaryPlayerPanelVisible, Is.False);
+    }
+
+    [Test]
+    public void RecordingAnInner_WithNoOuter_IsRefused()
+    {
+        _vm.RecordInnerBoundaryCommand!.Execute(null);
+
+        Assert.That(_failure, Does.Contain("field boundary first"));
+        Assert.That(_rec.State, Is.EqualTo(BoundaryRecordingState.Idle));
+    }
+
+    [Test]
+    public void DrawingAnInnerOnTheMap_WithNoOuter_IsRefused()
+    {
+        _vm.DrawMapInnerBoundaryCommand!.Execute(null);
+
+        Assert.That(_failure, Does.Contain("field boundary first"));
+        Assert.That(_vm.IsInnerBoundaryMode, Is.False, "the map draw stays an outer boundary");
     }
 
     [Test]
