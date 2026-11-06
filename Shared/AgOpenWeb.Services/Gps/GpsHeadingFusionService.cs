@@ -40,6 +40,12 @@ namespace AgOpenWeb.Services.Gps;
 /// is compared with the antenna heading. While reversing the heading is flipped so it
 /// still points the way the vehicle faces.
 ///
+/// Dual heading check: every <see cref="DualCheckDistance"/> of travel the dual heading is
+/// also held against the direction the antenna moved. Reversing reads as along it, but a
+/// heading across it (an offset 90° out: antennas front to back set up as side by side)
+/// raises <see cref="IsDualHeadingOffTravel"/>, and AutoSteer won't steer with it: guidance
+/// would steer for a tractor driving across its line. A 180° error reads as reversing.
+///
 /// Not ported: the forward/reverse steer-angle heading compensation. AgOpenGPS
 /// also corrects the fix for antenna offset and roll before taking the fix-to-fix
 /// heading; AgOpenWeb applies that transform after this stage, on the raw fixes.
@@ -77,6 +83,31 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     private bool _isReverseWithImu;
     private bool _hasReverseFix;
     private double _reverseFixE, _reverseFixN;
+
+    /// <summary>Travel over which the dual heading is held against the direction moved, m.</summary>
+    public const double DualCheckDistance = 2.0;
+    /// <summary>Slower than this, the direction moved says too little, km/h.</summary>
+    public const double DualCheckSpeedKmh = 2.0;
+    /// <summary>A dual heading further than this from the direction of travel on two checks
+    /// in a row is wrong, degrees. A tight turn with the antenna ahead of the rear axle moves
+    /// it up to about 35° sideways; the offsets people get wrong are 90° out.</summary>
+    public const double DualOffTravelLimitDeg = 60;
+    private const double DualOffTravelClearDeg = 45;
+
+    private bool _hasCheckFix;
+    private double _checkE, _checkN, _checkDual, _checkOffset;
+    private int _offTravelChecks;
+
+    /// <summary>How far the dual heading (with its offset) was from the direction the antenna
+    /// moved at the last check, degrees 0–90; reversing reads as along it. NaN until measured,
+    /// and while the heading doesn't come from the dual antenna.</summary>
+    public double DualHeadingOffTravelDeg { get; private set; } = double.NaN;
+
+    /// <summary>True when the dual heading was more than <see cref="DualOffTravelLimitDeg"/>
+    /// across the direction of travel on two checks in a row: its offset doesn't match how
+    /// the antennas are mounted. Cleared by a check along it, by a new offset, and while the
+    /// heading doesn't come from the dual antenna.</summary>
+    public bool IsDualHeadingOffTravel { get; private set; }
 
     /// <summary>Last fix-to-fix GPS heading, degrees (AgOpenGPS gpsHeading) — heading chart.</summary>
     public double GpsHeadingDeg => _gpsHeading * 180.0 / Math.PI;
@@ -178,9 +209,11 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
         ImuCorrectedDeg = imu is double ir ? Wrap(ir + _imuGpsOffset) * 180.0 / Math.PI : double.NaN;
 
         bool useFix = true;
+        if (!(con.IsDualGps && hasDualHeading)) ClearDualCheck();
         if (con.IsDualGps && hasDualHeading)
         {
             double dual = Wrap(ToRad(gpsHeading + con.DualHeadingOffset));
+            CheckDualAgainstTravel(dual, easting, northing, speedKmh, con.DualHeadingOffset);
             if (con.AutoDualFix && speedKmh > con.DualSwitchSpeed)
                 imu = dual;                       // dual stands in for the IMU
             else
@@ -301,6 +334,62 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
         _reverseFixE = easting; _reverseFixN = northing;
     }
 
+    // Dual heading check: the mean dual heading over the last DualCheckDistance of travel
+    // against the direction moved, folded so that reversing reads as along it.
+    private void CheckDualAgainstTravel(double dual, double easting, double northing, double speedKmh, double offset)
+    {
+        if (offset != _checkOffset)
+        {
+            ClearDualCheck();       // a new offset is judged afresh
+            _checkOffset = offset;
+        }
+        if (speedKmh < DualCheckSpeedKmh)
+        {
+            _hasCheckFix = false;   // start again from where it next gets going
+            return;
+        }
+        if (!_hasCheckFix)
+        {
+            SetCheckFix(dual, easting, northing);
+            return;
+        }
+        double d2 = Dist2(new StepFix { E = _checkE, N = _checkN }, easting, northing);
+        if (d2 < Sq(DualCheckDistance)) return;
+        if (d2 > Sq(5 * DualCheckDistance))
+        {
+            SetCheckFix(dual, easting, northing);   // a jump (simulator, new plane), not travel
+            return;
+        }
+        double moved = Wrap(Math.Atan2(easting - _checkE, northing - _checkN));
+        double mean = Wrap(_checkDual + AngleDelta(_checkDual, dual) / 2);
+        double off = Math.Abs(AngleDelta(mean, moved));
+        off = Math.Min(off, Math.PI - off) * 180.0 / Math.PI;
+        DualHeadingOffTravelDeg = off;
+        if (off > DualOffTravelLimitDeg)
+        {
+            if (++_offTravelChecks >= 2) IsDualHeadingOffTravel = true;
+        }
+        else
+        {
+            _offTravelChecks = 0;
+            if (off < DualOffTravelClearDeg) IsDualHeadingOffTravel = false;
+        }
+        SetCheckFix(dual, easting, northing);
+    }
+
+    private void SetCheckFix(double dual, double easting, double northing)
+    {
+        _checkE = easting; _checkN = northing; _checkDual = dual; _hasCheckFix = true;
+    }
+
+    private void ClearDualCheck()
+    {
+        _hasCheckFix = false;
+        _offTravelChecks = 0;
+        IsDualHeadingOffTravel = false;
+        DualHeadingOffTravelDeg = double.NaN;
+    }
+
     /// <summary>Fusion weight per GPS heading update (AgOpenGPS fusionWeight).</summary>
     private double FusionWeight => Math.Clamp(Connections.HeadingFusionWeight, 0, 1) * FusionShareToWeight;
 
@@ -313,6 +402,7 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     {
         for (int i = 0; i < TotalFixSteps; i++) _steps[i] = default;
         _hasReverseFix = false;
+        _hasCheckFix = false;
         _startFix = default;
     }
 
