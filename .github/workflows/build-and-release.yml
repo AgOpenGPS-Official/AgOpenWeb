@@ -29,6 +29,37 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
+  # Which parts a change touches, for jobs that only matter for some of them. Anything it
+  # can't tell (a manual run, a push with no "before", a failed diff) counts as touching
+  # everything, so a check is never skipped by mistake.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ui: ${{ steps.diff.outputs.ui }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Changed paths
+        id: diff
+        shell: bash
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          ui=true
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ -n "$BASE" ] \
+             && [ "$BASE" != "0000000000000000000000000000000000000000" ] \
+             && files=$(git diff --name-only "$BASE...$HEAD"); then
+            # What translations-fit measures: the web client, the check, its baseline, this workflow.
+            if ! printf '%s\n' "$files" | grep -qE '^(Shared/AgOpenWeb\.RemoteServer/wwwroot/|Tools/i18n-limits\.py$|Tools/i18n-fit-baseline\.json$|\.github/workflows/build-and-release\.yml$)'; then
+              ui=false
+            fi
+          fi
+          echo "ui=$ui" >> "$GITHUB_OUTPUT"
+          echo "web client touched: $ui"
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -111,7 +142,12 @@ jobs:
   # headless and Tools/i18n-limits.py --check measures each translation in place. Roboto
   # stands in for the system font, as on the Android tablets. The container fixes the fonts,
   # so a local run in the same image measures the same (the baseline was made that way).
+  # Only when the change touches what it measures (see `changes`). It is a required check:
+  # a job skipped by its `if` counts as passed, so other PRs don't wait ~15 min for it. If
+  # `changes` itself failed, it runs (a skip would count as a pass).
   translations-fit:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ui == 'true') }}
     runs-on: ubuntu-latest
     container: mcr.microsoft.com/playwright/python:v1.64.0-noble
     steps:
