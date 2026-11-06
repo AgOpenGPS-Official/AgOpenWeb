@@ -766,12 +766,14 @@ public static class CarelessOperator
     {
         await using var s = await WizardScenario.StartAsync(j, name, "careless");
         await PrepareAsync(s, "cpd");
+        double before = await Cpd(s);
         await CarefulOperator.CircleAsync(s, "CPD", -20, 5);
         await s.StepAsync("Check the CPD (the step asks for a right-hand circle)", async () =>
         {
             double cpd = await Cpd(s);
-            s.Rig.Note(string.Create(Inv, $"CPD {cpd:F0} from a left-hand circle (right-hand gives 94)"));
-            if (Math.Abs(cpd - 94) > 4)
+            s.Rig.Note(string.Create(Inv, $"CPD {before:F0} → {cpd:F0} from a left-hand circle (right-hand gives 94)"));
+            // Refused (the CPD kept) is right; a CPD taken from it is the finding.
+            if (Math.Abs(cpd - before) > 0.5 && Math.Abs(cpd - 94) > 4)
                 s.Report(new Finding(Severity.Inconsistency, "CPD_LEFT_CIRCLE_ACCEPTED",
                     string.Create(Inv, $"The CPD step took a LEFT-hand circle (it asks for right) and set CPD {cpd:F0} instead of ~94: left readings carry the Ackermann factor and the left sensor curve.")));
         });
@@ -782,12 +784,14 @@ public static class CarelessOperator
         // Truth 120 (left reads less than right), so a right-hand circle's ~90 can't pass for it.
         await using var s = await WizardScenario.StartAsync(j, name, "careless", m => m.TruthAckermann = 120);
         await PrepareAsync(s, "ackermann");
+        int before = await Ack(s);
         await CarefulOperator.CircleAsync(s, "Ackermann", +20, 5);
         await s.StepAsync("Check Ackermann (the step asks for a left-hand circle)", async () =>
         {
             int ack = await Ack(s);
-            s.Rig.Note(string.Create(Inv, $"Ackermann {ack} from a right-hand circle (a left-hand one gives ~108 here; truth 120)"));
-            if (Math.Abs(ack - 108) > 8)
+            s.Rig.Note(string.Create(Inv, $"Ackermann {before} → {ack} from a right-hand circle (a left-hand one gives ~108 here; truth 120)"));
+            // Refused (Ackermann kept) is right; a factor taken from it is the finding.
+            if (ack != before && Math.Abs(ack - 108) > 8)
                 s.Report(new Finding(Severity.Bug, "ACKERMANN_RIGHT_CIRCLE_ACCEPTED",
                     string.Create(Inv, $"The Ackermann step took a RIGHT-hand circle (it asks for left) and set Ackermann {ack} (a left-hand circle gives ~108, the tractor's real 120): it sets the factor for LEFT readings from a right turn, which only measures the CPD step's 0.9.")));
         });
