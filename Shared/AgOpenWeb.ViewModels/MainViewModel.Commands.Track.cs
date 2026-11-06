@@ -1091,6 +1091,18 @@ public partial class MainViewModel
             //    (UTurnRadius + UTurnDistanceFromBoundary). See
             //    GpsPipelineService.GetOrComputeSyntheticHeadland.
 
+            // Far from the line: AutoSteer would swing the tractor across to it at full lock.
+            // A pass is never more than half a pass away, so this is a very wide implement, or
+            // its width typed wrong (section widths in mm put the line 36 m off). Only when
+            // engaging: a nudge or the next pass moves the line under an engaged AutoSteer.
+            if (!IsAutoSteerEngaged && Math.Abs(_engageCrossTrackError) > MaxEngageDistanceFromLine)
+            {
+                ReportFailure(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "AutoSteer not available - the line is {0:F1} m away: drive within {1:F0} m of it",
+                    Math.Abs(_engageCrossTrackError), MaxEngageDistanceFromLine));
+                return;
+            }
+
             IsAutoSteerEngaged = !IsAutoSteerEngaged;
             if (IsAutoSteerEngaged)
                 _logger.LogInformation("[AutoSteer] On: {Source}", source ?? "AutoSteer button");

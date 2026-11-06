@@ -242,6 +242,9 @@ public partial class MainViewModel
             else if (_simFollowingGuidance)
                 SimulatorSteerAngle = _simManualSteerAngle;
             _simFollowingGuidance = simFollowsGuidance;
+            // Off AutoSteer the cycle still measures the distance to the nearest pass for the
+            // light bar (HasGuidance is only for steering), with the line shown.
+            _engageCrossTrackError = g.HasGuidance || g.DisplayTrack != null ? g.CrossTrackError : double.NaN;
             if (g.HasGuidance)
             {
                 CrossTrackError = g.CrossTrackError * 100;
@@ -381,6 +384,13 @@ public partial class MainViewModel
             }
         }
     }
+
+    /// <summary>The pivot's distance from the line it would steer to (m), last cycle; NaN with
+    /// no line. AutoSteer doesn't engage further than <see cref="MaxEngageDistanceFromLine"/>.</summary>
+    private double _engageCrossTrackError = double.NaN;
+
+    /// <summary>The furthest from its line the tractor can be when AutoSteer engages, m.</summary>
+    public const double MaxEngageDistanceFromLine = 5.0;
 
     // PERF-05 Phase 2a accumulators (gated by DiagFlags.PerfApplyGpsCycle).
     private long _perfAgcTicks;
