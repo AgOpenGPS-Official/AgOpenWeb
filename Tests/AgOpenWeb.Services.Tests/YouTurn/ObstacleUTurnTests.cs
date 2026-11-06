@@ -157,11 +157,12 @@ public class ObstacleUTurnTests
     }
 
     [Test]
-    public void ATurnWhoseExitRunsTheImplementIntoAHardObstacle_IsNotMade()
+    public void ATurnWhoseExitRunsTheImplementIntoAHardObstacle_IsNotMadeThere()
     {
         // The turn comes out onto the next pass (E = -3, a 6 m implement) beside a hard ditch whose
         // edge is 2.5 m from that pass: the implement would be 0.5 m in it as the turn ends. The
-        // tractor itself stays outside the ditch's turn line (1 m), so only the implement says no.
+        // tractor itself stays outside the ditch's turn line (1 m), so only the implement says no:
+        // the turn is seated further back until its exit clears the ditch, or not made at all.
         var boundary = Field(ObstacleAction.Turn);
         var ditch = Rect(-30, 0, -5.5, 30);
         ditch.AtObstacle = ObstacleAction.Turn;
@@ -170,8 +171,25 @@ public class ObstacleUTurnTests
 
         var result = Turn(boundary);
 
-        Assert.That(result.Path, Is.Null, "no turn: the operator is told");
         Assert.That(result.AtObstacle, Is.True);
+        if (result.Path != null)
+        {
+            // Made further back: the implement clear of the ditch over the turn and the 20 m after it.
+            var c = ConfigurationStore.Instance;
+            var path = new List<Vec3>(result.Path);
+            Vec3 a = path[^2], b = path[^1];
+            double len = GeometryMath.Distance(a, b);
+            for (double d = 0.5; d <= 20; d += 0.5)
+                path.Add(new Vec3(b.Easting + (b.Easting - a.Easting) / len * d, b.Northing + (b.Northing - a.Northing) / len * d, b.Heading));
+            var fence = ditch.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList();
+            var swept = ImplementSweptPath.Compute(path, new ToolGeometry(
+                ToolMount.RearFixed, Width: 6, Offset: 0, VehicleHitchLength: c.Vehicle.HitchLength,
+                ToolHitchLength: c.Tool.HitchLength, TrailingHitchLength: 0, TrailingToolToPivotLength: 0,
+                TankTrailingHitchLength: 0, Length: c.Tool.Length));
+            foreach (var corner in swept.FrontLeft.Concat(swept.FrontRight).Concat(swept.RearLeft).Concat(swept.RearRight))
+                Assert.That(GeometryMath.IsPointInPolygon(fence, new Vec2(corner.Easting, corner.Northing)), Is.False,
+                    $"implement corner ({corner.Easting:F1},{corner.Northing:F1}) in the ditch");
+        }
 
         // The ditch 2.5 m further off (the implement 2 m clear, more than the 1 m safety margin; the
         // pass's pivot a metre outside the ditch's turn line, which stands the implement's reach of 3 m

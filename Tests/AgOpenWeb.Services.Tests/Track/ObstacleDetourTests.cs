@@ -225,6 +225,38 @@ public class ObstacleDetourTests
     }
 
     [Test]
+    public void A_row_of_trees_that_would_take_the_line_too_far_off_the_pass_is_not_gone_round()
+    {
+        // Two 12 m trees side by side west of the pass, the field's edge close on the east: going
+        // round both would move the line 24 m, more than a bend may (MaxOffset, 20 m here), so the
+        // tree on the pass is not gone round and the U-turn planner turns before it. On a real
+        // field a 12.5 m rake was taken 47 m off its pass, nearly four passes, round two trees.
+        var field = Field(-100, 6, Tree(-2, 100, 12), Tree(-14, 100, 12));
+        var bend = Detour.Compute(North, field, KeepOut, Radius)!;
+        Assert.That(bend.GoneRound, Is.Empty);
+        Assert.That(bend.Blocked, Is.EqualTo(new[] { 0 }));
+        Assert.That(bend.Points.All(p => Math.Abs(p.Easting) < 1e-6), "the pass stays straight");
+
+        // A smaller neighbour (6 m: 17 m needed) is still gone round with the first.
+        field = Field(-100, 6, Tree(-2, 100, 12), Tree(-10, 100, 6));
+        bend = Detour.Compute(North, field, KeepOut, Radius)!;
+        Assert.That(bend.GoneRound, Is.EquivalentTo(new[] { 0, 1 }));
+        Assert.That(bend.Blocked, Is.Empty);
+        Assert.That(ClearanceFrom(bend.Points, -10, 100), Is.GreaterThanOrEqualTo(3.0 + KeepOut - 0.05));
+    }
+
+    [Test]
+    public void One_obstacle_that_would_take_the_line_too_far_is_not_gone_round_either()
+    {
+        // A 40 m copse chosen as Go around: 24 m off the pass either way is more than a bend may move it.
+        var bend = Detour.Compute(North, Field(-100, 100, Tree(0, 100, 40)), KeepOut, Radius)!;
+        Assert.That(bend.GoneRound, Is.Empty);
+        Assert.That(bend.Blocked, Is.EqualTo(new[] { 0 }));
+        Assert.That(ObstacleDetour.MaxOffset(KeepOut, 1.0), Is.EqualTo(20.0));
+        Assert.That(ObstacleDetour.MaxOffset(6.25 + 7.0, 7.0), Is.EqualTo(25.0), "a 12.5 m rake: its margin and 6 m cut-in widen nothing");
+    }
+
+    [Test]
     public void A_curved_pass_is_bent_too()
     {
         // A gentle arc from (0,0) bending east; the tree on it at about 100 m.

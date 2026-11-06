@@ -1442,8 +1442,36 @@ namespace AgOpenWeb.Services.YouTurn
             // the arc end near the boundary. Bent round its Go around obstacles as the pipeline
             // will steer it, so the exit leg lands on the line that is driven.
             var pass = CurveProcessing.CreateOffsetCurve(reference, distAway);
+            _straightDestination = pass;
             if (input.BendPass != null) pass = input.BendPass(distAway, pass);
+            _bentDestination = pass;
             return CurveProcessing.ExtendCurveEnds(pass);
+        }
+
+        // The destination pass of the last build, straight and bent round its Go around obstacles
+        // (the same list when nothing bends it), for LandsOnBend.
+        private List<Vec3>? _straightDestination, _bentDestination;
+
+        /// <summary>
+        /// Whether a created path ends on a bend of the next pass: its last point more than half a
+        /// metre off the straight next pass, that pass having been bent round a Go around obstacle.
+        /// </summary>
+        private bool LandsOnBend(IReadOnlyList<Vec3> path, out double offStraight)
+        {
+            offStraight = 0;
+            var line = _straightDestination;
+            if (path.Count == 0 || line == null || line.Count < 2 || _bentDestination == null || ReferenceEquals(line, _bentDestination))
+                return false;
+            Vec3 end = path[^1];
+            double best = double.MaxValue;
+            for (int i = 1; i < line.Count; i++)
+            {
+                double d = GeometryMath.PointToSegmentDistance(end.Easting, end.Northing,
+                    line[i - 1].Easting, line[i - 1].Northing, line[i].Easting, line[i].Northing);
+                if (d < best) best = d;
+            }
+            offStraight = best;
+            return best > 0.5;
         }
 
         private void FindInnerTurnPoints(Vec3 fromPt, double heading, TurnClosePoint turnPt, bool isSameWay)

@@ -55,6 +55,16 @@ public partial class YouTurnCreationService
     /// </summary>
     internal static double HardReach(ConfigurationStore config) => config.Tool.Width / 2 + Math.Abs(config.Tool.Offset);
 
+    /// <summary>
+    /// How far a turn keeps the tractor's pivot from a Go around obstacle: half its track and the
+    /// larger of the Go around margin (with 0.3 m for the rounding of the room) and the distance
+    /// from boundary, the room it keeps from a ditch's fence. A turn is driven with a metre or
+    /// more of tracking error in a loop (the scenario rig saw 1.3 m beside a tree in the
+    /// headland), so the pass's own margin is not enough there.
+    /// </summary>
+    internal double GoAroundRoom(ConfigurationStore config) =>
+        config.Vehicle.TrackWidth / 2 + Math.Max(0.3 + _goAround.SafetyMargin, Math.Max(0.0, config.Guidance.UTurnDistanceFromBoundary));
+
     /// <param name="promoted">Go around obstacles (inner indices) with no room on the pass steered
     /// now: they get a turn line on this pass.</param>
     /// <param name="hardExtra">Added to <paramref name="distance"/> for a hard obstacle (<see cref="HardReach"/>).</param>
@@ -225,9 +235,12 @@ public partial class YouTurnCreationService
     /// (<paramref name="turnedAt"/>, its inner index) is tested with <see cref="ArcTolerance"/>: the
     /// generator lays the arc along its turn line and the smoothing moves it a few centimetres;
     /// the exit leg it does not test, and a pass that grazes the turn line of a tree can have its
-    /// neighbour run through the tree. The path (not the exit reach: the next pass is bent round
-    /// them) also keeps out of every Go around obstacle: the tractor off it by half its track
-    /// and the safety margin, the implement off a hard one by the margin.
+    /// neighbour run through the tree. The path also keeps out of every Go around obstacle: the
+    /// tractor off it by <see cref="GoAroundRoom"/>, the implement off a hard one by the distance
+    /// from boundary; and so does the exit while the rig settles on the next pass (8 m, plus twice
+    /// a trailed implement's hitch), the implement by the safety margin: the next pass is bent
+    /// round those obstacles, but the tractor comes out of the arc metres off that line, and a
+    /// trailed implement swept 0.5 to 1.7 m into trees at the landing on two real fields.
     /// <paramref name="obstacles"/> are the turn obstacles of the plan (with its promoted ones);
     /// without them they are built from <paramref name="promoted"/>.
     /// </summary>
@@ -238,8 +251,11 @@ public partial class YouTurnCreationService
         innerIndex = -1;
         obstacles ??= TurnObstacles(boundary, config.Guidance.UTurnDistanceFromBoundary, promoted, HardReach(config));
         double goAroundMargin = _goAround.SafetyMargin;
-        var round = RoundObstacles(boundary, config.Vehicle.TrackWidth / 2 + 0.3 + goAroundMargin);
+        var round = RoundObstacles(boundary, GoAroundRoom(config));
         if ((obstacles.Count == 0 && round.Count == 0) || path.Count < 2) return true;
+        double hitch = config.Tool.IsToolTrailing ? Math.Abs(config.Tool.TrailingHitchLength)
+            : config.Tool.IsToolTBT ? Math.Abs(config.Tool.TankTrailingHitchLength) + Math.Abs(config.Tool.TrailingHitchLength) : 0;
+        double settle = Math.Min(exitReach, 8 + 2 * hitch);
         var pivot = Densified(path, 0.5).ToList();
         int pathPoints = pivot.Count;
         // Straight on along the next pass past the end of the path.
@@ -258,13 +274,14 @@ public partial class YouTurnCreationService
         ImplementSweptPathResult? swept = null;
         IReadOnlyList<Vec3> sweptPath = exit.Count == 0 ? path : path.Concat(exit).ToList();
         double margin = Math.Max(0.0, config.Guidance.UTurnDistanceFromBoundary);
-        bool ImplementClear(IReadOnlyList<Vec2> fence, double pathMargin, double? exitMargin)
+        bool ImplementClear(IReadOnlyList<Vec2> fence, double pathMargin, double? exitMargin, double exitLength = double.PositiveInfinity)
         {
             swept ??= ImplementSweptPath.Compute(sweptPath, BuildToolGeometry(config));
             if (!TurnClearance.Evaluate(Corners(swept, 0, path.Count), fence, TurnClearance.KeepSide.Outside, pathMargin).IsClear)
                 return false;
+            int exitEnd = exitLength >= exitReach ? sweptPath.Count : Math.Min(sweptPath.Count, path.Count + (int)Math.Ceiling(exitLength / 0.5));
             return exitMargin == null || exit.Count == 0
-                || TurnClearance.Evaluate(Corners(swept, path.Count, sweptPath.Count), fence, TurnClearance.KeepSide.Outside, exitMargin.Value).IsClear;
+                || TurnClearance.Evaluate(Corners(swept, path.Count, exitEnd), fence, TurnClearance.KeepSide.Outside, exitMargin.Value).IsClear;
         }
         foreach (var o in obstacles)
         {
@@ -284,14 +301,15 @@ public partial class YouTurnCreationService
         foreach (var r in round)
         {
             if (obstacles.Any(o => o.InnerIndex == r.InnerIndex)) continue; // promoted: tested above
-            for (int i = 0; i < pathPoints; i++)
+            int settleEnd = Math.Min(pivot.Count, pathPoints + (int)Math.Ceiling(settle / 0.5));
+            for (int i = 0; i < settleEnd; i++)
                 if (r.Clear.Contains(pivot[i].Easting, pivot[i].Northing))
                 {
                     innerIndex = r.InnerIndex;
                     return false;
                 }
             if (!r.IsHard) continue;
-            if (!ImplementClear(r.Fence, goAroundMargin, null))
+            if (!ImplementClear(r.Fence, margin, goAroundMargin, settle))
             {
                 innerIndex = r.InnerIndex;
                 return false;

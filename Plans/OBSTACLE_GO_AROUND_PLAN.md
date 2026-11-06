@@ -117,6 +117,34 @@ an 8 m boom ran a metre into a ditch beside its pass. A soft obstacle the implem
 keeps the tractor's distance, as the field's edge does. The planner's own hard-obstacle clearance
 (the implement the U-turn distance off the fence along the turn) is the same rule seen from the turn.
 
+**P12. A turn lands on a straight stretch, and keeps a ditch's room from a Go around tree.** The
+exit leg lands on the next pass as the pipeline will steer it, bent round its Go around obstacles
+(P4). Where that pass bends at the landing itself, the generator joined the bend's slope (a net
+turn of 150°, loops of 500°), the tractor came out of the arc 5 to 8 m off the bent line, and a
+trailed implement swept through the tree: on the real fields a towed 10 m sprayer by 1.7 m, hay
+rakes of one, two and four rotors by 0.5 m, and one rake left pointing at a wall 5 m away. Now a
+turn whose last point is more than half a metre off the straight next pass (`LandsOnBend`) is
+seated further back (4 m a step, 30 m at most), and if none lands straight there is no turn; a
+turn whose heading changes by more than 400° in all is malformed (the loops were 480° to 520°). The
+room a turn keeps from a Go around obstacle (`GoAroundRoom`) is half the track plus the larger of
+the Go around margin and the U-turn distance from boundary, the ditch's room, since a turn is driven
+with a metre or more of tracking error in a loop (the rig saw 1.3 m beside a tree in the headland,
+the tractor 0.1 m into it); the implement keeps the U-turn distance off a hard one along the path
+and the safety margin while the rig settles on the next pass (8 m plus twice a trailed hitch). A
+turn whose legs or exit meet an obstacle is also seated further back before it is given up.
+
+**P13. A bend never takes the line more than two implement widths off the pass.** The way round one
+tree runs into the next and the bend goes round both (P4); nothing bounded how far that chain
+could go. On a real field a 12.5 m rake, 1 m margin, met a 5.5 m tree 10 m off its pass with a
+15 m U-turn obstacle on the other side, the way round it ran into a second tree, and the line
+left the pass at 45° for 47 m, nearly four passes, and missed the U-turn obstacle the pass ran
+into altogether. A bend now moves the line at most `ObstacleDetour.MaxOffset`: two implement
+widths (four times the keep-out less its margin: that rake's 6 m cut-in on a 6 m bend widens
+nothing), never under 20 m. An obstacle that needs more on
+the side with room, or a next tree that would take the chain past it, is not gone round and the
+U-turn planner turns before it ("No room to go around Inner N on this pass"), which is what the
+operator would do with a row of trees.
+
 ## Geometry
 
 Unchanged from #610 (`ObstacleDetour`): each Go around obstacle grown by the keep-out distance
