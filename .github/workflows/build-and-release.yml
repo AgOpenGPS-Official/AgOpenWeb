@@ -121,6 +121,11 @@ jobs:
       - name: Run Guidance Algorithm Tests
         run: dotnet run --project TestRunner/TestRunner.csproj
 
+      # The Vehicle & Tool scenario harness takes minutes too: built here, run nightly
+      # (vehicle-tool-scenarios.yml).
+      - name: Build Vehicle & Tool Scenario harness
+        run: dotnet build Tests/AgOpenWeb.VehicleToolScenarios.Tests/ --verbosity minimal
+
       # The field scenario harness takes minutes, so it runs nightly (field-scenarios.yml);
       # here it is only built, so a backend change can't break it unnoticed.
       - name: Build Field Scenario harness
