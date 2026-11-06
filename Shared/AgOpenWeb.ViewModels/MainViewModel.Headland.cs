@@ -922,4 +922,79 @@ public partial class MainViewModel
         }
     }
 
+    /// <summary>
+    /// The operator redrew, re-recorded, rebuilt or deleted the outer boundary. The headland and
+    /// the tram lines were built on the old one and would stay where it was: a headland outside
+    /// the new field, tram lines along the old edge, a headland with no boundary at all. A
+    /// whole-boundary headland segment is rebuilt on the new boundary at its distance; a line or
+    /// curve segment named points of the old boundary and is dropped; the tram systems are
+    /// rebuilt (a boundary system follows the new boundary, a track system is clipped to it).
+    /// Returns what was done, for the status line; empty when there was nothing to do.
+    /// </summary>
+    private string OuterBoundaryChanged()
+    {
+        var done = new List<string>();
+        var droppedNames = new List<string>();
+        var outer = State.Field.CurrentBoundary?.OuterBoundary;
+        bool hasOuter = outer?.Points != null && outer.Points.Count >= 3;
+
+        if (HeadlandSegments.Count > 0 || HasHeadland)
+        {
+            if (!hasOuter)
+            {
+                SelectedHeadlandSegment = null;
+                HeadlandSegments.Clear();
+                ClearHeadland();
+                done.Add("headland removed");
+            }
+            else
+            {
+                for (int i = HeadlandSegments.Count - 1; i >= 0; i--)
+                {
+                    if (HeadlandSegments[i].Type == Models.Headland.HeadlandSegmentType.Boundary) continue;
+                    if (ReferenceEquals(SelectedHeadlandSegment, HeadlandSegments[i])) SelectedHeadlandSegment = null;
+                    droppedNames.Insert(0, HeadlandSegments[i].Name);
+                    HeadlandSegments.RemoveAt(i);
+                }
+                int dropped = droppedNames.Count;
+                if (HeadlandSegments.Count == 0)
+                {
+                    ClearHeadland();
+                    done.Add("headland removed (its lines were drawn on the old boundary)");
+                }
+                else
+                {
+                    var ring = new List<Vec3>(outer!.Points.Count + 1);
+                    foreach (var p in outer.Points) ring.Add(new Vec3(p.Easting, p.Northing, p.Heading));
+                    ring.Add(ring[0]);
+                    foreach (var seg in HeadlandSegments)
+                    {
+                        seg.BoundaryPoints = new List<Vec3>(ring);
+                        seg.BoundaryStartIndex = 0;
+                        seg.BoundaryEndIndex = outer.Points.Count - 1;
+                        ComputeSegmentOffset(seg);
+                    }
+                    BuildHeadlandFromSegments();
+                    done.Add(dropped > 0
+                        ? $"headland rebuilt on the new boundary ({dropped} line/curve segment(s) of the old one dropped)"
+                        : "headland rebuilt on the new boundary");
+                }
+            }
+        }
+
+        if (TramSystems.Count > 0 || _tramLineService.HasTramLines)
+        {
+            RebuildAndSaveTram();
+            done.Add("tram lines rebuilt");
+        }
+        string summary = string.Join(", ", done);
+
+        // A line or curve segment named points of the old boundary, so it can't be carried over.
+        // The operator drew it: say so in a notification, not only in the status line.
+        if (droppedNames.Count > 0)
+            FailureReported?.Invoke(
+                $"Headland: {string.Join(", ", droppedNames)} drawn on the old boundary, removed. Draw them again on the new boundary.");
+        return summary;
+    }
+
 }
