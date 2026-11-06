@@ -77,11 +77,9 @@ public partial class MainViewModel
             var boundary = State.Field.CurrentBoundary?.OuterBoundary;
             if (boundary?.Points != null && boundary.Points.Count >= 3)
             {
-                // Calculate boundary centroid
-                double cx = 0, cy = 0;
-                foreach (var bp in boundary.Points) { cx += bp.Easting; cy += bp.Northing; }
-                cx /= boundary.Points.Count;
-                cy /= boundary.Points.Count;
+                // A point well inside the field (not the vertex average: on a bent field
+                // that lies near the edge, or outside the field)
+                var (cx, cy) = FieldInteriorPoint(boundary.Points);
 
                 // Test offset direction at midpoint
                 int mid = segment.BoundaryPoints.Count / 2;
@@ -313,14 +311,13 @@ public partial class MainViewModel
                 var closedPoly = new List<Vec3>(seg.OffsetPoints);
                 closedPoly.Add(closedPoly[0]); // close the loop
 
-                // Use centroid-based selection (same as closed loop handling)
-                double cx = 0, cy = 0;
-                var bndPts = bnd.Points;
-                foreach (var bp in bndPts) { cx += bp.Easting; cy += bp.Northing; }
-                cx /= bndPts.Count; cy /= bndPts.Count;
-
-                bool containsCentroid = GeometryMath.IsPointInPolygon(closedPoly, cx, cy);
-                if (containsCentroid)
+                // A closed inward offset is the headland line when it lies inside the boundary
+                // and is smaller than it: an inward offset always is, an outward or broken one
+                // never. The old test, "contains the average of the vertices", refused the
+                // correct offset of a bent 6 ha field whose vertex average lies 8 m from the
+                // edge; the headland then came out of the open-line fallback below, on the
+                // edge and crossing itself at 12 m, and not at all at 16 m.
+                if (IsInwardOffsetOf(closedPoly, bnd.Points))
                 {
                     headland = closedPoly;
                     seg.IsEffective = true;
@@ -526,28 +523,24 @@ public partial class MainViewModel
                 loopPoly.Add(loopPoly[0]); // close
 
                 // The headland is the boundary MINUS the loop area
-                // Keep the part containing the centroid
-                double cx = 0, cy = 0;
-                var bndPts = bnd.Points;
-                foreach (var bp in bndPts) { cx += bp.Easting; cy += bp.Northing; }
-                cx /= bndPts.Count; cy /= bndPts.Count;
+                // Keep the part holding the field's interior point
+                var (cx, cy) = FieldInteriorPoint(bnd.Points);
+                bool loopHoldsInterior = GeometryMath.IsPointInPolygon(loopPoly, cx, cy);
 
-                bool loopContainsCentroid = GeometryMath.IsPointInPolygon(loopPoly, cx, cy);
-
-                if (!loopContainsCentroid)
+                if (!loopHoldsInterior)
                 {
-                    // Loop is outside the centroid - headland is unchanged
+                    // Loop is away from the interior - headland is unchanged
                     // (the loop is in the headland area, not the working area)
                     foreach (var cs in closedSegs) cs.IsEffective = true;
-                    _logger.LogDebug($"[Headland] Closed loop found (outside centroid) - headland unchanged");
+                    _logger.LogDebug($"[Headland] Closed loop found (away from the interior) - headland unchanged");
                 }
                 else
                 {
-                    // Loop contains centroid - the loop IS the headland
+                    // Loop holds the interior - the loop IS the headland
                     headland = loopPoly;
                     foreach (var cs in closedSegs) cs.IsEffective = true;
                     cutsApplied++;
-                    _logger.LogDebug($"[Headland] Closed loop contains centroid - used as headland");
+                    _logger.LogDebug($"[Headland] Closed loop holds the interior - used as headland");
                 }
 
                 offsetLines.RemoveAt(ci);
@@ -732,6 +725,29 @@ public partial class MainViewModel
             : $"Headland = boundary ({headland.Count} points, no offset lines intersect)";
 
         SaveHeadlandSegments();
+    }
+
+    /// <summary>A point well inside the boundary ring (<see cref="GeometryMath.TryInteriorPoint{T}"/>),
+    /// or the vertex average for a ring too thin to hold a grid point.</summary>
+    private static (double cx, double cy) FieldInteriorPoint(IReadOnlyList<Models.BoundaryPoint> ring)
+    {
+        if (GeometryMath.TryInteriorPoint(ring, out double e, out double n)) return (e, n);
+        double cx = 0, cy = 0;
+        foreach (var bp in ring) { cx += bp.Easting; cy += bp.Northing; }
+        return (cx / ring.Count, cy / ring.Count);
+    }
+
+    /// <summary>Is <paramref name="offset"/> a closed ring inside <paramref name="ring"/> and
+    /// smaller than it, as an inward offset of it is? A point on the edge can test either
+    /// way, so most of the points inside is enough.</summary>
+    private static bool IsInwardOffsetOf(IReadOnlyList<Vec3> offset, IReadOnlyList<Models.BoundaryPoint> ring)
+    {
+        if (offset.Count < 4 || ring.Count < 3) return false;
+        if (GeometryMath.PolygonArea(offset) >= GeometryMath.PolygonArea(ring)) return false;
+        int inside = 0;
+        foreach (var p in offset)
+            if (GeometryMath.IsPointInPolygon(ring, p.Easting, p.Northing)) inside++;
+        return inside * 2 > offset.Count;
     }
 
     /// <summary>The drawable offset line for a segment — its inward-offset points plus the

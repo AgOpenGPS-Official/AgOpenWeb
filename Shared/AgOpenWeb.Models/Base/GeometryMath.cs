@@ -133,6 +133,62 @@ namespace AgOpenWeb.Models.Base
         public static bool IsPointInPolygon(IReadOnlyList<Vec2> polygon, Vec3 testPoint) =>
             IsPointInPolygon(polygon, testPoint.Easting, testPoint.Northing);
 
+        /// <summary>The polygon's area in m² (the shoelace sum, sign dropped); a closing
+        /// repeat of the first point changes nothing.</summary>
+        public static double PolygonArea<T>(IReadOnlyList<T> polygon) where T : IPlanarPoint
+        {
+            int count = polygon.Count;
+            if (count < 3) return 0;
+            double sum = 0;
+            for (int i = 0, j = count - 1; i < count; j = i++)
+                sum += polygon[j].Easting * polygon[i].Northing - polygon[i].Easting * polygon[j].Northing;
+            return Math.Abs(sum) / 2.0;
+        }
+
+        /// <summary>
+        /// A point well inside the polygon: of a <paramref name="grid"/> × <paramref name="grid"/>
+        /// grid over its bounds, the inside point farthest from the edge. The average of the
+        /// vertices is not such a point: on a bent or L-shaped field it lies near the edge, or
+        /// outside the field altogether, so "does the headland contain it" says nothing. False
+        /// when no grid point is inside (a sliver thinner than the grid).
+        /// </summary>
+        public static bool TryInteriorPoint<T>(IReadOnlyList<T> polygon, out double easting, out double northing, int grid = 32)
+            where T : IPlanarPoint
+        {
+            easting = northing = 0;
+            int count = polygon.Count;
+            if (count < 3) return false;
+
+            double minE = double.MaxValue, maxE = double.MinValue, minN = double.MaxValue, maxN = double.MinValue;
+            foreach (var p in polygon)
+            {
+                if (p.Easting < minE) minE = p.Easting;
+                if (p.Easting > maxE) maxE = p.Easting;
+                if (p.Northing < minN) minN = p.Northing;
+                if (p.Northing > maxN) maxN = p.Northing;
+            }
+
+            double best = -1;
+            for (int gi = 0; gi < grid; gi++)
+            {
+                double e = minE + (maxE - minE) * (gi + 0.5) / grid;
+                for (int gj = 0; gj < grid; gj++)
+                {
+                    double n = minN + (maxN - minN) * (gj + 0.5) / grid;
+                    if (!IsPointInPolygon(polygon, e, n)) continue;
+                    double d = double.MaxValue;
+                    for (int i = 0, j = count - 1; i < count && d > best; j = i++)
+                    {
+                        double di = PointToSegmentDistance(e, n,
+                            polygon[j].Easting, polygon[j].Northing, polygon[i].Easting, polygon[i].Northing);
+                        if (di < d) d = di;
+                    }
+                    if (d > best) { best = d; easting = e; northing = n; }
+                }
+            }
+            return best >= 0;
+        }
+
         #endregion
 
         #region Polyline simplification
