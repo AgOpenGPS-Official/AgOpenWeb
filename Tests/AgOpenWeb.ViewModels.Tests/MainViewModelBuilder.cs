@@ -57,6 +57,8 @@ public class MainViewModelBuilder
         NtripProfileService.ProfilesDirectory.Returns(Path.GetTempPath());
         NtripProfileService.Profiles.Returns(new List<AgOpenWeb.Models.Ntrip.NtripProfile>());
         VehicleProfileService.GetAvailableProfiles().Returns(new List<string>());
+        // The live settings, as the real service gives them (the steer wizard reads them when it opens).
+        ConfigurationService.Store.Returns(_ => ConfigurationStore.Instance);
     }
 
     public MainViewModel Build()

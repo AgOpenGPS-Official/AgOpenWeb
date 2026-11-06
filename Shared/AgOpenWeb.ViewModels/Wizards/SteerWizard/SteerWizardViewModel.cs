@@ -14,6 +14,8 @@ namespace AgOpenWeb.ViewModels.Wizards.SteerWizard;
 public class SteerWizardViewModel : WizardViewModel
 {
     private readonly IConfigurationService _configService;
+    // What the wizard may change, as it was when it opened: Cancel puts it back.
+    private readonly SteerWizardSettingsSnapshot _atOpen;
 
     public override string WizardTitle => "AutoSteer Configuration Wizard";
 
@@ -26,6 +28,7 @@ public class SteerWizardViewModel : WizardViewModel
         IUiDispatcher dispatcher, IAutoSteerService? autoSteerService = null)
     {
         _configService = configService;
+        _atOpen = SteerWizardSettingsSnapshot.Take(configService.Store);
         StatusBar = new WizardStatusBarViewModel(autoSteerService);
 
         // Step 1: Welcome
@@ -89,6 +92,13 @@ public class SteerWizardViewModel : WizardViewModel
         // Initialize navigation
         Initialize();
     }
+
+    /// <summary>
+    /// Cancel undoes what the steps set (they write into the live settings as they go, so
+    /// the module runs each value at once); Finish keeps and saves it. A wizard closed
+    /// because its browser went away keeps it too: the operator didn't choose to discard.
+    /// </summary>
+    protected override void OnCancelled() => _atOpen.Restore(_configService.Store);
 
     protected override Task OnCompletingAsync()
     {

@@ -15,7 +15,14 @@ const wzContent = document.getElementById('wz-content');
 let _wzKey = '';
 function openSteerWizard() { _wzKey = ''; wizard = null; transport.send('wizard.open'); wzOverlay.classList.add('open'); }
 function wzClose(send) { if (send) transport.send('wizard.cancel'); wzOverlay.classList.remove('open'); wizard = null; _wzKey = ''; }
-document.getElementById('wz-cancel').addEventListener('pointerdown', e => { e.stopPropagation(); wzClose(true); });
+// Cancel undoes what the steps set (the host puts the settings back as they were when the
+// wizard opened); past the first step that is work, so ask.
+document.getElementById('wz-cancel').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  if (wizard && wizard.stepIndex > 0)
+    showConfirm(tr('Cancel the wizard?'), tr('What it set so far is undone. Finish keeps it.'), () => wzClose(true));
+  else wzClose(true);
+});
 document.getElementById('wz-skip').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('wizard.skip'); });
 document.getElementById('wz-back').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('wizard.back'); });
 document.getElementById('wz-next').addEventListener('pointerdown', e => {

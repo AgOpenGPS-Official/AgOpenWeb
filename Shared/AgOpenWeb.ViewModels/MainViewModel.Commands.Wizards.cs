@@ -83,7 +83,8 @@ public partial class MainViewModel
     /// sections off, and the steer wizard closed. Closing the wizard stops a motor test
     /// that would otherwise go on turning the wheels lock to lock; a wizard left open
     /// would also keep AutoSteer locked out (#154) with nothing on the reloaded page to
-    /// close it. What the finished steps set stays in the live settings, as with Cancel.
+    /// close it. What the finished steps set stays in the live settings (unlike Cancel,
+    /// which undoes it): the operator didn't choose to discard it.
     /// </summary>
     public void OnBrowserControlEnded(string offReason)
     {
