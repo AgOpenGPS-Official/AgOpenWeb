@@ -451,6 +451,7 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.ViewModels.Tests` - ViewModel / control-brain logic
 - `AgOpenWeb.RemoteServer.Tests` - web host: Bing tile replies, boundary imagery capture
 - `AgOpenWeb.IntegrationTests` - test-support library (fake settings etc.); not a standalone test run
+- `AgOpenWeb.FieldScenarios.Tests` - end-to-end field scenarios: the whole backend in-process, a careful and a careless operator on five real field shapes, a findings report; about 4 minutes, so CI only builds it and `field-scenarios.yml` runs it nightly (its `README.md`)
 
 CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/license-headers.py --check` for the licence headers, and `Tools/i18n-limits.py --check` (job `translations-fit`, only when a change touches `wwwroot/`, the check, its baseline or the workflow; otherwise skipped, which counts as passed) so every translated label fits the English layout.
 
@@ -474,7 +475,7 @@ The arc must fit between the headland boundary (green line) and outer boundary (
 
 ## CI/CD
 
-Two GitHub Actions workflows, split by purpose:
+Three GitHub Actions workflows, split by purpose:
 
 - **`build-and-release.yml`** ("CI") — on every push / PR to `main`: runs the test suite plus a
   compile-check of each platform head (Desktop, Android, iOS). No packaging, no releases.
@@ -490,6 +491,10 @@ Two GitHub Actions workflows, split by purpose:
   - on a manual dispatch, by its `publish` input: `beta` (default) refreshes the rolling
     beta from `develop` right away (title carries build time + commit); `release` publishes
     the Release named by `release_tag`; `none` builds + uploads artifacts only (dry run).
+
+- **`field-scenarios.yml`** — nightly on `develop` (when it has a commit from the last day) or by hand:
+  runs the field scenario harness (`Tests/AgOpenWeb.FieldScenarios.Tests`, real UDP included) and keeps
+  its findings report as an artifact and in the run's summary. PR CI only builds the harness.
 
 To cut a release (about weekly, so each one stays small): bump `sys/version.h` and the three heads' display versions, then push a tag — `git tag v26.7.x && git push origin v26.7.x`. A summary on top of the generated list goes in with `gh release edit`.
 
