@@ -94,10 +94,32 @@ public class WasCalibrationStepViewModel : WizardStepViewModel
         ZeroWasCommand = new RelayCommand(ZeroWas);
     }
 
+    /// <summary>A reading older than this is no reading: the module is not sending.</summary>
+    internal static readonly TimeSpan ReadingTimeout = TimeSpan.FromSeconds(1);
+
+    /// <summary>After a zero, the module gets the new offset (PGN 252, sent after its debounce)
+    /// and answers with readings made with it; a press before then zeroes again from the old
+    /// reading. Two quick taps left straight ahead reading 15°.</summary>
+    internal static readonly TimeSpan ZeroSettle = TimeSpan.FromSeconds(1);
+
+    private DateTime _zeroedAt = DateTime.MinValue;
+
     private void ZeroWas()
     {
         if (_autoSteerService == null)
             return;
+
+        var now = AgOpenWeb.Models.Timing.Clock.Current.Now;
+        // A stale reading is where the wheels were, not where they are: the module unplugged
+        // took the zero from the last angle it sent.
+        if (now - _autoSteerService.LastSteerDataTime > ReadingTimeout)
+        {
+            SetValidationError("No reading from the steer module: check that it is connected, then Zero WAS");
+            return;
+        }
+        if (now - _zeroedAt < ZeroSettle)
+            return; // the second of two quick taps: the reading doesn't show the new zero yet
+        ClearValidation();
 
         // ActualSteerAngle from PGN 253 is the module's post-calibration angle, so accumulate
         // against the prior offset. The formula follows the real firmware and does NOT depend
@@ -105,7 +127,10 @@ public class WasCalibrationStepViewModel : WizardStepViewModel
         double actualAngle = _autoSteerService.LastSteerData.ActualSteerAngle;
         var autoSteer = _configService.Store.AutoSteer;
         if (WasCalibration.TryZero(autoSteer.WasOffset, actualAngle, autoSteer.CountsPerDegree, out int zeroed))
+        {
             WasOffset = zeroed;
+            _zeroedAt = now;
+        }
     }
 
     protected override void OnEntering()

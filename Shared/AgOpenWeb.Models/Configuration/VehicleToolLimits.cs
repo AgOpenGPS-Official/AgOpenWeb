@@ -42,6 +42,14 @@ public static class VehicleToolLimits
         ["gps.fixToFixDistance"] = new(0.1, 10, Unit.Metre, "Fix-to-fix heading distance"),
         ["roll.rollZero"] = new(-30, 30, Unit.Degree, "Roll zero"),
         ["roll.rollFilter"] = new(0, 0.99, Unit.None, "Roll filter"),
+        // AgOpenGPS's steer settings (FormSteer): proportional gain 1 to 200, min steer speed up to
+        // 10 km/h, max up to 50; the integral gain is the web slider's 0 to 1. The steer wizard's
+        // Gains step checks the same, but the web types into the live settings, so Kp 0 or 999
+        // reached the module before Next refused it.
+        ["autosteer.proportionalGain"] = new(1, 200, Unit.None, "Proportional gain"),
+        ["autosteer.integralGain"] = new(0, 1, Unit.None, "Integral gain"),
+        ["autosteer.minSteerSpeed"] = new(0, 10, Unit.KmH, "Min steer speed"),
+        ["autosteer.maxSteerSpeed"] = new(0, 50, Unit.KmH, "Max steer speed"),
         ["tool.hitchLength"] = new(0, 30, Unit.Metre, "Working center"),
         ["tool.trailingHitchLength"] = new(0.1, 30, Unit.Metre, "Trailing hitch"),
         ["tool.tankTrailingHitchLength"] = new(0.1, 30, Unit.Metre, "Tank trailing hitch"),
@@ -103,6 +111,14 @@ public static class VehicleToolLimits
             if (unit.Length > 0 && unit != "°" && unit != "%") unit = " " + unit;
             return $"{r.Name} must be {Show(r.Min, r.Unit, metric)} to {Show(r.Max, r.Unit, metric)}{unit} (not {Show(v, r.Unit, metric)}{unit})";
         }
+
+        if (key == "autosteer.proportionalGain" && v != Math.Floor(v))
+            return r.Name + " must be a whole number";
+        // AutoSteer steers only between the two speeds: min at or above max and it never engages.
+        if (key == "autosteer.minSteerSpeed" && v >= store.AutoSteer.MaxSteerSpeed)
+            return $"Min steer speed must be less than the max steer speed ({Show(store.AutoSteer.MaxSteerSpeed, Unit.KmH, metric)} {Symbol(Unit.KmH, metric)})";
+        if (key == "autosteer.maxSteerSpeed" && v <= store.AutoSteer.MinSteerSpeed)
+            return $"Max steer speed must be more than the min steer speed ({Show(store.AutoSteer.MinSteerSpeed, Unit.KmH, metric)} {Symbol(Unit.KmH, metric)})";
 
         // The passes are the implement width less the overlap apart: they must stay apart.
         if (key == "tool.overlap" && v >= store.ActualToolWidth - 0.01)

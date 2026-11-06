@@ -239,6 +239,10 @@ public interface IAutoSteerService
     /// </summary>
     SteerModuleData LastSteerData { get; }
 
+    /// <summary>When <see cref="LastSteerData"/> arrived (<c>Clock.Current.Now</c>);
+    /// <see cref="DateTime.MinValue"/> before the first PGN 253.</summary>
+    DateTime LastSteerDataTime { get; }
+
     /// <summary>
     /// Latest sensor data from module (PGN 250).
     /// Contains pressure/current sensor reading.

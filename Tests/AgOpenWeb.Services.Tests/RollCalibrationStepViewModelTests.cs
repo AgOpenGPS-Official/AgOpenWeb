@@ -37,7 +37,14 @@ public class RollCalibrationStepViewModelTests
 
         _configService = Substitute.For<IConfigurationService>();
         _configService.Store.Returns(_store);
+        _clock = new AgOpenWeb.Models.Timing.TestClock();
+        AgOpenWeb.Models.Timing.Clock.Set(_clock);
     }
+
+    private AgOpenWeb.Models.Timing.TestClock _clock = null!;
+
+    [TearDown]
+    public void TearDown() => AgOpenWeb.Models.Timing.Clock.Reset();
 
     [Test]
     public void ZeroRoll_AppliedTwiceAtDifferentTilts_LandsAtZero()
@@ -49,6 +56,7 @@ public class RollCalibrationStepViewModelTests
         _store.Ahrs.RollZero = 0;
         var step = new RollCalibrationStepViewModel(_configService);
         step.LiveRoll = 3.0;
+        _clock.Advance(TimeSpan.FromSeconds(2)); // a later press, not a quick second tap
 
         ((ICommand)step.ZeroRollCommand).Execute(null);
 
@@ -60,6 +68,7 @@ public class RollCalibrationStepViewModelTests
         // raw=5°, parser publishes LiveRoll = (5 - 3) = 2°.
         _store.Ahrs.RollZero = step.RollZero;
         step.LiveRoll = 2.0;
+        _clock.Advance(TimeSpan.FromSeconds(2)); // a later press, not a quick second tap
 
         ((ICommand)step.ZeroRollCommand).Execute(null);
 
@@ -81,6 +90,7 @@ public class RollCalibrationStepViewModelTests
         var step = new RollCalibrationStepViewModel(_configService);
         // Raw=-3° with invert -> live = (-(-3)) - 0 = 3°.
         step.LiveRoll = 3.0;
+        _clock.Advance(TimeSpan.FromSeconds(2)); // a later press, not a quick second tap
 
         ((ICommand)step.ZeroRollCommand).Execute(null);
         Assert.That(step.RollZero, Is.EqualTo(3.0));
@@ -88,6 +98,7 @@ public class RollCalibrationStepViewModelTests
         // Operator tilts further; parser publishes 2°.
         _store.Ahrs.RollZero = step.RollZero;
         step.LiveRoll = 2.0;
+        _clock.Advance(TimeSpan.FromSeconds(2)); // a later press, not a quick second tap
 
         ((ICommand)step.ZeroRollCommand).Execute(null);
 
@@ -105,6 +116,7 @@ public class RollCalibrationStepViewModelTests
         var step = new RollCalibrationStepViewModel(_configService);
         step.RollZero = 1.5;
         step.LiveRoll = 0.0;
+        _clock.Advance(TimeSpan.FromSeconds(2)); // a later press, not a quick second tap
 
         ((ICommand)step.ZeroRollCommand).Execute(null);
 
