@@ -2113,6 +2113,16 @@ public partial class MainViewModel : ObservableObject
             LogAutoSteerOff("field closed");
         }
 
+        // A boundary being recorded and a line being drawn, driven or recorded belong to this
+        // field: end them unsaved. Left running, their points went on into the next field and
+        // were saved there as its boundary or line, in the wrong field's coordinates.
+        if (_boundaryRecordingService.State != BoundaryRecordingState.Idle)
+            _boundaryRecordingService.CancelRecording();
+        IsBoundaryRecording = false;
+        IsBoundaryPlayerPanelVisible = false;
+        if (CurrentABCreationMode != ABCreationMode.None)
+            CancelABCreationCommand?.Execute(null);
+
         // CurrentFieldName clears via the pass-through when SetActiveField(null)
         // runs below (State.Field.ActiveField → null).
         // Contour (#110): save finished strips, then forget them and turn contour off
