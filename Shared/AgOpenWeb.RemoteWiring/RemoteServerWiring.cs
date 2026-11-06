@@ -830,8 +830,10 @@ public static partial class RemoteServerWiring
 
                     // One operator, via the browser. When the control session ends —
                     // release, disconnect, or deadman — the machine must not keep
-                    // actuating with no interface: disengage autosteer and turn sections
-                    // off. (Headless target → control state lives in the browser.)
+                    // actuating with no interface: disengage autosteer, turn sections
+                    // off and close the steer wizard, which stops its motor test
+                    // (MainViewModel.OnBrowserControlEnded). (Headless target → control
+                    // state lives in the browser.)
                     // ControlAuthority raises Revoked just before Changed, on the same thread,
                     // so the failsafe's reason is here when the release below runs.
                     string? controlLostReason = null;
@@ -847,15 +849,8 @@ public static partial class RemoteServerWiring
                         controlLostReason = null;
                         dispatcher.Post(() =>
                         {
-                            if (vm.IsAutoSteerEngaged
-                                && vm.ToggleAutoSteerCommand?.CanExecute(offReason) == true)
-                                vm.ToggleAutoSteerCommand.Execute(offReason);
-                            if (vm.IsManualSectionMode
-                                && vm.ToggleManualModeCommand?.CanExecute(null) == true)
-                                vm.ToggleManualModeCommand.Execute(null);
-                            if (vm.IsSectionMasterOn
-                                && vm.ToggleSectionMasterCommand?.CanExecute(null) == true)
-                                vm.ToggleSectionMasterCommand.Execute(null);
+                            vm.OnBrowserControlEnded(offReason);
+                            wizardActive = false;
                         });
                     };
 
