@@ -151,9 +151,9 @@ public static class CarefulOperator
             // The lock as the sensor reads it then (CPD and Ackermann not calibrated yet).
             double leftLockReads = m.LockLeftDeg * 100.0 / m.TruthAckermann * m.TruthCpd / rig.Store.AutoSteer.CountsPerDegree;
             var lm = System.Text.RegularExpressions.Regex.Match(maxResult, @"Left max: ([\d.]+)");
-            if (lm.Success && leftLockReads > 41 && double.Parse(lm.Groups[1].Value, Inv) < leftLockReads - 1.5)
-                s.Report(new Finding(Severity.Inconsistency, "MAX_ANGLE_CAPPED_AT_40",
-                    string.Create(Inv, $"The max-angle test measured the left side at {lm.Groups[1].Value}° but the lock reads {leftLockReads:F1}°: Free Drive is clamped to ±40°, so a lock past 40° is never reached and the result is the clamp, not the lock.")));
+            if (lm.Success && double.Parse(lm.Groups[1].Value, Inv) < leftLockReads - 1.5)
+                s.Report(new Finding(Severity.Inconsistency, "MAX_ANGLE_SHORT_OF_LOCK",
+                    string.Create(Inv, $"The max-angle test measured the left side at {lm.Groups[1].Value}° but the lock reads {leftLockReads:F1}°: the wheels never reached the lock (free drive was held to ±40° once, below a lock that reads past it).")));
             await s.CheckAsync(await s.NextAsync(), Blocked("maxangle"));
         });
 

@@ -598,8 +598,10 @@ public class AutoSteerService : IAutoSteerService
 
     public void SetFreeDriveAngle(double angleDegrees)
     {
-        // Clamp to safe range (-40 to +40 degrees)
-        _state.FreeDriveSteerAngle = Math.Clamp(angleDegrees, -40, 40);
+        // Held to the limit either way. It was ±40° (AgOpenGPS's free drive buttons), which the
+        // max steer angle test hit before the lock: a lock past 40° measured as 40°.
+        const double limit = IAutoSteerService.FreeDriveLimitDeg;
+        _state.FreeDriveSteerAngle = Math.Clamp(angleDegrees, -limit, limit);
     }
 
     /// <summary>
