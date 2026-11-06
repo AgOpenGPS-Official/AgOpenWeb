@@ -175,13 +175,13 @@ public class AutoMotorCalKpRampTests
         // anchor during the ramp (e.g. WAS misconfigured), the wizard
         // must abort early rather than keep ramping Kp.
         //
-        // Simulate: at the very first sample the start anchor reads 0°.
-        // Once the ramp engages (a Kp has been written), the wheel has
-        // shot to 20° — well past the 15° runaway limit.
+        // Simulate: the start anchor reads 0° (the module arms at the
+        // bottom of the ramp, Kp 5). Once the ramp climbs past it, the
+        // wheel has shot to 20° — well past the 15° runaway limit.
         _store.AutoSteer.ProportionalGain = 0;
         var step = CreateStep(kp =>
         {
-            if (kp >= 5) return ModuleAt(angleDeg: 20.0, pwm: 80);
+            if (kp >= 10) return ModuleAt(angleDeg: 20.0, pwm: 80);
             return ModuleAt(0.0, 0);
         });
 
