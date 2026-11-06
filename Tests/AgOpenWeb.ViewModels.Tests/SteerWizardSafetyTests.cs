@@ -112,6 +112,39 @@ public class SteerWizardSafetyTests
         Assert.That(vm.IsSteerWizardOpen, Is.False);
     }
 
+    [Test]
+    public void Browser_lost_mid_test_stops_the_test_and_closes_the_wizard()
+    {
+        // The max-angle test went on sweeping the wheels lock to lock for 5 s after the
+        // tablet's Wi-Fi dropped, and the wizard stayed open on the host: AutoSteer then
+        // refused to engage, with no wizard on the reloaded page to close.
+        var b = new MainViewModelBuilder { ConfigurationService = Config() };
+        var vm = b.Build();
+        vm.StartRemoteSteerWizard();
+        var w = vm.SteerWizardViewModel!;
+        w.GoToStep(w.Steps.IndexOf(w.Steps.OfType<MaxSteeringAngleStepViewModel>().Single()));
+        b.AutoSteerService.IsInFreeDriveMode.Returns(true);
+
+        vm.OnBrowserControlEnded("browser control ended: client disconnected");
+
+        b.AutoSteerService.Received().DisableFreeDrive();
+        Assert.That(vm.IsSteerWizardOpen, Is.False);
+    }
+
+    [Test]
+    public void Browser_lost_turns_AutoSteer_off()
+    {
+        var b = new MainViewModelBuilder();
+        var vm = b.Build();
+        vm.IsAutoSteerAvailable = true;
+        vm.ToggleAutoSteerCommand!.Execute(null);
+        Assume.That(vm.IsAutoSteerEngaged, Is.True);
+
+        vm.OnBrowserControlEnded("browser control ended: released");
+
+        Assert.That(vm.IsAutoSteerEngaged, Is.False);
+    }
+
     private static void SwitchCycle(MainViewModelBuilder b, MainViewModel vm, bool steering)
     {
         b.AutoSteerService.LastSteerData.Returns(Module(steering));
