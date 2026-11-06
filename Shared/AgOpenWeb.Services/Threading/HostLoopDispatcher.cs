@@ -77,8 +77,13 @@ public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDispos
             {
                 // A single bad callback must never tear down the host loop —
                 // log and keep pumping (mirrors the UI thread surviving an
-                // unhandled handler exception in a debugger-less run).
+                // unhandled handler exception in a debugger-less run). Logged, not only
+                // written to the debugger: a continuation after an await is a work item
+                // too, and its failure must show up in a field log.
                 System.Diagnostics.Debug.WriteLine($"[HostLoop] callback threw: {ex}");
+                if (Logger is { } errLog)
+                    Microsoft.Extensions.Logging.LoggerExtensions.LogError(errLog, ex,
+                        "[HostLoop] Work item threw ({Method})", work.Method.DeclaringType?.Name + "." + work.Method.Name);
             }
             var took = System.Diagnostics.Stopwatch.GetElapsedTime(t0);
             if (took > SlowWorkThreshold && Logger is { } log)

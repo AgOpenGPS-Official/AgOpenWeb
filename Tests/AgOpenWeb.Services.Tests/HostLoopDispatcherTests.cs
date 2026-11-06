@@ -51,6 +51,39 @@ public class HostLoopDispatcherTests
     }
 
     [Test]
+    public async Task A_continuation_that_throws_is_logged_and_the_loop_keeps_running()
+    {
+        // A continuation after an await is a loop work item; its failure goes to the log
+        // (a field log), not only to the debugger, and the loop goes on.
+        var log = new ErrorLog();
+        using var loop = new HostLoopDispatcher { Logger = log };
+
+        loop.Post(async () =>
+        {
+            await Task.Delay(10);
+            throw new InvalidOperationException("after the await");
+        });
+        var next = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await Task.Delay(100);
+        loop.Post(() => next.SetResult());
+
+        await next.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(log.Errors, Has.Some.Matches<Exception?>(e => e is InvalidOperationException { Message: "after the await" }));
+    }
+
+    private sealed class ErrorLog : Microsoft.Extensions.Logging.ILogger
+    {
+        public readonly System.Collections.Concurrent.ConcurrentQueue<Exception?> Errors = new();
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId,
+            TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == Microsoft.Extensions.Logging.LogLevel.Error) Errors.Enqueue(exception);
+        }
+    }
+
+    [Test]
     public async Task A_continuation_after_dispose_is_dropped_not_thrown()
     {
         var loop = new HostLoopDispatcher();
