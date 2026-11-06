@@ -51,7 +51,8 @@ public static class VehicleToolLimits
         ["tool.slowSpeedCutoff"] = new(0, 30, Unit.KmH, "Slow speed cutoff"),
         ["tool.coverageMargin"] = new(0, 100, Unit.Centimetre, "Coverage margin"),
         ["tool.defaultSectionWidth"] = new(10, 1000, Unit.Centimetre, "Default width"),
-        ["tool.sectionWidth"] = new(1, 5000, Unit.Centimetre, "Section width"),
+        // At least 10 cm (no row or nozzle is closer): 1 typed for 1 m is refused.
+        ["tool.sectionWidth"] = new(10, 5000, Unit.Centimetre, "Section width"),
         ["tool.numSections"] = new(1, ToolConfig.MaxSections, Unit.None, "Number of sections"),
         ["tool.minCoverage"] = new(0, 100, Unit.Percent, "Min coverage"),
         ["tool.zones"] = new(1, 8, Unit.None, "Number of zones"),
@@ -86,6 +87,8 @@ public static class VehicleToolLimits
         bool metric = store.IsMetric;
         if (!double.IsFinite(v))
             return r.Name + " must be a number";
+        if (key is "tool.numSections" or "tool.zones" && v != Math.Floor(v))
+            return r.Name + " must be a whole number";
         if (v < r.Min - 1e-9 || v > r.Max + 1e-9)
         {
             string unit = Symbol(r.Unit, metric);
