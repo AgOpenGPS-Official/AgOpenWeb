@@ -85,6 +85,8 @@ public class RollCalibrationStepViewModel : WizardStepViewModel
 
     public ICommand ZeroRollCommand { get; }
 
+    private DateTime _zeroedAt = DateTime.MinValue;
+
     public RollCalibrationStepViewModel(IConfigurationService configService,
         IAutoSteerService? autoSteerService = null)
     {
@@ -100,7 +102,12 @@ public class RollCalibrationStepViewModel : WizardStepViewModel
             // matches the WAS Zero accumulator bug (#385 F/G). The
             // invert sign is already baked in upstream, so the Zero
             // formula here is plain addition.
+            // The second of two quick taps would zero again from a reading that doesn't show
+            // the new zero yet (level ground then read 9°): ignored until it has settled.
+            var now = AgOpenWeb.Models.Timing.Clock.Current.Now;
+            if (now - _zeroedAt < WasCalibrationStepViewModel.ZeroSettle) return;
             RollZero = _configService.Store.Ahrs.RollZero + LiveRoll;
+            _zeroedAt = now;
         });
     }
 
