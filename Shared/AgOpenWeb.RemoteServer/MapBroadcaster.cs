@@ -29,6 +29,9 @@ public sealed class MapBroadcaster : IAsyncDisposable
     private long _sceneVersion;
     private long _lastFingerprint = long.MinValue;
     private long _lastConfigFp = long.MinValue;
+
+    /// <summary>Send the Config frame on the next tick even if no value changed.</summary>
+    public void ResendConfig() => Volatile.Write(ref _lastConfigFp, long.MinValue);
     private long _lastProfilesFp = long.MinValue;
     private long _lastNtripFp = long.MinValue;
     private long _lastMountpointsFp = long.MinValue;
@@ -169,11 +172,12 @@ public sealed class MapBroadcaster : IAsyncDisposable
                     await _ws.BroadcastAsync(WireCodec.EncodeScene(_currentScene), ct).ConfigureAwait(false);
                 }
 
-                // Config read-frame: re-send only when an editable value changes.
+                // Config read-frame: re-send only when an editable value changes (or a
+                // refused value asks for it, ResendConfig).
                 var cfp = _projector.ConfigFingerprint();
-                if (cfp != _lastConfigFp)
+                if (cfp != Volatile.Read(ref _lastConfigFp))
                 {
-                    _lastConfigFp = cfp;
+                    Volatile.Write(ref _lastConfigFp, cfp);
                     await _ws.BroadcastAsync(WireCodec.EncodeConfig(_projector.BuildConfig()), ct).ConfigureAwait(false);
                 }
 
