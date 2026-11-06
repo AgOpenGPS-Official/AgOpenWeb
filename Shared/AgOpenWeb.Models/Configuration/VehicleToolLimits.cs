@@ -7,7 +7,7 @@ using System.Globalization;
 namespace AgOpenWeb.Models.Configuration;
 
 /// <summary>
-/// The values a Vehicle &amp; Tool setting can take on a real machine, so a slip of the unit
+/// The values a Vehicle &amp; Tool or AutoSteer setting can take on a real machine, so a slip of the unit
 /// (centimetres typed in a metre box), of the sign, or a value never filled in is refused
 /// with the reason instead of being steered with. A wheelbase of 0 never steers and a
 /// negative one steers away from the line (pure pursuit's angle is proportional to it); an
@@ -15,7 +15,9 @@ namespace AgOpenWeb.Models.Configuration;
 /// tractor back onto the first pass from wherever it engages.
 /// <para>The ranges are AgOpenGPS's settings forms' (FormConfig: wheelbase 50 to 1999 cm,
 /// antenna height 0 to 10 m, sections up to 50 m, …), in metres; a sign the form takes from
-/// a left/right or ahead/behind choice is a sign here.</para>
+/// a left/right or ahead/behind choice is a sign here. The AutoSteer ranges are the panel's
+/// sliders' (AgOpenGPS's FormSteer): a gain of 0 never steers, 999 is clamped to 200 by the
+/// module but was shown as typed, and a minimum speed above the maximum never engages.</para>
 /// </summary>
 public static class VehicleToolLimits
 {
@@ -56,6 +58,31 @@ public static class VehicleToolLimits
         ["tool.numSections"] = new(1, ToolConfig.MaxSections, Unit.None, "Number of sections"),
         ["tool.minCoverage"] = new(0, 100, Unit.Percent, "Min coverage"),
         ["tool.zones"] = new(1, 8, Unit.None, "Number of zones"),
+        // AutoSteer: the panel's and the wizard's boxes (config.set|autosteer.*).
+        ["autosteer.wasOffset"] = new(-4000, 4000, Unit.None, "WAS offset"),
+        ["autosteer.countsPerDegree"] = new(1, 255, Unit.None, "Counts per degree"),
+        ["autosteer.ackermann"] = new(0, 200, Unit.Percent, "Ackermann"),
+        ["autosteer.maxSteerAngle"] = new(10, 90, Unit.Degree, "Max steer angle"),
+        ["autosteer.deadzoneHeading"] = new(0, 5, Unit.Degree, "Deadzone heading"),
+        ["autosteer.deadzoneDelay"] = new(0, 50, Unit.None, "Deadzone delay"),
+        ["autosteer.speedFactor"] = new(0.5, 3, Unit.None, "Speed factor"),
+        ["autosteer.acquireFactor"] = new(0.2, 3, Unit.None, "Acquire factor"),
+        ["autosteer.proportionalGain"] = new(1, 200, Unit.None, "Proportional gain"),
+        ["autosteer.integralGain"] = new(0, 1, Unit.None, "Integral gain"),
+        ["autosteer.steerResponseHold"] = new(1, 10, Unit.None, "Steer response hold"),
+        ["autosteer.stanleyAggressiveness"] = new(0, 10, Unit.None, "Stanley aggressiveness"),
+        ["autosteer.stanleyOvershootReduction"] = new(0, 10, Unit.None, "Stanley overshoot reduction"),
+        ["autosteer.maxPwm"] = new(50, 255, Unit.None, "Max PWM"),
+        ["autosteer.minPwm"] = new(1, 200, Unit.None, "Min PWM"),
+        ["autosteer.turnSensorCounts"] = new(0, 255, Unit.None, "Turn sensor counts"),
+        ["autosteer.pressureTripPoint"] = new(0, 99, Unit.Percent, "Pressure trip point"),
+        ["autosteer.currentTripPoint"] = new(0, 99, Unit.Percent, "Current trip point"),
+        ["autosteer.uTurnCompensation"] = new(-80, 100, Unit.Percent, "U-turn compensation"),
+        ["autosteer.sideHillCompensation"] = new(0, 1, Unit.None, "Side hill compensation"),
+        ["autosteer.lineWidth"] = new(1, 8, Unit.None, "Line width"),
+        ["autosteer.manualTurnsSpeed"] = new(0, 20, Unit.KmH, "Manual turns speed"),
+        ["autosteer.minSteerSpeed"] = new(0, 10, Unit.KmH, "Min steer speed"),
+        ["autosteer.maxSteerSpeed"] = new(0, 50, Unit.KmH, "Max steer speed"),
     };
 
     private static readonly string[] ToolTypes = { "front", "rear", "trailing", "tbt" };
@@ -105,6 +132,11 @@ public static class VehicleToolLimits
         if (key is "tool.numSections" or "tool.sectionWidth"
             && ImplementWidthAfter(key, value, v, store) - store.Tool.Overlap <= 0.01)
             return "The implement must stay wider than the overlap: lower the overlap first";
+        // AutoSteer engages only between the two speeds: they must leave a band.
+        if (key == "autosteer.minSteerSpeed" && v >= store.AutoSteer.MaxSteerSpeed - 1e-9)
+            return $"Min steer speed must be below the max steer speed ({Show(store.AutoSteer.MaxSteerSpeed, Unit.KmH, metric)} {Symbol(Unit.KmH, metric)})";
+        if (key == "autosteer.maxSteerSpeed" && v <= store.AutoSteer.MinSteerSpeed + 1e-9)
+            return $"Max steer speed must be above the min steer speed ({Show(store.AutoSteer.MinSteerSpeed, Unit.KmH, metric)} {Symbol(Unit.KmH, metric)})";
         return null;
     }
 
@@ -142,6 +174,9 @@ public static class VehicleToolLimits
         double spacing = store.ActualToolWidth - store.Tool.Overlap;
         if (!double.IsFinite(spacing) || spacing <= 0.01 || !double.IsFinite(store.Tool.Offset))
             return "the overlap must be less than the implement width (Tool settings)";
+        var a = store.AutoSteer;
+        if (!(a.MinSteerSpeed < a.MaxSteerSpeed))
+            return "the min steer speed must be below the max (AutoSteer settings)";
         return null;
     }
 

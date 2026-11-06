@@ -61,6 +61,26 @@ public class VehicleToolLimitsTests
     [TestCase("tool.minCoverage", "150")]
     [TestCase("tool.turnOffDelay", "100")]
     [TestCase("tool.zones", "9")]
+    [TestCase("autosteer.proportionalGain", "0")]
+    [TestCase("autosteer.proportionalGain", "999")]
+    [TestCase("autosteer.integralGain", "9")]
+    [TestCase("autosteer.countsPerDegree", "0")]
+    [TestCase("autosteer.countsPerDegree", "300")]
+    [TestCase("autosteer.wasOffset", "5000")]
+    [TestCase("autosteer.ackermann", "250")]
+    [TestCase("autosteer.maxSteerAngle", "5")]
+    [TestCase("autosteer.maxSteerAngle", "NaN")]
+    [TestCase("autosteer.speedFactor", "0")]
+    [TestCase("autosteer.acquireFactor", "10")]
+    [TestCase("autosteer.maxPwm", "10")]
+    [TestCase("autosteer.minPwm", "0")]
+    [TestCase("autosteer.minSteerSpeed", "25")]
+    [TestCase("autosteer.minSteerSpeed", "-1")]
+    [TestCase("autosteer.maxSteerSpeed", "60")]
+    [TestCase("autosteer.manualTurnsSpeed", "30")]
+    [TestCase("autosteer.sideHillCompensation", "2")]
+    [TestCase("autosteer.uTurnCompensation", "-100")]
+    [TestCase("autosteer.lineWidth", "0")]
     public void An_impossible_value_is_refused_with_the_reason(string key, string value)
     {
         string? why = VehicleToolLimits.Check(key, value, Sprayer());
@@ -85,6 +105,17 @@ public class VehicleToolLimitsTests
     [TestCase("tool.overlap", "-1")]
     [TestCase("tool.trailingToolToPivotLength", "-0.6")]
     [TestCase("tool.slowSpeedCutoff", "0.5")]
+    [TestCase("autosteer.proportionalGain", "50")]
+    [TestCase("autosteer.proportionalGain", "1")]
+    [TestCase("autosteer.proportionalGain", "200")]
+    [TestCase("autosteer.integralGain", "0")]
+    [TestCase("autosteer.countsPerDegree", "110")]
+    [TestCase("autosteer.wasOffset", "-260")]
+    [TestCase("autosteer.maxSteerAngle", "35")]
+    [TestCase("autosteer.minSteerSpeed", "0.5")]
+    [TestCase("autosteer.maxSteerSpeed", "15")]
+    [TestCase("autosteer.uTurnCompensation", "-80")]
+    [TestCase("autosteer.invertWas", "1")]        // toggles have no range
     [TestCase("conn.ntripEnabled", "1")]          // keys with no range are not checked
     [TestCase("vehicle.wheelbase", "abc")]        // not a number: ignored by the setter, as before
     public void A_real_value_passes(string key, string value)
@@ -100,6 +131,28 @@ public class VehicleToolLimitsTests
         Assert.That(VehicleToolLimits.Check("tool.overlap", "8", s), Is.EqualTo("Overlap must be less than the implement width (8 m)"));
         s.IsMetric = false;
         Assert.That(VehicleToolLimits.Check("vehicle.wheelbase", "-2.88", s), Is.EqualTo("Wheelbase must be 1.64 to 65.62 ft (not -9.45 ft)"));
+    }
+
+    // The Speed step took 25 km/h as the minimum and 5 km/h as the maximum (the steer wizard
+    // scenarios): AutoSteer could then never engage, and nothing said so.
+    [Test]
+    public void The_steer_speeds_must_leave_a_band_between_them()
+    {
+        var s = Sprayer();
+        s.AutoSteer.MinSteerSpeed = 0.5;
+        s.AutoSteer.MaxSteerSpeed = 8;
+        Assert.Multiple(() =>
+        {
+            Assert.That(VehicleToolLimits.Check("autosteer.proportionalGain", "0", s), Is.EqualTo("Proportional gain must be 1 to 200 (not 0)"));
+            Assert.That(VehicleToolLimits.Check("autosteer.minSteerSpeed", "8", s), Is.EqualTo("Min steer speed must be below the max steer speed (8 km/h)"));
+            Assert.That(VehicleToolLimits.Check("autosteer.minSteerSpeed", "7", s), Is.Null);
+            Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "0.5", s), Is.EqualTo("Max steer speed must be above the min steer speed (0.5 km/h)"));
+            Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "25", s), Is.Null);
+            Assert.That(VehicleToolLimits.Check("autosteer.minSteerSpeed", "25", s), Is.EqualTo("Min steer speed must be 0 to 10 km/h (not 25 km/h)"));
+        });
+        s.IsMetric = false;
+        Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "0.5", s), Is.EqualTo("Max steer speed must be above the min steer speed (0.31 mph)"));
+        Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "60", s), Is.EqualTo("Max steer speed must be 0 to 31.07 mph (not 37.28 mph)"));
     }
 
     [Test]
@@ -121,6 +174,10 @@ public class VehicleToolLimitsTests
 
         s.Vehicle.AntennaOffset = double.NaN;
         Assert.That(VehicleToolLimits.WhyCannotSteer(s), Does.Contain("antenna"));
+        s.Vehicle.AntennaOffset = 0;
+
+        s.AutoSteer.MinSteerSpeed = s.AutoSteer.MaxSteerSpeed;
+        Assert.That(VehicleToolLimits.WhyCannotSteer(s), Does.Contain("min steer speed"));
     }
 
     // Checked before the change: a refused section count used to be undone afterwards, and the
