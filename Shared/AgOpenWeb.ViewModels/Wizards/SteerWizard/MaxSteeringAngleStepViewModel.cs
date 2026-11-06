@@ -61,6 +61,17 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
     /// </summary>
     internal const double MinLockMovementDeg = 5.0;
 
+    /// <summary>
+    /// Wheels moving this far AWAY from the commanded side stop the test at once: the motor
+    /// direction is wrong (the motor test was skipped, or the motor was rewired), and going
+    /// on drives them into the opposite lock and holds them there.
+    /// </summary>
+    internal const double WrongWayLimitDeg = 3.0;
+
+    internal const string WrongWayText =
+        "The wheels turned the wrong way, so the test stopped and left them where they are. " +
+        "Run the motor test first (Back): it finds the motor direction.";
+
     private HardwareInstalledStepViewModel? _hardwareStep;
 
     /// <summary>
@@ -194,6 +205,7 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
         double startAngle = CurrentWasAngle;
         Progress = 0;
         PhaseResult = "";
+        bool wrongWay = false;
 
         try
         {
@@ -207,7 +219,15 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
             }
 
             Phase = MaxSteeringAnglePhase.MeasuringRight;
-            double right = await DriveToPlateauAsync(+CommandedFullLockDeg, token);
+            double? rightOrNull = await DriveToPlateauAsync(+CommandedFullLockDeg, token);
+            if (rightOrNull is not { } right)
+            {
+                wrongWay = true;
+                Phase = MaxSteeringAnglePhase.WaitingToStart;
+                Progress = 0;
+                PhaseResult = WrongWayText;
+                return;
+            }
             Progress = 0.5;
 
             // Return through center with a short settle so the next
@@ -216,7 +236,15 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
             await DelayFunc(CenterReturnSettleMs, token);
 
             Phase = MaxSteeringAnglePhase.MeasuringLeft;
-            double left = await DriveToPlateauAsync(-CommandedFullLockDeg, token);
+            double? leftOrNull = await DriveToPlateauAsync(-CommandedFullLockDeg, token);
+            if (leftOrNull is not { } left)
+            {
+                wrongWay = true;
+                Phase = MaxSteeringAnglePhase.WaitingToStart;
+                Progress = 0;
+                PhaseResult = WrongWayText;
+                return;
+            }
             Progress = 1.0;
 
             await EndFreeDriveAsync();
@@ -250,7 +278,7 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
         }
         finally
         {
-            await EndFreeDriveAsync();
+            await EndFreeDriveAsync(centre: !wrongWay);
         }
     }
 
@@ -261,13 +289,15 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
     /// for <see cref="PlateauStableSamples"/> consecutive samples. If
     /// no plateau materialises within <see cref="PlateauTimeoutMs"/>
     /// the last sample is returned — partial information beats no
-    /// information.
+    /// information. Returns null, at once, when the wheels move <see cref="WrongWayLimitDeg"/>
+    /// the other way.
     /// </summary>
-    private async Task<double> DriveToPlateauAsync(double commandedAngleDeg, CancellationToken token)
+    private async Task<double?> DriveToPlateauAsync(double commandedAngleDeg, CancellationToken token)
     {
+        double start = CurrentWasAngle;
         AutoSteerService?.SetFreeDriveAngle(commandedAngleDeg);
 
-        double previous = CurrentWasAngle;
+        double previous = start;
         int stableCount = 0;
         int elapsed = 0;
 
@@ -279,6 +309,9 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
 
             double sample = CurrentWasAngle;
             LiveSteerAngle = Math.Round(sample, 1);
+
+            if (Math.Sign(commandedAngleDeg) * (sample - start) < -WrongWayLimitDeg)
+                return null;
 
             if (Math.Abs(sample - previous) < PlateauThresholdDeg)
             {

@@ -103,16 +103,17 @@ public class MaxSteeringAngleStepTests
         var step = new MaxSteeringAngleStepViewModel(_configService, new AgOpenWeb.Services.Threading.InlineUiDispatcher(), _autoSteer);
         step.DelayFunc = (_, _) => Task.CompletedTask;
 
-        double angle = 0;
-        bool right = true;
+        // Drifts the way it is commanded and never plateaus (a wheel drifting the
+        // other way stops the test: the motor direction is wrong).
+        double angle = 0, commanded = 0;
+        _autoSteer.When(a => a.SetFreeDriveAngle(Arg.Any<double>())).Do(c =>
+        {
+            if (System.Math.Sign(c.Arg<double>()) != System.Math.Sign(commanded)) angle = 0;
+            commanded = c.Arg<double>();
+        });
         step.ReadWasAngle = () =>
         {
-            angle += right ? 0.5 : -0.5;  // never plateaus, just drifts
-            if (System.Math.Abs(angle) > 50)
-            {
-                right = !right;
-                angle = right ? 0 : 0;
-            }
+            angle += 0.5 * System.Math.Sign(commanded);
             return angle;
         };
 

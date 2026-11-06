@@ -299,9 +299,16 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
 
         var autoSteerConfig = _configService.Store.AutoSteer;
         int originalKp = autoSteerConfig.ProportionalGain;
+        // Until the wheels have moved toward the target the motor direction is unknown:
+        // nothing may hold or centre them at a real gain (a backwards motor runs away).
+        bool directionConfirmed = false;
 
         try
         {
+            // Arm at the bottom of the ramp, not the operator's gain: Free Drive holds the
+            // wheels where they are while the module arms, and with the motor wired the
+            // other way any hold drives them off.
+            autoSteerConfig.ProportionalGain = KpRampStartInclusive;
             if (!await BeginFreeDriveAsync(token))
             {
                 Phase = CalibrationPhase.WaitingToStart;
@@ -372,9 +379,11 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                     // currently driving — that's the observed MinPWM.
                     if (delta > 0)
                     {
+                        module = await AtRestAsync(module, token);
                         DetectedMinPwm = module.PwmDisplay;
                         DetectedInvertMotor = autoSteerConfig.InvertMotor;
                         detected = true;
+                        directionConfirmed = true;
                     }
                     else
                     {
@@ -394,16 +403,26 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
 
                 if (wrongDirection && !invertTried)
                 {
-                    // Flip InvertMotor in ConfigStore — emit-on-change
-                    // pushes PGN 251 to the module, which re-engages
-                    // the PID with the opposite sign convention on the
-                    // next tick. Settle, then restart the Kp ramp from
-                    // the bottom with a fresh start anchor.
-                    autoSteerConfig.InvertMotor = true;
-                    DetectedInvertMotor = true;
+                    // Stop driving first: Free Drive off drops the module's motor at once.
+                    // Kept on while the flip was on its way (PGN 251 leaves after the
+                    // config debounce), with the operator's gain put back, the motor went on
+                    // driving the wrong way: 10° on the bench, the lock from 12° off centre.
+                    ReleaseFreeDrive();
+                    // Flip, not set: a motor calibrated as inverted and since rewired
+                    // turns the wrong way with Invert Motor on, and needs it off.
+                    autoSteerConfig.InvertMotor = !autoSteerConfig.InvertMotor;
+                    DetectedInvertMotor = autoSteerConfig.InvertMotor;
                     invertTried = true;
-                    autoSteerConfig.ProportionalGain = originalKp;
+                    autoSteerConfig.ProportionalGain = KpRampStartInclusive;
                     await DelayFunc(500, token);
+                    // Arm again (holding where the wheels are) and restart the ramp from
+                    // the bottom with a fresh start anchor.
+                    if (!await BeginFreeDriveAsync(token))
+                    {
+                        Phase = CalibrationPhase.WaitingToStart;
+                        PhaseResult = NotArmedText;
+                        return;
+                    }
                     continue;
                 }
 
@@ -437,7 +456,8 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         {
             // Operator's Kp back first, so the return to centre isn't at the ramped gain.
             autoSteerConfig.ProportionalGain = originalKp;
-            await EndFreeDriveAsync();
+            // Centre only a motor seen turning the right way; otherwise release in place.
+            await EndFreeDriveAsync(centre: directionConfirmed);
         }
     }
 
@@ -539,6 +559,37 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
     }
 
     private double GetCurrentSteerAngle() => GetCurrentModuleData().ActualSteerAngle;
+
+    private const int RestSampleMs = 100;
+    private const int RestMaxMs = 2000;
+    private const double RestStillDeg = 0.1;
+
+    /// <summary>
+    /// The module's feedback once the wheels, moving toward the nudge, have come to rest
+    /// short of it. While they move, the PWM is the gain times what is left of the nudge,
+    /// not what the motor needs: armed at the bottom of the ramp they move at its first
+    /// step, and that read 44 for a motor that moves from 28. They stop where the PWM
+    /// falls below what moves them, so the PWM at rest is the minimum. At rest on the
+    /// target itself (PWM 0: the minimum PWM set is already more than enough) the
+    /// setting is kept.
+    /// </summary>
+    private async Task<SteerModuleData> AtRestAsync(SteerModuleData moving, CancellationToken token)
+    {
+        var last = moving;
+        for (int waited = 0; waited < RestMaxMs; waited += RestSampleMs)
+        {
+            await DelayFunc(RestSampleMs, token);
+            var now = GetCurrentModuleData();
+            LiveSteerAngle = Math.Round(now.ActualSteerAngle, 1);
+            ReportedModulePwm = now.PwmDisplay;
+            bool still = Math.Abs(now.ActualSteerAngle - last.ActualSteerAngle) < RestStillDeg;
+            last = now;
+            if (still) break;
+        }
+        return last.PwmDisplay > 0
+            ? last
+            : last with { PwmDisplay = (byte)Math.Clamp(_configService.Store.AutoSteer.MinPwm, 0, 255) };
+    }
 
     protected override SteerModuleData CurrentModuleData => GetCurrentModuleData();
 
