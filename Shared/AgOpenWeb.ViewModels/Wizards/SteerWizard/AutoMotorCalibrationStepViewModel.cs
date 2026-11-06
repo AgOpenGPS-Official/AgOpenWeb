@@ -415,6 +415,7 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                         (minPwmStalled
                             ? $"\nNot saved: half the maximum PWM or more means the wheels stalled. Minimum PWM stays {autoSteerConfig.MinPwm}. Free the wheels and run the test again."
                             : "");
+                    TestDone = true; // the ramp ran to its end: the Finish page won't list it
                     Phase = CalibrationPhase.RampResult;
                     return;
                 }
@@ -522,7 +523,6 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
             MaxSteerAngle = (int)(Math.Min(DetectedMaxAngleRight, DetectedMaxAngleLeft) * 0.9);
 
             CalibrationCompleted = true;
-            TestDone = true;
             Phase = CalibrationPhase.Complete;
             PhaseResult = $"Right max: {DetectedMaxAngleRight:F1}\n" +
                           $"Left max: {DetectedMaxAngleLeft:F1}\n" +

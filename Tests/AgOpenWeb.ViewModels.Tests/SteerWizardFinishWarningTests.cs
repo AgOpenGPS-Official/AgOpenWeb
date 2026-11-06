@@ -94,4 +94,25 @@ public class SteerWizardFinishWarningTests
     {
         Assert.That(new FinishStepViewModel().TestResult, Is.Empty);
     }
+
+    [Test]
+    public async Task The_motor_test_that_ran_to_its_end_is_not_listed()
+    {
+        var a = _store.AutoSteer;
+        a.ProportionalGain = 50;
+        a.MinPwm = 25;
+        a.MaxPwm = 180;
+        var sim = new SimulatedSteer { MotorBackwards = false, Angle = 0 };
+        var cfg = Substitute.For<IConfigurationService>();
+        cfg.Store.Returns(_store);
+        var step = new AutoMotorCalibrationStepViewModel(cfg, new InlineUiDispatcher(), sim.Service);
+        step.DelayFunc = (ms, _) => { sim.Advance(ms); return Task.CompletedTask; };
+        step.ReadModuleData = () => sim.Data;
+
+        await step.RunKpRampAsync();
+
+        Assert.That(step.NoMovementDetected, Is.False, step.PhaseResult);
+        Assert.That(step.TestDone, Is.True,
+            "the ramp is the whole motor test in the web wizard; it was marked done only in a part the web never runs");
+    }
 }
