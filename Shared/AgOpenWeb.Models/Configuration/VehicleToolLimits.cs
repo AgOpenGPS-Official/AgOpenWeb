@@ -56,6 +56,10 @@ public static class VehicleToolLimits
         ["tool.numSections"] = new(1, ToolConfig.MaxSections, Unit.None, "Number of sections"),
         ["tool.minCoverage"] = new(0, 100, Unit.Percent, "Min coverage"),
         ["tool.zones"] = new(1, 8, Unit.None, "Number of zones"),
+        // AgOpenGPS's tram settings: width 1 cm to 100 m (FormConfig), 1 to 999 passes (FormTram).
+        // The tram editor's own width and passes use the same rules (MainViewModel.Tram.Remote).
+        ["tram.width"] = new(0.01, 100, Unit.Metre, "Tram width"),
+        ["tram.passes"] = new(1, 999, Unit.None, "Tram passes"),
     };
 
     private static readonly string[] ToolTypes = { "front", "rear", "trailing", "tbt" };
@@ -87,7 +91,7 @@ public static class VehicleToolLimits
         bool metric = store.IsMetric;
         if (!double.IsFinite(v))
             return r.Name + " must be a number";
-        if (key is "tool.numSections" or "tool.zones" && v != Math.Floor(v))
+        if (key is "tool.numSections" or "tool.zones" or "tram.passes" && v != Math.Floor(v))
             return r.Name + " must be a whole number";
         if (v < r.Min - 1e-9 || v > r.Max + 1e-9)
         {
