@@ -911,6 +911,7 @@ public partial class MainViewModel
     private string OuterBoundaryChanged()
     {
         var done = new List<string>();
+        var droppedNames = new List<string>();
         var outer = State.Field.CurrentBoundary?.OuterBoundary;
         bool hasOuter = outer?.Points != null && outer.Points.Count >= 3;
 
@@ -925,14 +926,14 @@ public partial class MainViewModel
             }
             else
             {
-                int dropped = 0;
                 for (int i = HeadlandSegments.Count - 1; i >= 0; i--)
                 {
                     if (HeadlandSegments[i].Type == Models.Headland.HeadlandSegmentType.Boundary) continue;
                     if (ReferenceEquals(SelectedHeadlandSegment, HeadlandSegments[i])) SelectedHeadlandSegment = null;
+                    droppedNames.Insert(0, HeadlandSegments[i].Name);
                     HeadlandSegments.RemoveAt(i);
-                    dropped++;
                 }
+                int dropped = droppedNames.Count;
                 if (HeadlandSegments.Count == 0)
                 {
                     ClearHeadland();
@@ -963,7 +964,14 @@ public partial class MainViewModel
             RebuildAndSaveTram();
             done.Add("tram lines rebuilt");
         }
-        return string.Join(", ", done);
+        string summary = string.Join(", ", done);
+
+        // A line or curve segment named points of the old boundary, so it can't be carried over.
+        // The operator drew it: say so in a notification, not only in the status line.
+        if (droppedNames.Count > 0)
+            FailureReported?.Invoke(
+                $"Headland: {string.Join(", ", droppedNames)} drawn on the old boundary, removed. Draw them again on the new boundary.");
+        return summary;
     }
 
 }

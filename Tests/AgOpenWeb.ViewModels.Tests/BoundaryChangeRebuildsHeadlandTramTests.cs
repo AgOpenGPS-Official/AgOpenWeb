@@ -121,10 +121,14 @@ public class BoundaryChangeRebuildsHeadlandTramTests
     {
         _vm.RemoteCreateHeadlandFromMapPoints(false, 15, 0, 0, 200, 0); // a line along the old south edge
         Assume.That(_vm.HeadlandSegments, Has.Count.EqualTo(2));
+        var notices = new List<string>();
+        _vm.FailureReported += notices.Add;
 
         Square(50, 150);
 
         Assert.That(_vm.StatusMessage, Does.Contain("1 line/curve segment(s) of the old one dropped"));
+        Assert.That(notices, Has.Some.Contains("Line 2").And.Contains("Draw them again"),
+            "the operator is told which drawn line went, not only in the status line");
         Assert.That(_vm.HeadlandSegments.Select(s => s.Type), Is.EqualTo(new[] { Models.Headland.HeadlandSegmentType.Boundary }));
     }
 }
