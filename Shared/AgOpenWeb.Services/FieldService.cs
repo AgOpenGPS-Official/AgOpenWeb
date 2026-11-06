@@ -305,9 +305,9 @@ public class FieldService : IFieldService
     {
         var fieldDirectory = Path.Combine(fieldsRootDirectory, fieldName);
 
-        if (Directory.Exists(fieldDirectory))
+        if (FieldNames.ExistingTwin(fieldsRootDirectory, fieldName) is { } twin)
         {
-            throw new InvalidOperationException($"Field '{fieldName}' already exists");
+            throw new InvalidOperationException(FieldNames.ExistsMessage(fieldName, twin));
         }
 
         Directory.CreateDirectory(fieldDirectory);

@@ -548,8 +548,9 @@ public static partial class RemoteServerWiring
         if (cmd == "field.fromIsoXml") { if (a.Length >= 2) vm.RemoteCreateFromIsoXml(a[0], a[1]); return; } // file \t newName
         if (cmd == "field.fromKml") { if (a.Length >= 2) vm.RemoteCreateFromKml(a[0], a[1]); return; }       // file \t newName
         var sw = vm.EnsureRemoteStartWorkSession();
-        sw.SelectedField = sw.Fields.FirstOrDefault(f =>
-            string.Equals(f.Name, a[0], System.StringComparison.OrdinalIgnoreCase));
+        // The exact name first: on Linux two fields can differ only in capitals.
+        sw.SelectedField = sw.Fields.FirstOrDefault(f => f.Name == a[0])
+            ?? sw.Fields.FirstOrDefault(f => string.Equals(f.Name, a[0], System.StringComparison.OrdinalIgnoreCase));
         switch (cmd)
         {
             case "field.openOnly":
