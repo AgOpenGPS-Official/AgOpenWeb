@@ -2513,6 +2513,10 @@ public partial class MainViewModel : ObservableObject
                 .Select(p => new Models.Base.Vec3(p.Easting, p.Northing, p.Heading)).ToList();
             _tramLineService.SetBoundaryFence(fencePts);
         }
+        else
+        {
+            _tramLineService.SetBoundaryFence(null); // a deleted boundary no longer clips the lines
+        }
 
         double fieldWidth = 500;
         if (State.Field.CurrentBoundary?.OuterBoundary?.Points != null && State.Field.CurrentBoundary.OuterBoundary.Points.Count > 0)
@@ -4651,6 +4655,7 @@ public partial class MainViewModel : ObservableObject
 
         int currentIndex = 0;
         bool deleted = false;
+        bool outerDeleted = false;
 
         // Check if outer boundary is selected
         if (boundary.OuterBoundary != null && boundary.OuterBoundary.IsValid)
@@ -4666,6 +4671,7 @@ public partial class MainViewModel : ObservableObject
                 }
                 boundary.OuterBoundary = null;
                 deleted = true;
+                outerDeleted = true;
             }
             currentIndex++;
         }
@@ -4693,6 +4699,7 @@ public partial class MainViewModel : ObservableObject
             SaveFieldBoundary(boundary, fieldPath);
             RefreshBoundaryList();
             SetCurrentBoundary(boundary);
+            string done = outerDeleted ? OuterBoundaryChanged() : "";
 
             // If that was the last boundary, drop the field-background image
             // too — it's georeferenced against the boundary, so leaving
@@ -4702,11 +4709,11 @@ public partial class MainViewModel : ObservableObject
             if (!hasOuter && !hasInner)
             {
                 DeleteBackgroundImage(fieldPath);
-                StatusMessage = "Boundary deleted; background image removed";
+                StatusMessage = "Boundary deleted; background image removed" + (done.Length > 0 ? $", {done}" : "");
             }
             else
             {
-                StatusMessage = "Boundary deleted";
+                StatusMessage = "Boundary deleted" + (done.Length > 0 ? $"; {done}" : "");
             }
         }
     }
