@@ -105,7 +105,8 @@ function skFrame(ts) {
   // Under a full card drawer the map isn't seen, so it isn't drawn (a tablet's battery); the
   // first frame after it opens draws from the latest state.
   if (skSurface && !CardPane.coversMap) {
-    try { renderSkia(skSurface.getCanvas(), rp); skSurface.flush(); }
+    const _t0 = performance.now();
+    try { renderSkia(skSurface.getCanvas(), rp); skSurface.flush(); noteDrawMs(performance.now() - _t0); }
     catch (e) { ckStatus = 'render err: ' + (e && e.message || e); }
   }
   // DOM overlays (independent of the GL surface). One that throws must not end the frame
@@ -148,4 +149,8 @@ if (typeof CanvasKitInit === 'function') {
 } else {
   ckStatus = 'loader missing';
 }
+// How this browser draws (alerts.js, for the bug report dump): once the frame rate has settled,
+// then every minute, so a reconnected or long-running page is current too.
+setTimeout(sendClientDiag, 10000);
+setInterval(sendClientDiag, 60000);
 skFrame();

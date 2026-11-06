@@ -229,10 +229,64 @@ function reportMaxTexture() {
   transport.send('display.maxTexture|' + maxTextureSide);
 }
 
+// How this browser draws the map, for the bug report dump (system_info.txt on the host): the
+// WebGL renderer (a tablet without a GPU driver shows Mesa's "llvmpipe": the map is drawn by
+// the CPU and will never be smooth), its texture limit, the pixel ratio and canvas, and the
+// frame rate and draw time it reaches. Every browser sends it, observers too: it describes the
+// sender's own device. Sent from frame.js shortly after CanvasKit is up, then every minute,
+// and just before a bug report is made.
+let _drawMsSum = 0, _drawMsN = 0, _drawMsMax = 0;
+function noteDrawMs(ms) { _drawMsSum += ms; _drawMsN++; if (ms > _drawMsMax) _drawMsMax = ms; }
+function glInfo() {
+  // CanvasKit's own context when it has one (asking for the same type returns it); otherwise
+  // a throwaway canvas, so a probe never takes the map canvas before CanvasKit does.
+  const tryOn = cv => {
+    try {
+      let gl = cv.getContext('webgl2');
+      if (gl) return { gl, kind: 'webgl2' };
+      gl = cv.getContext('webgl');
+      if (gl) return { gl, kind: 'webgl1' };
+    } catch (e) { /* no WebGL */ }
+    return null;
+  };
+  const got = (grCtx && tryOn(ckcv)) || tryOn(document.createElement('canvas'));
+  if (!got) return { kind: 'none' };
+  const gl = got.gl;
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  return {
+    kind: got.kind,
+    renderer: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+    vendor: dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
+    version: gl.getParameter(gl.VERSION),
+    maxTexture: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+  };
+}
+function clientDiagReport() {
+  const f = [];
+  const put = (k, v) => { if (v !== undefined && v !== null && v !== '') f.push(k + '=' + String(v).replace(/[\t\r\n]/g, ' ')); };
+  let g;
+  try { g = glInfo(); } catch (e) { g = { kind: 'error ' + (e && e.message || e) }; }
+  put('gl', g.kind);
+  put('renderer', g.renderer);
+  put('vendor', g.vendor);
+  put('glVersion', g.version);
+  put('maxTexture', g.maxTexture);
+  put('fps', fps.toFixed(1));
+  if (_drawMsN > 0) put('drawMs', (_drawMsSum / _drawMsN).toFixed(1) + ' / ' + _drawMsMax.toFixed(1));
+  put('canvas', ckcv.width + 'x' + ckcv.height);
+  put('dpr', (window.devicePixelRatio || 1).toFixed(2) + (dpr !== (window.devicePixelRatio || 1) ? ' (drawn at ' + dpr + ')' : ''));
+  put('screen', screen.width + 'x' + screen.height);
+  put('skia', ckStatus);
+  put('ua', navigator.userAgent);
+  _drawMsSum = 0; _drawMsN = 0; _drawMsMax = 0; // the next report covers the frames since this one
+  return f.join('\t').slice(0, 900); // one WebSocket frame on the host (1 KiB)
+}
+function sendClientDiag() { try { transport.send('diag.client|' + clientDiagReport()); } catch (e) { /* diagnostics only */ } }
+
 // An observer (a browser without control) sees everything and changes nothing (#397): the
 // host drops its commands, so say why when a tap of its own was refused. The host's
 // ObserverIds plus the hub's own control.* / diag.ping are what it may send.
-const OBSERVER_IDS = new Set(['control.acquire', 'control.release', 'control.presence', 'diag.ping', 'boundary.refresh', 'lists.refresh', 'import.scan']);
+const OBSERVER_IDS = new Set(['control.acquire', 'control.release', 'control.presence', 'diag.ping', 'diag.client', 'boundary.refresh', 'lists.refresh', 'import.scan']);
 let _viewOnlyToastT = -Infinity;
 const _send = transport.send;
 transport.send = cmd => {

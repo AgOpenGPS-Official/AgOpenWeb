@@ -285,5 +285,6 @@ document.getElementById('br-submit').addEventListener('pointerdown', e => {
   // No title needed: the point is to capture the moment. The host names it "untitled".
   const t = document.getElementById('br-title').value.trim();
   document.getElementById('br-status').textContent = tr('Creating bug report…');
+  sendClientDiag(); // this browser's GPU and frame rate as they are now, into the dump
   transport.send('app.bugReport|' + t + '\t' + document.getElementById('br-desc').value);
 });

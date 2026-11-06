@@ -15,7 +15,7 @@ namespace AgOpenWeb.RemoteWiring;
 public static partial class RemoteServerWiring
 {
     // A browser without control is an observer: it sees everything and changes nothing
-    // (#397). Only these ids run for it; the hub handles control.* and diag.ping itself.
+    // (#397). Only these ids run for it; the hub handles control.*, diag.ping and diag.client itself.
     // Fail-closed: a new id needs control unless it is added here, and only a request
     // that changes no setting, data or machine state belongs here.
     internal static readonly System.Collections.Generic.HashSet<string> ObserverIds = new()
@@ -585,7 +585,8 @@ public static partial class RemoteServerWiring
 
     // File / Application Menu write-side. Reset (client-confirmed), hotkey edits, and bug-report
     // dump go straight to the services / ConfigStore (no native dialogs). Language rides the VM.
-    private static void ApplyAppCommand(IServiceProvider services, AgOpenWeb.ViewModels.MainViewModel vm, string cmd, string arg)
+    private static void ApplyAppCommand(IServiceProvider services, AgOpenWeb.ViewModels.MainViewModel vm, string cmd, string arg,
+        Func<string>? browsersSummary = null)
     {
         var configService = services.GetRequiredService<IConfigurationService>();
         var store = services.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>();
@@ -642,7 +643,8 @@ public static partial class RemoteServerWiring
                             services.GetService<INtripClientService>(), services.GetService<IGpsService>()),
                         ntripSessionReport: AgOpenWeb.Services.NtripSupportReport.Build(
                             services.GetService<INtripClientService>(), services.GetService<IGpsService>()),
-                        ntripSummary: AgOpenWeb.Services.NtripSupportReport.Summary(services.GetService<INtripClientService>()));
+                        ntripSummary: AgOpenWeb.Services.NtripSupportReport.Summary(services.GetService<INtripClientService>()),
+                        browsersSummary: browsersSummary?.Invoke());
                 }
                 catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; return; }
                 var job = ActiveJobForDump(services, state);

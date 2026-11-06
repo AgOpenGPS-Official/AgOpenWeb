@@ -28,6 +28,12 @@ public sealed class WebSocketHub
 
     public WebSocketHub(ControlAuthority authority) => _authority = authority;
 
+    /// <summary>How each browser draws the map (<c>diag.client</c>), for the bug report dump.</summary>
+    public ClientDiagnostics Diagnostics { get; } = new();
+
+    /// <summary>The dump's "Browsers" section (<see cref="ClientDiagnostics.Summary"/>).</summary>
+    public string DiagnosticsSummary() => Diagnostics.Summary(_authority.HoldsFresh);
+
     /// <summary>True for a command id that needs control: it is dropped unless the
     /// sending connection currently holds fresh authority (the host gates all but a few).
     /// Set by the host (the app knows its command ids); null = nothing restricted.</summary>
@@ -89,6 +95,7 @@ public sealed class WebSocketHub
         {
             _authority.Drop(id); // revoke + failsafe if this connection held control
             _clients.TryRemove(id, out _);
+            Diagnostics.Left(id);
             client.Gate.Dispose();
             try
             {
@@ -120,6 +127,11 @@ public sealed class WebSocketHub
             case "diag.ping":
                 if (_clients.TryGetValue(conn, out var pinger))
                     _ = SendToAsync(pinger, WireCodec.EncodePong(arg), CancellationToken.None);
+                return;
+            // How this browser draws the map, for the bug report dump. From observers too: it
+            // describes the sender's own device and changes nothing in the app.
+            case "diag.client":
+                Diagnostics.Report(conn, arg);
                 return;
         }
 

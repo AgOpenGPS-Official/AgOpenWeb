@@ -180,6 +180,30 @@ public class DebugDumpJobContentTests
         Assert.That(cfg.RootElement.GetProperty("AutoSteer").GetProperty("CountsPerDegree").GetDouble(), Is.EqualTo(100));
     }
 
+    // How each browser draws the map ends system_info.txt, so a slow map on a tablet without a
+    // GPU driver is seen at once.
+    [Test]
+    public void System_info_ends_with_the_display_quality_and_the_browsers()
+    {
+        string SystemInfo(string? browsers)
+        {
+            var store = new ConfigurationStore();
+            store.Display.DisplayResolutionMultiplier = 1.0;
+            var snap = DebugDumpService.Capture(Settings(), RuntimeStateCapture.From(new ApplicationState()),
+                store, browsersSummary: browsers);
+            using var a = ZipFile.OpenRead(DebugDumpService.WriteDump(snap, outputDirectory: _dir));
+            return new StreamReader(a.GetEntry("system_info.txt")!.Open()).ReadToEnd();
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(SystemInfo("Browser (in control, reported 5 s ago):\n  GPU renderer: Mali-G52 (Panfrost)\n"),
+                Does.Contain("GPU renderer: Mali-G52 (Panfrost)"));
+            Assert.That(SystemInfo(null), Does.Contain("Browsers: none reported"));
+            Assert.That(SystemInfo(null), Does.Contain("Display quality: Ultra (coverage resolution multiplier 1)"));
+        });
+    }
+
     [Test]
     public void Dump_without_a_job_has_no_job_entries()
     {

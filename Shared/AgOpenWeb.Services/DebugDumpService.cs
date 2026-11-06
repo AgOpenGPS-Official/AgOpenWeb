@@ -52,7 +52,8 @@ public class DebugDumpService
         ConfigurationStore configStore,
         string? ntripRtcmReport = null,
         string? ntripSessionReport = null,
-        string? ntripSummary = null)
+        string? ntripSummary = null,
+        string? browsersSummary = null)
     {
         string? profileName = null;
         try { profileName = configStore.ActiveVehicleProfileName; } catch { }
@@ -60,7 +61,9 @@ public class DebugDumpService
         var entries = snap.Entries;
 
         // 1. System info
-        entries.Add(("system_info.txt", BuildSystemInfo(ntripSummary)));
+        double? quality = null;
+        try { quality = configStore.Display.DisplayResolutionMultiplier; } catch { }
+        entries.Add(("system_info.txt", BuildSystemInfo(ntripSummary, browsersSummary, quality)));
 
         // 2. App settings
         try
@@ -350,7 +353,7 @@ public class DebugDumpService
         return finalPath;
     }
 
-    private static string BuildSystemInfo(string? ntripSummary)
+    private static string BuildSystemInfo(string? ntripSummary, string? browsersSummary = null, double? displayQuality = null)
     {
         var sb = new StringBuilder();
 
@@ -378,6 +381,12 @@ public class DebugDumpService
         sb.AppendLine(inv, $"Processors: {Environment.ProcessorCount}");
         sb.AppendLine(inv, $"Working Set: {Environment.WorkingSet / 1024 / 1024}MB");
         if (!string.IsNullOrEmpty(ntripSummary)) sb.AppendLine(inv, $"NTRIP: {ntripSummary}");
+        // How each browser draws the map (GPU or software, frame rate): a slow map on a weak
+        // tablet is told apart from a slow app at a glance.
+        sb.AppendLine();
+        if (displayQuality is { } q)
+            sb.AppendLine(inv, $"Display quality: {AgOpenWeb.Models.Configuration.DisplayConfig.QualityLabel(q)} (coverage resolution multiplier {q:0.##})");
+        sb.Append(string.IsNullOrEmpty(browsersSummary) ? "Browsers: none reported\n" : browsersSummary);
         return sb.ToString();
     }
 
