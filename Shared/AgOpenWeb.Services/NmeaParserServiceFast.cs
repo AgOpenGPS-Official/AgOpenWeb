@@ -403,18 +403,24 @@ public class NmeaParserServiceFast
         if (fieldCount < MIN_PANDA_FIELDS) return false;
         DecodeAogPositionFields(data, commas, ref state);
 
-        state.HasDualHeading = true;
         state.SentenceType = GpsSentenceType.Paogi;
         var headingField = GetField(data, commas, FIELD_HEADING);
         var rollField = GetField(data, commas, FIELD_ROLL);
 
-        if (headingField.Length > 0)
+        // An empty heading field is a receiver without a dual-antenna solution this epoch (an
+        // antenna lost, a cable off), not a heading of 0° (north): AutoSteer would turn the
+        // wheels to full lock on any other course. Without a dual heading the fix takes the
+        // Fix path, as a $PANDA does with Dual GPS on, and the operator is told the dual
+        // heading is missing (#157). AgIO reads the empty field as 0.
+        if (headingField.Length > 0 && Utf8Parser.TryParse(headingField, out double dualHeading, out _))
         {
-            Utf8Parser.TryParse(headingField, out state.Heading, out _);
+            state.Heading = dualHeading;
+            state.HasDualHeading = true;
         }
         else
         {
             state.Heading = 0;
+            state.HasDualHeading = false;
         }
         state.ImuHeading = 0;
         state.ImuValid = false;
