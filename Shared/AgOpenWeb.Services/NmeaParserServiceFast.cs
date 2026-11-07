@@ -497,12 +497,14 @@ public class NmeaParserServiceFast
             Utf8Parser.TryParse(altField, out state.Altitude, out _);
         }
 
-        // Age of differential (field 10)
+        // Age of differential (field 10). A receiver leaves it empty when it has no corrections:
+        // NaN then, so the screen reads "—" rather than a reassuring 0.0, or the age the
+        // corrections had when they stopped minutes ago (the state lives from one sentence to
+        // the next). AgIO resets it to 0 on every sentence.
         var ageField = GetField(data, commas, FIELD_AGE);
-        if (ageField.Length > 0)
-        {
-            Utf8Parser.TryParse(ageField, out state.DifferentialAge, out _);
-        }
+        state.DifferentialAge = ageField.Length > 0 && Utf8Parser.TryParse(ageField, out double age, out _)
+            ? age
+            : double.NaN;
 
         // Speed in knots (field 11) - convert to m/s
         var speedField = GetField(data, commas, FIELD_SPEED);
