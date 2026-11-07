@@ -135,6 +135,10 @@ jobs:
       - name: Build Steer Wizard Scenario harness
         run: dotnet build Tests/AgOpenWeb.SteerWizardScenarios.Tests/ --verbosity minimal
 
+      # And the GPS and NTRIP harness (gps-ntrip-scenarios.yml runs it nightly).
+      - name: Build GPS and NTRIP Scenario harness
+        run: dotnet build Tests/AgOpenWeb.GpsNtripScenarios.Tests/ --verbosity minimal
+
   # Work budgets for the GPS cycle and the 100 Hz control tick (Performance/HotPathBudgetTests):
   # a large field driven through the real pipeline, every cycle held to a budget of polygon
   # edges, coverage lookups, offset points and bytes allocated. Counts, not time, so the
