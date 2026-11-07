@@ -20,6 +20,10 @@ public sealed class NtripTimeouts
     public TimeSpan Header { get; init; } = TimeSpan.FromSeconds(15);
     /// <summary>No data on an accepted connection for this long ends it (as the former stall watchdog did).</summary>
     public TimeSpan NoData { get; init; } = TimeSpan.FromSeconds(30);
+    /// <summary>After the network changed, a stream quiet this long is on a path that is gone (Wi-Fi to
+    /// the phone's hotspot): nothing tells TCP, so it would otherwise wait out <see cref="NoData"/>.
+    /// Corrections come every second, so a live stream is never this quiet.</summary>
+    public TimeSpan QuietAfterNetworkChange { get; init; } = TimeSpan.FromSeconds(3);
     /// <summary>RTKLIB sends "ICY 200 OK" alone and then waits for the next epoch: after this pause the line is the whole header.</summary>
     public TimeSpan IcyGrace { get; init; } = TimeSpan.FromMilliseconds(250);
 }
