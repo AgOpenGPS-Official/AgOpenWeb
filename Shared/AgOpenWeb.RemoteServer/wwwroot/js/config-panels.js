@@ -47,6 +47,11 @@ function populateToolCfg(force) {
   const hi = document.getElementById('tc-img-hitch');
   const hp = '/icons/' + (['ToolHitchPageFront', 'ToolHitchPageRear', 'ToolHitchPageTBT', 'ToolHitchPageTrailing'][t.type] || 'ToolHitchPageRear') + '.png';
   if (!hi.src.endsWith(hp)) hi.src = hp;
+  // The pivot picture shows the choice, as AgOpenGPS's buttons do: the tool ahead of its wheels,
+  // or behind them (also for Zero).
+  const pi = document.getElementById('tc-img-pivot');
+  const pp = '/icons/ToolHitchPivotOffset' + (cfgGet('tool.pivotSide') === 'ahead' ? 'Pos' : 'Neg') + '.png';
+  if (!pi.src.endsWith(pp)) pi.src = pp;
   // Conditional visibility by tool type (0 front, 1 rear, 2 TBT, 3 trailing).
   const trailing = t.type === 3, tbt = t.type === 2, trailtbt = trailing || tbt;
   tcShow('rigid', !trailing); tcShow('trailtbt', trailtbt); tcShow('tbt', tbt); tcShow('notrailtbt', !trailtbt);
