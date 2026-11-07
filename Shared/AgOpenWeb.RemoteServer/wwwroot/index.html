@@ -518,9 +518,10 @@
         </div></div>
       </div>
       <div id="tcs-pivot" class="cfg-body" data-strip="tc-sub" hidden>
-        <div class="vc-diagrow"><img src="/icons/ToolHitchPivotOffsetPos.png" class="vc-diag" alt=""><div class="vc-fieldcol">
+        <div class="vc-diagrow"><img id="tc-img-pivot" src="/icons/ToolHitchPivotOffsetNeg.png" class="vc-diag" alt=""><div class="vc-fieldcol">
           <label>Pivot distance (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.trailingToolToPivotLength" type="number" step="0.01">
-          <label>Direction</label><div class="ln-seg"><button class="cfg-act" data-key="tool.pivotSide" data-val="behind">Behind</button><button class="cfg-act" data-key="tool.pivotSide" data-val="zero">Zero</button><button class="cfg-act" data-key="tool.pivotSide" data-val="ahead">Ahead</button></div>
+          <!-- Where the working line is, from the tool's own wheels (AgOpenGPS: behind +, ahead -). -->
+          <label>Direction</label><div class="ln-seg ln-seg-v"><button class="cfg-act" data-key="tool.pivotSide" data-val="ahead">Tool ahead of its wheels</button><button class="cfg-act" data-key="tool.pivotSide" data-val="zero">Zero</button><button class="cfg-act" data-key="tool.pivotSide" data-val="behind">Tool behind its wheels</button></div>
         </div></div>
         <div class="cfg-note" data-show="notrailtbt">Pivot settings apply only to Trailing and TBT tools.</div>
       </div>

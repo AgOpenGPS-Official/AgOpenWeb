@@ -11,6 +11,12 @@ function cfgGet(key) {
     const off = config.vehicle && config.vehicle.antennaOffset;
     return typeof off !== 'number' ? undefined : off < -0.005 ? 'left' : off > 0.005 ? 'right' : 'center';
   }
+  // The same for the tool's pivot direction: positive is the working line behind the tool's
+  // wheels, negative ahead of them (AgOpenGPS setTool_trailingToolToPivotLength).
+  if (key === 'tool.pivotSide') {
+    const d = config.tool && config.tool.trailingToolToPivotLength;
+    return typeof d !== 'number' ? undefined : d > 0.005 ? 'behind' : d < -0.005 ? 'ahead' : 'zero';
+  }
   const p = key.split('.'); return config[p[0]] && config[p[0]][p[1]];
 }
 function cfgSend(key, val) { transport.send('config.set|' + key + ':' + val); }
