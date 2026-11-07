@@ -147,7 +147,7 @@ public static class VehicleToolLimits
         // Fewer or narrower sections must leave the implement wider than the overlap too. Checked
         // before anything changes: undoing a section count afterwards brought the sections back
         // at the default width, not their own.
-        if (key is "tool.numSections" or "tool.sectionWidth"
+        if (key is "tool.numSections" or "tool.sectionWidth" or "tool.defaultSectionWidth"
             && ImplementWidthAfter(key, value, v, store) - store.Tool.Overlap <= 0.01)
             return "The implement must stay wider than the overlap: lower the overlap first";
         // AutoSteer engages only between the two speeds: they must leave a band.
@@ -158,20 +158,16 @@ public static class VehicleToolLimits
         return null;
     }
 
-    // The implement width (m) the change would leave: a section count keeps the first sections'
-    // widths and seeds new ones at the default width (ConfigurationStore.NumSections); a width
-    // counts only for a section in use.
+    // The implement width (m) the change would leave: a section count or a default width sets
+    // every section to the default width (#676); a width counts only for a section in use.
     private static double ImplementWidthAfter(string key, string value, double v, ConfigurationStore store)
     {
         var tool = store.Tool;
         int now = store.NumSections;
         if (key == "tool.numSections")
-        {
-            int n = Math.Clamp((int)v, 1, ToolConfig.MaxSections);
-            double cm = 0;
-            for (int i = 0; i < n; i++) cm += i < now ? tool.GetSectionWidth(i) : tool.DefaultSectionWidth;
-            return cm > 0 ? cm / 100.0 : tool.Width;
-        }
+            return Math.Clamp((int)v, 1, ToolConfig.MaxSections) * tool.DefaultSectionWidth / 100.0;
+        if (key == "tool.defaultSectionWidth")
+            return now * v / 100.0;
         int idx = int.Parse(value[..value.IndexOf(',')], NumberStyles.Integer, CultureInfo.InvariantCulture);
         if (idx >= now) return store.ActualToolWidth;
         return store.ActualToolWidth + (v - tool.GetSectionWidth(idx)) / 100.0;

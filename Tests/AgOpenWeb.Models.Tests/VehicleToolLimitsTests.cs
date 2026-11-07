@@ -313,4 +313,48 @@ public class VehicleToolLimitsTests
         var s = new ConfigurationStore { IsMetric = true };
         Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "50.05", s), Is.Not.Null);
     }
+
+    // #676: AgOpenGPS sets every section to the default width when the section count changes;
+    // here a count change only seeded new sections and a default width changed none.
+    [Test]
+    public void A_section_count_sets_every_section_to_the_default_width()
+    {
+        var s = new ConfigurationStore();
+        s.ApplyDefaultSectionWidth(100);
+        s.ApplySectionCount(5);
+        s.Tool.SetSectionWidth(2, 60);
+        s.Tool.DefaultSectionWidth = 350; // as a profile sets it: no section changes
+
+        s.ApplySectionCount(5); // the same count again
+
+        Assert.That(Enumerable.Range(0, 5).Select(s.Tool.GetSectionWidth), Is.All.EqualTo(350));
+        Assert.That(s.ActualToolWidth, Is.EqualTo(17.5).Within(1e-9));
+    }
+
+    [Test]
+    public void A_default_width_sets_every_section()
+    {
+        var s = new ConfigurationStore();
+        s.ApplySectionCount(5);
+        s.Tool.SetSectionWidth(0, 60);
+
+        s.ApplyDefaultSectionWidth(350);
+
+        Assert.That(Enumerable.Range(0, 5).Select(s.Tool.GetSectionWidth), Is.All.EqualTo(350));
+        Assert.That(s.ActualToolWidth, Is.EqualTo(17.5).Within(1e-9));
+    }
+
+    [Test]
+    public void A_default_width_that_leaves_the_implement_no_wider_than_the_overlap_is_refused()
+    {
+        var s = new ConfigurationStore();
+        s.ApplySectionCount(2);
+        s.Tool.Overlap = 1.0;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(VehicleToolLimits.Check("tool.defaultSectionWidth", "40", s), Does.Contain("wider than the overlap"), "2 x 0.4 m");
+            Assert.That(VehicleToolLimits.Check("tool.defaultSectionWidth", "60", s), Is.Null, "2 x 0.6 m");
+        });
+    }
 }

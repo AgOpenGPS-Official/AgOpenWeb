@@ -338,6 +338,18 @@ public class ToolConfig : ObservableObject
     }
 
     /// <summary>
+    /// Sets every section to <paramref name="cm"/>, with one change notification: the operator
+    /// changed the section count or the default width (#676).
+    /// </summary>
+    public void SetAllSectionWidths(double cm)
+    {
+        var widths = new double[MaxSections];
+        Array.Fill(widths, cm);
+        SectionWidths = widths;
+        OnPropertyChanged(nameof(TotalSectionWidth));
+    }
+
+    /// <summary>
     /// Sets a specific section width by index and raises change notification.
     /// </summary>
     public void SetSectionWidth(int index, double value)
