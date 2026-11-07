@@ -90,6 +90,24 @@ public class SteerWizardZeroChecksTests
     }
 
     [Test]
+    public void Zero_WAS_asks_again_when_the_wheels_moved_between_the_presses()
+    {
+        Store.AutoSteer.WasOffset = 0;
+        Store.AutoSteer.CountsPerDegree = 110;
+        var m = new Module();
+        var step = WasStep(m);
+        m.Reads(12);
+        step.ZeroWasCommand.Execute(null);
+
+        m.Tick(3);
+        m.Reads(21); // the wheels moved: not the reading the operator was shown
+        step.ZeroWasCommand.Execute(null);
+
+        Assert.That(Store.AutoSteer.WasOffset, Is.EqualTo(0), "21° was never shown, so it is asked about, not taken");
+        Assert.That(step.TestResult, Does.Contain("21.0°").And.Contain("straight ahead"));
+    }
+
+    [Test]
     public void Zero_WAS_confirmation_expires()
     {
         Store.AutoSteer.WasOffset = 0;

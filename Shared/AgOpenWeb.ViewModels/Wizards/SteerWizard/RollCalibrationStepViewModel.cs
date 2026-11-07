@@ -137,7 +137,7 @@ public class RollCalibrationStepViewModel : WizardStepViewModel
         double roll = LiveRoll;
         // Level ground rarely reads this much: say what it reads and take it only on a second press.
         if (Math.Abs(roll) > ConfirmDeg
-            && !(now - _confirmUtc <= ConfirmWindow && Math.Abs(roll - _confirmRoll) < ConfirmDeg))
+            && !(now - _confirmUtc <= ConfirmWindow && Math.Abs(roll - _confirmRoll) < WasCalibrationStepViewModel.ConfirmMatchDeg))
         {
             _confirmUtc = now;
             _confirmRoll = roll;
