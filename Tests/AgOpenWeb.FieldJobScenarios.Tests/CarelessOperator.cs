@@ -58,6 +58,9 @@ public static class CarelessOperator
                 OnFix = async run =>
                 {
                     await lose(run);
+                    // AgOpenWeb's GPS watchdog runs on the wall clock (GpsLostAfterMs = 2000 in its
+                    // 100 ms status loop), so the 5 s outage is driven at real time.
+                    if (lostAt >= 0 && run.Fix - lostAt < 50) await Task.Delay(100);
                     if (lostAt >= 0 && run.Fix - lostAt == 50) { run.GpsOn = true; run.Did("GPS back"); }
                     if (lostAt >= 0 && !masterFixed && run.Fix - lostAt == 90)
                     {
@@ -95,7 +98,9 @@ public static class CarelessOperator
                 OnFix = async run =>
                 {
                     if (!on && run.InTurn && run.TurnsStarted == 2) { on = true; await run.SendAsync("youturn.skipToggle"); run.Did("skip rows ON (turn 2 in progress)"); }
-                    if (on && !offAgain && !run.InTurn && run.TurnsStarted == 2) { offAgain = true; await run.SendAsync("youturn.skipToggle"); run.Did("skip rows OFF again"); }
+                    // The button cycles normal -> alternative -> ignore worked tracks -> normal, so
+                    // "off again" is two more taps (one tap would leave it skipping rows).
+                    if (on && !offAgain && !run.InTurn && run.TurnsStarted == 2) { offAgain = true; await run.SendAsync("youturn.skipToggle"); await run.SendAsync("youturn.skipToggle"); run.Did("skip rows back to normal (two taps: the button cycles three modes)"); }
                 },
             };
         }
