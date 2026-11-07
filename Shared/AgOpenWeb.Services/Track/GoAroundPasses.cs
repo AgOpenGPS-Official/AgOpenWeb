@@ -91,10 +91,40 @@ public sealed class GoAroundPasses
     /// </summary>
     public const double MinMargin = 0.3;
 
-    // The safety margin (never under MinMargin), plus a trailed tool's cut-in: round the
-    // obstacle the inside of the bend is the obstacle's side.
-    private double Margin => Math.Max(MinMargin, _config.Guidance.GoAroundMargin)
-        + ObstacleDetour.TrailedCutIn(_config.Tool, _config.Vehicle.HitchLength, _config.Guidance.GoAroundRadius);
+    /// <summary>The bend radius <see cref="MinMargin"/> holds for: the follower cuts a tighter bend by more.</summary>
+    public const double MinMarginRadius = 6.0;
+
+    /// <summary>
+    /// The least safety margin for a bend of <paramref name="radius"/>: <see cref="MinMargin"/>
+    /// from <see cref="MinMarginRadius"/> up, and more on a tighter bend, faster than in inverse
+    /// proportion (the scenario tractor cuts a 4 m bend by 0.4 m, a 6 m one by 0.25 m).
+    /// </summary>
+    public static double MinMarginFor(double radius) =>
+        MinMargin * Math.Pow(Math.Max(1.0, MinMarginRadius / Math.Max(radius, 0.1)), 1.5);
+
+    /// <summary>
+    /// The radius the bends are built with: the Curve radius setting, but never under the
+    /// tractor's own minimum turning radius (wheelbase over the tangent of the steer angle),
+    /// since the follower cannot hold a bend the tractor cannot steer.
+    /// </summary>
+    public double Radius
+    {
+        get
+        {
+            double setting = _config.Guidance.GoAroundRadius, min = _config.Vehicle.MinTurningRadius;
+            return double.IsFinite(min) && min > 0 ? Math.Max(setting, min) : setting;
+        }
+    }
+
+    /// <summary>
+    /// The safety margin in force: the setting, never under <see cref="MinMarginFor"/> the radius.
+    /// What the implement keeps off a hard Go around obstacle, on the bend and in the planner.
+    /// </summary>
+    public double SafetyMargin => Math.Max(MinMarginFor(Radius), _config.Guidance.GoAroundMargin);
+
+    // The safety margin plus a trailed tool's cut-in: round the obstacle the inside of the bend
+    // is the obstacle's side.
+    private double Margin => SafetyMargin + ObstacleDetour.TrailedCutIn(_config.Tool, _config.Vehicle.HitchLength, Radius);
 
     /// <summary>
     /// The pass <paramref name="pass"/> (offset <paramref name="distAway"/> from
@@ -105,7 +135,7 @@ public sealed class GoAroundPasses
     {
         if (track.IsClosed || !HasGoRound(boundary)) return null;
         var pins = ReferenceEquals(track, _pinsTrack) ? _pinSides : null;
-        return _detour.For(track, distAway, pass, boundary, KeepOut, _config.Guidance.GoAroundRadius, Margin, pins);
+        return _detour.For(track, distAway, pass, boundary, KeepOut, Radius, Margin, pins);
     }
 
     /// <summary>

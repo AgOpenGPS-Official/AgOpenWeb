@@ -55,7 +55,10 @@ around it".
 **P4. A turn is checked against the Go around obstacles too.** A planned or manual turn path
 is refused when the implement's swept path comes within the safety margin of any Go around
 obstacle, as it is for a hard U-turn obstacle in #613, and the 20 m of next pass after the turn
-is checked the same way. A headland turn refused because of a Go around obstacle promotes that
+is checked the same way: the tractor outside every turn line and, since the real-field run of
+2026-11-06 (an 8 m sprayer turning at a tree came out with the boom 0.8 m in a ditch), the
+implement the safety margin off every hard fence. How close the next pass itself runs to a fence
+is the pass's business; a turn only must not come out inside one. A headland turn refused because of a Go around obstacle promotes that
 obstacle to a U-turn obstacle for the pass (P3), so the turn is made before it instead.
 
 **P5. A safety net that does not trust the line.** With AutoSteer on and no turn being driven,
@@ -86,6 +89,62 @@ count, choices, Hard, outlines) is part of the bend's cache key, and a planned t
 again when it changes, so a changed choice or a new obstacle takes effect on the next cycle on
 every line at once.
 
+**P9. A change under a turn being driven is judged, not planned.** A turn being driven is not
+planned again (that could whip the steering in the arc). When the obstacles change under it,
+the rest of the path and the 20 m after it are checked once against the obstacles as they are
+now (`ObstacleChangedUnderTurn`, the same test as at planning), and AutoSteer goes off with the
+alarm when they run into one. The operator who does everything wrong found it on the real
+fields: a tree made drive-through and Go around again 5 m ahead while the entry leg ran through
+it, and a ditch made a U-turn obstacle again 13 m ahead with the turn's exit landing on its turn
+line, both ended with the alarm at 0 m.
+
+**P10. The arc is seated where a turn may be.** The generator seats an arc by walking back from
+the crossing until nothing of it is blocked, then slides it forward to touch the turn line. On the
+real fields a wall stood 14 m past a tree the pass went round: the arc was seated inside the bend
+(nothing blocked it there), and slid along the bend's heading, 24° off the pass, for 127 m until it
+met the field's edge, a turn planned in the next field. Now the room round every Go around
+obstacle blocks the arc as a turn line does (`IsPointBlockedForTurn`, the same keep-out P4 holds
+the path to), the slide is bounded by the distance walked back plus a step (`MoveTurnInsideTurnLine`),
+and an arc that slides off without touching the line is seated further back, before the tree.
+
+**P11. A hard obstacle's turn line counts the implement.** The turn line of a U-turn obstacle is
+the obstacle offset by the U-turn distance, as AgOpenGPS lays it, for the tractor. A hard obstacle's
+stands the implement's reach beyond the pivot's line (half its width plus its offset, `HardReach`)
+further out, so the pass itself keeps the implement, not only the tractor, that distance from a
+wall or a ditch: with the tractor's line alone, a trailed 3 m tool offset 2.5 m passed a wall with
+the pivot clear of its turn line and the tool 0.56 m into the wall, with no turn and no alarm, and
+an 8 m boom ran a metre into a ditch beside its pass. A soft obstacle the implement may pass over
+keeps the tractor's distance, as the field's edge does. The planner's own hard-obstacle clearance
+(the implement the U-turn distance off the fence along the turn) is the same rule seen from the turn.
+
+**P12. A turn lands on a straight stretch, and keeps a ditch's room from a Go around tree.** The
+exit leg lands on the next pass as the pipeline will steer it, bent round its Go around obstacles
+(P4). Where that pass bends at the landing itself, the generator joined the bend's slope (a net
+turn of 150°, loops of 500°), the tractor came out of the arc 5 to 8 m off the bent line, and a
+trailed implement swept through the tree: on the real fields a towed 10 m sprayer by 1.7 m, hay
+rakes of one, two and four rotors by 0.5 m, and one rake left pointing at a wall 5 m away. Now a
+turn whose last point is more than half a metre off the straight next pass (`LandsOnBend`) is
+seated further back (4 m a step, 30 m at most), and if none lands straight there is no turn; a
+turn whose heading changes by more than 400° in all is malformed (the loops were 480° to 520°). The
+room a turn keeps from a Go around obstacle (`GoAroundRoom`) is half the track plus the larger of
+the Go around margin and the U-turn distance from boundary, the ditch's room, since a turn is driven
+with a metre or more of tracking error in a loop (the rig saw 1.3 m beside a tree in the headland,
+the tractor 0.1 m into it); the implement keeps the U-turn distance off a hard one along the path
+and the safety margin while the rig settles on the next pass (8 m plus twice a trailed hitch). A
+turn whose legs or exit meet an obstacle is also seated further back before it is given up.
+
+**P13. A bend never takes the line more than two implement widths off the pass.** The way round one
+tree runs into the next and the bend goes round both (P4); nothing bounded how far that chain
+could go. On a real field a 12.5 m rake, 1 m margin, met a 5.5 m tree 10 m off its pass with a
+15 m U-turn obstacle on the other side, the way round it ran into a second tree, and the line
+left the pass at 45° for 47 m, nearly four passes, and missed the U-turn obstacle the pass ran
+into altogether. A bend now moves the line at most `ObstacleDetour.MaxOffset`: two implement
+widths (four times the keep-out less its margin: that rake's 6 m cut-in on a 6 m bend widens
+nothing), never under 20 m. An obstacle that needs more on
+the side with room, or a next tree that would take the chain past it, is not gone round and the
+U-turn planner turns before it ("No room to go around Inner N on this pass"), which is what the
+operator would do with a row of trees.
+
 ## Geometry
 
 Unchanged from #610 (`ObstacleDetour`): each Go around obstacle grown by the keep-out distance
@@ -96,8 +155,11 @@ Lasry-Lions smoothing so that no curve is tighter than the set radius; obstacles
 the pass gone round together on one side; a bent line checked against every grown obstacle,
 every U-turn obstacle's turn line, and the turn area; a conflict tries the other side once, then
 the obstacle has no room (P3). The two settings stay: **Curve radius** (6 m) and **Safety
-margin** (1 m, never under 0.3 m: on the scenario field the tractor holds a bent line to about
-0.25 m, so a margin of nothing would put the implement into a hard obstacle on every bend),
+margin** (1 m, never under 0.3 m on a 6 m bend and more on a tighter one, `MinMarginFor`: on the
+scenario field the tractor holds a 6 m bend to about 0.25 m and a 4 m one to 0.4 m, so a margin
+of nothing would put the implement into a hard obstacle on every bend); the radius is never under
+the tractor's own minimum turning radius (wheelbase over the tangent of the steer angle), which
+the follower cannot hold,
 saved with the tool profile.
 
 ## Changes by component
@@ -108,8 +170,9 @@ saved with the tool profile.
   its side and is blocked, not flipped, when that side has no room) and, for every obstacle gone
   round, its side and where the tractor counts as beside it (`Bend.Rounds`).
 - **`GoAroundPasses`** (Services/Track, one singleton for the pipeline and the planner): takes the
-  settings and the tool geometry from the configuration store (the margin never under
-  `MinMargin`, 0.3 m), keeps the pins (set and released by the pipeline from the bend it steers,
+  settings and the tool geometry from the configuration store (the radius never under the
+  tractor's minimum turning radius, `Radius`; the margin never under `MinMarginFor` it,
+  `SafetyMargin`), keeps the pins (set and released by the pipeline from the bend it steers,
   `Steered`: taken beside an obstacle once the tractor is over on the bend's side, let go when it
   has left the bend or got to the other side), exposes the bend steered now (`Current`,
   `CurrentBlocked`) and the straight-ahead test for the net (P5, `ObstacleAhead`).

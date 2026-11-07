@@ -29,7 +29,8 @@ namespace AgOpenWeb.Services.Tests.YouTurn;
 /// holds: while AutoSteer is on, the tractor's wheels and the implement never enter a Go around
 /// obstacle, on the pass or in a turn, and a pass that goes round one is back on its line after it.
 /// Set AGOPENWEB_SCENARIO_REPORT to a file path to get the matrix as a Markdown report, and
-/// AGOPENWEB_SCENARIO_ONLY to a piece of a leg's name (an obstacle, a track, a seed) to run only those legs.
+/// AGOPENWEB_SCENARIO_ONLY to a piece of a leg's name (an obstacle, a track, a seed; several separated by ';' must all
+/// match, '!' in front of one it must not, '|' between alternatives) to run only those legs.
 /// </summary>
 [TestFixture]
 [NonParallelizable] // ConfigurationStore is a singleton.
@@ -44,18 +45,33 @@ public class ObstacleScenarioTests
     private static readonly string[] Tools = { "rear", "front", "trailing", "tbt" };
     private static readonly List<LegResult> Results = new();
 
-    private static bool Wanted(Leg leg)
+    /// <summary>
+    /// AGOPENWEB_SCENARIO_ONLY: alternatives separated by '|', each a list of pieces of a leg's name
+    /// separated by ';' that the leg must all contain; a piece starting with '!' is one it must not.
+    /// </summary>
+    internal static bool Wanted(Leg leg)
     {
         string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
-        return string.IsNullOrEmpty(only) || leg.ToString().Contains(only, StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(only)) return true;
+        string text = leg.ToString();
+        return only.Split('|', StringSplitOptions.RemoveEmptyEntries).Any(alternative =>
+            alternative.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).All(piece =>
+                piece.StartsWith('!')
+                    ? !text.Contains(piece[1..].Trim(), StringComparison.OrdinalIgnoreCase)
+                    : text.Contains(piece, StringComparison.OrdinalIgnoreCase)));
     }
 
+    /// <param name="Tool">rear, front, trailing, tbt, or harvester: a combine, its header a front tool
+    /// on a machine that steers with its rear axle.</param>
+    /// <param name="Hitch">The hitch length (m): a trailed tool's pin to its axle, a rigid tool's or a
+    /// header's distance from the axle; NaN for the rig's default.</param>
     public sealed record Leg(string Obstacle, string Track, bool Forward, string Tool, double Width, double Offset, int Seed,
-        bool TreesGoRound = false)
+        bool TreesGoRound = false, double Hitch = double.NaN)
     {
         public override string ToString() =>
             $"{Obstacle}, {Track}, {(Forward ? "forward" : "back")}, {Tool} {Width.ToString("0.#", CultureInfo.InvariantCulture)} m"
             + (Offset != 0 ? $" offset {Offset.ToString("+0.#;-0.#", CultureInfo.InvariantCulture)} m" : "")
+            + (double.IsNaN(Hitch) ? "" : $" hitch {Hitch.ToString("0.#", CultureInfo.InvariantCulture)} m")
             + (Seed >= 0 ? $", seed {Seed}" : "")
             + (TreesGoRound ? ", trees go around" : "");
     }
@@ -233,12 +249,18 @@ public class ObstacleScenarioTests
 
     // ── the leg ─────────────────────────────────────────────────────────────────────────────
 
-    private static LegResult Run(Leg leg)
+    private static LegResult Run(Leg leg) =>
+        Run(leg, ObstacleTestField.Build(leg.TreesGoRound), ObstacleTestField.Track(leg.Track), Results);
+
+    /// <summary>
+    /// Drives one leg on any field (<see cref="RealFieldScenarioTests"/> drives Renato's own fields
+    /// through it) and records the result in <paramref name="results"/>.
+    /// </summary>
+    internal static LegResult Run(Leg leg, ObstacleTestField.Built field, Models.Track.Track track, List<LegResult> results,
+        double headlandWidth = ObstacleTestField.HeadlandWidth)
     {
-        var field = ObstacleTestField.Build(leg.TreesGoRound);
         var target = field.Obstacles.First(o => o.Name == leg.Obstacle);
-        var track = ObstacleTestField.Track(leg.Track);
-        using var rig = new ObstacleScenarioRig(field, leg.Tool, leg.Width, leg.Offset);
+        using var rig = new ObstacleScenarioRig(field, leg.Tool, leg.Width, leg.Offset, leg.Hitch, headlandWidth: headlandWidth);
         rig.UseTrack(track, 0);
 
         var approach = PlanApproach(field, track, target, leg.Forward, leg.Width, leg.Offset);
@@ -246,7 +268,7 @@ public class ObstacleScenarioTests
             : approach.Room < MinRoom ? $"no room to approach it from there ({approach.Room:F0} m)" : null;
         if (skipped != null)
         {
-            Record(new LegResult(leg, "skipped", skipped, double.NaN, null, double.NaN, double.NaN, null, null, double.NaN, 0,
+            Record(results, new LegResult(leg, "skipped", skipped, double.NaN, null, double.NaN, double.NaN, null, null, double.NaN, 0,
                 Array.Empty<string>(), Array.Empty<string>(), null));
             Assert.Ignore(skipped);
         }
@@ -297,10 +319,11 @@ public class ObstacleScenarioTests
         else if (rig.KickoutReason != null && rig.ObstacleAheadAtKickout is { } ahead && !double.IsInfinity(ahead))
         {
             double required = Math.Min(StopRoom, rig.RoomAtLastArm - 1.5);
-            if (ahead < required)
+            if (ahead < required - 0.1) // a turn's exit can land a hand's breadth short of the stop room
                 failure = $"AutoSteer went off {ahead:F1} m before the obstacle; {required:F1} m were expected";
         }
-        else if (outcome == "went around it" && op == null && Math.Abs(rig.CrossTrack) > 0.5)
+        // ... unless a U-turn began before the check point: the tractor is off the line in its arc.
+        else if (outcome == "went around it" && op == null && rig.Turns == 0 && Math.Abs(rig.CrossTrack) > 0.5)
             failure = $"{Math.Abs(rig.CrossTrack):F2} m off the line {past - extent:F0} m past the obstacle";
         if (goRound) rig.Note($"{Math.Abs(rig.CrossTrack):F2} m off the line at the end");
         if (leg.TreesGoRound && rig.WorstClearanceGoRound < double.MaxValue)
@@ -310,7 +333,7 @@ public class ObstacleScenarioTests
             rig.MaxPathError, rig.KickoutReason, rig.ObstacleAheadAtKickout, rig.RoomAtLastArm, rig.Time,
             op?.Done ?? (IReadOnlyList<string>)Array.Empty<string>(), rig.Log.ToList(), failure,
             rig.WorstClearanceGoRound, rig.WorstGoRoundObstacle);
-        Record(result);
+        Record(results, result);
 
         TestContext.Out.WriteLine(ScenarioReport.Line(result));
         foreach (var line in rig.Log) TestContext.Out.WriteLine("  " + line);
@@ -318,12 +341,12 @@ public class ObstacleScenarioTests
         return result;
     }
 
-    private static void Record(LegResult r)
+    private static void Record(List<LegResult> results, LegResult r)
     {
-        lock (Results) Results.Add(r);
+        lock (results) results.Add(r);
     }
 
-    private sealed record Approach(double E, double N, double Heading, ObstacleTestField.Obstacle? First, double Room);
+    internal sealed record Approach(double E, double N, double Heading, ObstacleTestField.Obstacle? First, double Room);
 
     /// <summary>
     /// The pass through the obstacle's centre, as the host lays it out (the pass nearest the
@@ -332,7 +355,7 @@ public class ObstacleScenarioTests
     /// workable area with the implement's room behind it clear of every U-turn obstacle. Also the
     /// first U-turn obstacle the pass meets from there and how far along the pass it is.
     /// </summary>
-    private static Approach PlanApproach(ObstacleTestField.Built field, Models.Track.Track track,
+    internal static Approach PlanApproach(ObstacleTestField.Built field, Models.Track.Track track,
         ObstacleTestField.Obstacle target, bool forward, double toolWidth, double toolOffset)
     {
         // The reference line, dense, and the pass's own line.
@@ -429,12 +452,12 @@ internal static class ScenarioReport
         return $"| {r.Leg} | {(r.Failure != null ? "**FAIL** " : "")}{r.Outcome}{(r.Skipped != null ? ": " + r.Skipped : "")} | {clearance} | {pathError} | {kick} | {r.Time.ToString("F0", ci)} s | {mischief} |";
     }
 
-    public static string Build(IReadOnlyList<ObstacleScenarioTests.LegResult> results)
+    public static string Build(IReadOnlyList<ObstacleScenarioTests.LegResult> results, string title = "Obstacle scenarios on Quinta Torta")
     {
         var sb = new StringBuilder();
         var ordered = results.OrderBy(r => r.Leg.TreesGoRound).ThenBy(r => r.Leg.Seed >= 0).ThenBy(r => r.Leg.Obstacle).ThenBy(r => r.Leg.Track).ThenByDescending(r => r.Leg.Forward).ThenBy(r => r.Leg.Tool).ThenBy(r => r.Leg.Width).ThenBy(r => r.Leg.Offset).ThenBy(r => r.Leg.Seed).ToList();
         int failed = ordered.Count(r => r.Failure != null), skipped = ordered.Count(r => r.Skipped != null);
-        sb.AppendLine("# Obstacle scenarios on Quinta Torta");
+        sb.AppendLine("# " + title);
         sb.AppendLine();
         sb.AppendLine($"{ordered.Count} legs: {ordered.Count - failed - skipped} passed, {failed} failed, {skipped} skipped.");
         sb.AppendLine();

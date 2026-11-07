@@ -1056,6 +1056,17 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 lock (_stateLock) _autoSteerEngaged = false;
                 _audioService.Play(SoundEffect.UTurnTooClose);
             }
+            // (5b''') An obstacle changed under a turn being driven (another choice, made hard,
+            // added or moved) and the rest of the turn, or the next pass's first metres, run into
+            // it: a turn being driven is not planned again, so AutoSteer goes off with the alarm.
+            else if ((inner = _youTurnStateMachine.ObstacleChangedUnderTurn(in tickCtx, _youTurn, _goAround.CurrentBlocked)) >= 0)
+            {
+                autoSteerEngaged = false;
+                autoSteerDisengaged = true;
+                disengageReason = $"AutoSteer off: Inner {inner + 1} changed under the turn. Steer by hand.";
+                lock (_stateLock) _autoSteerEngaged = false;
+                _audioService.Play(SoundEffect.UTurnTooClose);
+            }
             // (5b'') The net under going around: the bent line keeps the tractor clear of a Go
             // around obstacle by construction, so a tractor heading into one within the same
             // reach is off that line. Off it by more than the safety margin (the room the bend
@@ -1566,6 +1577,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         PathIndex = src.PathIndex,
         ArcStart = src.ArcStart,
         TurnAtObstacle = src.TurnAtObstacle,
+        TurnAtObstacleIndex = src.TurnAtObstacleIndex,
         IsTurnLeft = src.IsTurnLeft,
         LastTurnWasLeft = src.LastTurnWasLeft,
         DistanceToHeadland = src.DistanceToHeadland,

@@ -258,7 +258,8 @@ public class ObstacleClosedLoopTests
         return double.PositiveInfinity;
     }
 
-    private void AssertNeverSteeredIntoTheDitch()
+    /// <param name="stopRoom">The least distance (m) to the ditch AutoSteer may go off at.</param>
+    private void AssertNeverSteeredIntoTheDitch(double stopRoom = 10)
     {
         string nearest = _worstWhileEngaged == double.MaxValue ? "-" : $"{_worstWhileEngaged:F2} m";
         TestContext.Out.WriteLine($"nearest the ditch while engaged {nearest}; " +
@@ -266,7 +267,7 @@ public class ObstacleClosedLoopTests
             $"; turned at the ditch: {_turnedAtDitch}");
         Assert.That(_worstWhileEngaged, Is.GreaterThanOrEqualTo(0), "AutoSteer steered the tractor or the implement into the ditch");
         if (_kickoutReason != null && _ditchAheadAtKickout is double ahead && !double.IsInfinity(ahead))
-            Assert.That(ahead, Is.GreaterThanOrEqualTo(10), "AutoSteer went off too late to stop before the ditch");
+            Assert.That(ahead, Is.GreaterThanOrEqualTo(stopRoom), "AutoSteer went off too late to stop before the ditch");
     }
 
     /// <summary>Drive until the turn has been made, or AutoSteer is off, then a little more.</summary>
@@ -307,7 +308,10 @@ public class ObstacleClosedLoopTests
         DriveUntil(() => _n >= DitchSouth - metresBefore);
         _intents.RequestClearYouTurn();
         FinishThePass();
-        AssertNeverSteeredIntoTheDitch();
+        // A turn cleared 8 m before the ditch: its turn line stands 4 m off it (the metre plus the
+        // 6 m implement's reach), no arc fits in the 4 m left, and AutoSteer goes off at once, with
+        // the room there is.
+        AssertNeverSteeredIntoTheDitch(Math.Min(10, metresBefore));
     }
 
     [TestCase(1.0)]

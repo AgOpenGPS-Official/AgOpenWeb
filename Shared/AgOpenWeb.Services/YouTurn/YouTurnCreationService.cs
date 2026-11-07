@@ -247,12 +247,19 @@ namespace AgOpenWeb.Services.YouTurn
 
                         for (int i = 0; i < ytList.Count; i++)
                         {
-                            if (input.IsPointInsideTurnArea(ytList[i]) != 0)
+                            if (Blocked(input, ytList[i]))
                             {
                                 isOutOfBounds = true;
                                 break;
                             }
                         }
+                        if (isOutOfBounds) continue;
+
+                        // Move the turn to exact at the turnline; one that slides off without touching
+                        // it (seated inside a Go around bend) is seated further back.
+                        var snapped = MoveTurnInsideTurnLine(input, ytList, head, false, false, SlideBound(ytList, inClosestTurnPt));
+                        if (snapped.Count == 0) { isOutOfBounds = true; continue; }
+                        ytList = snapped;
                     }
                     inClosestTurnPt.CurveIndex = curveIndex;
 
@@ -268,14 +275,6 @@ namespace AgOpenWeb.Services.YouTurn
                             i--;
                             cnt = ytList.Count;
                         }
-                    }
-
-                    // Move the turn to exact at the turnline
-                    ytList = MoveTurnInsideTurnLine(input, ytList, head, false, false);
-                    if (ytList.Count == 0)
-                    {
-                        FailCreate();
-                        return false;
                     }
 
                     // CreateTurn is single-call (youTurnPhase resets to 0 each call), so the
@@ -496,12 +495,20 @@ namespace AgOpenWeb.Services.YouTurn
 
                 for (int i = 0; i < ytList.Count; i++)
                 {
-                    if (input.IsPointInsideTurnArea(ytList[i]) != 0)
+                    if (Blocked(input, ytList[i]))
                     {
                         isOutOfBounds = true;
                         break;
                     }
                 }
+                if (isOutOfBounds) continue;
+
+                // Snap the turn to the turn line. An arc that slides off without touching it was
+                // seated where the pass does not keep its heading (inside a Go around bend): seat
+                // it further back.
+                var snapped = MoveTurnInsideTurnLine(input, ytList, head, false, false, SlideBound(ytList, inClosestTurnPt));
+                if (snapped.Count == 0) { isOutOfBounds = true; continue; }
+                ytList = snapped;
             }
             inClosestTurnPt.CurveIndex = curveIndex;
 
@@ -515,14 +522,6 @@ namespace AgOpenWeb.Services.YouTurn
                     i--;
                     cnt = ytList.Count;
                 }
-            }
-
-            // Snap the turn to the turn line
-            ytList = MoveTurnInsideTurnLine(input, ytList, head, false, false);
-            if (ytList.Count == 0)
-            {
-                FailCreate();
-                return false;
             }
 
             // Add the curve-following entry/exit legs (single-call: see CompleteCurveTurn).
@@ -641,7 +640,7 @@ namespace AgOpenWeb.Services.YouTurn
                         // Are we out of bounds?
                         for (int j = 0; j < cnt4; j += 2)
                         {
-                            if (input.IsPointInsideTurnArea(ytList[j]) != 0)
+                            if (Blocked(input, ytList[j]))
                             {
                                 isOutOfBounds = true;
                                 break;
@@ -651,14 +650,14 @@ namespace AgOpenWeb.Services.YouTurn
                         // First check if not out of bounds
                         if (!isOutOfBounds)
                         {
-                            ytList = MoveTurnInsideTurnLine(input, ytList, head, true, false);
-                            if (ytList.Count == 0)
+                            var snapped = MoveTurnInsideTurnLine(input, ytList, head, true, false, SlideBound(ytList, inClosestTurnPt));
+                            if (snapped.Count > 0)
                             {
-                                FailCreate();
-                                return false;
+                                ytList = snapped;
+                                youTurnPhase = 1;
+                                return true;
                             }
-                            youTurnPhase = 1;
-                            return true;
+                            isOutOfBounds = true; // slid off without touching the turn line: seat it further infield
                         }
 
                         if (stopIfWayOut == 300 || inClosestTurnPt.CurveIndex < 1 || inClosestTurnPt.CurveIndex > (input.GuidancePoints.Count - 2))
@@ -733,7 +732,7 @@ namespace AgOpenWeb.Services.YouTurn
 
                         for (int j = 0; j < cnt3; j += 2)
                         {
-                            if (input.IsPointInsideTurnArea(ytList2[j]) != 0)
+                            if (Blocked(input, ytList2[j]))
                             {
                                 isOutOfBounds = true;
                                 break;
@@ -742,7 +741,7 @@ namespace AgOpenWeb.Services.YouTurn
 
                         if (!isOutOfBounds)
                         {
-                            ytList2 = MoveTurnInsideTurnLine(input, ytList2, head, true, true);
+                            ytList2 = MoveTurnInsideTurnLine(input, ytList2, head, true, true, SlideBound(ytList2, outClosestTurnPt));
                             if (ytList2.Count == 0)
                             {
                                 FailCreate();
@@ -999,7 +998,7 @@ namespace AgOpenWeb.Services.YouTurn
 
                 for (int i = 0; i < ytList.Count; i++)
                 {
-                    if (input.IsPointInsideTurnArea(ytList[i]) != 0)
+                    if (Blocked(input, ytList[i]))
                     {
                         pointOutOfBnd = true;
                         break;
@@ -1032,8 +1031,7 @@ namespace AgOpenWeb.Services.YouTurn
 
                 for (j = 0; j < arr2.Length; j++)
                 {
-                    int bob = input.IsPointInsideTurnArea(arr2[j]);
-                    if (bob != 0)
+                    if (Blocked(input, arr2[j]))
                     {
                         pointOutOfBnd = true;
                         break;
@@ -1238,7 +1236,25 @@ namespace AgOpenWeb.Services.YouTurn
             return closestTurnPt.TurnLineIndex != -1 && closestTurnPt.CurveIndex != -1;
         }
 
-        private List<Vec3> MoveTurnInsideTurnLine(YouTurnCreationInput input, List<Vec3> uTurnList, double head, bool deleteSecondHalf, bool invertHeading)
+        /// <summary>
+        /// A point of a turn being laid out that a turn may not have: inside a turn line, or
+        /// in the room kept round a Go around obstacle (<see cref="YouTurnCreationInput.IsPointBlockedForTurn"/>).
+        /// </summary>
+        /// <summary>The slide allowed to <see cref="MoveTurnInsideTurnLine"/>: from the seated arc back
+        /// to the crossing the arc was walked in from, plus a guidance step or two.</summary>
+        private static double SlideBound(List<Vec3> seated, TurnClosePoint crossing) =>
+            seated.Count == 0 ? 0 : Distance(seated[0], crossing.ClosePt) + 3.0;
+
+        private static bool Blocked(YouTurnCreationInput input, Vec3 point) =>
+            input.IsPointBlockedForTurn?.Invoke(point) ?? (input.IsPointInsideTurnArea(point) != 0);
+
+        /// <param name="maxSlide">How far (m) the turn may be slid forward to touch the turn line. The
+        /// arc was seated at most a guidance step short of a place where it was blocked, so the slide
+        /// is short; one that goes on is sliding along a heading the pass does not keep (an arc seated
+        /// inside a Go around bend, slid along the bend's heading for 127 m until it met the field's
+        /// edge, planned a turn in the next field). Over the bound the turn is given up (an empty list).</param>
+        private List<Vec3> MoveTurnInsideTurnLine(YouTurnCreationInput input, List<Vec3> uTurnList, double head, bool deleteSecondHalf, bool invertHeading,
+            double maxSlide = double.PositiveInfinity)
         {
             // Step 1 make array out of the list so that we can modify the position
             double cosHead = Math.Cos(head);
@@ -1266,8 +1282,7 @@ namespace AgOpenWeb.Services.YouTurn
 
                 for (; j < cnt; j += 1)
                 {
-                    int result = input.IsPointInsideTurnArea(arr2[j]);
-                    if (result != 0)
+                    if (Blocked(input, arr2[j]))
                     {
                         pointOutOfBnd = true;
                         if (j > 0) j--;
@@ -1284,8 +1299,15 @@ namespace AgOpenWeb.Services.YouTurn
             }
 
             // Step 3, we are now inside turnline, move the turn forward until it hits the turnfence in steps of 0.1 meters
+            double slid = 0;
             while (!pointOutOfBnd)
             {
+                slid += 0.1;
+                if (slid > maxSlide)
+                {
+                    _logger.LogDebug("[YouTurn] The turn slid {S:F1} m without touching the turn line; no turn there.", slid);
+                    return uTurnList;
+                }
                 for (int i = 0; i < cnt; i++)
                 {
                     arr2[i].Easting += (sinHead * 0.1);
@@ -1294,7 +1316,7 @@ namespace AgOpenWeb.Services.YouTurn
 
                 for (int a = 0; a < cnt; a++)
                 {
-                    if (input.IsPointInsideTurnArea(arr2[a]) != 0)
+                    if (Blocked(input, arr2[a]))
                     {
                         semiCircleIndex = a;
                         pointOutOfBnd = true;
@@ -1420,8 +1442,36 @@ namespace AgOpenWeb.Services.YouTurn
             // the arc end near the boundary. Bent round its Go around obstacles as the pipeline
             // will steer it, so the exit leg lands on the line that is driven.
             var pass = CurveProcessing.CreateOffsetCurve(reference, distAway);
+            _straightDestination = pass;
             if (input.BendPass != null) pass = input.BendPass(distAway, pass);
+            _bentDestination = pass;
             return CurveProcessing.ExtendCurveEnds(pass);
+        }
+
+        // The destination pass of the last build, straight and bent round its Go around obstacles
+        // (the same list when nothing bends it), for LandsOnBend.
+        private List<Vec3>? _straightDestination, _bentDestination;
+
+        /// <summary>
+        /// Whether a created path ends on a bend of the next pass: its last point more than half a
+        /// metre off the straight next pass, that pass having been bent round a Go around obstacle.
+        /// </summary>
+        private bool LandsOnBend(IReadOnlyList<Vec3> path, out double offStraight)
+        {
+            offStraight = 0;
+            var line = _straightDestination;
+            if (path.Count == 0 || line == null || line.Count < 2 || _bentDestination == null || ReferenceEquals(line, _bentDestination))
+                return false;
+            Vec3 end = path[^1];
+            double best = double.MaxValue;
+            for (int i = 1; i < line.Count; i++)
+            {
+                double d = GeometryMath.PointToSegmentDistance(end.Easting, end.Northing,
+                    line[i - 1].Easting, line[i - 1].Northing, line[i].Easting, line[i].Northing);
+                if (d < best) best = d;
+            }
+            offStraight = best;
+            return best > 0.5;
         }
 
         private void FindInnerTurnPoints(Vec3 fromPt, double heading, TurnClosePoint turnPt, bool isSameWay)

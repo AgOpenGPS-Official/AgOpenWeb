@@ -52,6 +52,9 @@ public partial class YouTurnCreationService
         /// obstacle and none is planned elsewhere; the operator has to take over.
         /// </summary>
         public bool AtObstacle { get; init; }
+
+        /// <summary>With <see cref="AtObstacle"/> and a path, the obstacle's index in the inner boundaries; else -1.</summary>
+        public int AtObstacleIndex { get; init; } = -1;
     }
 
     /// <summary>
@@ -115,10 +118,15 @@ public partial class YouTurnCreationService
 
         const double SetbackStep = 0.5;
         const double MaxExtraSetback = 30.0;
+        // The step a turn is seated further back by when it lands on a bend of the next pass or
+        // its legs or exit meet an obstacle (a coarser step than the implement's: a bend is metres long,
+        // and the plan is tried again every cycle until a turn is found).
+        const double ObstacleSetbackStep = 4.0;
         double extraSetback = 0.0;
 
         while (true)
         {
+            _straightDestination = _bentDestination = null;
             var input = BuildCreationInput(
                 currentPosition, selectedTrack, headingRadians, abHeading, turnLeft,
                 boundary, headlandLine, guidance, turn, uTurnSkipRows, headlandCalculatedWidth,
@@ -156,8 +164,8 @@ public partial class YouTurnCreationService
                 // headings — smoothing only moves positions (it preserves the stale headings),
                 // and the generator's recomputed headings are exactly what's noisy.
                 //   - Primary check: net start→end direction change should be ~π (180°).
-                //   - Secondary safety: cumulative |Δdir| capped at 4π (720°) to still catch
-                //     actual infinite-loop spirals, without rejecting loopy-but-valid paths.
+                //   - Secondary safety: cumulative |Δdir| capped at 400° (an omega turn is 360°) to
+                //     catch loops and spirals the tractor would not follow.
                 var dirs = new List<double>(path.Count);
                 for (int i = 1; i < path.Count; i++)
                 {
@@ -188,13 +196,17 @@ public partial class YouTurnCreationService
                 // the rest of the turn made backing up, so its net turn is 2.2 rad (126°), not π.
                 double expectedNet = input.TurnType == YouTurnType.KStyle ? 2.2 : Math.PI;
                 bool netIsUTurnLike = Math.Abs(Math.Abs(netHeadingChange) - expectedNet) < Math.PI / 6.0;
-                bool cumulativeRunaway = totalHeadingChange > Math.PI * 4.0;
+                // 400°: an omega turn is 360°; more is a loop the tractor does not follow (a 12.5 m
+                // rake came out of a 500° loop along a wall's turn line 8 m off its line, pointing at
+                // the wall 5 m away; a 4 m rake out of a 518° loop in the headland 1.3 m off, into a tree).
+                bool cumulativeRunaway = totalHeadingChange > Math.PI * 20.0 / 9.0;
 
                 if (!netIsUTurnLike || cumulativeRunaway)
                 {
                     if (atObstacle)
                     {
-                        _logger.LogWarning("[YouTurn] Turn before obstacle {I} was malformed; no turn.", obstacle!.InnerIndex + 1);
+                        _logger.LogWarning("[YouTurn] Turn before obstacle {I} was malformed (net={Net:F0}° cumulative={Cum:F0}°); no turn.",
+                            obstacle!.InnerIndex + 1, netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI);
                         return new TurnPathResult(null, UsedFallback: false) { AtObstacle = true };
                     }
                     if (hardOuter)
@@ -250,9 +262,37 @@ public partial class YouTurnCreationService
                 // next tree's turn line 8 m away, and a turn whose exit landed just before another
                 // obstacle ended in the AutoSteer-off alarm with no room. No such turn is made;
                 // the operator is told and takes over before the obstacle.
+                // A turn lands on a straight stretch of the next pass. Where that pass bends round
+                // a Go around obstacle at the landing, the generator joins the bend's slope (a net
+                // turn of 150°, loops of 500°), the tractor comes out of the arc metres off the
+                // bent line, and a trailed implement sweeps through the tree (a 10 m sprayer by
+                // 1.7 m, hay rakes by 0.5 m, on two real fields): the turn is seated further back
+                // until it lands before the bend, else there is no turn.
+                if (LandsOnBend(path, out double offStraight))
+                {
+                    extraSetback += ObstacleSetbackStep;
+                    if (extraSetback <= MaxExtraSetback)
+                    {
+                        _logger.LogDebug("[YouTurn] The turn lands {D:F1} m off the straight next pass, on a bend; seating it further back (setback {S:F1} m)",
+                            offStraight, extraSetback);
+                        continue;
+                    }
+                    _logger.LogWarning("[YouTurn] No turn within {S:F0} m lands on a straight stretch of the next pass; no turn.", MaxExtraSetback);
+                    return new TurnPathResult(null, UsedFallback: false) { AtObstacle = true };
+                }
+
                 if (boundary != null && !ClearsTurnObstacles(path, boundary, config, out int crossed, ExitReach, obstacle?.InnerIndex ?? -1,
                         obstacles))
                 {
+                    // Seated further back the legs may clear the obstacle, or the exit land with
+                    // room before it; then there is no turn.
+                    extraSetback += ObstacleSetbackStep;
+                    if (extraSetback <= MaxExtraSetback)
+                    {
+                        _logger.LogDebug("[YouTurn] The turn would cross obstacle {I}, or end right before it; seating it further back (setback {S:F1} m)",
+                            crossed + 1, extraSetback);
+                        continue;
+                    }
                     _logger.LogWarning("[YouTurn] The turn would cross obstacle {I}, or end right before it; no turn.", crossed + 1);
                     return new TurnPathResult(null, UsedFallback: false) { AtObstacle = true };
                 }
@@ -260,7 +300,10 @@ public partial class YouTurnCreationService
                 _logger.LogDebug("[YouTurn] Path created with {Count} points, net={Net:F0}° cumulative={Cum:F0}° (setback {S:F2}m){At}",
                     path.Count, netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI, extraSetback,
                     atObstacle ? $", before obstacle {obstacle!.InnerIndex + 1}" : "");
-                return new TurnPathResult(path, UsedFallback: false) { ArcStart = output.ArcStart, AtObstacle = atObstacle };
+                return new TurnPathResult(path, UsedFallback: false)
+                {
+                    ArcStart = output.ArcStart, AtObstacle = atObstacle, AtObstacleIndex = atObstacle ? obstacle!.InnerIndex : -1,
+                };
             }
 
             // Creation failed outright.
@@ -419,7 +462,7 @@ public partial class YouTurnCreationService
 
         // The obstacles a U-turn is made at, turn lines 1..n after the outer one. The extra
         // setback the clearance loop asks for moves them out from the obstacle the same way.
-        obstacles = TurnObstacles(boundary, distanceFromBoundary, promoted);
+        obstacles = TurnObstacles(boundary, distanceFromBoundary, promoted, HardReach(config));
         foreach (var o in obstacles)
             boundaryTurnLines.Add(new BoundaryTurnLine { Points = o.TurnLine, BoundaryIndex = o.InnerIndex + 1 });
 
@@ -428,6 +471,20 @@ public partial class YouTurnCreationService
         // Asked for every candidate path point: the turn line's strip index, built once per plan.
         var turnArea = PolygonSlabIndex.Build(turnBoundaryVec3);
         Func<Vec3, int> isPointInsideTurnArea = TurnAreaTest(turnArea, obstacles);
+
+        // A turn keeps out of the room round every Go around obstacle too (ClearsTurnObstacles
+        // holds the path to it), so the generator seats its arcs and slides them to the turn
+        // line by that test as well: at a U-turn obstacle just past a tree the pass goes round,
+        // the arc then stops before the tree, where it was seated inside the bend and slid along
+        // the bend's heading, away from the pass.
+        var keepOut = boundary != null ? RoundObstacles(boundary, GoAroundRoom(config)) : EmptyRound;
+        Func<Vec3, bool>? blockedForTurn = keepOut.Count == 0 ? null : p =>
+        {
+            if (isPointInsideTurnArea(p) != 0) return true;
+            foreach (var r in keepOut)
+                if (r.Clear.Contains(p.Easting, p.Northing)) return true;
+            return false;
+        };
 
         var pivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians);
 
@@ -465,6 +522,7 @@ public partial class YouTurnCreationService
             GuidanceType = GuidanceLineType.Curve,
             BoundaryTurnLines = boundaryTurnLines,
             IsPointInsideTurnArea = isPointInsideTurnArea,
+            IsPointBlockedForTurn = blockedForTurn,
 
             // The single generator walks these points (the current offset pass).
             GuidancePoints = currentCurvePoints,

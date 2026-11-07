@@ -48,6 +48,16 @@ public sealed class ObstacleDetour
     /// <summary>A straight pass (an AB line, two points) is taken this far past its ends, metres.</summary>
     private const double LineExtension = 2000.0;
 
+    /// <summary>
+    /// The farthest a bend moves the line off its pass, metres: two implement widths (four times
+    /// the keep-out less its margin, so a trailed tool's cut-in widens nothing), never under 20 m.
+    /// An obstacle, or a row of them gone round together, that needs more on the side with room
+    /// is not gone round (<see cref="Bend.Blocked"/>) and the U-turn planner turns before it. On
+    /// a real field a 12.5 m rake was taken 47 m off its pass, nearly four passes, round two trees
+    /// in a row.
+    /// </summary>
+    public static double MaxOffset(double keepOut, double margin) => Math.Max(4 * (keepOut - Math.Max(0, margin)), 20.0);
+
     /// <param name="Points">The bent line, with headings.</param>
     /// <param name="GoneRound">The obstacles gone round, as indices in <see cref="Boundary.InnerBoundaries"/>.</param>
     /// <param name="Blocked">The obstacles the pass runs into with no room to go round.</param>
@@ -222,10 +232,22 @@ public sealed class ObstacleDetour
         var outer = boundary.OuterBoundary is { IsValid: true } ob
             ? ob.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList() : null;
         double edge = Math.Max(0, keepOut - Math.Max(0, margin));
+        double most = MaxOffset(keepOut, margin);
 
         var blocked = new List<int>();
         for (int attempt = 0; attempt < 3 * fences.Count + 3 && hits.Count > 0; attempt++)
         {
+            // An obstacle whose bend would move the line further than a bend may is not gone round:
+            // its side is the one with the smaller need, the other one already tried, or pinned.
+            for (int i = hits.Count - 1; i >= 0; i--)
+            {
+                var h = hits[i];
+                if ((h.Side > 0 ? h.NeedLeft : h.NeedRight) <= most) continue;
+                blocked.Add(h.Fence.InnerIndex);
+                hits.RemoveAt(i);
+            }
+            if (hits.Count == 0) break;
+
             var (first, offsets) = Profile(hits, radius);
             var (points, bases) = BentLine(frame, first, offsets);
             var conflict = FirstConflict(points, bases, fences, others, outer, edge);
@@ -240,9 +262,11 @@ public sealed class ObstacleDetour
             var (fenceHit, at, sideThere) = conflict.Value;
             Hit? culprit = fenceHit == null ? null : hits.FirstOrDefault(h => h.Fence == fenceHit);
             if (culprit == null && fenceHit != null && !blocked.Contains(fenceHit.InnerIndex)
-                && Across(frame, fenceHit, force: true) is { } more)
+                && Across(frame, fenceHit, force: true) is { } more
+                && (sideThere > 0 ? more.NeedLeft : more.NeedRight) <= most)
             {
-                // The way round one obstacle runs into the next: go round both, the same side.
+                // The way round one obstacle runs into the next: go round both, the same side
+                // (a next one that would take the line too far is a conflict like any other).
                 var by = Nearest(hits, at);
                 more.Side = sideThere;
                 more.Group = by.Group;
