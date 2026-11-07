@@ -57,6 +57,7 @@ public static class CarelessOperator
         yield return new("G-DUALON", "Single F9P + TM171, but Dual antenna switched on, 6° slope", Puma, Boom, new("f9p", "tm171", "keya"), 6, W(Puma, Boom, new("f9p", "tm171", "keya"), "gps.isDualGps:1"));
         yield return new("G-HDG90", "Dual heading offset 90° (antennas really front to back)", Puma, Boom, Um, 0, W(Puma, Boom, Um, "gps.dualHeadingOffset:90"));
         yield return new("G-HDG180", "Dual heading offset 180° (antennas swapped in the setup)", Puma, Boom, Um, 0, W(Puma, Boom, Um, "gps.dualHeadingOffset:180"));
+        yield return new("G-HDG180SIR", "Dual heading offset 180°, Steer in reverse on", Puma, Boom, Um, 0, W(Puma, Boom, Um, "gps.dualHeadingOffset:180", "autosteer.steerInReverse:1"));
         yield return new("G-HDG5", "Dual antennas 5° off square, offset left at 0", Puma, Boom, Um with { HeadingErrorDeg = 5 }, 0, Drive.Careful(Puma, Boom, Um));
         yield return new("R-INV", "Roll sensor reads the wrong way round, Invert roll off (X20P + TM171), 6° slope", Puma, Boom, X20 with { RollInverted = true }, 6, Drive.Careful(Puma, Boom, X20));
         yield return new("R-INVSET", "Invert roll switched on for a sensor that reads right (X20P + TM171), 6° slope", Puma, Boom, X20, 6, W(Puma, Boom, X20, "roll.isRollInvert:1"));
@@ -131,7 +132,8 @@ public static class CarelessOperator
     private static void Judge(Journal journal, DriveRow row, DriveSpec d)
     {
         var passes = row.Passes.Where(p => p.Samples > 0).ToList();
-        foreach (var p in passes)
+        // A pass AutoSteer refused to engage for (said why) was driven by hand.
+        foreach (var p in passes.Where(p => p.Engaged))
         {
             // AutoSteer swinging the machine across its line is unsafe whatever the setting.
             double swing = p.MaxX - p.MinX;

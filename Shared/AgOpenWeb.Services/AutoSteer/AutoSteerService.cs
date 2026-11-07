@@ -100,11 +100,18 @@ public class AutoSteerService : IAutoSteerService
     private readonly Timer _sectionSettleTimer;
     private int _sectionSettleMs = 10_000;
 
-    // PGN 247 (vehicle geometry) also goes out when the steer module is heard after this
-    // long without PGN 253: a module (or the HAT daemon) that started after the app, or
-    // restarted, gets the geometry it may need to set up its receiver (#387).
-    internal const long SteerModuleSilenceMs = 3000;
+    // The steer settings (PGN 251/252), the machine config and PGN 247 (vehicle geometry)
+    // also go out when the steer module is heard after this long without PGN 253: a module
+    // (or the HAT daemon) that started after the app, or restarted, runs what it has, and
+    // what was changed while it was away (a Zero WAS with the cable out) was sent to
+    // nobody. It gets everything, as at start (#387 for the geometry). The module answers
+    // every PGN 254 (10 Hz) with a 253, so 2 s is twenty missed replies: a cable out or a
+    // reboot, about when the status bar reports the module gone (hellos every second, 3 s
+    // timeout), not Wi-Fi jitter.
+    internal const long SteerModuleSilenceMs = 2000;
     private long _lastSteerDataMs = long.MinValue / 2;
+    /// <summary>Test seam: the clock the silence above is measured on.</summary>
+    internal Func<long> TickClock { get; set; } = () => Environment.TickCount64;
 
     /// <summary>
     /// Test seam: lets tests shorten the debounce so they don't have
@@ -383,9 +390,9 @@ public class AutoSteerService : IAutoSteerService
         switch (e.PGN)
         {
             case PgnNumbers.AUTOSTEER_DATA: // 253 - Steer Data from module
-                long now = Environment.TickCount64;
+                long now = TickClock();
                 if (now - Interlocked.Exchange(ref _lastSteerDataMs, now) > SteerModuleSilenceMs)
-                    SendVehicleGeometry(); // the module is new or back
+                    EmitSteerConfigPgns(); // the module is new or back: everything, as at start
                 ProcessSteerData(e.Data);
                 break;
 
@@ -603,8 +610,10 @@ public class AutoSteerService : IAutoSteerService
 
     public void SetFreeDriveAngle(double angleDegrees)
     {
-        // Clamp to safe range (-40 to +40 degrees)
-        _state.FreeDriveSteerAngle = Math.Clamp(angleDegrees, -40, 40);
+        // Held to the limit either way. It was ±40° (AgOpenGPS's free drive buttons), which the
+        // max steer angle test hit before the lock: a lock past 40° measured as 40°.
+        const double limit = IAutoSteerService.FreeDriveLimitDeg;
+        _state.FreeDriveSteerAngle = Math.Clamp(angleDegrees, -limit, limit);
     }
 
     /// <summary>

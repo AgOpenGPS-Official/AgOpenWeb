@@ -26,6 +26,8 @@ public sealed class PassResult
     public double SectionsOnShare = double.NaN;
     public int AppPass;
     public bool RanOff;
+    /// <summary>AutoSteer came on when the operator engaged it for this pass.</summary>
+    public bool Engaged;
     public string? Disengaged;
     public int Samples;
 }
@@ -161,6 +163,7 @@ public sealed class FieldRun : IAsyncDisposable
         await Rig.WaitForVmAsync();
         await Rig.SendAsync("autosteer.toggle");
         bool engaged = await Rig.ReadAsync(() => Rig.Vm.IsAutoSteerEngaged);
+        pr.Engaged = engaged;
         if (!engaged) Messages.Add(F($"pass {k + 1}: AutoSteer did not engage"));
         if (k == 0) { await Rig.SendAsync("section.master"); }
 
@@ -179,7 +182,10 @@ public sealed class FieldRun : IAsyncDisposable
             if (c != null)
             {
                 bool on = c.IsAutoSteerEngaged;
-                _cmd = on && c.Guidance is { HasGuidance: true } g ? g.SteerAngle : 0;
+                // The module steers only while PGN 254's status is 1: not while AgOpenWeb
+                // sees the tractor reversing with Steer in reverse off (GpsPipelineService 5c).
+                bool steers = on && !(c.IsReverse && !Rig.Store.AutoSteer.SteerInReverse);
+                _cmd = steers && c.Guidance is { HasGuidance: true } g ? g.SteerAngle : 0;
                 if (on && double.IsFinite(_cmd)) pr.MaxSteerWhole = Math.Max(pr.MaxSteerWhole, Math.Abs(_cmd));
                 if (!on && engaged && pr.Disengaged == null)
                     pr.Disengaged = F($"at N={Truth.N:F0}: ") + (c.DisengageReason ?? "AutoSteer went off");

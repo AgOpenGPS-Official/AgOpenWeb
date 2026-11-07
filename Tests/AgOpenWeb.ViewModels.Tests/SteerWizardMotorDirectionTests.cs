@@ -167,6 +167,25 @@ public class SteerWizardMotorDirectionTests
 
         Assert.That(atArm, Is.EqualTo(12).Within(1), "the wheels moved while the module armed");
     }
+
+    // The operator held the wheel straight through the motor test: the ramp went on to Kp 200,
+    // eight seconds of full power against their hands, and then said no movement up to 200.
+    [Test]
+    public async Task Motor_test_stops_soon_when_the_wheels_are_held()
+    {
+        var sim = new SimulatedSteer { Angle = 0, Hands = 0 };
+        var step = MotorStep(sim);
+
+        await step.RunKpRampAsync();
+
+        Assert.That(step.NoMovementDetected, Is.True);
+        Assert.That(step.PhaseResult, Does.Contain("don't move at full power").And.Contain("Hands on the wheel"));
+        Assert.That(sim.MsDrivingAgainstHands, Is.LessThan(2500),
+            "a second at full power says it all; it used to push for the whole ramp");
+        Assert.That(sim.FreeDrive, Is.False, "the motor is released");
+        Assert.That(ConfigurationStore.Instance.AutoSteer.ProportionalGain, Is.EqualTo(50), "the operator's Kp is back");
+        Assert.That(step.CalibrationCompleted, Is.False);
+    }
 }
 
 /// <summary>
@@ -189,6 +208,10 @@ internal sealed class SimulatedSteer
     public double MinAngle { get; private set; } = double.MaxValue;
     public double MaxAngle { get; private set; } = double.MinValue;
     public int MsAtLockDriving { get; private set; }
+    /// <summary>The operator's hands on the wheel: it stays there whatever the motor does.</summary>
+    public double? Hands { get; set; }
+    /// <summary>How long the motor drove (above its break-away PWM) against the hands.</summary>
+    public int MsDrivingAgainstHands { get; private set; }
     public Action<double>? OnSetAngle { get; set; }
     private int _pwm;
     private long _now;
@@ -249,7 +272,12 @@ internal sealed class SimulatedSteer
         }
 
         int over = Math.Abs(_pwm) - BreakawayPwm;
-        if (over > 0)
+        if (Hands is { } hand)
+        {
+            Angle = Math.Clamp(hand, -LockDeg, LockDeg);
+            if (over > 0) MsDrivingAgainstHands += 10;
+        }
+        else if (over > 0)
         {
             double dir = Math.Sign(_pwm) * (MotorBackwards ? -1 : 1);
             Angle = Math.Clamp(Angle + dir * (over + 4) * 0.25 * 0.01, -LockDeg, LockDeg);

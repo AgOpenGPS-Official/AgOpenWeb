@@ -174,7 +174,7 @@ public interface IAutoSteerService
     bool IsInFreeDriveMode { get; }
 
     /// <summary>
-    /// Current free drive steer angle in degrees (-40 to +40).
+    /// Current free drive steer angle in degrees (within ±<see cref="FreeDriveLimitDeg"/>).
     /// </summary>
     double FreeDriveSteerAngle { get; }
 
@@ -190,10 +190,18 @@ public interface IAutoSteerService
     void DisableFreeDrive();
 
     /// <summary>
+    /// The most a free drive command asks for, in degrees, either way: past any tractor's lock,
+    /// so the max steer angle test, which commands this and reads where the wheels stop, reads
+    /// the lock (±40° read a 38° lock, 42° as the left side reports it, as 40°). The operator's
+    /// own free drive is held to the vehicle's max steer angle by its view model.
+    /// </summary>
+    const double FreeDriveLimitDeg = 60;
+
+    /// <summary>
     /// Set the free drive steer angle.
     /// Only effective when IsInFreeDriveMode is true.
     /// </summary>
-    /// <param name="angleDegrees">Target steer angle (-40 to +40 degrees)</param>
+    /// <param name="angleDegrees">Target steer angle, held within ±<see cref="FreeDriveLimitDeg"/></param>
     void SetFreeDriveAngle(double angleDegrees);
 
     /// <summary>
