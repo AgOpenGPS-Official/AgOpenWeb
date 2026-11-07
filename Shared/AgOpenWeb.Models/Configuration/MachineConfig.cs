@@ -30,8 +30,11 @@ public enum PinFunction
     Section16 = 16,
     HydUp = 17,
     HydDown = 18,
-    TramLeft = 19,
-    TramRight = 20,
+    // AgOpenGPS numbering (ConfigModule: "Tram Right", "Tram Left"; the machine firmware drives
+    // 19 from tram bit 0 = right wheel, 20 from bit 1 = left wheel). The names were swapped
+    // before; the numbers, and so every saved setup, are unchanged.
+    TramRight = 19,
+    TramLeft = 20,
     GeoStop = 21
 }
 
