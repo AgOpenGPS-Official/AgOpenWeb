@@ -138,7 +138,7 @@ public static class CarefulOperator
             int saved = await rig.ReadAsync(() => rig.Store.AutoSteer.MinPwm);
             if (mm.Success && int.Parse(mm.Groups[1].Value, Inv) != saved)
                 s.Report(new Finding(Severity.Bug, "MOTOR_MIN_PWM_NOT_SAVED",
-                    string.Create(Inv, $"The motor test found Minimum PWM {mm.Groups[1].Value} but after Next the setting is still {saved}: the step only saves after its second part (max angle, ContinueToMaxAngle), which the web wizard has no button for.")));
+                    string.Create(Inv, $"The motor test found Minimum PWM {mm.Groups[1].Value} but after Next the setting is still {saved}.")));
         });
         await s.StepAsync("Max angle: Start, hands clear, wait", async () =>
         {
