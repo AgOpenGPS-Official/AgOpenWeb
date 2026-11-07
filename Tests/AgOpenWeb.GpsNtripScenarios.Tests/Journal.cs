@@ -119,8 +119,8 @@ public sealed class Journal
           .Append("(NTRIP 2.0 chunked and 1.0, 401 for a wrong login, the source table for an unknown mount point, a VRS mount point that waits for a GGA) ")
           .Append("sends an RTCM 3 epoch every second (MSM7 for four systems, base position every 10 s) through a fake internet that can drop silently, ")
           .Append("refuse, flap or switch networks. An emulated receiver takes what AgOpenWeb forwards to UDP 2233 (whole messages with a good checksum; ")
-          .Append("datagrams over 512 bytes or closer than 10 ms count as lost on an AiO v26), keeps RTK fixed while its corrections are at most 10 s old, ")
-          .Append("float up to 30 s, then single, and sends $PAOGI or $PANDA at 10 Hz. A steer module stub sends PGN 253. The tractor drives north at 8 km/h ")
+          .Append("it counts datagrams over 512 bytes, which an AiO v26 drops, and datagrams back to back), keeps RTK fixed while its corrections are at most 10 s old, ")
+          .Append("float up to 30 s, then single, and sends $PAOGI or $PANDA at 10 Hz. A steer module stub sends PGN 253. The tractor drives north (east in C9) at 8 km/h ")
           .Append("on an AB line with sections on Auto and AutoSteer on. Everything runs in real time; the screen is sampled every 100 ms.\n\n");
 
         sb.Append("## Findings (each kind once, most serious first)\n\n");
