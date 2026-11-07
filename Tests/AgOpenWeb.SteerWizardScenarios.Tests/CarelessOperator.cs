@@ -186,11 +186,16 @@ public static class CarelessOperator
     {
         await using var s = await WizardScenario.StartAsync(j, name, "careless");
         await PrepareAsync(s, "dimensions");
+        // A nonsense value is refused either way: at the box (config.set says why and keeps the
+        // old value: Next then goes on with that one) or at Next (the step's check). The
+        // finding is Next going on with the nonsense in the live settings.
+        async Task<bool> WentOnWith(Func<bool> nonsense) => await s.NextAsync() && await s.Rig.ReadAsync(nonsense);
+        var live = s.Rig.Store;
         await s.StepAsync("Types wheelbase 0 m → Next", async () =>
         {
             await s.SetAsync("vehicle.wheelbase", "0");
             await s.SettleAsync(200);
-            if (await s.NextAsync())
+            if (await WentOnWith(() => live.Vehicle.Wheelbase < 0.5))
                 s.Report(new Finding(Severity.Bug, "NONSENSE_ACCEPTED",
                     "The Dimensions step went on with a wheelbase of 0 m: its check (0.5–15 m) reads the step's own copy, taken when the step opened, and the web types into the live settings."));
         }, Expect.Refused);
@@ -215,7 +220,7 @@ public static class CarelessOperator
             await s.SetAsync("vehicle.trackWidth", "0");
             await s.SetAsync("vehicle.wheelbase", "99");
             await s.SettleAsync(200);
-            if (await s.NextAsync())
+            if (await WentOnWith(() => live.Vehicle.TrackWidth < 0.2 || live.Vehicle.Wheelbase > 20))
                 s.Report(new Finding(Severity.Bug, "NONSENSE_ACCEPTED",
                     "The Dimensions step went on with a track width of 0 m and a wheelbase of 99 m."));
         }, Expect.Refused);
@@ -230,24 +235,24 @@ public static class CarelessOperator
         {
             await s.SetAsync("vehicle.antennaHeight", "-1");
             await s.SettleAsync(200);
-            if (await s.NextAsync())
+            if (await WentOnWith(() => live.Vehicle.AntennaHeight < 0))
                 s.Report(new Finding(Severity.Inconsistency, "NONSENSE_ACCEPTED_ANTENNA",
                     "The Antenna step went on with an antenna height of -1 m."));
             await s.SetAsync("vehicle.antennaHeight", "3.2");
         }, Expect.Refused);
         await s.StepAsync("Goes on to the gains step (Next past the tests)", async () => await s.GoToAsync("gains"));
-        foreach (var (key, val, what) in new[]
+        foreach (var (key, val, what, taken) in new (string, string, string, Func<bool>)[]
                  {
-                     ("autosteer.proportionalGain", "0", "Kp 0"),
-                     ("autosteer.proportionalGain", "999", "Kp 999"),
-                     ("autosteer.integralGain", "9", "Ki 9"),
+                     ("autosteer.proportionalGain", "0", "Kp 0", () => live.AutoSteer.ProportionalGain < 1),
+                     ("autosteer.proportionalGain", "999", "Kp 999", () => live.AutoSteer.ProportionalGain > 200),
+                     ("autosteer.integralGain", "9", "Ki 9", () => live.Guidance.PurePursuitIntegralGain > 1),
                  })
         {
             await s.StepAsync("Types " + what + " → Next", async () =>
             {
                 await s.SetAsync(key, val);
                 await s.SettleAsync(250);
-                if (await s.NextAsync())
+                if (await WentOnWith(taken))
                 {
                     s.Report(new Finding(Severity.Bug, "NONSENSE_ACCEPTED_GAINS", "The Gains step went on with " + what + "."));
                     await s.BackAsync();
@@ -265,7 +270,7 @@ public static class CarelessOperator
             await s.SetAsync("autosteer.minSteerSpeed", "25");
             await s.SetAsync("autosteer.maxSteerSpeed", "5");
             await s.SettleAsync(250);
-            if (await s.NextAsync())
+            if (await WentOnWith(() => live.AutoSteer.MinSteerSpeed >= live.AutoSteer.MaxSteerSpeed))
                 s.Report(new Finding(Severity.Bug, "NONSENSE_ACCEPTED_SPEED", "The Speed step went on with min speed above max speed."));
         }, Expect.Refused);
         await s.StepAsync("Finish with whatever is there", async () =>

@@ -44,10 +44,10 @@ public class SteerSettingLimitsTests
     {
         var s = Store();
         s.AutoSteer.MaxSteerSpeed = 5;
-        Assert.That(VehicleToolLimits.Check("autosteer.minSteerSpeed", "8", s), Does.StartWith("Min steer speed must be less than the max steer speed"));
+        Assert.That(VehicleToolLimits.Check("autosteer.minSteerSpeed", "8", s), Does.StartWith("Min steer speed must be below the max steer speed"));
 
         s.AutoSteer.MinSteerSpeed = 3;
-        Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "3", s), Does.StartWith("Max steer speed must be more than the min steer speed"));
+        Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "3", s), Does.StartWith("Max steer speed must be above the min steer speed"));
         Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "4", s), Is.Null);
     }
 }
