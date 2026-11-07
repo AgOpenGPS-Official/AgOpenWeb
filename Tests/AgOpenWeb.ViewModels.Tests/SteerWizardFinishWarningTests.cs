@@ -64,6 +64,30 @@ public class SteerWizardFinishWarningTests
     }
 
     [Test]
+    public void A_zero_done_then_Back_and_Next_past_it_again_still_counts()
+    {
+        // Zero WAS, Next, Back to the WAS step, Next: the zero was listed as not done, because
+        // the step's record of its own changes starts again on every visit.
+        var w = Open();
+        Step<HardwareInstalledStepViewModel>(w).HardwareLevel = 2;
+        var was = Step<WasCalibrationStepViewModel>(w);
+        while (!ReferenceEquals(w.CurrentStep, was))
+        {
+            int before = w.CurrentStepIndex;
+            w.NextCommand.Execute(null);
+            if (w.CurrentStepIndex == before) Assert.Inconclusive("couldn't reach the WAS step");
+        }
+        was.WasOffset = 120; // what Zero WAS sets
+        w.NextCommand.Execute(null);
+        w.BackCommand.Execute(null);
+        Assert.That(w.CurrentStep, Is.SameAs(was));
+
+        NextToTheEnd(w);
+
+        Assert.That(Step<FinishStepViewModel>(w).TestResult, Does.Not.Contain("WAS zero"));
+    }
+
+    [Test]
     public void A_test_that_was_run_is_not_listed()
     {
         var w = Open();

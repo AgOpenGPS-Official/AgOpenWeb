@@ -107,17 +107,26 @@ public abstract class WizardStepViewModel : ObservableObject
     // ConfigurationStore (config.set), so writing the whole entry-time copy back reverted
     // every web edit on Next/Back (#108).
     private readonly HashSet<string> _touched = new();
+    // The same, for the whole wizard: not cleared when the step is entered again, so a zero
+    // done on an earlier visit still counts as done (the Finish page's tests not run).
+    private readonly HashSet<string> _touchedInWizard = new();
     private bool _loading;
 
     protected override void OnPropertyChanged(PropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
         if (!_loading && e.PropertyName != null)
+        {
             _touched.Add(e.PropertyName);
+            _touchedInWizard.Add(e.PropertyName);
+        }
     }
 
     /// <summary>Whether this step changed <paramref name="propertyName"/> since it was entered.</summary>
     protected bool Touched(string propertyName) => _touched.Contains(propertyName);
+
+    /// <summary>Whether this step changed <paramref name="propertyName"/> on any visit in this wizard.</summary>
+    protected bool TouchedInWizard(string propertyName) => _touchedInWizard.Contains(propertyName);
 
     /// <summary>
     /// Set properties that mirror a value the step already wrote to the store, without

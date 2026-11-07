@@ -145,7 +145,7 @@ function buildWizardContent(w) {
         wzNum(tr('Deadzone heading'), tr('Heading error tolerance'), 'autosteer.deadzoneHeading', '0.01', 'deg') + '</div>';
     case 'finish':
       // The result line names the tests not run (empty when all were).
-      return head + '<div class="wz-desc" data-live="result"></div><div class="wz-center"><div class="wz-okcard"><div class="ok">OK</div><div class="t">Configuration saved!</div><div class="s">Click Finish to close the wizard</div></div></div>';
+      return head + '<div class="wz-desc" data-live="result"></div><div class="wz-center"><div class="wz-okcard"><div class="ok">OK</div><div class="t">Ready to finish</div><div class="s">Click Finish to save the settings and close the wizard</div></div></div>';
     default: return head;
   }
 }
