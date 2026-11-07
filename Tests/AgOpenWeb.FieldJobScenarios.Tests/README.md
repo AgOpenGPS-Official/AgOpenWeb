@@ -75,6 +75,8 @@ to `field-job-scenarios-report.md` in the test output folder, or to `AGOPENWEB_S
 | `AGOPENWEB_SCENARIO_PACE=8` | real milliseconds per simulated fix (0.1 s): 8 is about 12x |
 | `AGOPENWEB_SCENARIO_TRACE=path.log` | every step and pass to this file while the run goes |
 | `AGOPENWEB_SCENARIO_VERBOSE=0` | quiet console |
+| `AGOPENWEB_SCENARIO_DUMP=folder` | a picture of each job (PPM: field, headland, obstacles, sprayed ground, the track) |
+| `AGOPENWEB_SCENARIO_DEBUGLOG=YouTurn` | AgOpenWeb's debug log lines of these categories in the timeline |
 
 The tests fail only when the harness itself breaks. The findings are the product: the report
 lists each kind once, most serious first, then each job with what was measured and its

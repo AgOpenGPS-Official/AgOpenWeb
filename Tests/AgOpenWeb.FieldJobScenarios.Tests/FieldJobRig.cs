@@ -523,11 +523,15 @@ internal sealed class CapturingLoggerProvider : ILoggerProvider
     private sealed class L(string category) : ILogger
     {
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
+        // AGOPENWEB_SCENARIO_DEBUGLOG=YouTurn: the debug lines of the categories containing that
+        // text go to the timeline too (confirming how a turn was built).
+        private static readonly string? DebugCategories = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_DEBUGLOG");
+        private bool Debugged => !string.IsNullOrEmpty(DebugCategories) && category.Contains(DebugCategories, StringComparison.OrdinalIgnoreCase);
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning || Debugged;
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
-            if (logLevel < LogLevel.Warning) return;
+            if (logLevel < LogLevel.Warning && !Debugged) return;
             var text = category + ": " + formatter(state, exception) + (exception is null ? "" : " | " + exception.GetType().Name + ": " + exception.Message);
             if (exception != null && logLevel >= LogLevel.Error)
             {
