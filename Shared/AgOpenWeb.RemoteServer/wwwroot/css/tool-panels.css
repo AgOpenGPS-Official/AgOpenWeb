@@ -49,7 +49,7 @@
 .rp-del { background: none; border: 0; color: #c97c7c; font-size: 15px; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
 .rp-del:hover { background: rgba(220,60,60,0.25); color: var(--text); }
 /* Boundary recording menu. */
-.bm-panel { width: 470px; }
+.bm-panel { width: 500px; font-family: system-ui, sans-serif; }
 .bm-toolbar { display: flex; gap: 6px; justify-content: space-between; margin-bottom: 10px; }
 .bm-tbtn { position: relative; width: 56px; height: 48px; border: 1px solid var(--border); border-radius: 8px;
   background: rgba(var(--ov),0.06); cursor: pointer; display: flex; align-items: center; justify-content: center; }
@@ -57,19 +57,46 @@
 .bm-tbtn img { width: 32px; height: 32px; }
 .bm-tbtn:disabled { opacity: 0.35; cursor: default; }
 .bm-plus { position: absolute; right: 4px; bottom: 2px; color: #F5F54D; font-weight: 700; font-size: 15px; }
-.bm-lhdr { display: grid; grid-template-columns: 1.2fr 1fr 1fr 0.8fr; background: #1565C0; color: #fff;
-  font-weight: 700; font-size: 12px; padding: 6px 8px; border-radius: 6px 6px 0 0; }
-.bm-lhdr span { text-align: center; }
-.bm-lhdr span:first-child { text-align: left; }
-.bm-list { background: rgba(var(--ov),0.03); border-radius: 0 0 6px 6px; max-height: 220px; overflow-y: auto; }
-.bm-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr 0.8fr; align-items: center; padding: 8px;
-  font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--bg-raised); }
+.bm-lhdr { display: grid; grid-template-columns: 1fr 0.9fr 0.95fr 0.95fr 0.75fr; align-items: center; background: #1565C0; color: #fff;
+  font-weight: 700; font-size: 12px; padding: 4px 8px; border-radius: 6px 6px 0 0; gap: 2px; }
+.bm-lhdr > span { text-align: center; }
+.bm-lhdr > span:first-child { text-align: left; }
+/* A choice's title: tap to give every obstacle that choice. */
+.bm-colhdr { min-height: 40px; border: 1px solid rgba(255,255,255,0.35); border-radius: 6px; background: rgba(255,255,255,0.1);
+  color: #fff; font: inherit; font-size: 11px; line-height: 1.15; cursor: pointer; padding: 2px; display: flex;
+  flex-direction: column; align-items: center; justify-content: center; gap: 2px; }
+.bm-colhdr:hover { background: rgba(255,255,255,0.2); }
+.bm-list { background: rgba(var(--ov),0.03); border-radius: 0 0 6px 6px; max-height: min(46vh, 400px); overflow-y: auto; }
+.bm-row { display: grid; grid-template-columns: 1fr 0.9fr 0.95fr 0.95fr 0.75fr; align-items: center; padding: 4px 8px;
+  font-size: 13px; cursor: pointer; border-bottom: 1px solid var(--bg-raised); gap: 2px; min-height: 40px; }
 .bm-row.sel { background: var(--sel); }
-.bm-row span { text-align: center; }
+.bm-row > span { text-align: center; }
 .bm-row .bm-name { text-align: left; }
+.bm-row .bm-none { grid-column: span 2; color: var(--text-dim); }
 .bm-flag { padding: 2px 8px; border-radius: 4px; font-size: 12px; }
 .bm-flag.on { background: rgba(80,200,120,0.3); color: #6de29a; }
 .bm-flag.off { color: var(--text-dim); }
+/* One choice cell per row and choice: the lit one is the obstacle's choice. */
+.bm-choice { height: 36px; border: 1px solid var(--border); border-radius: 6px; background: transparent; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; }
+.bm-choice.on { background: rgba(var(--ov),0.14); border-color: var(--text-muted); }
+/* The colours the obstacles have on the map (map-draw.js SKP.boundaryInner / DriveThru). */
+.bm-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid; box-sizing: border-box; }
+.bm-dot.k1 { border-color: rgb(245,245,77); }
+.bm-dot.k3 { border-color: rgb(176,176,176); border-style: dashed; }
+.bm-choice.on .bm-dot.k1 { background: rgb(245,245,77); }
+.bm-choice.on .bm-dot.k3 { background: rgb(176,176,176); }
+.bm-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+/* Round obstacles: the diameter box and the circle buttons under the list. */
+.bm-circ { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.bm-circlbl { font-size: 13px; color: var(--text-muted); min-width: 84px; }
+.bm-circin { width: 64px; height: 40px; box-sizing: border-box; padding: 0 6px; font-size: 15px; text-align: right;
+  border: 1px solid var(--border); border-radius: 6px; background: rgba(var(--ov),0.06); color: inherit; }
+.bm-cbtn { height: 40px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: transparent;
+  color: inherit; font: inherit; font-size: 13px; cursor: pointer; }
+.bm-cbtn:hover { background: rgba(var(--ov),0.12); }
+.bm-cbtn.on { background: rgba(77,208,245,0.25); border-color: rgb(77,208,245); }
+.bm-cbtn:disabled { opacity: 0.35; cursor: default; }
 /* Boundary player. */
 .bp-offrow { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .bp-offlbl { font-weight: 700; font-size: 14px; }

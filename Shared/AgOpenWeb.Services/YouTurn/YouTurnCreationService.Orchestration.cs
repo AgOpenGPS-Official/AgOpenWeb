@@ -45,6 +45,13 @@ public partial class YouTurnCreationService
         /// <summary>Where the path leaves the current pass (see <see cref="YouTurnCreationOutput.ArcStart"/>);
         /// null for a fallback path, which has no entry leg.</summary>
         public Vec3? ArcStart { get; init; }
+
+        /// <summary>
+        /// The pass runs into an obstacle whose choice is a U-turn before it reaches the outer
+        /// turn line: the turn is made there. With no <see cref="Path"/>, no turn fits before the
+        /// obstacle and none is planned elsewhere; the operator has to take over.
+        /// </summary>
+        public bool AtObstacle { get; init; }
     }
 
     /// <summary>
@@ -90,12 +97,12 @@ public partial class YouTurnCreationService
         // Hard outer boundary: the implement's swept path (including a long
         // mounted tool's rear corners) must stay clear of the fence/obstacle
         // edge. When set, we shift the turn inward and regenerate until the
-        // implement clears, or give up and refuse to auto-engage.
+        // implement clears, or give up and refuse to auto-engage. A hard obstacle
+        // the turn is made at gets the same check, from its outside.
         bool hardOuter = boundary?.OuterBoundary?.IsHard == true && boundary.OuterBoundary.IsValid;
         var outerPolygon = hardOuter
             ? boundary!.OuterBoundary!.Points.Select(p => new Vec2(p.Easting, p.Northing)).ToList()
             : null;
-        ToolGeometry toolGeom = hardOuter ? BuildToolGeometry(config) : default;
         double clearanceMargin = Math.Max(0.0, config.Guidance.UTurnDistanceFromBoundary);
 
         // Diagnostic: one line per turn build to see whether the clearance path is
@@ -115,7 +122,7 @@ public partial class YouTurnCreationService
             var input = BuildCreationInput(
                 currentPosition, selectedTrack, headingRadians, abHeading, turnLeft,
                 boundary, headlandLine, guidance, turn, uTurnSkipRows, headlandCalculatedWidth,
-                extraSetback);
+                out var obstacles, extraSetback);
 
             if (input == null)
             {
@@ -124,6 +131,13 @@ public partial class YouTurnCreationService
             }
 
             var output = CreateTurn(input);
+
+            // A pass that runs into an obstacle turns before it. When no turn fits there, the
+            // fallback (laid out from the outer boundary) would drive the tractor into the
+            // obstacle, so there is no turn and the operator is told.
+            var obstacle = ObstacleAhead(input, obstacles);
+            bool atObstacle = obstacle != null;
+            bool hardObstacle = obstacle?.IsHard == true;
 
             if (output.Success && output.TurnPath != null && output.TurnPath.Count > 10)
             {
@@ -178,6 +192,11 @@ public partial class YouTurnCreationService
 
                 if (!netIsUTurnLike || cumulativeRunaway)
                 {
+                    if (atObstacle)
+                    {
+                        _logger.LogWarning("[YouTurn] Turn before obstacle {I} was malformed; no turn.", obstacle!.InnerIndex + 1);
+                        return new TurnPathResult(null, UsedFallback: false) { AtObstacle = true };
+                    }
                     if (hardOuter)
                     {
                         _logger.LogWarning("[YouTurn] Turn near hard boundary was malformed; not engaging.");
@@ -190,41 +209,66 @@ public partial class YouTurnCreationService
                     return new TurnPathResult(fallback.Count > 10 ? fallback : null, UsedFallback: true);
                 }
 
-                // Implement clearance against the hard outer boundary, checked on
-                // the final (smoothed) path that will actually be driven.
-                if (hardOuter)
+                // Implement clearance against the hard outer boundary and a hard obstacle the
+                // turn is made at, checked on the final (smoothed) path that will actually be driven.
+                if (hardOuter || hardObstacle)
                 {
-                    var swept = ImplementSweptPath.Compute(path, toolGeom);
-                    var clearance = TurnClearance.Evaluate(swept, outerPolygon!,
-                        TurnClearance.KeepSide.Inside, clearanceMargin);
+                    var swept = ImplementSweptPath.Compute(path, BuildToolGeometry(config));
+                    var clearance = new TurnClearance.ClearanceResult(true, double.NegativeInfinity);
+                    if (hardOuter)
+                        clearance = TurnClearance.Evaluate(swept, outerPolygon!, TurnClearance.KeepSide.Inside, clearanceMargin);
+                    if (hardObstacle)
+                    {
+                        var round = TurnClearance.Evaluate(swept, obstacle!.Fence, TurnClearance.KeepSide.Outside, clearanceMargin);
+                        if (round.MaxIntrusion > clearance.MaxIntrusion) clearance = round;
+                    }
 
                     if (!clearance.IsClear)
                     {
                         extraSetback += Math.Max(SetbackStep, clearance.MaxIntrusion);
                         if (extraSetback <= MaxExtraSetback)
                         {
-                            _logger.LogDebug("[YouTurn] Implement intrudes hard boundary by {I:F2}m; shifting turn inward (setback {S:F2}m) and retrying",
+                            _logger.LogDebug("[YouTurn] Implement intrudes hard boundary by {I:F2}m; shifting turn away (setback {S:F2}m) and retrying",
                                 clearance.MaxIntrusion, extraSetback);
                             continue;
                         }
 
                         _logger.LogWarning("[YouTurn] No forward turn keeps the implement clear of the hard boundary (intrusion {I:F2}m); not engaging.",
                             clearance.MaxIntrusion);
-                        return new TurnPathResult(null, UsedFallback: false) { ClearanceBlocked = true };
+                        return new TurnPathResult(null, UsedFallback: false) { ClearanceBlocked = true, AtObstacle = atObstacle };
                     }
 
                     // Cleared. MaxIntrusion <= 0; the worst implement point sits
-                    // (margin - MaxIntrusion) m inside the fence — log the achieved gap.
-                    _logger.LogDebug("[YouTurn][HardBoundary] CLEARED: nearest implement point {C:F2}m inside fence (margin {M:F2}m, setback {S:F2}m)",
+                    // (margin - MaxIntrusion) m clear of the fence — log the achieved gap.
+                    _logger.LogDebug("[YouTurn][HardBoundary] CLEARED: nearest implement point {C:F2}m from the fence (margin {M:F2}m, setback {S:F2}m)",
                         clearanceMargin - clearance.MaxIntrusion, clearanceMargin, extraSetback);
                 }
 
-                _logger.LogDebug("[YouTurn] Path created with {Count} points, net={Net:F0}° cumulative={Cum:F0}° (setback {S:F2}m)",
-                    path.Count, netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI, extraSetback);
-                return new TurnPathResult(path, UsedFallback: false) { ArcStart = output.ArcStart };
+                // The whole path, and the first metres of the next pass after it, against every
+                // obstacle chosen as U-turn. The generator keeps the arc outside the turn line it
+                // turns at, not the legs outside the others: at a lone tree the path crossed the
+                // next tree's turn line 8 m away, and a turn whose exit landed just before another
+                // obstacle ended in the AutoSteer-off alarm with no room. No such turn is made;
+                // the operator is told and takes over before the obstacle.
+                if (boundary != null && !ClearsTurnObstacles(path, boundary, config, out int crossed, ExitReach, obstacle?.InnerIndex ?? -1))
+                {
+                    _logger.LogWarning("[YouTurn] The turn would cross obstacle {I}, or end right before it; no turn.", crossed + 1);
+                    return new TurnPathResult(null, UsedFallback: false) { AtObstacle = true };
+                }
+
+                _logger.LogDebug("[YouTurn] Path created with {Count} points, net={Net:F0}° cumulative={Cum:F0}° (setback {S:F2}m){At}",
+                    path.Count, netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI, extraSetback,
+                    atObstacle ? $", before obstacle {obstacle!.InnerIndex + 1}" : "");
+                return new TurnPathResult(path, UsedFallback: false) { ArcStart = output.ArcStart, AtObstacle = atObstacle };
             }
 
             // Creation failed outright.
+            if (atObstacle)
+            {
+                _logger.LogWarning("[YouTurn] No turn fits before obstacle {I} ({Reason}); no turn.",
+                    obstacle!.InnerIndex + 1, output.FailureReason ?? "unknown");
+                return new TurnPathResult(null, UsedFallback: false) { AtObstacle = true };
+            }
             if (hardOuter)
             {
                 _logger.LogWarning("[YouTurn] Turn creation failed near a hard boundary ({Reason}); not engaging.",
@@ -303,8 +347,10 @@ public partial class YouTurnCreationService
         YouTurnWorkingState turn,
         int uTurnSkipRows,
         double headlandCalculatedWidth,
+        out List<TurnObstacle> obstacles,
         double extraInwardSetback = 0.0)
     {
+        obstacles = EmptyObstacles;
         if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
         {
             _logger.LogDebug("[YouTurn] No valid outer boundary available");
@@ -353,13 +399,17 @@ public partial class YouTurnCreationService
         {
             new BoundaryTurnLine { Points = turnBoundaryVec3, BoundaryIndex = 0 }
         };
+        // The obstacles a U-turn is made at, turn lines 1..n after the outer one. The extra
+        // setback the clearance loop asks for moves them out from the obstacle the same way.
+        obstacles = TurnObstacles(boundary, distanceFromBoundary);
+        foreach (var o in obstacles)
+            boundaryTurnLines.Add(new BoundaryTurnLine { Points = o.TurnLine, BoundaryIndex = o.InnerIndex + 1 });
 
         double headlandWidthForTurn = Math.Max(totalHeadlandWidth - toolWidth, toolWidth);
 
         // Asked for every candidate path point: the turn line's strip index, built once per plan.
         var turnArea = PolygonSlabIndex.Build(turnBoundaryVec3);
-        Func<Vec3, int> isPointInsideTurnArea = point =>
-            turnArea != null && turnArea.Contains(point.Easting, point.Northing) ? 0 : 1;
+        Func<Vec3, int> isPointInsideTurnArea = TurnAreaTest(turnArea, obstacles);
 
         var pivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians);
 
@@ -930,8 +980,23 @@ public partial class YouTurnCreationService
         Boundary? boundary,
         GuidanceWorkingState guidance,
         int uTurnSkipRows,
-        Models.Track.Track? targetPass = null)
+        Models.Track.Track? targetPass = null) =>
+        CreateManualArcPath(currentPosition, abHeading, turnLeft, boundary, guidance, uTurnSkipRows,
+            targetPass, out _);
+
+    /// <param name="obstacleInTheWay">True when the turn was refused because it would cross an
+    /// obstacle chosen as U-turn.</param>
+    public List<Vec3> CreateManualArcPath(
+        Position currentPosition,
+        double abHeading,
+        bool turnLeft,
+        Boundary? boundary,
+        GuidanceWorkingState guidance,
+        int uTurnSkipRows,
+        Models.Track.Track? targetPass,
+        out bool obstacleInTheWay)
     {
+        obstacleInTheWay = false;
         var path = new List<Vec3>();
         var config = _configStore;
 
@@ -1030,6 +1095,17 @@ public partial class YouTurnCreationService
         {
             _logger.LogWarning("[ManualYouTurn] Implement would swing into hard boundary (intrusion {I:F2}m) — refusing",
                 intrusion);
+            path.Clear();
+            return path;
+        }
+
+        // Obstacles chosen as U-turn: a manual turn is anchored at the tractor, so one that
+        // crosses an obstacle's turn line, or swings the implement into a hard obstacle, is
+        // refused, as the automatic turn keeps out of them.
+        if (boundary != null && !ClearsTurnObstacles(path, boundary, config, out int inner))
+        {
+            _logger.LogWarning("[ManualYouTurn] The turn would cross obstacle {I} - refusing", inner + 1);
+            obstacleInTheWay = true;
             path.Clear();
             return path;
         }

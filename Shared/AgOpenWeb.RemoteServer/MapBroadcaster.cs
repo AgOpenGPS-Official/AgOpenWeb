@@ -444,6 +444,10 @@ public sealed class MapBroadcaster : IAsyncDisposable
             h = h * 31 + it.AreaHa.GetHashCode();
             h = h * 31 + (it.DriveThru ? 1 : 0);
             h = h * 31 + (it.Hard ? 1 : 0);
+            h = h * 31 + (it.IsInner ? 1 : 0);
+            h = h * 31 + it.AtObstacle;
+            h = h * 31 + it.SizeM.GetHashCode();
+            h = h * 31 + it.CircleD.GetHashCode();
         }
         h = h * 31 + b.SelectedIndex;
         h = h * 31 + (b.PlayerVisible ? 1 : 0);

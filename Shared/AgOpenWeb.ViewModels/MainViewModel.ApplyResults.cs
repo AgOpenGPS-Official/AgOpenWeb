@@ -143,6 +143,7 @@ public partial class MainViewModel
             sy.TurnPath = yt.TurnPath is List<AgOpenWeb.Models.Base.Vec3> tp ? tp : yt.TurnPath?.ToList();
             sy.PathIndex = yt.PathIndex;
             sy.ArcStart = yt.ArcStart;
+            sy.TurnAtObstacle = yt.TurnAtObstacle;
             sy.IsTurnLeft = yt.IsTurnLeft;
             sy.LastTurnWasLeft = yt.LastTurnWasLeft;
             sy.DistanceToHeadland = yt.DistanceToHeadland;

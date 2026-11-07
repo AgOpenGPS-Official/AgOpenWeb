@@ -114,14 +114,14 @@ public sealed class SceneProjector : System.IDisposable
         // Boundary with an outer ring + optional inner holes) — NOT the (unused)
         // Field.Boundaries collection.
         var boundaries = new List<IReadOnlyList<Vec2Dto>>();
-        var boundaryInner = new List<bool>();
+        var boundaryKind = new List<byte>();
         var bnd = f.ActiveField?.Boundary;
         if (bnd is not null)
         {
-            if (AddRing(boundaries, bnd.OuterBoundary)) boundaryInner.Add(false);
+            if (AddRing(boundaries, bnd.OuterBoundary)) boundaryKind.Add(0);
             if (bnd.InnerBoundaries != null)
                 foreach (var inner in bnd.InnerBoundaries.ToArray())
-                    if (AddRing(boundaries, inner)) boundaryInner.Add(true);
+                    if (AddRing(boundaries, inner)) boundaryKind.Add((byte)(1 + (int)inner.AtObstacle));
         }
 
         // Map render list: ONLY the active track, mirroring native SkiaMapControl
@@ -233,7 +233,7 @@ public sealed class SceneProjector : System.IDisposable
             f.FieldName,
             f.ActiveField != null,
             boundaries,
-            boundaryInner,
+            boundaryKind,
             tracks,
             headland,
             guidanceLine,
@@ -988,7 +988,8 @@ public sealed class SceneProjector : System.IDisposable
         var bnd = f.ActiveField?.Boundary;
         h = h * 31 + (bnd?.OuterBoundary?.Points.Count ?? 0);
         if (bnd?.InnerBoundaries != null)
-            foreach (var inner in bnd.InnerBoundaries.ToArray()) h = h * 31 + inner.Points.Count;
+            foreach (var inner in bnd.InnerBoundaries.ToArray()) // a circle resized or moved keeps its point count
+                h = ((h * 31 + inner.Points.Count) * 31 + (int)inner.AtObstacle) * 31 + (inner.Circle?.GetHashCode() ?? 0);
         h = h * 31 + (f.HeadlandLine?.Count ?? 0);
         h = h * 31 + (_state.FieldTools.ShowRecordedPaths ? 1 : 0); // #110
         // Contour reference strip (a new list per change) + lock.
