@@ -113,6 +113,26 @@ public class ConfigurationStore : ObservableObject
         }
     }
 
+    // The operator's section count and default width (Vehicle & Tool › Sections) set every
+    // section to the default width (#676). AgOpenGPS does it on a count change (ConfigTool
+    // cboxNumSections), and a default width that changed nothing on screen confused its users.
+    // Sections of their own widths are typed one by one after. A profile load sets NumSections
+    // and the widths directly, not through these.
+
+    /// <summary>The operator changed the section count: every section takes the default width.</summary>
+    public void ApplySectionCount(int count)
+    {
+        Tool.SetAllSectionWidths(Tool.DefaultSectionWidth);
+        NumSections = count;
+    }
+
+    /// <summary>The operator changed the default section width: every section takes it.</summary>
+    public void ApplyDefaultSectionWidth(double cm)
+    {
+        Tool.DefaultSectionWidth = cm;
+        Tool.SetAllSectionWidths(cm);
+    }
+
     /// <summary>
     /// Calculates actual tool width from active sections (in meters).
     /// Use this for guidance calculations instead of Tool.Width.

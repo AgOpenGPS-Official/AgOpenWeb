@@ -61,6 +61,8 @@ public sealed record ToolSpec(
     {
         var i = CultureInfo.InvariantCulture;
         yield return "tool.type:" + Type;
+        // The default width first: a section count sets every section to it (#676).
+        if (SectionWidthCm is >= 10 and <= 1000) yield return "tool.defaultSectionWidth:" + SectionWidthCm.ToString("0.###", i);
         yield return "tool.numSections:" + Sections.ToString(i);
         for (int s = 0; s < Sections; s++) yield return "tool.sectionWidth:" + s.ToString(i) + "," + SectionWidthCm.ToString("0.###", i);
         if (Type is "front" or "rear") yield return "tool.hitchLength:" + HitchLength.ToString(i);

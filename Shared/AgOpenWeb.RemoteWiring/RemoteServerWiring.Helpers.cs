@@ -164,9 +164,10 @@ public static partial class RemoteServerWiring
             case "tool.trailingToolToPivotLength": if (D(out var t10)) tool.TrailingToolToPivotLength = t10; return;
             case "tool.slowSpeedCutoff": if (D(out var t11)) tool.SlowSpeedCutoff = t11; return;
             case "tool.coverageMargin": if (D(out var t12)) tool.CoverageMargin = t12; return;
-            case "tool.defaultSectionWidth": if (D(out var t13)) tool.DefaultSectionWidth = t13; return;
+            // The operator's section count and default width set every section (#676).
+            case "tool.defaultSectionWidth": if (D(out var t13)) store.ApplyDefaultSectionWidth(t13); return;
             case "tool.minCoverage": if (I(out var t14)) tool.MinCoverage = t14; return;
-            case "tool.numSections": if (I(out var t15)) store.NumSections = t15; return;
+            case "tool.numSections": if (I(out var t15)) store.ApplySectionCount(t15); return;
             case "tool.zones": if (I(out var t16)) tool.Zones = t16; return;
             case "tool.isSectionsNotZones": tool.IsSectionsNotZones = B(); return;
             case "tool.isMultiColoredSections": tool.IsMultiColoredSections = B(); return;

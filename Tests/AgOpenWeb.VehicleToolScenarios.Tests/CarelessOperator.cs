@@ -279,7 +279,7 @@ public static class CarelessOperator
             {
                 await rig.SendAsync("config.set", "tool.type:rear");
                 foreach (var kv in careful) await rig.SendAsync("config.set", kv);
-                foreach (var kv in new[] { "tool.lookAheadOn:1", "tool.lookAheadOff:0.5", "tool.turnOffDelay:0", "tool.slowSpeedCutoff:0.5", "tool.minCoverage:100", "tool.coverageMargin:0", "tool.zones:2", "tool.defaultSectionWidth:100", "gps.minGpsStep:0.05", "gps.fixToFixDistance:1", "roll.rollFilter:0" })
+                foreach (var kv in new[] { "tool.lookAheadOn:1", "tool.lookAheadOff:0.5", "tool.turnOffDelay:0", "tool.slowSpeedCutoff:0.5", "tool.minCoverage:100", "tool.coverageMargin:0", "tool.zones:2", "gps.minGpsStep:0.05", "gps.fixToFixDistance:1", "roll.rollFilter:0" })
                     await rig.SendAsync("config.set", kv);
             }
             await Restore();
