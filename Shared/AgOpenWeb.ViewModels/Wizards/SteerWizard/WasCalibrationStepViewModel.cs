@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Globalization;
 using System.Threading.Tasks;
 using System.Windows.Input;
 
@@ -94,43 +95,92 @@ public class WasCalibrationStepViewModel : WizardStepViewModel
         ZeroWasCommand = new RelayCommand(ZeroWas);
     }
 
-    /// <summary>A reading older than this is no reading: the module is not sending.</summary>
-    internal static readonly TimeSpan ReadingTimeout = TimeSpan.FromSeconds(1);
+    /// <summary>What the last press of Zero WAS did, or why it did nothing, for the operator.</summary>
+    public string TestResult
+    {
+        get => _testResult;
+        private set => SetProperty(ref _testResult, value);
+    }
+    private string _testResult = "";
 
-    /// <summary>After a zero, the module gets the new offset (PGN 252, sent after its debounce)
-    /// and answers with readings made with it; a press before then zeroes again from the old
-    /// reading. Two quick taps left straight ahead reading 15°.</summary>
-    internal static readonly TimeSpan ZeroSettle = TimeSpan.FromSeconds(1);
+    /// <summary>A reading older than this is the module unplugged, not the wheels.</summary>
+    public static readonly TimeSpan ModuleStale = TimeSpan.FromSeconds(2);
+    /// <summary>After a zero, presses are ignored until the module reports the new centre (or this long).</summary>
+    public static readonly TimeSpan SettleWindow = TimeSpan.FromSeconds(1.5);
+    /// <summary>A reading this far from the current centre needs a second press: the wheels may be turned.</summary>
+    public const double ConfirmDeg = 10;
+    /// <summary>The second press takes the reading only if it is still the one the operator was
+    /// shown (within this): wheels that moved from 12° to 21° between the presses are asked about
+    /// again, not zeroed at a value nobody saw.</summary>
+    public const double ConfirmMatchDeg = 1;
+    /// <summary>How long the second press has to come.</summary>
+    public static readonly TimeSpan ConfirmWindow = TimeSpan.FromSeconds(15);
 
-    private DateTime _zeroedAt = DateTime.MinValue;
+    private DateTime _zeroSentUtc;
+    private bool _zeroPending;
+    private DateTime _confirmUtc;
+    private double _confirmAngle;
+
+    /// <summary>The clock the timing above runs on; tests set it.</summary>
+    internal Func<DateTime> Clock { get; set; } = () => DateTime.UtcNow;
 
     private void ZeroWas()
     {
         if (_autoSteerService == null)
             return;
 
-        var now = AgOpenWeb.Models.Timing.Clock.Current.Now;
-        // A stale reading is where the wheels were, not where they are: the module unplugged
-        // took the zero from the last angle it sent.
-        if (now - _autoSteerService.LastSteerDataTime > ReadingTimeout)
+        var now = Clock();
+        // The reading must be the module's, now: unplugged, LastSteerData keeps its last value
+        // and a zero taken from it sets a centre the wheels never had.
+        var at = _autoSteerService.LastSteerDataUtc;
+        if (at == DateTime.MinValue)
         {
-            SetValidationError("No reading from the steer module: check that it is connected, then Zero WAS");
+            TestResult = "No reading from the steer module yet: check its power and network.";
             return;
         }
-        if (now - _zeroedAt < ZeroSettle)
-            return; // the second of two quick taps: the reading doesn't show the new zero yet
-        ClearValidation();
+        if (now - at > ModuleStale)
+        {
+            TestResult = string.Create(CultureInfo.InvariantCulture,
+                $"No reading from the steer module for {(now - at).TotalSeconds:F0} s: check its power and network, then press Zero WAS again.");
+            return;
+        }
+        // A second press before the module reports the new centre would zero from the old
+        // reading again and double the correction.
+        if (_zeroPending && now - _zeroSentUtc < SettleWindow)
+        {
+            TestResult = "Zeroing: wait for the module to report 0° before pressing again.";
+            return;
+        }
+        _zeroPending = false;
 
         // ActualSteerAngle from PGN 253 is the module's post-calibration angle, so accumulate
         // against the prior offset. The formula follows the real firmware and does NOT depend
         // on Invert WAS (#103; see WasCalibration). Out-of-range zeros are refused like AgOpenGPS.
         double actualAngle = _autoSteerService.LastSteerData.ActualSteerAngle;
-        var autoSteer = _configService.Store.AutoSteer;
-        if (WasCalibration.TryZero(autoSteer.WasOffset, actualAngle, autoSteer.CountsPerDegree, out int zeroed))
+        // Far from the current centre, the wheels are more likely turned than the sensor off:
+        // say what it reads and take it only on a second press.
+        if (Math.Abs(actualAngle) > ConfirmDeg
+            && !(now - _confirmUtc <= ConfirmWindow && Math.Abs(actualAngle - _confirmAngle) < ConfirmMatchDeg))
         {
-            WasOffset = zeroed;
-            _zeroedAt = now;
+            _confirmUtc = now;
+            _confirmAngle = actualAngle;
+            TestResult = string.Create(CultureInfo.InvariantCulture,
+                $"The sensor reads {actualAngle:F1}°. Are the wheels straight ahead? Press Zero WAS again within {ConfirmWindow.TotalSeconds:F0} s to take this as the centre.");
+            return;
         }
+        _confirmUtc = default;
+
+        var autoSteer = _configService.Store.AutoSteer;
+        if (!WasCalibration.TryZero(autoSteer.WasOffset, actualAngle, autoSteer.CountsPerDegree, out int zeroed))
+        {
+            TestResult = string.Create(CultureInfo.InvariantCulture,
+                $"Cannot zero: the offset would be beyond ±{WasCalibration.MaxOffset} counts. Check the sensor's mounting and counts per degree.");
+            return;
+        }
+        WasOffset = zeroed;
+        _zeroPending = true;
+        _zeroSentUtc = now;
+        TestResult = "Centre set: straight ahead now reads 0°.";
     }
 
     protected override void OnEntering()
@@ -138,6 +188,9 @@ public class WasCalibrationStepViewModel : WizardStepViewModel
         var autoSteer = _configService.Store.AutoSteer;
         InvertWas = autoSteer.InvertWas;
         WasOffset = autoSteer.WasOffset;
+        TestResult = "";
+        _zeroPending = false;
+        _confirmUtc = default;
 
         // Start listening for live data
         if (_autoSteerService != null)
@@ -160,6 +213,9 @@ public class WasCalibrationStepViewModel : WizardStepViewModel
         // Show actual WAS angle from hardware (PGN 253), not commanded angle
         LiveSteerAngle = Math.Round(_autoSteerService!.LastSteerData.ActualSteerAngle, 1);
         HasLiveData = true;
+        // The module applied the new offset: the next press is a new zero, not a repeat.
+        if (_zeroPending && Math.Abs(_autoSteerService.LastSteerData.ActualSteerAngle) < 0.5)
+            _zeroPending = false;
     }
 
     public override Task<bool> ValidateAsync()

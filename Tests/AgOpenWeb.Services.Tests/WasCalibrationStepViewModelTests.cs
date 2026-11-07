@@ -46,14 +46,7 @@ public class WasCalibrationStepViewModelTests
         _configService.Store.Returns(_store);
 
         _autoSteer = Substitute.For<IAutoSteerService>();
-        _clock = new AgOpenWeb.Models.Timing.TestClock();
-        AgOpenWeb.Models.Timing.Clock.Set(_clock);
     }
-
-    private AgOpenWeb.Models.Timing.TestClock _clock = null!;
-
-    [TearDown]
-    public void TearDown() => AgOpenWeb.Models.Timing.Clock.Reset();
 
     /// <summary>
     /// Stub <c>LastSteerData</c> to return a fresh
@@ -63,14 +56,22 @@ public class WasCalibrationStepViewModelTests
     /// </summary>
     private void GivenReportedAngle(double angleDeg)
     {
-        // A fresh reading, after the last zero has settled (a quick second tap is ignored).
-        _clock.Advance(TimeSpan.FromSeconds(2));
-        _autoSteer.LastSteerDataTime.Returns(_clock.Now);
         _autoSteer.LastSteerData.Returns(new SteerModuleData(
             ActualSteerAngle: angleDeg, ImuHeading: 0, ImuRoll: 0,
             WorkSwitchActive: false, SteerSwitchActive: false,
             RemoteButtonPressed: false, VwasFusionActive: false,
             PwmDisplay: 0));
+        _autoSteer.LastSteerDataUtc.Returns(DateTime.UtcNow);
+    }
+
+    /// <summary>
+    /// The host sent the new offset and the module reports 0° (the step then takes the
+    /// next press as a new zero, not a repeat of the one it is still waiting on).
+    /// </summary>
+    private void GivenModuleApplied()
+    {
+        GivenReportedAngle(0.0);
+        _autoSteer.StateUpdated += Raise.Event<EventHandler<VehicleStateSnapshot>>(_autoSteer, new VehicleStateSnapshot());
     }
 
     [Test]
@@ -82,7 +83,7 @@ public class WasCalibrationStepViewModelTests
         _store.AutoSteer.InvertWas = false;
         GivenReportedAngle(5.0);
 
-        var step = new WasCalibrationStepViewModel(_configService, _autoSteer);
+        var step = new WasCalibrationStepViewModel(_configService, _autoSteer) { IsActive = true };
         ((ICommand)step.ZeroWasCommand).Execute(null);
 
         // Press 1: offset = 0 - 5 * 100 = -500.
@@ -93,6 +94,7 @@ public class WasCalibrationStepViewModelTests
         // operator moving the wheel a further 5°. The module's next
         // PGN 253 reports the new post-calibration angle of 5°.
         _store.AutoSteer.WasOffset = step.WasOffset;
+        GivenModuleApplied();
         GivenReportedAngle(5.0);
 
         ((ICommand)step.ZeroWasCommand).Execute(null);
@@ -113,7 +115,7 @@ public class WasCalibrationStepViewModelTests
         _store.AutoSteer.InvertWas = true;
         GivenReportedAngle(-5.0);
 
-        var step = new WasCalibrationStepViewModel(_configService, _autoSteer);
+        var step = new WasCalibrationStepViewModel(_configService, _autoSteer) { IsActive = true };
         ((ICommand)step.ZeroWasCommand).Execute(null);
 
         // Press 1: offset = 0 - (-5 * 100) = 500.
@@ -122,6 +124,7 @@ public class WasCalibrationStepViewModelTests
         // Module now reports -5° again (wheel moved 5° further in the
         // physical direction the inversion treats as negative display).
         _store.AutoSteer.WasOffset = step.WasOffset;
+        GivenModuleApplied();
         GivenReportedAngle(-5.0);
 
         ((ICommand)step.ZeroWasCommand).Execute(null);
@@ -144,7 +147,7 @@ public class WasCalibrationStepViewModelTests
         _store.AutoSteer.InvertWas = false;
         GivenReportedAngle(0.0);
 
-        var step = new WasCalibrationStepViewModel(_configService, _autoSteer);
+        var step = new WasCalibrationStepViewModel(_configService, _autoSteer) { IsActive = true };
         ((ICommand)step.ZeroWasCommand).Execute(null);
 
         Assert.That(step.WasOffset, Is.EqualTo(700),

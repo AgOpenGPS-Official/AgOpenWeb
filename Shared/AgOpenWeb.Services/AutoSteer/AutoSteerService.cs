@@ -325,8 +325,10 @@ public class AutoSteerService : IAutoSteerService
 
     /// <summary>Latest steer data from module (PGN 253).</summary>
     public SteerModuleData LastSteerData => _lastSteerData;
-    private DateTime _lastSteerDataTime = DateTime.MinValue;
-    public DateTime LastSteerDataTime => _lastSteerDataTime;
+
+    private DateTime _lastSteerDataUtc = DateTime.MinValue;
+    /// <inheritdoc/>
+    public DateTime LastSteerDataUtc => _lastSteerDataUtc;
 
     // Roll from the steer module's IMU (PGN 253) or an external IMU (PGN 211), calibrated
     // (invert, zero), for fixes whose GPS sentence carries no roll: AgOpenGPS ahrs.imuRoll
@@ -468,7 +470,7 @@ public class AutoSteerService : IAutoSteerService
             _lastSteerData.RemoteButtonPressed != steerData.RemoteButtonPressed;
 
         _lastSteerData = steerData;
-        _lastSteerDataTime = AgOpenWeb.Models.Timing.Clock.Current.Now;
+        _lastSteerDataUtc = DateTime.UtcNow;
 
         // Update vehicle state with actual angle from WAS
         _state.ActualSteerAngle = steerData.ActualSteerAngle;
