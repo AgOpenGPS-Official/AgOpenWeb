@@ -140,6 +140,9 @@ public static class CarelessOperator
                 OnFix = async run =>
                 {
                     await drop(run);
+                    // AgOpenWeb's hello watchdog runs on the wall clock (HELLO_TIMEOUT_MS = 3000),
+                    // so the 30 s outage is driven at real time, or AgOpenWeb never notices it.
+                    if (at >= 0 && run.Fix - at < 300) await Task.Delay(100);
                     if (at >= 0 && run.Fix - at == 300) { run.Module.NetworkUp = true; run.Did("module Wi-Fi back"); }
                 },
             };
