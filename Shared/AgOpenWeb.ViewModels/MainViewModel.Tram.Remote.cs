@@ -24,7 +24,9 @@ public partial class MainViewModel
         var sys = new TramSystem
         {
             Name = $"Tram {TramSystems.Count + 1} ({refName})",
-            TramWidth = 24.0,
+            // The tool's tram width (Vehicle & Tool › Tram), as AgOpenGPS's tram form starts from
+            // it; it was a fixed 24 m whatever the tool said (#675).
+            TramWidth = ConfigStore.Tram.TramWidth,
             PassCount = 1,
             Direction = TramDirection.Symmetric,
             Mode = TramSystemMode.TrackLine,
@@ -86,7 +88,11 @@ public partial class MainViewModel
                 sys.Offset = o;
                 break;
             case "passes":
-                if (TramValueRefused("tram.passes", value)) return;
+                // 0 is "all passes" on a track's tram system (the editor's "Passes (0 = all)";
+                // TramLineService draws every pass then). A boundary system needs at least one
+                // lap, so it keeps AgOpenGPS's 1 to 999 (#675).
+                if (!(value.Trim() == "0" && sys.ReferenceBoundaryIndex < 0)
+                    && TramValueRefused("tram.passes", value)) return;
                 sys.PassCount = (int)double.Parse(value, System.Globalization.NumberStyles.Float, inv);
                 break;
             case "enabled":
