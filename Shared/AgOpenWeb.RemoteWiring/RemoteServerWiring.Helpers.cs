@@ -273,7 +273,7 @@ public static partial class RemoteServerWiring
             case "autosteer.currentTripPoint": if (I(out var a18)) { ast.CurrentTripPoint = a18; store.MarkChanged(); } return;
             // Tab 6 — Hardware Config
             case "autosteer.danfossEnabled": ast.DanfossEnabled = B(); store.MarkChanged(); return;
-            case "autosteer.invertWas": ast.InvertWas = B(); store.MarkChanged(); return;
+            case "autosteer.invertWas": ast.SetInvertWasKeepingCentre(B()); store.MarkChanged(); return; // the offset flips with it
             case "autosteer.invertMotor": ast.InvertMotor = B(); store.MarkChanged(); return;
             case "autosteer.invertRelays": ast.InvertRelays = B(); store.MarkChanged(); return;
             case "autosteer.motorDriver": if (I(out var a19)) { ast.MotorDriver = a19; store.MarkChanged(); } return;

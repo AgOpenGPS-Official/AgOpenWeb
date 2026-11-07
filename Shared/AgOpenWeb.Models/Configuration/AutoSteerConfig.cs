@@ -220,6 +220,23 @@ public class AutoSteerConfig : ObservableObject
         set => SetProperty(ref _invertWas, value);
     }
 
+    /// <summary>
+    /// Turn Invert WAS on or off and keep the centre: the firmware applies the offset with the
+    /// opposite sign for an inverted sensor, so the offset is negated with the toggle
+    /// (<see cref="WasCalibration.OffsetForInvert"/>). Without this, a sensor zeroed and then
+    /// inverted read twice the offset off straight ahead and had to be zeroed again. Every
+    /// operator toggle goes through here; loading settings sets <see cref="InvertWas"/> directly.
+    /// </summary>
+    /// <returns>True when the setting changed.</returns>
+    public bool SetInvertWasKeepingCentre(bool invert)
+    {
+        if (invert == _invertWas)
+            return false;
+        InvertWas = invert;
+        WasOffset = WasCalibration.OffsetForInvert(WasOffset);
+        return true;
+    }
+
     private bool _invertMotor = false;
     /// <summary>
     /// Invert motor direction.
