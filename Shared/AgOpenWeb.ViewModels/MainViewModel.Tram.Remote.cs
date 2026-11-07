@@ -19,6 +19,7 @@ public partial class MainViewModel
     /// mirroring native <c>AddTramSystem_Click</c>.</summary>
     public void RemoteAddTramSystem()
     {
+        if (!FieldIsOpen()) return;
         string refName = SelectedTrack?.Name ?? "Boundary";
         var sys = new TramSystem
         {
@@ -54,6 +55,12 @@ public partial class MainViewModel
         switch (field)
         {
             case "ref":
+                // A system follows its track by name: one that names no track has no lines.
+                if (value != "(Boundary)" && !SavedTracks.Any(t => t.Name == value))
+                {
+                    ReportFailure($"There is no track called '{value}'");
+                    return;
+                }
                 if (value == "(Boundary)")
                 {
                     sys.ReferenceTrackName = null;
@@ -67,16 +74,20 @@ public partial class MainViewModel
                 sys.Name = $"Tram {index + 1} ({(value == "(Boundary)" ? "Boundary" : value)})";
                 break;
             case "width":
-                if (double.TryParse(value, System.Globalization.NumberStyles.Float, inv, out var w) && w > 0)
-                    sys.TramWidth = w;
+                if (TramValueRefused("tram.width", value)) return;
+                sys.TramWidth = double.Parse(value, System.Globalization.NumberStyles.Float, inv);
                 break;
             case "offset":
-                if (double.TryParse(value, System.Globalization.NumberStyles.Float, inv, out var o))
-                    sys.Offset = o;
+                if (!double.TryParse(value, System.Globalization.NumberStyles.Float, inv, out var o) || !double.IsFinite(o))
+                {
+                    ReportFailure("Tram offset must be a number"); // NaN parsed, and moved the lines nowhere
+                    return;
+                }
+                sys.Offset = o;
                 break;
             case "passes":
-                if (int.TryParse(value, out var p))
-                    sys.PassCount = System.Math.Max(0, p);
+                if (TramValueRefused("tram.passes", value)) return;
+                sys.PassCount = (int)double.Parse(value, System.Globalization.NumberStyles.Float, inv);
                 break;
             case "enabled":
                 sys.IsEnabled = value == "1";
@@ -96,6 +107,23 @@ public partial class MainViewModel
                 return;
         }
         RebuildAndSaveTram();
+    }
+
+    /// <summary>A tram width or pass count outside AgOpenGPS's ranges (or no number at all) is
+    /// refused with the reason, in the operator's units; true when refused.</summary>
+    private bool TramValueRefused(string key, string value)
+    {
+        if (!double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _))
+        {
+            ReportFailure((key == "tram.width" ? "Tram width" : "Tram passes") + " must be a number");
+            return true;
+        }
+        if (AgOpenWeb.Models.Configuration.VehicleToolLimits.Check(key, value, ConfigStore) is { } why)
+        {
+            ReportFailure(why);
+            return true;
+        }
+        return false;
     }
 
     /// <summary>Rebuild the tram lines and persist the systems to the field directory

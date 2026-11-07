@@ -22,6 +22,7 @@ public class APlusHeadingTests
     private static MainViewModel AtPosition(double heading)
     {
         var vm = new MainViewModelBuilder().Build();
+        vm.IsFieldOpen = true; // tracks belong to a field
         // The cycle's pivot: what the A+ line is made from (AgOpenGPS pivotAxlePos).
         vm.State.Vehicle.Easting = 500;
         vm.State.Vehicle.Northing = 1000;
@@ -78,6 +79,7 @@ public class APlusHeadingTests
     private static MainViewModel WithField()
     {
         var vm = new MainViewModelBuilder().Build();
+        vm.IsFieldOpen = true; // tracks belong to a field
         vm.State.Field.LocalPlane = new LocalPlane(Origin, new SharedFieldProperties());
         return vm;
     }
@@ -141,6 +143,7 @@ public class APlusHeadingTests
     public void LatLon_NoField_NoTrack()
     {
         var vm = new MainViewModelBuilder().Build();
+        vm.IsFieldOpen = true; // tracks belong to a field
 
         vm.CreateLatLonHeadingLine(52.0, 5.0, 90);
 
