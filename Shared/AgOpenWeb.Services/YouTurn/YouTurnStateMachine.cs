@@ -843,10 +843,21 @@ public sealed class YouTurnStateMachine
             bool positive = target < guidance.HowManyPathsAway;
             int skip = _pathing.GetNextUnworkedPathSkip(track, guidance.HowManyPathsAway, positive, ctx.UTurnSkipRows + 1, isWorked);
             int swapped = guidance.HowManyPathsAway + (positive ? skip : -skip);
-            if (_pathing.IsPathInsideCultivated(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine))
+            if (_pathing.IsPathLandable(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine, currentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland))
                 target = swapped;
             else
                 RefuseDirectionSwap(swapped, effects);
+        }
+
+        // The order's next pass may be inside only at the far end (an hourglass field's other
+        // lobe): a turn onto it here lands in the headland and drives out of the field.
+        if (!_pathing.IsPathLandable(track, abHeading, target, ctx.Boundary, ctx.HeadlandLine, currentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland))
+        {
+            _logger.LogDebug("[YouTurn] Snake pass {Pass} is too short inside the field at this end - no turn", target);
+            if (DrivesOnAcrossGap(in ctx, track, abHeading, guidance, turn, effects)) return;
+            effects.StatusMessage = "End of field reached - no room on the next pass at this end";
+            SoundCreationFailed(effects);
+            return;
         }
 
         CreateTurnToPath(in ctx, track, abHeading, headingRadians, guidance, turn, effects, target, "Snake");
@@ -965,7 +976,7 @@ public sealed class YouTurnStateMachine
         if (turn.AltSign == 0 || turn.AltBaseWidth != baseWidth)
         {
             var (_, positive) = _pathing.WouldNextLineBeInsideBoundary(
-                track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, baseWidth - 1);
+                track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, baseWidth - 1, null, ctx.CurrentPosition, turn.DistanceToHeadland);
             turn.AltSign = positive ? 1 : -1;
             turn.AltBaseWidth = turn.AltWidth = baseWidth;
             turn.AltTurnSkips = baseWidth * 2 - 1;
@@ -978,7 +989,7 @@ public sealed class YouTurnStateMachine
         if (TakeDirectionSwap(turn, guidance, nextPath))
         {
             int swapped = guidance.HowManyPathsAway - turn.AltSign * turn.AltWidth;
-            if (_pathing.IsPathInsideCultivated(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine))
+            if (_pathing.IsPathLandable(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine, ctx.CurrentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland))
             {
                 turn.AltSign = -turn.AltSign;
                 nextPath = swapped;
@@ -988,9 +999,12 @@ public sealed class YouTurnStateMachine
                 RefuseDirectionSwap(swapped, effects);
             }
         }
-        if (!_pathing.IsPathInsideCultivated(track, abHeading, nextPath, ctx.Boundary, ctx.HeadlandLine))
+        if (!_pathing.IsPathLandable(track, abHeading, nextPath, ctx.Boundary, ctx.HeadlandLine, ctx.CurrentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland))
         {
-            effects.StatusMessage = "End of field reached";
+            if (DrivesOnAcrossGap(in ctx, track, abHeading, guidance, turn, effects)) return;
+            effects.StatusMessage = _pathing.IsPathInsideCultivated(track, abHeading, nextPath, ctx.Boundary, ctx.HeadlandLine)
+                ? "End of field reached - no room on the next pass at this end"
+                : "End of field reached";
             SoundCreationFailed(effects);
             return;
         }
@@ -1024,7 +1038,7 @@ public sealed class YouTurnStateMachine
     {
         bool? keepPositive = _lastStep != 0 && _lastStepTrack == track.Name ? _lastStep > 0 : null;
         var (nextLineInside, positiveDirection) = _pathing.WouldNextLineBeInsideBoundary(
-            track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive);
+            track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive, currentPosition, turn.DistanceToHeadland);
 
         _logger.LogDebug("[YouTurn] Creating turn? nextLineInside={Inside} positiveDir={Dir}", nextLineInside, positiveDirection);
         // The turns step one way across the field (#523). When that side has no pass left, the
@@ -1034,13 +1048,23 @@ public sealed class YouTurnStateMachine
         // Skipped passes are filled with the alternative or ignore-worked modes. Only on the pass
         // the last turn landed on: moved to another pass, or the field opened again, the tractor
         // may start from this edge.
+        bool steppedBack = false;
         if (nextLineInside && keepPositive is { } stepping && guidance.HowManyPathsAway == _lastStepPass
             && positiveDirection != stepping && turn.NextUTurnDirectionLeftOverride is null)
+        {
             nextLineInside = false;
+            steppedBack = true;
+        }
         if (!nextLineInside)
         {
-            _logger.LogDebug("[YouTurn] Next line would be outside boundary - stopping U-turns");
-            effects.StatusMessage = "End of field reached";
+            if (DrivesOnAcrossGap(in ctx, track, abHeading, guidance, turn, effects)) return;
+            // A pass inside the field somewhere, but with no room to land on at this end (a
+            // corner pass, the far lobe of an hourglass): the operator takes over here too.
+            bool roomSomewhere = !steppedBack && _pathing.WouldNextLineBeInsideBoundary(
+                track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive).isInside;
+            _logger.LogDebug("[YouTurn] Next line would be outside boundary{Room} - stopping U-turns",
+                roomSomewhere ? " at this end" : "");
+            effects.StatusMessage = roomSomewhere ? "End of field reached - no room on the next pass at this end" : "End of field reached";
             SoundCreationFailed(effects);
             return;
         }
@@ -1056,7 +1080,7 @@ public sealed class YouTurnStateMachine
         if (TakeDirectionSwap(turn, guidance, plannedPath))
         {
             int swapped = guidance.HowManyPathsAway + (positiveDirection ? -pathsToMove : pathsToMove);
-            if (_pathing.IsPathInsideCultivated(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine))
+            if (_pathing.IsPathLandable(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine, currentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland))
             {
                 turn.IsTurnLeft = !turn.IsTurnLeft;
                 _logger.LogDebug("[YouTurn] Direction swapped: turnLeft={Left}", turn.IsTurnLeft);
@@ -1112,6 +1136,25 @@ public sealed class YouTurnStateMachine
     /// included. Before, the end of the field showed only a status line and the tractor drove into
     /// the headland in silence.
     /// </summary>
+    /// <summary>
+    /// No pass with room to turn onto at this end, but the pass goes on inside the field past the
+    /// headland ahead, without leaving it (a corner the headland clips off the pass, a gap across
+    /// it): not the end of the field. No turn; the tractor drives on across to the next piece,
+    /// where a turn is planned again. Entering an olive grove at a corner the headland cut 11 m
+    /// off the first pass, the end of the field was announced 12 s into the job.
+    /// </summary>
+    private bool DrivesOnAcrossGap(in TickContext ctx, Models.Track.Track track, double abHeading,
+        GuidanceWorkingState guidance, YouTurnWorkingState turn, YouTurnEffects effects)
+    {
+        double? gap = _pathing.GapAhead(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
+            ctx.CurrentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland);
+        if (gap is not { } metres) return false;
+        _logger.LogDebug("[YouTurn] No pass with room at this headland; pass {Pass} goes on {Gap:F0}m past it - no turn, driving on",
+            guidance.HowManyPathsAway, metres);
+        effects.StatusMessage = "No room to turn at this headland - driving on across it";
+        return true;
+    }
+
     private void SoundCreationFailed(YouTurnEffects effects)
     {
         if (_creationFailSounded) return;
