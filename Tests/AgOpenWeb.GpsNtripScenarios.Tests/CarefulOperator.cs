@@ -126,6 +126,7 @@ public static class CarefulOperator
             s.Net.Restore();
             await GpsSession.WaitAsync(45);
             var o = CheckOutage(sc, s, down, up, s.Now, "2 min outage", maxBackSeconds: 20);
+            CheckAgeShown(sc, s, down, s.Now, "2 min outage");
             double silentFor = o.NtripLeftStreamingAt;
             sc.Note(F($"AgOpenWeb noticed the silent stream after {Outage.S(silentFor)} (NoData timeout; AgIO's watchdog is 30 s too) and tried {s.Net.Connections - 1} new connection(s) during the outage"));
             var w = s.Between(down, up);
@@ -273,7 +274,8 @@ public static class CarefulOperator
                     else sc.Ok(label + ": AutoSteer kept steering in float and DGPS (as AgOpenGPS)");
                     double maxSteer = s.Between(tDgps, tBack).Select(x => Math.Abs(x.SteerAngle)).DefaultIfEmpty(0).Max();
                     double maxXte = s.Between(tDgps, tBack).Select(x => Math.Abs(x.Xte)).DefaultIfEmpty(0).Max();
-                    sc.Note(F($"in DGPS (position wanders about a metre) AgOpenWeb steered up to {maxSteer:0.0}° for a distance from the line of up to {maxXte * 100:0} cm; the screen's line said only \"{status.LastOrDefault(x => x.Contains("below", StringComparison.Ordinal)) ?? "nothing"}\""));
+                    var dgpsStatus = Compress(s.Between(tDgps, tBack).Select(x => x.Status.Trim())).Where(x => x.Length > 0).ToList();
+                    sc.Note(F($"in DGPS (the position wanders about half a metre) AgOpenWeb steered up to {maxSteer:0.0}° for a distance from the line of up to {maxXte * 100:0} cm; the status line said: {(dgpsStatus.Count == 0 ? "nothing" : string.Join(" | ", dgpsStatus.Take(3)))}"));
                 }
                 CheckNoFreeze(sc, s, t0, end, label);
             }

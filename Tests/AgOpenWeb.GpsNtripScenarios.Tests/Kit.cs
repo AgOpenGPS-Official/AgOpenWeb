@@ -109,6 +109,28 @@ public static class Kit
         return o;
     }
 
+    /// <summary>While the receiver reports no correction age (single: the field is empty), the
+    /// screen should not show one: neither a fresh-looking 0.0 nor the age the corrections had
+    /// when they stopped. Judged over stretches of at least 2 s.</summary>
+    public static void CheckAgeShown(Scenario sc, GpsSession s, double from, double to, string what)
+    {
+        var none = s.Between(from, to).Where(x => x.RxQuality == 1 && x.RxSending).ToList();
+        if (none.Count < 20) return;
+        var shown = none.Where(x => !double.IsNaN(x.AowAge)).ToList();
+        if (shown.Count < 20)
+        {
+            sc.Ok(F($"{what}: while the receiver reported no correction age, the screen showed none (\"Age —\")"));
+            return;
+        }
+        var values = shown.Select(x => x.AowAge).Distinct().OrderBy(v => v).ToList();
+        string example = values.Count == 1 ? F($"{values[0]:0.0}") : F($"{values[0]:0.0} to {values[^1]:0.0}");
+        sc.Problem(Severity.Inconsistency, "AGE-SHOWN-WITHOUT-CORRECTIONS",
+            F($"{what}: for {shown.Count * 0.1:0} s the receiver was single and sent no correction age, yet the status bar read \"Age {example}\"") +
+            (values.All(v => v == 0)
+                ? " (a fresh-looking 0.0: the receiver never had corrections)"
+                : " (the age the corrections had when they stopped: an empty age field leaves the last one in place)"));
+    }
+
     public static IEnumerable<string> Compress(IEnumerable<string> seq)
     {
         string? last = null;

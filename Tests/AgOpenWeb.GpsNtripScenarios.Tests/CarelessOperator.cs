@@ -59,6 +59,7 @@ public static class CarelessOperator
         double t0 = s.Now;
         await s.SaveProfileAsync("Farm RTK", host, port == 0 ? s.Net.Port : port, mount, FakeCaster.User, FakeCaster.Password, id: id);
         double streaming = await s.WaitForAsync(() => s.NtripStatus.State == NtripState.Streaming && s.Rx.CorrectionAge < 2.5, 40);
+        if (!double.IsNaN(streaming)) streaming = s.Now - t0;   // from the operator's Save
         double fixedAt = double.IsNaN(streaming) ? double.NaN : await s.WaitForAsync(() => s.Rx.Quality == 4, 40);
         sc.Step(F($"{what} corrected and saved: corrections at the receiver after {Outage.S(streaming)}, RTK fixed {Outage.S(fixedAt)} later"));
         if (double.IsNaN(streaming))
@@ -103,7 +104,7 @@ public static class CarelessOperator
                 sc.Problem(Severity.Improvement, "LOGIN-MESSAGE", "the message for a wrong login does not name the user name or password: \"" + s.NtripStatus.Message + "\"");
             else sc.Ok("the NTRIP status says the user name or password is wrong");
             if (!s.Told(t0, s.Now).Any(t => t.Contains("toast", StringComparison.Ordinal) || t.Contains("failure", StringComparison.Ordinal)))
-                sc.Note("nothing on the map said NTRIP had stopped: the reason is in the status bar's NTRIP light and the Network IO / NTRIP Settings panels only");
+                sc.Note("nothing on the main screen said NTRIP had stopped (no toast; the GPS fix stays single): the reason is in the Network IO and NTRIP Settings panels only");
             await FixAndCheckAsync(sc, s, "password");
         });
 
@@ -196,7 +197,6 @@ public static class CarelessOperator
             if (open > 1) sc.Problem(Severity.Bug, "LEAKED-STREAMS", F($"{open} streams stay open at the caster after the taps (one login used twice; casters often refuse that)"));
             else if (open == 0 || s.NtripStatus.State != NtripState.Streaming) sc.Problem(Severity.Bug, "ONOFF-STUCK", F($"NTRIP ended {s.NtripStatus.State} with {open} stream(s) although the last tap switched it on"));
             else sc.Ok("one stream open and corrections flowing after the taps");
-            if (s.Caster.MaxStreaming > 1) sc.Note(F($"for a moment the caster had {s.Caster.MaxStreaming} streams from this AgOpenWeb"));
             CheckNoFreeze(sc, s, t0, s.Now, "on/off taps");
             CheckWire(sc, s);
         });
@@ -240,6 +240,7 @@ public static class CarelessOperator
             sc.Problem(Severity.Improvement, "CORRECTIONS-UNUSED-SILENT",
                 F($"for 45 s the NTRIP status said \"{s.NtripStatus.Message}\" while the receiver reported no correction age and stayed {EmulatedReceiver.Name(s.Rx.Quality)}: the corrections were not reaching it. AgOpenWeb knows both facts (it forwards {s.Caster.BytesSent / 45 / 1024.0:0.0} KB/s and the receiver's GGA has an empty age) but nothing says \"the receiver is not using the corrections\"; the Network IO line shows \"correction age —\" without the red mark it gets past 5 s. AgIO does not warn either")
                 + (saysArriving ? "" : " (the headline did not even say corrections were arriving)"));
+            CheckAgeShown(sc, s, t0, s.Now, "corrections to the wrong box");
             await s.SendAsync("config.set", "conn.rtcmBroadcast:1");
             await GpsSession.WaitAsync(3);
             var d2 = s.Rig.Ntrip.RtcmDestination;
