@@ -54,6 +54,8 @@ public static partial class RemoteServerWiring
 
         ApplyConfigSet(store, cfg, key, val);
 
+        if (AgOpenWeb.Models.Configuration.VehicleToolLimits.ApplySectionTiming(key, store) is { } timing)
+            return timing;
         // A harvester's header is front-mounted (#111): say so rather than ignore the choice.
         if (key == "tool.type" && harvester && !string.Equals(val, "front", System.StringComparison.OrdinalIgnoreCase))
             return "A combine takes only a front implement (its header)";
@@ -376,7 +378,7 @@ public static partial class RemoteServerWiring
         int GPi(string n) { var p = s?.GetType().GetProperty(n); return p?.GetValue(s) is { } v ? System.Convert.ToInt32(v, System.Globalization.CultureInfo.InvariantCulture) : 0; }
         var sb = w.StatusBar;
         string phaseResult = GPs("PhaseResult");
-        bool testActive = GPb("IsRecording") || GPb("IsMeasuring") || GPb("IsPhaseA1") || GPb("IsPhaseB1");
+        bool testActive = GPb("IsRecording") || GPb("IsMeasuring") || GPb("IsPhaseA1");
         return new AgOpenWeb.RemoteServer.WizardDto(
             w.CurrentStepIndex, w.TotalSteps, kind, step?.Title ?? "", step?.Description ?? "",
             w.CanGoBack, w.CanGoNext, w.CanSkip, w.IsOnLastStep, step?.ValidationMessage ?? "",

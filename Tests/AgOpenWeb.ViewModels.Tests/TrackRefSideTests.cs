@@ -29,6 +29,7 @@ public class TrackRefSideTests
         store.Tool.Overlap = 0;
         store.Tool.Offset = 0;
         _vm = new MainViewModelBuilder().Build();
+        _vm.IsFieldOpen = true; // tracks belong to a field
         // The cycle's pivot (what A and B are taken from, as AgOpenGPS's pivotAxlePos).
         _vm.State.Vehicle.Easting = 500;
         _vm.State.Vehicle.Northing = 1000;
