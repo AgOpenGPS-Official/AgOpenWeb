@@ -168,7 +168,7 @@ public class AutoSteerConfigEmitTests
         _udp.ClearReceivedCalls();
         _service.SendPgnsForControlTick();
         foreach (var call in _udp.ReceivedCalls())
-            if (call.GetArguments()[0] is byte[] b && b.Length > 9 && b[3] == 0xFE)
+            if (call.GetArguments() is [byte[] b, ..] && b.Length > 9 && b[3] == 0xFE) // calls only: a tick also reads IsConnected
                 return (short)(b[8] | (b[9] << 8));
         return short.MinValue;
     }
