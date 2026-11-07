@@ -143,6 +143,8 @@ public partial class MainViewModel
             sy.TurnPath = yt.TurnPath is List<AgOpenWeb.Models.Base.Vec3> tp ? tp : yt.TurnPath?.ToList();
             sy.PathIndex = yt.PathIndex;
             sy.ArcStart = yt.ArcStart;
+            sy.TurnAtObstacle = yt.TurnAtObstacle;
+            sy.TurnAtObstacleIndex = yt.TurnAtObstacleIndex;
             sy.IsTurnLeft = yt.IsTurnLeft;
             sy.LastTurnWasLeft = yt.LastTurnWasLeft;
             sy.DistanceToHeadland = yt.DistanceToHeadland;
@@ -341,6 +343,10 @@ public partial class MainViewModel
         // Status message (only if set — don't overwrite existing)
         if (result.StatusMessage != null)
             StatusMessage = result.StatusMessage;
+
+        // A pass that runs into Go around obstacles with no room either side (a toast).
+        if (result.ObstacleNotice != null)
+            ReportFailure(result.ObstacleNotice);
 
         // Map vehicle/tool/hitch positions are pushed by OnRenderPullTick at
         // 30 Hz (vehicle dead-reckoned to "now" from the estimator, tool/hitch

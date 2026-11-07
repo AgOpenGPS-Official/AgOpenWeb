@@ -462,6 +462,8 @@ function updateLineWidths() {
   const wb = (m) => Math.min(Math.max(m * z, 1), 3.5);
   SKP.boundary.setStrokeWidth(wb(3.0));   // boundaryOuter 1 × 3
   SKP.boundaryInner.setStrokeWidth(wb(3.0)); // boundaryInner 1 × 3
+  SKP.boundaryGoRound.setStrokeWidth(wb(3.0)); SKP.boundaryDriveThru.setStrokeWidth(wb(3.0));
+  SKP.boundarySel.setStrokeWidth(wb(3.0) + 5);
   SKP.boundaryOut.setStrokeWidth(3 * 2 * k);  // out of bounds: AgOpenGPS ABLine.lineWidth × 3 (#494)
   SKP.headland.setStrokeWidth(w(3.0));   // headland 1 × 3
   SKP.guidance.setStrokeWidth(w(1.5));   // trackActive 0.5 × 3
@@ -695,4 +697,16 @@ function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter, mipMode) 
   canvas.concat(imgToWorld);
   canvas.drawImageOptions(img, 0, 0, filter, mip, null);
   canvas.restore();
+}
+
+// The paint of scene ring bi: the outer boundary, or an obstacle by its choice (boundaryKind
+// 1 U-turn, 2 go around, 3 drive through).
+function boundaryRingPaint(bi) {
+  const k = scene.boundaryKind ? scene.boundaryKind[bi] : (scene.boundaryInner[bi] ? 1 : 0);
+  return k === 2 ? SKP.boundaryGoRound : k === 3 ? SKP.boundaryDriveThru : k ? SKP.boundaryInner : SKP.boundary;
+}
+// The ring selected in the open boundary menu (the list and the rings share their index), or -1.
+function boundaryMenuSelectedRing() {
+  return boundary && boundary.selectedIndex >= 0 && document.getElementById('boundarymenu').classList.contains('open')
+    ? boundary.selectedIndex : -1;
 }

@@ -28,6 +28,11 @@ public class YouTurnWorkingState
     // Where TurnPath leaves the current pass (the arc's first point); null when the path has
     // no entry leg. The approach alarm and the too-close rule measure against it.
     public Vec3? ArcStart { get; set; }
+    // The planned turn is made before an obstacle (an inner boundary chosen for a U-turn), not at
+    // the field's edge: a turn missed there is not turned from where the tractor is.
+    public bool TurnAtObstacle { get; set; }
+    // With TurnAtObstacle, that obstacle's index in the inner boundaries; else -1.
+    public int TurnAtObstacleIndex { get; set; } = -1;
 
     // Direction
     public bool IsTurnLeft { get; set; }
@@ -113,6 +118,8 @@ public class YouTurnWorkingState
         IsExecuting = false;
         TurnPath = null;
         ArcStart = null;
+        TurnAtObstacle = false;
+        TurnAtObstacleIndex = -1;
         PathIndex = 0;
         PreviousDistToTurnEnd = double.MaxValue;
         DistanceToHeadland = double.MaxValue;
@@ -138,6 +145,8 @@ public class YouTurnWorkingState
         IsTriggered = false;
         TurnPath = null;
         ArcStart = null;
+        TurnAtObstacle = false;
+        TurnAtObstacleIndex = -1;
         LastTurnWasLeft = IsTurnLeft;
         HeldDirectionLeft = null;
         PlannedNextPath = null;

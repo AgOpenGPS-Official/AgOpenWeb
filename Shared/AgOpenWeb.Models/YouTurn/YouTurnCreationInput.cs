@@ -22,10 +22,20 @@ namespace AgOpenWeb.Models.YouTurn
         public List<BoundaryTurnLine> BoundaryTurnLines { get; set; } = new List<BoundaryTurnLine>();
 
         /// <summary>
-        /// Function to check if a point is inside the turn area.
-        /// Returns: 0 if inside field, non-zero boundary index if inside turn area.
+        /// Function to check if a point is inside the turn area, as AgOpenGPS's
+        /// IsPointInsideTurnArea: 0 in the workable area, -1 outside the outer turn line
+        /// (<see cref="BoundaryTurnLines"/>[0]), k inside obstacle turn line k.
         /// </summary>
         public Func<Vec3, int> IsPointInsideTurnArea { get; set; }
+
+        /// <summary>
+        /// Whether a point of a turn being laid out is blocked: inside a turn line
+        /// (<see cref="IsPointInsideTurnArea"/> not 0) or in the room kept round a Go around
+        /// obstacle, which a turn keeps out of as the bent pass does. The generator seats its
+        /// arcs and slides them to the turn line by this test; the crossing a turn is made at
+        /// is still found by the turn lines. Null: the turn lines alone.
+        /// </summary>
+        public Func<Vec3, bool>? IsPointBlockedForTurn { get; set; }
 
         // Guidance line data
         /// <summary>
@@ -47,6 +57,13 @@ namespace AgOpenWeb.Models.YouTurn
         /// CABCurve.BuildNewOffsetList, which always offsets the reference curve).
         /// </summary>
         public List<Vec3> ReferenceCurvePoints { get; set; } = new List<Vec3>();
+
+        /// <summary>
+        /// Bends a pass (offset that far from the reference) round the field's Go around
+        /// obstacles, as the pipeline steers it: the pass a turn lands on is built with it, so
+        /// the exit leg joins the line that is driven. Null: passes are not bent.
+        /// </summary>
+        public Func<double, List<Vec3>, List<Vec3>>? BendPass { get; set; }
 
         /// <summary>
         /// For curves: Is vehicle heading same way as curve direction?

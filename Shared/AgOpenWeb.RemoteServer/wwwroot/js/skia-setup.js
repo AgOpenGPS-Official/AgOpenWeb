@@ -171,6 +171,10 @@ function buildSkPaints() {
   SKP = {
     // Widths are set per frame in updateLineWidths() (world metres × pxPerM).
     boundary: mk('rgba(242,112,89,0.8)', 5), boundaryInner: mk('rgb(245,245,77)', 5), headland: mk('rgb(251,235,107)', 4),
+    // An obstacle's colour is its choice: a U-turn yellow (boundaryInner), go around blue, drive
+    // through grey and dashed; the one selected in the boundary menu is outlined white.
+    boundaryGoRound: mk('rgb(77,208,245)', 5), boundaryDriveThru: mk('rgb(176,176,176)', 5, [6, 5]),
+    boundarySel: mk('rgb(255,255,255)', 9),
     // Out of bounds (#494, AgOpenGPS CFence / OpenGL.Designer): every boundary thick and red,
     // and an orange frame round the map.
     boundaryOut: mk('rgb(242,64,64)', 6), outFrame: mk('rgb(255,168,84)', 8),
