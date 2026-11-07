@@ -178,6 +178,14 @@ public static class CarefulOperator
             await s.SetAsync("autosteer.maxSteerSpeed", 18.0);
             await s.CheckAsync(await s.NextAsync(), Blocked("speed"));
         });
+        await s.StepAsync("Finish page: every test ran, so none is listed as not run", async () =>
+        {
+            string text = (await s.Rig.FrameAsync())?.TestResult ?? "";
+            rig.Note("Finish page: " + (text.Length > 0 ? text : "(nothing)"));
+            if (text.Contains("Not tested", StringComparison.Ordinal))
+                s.Report(new Finding(Severity.Bug, "FINISH_WARNS_ABOUT_A_TEST_THAT_RAN",
+                    "The Finish page lists a test as not run after the careful operator ran every one: " + text));
+        });
         await s.StepAsync("Finish", s.FinishAsync);
 
         // What the careful run must have achieved, against the tractor's truth.

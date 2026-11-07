@@ -175,6 +175,9 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         set => SetProperty(ref _calibrationCompleted, value);
     }
 
+    /// <summary>A motor test ran to its end in this wizard (the Finish page lists the tests not run).</summary>
+    public bool TestDone { get; internal set; }
+
     // =========================================================================
     // Live feedback
     // =========================================================================
@@ -387,6 +390,7 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                         (minPwmStalled
                             ? $"\nNot saved: half the maximum PWM or more means the wheels stalled. Minimum PWM stays {autoSteerConfig.MinPwm}. Free the wheels and run the test again."
                             : "");
+                    TestDone = true; // the ramp ran to its end: the Finish page won't list it
                     Phase = CalibrationPhase.RampResult;
                     return;
                 }
