@@ -1798,6 +1798,14 @@ public partial class MainViewModel : ObservableObject
             // Load background image
             LoadBackgroundImage(fieldPath, boundary);
 
+            // Obstacles that had no choice in the file (an AgOpenGPS field, or one saved before the
+            // choice existed) and are not drive-through now get a U-turn, as in AgOpenGPS: say so.
+            // The close-save writes the choice, so this is said once per field.
+            if (boundary is { ObstaclesNowUTurn: > 0 } b)
+                ShowErrorDialog("U-turn at obstacles", b.ObstaclesNowUTurn == 1
+                    ? "1 obstacle in this field now gets a U-turn before it, as in AgOpenGPS. To drive over it as before, choose Drive through for it in the boundary list."
+                    : $"{b.ObstaclesNowUTurn} obstacles in this field now get a U-turn before them, as in AgOpenGPS. To drive over one as before, choose Drive through for it in the boundary list.");
+
             // The loaded field becomes the active one, so the close-save writes back what was
             // read (convergence, dates). Origin must be the one in effect (possibly recovered
             // from field.origin): a (0, 0) default here would be written back on close and
@@ -4735,7 +4743,11 @@ public partial class MainViewModel : ObservableObject
                     BoundaryType = $"Inner {i + 1}",
                     AreaHectares = inner.AreaHectares,
                     IsDriveThrough = inner.IsDriveThrough,
-                    IsHard = inner.IsHard
+                    IsHard = inner.IsHard,
+                    IsInner = true,
+                    AtObstacle = inner.AtObstacle,
+                    SizeMeters = inner.Circle?.Diameter ?? inner.LongestSpan(),
+                    CircleDiameter = inner.Circle?.Diameter ?? 0,
                 });
             }
         }
@@ -5274,7 +5286,7 @@ public partial class MainViewModel : ObservableObject
                 if (polyIdx == 0 && PendingBoundaryType == BoundaryType.Outer)
                     boundary.OuterBoundary = polygon;
                 else
-                    boundary.InnerBoundaries.Add(polygon);
+                    boundary.AddNewObstacle(polygon);
             }
 
             SaveFieldBoundary(boundary, fieldPath);
@@ -6499,6 +6511,13 @@ public class BoundaryListItem
     public double AreaHectares { get; set; }
     public bool IsDriveThrough { get; set; }
     public bool IsHard { get; set; }
+    /// <summary>An inner boundary (an obstacle), which has an <see cref="AtObstacle"/> choice.</summary>
+    public bool IsInner { get; set; }
+    public ObstacleAction AtObstacle { get; set; }
+    /// <summary>An obstacle's longest distance across, metres (0 for the outer boundary).</summary>
+    public double SizeMeters { get; set; }
+    /// <summary>A round obstacle's diameter, metres; 0 for a drawn shape.</summary>
+    public double CircleDiameter { get; set; }
     public string DriveThruDisplay => IsDriveThrough ? "Yes" : "--";
     public string HardDisplay => IsHard ? "Hard" : "Soft";
 }

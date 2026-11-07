@@ -1155,11 +1155,11 @@ namespace AgOpenWeb.Services.YouTurn
                 int turnIndex = input.IsPointInsideTurnArea(input.GuidancePoints[j]);
                 if (turnIndex != 0)
                 {
-                    // IsPointInsideTurnArea returns 0 = inside, non-zero = outside as a FLAG
-                    // (the AgOpenWeb lambda returns 1), NOT a boundary index. The turn line to
-                    // intersect is the boundary the curve crossed; AgOpenWeb models a single
-                    // turn boundary, so clamp into BoundaryTurnLines range — using the raw flag
-                    // as an index threw IndexOutOfRange (BoundaryTurnLines[1] with one entry).
+                    // IsPointInsideTurnArea returns AgOpenGPS's values: 0 workable, -1 outside the
+                    // outer turn line (turn line 0), k inside obstacle turn line k. The turn line to
+                    // intersect is the one the curve crossed. Clamped into BoundaryTurnLines all the
+                    // same, so any other non-zero flag means the outer one (a raw 1 with one turn
+                    // line threw IndexOutOfRange).
                     int boundaryIndex = Math.Min(turnIndex, input.BoundaryTurnLines.Count - 1);
                     if (boundaryIndex < 0) boundaryIndex = 0;
                     closestTurnPt.CurveIndex = j - count;
@@ -1428,54 +1428,33 @@ namespace AgOpenWeb.Services.YouTurn
 
             var turnLine = _currentInput.BoundaryTurnLines[bndNum].Points;
 
-            if (!isSameWay)
+            // The crossing nearest the arc's end. AgOpenGPS takes the first segment in the turn
+            // line's order, which is the only one for a ray across the outer turn line of a field
+            // without bays; a ray across an obstacle's turn line meets it twice, on the near side
+            // and on the far one, and the far side's crossing walked the turn round the obstacle.
+            double best = double.MaxValue;
+            for (int i = 0; i < turnLine.Count; i++)
             {
-                for (int i = turnLine.Count - 1; i >= 0; i--)
-                {
-                    int res = GetLineIntersection(
-                        fromPt.Easting, fromPt.Northing,
-                        fromPt.Easting + (sin * 1000), fromPt.Northing + (cos * 1000),
-                        turnLine[i].Easting, turnLine[i].Northing,
-                        i == 0 ? turnLine[turnLine.Count - 1].Easting : turnLine[i - 1].Easting,
-                        i == 0 ? turnLine[turnLine.Count - 1].Northing : turnLine[i - 1].Northing,
-                        ref iE, ref iN);
+                int nextI = (i + 1) % turnLine.Count;  // Wrap around for closing segment
+                int res = GetLineIntersection(
+                    fromPt.Easting, fromPt.Northing,
+                    fromPt.Easting + (sin * 1000), fromPt.Northing + (cos * 1000),
+                    turnLine[i].Easting, turnLine[i].Northing,
+                    turnLine[nextI].Easting, turnLine[nextI].Northing,
+                    ref iE, ref iN);
+                if (res != 1) continue;
 
-                    if (res == 1)
-                    {
-                        var closePt = closestTurnPt.ClosePt;
-                        closePt.Easting = iE;
-                        closePt.Northing = iN;
-                        closestTurnPt.ClosePt = closePt;
-                        closestTurnPt.TurnLineNum = bndNum;
-                        closestTurnPt.TurnLineIndex = i == 0 ? turnLine.Count - 1 : i - 1;
-                        return;
-                    }
-                }
-            }
-            else
-            {
-                // Iterate through all segments including the closing segment
-                for (int i = 0; i < turnLine.Count; i++)
-                {
-                    int nextI = (i + 1) % turnLine.Count;  // Wrap around for closing segment
-                    int res = GetLineIntersection(
-                        fromPt.Easting, fromPt.Northing,
-                        fromPt.Easting + (sin * 1000), fromPt.Northing + (cos * 1000),
-                        turnLine[i].Easting, turnLine[i].Northing,
-                        turnLine[nextI].Easting, turnLine[nextI].Northing,
-                        ref iE, ref iN);
-
-                    if (res == 1)
-                    {
-                        var closePt = closestTurnPt.ClosePt;
-                        closePt.Easting = iE;
-                        closePt.Northing = iN;
-                        closestTurnPt.ClosePt = closePt;
-                        closestTurnPt.TurnLineNum = bndNum;
-                        closestTurnPt.TurnLineIndex = i;
-                        return;
-                    }
-                }
+                double d = (iE - fromPt.Easting) * (iE - fromPt.Easting) + (iN - fromPt.Northing) * (iN - fromPt.Northing);
+                if (d >= best) continue;
+                best = d;
+                var closePt = closestTurnPt.ClosePt;
+                closePt.Easting = iE;
+                closePt.Northing = iN;
+                closestTurnPt.ClosePt = closePt;
+                closestTurnPt.TurnLineNum = bndNum;
+                // A segment is named by its first point in the line's order, whichever way the
+                // turn then walks the line (isSameWay), as AgOpenGPS names it both ways.
+                closestTurnPt.TurnLineIndex = i;
             }
         }
 
@@ -1512,8 +1491,7 @@ namespace AgOpenWeb.Services.YouTurn
                 int turnIndex = _currentInput.IsPointInsideTurnArea(nextCurve[j]);
                 if (turnIndex != 0)
                 {
-                    // The flag (1 = outside), not a boundary index, as in FindCurveTurnPoint:
-                    // AgOpenWeb has one turn line, so clamp into BoundaryTurnLines.
+                    // As in FindCurveTurnPoint: -1 is the outer turn line, k obstacle turn line k.
                     int boundaryIndex = Math.Min(turnIndex, _currentInput.BoundaryTurnLines.Count - 1);
                     if (boundaryIndex < 0) boundaryIndex = 0;
                     closestTurnPt.CurveIndex = j - count;

@@ -135,6 +135,10 @@ public static class WireCodec
             w.Write(it.AreaHa);            // f64 (hectares; the client formats ha/ac)
             w.Write((byte)(it.DriveThru ? 1 : 0));
             w.Write((byte)(it.Hard ? 1 : 0));
+            w.Write((byte)(it.IsInner ? 1 : 0));
+            w.Write((byte)it.AtObstacle);  // ObstacleAction
+            w.Write((float)it.SizeM);      // f32, metres
+            w.Write((float)it.CircleD);    // f32, metres (0: not a circle)
         }
         w.Write(b.SelectedIndex);         // i32
         w.Write((byte)(b.PlayerVisible ? 1 : 0));
@@ -526,7 +530,7 @@ public static class WireCodec
         w.Write(s.Boundaries.Count);
         for (int i = 0; i < s.Boundaries.Count; i++)
         {
-            w.Write((byte)(i < s.BoundaryInner.Count && s.BoundaryInner[i] ? 1 : 0));
+            w.Write(i < s.BoundaryKind.Count ? s.BoundaryKind[i] : (byte)0);
             WritePts(w, s.Boundaries[i]);
         }
 

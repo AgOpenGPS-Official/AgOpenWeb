@@ -62,14 +62,18 @@ public class FieldService : IFieldService
     /// </summary>
     public Field LoadField(string fieldDirectory)
     {
+        int obstaclesNowUTurn = 0;
         if (HasAgOpenGpsFieldFiles(fieldDirectory))
         {
             var imported = ReadAgOpenGpsField(fieldDirectory);
+            obstaclesNowUTurn = imported.Boundary?.ObstaclesNowUTurn ?? 0;
             GeoJsonFieldService.Save(imported, tracks: null);
             foreach (var name in AgOpenGpsFieldFiles)
                 DeleteIfPresent(fieldDirectory, name);
         }
         var field = ReadGeoJsonField(fieldDirectory);
+        // The AgOpenGPS obstacles that get a U-turn are only known from its files, now deleted.
+        if (field.Boundary != null) field.Boundary.ObstaclesNowUTurn += obstaclesNowUTurn;
 
         // The field's other AgOpenGPS files, now that field.geojson exists to take them.
         if (File.Exists(Path.Combine(fieldDirectory, TrackFilesService.FileName)))

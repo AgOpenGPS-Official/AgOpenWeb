@@ -42,6 +42,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // and the camera/render math goes weird, so silently re-anchor.
     private const double TempOriginReinitDistanceM = 50_000.0;
 
+    // An obstacle chosen as U-turn this far ahead (plus ObstacleStopSeconds of travel) with no
+    // turn planned before it takes AutoSteer off.
+    private const double ObstacleStopDistance = 10.0;
+    private const double ObstacleStopSeconds = 2.0;
+
     // Surface a "GPS far from field" warning when the live GPS reports a
     // position farther than this from the loaded field's origin. Autosteer
     // is dropped immediately as a safety measure on the UI thread.
@@ -1019,6 +1024,23 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _belowMinSteerSpeedSinceMs = null;
         }
 
+        // (5b') An obstacle chosen as U-turn ahead and no turn to take before it (lost, missed,
+        // aborted, no room, or U-turn switched off): AutoSteer off with the alarm while there is
+        // room to stop or steer round it by hand, 10 m plus 2 s of travel ahead of the pivot.
+        if (autoSteerEngaged && hasTickableTrack && boundary != null && boundary.InnerBoundaries.Count > 0)
+        {
+            int inner = _youTurnStateMachine.ObstacleAheadWithoutTurn(in tickCtx, _youTurn,
+                ObstacleStopDistance + ObstacleStopSeconds * Math.Abs(pos.Speed));
+            if (inner >= 0)
+            {
+                autoSteerEngaged = false;
+                autoSteerDisengaged = true;
+                disengageReason = $"AutoSteer off: Inner {inner + 1} ahead and no U-turn before it. Steer by hand.";
+                lock (_stateLock) _autoSteerEngaged = false;
+                _audioService.Play(SoundEffect.UTurnTooClose);
+            }
+        }
+
         // (5c) Reverse (#125), like AgOpenGPS: with Steer in reverse off, steering
         // stops while reversing but AutoSteer stays engaged; it also stops while a
         // single antenna with no IMU can't yet tell a direction change. PGN 254
@@ -1501,6 +1523,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         TurnPath = src.TurnPath,
         PathIndex = src.PathIndex,
         ArcStart = src.ArcStart,
+        TurnAtObstacle = src.TurnAtObstacle,
         IsTurnLeft = src.IsTurnLeft,
         LastTurnWasLeft = src.LastTurnWasLeft,
         DistanceToHeadland = src.DistanceToHeadland,

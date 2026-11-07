@@ -17,9 +17,11 @@ function renderSkia(canvas, rp) {
   drawGridSk(canvas);
   const outOfBounds = !!(tick && tick.op && tick.op.outOfBounds); // #494
   if (scene) {
-    for (let bi = 0; bi < scene.boundaries.length; bi++)
-      strokePtsSk(canvas, scene.boundaries[bi], true, outOfBounds ? SKP.boundaryOut
-        : (scene.boundaryInner && scene.boundaryInner[bi]) ? SKP.boundaryInner : SKP.boundary);
+    const selRing = boundaryMenuSelectedRing();
+    for (let bi = 0; bi < scene.boundaries.length; bi++) {
+      if (bi === selRing) strokePtsSk(canvas, scene.boundaries[bi], true, SKP.boundarySel);
+      strokePtsSk(canvas, scene.boundaries[bi], true, outOfBounds ? SKP.boundaryOut : boundaryRingPaint(bi));
+    }
     // Headland line shows only when the headland is ON (the bottom-nav headland button).
     if (scene.headland && tick && tick.tools && tick.tools.headlandOn)
       strokePtsSk(canvas, scene.headland, true, SKP.headland);
