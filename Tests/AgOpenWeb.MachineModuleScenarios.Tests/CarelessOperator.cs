@@ -236,7 +236,7 @@ public static class CarelessOperator
     private static async Task<ScenarioRow> TramRelaysByAgOpenWebNames()
     {
         var sc = new Scenario(Name, "K6", "Tram light relays chosen by AgOpenWeb's names",
-            "A 6-section boom (6 × 133 cm). The operator wires the LEFT tram light to relay 7 and the RIGHT one to relay 8, and on the relay page picks AgOpenWeb's 'Tram Left' (19) for relay 7 and 'Tram Right' (20) for relay 8. Tram lines on; the operator presses the manual Left tram button, then Right.");
+            "A 6-section boom (6 × 133 cm). The operator wires the LEFT tram light to relay 7 and the RIGHT one to relay 8, and on the relay page picks the function AgOpenWeb names 'TramLeft' for relay 7 and 'TramRight' for relay 8. Tram lines on; the operator presses the manual Left tram button, then Right.");
         string root = NewDataRoot("k6");
         using var module = new EmulatedSprayerModule();
         module.Start();
@@ -245,9 +245,11 @@ public static class CarelessOperator
         await Task.Delay(EmulatedSprayerModule.BootMs + 200);
         await using var s = await MachineSession.StartAsync(root, module);
         await WaitModuleSeenAsync(s);
-        await s.SetToolAsync(6, 133, new[] { (6, 19), (7, 20) });
+        // By AgOpenWeb's names, as the operator picks them from the list.
+        int left = (int)AgOpenWeb.Models.Configuration.PinFunction.TramLeft, right = (int)AgOpenWeb.Models.Configuration.PinFunction.TramRight;
+        await s.SetToolAsync(6, 133, new[] { (6, left), (7, right) });
         await Task.Delay(1500);
-        sc.Step(F($"Relay page: relay 7 = {(AgOpenWeb.Models.Configuration.PinFunction)19} (19), relay 8 = {(AgOpenWeb.Models.Configuration.PinFunction)20} (20); Save"));
+        sc.Step(F($"Relay page: relay 7 = TramLeft ({left}), relay 8 = TramRight ({right}); Save"));
         sc.CheckConfig(s, "1.5 s after Save", Severity.Bug, "SETTINGS-NOT-SENT", "");
         if (await s.StartJobAsync("K6") is { } why) sc.Harness(why);
         var (noTram, modeAfterToggle) = await s.TramOnAsync();
@@ -266,22 +268,22 @@ public static class CarelessOperator
 
         await s.SendAsync("tram.manualLeft");
         await Task.Delay(800);
-        byte left = module.Tramline;
+        byte leftByte = module.Tramline;
         sc.Step(F($"  AgOpenWeb: tram display {s.Store.Tram.DisplayMode}, tram lines {s.Rig.Tram.HasTramLines}, manual left {s.Rig.Tram.IsLeftManualOn}, tool {s.Store.ActualToolWidth:0.00} m, track {s.Store.Vehicle.TrackWidth:0.00} m, tram state {s.Rig.AutoSteer.LatestSnapshot?.TramState}"));
         bool r7 = Bit(module.Relays, 6), r8 = Bit(module.Relays, 7);
-        sc.Step(F($"Manual LEFT on: tram byte {left} (bit 0 = right wheel, bit 1 = left), relay 7 ('Tram Left') {(r7 ? "ON" : "off")}, relay 8 ('Tram Right') {(r8 ? "ON" : "off")}"));
+        sc.Step(F($"Manual LEFT on: tram byte {leftByte} (bit 0 = right wheel, bit 1 = left), relay 7 ('Tram Left') {(r7 ? "ON" : "off")}, relay 8 ('Tram Right') {(r8 ? "ON" : "off")}"));
         await s.SendAsync("tram.manualLeft");
         await s.SendAsync("tram.manualRight");
         await Task.Delay(800);
-        byte right = module.Tramline;
+        byte rightByte = module.Tramline;
         bool q7 = Bit(module.Relays, 6), q8 = Bit(module.Relays, 7);
-        sc.Step(F($"Manual RIGHT on (left off): tram byte {right}, relay 7 ('Tram Left') {(q7 ? "ON" : "off")}, relay 8 ('Tram Right') {(q8 ? "ON" : "off")}"));
+        sc.Step(F($"Manual RIGHT on (left off): tram byte {rightByte}, relay 7 ('Tram Left') {(q7 ? "ON" : "off")}, relay 8 ('Tram Right') {(q8 ? "ON" : "off")}"));
         await s.SendAsync("tram.manualRight");
 
         if (baseTram != 0) sc.Note(F($"the wheels were on a tram line before the buttons (tram byte {baseTram}); the relay check below may be blurred"));
         if (!r7 && r8 && q7 && !q8)
             sc.Problem(Severity.Bug, "TRAM-LABELS-SWAPPED",
-                "the Left button lit the relay AgOpenWeb calls 'Tram Right', and the Right button the one it calls 'Tram Left'. AgOpenWeb names output function 19 'Tram Left' and 20 'Tram Right'; AgOpenGPS (ConfigModule: 19 = Tram Right, 20 = Tram Left), the official Machine_UDP firmware and Sprayer_ESP32 use 19 = right, 20 = left. AgOpenWeb itself sends bit 0 = right wheel, bit 1 = left, as AgOpenGPS does; only the names on the relay page are swapped.");
+                F($"the Left button lit the relay AgOpenWeb calls 'TramRight', and the Right button the one it calls 'TramLeft'. AgOpenWeb names output function {left} 'TramLeft' and {right} 'TramRight'; AgOpenGPS (ConfigModule: 19 = Tram Right, 20 = Tram Left), the official Machine_UDP firmware and Sprayer_ESP32 use 19 = right, 20 = left. AgOpenWeb itself sends bit 0 = right wheel, bit 1 = left, as AgOpenGPS does; only the names on the relay page are swapped."));
         else if (r7 && !r8 && !q7 && q8)
             sc.Ok("each tram button lit the relay with its name");
         else
