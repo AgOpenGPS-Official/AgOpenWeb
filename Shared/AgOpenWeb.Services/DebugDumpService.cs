@@ -411,10 +411,21 @@ public class DebugDumpService
                 store.Tool.Offset,
                 store.Tool.HitchLength,
                 store.Tool.TrailingHitchLength,
+                // Where the working line is (#679: a placement report needs these, and they were missing).
+                store.Tool.TrailingToolToPivotLength,
+                store.Tool.TankTrailingHitchLength,
+                store.Tool.IsToolFrontFixed,
                 store.Tool.IsToolTrailing,
                 store.Tool.IsToolRearFixed,
                 store.Tool.IsToolTBT,
-                store.Tool.IsMultiColoredSections
+                store.Tool.IsMultiColoredSections,
+                // When the sections switch, and how wide coverage is painted.
+                store.Tool.LookAheadOnSetting,
+                store.Tool.LookAheadOffSetting,
+                store.Tool.TurnOffDelay,
+                store.Tool.SlowSpeedCutoff,
+                store.Tool.CoverageMargin,
+                store.Tool.MinCoverage
             },
             Guidance = new
             {
