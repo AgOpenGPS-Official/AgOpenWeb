@@ -15,9 +15,11 @@ namespace AgOpenWeb.Models.Configuration;
 /// tractor back onto the first pass from wherever it engages.
 /// <para>The ranges are AgOpenGPS's settings forms' (FormConfig: wheelbase 50 to 1999 cm,
 /// antenna height 0 to 10 m, sections up to 50 m, …), in metres; a sign the form takes from
-/// a left/right or ahead/behind choice is a sign here. The AutoSteer ranges are the panel's
-/// sliders' (AgOpenGPS's FormSteer): a gain of 0 never steers, 999 is clamped to 200 by the
-/// module but was shown as typed, and a minimum speed above the maximum never engages.</para>
+/// a left/right or ahead/behind choice is a sign here. The AutoSteer ranges are the web
+/// AutoSteer panel's sliders' (index.html), which follow AgOpenGPS's FormSteer but are wider in
+/// places (max steer angle to 90°, deadzone delay to 50, steer response hold to 10, the
+/// Stanley gains to 10, Ackermann from 0): a gain of 0 never steers, 999 is clamped to 200 by
+/// the module but was shown as typed, and a minimum speed above the maximum never engages.</para>
 /// </summary>
 public static class VehicleToolLimits
 {
@@ -124,7 +126,8 @@ public static class VehicleToolLimits
             return r.Name + " must be a number";
         if (key is "tool.numSections" or "tool.zones" or "tram.passes" && v != Math.Floor(v))
             return r.Name + " must be a whole number";
-        if (v < r.Min - 1e-9 || v > r.Max + 1e-9)
+        double slack = RoundingSlack(r.Unit, metric);
+        if (v < r.Min - slack || v > r.Max + slack)
         {
             string unit = Symbol(r.Unit, metric);
             if (unit.Length > 0 && unit != "°" && unit != "%") unit = " " + unit;
@@ -223,6 +226,17 @@ public static class VehicleToolLimits
             return "the min steer speed must be below the max (AutoSteer settings)";
         return null;
     }
+
+    // An imperial box shows the value converted and rounded (31.1 mph for the 50 km/h limit), and
+    // the value typed back converts to a little past the limit (50.05 km/h): half a shown step
+    // (0.05 of the unit) past either end is the limit itself. Metric input is what is stored.
+    private static double RoundingSlack(Unit u, bool metric) => metric ? 1e-9 : u switch
+    {
+        Unit.Metre => 0.05 * 0.3048,
+        Unit.Centimetre => 0.05 * 2.54,
+        Unit.KmH => 0.05 * 1.609344,
+        _ => 1e-9,
+    };
 
     private static string Show(double v, Unit u, bool metric)
     {

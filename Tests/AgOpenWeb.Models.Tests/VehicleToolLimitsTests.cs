@@ -293,4 +293,24 @@ public class VehicleToolLimitsTests
         Assert.That(VehicleToolLimits.ApplySectionTiming("tool.lookAheadOff", s), Is.Null);
         Assert.That(s.Tool.LookAheadOffSetting, Is.EqualTo(0.5));
     }
+
+    // Imperial: the box shows the 50 km/h limit as 31.1 mph; typed back it is 50.05 km/h.
+    [Test]
+    public void An_imperial_value_typed_back_as_shown_at_the_limit_is_taken()
+    {
+        var s = new ConfigurationStore { IsMetric = false };
+        s.AutoSteer.MinSteerSpeed = 0;
+        s.AutoSteer.MaxSteerSpeed = 15;
+        double typedBack = 31.1 * 1.609344;
+        Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", typedBack.ToString(System.Globalization.CultureInfo.InvariantCulture), s), Is.Null);
+        Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", (31.3 * 1.609344).ToString(System.Globalization.CultureInfo.InvariantCulture), s), Is.Not.Null,
+            "past half a shown step it is still refused");
+    }
+
+    [Test]
+    public void Metric_input_past_the_limit_is_refused()
+    {
+        var s = new ConfigurationStore { IsMetric = true };
+        Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "50.05", s), Is.Not.Null);
+    }
 }
