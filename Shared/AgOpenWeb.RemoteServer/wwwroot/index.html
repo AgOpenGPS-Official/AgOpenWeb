@@ -595,7 +595,9 @@
         <div class="vc-diagrow"><img src="/icons/ConU_UturnSmooth.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Smoothing</label><input class="cfg-num" data-key="uturn.smoothing" type="number" step="1"></div></div>
         <div class="vc-diagrow"><img src="/icons/ConU_UturnRadius.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Radius (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="uturn.radius" type="number" step="0.1"></div></div>
         <div class="vc-diagrow"><img src="/icons/ConU_UturnDistance.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Distance from boundary (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="uturn.distanceFromBoundary" type="number" step="0.1"></div></div>
+        <div class="vc-diagrow"><img src="/icons/HeadlandSectionOff.png" class="vc-diag" alt=""><div class="vc-fieldcol"><label>Drive across a headland gap up to (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="uturn.crossGap" type="number" step="1" min="0"></div></div>
       </div>
+      <div class="cfg-note">Where a pass leaves the turn area and comes back within this distance across the headland only (a narrow tip of the field, a notch in its edge), it is driven on with the sections off and the turn is planned beyond. 0 turns at the first crossing.</div>
     </div>
     <!-- ===== MACHINE ===== -->
     <div id="tc-machine" class="cfg-body" data-strip="tc-top" hidden>

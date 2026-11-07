@@ -22,5 +22,6 @@ headland is not square to the passes.
 | 3.13 | Hydraulic lift raises and lowers at the turn as AgOpenGPS | | | |
 | 3.14 | Sections switch off entering the turn and on leaving it | | | |
 | 3.15 | Out of bounds during a turn: AutoSteer stays on | | | |
+| 3.16 | **Drive across a headland gap up to** N m: where the pass leaves the turn area and comes back within N m across the headland only (a narrow tip of the field), no turn is planned there; the pass is driven on with the sections off and the turn comes at the far end. A gap longer than N, one outside the boundary or through an obstacle is turned at. 0 = turn at the first crossing, as before | | | |
 
 **Signed off:** _ (name, date)

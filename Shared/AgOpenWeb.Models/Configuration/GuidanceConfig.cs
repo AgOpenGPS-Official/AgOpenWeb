@@ -141,6 +141,17 @@ public class GuidanceConfig : ObservableObject
         set => SetProperty(ref _uTurnDistanceFromBoundary, value);
     }
 
+    // Where a pass leaves the turn area and comes back within this many metres, across the
+    // headland only (inside the field, outside the headland line and every obstacle), the
+    // U-turn is planned beyond that gap and the pass is driven on through it with the sections
+    // off: a narrow tip of the field, a notch in its edge. 0 turns at the first crossing.
+    private double _uTurnCrossGap = 0.0;
+    public double UTurnCrossGap
+    {
+        get => _uTurnCrossGap;
+        set => SetProperty(ref _uTurnCrossGap, value);
+    }
+
     // Sagitta (offset-semicircle) by default — matches Twol, which dropped Dubins
     // for U-turns because the shortest-path solution loops ("np" shape) whenever the
     // next row is closer than 2× the turn radius. SagittaStyle == 0, so profiles

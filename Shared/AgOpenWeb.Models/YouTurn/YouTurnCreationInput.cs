@@ -27,6 +27,19 @@ namespace AgOpenWeb.Models.YouTurn
         /// </summary>
         public Func<Vec3, int> IsPointInsideTurnArea { get; set; }
 
+        /// <summary>
+        /// The longest stretch of the pass outside the turn area that is driven across instead
+        /// of turned at, in metres (GuidanceConfig.UTurnCrossGap); 0 turns at the first crossing.
+        /// </summary>
+        public double MaxGapCrossing { get; set; }
+
+        /// <summary>
+        /// True where a point of the pass may be driven across with the sections off: inside the
+        /// field's outer boundary, outside the headland line and outside every obstacle that is
+        /// not driven through. Null when the field is not known; no gap is crossed then.
+        /// </summary>
+        public Func<Vec3, bool>? IsPointInHeadlandStrip { get; set; }
+
         // Guidance line data
         /// <summary>
         /// For curves: List of curve points.

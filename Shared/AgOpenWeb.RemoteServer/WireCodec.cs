@@ -415,6 +415,7 @@ public static class WireCodec
         w.Write(u.Smoothing);          // i32
         w.Write(u.Radius);             // f64
         w.Write(u.DistanceFromBoundary);
+        w.Write(u.CrossGap);           // f64
         // Tram tab.
         var tr = c.Tram;
         w.Write(tr.Passes);            // i32
