@@ -192,6 +192,47 @@ public class FieldScenarioFindingsTests
         Assert.That(_failures, Is.Empty);
     }
 
+    [Test]
+    public void Zero_passes_on_a_track_tram_is_all_passes()
+    {
+        // #675: the editor says "Passes (0 = all)" for a track, and 0 was refused as out of range.
+        TwoPointTrack();
+        _vm.SelectedTrack = _vm.SavedTracks[0];
+        _vm.RemoteAddTramSystem();
+
+        _vm.RemoteSetTramField(0, "passes", "0");
+
+        Assert.That(_vm.TramSystems[0].PassCount, Is.EqualTo(0));
+        Assert.That(_failures, Is.Empty);
+    }
+
+    [Test]
+    public void Zero_passes_on_a_boundary_tram_is_refused()
+    {
+        TwoPointTrack();
+        _vm.SelectedTrack = null;
+        _vm.RemoteAddTramSystem(); // no track selected: the boundary
+        Assume.That(_vm.TramSystems[0].ReferenceBoundaryIndex, Is.GreaterThanOrEqualTo(0));
+
+        _vm.RemoteSetTramField(0, "passes", "0");
+
+        Assert.That(_vm.TramSystems[0].PassCount, Is.EqualTo(1));
+        Assert.That(_failures, Has.Some.StartsWith("Tram passes must be"));
+    }
+
+    [Test]
+    public void A_new_tram_system_takes_the_tools_tram_width()
+    {
+        // #675: it was a fixed 24 m whatever the tool's tram width.
+        AgOpenWeb.Models.Configuration.ConfigurationStore.Instance.Tram.TramWidth = 18;
+        TwoPointTrack();
+        _vm.SelectedTrack = _vm.SavedTracks[0];
+
+        _vm.RemoteAddTramSystem();
+
+        Assert.That(_vm.TramSystems[0].TramWidth, Is.EqualTo(18));
+    }
+
     // --- one name, one track ---
 
     [Test]
