@@ -244,6 +244,9 @@ public sealed class JobRun : IAsyncDisposable
         S.Step(F($"U-turns on (radius {Spec.UTurnRadius} m, {(Spec.OffWhenOut ? "off outside boundary" : "sections stay on at the edge")})"));
         if (Spec.HardBoundary)
         {
+            // The toggle acts on the selected boundary row (the outer boundary is row 0).
+            await SendAsync("boundary.refresh");
+            await SendAsync("boundary.select", "0");
             await SendAsync("boundary.hard");
             bool hard = await Rig.ReadAsync(() => Rig.State.Field.CurrentBoundary?.OuterBoundary?.IsHard == true);
             S.Step(hard ? "outer boundary marked hard" : "outer boundary NOT hard after 'boundary.hard' (harness)");
@@ -722,7 +725,7 @@ public sealed class JobRun : IAsyncDisposable
                     if (Work != null && Ring.DistToRing(c, Work) < 3) a.MissedAtEnds += cell;
                     // Within 2 m of an obstacle: the sections closing over it and opening again.
                     else if (g.Near(i, j => (g.Zone[j] & (TruthGrid.InObstacle | TruthGrid.InDriveThrough)) != 0, 10)) a.MissedAtObstacles += cell;
-                    else if (SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) a.MissedBetweenPasses += cell;
+                    else if (SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; }
                 }
                 if (t >= 2) a.Twice += cell;
                 if (app) a.AppPainted += cell;
@@ -763,6 +766,8 @@ public sealed class JobRun : IAsyncDisposable
                 if (!passes[k + 1].Value.TryGetValue(bin, out var x2)) continue;
                 if (x.R - x.L < Spec.T.Width - 0.3 || x2.R - x2.L < Spec.T.Width - 0.3) continue;   // a section still off at the pass's end
                 double gap = x2.L - x.R;
+                if (gap > a.LargestMissedStripM)
+                    a.LargestStripWhere = F($"between passes {passes[k].Key} and {passes[k + 1].Key}, {bin} m along the line from A");
                 a.LargestMissedStripM = Math.Max(a.LargestMissedStripM, gap);
                 a.LargestOverlapM = Math.Max(a.LargestOverlapM, -gap);
             }
