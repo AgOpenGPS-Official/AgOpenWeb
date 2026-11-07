@@ -9,6 +9,7 @@ using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Services.AutoSteer;
 using AgOpenWeb.Services.Interfaces;
+using System.Linq.Expressions;
 using NSubstitute;
 
 namespace AgOpenWeb.Services.Tests;
@@ -265,5 +266,34 @@ public class AutoSteerConfigEmitTests
         Heard(); // first PGN 253: the module is new
         Heard(); // 10 ms later in real life: nothing new
         _udp.Received(1).SendToModules(Arg.Is<byte[]>(b => b.Length > 4 && b[3] == 0xF7));
+    }
+
+    // A module back after a power cut (or started after the app) runs the settings it has;
+    // a change made while it was away (Zero WAS with the cable out) went to nobody.
+    [Test]
+    public void SteerModuleBack_AfterSilence_GetsTheSteerSettingsAgain()
+    {
+        long t = 1_000_000;
+        _service.TickClock = () => t;
+        _service.Start();
+
+        var steer = new byte[] { 0x80, 0x81, 0x7E, 0xFD, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        steer[^1] = (byte)(steer[2..^1].Sum(x => x) & 0xFF);
+        void Heard() => _udp.DataReceived += Raise.EventWith(new UdpDataReceivedEventArgs { Data = steer, PGN = 0xFD });
+        static Expression<Predicate<byte[]>> Pgn(byte id) => b => b.Length > 4 && b[3] == id;
+
+        Heard(); // new
+        _udp.ClearReceivedCalls();
+        t += 100; Heard(); // still there: nothing
+        t += 2000; Heard();
+        _udp.DidNotReceive().SendToModules(Arg.Is(Pgn(0xFB)));
+
+        t += AutoSteerService.SteerModuleSilenceMs + 1; Heard(); // back after a gap
+        _udp.Received(1).SendToModules(Arg.Is(Pgn(0xFB))); // 251 steer config
+        _udp.Received(1).SendToModules(Arg.Is(Pgn(0xFC))); // 252 steer settings
+        _udp.Received(1).SendToModules(Arg.Is(Pgn(0xF7))); // 247 geometry
+
+        t += 100; Heard(); // and no more while it keeps talking
+        _udp.Received(1).SendToModules(Arg.Is(Pgn(0xFB)));
     }
 }

@@ -27,6 +27,9 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
     private double _startNorthing;
     private int _stableCounter;
     private readonly CircleRun _run = new();
+
+    /// <summary>A circle was driven and CPD set from it, in this wizard.</summary>
+    public bool TestCompleted { get; private set; }
     private bool _sawNonRtkWhileRecording;
     private double _startAngle;
 
@@ -303,6 +306,7 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
             // operator edits after the test.
             _configService.Store.AutoSteer.CountsPerDegree = newCpd;
             SetUntouched(() => CountsPerDegree = newCpd);
+            TestCompleted = true;
 
             TestResult = $"CPD set to {newCpd:F0} — circle {Diameter:F1} m, calculated angle {calcAngle:F1}°, "
                 + $"sensor {actualAngle:F1}°."

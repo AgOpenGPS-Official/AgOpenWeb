@@ -94,7 +94,7 @@ public partial class MainViewModel
                 $"RecPath {DateTime.Now:HH:mm:ss}", vec3List);
 
             RecordedPathTracks.Add(track);
-            SavedTracks.Add(track);
+            AddSavedTrack(track);
             UpdateRecordedPathsOnMap();
 
             // Save as the field's recorded path in use
@@ -188,7 +188,7 @@ public partial class MainViewModel
                 foreach (var track in transformed)
                 {
                     track.IsActive = false;
-                    SavedTracks.Add(track);
+                    AddSavedTrack(track);
 
                     if (track.Type == TrackType.RecordedPath)
                         RecordedPathTracks.Add(track);
@@ -272,7 +272,7 @@ public partial class MainViewModel
                 new List<Vec3>(_contourRecordingPoints));
 
             ContourStrips.Add(contourTrack);
-            SavedTracks.Add(contourTrack);
+            AddSavedTrack(contourTrack);
             SaveTracksToFile();
             UpdateContourStripsOnMap();
 

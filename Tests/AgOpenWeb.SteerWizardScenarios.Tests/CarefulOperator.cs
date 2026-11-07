@@ -138,7 +138,7 @@ public static class CarefulOperator
             int saved = await rig.ReadAsync(() => rig.Store.AutoSteer.MinPwm);
             if (mm.Success && int.Parse(mm.Groups[1].Value, Inv) != saved)
                 s.Report(new Finding(Severity.Bug, "MOTOR_MIN_PWM_NOT_SAVED",
-                    string.Create(Inv, $"The motor test found Minimum PWM {mm.Groups[1].Value} but after Next the setting is still {saved}: the step only saves after its second part (max angle, ContinueToMaxAngle), which the web wizard has no button for.")));
+                    string.Create(Inv, $"The motor test found Minimum PWM {mm.Groups[1].Value} but after Next the setting is still {saved}.")));
         });
         await s.StepAsync("Max angle: Start, hands clear, wait", async () =>
         {
@@ -151,9 +151,9 @@ public static class CarefulOperator
             // The lock as the sensor reads it then (CPD and Ackermann not calibrated yet).
             double leftLockReads = m.LockLeftDeg * 100.0 / m.TruthAckermann * m.TruthCpd / rig.Store.AutoSteer.CountsPerDegree;
             var lm = System.Text.RegularExpressions.Regex.Match(maxResult, @"Left max: ([\d.]+)");
-            if (lm.Success && leftLockReads > 41 && double.Parse(lm.Groups[1].Value, Inv) < leftLockReads - 1.5)
-                s.Report(new Finding(Severity.Inconsistency, "MAX_ANGLE_CAPPED_AT_40",
-                    string.Create(Inv, $"The max-angle test measured the left side at {lm.Groups[1].Value}° but the lock reads {leftLockReads:F1}°: Free Drive is clamped to ±40°, so a lock past 40° is never reached and the result is the clamp, not the lock.")));
+            if (lm.Success && double.Parse(lm.Groups[1].Value, Inv) < leftLockReads - 1.5)
+                s.Report(new Finding(Severity.Inconsistency, "MAX_ANGLE_SHORT_OF_LOCK",
+                    string.Create(Inv, $"The max-angle test measured the left side at {lm.Groups[1].Value}° but the lock reads {leftLockReads:F1}°: the wheels never reached the lock (free drive was held to ±40° once, below a lock that reads past it).")));
             await s.CheckAsync(await s.NextAsync(), Blocked("maxangle"));
         });
 
@@ -177,6 +177,14 @@ public static class CarefulOperator
             await s.SetAsync("autosteer.minSteerSpeed", 1.0);
             await s.SetAsync("autosteer.maxSteerSpeed", 18.0);
             await s.CheckAsync(await s.NextAsync(), Blocked("speed"));
+        });
+        await s.StepAsync("Finish page: every test ran, so none is listed as not run", async () =>
+        {
+            string text = (await s.Rig.FrameAsync())?.TestResult ?? "";
+            rig.Note("Finish page: " + (text.Length > 0 ? text : "(nothing)"));
+            if (text.Contains("Not tested", StringComparison.Ordinal))
+                s.Report(new Finding(Severity.Bug, "FINISH_WARNS_ABOUT_A_TEST_THAT_RAN",
+                    "The Finish page lists a test as not run after the careful operator ran every one: " + text));
         });
         await s.StepAsync("Finish", s.FinishAsync);
 

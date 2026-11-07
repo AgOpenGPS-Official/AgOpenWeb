@@ -47,7 +47,8 @@ public enum MaxSteeringAnglePhase
 /// </summary>
 public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
 {
-    private const double CommandedFullLockDeg = 60.0;
+    /// <summary>Past any lock, and the most the service lets a free drive command ask for.</summary>
+    private const double CommandedFullLockDeg = IAutoSteerService.FreeDriveLimitDeg;
     private const double PlateauThresholdDeg = 0.2;
     private const int PlateauStableSamples = 5;
     private const int PollIntervalMs = 100;
@@ -182,6 +183,9 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
         set => SetProperty(ref _calibrationCompleted, value);
     }
 
+    /// <summary>The max angle test ran to its end in this wizard (the Finish page lists the tests not run).</summary>
+    public bool TestDone { get; internal set; }
+
     private double _liveSteerAngle;
     public double LiveSteerAngle
     {
@@ -266,6 +270,7 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
             MaxSteerAngle = (int)(Math.Min(DetectedMaxAngleRight, DetectedMaxAngleLeft) * 0.9);
 
             CalibrationCompleted = true;
+            TestDone = true;
             Phase = MaxSteeringAnglePhase.Complete;
             PhaseResult =
                 $"Right max: {DetectedMaxAngleRight:F1}\n" +
