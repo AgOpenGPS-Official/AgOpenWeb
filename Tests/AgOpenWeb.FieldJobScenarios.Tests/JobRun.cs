@@ -32,6 +32,9 @@ public sealed record JobSpec(
     /// <summary>How far inside the boundary the U-turn's outermost point stays (AgOpenWeb default 2 m).</summary>
     public double UTurnDistanceFromBoundary { get; init; } = 2;
     public bool Obstacles { get; init; }
+    /// <summary>The outer boundary marked hard (AgOpenWeb then checks the implement's swept path
+    /// in every U-turn and refuses a turn that would cross it).</summary>
+    public bool HardBoundary { get; init; }
     public double SpeedKmh { get; init; } = 9;
     /// <summary>Extra settings the operator types (config.set key:value), after the machine's.</summary>
     public IReadOnlyList<string> Extra { get; init; } = Array.Empty<string>();
@@ -56,6 +59,10 @@ public sealed class TurnRecord
     public bool Fallback;               // AgOpenWeb used its simple fallback path for this turn
     public bool Left;
     public double MinSpeedKmh = 99;
+    public double HeadingAtStart, UAtStart;
+    /// <summary>Seconds into the turn when the tractor was back on a pass line, facing the other
+    /// way, inside the cultivated area (the turn done on the ground); -1 if never seen.</summary>
+    public double BackOnPassSeconds = -1;
 }
 
 /// <summary>
@@ -111,6 +118,10 @@ public sealed class JobRun : IAsyncDisposable
     public volatile bool GpsOn = true;
     public int Pass = int.MinValue;
     public int TurnsStarted;
+    bool _arrowChecked;
+    /// <summary>Set when AgOpenWeb's first U-turn arrow pointed at the field's edge the operator
+    /// started from (a sliver pass): the pass it pointed at and how much of it is inside.</summary>
+    public (int Pass, double ChordM)? ArrowAtEdge;
     public readonly List<TurnRecord> Turns = new();
     public readonly List<string> Said = new();
     public readonly List<string> Problems = new();
@@ -231,6 +242,13 @@ public sealed class JobRun : IAsyncDisposable
         if (!await Rig.ReadAsync(() => Rig.Vm.IsYouTurnEnabled)) await SendAsync("youturn.toggle");
         if (!await Rig.ReadAsync(() => Rig.Vm.IsYouTurnEnabled)) { Harness("U-turns did not switch on"); return false; }
         S.Step(F($"U-turns on (radius {Spec.UTurnRadius} m, {(Spec.OffWhenOut ? "off outside boundary" : "sections stay on at the edge")})"));
+        if (Spec.HardBoundary)
+        {
+            await SendAsync("boundary.hard");
+            bool hard = await Rig.ReadAsync(() => Rig.State.Field.CurrentBoundary?.OuterBoundary?.IsHard == true);
+            S.Step(hard ? "outer boundary marked hard" : "outer boundary NOT hard after 'boundary.hard' (harness)");
+            if (!hard) Harness("boundary.hard did not mark the outer boundary hard");
+        }
 
         await SendAsync("field.startJob", name + "\tSpraying\tscenario\tSpraying " + name);
         S.Step("job started");
@@ -314,8 +332,16 @@ public sealed class JobRun : IAsyncDisposable
             Enumerable.Range(kMin, kMax - kMin + 1).Select(i => F($"{i}: {InsideChordM(i):0}"))));
         double u = (k + 0.5) * Spacing;
         var onLine = (A.E + Across.E * u, A.N + Across.N * u);
-        var ts = Ring.LineCrossings(onLine, Along, Outer);
-        double vStart = ts.Count >= 2 ? ts.Min() : Outer.Min(Vv);
+        // The pass may cross the field more than once (a spur of the field on this line): the
+        // operator starts at the boundary crossing just before its longest stretch inside the
+        // cultivated area, as a person would, not at the first crossing along the line.
+        var tw = Ring.LineCrossings(onLine, Along, work);
+        tw.Sort();
+        double chordStart = tw.Count >= 2 ? tw[0] : Outer.Min(Vv);
+        for (int i = 0, bestLen = -1; i + 1 < tw.Count; i += 2)
+            if (tw[i + 1] - tw[i] > bestLen) { bestLen = (int)(tw[i + 1] - tw[i]); chordStart = tw[i]; }
+        var ts = Ring.LineCrossings(onLine, Along, Outer).Where(t => t <= chordStart + 0.01).ToList();
+        double vStart = ts.Count > 0 ? ts.Max() : chordStart;
         double vPivot = vStart - 12;
         double uPivot = u - Spec.T.Offset;   // the implement sits Offset to the tractor's right
         return ((A.E + Across.E * uPivot + Along.E * vPivot, A.N + Across.N * uPivot + Along.N * vPivot),
@@ -379,7 +405,7 @@ public sealed class JobRun : IAsyncDisposable
                 bool executing = yt?.IsExecuting == true;
                 if (executing && !wasExecuting)
                 {
-                    turn = new TurnRecord { Index = ++TurnsStarted, PassBefore = lastPassSeen, StartSeconds = Seconds, Left = yt!.IsTurnLeft };
+                    turn = new TurnRecord { Index = ++TurnsStarted, PassBefore = lastPassSeen, StartSeconds = Seconds, Left = yt!.IsTurnLeft, HeadingAtStart = Truth.Heading, UAtStart = U((Truth.E, Truth.N)) };
                     saidAtTurnStart = Math.Max(0, Said.Count - 6);
                     Turns.Add(turn);
                     InTurn = true;
@@ -391,6 +417,31 @@ public sealed class JobRun : IAsyncDisposable
                     turn.MaxOutsideM = Math.Max(turn.MaxOutsideM, outside);
                     turn.MaxPivotOutsideM = Math.Max(turn.MaxPivotOutsideM, pivotOut);
                     turn.MinSpeedKmh = Math.Min(turn.MinSpeedKmh, Truth.SpeedKmh);
+                    if (turn.BackOnPassSeconds < 0)
+                    {
+                        double dh = Math.Abs(Math.IEEERemainder(Truth.Heading - turn.HeadingAtStart - Math.PI, 2 * Math.PI));
+                        double du = Math.Abs(U((Truth.E, Truth.N)) - turn.UAtStart);
+                        double onPass = Math.Abs(du / Spacing - Math.Round(du / Spacing)) * Spacing;
+                        if (dh < 5 * Math.PI / 180 && du > Spacing / 2 && onPass < 0.3 && Work != null && Ring.Inside((Truth.E, Truth.N), Work))
+                            turn.BackOnPassSeconds = Seconds - turn.StartSeconds;
+                    }
+                }
+                // Before the first turn the operator looks at the U-turn arrow: a turn toward the
+                // edge they started from lands on a pass with less than 20 m inside the field (the
+                // start pass was the first one worth driving), so they tap the arrow the other way.
+                if (TurnsStarted == 0 && !executing && yt?.TurnPath is { Count: > 1 } path && !_arrowChecked)
+                {
+                    _arrowChecked = true;
+                    var end = path[^1];
+                    double uEnd = U((end.Easting, end.Northing)), uNow = U((Truth.E, Truth.N));
+                    int target = (int)Math.Floor(uEnd / Spacing);
+                    if (uEnd < uNow - Spacing / 2)
+                    {
+                        ArrowAtEdge = (target, InsideChordM(target));
+                        Did(F($"the U-turn arrow pointed at the field's edge (pass {target}, {ArrowAtEdge.Value.ChordM:0} m of it inside the cultivated area); the operator tapped it the other way"));
+                        await SendAsync("youturn.direction");
+                    }
+                    else Journal.Trace(F($"[fj] {Seconds,7:0.0} s   the U-turn arrow points into the field (pass {target})"));
                 }
                 if (!executing && wasExecuting && turn != null)
                 {
@@ -405,7 +456,7 @@ public sealed class JobRun : IAsyncDisposable
                 {
                     var tcc = ToolCentre();
                     string where = Ring.Inside((Truth.E, Truth.N), Work ?? Outer) ? "cultivated" : Ring.Inside((Truth.E, Truth.N), Outer) ? "headland" : "outside";
-                    Journal.Trace(F($"[fj] {Seconds,7:0.0} s   after turn {TurnsStarted}: AgOpenWeb zone {yt.CurrentZone}, headland {yt.DistanceToHeadland:0.0} m ahead, executing {yt.IsExecuting}, path {(yt.TurnPath == null ? "none" : "ready")}; really {where}, u {U((tcc.E, tcc.N)):0.0}, steer {c.IsAutoSteerEngaged}"));
+                    Journal.Trace(F($"[fj] {Seconds,7:0.0} s   after turn {TurnsStarted}: AgOpenWeb zone {yt.CurrentZone}, headland {(yt.DistanceToHeadland > 1e6 ? "none" : F($"{yt.DistanceToHeadland:0.0} m"))} ahead, executing {yt.IsExecuting}, path {(yt.TurnPath == null ? "none" : "ready")}; really {where}, u {U((tcc.E, tcc.N)):0.0}, steer {c.IsAutoSteerEngaged}"));
                 }
                 wasExecuting = executing;
                 if (!executing && c.Guidance is { HasGuidance: true } gg)
@@ -431,6 +482,12 @@ public sealed class JobRun : IAsyncDisposable
                     if (Math.Abs(across) > Math.Abs(ToolAcrossMax)) ToolAcrossMax = across;
                 }
                 if (Module.GeoStop != 0) SecondsGeoStop += FixSeconds;
+                // The first minute, every 2 s: where the tractor is and what AgOpenWeb makes of it.
+                if (Fix <= 600 && Fix % 20 == 0)
+                {
+                    var (outw, outp) = OutsideBoundaryM();
+                    Journal.Trace(F($"[fj] {Seconds,7:0.0} s   start: pivot ({Truth.E:0.0},{Truth.N:0.0}) hdg {Truth.Heading * 180 / Math.PI:0.0} u {U((Truth.E, Truth.N)):0.0} v {Vv((Truth.E, Truth.N)):0.0} outside {outp:0.0}/{outw:0.0} m; app engaged {engaged}, guidance {c.Guidance?.HasGuidance}, pass {c.Guidance?.HowManyPathsAway}, steer {cmd:0.0}, reverse {c.IsReverse}, zone {c.YouTurn?.CurrentZone}"));
+                }
             }
             prevOpen = Module.SectionsOpen;
 
@@ -663,6 +720,8 @@ public sealed class JobRun : IAsyncDisposable
                 {
                     a.Missed += cell;
                     if (Work != null && Ring.DistToRing(c, Work) < 3) a.MissedAtEnds += cell;
+                    // Within 2 m of an obstacle: the sections closing over it and opening again.
+                    else if (g.Near(i, j => (g.Zone[j] & (TruthGrid.InObstacle | TruthGrid.InDriveThrough)) != 0, 10)) a.MissedAtObstacles += cell;
                     else if (SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) a.MissedBetweenPasses += cell;
                 }
                 if (t >= 2) a.Twice += cell;

@@ -45,6 +45,7 @@ its neighbours':
 | Sprayed twice beyond the overlap asked for | `DOUBLE-SPRAYED` |
 | A U-turn that took the tractor or an implement end past the boundary | `TURN-OUTSIDE-BOUNDARY` |
 | U-turns missed or cancelled, AutoSteer dropping out | `TURN-MISSED`, `AUTOSTEER-DROPPED` |
+| The first U-turn arrow pointing at the edge the operator started from | `FIRST-TURN-TOWARD-EDGE` |
 | The screen's sections and the valves disagreeing | `VALVES-NOT-FOLLOWING`, `SECTION-WITHOUT-RELAY` |
 
 Two operators:

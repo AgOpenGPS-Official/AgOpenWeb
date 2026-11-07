@@ -175,6 +175,7 @@ public sealed class JobAreas
     public double Missed;               // work area never sprayed
     public double MissedBetweenPasses;  // of which: strips with sprayed ground on both sides across the passes
     public double MissedAtEnds;         // of which: within 3 m of the headland line (the pass ends)
+    public double MissedAtObstacles;    // of which: within 2 m of an obstacle (the sections closing and opening over it)
     public double Twice;                // truth ≥ 2 inside the work area
     public double OutsideBoundary;      // truth outside the outer boundary
     public double InObstacles;          // truth inside a hard obstacle

@@ -33,5 +33,8 @@ public static class CarefulOperator
         yield return new JobSpec("J6", "Tapada da Casa with its 82 obstacles, 8 m sprayer",
             "14.6 ha and the most obstacles, AB line at 162°.",
             "Tapada da Casa", "1 Principal AB 162 deg", Machines.Puma, Machines.Sprayer8, Puma) { Obstacles = true };
+        yield return new JobSpec("J7", "Olival with a hard boundary, 8 m sprayer",
+            "The first job again with the outer boundary marked hard: AgOpenWeb then checks the sprayer's swept path in every U-turn and should keep the boom inside the fence.",
+            "Olival", "AB 159 deg", Machines.Puma, Machines.Sprayer8, Puma) { HardBoundary = true };
     }
 }

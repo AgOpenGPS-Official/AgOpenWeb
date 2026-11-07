@@ -64,7 +64,7 @@ public static class Jobs
         double ha = a.Work / 1e4;
         sc.Row.Metrics.Add(("Cultivated area (inside the headland line, outside obstacles)", F($"{ha:0.00} ha")));
         sc.Row.Metrics.Add(("Sprayed at least once (valves open, real implement)", F($"{a.Sprayed / 1e4:0.00} ha = {Pct(a.Sprayed, a.Work)}")));
-        sc.Row.Metrics.Add(("Never sprayed, of which between passes / at the pass ends (within 3 m of the headland line)", F($"{a.Missed:0} m² = {Pct(a.Missed, a.Work)}, {a.MissedBetweenPasses:0} / {a.MissedAtEnds:0} m²")));
+        sc.Row.Metrics.Add(("Never sprayed, of which between passes / at the pass ends (within 3 m of the headland line) / next to the obstacles (within 2 m)", F($"{a.Missed:0} m² = {Pct(a.Missed, a.Work)}, {a.MissedBetweenPasses:0} / {a.MissedAtEnds:0} / {a.MissedAtObstacles:0} m²")));
         sc.Row.Metrics.Add(("Widest missed strip / overlap between neighbouring passes", F($"{a.LargestMissedStripM:0.00} m / {a.LargestOverlapM:0.00} m")));
         sc.Row.Metrics.Add(("Sprayed twice or more", F($"{a.Twice:0} m² = {Pct(a.Twice, a.Work)}")));
         sc.Row.Metrics.Add(("Sprayed outside the boundary / in obstacles / in the headland", F($"{a.OutsideBoundary:0} / {a.InObstacles:0} / {a.InHeadland:0} m²")));
@@ -84,17 +84,19 @@ public static class Jobs
             sc.Row.Metrics.Add(("U-turn time, mean / longest; furthest past the boundary", F($"{r.Turns.Average(t => t.Seconds):0.0} / {r.Turns.Max(t => t.Seconds):0.0} s; {r.Turns.Max(t => t.MaxOutsideM):0.0} m")));
             if (Journal.Verbose)
                 foreach (var t in r.Turns)
-                    sc.Note(F($"turn {t.Index}: pass {t.PassBefore} -> {t.PassAfter}, {(t.Left ? "left" : "right")}, {t.Seconds:0.0} s, past the boundary: tractor {t.MaxPivotOutsideM:0.0} m, implement end {t.MaxOutsideM:0.0} m{(t.Fallback ? ", fallback path" : "")}, slowest {t.MinSpeedKmh:0.0} km/h"));
+                    sc.Note(F($"turn {t.Index}: pass {t.PassBefore} -> {t.PassAfter}, {(t.Left ? "left" : "right")}, {t.Seconds:0.0} s, past the boundary: tractor {t.MaxPivotOutsideM:0.0} m, implement end {t.MaxOutsideM:0.0} m{(t.Fallback ? ", fallback path" : "")}, slowest {t.MinSpeedKmh:0.0} km/h{(t.BackOnPassSeconds >= 0 && t.Seconds - t.BackOnPassSeconds > 20 ? F($", back on the next pass after {t.BackOnPassSeconds:0} s but AgOpenWeb kept the turn going for {t.Seconds - t.BackOnPassSeconds:0} s more") : "")}"));
 
         // ---- the field done
         if (!r.FieldDone)
             flag(Severity.Bug, "FIELD-NOT-FINISHED", F($"AgOpenWeb never reported the end of the field; the job stopped after {r.Seconds / 60:0} min with {Pct(a.Missed, a.Work)} of the cultivated area unsprayed. {string.Join(" | ", r.Problems)}"));
         else if (a.Missed - a.MissedBetweenPasses > 0.05 * a.Work)
-            flag(Severity.Bug, "FIELD-LEFT-UNDONE", F($"AgOpenWeb reported the end of the field with {Pct(a.Missed - a.MissedBetweenPasses - a.MissedAtEnds, a.Work)} of the cultivated area never sprayed outside the strips between passes and the pass ends (a side of the field, or passes it skipped)."));
+            flag(Severity.Bug, "FIELD-LEFT-UNDONE", F($"AgOpenWeb reported the end of the field with {Pct(a.Missed - a.MissedBetweenPasses - a.MissedAtEnds - a.MissedAtObstacles, a.Work)} of the cultivated area never sprayed outside the strips between passes, the pass ends and the obstacles (a side of the field, or passes it skipped)."));
         else
             sc.Ok(F($"the whole field was worked: {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed, AgOpenWeb reported the end of the field after {r.Turns.Count} U-turns"));
 
         // ---- strips between passes
+        if (a.MissedAtObstacles > 0)
+            sc.Note(F($"{a.MissedAtObstacles:0} m² of the cultivated area within 2 m of the obstacles were never sprayed: the sections closing over an obstacle and opening again after it (the section look-ahead and the valves' latency)"));
         if (a.LargestMissedStripM > 0.15 || a.MissedBetweenPasses > 0.005 * a.Work)
             flag(Severity.Bug, "MISSED-STRIPS", F($"strips of ground between neighbouring passes were never sprayed: {a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}), the widest {a.LargestMissedStripM:0.00} m. AgOpenWeb's passes are {r.Spacing:0.00} m apart for a {spec.T.Width:0.00} m implement with {spec.T.Overlap:0.00} m overlap."));
         else
@@ -166,6 +168,14 @@ public static class Jobs
         var outTurns = r.Turns.Where(t => t.MaxPivotOutsideM > 0.5).ToList();
         var outTool = r.Turns.Where(t => t.MaxOutsideM > 0.5).ToList();
         int fallbacks = r.Turns.Count(t => t.Fallback);
+        var late = r.Turns.Where(t => t.BackOnPassSeconds >= 0 && t.Seconds - t.BackOnPassSeconds > 30).ToList();
+        if (late.Count > 0)
+        {
+            var worst = late.OrderByDescending(t => t.Seconds - t.BackOnPassSeconds).First();
+            flag(Severity.Improvement, "TURN-ENDS-LATE", F($"in {late.Count} of {r.Turns.Count} U-turns AgOpenWeb kept the turn 'executing' long after the tractor was back on the next pass inside the cultivated area: turn {worst.Index} ended {worst.Seconds - worst.BackOnPassSeconds:0} s ({(worst.Seconds - worst.BackOnPassSeconds) * 2.5:0} m at 9 km/h) after the tractor was on the pass{(worst.Fallback ? ", a simple fallback path" : "")}; until then no next turn can be planned and the screen says the turn is still on."));
+        }
+        if (r.ArrowAtEdge is { } edge)
+            flag(Severity.Bug, "FIRST-TURN-TOWARD-EDGE", F($"before the first U-turn AgOpenWeb's arrow pointed at the edge the operator started from: pass {edge.Pass}, with only {edge.ChordM:0} m of line inside the cultivated area (any 5 m sample inside counts as a pass); left alone, AgOpenWeb turns onto it and then reports the end of the field with the whole field undone. The operator tapped the arrow the other way."));
         if (outTurns.Count > 0)
             flag(Severity.Safety, "TURN-OUTSIDE-BOUNDARY", F($"{outTurns.Count} of {r.Turns.Count} U-turns took the tractor itself past the field boundary, the furthest by {outTurns.Max(t => t.MaxPivotOutsideM):0.0} m (turn {outTurns.OrderByDescending(t => t.MaxPivotOutsideM).First().Index}{(outTurns.Any(t => t.Fallback) ? ", AgOpenWeb's simple fallback path" : "")}); 'distance from boundary' was {spec.UTurnDistanceFromBoundary:0.0} m."));
         else if (outTool.Count > 0)
