@@ -47,7 +47,8 @@ public enum MaxSteeringAnglePhase
 /// </summary>
 public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
 {
-    private const double CommandedFullLockDeg = 60.0;
+    /// <summary>Past any lock, and the most the service lets a free drive command ask for.</summary>
+    private const double CommandedFullLockDeg = IAutoSteerService.FreeDriveLimitDeg;
     private const double PlateauThresholdDeg = 0.2;
     private const int PlateauStableSamples = 5;
     private const int PollIntervalMs = 100;
