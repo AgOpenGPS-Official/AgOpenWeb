@@ -206,6 +206,20 @@ function drawSatBoundarySk(canvas) {
     canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
   }
 }
+// Live obstacle draw-on-map preview: the corners tapped so far, in the U-turn obstacle's
+// yellow (what a drawn obstacle becomes), closed from three corners on; client-side only.
+function drawPolyObstacleSk(canvas) {
+  if (!polyDraw || !polyPts.length) return;
+  if (polyPts.length >= 2) strokePtsSk(canvas, polyPts, polyPts.length >= 3, SKP.boundaryInner);
+  const rad = Math.max(4, 0.5 * pxPerM);
+  SKP.flagFill.setColor(ckColor('#FFFFFF'));
+  for (const p of polyPts) {
+    if ((pw(p.e, p.n)) < 1.0) continue;
+    const xy = w2s(p.e, p.n);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagFill);
+    canvas.drawCircle(xy[0], xy[1], rad, SKP.flagOutline);
+  }
+}
 // #40: preview the AB/curve points being drawn as dots — orange A (first),
 // blue B (last), white interior — so the placed A point is visible before B is set. The
 // host holds the real point list; drawPts is the client's tap echo (preview only).
@@ -462,6 +476,8 @@ function updateLineWidths() {
   const wb = (m) => Math.min(Math.max(m * z, 1), 3.5);
   SKP.boundary.setStrokeWidth(wb(3.0));   // boundaryOuter 1 × 3
   SKP.boundaryInner.setStrokeWidth(wb(3.0)); // boundaryInner 1 × 3
+  SKP.boundaryGoRound.setStrokeWidth(wb(3.0)); SKP.boundaryDriveThru.setStrokeWidth(wb(3.0));
+  SKP.boundarySel.setStrokeWidth(wb(3.0) + 5);
   SKP.boundaryOut.setStrokeWidth(3 * 2 * k);  // out of bounds: AgOpenGPS ABLine.lineWidth × 3 (#494)
   SKP.headland.setStrokeWidth(w(3.0));   // headland 1 × 3
   SKP.guidance.setStrokeWidth(w(1.5));   // trackActive 0.5 × 3
@@ -695,4 +711,16 @@ function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter, mipMode) 
   canvas.concat(imgToWorld);
   canvas.drawImageOptions(img, 0, 0, filter, mip, null);
   canvas.restore();
+}
+
+// The paint of scene ring bi: the outer boundary, or an obstacle by its choice (boundaryKind
+// 1 U-turn, 2 go around, 3 drive through).
+function boundaryRingPaint(bi) {
+  const k = scene.boundaryKind ? scene.boundaryKind[bi] : (scene.boundaryInner[bi] ? 1 : 0);
+  return k === 2 ? SKP.boundaryGoRound : k === 3 ? SKP.boundaryDriveThru : k ? SKP.boundaryInner : SKP.boundary;
+}
+// The ring selected in the open boundary menu (the list and the rings share their index), or -1.
+function boundaryMenuSelectedRing() {
+  return boundary && boundary.selectedIndex >= 0 && document.getElementById('boundarymenu').classList.contains('open')
+    ? boundary.selectedIndex : -1;
 }

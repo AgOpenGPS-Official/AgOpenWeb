@@ -56,7 +56,10 @@ public class BoundaryFileService
                     }
                     else
                     {
+                        // An AgOpenGPS obstacle has no choice: drive-through or a U-turn, as
+                        // there. Hard only with the file's own marker, as the file says.
                         boundary.InnerBoundaries.Add(polygon);
+                        if (polygon.AtObstacle == ObstacleAction.Turn) boundary.ObstaclesNowUTurn++;
                     }
                 }
                 else if (polygon == null)

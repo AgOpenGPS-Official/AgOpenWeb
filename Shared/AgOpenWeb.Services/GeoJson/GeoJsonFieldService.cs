@@ -253,8 +253,14 @@ public partial class GeoJsonFieldService
                     var inner = ReadBoundaryPolygon(geo, feature);
                     if (inner != null)
                     {
-                        inner.IsDriveThrough = GetBoolProp(feature, FieldPropertyKeys.IsDriveThrough);
+                        // The choice, or for a file written before it the drive-through flag; an
+                        // obstacle that then gets a U-turn is counted, and the operator told.
+                        var choice = ObstacleActionNames.Parse(GetStringProp(feature, FieldPropertyKeys.AtObstacle));
+                        inner.AtObstacle = choice
+                            ?? (GetBoolProp(feature, FieldPropertyKeys.IsDriveThrough) ? ObstacleAction.DriveThrough : ObstacleAction.Turn);
+                        if (choice == null && inner.AtObstacle == ObstacleAction.Turn) boundary.ObstaclesNowUTurn++;
                         inner.IsHard = GetBoolProp(feature, FieldPropertyKeys.IsHard);
+                        inner.Circle = ReadCircle(geo, feature, inner);
                         boundary.InnerBoundaries.Add(inner);
                     }
                     break;
@@ -348,7 +354,7 @@ public partial class GeoJsonFieldService
     private static GeoJsonFeature BuildBoundaryFeature(Projection geo, BoundaryPolygon polygon, string role)
     {
         var ring = BoundaryToGeoJsonRing(geo, polygon);
-        return new GeoJsonFeature
+        var feature = new GeoJsonFeature
         {
             Geometry = new GeoJsonGeometry
             {
@@ -363,6 +369,32 @@ public partial class GeoJsonFieldService
                 [FieldPropertyKeys.AreaHectares] = polygon.AreaHectares,
             }
         };
+        if (role == FeatureRoles.InnerBoundary)
+        {
+            feature.Properties[FieldPropertyKeys.AtObstacle] = polygon.AtObstacle.ToName();
+            if (polygon.Circle is { } circle && circle.Matches(polygon.Points))
+            {
+                var (lat, lon) = geo.ToWgs84(new Vec2(circle.CenterEasting, circle.CenterNorthing));
+                feature.Properties[FieldPropertyKeys.CircleCenter] = new[] { lon, lat };
+                feature.Properties[FieldPropertyKeys.CircleDiameter] = circle.Diameter;
+            }
+        }
+        return feature;
+    }
+
+    // A round obstacle's circle, kept only while the polygon is still that circle's: a polygon
+    // edited in another program keeps its shape and loses the circle.
+    private static ObstacleCircle? ReadCircle(Projection geo, GeoJsonFeature feature, BoundaryPolygon polygon)
+    {
+        if (!feature.Properties.TryGetValue(FieldPropertyKeys.CircleCenter, out var val)
+            || val is not JsonElement je || je.ValueKind != JsonValueKind.Array || je.GetArrayLength() < 2)
+            return null;
+        if (je[0].ValueKind != JsonValueKind.Number || je[1].ValueKind != JsonValueKind.Number) return null;
+        double diameter = GetDoubleProp(feature, FieldPropertyKeys.CircleDiameter);
+        if (!ObstacleCircle.IsValidDiameter(diameter)) return null;
+        var centre = geo.ToLocal(je[1].GetDouble(), je[0].GetDouble());
+        var circle = new ObstacleCircle(centre.Easting, centre.Northing, diameter);
+        return circle.Matches(polygon.Points) ? circle : null;
     }
 
     private static GeoJsonFeature BuildTrackFeature(Projection geo, Models.Track.Track track)

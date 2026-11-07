@@ -8,6 +8,7 @@ Work being done or agreed, one file per plan. Each starts with a **Status** line
 | [GPS_RECEIVER_SENTENCES_PLAN.md](GPS_RECEIVER_SENTENCES_PLAN.md) | In progress: receivers straight to the app |
 | [ISOBUS_VT_TRANSPORTS.md](ISOBUS_VT_TRANSPORTS.md) | In progress: how the VT reaches the implement bus |
 | [JOB_FINISH_LOCK_IMPLEMENT_PLAN.md](JOB_FINISH_LOCK_IMPLEMENT_PLAN.md) | Agreed, not started: implement on the job, Finish locks it |
+| [OBSTACLE_GO_AROUND_PLAN.md](OBSTACLE_GO_AROUND_PLAN.md) | Implemented, for review upstream: going around obstacles with one pass for steering and U-turns |
 | [RTCM_FORWARDING_PLAN.md](RTCM_FORWARDING_PLAN.md) | Built; open bench checks |
 
 - **[Ideas/](Ideas/)**: written up but not started or on hold. Nothing there is agreed.
