@@ -336,7 +336,7 @@ NTRIP 1.0 request (`GET /mountpoint HTTP/1.0`, no Host or version header, the po
 the answer) once; never after a 401, 403, 404, an error text or a source table. The version that delivered
 corrections is remembered per service. `NtripResponse.Classify` sorts every reply into an `NtripCategory`
 (wrong login and unknown mount point end the session, the rest is retried after 1, 2, 4, 8, 15 s, and a
-network change ends the wait); `NtripConnectionTester` (the Test button) opens its connection the same way.
+network change ends the wait, and ends a stream that then stays quiet for 3 s, as on a move from Wi-Fi to the phone's hotspot); `NtripConnectionTester` (the Test button) opens its connection the same way.
 Every wait has a timeout (`NtripTimeouts`). Design: `Plans/Completed/NTRIP_MAIN_FALLBACK_PLAN.md`.
 
 **Main and fallback service.** Two exclusive modes (`Connections.NtripProfilePerField`, `config.set|conn.ntripProfilePerField`).

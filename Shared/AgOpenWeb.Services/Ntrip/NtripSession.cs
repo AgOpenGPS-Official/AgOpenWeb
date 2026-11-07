@@ -41,7 +41,8 @@ public sealed class NtripSession
     public NtripTimeouts Timeouts { get; init; } = new();
     /// <summary>Replaces <see cref="Task.Delay(TimeSpan, CancellationToken)"/> in tests.</summary>
     public Func<TimeSpan, CancellationToken, Task> Delay { get; init; } = Task.Delay;
-    /// <summary>The task that completes when the network changes; it ends a backoff wait early (#385).</summary>
+    /// <summary>The task that completes when the network changes; it ends a backoff wait early (#385),
+    /// and a stream that then stays quiet for <see cref="NtripTimeouts.QuietAfterNetworkChange"/> is taken as lost.</summary>
     public Func<Task>? NetworkChanged { get; init; }
     /// <summary>The NTRIP version that delivered corrections, per service, so a reconnect skips the probe.</summary>
     public ConcurrentDictionary<string, NtripVersion>? VersionMemory { get; init; }
@@ -159,23 +160,37 @@ public sealed class NtripSession
             if (conn.InitialBody.Length > 0 && Deliver(conn.InitialBody, conn.Version, where) is { } failed) return failed;
 
             TimeSpan ggaEvery = TimeSpan.FromSeconds(_config.GgaIntervalSeconds);
+            // After a network change (Wi-Fi to the phone's hotspot) this connection may be on a
+            // path that is gone, and nothing tells TCP: the stream is in doubt until data comes
+            // on it again, and a stream in doubt that stays quiet is taken as lost at once
+            // instead of after NoData. A connection that still works keeps streaming.
+            Task? networkChanged = NetworkChanged?.Invoke();
+            bool inDoubt = false;
             while (true)
             {
                 ct.ThrowIfCancellationRequested();
-                TimeSpan wait = Timeouts.NoData - Since(_lastData);
+                TimeSpan limit = inDoubt && Timeouts.QuietAfterNetworkChange < Timeouts.NoData ? Timeouts.QuietAfterNetworkChange : Timeouts.NoData;
+                TimeSpan wait = limit - Since(_lastData);
                 if (ggaEvery > TimeSpan.Zero && ggaEvery - Since(_lastGga) < wait) wait = ggaEvery - Since(_lastGga);
 
                 int n;
-                try { n = await conn.Reader!.ReadAsync(wait, ct).ConfigureAwait(false); }
+                try { n = await conn.Reader!.ReadAsync(wait, ct, inDoubt ? null : networkChanged).ConfigureAwait(false); }
                 catch (Exception ex) when (ex is IOException or ObjectDisposedException)
                 {
                     ct.ThrowIfCancellationRequested();   // closed by Stop, not by the caster
                     n = 0;
                 }
 
+                if (networkChanged is { IsCompleted: true })
+                {
+                    inDoubt = true;
+                    networkChanged = NetworkChanged?.Invoke();
+                }
+
                 if (n > 0)
                 {
                     ct.ThrowIfCancellationRequested();   // a stopped session hands nothing on
+                    inDoubt = false;   // data came: this connection works
                     if (Deliver(conn.Reader!.Buffer.AsSpan(0, n), conn.Version, where) is { } lost) return lost;
                 }
                 else if (n == 0)
@@ -187,6 +202,8 @@ public sealed class NtripSession
 
                 if (ggaEvery > TimeSpan.Zero && Since(_lastGga) >= ggaEvery) await SendGgaAsync(conn, ct).ConfigureAwait(false);
 
+                if (inDoubt && Since(_lastData) >= Timeouts.QuietAfterNetworkChange)
+                    return new NtripOutcome(NtripCategory.StreamLost, "The network changed and the corrections stopped.");
                 if (Since(_lastData) >= Timeouts.NoData)
                 {
                     return _correctionsSeen()

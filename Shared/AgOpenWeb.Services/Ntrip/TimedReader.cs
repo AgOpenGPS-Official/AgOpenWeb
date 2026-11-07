@@ -17,16 +17,19 @@ internal sealed class TimedReader
 
     public TimedReader(Stream stream) => _stream = stream;
 
-    /// <summary>Bytes read into <see cref="Buffer"/>, 0 when the other side closed, -1 on timeout.</summary>
-    public async Task<int> ReadAsync(TimeSpan timeout, CancellationToken ct)
+    /// <summary>Bytes read into <see cref="Buffer"/>, 0 when the other side closed, -1 on timeout
+    /// or when <paramref name="wake"/> completes first.</summary>
+    public async Task<int> ReadAsync(TimeSpan timeout, CancellationToken ct, Task? wake = null)
     {
         _pending ??= _stream.ReadAsync(Buffer, 0, Buffer.Length, CancellationToken.None);
         if (timeout < TimeSpan.Zero) timeout = TimeSpan.Zero;
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        Task done = await Task.WhenAny(_pending, Task.Delay(timeout, linked.Token)).ConfigureAwait(false);
+        Task delay = Task.Delay(timeout, linked.Token);
+        Task done = await (wake == null ? Task.WhenAny(_pending, delay) : Task.WhenAny(_pending, delay, wake)).ConfigureAwait(false);
         if (done != _pending)
         {
+            linked.Cancel();   // ends the delay that is left, if the wake came first
             ct.ThrowIfCancellationRequested();
             return -1;
         }
