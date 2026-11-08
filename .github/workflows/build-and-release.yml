@@ -135,6 +135,10 @@ jobs:
       - name: Build Steer Wizard Scenario harness
         run: dotnet build Tests/AgOpenWeb.SteerWizardScenarios.Tests/ --verbosity minimal
 
+      # And the machine module harness (machine-module-scenarios.yml runs it nightly).
+      - name: Build Machine Module Scenario harness
+        run: dotnet build Tests/AgOpenWeb.MachineModuleScenarios.Tests/ --verbosity minimal
+
       # And the GPS and NTRIP harness (gps-ntrip-scenarios.yml runs it nightly).
       - name: Build GPS and NTRIP Scenario harness
         run: dotnet build Tests/AgOpenWeb.GpsNtripScenarios.Tests/ --verbosity minimal
