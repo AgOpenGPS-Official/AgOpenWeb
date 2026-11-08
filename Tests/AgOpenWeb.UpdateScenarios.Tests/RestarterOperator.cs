@@ -344,9 +344,11 @@ public static class RestarterOperator
             // tractor with a combined file and no listed implement, the implement that file holds.
             // Then each listed implement, with its settings and the environment's U-turn and tram.
             bool ToolListed(string name) => first.Tools.Contains(name);
+            bool otherPairLoaded = false;
             async Task<Dictionary<string, string>> DumpWith(string vehicle, string tool)
             {
                 if (first.ActiveVehicle == vehicle && first.ActiveTool == tool) return first.Dump;
+                otherPairLoaded = true;
                 await rig.SendAsync("profile.load", vehicle + "\t" + tool);
                 var d = new Dictionary<string, string>(StringComparer.Ordinal);
                 await rig.RunAsync(() => Snapshot.DumpStore(d, rig));
@@ -375,6 +377,12 @@ public static class RestarterOperator
                 var specs = t.Settings.Where(x => x.Group != "guidance").ToList();
                 specs.AddRange(aog.Environment.Where(x => x.Group is "uturn" or "tram"));
                 JudgeAog(sc, t.Name, specs, dump, hasLegacyFile: false);
+            }
+            // Back to the pair the move left in use, so the restart is judged against it.
+            if (otherPairLoaded)
+            {
+                await rig.SendAsync("profile.load", first.ActiveVehicle + "\t" + first.ActiveTool);
+                sc.Step(Kit.F($"'{first.ActiveVehicle}' / '{first.ActiveTool}' loaded again"));
             }
             if (first.ActiveVehicle == aog.VehicleInUse.Name && first.ActiveTool == aog.ToolInUse.Name)
                 sc.Ok(Kit.F($"the pair in use is AgOpenGPS's: '{first.ActiveVehicle}' / '{first.ActiveTool}'"));
