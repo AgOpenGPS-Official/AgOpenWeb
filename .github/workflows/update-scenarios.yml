@@ -5,27 +5,31 @@ name: Update Scenarios
 # release (its Linux daemon bundle, downloaded from the GitHub release and driven over its
 # WebSocket as the web client does), the daemon is stopped as systemd stops it, and this build
 # starts on the same data folder: everything is read back and compared with what was set. Then
-# the same farm on this build through a restart, a power cut, truncated files, a moved data
-# folder, a comma-decimal locale, and an AgOpenGPS field folder. About 15 minutes, so it runs
+# the same farm on this build through a restart, a power cut, files cut short (fault injection)
+# and what a power cut really leaves, a moved data folder, a comma-decimal locale, and AgOpenGPS
+# field folders and installations. About 15 minutes, so it runs
 # nightly on develop, not on every PR (CI only builds it).
 # The run fails when the harness breaks; the findings are in the report, kept as an artifact
 # and shown in the run's summary.
 #
-#   - schedule (nightly): only when develop has a commit from the last day;
+#   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;
 #   - manual dispatch: always, on the branch picked, from the releases given.
 
 on:
-  schedule:
-    # Just after midnight US Central (06:xx UTC; 01:xx in summer time), so the reports are in by
-    # morning. Off the hour on purpose: GitHub queues scheduled runs set on the hour the longest.
-    # Each harness has its own runner, so they run side by side.
-    - cron: '41 6 * * *'   # 06:41 UTC
+  # Nightly: the bug report Worker (Tools/bugreport-worker, NIGHTLY_CRON 03:07 UTC, 21:07 US
+  # Central) starts it with nightly=true. GitHub's own schedule started this repo's runs 5-8 hours
+  # late every day (2026-10 and 11), so the reports weren't in by morning. Each harness has its
+  # own runner, so they run side by side.
   workflow_dispatch:
     inputs:
+      nightly:
+        description: 'Nightly run: skip when develop has no commit from the last 25 hours'
+        type: boolean
+        default: false
       update_from:
         description: 'Releases to update from (tags, comma-separated); their Linux x64 bundles are downloaded'
         required: false
-        default: 'v26.7.1,v26.7.2,v26.7.3'
+        default: 'v26.7.1,v26.7.2,v26.7.3,v26.7.4'
 
 permissions:
   contents: read
@@ -49,13 +53,16 @@ jobs:
       - name: Anything new since the last night?
         id: fresh
         run: |
-          if [ "${{ github.event_name }}" != "schedule" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "${{ inputs.nightly }}" != "true" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           last=$(git log -1 --format=%ct HEAD)
           age=$(( $(date +%s) - last ))
           if [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "No commit on develop in the last 25 hours; nothing to run." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - uses: ./.github/actions/sharpisoterm-cache
+        if: steps.fresh.outputs.run == 'true'
 
       - name: Setup .NET
         if: steps.fresh.outputs.run == 'true'
@@ -68,14 +75,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/agopenweb-releases
-          key: agopenweb-release-bundles-${{ github.event.inputs.update_from || 'v26.7.1,v26.7.2,v26.7.3' }}
+          key: agopenweb-release-bundles-${{ inputs.update_from || 'v26.7.1,v26.7.2,v26.7.3,v26.7.4' }}
+          # A new tag in the list keeps the bundles already cached; only the new one is downloaded.
+          restore-keys: agopenweb-release-bundles-
 
       - name: Run the update scenarios
         if: steps.fresh.outputs.run == 'true'
         env:
           AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/update-scenarios-report.md
           AGOPENWEB_UPDATE_CACHE: ${{ runner.temp }}/agopenweb-releases
-          AGOPENWEB_UPDATE_FROM: ${{ github.event.inputs.update_from || 'v26.7.1,v26.7.2,v26.7.3' }}
+          AGOPENWEB_UPDATE_FROM: ${{ inputs.update_from || 'v26.7.1,v26.7.2,v26.7.3,v26.7.4' }}
+          # The release's API entry holds each bundle's SHA-256; authenticated for the rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
         run: dotnet test Tests/AgOpenWeb.UpdateScenarios.Tests/ --filter "FullyQualifiedName~UpdateScenarioTests" --verbosity normal
 
       - name: Report to the summary

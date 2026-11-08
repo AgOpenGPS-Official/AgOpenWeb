@@ -21,11 +21,11 @@ public static class OldRelease
     public const string Asset = "agopenweb-linux-x64.tar.gz";
 
     /// <summary>The releases to update from, oldest first: AGOPENWEB_UPDATE_FROM (comma list of
-    /// tags, or tag=path), or the three latest tagged releases known to have a Linux bundle.</summary>
+    /// tags, or tag=path), or the four latest tagged releases known to have a Linux bundle.</summary>
     public static List<(string Tag, string? Path)> Wanted()
     {
         var list = new List<(string, string?)>();
-        string env = Environment.GetEnvironmentVariable("AGOPENWEB_UPDATE_FROM") ?? "v26.7.1,v26.7.2,v26.7.3";
+        string env = Environment.GetEnvironmentVariable("AGOPENWEB_UPDATE_FROM") ?? "v26.7.1,v26.7.2,v26.7.3,v26.7.4";
         foreach (var raw in env.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             int eq = raw.IndexOf('=');
@@ -38,43 +38,141 @@ public static class OldRelease
         Environment.GetEnvironmentVariable("AGOPENWEB_UPDATE_CACHE")
         ?? Path.Combine(Path.GetTempPath(), "agopenweb-releases");
 
-    /// <summary>The folder with the release's AgOpenWeb.Desktop, or null with the reason.</summary>
-    public static async Task<(string? AppDir, string Note)> GetAsync(string tag, string? givenPath)
+    /// <summary>The folder with the release's AgOpenWeb.Desktop, or null with the reason.
+    /// <c>HarnessFault</c> is set when the reason is the harness's to answer for (a bundle whose
+    /// SHA-256 is not the one GitHub publishes for it, or no digest to check against), not the
+    /// release's (a tag without a Linux bundle).</summary>
+    public static async Task<(string? AppDir, string Note, bool HarnessFault)> GetAsync(string tag, string? givenPath)
     {
         if (givenPath != null)
         {
             string exe = Path.Combine(givenPath, "AgOpenWeb.Desktop");
-            return File.Exists(exe) ? (givenPath, "from " + givenPath) : (null, "no AgOpenWeb.Desktop in " + givenPath);
+            return File.Exists(exe) ? (givenPath, "from " + givenPath, false) : (null, "no AgOpenWeb.Desktop in " + givenPath, false);
         }
         string dir = Path.Combine(CacheDir, tag);
-        string appDir = Path.Combine(dir, "agopenweb-linux-x64", "app");
-        if (File.Exists(Path.Combine(appDir, "AgOpenWeb.Desktop"))) return (appDir, "cached bundle");
+        string unpacked = Path.Combine(dir, "agopenweb-linux-x64");
+        string appDir = Path.Combine(unpacked, "app");
+        // The digest the bundle was checked against when it was downloaded, kept beside it: the
+        // archive itself is removed once unpacked.
+        string digestFile = Path.Combine(dir, Asset + ".sha256");
+        var (published, digestNote) = await PublishedDigestAsync(tag);
+
+        if (File.Exists(Path.Combine(appDir, "AgOpenWeb.Desktop")) && File.Exists(digestFile))
+        {
+            string kept = File.ReadAllText(digestFile).Trim();
+            if (published == null)
+                return (appDir, Kit.F($"cached bundle, checked on download (sha256 {Short(kept)}); not checked again: {digestNote}"), false);
+            if (string.Equals(kept, published, StringComparison.OrdinalIgnoreCase))
+                return (appDir, Kit.F($"cached bundle, sha256 {Short(kept)} as published"), false);
+            // The release's asset changed since it was cached: fetch it again.
+            Kit.TryDeleteAlways(unpacked);
+            File.Delete(digestFile);
+        }
+        else if (Directory.Exists(unpacked))
+        {
+            // Unpacked without a checked digest (an older cache, or a run cut short): not trusted.
+            Kit.TryDeleteAlways(unpacked);
+        }
+
         Directory.CreateDirectory(dir);
         string tgz = Path.Combine(dir, Asset);
         string url = $"https://github.com/{Repo}/releases/download/{tag}/{Asset}";
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("AgOpenWeb-update-scenarios");
+            using var http = NewHttp();
             using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
             if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
-                return (null, $"the release {tag} has no {Asset} (Linux bundles are published from v26.7.1 on)");
+                return (null, $"the release {tag} has no {Asset} (Linux bundles are published from v26.7.1 on)", false);
             resp.EnsureSuccessStatusCode();
             await using (var f = File.Create(tgz))
                 await resp.Content.CopyToAsync(f);
         }
         catch (Exception ex)
         {
-            return (null, $"could not download {url}: {ex.GetType().Name}: {ex.Message}");
+            TryDeleteFile(tgz);
+            return (null, $"could not download {url}: {ex.GetType().Name}: {ex.Message}", false);
         }
+
+        // The SHA-256 before anything is unpacked: a bundle that is not the published one is never run.
+        if (published == null)
+        {
+            TryDeleteFile(tgz);
+            return (null, Kit.F($"{Asset} of {tag} could not be checked, so it is not run: {digestNote}"), true);
+        }
+        string actual;
+        await using (var f = File.OpenRead(tgz))
+            actual = Convert.ToHexStringLower(await System.Security.Cryptography.SHA256.HashDataAsync(f));
+        if (!string.Equals(actual, published, StringComparison.OrdinalIgnoreCase))
+        {
+            TryDeleteFile(tgz);
+            Kit.TryDeleteAlways(unpacked);
+            return (null, Kit.F($"{Asset} of {tag} has sha256 {actual}, the release publishes {published}: removed, not run"), true);
+        }
+
         var tar = Process.Start(new ProcessStartInfo("tar", $"xzf \"{tgz}\" -C \"{dir}\"") { RedirectStandardError = true, UseShellExecute = false });
-        if (tar == null) return (null, "tar not available");
+        if (tar == null) { TryDeleteFile(tgz); return (null, "tar not available", false); }
         string err = await tar.StandardError.ReadToEndAsync();
         await tar.WaitForExitAsync();
-        File.Delete(tgz);
-        if (tar.ExitCode != 0) return (null, "tar failed: " + err.Trim());
-        if (!File.Exists(Path.Combine(appDir, "AgOpenWeb.Desktop"))) return (null, "the bundle has no app/AgOpenWeb.Desktop");
-        return (appDir, Kit.F($"downloaded {Asset} of {tag}"));
+        TryDeleteFile(tgz);
+        if (tar.ExitCode != 0) { Kit.TryDeleteAlways(unpacked); return (null, "tar failed: " + err.Trim(), false); }
+        if (!File.Exists(Path.Combine(appDir, "AgOpenWeb.Desktop"))) { Kit.TryDeleteAlways(unpacked); return (null, "the bundle has no app/AgOpenWeb.Desktop", false); }
+        File.WriteAllText(digestFile, published + "\n");
+        return (appDir, Kit.F($"downloaded {Asset} of {tag}, sha256 {Short(published)} as published"), false);
+    }
+
+    /// <summary>The digests already read in this run, by tag: the API is asked once per tag.</summary>
+    private static readonly Dictionary<string, string> Digests = new(StringComparer.Ordinal);
+
+    /// <summary>The SHA-256 GitHub publishes for the bundle (the asset's <c>digest</c>,
+    /// "sha256:…", in the release's API entry), lower-case hex, or null with the reason. With
+    /// GITHUB_TOKEN set the request is authenticated (a higher rate limit on CI); without it, it
+    /// works too, as on a developer's computer.</summary>
+    private static async Task<(string? Sha256, string Note)> PublishedDigestAsync(string tag)
+    {
+        lock (Digests) { if (Digests.TryGetValue(tag, out var known)) return (known, "already read"); }
+        string api = $"https://api.github.com/repos/{Repo}/releases/tags/{tag}";
+        try
+        {
+            using var http = NewHttp();
+            http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+            string? token = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+            if (!string.IsNullOrEmpty(token))
+                http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            using var resp = await http.GetAsync(api);
+            if (!resp.IsSuccessStatusCode)
+                return (null, Kit.F($"{api} answered {(int)resp.StatusCode} {resp.ReasonPhrase}"));
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            if (!doc.RootElement.TryGetProperty("assets", out var assets)) return (null, "the release has no assets list");
+            foreach (var a in assets.EnumerateArray())
+            {
+                if (a.GetProperty("name").GetString() != Asset) continue;
+                string? digest = a.TryGetProperty("digest", out var d) && d.ValueKind == System.Text.Json.JsonValueKind.String ? d.GetString() : null;
+                if (digest == null || !digest.StartsWith("sha256:", StringComparison.Ordinal))
+                    return (null, Kit.F($"the release lists {Asset} without a sha256 digest ({digest ?? "none"})"));
+                string hex = digest[7..].ToLowerInvariant();
+                lock (Digests) Digests[tag] = hex;
+                return (hex, "published");
+            }
+            return (null, Kit.F($"the release {tag} lists no {Asset}"));
+        }
+        catch (Exception ex)
+        {
+            return (null, Kit.F($"could not read {api}: {ex.GetType().Name}: {ex.Message}"));
+        }
+    }
+
+    private static HttpClient NewHttp()
+    {
+        var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("AgOpenWeb-update-scenarios");
+        return http;
+    }
+
+    private static string Short(string hex) => hex.Length > 12 ? hex[..12] + "…" : hex;
+
+    private static void TryDeleteFile(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { }
     }
 }
 

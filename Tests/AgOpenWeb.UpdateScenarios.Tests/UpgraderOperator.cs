@@ -46,8 +46,13 @@ public static class UpgraderOperator
     /// or null when the release could not be run (noted on the scenario).</summary>
     private static async Task<(string Root, Farm Farm, OldProcess Old)?> SeasonAsync(Scenario sc, string tag, string? givenPath, bool crashDuringJob)
     {
-        var (appDir, note) = await OldRelease.GetAsync(tag, givenPath);
+        var (appDir, note, harnessFault) = await OldRelease.GetAsync(tag, givenPath);
         sc.Step(Kit.F($"release {tag}: {note}"));
+        if (appDir == null && harnessFault)
+        {
+            sc.Harness(Kit.F($"{tag} could not be run: {note}"));
+            return null;
+        }
         if (appDir == null)
         {
             sc.Note(Kit.F($"{tag} could not be run here: {note}. Nothing to compare."));
@@ -176,8 +181,14 @@ public static class UpgraderOperator
 
         // Rollback: the older build on what this build wrote.
         sc.Step(Kit.F($"rollback: {tag} starts again on the data this build wrote"));
-        var (appDir, _) = await OldRelease.GetAsync(tag, givenPath);
-        var back = new OldProcess(tag, appDir!, root);
+        var (appDir, againNote, _) = await OldRelease.GetAsync(tag, givenPath);
+        if (appDir == null)
+        {
+            sc.Harness(Kit.F($"{tag} could not be run again for the rollback: {againNote}"));
+            Kit.TryDelete(root);
+            return;
+        }
+        var back = new OldProcess(tag, appDir, root);
         if (!await back.StartAsync())
         {
             sc.Problem(Severity.Robustness, "ROLLBACK-OLD-BUILD-NOT-STARTING", Kit.F($"{tag} does not start on the data folder this build wrote (exit code {back.ExitCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "?"}); console: {string.Join(" | ", back.Console.TakeLast(5))}"));

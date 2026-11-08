@@ -11,7 +11,10 @@ Two operators:
 
 - **The upgrader** runs an **older AgOpenWeb release** for a season and then installs this
   build over it. The release's Linux x64 daemon bundle (`agopenweb-linux-x64.tar.gz` of the
-  GitHub release) is downloaded once into a cache, started headless as a child process on a
+  GitHub release) is downloaded once into a cache and checked against the SHA-256 the release
+  publishes for it (the asset's `digest` in the GitHub API) before it is unpacked; a bundle that
+  does not match is removed and is a `HARNESS` finding, and a cached one is checked again by the
+  digest kept beside it. It is started headless as a child process on a
   fresh `AGOPENWEB_DATA` folder, and driven over its WebSocket (`/ws`) with the very commands
   the web client sends (`control.acquire`, `profile.new`, `config.set|key:value`,
   `profile.save`, `ntrip.save`, `field.new`, `boundary.fromMapPoints`, `headland.wholeBoundary`,
@@ -24,13 +27,21 @@ Two operators:
   resumed with `field.resumeJob`) and compares it with what was set. Then it restarts (no
   value may move), and finally the older release is started again on what this build wrote
   (a rollback after a bad update) and this build once more after that.
-  One scenario per release (`U-26.7.1`, `U-26.7.2`, `U-26.7.3`), oldest first, and one where
+  One scenario per release (`U-26.7.1`, `U-26.7.2`, `U-26.7.3`, `U-26.7.4`), oldest first, and one where
   the power goes on the last release in the middle of a job (`UK-<tag>`).
 - **The restarter** makes the same farm on **this build** and puts it through what happens to
   a cab computer: a plain restart with a second restart that must change nothing (`R1`); a
-  power cut with a job running, no exit save (`R2`); `appsettings.json`, `appstate.json` and
-  the profiles in use each cut to half their bytes, as a power cut mid-write leaves them (`R3`:
-  the `.bak` copies must win); the data folder copied to another computer and the old one
+  power cut with a job running, no exit save (`R2`: what the autosave had written, and every
+  profile setting changed since the last profile save is lost); `appsettings.json`,
+  `appstate.json` and the profiles in use each cut to half their bytes (`R3`, fault injection:
+  `AtomicJsonFile` writes a scratch file, flushes it and swaps it in, so a save never leaves a
+  primary cut in half; a failing disk or a copy cut short can. The `.bak` copies must win); what
+  a power cut can really leave (`R9`, each on its own copy of one data folder whose files have a
+  `.bak` one save older: the files as left, where the newer file must win; each file zero bytes
+  long, as FAT/exFAT SD cards can keep a rename without its bytes, so the `.bak` and the save
+  before last come back; a half-written `.tmp` beside each file, which must be ignored and taken
+  away by the next save; the file and its `.bak` both damaged, where the app starts on defaults
+  and must say so. What the app does is reported, not asserted); the data folder copied to another computer and the old one
   gone, so the absolute Fields path in `appsettings.json` is stale (`R4`); an AgOpenGPS 6.x
   field folder copied into `Fields/` by hand, before the first start and while the app runs
   (`R5`: `Field.txt`, `Boundary.txt`, `Headland.Txt`, `TrackLines.txt` with an AB line and a
@@ -40,14 +51,15 @@ Two operators:
   `CONTRIBUTING.md`). `R8` moves a whole **AgOpenGPS 6.8.6 installation** to AgOpenWeb the way
   a farmer does it and keeps AgOpenGPS: `AgOpenGpsInstall.cs` writes a `Documents/AgOpenGPS`
   folder with the layout and setting names of a real 6.8.6 computer (tractors in
-  `VehicleProfiles/`, implements in `ToolProfiles/`, U-turn and tram in
-  `Environment/environment.xml`, the NTRIP caster in `AgIO/`, a combined `Vehicles/*.XML` left
-  from before 6.8.2 with that day's values, and fields with every file AgOpenGPS writes:
+  `VehicleProfiles/`, implements in `ToolProfiles/`, each with its `.last`, the save before the
+  last one, U-turn and tram in `Environment/environment.xml`, the NTRIP caster in `AgIO/`, a
+  combined `Vehicles/*.XML` left from before 6.8.2 with that day's values, and fields with every file AgOpenGPS writes:
   coverage, contour, recorded path, elevation, background image, KML, ISO-XML). Its fields and
   profile folders are copied into `Documents/AgOpenWeb`; each tractor, implement and setting
   is then looked for in this build (imported, read from the stale combined file, or not
   imported, per settings tab), the fields judged as in `R5` plus their other files, and the
-  AgOpenGPS folder must be byte for byte as it was. With
+  AgOpenGPS folder must be byte for byte as it was. `R8F` is the same on a fresh 6.8.2+ install:
+  no combined files, and `Environment/DefaultEnvironment.xml` instead of `environment.xml`. With
   `AGOPENWEB_UPDATE_AOG_FIELDS=<dir>` the farmer's own AgOpenGPS field folders (or a whole
   AgOpenGPS folder, with `Fields/` inside, copied as `R8` copies it) are copied in and opened
   too (`R7`); only counts go in the report, the files stay on the computer.
@@ -57,8 +69,10 @@ Two operators:
 `Farm.Standard()` in `Farm.cs`: two tractors (Fendt 312 with 19 steering, antenna and
 dimension settings, Valtra N134), two implements (a rear-mounted 8 m sprayer with 8 sections,
 look-ahead, U-turn and tram settings; a trailed 3 m seed drill with 12 sections), the Fendt and
-the sprayer as the pair in use; fifteen device settings (metric units, display, connections,
-GPS, roll), language `pt`, two hotkeys, night mode, a saved camera; two NTRIP casters with
+the sprayer as the pair in use; ten device settings (metric units, display, connections: written
+to `appsettings.json` at once) and six profile settings tuned after the last profile save (GPS,
+roll and the sprayer's slow-speed cutoff: vehicle and implement profile settings, in AgOpenWeb
+as in AgOpenGPS, written at the next profile save, profile switch or exit save), language `pt`, two hotkeys, night mode, a saved camera; two NTRIP casters with
 passwords (made-up hosts: the client's "cannot find caster" warning is expected and not
 reported); three fields near 41.6°N 5.7°W: a 300 × 200 m rectangle with an 8 m headland, an
 AB line, a five-point curve, two flags and a 20 s sprayed job, a pentagon with a diagonal AB
@@ -92,8 +106,9 @@ starts, the older release's profile files and `appsettings.json` are read as tex
 (`OldProfileFiles`). A value the release never wrote is `OLD-BUILD-SETTING-NOT-SAVED`; a file
 whose own values contradict each other (a default section width next to sections of another
 width) is `OLD-BUILD-FILE-INCONSISTENT`; a value the file holds and this build reads back
-differently is `UPDATE-PROFILE-SETTING-CHANGED` or `UPDATE-DEVICE-SETTING-CHANGED`, the only
-ones this build answers for. A `save_error.txt` left by any build is `<prefix>-SAVE-ERROR`.
+differently is `UPDATE-PROFILE-SETTING-CHANGED`, `UPDATE-DEVICE-SETTING-CHANGED` or
+`UPDATE-UNSAVED-PROFILE-EDIT-LOST`, the only ones this build answers for. A `save_error.txt` left
+by any build is `<prefix>-SAVE-ERROR`, with the first lines of its stack trace.
 
 The test itself fails only when the harness breaks (an unhandled exception, a release that
 did not start, no control over its WebSocket): a finding is a result, not a failure.
@@ -101,7 +116,7 @@ did not start, no control over its WebSocket): a finding is a result, not a fail
 ## Running it
 
 ```bash
-# Everything (about 15 minutes; the first run downloads three bundles of ~45 MB each):
+# Everything (about 15 minutes; the first run downloads four bundles of ~45 MB each):
 dotnet test Tests/AgOpenWeb.UpdateScenarios.Tests/ --filter FullyQualifiedName~UpdateScenarioTests
 
 # One operator, one scenario:
@@ -116,14 +131,16 @@ AGOPENWEB_SCENARIO_OPERATOR=upgrader AGOPENWEB_SCENARIO_ONLY=U-26.7.2 dotnet tes
 | `AGOPENWEB_SCENARIO_REPORT` | Where the Markdown report goes (default: the test's work directory). |
 | `AGOPENWEB_SCENARIO_VERBOSE` | Field names of the farmer's own fields in the report (`R7`). |
 | `AGOPENWEB_SCENARIO_KEEP` | Keep the scenarios' data folders (`/tmp/aow-update-<code>-…`) to look at. |
-| `AGOPENWEB_UPDATE_FROM` | Releases to update from, oldest first (default `v26.7.1,v26.7.2,v26.7.3`); `tag=/path/to/app` uses a published app folder instead of a download. |
+| `AGOPENWEB_UPDATE_FROM` | Releases to update from, oldest first (default `v26.7.1,v26.7.2,v26.7.3,v26.7.4`); `tag=/path/to/app` uses a published app folder instead of a download. |
 | `AGOPENWEB_UPDATE_CACHE` | Where the bundles are kept (default: the temp folder's `agopenweb-releases`). |
+| `GITHUB_TOKEN` | Used, when set, for the release's API entry with the bundle's digest (a higher rate limit); unauthenticated works too. |
 | `AGOPENWEB_UPDATE_AOG_FIELDS` | A folder of AgOpenGPS field folders of your own, or your whole AgOpenGPS folder, for `R7`. |
 
 The old build and this build use UDP port 9999 and web port 5174 one after the other, never at
 once; nothing else of AgOpenWeb may run on the machine. Releases before 26.7 have no Linux
 bundle (the Avalonia era) and are not run. `update-scenarios.yml` runs the harness nightly on
-`develop` (06:41 UTC, when there is a new commit), caches the bundles, keeps the report as an
+`develop` when there is a new commit (the bug report Worker, `Tools/bugreport-worker`, starts it
+with `nightly=true` at 03:07 UTC, 21:07 US Central), caches the bundles, keeps the report as an
 artifact and shows it in the run's summary; CI only builds the project.
 
 ## Files
@@ -132,10 +149,10 @@ artifact and shows it in the run's summary; CI only builds the project.
 |---|---|
 | `UpdateScenarioTests.cs` | The one NUnit test: both operators into one report. |
 | `UpgraderOperator.cs` | The older release, the season on it, SIGTERM or SIGKILL, this build, the restart, the rollback. |
-| `RestarterOperator.cs` | `R1`–`R8` on this build. |
-| `AgOpenGpsInstall.cs` | `R8`'s AgOpenGPS 6.8.6 folder: profiles, environment, AgIO, fields with every file. |
+| `RestarterOperator.cs` | `R1`–`R9` on this build. |
+| `AgOpenGpsInstall.cs` | `R8`'s and `R8F`'s AgOpenGPS 6.8.6 folder: profiles and their `.last`, environment, AgIO, fields with every file. |
 | `Farm.cs` | The farm and `FarmBuilder`, which makes it through any `ICommandSender` (the WebSocket or the in-process rig). |
-| `OldRelease.cs` | The release bundle (download, cache), the headless child process (`OldProcess`), the WebSocket client with control (`WebClient`). |
+| `OldRelease.cs` | The release bundle (download, SHA-256 check, cache), the headless child process (`OldProcess`), the WebSocket client with control (`WebClient`). |
 | `Snapshot.cs` | What this build reads back (`Snapshot`) and the comparison (`Judge`). |
 | `AgOpenGpsFiles.cs` | An AgOpenGPS 6.x field folder written from a field spec. |
 | `UpdateRig.cs` | The in-process backend (as the other harnesses' rigs), with an exit save or a crash on dispose. |

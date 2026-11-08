@@ -111,10 +111,31 @@ public static class Kit
         try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { }
     }
 
+    /// <summary>Two values as numbers when both are (3.10 and 3.1 are one value), else as text.</summary>
+    public static bool SameNumber(string a, string b) =>
+        double.TryParse(a, NumberStyles.Float, CultureInfo.InvariantCulture, out var x)
+        && double.TryParse(b, NumberStyles.Float, CultureInfo.InvariantCulture, out var y)
+            ? Math.Abs(x - y) < 1e-9
+            : string.Equals(a, b, StringComparison.Ordinal);
+
+    /// <summary>A file's text, or "" when it cannot be read.</summary>
+    public static string ReadText(string path)
+    {
+        try { return File.ReadAllText(path); } catch { return ""; }
+    }
+
+    /// <summary>Removes a folder whatever AGOPENWEB_SCENARIO_KEEP says: for what must not be used
+    /// again (a release bundle that failed its check or was unpacked only in part).</summary>
+    public static void TryDeleteAlways(string dir)
+    {
+        try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { }
+    }
+
     /// <summary>
     /// A <c>save_error.txt</c> anywhere under the data root is the app saying it could not write a
     /// file (SettingsService writes one when appsettings.json fails): a finding with the file and
-    /// the error's first line, once per file, by <paramref name="who"/> (a release tag or "this build").
+    /// the error's first line, once per file, by <paramref name="who"/> (a release tag or "this build"),
+    /// with the first lines of the stack trace that follow it (where the save failed).
     /// The file is removed so the next build's own failure is told apart.
     /// </summary>
     public static void CheckSaveErrors(Scenario sc, string dataRoot, string prefix, string who)
@@ -126,7 +147,10 @@ public static class Kit
             try { lines = File.ReadAllLines(f); } catch { continue; }
             string path = lines.FirstOrDefault(l => l.StartsWith("Path:", StringComparison.Ordinal))?[5..].Trim() ?? "?";
             string error = lines.FirstOrDefault(l => l.StartsWith("Error:", StringComparison.Ordinal))?[6..].Trim() ?? lines.FirstOrDefault() ?? "";
-            sc.Problem(Severity.Robustness, prefix + "-SAVE-ERROR", F($"{who} could not write {Path.GetFileName(path)} and left {Path.GetRelativePath(dataRoot, f)}: {error}"));
+            int at = Array.FindIndex(lines, l => l.StartsWith("Error:", StringComparison.Ordinal));
+            var stack = (at >= 0 ? lines.Skip(at + 1) : Enumerable.Empty<string>())
+                .Select(l => l.Trim()).Where(l => l.Length > 0).Take(4).ToList();
+            sc.Problem(Severity.Robustness, prefix + "-SAVE-ERROR", F($"{who} could not write {Path.GetFileName(path)} and left {Path.GetRelativePath(dataRoot, f)}: {error}{(stack.Count > 0 ? " | " + string.Join(" | ", stack) : "")}"));
             try { File.Delete(f); } catch { }
         }
     }

@@ -17,8 +17,12 @@ namespace AgOpenWeb.UpdateScenarios.Tests;
 /// when the profile was split into VehicleProfiles, ToolProfiles and Environment, so on a 6.8.6
 /// computer it is months behind. A read-back equal to it means the setting came from the wrong
 /// file. <see cref="Group"/> names the settings tab, so missing settings are reported per tab.
+/// <see cref="Before"/> is the value before the farmer's last save: AgOpenGPS copies a profile to
+/// <c>&lt;name&gt;.last</c> before it writes the new one (VehicleSettings.Save, ToolSettings.Save),
+/// so the .last file holds the previous save, not a copy of the current one. A read-back equal to
+/// it means the setting came from the .last file.
 /// </summary>
-public sealed record AogSetting(string Key, string Dump, string Value, string Reads, string Group, string? Stale = null, string? StaleReads = null);
+public sealed record AogSetting(string Key, string Dump, string Value, string Reads, string Group, string? Stale = null, string? StaleReads = null, string? Before = null);
 
 /// <summary>A tractor of the 6.8.6 installation: its <c>VehicleProfiles/&lt;name&gt;.xml</c>, and
 /// whether a combined <c>Vehicles/&lt;name&gt;.XML</c> from before the split is still there
@@ -33,11 +37,16 @@ public sealed record AogAgIo(string Name, string CasterHost, int CasterPort, str
 
 /// <summary>
 /// A farmer's AgOpenGPS 6.8.6 folder (<c>Documents/AgOpenGPS</c>), as the program leaves it:
-/// <c>VehicleProfiles/</c>, <c>ToolProfiles/</c> and <c>Environment/environment.xml</c> with the
-/// current settings, <c>AgIO/</c> with the caster, <c>Vehicles/*.XML</c> left over from before
-/// 6.8.2 with the settings of that day, and <c>Fields/</c> with every file AgOpenGPS writes
-/// (boundary, headland, tracks, flags, coverage, contour, recorded path, elevation, background
-/// image, KML, ISO-XML). The layout and the setting names are those of a real 6.8.6 computer.
+/// <c>VehicleProfiles/</c> and <c>ToolProfiles/</c> with the current settings (and each
+/// profile's <c>.last</c>, the save before), <c>Environment/environment.xml</c>, <c>AgIO/</c>
+/// with the caster, <c>Vehicles/*.XML</c> left over from before 6.8.2 with the settings of that
+/// day, and <c>Fields/</c> with every file AgOpenGPS writes (boundary, headland, tracks, flags,
+/// coverage, contour, recorded path, elevation, background image, KML, ISO-XML). The layout and
+/// the setting names are those of a real 6.8.6 computer. A fresh install of 6.8.2 or later
+/// (<see cref="Standard"/> with freshInstall) has no combined files and keeps the environment in
+/// <c>Environment/DefaultEnvironment.xml</c>: 6.8.6's Settings.Load reads environment.xml, which
+/// only the migration from a combined profile creates, and else DefaultEnvironment.xml, which it
+/// creates on a first start.
 /// </summary>
 public sealed class AgOpenGpsInstall
 {
@@ -45,6 +54,9 @@ public sealed class AgOpenGpsInstall
     public const string Version = "6.8.6";
 
     public List<AogVehicle> Vehicles { get; } = new();
+    /// <summary>The environment file's name in <c>Environment/</c>: environment.xml on a computer
+    /// that came from before 6.8.2, DefaultEnvironment.xml on a fresh 6.8.2+ install.</summary>
+    public string EnvironmentFile { get; init; } = "environment.xml";
     public List<AogTool> Tools { get; } = new();
     /// <summary>Settings of <c>Environment/environment.xml</c> that AgOpenWeb keeps per profile
     /// (U-turn, tram): judged with every vehicle.</summary>
@@ -61,24 +73,26 @@ public sealed class AgOpenGpsInstall
     /// <summary>The worked area of the full field's Sections.txt, m².</summary>
     public double CoverageSqM => AgOpenGpsFiles.CoverageSqM;
 
-    /// <summary>What the farmer's 6.8.6 folder holds. Values differ from AgOpenWeb's defaults
-    /// and from the stale ones, so a read-back tells which file it came from.</summary>
-    public static AgOpenGpsInstall Standard()
+    /// <summary>What the farmer's 6.8.6 folder holds. Values differ from AgOpenWeb's defaults,
+    /// from the stale ones and from the .last ones, so a read-back tells which file it came from.
+    /// With <paramref name="freshInstall"/> the computer never ran AgOpenGPS before 6.8.2: no
+    /// combined Vehicles/*.XML, and Environment/DefaultEnvironment.xml.</summary>
+    public static AgOpenGpsInstall Standard(bool freshInstall = false)
     {
-        var a = new AgOpenGpsInstall();
+        var a = new AgOpenGpsInstall { EnvironmentFile = freshInstall ? "DefaultEnvironment.xml" : "environment.xml" };
 
         // The tractor set up in 2024 on 6.7 and used since: its combined Vehicles/*.XML is still
         // there with that day's values; VehicleProfiles/ has today's.
         a.Vehicles.Add(new AogVehicle("Case Maxxum 135", new()
         {
             A("setVehicle_wheelbase", "Vehicle.Wheelbase", "2.7", "vehicle", stale: "2.55"),
-            A("setVehicle_antennaHeight", "Vehicle.AntennaHeight", "2.8", "vehicle", stale: "2.9"),
+            A("setVehicle_antennaHeight", "Vehicle.AntennaHeight", "2.8", "vehicle", stale: "2.9", before: "2.75"),
             A("setVehicle_antennaPivot", "Vehicle.AntennaPivot", "1.2", "vehicle", stale: "0.9"),
             A("setVehicle_antennaOffset", "Vehicle.AntennaOffset", "-0.3", "vehicle", stale: "0.1"),
             A("setVehicle_maxSteerAngle", "Vehicle.MaxSteerAngle", "36", "vehicle", stale: "33"),
             A("setVehicle_maxAngularVelocity", "Vehicle.MaxAngularVelocity", "0.64", "vehicle", stale: "0.55"),
             A("setVehicle_trackWidth", "Vehicle.TrackWidth", "1.95", "vehicle", stale: "1.85"),
-            A("setAS_Kp", "AutoSteer.ProportionalGain", "60", "steer", stale: "45"),
+            A("setAS_Kp", "AutoSteer.ProportionalGain", "60", "steer", stale: "45", before: "58"),
             A("setAS_countsPerDegree", "AutoSteer.CountsPerDegree", "112", "steer", stale: "105"),
             A("setAS_minSteerPWM", "AutoSteer.MinPwm", "32", "steer", stale: "28"),
             A("setAS_highSteerPWM", "AutoSteer.MaxPwm", "205", "steer", stale: "170"),
@@ -99,7 +113,7 @@ public sealed class AgOpenGpsInstall
             A("setIMU_fusionWeight2", "Connections.HeadingFusionWeight", "0.1", "gps", reads: "0.5", stale: "0.08", staleReads: "0.4"),
             A("setGPS_dualHeadingOffset", "Connections.DualHeadingOffset", "90", "gps", stale: "45"),
             A("setGPS_minimumStepLimit", "Connections.MinGpsStep", "0.08", "gps", stale: "0.06"),
-        }, InLegacyFile: true, ToolName: "Pulverizador 8 m"));
+        }, InLegacyFile: !freshInstall, ToolName: "Pulverizador 8 m"));
 
         // A tractor added on 6.8.6: no combined file ever existed for it.
         a.Vehicles.Add(new AogVehicle("Valtra N134", new()
@@ -108,7 +122,7 @@ public sealed class AgOpenGpsInstall
             A("setVehicle_antennaHeight", "Vehicle.AntennaHeight", "2.95", "vehicle"),
             A("setVehicle_antennaPivot", "Vehicle.AntennaPivot", "0.6", "vehicle"),
             A("setVehicle_maxSteerAngle", "Vehicle.MaxSteerAngle", "42", "vehicle"),
-            A("setAS_Kp", "AutoSteer.ProportionalGain", "55", "steer"),
+            A("setAS_Kp", "AutoSteer.ProportionalGain", "55", "steer", before: "50"),
             A("setAS_countsPerDegree", "AutoSteer.CountsPerDegree", "95", "steer"),
         }, InLegacyFile: false, ToolName: "Semeador 3 m"));
 
@@ -121,7 +135,7 @@ public sealed class AgOpenGpsInstall
             // AgOpenGPS writes a hitch behind the tractor negative; AgOpenWeb keeps the distance.
             A("setVehicle_hitchLength", "Tool.HitchLength", "-1.6", "tool", stale: "-1.4", reads: "1.6", staleReads: "1.4"),
             A("setTool_isToolRearFixed", "Tool.IsToolRearFixed", "True", "tool"),
-            A("setVehicle_toolLookAheadOn", "Tool.LookAheadOnSetting", "1.2", "sections", stale: "1.1"),
+            A("setVehicle_toolLookAheadOn", "Tool.LookAheadOnSetting", "1.2", "sections", stale: "1.1", before: "1.0"),
             A("setVehicle_toolLookAheadOff", "Tool.LookAheadOffSetting", "0.4", "sections", stale: "0.6"),
             A("setVehicle_numSections", "NumSections", "8", "sections", stale: "6"),
             A("setSection_position", "ActualToolWidth", "8", "sections", stale: "6"),
@@ -144,7 +158,7 @@ public sealed class AgOpenGpsInstall
             A("setVehicle_toolTrailingHitchLength", "Tool.TrailingHitchLength", "-2.4", "tool", reads: "2.4"),
             A("setVehicle_numSections", "NumSections", "12", "sections"),
             A("setSection_position", "ActualToolWidth", "3", "sections"),
-            A("setVehicle_toolOffDelay", "Tool.TurnOffDelay", "0.3", "sections"),
+            A("setVehicle_toolOffDelay", "Tool.TurnOffDelay", "0.3", "sections", before: "0.2"),
             A("setVehicle_slowSpeedCutoff", "Tool.SlowSpeedCutoff", "1.5", "sections"),
         }, Positions(12, 0.25), null));
 
@@ -166,8 +180,8 @@ public sealed class AgOpenGpsInstall
         return a;
     }
 
-    private static AogSetting A(string key, string dump, string value, string group, string? stale = null, string? reads = null, string? staleReads = null)
-        => new(key, dump, value, reads ?? value, group, stale, staleReads ?? stale);
+    private static AogSetting A(string key, string dump, string value, string group, string? stale = null, string? reads = null, string? staleReads = null, string? before = null)
+        => new(key, dump, value, reads ?? value, group, stale, staleReads ?? stale, before);
 
     /// <summary>Section edges, <paramref name="n"/> sections of <paramref name="width"/> m centred.</summary>
     private static double[] Positions(int n, double width)
@@ -185,7 +199,9 @@ public sealed class AgOpenGpsInstall
         {
             WriteSettingsXml(Path.Combine(aogRoot, "VehicleProfiles", v.Name + ".xml"), "AgOpenGPS.Properties.VehicleSettings",
                 v.Settings.Select(s => (s.Key, s.Value)).Append(("setVehicle_vehicleType", "0")).Append(("setBrand_TBrand", "0")));
-            File.Copy(Path.Combine(aogRoot, "VehicleProfiles", v.Name + ".xml"), Path.Combine(aogRoot, "VehicleProfiles", v.Name + ".last"), overwrite: true);
+            // The save before the last one (VehicleSettings.Save copies the file to .last first).
+            WriteSettingsXml(Path.Combine(aogRoot, "VehicleProfiles", v.Name + ".last"), "AgOpenGPS.Properties.VehicleSettings",
+                v.Settings.Select(s => (s.Key, s.Before ?? s.Value)).Append(("setVehicle_vehicleType", "0")).Append(("setBrand_TBrand", "0")));
             if (v.InLegacyFile)
             {
                 var tool = Tools.First(t => t.Name == v.ToolName);
@@ -212,7 +228,12 @@ public sealed class AgOpenGpsInstall
             pairs.Add(("setTool_zones", "2,10,20,0,0,0,0,0,0"));
             pairs.Add(("setTool_isSectionsNotZones", "True"));
             WriteSettingsXml(Path.Combine(aogRoot, "ToolProfiles", t.Name + ".xml"), "AgOpenGPS.Properties.ToolSettings", pairs);
-            File.Copy(Path.Combine(aogRoot, "ToolProfiles", t.Name + ".xml"), Path.Combine(aogRoot, "ToolProfiles", t.Name + ".last"), overwrite: true);
+            // The save before (ToolSettings.Save copies the file to .last first).
+            var before = t.Settings.Where(s => !s.Key.StartsWith("setSection_position", StringComparison.Ordinal)).Select(s => (s.Key, s.Before ?? s.Value)).ToList();
+            before.AddRange(SectionPairs(t.SectionPositions));
+            before.Add(("setTool_zones", "2,10,20,0,0,0,0,0,0"));
+            before.Add(("setTool_isSectionsNotZones", "True"));
+            WriteSettingsXml(Path.Combine(aogRoot, "ToolProfiles", t.Name + ".last"), "AgOpenGPS.Properties.ToolSettings", before);
         }
         {
             var pairs = new List<(string, string)>
@@ -223,19 +244,27 @@ public sealed class AgOpenGpsInstall
                 ("setF_CurrentDir", "C:\\Users\\farmer\\Documents\\AgOpenGPS\\Fields\\"),
             };
             pairs.AddRange(Environment.Select(s => (s.Key, s.Value)));
-            WriteSettingsXml(Path.Combine(aogRoot, "Environment", "environment.xml"), "AgOpenGPS.Properties.Settings", pairs);
+            // No .last for the environment: Settings.Save writes the file in place.
+            WriteSettingsXml(Path.Combine(aogRoot, "Environment", EnvironmentFile), "AgOpenGPS.Properties.Settings", pairs);
         }
         // AgOpenGPS writes the profiles in use when it saves: the first tractor and implement are
-        // the newest files of their folders, the others an hour older each.
+        // the newest files of their folders, the others an hour older each. A .last keeps the time
+        // of the save before (Windows' copy keeps the last-write time): a day earlier.
         var saved = new DateTime(2026, 9, 15, 18, 0, 0, DateTimeKind.Utc);
         for (int i = 0; i < Vehicles.Count; i++)
-            foreach (var ext in new[] { ".xml", ".last" })
-                File.SetLastWriteTimeUtc(Path.Combine(aogRoot, "VehicleProfiles", Vehicles[i].Name + ext), saved.AddHours(-i));
+        {
+            File.SetLastWriteTimeUtc(Path.Combine(aogRoot, "VehicleProfiles", Vehicles[i].Name + ".xml"), saved.AddHours(-i));
+            File.SetLastWriteTimeUtc(Path.Combine(aogRoot, "VehicleProfiles", Vehicles[i].Name + ".last"), saved.AddHours(-i).AddDays(-1));
+        }
         for (int i = 0; i < Tools.Count; i++)
-            foreach (var ext in new[] { ".xml", ".last" })
-                File.SetLastWriteTimeUtc(Path.Combine(aogRoot, "ToolProfiles", Tools[i].Name + ext), saved.AddHours(-i));
-        foreach (var legacy in Directory.EnumerateFiles(Path.Combine(aogRoot, "Vehicles")))
-            File.SetLastWriteTimeUtc(legacy, new DateTime(2026, 4, 8, 9, 0, 0, DateTimeKind.Utc));
+        {
+            File.SetLastWriteTimeUtc(Path.Combine(aogRoot, "ToolProfiles", Tools[i].Name + ".xml"), saved.AddHours(-i));
+            File.SetLastWriteTimeUtc(Path.Combine(aogRoot, "ToolProfiles", Tools[i].Name + ".last"), saved.AddHours(-i).AddDays(-1));
+        }
+        string legacyDir = Path.Combine(aogRoot, "Vehicles");
+        if (Directory.Exists(legacyDir))
+            foreach (var legacy in Directory.EnumerateFiles(legacyDir))
+                File.SetLastWriteTimeUtc(legacy, new DateTime(2026, 4, 8, 9, 0, 0, DateTimeKind.Utc));
 
         WriteSettingsXml(Path.Combine(aogRoot, "AgIO", AgIo.Name + ".XML"), "AgIO.Properties.Settings", new[]
         {

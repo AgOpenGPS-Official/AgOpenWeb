@@ -339,26 +339,37 @@ public static class Judge
         }
         if (badSettings == 0 && okSettings > 0) sc.Ok(Kit.F($"all {okSettings} profile settings read back as set"));
 
-        // Device settings
-        int okDev = 0;
-        foreach (var st in farm.Device)
+        // Device settings (appsettings.json, written at once), then the profile settings tuned
+        // after the last profile save (written at the next profile save, switch or exit save).
+        JudgeLoose(farm.Device, "DEVICE-SETTING-CHANGED", "device settings", "written to appsettings.json at once", inProfile: false);
+        JudgeLoose(farm.ProfileEdits, "UNSAVED-PROFILE-EDIT-LOST", "profile settings tuned after the last profile save",
+            "a vehicle or implement profile setting, written only at a profile save, a profile switch or the exit save", inProfile: true);
+
+        void JudgeLoose(List<Setting> list, string code, string what, string where, bool inProfile)
         {
-            if (Skip(st.Key)) continue;
-            if (!s.Dump.TryGetValue(st.Dump, out var got)) { sc.Harness(Kit.F($"no dump key '{st.Dump}' for {st.Key}")); continue; }
-            if (Same(st.Reads, got)) { okDev++; continue; }
-            string? inFile = oldFiles?.DeviceValueOf(st);
-            bool fileHolds = inFile != null && (Same(st.Value, inFile) || Same(st.Reads, inFile));
-            if (oldFiles != null && powerCut && !fileHolds)
-                sc.Problem(Severity.DataLoss, prefix + "-DEVICE-SETTING-CHANGED", Kit.F($"{st.Key} was set to {st.Value} on {oldFiles.BuildName}; the power cut came before it was written ({(inFile == null ? "no such key in" : "the files hold " + inFile + " in")} what {oldFiles.BuildName} left), reads back as {got} ({st.Dump})"));
-            else if (oldFiles != null && inFile != null && !fileHolds)
-                sc.Problem(Severity.Bug, "OLD-BUILD-SETTING-NOT-SAVED", Kit.F($"{st.Key} was set to {st.Value} on {oldFiles.BuildName}, which wrote {inFile} into its files: the release's own doing, nothing for this build to lose (reads back as {got}, {st.Dump})"));
-            else if (oldFiles != null && inFile == null)
-                sc.Problem(Severity.DataLoss, prefix + "-DEVICE-SETTING-CHANGED", Kit.F($"{st.Key} was set to {st.Value} on {oldFiles.BuildName}, reads back as {got} ({st.Dump}; no such key in the files {oldFiles.BuildName} wrote)"));
-            else if (oldFiles != null)
-                sc.Problem(Severity.DataLoss, prefix + "-DEVICE-SETTING-CHANGED", Kit.F($"{st.Key} was set to {st.Value} on {oldFiles.BuildName}, whose files hold {inFile}; this build reads back {got} ({st.Dump})"));
-            else sc.Problem(Severity.DataLoss, prefix + "-DEVICE-SETTING-CHANGED", Kit.F($"{st.Key} was set to {st.Value}, reads back as {got} ({st.Dump})"));
+            int ok = 0;
+            foreach (var st in list)
+            {
+                if (Skip(st.Key)) continue;
+                if (!s.Dump.TryGetValue(st.Dump, out var got)) { sc.Harness(Kit.F($"no dump key '{st.Dump}' for {st.Key}")); continue; }
+                if (Same(st.Reads, got)) { ok++; continue; }
+                // A profile setting is looked for in the files of the pair in use, not in any profile.
+                string? inFile = inProfile ? oldFiles?.ValueOf(farm.ActivePair.Vehicle, farm.ActivePair.Tool, st) : oldFiles?.DeviceValueOf(st);
+                bool fileHolds = inFile != null && (Same(st.Value, inFile) || Same(st.Reads, inFile));
+                if (oldFiles != null && powerCut && !fileHolds)
+                    sc.Problem(Severity.DataLoss, prefix + "-" + code, Kit.F($"{st.Key} ({where}) was set to {st.Value} on {oldFiles.BuildName}; the power cut came before it was written ({(inFile == null ? "no such key in" : "the files hold " + inFile + " in")} what {oldFiles.BuildName} left), reads back as {got} ({st.Dump})"));
+                else if (oldFiles != null && inFile != null && !fileHolds)
+                    sc.Problem(Severity.Bug, "OLD-BUILD-SETTING-NOT-SAVED", Kit.F($"{st.Key} was set to {st.Value} on {oldFiles.BuildName}, which wrote {inFile} into its files: the release's own doing, nothing for this build to lose (reads back as {got}, {st.Dump})"));
+                else if (oldFiles != null && inFile == null)
+                    sc.Problem(Severity.DataLoss, prefix + "-" + code, Kit.F($"{st.Key} ({where}) was set to {st.Value} on {oldFiles.BuildName}, reads back as {got} ({st.Dump}; no such key in the files {oldFiles.BuildName} wrote)"));
+                else if (oldFiles != null)
+                    sc.Problem(Severity.DataLoss, prefix + "-" + code, Kit.F($"{st.Key} ({where}) was set to {st.Value} on {oldFiles.BuildName}, whose files hold {inFile}; this build reads back {got} ({st.Dump})"));
+                else if (powerCut)
+                    sc.Problem(Severity.DataLoss, prefix + "-" + code, Kit.F($"{st.Key} ({where}) was set to {st.Value} and the power went before it was written: reads back as {got} ({st.Dump})"));
+                else sc.Problem(Severity.DataLoss, prefix + "-" + code, Kit.F($"{st.Key} ({where}) was set to {st.Value}, reads back as {got} ({st.Dump})"));
+            }
+            if (ok == list.Count && ok > 0) sc.Ok(Kit.F($"all {ok} {what} read back as set"));
         }
-        if (okDev == farm.Device.Count && okDev > 0) sc.Ok(Kit.F($"all {okDev} device settings read back as set"));
         if (!Skip("language"))
         {
             if (s.Dump.TryGetValue("AppSettings.Language", out var lang) && lang != farm.Language)
@@ -593,7 +604,8 @@ public sealed class OldProfileFiles
     /// segment, else the dump key's, case-insensitive), or null when neither key is in them.</summary>
     public string? ValueOf(string vehicle, string tool, Setting st)
     {
-        bool vehicleSide = st.Key.StartsWith("vehicle.", StringComparison.Ordinal) || st.Key.StartsWith("autosteer.", StringComparison.Ordinal);
+        bool vehicleSide = st.Key.StartsWith("vehicle.", StringComparison.Ordinal) || st.Key.StartsWith("autosteer.", StringComparison.Ordinal)
+            || st.Key.StartsWith("gps.", StringComparison.Ordinal) || st.Key.StartsWith("roll.", StringComparison.Ordinal);
         string own = (vehicleSide ? _vehicle.GetValueOrDefault(vehicle) : _tool.GetValueOrDefault(tool)) ?? "";
         string other = (vehicleSide ? _tool.GetValueOrDefault(tool) : _vehicle.GetValueOrDefault(vehicle)) ?? "";
         // A release may keep a setting on the other side (the U-turn settings were the vehicle's once).

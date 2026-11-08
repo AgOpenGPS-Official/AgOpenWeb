@@ -26,9 +26,15 @@ public sealed class Farm
     /// <summary>The pair left in use at the end of the season.</summary>
     public (string Vehicle, string Tool) ActivePair { get; init; }
 
-    /// <summary>Device settings (config.set keys that persist at once: units, display.*, conn.*,
-    /// gps.*, roll.*) and what they must read back as (dump key → value).</summary>
+    /// <summary>Device settings (config.set keys written to appsettings.json at once: units,
+    /// display.*, conn.*) and what they must read back as (dump key → value).</summary>
     public List<Setting> Device { get; } = new();
+    /// <summary>Settings of the profiles in use changed after their last profile save, as an
+    /// operator tunes the GPS, the roll or the implement in Settings without pressing Save. They
+    /// belong to the vehicle and implement profiles (gps.* and roll.* too, in AgOpenWeb as in
+    /// AgOpenGPS), so they reach the disk only at the next profile save, profile switch or exit
+    /// save, not at once.</summary>
+    public List<Setting> ProfileEdits { get; } = new();
     public string Language { get; init; } = "pt";
     public Dictionary<string, string> Hotkeys { get; } = new();
     public bool NightMode { get; init; } = true;
@@ -115,11 +121,17 @@ public sealed class Farm
             S("conn.rtcmBroadcast", "AppSettings.RtcmBroadcast", "1", "True"),
             S("conn.sendCorrectedPosition", "AppSettings.SendCorrectedPosition", "1", "True"),
             S("conn.machineConfigured", "AppSettings.IsMachineConfigured", "0", "False"),
+        });
+        f.ProfileEdits.AddRange(new[]
+        {
             S("gps.isDualGps", "Connections.IsDualGps", "1", "True"),
             S("gps.dualHeadingOffset", "Connections.DualHeadingOffset", "90"),
             S("gps.minGpsStep", "Connections.MinGpsStep", "0.08"),
             S("roll.rollZero", "Ahrs.RollZero", "1.5"),
             S("roll.isRollInvert", "Ahrs.IsRollInvert", "1", "True"),
+            // An implement setting the sprayer's profile spec leaves alone: the gap is any profile
+            // edit since the last save, not only the GPS and roll ones.
+            S("tool.slowSpeedCutoff", "Tool.SlowSpeedCutoff", "1.5"),
         });
         f.Hotkeys["AutoSteer"] = "S";
         f.Hotkeys["Flag"] = "L";
@@ -269,12 +281,14 @@ public static class FarmBuilder
 
         // Device settings, language, hotkeys, theme, camera.
         foreach (var st in farm.Device) await s.SendAsync("config.set", st.Key + ":" + st.Value);
+        // Profile settings tuned afterwards, with no profile save after them.
+        foreach (var st in farm.ProfileEdits) await s.SendAsync("config.set", st.Key + ":" + st.Value);
         await s.SendAsync("app.setLanguage", farm.Language);
         foreach (var (action, key) in farm.Hotkeys) await s.SendAsync("app.setHotkey", action + ":" + key);
         if (farm.NightMode) await s.SendAsync("display.toggleTheme");
         await s.SendAsync("view.save", Kit.F($"{farm.View.Pitch}|{farm.View.Zoom}|0"));
         await s.PauseAsync(slow ? 1.0 : 0);
-        sc.Step(Kit.F($"{farm.Device.Count} device settings, language '{farm.Language}', {farm.Hotkeys.Count} hotkeys, night mode {farm.NightMode}, camera saved"));
+        sc.Step(Kit.F($"{farm.Device.Count} device settings, {farm.ProfileEdits.Count} profile settings tuned after the profile save, language '{farm.Language}', {farm.Hotkeys.Count} hotkeys, night mode {farm.NightMode}, camera saved"));
 
         // NTRIP casters.
         foreach (var n in farm.Ntrips)
