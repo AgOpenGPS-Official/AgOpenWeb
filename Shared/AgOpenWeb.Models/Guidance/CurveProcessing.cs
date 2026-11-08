@@ -321,9 +321,20 @@ namespace AgOpenWeb.Models.Guidance
             var inTo = points[span];
             double inHead = Math.Atan2(inTo.Easting - first.Easting, inTo.Northing - first.Northing);
 
+            // An end pointing at the other end stops short of halfway across the gap between them.
+            // A boundary curve made the long way round has both ends on one side of the field,
+            // facing each other: extended 200 m each, they ran past each other along that side,
+            // drawn as tails past its corners, and the tractor followed the straight line on through
+            // the corner instead of the curve (#694).
+            double gapE = last.Easting - first.Easting, gapN = last.Northing - first.Northing;
+            double gap = Math.Sqrt(closeSq);
+            int capSteps = Math.Max(0, (int)((gap / 2 - 1.0) / spacing));
+            int inSteps = FacesOtherEnd(-Math.Sin(inHead), -Math.Cos(inHead), gapE, gapN, gap) ? Math.Min(steps, capSteps) : steps;
+            int outSteps = FacesOtherEnd(Math.Sin(outHead), Math.Cos(outHead), -gapE, -gapN, gap) ? Math.Min(steps, capSteps) : steps;
+
             // Lead-in: walk backward from the first point (opposite the into-curve direction).
             double sinH = Math.Sin(inHead), cosH = Math.Cos(inHead);
-            for (int i = steps; i >= 1; i--)
+            for (int i = inSteps; i >= 1; i--)
             {
                 extended.Add(new Vec3(
                     first.Easting - sinH * (i * spacing),
@@ -335,7 +346,7 @@ namespace AgOpenWeb.Models.Guidance
 
             // Lead-out: walk forward from the last point along the smoothed end direction.
             sinH = Math.Sin(outHead); cosH = Math.Cos(outHead);
-            for (int i = 1; i <= steps; i++)
+            for (int i = 1; i <= outSteps; i++)
             {
                 extended.Add(new Vec3(
                     last.Easting + sinH * (i * spacing),
@@ -345,6 +356,11 @@ namespace AgOpenWeb.Models.Guidance
 
             return extended;
         }
+
+        // The extension direction (de, dn) points at the other end, which lies (toE, toN) away:
+        // within 30° of it, so the two extensions would meet rather than run side by side.
+        private static bool FacesOtherEnd(double de, double dn, double toE, double toN, double dist)
+            => dist > 1e-9 && (de * toE + dn * toN) / dist > Math.Cos(Math.PI / 6);
 
         /// <summary>
         /// Creates a clean offset curve and returns information about whether points were removed.
