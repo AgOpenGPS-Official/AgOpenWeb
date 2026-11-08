@@ -592,10 +592,10 @@ function buildZoneRow(zones) {
   sectionBar.appendChild(row);
 }
 function renderSectionBar() {
-  // Only with a field open AND a master (auto or manual) engaged.
+  // Whenever a field is open, as AgOpenGPS shows them once a job starts (#681): each section
+  // runs by its own state (a tap cycles Off, Auto, On) and the master buttons set them all.
   const secs = tick && tick.sections;
-  const visible = !!(scene && scene.hasField && tick && tick.op
-    && (tick.op.sectionManual || tick.op.sectionAuto) && secs && secs.length);
+  const visible = !!(scene && scene.hasField && secs && secs.length);
   sectionBar.classList.toggle('open', visible);
   if (!visible) { _secCount = -1; return; } // force a rebuild when it reappears
   const zones = zoneLayout();
