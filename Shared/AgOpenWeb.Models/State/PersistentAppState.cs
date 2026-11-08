@@ -72,7 +72,7 @@ public class PersistentAppState : ObservableObject
     private double _cameraPitch = -60.0;
     public double CameraPitch { get => _cameraPitch; set => SetProperty(ref _cameraPitch, Math.Clamp(value, -90, -20)); }
 
-    private CameraMode _cameraMode = CameraMode.Map;
+    private CameraMode _cameraMode = CameraMode.HeadingUp; // centred, heading up: AgOpenGPS's default (#730)
     public CameraMode CameraMode { get => _cameraMode; set => SetProperty(ref _cameraMode, value); }
 
     // ---- Web client camera view (browser / CanvasKit PWA) ----
