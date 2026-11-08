@@ -471,6 +471,7 @@ turns from the on-screen buttons) with paths built by `YouTurnCreationService`:
 - Rows wider than twice the turn radius (a wide spreader, skipped rows) get AgOpenGPS's wide turn (`CreateCurveWideTurn`): a quarter circle out of the pass, tangent to the turn line, the turn line itself, a quarter circle into the next pass, so the distance from the boundary holds on an angled headland (#544). The omega turn (one shape square to the track) is the fallback when it can't be built.
 - Manual: a Dubins path at the configured `UTurnRadius` from 4 m ahead of the tractor to the point abreast on the target pass (an omega when the radius exceeds half the pass offset), laid out along the track's local heading (the curve's heading at the nearest point); the path's first point is the tractor itself. Like AgOpenGPS `BuildManualYouTurn`.
 - The turn hands back to line guidance with 4 m of arc remaining (`EarlyCompletionLookahead`).
+- The turn is built from the headland crossing **ahead** of the tractor (`FindTrackHeadlandIntersectionAhead`; one behind only past the last crossing). When no real turn fits, the simple fallback (a semicircle) is used only if every point of it stays in the field, outside obstacles a turn may not drive through (`LeavesField`, #698); otherwise no turn and the creation-failed sound, as AgOpenGPS (which has no fallback). A hard boundary refuses a turn that would start under or behind the tractor.
 
 Key parameters:
 - `HeadlandDistance` - width of headland zone (green to yellow line)
