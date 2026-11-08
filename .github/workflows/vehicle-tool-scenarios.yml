@@ -66,7 +66,7 @@ jobs:
         if: steps.fresh.outputs.run == 'true'
         env:
           AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/vehicle-tool-scenarios-report.md
-        run: dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ --filter "FullyQualifiedName~VehicleToolScenarioTests" --verbosity normal
+        run: dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ -c Release --filter "FullyQualifiedName~VehicleToolScenarioTests" --verbosity normal
 
       - name: Report to the summary
         if: always() && steps.fresh.outputs.run == 'true'

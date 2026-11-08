@@ -57,22 +57,40 @@ across the line (steering; from a single antenna with a drifting IMU, or with no
 heading settings), a 6° side slope (roll), a reverse (dual, and single antenna with an IMU),
 2 and 20 km/h, an RTK drop, a nudge, a manual U-turn, a free drive across the passes, section
 strips worked and driven back over (also 0.2 m to the side), the steer module's switches. Each
-probe is driven twice with the setting at its base value (the noise), then with the setting
-changed; a change has to stand out of the noise, and a section switch is compared with the
-same switch in the two base runs (the switch off entering worked ground moves up to 4 m
-between identical runs, the switch on leaving it hardly at all). The probes run faster than
-real time, except the free drive (the pass is picked again at most every 0.66 s of the wall
-clock) and the last 8 m to each end of a section strip (the look-ahead and turn-off times are
-counted on the wall clock): a setting in seconds may still show a larger effect than on the
-tractor, and the sweep asks only whether it acts. A strip that paints less than
-the implement's width is reported on its own (`SECTIONS-PAINT-SHORT`).
+probe is driven three times with the setting at its base value (the noise), then with the
+setting changed; a change has to stand out of the noise, and a section switch is compared with
+the same switch in the base runs (the switch off entering worked ground moves up to 4 m
+between identical runs, the switch on leaving it hardly at all). A section that switched a
+different number of times between the base runs can't be compared switch by switch: its row
+says so ("noisy") and it is not judged. After each change the sweep reads the value back from
+the store; one the app refused or clamped (`VehicleToolLimits`, a range) is reported as
+`SWEEP-FLIP-REFUSED` with the app's reason, and its probe is not judged (it would read as no
+effect). The probes run faster than real time, except the free drive (the pass is picked again
+at most every 0.66 s of the wall clock) and either side of each end of a section strip (the
+look-ahead and turn-off times are counted on the wall clock): the distance the look-ahead on,
+look-ahead off and turn-off delay cover at 8 km/h, plus 5 m for the pose estimator's speed to
+settle, and at least 15 m. A trailed implement comes up to each strip over 50 m in real time,
+so its hitch has settled. A setting in seconds may still show a larger effect than on the
+tractor, and the sweep asks only whether it acts. A strip that paints less than the
+implement's width is reported on its own (`SECTIONS-PAINT-SHORT`).
 
 The settings come from the source, not a list: every key the host's config bridge handles
-(`ApplyConfigSet`) and every key the web client sends. A key nobody sweeps is reported
+(`ApplyConfigSet`'s case labels, `or` and `when` included) and every key the web client sends
+(`data-key`, `data-cfg`, `data-cfgnum`, `data-tgl`, `cfgSend`, and quoted `'prefix.key'`
+literals with a prefix the bridge knows, such as the wizards' `wzNum` and `wzTgl` keys; a
+literal the host routes as a command is not a setting). A key nobody sweeps is reported
 (`SETTING-NOT-SWEPT`), and so is a key the client sends that the host ignores
-(`SETTING-IGNORED-BY-HOST`). Display-only settings are in the table too, expected to change
-nothing. `PgnTap.cs` keeps a copy of every datagram the real UDP service sends and answers as
-a steer module (PGN 253: the wheel angle, the switches).
+(`SETTING-IGNORED-BY-HOST`). A scan that finds no `ApplyConfigSet`, or fewer than 100 keys in
+it, is a `HARNESS` finding rather than an empty list. Display-only settings are in the table
+too, expected to change nothing. `PgnTap.cs` keeps a copy of every datagram the real UDP
+service sends and answers as a steer module (PGN 253: the wheel angle, the switches), sent to
+port 9999 on the loopback so it takes the whole receive path (the steer module counts as
+connected).
+
+The rig reports no network interfaces, so everything AgOpenWeb sends to the modules goes to
+127.0.0.1:8888 only, never to the LAN: a module on the bench (an AiO saves steer and machine
+settings to its EEPROM) gets nothing. The tap records every datagram before it leaves. UDP
+port 9999 must be free (no AgOpenWeb or other harness running on the machine).
 
 The report gets one table, a row per setting: from and to, the probe, what was expected,
 what changed, and the verdict.
@@ -87,15 +105,17 @@ the test runs each broadcast itself after each fix and counts what it cost (`Cos
 polygon edges, coverage lookups, bytes allocated, and on Linux the files read), and the rig's
 dispatcher counts every work item on the host loop the same way. A broadcast that reads a file
 with nothing changed on the disk fails (#604), as does a host-loop item that reads one while
-driving (#169). It prints each phase's counts and the host loop's work by name.
+driving (#169). With no network interfaces in the rig, the Status frame's list of IP
+addresses reads nothing, so any read is the broadcast's own. It prints each phase's counts and
+the host loop's work by name. About 16 s.
 
 ## Running
 
 ```bash
-dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ --filter "FullyQualifiedName~VehicleToolScenarioTests"
+dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ -c Release --filter "FullyQualifiedName~VehicleToolScenarioTests"
 ```
 
-About 80 minutes (careful about 9, careless about 15, the settings sweep about 50). CI only builds it; the full run is nightly on develop (`.github/workflows/vehicle-tool-scenarios.yml`, also run by hand from Actions), with the report kept as an artifact and in the run's summary. The report goes to `vehicle-tool-scenarios-report.md` in the test output
+About 80 minutes in Release (careful about 9, careless about 15, the settings sweep about 50, measured before the third base run and the wider real-time stretches: expect it longer). CI only builds it; the full run is nightly on develop (`.github/workflows/vehicle-tool-scenarios.yml`, also run by hand from Actions), with the report kept as an artifact and in the run's summary. The report goes to `vehicle-tool-scenarios-report.md` in the test output
 folder, or to `AGOPENWEB_SCENARIO_REPORT`. Other switches:
 
 | Variable | Effect |

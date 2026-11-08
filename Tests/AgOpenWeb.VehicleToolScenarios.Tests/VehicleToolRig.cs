@@ -231,7 +231,10 @@ public sealed class VehicleToolRig : IAsyncDisposable
 
     /// <summary>The Desktop head's registrations (Platforms/AgOpenWeb.Desktop/DependencyInjection),
     /// minus what needs that head: battery reader (null one) and the ISOBUS VT stack (absent, as
-    /// on a head without it).</summary>
+    /// on a head without it). The network interfaces are none (<see cref="NoNetworkInterfaces"/>),
+    /// so the PGNs go to 127.0.0.1:8888 only and never to the LAN, where a real module would act
+    /// on them (a bench AiO saves steer and machine settings to its EEPROM). The tap records
+    /// them before they leave, so the harness sees every one.</summary>
     private static void AddBackendServices(IServiceCollection services)
     {
         services.AddSingleton<ApplicationState>();
@@ -239,7 +242,7 @@ public sealed class VehicleToolRig : IAsyncDisposable
         services.AddSingleton(_ => PersistentAppState.Instance);
         services.AddTransient<MainViewModel>();
         services.AddTransient<ConfigurationViewModel>();
-        services.AddSingleton<ILocalNetworkInfoProvider, SystemLocalNetworkInfoProvider>();
+        services.AddSingleton<ILocalNetworkInfoProvider, NoNetworkInterfaces>();
         services.AddSingleton<AgOpenWeb.Services.Network.INetworkWatcher, AgOpenWeb.Services.Network.NetworkWatcher>();
         services.AddSingleton<UdpCommunicationService>();
         services.AddSingleton(sp => new PgnTap(sp.GetRequiredService<UdpCommunicationService>()));
@@ -440,6 +443,13 @@ public sealed class VehicleToolRig : IAsyncDisposable
         try { await Server.StopAsync(); } catch { }
         if (Services is IDisposable d) { try { d.Dispose(); } catch { } }
         _hostLoop.Dispose();
+    }
+
+    /// <summary>A host with no network interface but the loopback: discovery and every send to
+    /// the modules go to 127.0.0.1:8888 only.</summary>
+    private sealed class NoNetworkInterfaces : ILocalNetworkInfoProvider
+    {
+        public IReadOnlyList<LocalNetworkAddress> GetIPv4Addresses() => Array.Empty<LocalNetworkAddress>();
     }
 
     /// <summary>Imagery capture needs the internet; the harness has none (the host then

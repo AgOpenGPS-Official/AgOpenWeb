@@ -48,11 +48,12 @@ public sealed class SweepRow
 ///
 /// Each group of rows gets a fresh AgOpenWeb (Renato's Case Puma with a UM982 and the 8 m
 /// sprayer, set up by the careful operator), a field with an AB line and a job. The group's
-/// probe runs twice on the base values (how much a run differs from itself: the noise), then
-/// once per row with that row's setting flipped and set back, then once more on the base
-/// values (still the same as at the start?). The list of settings is checked against the
-/// settings the host accepts and the web client sends, read from the source, so a new
-/// setting no row tries shows up in the report.
+/// probe runs three times on the base values (how much a run differs from itself: the noise),
+/// then once per row with that row's setting flipped and set back, then once more on the base
+/// values (still the same as at the start?). A flip the app refused or changed (read back
+/// from the store) is reported as such and its probe not judged. The list of settings is
+/// checked against the settings the host accepts and the web client sends, read from the
+/// source, so a new setting no row tries shows up in the report.
 /// </summary>
 public static class SettingsSweep
 {
@@ -167,7 +168,9 @@ public static class SettingsSweep
 
         // --- Sections: back over a worked strip ---
         new("tool.lookAheadOn", "0", "2", Probe.Sections, Effect.Sections, "Look-ahead on, s"),
-        new("tool.lookAheadOff", "0", "1.5", Probe.Sections, Effect.Sections, "Look-ahead off, s"),
+        // VehicleToolLimits keeps look-ahead off at most 0.8 × look-ahead on: with on at 0 the
+        // flip would be set back to 0 and try nothing.
+        new("tool.lookAheadOff", "0", "1.5", Probe.Sections, Effect.Sections, "Look-ahead off, s", "tool.lookAheadOn:2"),
         new("tool.turnOffDelay", "0", "2", Probe.Sections, Effect.Sections, "Turn-off delay, s"),
         new("tool.hitchLength", "1.5", "4", Probe.Sections, Effect.Sections, "Hitch length (mounted)"),
         // AgOpenGPS uses the vehicle type for the picture and, for a combine, a header in front only.
@@ -251,7 +254,7 @@ public static class SettingsSweep
                     journal.Add(new Finding("HARNESS", Severity.Bug, "the sweep could not make its field: " + string.Join("; ", run.Problems)), group.Key);
                     continue;
                 }
-                var driver = new SweepDriver(run);
+                var driver = new SweepDriver(run) { Trailed = !ReferenceEquals(truthTool, tool) };
                 await run.ApplyAsync(careful);
                 foreach (var s in list[0].Setup) await driver.SetAsync(s);
                 foreach (var c in list.Where(c => c.Base.Length > 0)) await driver.SetAsync(c.Key + ":" + c.Base);
@@ -260,7 +263,10 @@ public static class SettingsSweep
 
                 var b1 = await driver.RunAsync(probe);
                 var b2 = await driver.RunAsync(probe);
-                var noise = TraceDiff.Of(b1, b2);
+                var b3 = await driver.RunAsync(probe);
+                var noise = TraceDiff.Max(TraceDiff.Of(b1, b2), TraceDiff.Of(b1, b3), TraceDiff.Of(b2, b3));
+                // The module probe compares what was sent just before and just after a change.
+                var latest = b3;
                 // A strip worked with every section on automatic paints the implement's width.
                 if (double.IsFinite(b1.StripExpected) && b1.StripArea < 0.9 * b1.StripExpected)
                     journal.Add(new Finding("SECTIONS-PAINT-SHORT", Severity.Bug, F(
@@ -273,20 +279,35 @@ public static class SettingsSweep
                 foreach (var c in list)
                 {
                     string before = c.Base.Length > 0 ? c.Key + ":" + c.Base : "";
-                    await driver.SetAsync(c.Key + ":" + c.Flip);
+                    string reply = await driver.SetAsync(c.Key + ":" + c.Flip);
+                    // A value the app refused or clamped tries something else than the row says:
+                    // its probe would read as "no effect". Reported, not judged.
+                    if (c.Base.Length > 0 && await driver.KeptAsync(c.Key, c.Flip) is { Kept: false } kept)
+                    {
+                        string where = c.Key + " " + c.Base + " → " + c.Flip + ", " + c.Group;
+                        string said = reply.Length > 0 ? "the app said: " + reply : "the app gave no reason";
+                        journal.Add(new Finding("SWEEP-FLIP-REFUSED " + c.Key, Severity.Improvement, F(
+                            $"{c.What}: set to {c.Flip}, the store kept {kept.Stored:0.###} ({said}); the row's flip or setup needs changing (harness artifact until shown otherwise)")), where);
+                        journal.Sweep.Add(new SweepRow
+                        {
+                            Case = c, Changed = "–", Kind = "harness artifact",
+                            Verdict = F($"not tried: the store kept {kept.Stored:0.###}") + (reply.Length > 0 ? " (" + reply + ")" : ""),
+                        });
+                        await driver.SetAsync(before);
+                        continue;
+                    }
                     var t = await driver.RunAsync(probe);
                     if (before.Length > 0) await driver.SetAsync(before);
                     else foreach (var s in c.Setup) await driver.SetAsync(s);
-                    // The module probe compares what was sent before and after the change.
-                    var d = TraceDiff.Of(probe == Probe.Module ? b2 : b1, t);
+                    var d = TraceDiff.Of(probe == Probe.Module ? latest : b1, t);
                     var row = Judge(journal, c, d, noise, t);
                     journal.Sweep.Add(row);
-                    if (probe == Probe.Module) b2 = await driver.RunAsync(probe);
+                    if (probe == Probe.Module) latest = await driver.RunAsync(probe);
                 }
 
-                var b3 = await driver.RunAsync(probe);
-                var drift = TraceDiff.Of(b1, b3);
-                var (moved, _) = Changes(drift, noise);
+                var after = await driver.RunAsync(probe);
+                var drift = TraceDiff.Of(b1, after);
+                var (moved, _, _) = Changes(drift, noise);
                 if (moved != Effect.None && probe != Probe.Module)
                     journal.Add(new Finding("SWEEP-BASELINE-DRIFT", Severity.Improvement,
                         $"the {probe} probe on the base settings gave a different result after the group's rows than before ({Describe(drift)}): a setting was not put back, or the app kept state (harness artifact until shown otherwise)"),
@@ -306,8 +327,10 @@ public static class SettingsSweep
         CheckKeys(journal, cases.Count == Cases.Length);
     }
 
-    /// <summary>What changed beyond the noise, as effect flags and words.</summary>
-    private static (Effect Effects, List<string> Words) Changes(TraceDiff d, TraceDiff noise)
+    /// <summary>What changed beyond the noise, as effect flags and words, and the sections
+    /// left out as noisy (their switch count differed between the base runs: no switch of
+    /// theirs can be compared), or "" when none was.</summary>
+    private static (Effect Effects, List<string> Words, string Noisy) Changes(TraceDiff d, TraceDiff noise)
     {
         var e = Effect.None;
         var w = new List<string>();
@@ -351,19 +374,24 @@ public static class SettingsSweep
         }
         if (d.PassFixes > Math.Max(3, 3 * noise.PassFixes + 2)) { e |= Effect.Pass; w.Add(F($"another pass shown on {d.PassFixes} fixes")); }
         if (d.MachineFixes > Math.Max(3, 3 * noise.MachineFixes + 2)) w.Add(F($"PGN 239 U-turn/lift/tram bytes on {d.MachineFixes} fixes"));
-        return (e, w);
+        var noisy = noise.EdgeDiffs.Keys.Where(k => k.Switch < 0).Select(k => k.Section + 1).OrderBy(x => x).ToList();
+        string noisyText = noisy.Count == 0 ? ""
+            : (noisy.Count == 1 ? "section " : "sections ") + string.Join(", ", noisy.Select(x => x.ToString(CultureInfo.InvariantCulture)))
+              + " noisy (switched a different number of times between the base runs; not judged)";
+        return (e, w, noisyText);
     }
 
     private static string Describe(TraceDiff d)
     {
-        var (_, w) = Changes(d, new TraceDiff(0, 0, 0, 0, 0, false, 0, 0, 0, 0, 0, new List<string>()));
+        var (_, w, _) = Changes(d, new TraceDiff(0, 0, 0, 0, 0, false, 0, 0, 0, 0, 0, new List<string>()));
         return w.Count == 0 ? "nothing" : string.Join(", ", w);
     }
 
     private static SweepRow Judge(Journal journal, SweepCase c, TraceDiff d, TraceDiff noise, Trace t)
     {
-        var (e, words) = Changes(d, noise);
+        var (e, words, noisy) = Changes(d, noise);
         var row = new SweepRow { Case = c, Changed = words.Count == 0 ? "nothing" : string.Join("; ", words) };
+        if (noisy.Length > 0) row.Changed += "; " + noisy;
         string where = c.Key + " " + (c.Base.Length > 0 ? c.Base + " → " + c.Flip : "(pressed)") + ", " + c.Group;
         if (t.Problem.Length > 0) row.Changed += " ⚠ " + t.Problem;
         if (c.Expect == Effect.None)
@@ -404,8 +432,15 @@ public static class SettingsSweep
     {
         var root = SettingKeys.RepoRoot();
         if (root == null) { journal.SweepNotes.Add("The repository was not found from the test folder: the setting list was not checked against the source."); return; }
-        var host = SettingKeys.HostKeys(root);
-        var client = SettingKeys.ClientKeys(root);
+        var scan = SettingKeys.Read(root);
+        if (scan.Problem != null)
+        {
+            // A scan that reads nothing would pass every check below: say so instead.
+            journal.Add(new Finding("HARNESS", Severity.Bug, "the setting list could not be read from the source: " + scan.Problem), "settings sweep");
+            return;
+        }
+        var host = scan.Host;
+        var client = scan.Client;
         var rows = new HashSet<string>(Cases.Select(c => c.Key), StringComparer.Ordinal);
         foreach (var k in client.Where(k => !host.Contains(k)))
             journal.Add(new Finding("SETTING-IGNORED-BY-HOST " + k, Severity.Bug,

@@ -164,6 +164,20 @@ public sealed record TraceDiff(double SteerMax, double SentMax, int GuidanceCoun
             Math.Abs(a.Held - b.Held), pgn) { EdgeDiffs = edges };
     }
 
+    /// <summary>The largest difference of each kind over several pairs of runs (the noise of
+    /// three base runs is the largest of their three pairs).</summary>
+    public static TraceDiff Max(params TraceDiff[] ds)
+    {
+        var edges = new Dictionary<(int, int), double>();
+        foreach (var d in ds)
+            foreach (var (k, v) in d.EdgeDiffs)
+                edges[k] = Math.Max(edges.GetValueOrDefault(k), v);
+        return new TraceDiff(ds.Max(d => d.SteerMax), ds.Max(d => d.SentMax), ds.Max(d => d.GuidanceCount),
+            ds.Max(d => d.StatusFixes), ds.Max(d => d.EngagedFixes), ds.Any(d => d.DisengageDiffers), ds.Max(d => d.PassFixes),
+            ds.Max(d => d.SectionFixes), ds.Max(d => d.SectionEdgeMax), ds.Max(d => d.MachineFixes), ds.Max(d => d.HeldDiff),
+            ds.SelectMany(d => d.PgnChanges).Distinct().ToList()) { EdgeDiffs = edges };
+    }
+
     /// <summary>Section number → where along the strip (tool centre N) its bit changed.</summary>
     internal static Dictionary<int, List<double>> EdgesOf(Trace t) => Edges(t);
 
@@ -196,6 +210,9 @@ public sealed class SweepDriver
 {
     public readonly FieldRun Run;
     public int PaceMs = 12;              // > one 100 Hz control tick per fix
+    /// <summary>A trailed implement (trailing, TBT): the section probes come up to each strip
+    /// over 50 m in real time, so its hitch has settled behind the tractor before the strip.</summary>
+    public bool Trailed;
     private const double Fix = FieldRun.FixSeconds;
     private int _lane;
 
@@ -217,10 +234,14 @@ public sealed class SweepDriver
 
     /// <summary>One setting as the operator types it: AutoSteer settings then Send + Save, as
     /// on the AutoSteer panel; Vehicle &amp; Tool settings then Save. Waits past the 150 ms
-    /// settle before the steer and machine PGNs go out.</summary>
-    public async Task SetAsync(string keyValue)
+    /// settle before the steer and machine PGNs go out. Returns what the host said back about
+    /// the value (why it was refused, or what the app changed on its own), or "" when it said
+    /// nothing.</summary>
+    public async Task<string> SetAsync(string keyValue)
     {
+        Rig.TakeEvents();
         await Rig.SendAsync("config.set", keyValue);
+        string reply = string.Join("; ", Rig.TakeEvents().Where(e => e.Kind == RigEventKind.Failure).Select(e => e.Text));
         if (keyValue.StartsWith("autosteer.", StringComparison.Ordinal)) await Rig.SendAsync("autosteer.sendSave");
         // Vehicle & Tool: the operator saves the profile, which is also when the section
         // widths go out at once (otherwise 10 s after the last change).
@@ -228,6 +249,40 @@ public sealed class SweepDriver
             await Rig.SendAsync("profile.save");
         await Task.Delay(350);
         await Rig.DrainAsync();
+        return reply;
+    }
+
+    /// <summary>What the store holds for a setting now, read from the Config frame as the
+    /// panels read it (<c>section.field</c> → that DTO's property): "1"/"0" for a switch, the
+    /// number otherwise. Null when the frame has no single number for the key (a button, a
+    /// list entry, a name).</summary>
+    public async Task<double?> StoredAsync(string key)
+    {
+        int dot = key.IndexOf('.');
+        var projector = Rig.Server.Broadcaster?.Projector;
+        if (dot <= 0 || projector == null) return null;
+        var cfg = await Rig.ReadAsync(() => projector.BuildConfig());
+        static object? Member(object? o, string name) =>
+            o?.GetType().GetProperties().FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.GetValue(o);
+        return Member(Member(cfg, key[..dot]), key[(dot + 1)..]) switch
+        {
+            bool b => b ? 1 : 0,
+            int i => i,
+            double d => d,
+            _ => null,
+        };
+    }
+
+    /// <summary>Whether the store kept a value set by <see cref="SetAsync"/>: null when it can't
+    /// be told (no single number in the Config frame, or the value is not a number), else the
+    /// value kept and whether it is the one sent (whole-number settings round it).</summary>
+    public async Task<(bool Kept, double Stored)?> KeptAsync(string key, string value)
+    {
+        if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var sent)) return null;
+        if (await StoredAsync(key) is not { } stored) return null;
+        bool kept = Math.Abs(stored - sent) <= 1e-6 * Math.Max(1, Math.Abs(sent))
+                    || stored == Math.Round(sent, MidpointRounding.AwayFromZero);
+        return (kept, stored);
     }
 
     public async Task<Trace> RunAsync(Probe probe)
@@ -345,7 +400,7 @@ public sealed class SweepDriver
             }
             int fix = probe == Probe.RtkDrop && s >= 8 ? 5 : 4;
             double roll = slope == 0 ? 0 : 2 * Math.Sin(2 * Math.PI * s / 3);
-            if (probe == Probe.Deadzone) InjectSteerModule(lastSent, 0x01);
+            if (probe == Probe.Deadzone) await InjectSteerModuleAsync(t, lastSent, 0x01);
             SendPose(path(s), dual, imu, slope, roll, fix, drift * (s + preRoll));
             if (realTime)
             {
@@ -407,15 +462,17 @@ public sealed class SweepDriver
         return sent;
     }
 
-    /// <summary>PGN 253 as a steer module sends it: the wheel angle, no IMU, the switches.</summary>
-    private void InjectSteerModule(double wheelDeg, byte switches)
+    /// <summary>PGN 253 as a steer module sends it (the wheel angle, no IMU, the switches), to
+    /// port 9999 on the loopback. One that did not arrive is the trace's problem.</summary>
+    private async Task InjectSteerModuleAsync(Trace t, double wheelDeg, byte switches)
     {
         short a = (short)Math.Round(wheelDeg * 100);
         var m = new byte[] { 0x80, 0x81, 0x7E, 253, 8, (byte)(a & 0xFF), (byte)((a >> 8) & 0xFF), 0x0F, 0x27, 0xB8, 0x22, switches, 0, 0 };
         int sum = 0;
         for (int i = 2; i < m.Length - 1; i++) sum += m[i];
         m[^1] = (byte)sum;
-        Rig.Pgns.Inject(m);
+        if (!await Rig.Pgns.InjectAsync(m) && !t.Problem.Contains("PGN 253", StringComparison.Ordinal))
+            t.Problem += (t.Problem.Length > 0 ? "; " : "") + "the steer module's PGN 253 did not arrive on port 9999";
     }
 
     // ------------------------------------------------------------------ section probes
@@ -437,6 +494,7 @@ public sealed class SweepDriver
     private async Task StripAsync(double e, double fromN, double toN)
     {
         double v = 8 / 3.6, dir = toN > fromN ? 1 : -1, h = dir > 0 ? 0 : Math.PI;
+        double window = await RealTimeWindowAsync(v);
         await SetMasterAsync(false);
         await RollToAsync(e, fromN, h);
         await SetMasterAsync(true);
@@ -444,17 +502,28 @@ public sealed class SweepDriver
         for (double n = fromN; dir * (n - toN) < 0; n += dir * v * Fix)
         {
             SendPose(new Pose(e, n, h, 8), true, true, 0, 0, 4);
-            await pace.NextAsync(NearEnd(n, fromN, toN), PaceMs);
+            await pace.NextAsync(NearEnd(n, window, fromN, toN), PaceMs);
         }
         await StandAsync(e, toN, h);
         await SetMasterAsync(false);
     }
 
-    /// <summary>Within 8 m of a strip's end: there the fixes go in real time. The sections
-    /// wait their look-ahead and turn-off times on the wall clock (100 Hz control ticks), so
-    /// faster than real time a 1 s look-ahead starts the paint metres late, and two runs on
-    /// the same settings switched metres apart.</summary>
-    private static bool NearEnd(double n, params double[] ends) => ends.Any(x => Math.Abs(n - x) < 8);
+    /// <summary>Within <paramref name="window"/> metres of a strip's end: there the fixes go in
+    /// real time. The sections wait their look-ahead and turn-off times on the wall clock
+    /// (100 Hz control ticks), so faster than real time a 1 s look-ahead starts the paint
+    /// metres late, and two runs on the same settings switched metres apart.</summary>
+    private static bool NearEnd(double n, double window, params double[] ends) => ends.Any(x => Math.Abs(n - x) < window);
+
+    /// <summary>How far either side of a strip's end the fixes go in real time: the distance
+    /// the look-ahead on, look-ahead off and turn-off delay cover at <paramref name="v"/> m/s,
+    /// plus 5 m, and at least 15 m. The control loop works from the pose estimator's speed,
+    /// which still carries the faster-than-real-time stretch before the window: the 5 m let
+    /// it settle to the real speed before the first switch.</summary>
+    private async Task<double> RealTimeWindowAsync(double v)
+    {
+        var (on, off, delay) = await Rig.ReadAsync(() => (Rig.Store.Tool.LookAheadOnSetting, Rig.Store.Tool.LookAheadOffSetting, Rig.Store.Tool.TurnOffDelay));
+        return Math.Max(15, v * (Math.Max(0, on) + Math.Max(0, off) + Math.Max(0, delay)) + 5);
+    }
 
     /// <summary>One fix per 100 ms of the wall clock (real time) or <c>fastMs</c> after the
     /// last one.</summary>
@@ -475,11 +544,17 @@ public sealed class SweepDriver
         }
     }
 
-    /// <summary>15 m up to the point at 8 km/h, then standing there.</summary>
+    /// <summary>15 m up to the point at 8 km/h, then standing there. With a trailed implement
+    /// (<see cref="Trailed"/>) 50 m in real time, so its hitch angle settles on the way.</summary>
     private async Task RollToAsync(double e, double n0, double h)
     {
-        double v = 8 / 3.6, dir = Math.Abs(h) < 1 ? 1 : -1;
-        for (double n = n0 - dir * 15; dir * (n - n0) < 0; n += dir * v * Fix) { SendPose(new Pose(e, n, h, 8), true, true, 0, 0, 4); await Task.Delay(PaceMs); }
+        double v = 8 / 3.6, dir = Math.Abs(h) < 1 ? 1 : -1, leadIn = Trailed ? 50 : 15;
+        var pace = new Pacer();
+        for (double n = n0 - dir * leadIn; dir * (n - n0) < 0; n += dir * v * Fix)
+        {
+            SendPose(new Pose(e, n, h, 8), true, true, 0, 0, 4);
+            await pace.NextAsync(Trailed, PaceMs);
+        }
         await StandAsync(e, n0, h);
     }
 
@@ -514,15 +589,16 @@ public sealed class SweepDriver
             ends.Add(20);
         }
         double dir = to > from ? 1 : -1, h = dir > 0 ? 0 : Math.PI;
+        double window = await RealTimeWindowAsync(v);
         await SetMasterAsync(false);
         await RollToAsync(back, from, h);
         await SetMasterAsync(true);
         var pace = new Pacer();
         for (double n = from; dir * (n - to) < 0; n += dir * v * Fix)
         {
-            if (probe == Probe.Switches) InjectSteerModule(0, n > 30 ? (byte)0x01 : (byte)0x02);
+            if (probe == Probe.Switches) await InjectSteerModuleAsync(t, 0, n > 30 ? (byte)0x01 : (byte)0x02);
             SendPose(new Pose(back, n, h, 8), true, true, 0, 0, 4);
-            await pace.NextAsync(NearEnd(n, ends.ToArray()), PaceMs);
+            await pace.NextAsync(NearEnd(n, window, ends.ToArray()), PaceMs);
             await SentSinceAsync(254);
             await SampleAsync(t);
         }

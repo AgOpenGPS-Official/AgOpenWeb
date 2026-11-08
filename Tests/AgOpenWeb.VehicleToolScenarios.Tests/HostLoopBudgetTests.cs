@@ -35,21 +35,24 @@ namespace AgOpenWeb.VehicleToolScenarios.Tests;
 /// </summary>
 [TestFixture]
 [Category("HotPath")] // CI runs these in the hot-path-budgets job, in Release
-[NonParallelizable]   // ConfigurationStore is a singleton; the rig listens on UDP 9999
+[NonParallelizable]   // ConfigurationStore is a singleton; the rig listens on UDP 9999 (loopback sends only)
 public class HostLoopBudgetTests
 {
     // One broadcast (10 Hz), steady state with the field open: nothing changed but the
     // tractor and the coverage. Measured 2026-11-08: 484 KB standing, 501 KB driving (p99
     // 588 KB, one tick 1.4 MB), no polygon edges, up to 2,700 coverage lookups (the delta).
     // 443 KB of that is the Scene fingerprint projecting every tram line to DTOs only to count
-    // them, 39 KB the headland segments' edit lines; one tick in five the Status adds 52 KB
-    // and lists the host's IP addresses (read from /proc and /sys on Linux: 12 read calls
-    // here). The budget holds that; lower it when the fingerprint stops projecting.
+    // them, 39 KB the headland segments' edit lines; one tick in five the Status adds 3 KB
+    // (52 KB on a host with network interfaces to list).
+    // The budget holds that; lower it when the fingerprint stops projecting.
     private const long TickBytes = 768 * 1024;
     private const long TickEdges = 2_000;
     private const long TickCoverageLookups = 20_000;
-    // Read calls beyond listing the IP addresses (measured on the machine, interfaces vary).
-    private const long TickExtraReads = 4;
+    // Read calls a tick may make. The Status lists the host's IP addresses (read from /proc and
+    // /sys on Linux: 12 read calls on a tractor's host), but the rig reports no network
+    // interfaces, so the PGNs never reach the LAN: that listing reads nothing here, and any
+    // read is the broadcast's own.
+    private const long TickReads = 4;
     // A tick after a change (the Scene or a list rebuilt, the coverage edge) may go over,
     // a few times while driving; never past the peak. Rebuilding the Field Operations lists
     // (41 fields) costs 46 MB and 2,000 reads: once per change, never in a steady tick.
@@ -180,11 +183,6 @@ public class HostLoopBudgetTests
         current = null;
         rig.HostLoopMeter = null;
         double covered = rig.Services.GetRequiredService<ICoverageMapService>().TotalWorkedArea / 1e4;
-        // What listing the host's IP addresses reads on this machine (the Status frame does it).
-        rig.Pgns.GetLocalIpAddresses();
-        var ipStart = CostMeter.Start();
-        rig.Pgns.GetLocalIpAddresses();
-        long ipReads = CostMeter.Stop(ipStart).ReadCalls;
 
         // ---- the report
         var r = new StringBuilder();
@@ -199,15 +197,14 @@ public class HostLoopBudgetTests
         }
         foreach (var line in readAt.Take(10)) r.AppendLine("Host loop read files: " + line);
         r.AppendLine("Where one broadcast's work goes (each part on its own, after the drive):");
-        foreach (var (part, cost) in Breakdown(b, rig)) r.AppendLine(string.Create(CultureInfo.InvariantCulture, $"  {part,-34} {cost}"));
+        foreach (var (part, cost) in Breakdown(b)) r.AppendLine(string.Create(CultureInfo.InvariantCulture, $"  {part,-34} {cost}"));
         TestContext.Out.WriteLine(r.ToString());
 
         // ---- the budgets
         var steady = standing.Ticks.Concat(driving.Ticks).ToList();
         var overTicks = steady.Select((c, i) => (c, i)).Where(x => x.c.Bytes > TickBytes || x.c.Edges > TickEdges
             || x.c.CoverageLookups > TickCoverageLookups).ToList();
-        long tickReads = Math.Max(0, ipReads) + TickExtraReads;
-        var readTicks = steady.Where(c => c.ReadCalls > tickReads).ToList();
+        var readTicks = steady.Where(c => c.ReadCalls > TickReads).ToList();
         var items = driving.Items;
         var overItems = items.Where(x => x.Cost.Bytes > ItemBytes || x.Cost.Edges > ItemEdges).ToList();
         var readItems = items.Where(x => x.Cost.ReadCalls > 0).ToList();
@@ -218,8 +215,8 @@ public class HostLoopBudgetTests
             Assert.That(driving.Fixes, Is.GreaterThan(1000), "the drive");
             Assert.That(covered, Is.GreaterThan(0.1), "the sections painted no coverage: the drive did not happen as planned");
             Assert.That(readTicks, Is.Empty,
-                $"{readTicks.Count} broadcasts read files with the field open and nothing changed on the disk (#604; " +
-                $"listing the IP addresses reads {ipReads} here): a fingerprint or a provider reads the disk every tick. First: " +
+                $"{readTicks.Count} broadcasts read files with the field open and nothing changed on the disk (#604): " +
+                "a fingerprint or a provider reads the disk every tick. First: " +
                 string.Join("; ", readTicks.Take(3)));
             Assert.That(overTicks.Count, Is.LessThanOrEqualTo(TicksOverBudgetAllowed),
                 $"{overTicks.Count} of {steady.Count} broadcasts over the per-tick budget; work that should happen " +
@@ -248,7 +245,7 @@ public class HostLoopBudgetTests
 
     /// <summary>Each part of a broadcast measured on its own (the third call: caches warm),
     /// so a budget failure says where to look.</summary>
-    private static List<(string Part, Cost Cost)> Breakdown(AgOpenWeb.RemoteServer.MapBroadcaster b, VehicleToolRig rig)
+    private static List<(string Part, Cost Cost)> Breakdown(AgOpenWeb.RemoteServer.MapBroadcaster b)
     {
         var p = b.Projector;
         var parts = new (string, Action)[]
@@ -274,7 +271,6 @@ public class HostLoopBudgetTests
             ("  of which field data", () => p.FieldDataProvider?.Invoke()),
             ("  of which ISOBUS", () => p.IsobusProvider?.Invoke()),
             ("  of which GPS source", () => p.GpsSourceProvider?.Invoke()),
-            ("  of which local IP addresses", () => rig.Pgns.GetLocalIpAddresses()),
             ("Scene (built, on a change)", () => p.BuildScene(1)),
             ("Field ops (built, on a change)", () => p.BuildFieldOps()),
         };

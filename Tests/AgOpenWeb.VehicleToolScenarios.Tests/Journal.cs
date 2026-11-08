@@ -123,7 +123,7 @@ public sealed class Journal
         if (Sweep.Count > 0)
         {
             sb.Append("\n## Settings effect sweep\n\n");
-            sb.Append("Each setting flipped on a short drive that excites it, against the same drive on the base settings (run twice: the noise). ")
+            sb.Append("Each setting flipped on a short drive that excites it, against the same drive on the base settings (run three times: the noise; a section that switched a different number of times between them is shown as noisy and not judged). ")
               .Append("**Changed** is what moved beyond the noise: the steer angle AgOpenWeb computes or sends in PGN 254, whether it steers (PGN 254 status, AutoSteer on), ")
               .Append("the bytes the modules are sent (PGN 251/252/247/238/236/235, `[byte] old→new`), where the sections switch (PGN 239), the pass shown. ")
               .Append("**Kind** proposes app defect / harness artifact / parity / enhancement / harness gap for a reviewer to confirm.\n\n");

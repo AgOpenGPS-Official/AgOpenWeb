@@ -168,7 +168,7 @@ jobs:
   # edges, coverage lookups, offset points and bytes allocated. Counts, not time, so the
   # runner's speed doesn't matter; Release only because it is five times faster than Debug.
   # Then the host loop and the 10 Hz broadcast with a field open (the Vehicle & Tool
-  # harness's HostLoopBudgetTests: the whole backend, about a minute; also files read).
+  # harness's HostLoopBudgetTests: the whole backend, about 16 s; also files read).
   hot-path-budgets:
     runs-on: ubuntu-latest
     steps:

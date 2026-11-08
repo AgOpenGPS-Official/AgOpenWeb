@@ -167,7 +167,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
         {
             try
             {
-                await BroadcastOnceAsync(ct).ConfigureAwait(false);
+                await TickAsync(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { break; }
             catch
@@ -179,12 +179,23 @@ public sealed class MapBroadcaster : IAsyncDisposable
     }
 
     /// <summary>
-    /// One tick of the 10 Hz broadcast: the deadman sweep, every frame whose fingerprint moved,
-    /// the Tick, coverage, the edge and the Status at about 2 Hz. With no client connected it
-    /// runs to the end on the calling thread (a full coverage snapshot is built on a task of
-    /// its own, as always).
+    /// One tick of the 10 Hz broadcast, for a caller that runs the ticks itself: the deadman
+    /// sweep, every frame whose fingerprint moved, the Tick, coverage, the edge and the Status
+    /// at about 2 Hz. With no client connected it runs to the end on the calling thread (a full
+    /// coverage snapshot is built on a task of its own, as always). Only with the loop off
+    /// (<see cref="Start"/> with <c>loop</c> false): two ticks at once would race over the
+    /// fingerprints and the coverage stream, so with the loop running it throws
+    /// <see cref="InvalidOperationException"/>.
     /// </summary>
-    public async Task BroadcastOnceAsync(CancellationToken ct = default)
+    public Task BroadcastOnceAsync(CancellationToken ct = default)
+    {
+        if (_loop != null)
+            throw new InvalidOperationException("BroadcastOnceAsync runs the ticks only while the 10 Hz loop is off (Start(loop: false)); the loop is running");
+        return TickAsync(ct);
+    }
+
+    /// <summary>One tick of the broadcast (the loop's, or <see cref="BroadcastOnceAsync"/>'s).</summary>
+    private async Task TickAsync(CancellationToken ct)
     {
         // Deadman: revoke a holder whose presence heartbeat has lapsed
         // (fires the failsafe). Cheap; runs every 100 ms tick.
