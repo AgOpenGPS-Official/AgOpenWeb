@@ -1003,15 +1003,13 @@ public class AutoSteerService : IAutoSteerService
         // Sent every GPS cycle so machine module has current section/speed info
         _udpService.SendToModules(BuildMachinePgn());
 
-        // Send PGN 229 (64-section on/off) alongside PGN 239 only when more
-        // than 16 sections are configured. PGN 239 still carries sections 1–16;
-        // the firmware reconciles the overlap. Below 17 sections, 239 is
-        // sufficient and 229 is skipped to keep the bus quiet.
-        if (_configStore.NumSections > 16)
-        {
-            var sections64Pgn = PgnBuilder.BuildSection64Pgn(ref _state);
-            _udpService.SendToModules(sections64Pgn);
-        }
+        // PGN 229 (64-section on/off) goes with every 239, whatever the section count, as
+        // AgOpenGPS sends it on every fix. The ISOBUS task controller (AOG-TaskController)
+        // reads the sections from 229 only, so with 16 sections or fewer it got none and an
+        // ISOBUS implement never followed AgOpenWeb (#696's harness). The AiO machine
+        // firmware doesn't listen for 229; the HAT prefers a fresh 229 over 254.
+        var sections64Pgn = PgnBuilder.BuildSection64Pgn(ref _state);
+        _udpService.SendToModules(sections64Pgn);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

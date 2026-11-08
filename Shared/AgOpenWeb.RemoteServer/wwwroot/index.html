@@ -196,8 +196,8 @@
   </div>
   <!-- Auto-U-turn approach indicator — green direction arrow + distance to
        trigger + turn-type glyph (Sagitta / K-turn / Keyhole). Upper-right, symmetric to the on-screen
-       U-turn/Lateral buttons. Shown while an auto U-turn is armed; a tap on the arrow swaps
-       the turn's direction. -->
+       U-turn/Lateral buttons. Shown while auto U-turn is on with a track (orange when no turn
+       is planned); a tap on the arrow swaps the turn's direction. -->
   <div id="uturn-indicator" hidden>
     <div class="uti-distbox" title="Swap U-turn direction">
       <svg id="uti-arrow" class="uti-arrow" viewBox="0 0 60 24" xmlns="http://www.w3.org/2000/svg">
@@ -1716,7 +1716,7 @@
     </div>
     <!-- Section bar: per-section colour buttons (rebuilt to match the
          section count); each tap cycles that section Off->Auto->On (Tier-2, gated).
-         Shown when a field is open AND a master (auto/manual) is engaged. Rows are
+         Shown whenever a field is open, as AgOpenGPS (#681). Rows are
          built dynamically by renderSectionBar (≤16/row). -->
     <div id="sectionbar"></div>
     <!-- Bottom nav: field-tools toolbar.
@@ -1947,6 +1947,7 @@
       <div class="dlg-title">AB Line Tracks</div>
       <div class="trk-toolbar">
         <button class="trk-tool" id="trk-delete" data-t2 title="Delete selected track"><img src="/icons/Trash.png" alt="Delete"></button>
+        <button class="trk-tool" id="trk-rename" data-t2 title="Rename selected track"><img src="/icons/FileEditName.png" alt="Rename"></button>
         <button class="trk-tool" id="trk-swap" data-t2 title="Swap A and B points"><img src="/icons/ABSwapPoints.png" alt="Swap"></button>
         <button class="trk-tool" id="trk-activate" data-t2 title="Activate selected track"><img src="/icons/TrackOn.png" alt="Activate"></button>
         <span class="trk-sep"></span>
