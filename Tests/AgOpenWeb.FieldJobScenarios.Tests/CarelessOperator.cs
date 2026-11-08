@@ -157,10 +157,11 @@ public static class CarelessOperator
             Extra = new[] { "tool.lookAheadOn:2", "tool.lookAheadOff:1.5" },
             Expected = new[] { "SPRAYED-IN-HEADLAND", "MAP-SHOWS-UNSPRAYED", "SPRAYED-NOT-ON-MAP", "VALVES-NOT-FOLLOWING", "APP-AREA-OFF" },
         };
-        yield return Olival("C16", "Look-ahead left at AgOpenWeb's default (0 s) with real valves",
-            "The sprayer's valves take 1 s to open and 0.5 s to shut, but the operator never set look-ahead, which AgOpenWeb installs at 0: every section starts 2.5 m late into the cultivated area at 9 km/h and runs on 1.25 m into the headland, and the map paints where nothing came out yet.") with
+        yield return Olival("C16", "Look-ahead at 0 s with real valves",
+            "The sprayer's valves take 1 s to open and 0.5 s to shut, but look-ahead is 0 (set so, or a profile from before AgOpenWeb installed AgOpenGPS's 1.0 s / 0.5 s): every section starts 2.5 m late into the cultivated area at 9 km/h and runs on 1.25 m into the headland, and the map paints where nothing came out yet.") with
         {
             LookAheadMatchesValves = false,
+            Extra = new[] { "tool.lookAheadOn:0", "tool.lookAheadOff:0" },
             Expected = new[] { "SPRAYED-IN-HEADLAND", "MAP-SHOWS-UNSPRAYED", "SPRAYED-NOT-ON-MAP", "VALVES-NOT-FOLLOWING", "APP-AREA-OFF" },
         };
         yield return Olival("C9", "Relay functions left at the defaults (relays 1-6)",
