@@ -20,8 +20,10 @@ fix, so the section timing runs on the day's clock too. Around it:
 - **An NTRIP caster** on the loopback (`FakeCaster.cs`, from the GPS and NTRIP harness): a
   profile saved in the morning, corrections all day.
 - **Two browsers** (`WebClient.cs`) on the host's WebSocket: the operator's tablet (it holds
-  control and sends the presence heartbeat every 500 ms, as `js/control.js`) and a helper's
-  phone (an observer). Both count every frame by type, the seed on each connection and the
+  control, takes a free seat back with `control.acquire` when a ControlState frame says the seat
+  is free, and sends the presence heartbeat every 500 ms while it holds control, as
+  `js/control.js`) and a helper's phone (an observer; it never claims the seat, so the deadman
+  tests are the tablet's). Both count every frame by type, the seed on each connection and the
   gaps between Tick frames.
 
 ## The day
@@ -35,6 +37,7 @@ fix, so the section timing runs on the day's clock too. Around it:
 | 09:00 | **the tablet's Wi-Fi drops without a word** while AutoSteer drives, the phone reading: the tablet's connection stays open, no presence heartbeat. The host's deadman should disengage AutoSteer within 1.5 s. Then the operator stops, the Wi-Fi comes back, the tablet reconnects |
 | 10:00 | **the phone goes into a pocket** with the page open: it stops reading, the connection stays open (a phone with its screen off, or one carried out of Wi-Fi range) |
 | 10:05 or later | **the tablet's Wi-Fi drops again**, the phone still in the pocket: the same deadman test |
+| | before each drop the tablet must hold control (a pause of the process longer than the deadman, such as a heap dump, revokes it, and it claims the seat back); if it does not within 2 s, that test is reported as not tested, neither a pass nor a finding |
 | 10:20 or later | the phone is taken out and reads again |
 | | **J3** Olival again, opened from the field list for a second job: the same field and work as J1, to compare the morning with the afternoon |
 | 12:30 | **lunch**: an hour parked in the field with the job open, GPS and NTRIP on, both pages closed; then the tablet reconnects, and the phone opens the page again on a slower Wi-Fi (20 Mbit/s, out by the sprayer) |
@@ -43,8 +46,8 @@ fix, so the section timing runs on the day's clock too. Around it:
 | next morning | AgOpenWeb starts again on the day's data and the last job is resumed |
 
 The phone stays in the pocket at least a minute of wall time and the tablet's second Wi-Fi drop
-waits until the phone's stall is felt (the tablet waiting 3 s for a map update) or 40 s of wall
-time after it, whatever the pace: socket buffers fill in wall time. A shorter day
+waits until the phone's stall is felt (the tablet waiting 3 s for a map update) or 3 minutes of
+wall time after it, whatever the pace: socket buffers fill in wall time. A shorter day
 (`AGOPENWEB_DAY_HOURS`) has every event at the same share of the day.
 
 ## What is measured
@@ -68,12 +71,20 @@ the last AgOpenWeb object on it: what holds it in the app), and what is still al
 backend is gone, with what holds it. A GPS cycle or control tick that runs long is listed with
 the day's last event before it and whether a garbage collection ran in it.
 
+The looks pause the process themselves: two full compacting collections every five minutes of
+the day (about every 24 s of wall time at 12.5x), and a heap dump suspends it for seconds. A
+slow tick or cycle within 1 s of one is marked as the harness's and not blamed on a connect or
+on the app's own collections, a host loop probe that one paused is not counted, and the
+tablet's wait for a Tick restarts after it (a wait already running, the map stopped, keeps
+counting). A lock contention is the process's count (`Monitor.LockContentionCount`), not one
+lock's: a lock the report names is the suspected one.
+
 ## Findings
 
 | Finding | Rule |
 |---|---|
 | `DEADMAN-DID-NOT-STOP-AUTOSTEER` (Safety) | the tablet went silent with AutoSteer on, the phone reading, and AutoSteer was still engaged 3 s later |
-| `DEADMAN-BLOCKED-BY-A-PHONE` (Safety) | the same with the phone in the pocket |
+| `DEADMAN-BLOCKED-BY-A-PHONE` (Safety) | the same with the phone in the pocket, when the phone's stall had stopped the map (the broadcast loop stuck) and the tablet held control |
 | `MAP-FROZEN-BY-A-PHONE` | while the phone was in the pocket the tablet waited more than 3 s for a map update |
 | `HEAP-GROWS-OVER-THE-DAY` | every later baseline is more than 8 MB and 15 % above `B-J1` (above the first baseline after the phone read again, when that leaves an hour: what the phone left is judged under `MAP-FROZEN-BY-A-PHONE`) |
 | `CLOSED-FIELD-COVERAGE-KEPT` | with no field open at the end of the day, `CoverageMapService` still holds more than 8 MB (heap census, by field) |
@@ -89,7 +100,7 @@ the day's last event before it and whether a garbage collection ran in it.
 | `NTRIP-DROPPED` | NTRIP not connected at a five-minute look |
 | `EXCEPTIONS-IN-THE-DAY`, `ERRORS-LOGGED` | exceptions on the host loop, errors logged |
 | `NEXT-START-SLOW` | the next morning's start took over 3 s and twice the fresh start |
-| `BACKEND-NOT-FREED-AFTER-EXIT` | more than 30 MB stayed on the heap after the backend shut down in the process (Android and iOS keep the process); Major when the first backend's `MainViewModel` is still alive after the next morning's start |
+| `BACKEND-NOT-FREED-AFTER-EXIT` | more than 30 MB stayed on the heap after the backend shut down in the process; Major when the first backend's `MainViewModel` is still alive after the next morning's start. This is Android's case: Exit stops `BackendService` but the process stays cached, so opening AgOpenWeb again starts a second backend in the same process, until Android reclaims it (iOS starts the backend once per process). A first backend kept alive is not only memory: its handlers still react to what the second one does (NTRIP enabled, for one) |
 
 The test fails only when the harness itself breaks. The findings are the product: the report
 lists each once, most serious first, with its kind (app defect, harness artifact, parity with
@@ -117,13 +128,19 @@ AGOPENWEB_DAY_HOURS=1.5 AGOPENWEB_DAY_PACE=4 dotnet test Tests/AgOpenWeb.Working
 | `AGOPENWEB_DAY_KEEP=1` | keep the data folder |
 
 Release builds: a Debug build's GPS cycle is several times slower and its numbers are not the
-app's. CI only builds the project; `working-day-scenarios.yml` runs it (by hand, or nightly
-once it is in the bug report Worker's `NIGHTLY_WORKFLOWS`). Like the other harnesses it binds
+app's. CI only builds the project; `working-day-scenarios.yml` runs it (by hand, or nightly:
+the bug report Worker's `NIGHTLY_WORKFLOWS` lists it). Like the other harnesses it binds
 UDP 9999: nothing else of AgOpenWeb may run on the machine.
 
-The browsers are on the loopback: Linux lets the host's socket take up to about 4 MB before a send
-waits (`tcp_wmem`), where a Wi-Fi link takes far less, so a browser that stops reading is felt
-later here than in a cab, and a big page load holds the host for less. While the deadman is
+The browsers are on the loopback, where Linux lets the host's socket take up to about 4 MB before
+a send waits (`tcp_wmem`'s default): a browser that stops reading was felt only after about 41 s.
+A tablet or phone on Wi-Fi that stops answering sends no acknowledgements, so the host's buffers
+fill far sooner. The workflow models Wi-Fi's buffers: it caps `net.ipv4.tcp_wmem` and `tcp_rmem`
+at 128 KB before the run, so a stalled browser is felt within a few seconds, and a page loading
+over the slower Wi-Fi holds the host as long as its seed takes to arrive. A local run keeps the
+machine's own buffers, so its timings of a stall differ from the nightly's. With the small buffers the silent tablet can fill
+its own buffers before the deadman's 1.5 s: the report then says the phone, reading, stopped
+getting map updates too (the broadcast loop stuck on the tablet). While the deadman is
 waited for (a wall-clock watch), the day runs in real time, so the tractor goes as far as it
 would on the field.
 

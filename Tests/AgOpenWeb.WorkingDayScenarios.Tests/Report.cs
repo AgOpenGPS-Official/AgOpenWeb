@@ -146,14 +146,15 @@ public static class Report
 
         if (d.CycleDay.Over100Ms > 0)
             list.Add(new Finding("GPS-CYCLE-OVER-100-MS", Severity.Major,
-                F($"{d.CycleDay.Over100Ms} GPS cycle(s) took longer than the 100 ms between two fixes (longest {d.CycleDay.MaxMs:0} ms; {d.SlowCyclesWithGc} with a garbage collection in it)"),
+                F($"{d.CycleDay.Over100Ms} GPS cycle(s) took longer than the 100 ms between two fixes (longest {d.CycleDay.MaxMs:0} ms; {d.SlowCyclesWithGc} with a garbage collection in it, {d.SlowCyclesAfterForcedGc} within 1 s of the harness's own forced collections)"),
                 "The next fix waits: guidance and the steer angle are a fix late. " + Moments(d, "GPS cycle", 100)));
         long slowTicks = d.TickDay.CountOver(10);
         if (slowTicks > 0)
             list.Add(new Finding("CONTROL-TICK-OVER-10-MS", Severity.Minor,
-                F($"{slowTicks} control tick(s) took longer than the 10 ms tick period (longest {d.TickDay.MaxMs:0.0} ms; {d.SlowTicksAtConnect} within 1.5 s of a browser connecting, {d.SlowTicksWithGc} with a garbage collection in it)"),
+                F($"{slowTicks} control tick(s) took longer than the 10 ms tick period (longest {d.TickDay.MaxMs:0.0} ms; {d.SlowTicksAtConnect} within 1.5 s of a browser connecting, {d.SlowTicksWithGc} with a garbage collection in it, {d.SlowTicksAfterForcedGc} within 1 s of the harness's own forced collections)"),
                 "The section and steer loop runs every 10 ms (`SteerMachineLoopService`); a longer tick delays the PGNs to the modules and the section timing. "
-                + (d.SlowTicksAtConnect > 0 ? "A browser's seed carries the coverage snapshot, which `CoverageMapService.GetPaintedDisplayCells` builds holding `_coverageLock` while it walks the worked area; the tick paints coverage under that lock (the ticks below show lock contentions). " : "")
+                + (d.SlowTicksAtConnect > 0 ? "A browser's seed carries the coverage snapshot, which `CoverageMapService.GetPaintedDisplayCells` builds holding `_coverageLock` while it walks the worked area; the tick paints coverage under that lock. That lock is the suspected cause, not a measured one: the lock contentions shown below are a process-wide count (`Monitor.LockContentionCount`), not `_coverageLock`'s. " : "")
+                + (d.SlowTicksAfterForcedGc > 0 ? "Ticks marked as after the harness's forced collection came within 1 s of the two full compacting collections each five-minute look makes: the harness's doing, not the app's, and not counted above as at a connect or with a collection. " : "")
                 + Moments(d, "control tick", 10)));
 
         var slowHost = d.Samples.Where(s => s.HostLoopMaxMs > 250).ToList();
@@ -187,8 +188,14 @@ public static class Report
                     ? "When the operator's tablet went silent with AutoSteer on, AutoSteer stayed engaged"
                     : F($"When the operator's tablet went silent with AutoSteer on, AutoSteer stayed engaged {dm.OffMs / 1000:0.0} s"),
                 F($"At {dm.At:HH:mm} the tablet's Wi-Fi dropped without a word (its connection open, no presence heartbeat), the phone reading: the deadman (1.5 s, `ControlAuthority.SweepStale`) should disengage AutoSteer and switch the sections off. ")
-                + (double.IsNaN(dm.OffMs) ? "AutoSteer was still engaged after 8 s of wall time." : "Reason given: " + (dm.Reason ?? "none") + ".")));
-        if (d.DeadmanPhoneAway is { } dp && (double.IsNaN(dp.OffMs) || dp.OffMs > 3000))
+                + (double.IsNaN(dm.OffMs) ? "AutoSteer was still engaged after 8 s of wall time." : "Reason given: " + (dm.Reason ?? "none") + ".")
+                + (d.DeadmanPhoneMaxGapMs > 1000
+                    ? F($" Meanwhile the phone, reading, waited {d.DeadmanPhoneMaxGapMs / 1000:0.0} s for a map update: the broadcast loop, where the sweep runs, was stuck on the silent tablet's own send once its socket buffers were full (`WebSocketHub.BroadcastAsync` awaits every client).")
+                    : "")));
+        // Only a test of the stuck loop: the phone's stall had stopped the map, and the tablet held
+        // control when it went silent (DeadmanPhoneAway is set only then).
+        if (d.DeadmanPhoneAway is { } dp && d.DeadmanPhoneAwayLoopStuck && d.DeadmanPhoneAwayNotTested == null
+            && (double.IsNaN(dp.OffMs) || dp.OffMs > 3000))
             list.Add(new Finding("DEADMAN-BLOCKED-BY-A-PHONE", Severity.Safety,
                 double.IsNaN(dp.OffMs)
                     ? "With a phone in a pocket, AutoSteer stayed engaged when the operator's tablet went silent"
@@ -240,13 +247,13 @@ public static class Report
         if (d.BeforeStart != null && d.AfterExit != null && (d.AfterExit.HeapMB - d.BeforeStart.HeapMB > 30 || d.FirstBackendAliveNextMorning))
             list.Add(new Finding("BACKEND-NOT-FREED-AFTER-EXIT", d.FirstBackendAliveNextMorning ? Severity.Major : Severity.Minor,
                 F($"{d.AfterExit.HeapMB - d.BeforeStart.HeapMB:0} MB of the day stayed on the heap after AgOpenWeb shut down"),
-                F($"Heap {d.BeforeStart.HeapMB:0.0} MB before the start, {d.AfterExit.HeapMB:0.0} MB after the shut-down in the same process. On Android and iOS the process outlives the backend. ")
+                F($"Heap {d.BeforeStart.HeapMB:0.0} MB before the start, {d.AfterExit.HeapMB:0.0} MB after the shut-down in the same process. On Android the process outlives the backend: Exit stops `BackendService`, the process stays cached, and opening AgOpenWeb again starts a second backend in it (until Android reclaims the process). iOS starts the backend once per process and never again in it. ")
                 + (d.Censuses.FirstOrDefault(c => c.Label == "after-exit") is { Error: null } gone
                     ? (gone.Paths.Count == 0 ? "The heap census found none of MainViewModel, CoverageMapService or RemoteServerHost alive."
                         : string.Join(" ", gone.Paths.Select(kv => $"`{HeapCensus.Short(kv.Key)}` is still alive, held by `{Short(kv.Value, 600)}`.")))
                     : "")
                 + (d.FirstBackendAliveNextMorning
-                    ? " AgOpenWeb was then started again in the same process (the next morning), as a head does when its process outlives the backend: the first backend's `MainViewModel` was still alive with the second one running, so every start keeps the backend before it."
+                    ? " AgOpenWeb was then started again in the same process (the next morning), as Android does after Exit and reopen: the first backend's `MainViewModel` was still alive with the second one running, so every start keeps the backend before it, and its handlers still react (to a setting such as NTRIP enabled, for one), not only its memory."
                     : "")));
         return list.OrderBy(f => f.Severity).ThenBy(f => f.Code, StringComparer.Ordinal).ToList();
     }
@@ -318,8 +325,13 @@ public static class Report
         sb.AppendLine(F($"An {Day.Hours:0.#}-hour day from {Day.DayStart:HH:mm} on the day's clock, {Day.PaceMs} ms of wall time per 0.1 s fix ({100.0 / Day.PaceMs:0.#}x), {d.WallSeconds / 60:0} minutes of wall time{(commit.Length > 0 ? ", commit " + commit[..Math.Min(7, commit.Length)] : "")}. {Day.Tractor.Name}, {Day.Sprayer.Name}, {Day.Sys.Label}."));
         if (d.MaxBehindMs > 2000)
             sb.AppendLine().AppendLine(F($"_The harness fell behind its pace by up to {d.MaxBehindMs / 1000:0.0} s of wall time (the machine could not keep up)._"));
-        if (d.DeadmanPhoneAway != null && !d.DeadmanPhoneAwayLoopStuck)
-            sb.AppendLine().AppendLine("_The tablet's second Wi-Fi drop came before the phone in the pocket had stopped the map (3 minutes of wall time without the stall felt): the deadman with the broadcast loop stuck was not tested this run._");
+        if (d.DeadmanPhoneAway is { } dpn && !d.DeadmanPhoneAwayLoopStuck)
+            sb.AppendLine().AppendLine("_The tablet's second Wi-Fi drop came before the phone in the pocket had stopped the map (3 minutes of wall time without the stall felt): the deadman with the broadcast loop stuck was not tested this run"
+                + (double.IsNaN(dpn.OffMs) ? " (AutoSteer was still engaged 8 s after that drop)" : F($" (AutoSteer disengaged {dpn.OffMs / 1000:0.0} s after that drop)")) + "._");
+        if (d.DeadmanNotTested != null)
+            sb.AppendLine().AppendLine("_The deadman with the phone reading was not tested this run: " + d.DeadmanNotTested + "._");
+        if (d.DeadmanPhoneAwayNotTested != null)
+            sb.AppendLine().AppendLine("_The deadman with the phone in the pocket was not tested this run: " + d.DeadmanPhoneAwayNotTested + "._");
         if (d.HarnessProblems.Count > 0)
         {
             sb.AppendLine().AppendLine("**The harness failed:**");

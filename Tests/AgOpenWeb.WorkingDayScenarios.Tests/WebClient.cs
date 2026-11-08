@@ -11,9 +11,13 @@ namespace AgOpenWeb.WorkingDayScenarios.Tests;
 
 /// <summary>
 /// A browser on the cab's Wi-Fi, as far as the host can tell: a WebSocket to <c>/ws</c> that
-/// reads every frame the host sends, and, for the operator's tablet, the presence heartbeat
-/// the web client sends every 500 ms while it holds control (<c>js/control.js</c>). The
-/// harness's own commands go to the host's command handler directly, as in the other
+/// reads every frame the host sends, and, for the operator's tablet, what the web client does
+/// about control (<c>js/control.js</c>): it reads its id (the Hello frame) and who holds control
+/// (the ControlState frames), takes the seat back with <c>control.acquire</c> whenever it is free
+/// (<c>claimSeatIfFree</c>: after a pause of the process longer than the deadman, for one), and
+/// sends the presence heartbeat every 500 ms while it holds control. The helper's phone never
+/// claims the seat: it is the observer of the day, so the deadman tests are the tablet's (the real
+/// client would fill a free seat from the phone too). The harness's own commands go to the host's command handler directly, as in the other
 /// harnesses; the browsers are here for what the host sends them and for what happens to the
 /// host when a browser goes away the ways a phone or a tablet does:
 /// <list type="bullet">
@@ -42,6 +46,20 @@ public sealed class WebClient : IAsyncDisposable
     private TaskCompletionSource _resume = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public bool Connected => _ws?.State == WebSocketState.Open;
+
+    /// <summary>This connection holds control, as the host last said (the client's
+    /// <c>iHoldControl</c>): its Hello frame gave its id, and the last ControlState frame names it.</summary>
+    public bool HoldsControl
+    {
+        get { lock (_lock) return Connected && _myId != null && _held && _holderId == _myId; }
+    }
+    /// <summary>The <c>control.acquire</c> commands sent for a free seat over the day.</summary>
+    public int SeatClaims => Volatile.Read(ref _seatClaims);
+    private int _seatClaims;
+    private string? _myId, _holderId;
+    private bool _held;
+    /// <summary>One send at a time on the socket: the heartbeat and a claim of the seat.</summary>
+    private readonly SemaphoreSlim _send = new(1, 1);
 
     /// <summary>How fast the device's Wi-Fi delivers, bytes a second (0: as fast as the host
     /// sends). A phone at the edge of the cab's Wi-Fi gets a few megabits.</summary>
@@ -127,6 +145,7 @@ public sealed class WebClient : IAsyncDisposable
             Seeds.Add(_seed);
         }
         _connectedAtMs = WallMs;
+        lock (_lock) { _myId = null; _holderId = null; _held = false; }
         Volatile.Write(ref _reading, true);
         await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{_port}/ws"), new HttpMessageInvoker(handler), _cts.Token);
         _ws = ws;
@@ -141,6 +160,8 @@ public sealed class WebClient : IAsyncDisposable
     {
         var buf = new byte[1 << 16];
         int type = -1; long frameLen = 0;
+        // Hello and ControlState frames are a few dozen bytes: kept whole to be read.
+        var small = new MemoryStream();
         try
         {
             while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
@@ -159,10 +180,13 @@ public sealed class WebClient : IAsyncDisposable
                     double wait = _rateDueMs - WallMs;
                     if (wait > 1) await Task.Delay(TimeSpan.FromMilliseconds(wait), ct);
                 }
-                if (type < 0 && r.Count > 0) { type = buf[0]; frameLen = 0; }
+                if (type < 0 && r.Count > 0) { type = buf[0]; frameLen = 0; small.SetLength(0); }
                 frameLen += r.Count;
+                if (type is HelloType or ControlStateType && small.Length < 4096) small.Write(buf, 0, r.Count);
                 if (!r.EndOfMessage) continue;
                 OnFrame(type, frameLen);
+                if (type is HelloType or ControlStateType && OnControlFrame(type, small.ToArray()))
+                    await SendAsync(ws, "control.acquire|Browser", ct);
                 type = -1;
             }
         }
@@ -171,6 +195,53 @@ public sealed class WebClient : IAsyncDisposable
 
     private readonly object _lock = new();
     private double _rateDueMs;
+
+    /// <summary>WireCodec's Hello (the connection's id) and ControlState (held, holder id,
+    /// holder name), strings as an int32 byte count and UTF-8, as <c>transport.js</c> reads them.</summary>
+    private const int ControlStateType = 6, HelloType = 7;
+
+    /// <summary>A Hello or ControlState frame: what it says about control. True when the seat is
+    /// free and this browser should claim it (<c>claimSeatIfFree</c>, run on both frames).</summary>
+    private bool OnControlFrame(int type, byte[] f)
+    {
+        int o = 1;
+        string? Str()
+        {
+            if (o + 4 > f.Length) return null;
+            int n = BitConverter.ToInt32(f, o);
+            o += 4;
+            if (n < 0 || o + n > f.Length) return null;
+            var s = System.Text.Encoding.UTF8.GetString(f, o, n);
+            o += n;
+            return s;
+        }
+        lock (_lock)
+        {
+            if (type == HelloType)
+                _myId = Str();
+            else
+            {
+                if (f.Length < 2) return false;
+                _held = f[1] != 0;
+                o = 2;
+                _holderId = Str();
+            }
+            return _operator && _myId != null && !_held;
+        }
+    }
+
+    private async Task SendAsync(ClientWebSocket ws, string text, CancellationToken ct)
+    {
+        var msg = System.Text.Encoding.UTF8.GetBytes(text);
+        await _send.WaitAsync(ct);
+        try
+        {
+            if (ws.State != WebSocketState.Open) return;
+            await ws.SendAsync(msg, WebSocketMessageType.Text, true, ct);
+            if (text.StartsWith("control.acquire", StringComparison.Ordinal)) Interlocked.Increment(ref _seatClaims);
+        }
+        finally { _send.Release(); }
+    }
 
     private void OnFrame(int type, long len)
     {
@@ -207,7 +278,6 @@ public sealed class WebClient : IAsyncDisposable
 
     private async Task PresenceLoop(ClientWebSocket ws, CancellationToken ct)
     {
-        var msg = System.Text.Encoding.UTF8.GetBytes("control.presence");
         try
         {
             using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
@@ -215,7 +285,8 @@ public sealed class WebClient : IAsyncDisposable
             {
                 if (!Volatile.Read(ref _reading)) continue;   // a stalled device sends nothing either
                 if (ws.State != WebSocketState.Open) break;
-                await ws.SendAsync(msg, WebSocketMessageType.Text, true, ct);
+                // As js/control.js: the heartbeat only while this browser holds control.
+                if (HoldsControl) await SendAsync(ws, "control.presence", ct);
             }
         }
         catch { /* closed */ }
@@ -248,6 +319,20 @@ public sealed class WebClient : IAsyncDisposable
             var r = (_ticksInWindow * 1000.0 / span, gap, _ticksInWindow > 0 ? (double)_tickBytesInWindow / _ticksInWindow : 0);
             _windowStartMs = now; _maxGapMs = 0; _ticksInWindow = 0; _tickBytesInWindow = 0;
             return r;
+        }
+    }
+
+    /// <summary>The harness paused the whole process (a forced collection) from
+    /// <paramref name="pausedFromMs"/> (<see cref="WallMs"/>) until now: when the Ticks were
+    /// coming up to then, the wait for the next one starts now, so the pause is not counted as a
+    /// gap in the host's frames. A wait already running (the map stopped) keeps counting.</summary>
+    public void Paused(double pausedFromMs)
+    {
+        lock (_lock)
+        {
+            double now = WallMs;
+            if (_lastTickMs >= 0 && _lastTickMs >= pausedFromMs - 1000) _lastTickMs = now;
+            if (_windowStartMs >= pausedFromMs - 1000) _windowStartMs = now;
         }
     }
 

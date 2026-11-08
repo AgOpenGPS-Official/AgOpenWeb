@@ -512,14 +512,14 @@ GitHub Actions workflows, split by purpose:
     beta from `develop` right away (title carries build time + commit); `release` publishes
     the Release named by `release_tag`; `none` builds + uploads artifacts only (dry run).
 
-- **Scenario harnesses, nightly** — seven workflows, each running one harness on `develop` (when it has a
+- **Scenario harnesses, nightly** — eight workflows, each running one harness on `develop` (when it has a
   commit from the last 25 hours) or by hand, keeping its findings report as an artifact and in the run's
   summary; PR CI only builds them. GitHub's own schedule started them 5–8 hours late every day, so the bug
   report Worker starts them (`Tools/bugreport-worker`, `NIGHTLY_CRON` 03:07 UTC, 21:07 US Central) as a
-  `workflow_dispatch` with `nightly=true`, which keeps the 25-hour check; all seven side by side, each on its
+  `workflow_dispatch` with `nightly=true`, which keeps the 25-hour check; all eight side by side, each on its
   own runner: `field-scenarios.yml`, `steer-wizard-scenarios.yml` (also fails when its safety watch saw the
   wheels move when they shouldn't), `vehicle-tool-scenarios.yml`, `machine-module-scenarios.yml`,
-  `gps-ntrip-scenarios.yml`, `field-job-scenarios.yml` (the longest, up to 2 h), `isobus-scenarios.yml`. Each harness's `README.md` says what it covers.
+  `gps-ntrip-scenarios.yml`, `field-job-scenarios.yml` (the longest, up to 2 h), `isobus-scenarios.yml`, `working-day-scenarios.yml` (about 45 minutes). Each harness's `README.md` says what it covers.
 
 To cut a release (about weekly, so each one stays small): bump `sys/version.h` and the three heads' display versions, then push a tag — `git tag v26.7.x && git push origin v26.7.x`. A summary on top of the generated list goes in with `gh release edit`.
 

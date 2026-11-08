@@ -34,6 +34,15 @@ public sealed partial class Day
     /// <summary>The phone's stall had stopped the tablet's map (the broadcast loop stuck) when
     /// the tablet went silent the second time: else that drop did not test the stuck loop.</summary>
     public bool DeadmanPhoneAwayLoopStuck;
+    /// <summary>Why a deadman test was not made (null: it was): the tablet did not hold control
+    /// when its Wi-Fi was to drop, so there was nothing for the deadman to revoke. A pause of the
+    /// process longer than the deadman (a heap dump suspends it) revokes the tablet; it takes the
+    /// free seat back as the web client does, but a test is only a test when it holds control.</summary>
+    public string? DeadmanNotTested, DeadmanPhoneAwayNotTested;
+    /// <summary>While the deadman was waited for with the phone reading, the phone's longest wait
+    /// for a map update, ms: over a second, the broadcast loop (where the deadman's sweep runs)
+    /// was stuck on the silent tablet's own send, its socket buffers full.</summary>
+    public double DeadmanPhoneMaxGapMs;
     public ProcessState? LunchStart, LunchEnd;
     public DateTime LunchStartClock, LunchEndClock;
     public double LunchHeapAtStartMB;
@@ -125,6 +134,18 @@ public sealed partial class Day
         _inEvent = true;
         try
         {
+            // The deadman revokes the holder of control: the tablet must hold it. A seat freed by
+            // a pause of the process is claimed back within a frame or two; give it two seconds.
+            var hold = Stopwatch.StartNew();
+            while (!Tablet.HoldsControl && hold.Elapsed.TotalSeconds < 2) await StepAsync(false);
+            if (!Tablet.HoldsControl)
+            {
+                string why = F($"the tablet did not hold control (connected: {Tablet.Connected}, reading: {Tablet.Reading}, seat claims so far: {Tablet.SeatClaims})");
+                if (phoneAway) DeadmanPhoneAwayNotTested = why; else DeadmanNotTested = why;
+                Event("DEADMAN" + n + "-NOT-TESTED", "the tablet's Wi-Fi drop was not made: " + why + ", so the deadman had nothing to revoke");
+                return;
+            }
+
             // The deadman is a wall-clock watch: the day runs in real time while it is waited
             // for, so the tractor goes as far as it would on the field.
             RealTime = true;
@@ -137,6 +158,8 @@ public sealed partial class Day
             while (sw.Elapsed.TotalSeconds < 8)
             {
                 await StepAsync(false);
+                if (!phoneAway && Phone.SinceLastTickMs is var pg && double.IsFinite(pg))
+                    DeadmanPhoneMaxGapMs = Math.Max(DeadmanPhoneMaxGapMs, pg);
                 var c = Rig.LastCycle;
                 if (c != null && !c.IsAutoSteerEngaged) { off = sw.Elapsed.TotalMilliseconds; reason = c.DisengageReason; break; }
             }
@@ -258,8 +281,13 @@ public sealed partial class Day
     {
         _nextSampleFix = Fixes + SampleEveryFixes;
         await Task.Yield();
-        var ps = ProcessState.Take();
+        // The tablet's window first: the look's forced collections pause the process, and that
+        // pause is the harness's, not a gap in the host's frames (WebClient.Paused).
         var tw = Tablet.Connected && Tablet.Reading ? Tablet.TakeWindow() : (double.NaN, double.NaN, double.NaN);
+        double pausedFrom = Tablet.WallMs;
+        var ps = ProcessState.Take();
+        Tablet.Paused(pausedFrom);
+        Phone?.Paused(pausedFrom);
         var disk = DiskUse.Take(Rig.DataRoot);
         double hostMax;
         lock (_hostLock) { hostMax = _hostLoopMax; _hostLoopMax = 0; }

@@ -302,7 +302,10 @@ public sealed partial class Day : IAsyncDisposable
     private async Task BaselineAsync(string code, string what)
     {
         await Rig.DrainAsync();
+        double pausedFrom = Tablet.WallMs;
         var ps = ProcessState.Take();
+        Tablet.Paused(pausedFrom);
+        Phone?.Paused(pausedFrom);
         var disk = DiskUse.Take(Rig.DataRoot);
         Baselines.Add(new Baseline(code, Now, what, ps, disk.Values.Sum(v => v.Bytes) / 1048576.0));
         Disk[code] = disk;
@@ -316,7 +319,14 @@ public sealed partial class Day : IAsyncDisposable
     private async Task CensusAsync(string label)
     {
         await Rig.DrainAsync();
+        // Writing the dump suspends the process for seconds: a pause of the harness's own,
+        // longer than the deadman (the tablet then claims the free seat back).
+        double pausedFrom = Tablet.WallMs;
+        ProcessState.PauseStarted();
         var (path, error, seconds) = HeapCensus.Dump(label);
+        ProcessState.PauseEnded();
+        Tablet.Paused(pausedFrom);
+        Phone?.Paused(pausedFrom);
         _dumps.Add((label, path, error));
         long size = path != null && File.Exists(path) ? new FileInfo(path).Length : 0;
         Event("CENSUS", error == null

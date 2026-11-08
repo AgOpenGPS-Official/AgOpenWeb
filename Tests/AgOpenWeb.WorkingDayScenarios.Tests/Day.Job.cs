@@ -215,7 +215,16 @@ public sealed partial class Day
 
         if (!road && _plane != null) await FollowAsync();
         if (Fixes % 10 == 0) Collect();
-        if (Fixes % 100 == 0) Rig.ProbeHostLoop(ms => { lock (_hostLock) _hostLoopMax = Math.Max(_hostLoopMax, ms); });
+        if (Fixes % 100 == 0)
+        {
+            // A probe that a forced collection of the harness paused on its way is not counted.
+            int forced = ProcessState.ForcedCollections;
+            Rig.ProbeHostLoop(ms =>
+            {
+                if (ProcessState.ForcedCollections != forced) return;
+                lock (_hostLock) _hostLoopMax = Math.Max(_hostLoopMax, ms);
+            });
+        }
         WatchPhoneStall();
         WatchPhoneLoading();
         if (events && !_inEvent) await DayEventsAsync();
@@ -231,9 +240,27 @@ public sealed partial class Day
     public long SlowTicksWithGc, SlowCyclesWithGc;
     /// <summary>Control ticks over 10 ms within 1.5 s of a browser connecting.</summary>
     public long SlowTicksAtConnect;
+    /// <summary>Control ticks over 10 ms and GPS cycles over 100 ms within 1 s of the harness's
+    /// own forced collections (<see cref="ProcessState.Take"/>): kept in the list, marked, and
+    /// not counted as at a connect or with a collection.</summary>
+    public long SlowTicksAfterForcedGc, SlowCyclesAfterForcedGc;
 
     private void Slow(string what, double ms, string gc)
     {
+        var last = Events.LastOrDefault();
+        string before = last == null ? "" : F($"{last.Code} {(Now - last.Clock).TotalSeconds:0} s before ({WallSeconds - last.WallSeconds:0.0} s of wall time)");
+        // Just after a five-minute look: its two full compacting collections paused the process,
+        // and the work queued behind them (the broadcast, the sockets) runs now. The harness's
+        // doing: marked, not blamed on a connect or on the app's own collections.
+        double sinceForced = ProcessState.SinceForcedCollectionMs;
+        if (sinceForced < 1000)
+        {
+            if (what == "control tick" && ms > 10) SlowTicksAfterForcedGc++;
+            if (what == "GPS cycle" && ms > 100) SlowCyclesAfterForcedGc++;
+            AddSlowMoment(what, ms, before, (gc.Length > 0 ? gc + "; " : "") + F($"{sinceForced:0} ms after the harness's forced collection"));
+            return;
+        }
+
         // A browser that has just connected: its seed (the coverage snapshot) is being built.
         foreach (var b in new[] { Tablet, Phone })
             if (b != null && b.SinceConnectMs < 1500)
@@ -242,11 +269,14 @@ public sealed partial class Day
                 if (what == "control tick" && ms > 10) SlowTicksAtConnect++;
                 break;
             }
-        var last = Events.LastOrDefault();
-        string before = last == null ? "" : F($"{last.Code} {(Now - last.Clock).TotalSeconds:0} s before ({WallSeconds - last.WallSeconds:0.0} s of wall time)");
-        SlowMoments.Add((Now, what, ms, before, gc));
         if (gc.Contains("collection", StringComparison.Ordinal) && what == "control tick" && ms > 10) SlowTicksWithGc++;
         if (gc.Contains("collection", StringComparison.Ordinal) && what == "GPS cycle" && ms > 100) SlowCyclesWithGc++;
+        AddSlowMoment(what, ms, before, gc);
+    }
+
+    private void AddSlowMoment(string what, double ms, string before, string gc)
+    {
+        SlowMoments.Add((Now, what, ms, before, gc));
         if (SlowMoments.Count > 200)
         {
             // Keep the slowest 100.

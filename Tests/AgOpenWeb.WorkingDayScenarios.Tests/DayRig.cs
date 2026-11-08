@@ -121,7 +121,12 @@ public sealed class DayRig : IAsyncDisposable
         var sp = services.BuildServiceProvider();
 
         // The sequence of WebBackend.StartAsync, with a free port instead of 5174 so a running
-        // AgOpenWeb on the same machine is left alone.
+        // AgOpenWeb on the same machine is left alone. First the host loop's logger, as
+        // WebBackend sets it: a work item that held the loop (over 500 ms) or threw is logged
+        // through it, and the harness's log capture keeps those lines (HOST-LOOP-SLOW). Set on
+        // the loop itself: the rig registers its capturing wrapper as IUiDispatcher, which
+        // WebBackend's type test would not find.
+        hostLoop.Logger = sp.GetService<ILoggerFactory>()?.CreateLogger("HostLoop");
         sp.GetRequiredService<ISettingsService>().Load();
         var configService = sp.GetRequiredService<IConfigurationService>();
         configService.LoadAppSettings();
@@ -473,16 +478,18 @@ public sealed class DayRig : IAsyncDisposable
         return (w.Latitude, w.Longitude);
     }
 
+    /// <summary>The head's shut-down, in the order of <c>AndroidBackendHost.StopAsync</c>: the open
+    /// field and the profiles (from this thread: the save runs on the host loop and waits for it),
+    /// the app settings, the persistent state, then the web server stops, the host loop ends and
+    /// the services are disposed.</summary>
     public async ValueTask DisposeAsync()
     {
-        try
-        {
-            await ReadAsync(() => { Vm.SaveOpenFieldForExit(TimeSpan.FromSeconds(5)); return 0; });
-        }
-        catch { /* the run is over; a save fault was already logged */ }
+        try { Vm.SaveOpenFieldForExit(TimeSpan.FromSeconds(10)); } catch { /* the run is over; a save fault was already logged */ }
+        try { Services.GetRequiredService<IConfigurationService>().SaveAppSettings(); } catch { }
+        try { Services.GetRequiredService<IPersistentStateService>().Save(); } catch { }
         try { await Server.StopAsync(); } catch { }
-        if (Services is IDisposable d) { try { d.Dispose(); } catch { } }
         _hostLoop.Dispose();
+        if (Services is IDisposable d) { try { d.Dispose(); } catch { } }
         // Let go of the harness: the logger's sink is static, and the dispatcher stays reachable
         // from the app's own statics (AgShareRemote.Ui) after the shut-down.
         CapturingLoggerProvider.Sink = null;

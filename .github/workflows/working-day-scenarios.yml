@@ -15,8 +15,8 @@ name: Working Day Scenarios
 #     real-time day (pace 100 = real time: 8 hours of wall time, past a hosted runner's 6 h).
 
 on:
-  # Nightly: the bug report Worker (Tools/bugreport-worker) starts the nightly harnesses with
-  # nightly=true once this one is in its NIGHTLY_WORKFLOWS list.
+  # Nightly: the bug report Worker (Tools/bugreport-worker, NIGHTLY_WORKFLOWS in its
+  # wrangler.toml) starts it with nightly=true, beside the other nightly harnesses.
   workflow_dispatch:
     inputs:
       nightly:
@@ -70,6 +70,17 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # The browsers are on the loopback, where Linux lets a socket's send buffer grow to about
+      # 4 MB (tcp_wmem's default maximum): a browser that stops reading was felt only after 41 s.
+      # A tablet or phone on Wi-Fi that stops answering fills the host's buffers far sooner (no
+      # acknowledgements, so the window never opens), so the buffers are capped at 128 KB to
+      # model Wi-Fi's: a stalled browser is felt within a few seconds, as in a cab.
+      - name: Socket buffers as on Wi-Fi
+        if: steps.fresh.outputs.run == 'true'
+        run: |
+          sudo sysctl -w net.ipv4.tcp_wmem="4096 16384 131072"
+          sudo sysctl -w net.ipv4.tcp_rmem="4096 16384 131072"
 
       - name: Run the working day
         if: steps.fresh.outputs.run == 'true'

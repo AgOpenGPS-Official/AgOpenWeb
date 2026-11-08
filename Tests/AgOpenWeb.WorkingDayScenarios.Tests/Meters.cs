@@ -88,7 +88,7 @@ public readonly record struct GcMark(int Gen0, int Gen1, int Gen2, TimeSpan Paus
             parts.Add(string.Create(CultureInfo.InvariantCulture, $"a gen{gen} collection paused the process {(n.Paused - Paused).TotalMilliseconds:0} ms"));
         }
         if (n.Contentions != Contentions)
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{n.Contentions - Contentions} lock contention(s) in the process"));
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{n.Contentions - Contentions} lock contention(s) in the process (a process-wide count: which lock is not known)"));
         return string.Join("; ", parts);
     }
 
@@ -114,13 +114,40 @@ public sealed record ProcessState(
     /// SkiaSharp, the runtime itself).</summary>
     public double NativeMB => AnonMB - CommittedMB;
 
+    /// <summary>The harness's own pauses of the process so far (forced full collections, heap
+    /// dumps), and when the last one ended (a <see cref="System.Diagnostics.Stopwatch"/>
+    /// timestamp, 0 before the first). Each look makes two compacting collections that pause the
+    /// whole process: a slow tick, a late host loop or a gap in the tablet's frames right after
+    /// one is the harness's, not the app's.</summary>
+    public static int ForcedCollections => Volatile.Read(ref _forced);
+    private static int _forced;
+    private static long _lastForcedEnd;
+
+    /// <summary>Wall-clock ms since the last forced collection ended (infinity before the first).</summary>
+    public static double SinceForcedCollectionMs
+    {
+        get
+        {
+            long t = Interlocked.Read(ref _lastForcedEnd);
+            return t == 0 ? double.PositiveInfinity : System.Diagnostics.Stopwatch.GetElapsedTime(t).TotalMilliseconds;
+        }
+    }
+
+    /// <summary>A pause of the harness's own (a forced collection, a heap dump) starts now.</summary>
+    public static void PauseStarted() => Interlocked.Increment(ref _forced);
+
+    /// <summary>The harness's pause ended now.</summary>
+    public static void PauseEnded() => Interlocked.Exchange(ref _lastForcedEnd, System.Diagnostics.Stopwatch.GetTimestamp());
+
     public static ProcessState Take(bool collect = true)
     {
         if (collect)
         {
+            PauseStarted();
             GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
             GC.WaitForPendingFinalizers();
             GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+            PauseEnded();
         }
         // The live bytes the last full blocking collection found (its own count, not disturbed by
         // what other threads allocated since), else the allocator's current total.
