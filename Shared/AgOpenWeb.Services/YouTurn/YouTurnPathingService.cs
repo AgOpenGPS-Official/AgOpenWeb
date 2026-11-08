@@ -170,10 +170,10 @@ public sealed class YouTurnPathingService
         // With the tractor's position, a pass must also be long enough inside at this end to
         // land a turn on (IsPathLandable); without it, inside anywhere.
         bool negInside = position is { } pn
-            ? IsPathLandable(currentTrack, abHeading, nextPathsAwayNeg, boundary, headlandLine, pn, guidance.IsHeadingSameWay, headlandAhead)
+            ? IsPathLandable(currentTrack, abHeading, nextPathsAwayNeg, boundary, headlandLine, pn, guidance.IsHeadingSameWay, headlandAhead, guidance.HowManyPathsAway)
             : CheckOffsetLineInsideCultivated(currentTrack, abHeading, nextPathsAwayNeg, boundary, headlandLine, config);
         bool posInside = position is { } pp
-            ? IsPathLandable(currentTrack, abHeading, nextPathsAwayPos, boundary, headlandLine, pp, guidance.IsHeadingSameWay, headlandAhead)
+            ? IsPathLandable(currentTrack, abHeading, nextPathsAwayPos, boundary, headlandLine, pp, guidance.IsHeadingSameWay, headlandAhead, guidance.HowManyPathsAway)
             : CheckOffsetLineInsideCultivated(currentTrack, abHeading, nextPathsAwayPos, boundary, headlandLine, config);
 
         if (negInside && posInside)
@@ -215,10 +215,19 @@ public sealed class YouTurnPathingService
     /// Can a U-turn made at the end the tractor is heading for (<paramref name="headlandAhead"/> m
     /// ahead of <paramref name="position"/>) land on pass <paramref name="pathsAway"/>: is it
     /// inside the cultivated area, with at least <see cref="MinLandingLength"/> of it to drive
-    /// back on from there? True when there is no usable boundary.
+    /// back on from there, or, given the pass the tractor is on (<paramref name="fromPath"/>), at
+    /// least as much as that one has at this end? True when there is no usable boundary.
     /// </summary>
+    /// <remarks>
+    /// The second rule is for a field entered at a tapering corner: the first passes are short
+    /// and each is longer than the last, so the next one has less than 20 m but more than the
+    /// tractor is driving now. Twenty metres alone stopped the job at the first pass ("End of
+    /// field reached") on an olive grove whose corner pass runs 11 m and the next 19 m. A pass
+    /// shorter than both (the sliver at the far side) is still refused.
+    /// </remarks>
     public bool IsPathLandable(Models.Track.Track track, double abHeading, int pathsAway,
-        Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, Position position, bool headingSameWay, double headlandAhead)
+        Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, Position position, bool headingSameWay, double headlandAhead,
+        int? fromPath = null)
     {
         if (!IsPathInsideCultivated(track, abHeading, pathsAway, boundary, headlandLine)) return false;
         if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid) return true;
@@ -227,10 +236,15 @@ public sealed class YouTurnPathingService
         // point-in-polygon tests, and an end of the field asks again every cycle).
         double landing = LandingLength(track, abHeading, pathsAway, boundary, headlandLine, position, headingSameWay, headlandAhead,
             stopAt: MinLandingLength);
-        if (landing < MinLandingLength)
-            _logger.LogDebug("[NextTrack] nextPath={Next} has only {Len:F0}m inside the field at this end - no turn onto it",
-                pathsAway, landing);
-        return landing >= MinLandingLength;
+        if (landing >= MinLandingLength) return true;
+        // Widening, not narrowing: the pass driven now has no more at this end than the next.
+        double current = fromPath is int from && from != pathsAway
+            ? LandingLength(track, abHeading, from, boundary, headlandLine, position, headingSameWay, headlandAhead, stopAt: MinLandingLength)
+            : double.MaxValue;
+        if (landing > 0 && landing >= current) return true;
+        _logger.LogDebug("[NextTrack] nextPath={Next} has only {Len:F1}m inside the field at this end (this pass {Cur:F1}m) - no turn onto it",
+            pathsAway, landing, current);
+        return false;
     }
 
     /// <summary>
