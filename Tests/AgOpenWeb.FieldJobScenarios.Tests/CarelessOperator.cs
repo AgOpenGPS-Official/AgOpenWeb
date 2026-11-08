@@ -152,7 +152,17 @@ public static class CarelessOperator
         yield return Olival("C8", "Look-ahead 2 s on, 1.5 s off",
             "The operator sets a slow valve's look-ahead: sections open 2 s before the ground and close 1.5 s before the headland; at 9 km/h the valves must now shut ahead of the headland line instead of 1 m past it.") with
         {
+            // The valves take 1.0 s and 0.5 s (JobSpec defaults): look-ahead 1 s too long both ways.
+            LookAheadMatchesValves = false,
             Extra = new[] { "tool.lookAheadOn:2", "tool.lookAheadOff:1.5" },
+            Expected = new[] { "SPRAYED-IN-HEADLAND", "MAP-SHOWS-UNSPRAYED", "SPRAYED-NOT-ON-MAP", "VALVES-NOT-FOLLOWING", "APP-AREA-OFF" },
+        };
+        yield return Olival("C16", "Look-ahead at 0 s with real valves",
+            "The sprayer's valves take 1 s to open and 0.5 s to shut, but look-ahead is 0 (set so, or a profile from before AgOpenWeb installed AgOpenGPS's 1.0 s / 0.5 s): every section starts 2.5 m late into the cultivated area at 9 km/h and runs on 1.25 m into the headland, and the map paints where nothing came out yet.") with
+        {
+            LookAheadMatchesValves = false,
+            Extra = new[] { "tool.lookAheadOn:0", "tool.lookAheadOff:0" },
+            Expected = new[] { "SPRAYED-IN-HEADLAND", "MAP-SHOWS-UNSPRAYED", "SPRAYED-NOT-ON-MAP", "VALVES-NOT-FOLLOWING", "APP-AREA-OFF" },
         };
         yield return Olival("C9", "Relay functions left at the defaults (relays 1-6)",
             "The operator never opened the machine module's pin table: relays 1-6 drive sections 1-6 and sections 7 and 8 have no relay, so the right 2 m of the boom never spray.") with
