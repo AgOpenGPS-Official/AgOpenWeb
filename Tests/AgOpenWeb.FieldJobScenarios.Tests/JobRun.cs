@@ -235,6 +235,10 @@ public sealed class JobRun : IAsyncDisposable
     public readonly List<string> Said = new();
     public readonly List<string> Problems = new();
     public readonly List<string> Notes = new();
+    /// <summary>"End of field reached" said by AgOpenWeb, then a U-turn it made after all: when and where.</summary>
+    public readonly List<string> EarlyEnds = new();
+    private double _endSaidAt = -1;
+    private int _endSaidPass;
     public int Reengaged;
     public readonly double[] ScreenOnValveShut = new double[64], ScreenOffValveOpen = new double[64];
     /// <summary>Disagreement that lasted more than a second at a stretch (the switching latency
@@ -607,6 +611,14 @@ public sealed class JobRun : IAsyncDisposable
                 bool executing = yt?.IsExecuting == true;
                 if (executing && !wasExecuting)
                 {
+                    // AgOpenWeb said the field was done, then turned onto another pass after all (the
+                    // message came at a bite in the boundary, the turn at the real end): the operator,
+                    // driving the pass out, lets it turn, and the job goes on.
+                    if (FieldDone && _endSaidAt >= 0 && !Stopped)
+                    {
+                        EarlyEnds.Add(F($"\"End of field reached\" at {_endSaidAt:0} s on pass {_endSaidPass}, then U-turn {TurnsStarted + 1} at {Seconds:0} s"));
+                        FieldDone = false; _endSaidAt = -1; leftWorkAt = -1; inWorkSinceEnd = false;
+                    }
                     turn = new TurnRecord { Index = ++TurnsStarted, PassBefore = lastPassSeen, StartSeconds = Seconds, Left = yt!.IsTurnLeft, HeadingAtStart = Truth.Heading, UAtStart = U((Truth.E, Truth.N)), TangentAtStart = Frame.TangentHeading((Truth.E, Truth.N)), TruthPassBefore = TruthPass() };
                     saidAtTurnStart = Math.Max(0, Said.Count - 6);
                     Turns.Add(turn);
@@ -768,7 +780,10 @@ public sealed class JobRun : IAsyncDisposable
                 {
                     Said.Add(F($"{Seconds:0.0} s: {e}"));
                     if (e.Contains("End of field reached", StringComparison.Ordinal) || e.Contains("Field complete", StringComparison.Ordinal))
+                    {
+                        if (!FieldDone) { _endSaidAt = Seconds; _endSaidPass = Pass; }
                         FieldDone = true;
+                    }
                     // AgOpenWeb refused the turn and said so (#698, #716): the operator takes over
                     // here and the job stops, instead of riding on with AutoSteer out of the field.
                     if (e.Contains("No U-turn fits", StringComparison.Ordinal) && TookOverAt < 0)

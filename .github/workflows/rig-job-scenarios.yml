@@ -5,7 +5,7 @@ name: Rig Job Scenarios
 # trailed, and once on the edge pass), a curve recorded by driving it, a 21 m implement skipping a
 # row at every U-turn, a tester's tractor with a front sprayer of unequal sections and a semi-mounted
 # drill, a combine, a drill behind its tank (TBT), a manure spreader, a disc harrow, a reversible
-# plough; the same simulated machine, emulated machine module and truth coverage as the
+# plough, a seeding roller on the lift arms; the same simulated machine, emulated machine module and truth coverage as the
 # field jobs, and the implement measured against the pass it should be on. About an hour and a half, so it
 # runs nightly on develop, not on every PR (CI only builds it). The run fails when the harness
 # breaks; the findings are in the report, kept as an artifact and shown in the run's summary.

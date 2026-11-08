@@ -5,7 +5,7 @@ name: Turn Intervention Scenarios
 # radius, distance from boundary or style changed mid-turn, skip rows set during a turn and before
 # it, the arrow tapped twice, a nudge, reversing in the turn and out of it, AutoSteer off and on;
 # then U-turns made only with the manual buttons, and a manual turn in the middle of a pass. About
-# an hour, so it runs nightly on develop, not on every PR (CI only builds it). The run fails when
+# half an hour, so it runs nightly on develop, not on every PR (CI only builds it). The run fails when
 # the harness breaks; the findings are in the report, kept as an artifact and shown in the summary.
 #
 #   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;

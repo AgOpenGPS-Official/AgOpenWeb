@@ -45,6 +45,7 @@ its neighbours':
 |---|---|
 | Ground never sprayed between neighbouring passes, widest strip | `MISSED-STRIPS` |
 | The field reported done with ground left, or never reported done | `FIELD-LEFT-UNDONE`, `FIELD-NOT-FINISHED` |
+| "End of field reached" said, then a U-turn onto another pass after all (the operator drives on) | `END-OF-FIELD-TOO-EARLY` |
 | Sprayed outside the boundary, inside an obstacle, inside the headland | `SPRAYED-OUTSIDE-BOUNDARY`, `SPRAYED-IN-OBSTACLE`, `SPRAYED-IN-HEADLAND` |
 | AgOpenWeb's map painted where no valve was open, or blank where one was | `MAP-SHOWS-UNSPRAYED`, `SPRAYED-NOT-ON-MAP` |
 | AgOpenWeb's area covered once against the truth | `APP-AREA-OFF` |
