@@ -395,7 +395,7 @@ public partial class YouTurnCreationService
         // straight fallback).
         List<Vec3> basePoints = track.Points.Count > 2
             ? new List<Vec3>(track.Points)
-            : DensifyAbLine(track.Points);
+            : DensifyAbLine(AbLineAcrossField(track.Points, outerPoints));
 
         double widthMinusOverlap = toolWidth - config.Tool.Overlap;
         double offsetDistance = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, widthMinusOverlap, guidance.NudgeOffset,
@@ -476,6 +476,42 @@ public partial class YouTurnCreationService
     /// FindCurveTurnPoint (which tests boundary crossing per point) could step over the
     /// turn boundary in one long segment.
     /// </summary>
+    /// <summary>
+    /// An AB line's A and B moved out along the line to past the whole field: the line is
+    /// endless (guidance steers to it anywhere), but its two points can sit anywhere in the
+    /// field. An A+ or Lat/Lon line has B 100 m from A, and the turn generator follows the
+    /// densified points plus 200 m of extension, so in a field longer than that the pass never
+    /// reached the turn line at the far end: no turn could be built there, and after #698 not
+    /// even the fallback (the olive grove in the field job harness: every turn at its south end).
+    /// The line itself is unchanged: same heading, same points on it.
+    /// </summary>
+    internal static IReadOnlyList<Vec3> AbLineAcrossField(IReadOnlyList<Vec3> ab, IReadOnlyList<Vec2> outer)
+    {
+        if (ab.Count != 2 || outer.Count < 3) return ab;
+        var a = ab[0];
+        var b = ab[1];
+        double dE = b.Easting - a.Easting, dN = b.Northing - a.Northing;
+        double len = Math.Sqrt(dE * dE + dN * dN);
+        if (len < 0.01) return ab;
+        double uE = dE / len, uN = dN / len;
+        // The field's extent along the line, from A.
+        double tMin = 0, tMax = len;
+        foreach (var p in outer)
+        {
+            double t = (p.Easting - a.Easting) * uE + (p.Northing - a.Northing) * uN;
+            if (t < tMin) tMin = t;
+            if (t > tMax) tMax = t;
+        }
+        const double Margin = 10.0;
+        tMin -= Margin;
+        tMax += Margin;
+        return new List<Vec3>
+        {
+            new(a.Easting + uE * tMin, a.Northing + uN * tMin, a.Heading),
+            new(a.Easting + uE * tMax, a.Northing + uN * tMax, b.Heading),
+        };
+    }
+
     private static List<Vec3> DensifyAbLine(IReadOnlyList<Vec3> ab)
     {
         var a = ab[0];
