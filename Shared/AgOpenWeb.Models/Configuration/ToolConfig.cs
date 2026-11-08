@@ -137,19 +137,21 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _isToolFrontFixed, value);
     }
 
-    // Section lookahead settings — default to 0 (no anticipation, no wait).
-    // Non-zero values model an actuator open/close delay; with the SectionControlService
-    // implementation the projection cancels the phase delay so the spray edge lands on
-    // the boundary, but only if the user actually has a slow valve. Defaulting to 0
-    // means a freshly-created vehicle paints right up to coverage edges (#332/#339).
-    private double _lookAheadOnSetting = 0.0;
+    // Section look-ahead, s: how long before an edge the module is asked to switch, to cover
+    // the valves' own time (the map waits that long, so it paints where product lands, #707).
+    // AgOpenGPS's defaults (ToolSettings setVehicle_toolLookAheadOn 1.0, ...Off 0.5): on 0 a
+    // sprayer with real valves started 2.5 m late at 9 km/h and ran on into the headland, and
+    // the map showed ground as sprayed before any product reached it (field job harness C16).
+    public const double DefaultLookAheadOn = 1.0;
+    public const double DefaultLookAheadOff = 0.5;
+    private double _lookAheadOnSetting = DefaultLookAheadOn;
     public double LookAheadOnSetting
     {
         get => _lookAheadOnSetting;
         set => SetProperty(ref _lookAheadOnSetting, value);
     }
 
-    private double _lookAheadOffSetting = 0.0;
+    private double _lookAheadOffSetting = DefaultLookAheadOff;
     public double LookAheadOffSetting
     {
         get => _lookAheadOffSetting;

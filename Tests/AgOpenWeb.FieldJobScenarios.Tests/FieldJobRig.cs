@@ -127,25 +127,36 @@ public sealed class FieldJobRig : IAsyncDisposable
         WebBackend.WireCrossServices(sp);
         var vm = await OnLoop(hostLoop, () => sp.GetRequiredService<MainViewModel>());
 
-        var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
-        await server.StartAsync(
-            sp.GetRequiredService<ApplicationState>(),
-            sp.GetRequiredService<ICoverageMapService>(),
-            sp.GetRequiredService<ISectionControlService>(),
-            sp.GetRequiredService<IToolPositionService>(),
-            sp.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>(),
-            sp.GetRequiredService<IJobService>(),
-            configService,
-            sp.GetRequiredService<IAutoSteerService>(),
-            sp.GetRequiredService<ISmartWasCalibrationService>(),
-            sp.GetRequiredService<IUdpCommunicationService>(),
-            sp.GetRequiredService<INtripProfileService>(),
-            sp.GetRequiredService<IFieldService>(),
-            sp.GetRequiredService<ISettingsService>(),
-            sp.GetRequiredService<IVehicleProfileService>(),
-            sp.GetRequiredService<IPersistentStateService>(),
-            sp.GetService<INtripClientService>(),
-            port: FreePort());
+        // FreePort hands back a port the OS had free a moment ago; something can take it before
+        // the server binds it ("Address already in use", seen 2026-11-08): try a fresh one.
+        AgOpenWeb.RemoteServer.RemoteServerHost server = null!;
+        for (int attempt = 1; ; attempt++)
+        {
+            server = new AgOpenWeb.RemoteServer.RemoteServerHost();
+            try
+            {
+                await server.StartAsync(
+                    sp.GetRequiredService<ApplicationState>(),
+                    sp.GetRequiredService<ICoverageMapService>(),
+                    sp.GetRequiredService<ISectionControlService>(),
+                    sp.GetRequiredService<IToolPositionService>(),
+                    sp.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>(),
+                    sp.GetRequiredService<IJobService>(),
+                    configService,
+                    sp.GetRequiredService<IAutoSteerService>(),
+                    sp.GetRequiredService<ISmartWasCalibrationService>(),
+                    sp.GetRequiredService<IUdpCommunicationService>(),
+                    sp.GetRequiredService<INtripProfileService>(),
+                    sp.GetRequiredService<IFieldService>(),
+                    sp.GetRequiredService<ISettingsService>(),
+                    sp.GetRequiredService<IVehicleProfileService>(),
+                    sp.GetRequiredService<IPersistentStateService>(),
+                    sp.GetService<INtripClientService>(),
+                    port: FreePort());
+                break;
+            }
+            catch (System.Net.Sockets.SocketException) when (attempt < 3) { }
+        }
         await hostLoop.InvokeAsync(() =>
             RemoteServerWiring.Wire(server, vm, sp, configService, new NoImagery()));
 

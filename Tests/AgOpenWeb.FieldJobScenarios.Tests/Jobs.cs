@@ -221,7 +221,11 @@ public static class Jobs
         if (offs.Count > 0 && r.Spec.OnFix == null)
             flag(Severity.Bug, "AUTOSTEER-DROPPED", F($"AutoSteer switched itself off {offs.Count} time(s) during the job, re-engaged by the operator {r.Reengaged} time(s): {offs[0]}"));
         if (r.Problems.Any(p => p.StartsWith("HARNESS", StringComparison.Ordinal))) return;
-        foreach (var p in r.Problems) if (p.Contains("ran", StringComparison.Ordinal)) flag(Severity.Safety, "RAN-OFF", p);
+        foreach (var p in r.Problems)
+        {
+            if (p.Contains("asked the operator to take over", StringComparison.Ordinal)) flag(Severity.Bug, "TURN-REFUSED", p);
+            else if (p.Contains("ran", StringComparison.Ordinal)) flag(Severity.Safety, "RAN-OFF", p);
+        }
     }
 
     private static string Pct(double part, double whole) => whole <= 0 ? "n/a" : F($"{part / whole * 100:0.0} %");

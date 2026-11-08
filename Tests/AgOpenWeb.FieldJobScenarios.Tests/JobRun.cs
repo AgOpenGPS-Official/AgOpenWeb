@@ -32,6 +32,13 @@ public sealed record JobSpec(
     /// <summary>How far inside the boundary the U-turn's outermost point stays (AgOpenWeb default 2 m).</summary>
     public double UTurnDistanceFromBoundary { get; init; } = 2;
     public bool Obstacles { get; init; }
+    /// <summary>The real valves' time from relay to nozzles, s: open, shut. AgOpenGPS's default
+    /// look-ahead (1.0 s on, 0.5 s off) is what it assumes a sprayer's valves take.</summary>
+    public double ValveOnS { get; init; } = 1.0;
+    public double ValveOffS { get; init; } = 0.5;
+    /// <summary>The operator set look-ahead to the valves' times, as a tuned rig is (careful);
+    /// off: look-ahead stays at what the settings say (AgOpenWeb's default 0, or <see cref="Extra"/>).</summary>
+    public bool LookAheadMatchesValves { get; init; } = true;
     /// <summary>The outer boundary marked hard (AgOpenWeb then checks the implement's swept path
     /// in every U-turn and refuses a turn that would cross it).</summary>
     public bool HardBoundary { get; init; }
@@ -182,6 +189,8 @@ public sealed class JobRun : IAsyncDisposable
     public volatile bool GpsOn = true;
     public int Pass = int.MinValue;
     public int TurnsStarted;
+    /// <summary>When AgOpenWeb asked the operator to take over (a refused U-turn), s; -1 never.</summary>
+    public double TookOverAt = -1;
     bool _arrowChecked;
     /// <summary>Set when AgOpenWeb's first U-turn arrow pointed at the field's edge the operator
     /// started from (a sliver pass): the pass it pointed at and how much of it is inside.</summary>
@@ -246,7 +255,7 @@ public sealed class JobRun : IAsyncDisposable
             AgOpenWeb.Models.Timing.Clock.Set(SimTime);
         }
         Module = new EmulatedSprayerModule(relays: T.Sections > 16 ? T.Sections : Math.Max(8, T.Sections), directSections: T.Sections > 16)
-        { Clock = () => SimMs };
+        { Clock = () => SimMs, ValveOnDelayS = Spec.ValveOnS, ValveOffDelayS = Spec.ValveOffS };
         Module.Start();
         Module.PowerOn();
         Steer = new SteerModuleStub { On = true };
@@ -263,6 +272,11 @@ public sealed class JobRun : IAsyncDisposable
         settings.Add("tool.isHeadlandSectionControl:" + (Spec.HeadlandSections ? "1" : "0"));
         settings.Add(F($"uturn.radius:{Spec.UTurnRadius}"));
         settings.Add(F($"uturn.distanceFromBoundary:{Spec.UTurnDistanceFromBoundary}"));
+        if (Spec.LookAheadMatchesValves)
+        {
+            settings.Add(F($"tool.lookAheadOn:{Spec.ValveOnS}"));
+            settings.Add(F($"tool.lookAheadOff:{Spec.ValveOffS}"));
+        }
         settings.AddRange(Spec.Extra);
         foreach (var kv in settings) await SendAsync("config.set", kv);
         await SendAsync("profile.save");
@@ -659,6 +673,13 @@ public sealed class JobRun : IAsyncDisposable
                     Said.Add(F($"{Seconds:0.0} s: {e}"));
                     if (e.Contains("End of field reached", StringComparison.Ordinal) || e.Contains("Field complete", StringComparison.Ordinal))
                         FieldDone = true;
+                    // AgOpenWeb refused the turn and said so (#698, #716): the operator takes over
+                    // here and the job stops, instead of riding on with AutoSteer out of the field.
+                    if (e.Contains("No U-turn fits", StringComparison.Ordinal) && TookOverAt < 0)
+                    {
+                        TookOverAt = Seconds;
+                        Problems.Add(F($"{Seconds:0.0} s: AgOpenWeb refused the U-turn at the end of pass {Pass} and asked the operator to take over (\"{e}\")"));
+                    }
                 }
             }
             var tc = ToolCentre();
@@ -669,6 +690,7 @@ public sealed class JobRun : IAsyncDisposable
                 else if (inWorkSinceEnd || (leftWorkAt >= 0 && Seconds - leftWorkAt > 6)) break;
                 if (!inWork && leftWorkAt < 0) leftWorkAt = Seconds;
             }
+            if (TookOverAt >= 0) break;
             double far = OutsideBoundaryM().Worst;
             if (far > 25) { Problems.Add(F($"{Seconds:0.0} s: the tractor ran {far:0} m out of the field on pass {Pass}")); break; }
             if (Fix % 10 == 0) await Task.Delay(PaceMs * 10);
@@ -704,7 +726,8 @@ public sealed class JobRun : IAsyncDisposable
         double re = Math.Cos(tc.Heading), rn = -Math.Sin(tc.Heading);
         int n = Spec.T.Sections;
         double sw = Spec.T.Width / n, left = -Spec.T.Width / 2;
-        ulong open = Module.SectionsOpen;
+        ulong open = Module.SectionsOpen;       // the relays: what the module was told
+        ulong spray = Module.SectionsSpraying;  // the nozzles: the relays after the valves' time
         bool link = Module.LinkOk;
         if (!link) SecondsLinkDown += FixSeconds;
         var ss = c.SectionStates;
@@ -721,15 +744,18 @@ public sealed class JobRun : IAsyncDisposable
         }
         for (int s = 0; s < n && s < 64; s++)
         {
-            bool valve = ((open >> s) & 1) != 0;
+            // What must match the screen is the product at the nozzles: the relays rightly lead the
+            // screen by the look-ahead (#714), the valves then take that long, and the two meet.
+            bool valve = ((spray >> s) & 1) != 0;
             bool screen = ss != null && s < ss.Length && ss[s];
             if (screen && !valve) { ScreenOnValveShut[s] += FixSeconds; if (!link) SecondsPaintingLinkDown += FixSeconds / n; }
             if (!screen && valve) ScreenOffValveOpen[s] += FixSeconds;
             if (screen != valve) { if (++_disagreeRun[s] > 10) PersistentDisagreement[s] += FixSeconds; }
             else _disagreeRun[s] = 0;
-            if (valve && _prevEdge[s] is { } p0 && _prevEdge[s + 1] is { } p1)
+            bool flowing = ((spray >> s) & 1) != 0;
+            if (flowing && _prevEdge[s] is { } p0 && _prevEdge[s + 1] is { } p1)
                 Grid.Sweep(p0, p1, cur[s], cur[s + 1]);
-            if (valve)
+            if (flowing)
             {
                 any = true;
                 uL = Math.Min(uL, Math.Min(U(cur[s]), U(cur[s + 1])));
