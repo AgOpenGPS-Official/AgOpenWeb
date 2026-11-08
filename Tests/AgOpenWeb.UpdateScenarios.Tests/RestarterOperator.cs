@@ -339,30 +339,63 @@ public static class RestarterOperator
             foreach (var t in aog.Tools.Where(t => !first.Tools.Contains(t.Name)))
                 sc.Problem(Severity.DataLoss, "AOG-TOOL-NOT-LISTED", Kit.F($"the implement '{t.Name}' (ToolProfiles/{t.Name}.xml: {t.Settings.First(x => x.Dump == "Tool.Width").Value} m, {t.Settings.First(x => x.Dump == "NumSections").Value} sections) is not in the implement list: this build lists Tools/*.json only and reads no ToolProfiles/ folder"));
 
-            // Each listed tractor, as loaded: its settings and the 6.8.6 environment's against
-            // the store, and for the one with a combined file the implement that file holds.
+            // Each listed tractor, loaded with the implement in use: its own settings, the
+            // environment's, and the guidance gains 6.8.6 keeps with the implement in use; for a
+            // tractor with a combined file and no listed implement, the implement that file holds.
+            // Then each listed implement, with its settings and the environment's U-turn and tram.
+            bool ToolListed(string name) => first.Tools.Contains(name);
+            async Task<Dictionary<string, string>> DumpWith(string vehicle, string tool)
+            {
+                if (first.ActiveVehicle == vehicle && first.ActiveTool == tool) return first.Dump;
+                await rig.SendAsync("profile.load", vehicle + "\t" + tool);
+                var d = new Dictionary<string, string>(StringComparer.Ordinal);
+                await rig.RunAsync(() => Snapshot.DumpStore(d, rig));
+                sc.Step(Kit.F($"'{vehicle}' / '{tool}' loaded"));
+                return d;
+            }
+            string toolForVehicles = ToolListed(aog.ToolInUse.Name) ? aog.ToolInUse.Name : first.ActiveTool;
             foreach (var v in aog.Vehicles.Where(v => first.Vehicles.Contains(v.Name)))
             {
-                var dump = first.Dump;
-                if (first.ActiveVehicle != v.Name)
-                {
-                    await rig.SendAsync("profile.load", v.Name + "\t" + first.ActiveTool);
-                    dump = new Dictionary<string, string>(StringComparer.Ordinal);
-                    var d = dump;
-                    await rig.RunAsync(() => Snapshot.DumpStore(d, rig));
-                    sc.Step(Kit.F($"'{v.Name}' loaded with the implement in use '{first.ActiveTool}'"));
-                }
-                if (v.InLegacyFile && first.ActiveVehicle == v.Name && first.ActiveTool != v.ToolName)
-                    sc.Note(Kit.F($"'{v.Name}': the implement its combined file holds (that day's '{v.ToolName}') is in use under the name '{first.ActiveTool}'"));
+                var dump = await DumpWith(v.Name, toolForVehicles);
                 var specs = new List<AogSetting>(v.Settings);
                 specs.AddRange(aog.Environment);
-                if (v.InLegacyFile) specs.AddRange(aog.Tools.First(t => t.Name == v.ToolName).Settings);
+                specs.AddRange(aog.ToolInUse.Settings.Where(x => x.Group == "guidance"));
+                if (v.InLegacyFile && !ToolListed(v.ToolName))
+                {
+                    if (first.ActiveVehicle == v.Name)
+                        sc.Note(Kit.F($"'{v.Name}': the implement its combined file holds (that day's '{v.ToolName}') is in use under the name '{first.ActiveTool}'"));
+                    specs.AddRange(aog.Tools.First(t => t.Name == v.ToolName).Settings.Where(x => x.Group != "guidance"));
+                }
                 JudgeAog(sc, v.Name, specs, dump, v.InLegacyFile);
             }
+            string vehicleForTools = first.Vehicles.Contains(aog.VehicleInUse.Name) ? aog.VehicleInUse.Name : first.ActiveVehicle;
+            foreach (var t in aog.Tools.Where(t => ToolListed(t.Name)))
+            {
+                var dump = await DumpWith(vehicleForTools, t.Name);
+                var specs = t.Settings.Where(x => x.Group != "guidance").ToList();
+                specs.AddRange(aog.Environment.Where(x => x.Group is "uturn" or "tram"));
+                JudgeAog(sc, t.Name, specs, dump, hasLegacyFile: false);
+            }
+            if (first.ActiveVehicle == aog.VehicleInUse.Name && first.ActiveTool == aog.ToolInUse.Name)
+                sc.Ok(Kit.F($"the pair in use is AgOpenGPS's: '{first.ActiveVehicle}' / '{first.ActiveTool}'"));
+            else
+                sc.Note(Kit.F($"the pair in use is '{first.ActiveVehicle}' / '{first.ActiveTool}'; AgOpenGPS last saved '{aog.VehicleInUse.Name}' / '{aog.ToolInUse.Name}'"));
+
+            // What is left of the copied AgOpenGPS profile folders in AgOpenWeb's.
+            var leftOver = new[] { "VehicleProfiles", "ToolProfiles", "Environment", "AgIO" }
+                .Select(d => Path.Combine(root, "AgOpenWeb", d)).Where(Directory.Exists)
+                .SelectMany(d => Directory.EnumerateFiles(d).Select(f => Path.GetFileName(d) + "/" + Path.GetFileName(f)))
+                .OrderBy(f => f, StringComparer.Ordinal).ToList();
+            sc.Note(leftOver.Count == 0
+                ? "the copied AgOpenGPS profile files are gone from the AgOpenWeb folder (imported)"
+                : Kit.F($"copied AgOpenGPS profile files still in the AgOpenWeb folder: {string.Join(", ", leftOver)}"));
 
             // The NTRIP caster of AgIO.
-            if (first.Ntrips.Any(n => string.Equals(n.Host, aog.AgIo.CasterHost, StringComparison.OrdinalIgnoreCase) && n.Mount == aog.AgIo.Mount))
-                sc.Ok(Kit.F($"AgIO's caster {aog.AgIo.CasterHost}:{aog.AgIo.CasterPort}/{aog.AgIo.Mount} is an NTRIP profile"));
+            var caster = first.Ntrips.FirstOrDefault(n => string.Equals(n.Host, aog.AgIo.CasterHost, StringComparison.OrdinalIgnoreCase) && n.Mount == aog.AgIo.Mount);
+            if (caster != null && caster.Port == aog.AgIo.CasterPort && caster.User == aog.AgIo.User && caster.Password == aog.AgIo.Password)
+                sc.Ok(Kit.F($"AgIO's caster {aog.AgIo.CasterHost}:{aog.AgIo.CasterPort}/{aog.AgIo.Mount} is the NTRIP profile '{caster.Name}' with its login{(caster.IsDefault ? ", the default" : "")}"));
+            else if (caster != null)
+                sc.Problem(Severity.Bug, "AOG-NTRIP-LOGIN", Kit.F($"AgIO's caster is the NTRIP profile '{caster.Name}', but port {caster.Port} / login {(caster.User == aog.AgIo.User ? "user ok" : "user differs")}, {(caster.Password == aog.AgIo.Password ? "password ok" : "password differs")} (AgIO: port {aog.AgIo.CasterPort})"));
             else
                 sc.Problem(Severity.Improvement, "AOG-NTRIP-NOT-IMPORTED", Kit.F($"AgIO's NTRIP caster ({aog.AgIo.CasterHost}:{aog.AgIo.CasterPort}, mount point {aog.AgIo.Mount}, a login, on) is not among the NTRIP profiles ({(first.Ntrips.Count == 0 ? "none" : string.Join(", ", first.Ntrips.Select(n => n.Name)))}): this build reads no AgIO/*.XML, so the farmer types the caster, the mount point and the login again"));
 

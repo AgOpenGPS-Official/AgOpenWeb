@@ -54,6 +54,10 @@ public sealed class AgOpenGpsInstall
     /// <summary>The field with every sidecar file (coverage, contour, recorded path, elevation,
     /// background image).</summary>
     public FieldSpec FullField => Fields[0];
+    /// <summary>The tractor and implement AgOpenGPS saved last, the pair in use there (their
+    /// files are the newest of their folder).</summary>
+    public AogVehicle VehicleInUse => Vehicles[0];
+    public AogTool ToolInUse => Tools[0];
     /// <summary>The worked area of the full field's Sections.txt, m².</summary>
     public double CoverageSqM => AgOpenGpsFiles.CoverageSqM;
 
@@ -72,7 +76,7 @@ public sealed class AgOpenGpsInstall
             A("setVehicle_antennaPivot", "Vehicle.AntennaPivot", "1.2", "vehicle", stale: "0.9"),
             A("setVehicle_antennaOffset", "Vehicle.AntennaOffset", "-0.3", "vehicle", stale: "0.1"),
             A("setVehicle_maxSteerAngle", "Vehicle.MaxSteerAngle", "36", "vehicle", stale: "33"),
-            A("setVehicle_maxAngularVelocity", "Vehicle.MaxAngularVelocity", "20", "vehicle", stale: "30"),
+            A("setVehicle_maxAngularVelocity", "Vehicle.MaxAngularVelocity", "0.64", "vehicle", stale: "0.55"),
             A("setVehicle_trackWidth", "Vehicle.TrackWidth", "1.95", "vehicle", stale: "1.85"),
             A("setAS_Kp", "AutoSteer.ProportionalGain", "60", "steer", stale: "45"),
             A("setAS_countsPerDegree", "AutoSteer.CountsPerDegree", "112", "steer", stale: "105"),
@@ -83,10 +87,16 @@ public sealed class AgOpenGpsInstall
             A("setAS_maxSteerSpeed", "AutoSteer.MaxSteerSpeed", "16", "steer", stale: "14"),
             A("setAS_minSteerSpeed", "AutoSteer.MinSteerSpeed", "0.6", "steer", stale: "0.4"),
             A("setAS_isSteerInReverse", "AutoSteer.SteerInReverse", "True", "steer"),
+            // PGN 251's bytes as AgOpenGPS keeps them: 0x58 = single A/D, Cytron, steer button;
+            // 2 = pressure sensor, its trip point raw 91 (36 %).
+            A("setArdSteer_setting0", "AutoSteer.ExternalEnable", "88", "steer", reads: "2", stale: "56", staleReads: "1"),
+            A("setArdSteer_setting1", "AutoSteer.PressureSensorEnabled", "2", "steer", reads: "True"),
+            A("setArdSteer_maxPulseCounts", "AutoSteer.PressureTripPoint", "91", "steer", reads: "36"),
             A("setIMU_rollZero", "Ahrs.RollZero", "1.3", "imu", stale: "0.7"),
             A("setIMU_rollFilter", "Ahrs.RollFilter", "0.35", "imu", stale: "0.22"),
             A("setIMU_invertRoll", "Ahrs.IsRollInvert", "True", "imu"),
-            A("setIMU_isDualAsIMU", "Connections.IsDualGps", "True", "gps"),
+            A("setGPS_headingFromWhichSource", "Connections.IsDualGps", "Dual", "gps", reads: "True"),
+            A("setIMU_fusionWeight2", "Connections.HeadingFusionWeight", "0.1", "gps", reads: "0.5", stale: "0.08", staleReads: "0.4"),
             A("setGPS_dualHeadingOffset", "Connections.DualHeadingOffset", "90", "gps", stale: "45"),
             A("setGPS_minimumStepLimit", "Connections.MinGpsStep", "0.08", "gps", stale: "0.06"),
         }, InLegacyFile: true, ToolName: "Pulverizador 8 m"));
@@ -132,6 +142,7 @@ public sealed class AgOpenGpsInstall
             A("setVehicle_numSections", "NumSections", "12", "sections"),
             A("setSection_position", "ActualToolWidth", "3", "sections"),
             A("setVehicle_toolOffDelay", "Tool.TurnOffDelay", "0.3", "sections"),
+            A("setVehicle_slowSpeedCutoff", "Tool.SlowSpeedCutoff", "1.5", "sections"),
         }, Positions(12, 0.25), null));
 
         a.Environment.AddRange(new[]
@@ -144,14 +155,16 @@ public sealed class AgOpenGpsInstall
             A("setAS_uTurnCompensation", "Guidance.UTurnCompensation", "1.2", "uturn", stale: "1.1"),
             A("setTram_tramWidth", "Tram.TramWidth", "18", "tram", stale: "21"),
             A("setTram_passes", "Guidance.TramPasses", "4", "tram", stale: "5"),
+            A("setAutoSwitchDualFixOn", "Connections.AutoDualFix", "True", "gps"),
+            A("setIMU_isReverseOn", "Connections.ReverseDetection", "False", "gps"),
         });
 
         foreach (var f in Farm.Standard().Fields) { f.Job = null; a.Fields.Add(f); }
         return a;
     }
 
-    private static AogSetting A(string key, string dump, string value, string group, string? stale = null, string? reads = null)
-        => new(key, dump, value, reads ?? value, group, stale, stale);
+    private static AogSetting A(string key, string dump, string value, string group, string? stale = null, string? reads = null, string? staleReads = null)
+        => new(key, dump, value, reads ?? value, group, stale, staleReads ?? stale);
 
     /// <summary>Section edges, <paramref name="n"/> sections of <paramref name="width"/> m centred.</summary>
     private static double[] Positions(int n, double width)
@@ -209,6 +222,18 @@ public sealed class AgOpenGpsInstall
             pairs.AddRange(Environment.Select(s => (s.Key, s.Value)));
             WriteSettingsXml(Path.Combine(aogRoot, "Environment", "environment.xml"), "AgOpenGPS.Properties.Settings", pairs);
         }
+        // AgOpenGPS writes the profiles in use when it saves: the first tractor and implement are
+        // the newest files of their folders, the others an hour older each.
+        var saved = new DateTime(2026, 9, 15, 18, 0, 0, DateTimeKind.Utc);
+        for (int i = 0; i < Vehicles.Count; i++)
+            foreach (var ext in new[] { ".xml", ".last" })
+                File.SetLastWriteTimeUtc(Path.Combine(aogRoot, "VehicleProfiles", Vehicles[i].Name + ext), saved.AddHours(-i));
+        for (int i = 0; i < Tools.Count; i++)
+            foreach (var ext in new[] { ".xml", ".last" })
+                File.SetLastWriteTimeUtc(Path.Combine(aogRoot, "ToolProfiles", Tools[i].Name + ext), saved.AddHours(-i));
+        foreach (var legacy in Directory.EnumerateFiles(Path.Combine(aogRoot, "Vehicles")))
+            File.SetLastWriteTimeUtc(legacy, new DateTime(2026, 4, 8, 9, 0, 0, DateTimeKind.Utc));
+
         WriteSettingsXml(Path.Combine(aogRoot, "AgIO", AgIo.Name + ".XML"), "AgIO.Properties.Settings", new[]
         {
             ("setPort_portNameGPS", "COM3"), ("setPort_baudRateGPS", "460800"), ("setUDP_isOn", "True"),

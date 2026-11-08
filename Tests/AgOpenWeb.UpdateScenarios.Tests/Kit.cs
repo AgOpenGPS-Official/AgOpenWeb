@@ -95,7 +95,12 @@ public static class Kit
         foreach (var dir in Directory.EnumerateDirectories(from, "*", SearchOption.AllDirectories))
             Directory.CreateDirectory(Path.Combine(to, Path.GetRelativePath(from, dir)));
         foreach (var file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
-            File.Copy(file, Path.Combine(to, Path.GetRelativePath(from, file)), true);
+        {
+            // As a file manager copies: the modified time goes with the file.
+            string target = Path.Combine(to, Path.GetRelativePath(from, file));
+            File.Copy(file, target, true);
+            File.SetLastWriteTimeUtc(target, File.GetLastWriteTimeUtc(file));
+        }
     }
 
     /// <summary>Removes a scenario's data folder, unless AGOPENWEB_SCENARIO_KEEP is set (to look
