@@ -1414,7 +1414,9 @@ namespace AgOpenWeb.Services.YouTurn
             // pass, so the exit leg's in-field portion matches the next guidance line exactly
             // (seamless turn→track handoff) while the tangent extension lets the curve reach
             // the arc end near the boundary.
-            return CurveProcessing.ExtendCurveEnds(CurveProcessing.CreateOffsetCurve(reference, distAway));
+            // The shared pass routine (CurveProcessing.CurvePass / ExtendPass): empty where the offset
+            // removes the whole pass, no tail at an end it removed (#694).
+            return CurveProcessing.ExtendPass(CurveProcessing.CurvePass(reference, distAway));
         }
 
         private void FindInnerTurnPoints(Vec3 fromPt, double heading, TurnClosePoint turnPt, bool isSameWay)
