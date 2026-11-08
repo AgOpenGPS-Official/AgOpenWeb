@@ -715,13 +715,14 @@ public partial class MainViewModel : ObservableObject
         }
         else
         {
-            // Trailing / TBT — use the Torriem-tracked heading from the
+            // Trailing / TBT — use the Torriem-tracked headings from the
             // snapshot (stable across ticks) and project the tool back from
-            // the freshly-computed hitch along that heading.
+            // the freshly-computed hitch (through the TBT tank) along them,
+            // with the tool position's own geometry: the pivot distance's
+            // sign as AgOpenGPS's, so "Behind" is drawn behind the wheels.
             toolHeading = _toolPositionService.ToolHeading;
-            double pivotOffset = tool.TrailingHitchLength - tool.TrailingToolToPivotLength;
-            toolE = hitchE - Math.Sin(toolHeading) * pivotOffset;
-            toolN = hitchN - Math.Cos(toolHeading) * pivotOffset;
+            (toolE, toolN) = AgOpenWeb.Services.Tool.ToolPositionService.TrailedToolCentre(
+                hitchE, hitchN, _toolPositionService.TankPosition.Heading, toolHeading, tool);
         }
 
         // No lateral offset: the section spans the map draws from this point carry it,
