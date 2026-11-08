@@ -756,6 +756,11 @@ document.getElementById('trk-activate').addEventListener('pointerdown', e => {
   transport.send('track.activate|' + (t ? t.index : -1));
   closeDialog();
 });
+// New = AgOpenGPS's "New track" in its track manager: straight on to Quick AB (#694).
+document.getElementById('trk-new').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  closeDialog(); qabHeadingReset(); qabSetSide('right'); openDialog('dlg-quickab');
+});
 document.getElementById('trk-recpaths').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('track.toggleRecPaths'); });
 document.getElementById('trk-import').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); lnOpen('importtracks'); });
 document.getElementById('dlg-tracks-close').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); });
