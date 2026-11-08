@@ -779,7 +779,9 @@ public sealed class JobRun : IAsyncDisposable
                 foreach (var e in Collect())
                 {
                     Said.Add(F($"{Seconds:0.0} s: {e}"));
-                    if (e.Contains("End of field reached", StringComparison.Ordinal) || e.Contains("Field complete", StringComparison.Ordinal))
+                    // AgOpenWeb says it only while it plans a turn, never during one: read once a second,
+                    // a message from just before a turn started is stale and is not the end.
+                    if ((e.Contains("End of field reached", StringComparison.Ordinal) || e.Contains("Field complete", StringComparison.Ordinal)) && !wasExecuting)
                     {
                         if (!FieldDone) { _endSaidAt = Seconds; _endSaidPass = Pass; }
                         FieldDone = true;

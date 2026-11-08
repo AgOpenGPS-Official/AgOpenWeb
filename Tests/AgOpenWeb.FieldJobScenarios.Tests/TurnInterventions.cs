@@ -460,9 +460,10 @@ public static class TurnInterventions
             var tc = r.Truth.ToolCentre; _from = PassAt(r, (tc.E, tc.N));
             bool sameWay = Math.Cos(r.Truth.Heading - r.Frame.TangentHeading((r.Truth.E, r.Truth.N))) > 0;
             _left = !sameWay;
-            // The rest of this pass, ahead of where the operator turns back, is left on purpose.
+            // The rest of this pass, ahead of where the operator turns back, is left on purpose, and so
+            // is the next pass's same half: the turn joins it in its middle and drives the other way.
             double s0 = r.Spacing, k = _from, vTap = r.Vv((tc.E, tc.N)), way = sameWay ? 1 : -1;
-            r.LeftOnPurpose = p => { double u = r.U(p); return u > k * s0 - 0.3 && u < (k + 1) * s0 + 0.3 && way * (r.Vv(p) - vTap) > -3; };
+            r.LeftOnPurpose = p => { double u = r.U(p); return u > k * s0 - 0.3 && u < (k + 2) * s0 + 0.3 && way * (r.Vv(p) - vTap) > -3; };
             await r.SendAsync(_left ? "youturn.manualLeft" : "youturn.manualRight");
             _said = string.Join(" | ", r.Collect().Select(s => { r.Said.Add(JobRun.F($"{r.Seconds:0.0} s: {s}")); return s; }).TakeLast(2));
             r.Did(JobRun.F($"manual U-turn {(_left ? "left" : "right")} in the middle of pass {_from} (30 s after turn 2)"));
