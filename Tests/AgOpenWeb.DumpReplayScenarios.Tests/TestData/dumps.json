@@ -1,0 +1,215 @@
+{
+  "about": "Bug report dumps the dump replay harness replays. Only the link and the SHA-256 are here: a dump holds the reporter's field, so the zip stays where the reporter put it (an issue attachment, or the bug report service for maintainers). See ../README.md.",
+  "dumps": [
+    {
+      "id": "306",
+      "issue": 306,
+      "reporter": "renatorgr",
+      "title": "U-turn in headland ignored",
+      "reported": "A U-turn shown on screen was not made at the headland; the reporter asked for a warning when a turn will be skipped.",
+      "fixedBy": "#308",
+      "url": "https://github.com/user-attachments/files/33282248/bugreport_not.doing.u-turn_20261010_130538.zip",
+      "sha256": "955eb115041e80f05c9a4ed89145fafbaf256603ede30ef805e7dc5580d9ae27"
+    },
+    {
+      "id": "313",
+      "issue": 313,
+      "reporter": "renatorgr",
+      "title": "Dual heading warning at every cold start",
+      "reported": "The dual heading warning showed at every power-up, before the receiver had a position, and named $PANDA.",
+      "fixedBy": "#314",
+      "url": "https://github.com/user-attachments/files/33306208/bugreport_um982-tm171-dual-rtk-fix_20261011_150039.zip",
+      "sha256": "20edbb7390fcd61a045d6ecee526f52ddde63fba77ae3e458730147c22235ad4"
+    },
+    {
+      "id": "325a",
+      "issue": 325,
+      "reporter": "renatorgr",
+      "title": "Error in drawing applied area (first dump)",
+      "reported": "Worked ground redrawn with only its pass edges, and the painted area wider than the implement (simulator).",
+      "fixedBy": "#326, #327 (and #329 for the simulator's speed)",
+      "url": "https://github.com/user-attachments/files/33333320/bugreport_untitled_20261012_113718.zip",
+      "sha256": "236241d296a44f6eab24c8fcf5247a34ef55a61196dded9fde01de84f502b8de"
+    },
+    {
+      "id": "325b",
+      "issue": 325,
+      "reporter": "renatorgr",
+      "title": "Error in drawing applied area (second dump)",
+      "reported": "Worked ground redrawn with only its pass edges, and the painted area wider than the implement (simulator).",
+      "fixedBy": "#326, #327 (and #329 for the simulator's speed)",
+      "url": "https://github.com/user-attachments/files/33333325/bugreport_untitled_20261012_113748.zip",
+      "sha256": "773cedf7f22d5fe8471e7080f53fa5f91bc6e781690426afc00ccb297913da93"
+    },
+    {
+      "id": "544",
+      "issue": 544,
+      "reporter": "graememk",
+      "title": "U-turn at the headland not keeping its distance from the boundary (Send Report)",
+      "reported": "On an angled headland a U-turn sat square to the track and touched the turn line at one point; with a 21 m spreader one end came too close to the boundary.",
+      "fixedBy": "#550, #573",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/01/456c4d7e3aa2850d92d2c22e217d0c57.zip",
+      "sha256": ""
+    },
+    {
+      "id": "544a",
+      "issue": 544,
+      "reporter": "graememk",
+      "title": "U-turn not following the headland (Keyhole, first dump)",
+      "reported": "After #550: on Keyhole a U-turn did not follow the headland when the next pass was outside the field.",
+      "fixedBy": "#573",
+      "url": "https://github.com/user-attachments/files/34295468/bugreport_u-turn-not-following-headland_20261102_230337.zip",
+      "sha256": "6ace74cc8d7f33ea3a27e730d42f12d4269b9e2ba0004ed95fbf6ebd85838172"
+    },
+    {
+      "id": "544b",
+      "issue": 544,
+      "reporter": "graememk",
+      "title": "U-turn not following the headland (Keyhole, second dump)",
+      "reported": "After #550: on Keyhole a U-turn did not follow the headland when the next pass was outside the field.",
+      "fixedBy": "#573",
+      "url": "https://github.com/user-attachments/files/34295738/bugreport_u-turn-not-following-headland--2_20261102_231605.zip",
+      "sha256": "ed8beacb46e243777e8c889b533ff65bdb3e9c46c90fb44f1dd41d76a3b2d910"
+    },
+    {
+      "id": "570",
+      "issue": 570,
+      "reporter": "graememk",
+      "title": "Out-of-field U-turn alarm repeated many times a second",
+      "reported": "With no safe U-turn path the alarm sounded stretched or several times a second until U-turn was switched off.",
+      "fixedBy": "#576",
+      "url": "https://github.com/user-attachments/files/34313935/bugreport_alarm-sound-with-no-valid-path_20261103_102112.zip",
+      "sha256": "194d727622d010cd3bde7ae50de7c54745a178f51acfe08082800d0e52833819"
+    },
+    {
+      "id": "577",
+      "issue": 577,
+      "reporter": "graememk",
+      "title": "Raising the U-turn skip rows resets the turn direction",
+      "reported": "Raising the skip rows reset a turn chosen to the right back to the left; a turn also started at once after leaving the line slightly in the headland.",
+      "fixedBy": "#578",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/03/82b65851b16d737783e91a423716d28c.zip",
+      "sha256": ""
+    },
+    {
+      "id": "585",
+      "issue": 585,
+      "reporter": "graememk",
+      "title": "U-turn settings changed during a U-turn: wrong pass after it",
+      "reported": "Skip rows and the alternating mode changed during a wide U-turn; the turn built for one pass ended on another (pass -13 instead of -6).",
+      "fixedBy": "#587",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/03/dc7eb750f26538a259ec80f9a6d9a0f2.zip",
+      "sha256": ""
+    },
+    {
+      "id": "588",
+      "issue": 588,
+      "reporter": "graememk",
+      "title": "Reversing out of a U-turn makes its end the target pass",
+      "reported": "Stopped mid-turn and reversed out; on leaving the turn the target pass jumped to where the completed turn would have put the tractor.",
+      "fixedBy": "#589",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/03/9af7fef4ee987bd99f0670369f370d90.zip",
+      "sha256": ""
+    },
+    {
+      "id": "590",
+      "issue": 590,
+      "reporter": "graememk",
+      "title": "Duplicate lines drawn on a driven water pivot",
+      "reported": "Driving a water pivot track drew extra paths the tractor never followed (display only, the reporter believes).",
+      "fixedBy": "",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/03/6b3fef6977d5e96732b5a0d3ed8235ee.zip",
+      "sha256": ""
+    },
+    {
+      "id": "591",
+      "issue": 591,
+      "reporter": "graememk",
+      "title": "U-turn drawn off to the side with an offset tool",
+      "reported": "With an offset tool the pass spacing was right but the line that follows the U-turn sat off to the side; the U-turn path showed the source or the end line depending on direction.",
+      "fixedBy": "#592",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/03/c3b9bda185150dac85fbdc8d23672293.zip",
+      "sha256": ""
+    },
+    {
+      "id": "591a",
+      "issue": 591,
+      "reporter": "graememk",
+      "title": "Offset tool: U-turn paths beyond the boundary (later build)",
+      "reported": "On a later build, with an offset tool, the offset U-turn paths appeared to go outside the boundary.",
+      "fixedBy": "#592 (confirmed on 26.7.2)",
+      "url": "https://github.com/user-attachments/files/34451570/bugreport_u-turn-with-offset-beyond-boundary_20261105_223716.zip",
+      "sha256": "5ab71e140961e09171eec290be06ca8b45a28985a3227128caa22be00296d814"
+    },
+    {
+      "id": "679",
+      "issue": 679,
+      "reporter": "gunicsba",
+      "title": "Section painting ignores the section offset",
+      "reported": "With the sprayer offset by 1.5 m the painting appeared ahead of the sections; the map drew a trailed tool with the wrong pivot-distance sign (sections and coverage were right).",
+      "fixedBy": "#691",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/07/86a9fd416590bd98c5fd02507eb9cbdd.zip",
+      "sha256": ""
+    },
+    {
+      "id": "681",
+      "issue": 681,
+      "reporter": "gunicsba",
+      "title": "Manual section override only after the master section button",
+      "reported": "The section buttons appeared only after Auto or Manual was pressed; AgOpenGPS shows them as soon as a job starts.",
+      "fixedBy": "#705",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/07/2d0d1c082f989753fb7fd8b01bd87931.zip",
+      "sha256": ""
+    },
+    {
+      "id": "683",
+      "issue": 683,
+      "reporter": "gunicsba",
+      "title": "Create an AB line from the map overview",
+      "reported": "The menu to draw an AB line or curve on the field map (AgOpenGPS: the tracks pencil menu) was not found; it is in Field Builder > Tracks.",
+      "fixedBy": "",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/07/cea35a0200ccf7202a36fff416813db0.zip",
+      "sha256": ""
+    },
+    {
+      "id": "692",
+      "issue": 692,
+      "reporter": "graememk",
+      "title": "Headland U-turn going outside the boundary",
+      "reported": "A U-turn to an edge pass went outside the boundary (no headland, an AgShare driven boundary with a curved corner): the unchecked fallback semicircle, up to 17 m out.",
+      "fixedBy": "#698 (and #716, #721)",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/07/12d7294a14f092aef001bff56e65aed1.zip",
+      "sha256": ""
+    },
+    {
+      "id": "693",
+      "issue": 693,
+      "reporter": "graememk",
+      "title": "No valid U-turn: the direction control is not shown",
+      "reported": "On an AB curve no headland turn was planned and the direction arrow was not shown to send it the other way (the tractor was stopped inside the headland band).",
+      "fixedBy": "#700",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/07/e00d31937f911456b70c6e09d8373499.zip",
+      "sha256": ""
+    },
+    {
+      "id": "694",
+      "issue": 694,
+      "reporter": "graememk",
+      "title": "Boundary AB curve: the straight edge has tails",
+      "reported": "A boundary curve from Quick AB loops the long way round; its 200 m straight extensions overlapped along one side and the tractor followed the extension instead of the curve.",
+      "fixedBy": "#699",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/07/646de08f1a7a8360275e0ea55d152ebb.zip",
+      "sha256": ""
+    },
+    {
+      "id": "695",
+      "issue": 695,
+      "reporter": "graememk",
+      "title": "Field Builder tracks and Tracks menu disagree",
+      "reported": "Tracks unticked in Tracks > Manage AB lines still showed in the Field Builder but could not be made active; tracks could be renamed in one place only.",
+      "fixedBy": "#701",
+      "url": "https://agopenweb-dumps.agopenweb.workers.dev/v1/dumps/2026/11/07/7c1ea5b846d78a5e4e98d2d99e19b99f.zip",
+      "sha256": ""
+    }
+  ]
+}
