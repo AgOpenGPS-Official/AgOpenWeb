@@ -481,6 +481,7 @@ turns from the on-screen buttons) with paths built by `YouTurnCreationService`:
 - Manual: a Dubins path at the configured `UTurnRadius` from 4 m ahead of the tractor to the point abreast on the target pass (an omega when the radius exceeds half the pass offset), laid out along the track's local heading (the curve's heading at the nearest point); the path's first point is the tractor itself. Like AgOpenGPS `BuildManualYouTurn`.
 - The turn hands back to line guidance with 4 m of arc remaining (`EarlyCompletionLookahead`).
 - The turn is built from the headland crossing **ahead** of the tractor (`FindTrackHeadlandIntersectionAhead`; one behind only past the last crossing). When no real turn fits, the simple fallback (a semicircle) is used only if every point of it stays in the field, outside obstacles a turn may not drive through (`LeavesField`, #698); otherwise no turn and the creation-failed sound, as AgOpenGPS (which has no fallback). A hard boundary refuses a turn that would start under or behind the tractor.
+- The next pass must have room at this end: at least 20 m of it inside the cultivated area back from the end ahead (`IsPathLandable` / `LandingLength`), not just any piece of it inside the field; otherwise "End of field reached - no room on the next pass at this end" (#712). Driving on across a headland gap to the next piece is not done (an enhancement).
 
 Key parameters:
 - `HeadlandDistance` - width of headland zone (green to yellow line)
