@@ -85,7 +85,9 @@ document.getElementById('fb-trk-deleteall').addEventListener('pointerdown', e =>
     () => { if (iHoldControl) transport.send('track.deleteAll'); fbSel = -1; });
 });
 document.getElementById('fb-trk-rename').addEventListener('pointerdown', e => {
-  e.stopPropagation();
+  // preventDefault: with a mouse, the button took the focus right after the name box got it,
+  // and the blur closed the box before anything could be typed.
+  e.preventDefault(); e.stopPropagation();
   const tl = scene && scene.trackList; if (fbSel < 0 || !tl || !tl[fbSel]) return;
   const t = tl[fbSel];
   renderFbTracks();
