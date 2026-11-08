@@ -149,6 +149,7 @@ do not (`RigJobs.cs`), with the careful operator:
 | J17 | Tapada da Casa | A trailed manure spreader, a 12 m bout centred 4 m behind its axle |
 | J18 | Olival | A 5 m trailed disc harrow on wheels in the middle of its frame |
 | J19 | Olival | A 6-furrow mounted reversible plough (2.7 m) at 7 km/h: it keeps to one side of the field whichever way it is driven, which AgOpenWeb's tool offset can't say |
+| J20 | Olival | The J14 tractor and settings (Keyhole, radius 4.3 m) with a 3.2 m seeding roller towed from a bar on the lift arms, which swings 60° each way before it stops |
 
 On these jobs the implement is also measured against the pass it should be on (`OFF-ITS-PASS`,
 from 30 s after each turn), and where each U-turn's exit leg put it: with an implement to one side
@@ -157,10 +158,11 @@ from the wrong side lands beside the pass and AutoSteer pulls the implement acro
 
 | Check | Finding |
 |---|---|
-| A U-turn's exit leg more than 1 m beside the pass the implement then works | `TURN-EXIT-OFF-PASS` |
+| A U-turn's exit leg more than a quarter of a pass (1 m at least) beside the pass the implement then works | `TURN-EXIT-OFF-PASS` |
 | The curve AgOpenWeb keeps away from where the implement was driven | `RECORDED-CURVE-SHIFTED` |
 | On the edge pass, no U-turn and AutoSteer driving on past the boundary | `EDGE-PASS-NO-TURN` |
 | A reversible plough shown across from where it works (no setting for an offset that keeps to one side of the field) | `REVERSIBLE-PLOUGH-NO-SETTING` |
+| Trailed and TBT, every job of the harness: the hitch angle (tractor to drawbar) reaching the angle where the drawbar touches a rear tyre, from the tractor's hitch, track and tyre size (`RearTyreRadius`, `RearTyreWidth`) and the drawbar's width where it passes the tyres (`DrawbarWidth`, 0.6 m by default for an A-frame), seen from above with the tyre's whole radius; or the implement's own swivel stop (`SwivelStopDeg`) when that comes first | `DRAWBAR-HITS-WHEEL` |
 
 ```bash
 dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedName~RigJobScenarioTests"
@@ -177,15 +179,15 @@ thing while a U-turn is planned or under way (`TurnInterventions.cs`), the repor
 | Job | What the operator does |
 |---|---|
 | T1, T2, T3 | Changes the U-turn radius (8 to 12 m), the distance from boundary (2 to 6 m) or the style (Sagitta to Keyhole), 10 s into the second turn |
-| T4 | Sets skip rows during a turn (#585): the next turn must skip |
+| T4 | Sets skip rows during a turn (#585): the next turn must skip, onto the side not yet worked |
 | T5 | Sets skip rows with the turn already planned (#410, #577): the turn must go two passes over, to the side it was going |
 | T6 | Taps the U-turn arrow twice before a turn: the turn must be as it was |
 | T7 | Nudges the line 50 cm during a turn (#93) |
 | T8 | Reverses 7 m in the middle of a turn (#588), then drives on |
 | T9 | Reverses out of a turn just finished (#588) |
-| T10 | Switches AutoSteer off half way round a turn and on again |
+| T10 | Switches AutoSteer off half way round a turn and on again (AgOpenWeb drops the turn; re-engaging should build it again) |
 | T11 | U-turns off: every turn made with the manual buttons (#272, #163) |
-| T12 | A manual U-turn in the middle of a pass, then automatic turns |
+| T12 | A manual U-turn in the middle of a pass, then automatic turns (the rest of that pass is left on purpose) |
 
 Each turn is watched from the action to 15 s after it ends: the path AgOpenWeb follows, the side
 it turns to, the pass the implement lands on.
@@ -193,16 +195,16 @@ it turns to, the pass the implement lands on.
 | Check | Finding |
 |---|---|
 | The turn dropped, or its path moved more than 1 m within 25 m of the tractor | `TURN-LOST`, `TURN-CHANGED-MID-TURN` |
-| The turn going to the other side, or landing on another pass than planned (or than the change asks for) | `TURN-SIDE-CHANGED`, `TURN-LANDED-ELSEWHERE`, `SKIP-NOT-APPLIED` |
+| The turn going to the other side, or landing on another pass than planned (or than the change asks for); skip rows turning back over passes already worked | `TURN-SIDE-CHANGED`, `TURN-LANDED-ELSEWHERE`, `SKIP-NOT-APPLIED`, `SKIP-TURNS-BACK` |
 | Reversing: the turn made again, or the pass lost | `TURN-REPEATED`, `PASS-LOST-REVERSING` |
-| Manual turns refused, ending before the tractor is on the next pass, or landing elsewhere | `MANUAL-TURN-REFUSED`, `MANUAL-TURN-ENDS-EARLY`, `MANUAL-TURN-WRONG-PASS` |
+| Manual turns refused, handing back to the line earlier than the automatic ones (4 m of arc left, more than 10° beyond it), or landing elsewhere | `MANUAL-TURN-REFUSED`, `MANUAL-TURN-ENDS-EARLY`, `MANUAL-TURN-WRONG-PASS` |
 | After a manual turn mid-pass, the automatic turns not going on to the next pass | `PATTERN-LOST` |
 
 ```bash
 dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedName~TurnInterventionScenarioTests"
 ```
 
-About an hour; nightly on develop (`.github/workflows/turn-intervention-scenarios.yml`). The report
+About half an hour; nightly on develop (`.github/workflows/turn-intervention-scenarios.yml`). The report
 goes to `turn-intervention-scenarios-report.md`.
 
 ## Imperial units: the same job typed in feet and inches

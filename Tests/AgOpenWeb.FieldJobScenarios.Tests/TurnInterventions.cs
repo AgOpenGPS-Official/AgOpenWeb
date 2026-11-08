@@ -50,7 +50,7 @@ public static class TurnInterventions
             {
                 OnFix = Seq(InTurnAfter(2, 10, async r =>
                 {
-                    await w.SnapAsync(r, "skip rows on");
+                    await w.SnapAsync(r, "set skip rows on");
                     await r.SendAsync("youturn.skipToggle");
                     r.Did("skip rows ON, alternative 1 row (turn 2 in progress)");
                 }), w.TrackAsync),
@@ -58,12 +58,17 @@ public static class TurnInterventions
                 {
                     w.Judge(sc, r, flag);
                     var next = r.Turns.FirstOrDefault(t => t.Index == 3);
+                    var prev = r.Turns.FirstOrDefault(t => t.Index == 2);
                     if (next is { TruthPassBefore: not int.MinValue, TruthPassAfter: not int.MinValue })
                     {
-                        int step = Math.Abs(next.TruthPassAfter - next.TruthPassBefore);
-                        if (step != 2)
+                        int d = next.TruthPassAfter - next.TruthPassBefore, step = Math.Abs(d);
+                        // The way the turns had been stepping across the field: the worked side is behind.
+                        int way = prev is { TruthPassBefore: not int.MinValue, TruthPassAfter: not int.MinValue } ? Math.Sign(prev.TruthPassAfter - prev.TruthPassBefore) : 0;
+                        if (way != 0 && Math.Sign(d) == -way)
+                            flag(Severity.Bug, "SKIP-TURNS-BACK", JobRun.F($"skip rows (alternative, 1 row) was set during turn 2; turn 3 went from pass {next.TruthPassBefore} back to pass {next.TruthPassAfter}, over passes already worked (the turns had been stepping from pass {prev!.TruthPassBefore} to {prev.TruthPassAfter}). Switched on after the first turn, alternative skip takes its first direction from the pass number's sign: HandleAlternateCreation asks WouldNextLineBeInsideBoundary without the way the turns step (keepPositive null), the rule #523 removed from the plain turns."));
+                        else if (step != 2)
                             flag(Severity.Bug, "SKIP-NOT-APPLIED", JobRun.F($"skip rows (alternative, 1 row) was set during turn 2; turn 3 went from pass {next.TruthPassBefore} to pass {next.TruthPassAfter} ({step} over), not 2 over."));
-                        else sc.Ok(JobRun.F($"the next turn skipped a row: pass {next.TruthPassBefore} -> {next.TruthPassAfter}"));
+                        else sc.Ok(JobRun.F($"the next turn skipped a row, on the side not yet worked: pass {next.TruthPassBefore} -> {next.TruthPassAfter}"));
                     }
                 },
             };
@@ -75,7 +80,7 @@ public static class TurnInterventions
             {
                 OnFix = Seq(BeforeTurnPlanned(2, 40, async r =>
                 {
-                    await w.SnapAsync(r, "skip rows on", expectStep: 2);
+                    await w.SnapAsync(r, "set skip rows on", expectStep: 2);
                     await r.SendAsync("youturn.skipToggle");
                     r.Did("skip rows ON, alternative 1 row (turn 2 planned, not started)");
                 }), w.TrackAsync),
@@ -89,7 +94,7 @@ public static class TurnInterventions
             {
                 OnFix = Seq(BeforeTurnPlanned(2, 40, async r =>
                 {
-                    await w.SnapAsync(r, "arrow tapped twice");
+                    await w.SnapAsync(r, "tapped the direction arrow twice");
                     await r.SendAsync("youturn.direction");
                     // The tap is taken on the next cycle: one fix between the two taps, as a hand would.
                     w.SecondTapPending = true;
@@ -117,7 +122,7 @@ public static class TurnInterventions
                 Expected = new[] { "MISSED-STRIPS", "DOUBLE-SPRAYED" },
                 OnFix = Seq(InTurnAfter(2, 10, async r =>
                 {
-                    await w.SnapAsync(r, "nudged 50 cm right");
+                    await w.SnapAsync(r, "nudged the line 50 cm right");
                     await r.SendAsync("track.nudgeRight");
                     r.Did("nudged the track 50 cm right (turn 2 in progress)");
                 }), w.TrackAsync),
@@ -132,7 +137,7 @@ public static class TurnInterventions
             {
                 OnFix = Seq(InTurnAfter(2, 12, async r =>
                 {
-                    await w.SnapAsync(r, "reversing");
+                    await w.SnapAsync(r, "started reversing");
                     r.Truth.SpeedKmh = -3; at = r.Fix;
                     r.Did("reversing at 3 km/h (turn 2 in progress)");
                 }), r =>
@@ -156,11 +161,11 @@ public static class TurnInterventions
             var w = new TurnWatch();
             int offAt = -1;
             yield return Olival("T10", "AutoSteer off half way round a turn, on again",
-                "Ten seconds into the second U-turn the operator switches AutoSteer off, holds the wheel where it was for 3 s, and switches it on again. AgOpenWeb must take up the same turn and land on its pass.") with
+                "Ten seconds into the second U-turn the operator switches AutoSteer off, holds the wheel where it was for 3 s, and switches it on again (a touch on the wheel, a bump of the button). AgOpenWeb drops the turn when AutoSteer goes off; re-engaging is meant to build it again from scratch (GpsPipelineService). Does it, with the tractor already in the headland, and does the turn land on its pass?") with
             {
                 OnFix = Seq(InTurnAfter(2, 10, async r =>
                 {
-                    await w.SnapAsync(r, "AutoSteer off");
+                    await w.SnapAsync(r, "switched AutoSteer off");
                     double hold = r.Truth.Steer;
                     r.ExpectEngaged = false;
                     r.HandSteer = () => hold;
@@ -187,7 +192,7 @@ public static class TurnInterventions
         {
             var m = new ManualTurns();
             yield return Olival("T11", "U-turns made by hand with the manual buttons (#272, #163)",
-                "Automatic U-turns off. At each end the operator taps the manual U-turn button towards the unworked side as the tractor crosses the headland line, AutoSteer on; the job ends when no pass is left. Each turn must start, land on the next pass and hand back to the line square to it.") with
+                "Automatic U-turns off. At each end the operator taps the manual U-turn button towards the unworked side as the tractor crosses the headland line, AutoSteer on; the job ends when no pass is left. Each turn must start, land on the next pass and hand back to the line as the automatic turns do.") with
             {
                 UTurns = false,
                 OnFix = m.OnFixAsync,
@@ -410,16 +415,23 @@ public static class TurnInterventions
         public void Judge(Scenario sc, JobRun r, Action<Severity, string, string> flag)
         {
             int refused = Taps.Count(t => !t.Started && !r.Turns.Any(x => Math.Abs(x.StartSeconds - t.At) < 1.5));
-            var early = r.Turns.Where(t => !double.IsNaN(t.EndHeadingOffDeg) && (t.EndHeadingOffDeg > 15 || t.EndOffPassM > 1.0)).ToList();
+            // A turn hands back to the line with 4 m of its arc left (EarlyCompletionLookahead), the
+            // automatic ones and the manual ones alike: 4/R radians off the pass at the hand-back.
+            double handBackDeg = 4.0 / Math.Max(r.Spec.UTurnRadius, 1) * 180 / Math.PI, limitDeg = handBackDeg + 10;
+            var early = r.Turns.Where(t => !double.IsNaN(t.EndHeadingOffDeg) && t.EndHeadingOffDeg > limitDeg).ToList();
             var wrong = r.Turns.Where(t => t.TruthPassBefore != int.MinValue && t.TruthPassAfter != int.MinValue && t.TruthPassAfter - t.TruthPassBefore != 1).ToList();
-            sc.Row.Metrics.Add(("Manual U-turns tapped / started / ended with the tractor square to the next pass and on it (heading within 15°, implement within 1 m) / landed on the next pass", JobRun.F($"{Taps.Count} / {r.Turns.Count} / {r.Turns.Count - early.Count} / {r.Turns.Count(t => t.TruthPassAfter != int.MinValue && t.TruthPassAfter - t.TruthPassBefore == 1)}")));
+            var ended = r.Turns.Where(t => !double.IsNaN(t.EndHeadingOffDeg)).ToList();
+            sc.Row.Metrics.Add((JobRun.F($"Manual U-turns tapped / started / handed back to the line as designed (4 m of arc left: {handBackDeg:0}° off the pass, flagged beyond {limitDeg:0}°) / landed on the next pass; at the hand-back the most off the pass direction / the implement furthest from its pass"), JobRun.F($"{Taps.Count} / {r.Turns.Count} / {r.Turns.Count - early.Count} / {r.Turns.Count(t => t.TruthPassAfter != int.MinValue && t.TruthPassAfter - t.TruthPassBefore == 1)}; {(ended.Count > 0 ? ended.Max(t => t.EndHeadingOffDeg) : 0):0}° / {(ended.Count > 0 ? ended.Max(t => t.EndOffPassM) : 0):0.0} m")));
             if (Taps.Count == 0) { sc.Note("the operator never reached a headland line with AutoSteer on"); return; }
+            var outside = r.Turns.Where(t => t.MaxPivotOutsideM > 0.5).ToList();
+            if (outside.Count > 0)
+                sc.Note(JobRun.F($"manual U-turns are built with no look at the boundary (a Dubins path from 4 m ahead of the tractor, as AgOpenGPS's BuildManualYouTurn): tapped at the headland line of a {r.Spec.HeadlandM:0} m headland, radius {r.Spec.UTurnRadius:0} m for {r.Spacing:0} m passes, {outside.Count} of {r.Turns.Count} took the tractor past the boundary, up to {outside.Max(t => t.MaxPivotOutsideM):0.0} m. A manual turn that would leave the field could be refused as an automatic one is (LeavesField, #698)"));
             if (refused > 0)
                 flag(Severity.Bug, "MANUAL-TURN-REFUSED", JobRun.F($"{refused} of {Taps.Count} taps on the manual U-turn button started no turn: {Taps.First(t => !t.Started).Said}"));
             if (early.Count > 0)
             {
                 var w = early.OrderByDescending(t => t.EndHeadingOffDeg).First();
-                flag(Severity.Bug, "MANUAL-TURN-ENDS-EARLY", JobRun.F($"{early.Count} of {r.Turns.Count} manual U-turns ended with the tractor not yet on the next pass: turn {w.Index} ended {w.EndHeadingOffDeg:0}° off the pass direction with the implement {w.EndOffPassM:0.0} m from the nearest pass, and AutoSteer took the line from there."));
+                flag(Severity.Bug, "MANUAL-TURN-ENDS-EARLY", JobRun.F($"{early.Count} of {r.Turns.Count} manual U-turns handed back to the line earlier than designed: turn {w.Index} ended {w.EndHeadingOffDeg:0}° off the pass direction (4 m of arc left is {handBackDeg:0}°) with the implement {w.EndOffPassM:0.0} m from the nearest pass, and AutoSteer took the line from there."));
             }
             if (wrong.Count > 0)
             {
@@ -427,7 +439,7 @@ public static class TurnInterventions
                 flag(Severity.Bug, "MANUAL-TURN-WRONG-PASS", JobRun.F($"{wrong.Count} of {r.Turns.Count} manual U-turns did not land on the next pass: turn {w.Index} from pass {w.TruthPassBefore} to pass {w.TruthPassAfter}."));
             }
             if (refused == 0 && early.Count == 0 && wrong.Count == 0)
-                sc.Ok(JobRun.F($"all {r.Turns.Count} manual U-turns started, landed on the next pass and ended square to it"));
+                sc.Ok(JobRun.F($"all {r.Turns.Count} manual U-turns started, landed on the next pass and handed back to the line as designed (at most {(ended.Count > 0 ? ended.Max(t => t.EndHeadingOffDeg) : 0):0}° off the pass, {handBackDeg:0}° for 4 m of arc left)"));
         }
     }
 
@@ -445,6 +457,9 @@ public static class TurnInterventions
             var tc = r.Truth.ToolCentre; _from = PassAt(r, (tc.E, tc.N));
             bool sameWay = Math.Cos(r.Truth.Heading - r.Frame.TangentHeading((r.Truth.E, r.Truth.N))) > 0;
             _left = !sameWay;
+            // The rest of this pass, ahead of where the operator turns back, is left on purpose.
+            double s0 = r.Spacing, k = _from, vTap = r.Vv((tc.E, tc.N)), way = sameWay ? 1 : -1;
+            r.LeftOnPurpose = p => { double u = r.U(p); return u > k * s0 - 0.3 && u < (k + 1) * s0 + 0.3 && way * (r.Vv(p) - vTap) > -3; };
             await r.SendAsync(_left ? "youturn.manualLeft" : "youturn.manualRight");
             _said = string.Join(" | ", r.Collect().Select(s => { r.Said.Add(JobRun.F($"{r.Seconds:0.0} s: {s}")); return s; }).TakeLast(2));
             r.Did(JobRun.F($"manual U-turn {(_left ? "left" : "right")} in the middle of pass {_from} (30 s after turn 2)"));

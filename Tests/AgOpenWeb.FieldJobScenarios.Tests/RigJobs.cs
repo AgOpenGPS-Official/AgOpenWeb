@@ -61,6 +61,10 @@ public static class RigJobs
             "The Case Puma with a 5 m trailed disc harrow whose wheels sit in the middle of the frame, so the discs work around its axle 3.5 m behind the drawbar (pivot to tool 0), one section, AB line at 159°, headland 16 m.",
             "Olival", "AB 159 deg", Machines.Puma, Machines.DiscHarrow5, Puma)
         { PassCheck = true };
+        yield return new JobSpec("J20", "Olival, Renato's seeding roller on a bar on the lift arms, Keyhole turns",
+            "The Case Maxxum with a 3.2 m seeding roller towed from a bar across the lift arms (the pivot taken as the drill's, 1.54 m behind the rear axle; the roller 2.0 m behind it is its own axle, assumed), which swings about 60° each way before the bar stops it (120° in all), one section, AB line at 159°, J14's page settings: radius 4.3 m, Keyhole, distance from boundary 2.8 m, extension 12.5 m, headland 18 m. Does a Keyhole turn ask the roller to swing past its stop?",
+            "Olival", "AB 159 deg", Machines.Maxxum, Machines.Roller32, Puma)
+        { HeadlandM = 18, UTurnRadius = 4.3, UTurnDistanceFromBoundary = 2.8, UTurnStyle = 2, Extra = new[] { "uturn.extension:12.5" }, PassCheck = true };
         var plough = new PloughWatch();
         yield return new JobSpec("J19", "Olival, a mounted reversible plough (6 furrows)",
             "The Case Puma with a 6-furrow reversible plough (2.7 m), 7 km/h, AB line at 159°, headland 16 m. The plough turns over at each end so it always throws the soil the same way: its working width sits 0.9 m to the same side of the field whichever way the tractor drives. AgOpenWeb's tool offset is to one side of the tractor and would change side with it, so the operator leaves it at 0. Do the passes still meet, and where does AgOpenWeb show the plough?",

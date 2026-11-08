@@ -112,6 +112,7 @@ public sealed class TurnRecord
     public bool Fallback;               // AgOpenWeb used its simple fallback path for this turn
     public bool Left;
     public double MinSpeedKmh = 99;
+    public double MaxHitchDeg;          // trailed / TBT: the largest angle between the tractor and the drawbar
     public double HeadingAtStart, UAtStart, TangentAtStart;
     /// <summary>Seconds into the turn when the tractor was back on a pass line, facing the other
     /// way, inside the cultivated area (the turn done on the ground); -1 if never seen.</summary>
@@ -238,6 +239,9 @@ public sealed class JobRun : IAsyncDisposable
     public double ToolAlongSum, ToolAcrossSum, ToolAlongMax, ToolAcrossMax; public int ToolSamples;
     /// <summary>Seconds the module was told geo-stop (PGN 239 byte 9) while the job ran.</summary>
     public double SecondsGeoStop;
+    /// <summary>Trailed / TBT: the largest angle between the tractor and the drawbar over the whole job, and where.</summary>
+    public double MaxHitchDeg;
+    public string MaxHitchWhere = "";
     /// <summary>How many fixes behind the receiver AgOpenWeb's last cycle is: for each fix, the
     /// recent truth pivot position nearest AgOpenWeb's own pivot. Histogram by fixes of lag.</summary>
     public readonly int[] LagHistogram = new int[40];
@@ -601,6 +605,7 @@ public sealed class JobRun : IAsyncDisposable
                     turn.MaxOutsideM = Math.Max(turn.MaxOutsideM, outside);
                     turn.MaxPivotOutsideM = Math.Max(turn.MaxPivotOutsideM, pivotOut);
                     turn.MinSpeedKmh = Math.Min(turn.MinSpeedKmh, Truth.SpeedKmh);
+                    turn.MaxHitchDeg = Math.Max(turn.MaxHitchDeg, Math.Abs(Truth.HitchAngleDeg));
                     if (turn.BackOnPassSeconds < 0)
                     {
                         double dh = Math.Abs(Math.IEEERemainder((Truth.Heading - Frame.TangentHeading((Truth.E, Truth.N))) - (turn.HeadingAtStart - turn.TangentAtStart) - Math.PI, 2 * Math.PI));
@@ -733,6 +738,12 @@ public sealed class JobRun : IAsyncDisposable
             }
             else offSince = -1;
 
+            double hitch = Math.Abs(Truth.HitchAngleDeg);
+            if (hitch > MaxHitchDeg)
+            {
+                MaxHitchDeg = hitch;
+                MaxHitchWhere = F($"at {Seconds:0} s, ({Truth.E:0},{Truth.N:0}){(InTurn ? F($", U-turn {TurnsStarted}") : "")}{(Truth.SpeedKmh < 0 ? ", reversing" : "")}");
+            }
             if (Spec.OnFix != null) await Spec.OnFix(this);
             if (PathOp != null) await PathOp.OnFixAsync(this);
 
@@ -750,9 +761,18 @@ public sealed class JobRun : IAsyncDisposable
             bool inWork = Ring.Inside((tc.E, tc.N), Work ?? Outer);
             if (FieldDone)
             {
-                if (inWork) inWorkSinceEnd = true;
-                else if (inWorkSinceEnd || (leftWorkAt >= 0 && Seconds - leftWorkAt > 6)) break;
-                if (!inWork && leftWorkAt < 0) leftWorkAt = Seconds;
+                // The operator drives the last pass to its end: AgOpenWeb says it as the last turn ends,
+                // the implement still in the headland (a front boom with a tight turn, a drill behind its
+                // tank take a while to come back in), and the pass may cross a bit of headland (round a
+                // bite in the boundary) and go on. Done when the implement is out of the cultivated area
+                // with none of it ahead (40 m), or after 45 s out of it.
+                if (inWork) { inWorkSinceEnd = true; leftWorkAt = -1; }
+                else
+                {
+                    if (leftWorkAt < 0) leftWorkAt = Seconds;
+                    if (Seconds - leftWorkAt > 45) break;
+                    if (!WorkAhead(tc, 40) && (inWorkSinceEnd || Seconds - leftWorkAt > 6)) break;
+                }
             }
             double far = OutsideBoundaryM().Worst;
             if (far > 25) { Problems.Add(F($"{Seconds:0.0} s: the tractor ran {far:0} m out of the field on pass {Pass}")); break; }
@@ -769,6 +789,15 @@ public sealed class JobRun : IAsyncDisposable
     }
 
     public (double E, double N, double Heading) ToolCentre() => Truth.ToolCentre;
+
+    /// <summary>Is the cultivated area straight ahead of the implement, within <paramref name="m"/> metres?</summary>
+    private bool WorkAhead((double E, double N, double Heading) tc, double m)
+    {
+        double fe = Math.Sin(tc.Heading), fn = Math.Cos(tc.Heading);
+        for (double d = 2; d <= m; d += 2)
+            if (Ring.Inside((tc.E + fe * d, tc.N + fn * d), Work ?? Outer)) return true;
+        return false;
+    }
 
     /// <summary>The pass the real implement is on (the nearest), on an AB line; int.MinValue otherwise.</summary>
     public int TruthPass()

@@ -328,10 +328,12 @@ public static class ImperialJobs
                 else sc.Ok("every box shows what was typed once AgOpenWeb has echoed it");
             }
 
-            // The field builder's offer: two tool widths, in feet.
+            // The field builder's offer: two tool widths, in feet. The width is the one AgOpenWeb keeps:
+            // a 1 m section typed as 39.4 in (the box's step) is 100.076 cm, so the boom is 8.006 m.
             if (!_careless)
             {
-                double twoWidths = 2 * r.Spec.T.Width;
+                var sectionsKept = _entries.Where(e => e.Key.StartsWith("tool.sectionWidth[", StringComparison.Ordinal) && e.Stored != null).ToList();
+                double twoWidths = 2 * (sectionsKept.Count == r.Spec.T.Sections ? sectionsKept.Sum(e => e.Stored!.Value) / 100.0 : r.Spec.T.Width);
                 if (double.IsNaN(_headlandOfferedM))
                     flag(Severity.Bug, "IMPERIAL-VALUE-OFF", F($"Field builder > Headland > Add offered nothing ('{_headlandOffered}'), wanted two tool widths ({twoWidths * FtPerM:0.00} ft)."));
                 else if (Math.Abs(_headlandOfferedM - twoWidths) > Tolerance("m"))

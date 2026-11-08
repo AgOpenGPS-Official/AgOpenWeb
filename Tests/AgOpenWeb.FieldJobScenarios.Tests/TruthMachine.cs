@@ -155,6 +155,23 @@ public sealed class TruthMachine
         ay = hy - dy / d * len;
     }
 
+    /// <summary>Trailed and TBT: the angle between the tractor and the drawbar of what it pulls
+    /// (the tank's for a TBT), degrees, + with the drawbar swung to the tractor's right; 0 otherwise.</summary>
+    public double HitchAngleDeg
+    {
+        get
+        {
+            if (T.Type is not ("trailing" or "tbt")) return 0;
+            var (hx, hy) = HitchPin;
+            double ax = T.Type == "tbt" ? TankAxE : ToolAxE, ay = T.Type == "tbt" ? TankAxN : ToolAxN;
+            // The drawbar points back from the pin; straight behind the tractor is 0.
+            double back = Math.Atan2(ax - hx, ay - hy), tractorBack = Heading + Math.PI;
+            double d = (back - tractorBack) % (2 * Math.PI);
+            if (d > Math.PI) d -= 2 * Math.PI; else if (d < -Math.PI) d += 2 * Math.PI;
+            return -d * 180 / Math.PI;
+        }
+    }
+
     public (double E, double N) HitchPin
     {
         get { var (de, dn) = Dir; return (E - de * V.HitchLength, N - dn * V.HitchLength); }
