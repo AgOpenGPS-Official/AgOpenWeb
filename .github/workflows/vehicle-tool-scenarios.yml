@@ -5,7 +5,8 @@ name: Vehicle & Tool Scenarios
 # steering motor) drives the whole backend in process, set up by a careful and a careless
 # operator. It takes minutes, so it runs nightly on develop, not on every PR (CI only builds it).
 # The run fails when the harness breaks; the findings are in the report, kept as an artifact
-# and shown in the run's summary.
+# and shown in the run's summary. The settings sweep (every guidance, AutoSteer, tool and
+# vehicle setting flipped, about 50 minutes) runs after the careful and careless operators.
 #
 #   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;
 #   - manual dispatch: always, on the branch picked.
@@ -36,8 +37,17 @@ concurrency:
 
 jobs:
   scenarios:
+    # The two operators and the settings sweep run as two jobs side by side, each on its own
+    # runner: together they no longer fit in one job's time.
+    strategy:
+      fail-fast: false
+      matrix:
+        part:
+          - { name: operators, who: 'careful,careless' }
+          - { name: sweep, who: sweep }
+    name: scenarios (${{ matrix.part.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
 
@@ -65,7 +75,8 @@ jobs:
         if: steps.fresh.outputs.run == 'true'
         env:
           AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/vehicle-tool-scenarios-report.md
-        run: dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ --filter "FullyQualifiedName~VehicleToolScenarioTests" --verbosity normal
+          AGOPENWEB_SCENARIO_OPERATOR: ${{ matrix.part.who }}
+        run: dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ -c Release --filter "FullyQualifiedName~VehicleToolScenarioTests" --verbosity normal
 
       - name: Report to the summary
         if: always() && steps.fresh.outputs.run == 'true'
@@ -82,7 +93,7 @@ jobs:
         if: always() && steps.fresh.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: vehicle-tool-scenarios-report
+          name: vehicle-tool-scenarios-report-${{ matrix.part.name }}
           path: ${{ runner.temp }}/vehicle-tool-scenarios-report.md
           if-no-files-found: ignore
           retention-days: 30
