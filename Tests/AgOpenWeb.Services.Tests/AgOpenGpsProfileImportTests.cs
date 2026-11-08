@@ -21,7 +21,8 @@ namespace AgOpenWeb.Services.Tests;
 
 /// <summary>
 /// AgOpenGPS 6.8.2+ keeps a tractor in <c>VehicleProfiles/</c>, an implement in <c>ToolProfiles/</c>,
-/// the U-turn and tram settings in <c>Environment/environment.xml</c> and the NTRIP caster in
+/// the U-turn and tram settings in <c>Environment/environment.xml</c> (<c>DefaultEnvironment.xml</c>
+/// on a fresh install) and the NTRIP caster in
 /// <c>AgIO/</c>. Copied into AgOpenWeb's data folder, each becomes an AgOpenWeb profile once, and
 /// the copied file is gone after.
 /// </summary>
@@ -156,6 +157,47 @@ public class AgOpenGpsProfileImportTests
             Assert.That(File.Exists(Path.Combine(_root, gone)), Is.False, gone + " is deleted once converted");
 
         Assert.That(AgOpenGpsProfileImport.Run(_root, vehicles, tools, (_, _) => { }).Any, Is.False, "nothing the second time");
+    }
+
+    [Test]
+    public void Run_FreshInstall_TakesTheEnvironmentFromDefaultEnvironment()
+    {
+        // A fresh AgOpenGPS 6.8.2+ install has no environment.xml (only converting a combined
+        // profile from before 6.8.2 makes one): it loads and saves DefaultEnvironment.xml.
+        var when = new DateTime(2026, 9, 1, 8, 0, 0, DateTimeKind.Utc);
+        Write("ToolProfiles/Sprayer.xml", when, ("setVehicle_toolWidth", "8"));
+        Write("Environment/DefaultEnvironment.xml", when, ("set_youTurnRadius", "6.5"), ("setTram_passes", "3"));
+        var tools = new Tools(Path.Combine(_root, "Tools"));
+
+        var result = AgOpenGpsProfileImport.Run(_root, Path.Combine(_root, "Vehicles"), tools, (_, _) => { });
+
+        Assert.That(result.Tools, Is.EqualTo(new[] { "Sprayer" }).AsCollection);
+        var tool = new ConfigurationStore();
+        Assert.That(tools.Load("Sprayer", tool), Is.True);
+        Assert.That(tool.Guidance.UTurnRadius, Is.EqualTo(6.5), "the U-turn from DefaultEnvironment.xml");
+        Assert.That(tool.Guidance.TramPasses, Is.EqualTo(3));
+        Assert.That(File.Exists(Path.Combine(_root, "Environment/DefaultEnvironment.xml")), Is.False, "deleted once converted");
+    }
+
+    [Test]
+    public void Run_EnvironmentXml_WinsOverDefaultEnvironment()
+    {
+        // With both, AgOpenGPS reads and saves environment.xml; DefaultEnvironment.xml is the
+        // install's leftover (as on a computer that converted a pre-6.8.2 profile).
+        var when = new DateTime(2026, 9, 1, 8, 0, 0, DateTimeKind.Utc);
+        Write("ToolProfiles/Sprayer.xml", when, ("setVehicle_toolWidth", "8"));
+        Write("Environment/environment.xml", when, ("set_youTurnRadius", "7.5"), ("setTram_passes", "4"));
+        Write("Environment/DefaultEnvironment.xml", when.AddDays(-30), ("set_youTurnRadius", "25"), ("setTram_passes", "1"));
+        var tools = new Tools(Path.Combine(_root, "Tools"));
+
+        AgOpenGpsProfileImport.Run(_root, Path.Combine(_root, "Vehicles"), tools, (_, _) => { });
+
+        var tool = new ConfigurationStore();
+        Assert.That(tools.Load("Sprayer", tool), Is.True);
+        Assert.That(tool.Guidance.UTurnRadius, Is.EqualTo(7.5), "environment.xml, as AgOpenGPS");
+        Assert.That(tool.Guidance.TramPasses, Is.EqualTo(4));
+        foreach (var gone in new[] { "Environment/environment.xml", "Environment/DefaultEnvironment.xml" })
+            Assert.That(File.Exists(Path.Combine(_root, gone)), Is.False, gone + " is deleted once converted");
     }
 
     [Test]

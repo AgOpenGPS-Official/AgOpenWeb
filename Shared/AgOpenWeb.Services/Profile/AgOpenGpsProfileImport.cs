@@ -23,7 +23,8 @@ public sealed record AgOpenGpsImport(IReadOnlyList<string> Vehicles, IReadOnlyLi
 /// A farmer moving over copies AgOpenGPS's <c>VehicleProfiles</c>, <c>ToolProfiles</c> and
 /// <c>Environment</c> folders into AgOpenWeb's data folder, beside <c>Fields</c>; each tractor
 /// becomes a vehicle profile (with its AutoSteer settings) and each implement a tool profile, the
-/// environment's U-turn, tram and GPS settings going to each. A profile AgOpenWeb already has by
+/// environment's U-turn, tram and GPS settings going to each (from <c>environment.xml</c>, or
+/// <c>DefaultEnvironment.xml</c> on a fresh install, as AgOpenGPS reads them). A profile AgOpenWeb already has by
 /// that name is left alone. As with an AgOpenGPS field, the copied files are deleted once
 /// converted, so a profile the farmer deletes later does not come back; AgOpenGPS's own folder is
 /// never touched.
@@ -34,6 +35,9 @@ public static class AgOpenGpsProfileImport
     public const string ToolProfilesFolder = "ToolProfiles";
     public const string EnvironmentFolder = "Environment";
     public const string EnvironmentFile = "environment.xml";
+    /// <summary>The environment file of a fresh AgOpenGPS 6.8.2+ install: <c>environment.xml</c> is
+    /// made only when a combined profile from before 6.8.2 is converted.</summary>
+    public const string DefaultEnvironmentFile = "DefaultEnvironment.xml";
 
     /// <summary>The guidance gains: AgOpenGPS 6.8.2+ keeps them with the implement, AgOpenWeb with
     /// the vehicle. They are taken from the implement AgOpenGPS saved last, the one in use.</summary>
@@ -57,8 +61,7 @@ public static class AgOpenGpsProfileImport
         if (vehicleFiles.Count + toolFiles.Count == 0)
             return AgOpenGpsImport.None;
 
-        string envPath = Path.Combine(dataRoot, EnvironmentFolder, EnvironmentFile);
-        var environment = TryRead(envPath) ?? new Dictionary<string, string>();
+        var environment = TryRead(EnvironmentPath(dataRoot)) ?? new Dictionary<string, string>();
         var fromImplements = new Dictionary<string, string>();
         if (toolFiles.Count > 0 && TryRead(toolFiles[0]) is { } inUse)
             foreach (var key in GuidanceKeys)
@@ -128,8 +131,20 @@ public static class AgOpenGpsProfileImport
         }
 
         if (vehicles.Count + toolNames.Count > 0)
-            TryDelete(envPath);
+        {
+            // Both copies: the one not read is AgOpenGPS's own leftover, of no use here.
+            TryDelete(Path.Combine(dataRoot, EnvironmentFolder, EnvironmentFile));
+            TryDelete(Path.Combine(dataRoot, EnvironmentFolder, DefaultEnvironmentFile));
+        }
         return new AgOpenGpsImport(vehicles, toolNames, skipped);
+    }
+
+    /// <summary>The environment file AgOpenGPS itself loads (its <c>Settings.Load</c>):
+    /// <c>environment.xml</c> when there is one, else <c>DefaultEnvironment.xml</c>.</summary>
+    private static string EnvironmentPath(string dataRoot)
+    {
+        string env = Path.Combine(dataRoot, EnvironmentFolder, EnvironmentFile);
+        return File.Exists(env) ? env : Path.Combine(dataRoot, EnvironmentFolder, DefaultEnvironmentFile);
     }
 
     /// <summary>A profile's <c>.xml</c> files, the one AgOpenGPS saved last first (ties by name).</summary>
