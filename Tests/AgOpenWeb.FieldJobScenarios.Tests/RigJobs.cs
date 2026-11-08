@@ -150,7 +150,7 @@ public static class RigJobs
         {
             if (_n == 0) return;
             double mean = _sum / _n, abs = _abs / _n, left = r.UnsprayedShare();
-            sc.Row.Metrics.Add(("AgOpenWeb's plough against the real one, across the field (mean / mean size)", JobRun.F($"{mean:+0.00;-0.00} m / {abs:0.00} m")));
+            sc.Row.Metrics.Add(("AgOpenWeb's plough against the real one, across the field (mean / mean size)", JobRun.F($"{mean:+0.00;-0.00;+0.00} m / {abs:0.00} m")));
             if (abs > 0.3)
                 flag(Severity.Improvement, "REVERSIBLE-PLOUGH-NO-SETTING", JobRun.F($"a reversible plough works {r.Spec.T.FieldOffset:0.0} m to the same side of the field whichever way it is driven; AgOpenWeb's tool offset is to one side of the tractor and changes side with it at every turn, so the offset stays at 0 and AgOpenWeb shows the plough {abs:0.00} m across from where it works on every pass (its map and section timing with it). The passes still meet ({left * 100:0.0} % of the cultivated area left). A 'reversible' setting (the offset kept to one side of the field) would put it right."));
             else sc.Ok(JobRun.F($"AgOpenWeb shows the plough where it works (within {abs:0.00} m across)"));

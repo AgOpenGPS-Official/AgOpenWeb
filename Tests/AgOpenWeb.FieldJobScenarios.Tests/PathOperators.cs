@@ -619,7 +619,7 @@ public sealed class LapOperator : PathOperator
     {
         sc.Row.Metrics.Add(("Laps / moves to the next lap: mean and longest time to settle on it", F($"{Laps} / {ChangeSeconds.Count}: {(ChangeSeconds.Count > 0 ? ChangeSeconds.Average() : 0):0.0} s and {(ChangeSeconds.Count > 0 ? ChangeSeconds.Max() : 0):0.0} s")));
         if (FitCentreErrorM is { } ce)
-            sc.Row.Metrics.Add(("AgOpenWeb's pivot circle: centre from the tower / reference radius against the field's edge", F($"{ce:0.00} m / {FitRadiusErrorM:+0.00;-0.00} m")));
+            sc.Row.Metrics.Add(("AgOpenWeb's pivot circle: centre from the tower / reference radius against the field's edge", F($"{ce:0.00} m / {FitRadiusErrorM:+0.00;-0.00;+0.00} m")));
     }
 
     public override void Judge(Scenario sc, JobRun r, JobAreas a, Action<Severity, string, string> flag)
@@ -644,7 +644,7 @@ public sealed class LapOperator : PathOperator
         if (LineCopyOff > 0.5) sc.Harness(F($"the harness's copy of AgOpenWeb's lap line was {LineCopyOff:0.00} m off the line AgOpenWeb shows: the next-lap check is not looking at AgOpenWeb's line"));
         if (ChangeTrouble.Count > 0) flag(Severity.Bug, "LAP-CHANGE-NOT-SETTLED", F($"{ChangeTrouble.Count} of {ChangeSeconds.Count} moves to the next lap never settled: {ChangeTrouble[0]}"));
         if (FitCentreErrorM is { } ce && (ce > 1.0 || Math.Abs(FitRadiusErrorM ?? 0) > 0.5))
-            flag(Severity.Bug, "PIVOT-CIRCLE-OFF", F($"AgOpenWeb's water pivot is off the real one: centre {ce:0.00} m from the tower, reference circle {FitRadiusErrorM:+0.00;-0.00} m from the field's edge; every circle is off by as much."));
+            flag(Severity.Bug, "PIVOT-CIRCLE-OFF", F($"AgOpenWeb's water pivot is off the real one: centre {ce:0.00} m from the tower, reference circle {FitRadiusErrorM:+0.00;-0.00;+0.00} m from the field's edge; every circle is off by as much."));
         // Where the lap line itself left the field, LAP-LINE-LEAVES-FIELD says it already.
         var outAt = _lineOut.Select(l => l.At).ToList();
         string? why = null;
@@ -663,7 +663,7 @@ public sealed class LapOperator : PathOperator
     {
         if (r.PassErrorSamples == 0) return;
         double mean = r.PassErrorSum / r.PassErrorSamples;
-        sc.Row.Metrics.Add(("The implement against its pass (the reference line offset by whole widths): mean / worst", F($"{mean:0.00} m / {r.PassErrorWorst:+0.00;-0.00} m (pass {r.PassErrorWhere.Pass}, at ({r.PassErrorWhere.E:0},{r.PassErrorWhere.N:0}), {r.PassErrorWhere.V:0} m along the line)")));
+        sc.Row.Metrics.Add(("The implement against its pass (the reference line offset by whole widths): mean / worst", F($"{mean:0.00} m / {r.PassErrorWorst:+0.00;-0.00;+0.00} m (pass {r.PassErrorWhere.Pass}, at ({r.PassErrorWhere.E:0},{r.PassErrorWhere.N:0}), {r.PassErrorWhere.V:0} m along the line)")));
         // The worst outside the places another finding already explains (the large errors are kept).
         double worst = r.PassErrorWorst; var where = r.PassErrorWhere;
         if (excused != null && excused((where.E, where.N)))

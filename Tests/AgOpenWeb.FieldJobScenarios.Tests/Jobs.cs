@@ -74,7 +74,7 @@ public static class Jobs
         sc.Row.Metrics.Add(("AgOpenWeb's worked area / area covered once vs the truth", F($"{a.AppTotalWorked / 1e4:0.00} / {a.AppActualCovered / 1e4:0.00} ha vs {(a.Sprayed + a.OutsideBoundary + a.InObstacles + a.InDriveThrough + a.InHeadland) / 1e4:0.00} ha")));
         sc.Row.Metrics.Add(("U-turns / passes / simulated time", F($"{r.Turns.Count} / {(r.PathOp != null ? r.PassesDriven : r.Turns.Count + 1)} / {r.Seconds / 60:0.0} min")));
         if (r.ToolSamples > 0)
-            sc.Row.Metrics.Add(("AgOpenWeb's tool position vs the real implement on the passes, along (+ ahead) / across (+ right), mean and worst", F($"{r.ToolAlongSum / r.ToolSamples:+0.00;-0.00} m ({r.ToolAlongMax:+0.00;-0.00}) / {r.ToolAcrossSum / r.ToolSamples:+0.00;-0.00} m ({r.ToolAcrossMax:+0.00;-0.00})")));
+            sc.Row.Metrics.Add(("AgOpenWeb's tool position vs the real implement on the passes, along (+ ahead) / across (+ right), mean and worst", F($"{r.ToolAlongSum / r.ToolSamples:+0.00;-0.00;+0.00} m ({r.ToolAlongMax:+0.00;-0.00;+0.00}) / {r.ToolAcrossSum / r.ToolSamples:+0.00;-0.00;+0.00} m ({r.ToolAcrossMax:+0.00;-0.00;+0.00})")));
         sc.Row.Metrics.Add(("AgOpenWeb's position behind the receiver's (harness pace check): median lag in fixes of 0.1 s / GPS cycles run of fixes sent", F($"{r.MedianLagFixes} / {r.CyclesAtEnd} of {r.FixesAtEnd}")));
         if (r.SecondsGeoStop > 0)
             sc.Row.Metrics.Add(("Geo-stop sent to the module (tractor out of bounds)", F($"{r.SecondsGeoStop:0.0} s")));
@@ -174,7 +174,7 @@ public static class Jobs
             sc.Ok(F($"everything sprayed is on the map ({a.SprayedNotAppPainted:0} m² not)"));
         double truthTotal = a.Sprayed + a.OutsideBoundary + a.InObstacles + a.InDriveThrough + a.InHeadland;
         if (truthTotal > 0 && Math.Abs(a.AppActualCovered - truthTotal) > 0.05 * truthTotal)
-            flag(Severity.Inconsistency, "APP-AREA-OFF", F($"AgOpenWeb's 'area covered once' is {a.AppActualCovered / 1e4:0.00} ha, the real implement sprayed {truthTotal / 1e4:0.00} ha ({(a.AppActualCovered / truthTotal - 1) * 100:+0.0;-0.0} %)."));
+            flag(Severity.Inconsistency, "APP-AREA-OFF", F($"AgOpenWeb's 'area covered once' is {a.AppActualCovered / 1e4:0.00} ha, the real implement sprayed {truthTotal / 1e4:0.00} ha ({(a.AppActualCovered / truthTotal - 1) * 100:+0.0;-0.0;+0.0} %)."));
         else
             sc.Ok(F($"AgOpenWeb's area covered once ({a.AppActualCovered / 1e4:0.00} ha) matches the truth ({truthTotal / 1e4:0.00} ha)"));
 
@@ -194,9 +194,9 @@ public static class Jobs
         {
             double along = r.ToolAlongSum / r.ToolSamples, across = r.ToolAcrossSum / r.ToolSamples;
             if (Math.Abs(along) > 0.5 || Math.Abs(across) > 0.3)
-                flag(Severity.Bug, "TOOL-POSITION-OFF", F($"on the passes AgOpenWeb places the implement {along:+0.00;-0.00} m along the track and {across:+0.00;-0.00} m across from where the real {spec.T.Name} is (hitch {spec.T.HitchLength:0.0} m, pivot to tool {spec.T.ToolToPivot:0.0} m, offset {spec.T.Offset:0.0} m); its map and section timing are shifted by that much."));
+                flag(Severity.Bug, "TOOL-POSITION-OFF", F($"on the passes AgOpenWeb places the implement {along:+0.00;-0.00;+0.00} m along the track and {across:+0.00;-0.00;+0.00} m across from where the real {spec.T.Name} is (hitch {spec.T.HitchLength:0.0} m, pivot to tool {spec.T.ToolToPivot:0.0} m, offset {spec.T.Offset:0.0} m); its map and section timing are shifted by that much."));
             else
-                sc.Ok(F($"AgOpenWeb's implement position matches the real one on the passes ({along:+0.00;-0.00} m along, {across:+0.00;-0.00} m across)"));
+                sc.Ok(F($"AgOpenWeb's implement position matches the real one on the passes ({along:+0.00;-0.00;+0.00} m along, {across:+0.00;-0.00;+0.00} m across)"));
         }
 
         // ---- the turns
@@ -286,7 +286,7 @@ public static class Jobs
         sc.Row.Metrics.Add((JobRun.F($"U-turns whose exit leg put the implement on its next pass (within {limit:0.#} m) / measured; worst beside it"), JobRun.F($"{known.Count - off.Count} / {known.Count}; {known.Max(t => Math.Abs(t.ExitOffM)):0.00} m")));
         if (off.Count == 0) { sc.Ok(JobRun.F($"every U-turn's exit leg put the implement on the pass it then worked (worst {known.Max(t => Math.Abs(t.ExitOffM)):0.00} m beside it)")); return; }
         var w = off.OrderByDescending(t => Math.Abs(t.ExitOffM)).First();
-        string turns = string.Join(", ", off.Take(6).Select(t => JobRun.F($"{t.Index} ({(t.Left ? "left" : "right")}, {t.ExitOffM:+0.0;-0.0} m)")));
-        flag(Severity.Bug, "TURN-EXIT-OFF-PASS", JobRun.F($"{off.Count} of {known.Count} U-turns ended with the implement more than {limit:0.#} m beside the pass it then worked, so AutoSteer pulled it across in the headland: turns {turns}{(off.Count > 6 ? ", ..." : "")}; the worst {Math.Abs(w.ExitOffM):0.0} m (turn {w.Index}, pass {w.TruthPassBefore} -> {w.TruthPassAfter}, implement offset {r.Spec.T.Offset:+0.0;-0.0} m, {r.Spec.T.Width:0.#} m wide)."));
+        string turns = string.Join(", ", off.Take(6).Select(t => JobRun.F($"{t.Index} ({(t.Left ? "left" : "right")}, {t.ExitOffM:+0.0;-0.0;+0.0} m)")));
+        flag(Severity.Bug, "TURN-EXIT-OFF-PASS", JobRun.F($"{off.Count} of {known.Count} U-turns ended with the implement more than {limit:0.#} m beside the pass it then worked, so AutoSteer pulled it across in the headland: turns {turns}{(off.Count > 6 ? ", ..." : "")}; the worst {Math.Abs(w.ExitOffM):0.0} m (turn {w.Index}, pass {w.TruthPassBefore} -> {w.TruthPassAfter}, implement offset {r.Spec.T.Offset:+0.0;-0.0;+0.0} m, {r.Spec.T.Width:0.#} m wide)."));
     }
 }
