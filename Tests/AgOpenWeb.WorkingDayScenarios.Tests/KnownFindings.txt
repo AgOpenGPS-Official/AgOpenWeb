@@ -1,0 +1,3 @@
+# Finding codes already reported (an issue or a PR exists): the report marks them "Already
+# reported" instead of "New", so two nights' reports diff. One code per line; text after the
+# code is a note (the issue or PR number).
