@@ -182,4 +182,19 @@ public class CurveGuideLinesTests
         // 5.6 m passes (6 − 0.4); neighbours 5.6 ∓ 1.6 apart, 11.2 across the pass shown.
         foreach (double st in steps) Assert.That(new[] { 4.0, 7.2, 11.2 }, Does.Contain(st), string.Join(", ", steps));
     }
+
+    // #590: a water pivot gets no extra guidelines, as in AgOpenGPS.
+    [Test]
+    public void A_water_pivot_has_no_guidelines()
+    {
+        var pivot = new Models.Track.Track
+        {
+            Name = "Pivot",
+            Points = Enumerable.Range(0, 72).Select(i => new Vec3(-60 + 60 * Math.Cos(i * Math.PI / 36), 60 * Math.Sin(i * Math.PI / 36), 0)).ToList(),
+            Type = Models.Track.TrackType.WaterPivot,
+            IsClosed = true,
+        };
+        var g = Cycle(pivot, pass: 2);
+        Assert.That(g.GuideLines ?? new List<IReadOnlyList<Vec3>>(), Is.Empty);
+    }
 }

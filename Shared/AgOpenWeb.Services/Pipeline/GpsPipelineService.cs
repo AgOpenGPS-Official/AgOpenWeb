@@ -1916,10 +1916,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// same list is returned until the pass or the setting changes. With skip rows the pass a
     /// turn lands on can be driven either way, so while a turn is planned the alternation starts
     /// from its <paramref name="turnTarget"/>, driven the other way: the turn ends on a line (#591).
+    /// A water pivot has none: AgOpenGPS builds side guidelines only for tracks that aren't a
+    /// pivot (CABCurve.BuildCurveCurrentList), and rings round the centre were drawn (#590).
     /// </summary>
     private IReadOnlyList<IReadOnlyList<Vec3>> GuideLines(Models.Track.Track track, int pass, double widthMinusOverlap,
         double nudge, double toolShift, bool extend, int count, int? turnTarget)
     {
+        if (track.IsPivot) return Array.Empty<IReadOnlyList<Vec3>>();
         var key = (track, pass, widthMinusOverlap, nudge, toolShift, extend, count, turnTarget);
         if (_guideLines != null && _guideKey.Equals(key)) return _guideLines;
 
