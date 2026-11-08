@@ -163,6 +163,9 @@ jobs:
       # And the working day harness (working-day-scenarios.yml runs it).
       - name: Build Working Day Scenario harness
         run: dotnet build Tests/AgOpenWeb.WorkingDayScenarios.Tests/ --verbosity minimal
+      # And the dump replay harness (dump-replay-scenarios.yml runs it nightly).
+      - name: Build Dump Replay Scenario harness
+        run: dotnet build Tests/AgOpenWeb.DumpReplayScenarios.Tests/ --verbosity minimal
 
   # Work budgets for the GPS cycle and the 100 Hz control tick (Performance/HotPathBudgetTests):
   # a large field driven through the real pipeline, every cycle held to a budget of polygon
