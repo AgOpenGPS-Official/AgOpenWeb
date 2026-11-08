@@ -16,11 +16,17 @@ Three things stand around it:
   at 10 Hz, and the steer angle AgOpenWeb sends the steer module (PGN 254) steers it back.
 - **An emulated machine module** (`EmulatedSprayerModule.cs`, the Sprayer_ESP32 firmware's PGN
   handling) on 127.0.0.1:8888: it keeps PGN 235/236/238 in its flash, answers hellos, and opens
-  the valves PGN 239 (and 229 above 16 sections) asks for, shutting them 2 s after the last one.
+  the relays PGN 239 (and 229 above 16 sections) asks for, shutting them 2 s after the last one.
   An implement with more than 16 sections drives relay i from section i, as the Seeder_ESP32.
+  Behind each relay is a **valve with its own time**: product reaches the nozzles 1.0 s after
+  the relay closes and stops 0.5 s after it opens (`JobSpec.ValveOnS` / `ValveOffS`, AgOpenGPS's
+  default look-ahead, which is what it assumes a sprayer takes). Look-ahead is there to cover
+  that time, so the careful operator sets it to the valves' (`LookAheadMatchesValves`); C8 and
+  C16 don't.
 - **The truth coverage** (`TruthGrid.cs`): a 0.2 m grid over the field. Each fix, every section
   whose valve is open sweeps the strip between its previous and current ends into the grid.
-  So the grid holds where chemical really went, counted per pass, and knows for each cell
+  The sweep follows the nozzles, not the relays: since #714 the relays rightly lead the screen
+  by the look-ahead. So the grid holds where chemical really went, counted per pass, and knows for each cell
   whether it lies inside the boundary, inside the headland line, or inside an obstacle.
 
 A job (`JobRun.cs`): AgOpenWeb boots fresh; the operator types the Vehicle & Tool settings
@@ -46,7 +52,9 @@ its neighbours':
 | A U-turn that took the tractor or an implement end past the boundary | `TURN-OUTSIDE-BOUNDARY` |
 | U-turns missed or cancelled, AutoSteer dropping out | `TURN-MISSED`, `AUTOSTEER-DROPPED` |
 | The first U-turn arrow pointing at the edge the operator started from | `FIRST-TURN-TOWARD-EDGE` |
-| The screen's sections and the valves disagreeing | `VALVES-NOT-FOLLOWING`, `SECTION-WITHOUT-RELAY` |
+| The screen's sections and the nozzles disagreeing | `VALVES-NOT-FOLLOWING`, `SECTION-WITHOUT-RELAY` |
+| AgOpenWeb refused a U-turn and asked the operator to take over (the job stops there) | `TURN-REFUSED` |
+| The tractor more than 25 m out of the field with no such warning | `RAN-OFF` |
 
 Two operators:
 
@@ -55,7 +63,12 @@ Two operators:
   Tapada da Casa; the trailed 19-section seed drill on Baetas; a trailed 21 m cultivator on
   Couto Ribeira. Headland twice the implement wide, "Off outside boundary" on.
 - **Careless** (`CarelessOperator.cs`): the same jobs with one thing wrong or done at the wrong
-  moment.
+  moment. C8 sets look-ahead 1 s longer than the valves; C16 sets it to 0 s with the same
+  valves (AgOpenWeb's default before it took AgOpenGPS's 1.0 s / 0.5 s).
+
+When AgOpenWeb says "No U-turn fits inside the boundary at this end - take over manually", the
+operator takes over and the job stops (`TURN-REFUSED`), as a person would; before, AutoSteer
+was left to drive on and the job ended as a run-off.
 
 ## Running
 
@@ -67,6 +80,10 @@ A job is a field driven at about 12x real time: a few minutes for the small fiel
 minutes for the whole set. CI only builds it; the full run is nightly on develop
 (`.github/workflows/field-job-scenarios.yml`, also run by hand from Actions). The report goes
 to `field-job-scenarios-report.md` in the test output folder, or to `AGOPENWEB_SCENARIO_REPORT`.
+
+**One run at a time per machine.** The emulated module binds UDP 8888, so two runs side by side
+hear each other's section commands and both measure wrong valves without an error. A second run
+fails at once on a lock file (`agopenweb-field-job-scenarios.lock` in the temp folder).
 
 | Variable | Effect |
 |---|---|

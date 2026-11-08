@@ -1,5 +1,6 @@
 # The public Worker: POST /v1/reports from the app, plus the daily cron (pending issues,
-# storage pruning). Secrets: wrangler secret put GITHUB_APP_ID / GITHUB_APP_KEY.
+# storage pruning) and the nightly harness start (NIGHTLY_CRON, which must be one of the crons
+# below). Secrets: wrangler secret put GITHUB_APP_ID / GITHUB_APP_KEY.
 name = "agopenweb-bugreports"
 main = "src/reports.js"
 compatibility_date = "2026-09-01"
@@ -10,7 +11,9 @@ binding = "DUMPS"
 bucket_name = "agopenweb-bugreports"
 
 [triggers]
-crons = ["17 3 * * *"]
+# 03:17 UTC: pending issues + pruning. 03:07 UTC (21:07 US Central, 22:07 in summer time): the
+# nightly scenario harnesses, in by morning.
+crons = ["17 3 * * *", "7 3 * * *"]
 
 # Per IP: 2 reports a minute (the binding only counts over 10 s or 60 s; the daily caps
 # below are counted from the bucket).
@@ -21,13 +24,16 @@ simple = { limit = 2, period = 60 }
 
 [vars]
 GITHUB_REPO = "AgOpenGPS-Official/AgOpenWeb"
-DUMPS_URL = "https://agopenweb-dumps.CHANGE-ME.workers.dev"
+DUMPS_URL = "https://agopenweb-dumps.agopenweb.workers.dev"
 MAX_BYTES = "52428800"
 DAILY_CAP = "100"
 PER_IP_DAILY = "10"
 PRUNE_AT_BYTES = "9000000000"
 PRUNE_TO_BYTES = "8000000000"
 TRACKING_ISSUE = ""
+NIGHTLY_CRON = "7 3 * * *"
+NIGHTLY_REF = "develop"
+NIGHTLY_WORKFLOWS = "field-scenarios.yml,steer-wizard-scenarios.yml,vehicle-tool-scenarios.yml,machine-module-scenarios.yml,gps-ntrip-scenarios.yml,field-job-scenarios.yml,isobus-scenarios.yml"
 
 [observability]
 enabled = true

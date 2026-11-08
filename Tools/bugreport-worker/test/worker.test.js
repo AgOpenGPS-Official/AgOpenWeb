@@ -40,7 +40,7 @@ beforeEach(() => {
     GITHUB_APP_KEY: privateKey.export({ type: 'pkcs1', format: 'pem' }),
     DUMPS_URL: 'https://dumps.example', PRUNE_AT_BYTES: '1000', PRUNE_TO_BYTES: '500',
   };
-  github = { up: true, issues: [], comments: [], closed: [], users: ['crf767'] };
+  github = { up: true, issues: [], comments: [], closed: [], users: ['crf767'], dispatched: [], refuse: [] };
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const reply = (status, body) => new Response(JSON.stringify(body), { status });
@@ -55,6 +55,12 @@ beforeEach(() => {
     const user = /^\/users\/([^/]+)$/.exec(u.pathname);
     if (user) return github.users.includes(user[1]) ? reply(200, { login: user[1] }) : reply(404, { message: 'Not Found' });
     if (u.pathname === '/repos/org/repo/issues') return reply(200, github.closed.map(number => ({ number })));
+    const wf = /^\/repos\/org\/repo\/actions\/workflows\/([^/]+)\/dispatches$/.exec(u.pathname);
+    if (wf && init.method === 'POST') {
+      if (github.refuse.includes(wf[1])) return reply(404, { message: 'Not Found' });
+      github.dispatched.push({ workflow: wf[1], ...JSON.parse(init.body) });
+      return new Response(null, { status: 204 });
+    }
     const c = /^\/repos\/org\/repo\/issues\/(\d+)\/comments$/.exec(u.pathname);
     if (c) { github.comments.push({ issue: +c[1], ...JSON.parse(init.body) }); return reply(201, {}); }
     return reply(404, {});
@@ -162,9 +168,9 @@ test('GitHub down: stored, 202, and the cron opens the issue later', async () =>
   assert.equal([...env.DUMPS.objects.keys()].filter(k => k.startsWith('pending/')).length, 0);
 });
 
-async function run(handler) {
+async function run(handler, event = {}) {
   const waits = [];
-  await handler({}, env, { waitUntil: p => waits.push(p) });
+  await handler(event, env, { waitUntil: p => waits.push(p) });
   await Promise.all(waits);
 }
 
@@ -181,4 +187,20 @@ test('cron prunes closed-issue dumps first and tells open issues it removed thei
   assert.deepEqual(github.comments.map(c => c.issue), [10]);
   await run(worker.scheduled); // 300 bytes: nothing more
   assert.equal(dumps().length, 1);
+});
+
+test('the nightly cron starts every harness on develop as a nightly run, and only that', async () => {
+  Object.assign(env, { NIGHTLY_CRON: '7 3 * * *', NIGHTLY_REF: 'develop', NIGHTLY_WORKFLOWS: 'a.yml, b.yml,c.yml' });
+  await env.DUMPS.put('dumps/2026/01/01/x.zip', new Uint8Array(1100), { customMetadata: { issue: '11' } });
+  github.closed = [11];
+  github.refuse = ['b.yml']; // one that can't start doesn't stop the rest
+  await run(worker.scheduled, { cron: '7 3 * * *' });
+  assert.deepEqual(github.dispatched, [
+    { workflow: 'a.yml', ref: 'develop', inputs: { nightly: 'true' } },
+    { workflow: 'c.yml', ref: 'develop', inputs: { nightly: 'true' } },
+  ]);
+  assert.equal(dumps().length, 1, 'no pruning on the nightly cron');
+  await run(worker.scheduled, { cron: '17 3 * * *' });
+  assert.equal(github.dispatched.length, 2, 'the daily cron starts nothing');
+  assert.equal(dumps().length, 0);
 });

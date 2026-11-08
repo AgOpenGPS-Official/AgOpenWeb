@@ -133,4 +133,21 @@ public class LandingLengthTests
         Assert.That(inside, Is.True);
         Assert.That(positive, Is.False);
     }
+
+    [Test]
+    public void A_shorter_pass_is_landable_from_a_pass_shorter_still_a_widening_corner()
+    {
+        // Heading north on pass 9 (x = 38), 11.8 m at the north end: the field widens towards
+        // pass 8 (15.3 m), less than MinLandingLength but more than the tractor drives now, so
+        // the turn goes there and the job carries on into the longer passes. Without the pass
+        // the tractor is on, 20 m alone: no landing ("End of field reached" at the first pass).
+        Assert.That(_pathing.LandingLength(_track, 0, 9, _boundary, _cultivated, At(38, 20), true, 20), Is.EqualTo(11.8).Within(0.3));
+        Assert.That(_pathing.IsPathLandable(_track, 0, 8, _boundary, _cultivated, At(38, 20), true, 20), Is.False);
+        Assert.That(_pathing.IsPathLandable(_track, 0, 8, _boundary, _cultivated, At(38, 20), true, 20, fromPath: 9), Is.True);
+
+        // Narrowing is still refused: from pass 7 (18.8 m) not onto pass 8 (15.3 m).
+        Assert.That(_pathing.IsPathLandable(_track, 0, 8, _boundary, _cultivated, At(30, 20), true, 20, fromPath: 7), Is.False);
+        // And nothing to land on is nothing, whatever the pass driven: pass 12 is on the fence.
+        Assert.That(_pathing.IsPathLandable(_track, 0, 12, _boundary, _cultivated, At(42, 20), true, 20, fromPath: 11), Is.False);
+    }
 }

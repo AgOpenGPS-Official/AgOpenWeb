@@ -1,0 +1,13 @@
+name: SharpIsoTerm package cache
+description: >
+  Restores nuget-local/ (the pinned SharpIsoTerm package the VirtualTerminal project fetches from
+  its GitHub release) from the Actions cache, so a run downloads it once at most. The download
+  timed out (100 s per try, three tries) in two jobs on 2026-11-08; with the cache a miss only
+  happens when the pinned version or hash changes.
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v4
+      with:
+        path: nuget-local
+        key: sharpisoterm-${{ hashFiles('Shared/AgOpenWeb.VirtualTerminal/AgOpenWeb.VirtualTerminal.csproj') }}
