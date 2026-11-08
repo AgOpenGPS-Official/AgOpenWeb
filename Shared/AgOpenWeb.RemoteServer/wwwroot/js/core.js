@@ -278,8 +278,9 @@ let pxPerM = 4.0;
 let camE = 0, camN = 0;
 // Camera follow mode: 0 NorthUp (lock to vehicle),
 // 1 HeadingUp (lock + rotate map to heading), 2 Free (manual pan holds), 3 Map
-// (map-centric auto-pan with a safe zone). Default Map.
-let cameraMode = 3;
+// (map-centric auto-pan with a safe zone). Default HeadingUp: the tractor centred, as
+// AgOpenGPS (#730); the host's saved mode (view.save) replaces it on connect.
+let cameraMode = 1;
 let mapRotation = 0;          // radians the map is rotated (−heading in HeadingUp)
 let _cosRR = 1, _sinRR = 0;   // cos/sin of the screen rotation (−mapRotation), per frame
 const AUTO_PAN_SAFE = 0.65, AUTO_PAN_SMOOTH = 0.15;

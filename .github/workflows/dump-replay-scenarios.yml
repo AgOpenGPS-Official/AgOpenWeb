@@ -1,0 +1,115 @@
+name: Dump Replay Scenarios
+
+# The dump replay harness (Tests/AgOpenWeb.DumpReplayScenarios.Tests): every bug report dump in
+# its TestData/dumps.json is loaded the way the reporter had it (Vehicle & Tool settings, field,
+# job, track, headland, skip rows), its GPS log is fed through the GPS pipeline, and what this
+# build decides is compared with what the reporter's build did; then a simulated machine with
+# the reporter's geometry takes over from the reporter's position and drives on with AutoSteer
+# and U-turns. It takes tens of minutes (the GPS logs are replayed at their own pace), so it
+# runs nightly on develop, not on every PR (CI only builds it). The run fails when the harness
+# breaks; the findings are in the report, kept as an artifact and shown in the run's summary.
+#
+# The dumps are not in the repository (a dump holds the reporter's field). This workflow replays
+# only the dumps attached to public GitHub issues: they are downloaded once and cached. The bug
+# report service's dumps (maintainers only) are never replayed here: the repository is public,
+# a fork's pull request can restore this cache, and the summary and the artifact are
+# world-readable. The harness skips them unless AGOPENWEB_REPLAY_PRIVATE=1, which is never set
+# here (and ignored on GitHub Actions); no credential for the service is used or needed.
+#
+#   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;
+#   - manual dispatch: always, on the branch picked; `only` replays a few dumps by id.
+
+on:
+  # Nightly: the bug report Worker (Tools/bugreport-worker, cron 03:07 UTC) starts it with
+  # nightly=true, as the other harnesses, once it is listed in the Worker's NIGHTLY_WORKFLOWS.
+  workflow_dispatch:
+    inputs:
+      nightly:
+        description: 'Nightly run: skip when develop has no commit from the last 25 hours'
+        type: boolean
+        default: false
+      only:
+        description: 'Replay only these dump ids (comma separated, e.g. 306,544a); empty = all'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.401'   # as build-and-release.yml
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+concurrency:
+  group: dump-replay-scenarios
+  cancel-in-progress: true
+
+jobs:
+  scenarios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history: the harness asks git whether a dump's build predates the pass
+          # model change (1cf8ba17) before it moves an old track's line back.
+          fetch-depth: 0
+
+      - name: Anything new since the last night?
+        id: fresh
+        run: |
+          if [ "${{ inputs.nightly }}" != "true" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          last=$(git log -1 --format=%ct HEAD)
+          age=$(( $(date +%s) - last ))
+          if [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No commit on develop in the last 25 hours; nothing to run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: ./.github/actions/sharpisoterm-cache
+        if: steps.fresh.outputs.run == 'true'
+
+      - name: Setup .NET
+        if: steps.fresh.outputs.run == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # The public issue attachments, downloaded once (each is checked against its SHA-256 in
+      # dumps.json). Only those: this folder never holds a private dump (see above).
+      - name: Dump cache
+        if: steps.fresh.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/agopenweb-public-dump-cache
+          key: public-dumps-${{ hashFiles('Tests/AgOpenWeb.DumpReplayScenarios.Tests/TestData/dumps.json') }}
+          restore-keys: public-dumps-
+
+      - name: Run the dump replay scenarios
+        if: steps.fresh.outputs.run == 'true'
+        env:
+          AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/dump-replay-scenarios-report.md
+          AGOPENWEB_DUMP_CACHE: ${{ runner.temp }}/agopenweb-public-dump-cache
+          AGOPENWEB_SCENARIO_ONLY: ${{ inputs.only }}
+        run: dotnet test Tests/AgOpenWeb.DumpReplayScenarios.Tests/ --filter "FullyQualifiedName~DumpReplayScenarioTests" --verbosity normal
+
+      - name: Report to the summary
+        if: always() && steps.fresh.outputs.run == 'true'
+        run: |
+          f="${{ runner.temp }}/dump-replay-scenarios-report.md"
+          if [ -f "$f" ]; then
+            # The summary has a size limit; the whole report is in the artifact.
+            head -c 900000 "$f" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report written." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep the report
+        if: always() && steps.fresh.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dump-replay-scenarios-report
+          path: ${{ runner.temp }}/dump-replay-scenarios-report.md
+          if-no-files-found: ignore
+          retention-days: 30

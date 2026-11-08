@@ -447,6 +447,12 @@ public partial class MainViewModel
             // A driven curve is a pass: move the reference to the implement's edge (#345)
             var refPoints = Models.Guidance.CurveProcessing.CreateOffsetCurve(
                 Models.Guidance.CurveProcessing.CalculateHeadings(driven), RefSideOffset());
+            if (refPoints.Count < 2)
+            {
+                // The offset removed all of it (#694): a curve tighter everywhere than half the tool.
+                ReportFailure("Curve too tight to make a track from");
+                return;
+            }
 
             // Extend curve ends past boundary for U-turn detection
             var extendedPoints = ExtendCurvePastBoundary(refPoints);

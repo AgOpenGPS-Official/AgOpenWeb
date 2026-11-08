@@ -46,7 +46,7 @@ public class CurveOffsetCornerTests
     public void Inward_passes_of_a_boundary_curve_round_their_corners_and_close([Values(3.0, 9.0, 21.0, 39.0)] double d)
     {
         var loop = CurveProcessing.DensifyLoop(Square);
-        var (pass, _) = CurveProcessing.CreateOffsetCurveWithInfo(loop, d, closed: true);
+        var pass = CurveProcessing.CreateOffsetCurveWithInfo(loop, d, closed: true).Points;
 
         Assert.Multiple(() =>
         {
