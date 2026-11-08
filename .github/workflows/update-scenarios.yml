@@ -70,12 +70,18 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      # A cache key may not hold commas: the release list with dashes.
+      - name: Cache key for the release list
+        if: steps.fresh.outputs.run == 'true'
+        id: bundles
+        run: echo "key=agopenweb-release-bundles-$(echo '${{ inputs.update_from || 'v26.7.1,v26.7.2,v26.7.3,v26.7.4' }}' | tr ', ' '--')" >> "$GITHUB_OUTPUT"
+
       - name: Release bundles from earlier nights
         if: steps.fresh.outputs.run == 'true'
         uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/agopenweb-releases
-          key: agopenweb-release-bundles-${{ inputs.update_from || 'v26.7.1,v26.7.2,v26.7.3,v26.7.4' }}
+          key: ${{ steps.bundles.outputs.key }}
           # A new tag in the list keeps the bundles already cached; only the new one is downloaded.
           restore-keys: agopenweb-release-bundles-
 
