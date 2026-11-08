@@ -1,0 +1,99 @@
+name: Update Scenarios
+
+# The update and settings-survival harness (Tests/AgOpenWeb.UpdateScenarios.Tests): a season's
+# settings, profiles, casters, fields, tracks, flags and a job are made on an older AgOpenWeb
+# release (its Linux daemon bundle, downloaded from the GitHub release and driven over its
+# WebSocket as the web client does), the daemon is stopped as systemd stops it, and this build
+# starts on the same data folder: everything is read back and compared with what was set. Then
+# the same farm on this build through a restart, a power cut, truncated files, a moved data
+# folder, a comma-decimal locale, and an AgOpenGPS field folder. About 15 minutes, so it runs
+# nightly on develop, not on every PR (CI only builds it).
+# The run fails when the harness breaks; the findings are in the report, kept as an artifact
+# and shown in the run's summary.
+#
+#   - schedule (nightly): only when develop has a commit from the last day;
+#   - manual dispatch: always, on the branch picked, from the releases given.
+
+on:
+  schedule:
+    # Just after midnight US Central (06:xx UTC; 01:xx in summer time), so the reports are in by
+    # morning. Off the hour on purpose: GitHub queues scheduled runs set on the hour the longest.
+    # Each harness has its own runner, so they run side by side.
+    - cron: '41 6 * * *'   # 06:41 UTC
+  workflow_dispatch:
+    inputs:
+      update_from:
+        description: 'Releases to update from (tags, comma-separated); their Linux x64 bundles are downloaded'
+        required: false
+        default: 'v26.7.1,v26.7.2,v26.7.3'
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.401'   # as build-and-release.yml
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+concurrency:
+  group: update-scenarios
+  cancel-in-progress: true
+
+jobs:
+  scenarios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Anything new since the last night?
+        id: fresh
+        run: |
+          if [ "${{ github.event_name }}" != "schedule" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          last=$(git log -1 --format=%ct HEAD)
+          age=$(( $(date +%s) - last ))
+          if [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No commit on develop in the last 25 hours; nothing to run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Setup .NET
+        if: steps.fresh.outputs.run == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Release bundles from earlier nights
+        if: steps.fresh.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/agopenweb-releases
+          key: agopenweb-release-bundles-${{ github.event.inputs.update_from || 'v26.7.1,v26.7.2,v26.7.3' }}
+
+      - name: Run the update scenarios
+        if: steps.fresh.outputs.run == 'true'
+        env:
+          AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/update-scenarios-report.md
+          AGOPENWEB_UPDATE_CACHE: ${{ runner.temp }}/agopenweb-releases
+          AGOPENWEB_UPDATE_FROM: ${{ github.event.inputs.update_from || 'v26.7.1,v26.7.2,v26.7.3' }}
+        run: dotnet test Tests/AgOpenWeb.UpdateScenarios.Tests/ --filter "FullyQualifiedName~UpdateScenarioTests" --verbosity normal
+
+      - name: Report to the summary
+        if: always() && steps.fresh.outputs.run == 'true'
+        run: |
+          f="${{ runner.temp }}/update-scenarios-report.md"
+          if [ -f "$f" ]; then
+            # The summary has a size limit; the whole report is in the artifact.
+            head -c 900000 "$f" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report written." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep the report
+        if: always() && steps.fresh.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: update-scenarios-report
+          path: ${{ runner.temp }}/update-scenarios-report.md
+          if-no-files-found: ignore
+          retention-days: 30

@@ -150,6 +150,9 @@ jobs:
       # And the ISOBUS harness (isobus-scenarios.yml runs it nightly).
       - name: Build ISOBUS Scenario harness
         run: dotnet build Tests/AgOpenWeb.IsobusScenarios.Tests/ --verbosity minimal
+      # And the update and settings-survival harness (update-scenarios.yml runs it nightly).
+      - name: Build Update Scenario harness
+        run: dotnet build Tests/AgOpenWeb.UpdateScenarios.Tests/ --verbosity minimal
 
   # Work budgets for the GPS cycle and the 100 Hz control tick (Performance/HotPathBudgetTests):
   # a large field driven through the real pipeline, every cycle held to a budget of polygon
