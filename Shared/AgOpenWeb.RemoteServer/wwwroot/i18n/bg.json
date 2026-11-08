@@ -88,7 +88,6 @@
   "YouTube Tutorials": "Уроци в YouTube",
   "Zero Roll": "Стр.наклон 0°",
   "Zones": "Зони",
-  "# Sats:": "#Сателити:",
   "(aim for ~{speed})": "(цел: ~{speed})",
   "(Boundary)": "(Граница)",
   "(no dual heading)": "(без двойна антена)",
@@ -97,5 +96,6 @@
   "(RTK Fixed recommended)": "(Препоръчва се RTK Fixed)",
   "({n} sats)": "({n} Сателита)",
   "(− out / + in)": "(− намали / + увеличи)",
-  "1 cm per click": "1 см на клик"
+  "1 cm per click": "1 см на клик",
+  "# Sats": "#Сателити"
 }

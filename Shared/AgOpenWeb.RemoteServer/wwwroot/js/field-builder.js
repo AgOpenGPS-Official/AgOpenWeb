@@ -141,6 +141,13 @@ document.getElementById('fb-hl-off').addEventListener('change', e => {
 // Inset = N tool widths (dropdown, mirrors AgOpen's cboxToolWidths) → fills the metre box;
 // editing the metre box directly flips the dropdown to Custom.
 const fbTwSel = document.getElementById('fb-hl-tw');
+// 2 to 6 tool widths: one string for translators, not five (#732).
+for (let n = 6; n >= 2; n--) {
+  const o = document.createElement('option');
+  o.value = String(n);
+  o.textContent = tr('{n} tool widths', { n });
+  fbTwSel.options[0].after(o);
+}
 const fbNewOff = document.getElementById('fb-hl-newoff');
 function fbApplyTw() {
   const n = parseInt(fbTwSel.value), tw = toolWidthM();
