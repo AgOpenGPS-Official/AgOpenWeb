@@ -54,13 +54,13 @@ public class FieldJobScenarioTests
         Assert.That(harness, Is.Empty, "the harness itself failed: " + string.Join("; ", harness.Select(h => h.Value.First.Message)));
     }
 
-    private static FileStream OneRunAtATime()
+    internal static FileStream OneRunAtATime()
     {
         string path = Path.Combine(Path.GetTempPath(), "agopenweb-field-job-scenarios.lock");
         try { return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
         catch (IOException)
         {
-            Assert.Fail("Another field job run is going on this machine (" + path + " is held): the two would share the "
+            Assert.Fail("Another field or path job run is going on this machine (" + path + " is held): the two would share the "
                 + "emulated module's UDP port 8888 and each other's section commands. Run them one after the other.");
             throw;
         }

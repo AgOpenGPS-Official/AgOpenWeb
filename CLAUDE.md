@@ -467,8 +467,9 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.SteerWizardScenarios.Tests` - end-to-end steer wizard scenarios: the whole backend in-process, an emulated AiO steer module (firmware P controller, WAS formula, locks, either motor wiring) and a moving tractor, a careful and a careless operator, a safety watch on the wheels at 50 Hz, a findings report; about 10 minutes, so CI only builds it and `steer-wizard-scenarios.yml` runs it nightly (its `README.md`)
 - `AgOpenWeb.MachineModuleScenarios.Tests` - an emulated Sprayer_ESP32 machine module on the real UDP: sections vs valves, settings reaching the module, restarts and outages (`machine-module-scenarios.yml`)
 - `AgOpenWeb.GpsNtripScenarios.Tests` - receivers, sentence families and an NTRIP caster on the loopback: corrections, network changes, dual heading (`gps-ntrip-scenarios.yml`; one scenario needs Linux's 127.0.0.2)
-- `AgOpenWeb.FieldJobScenarios.Tests` - whole jobs on real fields with AutoSteer, U-turns and auto sections, measuring where product really went on a 0.2 m grid (`field-job-scenarios.yml`, up to 2 h)
+- `AgOpenWeb.FieldJobScenarios.Tests` - whole jobs on real fields with AutoSteer, U-turns and auto sections, measuring where product really went on a 0.2 m grid (`field-job-scenarios.yml`, up to 2 h); its `PathJobScenarioTests` do the same on curves, the boundary as a loop, a water pivot, contour and a recorded path (`path-job-scenarios.yml`, about 30 min)
 - `AgOpenWeb.IsobusScenarios.Tests` - an emulated AOG-TaskController and its implements (`isobus-scenarios.yml`)
+- `AgOpenWeb.WebClientScenarios.Tests` - the real web client in headless Chromium (Playwright) on the screens a farm uses (tablets, a 720p PC, a 5" screen, a phone), a second screen as observer, and the operator's screen going away while working (tab closed, Wi-Fi silent or cut, tablet asleep, Free Drive, a section on by hand), read at the module port (`web-client-scenarios.yml`)
 - `AgOpenWeb.UpdateScenarios.Tests` - settings, profiles, casters, fields and a job made on older releases (their Linux bundles, SHA-256 checked) then read back by this build, a rollback; on this build a restart, a power cut, damaged and leftover files, a moved data folder, a comma-decimal locale, AgOpenGPS fields and a whole AgOpenGPS 6.8.6 folder; about 15 minutes (`update-scenarios.yml`)
 
 CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/license-headers.py --check` for the licence headers, and `Tools/i18n-limits.py --check` (job `translations-fit`, only when a change touches `wwwroot/`, the check, its baseline or the workflow; otherwise skipped, which counts as passed) so every translated label fits the English layout.
@@ -512,14 +513,14 @@ GitHub Actions workflows, split by purpose:
     beta from `develop` right away (title carries build time + commit); `release` publishes
     the Release named by `release_tag`; `none` builds + uploads artifacts only (dry run).
 
-- **Scenario harnesses, nightly** — eight workflows, each running one harness on `develop` (when it has a
+- **Scenario harnesses, nightly** — ten workflows, each running one harness on `develop` (when it has a
   commit from the last 25 hours) or by hand, keeping its findings report as an artifact and in the run's
   summary; PR CI only builds them. GitHub's own schedule started them 5–8 hours late every day, so the bug
   report Worker starts them (`Tools/bugreport-worker`, `NIGHTLY_CRON` 03:07 UTC, 21:07 US Central) as a
-  `workflow_dispatch` with `nightly=true`, which keeps the 25-hour check; all eight side by side, each on its
+  `workflow_dispatch` with `nightly=true`, which keeps the 25-hour check; all ten side by side, each on its
   own runner: `field-scenarios.yml`, `steer-wizard-scenarios.yml` (also fails when its safety watch saw the
   wheels move when they shouldn't), `vehicle-tool-scenarios.yml`, `machine-module-scenarios.yml`,
-  `gps-ntrip-scenarios.yml`, `field-job-scenarios.yml` (the longest, up to 2 h), `isobus-scenarios.yml`, `update-scenarios.yml`. Each harness's `README.md` says what it covers.
+  `gps-ntrip-scenarios.yml`, `field-job-scenarios.yml` (the longest, up to 2 h), `isobus-scenarios.yml`, `path-job-scenarios.yml`, `web-client-scenarios.yml`, `update-scenarios.yml`. Each harness's `README.md` says what it covers.
 
 To cut a release (about weekly, so each one stays small): bump `sys/version.h` and the three heads' display versions, then push a tag — `git tag v26.7.x && git push origin v26.7.x`. A summary on top of the generated list goes in with `gh release edit`.
 
