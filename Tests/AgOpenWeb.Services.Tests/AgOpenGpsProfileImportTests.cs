@@ -115,8 +115,12 @@ public class AgOpenGpsProfileImportTests
         File.WriteAllText(Path.ChangeExtension(tractorA, ".last"), "copy");
         Write("VehicleProfiles/Valtra.xml", older, ("setVehicle_wheelbase", "2.65"));
         // The implement saved last is the one in use: its guidance gains go to every tractor.
-        Write("ToolProfiles/Sprayer.xml", newer, ("setVehicle_toolWidth", "8"), ("setVehicle_isStanleyUsed", "True"), ("stanleyHeadingErrorGain", "0.7"));
-        Write("ToolProfiles/Seeder.xml", older, ("setVehicle_toolWidth", "3"), ("setVehicle_isStanleyUsed", "False"));
+        // AgOpenGPS writes a hitch behind the tractor negative; a trailed implement's is the
+        // tractor's hitch pin, which AgOpenWeb keeps with the tractor.
+        Write("ToolProfiles/Sprayer.xml", newer, ("setVehicle_toolWidth", "8"), ("setVehicle_isStanleyUsed", "True"), ("stanleyHeadingErrorGain", "0.7"),
+            ("setTool_isToolRearFixed", "True"), ("setVehicle_hitchLength", "-1.6"));
+        Write("ToolProfiles/Seeder.xml", older, ("setVehicle_toolWidth", "3"), ("setVehicle_isStanleyUsed", "False"),
+            ("setTool_isToolTrailing", "True"), ("setTool_isToolRearFixed", "False"), ("setVehicle_hitchLength", "-1.5"));
         Write("Environment/environment.xml", older, ("set_youTurnRadius", "7.5"), ("setTram_passes", "4"));
 
         string vehicles = Path.Combine(_root, "Vehicles");
@@ -134,8 +138,13 @@ public class AgOpenGpsProfileImportTests
         Assert.That(VehicleProfileJsonService.Load(vehicles, "Case", store), Is.True);
         Assert.That(store.Vehicle.Wheelbase, Is.EqualTo(2.76));
         Assert.That(store.Guidance.IsPurePursuit, Is.False, "Stanley, from the implement in use");
+        Assert.That(store.Vehicle.HitchLength, Is.EqualTo(1.5), "the hitch pin, from the trailed implement");
         Assert.That(autoSteer["Case"].ProportionalGain, Is.EqualTo(120));
         Assert.That(autoSteer["Case"].MinSteerSpeed, Is.EqualTo(1.2));
+
+        var sprayer = new ConfigurationStore();
+        Assert.That(tools.Load("Sprayer", sprayer), Is.True);
+        Assert.That(sprayer.Tool.HitchLength, Is.EqualTo(1.6), "the distance, not 0");
 
         var tool = new ConfigurationStore();
         Assert.That(tools.Load("Seeder", tool), Is.True);

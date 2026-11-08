@@ -83,7 +83,9 @@ public static class AgOpenGpsSettings
         // AOG's single setVehicle_hitchLength is the tractor hitch pin (now a vehicle
         // property, used by trailing/TBT) AND doubles as the rigid working-center distance.
         // Import into both so the value is present whichever tool type the profile uses.
-        double xmlHitch = GetDouble(settings, "setVehicle_hitchLength", 1.8);
+        // AgOpenGPS writes it negative behind the tractor; AgOpenWeb keeps the distance (the
+        // tool's direction gives the side), and Tool.HitchLength took a negative one as 0.
+        double xmlHitch = Math.Abs(GetDouble(settings, "setVehicle_hitchLength", 1.8));
         store.Vehicle.HitchLength = xmlHitch;
         store.Tool.HitchLength = xmlHitch;
         // AgOpenGPS stores the trailing hitch negative (behind the hitch); AgOpenWeb keeps the

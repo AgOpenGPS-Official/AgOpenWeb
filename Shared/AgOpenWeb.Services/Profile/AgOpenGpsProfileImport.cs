@@ -44,6 +44,8 @@ public static class AgOpenGpsProfileImport
         "stanleyIntegralGainAB", "purePursuitIntegralGainAB",
     };
 
+    private const string HitchKey = "setVehicle_hitchLength";
+
     /// <param name="dataRoot">AgOpenWeb's data folder (the one holding <c>Vehicles</c> and <c>Fields</c>).</param>
     /// <param name="vehiclesDirectory">Where vehicle profiles are written.</param>
     /// <param name="tools">The tool profile service the implements are saved with.</param>
@@ -57,10 +59,21 @@ public static class AgOpenGpsProfileImport
 
         string envPath = Path.Combine(dataRoot, EnvironmentFolder, EnvironmentFile);
         var environment = TryRead(envPath) ?? new Dictionary<string, string>();
-        var gains = new Dictionary<string, string>();
+        var fromImplements = new Dictionary<string, string>();
         if (toolFiles.Count > 0 && TryRead(toolFiles[0]) is { } inUse)
             foreach (var key in GuidanceKeys)
-                if (inUse.TryGetValue(key, out var value)) gains[key] = value;
+                if (inUse.TryGetValue(key, out var value)) fromImplements[key] = value;
+        // The tractor's hitch pin: AgOpenGPS keeps it as a trailed implement's hitch length,
+        // AgOpenWeb with the tractor. Taken from the trailed implement saved last.
+        foreach (var file in toolFiles)
+        {
+            if (TryRead(file) is not { } tool || !tool.TryGetValue(HitchKey, out var hitch)) continue;
+            if (IsTrue(tool, "setTool_isToolTrailing") || IsTrue(tool, "setTool_isToolTBT"))
+            {
+                fromImplements[HitchKey] = hitch;
+                break;
+            }
+        }
 
         var vehicles = new List<string>();
         var toolNames = new List<string>();
@@ -77,7 +90,7 @@ public static class AgOpenGpsProfileImport
             try
             {
                 var store = new ConfigurationStore();
-                AgOpenGpsSettings.ApplyToStore(Merge(environment, gains, own), name, file, store);
+                AgOpenGpsSettings.ApplyToStore(Merge(environment, fromImplements, own), name, file, store);
                 VehicleProfileJsonService.Save(vehiclesDirectory, name, store);
                 saveAutoSteer(name, store.AutoSteer);
             }
@@ -129,6 +142,9 @@ public static class AgOpenGpsProfileImport
             .ThenBy(f => f, StringComparer.Ordinal)
             .ToList();
     }
+
+    private static bool IsTrue(Dictionary<string, string> settings, string key)
+        => settings.TryGetValue(key, out var text) && bool.TryParse(text, out var v) && v;
 
     private static Dictionary<string, string>? TryRead(string path)
     {

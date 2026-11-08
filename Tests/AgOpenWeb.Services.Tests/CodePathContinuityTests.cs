@@ -331,6 +331,7 @@ public class CodePathContinuityTests
         "Field.txt", "Boundary.txt", "Sections.txt", "RecPath.txt", "Elevation.txt", "Contour.txt",
         "TramLines.txt", "TrackLines.txt", "Headlines.txt", "Headland.txt", "Flags.txt",
         "BackPic.txt", "BackPic.png", "ActiveTrack.txt", "ABLines.txt",
+        "environment.xml", // AgOpenGPS 6.8.2+ Environment/ (AgOpenGpsProfileImport)
     };
 
     [Test]
