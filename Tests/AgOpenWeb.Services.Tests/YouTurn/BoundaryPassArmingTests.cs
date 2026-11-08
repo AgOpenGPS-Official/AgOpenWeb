@@ -49,7 +49,10 @@ public class BoundaryPassArmingTests
         c.Tool.Overlap = 0;
         c.NumSections = 1;
         c.Tool.SetSectionWidth(0, (int)(ToolWidth * 100)); // 6 m
-        c.Guidance.UTurnRadius = 8.0;
+        // A radius that fits: the pass is 3 m from the fence, and a larger radius makes an omega that
+        // swings past it. The fallback turn this test once armed with 8 m went 5.8 m outside the
+        // field, which is no longer made (#692).
+        c.Guidance.UTurnRadius = 3.0;
         c.Guidance.UTurnExtension = 16.0;
         c.Guidance.UTurnDistanceFromBoundary = DistFromBoundary;
         c.Guidance.UTurnStyle = 0;
