@@ -110,7 +110,15 @@ public static class Jobs
         // ---- strips between passes
         if (a.MissedAtObstacles > 0)
             sc.Note(F($"{a.MissedAtObstacles:0} m² of the cultivated area within 2 m of the obstacles were never sprayed: the sections closing over an obstacle and opening again after it (the section look-ahead and the valves' latency)"));
-        if (a.LargestMissedStripM > 0.15 || a.MissedBetweenPasses > 0.005 * a.Work)
+        // Passes that meet within 5 cm leave only the 0.2 m grid's rounding between them: with a
+        // narrow implement the many pass edges add that up past the area threshold (a note, not a gap).
+        // (At most half a cell, 0.1 m, along every pass edge; more than that is real ground.) A gap
+        // the operator asked for (a negative overlap: a drill's row spacing between passes) is allowed.
+        double askedGap = Math.Max(0, -spec.T.Overlap), passM = a.Work / Math.Max(r.Spacing, 0.1);
+        double stripArea = 0.005 * a.Work + askedGap * passM;
+        if (a.LargestMissedStripM <= 0.05 + askedGap && a.MissedBetweenPasses > stripArea && a.MissedBetweenPasses <= (0.1 + askedGap) * passM)
+            sc.Note(F($"{a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}) between passes counted unsprayed on the 0.2 m grid, but the implement's ends met within {a.LargestMissedStripM:0.00} m on every pass{(askedGap > 0 ? F($" ({askedGap:0.00} m gap asked for)") : "")}: the grid's rounding along {r.Spacing:0.0} m passes, not a strip"));
+        else if (a.LargestMissedStripM > 0.15 + askedGap || a.MissedBetweenPasses > stripArea)
             flag(Severity.Bug, "MISSED-STRIPS", F($"strips of ground between neighbouring passes were never sprayed: {a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}), the widest {a.LargestMissedStripM:0.00} m{(a.LargestStripWhere.Length > 0 ? " " + a.LargestStripWhere : "")}; the strips centre on ({a.MissedBetweenE / Math.Max(a.MissedBetweenPasses, 1e-9):0},{a.MissedBetweenN / Math.Max(a.MissedBetweenPasses, 1e-9):0}). AgOpenWeb's passes are {r.Spacing:0.00} m apart for a {spec.T.Width:0.00} m implement with {spec.T.Overlap:0.00} m overlap."));
         else
             sc.Ok(F($"no strip was left between passes (widest {a.LargestMissedStripM:0.00} m, {a.MissedBetweenPasses:0} m² in all)"));
@@ -211,6 +219,8 @@ public static class Jobs
         if (missed.Count > 0)
             flag(Severity.Bug, "TURN-MISSED", F($"{missed.Count} U-turn(s) were missed or cancelled while the operator did nothing wrong: {missed[0]}"));
         r.PathOp?.Judge(sc, r, a, flag);
+        if (r.PathOp == null && spec.PassCheck) { LapOperator.JudgePassError(sc, r, flag, "the AB line's passes"); JudgeTurnExits(sc, r, flag); }
+        spec.ExtraJudge?.Invoke(sc, r, flag);
         JudgeAutoSteer(sc, r, flag);
     }
 
@@ -225,4 +235,21 @@ public static class Jobs
     }
 
     private static string Pct(double part, double whole) => whole <= 0 ? "n/a" : F($"{part / whole * 100:0.0} %");
+
+    /// <summary>
+    /// Where each U-turn's exit leg left the implement: against the pass it then worked (15 s after
+    /// the turn), so a turn that lands beside its pass, and AutoSteer pulling the implement across in
+    /// the headland, shows even when the pass itself is driven well.
+    /// </summary>
+    static void JudgeTurnExits(Scenario sc, JobRun r, Action<Severity, string, string> flag)
+    {
+        var known = r.Turns.Where(t => !double.IsNaN(t.ExitOffM)).ToList();
+        if (known.Count == 0) return;
+        var off = known.Where(t => Math.Abs(t.ExitOffM) > 1.0).ToList();
+        sc.Row.Metrics.Add(("U-turns whose exit leg put the implement on its next pass (within 1 m) / measured; worst beside it", JobRun.F($"{known.Count - off.Count} / {known.Count}; {known.Max(t => Math.Abs(t.ExitOffM)):0.00} m")));
+        if (off.Count == 0) { sc.Ok(JobRun.F($"every U-turn's exit leg put the implement on the pass it then worked (worst {known.Max(t => Math.Abs(t.ExitOffM)):0.00} m beside it)")); return; }
+        var w = off.OrderByDescending(t => Math.Abs(t.ExitOffM)).First();
+        string turns = string.Join(", ", off.Take(6).Select(t => JobRun.F($"{t.Index} ({(t.Left ? "left" : "right")}, {t.ExitOffM:+0.0;-0.0} m)")));
+        flag(Severity.Bug, "TURN-EXIT-OFF-PASS", JobRun.F($"{off.Count} of {known.Count} U-turns ended with the implement more than 1 m beside the pass it then worked, so AutoSteer pulled it across in the headland: turns {turns}{(off.Count > 6 ? ", ..." : "")}; the worst {Math.Abs(w.ExitOffM):0.0} m (turn {w.Index}, pass {w.TruthPassBefore} -> {w.TruthPassAfter}, implement offset {r.Spec.T.Offset:+0.0;-0.0} m, {r.Spec.T.Width:0.#} m wide)."));
+    }
 }

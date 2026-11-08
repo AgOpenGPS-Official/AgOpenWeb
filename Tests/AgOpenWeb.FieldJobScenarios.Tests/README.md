@@ -129,3 +129,110 @@ dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedNam
 About half an hour for the seven jobs; nightly on develop (`.github/workflows/path-job-scenarios.yml`, started by the bug report Worker as the other harnesses).
 The same variables pick jobs (`AGOPENWEB_SCENARIO_ONLY=P1,P3`), trace and dump; the report goes
 to `path-job-scenarios-report.md`, or to `AGOPENWEB_SCENARIO_REPORT`.
+
+## Rig jobs: an implement to one side, a curve driven, skip rows
+
+`RigJobScenarioTests` runs the field job with the rigs and tracks testers use and the jobs above
+do not (`RigJobs.cs`), with the careful operator:
+
+| Job | Field | Rig and line |
+|---|---|---|
+| J8 | Olival | 3 m mower mounted at the back, shifted 2.5 m right; AB line, the first pass along the edge with the mower on the fence side |
+| J9 | Olival | 3 m trailed mower, its cutting width 2.5 m left of the drawbar |
+| J10 | Quinta Torta | The field's curve driven by hand (Curve > Record going in, Finish going out), then worked from it with the 8 m sprayer |
+| J11 | Couto Ribeira | Trailed 21 m cultivator, headland 42 m, radius 10 m, skip rows on (alternative, 1 row) |
+| J12 | Olival | J8's mower on the edge pass: the mower in the cultivated area, the tractor in the headland, for one pass |
+| J13 | Olival | Renato's Case Maxxum 135 (42°) and 8 m front sprayer in 5 unequal sections (2/1/2/1/2 m), with the suggested-settings page's U-turn values (radius 4 m, distance 6.3 m) |
+| J14 | Baetas | The same tractor with a semi-mounted 3 m no-till drill (trailed for AgOpenWeb, the discs ahead of its wheels, a 5 cm gap between passes), Keyhole turns, headland 18 m |
+| J15 | Quinta Torta | A combine (pivot on the front axle, rear-wheel steering) with a 6 m header |
+| J16 | Olival | A 6 m seed drill towed behind its seed tank (TBT: tractor, tank, drill) |
+| J17 | Tapada da Casa | A trailed manure spreader, a 12 m bout centred 4 m behind its axle |
+| J18 | Olival | A 5 m trailed disc harrow on wheels in the middle of its frame |
+| J19 | Olival | A 6-furrow mounted reversible plough (2.7 m) at 7 km/h: it keeps to one side of the field whichever way it is driven, which AgOpenWeb's tool offset can't say |
+
+On these jobs the implement is also measured against the pass it should be on (`OFF-ITS-PASS`,
+from 30 s after each turn), and where each U-turn's exit leg put it: with an implement to one side
+the tractor's own lines are not evenly spaced (8 m and then -2 m apart for J8), so a turn built
+from the wrong side lands beside the pass and AutoSteer pulls the implement across in the headland.
+
+| Check | Finding |
+|---|---|
+| A U-turn's exit leg more than 1 m beside the pass the implement then works | `TURN-EXIT-OFF-PASS` |
+| The curve AgOpenWeb keeps away from where the implement was driven | `RECORDED-CURVE-SHIFTED` |
+| On the edge pass, no U-turn and AutoSteer driving on past the boundary | `EDGE-PASS-NO-TURN` |
+| A reversible plough shown across from where it works (no setting for an offset that keeps to one side of the field) | `REVERSIBLE-PLOUGH-NO-SETTING` |
+
+```bash
+dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedName~RigJobScenarioTests"
+```
+
+About an hour and a half; nightly on develop (`.github/workflows/rig-job-scenarios.yml`). The report goes to
+`rig-job-scenarios-report.md`, or to `AGOPENWEB_SCENARIO_REPORT`.
+
+## Turn interventions: an operator who acts during a U-turn
+
+`TurnInterventionScenarioTests` runs J1 (Olival, the 8 m sprayer) with an operator who does one
+thing while a U-turn is planned or under way (`TurnInterventions.cs`), the reporters' pattern:
+
+| Job | What the operator does |
+|---|---|
+| T1, T2, T3 | Changes the U-turn radius (8 to 12 m), the distance from boundary (2 to 6 m) or the style (Sagitta to Keyhole), 10 s into the second turn |
+| T4 | Sets skip rows during a turn (#585): the next turn must skip |
+| T5 | Sets skip rows with the turn already planned (#410, #577): the turn must go two passes over, to the side it was going |
+| T6 | Taps the U-turn arrow twice before a turn: the turn must be as it was |
+| T7 | Nudges the line 50 cm during a turn (#93) |
+| T8 | Reverses 7 m in the middle of a turn (#588), then drives on |
+| T9 | Reverses out of a turn just finished (#588) |
+| T10 | Switches AutoSteer off half way round a turn and on again |
+| T11 | U-turns off: every turn made with the manual buttons (#272, #163) |
+| T12 | A manual U-turn in the middle of a pass, then automatic turns |
+
+Each turn is watched from the action to 15 s after it ends: the path AgOpenWeb follows, the side
+it turns to, the pass the implement lands on.
+
+| Check | Finding |
+|---|---|
+| The turn dropped, or its path moved more than 1 m within 25 m of the tractor | `TURN-LOST`, `TURN-CHANGED-MID-TURN` |
+| The turn going to the other side, or landing on another pass than planned (or than the change asks for) | `TURN-SIDE-CHANGED`, `TURN-LANDED-ELSEWHERE`, `SKIP-NOT-APPLIED` |
+| Reversing: the turn made again, or the pass lost | `TURN-REPEATED`, `PASS-LOST-REVERSING` |
+| Manual turns refused, ending before the tractor is on the next pass, or landing elsewhere | `MANUAL-TURN-REFUSED`, `MANUAL-TURN-ENDS-EARLY`, `MANUAL-TURN-WRONG-PASS` |
+| After a manual turn mid-pass, the automatic turns not going on to the next pass | `PATTERN-LOST` |
+
+```bash
+dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedName~TurnInterventionScenarioTests"
+```
+
+About an hour; nightly on develop (`.github/workflows/turn-intervention-scenarios.yml`). The report
+goes to `turn-intervention-scenarios-report.md`.
+
+## Imperial units: the same job typed in feet and inches
+
+AgOpenWeb keeps and sends everything in metric; imperial is a conversion in the web client, made
+when a value is typed and when a box is filled (`js/core.js`, #65). `ImperialJobScenarioTests`
+(`ImperialJobs.cs`) opens the real web client of the job's own backend in headless Chromium
+(Playwright), switches it to imperial in App Settings, and types every setting that has a unit
+into its own box, as the box shows values (feet to two decimals, inches to one); the headland in
+the field builder's box. Settings without a unit go as config.set, as the page's buttons send them.
+The browser is closed before the job starts; the job is then driven as every field job.
+
+| Job | What the operator does |
+|---|---|
+| U0 | J1 in metric: the reference |
+| U1 | J1 typed in feet and inches |
+| U2 | J1 in imperial with centimetres typed into the inch boxes (100 for a 1 m section) |
+
+| Check | Finding |
+|---|---|
+| A value typed in imperial never reaching AgOpenWeb, or kept as another length | `IMPERIAL-VALUE-LOST`, `IMPERIAL-VALUE-OFF` |
+| A box showing another number than was typed, once AgOpenWeb has echoed it | `IMPERIAL-BOX-CHANGES` |
+| The job typed in imperial not coming out as the metric one (unsprayed share, U-turns, pass spacing, headland, the module's section widths) | `IMPERIAL-JOB-DIFFERS` |
+| The machine module's section widths (PGN 235) not the ones AgOpenWeb keeps | `MODULE-WIDTHS-DIFFER` |
+| A width in the wrong unit taken with nothing on the screen questioning it | `WRONG-UNIT-ACCEPTED` |
+
+```bash
+pwsh Tests/AgOpenWeb.FieldJobScenarios.Tests/bin/Debug/net10.0/playwright.ps1 install chromium   # once
+dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedName~ImperialJobScenarioTests"
+```
+
+`AGOPENWEB_CHROMIUM=/path/to/chrome` uses another Chromium. About 20 minutes; nightly on develop
+(`.github/workflows/imperial-job-scenarios.yml`). The report goes to `imperial-job-scenarios-report.md`.
