@@ -9,8 +9,8 @@ namespace AgOpenWeb.UpdateScenarios.Tests;
 /// <summary>
 /// The farmer on this build: a season's work, then the things that happen to a cab computer: a
 /// plain restart, a power cut in a job, a settings file cut short by that power cut, the data
-/// folder moved to another computer, a comma-decimal Windows, and an AgOpenGPS field folder
-/// copied in by hand.
+/// folder moved to another computer, a comma-decimal Windows, an AgOpenGPS field folder
+/// copied in by hand, and a whole AgOpenGPS 6.8.6 installation moved over.
 /// </summary>
 public static class RestarterOperator
 {
@@ -32,6 +32,8 @@ public static class RestarterOperator
                 "A field from AgOpenGPS 6.x (Field.txt, Boundary.txt, Headland.Txt, TrackLines.txt with an AB line and a curve, Flags.txt, Sections.txt with worked area) is copied into the Fields folder by hand. Opening it must import the boundary, the headland, the tracks, the flags and the worked area as a job; a restart must keep them; the AgOpenGPS files are deleted.", AgOpenGpsImportAsync),
             ("R6", "A comma-decimal computer (pt-PT) saves and reads the season",
                 "The same farm, on a computer whose Windows is set to Portuguese (decimal comma, as in Finland, Germany, France): every file is written and read under that culture. Values must come back as set (the globalization fence of CONTRIBUTING.md).", CommaDecimalAsync),
+            ("R8", "An AgOpenGPS 6.8.6 installation moved to AgOpenWeb",
+                "A farmer on AgOpenGPS 6.8.6 moves to AgOpenWeb and keeps AgOpenGPS: the field folders and the profile folders of Documents/AgOpenGPS (Vehicles, VehicleProfiles, ToolProfiles, Environment, AgIO) are copied into Documents/AgOpenWeb, the AgOpenGPS folder is left as it is. Every tractor, implement, steer, roll, GPS, U-turn, tram and NTRIP setting and every field file (boundary, headland, tracks, flags, coverage, contour, recorded path, elevation, background image) is looked for in this build; the AgOpenGPS folder must not change.", AgOpenGpsInstallationAsync),
         };
         foreach (var (code, title, story, run) in all)
         {
@@ -45,7 +47,7 @@ public static class RestarterOperator
         if (!string.IsNullOrWhiteSpace(aog) && (Kit.Want(only, "R7") || Kit.Want(only, "R")))
         {
             var sc = new Scenario(Name, "R7", "The farmer's own AgOpenGPS fields copied into Fields",
-                Kit.F($"Every AgOpenGPS field folder under AGOPENWEB_UPDATE_AOG_FIELDS is copied into the Fields folder and opened. Only counts are reported: the fields stay on this computer."));
+                Kit.F($"Every AgOpenGPS field folder under AGOPENWEB_UPDATE_AOG_FIELDS (or, when it is a whole AgOpenGPS folder with Fields/ inside, that folder as R8 copies it) is copied in and opened. Only counts are reported: the fields stay on this computer."));
             try { await OwnAgOpenGpsFieldsAsync(sc, aog); }
             catch (Exception ex) { sc.Harness("unhandled: " + ex.GetType().Name + ": " + ex.Message + "\n" + ex.StackTrace); }
             journal.Add(sc.Row);
@@ -293,28 +295,211 @@ public static class RestarterOperator
         }
     }
 
+    /// <summary>The AgOpenGPS settings this build's reader looks for under another name.</summary>
+    private static readonly Dictionary<string, string> AogKeyMismatch = new(StringComparer.Ordinal)
+    {
+        ["setHeadland_isSectionControlled"] = "AgOpenGPS writes setHeadland_isSectionControlled; the reader (VehicleProfileService.ApplyXmlSettingsToStore) looks for setTool_isHeadlandSectionControl, a name AgOpenGPS does not write, so it always reads the default",
+    };
+
+    /// <summary>The AgOpenGPS settings this build's reader takes from the combined file and
+    /// then loses: <c>LoadAutoSteerConfig</c> finds no <c>&lt;name&gt;.AutoSteer.json</c> for a
+    /// tractor from AgOpenGPS and resets the AutoSteer settings to their defaults.</summary>
+    private static readonly HashSet<string> AogReadThenReset = new(StringComparer.Ordinal) { "setAS_minSteerSpeed", "setAS_maxSteerSpeed" };
+
+    /// <summary>R8: a farmer's AgOpenGPS 6.8.6 folder moved to AgOpenWeb as a farmer does it: the
+    /// field folders and the profile folders copied into Documents/AgOpenWeb, the AgOpenGPS folder
+    /// left as it is. What comes through is judged setting by setting against the 6.8.6 profile;
+    /// what does not is reported per settings tab, and a value read from the stale pre-6.8.2
+    /// combined file is called out.</summary>
+    private static async Task AgOpenGpsInstallationAsync(Scenario sc)
+    {
+        string root = Kit.NewDataRoot("R8");
+        string aogRoot = Path.Combine(root, "AgOpenGPS");
+        var aog = AgOpenGpsInstall.Standard();
+        aog.Write(aogRoot);
+        var (legacy, vprof, tprof, nfields) = AgOpenGpsInstall.Count(aogRoot);
+        string hashBefore = AgOpenGpsInstall.TreeHash(aogRoot);
+        sc.Step(Kit.F($"an AgOpenGPS {AgOpenGpsInstall.Version} folder: {vprof} tractors in VehicleProfiles/ ({string.Join(", ", aog.Vehicles.Select(v => v.Name))}), {tprof} implements in ToolProfiles/ ({string.Join(", ", aog.Tools.Select(t => t.Name))}), Environment/environment.xml (U-turn, tram), AgIO/{aog.AgIo.Name}.XML (NTRIP caster), {legacy} combined Vehicles/*.XML left from before 6.8.2 ('{aog.Vehicles.First(v => v.InLegacyFile).Name}', with that day's values), {nfields} fields"));
+        var copied = AgOpenGpsInstall.CopyInto(aogRoot, root);
+        sc.Step(Kit.F($"the farmer copies {string.Join(", ", copied)} into Documents/AgOpenWeb (field folders into Fields/); the AgOpenGPS folder stays where it is"));
+
+        var fieldsFarm = new Farm { ActivePair = ("", "") };
+        fieldsFarm.Fields.AddRange(aog.Fields);
+        bool SkipNonField(string what) => what is "settings" or "pair" or "lastfield" or "language" or "hotkey" or "theme" or "view" or "ntrip" || what.StartsWith("units", StringComparison.Ordinal) || what.Contains('.');
+        Snapshot first;
+        await using (var rig = await UpdateRig.StartAsync(root))
+        {
+            Kit.CheckRig(sc, rig, "first start on the copied AgOpenGPS folders", "AOG");
+            first = await Snapshot.TakeAsync(rig, openFields: true);
+            sc.Note(Kit.F($"this build lists vehicles: {(first.Vehicles.Count == 0 ? "none" : string.Join(", ", first.Vehicles))}; implements: {(first.Tools.Count == 0 ? "none" : string.Join(", ", first.Tools))}; in use: '{first.ActiveVehicle}' / '{first.ActiveTool}'"));
+
+            // Tractors and implements: listed at all?
+            foreach (var v in aog.Vehicles.Where(v => !first.Vehicles.Contains(v.Name)))
+                sc.Problem(Severity.DataLoss, "AOG-VEHICLE-NOT-LISTED", Kit.F($"the tractor '{v.Name}' (VehicleProfiles/{v.Name}.xml, {v.Settings.Count} settings) is not in the vehicle list: this build lists Vehicles/*.XML (AgOpenGPS's combined file of before 6.8.2) and looks for 6.8.2 split files beside it ({v.Name}.tool.xml, {v.Name}.env.xml), while {AgOpenGpsInstall.Version} keeps a tractor in VehicleProfiles/, an implement in ToolProfiles/ and the rest in Environment/environment.xml"));
+            foreach (var t in aog.Tools.Where(t => !first.Tools.Contains(t.Name)))
+                sc.Problem(Severity.DataLoss, "AOG-TOOL-NOT-LISTED", Kit.F($"the implement '{t.Name}' (ToolProfiles/{t.Name}.xml: {t.Settings.First(x => x.Dump == "Tool.Width").Value} m, {t.Settings.First(x => x.Dump == "NumSections").Value} sections) is not in the implement list: this build lists Tools/*.json only and reads no ToolProfiles/ folder"));
+
+            // Each listed tractor, as loaded: its settings and the 6.8.6 environment's against
+            // the store, and for the one with a combined file the implement that file holds.
+            foreach (var v in aog.Vehicles.Where(v => first.Vehicles.Contains(v.Name)))
+            {
+                var dump = first.Dump;
+                if (first.ActiveVehicle != v.Name)
+                {
+                    await rig.SendAsync("profile.load", v.Name + "\t" + first.ActiveTool);
+                    dump = new Dictionary<string, string>(StringComparer.Ordinal);
+                    var d = dump;
+                    await rig.RunAsync(() => Snapshot.DumpStore(d, rig));
+                    sc.Step(Kit.F($"'{v.Name}' loaded with the implement in use '{first.ActiveTool}'"));
+                }
+                if (v.InLegacyFile && first.ActiveVehicle == v.Name && first.ActiveTool != v.ToolName)
+                    sc.Note(Kit.F($"'{v.Name}': the implement its combined file holds (that day's '{v.ToolName}') is in use under the name '{first.ActiveTool}'"));
+                var specs = new List<AogSetting>(v.Settings);
+                specs.AddRange(aog.Environment);
+                if (v.InLegacyFile) specs.AddRange(aog.Tools.First(t => t.Name == v.ToolName).Settings);
+                JudgeAog(sc, v.Name, specs, dump, v.InLegacyFile);
+            }
+
+            // The NTRIP caster of AgIO.
+            if (first.Ntrips.Any(n => string.Equals(n.Host, aog.AgIo.CasterHost, StringComparison.OrdinalIgnoreCase) && n.Mount == aog.AgIo.Mount))
+                sc.Ok(Kit.F($"AgIO's caster {aog.AgIo.CasterHost}:{aog.AgIo.CasterPort}/{aog.AgIo.Mount} is an NTRIP profile"));
+            else
+                sc.Problem(Severity.Improvement, "AOG-NTRIP-NOT-IMPORTED", Kit.F($"AgIO's NTRIP caster ({aog.AgIo.CasterHost}:{aog.AgIo.CasterPort}, mount point {aog.AgIo.Mount}, a login, on) is not among the NTRIP profiles ({(first.Ntrips.Count == 0 ? "none" : string.Join(", ", first.Ntrips.Select(n => n.Name)))}): this build reads no AgIO/*.XML, so the farmer types the caster, the mount point and the login again"));
+
+            // The fields: the geometry as for any import, then every other file AgOpenGPS writes.
+            Judge.Farm(sc, fieldsFarm, first, "AOG-INSTALL", SkipNonField);
+            foreach (var f in aog.Fields)
+            {
+                var fr = first.Fields.FirstOrDefault(x => x.Name == f.Name);
+                if (fr == null || !fr.Opened) continue;
+                var aogLeft = fr.Files.Where(x => !x.Contains('/') && (x.EndsWith(".txt", StringComparison.OrdinalIgnoreCase) || x.EndsWith(".png", StringComparison.OrdinalIgnoreCase) && x.StartsWith("BackPic", StringComparison.Ordinal))).ToList();
+                var other = fr.Files.Where(x => x.EndsWith(".kml", StringComparison.OrdinalIgnoreCase) || x.StartsWith("zISOXML/", StringComparison.Ordinal)).ToList();
+                if (aogLeft.Count > 0) sc.Note(Kit.F($"'{f.Name}': AgOpenGPS files still in the AgOpenWeb copy after the import: {string.Join(", ", aogLeft)}"));
+                if (other.Count > 0) sc.Note(Kit.F($"'{f.Name}': left as they are (not AgOpenGPS field data this build reads): {string.Join(", ", other)}"));
+                if (f != aog.FullField) continue;
+                foreach (var (src, dst) in new[] { ("Contour.txt", "contours.geojson"), ("RecPath.txt", "recorded-paths.geojson"), ("Elevation.txt", "elevation.csv"), ("BackPic.Txt + BackPic.png", "background.png") })
+                {
+                    if (fr.Files.Contains(dst)) sc.Ok(Kit.F($"'{f.Name}': {src} imported as {dst}"));
+                    else sc.Problem(Severity.DataLoss, "AOG-SIDECAR-NOT-IMPORTED", Kit.F($"'{f.Name}': {src} was not imported as {dst} (files: {string.Join(", ", fr.Files)})"));
+                }
+                var job = fr.Jobs.FirstOrDefault();
+                if (job == null) sc.Problem(Severity.DataLoss, "AOG-COVERAGE-NOT-IMPORTED", Kit.F($"'{f.Name}': Sections.txt ({aog.CoverageSqM:0} m² worked) made no job"));
+                else if (job.WorkedSqM < aog.CoverageSqM * 0.5 || job.WorkedSqM > aog.CoverageSqM * 1.5)
+                    sc.Problem(Severity.Bug, "AOG-COVERAGE-AREA", Kit.F($"'{f.Name}': the imported job '{job.Task}' resumes with {job.WorkedSqM:0} m² worked; Sections.txt described {aog.CoverageSqM:0} m²"));
+                else sc.Ok(Kit.F($"'{f.Name}': Sections.txt imported as job '{job.Task}' with {job.WorkedSqM:0} m² worked"));
+            }
+            Kit.CheckRig(sc, rig, "after opening the imported fields", "AOG");
+        }
+
+        await using (var rig = await UpdateRig.StartAsync(root))
+        {
+            sc.Step("restart");
+            var again = await Snapshot.TakeAsync(rig, openFields: true);
+            Judge.Dumps(sc, first.Dump, again.Dump, "AOG-RESTART-DRIFT", "restart after the move", UpgraderOperator.IsVolatile);
+            Judge.Farm(sc, fieldsFarm, again, "AOG-INSTALL-RESTART", SkipNonField);
+            Kit.CheckRig(sc, rig, "restart", "AOG");
+        }
+        string hashAfter = AgOpenGpsInstall.TreeHash(aogRoot);
+        if (hashAfter == hashBefore) sc.Ok(Kit.F($"the AgOpenGPS folder is byte for byte as it was ({Directory.GetFiles(aogRoot, "*", SearchOption.AllDirectories).Length} files): AgOpenGPS still runs on it"));
+        else sc.Problem(Severity.DataLoss, "AOG-ORIGINALS-CHANGED", "the AgOpenGPS folder changed while this build ran on its copy");
+        Kit.CheckSaveErrors(sc, root, "AOG", "this build");
+        Kit.TryDelete(root);
+    }
+
+    /// <summary>One tractor's settings against the store after it was loaded: imported, read
+    /// from the stale combined file, or not imported (per settings tab).</summary>
+    private static void JudgeAog(Scenario sc, string vehicle, List<AogSetting> specs, Dictionary<string, string> dump, bool hasLegacyFile)
+    {
+        var ok = new List<string>();
+        var stale = new List<string>();
+        var missing = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var st in specs)
+        {
+            if (!dump.TryGetValue(st.Dump, out var got)) { sc.Harness(Kit.F($"no dump key '{st.Dump}' for {st.Key}")); continue; }
+            if (Judge.Same(st.Reads, got)) { ok.Add(st.Key); continue; }
+            if (hasLegacyFile && st.StaleReads != null && Judge.Same(st.StaleReads, got))
+            {
+                stale.Add(Kit.F($"{st.Key} {got} (6.8.6 holds {st.Value})"));
+                continue;
+            }
+            if (hasLegacyFile && AogReadThenReset.Contains(st.Key))
+            {
+                sc.Problem(Severity.Bug, "AOG-SETTING-READ-THEN-RESET", Kit.F($"'{vehicle}': {st.Key} reads back as {st.Dump} {got}, neither {AgOpenGpsInstall.Version}'s {st.Value} nor the combined file's {st.Stale}: VehicleProfileService.ApplyXmlSettingsToStore sets it from Vehicles/{vehicle}.XML, then ConfigurationService.LoadAutoSteerConfig finds no {vehicle}.AutoSteer.json and resets every AutoSteer setting to its default"));
+                continue;
+            }
+            if (AogKeyMismatch.TryGetValue(st.Key, out var why))
+            {
+                sc.Problem(Severity.Bug, "AOG-SETTING-KEY-MISMATCH", Kit.F($"'{vehicle}': {st.Key} = {st.Value} reads back as {st.Dump} {got}: {why}"));
+                continue;
+            }
+            if (!missing.TryGetValue(st.Group, out var list)) missing[st.Group] = list = new List<string>();
+            list.Add(Kit.F($"{st.Key} {st.Value} → {got}"));
+        }
+        if (ok.Count > 0) sc.Ok(Kit.F($"'{vehicle}': {ok.Count} of {specs.Count} AgOpenGPS settings read back as {AgOpenGpsInstall.Version} holds them ({string.Join(", ", ok)})"));
+        if (stale.Count > 0)
+            sc.Problem(Severity.DataLoss, "AOG-PROFILE-STALE-SOURCE", Kit.F($"'{vehicle}': {stale.Count} settings come from Vehicles/{vehicle}.XML, the combined file AgOpenGPS stopped writing at 6.8.2, not from the tractor's VehicleProfiles/, ToolProfiles/ and Environment/ files of {AgOpenGpsInstall.Version}; the farmer steers and sprays with the measurements of that day: {string.Join("; ", stale)}"));
+        foreach (var (group, list) in missing.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+            sc.Problem(Severity.Improvement, "AOG-SETTING-NOT-IMPORTED", Kit.F($"'{vehicle}', {AogGroupName(group)}: {list.Count} AgOpenGPS setting(s) not imported (AgOpenGPS value → this build's): {string.Join("; ", list)}"));
+    }
+
+    private static string AogGroupName(string group) => group switch
+    {
+        "vehicle" => "tractor dimensions",
+        "steer" => "AutoSteer (steer module settings)",
+        "imu" => "roll (IMU)",
+        "gps" => "GPS (dual antenna, step)",
+        "tool" => "implement",
+        "sections" => "sections",
+        "guidance" => "guidance",
+        "uturn" => "U-turn",
+        "tram" => "tram lines",
+        _ => group,
+    };
+
     private static async Task OwnAgOpenGpsFieldsAsync(Scenario sc, string sourceDir)
     {
         string root = Kit.NewDataRoot("R7");
         string fieldsDir = Path.Combine(root, "AgOpenWeb", "Fields");
         int copied = 0;
-        foreach (var dir in Directory.EnumerateDirectories(sourceDir))
+        // A whole AgOpenGPS folder (Documents/AgOpenGPS, with Fields/ and the profile folders)
+        // is copied as R8 copies it; a folder of field folders, field by field.
+        bool wholeInstall = Directory.Exists(Path.Combine(sourceDir, "Fields"));
+        string? hashBefore = null;
+        if (wholeInstall)
         {
-            if (!File.Exists(Path.Combine(dir, "Field.txt"))) continue;
-            Kit.CopyDirectory(dir, Path.Combine(fieldsDir, Path.GetFileName(dir)));
-            copied++;
+            var (legacy, vprof, tprof, nfields) = AgOpenGpsInstall.Count(sourceDir);
+            hashBefore = AgOpenGpsInstall.TreeHash(sourceDir);
+            AgOpenGpsInstall.CopyInto(sourceDir, root);
+            copied = nfields;
+            sc.Step(Kit.F($"the farmer's AgOpenGPS folder copied in: {nfields} field(s), {vprof} VehicleProfiles, {tprof} ToolProfiles, {legacy} combined Vehicles/*.XML"));
         }
-        sc.Step(Kit.F($"{copied} AgOpenGPS field folder(s) copied in from {sourceDir}"));
-        if (copied == 0) { sc.Note("no folder with a Field.txt found"); return; }
+        else
+        {
+            foreach (var dir in Directory.EnumerateDirectories(sourceDir))
+            {
+                if (!File.Exists(Path.Combine(dir, "Field.txt"))) continue;
+                Kit.CopyDirectory(dir, Path.Combine(fieldsDir, Path.GetFileName(dir)));
+                copied++;
+            }
+            sc.Step(Kit.F($"{copied} AgOpenGPS field folder(s) copied in"));
+        }
+        if (copied == 0 && !wholeInstall) { sc.Note("no folder with a Field.txt found"); return; }
         await using (var rig = await UpdateRig.StartAsync(root))
         {
             var s = await Snapshot.TakeAsync(rig, openFields: true);
+            if (wholeInstall)
+            {
+                var (_, vprof, tprof, _) = AgOpenGpsInstall.Count(sourceDir);
+                sc.Note(Kit.F($"this build lists {s.Vehicles.Count} vehicle(s) and {s.Tools.Count} implement(s) for the farmer's {vprof} VehicleProfiles and {tprof} ToolProfiles"));
+            }
             int opened = s.Fields.Count(f => f.Opened), withBoundary = s.Fields.Count(f => f.OuterPoints > 0), tracks = s.Fields.Sum(f => f.Tracks.Count), flags = s.Fields.Sum(f => f.Flags.Count), jobs = s.Fields.Sum(f => f.Jobs.Count);
             sc.Note(Kit.F($"{s.Fields.Count} listed, {opened} open, {withBoundary} with a boundary, {tracks} tracks, {flags} flags, {jobs} jobs imported"));
             foreach (var f in s.Fields.Where(f => !f.Opened))
                 sc.Problem(Severity.DataLoss, "AOG-OWN-FIELD-NOT-OPENING", Kit.F($"an AgOpenGPS field of the farmer's does not open{(Journal.Verbose ? " (" + f.Name + ")" : "")}: {string.Join(" | ", f.Said)}"));
             Kit.CheckRig(sc, rig, "after opening the farmer's fields");
         }
+        if (hashBefore != null && AgOpenGpsInstall.TreeHash(sourceDir) != hashBefore)
+            sc.Problem(Severity.DataLoss, "AOG-ORIGINALS-CHANGED", "the farmer's AgOpenGPS folder changed while this build ran on its copy");
         Kit.TryDelete(root);
     }
 }

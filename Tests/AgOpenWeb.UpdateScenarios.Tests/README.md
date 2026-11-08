@@ -37,9 +37,20 @@ Two operators:
   curve, `Flags.txt`, `Sections.txt` with 240 m² worked; `AgOpenGpsFiles.cs` writes them as
   AgOpenGPS does); and the whole season under a comma-decimal culture (pt-PT) on every thread,
   then read again under the invariant culture (`R6`, the globalization fence of
-  `CONTRIBUTING.md`). With `AGOPENWEB_UPDATE_AOG_FIELDS=<dir>` the farmer's own AgOpenGPS
-  field folders are copied in and opened too (`R7`); only counts go in the report, the fields
-  stay on the computer.
+  `CONTRIBUTING.md`). `R8` moves a whole **AgOpenGPS 6.8.6 installation** to AgOpenWeb the way
+  a farmer does it and keeps AgOpenGPS: `AgOpenGpsInstall.cs` writes a `Documents/AgOpenGPS`
+  folder with the layout and setting names of a real 6.8.6 computer (tractors in
+  `VehicleProfiles/`, implements in `ToolProfiles/`, U-turn and tram in
+  `Environment/environment.xml`, the NTRIP caster in `AgIO/`, a combined `Vehicles/*.XML` left
+  from before 6.8.2 with that day's values, and fields with every file AgOpenGPS writes:
+  coverage, contour, recorded path, elevation, background image, KML, ISO-XML). Its fields and
+  profile folders are copied into `Documents/AgOpenWeb`; each tractor, implement and setting
+  is then looked for in this build (imported, read from the stale combined file, or not
+  imported, per settings tab), the fields judged as in `R5` plus their other files, and the
+  AgOpenGPS folder must be byte for byte as it was. With
+  `AGOPENWEB_UPDATE_AOG_FIELDS=<dir>` the farmer's own AgOpenGPS field folders (or a whole
+  AgOpenGPS folder, with `Fields/` inside, copied as `R8` copies it) are copied in and opened
+  too (`R7`); only counts go in the report, the files stay on the computer.
 
 ## The farm
 
@@ -107,7 +118,7 @@ AGOPENWEB_SCENARIO_OPERATOR=upgrader AGOPENWEB_SCENARIO_ONLY=U-26.7.2 dotnet tes
 | `AGOPENWEB_SCENARIO_KEEP` | Keep the scenarios' data folders (`/tmp/aow-update-<code>-…`) to look at. |
 | `AGOPENWEB_UPDATE_FROM` | Releases to update from, oldest first (default `v26.7.1,v26.7.2,v26.7.3`); `tag=/path/to/app` uses a published app folder instead of a download. |
 | `AGOPENWEB_UPDATE_CACHE` | Where the bundles are kept (default: the temp folder's `agopenweb-releases`). |
-| `AGOPENWEB_UPDATE_AOG_FIELDS` | A folder of AgOpenGPS field folders of your own for `R7`. |
+| `AGOPENWEB_UPDATE_AOG_FIELDS` | A folder of AgOpenGPS field folders of your own, or your whole AgOpenGPS folder, for `R7`. |
 
 The old build and this build use UDP port 9999 and web port 5174 one after the other, never at
 once; nothing else of AgOpenWeb may run on the machine. Releases before 26.7 have no Linux
@@ -121,7 +132,8 @@ artifact and shows it in the run's summary; CI only builds the project.
 |---|---|
 | `UpdateScenarioTests.cs` | The one NUnit test: both operators into one report. |
 | `UpgraderOperator.cs` | The older release, the season on it, SIGTERM or SIGKILL, this build, the restart, the rollback. |
-| `RestarterOperator.cs` | `R1`–`R7` on this build. |
+| `RestarterOperator.cs` | `R1`–`R8` on this build. |
+| `AgOpenGpsInstall.cs` | `R8`'s AgOpenGPS 6.8.6 folder: profiles, environment, AgIO, fields with every file. |
 | `Farm.cs` | The farm and `FarmBuilder`, which makes it through any `ICommandSender` (the WebSocket or the in-process rig). |
 | `OldRelease.cs` | The release bundle (download, cache), the headless child process (`OldProcess`), the WebSocket client with control (`WebClient`). |
 | `Snapshot.cs` | What this build reads back (`Snapshot`) and the comparison (`Judge`). |
