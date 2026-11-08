@@ -112,7 +112,7 @@ public static class ControlLostScenarios
         bool stillOn = await op.EvalAsync<bool>("() => !!(tick && tick.op && tick.op.autoSteer)");
         s.Step($"{ModuleListener.NowMs - t0} ms into the outage the tablet shows {v}, AutoSteer button {(stillOn ? "ON" : "off")}");
         await run.ShotAsync(s, op, $"{s.Row.Code}-tablet-during-outage.png");
-        if (v.HoldsControl && v.Conn == "connected")
+        if (v.ClaimsOperator)
             s.Problem(Severity.Safety, "SILENT-LINK-LOOKS-LIVE",
                 $"4 s into the outage the tablet still says {v} with AutoSteer shown {(stillOn ? "ON" : "off")} and a still map, while the host stopped the steering {Run.Ms(steer)} after the link went: no warning that the screen is out of date");
         else s.Ok($"the tablet shows the outage: {v}");
@@ -296,14 +296,14 @@ public static class ControlLostScenarios
         long tookMs = ModuleListener.NowMs - t0;
         var vt = await op.ViewAsync(); var vp = await phone.ViewAsync();
         s.Step($"{tookMs} ms: tablet {vt}, phone {vp}");
-        if (phoneTook && vt.HoldsControl)
+        if (phoneTook && vt.ClaimsOperator)
         {
             await run.ShotAsync(s, op, "C11-tablet.png");
             await run.ShotAsync(s, phone, "C11-phone.png");
             s.Problem(Severity.Inconsistency, "TWO-SCREENS-SAY-OPERATOR",
                 $"the phone took control {tookMs} ms after the tablet's link went silent, and the tablet still says {vt}: two screens show 'Operator'");
         }
-        else if (phoneTook) s.Ok("the phone took over and the tablet no longer claims control");
+        else if (phoneTook) s.Ok($"the phone took over and the tablet no longer says Operator: {vt}");
         await Task.Delay(Math.Max(0, 6000 - (int)(ModuleListener.NowMs - t0)));
         op.Wifi.Mode = LinkMode.Up;
         await Task.Delay(2500);

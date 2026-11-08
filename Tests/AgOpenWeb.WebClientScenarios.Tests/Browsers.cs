@@ -250,6 +250,10 @@ public sealed class Screen : IAsyncDisposable
 
 public sealed record View(string Role, string Conn, bool HoldsControl, bool SomeoneHolds, string SteerButtonClass)
 {
+    /// <summary>The screen shows itself as the operator: it holds control and its link is up
+    /// (the role line says Disconnected otherwise, whatever the page last heard).</summary>
+    public bool ClaimsOperator => HoldsControl && Conn == "connected";
+
     public override string ToString() => $"\"{Role}\" ({Conn}{(HoldsControl ? ", holds control" : "")})";
 }
 
