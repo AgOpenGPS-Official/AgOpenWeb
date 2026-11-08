@@ -351,10 +351,21 @@ public static class ControlLostScenarios
         await using var _1 = op;
         await using var phone = await run.OpenAsync(Device.PhonePortrait, "phone");
         if (!await phone.WaitReadyAsync()) { s.Harness("the phone did not connect"); return; }
+        int atStart = run.Rig.ControlLog.Count;
         if (await run.StartWorkAsync(s, op) is { } why) { s.Harness(why); return; }
         // A few seconds of painting first, so coverage frames are going out when the link goes.
         await Task.Delay(3000);
         int controlChanges = run.Rig.ControlLog.Count;
+        // The work must still be going, or the outage tests nothing.
+        var before = await op.ViewAsync();
+        var hostBefore = await run.Rig.HostAsync();
+        if (run.Rig.Module.Last is not { Steering: true } || !before.HoldsControl)
+        {
+            string log = string.Join("; ", run.Rig.ControlLog.Skip(atStart).Select(c => $"{c.Ms - (ModuleListener.NowMs - 3000)} ms {(c.Held ? "taken" : "ended")} ({c.Reason})"));
+            s.Problem(Severity.Safety, "WORK-STOPPED-WITH-THE-LINK-UP",
+                $"after 3 s of painting with the link up the work had stopped: the module gets {run.Rig.Module.Last}, the tablet shows {before}; host: {hostBefore}; control changes since the work started: {(log.Length == 0 ? "none" : log)}");
+            return;
+        }
         long t0 = ModuleListener.NowMs;
         op.Wifi!.Mode = LinkMode.Silent;
         s.Step("the tablet's link goes silent, sections painting");
