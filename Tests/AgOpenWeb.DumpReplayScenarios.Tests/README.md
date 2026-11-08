@@ -129,8 +129,9 @@ output folder.
 | `AGOPENWEB_SCENARIO_PACE` | Real ms per take-over fix (default 100, real time) |
 | `AGOPENWEB_SCENARIO_VERBOSE`, `AGOPENWEB_SCENARIO_TRACE` | Steps to the console, or to a file |
 
-`dump-replay-scenarios.yml` runs it nightly on `develop` (the bug report Worker starts it with
-the other harnesses) and by hand, with the dumps cached between runs. Like every harness here it
+`dump-replay-scenarios.yml` runs it by hand, or nightly on `develop` once it is in the bug report
+Worker's `NIGHTLY_WORKFLOWS` (`Tools/bugreport-worker/wrangler.toml`), with the dumps cached
+between runs. Like every harness here it
 binds UDP 9999: one harness per machine at a time (a second run of this one fails at once on
 its lock file).
 

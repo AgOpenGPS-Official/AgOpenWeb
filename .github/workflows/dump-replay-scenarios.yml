@@ -18,7 +18,7 @@ name: Dump Replay Scenarios
 
 on:
   # Nightly: the bug report Worker (Tools/bugreport-worker, cron 03:07 UTC) starts it with
-  # nightly=true, as the other harnesses.
+  # nightly=true, as the other harnesses, once it is listed in the Worker's NIGHTLY_WORKFLOWS.
   workflow_dispatch:
     inputs:
       nightly:
