@@ -223,7 +223,10 @@ public sealed class YouTurnPathingService
         if (!IsPathInsideCultivated(track, abHeading, pathsAway, boundary, headlandLine)) return false;
         if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid) return true;
         if (track.Points.Count < 2) return true;
-        double landing = LandingLength(track, abHeading, pathsAway, boundary, headlandLine, position, headingSameWay, headlandAhead);
+        // Only whether there is enough: stop counting there (the walk is up to 2 km of
+        // point-in-polygon tests, and an end of the field asks again every cycle).
+        double landing = LandingLength(track, abHeading, pathsAway, boundary, headlandLine, position, headingSameWay, headlandAhead,
+            stopAt: MinLandingLength);
         if (landing < MinLandingLength)
             _logger.LogDebug("[NextTrack] nextPath={Next} has only {Len:F0}m inside the field at this end - no turn onto it",
                 pathsAway, landing);
@@ -236,16 +239,19 @@ public sealed class YouTurnPathingService
     /// m ahead of the tractor), the run of it inside the cultivated area back the way the tractor
     /// came, which is the way it drives after the turn. Inside the headland line; obstacles are
     /// not counted. When that pass ends sooner, its first run back of the end, however far (a
-    /// wide turn lands in the headland and drives to it). 0 when there is none.
+    /// wide turn lands in the headland and drives to it). 0 when there is none. With
+    /// <paramref name="stopAt"/> the run is measured no further than that.
     /// </summary>
     public double LandingLength(Models.Track.Track track, double abHeading, int pathsAway,
-        Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, Position position, bool headingSameWay, double headlandAhead)
+        Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, Position position, bool headingSameWay, double headlandAhead,
+        double stopAt = double.MaxValue)
     {
         var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         double distAway = PassGeometry.Offset(track, pathsAway, widthMinusOverlap);
         const double Step = 1.0;
         const double RunBack = 2000.0;
+        double runLimit = Math.Min(RunBack, stopAt);
         double ahead = Math.Clamp(double.IsFinite(headlandAhead) ? headlandAhead : 0, 0, 2000);
 
         if (track.Points.Count > 2)
@@ -286,7 +292,7 @@ public sealed class YouTurnPathingService
                 if (!found) return 0;
             }
             double length = 0;
-            for (int i = at - fwd; i >= 0 && i < curve.Count && length <= RunBack && InsideAt(i); i -= fwd)
+            for (int i = at - fwd; i >= 0 && i < curve.Count && length <= runLimit && InsideAt(i); i -= fwd)
                 length += Dist(i, i + fwd);
             return length;
         }
@@ -328,109 +334,10 @@ public sealed class YouTurnPathingService
         }
         // The run back from there.
         double back = 0;
-        for (double d = Step; d <= RunBack && InsideAtT(tAt - s * d); d += Step) back = d;
+        for (double d = Step; d <= runLimit + Step && InsideAtT(tAt - s * d); d += Step) back = d;
         double tBack = Edge(tAt - s * back, tAt - s * (back + Step));
         return Math.Abs(tFront - tBack);
     }
-
-    /// <summary>
-    /// Metres of headland pass <paramref name="pathsAway"/> crosses from the end the tractor is
-    /// heading for (<paramref name="headlandAhead"/> m ahead of <paramref name="position"/>)
-    /// before it is inside the cultivated area again, all of it inside the outer boundary: a
-    /// corner the headland clips off the pass, a gap across it, not the pass's end. Null when
-    /// the pass ends there: it leaves the field before any more of it inside, or there is none
-    /// within <see cref="MaxGapAhead"/>. Null too without a usable outer boundary.
-    /// </summary>
-    public double? GapAhead(Models.Track.Track track, double abHeading, int pathsAway,
-        Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, Position position, bool headingSameWay, double headlandAhead)
-    {
-        var outer = boundary?.OuterBoundary;
-        if (outer == null || !outer.IsValid) return null;
-        if (track.Points.Count < 2) return null;
-        var config = _configStore;
-        double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double distAway = PassGeometry.Offset(track, pathsAway, widthMinusOverlap);
-        const double Step = 1.0;
-        double ahead = Math.Clamp(double.IsFinite(headlandAhead) ? headlandAhead : 0, 0, 2000);
-
-        if (track.Points.Count > 2)
-        {
-            var curve = CurveProcessing.CreateOffsetCurve(track.Points, distAway);
-            if (curve.Count < 2) return null;
-            int near = 0;
-            double best = double.MaxValue;
-            for (int i = 0; i < curve.Count; i++)
-            {
-                double de = curve[i].Easting - position.Easting, dn = curve[i].Northing - position.Northing;
-                double d = de * de + dn * dn;
-                if (d < best) { best = d; near = i; }
-            }
-            int i1 = Math.Min(near + 1, curve.Count - 1), i0 = Math.Max(near - 1, 0);
-            double tdx = curve[i1].Easting - curve[i0].Easting, tdy = curve[i1].Northing - curve[i0].Northing;
-            double travel = headingSameWay ? abHeading : abHeading + Math.PI;
-            int fwd = tdx * Math.Sin(travel) + tdy * Math.Cos(travel) >= 0 ? 1 : -1;
-            double Dist(int a, int b)
-            {
-                double de = curve[a].Easting - curve[b].Easting, dn = curve[a].Northing - curve[b].Northing;
-                return Math.Sqrt(de * de + dn * dn);
-            }
-            int at = near;
-            for (double walked = 0; at + fwd >= 0 && at + fwd < curve.Count && walked < ahead; at += fwd)
-                walked += Dist(at, at + fwd);
-            // The rest of the run the ray measured short of (it runs along the tractor's heading),
-            // then the headland until the pass is inside again, or out of the field.
-            bool left = false;
-            double gap = 0;
-            for (int i = at; i + fwd >= 0 && i + fwd < curve.Count && gap <= MaxGapAhead; i += fwd)
-            {
-                var p = curve[i + fwd];
-                if (!outer.IsPointInside(p.Easting, p.Northing)) return null;
-                bool inside = IsPointInsideCultivatedArea(p.Easting, p.Northing, boundary, headlandLine);
-                if (left && inside) return gap;
-                if (!left && !inside) { left = true; gap = 0; }
-                gap += Dist(i, i + fwd);
-                if (!left && gap > RunOnLimit) return null;
-            }
-            return null;
-        }
-
-        var pointA = track.Points[0];
-        var pointB = track.Points[track.Points.Count - 1];
-        double abDx = pointB.Easting - pointA.Easting, abDy = pointB.Northing - pointA.Northing;
-        double abLen = Math.Sqrt(abDx * abDx + abDy * abDy);
-        if (abLen < 0.01) return null;
-        double abNx = abDx / abLen, abNy = abDy / abLen;
-        double perpAngle = abHeading + Math.PI / 2;
-        double midE = (pointA.Easting + pointB.Easting) / 2 + Math.Sin(perpAngle) * distAway;
-        double midN = (pointA.Northing + pointB.Northing) / 2 + Math.Cos(perpAngle) * distAway;
-        double s = headingSameWay ? 1 : -1;
-        double t0 = (position.Easting - midE) * abNx + (position.Northing - midN) * abNy;
-        double tAt = t0 + s * ahead;
-
-        // The rest of the run the ray measured short of (it runs along the tractor's heading, the
-        // line can be inside a little further), then the headland until the pass is inside again.
-        double crossedAt = double.NaN;
-        for (double d = Step; d <= RunOnLimit + MaxGapAhead; d += Step)
-        {
-            double t = tAt + s * d;
-            double e = midE + abNx * t, n = midN + abNy * t;
-            if (!outer.IsPointInside(e, n)) return null;
-            bool inside = IsPointInsideCultivatedArea(e, n, boundary, headlandLine);
-            if (double.IsNaN(crossedAt))
-            {
-                if (!inside) crossedAt = d - Step;
-                else if (d > RunOnLimit) return null;
-            }
-            else if (inside) return d - crossedAt;
-            else if (d - crossedAt > MaxGapAhead) return null;
-        }
-        return null;
-    }
-
-    /// <summary>The longest headland a pass is taken to go on past; further in is its end.</summary>
-    public const double MaxGapAhead = 2000.0;
-    /// <summary>How far past the ray's headland distance the pass may still be inside before it is not the pass end at all.</summary>
-    private const double RunOnLimit = 50.0;
 
     private bool CheckOffsetLineInsideCultivated(
         Models.Track.Track currentTrack, double abHeading, int nextPathsAway,

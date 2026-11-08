@@ -113,33 +113,6 @@ public class LandingLengthTests
     }
 
     [Test]
-    public void A_pass_the_notch_cuts_goes_on_past_it_inside_the_field()
-    {
-        // Heading north on pass 6 (x = 26) at y = -35: the notch's edge is 17.4 m ahead, the pass
-        // is in the notch for 35.3 m (inside the fence all the way) and inside again to the north.
-        // Not the end of the field: no turn, drive on.
-        double? gap = _pathing.GapAhead(_track, 0, 6, _boundary, _cultivated, At(26, -35), true, 17.4);
-        Assert.That(gap, Is.Not.Null);
-        Assert.That(gap!.Value, Is.EqualTo(35.3).Within(1.5));
-
-        // The ray measures along the tractor's heading: a few metres short of the line's true
-        // crossing is the same gap.
-        gap = _pathing.GapAhead(_track, 0, 6, _boundary, _cultivated, At(26, -35), true, 12);
-        Assert.That(gap, Is.Not.Null);
-        Assert.That(gap!.Value, Is.EqualTo(35.3).Within(1.5));
-    }
-
-    [Test]
-    public void A_pass_that_leaves_the_field_past_the_headland_ends_there()
-    {
-        // Pass -2 (x = -6) heading north at y = 30: the headland 10 m ahead, the fence 10 m on.
-        Assert.That(_pathing.GapAhead(_track, 0, -2, _boundary, _cultivated, At(-6, 30), true, 10), Is.Null);
-        // Pass 7 (x = 30) heading south at y = -30: the south edge 10 m ahead, the fence 10 m on
-        // (the notch, where the pass goes on, is behind the tractor).
-        Assert.That(_pathing.GapAhead(_track, 0, 7, _boundary, _cultivated, At(30, -30), false, 10), Is.Null);
-    }
-
-    [Test]
     public void The_next_line_choice_skips_a_side_whose_pass_cannot_be_landed_on()
     {
         // On pass 6 (x = 26) heading south at y = -30: pass 7 to the east has 18.8 m here, pass 5

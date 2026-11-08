@@ -854,7 +854,6 @@ public sealed class YouTurnStateMachine
         if (!_pathing.IsPathLandable(track, abHeading, target, ctx.Boundary, ctx.HeadlandLine, currentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland))
         {
             _logger.LogDebug("[YouTurn] Snake pass {Pass} is too short inside the field at this end - no turn", target);
-            if (DrivesOnAcrossGap(in ctx, track, abHeading, guidance, turn, effects)) return;
             effects.StatusMessage = "End of field reached - no room on the next pass at this end";
             SoundCreationFailed(effects);
             return;
@@ -1001,7 +1000,6 @@ public sealed class YouTurnStateMachine
         }
         if (!_pathing.IsPathLandable(track, abHeading, nextPath, ctx.Boundary, ctx.HeadlandLine, ctx.CurrentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland))
         {
-            if (DrivesOnAcrossGap(in ctx, track, abHeading, guidance, turn, effects)) return;
             effects.StatusMessage = _pathing.IsPathInsideCultivated(track, abHeading, nextPath, ctx.Boundary, ctx.HeadlandLine)
                 ? "End of field reached - no room on the next pass at this end"
                 : "End of field reached";
@@ -1057,7 +1055,6 @@ public sealed class YouTurnStateMachine
         }
         if (!nextLineInside)
         {
-            if (DrivesOnAcrossGap(in ctx, track, abHeading, guidance, turn, effects)) return;
             // A pass inside the field somewhere, but with no room to land on at this end (a
             // corner pass, the far lobe of an hourglass): the operator takes over here too.
             bool roomSomewhere = !steppedBack && _pathing.WouldNextLineBeInsideBoundary(
@@ -1136,25 +1133,6 @@ public sealed class YouTurnStateMachine
     /// included. Before, the end of the field showed only a status line and the tractor drove into
     /// the headland in silence.
     /// </summary>
-    /// <summary>
-    /// No pass with room to turn onto at this end, but the pass goes on inside the field past the
-    /// headland ahead, without leaving it (a corner the headland clips off the pass, a gap across
-    /// it): not the end of the field. No turn; the tractor drives on across to the next piece,
-    /// where a turn is planned again. Entering an olive grove at a corner the headland cut 11 m
-    /// off the first pass, the end of the field was announced 12 s into the job.
-    /// </summary>
-    private bool DrivesOnAcrossGap(in TickContext ctx, Models.Track.Track track, double abHeading,
-        GuidanceWorkingState guidance, YouTurnWorkingState turn, YouTurnEffects effects)
-    {
-        double? gap = _pathing.GapAhead(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
-            ctx.CurrentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland);
-        if (gap is not { } metres) return false;
-        _logger.LogDebug("[YouTurn] No pass with room at this headland; pass {Pass} goes on {Gap:F0}m past it - no turn, driving on",
-            guidance.HowManyPathsAway, metres);
-        effects.StatusMessage = "No room to turn at this headland - driving on across it";
-        return true;
-    }
-
     private void SoundCreationFailed(YouTurnEffects effects)
     {
         if (_creationFailSounded) return;
