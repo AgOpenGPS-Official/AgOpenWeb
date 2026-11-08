@@ -137,7 +137,9 @@ send. A client can't take control from a live operator, only fill an empty seat.
 buttons only set them all, as AgOpenGPS. In Auto the look-ahead asks for on/off early: the
 **module** gets that request at once (`IsCommandedOn` → PGN 239/229 bits), while `IsOn` and the
 coverage map wait the look-ahead time, so the valve acts at the edge and the map paints where
-the product lands (#707). With look-ahead off at 0 the turn-off delay is a plain overrun of both.
+the product lands (#707). With look-ahead off at 0 the turn-off delay is a plain overrun of both. Look-ahead
+installs at AgOpenGPS's 1.0 s on / 0.5 s off (`ToolConfig.DefaultLookAheadOn/Off`): the time it
+assumes a sprayer's valves take; saved profiles keep their own.
 The control loop sends the PGNs at 100 Hz, PGN 229 every tick whatever the section count (the
 ISOBUS task controller reads sections from 229 only).
 
@@ -467,6 +469,9 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.GpsNtripScenarios.Tests` - receivers, sentence families and an NTRIP caster on the loopback: corrections, network changes, dual heading (`gps-ntrip-scenarios.yml`; one scenario needs Linux's 127.0.0.2)
 - `AgOpenWeb.FieldJobScenarios.Tests` - whole jobs on real fields with AutoSteer, U-turns and auto sections, measuring where product really went on a 0.2 m grid (`field-job-scenarios.yml`, up to 2 h); its `PathJobScenarioTests` do the same on curves, the boundary as a loop, a water pivot, contour and a recorded path (`path-job-scenarios.yml`, about 30 min); `RigJobScenarioTests` with the testers' rigs: an implement shifted to one side, a curve recorded by driving, a wide implement skipping rows (`rig-job-scenarios.yml`); `TurnInterventionScenarioTests` with an operator who acts during a U-turn, and manual U-turns (`turn-intervention-scenarios.yml`); `ImperialJobScenarioTests` the job typed in feet and inches through the real web client, headless Chromium (`imperial-job-scenarios.yml`)
 - `AgOpenWeb.IsobusScenarios.Tests` - an emulated AOG-TaskController and its implements (`isobus-scenarios.yml`)
+- `AgOpenWeb.WebClientScenarios.Tests` - the real web client in headless Chromium (Playwright) on the screens a farm uses (tablets, a 720p PC, a 5" screen, a phone), a second screen as observer, and the operator's screen going away while working (tab closed, Wi-Fi silent or cut, tablet asleep, Free Drive, a section on by hand), read at the module port (`web-client-scenarios.yml`)
+- `AgOpenWeb.UpdateScenarios.Tests` - settings, profiles, casters, fields and a job made on older releases (their Linux bundles, SHA-256 checked) then read back by this build, a rollback; on this build a restart, a power cut, damaged and leftover files, a moved data folder, a comma-decimal locale, AgOpenGPS fields and a whole AgOpenGPS 6.8.6 folder; about 15 minutes (`update-scenarios.yml`)
+- `AgOpenWeb.WorkingDayScenarios.Tests` - an eight-hour working day in one process (fields, refills, lunch, a tablet and a phone that drop, stall and reconnect, the next morning): memory baselines, heap census, cycle and tick times, the deadman with a second browser; about 45 minutes (`working-day-scenarios.yml`)
 
 CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/license-headers.py --check` for the licence headers, and `Tools/i18n-limits.py --check` (job `translations-fit`, only when a change touches `wwwroot/`, the check, its baseline or the workflow; otherwise skipped, which counts as passed) so every translated label fits the English layout.
 
@@ -509,14 +514,14 @@ GitHub Actions workflows, split by purpose:
     beta from `develop` right away (title carries build time + commit); `release` publishes
     the Release named by `release_tag`; `none` builds + uploads artifacts only (dry run).
 
-- **Scenario harnesses, nightly** — eleven workflows, each running one harness on `develop` (when it has a
+- **Scenario harnesses, nightly** — fourteen workflows, each running one harness on `develop` (when it has a
   commit from the last 25 hours) or by hand, keeping its findings report as an artifact and in the run's
   summary; PR CI only builds them. GitHub's own schedule started them 5–8 hours late every day, so the bug
   report Worker starts them (`Tools/bugreport-worker`, `NIGHTLY_CRON` 03:07 UTC, 21:07 US Central) as a
-  `workflow_dispatch` with `nightly=true`, which keeps the 25-hour check; all eleven side by side, each on its
+  `workflow_dispatch` with `nightly=true`, which keeps the 25-hour check; all fourteen side by side, each on its
   own runner: `field-scenarios.yml`, `steer-wizard-scenarios.yml` (also fails when its safety watch saw the
   wheels move when they shouldn't), `vehicle-tool-scenarios.yml`, `machine-module-scenarios.yml`,
-  `gps-ntrip-scenarios.yml`, `field-job-scenarios.yml` (the longest, up to 2 h), `isobus-scenarios.yml`, `path-job-scenarios.yml`, `rig-job-scenarios.yml`, `turn-intervention-scenarios.yml`, `imperial-job-scenarios.yml` (Playwright's Chromium). Each harness's `README.md` says what it covers.
+  `gps-ntrip-scenarios.yml`, `field-job-scenarios.yml` (the longest, up to 2 h), `isobus-scenarios.yml`, `path-job-scenarios.yml`, `web-client-scenarios.yml`, `update-scenarios.yml`, `working-day-scenarios.yml`, `rig-job-scenarios.yml`, `turn-intervention-scenarios.yml`, `imperial-job-scenarios.yml` (Playwright's Chromium). Each harness's `README.md` says what it covers.
 
 To cut a release (about weekly, so each one stays small): bump `sys/version.h` and the three heads' display versions, then push a tag — `git tag v26.7.x && git push origin v26.7.x`. A summary on top of the generated list goes in with `gh release edit`.
 

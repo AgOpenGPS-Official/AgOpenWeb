@@ -29,6 +29,8 @@ public class ImperialJobScenarioTests
     [CancelAfter(3_600_000)]
     public async Task Imperial_jobs(CancellationToken ct)
     {
+        // The field jobs' lock: every fixture's emulated module binds UDP 8888.
+        using var exclusive = FieldJobScenarioTests.OneRunAtATime();
         string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
         var journal = new Journal();
         foreach (var job in ImperialJobs.Jobs())

@@ -28,6 +28,8 @@ public class TurnInterventionScenarioTests
     [CancelAfter(5_400_000)]
     public async Task Turn_interventions(CancellationToken ct)
     {
+        // The field jobs' lock: every fixture's emulated module binds UDP 8888.
+        using var exclusive = FieldJobScenarioTests.OneRunAtATime();
         string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
         var journal = new Journal();
         foreach (var job in TurnInterventions.Jobs())

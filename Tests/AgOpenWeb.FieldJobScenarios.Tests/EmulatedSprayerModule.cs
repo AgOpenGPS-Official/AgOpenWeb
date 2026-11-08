@@ -90,8 +90,18 @@ public sealed class EmulatedSprayerModule : IDisposable
     public bool LinkOk { get; private set; }
     public bool IsLower { get; private set; }
     public bool IsRaise { get; private set; }
-    /// <summary>Sections the relays really have open (bit 0 = section 1).</summary>
+    /// <summary>Sections the relays really have open (bit 0 = section 1): what the module drives
+    /// and reports back.</summary>
     public ulong SectionsOpen { get; private set; }
+    /// <summary>Sections where product is coming out of the nozzles (bit 0 = section 1): each
+    /// follows its relay after the valve's own time to open or shut (<see cref="ValveOnDelayS"/>,
+    /// <see cref="ValveOffDelayS"/>), the time look-ahead is there to cover.</summary>
+    public ulong SectionsSpraying { get; private set; }
+    /// <summary>Seconds from a relay closing to product at the nozzles (valve, line pressure).</summary>
+    public double ValveOnDelayS { get; set; }
+    /// <summary>Seconds from a relay opening to the nozzles stopping.</summary>
+    public double ValveOffDelayS { get; set; }
+    private readonly long[] _relayChangedMs = new long[64];
     /// <summary>Sections the program asks for (239 / 229), before the relays.</summary>
     public ulong SectionsAsked { get; private set; }
     /// <summary>Relay coil states, relay 1 = bit 0 (8 relays, ESP32_Relay_X8).</summary>
@@ -182,7 +192,7 @@ public sealed class EmulatedSprayerModule : IDisposable
         _uTurn = _hydLift = _lastTrigger = _raiseTimer = _lowerTimer = 0;
         Tramline = GeoStop = 0;
         LinkOk = IsLower = IsRaise = false;
-        SectionsOpen = SectionsAsked = 0;
+        SectionsOpen = SectionsAsked = SectionsSpraying = 0;
         Relays = 0;
     }
 
@@ -380,7 +390,22 @@ public sealed class EmulatedSprayerModule : IDisposable
             if (f <= 64) open |= 1UL << (f - 1);
         }
         Relays = bits;
+        ulong changed = open ^ SectionsOpen;
+        for (int s = 0; s < 64; s++) if (((changed >> s) & 1) != 0) _relayChangedMs[s] = now;
         SectionsOpen = open;
+
+        // The valves: each section's product follows its relay once the relay has held for the
+        // valve's time (a relay that flicks back sooner never reaches the nozzles).
+        ulong spray = SectionsSpraying;
+        long onMs = (long)Math.Round(ValveOnDelayS * 1000), offMs = (long)Math.Round(ValveOffDelayS * 1000);
+        for (int s = 0; s < 64; s++)
+        {
+            ulong bit = 1UL << s;
+            bool relay = (open & bit) != 0, flowing = (spray & bit) != 0;
+            if (relay == flowing) continue;
+            if (now - _relayChangedMs[s] >= (relay ? onMs : offMs)) spray ^= bit;
+        }
+        SectionsSpraying = spray;
     }
 
     /// <summary>What relay i (0 = relay 1) does: 1-16 that section, 101 lower (pin 17), 102 raise

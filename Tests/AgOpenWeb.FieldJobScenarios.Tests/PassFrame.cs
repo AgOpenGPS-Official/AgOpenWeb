@@ -66,7 +66,7 @@ public sealed class StraightFrame : PassFrame
 }
 
 /// <summary>A curve (a polyline, open or closed): u is the signed distance to its nearest
-/// segment, v the arc length there. Segments are found through a 10 m bucket grid.</summary>
+/// point, v the arc length there. Segments are found through a 10 m bucket grid.</summary>
 public sealed class PolylineFrame : PassFrame
 {
     private readonly List<(double E, double N)> _p;
@@ -154,14 +154,20 @@ public sealed class PolylineFrame : PassFrame
         return l < 1e-9 ? (0, 1) : ((b.E - a.E) / l, (b.N - a.N) / l);
     }
 
+    /// <summary>The signed distance to the nearest point of the line (+ to the right of its
+    /// direction). Where that point is a vertex, on the outer side of a bend, it is the distance to
+    /// the vertex, not along one segment's normal, which comes out short there. Past an open line's
+    /// ends it is measured along the end segment's normal, as the line runs on.</summary>
     public override double U((double E, double N) p)
     {
-        var (i, t, _) = Nearest(p);
+        var (i, t, d2) = Nearest(p);
         var a = _p[i]; var d = SegDir(i);
         double segLen = _s[i + 1] - _s[i];
         double fe = a.E + d.E * t * segLen, fn = a.N + d.N * t * segLen;
         // + to the right of the direction of travel along the line
-        return (p.E - fe) * d.N - (p.N - fn) * d.E;
+        double perp = (p.E - fe) * d.N - (p.N - fn) * d.E;
+        if (t < 0 || t > 1) return perp;
+        return Math.Sign(perp) * Math.Sqrt(d2);
     }
 
     public override double V((double E, double N) p)

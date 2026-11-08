@@ -27,6 +27,8 @@ public class RigJobScenarioTests
     [CancelAfter(9_000_000)]
     public async Task Rig_jobs(CancellationToken ct)
     {
+        // The field jobs' lock: every fixture's emulated module binds UDP 8888.
+        using var exclusive = FieldJobScenarioTests.OneRunAtATime();
         string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
         var journal = new Journal();
         foreach (var job in RigJobs.Jobs())

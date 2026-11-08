@@ -117,8 +117,8 @@ public class ToolProfileService : IToolProfileService
         store.Tool.IsToolTBT = false;
         store.Tool.IsToolRearFixed = true;
         store.Tool.IsToolFrontFixed = false;
-        store.Tool.LookAheadOnSetting = 0.0;
-        store.Tool.LookAheadOffSetting = 0.0;
+        store.Tool.LookAheadOnSetting = Models.Configuration.ToolConfig.DefaultLookAheadOn;
+        store.Tool.LookAheadOffSetting = Models.Configuration.ToolConfig.DefaultLookAheadOff;
         store.Tool.TurnOffDelay = 0.0;
         store.Tool.MinCoverage = 100;
         store.Tool.IsMultiColoredSections = false;

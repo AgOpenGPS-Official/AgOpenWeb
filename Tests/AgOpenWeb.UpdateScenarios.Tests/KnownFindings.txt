@@ -1,0 +1,4 @@
+# Finding codes already reported (one per line: CODE, then where it was reported).
+# The report lists these under "Already reported" so a night's new findings stand out.
+# Example:
+# UPDATE-TRACK-MOVED  issue #123
