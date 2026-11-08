@@ -821,8 +821,7 @@ public partial class YouTurnCreationService
         double exitEndE = entryStartE + Math.Sin(perpAngle) * turnOffset;
         double exitEndN = entryStartN + Math.Cos(perpAngle) * turnOffset;
 
-        // Arc apex boundary check removed — the arc is meant to extend into the headland zone.
-        // Validate only that the exit end lands back inside the field boundary.
+        // The exit end must land back in the field; the whole path is checked once built.
         if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid
             && !boundary.OuterBoundary.IsPointInside(exitEndE, exitEndN))
         {
@@ -907,7 +906,33 @@ public partial class YouTurnCreationService
 
         TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
 
+        // The semicircle is built without looking at the field, so it must stay in it: asked for
+        // the pass along the fence, where no real turn fits, it swung up to 17 m outside the
+        // boundary (#692). AgOpenGPS has no fallback; it makes no turn and sounds the failure.
+        if (LeavesField(path, boundary))
+        {
+            _logger.LogDebug("[YouTurn] Simple fallback leaves the field - not creating U-turn");
+            path.Clear();
+        }
+
         return path;
+    }
+
+    /// <summary>
+    /// True when a point of <paramref name="path"/> is outside the outer boundary or inside an
+    /// inner boundary a turn may not drive through.
+    /// </summary>
+    internal static bool LeavesField(IReadOnlyList<Vec3> path, Boundary? boundary)
+    {
+        var outer = boundary?.OuterBoundary;
+        if (outer == null || !outer.IsValid) return false;
+        foreach (var p in path)
+        {
+            if (!outer.IsPointInside(p.Easting, p.Northing)) return true;
+            foreach (var inner in boundary!.InnerBoundaries)
+                if (!inner.IsDriveThrough && inner.IsValid && inner.IsPointInside(p.Easting, p.Northing)) return true;
+        }
+        return false;
     }
 
     /// <summary>

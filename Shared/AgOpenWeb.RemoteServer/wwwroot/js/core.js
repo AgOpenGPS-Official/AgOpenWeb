@@ -348,7 +348,8 @@ const transport = RemoteTransport.create({
     }
     if (saPanel.classList.contains('open')) populateScreenAlerts(); // Aerial Imagery follows the field
     // Keep the Tracks manager list live (activate/add/delete/hide change the Scene).
-    if (document.getElementById('dlg-tracks').classList.contains('open')) renderTracksList();
+    if (document.getElementById('dlg-tracks').classList.contains('open')
+        && !document.querySelector('#trk-list .flg-nameedit')) renderTracksList();
     if (document.getElementById('fieldbuilder').classList.contains('open') && fbTab === 'tracks'
         && !document.querySelector('#fb-tracklist .flg-nameedit')) renderFbTracks();
     if (document.getElementById('fieldbuilder').classList.contains('open') && fbTab === 'headland'

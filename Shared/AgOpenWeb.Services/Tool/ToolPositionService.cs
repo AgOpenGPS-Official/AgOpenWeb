@@ -71,6 +71,24 @@ public class ToolPositionService : IToolPositionService
     /// </summary>
     internal static double ToolBehindPivot(ToolConfig tool) => tool.TrailingHitchLength + tool.TrailingToolToPivotLength;
 
+    /// <summary>
+    /// A trailed or TBT tool's working centre, from the tractor's hitch and the headings of the
+    /// TBT tank and of the tool: the geometry <see cref="Update"/> gives the sections and the
+    /// coverage. The map's implement (MainViewModel's render pull, which dead-reckons the hitch
+    /// between fixes) is placed with it, so the map draws the tool where it works.
+    /// </summary>
+    public static (double Easting, double Northing) TrailedToolCentre(
+        double hitchEasting, double hitchNorthing, double tankHeading, double toolHeading, ToolConfig tool)
+    {
+        if (tool.IsToolTBT)
+        {
+            hitchEasting -= Math.Sin(tankHeading) * tool.TankTrailingHitchLength;
+            hitchNorthing -= Math.Cos(tankHeading) * tool.TankTrailingHitchLength;
+        }
+        double behind = ToolBehindPivot(tool);
+        return (hitchEasting - Math.Sin(toolHeading) * behind, hitchNorthing - Math.Cos(toolHeading) * behind);
+    }
+
     private static double AngleBetween(double a, double b) => Math.Abs(Math.PI - Math.Abs(Math.Abs(a - b) - Math.PI));
 
     // Read snapshot — atomically swapped after each writer completes.

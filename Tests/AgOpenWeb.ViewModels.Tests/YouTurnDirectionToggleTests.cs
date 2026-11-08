@@ -325,4 +325,20 @@ public class YouTurnDirectionToggleTests
 
         Assert.That(vm.NextUTurnDirectionLeftOverride, Is.False);
     }
+
+    // #693: with no turn planned the arrow is still shown, and it shows the side the operator
+    // picked, waiting for the next plan; the projector reads it from the state mirror.
+    [Test]
+    public void Pending_override_reaches_the_state_the_arrow_is_drawn_from()
+    {
+        var vm = new MainViewModelBuilder().Build();
+        vm.ApplyGpsCycleResult(new GpsCycleResult
+        {
+            YouTurn = new YouTurnSnapshot { IsTurnLeft = false, NextUTurnDirectionLeftOverride = true },
+        });
+        Assert.That(vm.State.YouTurn.NextUTurnDirectionLeftOverride, Is.True);
+
+        vm.ApplyGpsCycleResult(new GpsCycleResult { YouTurn = new YouTurnSnapshot { IsTurnLeft = true } });
+        Assert.That(vm.State.YouTurn.NextUTurnDirectionLeftOverride, Is.Null, "taken by the plan: the planned side shows");
+    }
 }

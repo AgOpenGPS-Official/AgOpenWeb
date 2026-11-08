@@ -149,10 +149,19 @@ public class ToolPositionMatchesAgOpenGpsTests
         };
 
         int step = 0;
-        double worst = 0, worstHeading = 0; int worstAt = -1;
+        double worst = 0, worstHeading = 0, worstMap = 0; int worstAt = -1, worstMapAt = -1;
         foreach (var (pivot, heading) in Path(turnRadius))
         {
             ours.Update(pivot, heading);
+            if (mount is "trailing" or "tbt")
+            {
+                // The map's implement (MainViewModel's render pull) is placed from the hitch and
+                // the headings with TrailedToolCentre: it must land on the tool position, every step.
+                var (me, mn) = ToolPositionService.TrailedToolCentre(ours.HitchPosition.Easting, ours.HitchPosition.Northing,
+                    ours.TankPosition.Heading, ours.ToolHeading, c.Tool);
+                double dm = Math.Sqrt(Math.Pow(me - ours.ToolPosition.Easting, 2) + Math.Pow(mn - ours.ToolPosition.Northing, 2));
+                if (dm > worstMap) { worstMap = dm; worstMapAt = step; }
+            }
             aog.Step(pivot, heading, distanceCurrentStepFix: 0.2, startCounter: step);
             if (step >= 60)                                  // both past their start-up snap
             {
@@ -168,6 +177,7 @@ public class ToolPositionMatchesAgOpenGpsTests
         {
             Assert.That(worst, Is.LessThan(1e-6), $"{mount}, pivot {pivotDistance}: tool {worst:F3} m from AgOpenGPS's at step {worstAt}");
             Assert.That(worstHeading, Is.LessThan(1e-6), $"{mount}: tool heading off by {worstHeading:F4} rad");
+            Assert.That(worstMap, Is.LessThan(1e-9), $"{mount}, pivot {pivotDistance}: the map's implement {worstMap:F3} m from the tool position at step {worstMapAt}");
         });
     }
 

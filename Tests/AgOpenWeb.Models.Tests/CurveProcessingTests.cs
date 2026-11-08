@@ -323,4 +323,52 @@ public class CurveProcessingTests
         foreach (var p in result.GetRange(0, 5))
             Assert.That(p.Heading, Is.EqualTo(Math.PI / 2).Within(1e-9));
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // ExtendCurveEnds: ends that face each other (#694)
+    // ──────────────────────────────────────────────────────────────────
+
+    // Points 1 m apart along the corners given, in order.
+    private static List<Vec3> Walk(params (double E, double N)[] corners)
+    {
+        var pts = new List<Vec3>();
+        for (int c = 0; c + 1 < corners.Length; c++)
+        {
+            var (e0, n0) = corners[c];
+            var (e1, n1) = corners[c + 1];
+            double len = Math.Sqrt((e1 - e0) * (e1 - e0) + (n1 - n0) * (n1 - n0));
+            double h = Math.Atan2(e1 - e0, n1 - n0);
+            for (int k = 0; k < (int)Math.Round(len); k++)
+                pts.Add(new Vec3(e0 + Math.Sin(h) * k, n0 + Math.Cos(h) * k, h));
+        }
+        var (le, ln) = corners[^1];
+        pts.Add(new Vec3(le, ln, pts[^1].Heading));
+        return pts;
+    }
+
+    [Test]
+    public void ExtendCurveEnds_ends_facing_each_other_stop_short_of_meeting()
+    {
+        // Round a 100 m square the long way, from (30,0) west to (0,0), round, back along the
+        // south side to (70,0): the ends face each other across the 40 m left out.
+        var curve = Walk((30, 0), (0, 0), (0, 100), (100, 100), (100, 0), (70, 0));
+        var ext = CurveProcessing.ExtendCurveEnds(curve);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ext[0].Easting, Is.LessThan(50), "the start's extension stops before halfway");
+            Assert.That(ext[^1].Easting, Is.GreaterThan(50), "the end's extension stops before halfway");
+            Assert.That(ext[0].Easting, Is.GreaterThan(45), "but still reaches most of the way");
+            Assert.That(ext.Count - curve.Count, Is.LessThan(40), "no 200 m tails past each other");
+        });
+    }
+
+    [Test]
+    public void ExtendCurveEnds_parallel_ends_still_extend_in_full()
+    {
+        // A U: both ends point north, side by side: they don't meet, so 200 m each.
+        var curve = Walk((0, 100), (0, 0), (50, 0), (50, 100));
+        var ext = CurveProcessing.ExtendCurveEnds(curve);
+        Assert.That(ext.Count - curve.Count, Is.EqualTo(400));
+    }
 }

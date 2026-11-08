@@ -1068,7 +1068,8 @@ Port = 5122<br>
 
 Spoken with [AOG-TaskController](https://github.com/AgOpenGPS-Official/AOG-TaskController)
 (standalone, or built into the AOW HAT daemon); its `docs/PROTOCOL.md` is the reference.
-The sections themselves reach it in PGN 254 (16) or PGN 229 (64).
+The sections themselves reach it in PGN 229 (64 sections), which AgOpenWeb sends with every PGN 239
+whatever the section count; it does not read them from PGN 254 or 239.
 
 | PGN Name | Src | PGN | Dec | Len | Byte 5 | Byte 6 | Byte 7.. | Last |
 |---|---|---|---|---|---|---|---|---|

@@ -36,12 +36,15 @@ function renderFbTracks() {
   list.innerHTML = '';
   tl.forEach((t, i) => {
     const row = document.createElement('div');
-    row.className = 'fb-trkrow' + (t.active ? ' active' : '') + (i === fbSel ? ' sel' : '');
+    row.className = 'fb-trkrow' + (t.active ? ' active' : '') + (i === fbSel ? ' sel' : '') + (t.visible ? '' : ' hidden-trk');
     row.innerHTML = '<span class="fb-dot"></span><span class="fb-tname"></span>';
     row.querySelector('.fb-tname').textContent = t.name;
+    // A hidden track (unticked in Tracks) can't be the active one, as in AgOpenGPS: it is
+    // dimmed, and a tap says so (#695). It is still selected, for Rename, Edit and Delete.
     row.addEventListener('pointerdown', ev => {
       ev.stopPropagation(); fbSel = i;
-      if (iHoldControl) transport.send('track.select|' + t.index); // activate (highlights on map)
+      if (!t.visible) showToast(tr('Hidden track: tick it in Tracks to use it'));
+      else if (iHoldControl) transport.send('track.select|' + t.index); // activate (highlights on map)
       renderFbTracks();
     });
     list.appendChild(row);
@@ -82,7 +85,9 @@ document.getElementById('fb-trk-deleteall').addEventListener('pointerdown', e =>
     () => { if (iHoldControl) transport.send('track.deleteAll'); fbSel = -1; });
 });
 document.getElementById('fb-trk-rename').addEventListener('pointerdown', e => {
-  e.stopPropagation();
+  // preventDefault: with a mouse, the button took the focus right after the name box got it,
+  // and the blur closed the box before anything could be typed.
+  e.preventDefault(); e.stopPropagation();
   const tl = scene && scene.trackList; if (fbSel < 0 || !tl || !tl[fbSel]) return;
   const t = tl[fbSel];
   renderFbTracks();
