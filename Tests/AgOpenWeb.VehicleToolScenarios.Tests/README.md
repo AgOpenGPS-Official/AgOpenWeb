@@ -95,7 +95,7 @@ driving (#169). It prints each phase's counts and the host loop's work by name.
 dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ --filter "FullyQualifiedName~VehicleToolScenarioTests"
 ```
 
-About an hour (careful about 9 minutes, careless about 15, the settings sweep about 35). CI only builds it; the full run is nightly on develop (`.github/workflows/vehicle-tool-scenarios.yml`, also run by hand from Actions), with the report kept as an artifact and in the run's summary. The report goes to `vehicle-tool-scenarios-report.md` in the test output
+About 80 minutes (careful about 9, careless about 15, the settings sweep about 50). CI only builds it; the full run is nightly on develop (`.github/workflows/vehicle-tool-scenarios.yml`, also run by hand from Actions), with the report kept as an artifact and in the run's summary. The report goes to `vehicle-tool-scenarios-report.md` in the test output
 folder, or to `AGOPENWEB_SCENARIO_REPORT`. Other switches:
 
 | Variable | Effect |
