@@ -250,7 +250,9 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _singleCoverageColor, value);
     }
 
-    private bool _isSectionOffWhenOut;
+    // On by default, as AgOpenGPS (ToolSettings setTool_isSectionOffWhenOut = true) and as a
+    // new or reset profile here: a fresh install sprayed outside the boundary (#690, finding 10).
+    private bool _isSectionOffWhenOut = true;
     public bool IsSectionOffWhenOut
     {
         get => _isSectionOffWhenOut;

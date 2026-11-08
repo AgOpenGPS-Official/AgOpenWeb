@@ -337,7 +337,9 @@ public class SectionControlService : ISectionControlService
         // Auto mode - check boundary/overlap conditions.
         // Look-ahead distances and TURNING_ON / TURNING_OFF phase durations
         // come straight from user config. The phase delay exactly cancels the
-        // projection, so the physical IsOn flip lands on the boundary edge.
+        // projection, so IsOn (the map) flips on the boundary edge; the module
+        // is told at the start of the phase (IsCommandedOn), the look-ahead
+        // ahead of the edge, so the valve acts there too (#707).
         // With both settings at 0, no anticipation and no wait — section
         // flips on the first tick that shouldBe(On|Off) becomes true.
         double turnOnPhaseSec = tool.LookAheadOnSetting;
@@ -1028,15 +1030,29 @@ public class SectionControlService : ISectionControlService
         // Configured sections only; unused bits stay 0 on the wire, as in AgOpenGPS (#317).
         ushort bits = 0;
         int count = Math.Min(16, NumSections);
+        bool earlyOff = _configStore.Tool.LookAheadOffSetting > 0;
         for (int i = 0; i < count; i++)
         {
-            if (_sectionStates[i].IsOn)
+            if (IsCommandedOn(_sectionStates[i], earlyOff))
             {
                 bits |= (ushort)(1 << i);
             }
         }
         return bits;
     }
+
+    /// <summary>
+    /// What the module is told for a section, as AgOpenGPS (OpenGL.Designer.cs, Section Control):
+    /// its isSectionOn follows the look-ahead's on or off request at once, and only the map waits
+    /// the look-ahead time (mappingOnTimer / mappingOffTimer), so the valve, which takes that long
+    /// to act, opens and shuts at the edge while the coverage is painted where the product lands.
+    /// Here <see cref="SectionControlState.IsOn"/> is the map's state (it flips after the TURNING_ON /
+    /// TURNING_OFF phase); the module gets the request: on from the first tick of an on request,
+    /// off from the first tick of an off request while look-ahead off is set. With look-ahead off
+    /// at 0 the off wait is the turn-off delay, a plain overrun the valve follows too (#707).
+    /// </summary>
+    private static bool IsCommandedOn(SectionControlState s, bool earlyOff)
+        => s.IsOn ? !(earlyOff && s.SectionOffRequest) : s.SectionOnRequest;
 
     /// <summary>
     /// Section on/off as a 64-bit mask (sections 1–64 in bits 0–63). The low
@@ -1047,9 +1063,10 @@ public class SectionControlService : ISectionControlService
     {
         ulong bits = 0;
         int count = Math.Min(Math.Min(_sectionStates.Length, ToolConfig.MaxSections), NumSections);
+        bool earlyOff = _configStore.Tool.LookAheadOffSetting > 0;
         for (int i = 0; i < count; i++)
         {
-            if (_sectionStates[i].IsOn)
+            if (IsCommandedOn(_sectionStates[i], earlyOff))
             {
                 bits |= 1UL << i;
             }
