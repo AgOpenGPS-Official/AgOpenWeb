@@ -21,10 +21,15 @@ public sealed record LayoutSnapshot(int PageWidth, int PageHeight, List<Control>
 
 /// <summary>
 /// The layout checks, run inside the page: every button of the main bars (status bar, left
-/// nav, right nav, bottom nav, section bar, camera pad), its size, and whether its centre is on
-/// the screen and not under something else. A control off the screen counts as reachable when
+/// nav, right nav, bottom nav, section bar, camera pad), its size, and whether a finger can land
+/// on it: its centre and four points around it (at a quarter and three quarters of its width and
+/// height) are tried, and it is reachable when one of them is on the screen and not under
+/// something else. What only passes over the screen for a moment (the toast, the map-tap hint) is
+/// looked through, not counted as covering. A control off the screen counts as reachable when
 /// the bar holding it scrolls (a finger can scroll it there); in a bar that doesn't scroll, it
-/// can't be reached at all. The same check runs over the controls of an open menu panel.
+/// can't be reached at all. A covered control is reported with what covers its centre (its id,
+/// or its text and the nearest element with an id around it). The same check runs over the
+/// controls of an open menu panel.
 /// </summary>
 public static class Layout
 {
@@ -65,12 +70,28 @@ public static class Layout
         }
         return null;
       };
+      // Overlays that come and go by themselves: looked through, not counted as covering.
+      const TRANSIENT = '#toast, #maptap-hint';
+      const cover = h => {
+        const n = name(h);
+        const around = h.id ? null : (h.parentElement && h.parentElement.closest('[id]'));
+        return around ? n + ' (in #' + around.id + ')' : n;
+      };
+      // The top element at a point, transient overlays looked through.
+      const top = (x, y) => document.elementsFromPoint(x, y).find(h => !h.closest(TRANSIENT)) || null;
       const at = el => {
         const r = el.getBoundingClientRect();
-        const x = r.left + r.width / 2, y = r.top + r.height / 2;
-        if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) return { on: false };
-        const h = document.elementFromPoint(x, y);
-        return { on: true, hit: !!h && (h === el || el.contains(h)), by: h ? name(h) : '' };
+        const pts = [[0.5, 0.5], [0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]]
+          .map(([fx, fy]) => [r.left + r.width * fx, r.top + r.height * fy])
+          .filter(([x, y]) => x >= 0 && y >= 0 && x < innerWidth && y < innerHeight);
+        if (pts.length === 0) return { on: false };
+        let by = '';
+        for (const [x, y] of pts) {
+          const h = top(x, y);
+          if (h && (h === el || el.contains(h))) return { on: true, hit: true, by: '' };
+          if (!by && h) by = cover(h);
+        }
+        return { on: true, hit: false, by };
       };
       const reach = el => {
         let a = at(el);

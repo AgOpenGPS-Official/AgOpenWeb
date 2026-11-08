@@ -6,7 +6,7 @@ name: Web Client Scenarios
 # both ways), a second screen beside the operator's, and the operator's screen going away while the
 # tractor works (tab closed, Wi-Fi out of range or dropped, tablet asleep, reload, Free Drive, a
 # section on by hand), with what the steer module and the sections got read at the module port.
-# It takes about 5 minutes of real time, so it runs nightly on develop, not on every PR (CI only
+# It takes about 6 minutes of real time, so it runs nightly on develop, not on every PR (CI only
 # builds it). The run fails when the harness breaks; the findings are in the report, kept as an
 # artifact with the screenshots and shown in the run's summary.
 #
@@ -53,6 +53,9 @@ jobs:
             echo "No commit on develop in the last 25 hours; nothing to run." >> "$GITHUB_STEP_SUMMARY"
           fi
 
+      - uses: ./.github/actions/sharpisoterm-cache
+        if: steps.fresh.outputs.run == 'true'
+
       - name: Setup .NET
         if: steps.fresh.outputs.run == 'true'
         uses: actions/setup-dotnet@v4
@@ -63,7 +66,23 @@ jobs:
         if: steps.fresh.outputs.run == 'true'
         run: dotnet build Tests/AgOpenWeb.WebClientScenarios.Tests/ --verbosity minimal
 
-      # Playwright's own Chromium, the version the harness's Microsoft.Playwright package expects.
+      # Playwright's own Chromium, kept between runs for the version of Microsoft.Playwright the
+      # harness uses (a new version gets its own browser). The system libraries are installed
+      # every run (--with-deps), as they live outside the cache.
+      - name: Microsoft.Playwright version
+        if: steps.fresh.outputs.run == 'true'
+        id: pw
+        run: |
+          v=$(grep -o 'Include="Microsoft.Playwright" Version="[^"]*"' Tests/AgOpenWeb.WebClientScenarios.Tests/AgOpenWeb.WebClientScenarios.Tests.csproj | sed 's/.*Version="\([^"]*\)"/\1/')
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright's Chromium
+        if: steps.fresh.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
       - name: Install Chromium
         if: steps.fresh.outputs.run == 'true'
         run: pwsh Tests/AgOpenWeb.WebClientScenarios.Tests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium

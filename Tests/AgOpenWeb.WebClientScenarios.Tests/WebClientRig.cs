@@ -177,7 +177,9 @@ public sealed class WebClientRig : IAsyncDisposable
 
     /// <summary>The Desktop head's registrations (Platforms/AgOpenWeb.Desktop/DependencyInjection),
     /// minus what needs that head: battery reader (null one) and the ISOBUS VT stack (absent, as
-    /// on a head without it).</summary>
+    /// on a head without it). The network interfaces are none (<see cref="NoNetworkInterfaces"/>),
+    /// so the PGNs go to 127.0.0.1:8888 only and never to the LAN, where a real module would act
+    /// on them.</summary>
     private static void AddBackendServices(IServiceCollection services)
     {
         services.AddSingleton<ApplicationState>();
@@ -185,7 +187,7 @@ public sealed class WebClientRig : IAsyncDisposable
         services.AddSingleton(_ => PersistentAppState.Instance);
         services.AddTransient<MainViewModel>();
         services.AddTransient<ConfigurationViewModel>();
-        services.AddSingleton<ILocalNetworkInfoProvider, SystemLocalNetworkInfoProvider>();
+        services.AddSingleton<ILocalNetworkInfoProvider, NoNetworkInterfaces>();
         services.AddSingleton<AgOpenWeb.Services.Network.INetworkWatcher, AgOpenWeb.Services.Network.NetworkWatcher>();
         services.AddSingleton<IUdpCommunicationService, UdpCommunicationService>();
         services.AddSingleton<IGpsService, GpsService>();
@@ -381,6 +383,14 @@ public sealed class WebClientRig : IAsyncDisposable
         if (Services is IDisposable d) { try { d.Dispose(); } catch { } }
         Module.Dispose();
         _hostLoop.Dispose();
+    }
+
+    /// <summary>A machine with no network but the loopback: the UDP service's discovery sends go
+    /// to 127.0.0.1:8888 only (it always adds that one), and the module scan and subnet commands,
+    /// sent once per interface, go nowhere.</summary>
+    private sealed class NoNetworkInterfaces : ILocalNetworkInfoProvider
+    {
+        public IReadOnlyList<LocalNetworkAddress> GetIPv4Addresses() => Array.Empty<LocalNetworkAddress>();
     }
 
     private sealed class NoImagery : IBoundaryImageryCapture

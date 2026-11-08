@@ -18,6 +18,12 @@ public static class ControlLostScenarios
     /// <summary>The deadman (1.5 s) plus the broadcaster's sweep (0.1 s) and a margin.</summary>
     private const long DeadmanMs = 2000;
 
+    /// <summary>ControlAuthority's deadman: control ends this long after the last presence.</summary>
+    private const int ControlDeadmanMs = 1500;
+
+    /// <summary>How often the screen holding control sends its presence (js/control.js).</summary>
+    private const int PresenceMs = 500;
+
     public static async Task RunAsync(Run run)
     {
         await run.ScenarioAsync(Group, "C1", "The tab is closed",
@@ -32,14 +38,14 @@ public static class ControlLostScenarios
         await run.ScenarioAsync(Group, "C4", "The tablet goes to sleep",
             "The tablet's screen turns off (or the app goes to the background): the page's script stops for 8 s (no timers, no presence sent, the socket left open), then it wakes.",
             s => FrozenAsync(run, s));
-        await run.ScenarioAsync(Group, "C5", "A 1 s Wi-Fi hiccup",
-            "The link goes silent for 1.0 s, as when the tablet roams between access points.",
-            s => HiccupAsync(run, s, 1000));
+        await run.ScenarioAsync(Group, "C5", "A 0.7 s Wi-Fi hiccup",
+            "The link goes silent for 0.7 s, as when the tablet roams between access points.",
+            s => HiccupAsync(run, s, 700));
         await run.ScenarioAsync(Group, "C6", "A 2.5 s Wi-Fi hiccup",
             "The link goes silent for 2.5 s.",
             s => HiccupAsync(run, s, 2500));
         await run.ScenarioAsync(Group, "C7", "The access point drops the tablet",
-            "Every connection of the tablet is reset and new ones are refused for 5 s, then the Wi-Fi is back.",
+            "The tablet's connections are reset and new ones are refused for 5 s, then the Wi-Fi is back. The host is told nothing: its side of the old connection goes quiet, as when a tablet leaves the network.",
             s => CutAsync(run, s));
         await run.ScenarioAsync(Group, "C8", "The page is reloaded",
             "The operator pulls to refresh (or the app reloads its web view) while working.",
@@ -53,6 +59,9 @@ public static class ControlLostScenarios
         await run.ScenarioAsync(Group, "C11", "Two screens, the tablet's Wi-Fi goes out of range",
             "The cab tablet holds control, a phone observes. The tablet's link goes silent for 6 s, then comes back.",
             s => TwoScreensSilentAsync(run, s));
+        await run.ScenarioAsync(Group, "C12", "A minute out of range, a phone watching",
+            "The cab tablet holds control with sections painting, a phone observes. The tablet's link goes silent for 60 s: the host's sends to it fill the small buffers of a dead radio link and then wait. Does the host still stop the work within the deadman, and does the phone keep getting frames?",
+            s => LongSilentAsync(run, s, 60000));
     }
 
     private static async Task<Screen?> OperatorAsync(Run run, Scenario s, bool wifi = true)
@@ -166,10 +175,17 @@ public static class ControlLostScenarios
         var off = run.Rig.Module.First(t0, m => !m.Steering);
         bool engaged = await run.Rig.ReadAsync(() => run.Rig.Vm.IsAutoSteerEngaged);
         s.Step($"{ms} ms silent: AutoSteer {(off is { } o ? $"dropped at the module {o.Ms - t0} ms in" : "held")}; now {(engaged ? "on" : "off")}");
-        if (ms < 1300)
+        // The last presence before the hiccup can be up to one presence period old, so a hiccup
+        // holds only when it and that period together stay inside the deadman (with a margin).
+        if (ms + PresenceMs + 200 <= ControlDeadmanMs)
         {
-            if (off != null) s.Problem(Severity.Bug, "HICCUP-DROPS-STEERING", $"a {ms} ms Wi-Fi hiccup turned AutoSteer off (the deadman is 1.5 s)");
+            if (off != null) s.Problem(Severity.Bug, "HICCUP-DROPS-STEERING", $"a {ms} ms Wi-Fi hiccup turned AutoSteer off (the deadman is 1.5 s, presence every {PresenceMs} ms)");
             else s.Ok($"a {ms} ms hiccup does not stop the work");
+        }
+        else if (ms < ControlDeadmanMs)
+        {
+            s.Note($"a {ms} ms hiccup may or may not reach the deadman, depending on when the last presence went out");
+            if (off != null) await BackAsync(run, s, op, newTab: false);
         }
         else
         {
@@ -187,8 +203,9 @@ public static class ControlLostScenarios
         if (await run.StartWorkAsync(s, op) is { } why) { s.Harness(why); return; }
         long t0 = ModuleListener.NowMs;
         op.Wifi!.Mode = LinkMode.Cut;
-        var (steer, secs) = await run.MachineStopsAsync(t0, 3000);
-        ObserverScenarios.Verdict(s, "connection reset", steer, secs, 500);
+        // The host is not told, so the deadman ends the tablet's control.
+        var (steer, secs) = await run.MachineStopsAsync(t0, (int)DeadmanMs + 1500);
+        ObserverScenarios.Verdict(s, "access point drop", steer, secs, DeadmanMs);
         bool told = await op.WaitForAsync("connState !== 'connected'", 3000);
         var v = await op.ViewAsync();
         s.Step($"{ModuleListener.NowMs - t0} ms: the tablet shows {v}");
@@ -248,6 +265,7 @@ public static class ControlLostScenarios
         await op.CloseTabAsync();
         s.Step("the tab is closed");
         await Task.Delay(5000);
+        if (!HeardSince(run, s, t0 + 4500)) return;
         var still = run.Rig.Module.First(t0 + 4500, x => x.Steering);
         var host = await run.Rig.HostAsync();
         if (still is { } st)
@@ -274,6 +292,7 @@ public static class ControlLostScenarios
         await op.CloseTabAsync();
         s.Step("the tab is closed");
         await Task.Delay(5000);
+        if (!HeardSince(run, s, t0 + 4500)) return;
         var still = run.Rig.Module.First(t0 + 4500, x => (x.Sections & 1) != 0);
         var after = await run.Rig.HostAsync();
         if (still is { } st)
@@ -312,6 +331,68 @@ public static class ControlLostScenarios
         if (vt.HoldsControl && vp.HoldsControl) s.Problem(Severity.Safety, "TWO-OPERATORS", "after the link came back both screens hold control");
         else if (!vt.HoldsControl && phoneTook)
             s.Problem(Severity.Improvement, "CAB-SCREEN-LOCKED-OUT", $"the cab tablet is back as {vt}; the phone keeps control and the tablet can't take it back (by design, #397: no take-over from a live screen), so the operator has to go and close the phone's page");
+        Run.PageErrors(s, op); Run.PageErrors(s, phone);
+    }
+
+    /// <summary>The module's state is read from the PGN 254 changes, so a module that stopped
+    /// hearing PGN 254 altogether would still read as steering. It must have heard one at or after
+    /// <paramref name="fromMs"/>.</summary>
+    private static bool HeardSince(Run run, Scenario s, long fromMs)
+    {
+        long heard = run.Rig.Module.LastHeardMs;
+        if (heard >= fromMs) return true;
+        s.Harness($"no PGN 254 reached the module port in the last {ModuleListener.NowMs - fromMs} ms (the last one {(heard < 0 ? "never came" : $"{ModuleListener.NowMs - heard} ms ago")}): what the module gets can't be read");
+        return false;
+    }
+
+    private static async Task LongSilentAsync(Run run, Scenario s, int outageMs)
+    {
+        if (await OperatorAsync(run, s) is not { } op) return;
+        await using var _1 = op;
+        await using var phone = await run.OpenAsync(Device.PhonePortrait, "phone");
+        if (!await phone.WaitReadyAsync()) { s.Harness("the phone did not connect"); return; }
+        if (await run.StartWorkAsync(s, op) is { } why) { s.Harness(why); return; }
+        // A few seconds of painting first, so coverage frames are going out when the link goes.
+        await Task.Delay(3000);
+        int controlChanges = run.Rig.ControlLog.Count;
+        long t0 = ModuleListener.NowMs;
+        op.Wifi!.Mode = LinkMode.Silent;
+        s.Step("the tablet's link goes silent, sections painting");
+        var (steer, secs) = await run.MachineStopsAsync(t0, (int)DeadmanMs + 1500);
+        ObserverScenarios.Verdict(s, "minute out of range", steer, secs, DeadmanMs);
+        var ended = run.Rig.ControlLog.Skip(controlChanges).Where(c => !c.Held).ToList();
+        s.Step(ended.Count > 0
+            ? $"the host ended the tablet's control {Run.Ms(ended[0].Ms - t0)} into the outage ({ended[0].Reason})"
+            : "the host did not report the tablet's control ending");
+
+        // The phone, on its own link, every second: how old its last frame is.
+        long worstGap = 0, worstAt = 0;
+        while (ModuleListener.NowMs - t0 < outageMs)
+        {
+            await Task.Delay(1000);
+            long gap = (long)await phone.EvalAsync<double>("() => lastTick ? performance.now() - lastTick.t : 1e9");
+            if (gap > worstGap) { worstGap = gap; worstAt = ModuleListener.NowMs - t0; }
+        }
+        var vp = await phone.ViewAsync();
+        var host = await run.Rig.HostAsync();
+        s.Step($"{outageMs / 1000} s into the outage: the phone went up to {Run.Ms(worstGap)} without a frame (read once a second; the longest at {Run.Ms(worstAt)}), the phone shows {vp}; host: {host}");
+        await run.ShotAsync(s, phone, $"{s.Row.Code}-phone-during-outage.png");
+        if (worstGap > 2000)
+            s.Problem(Severity.Safety, "DEAD-LINK-STALLS-BROADCAST",
+                $"while the tablet's link was dead the phone, on a working link, got no frame for {Run.Ms(worstGap)} ({Run.Ms(worstAt)} into the outage): the host's sends to the dead link held up the other screens' frames"
+                + (vp.HoldsControl ? "; the phone holds control now, so its operator watches a still map" : ""));
+        else s.Ok($"the phone kept getting frames during the outage (none older than {Run.Ms(worstGap)})");
+        if (host.AutoSteer)
+            s.Problem(Severity.Safety, "STEERING-NOT-STOPPED", $"{outageMs / 1000} s after the tablet's link went the host still has {host}");
+
+        // The waiting minute of frames arrives at once; then both screens and the host.
+        op.Wifi.Mode = LinkMode.Up;
+        await Task.Delay(5000);
+        var vt = await op.ViewAsync(); vp = await phone.ViewAsync();
+        host = await run.Rig.HostAsync();
+        s.Step($"5 s after the link came back: tablet {vt}, phone {vp}; host: {host}");
+        if (vt.HoldsControl && vp.HoldsControl) s.Problem(Severity.Safety, "TWO-OPERATORS", "after the link came back both screens hold control");
+        if (host.AutoSteer) s.Problem(Severity.Safety, "STEERING-BACK-BY-ITSELF", "AutoSteer is on again without a tap");
         Run.PageErrors(s, op); Run.PageErrors(s, phone);
     }
 }

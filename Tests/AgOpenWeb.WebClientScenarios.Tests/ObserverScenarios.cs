@@ -159,7 +159,9 @@ public static class ObserverScenarios
     };
 
     /// <summary>Everything an observer must not be able to change: the VM's switches, the active track,
-    /// the tool and vehicle, the speed, and the files of settings, profiles and fields.</summary>
+    /// the tool and vehicle, the speed, the files of settings, profiles and fields, and each field's
+    /// list of jobs. The files inside a job's folder are left out (its coverage tiles and its record
+    /// change while the job runs), but a job deleted or added shows in the list.</summary>
     private static async Task<Dictionary<string, string>> FingerprintAsync(WebClientRig rig)
     {
         var d = await rig.ReadAsync(() =>
@@ -178,6 +180,14 @@ public static class ObserverScenarios
             m["wheelbase"] = Run.F($"{rig.Store.Vehicle.Wheelbase:0.00}");
             return m;
         });
+        foreach (var jobs in Directory.EnumerateDirectories(rig.DataRoot, "jobs", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(rig.DataRoot, jobs).Replace('\\', '/');
+            // A job is a folder with its job.json (JobJsonService.ListTaskNames).
+            d["jobs in " + rel] = string.Join(", ", Directory.EnumerateDirectories(jobs)
+                .Where(j => File.Exists(Path.Combine(j, "job.json")))
+                .Select(j => Path.GetFileName(j)).OrderBy(n => n, StringComparer.Ordinal));
+        }
         foreach (var f in Directory.EnumerateFiles(rig.DataRoot, "*", SearchOption.AllDirectories))
         {
             var rel = Path.GetRelativePath(rig.DataRoot, f).Replace('\\', '/');

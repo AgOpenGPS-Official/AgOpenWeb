@@ -11,8 +11,10 @@ namespace AgOpenWeb.WebClientScenarios.Tests;
 
 /// <summary>
 /// What the steer module and the machine module are told, read where they read it: UDP port
-/// 8888 on the loopback, where AgOpenWeb's UdpCommunicationService always sends its PGNs as well
-/// as to the modules' subnet. Keeps every change of PGN 254 (AutoSteer data: the status byte the
+/// 8888 on the loopback, where AgOpenWeb's UdpCommunicationService always sends its PGNs (the rig
+/// gives it no other network, so it sends nowhere else). The port is bound without sharing: a
+/// module simulator or another harness already on it makes the rig fail at the start, instead of
+/// the datagrams being split between the two. Keeps every change of PGN 254 (AutoSteer data: the status byte the
 /// firmware steers on, the steer angle, the speed, sections 1-16) with its time.
 /// </summary>
 public sealed class ModuleListener : IDisposable
@@ -38,9 +40,7 @@ public sealed class ModuleListener : IDisposable
 
     public ModuleListener()
     {
-        _udp = new UdpClient();
-        _udp.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-        _udp.Client.Bind(new IPEndPoint(IPAddress.Loopback, 8888));
+        _udp = new UdpClient(new IPEndPoint(IPAddress.Loopback, 8888));
     }
 
     public void Start() => _loop = Task.Run(() => LoopAsync(_cts.Token));
