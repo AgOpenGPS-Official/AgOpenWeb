@@ -129,7 +129,8 @@ jobs:
         run: dotnet build Tests/AgOpenWeb.VehicleToolScenarios.Tests/ --verbosity minimal
 
       # The field job scenario harness (whole fields driven with AutoSteer, U-turns and automatic
-      # sections) takes tens of minutes: built here, run nightly (field-job-scenarios.yml).
+      # sections; its path jobs on curves, pivots and contour) takes tens of minutes: built here,
+      # run nightly (field-job-scenarios.yml, path-job-scenarios.yml).
       - name: Build Field Job Scenario harness
         run: dotnet build Tests/AgOpenWeb.FieldJobScenarios.Tests/ --verbosity minimal
 
@@ -152,6 +153,12 @@ jobs:
       # And the ISOBUS harness (isobus-scenarios.yml runs it nightly).
       - name: Build ISOBUS Scenario harness
         run: dotnet build Tests/AgOpenWeb.IsobusScenarios.Tests/ --verbosity minimal
+      # And the web client harness (web-client-scenarios.yml runs it nightly, in headless Chromium).
+      - name: Build Web Client Scenario harness
+        run: dotnet build Tests/AgOpenWeb.WebClientScenarios.Tests/ --verbosity minimal
+      # And the update and settings-survival harness (update-scenarios.yml runs it nightly).
+      - name: Build Update Scenario harness
+        run: dotnet build Tests/AgOpenWeb.UpdateScenarios.Tests/ --verbosity minimal
       # And the working day harness (working-day-scenarios.yml runs it).
       - name: Build Working Day Scenario harness
         run: dotnet build Tests/AgOpenWeb.WorkingDayScenarios.Tests/ --verbosity minimal
