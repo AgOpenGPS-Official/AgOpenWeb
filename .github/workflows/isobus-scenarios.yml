@@ -9,17 +9,20 @@ name: ISOBUS Scenarios
 # The run fails when the harness breaks; the findings are in the report, kept as an artifact
 # and shown in the run's summary.
 #
-#   - schedule (nightly): only when develop has a commit from the last day;
+#   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;
 #   - manual dispatch: always, on the branch picked.
 
 on:
-  schedule:
-    # Just after midnight US Central (06:xx UTC; 01:xx in summer time), so the reports are in by
-    # morning. Off the hour on purpose: GitHub queues scheduled runs set on the hour the longest
-    # (runs set for 03:00-05:30 UTC started 6-7 hours late on 2026-11-07). Each harness has its own
-    # runner, so they run side by side.
-    - cron: '29 6 * * *'   # 06:29 UTC
+  # Nightly: the bug report Worker (Tools/bugreport-worker, cron 03:07 UTC, 21:07 US Central)
+  # starts it with nightly=true. GitHub's own schedule started this repo's runs 5-8 hours late
+  # every day (2026-10 and 11), so the reports weren't in by morning. Each harness has its own
+  # runner, so they run side by side.
   workflow_dispatch:
+    inputs:
+      nightly:
+        description: 'Nightly run: skip when develop has no commit from the last 25 hours'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -43,7 +46,7 @@ jobs:
       - name: Anything new since the last night?
         id: fresh
         run: |
-          if [ "${{ github.event_name }}" != "schedule" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "${{ inputs.nightly }}" != "true" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           last=$(git log -1 --format=%ct HEAD)
           age=$(( $(date +%s) - last ))
           if [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else

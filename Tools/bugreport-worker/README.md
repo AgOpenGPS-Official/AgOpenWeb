@@ -7,7 +7,7 @@ Two Workers share one R2 bucket:
 
 | Worker | Config | Does |
 |--------|--------|------|
-| `agopenweb-bugreports` | `wrangler.toml` | `POST /v1/reports` from the app; daily cron: opens issues that failed earlier, prunes storage |
+| `agopenweb-bugreports` | `wrangler.toml` | `POST /v1/reports` from the app; daily cron: opens issues that failed earlier, prunes storage; nightly cron: starts the scenario harnesses |
 | `agopenweb-dumps` | `wrangler.dumps.toml` | `GET /v1/dumps/…` for maintainers, behind Cloudflare Access |
 
 ## Tests
@@ -25,7 +25,8 @@ npx wrangler dev         # local run on :8787 with a local R2 bucket
    `npx wrangler r2 bucket lifecycle add agopenweb-bugreports expire-old dumps/ --expire-days 365`.
 3. **GitHub App** (organisation settings → Developer settings → GitHub Apps → New):
    - Name `AgOpenWeb Bug Reports`, homepage the repo URL, **Webhook: off**.
-   - Repository permissions: **Issues: Read and write** (Metadata: read is added automatically).
+   - Repository permissions: **Issues: Read and write** and **Actions: Read and write** (for the
+     nightly harnesses; Metadata: read is added automatically).
    - Where it can be installed: only this account. Create it, note the **App ID**, generate a
      **private key** (a `.pem` download), then **Install App** on `AgOpenWeb` only.
    - Create the `auto-report` label on the repo.
@@ -48,3 +49,13 @@ npx wrangler dev         # local run on :8787 with a local R2 bucket
 - `PRUNE_AT_BYTES` 9 GB / `PRUNE_TO_BYTES` 8 GB: at 9 GB the cron deletes down to below
   8 GB, dumps of closed issues first, then the rest oldest first; an open issue whose dump
   goes gets a comment saying so.
+
+## Nightly scenario harnesses
+
+GitHub's own schedule started this repo's runs 5–8 hours late every day, so the Worker starts
+them: at `NIGHTLY_CRON` (03:07 UTC, 21:07 US Central) it dispatches each workflow in
+`NIGHTLY_WORKFLOWS` on `NIGHTLY_REF` with `nightly=true`, and the workflow skips itself when
+develop has no commit from the last 25 hours. `NIGHTLY_CRON` must be one of `[triggers] crons`.
+The App needs **Actions: Read and write**; after adding it in the App's settings, accept the new
+permission on the installation (organisation settings → GitHub Apps → Configure). The Worker's
+log (dashboard → Workers → `agopenweb-bugreports` → Logs) shows each start or why it failed.

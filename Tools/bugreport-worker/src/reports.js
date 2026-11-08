@@ -5,10 +5,11 @@
 // The public half of the bug report service (Plans/Completed/BUG_REPORT_SUBMISSION_PLAN.md):
 // POST /v1/reports takes a dump from the app, stores it in R2 and opens the GitHub issue.
 // The daily cron opens issues that failed earlier and prunes storage. Dumps are read back
-// only through the dumps Worker, behind Cloudflare Access.
+// only through the dumps Worker, behind Cloudflare Access. A second cron (NIGHTLY_CRON) starts
+// the nightly scenario harnesses on GitHub: GitHub's own schedule ran them hours late.
 
 import { listEntries, readEntry, publicSystemInfo } from './zip.js';
-import { createIssue, comment, closedReportIssues, userExists } from './github.js';
+import { createIssue, comment, closedReportIssues, userExists, dispatchWorkflow } from './github.js';
 import { planPrune, issueOf } from './prune.js';
 
 const json = (status, body) => new Response(JSON.stringify(body), {
@@ -204,6 +205,18 @@ async function prune(env) {
   if (env.TRACKING_ISSUE) await comment(env, Number(env.TRACKING_ISSUE), summary).catch(e => console.error(e.message));
 }
 
+/** Starts each nightly harness workflow; one that fails to start doesn't stop the rest. */
+export async function startNightly(env) {
+  const workflows = (env.NIGHTLY_WORKFLOWS || '').split(',').map(w => w.trim()).filter(Boolean);
+  const ref = env.NIGHTLY_REF || 'develop';
+  const failed = [];
+  for (const w of workflows) {
+    try { await dispatchWorkflow(env, w, ref, { nightly: 'true' }); console.log(`nightly: started ${w} on ${ref}`); }
+    catch (e) { failed.push(w); console.error(`nightly: ${w}: ${e.message}`); }
+  }
+  return { started: workflows.length - failed.length, failed };
+}
+
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
@@ -211,7 +224,8 @@ export default {
     if (pathname === '/v1/health') return json(200, { ok: true });
     return json(404, { error: 'Not found.' });
   },
-  async scheduled(_event, env, ctx) {
+  async scheduled(event, env, ctx) {
+    if (env.NIGHTLY_CRON && event.cron === env.NIGHTLY_CRON) { ctx.waitUntil(startNightly(env)); return; }
     ctx.waitUntil((async () => { await openPending(env); await prune(env); })());
   },
 };
