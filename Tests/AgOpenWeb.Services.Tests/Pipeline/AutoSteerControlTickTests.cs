@@ -38,12 +38,12 @@ public class AutoSteerControlTickTests
         // AutoSteerService now emits a baseline PGN 251 + PGN 252 pair on
         // Start() so the module sees current settings without waiting for
         // the operator. These tests only care about the per-tick
-        // PGN 254 + PGN 239 traffic, so drop the baseline from the count.
+        // PGN 254 + PGN 239 + PGN 229 traffic, so drop the baseline from the count.
         _udp.ClearReceivedCalls();
     }
 
     [Test]
-    public void ControlLoopTick_TriggersTwoPgnSends()
+    public void ControlLoopTick_TriggersThreePgnSends()
     {
         var loop = new ManualSteerMachineLoop();
         loop.Ticked += _ => _autoSteer.SendPgnsForControlTick();
@@ -51,8 +51,8 @@ public class AutoSteerControlTickTests
 
         loop.Tick(0);
 
-        // PGN 254 (autosteer) + PGN 239 (machine) = 2 sends per tick.
-        _udp.Received(2).SendToModules(Arg.Any<byte[]>());
+        // PGN 254 (autosteer) + PGN 239 (machine) + PGN 229 (64 sections) = 3 sends per tick.
+        _udp.Received(3).SendToModules(Arg.Any<byte[]>());
     }
 
     [Test]
@@ -78,8 +78,8 @@ public class AutoSteerControlTickTests
         for (int i = 0; i < 5; i++)
             loop.Tick(i);
 
-        // 5 ticks × 2 PGNs each = 10 sends.
-        _udp.Received(10).SendToModules(Arg.Any<byte[]>());
+        // 5 ticks × 3 PGNs each = 15 sends.
+        _udp.Received(15).SendToModules(Arg.Any<byte[]>());
     }
 
     // #311: the control loop hands over the section bits itself, so they go out with
