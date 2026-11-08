@@ -274,10 +274,39 @@ namespace AgOpenWeb.Models.Guidance
         /// <param name="offsetDistance">Perpendicular offset distance (positive = right of heading)</param>
         /// <returns>Clean offset curve without self-intersections</returns>
         public static List<Vec3> CreateOffsetCurve(IReadOnlyList<Vec3> originalPoints, double offsetDistance)
+            => CreateOffsetCurveWithInfo(originalPoints, offsetDistance).Points;
+
+        /// <summary>
+        /// Pass <paramref name="distAway"/> of a curve, before its ends are extended: the one routine
+        /// the line the tractor steers, the line drawn, the guidelines and the U-turn build a curve's
+        /// pass with, so they can't differ (#694). The offset with the collision test
+        /// (<see cref="CreateOffsetCurveWithInfo"/>), then, with a <paramref name="minTurnRadius"/>,
+        /// no bend tighter than that (<see cref="LimitTurnRadius"/>). A pass the offset removes
+        /// altogether has no points: there is no pass there, as in AgOpenGPS (CABCurve.BuildNewOffsetList),
+        /// nothing to draw, steer or turn onto. On the reference itself (no offset) the curve as it is.
+        /// Extend it with <see cref="ExtendPass"/>.
+        /// </summary>
+        public static (List<Vec3> Points, double PercentRemoved, bool StartKept, bool EndKept) CurvePass(
+            IReadOnlyList<Vec3> reference, double distAway, bool closed = false, double minTurnRadius = 0)
         {
-            var (result, _) = CreateOffsetCurveWithInfo(originalPoints, offsetDistance);
-            return result;
+            var made = CreateOffsetCurveWithInfo(reference, distAway, closed);
+            if (Math.Abs(distAway) >= 0.01 && made.Points.Count >= 2)
+                made.Points = LimitTurnRadius(made.Points, minTurnRadius, closed);
+            return made;
         }
+
+        /// <summary>
+        /// A pass from <see cref="CurvePass"/> run on straight past its ends (<see cref="ExtendCurveEnds"/>),
+        /// but only at an end the offset kept: where it removed the reference's end, AgOpenGPS's pass
+        /// (the offset of the extended reference) has no extension either, and one taken from what was
+        /// left aimed a 200 m tail across the field and out of it (#694).
+        /// </summary>
+        public static List<Vec3> ExtendPass((List<Vec3> Points, double PercentRemoved, bool StartKept, bool EndKept) pass,
+            double lengthMeters = DefaultExtension)
+            => ExtendCurveEnds(pass.Points, pass.StartKept ? lengthMeters : 0, pass.EndKept ? lengthMeters : 0, 1.0);
+
+        /// <summary>How far a curve's pass runs on straight past each end, as AgOpenGPS's extended reference.</summary>
+        public const double DefaultExtension = 200.0;
 
         /// <summary>
         /// Extends a curve straight along its end tangents at both ends so it behaves like
@@ -290,9 +319,18 @@ namespace AgOpenWeb.Models.Guidance
         /// <param name="lengthMeters">How far to extend past each end.</param>
         /// <param name="spacing">Spacing between added extension points.</param>
         public static List<Vec3> ExtendCurveEnds(IReadOnlyList<Vec3> points,
-            double lengthMeters = 200.0, double spacing = 1.0)
+            double lengthMeters = DefaultExtension, double spacing = 1.0)
+            => ExtendCurveEnds(points, lengthMeters, lengthMeters, spacing);
+
+        /// <summary>
+        /// <see cref="ExtendCurveEnds(IReadOnlyList{Vec3}, double, double)"/> with a length for each end:
+        /// <paramref name="startLength"/> before the first point, <paramref name="endLength"/> past the
+        /// last; 0 leaves that end as it is.
+        /// </summary>
+        public static List<Vec3> ExtendCurveEnds(IReadOnlyList<Vec3> points,
+            double startLength, double endLength, double spacing)
         {
-            if (points == null || points.Count < 2 || lengthMeters <= 0 || spacing <= 0)
+            if (points == null || points.Count < 2 || (startLength <= 0 && endLength <= 0) || spacing <= 0)
                 return points != null ? new List<Vec3>(points) : new List<Vec3>();
 
             // Closed loops (boundary curves / water pivots) must not be extended.
@@ -303,8 +341,9 @@ namespace AgOpenWeb.Models.Guidance
             if (closeSq < 1.0)
                 return new List<Vec3>(points);
 
-            int steps = (int)(lengthMeters / spacing);
-            var extended = new List<Vec3>(points.Count + steps * 2);
+            int startSteps = startLength > 0 ? (int)(startLength / spacing) : 0;
+            int endSteps = endLength > 0 ? (int)(endLength / spacing) : 0;
+            var extended = new List<Vec3>(points.Count + startSteps + endSteps);
 
             // Extend along a SMOOTHED end direction measured from point POSITIONS over a span,
             // not the single endpoint's stored heading. Recorded-curve endpoints frequently
@@ -329,8 +368,8 @@ namespace AgOpenWeb.Models.Guidance
             double gapE = last.Easting - first.Easting, gapN = last.Northing - first.Northing;
             double gap = Math.Sqrt(closeSq);
             int capSteps = Math.Max(0, (int)((gap / 2 - 1.0) / spacing));
-            int inSteps = FacesOtherEnd(-Math.Sin(inHead), -Math.Cos(inHead), gapE, gapN, gap) ? Math.Min(steps, capSteps) : steps;
-            int outSteps = FacesOtherEnd(Math.Sin(outHead), Math.Cos(outHead), -gapE, -gapN, gap) ? Math.Min(steps, capSteps) : steps;
+            int inSteps = FacesOtherEnd(-Math.Sin(inHead), -Math.Cos(inHead), gapE, gapN, gap) ? Math.Min(startSteps, capSteps) : startSteps;
+            int outSteps = FacesOtherEnd(Math.Sin(outHead), Math.Cos(outHead), -gapE, -gapN, gap) ? Math.Min(endSteps, capSteps) : endSteps;
 
             // Lead-in: walk backward from the first point (opposite the into-curve direction).
             double sinH = Math.Sin(inHead), cosH = Math.Cos(inHead);
@@ -357,6 +396,24 @@ namespace AgOpenWeb.Models.Guidance
             return extended;
         }
 
+        // The offset of the curve's extension a metre past its start or end (along the direction
+        // ExtendCurveEnds extends it), against the collision test of CreateOffsetCurveWithInfo.
+        private static bool ExtensionClear(IReadOnlyList<Vec3> points, bool atStart, double offset, double distSqAway, PointGrid? near)
+        {
+            int n = points.Count;
+            int span = Math.Min(5, n - 1);
+            var end = atStart ? points[0] : points[n - 1];
+            var from = atStart ? points[span] : points[n - 1 - span];
+            // The way the pass runs there (into the curve at the start), and the way out along it.
+            double head = atStart
+                ? Math.Atan2(from.Easting - end.Easting, from.Northing - end.Northing)
+                : Math.Atan2(end.Easting - from.Easting, end.Northing - from.Northing);
+            double outward = atStart ? -1 : 1;
+            double e = end.Easting + outward * Math.Sin(head) + Math.Sin(head + Math.PI / 2) * offset;
+            double no = end.Northing + outward * Math.Cos(head) + Math.Cos(head + Math.PI / 2) * offset;
+            return near != null ? !near.AnyCloser(points, e, no, distSqAway) : !AnyCloser(points, e, no, distSqAway);
+        }
+
         // The extension direction (de, dn) points at the other end, which lies (toE, toN) away:
         // within 30° of it, so the two extensions would meet rather than run side by side.
         private static bool FacesOtherEnd(double de, double dn, double toE, double toN, double dist)
@@ -369,18 +426,24 @@ namespace AgOpenWeb.Models.Guidance
         /// </summary>
         /// <param name="originalPoints">Original curve points with headings</param>
         /// <param name="offsetDistance">Perpendicular offset distance (positive = right of heading)</param>
-        /// <returns>Tuple of (cleaned curve, percentage of points removed due to self-intersection)</returns>
+        /// <returns>The cleaned curve, the percentage of points removed due to self-intersection, and
+        /// whether the pass goes on past the reference's start and end: whether the offset of the
+        /// reference's straight extension there clears the same test, as in AgOpenGPS, whose pass is
+        /// the offset of the extended reference (an end the offset removed gets no extension,
+        /// <see cref="ExtendPass"/>; always true on a closed loop). Fewer than two points left is
+        /// no curve: the list is empty, as AgOpenGPS's (CABCurve.BuildNewOffsetList), not a chord
+        /// between the offset ends that ran across the field (#694).</returns>
         /// <param name="closed">The curve is a closed loop (its last point repeats the first): the
         /// offset curve is closed too, so the pass does not stop short at the seam.</param>
-        public static (List<Vec3> Points, double PercentRemoved) CreateOffsetCurveWithInfo(
+        public static (List<Vec3> Points, double PercentRemoved, bool StartKept, bool EndKept) CreateOffsetCurveWithInfo(
             IReadOnlyList<Vec3> originalPoints, double offsetDistance, bool closed = false)
         {
             WorkCounters.OffsetCurvePoints += originalPoints?.Count ?? 0;
             if (originalPoints == null || originalPoints.Count < 2)
-                return (originalPoints != null ? new List<Vec3>(originalPoints) : new List<Vec3>(), 0);
+                return (originalPoints != null ? new List<Vec3>(originalPoints) : new List<Vec3>(), 0, true, true);
 
             if (Math.Abs(offsetDistance) < 0.01)
-                return (new List<Vec3>(originalPoints), 0);
+                return (new List<Vec3>(originalPoints), 0, true, true);
 
             // AgOpenGPS collision detection threshold: offset² - small margin
             // If offset point is closer than this to ANY original point, it's a self-intersection
@@ -437,28 +500,17 @@ namespace AgOpenWeb.Models.Guidance
                 }
             }
 
-            // Need at least 2 points for a valid track
+            // Does the pass go on past each end? AgOpenGPS offsets the reference with its straight
+            // extensions on (CABCurve.GetExtendedReferenceCurve): there is a tail at an end when the
+            // offset of the extension just past it clears the collision test, and none where the
+            // offset removed the pass's end (#694). The point is on the line ExtendCurveEnds draws.
+            bool startKept = closed || ExtensionClear(originalPoints, atStart: true, offsetDistance, distSqAway, near);
+            bool endKept = closed || ExtensionClear(originalPoints, atStart: false, offsetDistance, distSqAway, near);
+
+            // Fewer than two points left: no pass here (AgOpenGPS draws and steers nothing). A chord
+            // between the offset ends, extended 200 m each way, ran across the field and out (#694).
             if (offsetPoints.Count < 2)
-            {
-                // Fallback: return first and last original points offset
-                var first = originalPoints[0];
-                var last = originalPoints[refCount - 1];
-
-                double perpAngle1 = first.Heading + Math.PI / 2;
-                double perpAngle2 = last.Heading + Math.PI / 2;
-
-                return (new List<Vec3>
-                {
-                    new Vec3(
-                        first.Easting + Math.Sin(perpAngle1) * offsetDistance,
-                        first.Northing + Math.Cos(perpAngle1) * offsetDistance,
-                        first.Heading),
-                    new Vec3(
-                        last.Easting + Math.Sin(perpAngle2) * offsetDistance,
-                        last.Northing + Math.Cos(perpAngle2) * offsetDistance,
-                        last.Heading)
-                }, skippedCount * 100.0 / refCount);
-            }
+                return (new List<Vec3>(), skippedCount * 100.0 / refCount, false, false);
 
             // Collision removal at a tight inward bend (e.g. a boundary curve wrapping a field
             // end) deletes the colliding inner-corner points, leaving a straight chord across
@@ -488,7 +540,7 @@ namespace AgOpenWeb.Models.Guidance
             CalculateHeadings(offsetPoints);
 
             double percentRemoved = refCount > 0 ? skippedCount * 100.0 / refCount : 0;
-            return (offsetPoints, percentRemoved);
+            return (offsetPoints, percentRemoved, startKept, endKept);
         }
 
         /// <summary>

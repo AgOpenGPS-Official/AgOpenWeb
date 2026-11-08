@@ -657,6 +657,13 @@ public sealed class YouTurnStateMachine
         _pathing.ComputeNextTrack(track, abHeading, guidance, turn,
             ctx.UTurnSkipRows, ctx.IsSkipWorkedMode, ctx.SelectedTrack);
         effects.SyncNextTrackToMap = true;
+        if (turn.NextTrack is { Points.Count: < 2 })
+        {
+            // The curve's offset removed all of that pass (#694): there is nothing to turn onto.
+            DiscardPlannedTurn(turn);
+            effects.StatusMessage = "No pass there: the curve is too tight";
+            return effects;
+        }
         effects.IsInYouTurnMapFlag = true;
 
         // Manual triggers skip the boundary-anchored Dubins pipeline used by auto turns.
@@ -940,8 +947,7 @@ public sealed class YouTurnStateMachine
             // Offset then EXTEND the ends so the cyan next-track curve matches the
             // exit leg and the post-turn magenta line (no gap at the exit handoff).
             // Mirrors YouTurnPathingService.ComputeNextTrack; no-op on closed loops.
-            var offsetPoints = CurveProcessing.ExtendCurveEnds(
-                CurveProcessing.CreateOffsetCurve(track.Points, nextDistAway));
+            var offsetPoints = CurveProcessing.ExtendPass(CurveProcessing.CurvePass(track.Points, nextDistAway));
             turn.NextTrack = Models.Track.Track.FromCurve($"Path {nextPath}", offsetPoints, track.IsClosed);
         }
         turn.NextTrack.IsActive = false;
