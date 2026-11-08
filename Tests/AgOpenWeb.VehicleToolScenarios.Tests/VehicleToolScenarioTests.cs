@@ -7,7 +7,7 @@ using NUnit.Framework;
 namespace AgOpenWeb.VehicleToolScenarios.Tests;
 
 /// <summary>
-/// The Vehicle &amp; Tool scenarios: the careful operator, then the careless one, into one
+/// The Vehicle &amp; Tool scenarios: the careful operator, the careless one and the settings sweep, into one
 /// report. The test fails only when the harness breaks; the findings are the product.
 /// </summary>
 [TestFixture]
@@ -26,6 +26,7 @@ public class VehicleToolScenarioTests
 
         if (who is null or "careful") await CarefulOperator.RunAsync(journal, only);
         if (who is null or "careless") await CarelessOperator.RunAsync(journal, only);
+        if (who is null or "sweep") await SettingsSweep.RunAsync(journal, only);
 
         string report = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
             ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, "vehicle-tool-scenarios-report.md");
@@ -36,6 +37,6 @@ public class VehicleToolScenarioTests
 
         var harness = journal.Findings.Values.Where(v => v.First.Code == "HARNESS").Select(v => v.First.Message + " (" + string.Join("; ", v.Places) + ")").ToList();
         Assert.That(harness, Is.Empty, "the harness itself failed");
-        Assert.That(journal.Drives.Count, Is.GreaterThan(0), "nothing was driven (AGOPENWEB_SCENARIO_ONLY matched nothing?)");
+        Assert.That(journal.Drives.Count + journal.Sweep.Count, Is.GreaterThan(0), "nothing was driven (AGOPENWEB_SCENARIO_ONLY matched nothing?)");
     }
 }

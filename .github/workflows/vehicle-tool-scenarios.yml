@@ -5,7 +5,8 @@ name: Vehicle & Tool Scenarios
 # steering motor) drives the whole backend in process, set up by a careful and a careless
 # operator. It takes minutes, so it runs nightly on develop, not on every PR (CI only builds it).
 # The run fails when the harness breaks; the findings are in the report, kept as an artifact
-# and shown in the run's summary.
+# and shown in the run's summary. The settings sweep (every guidance, AutoSteer, tool and
+# vehicle setting flipped, about 35 minutes) runs after the careful and careless operators.
 #
 #   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;
 #   - manual dispatch: always, on the branch picked.
@@ -37,7 +38,7 @@ concurrency:
 jobs:
   scenarios:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 

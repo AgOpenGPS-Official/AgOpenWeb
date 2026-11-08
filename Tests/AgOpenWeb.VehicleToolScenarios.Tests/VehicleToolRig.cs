@@ -57,6 +57,15 @@ public sealed class VehicleToolRig : IAsyncDisposable
     public GpsPipelineService Pipeline { get; }
     public AgOpenWeb.Models.Configuration.ConfigurationStore Store { get; }
     public IConfigurationService Config { get; }
+    /// <summary>What AgOpenWeb sends to the modules (and a way to answer as a module).</summary>
+    public PgnTap Pgns { get; }
+
+    /// <summary>Measure every work item and timer tick on the host loop (null: off).</summary>
+    public Action<string, Cost>? HostLoopMeter
+    {
+        get => _dispatcher.Meter;
+        set => _dispatcher.Meter = value;
+    }
 
     /// <summary>Everything the operator would notice or a developer would want to see,
     /// in order. Drained by <see cref="TakeEvents"/> after each step.</summary>
@@ -82,9 +91,12 @@ public sealed class VehicleToolRig : IAsyncDisposable
         Pipeline = (GpsPipelineService)sp.GetRequiredService<IGpsPipelineService>();
         Store = sp.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>();
         Config = sp.GetRequiredService<IConfigurationService>();
+        Pgns = sp.GetRequiredService<PgnTap>();
     }
 
-    public static async Task<VehicleToolRig> StartAsync(string dataRoot)
+    /// <param name="broadcastLoop">False: the web server's 10 Hz broadcast stays off and the
+    /// caller runs each tick itself (<see cref="HostLoopBudgetTests"/>).</param>
+    public static async Task<VehicleToolRig> StartAsync(string dataRoot, bool broadcastLoop = true)
     {
         Directory.CreateDirectory(dataRoot);
         Environment.SetEnvironmentVariable(AppDataRoot.EnvVar, dataRoot);
@@ -115,9 +127,11 @@ public sealed class VehicleToolRig : IAsyncDisposable
         configService.LoadAppSettings();
         sp.GetRequiredService<IPersistentStateService>().Load();
         WebBackend.WireCrossServices(sp);
+        // WireCrossServices finds the UDP service by its type; behind the tap it is one level in.
+        sp.GetRequiredService<UdpCommunicationService>().SetAutoSteerService(sp.GetRequiredService<IAutoSteerService>());
         var vm = await OnLoop(hostLoop, () => sp.GetRequiredService<MainViewModel>());
 
-        var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
+        var server = new AgOpenWeb.RemoteServer.RemoteServerHost { BroadcastLoop = broadcastLoop };
         await server.StartAsync(
             sp.GetRequiredService<ApplicationState>(),
             sp.GetRequiredService<ICoverageMapService>(),
@@ -227,7 +241,9 @@ public sealed class VehicleToolRig : IAsyncDisposable
         services.AddTransient<ConfigurationViewModel>();
         services.AddSingleton<ILocalNetworkInfoProvider, SystemLocalNetworkInfoProvider>();
         services.AddSingleton<AgOpenWeb.Services.Network.INetworkWatcher, AgOpenWeb.Services.Network.NetworkWatcher>();
-        services.AddSingleton<IUdpCommunicationService, UdpCommunicationService>();
+        services.AddSingleton<UdpCommunicationService>();
+        services.AddSingleton(sp => new PgnTap(sp.GetRequiredService<UdpCommunicationService>()));
+        services.AddSingleton<IUdpCommunicationService>(sp => sp.GetRequiredService<PgnTap>());
         services.AddSingleton<IGpsService, GpsService>();
         services.AddSingleton<IDisplaySettingsService, DisplaySettingsService>();
         services.AddSingleton<IFieldStatisticsService, FieldStatisticsService>();
@@ -464,11 +480,28 @@ internal sealed class CapturingDispatcher : IUiDispatcher, IUiTimerFactory
 
     public IUiTimer Create() => new TimerWrapper(_inner.Create(), this);
 
+    /// <summary>When set, every work item and timer tick on the host loop is measured
+    /// (<see cref="CostMeter"/>) and reported with the method that queued it.</summary>
+    public Action<string, Cost>? Meter { get; set; }
+
     private Action Wrap(Action action) => () =>
     {
+        var meter = Meter;
+        var start = meter != null ? CostMeter.Start() : default;
         try { action(); }
         catch (Exception ex) { OnException(ex); throw; }
+        finally { if (meter != null) meter(WorkName(action.Method), CostMeter.Stop(start)); }
     };
+
+    /// <summary>"MainViewModel.OnGpsCycleCompleted" for a lambda queued there.</summary>
+    internal static string WorkName(System.Reflection.MethodInfo m)
+    {
+        var t = m.DeclaringType;
+        while (t is { IsNested: true } && t.Name.StartsWith('<')) t = t.DeclaringType;
+        var name = m.Name;
+        if (name.StartsWith('<') && name.IndexOf('>') is > 1 and var end) name = name[1..end];
+        return (t?.Name ?? "?") + "." + name;
+    }
 
     private sealed class TimerWrapper : IUiTimer, IDisposable
     {
@@ -482,8 +515,15 @@ internal sealed class CapturingDispatcher : IUiDispatcher, IUiTimerFactory
             _owner = owner;
             _inner.Tick += (s, e) =>
             {
+                var meter = _owner.Meter;
+                var start = meter != null ? CostMeter.Start() : default;
                 try { _tick?.Invoke(s, e); }
                 catch (Exception ex) { _owner.OnException(ex); throw; }
+                finally
+                {
+                    if (meter != null && _tick is { } h)
+                        meter("timer " + string.Join("+", h.GetInvocationList().Select(d => WorkName(d.Method))), CostMeter.Stop(start));
+                }
             };
         }
 

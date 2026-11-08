@@ -157,6 +157,8 @@ jobs:
   # a large field driven through the real pipeline, every cycle held to a budget of polygon
   # edges, coverage lookups, offset points and bytes allocated. Counts, not time, so the
   # runner's speed doesn't matter; Release only because it is five times faster than Debug.
+  # Then the host loop and the 10 Hz broadcast with a field open (the Vehicle & Tool
+  # harness's HostLoopBudgetTests: the whole backend, about a minute; also files read).
   hot-path-budgets:
     runs-on: ubuntu-latest
     steps:
@@ -171,6 +173,9 @@ jobs:
 
       - name: Run hot-path budgets
         run: dotnet test Tests/AgOpenWeb.Services.Tests/ -c Release --filter "TestCategory=HotPath" --verbosity normal
+
+      - name: Run host-loop budgets
+        run: dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ -c Release --filter "TestCategory=HotPath" --verbosity normal
 
   # Every translated label must fit the English layout (Docs/TRANSLATIONS.md): the app runs
   # headless and Tools/i18n-limits.py --check measures each translation in place. Roboto

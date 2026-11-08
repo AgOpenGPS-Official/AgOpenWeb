@@ -45,20 +45,64 @@ Two operators:
 Some careless values cannot be typed in the web client as they are sent here; they are sent
 anyway, because the host is the last line: any browser on the LAN can send any command.
 
+## The settings sweep
+
+`SettingsSweep.cs` flips every guidance, AutoSteer, machine, tool and vehicle setting the
+operator can change, one at a time, on the careful Puma with its 8 m sprayer, and checks that
+something measurable changed: the steer angle AgOpenWeb computes, the bytes of a PGN it sends
+to the modules, the sections, or the pass. A setting that changes nothing is a finding
+(`SETTING-NO-EFFECT`), whatever the reason, so a setting added tomorrow and never connected is
+caught too. Each setting has a probe (`SweepProbes.cs`) that drives what it is about: a weave
+across the line (steering; from a single antenna with a drifting IMU, or with none, for the
+heading settings), a 6° side slope (roll), a reverse (dual, and single antenna with an IMU),
+2 and 20 km/h, an RTK drop, a nudge, a manual U-turn, a free drive across the passes, section
+strips worked and driven back over (also 0.2 m to the side), the steer module's switches. Each
+probe is driven twice with the setting at its base value (the noise), then with the setting
+changed; a change has to stand out of the noise, and a section switch is compared with the
+same switch in the two base runs (the switch off entering worked ground moves up to 4 m
+between identical runs, the switch on leaving it hardly at all). The probes run faster than
+real time, except the free drive (the pass is picked again at most every 0.66 s of the wall
+clock) and the last 8 m to each end of a section strip (the look-ahead and turn-off times are
+counted on the wall clock): a setting in seconds may still show a larger effect than on the
+tractor, and the sweep asks only whether it acts. A strip that paints less than
+the implement's width is reported on its own (`SECTIONS-PAINT-SHORT`).
+
+The settings come from the source, not a list: every key the host's config bridge handles
+(`ApplyConfigSet`) and every key the web client sends. A key nobody sweeps is reported
+(`SETTING-NOT-SWEPT`), and so is a key the client sends that the host ignores
+(`SETTING-IGNORED-BY-HOST`). Display-only settings are in the table too, expected to change
+nothing. `PgnTap.cs` keeps a copy of every datagram the real UDP service sends and answers as
+a steer module (PGN 253: the wheel angle, the switches).
+
+The report gets one table, a row per setting: from and to, the probe, what was expected,
+what changed, and the verdict.
+
+## Host-loop budget
+
+`HostLoopBudgetTests.cs` holds the host loop and the 10 Hz broadcast to a work budget with a
+field open (`TestCategory=HotPath`, run by CI's `hot-path-budgets` job): a 300 x 400 m field
+from a KML file with a 24 m headland, 40 more fields with their jobs on the disk, the tractor
+standing, then driving a pass with AutoSteer and the sections on. The web server's loop is off;
+the test runs each broadcast itself after each fix and counts what it cost (`CostMeter.cs`:
+polygon edges, coverage lookups, bytes allocated, and on Linux the files read), and the rig's
+dispatcher counts every work item on the host loop the same way. A broadcast that reads a file
+with nothing changed on the disk fails (#604), as does a host-loop item that reads one while
+driving (#169). It prints each phase's counts and the host loop's work by name.
+
 ## Running
 
 ```bash
 dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ --filter "FullyQualifiedName~VehicleToolScenarioTests"
 ```
 
-About 25 minutes (careful about 9, careless about 15). CI only builds it; the full run is nightly on develop (`.github/workflows/vehicle-tool-scenarios.yml`, also run by hand from Actions), with the report kept as an artifact and in the run's summary. The report goes to `vehicle-tool-scenarios-report.md` in the test output
+About an hour (careful about 9 minutes, careless about 15, the settings sweep about 35). CI only builds it; the full run is nightly on develop (`.github/workflows/vehicle-tool-scenarios.yml`, also run by hand from Actions), with the report kept as an artifact and in the run's summary. The report goes to `vehicle-tool-scenarios-report.md` in the test output
 folder, or to `AGOPENWEB_SCENARIO_REPORT`. Other switches:
 
 | Variable | Effect |
 |---|---|
 | `AGOPENWEB_SCENARIO_REPORT=path.md` | where to write the report |
-| `AGOPENWEB_SCENARIO_OPERATOR=careful` | only one operator (`careful` or `careless`) |
-| `AGOPENWEB_SCENARIO_ONLY=V-WB` | only drives whose code or name contains this (`settings`, `profiles` for those checks) |
+| `AGOPENWEB_SCENARIO_OPERATOR=careful` | only one operator (`careful` or `careless`), or only the settings sweep (`sweep`) |
+| `AGOPENWEB_SCENARIO_ONLY=V-WB` | only drives whose code or name contains this (`settings`, `profiles` for those checks); in the sweep, only settings or probes containing it (`Slope\|Deadzone`: either) |
 | `AGOPENWEB_SCENARIO_VERBOSE=1` | the machine and AgOpenWeb side by side every 4 s, and every finding |
 
 The test fails only when the harness itself breaks. The findings are the product: the
