@@ -75,11 +75,12 @@ the day's last event before it and whether a garbage collection ran in it.
 | `DEADMAN-DID-NOT-STOP-AUTOSTEER` (Safety) | the tablet went silent with AutoSteer on, the phone reading, and AutoSteer was still engaged 3 s later |
 | `DEADMAN-BLOCKED-BY-A-PHONE` (Safety) | the same with the phone in the pocket |
 | `MAP-FROZEN-BY-A-PHONE` | while the phone was in the pocket the tablet waited more than 3 s for a map update |
-| `HEAP-GROWS-OVER-THE-DAY` | the heap at `B-END` is more than 8 MB and 15 % above `B-J1` (above the first baseline after the phone read again, when that leaves an hour: what the phone left is judged under `MAP-FROZEN-BY-A-PHONE`) |
+| `HEAP-GROWS-OVER-THE-DAY` | every later baseline is more than 8 MB and 15 % above `B-J1` (above the first baseline after the phone read again, when that leaves an hour: what the phone left is judged under `MAP-FROZEN-BY-A-PHONE`) |
+| `CLOSED-FIELD-COVERAGE-KEPT` | with no field open at the end of the day, `CoverageMapService` still holds more than 8 MB (heap census, by field) |
 | `HEAP-GROWS-WHILE-PARKED` | the heap grew more than 3 MB during lunch (nothing worked) |
 | `FILE-GROWS-WHILE-PARKED` | a file in the data folder grew more than 20 KB during lunch |
 | `NATIVE-MEMORY-GROWS` | resident memory outside the managed heap grew more than 40 MB from `B-J1` to `B-END` |
-| `THREADS-GROW`, `TIMERS-GROW`, `FILES-LEFT-OPEN`, `SOCKETS-LEFT-OPEN` | more than 8 threads, 10 timers, 3 files, 3 sockets at `B-END` than at `B-J1` |
+| `THREADS-GROW`, `TIMERS-GROW`, `FILES-LEFT-OPEN`, `SOCKETS-LEFT-OPEN` | more than 8 threads, 3 files, 3 sockets at `B-END` than at `B-J1`; more than 10 timers in every baseline after `B-J1` (a pending `Task.Delay` is a timer; the census names the method awaiting it) |
 | `GPS-CYCLE-SLOWER-LATER`, `CONTROL-TICK-SLOWER-LATER` | Olival in the afternoon (J3) 1.3x slower than in the morning (J1), p50 or p95 (p99 for the tick) |
 | `GPS-CYCLE-OVER-100-MS`, `CONTROL-TICK-OVER-10-MS` | a cycle longer than the time between two fixes, a tick longer than its period |
 | `HOST-LOOP-SLOW` | the host loop answered a probe after more than 250 ms, or logged a work item that held it |
@@ -88,10 +89,11 @@ the day's last event before it and whether a garbage collection ran in it.
 | `NTRIP-DROPPED` | NTRIP not connected at a five-minute look |
 | `EXCEPTIONS-IN-THE-DAY`, `ERRORS-LOGGED` | exceptions on the host loop, errors logged |
 | `NEXT-START-SLOW` | the next morning's start took over 3 s and twice the fresh start |
-| `BACKEND-NOT-FREED-AFTER-EXIT` | more than 30 MB stayed on the heap after the backend shut down in the process (Android and iOS keep the process) |
+| `BACKEND-NOT-FREED-AFTER-EXIT` | more than 30 MB stayed on the heap after the backend shut down in the process (Android and iOS keep the process); Major when the first backend's `MainViewModel` is still alive after the next morning's start |
 
 The test fails only when the harness itself breaks. The findings are the product: the report
-lists each once, most serious first, marked New or Already reported (`KnownFindings.txt`), then
+lists each once, most serious first, with its kind (app defect, harness artifact, parity with
+AgOpenGPS or enhancement), marked New or Already reported (`KnownFindings.txt`), then
 the day's timeline, the fields, the baselines, the heap census, the process every half hour,
 the browsers, the disk and what AgOpenWeb logged; the codes and the day's events keep their
 names, so two nights diff.
@@ -118,6 +120,12 @@ Release builds: a Debug build's GPS cycle is several times slower and its number
 app's. CI only builds the project; `working-day-scenarios.yml` runs it (by hand, or nightly
 once it is in the bug report Worker's `NIGHTLY_WORKFLOWS`). Like the other harnesses it binds
 UDP 9999: nothing else of AgOpenWeb may run on the machine.
+
+The browsers are on the loopback: Linux lets the host's socket take up to about 4 MB before a send
+waits (`tcp_wmem`), where a Wi-Fi link takes far less, so a browser that stops reading is felt
+later here than in a cab, and a big page load holds the host for less. While the deadman is
+waited for (a wall-clock watch), the day runs in real time, so the tractor goes as far as it
+would on the field.
 
 What an accelerated day does not do: the host's wall-clock work (the 10 Hz broadcast, autosaves,
 watchdogs, NTRIP) happens 12.5 times less often per hour of the day than on a tractor, so a

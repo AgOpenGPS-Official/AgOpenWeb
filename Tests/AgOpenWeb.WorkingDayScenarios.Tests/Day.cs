@@ -246,6 +246,7 @@ public sealed partial class Day : IAsyncDisposable
         // The tractor is switched off: AgOpenWeb's exit save, then it is gone.
         await Tablet.CloseAsync();
         var sw = Stopwatch.StartNew();
+        _firstVm = new WeakReference(Rig.Vm);
         await Rig.DisposeAsync();
         // Off the shut-down's own call stack (its last frames still refer to the rig when it
         // completes), so only what AgOpenWeb itself keeps is measured below.
@@ -265,7 +266,7 @@ public sealed partial class Day : IAsyncDisposable
 
         // The next morning: AgOpenWeb starts on what the day left, and the last job is resumed.
         sw.Restart();
-        Rig = await DayRig.StartAsync(Path.Combine(DataRoot, "app"));
+        Rig = await DayRig.StartAsync(Path.Combine(DataRoot, "app"), freshStore: false);
         NextBootSeconds = sw.Elapsed.TotalSeconds;
         Event("NEXT-MORNING", F($"AgOpenWeb started again on the day's data in {NextBootSeconds:0.00} s"));
         Measures.Add(F($"Start the next morning on the day's data: {NextBootSeconds:0.00} s"));
@@ -281,10 +282,17 @@ public sealed partial class Day : IAsyncDisposable
             Measures.Add(open ? F($"Resume the last job ({last.Job.Field}, {last.AreaHa:0.0} ha worked): {s:0.00} s") : "Resume the last job: did not open within 30 s");
             NextMorning = ProcessState.Take();
             Measures.Add(F($"The next morning with that job open: managed heap {NextMorning.HeapMB:0.0} MB, resident {NextMorning.RssMB:0} MB"));
+            FirstBackendAliveNextMorning = _firstVm?.IsAlive == true;
+            Measures.Add(FirstBackendAliveNextMorning
+                ? "Yesterday's MainViewModel is still alive after the second start in the same process"
+                : "Yesterday's MainViewModel is gone after the second start in the same process");
         }
     }
 
     public ProcessState? AfterExit, NextMorning, BeforeStart;
+    private WeakReference? _firstVm;
+    /// <summary>The first backend's MainViewModel outlived the second start in the process.</summary>
+    public bool FirstBackendAliveNextMorning;
     public List<string> OpenFilesAtEnd = new();
     /// <summary>AgOpenWeb's last status line (not the module count) and when it came.</summary>
     public (DateTime Clock, string Text) LastStatus;

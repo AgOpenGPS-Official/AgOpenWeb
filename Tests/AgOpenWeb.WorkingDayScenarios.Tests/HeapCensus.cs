@@ -28,6 +28,10 @@ public sealed class HeapCensus
     /// <summary>For the types asked about: the path from a GC root to the biggest live object of
     /// the type (<see cref="PathText"/>).</summary>
     public Dictionary<string, string> Paths { get; } = new(StringComparer.Ordinal);
+    /// <summary>Bytes <c>CoverageMapService</c> holds, by its field.</summary>
+    public Dictionary<string, long> CoverageHeld { get; } = new(StringComparer.Ordinal);
+    public const string CoverageService = "AgOpenWeb.Services.Coverage.CoverageMapService";
+
     /// <summary>Live timers by owner (<see cref="TimerOwner"/>).</summary>
     public Dictionary<string, int> Timers { get; } = new(StringComparer.Ordinal);
 
@@ -119,11 +123,26 @@ public sealed class HeapCensus
                     }
                 }
 
+                var statics = StaticHolders(rt);
                 if (before != null)
                     foreach (var g in Growth(before, c, 8))
-                        if (biggest.TryGetValue(g.Type, out var b)) c.Paths[g.Type] = PathText(heap, from, b.Address, whole: false);
+                        if (biggest.TryGetValue(g.Type, out var b)) c.Paths[g.Type] = PathText(heap, from, b.Address, whole: false, statics);
                 foreach (var type in pathsFor ?? Array.Empty<string>())
-                    if (biggest.TryGetValue(type, out var b)) c.Paths[type] = PathText(heap, from, b.Address, whole: true);
+                    if (biggest.TryGetValue(type, out var b)) c.Paths[type] = PathText(heap, from, b.Address, whole: true, statics);
+
+                // What the coverage service holds, by its field (the field's object and, for a
+                // collection, the arrays inside it): with no field open it should hold little.
+                foreach (var (addr, (parent, via)) in from)
+                {
+                    if (parent == 0) continue;
+                    string? pt = heap.GetObjectType(parent)?.Name;
+                    string? field = null;
+                    if (pt == CoverageService) field = via;
+                    else if (from.TryGetValue(parent, out var gp) && gp.Parent != 0 && heap.GetObjectType(gp.Parent)?.Name == CoverageService) field = gp.Via;
+                    if (field == null) continue;
+                    long size = (long)heap.GetObject(addr).Size;
+                    c.CoverageHeld[field] = c.CoverageHeld.GetValueOrDefault(field) + size;
+                }
             }
         }
         catch (Exception ex)
@@ -148,6 +167,17 @@ public sealed class HeapCensus
             string? target = cb.IsNull ? null : cb.ReadObjectField("_target").Type?.Name;
             string? state = timer.ReadObjectField("_state").Type?.Name;
             string who = target != null && !target.StartsWith("System.Threading.TimerCallback", StringComparison.Ordinal) ? target : state ?? "(no target)";
+            // A Task.Delay is owned by whoever awaits it: its continuation is the awaiting
+            // method's state machine (a box named after the method), or a task that waits on it.
+            if (who.StartsWith("System.Threading.Tasks.Task+DelayPromise", StringComparison.Ordinal))
+            {
+                var promise = timer.ReadObjectField("_state");
+                var cont = promise.IsNull ? default : promise.ReadObjectField("m_continuationObject");
+                string? awaiter = cont.IsNull ? null : cont.Type?.Name;
+                if (awaiter != null && cont.Type!.GetFieldByName("StateMachine") is { } sm && sm.Type?.Name is { } smName)
+                    awaiter = smName;
+                return "Task.Delay awaited by " + (awaiter == null ? "nothing (left running)" : Short(awaiter));
+            }
             // A closure or a state machine tells its owner by its enclosing type.
             return Short(who);
         }
@@ -157,7 +187,8 @@ public sealed class HeapCensus
     /// <summary>The path from a root to an object: "root kind: Type.field > Type.field > ... >
     /// Type", from the last AgOpenWeb object on the way when there is one (what holds it in the
     /// app), else the whole path.</summary>
-    private static string PathText(ClrHeap heap, Dictionary<ulong, (ulong Parent, string Via)> from, ulong target, bool whole)
+    private static string PathText(ClrHeap heap, Dictionary<ulong, (ulong Parent, string Via)> from, ulong target, bool whole,
+        Dictionary<ulong, string> statics)
     {
         var links = new List<(string Type, string Via)>();   // target first
         string rootKind = "";
@@ -165,6 +196,8 @@ public sealed class HeapCensus
         for (int guard = 0; guard < 200 && from.TryGetValue(cur, out var f); guard++)
         {
             string type = heap.GetObjectType(cur)?.Name ?? "?";
+            // An object a static field holds: the field is the root that matters.
+            if (statics.TryGetValue(cur, out var field)) { rootKind = "static " + field; links.Add((type, "")); break; }
             if (f.Parent == 0) { rootKind = f.Via; links.Add((type, "")); break; }
             links.Add((type, f.Via));
             cur = f.Parent;
@@ -183,6 +216,30 @@ public sealed class HeapCensus
             if (i + 1 < links.Count) sb.Append('.').Append(links[i + 1].Via).Append(" > ");
         }
         return sb.ToString();
+    }
+
+    /// <summary>The objects AgOpenWeb's (and the harness's) static fields hold: address to
+    /// "Type.field".</summary>
+    private static Dictionary<ulong, string> StaticHolders(ClrRuntime rt)
+    {
+        var d = new Dictionary<ulong, string>();
+        foreach (var domain in rt.AppDomains)
+            foreach (var module in domain.Modules)
+            {
+                if (module.Name is not { } n || !Path.GetFileName(n).StartsWith("AgOpenWeb", StringComparison.Ordinal)) continue;
+                foreach (var type in module.EnumerateTypesWithStaticFields())
+                    foreach (var f in type.StaticFields)
+                    {
+                        if (!f.IsObjectReference) continue;
+                        try
+                        {
+                            var o = f.ReadObject(domain);
+                            if (!o.IsNull) d.TryAdd(o.Address, Short(type.Name ?? "?") + "." + f.Name);
+                        }
+                        catch { /* a static not initialised yet */ }
+                    }
+            }
+        return d;
     }
 
     /// <summary>A type name without its namespaces (generic arguments too).</summary>

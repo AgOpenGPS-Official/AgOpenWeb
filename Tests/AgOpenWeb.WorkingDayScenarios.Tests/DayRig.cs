@@ -93,13 +93,16 @@ public sealed class DayRig : IAsyncDisposable
         Config = sp.GetRequiredService<IConfigurationService>();
     }
 
-    public static async Task<DayRig> StartAsync(string dataRoot)
+    /// <summary>Start the backend on <paramref name="dataRoot"/>. The first start in the process
+    /// begins from a fresh configuration store; a later one (the next morning) keeps the store,
+    /// as a head whose process outlives the backend does (Android, iOS): the store is the
+    /// process's own (<c>ConfigurationStore.Instance</c>), never replaced by the app.</summary>
+    public static async Task<DayRig> StartAsync(string dataRoot, bool freshStore = true)
     {
         Directory.CreateDirectory(dataRoot);
         Environment.SetEnvironmentVariable(AppDataRoot.EnvVar, dataRoot);
-        // Each rig starts from the settings in its own data folder, as an app start does: a
-        // fresh store, not the one the previous scenario left behind.
-        AgOpenWeb.Models.Configuration.ConfigurationStore.SetInstance(new AgOpenWeb.Models.Configuration.ConfigurationStore());
+        if (freshStore)
+            AgOpenWeb.Models.Configuration.ConfigurationStore.SetInstance(new AgOpenWeb.Models.Configuration.ConfigurationStore());
 
         var events = new ConcurrentQueue<RigEvent>();
         var hostLoop = new HostLoopDispatcher();
@@ -124,7 +127,11 @@ public sealed class DayRig : IAsyncDisposable
         configService.LoadAppSettings();
         sp.GetRequiredService<IPersistentStateService>().Load();
         WebBackend.WireCrossServices(sp);
-        var vm = await OnLoop(hostLoop, () => sp.GetRequiredService<MainViewModel>());
+        // The harness's closures in this method capture only `events`: one that captured the
+        // provider, the VM or the server would keep the whole backend alive after its
+        // shut-down through whatever holds the closure, and the after-exit census would blame
+        // the app for the harness.
+        var vm = await OnLoop(hostLoop, Resolve<MainViewModel>(sp));
 
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
         await server.StartAsync(
@@ -145,39 +152,68 @@ public sealed class DayRig : IAsyncDisposable
             sp.GetRequiredService<IPersistentStateService>(),
             sp.GetService<INtripClientService>(),
             port: FreePort());
-        await hostLoop.InvokeAsync(() =>
-            RemoteServerWiring.Wire(server, vm, sp, configService, new NoImagery()));
+        await hostLoop.InvokeAsync(WireOnLoop(server, vm, sp, configService));
 
         var rig = new DayRig(dataRoot, sp, vm, server, dispatcher, hostLoop);
         while (events.TryDequeue(out var e)) rig._events.Enqueue(e);
-        dispatcher.OnException = ex => rig._events.Enqueue(new RigEvent(RigEventKind.Exception, ex.ToString()));
-        CapturingLoggerProvider.Sink = e => rig._events.Enqueue(e);
-        vm.FailureReported += msg => rig._events.Enqueue(new RigEvent(RigEventKind.Failure, msg));
-        vm.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName == nameof(MainViewModel.StatusMessage))
-                rig._events.Enqueue(new RigEvent(RigEventKind.Status, vm.StatusMessage ?? ""));
-            // The VM belongs to the host loop (Docs/ARCHITECTURE.md, threading model): a
-            // change raised from any other thread races with commands and the GPS cycle.
-            if (!hostLoop.CheckAccess() && e.PropertyName is { } prop && rig._offLoopSeen.Add(prop))
-                rig._events.Enqueue(new RigEvent(RigEventKind.OffLoop,
-                    prop + " changed on thread " + Environment.CurrentManagedThreadId.ToString(CultureInfo.InvariantCulture)
-                    + " (not the host loop) at " + CallerSummary()));
-        };
+        Attach(rig);
 
         // The built-in GPS simulator would fight the harness's own fixes: switch it off,
         // as a tractor with a real receiver has it.
-        await hostLoop.InvokeAsync(() => vm.IsSimulatorEnabled = false);
+        await hostLoop.InvokeAsync(SimulatorOff(vm));
         // Each fix runs its GPS cycle inline (the test mode of the pipeline), so the steer
         // angle for a fix is known before the simulated tractor moves on.
         rig.Pipeline.SynchronousMode = true;
-        rig.Pipeline.CycleCompleted += r => { Volatile.Write(ref rig._lastCycle, r); Interlocked.Increment(ref rig._cycleCount); };
         await rig.DrainAsync();
         rig.TakeEvents();
         return rig;
     }
 
     private readonly HashSet<string> _offLoopSeen = new();
+
+    /// <summary>What the harness's handlers on the backend's objects reach the rig through:
+    /// cut when the rig is disposed, so a backend kept alive after its shut-down keeps only
+    /// itself, not the harness.</summary>
+    private sealed class Link(DayRig rig) { public DayRig? Rig = rig; }
+    private Link? _link;
+
+    private static Func<T> Resolve<T>(IServiceProvider sp) where T : notnull => () => sp.GetRequiredService<T>();
+
+    private static Action WireOnLoop(AgOpenWeb.RemoteServer.RemoteServerHost server, MainViewModel vm, IServiceProvider sp, IConfigurationService configService) =>
+        () => RemoteServerWiring.Wire(server, vm, sp, configService, new NoImagery());
+
+    private static Action SimulatorOff(MainViewModel vm) => () => vm.IsSimulatorEnabled = false;
+
+    /// <summary>The harness's handlers: exceptions, logged warnings, failures, status lines,
+    /// VM changes off the host loop, each GPS cycle. They hold the rig only through
+    /// <see cref="Link"/>.</summary>
+    private static void Attach(DayRig rig)
+    {
+        var link = rig._link = new Link(rig);
+        var vm = rig.Vm;
+        var hostLoop = rig._hostLoop;
+        rig._dispatcher.OnException = ex => link.Rig?._events.Enqueue(new RigEvent(RigEventKind.Exception, ex.ToString()));
+        CapturingLoggerProvider.Sink = e => link.Rig?._events.Enqueue(e);
+        vm.FailureReported += msg => link.Rig?._events.Enqueue(new RigEvent(RigEventKind.Failure, msg));
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (link.Rig is not { } r) return;
+            if (e.PropertyName == nameof(MainViewModel.StatusMessage))
+                r._events.Enqueue(new RigEvent(RigEventKind.Status, vm.StatusMessage ?? ""));
+            // The VM belongs to the host loop (Docs/ARCHITECTURE.md, threading model): a
+            // change raised from any other thread races with commands and the GPS cycle.
+            if (!hostLoop.CheckAccess() && e.PropertyName is { } prop && r._offLoopSeen.Add(prop))
+                r._events.Enqueue(new RigEvent(RigEventKind.OffLoop,
+                    prop + " changed on thread " + Environment.CurrentManagedThreadId.ToString(CultureInfo.InvariantCulture)
+                    + " (not the host loop) at " + CallerSummary()));
+        };
+        rig.Pipeline.CycleCompleted += r =>
+        {
+            if (link.Rig is not { } g) return;
+            Volatile.Write(ref g._lastCycle, r);
+            Interlocked.Increment(ref g._cycleCount);
+        };
+    }
 
     /// <summary>The first few AgOpenWeb frames of the current stack (who changed the VM).</summary>
     private static string CallerSummary()
@@ -319,8 +355,10 @@ public sealed class DayRig : IAsyncDisposable
     {
         for (int i = 0; i < rounds; i++)
         {
-            var t = _hostLoop.InvokeAsync(() => { });
-            if (await Task.WhenAny(t, Task.Delay(TimeSpan.FromSeconds(30))) != t)
+            // WaitAsync drops its timer when the loop answers (a Task.Delay left running would
+            // be counted as one of AgOpenWeb's timers for 30 s).
+            try { await _hostLoop.InvokeAsync(() => { }).WaitAsync(TimeSpan.FromSeconds(30)); }
+            catch (TimeoutException)
             {
                 _events.Enqueue(new RigEvent(RigEventKind.Hang, "host loop did not answer within 30 s"));
                 return;
@@ -445,8 +483,11 @@ public sealed class DayRig : IAsyncDisposable
         try { await Server.StopAsync(); } catch { }
         if (Services is IDisposable d) { try { d.Dispose(); } catch { } }
         _hostLoop.Dispose();
-        // The logger's sink is static: let go of this rig (and the backend it holds) once it is gone.
+        // Let go of the harness: the logger's sink is static, and the dispatcher stays reachable
+        // from the app's own statics (AgShareRemote.Ui) after the shut-down.
         CapturingLoggerProvider.Sink = null;
+        _dispatcher.OnException = static _ => { };
+        if (_link != null) _link.Rig = null;
     }
 
     /// <summary>Imagery capture needs the internet; the harness has none (the host then

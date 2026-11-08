@@ -9,7 +9,21 @@ namespace AgOpenWeb.WorkingDayScenarios.Tests;
 
 public enum Severity { Safety, Major, Minor }
 
-public sealed record Finding(string Code, Severity Severity, string Title, string Detail);
+/// <summary>What a finding is, as the harness plan asks every report to say: a defect of the
+/// app, something the harness's own model causes, a difference from AgOpenGPS, or an
+/// improvement rather than a fault.</summary>
+public enum FindingKind { AppDefect, HarnessArtifact, Parity, Enhancement }
+
+public sealed record Finding(string Code, Severity Severity, string Title, string Detail, FindingKind Kind = FindingKind.AppDefect)
+{
+    public string KindText => Kind switch
+    {
+        FindingKind.HarnessArtifact => "harness artifact",
+        FindingKind.Parity => "parity with AgOpenGPS",
+        FindingKind.Enhancement => "enhancement",
+        _ => "app defect",
+    };
+}
 
 /// <summary>
 /// Turns the day into findings with stable codes (judged by fixed rules, below) and a Markdown
@@ -40,12 +54,18 @@ public static class Report
         // Memory in the same state (no field open, browsers connected) hours apart.
         if (ref0 != null && end != null)
         {
+            // A leak keeps rising: every later baseline is above the reference, so the growth is
+            // the lowest of them (the last field's own buffers, kept until the next field opens,
+            // are CLOSED-FIELD-COVERAGE-KEPT).
+            var later = d.Baselines.Where(b => b.Clock > refHeap!.Clock && (b.Code == "B-END" || b.Code.StartsWith("B-J", StringComparison.Ordinal))).ToList();
+            var low = later.Count > 0 ? later.MinBy(b => b.P.HeapMB)! : end;
             double hh = Math.Max(0.5, (end.Clock - refHeap!.Clock).TotalHours);
-            double dh = end.P.HeapMB - refHeap.P.HeapMB;
+            double dh = low.P.HeapMB - refHeap.P.HeapMB;
             if (dh > 8 && dh > 0.15 * refHeap.P.HeapMB)
                 list.Add(new Finding("HEAP-GROWS-OVER-THE-DAY", Severity.Major,
-                    F($"The managed heap grew {dh:0.0} MB in {hh:0.0} h with nothing open ({dh / hh:0.0} MB an hour)"),
-                    F($"After a full collection, with no field open and the browsers connected: {refHeap.P.HeapMB:0.0} MB at {refHeap.Clock:HH:mm} ({refHeap.What}), {end.P.HeapMB:0.0} MB at {end.Clock:HH:mm} ({end.What}). ")
+                    F($"The managed heap grew at least {dh:0.0} MB in {hh:0.0} h with nothing open ({dh / hh:0.0} MB an hour)"),
+                    F($"After a full collection, with no field open and the browsers connected: {refHeap.P.HeapMB:0.0} MB at {refHeap.Clock:HH:mm} ({refHeap.What}), then ")
+                    + string.Join(", ", later.Select(b => F($"{b.P.HeapMB:0.0} MB at `{b.Code}`"))) + ". "
                     + (refHeap == ref0 && d.PhoneStalledAt != null && d.PhoneStalledAt > ref0.Clock ? "The phone in the pocket (`MAP-FROZEN-BY-A-PHONE`) is inside this span. " : "")
                     + CensusLine(d)));
             double hours = Math.Max(0.5, (end.Clock - ref0.Clock).TotalHours);
@@ -58,10 +78,13 @@ public static class Report
             if (dt > 8)
                 list.Add(new Finding("THREADS-GROW", Severity.Minor, F($"{dt} more threads at the end of the day than after the first field"),
                     F($"{ref0.P.Threads} -> {end.P.Threads} OS threads ({ref0.P.PoolThreads} -> {end.P.PoolThreads} in the thread pool), same state.")));
-            long dtm = end.P.Timers - ref0.P.Timers;
+            // Timers come and go (a pending Task.Delay is one): a leak is in every later baseline.
+            var laterB = d.Baselines.Where(b => b.Clock > ref0.Clock && (b.Code == "B-END" || b.Code.StartsWith("B-J", StringComparison.Ordinal))).ToList();
+            long dtm = (laterB.Count > 0 ? laterB.Min(b => b.P.Timers) : end.P.Timers) - ref0.P.Timers;
             if (dtm > 10)
-                list.Add(new Finding("TIMERS-GROW", Severity.Minor, F($"{dtm} more timers alive at the end of the day than after the first field"),
-                    F($"System.Threading timers: {ref0.P.Timers} -> {end.P.Timers}, same state (each runs its callback until disposed). ") + TimerLine(d)));
+                list.Add(new Finding("TIMERS-GROW", Severity.Minor, F($"{dtm} more timers alive in every later baseline than after the first field"),
+                    F($"System.Threading timers, same state (each runs its callback until disposed): ")
+                    + string.Join(", ", new[] { ref0 }.Concat(laterB).Select(b => F($"`{b.Code}` {b.P.Timers}"))) + ". " + TimerLine(d)));
             int df = end.P.Files - ref0.P.Files;
             if (df > 3)
                 list.Add(new Finding("FILES-LEFT-OPEN", Severity.Minor, F($"{df} more files held open at the end of the day than after the first field"),
@@ -70,6 +93,22 @@ public static class Report
             if (ds > 3)
                 list.Add(new Finding("SOCKETS-LEFT-OPEN", Severity.Minor, F($"{ds} more sockets open at the end of the day than after the first field"),
                     F($"{ref0.P.Sockets} -> {end.P.Sockets} sockets, the same two browsers connected (the tablet and phone reconnected during the day).")));
+        }
+
+        // With no field open the coverage service should hold little: what it keeps is the last
+        // field's, until the next field opens.
+        if (d.Censuses.FirstOrDefault(c => c.Label == "end" && c.Error == null) is { } endCensus)
+        {
+            long held = endCensus.CoverageHeld.Values.Sum();
+            if (held > 8 * 1048576L)
+                list.Add(new Finding("CLOSED-FIELD-COVERAGE-KEPT", Severity.Minor,
+                    F($"With no field open, the coverage service still held {held / 1048576.0:0.0} MB of the last field's buffers"),
+                    F($"Heap census at the end of the day, after `{d.Jobs.LastOrDefault()?.Job.Field ?? "the last field"}` was closed: `CoverageMapService` holds ")
+                    + string.Join(", ", endCensus.CoverageHeld.Where(kv => kv.Value >= 512 * 1024).OrderByDescending(kv => kv.Value).Select(kv => F($"`{kv.Key}` {kv.Value / 1048576.0:0.0} MB")))
+                    + " (each field's own size, kept until the next field opens). The baselines after each field show it: "
+                    + string.Join(", ", d.Baselines.Where(b => b.Code.StartsWith("B-J", StringComparison.Ordinal)).Select(b => F($"`{b.Code}` {b.P.HeapMB:0.0} MB")))
+                    + ". It does not grow from field to field; freeing it when the field closes would lower the day's peak.",
+                    FindingKind.Enhancement));
         }
 
         // An hour parked with the field open: nothing is worked, nothing should grow.
@@ -112,8 +151,10 @@ public static class Report
         long slowTicks = d.TickDay.CountOver(10);
         if (slowTicks > 0)
             list.Add(new Finding("CONTROL-TICK-OVER-10-MS", Severity.Minor,
-                F($"{slowTicks} control tick(s) took longer than the 10 ms tick period (longest {d.TickDay.MaxMs:0.0} ms; {d.SlowTicksWithGc} with a garbage collection in it)"),
-                "The section and steer loop runs every 10 ms (`SteerMachineLoopService`); a longer tick delays the PGNs to the modules and the section timing. " + Moments(d, "control tick", 10)));
+                F($"{slowTicks} control tick(s) took longer than the 10 ms tick period (longest {d.TickDay.MaxMs:0.0} ms; {d.SlowTicksAtConnect} within 1.5 s of a browser connecting, {d.SlowTicksWithGc} with a garbage collection in it)"),
+                "The section and steer loop runs every 10 ms (`SteerMachineLoopService`); a longer tick delays the PGNs to the modules and the section timing. "
+                + (d.SlowTicksAtConnect > 0 ? "A browser's seed carries the coverage snapshot, which `CoverageMapService.GetPaintedDisplayCells` builds holding `_coverageLock` while it walks the worked area; the tick paints coverage under that lock (the ticks below show lock contentions). " : "")
+                + Moments(d, "control tick", 10)));
 
         var slowHost = d.Samples.Where(s => s.HostLoopMaxMs > 250).ToList();
         var heldLoop = d.Said.Where(k => k.Key.Contains("held the loop", StringComparison.Ordinal)).ToList();
@@ -196,13 +237,16 @@ public static class Report
         if (!double.IsNaN(d.NextBootSeconds) && d.NextBootSeconds > Math.Max(3, 2 * d.BootSeconds))
             list.Add(new Finding("NEXT-START-SLOW", Severity.Minor,
                 F($"AgOpenWeb took {d.NextBootSeconds:0.0} s to start on the day's data ({d.BootSeconds:0.0} s fresh)"), ""));
-        if (d.BeforeStart != null && d.AfterExit != null && d.AfterExit.HeapMB - d.BeforeStart.HeapMB > 30)
-            list.Add(new Finding("BACKEND-NOT-FREED-AFTER-EXIT", Severity.Minor,
+        if (d.BeforeStart != null && d.AfterExit != null && (d.AfterExit.HeapMB - d.BeforeStart.HeapMB > 30 || d.FirstBackendAliveNextMorning))
+            list.Add(new Finding("BACKEND-NOT-FREED-AFTER-EXIT", d.FirstBackendAliveNextMorning ? Severity.Major : Severity.Minor,
                 F($"{d.AfterExit.HeapMB - d.BeforeStart.HeapMB:0} MB of the day stayed on the heap after AgOpenWeb shut down"),
                 F($"Heap {d.BeforeStart.HeapMB:0.0} MB before the start, {d.AfterExit.HeapMB:0.0} MB after the shut-down in the same process. On Android and iOS the process outlives the backend. ")
                 + (d.Censuses.FirstOrDefault(c => c.Label == "after-exit") is { Error: null } gone
                     ? (gone.Paths.Count == 0 ? "The heap census found none of MainViewModel, CoverageMapService or RemoteServerHost alive."
                         : string.Join(" ", gone.Paths.Select(kv => $"`{HeapCensus.Short(kv.Key)}` is still alive, held by `{Short(kv.Value, 600)}`.")))
+                    : "")
+                + (d.FirstBackendAliveNextMorning
+                    ? " AgOpenWeb was then started again in the same process (the next morning), as a head does when its process outlives the backend: the first backend's `MainViewModel` was still alive with the second one running, so every start keeps the backend before it."
                     : "")));
         return list.OrderBy(f => f.Severity).ThenBy(f => f.Code, StringComparer.Ordinal).ToList();
     }
@@ -274,6 +318,8 @@ public static class Report
         sb.AppendLine(F($"An {Day.Hours:0.#}-hour day from {Day.DayStart:HH:mm} on the day's clock, {Day.PaceMs} ms of wall time per 0.1 s fix ({100.0 / Day.PaceMs:0.#}x), {d.WallSeconds / 60:0} minutes of wall time{(commit.Length > 0 ? ", commit " + commit[..Math.Min(7, commit.Length)] : "")}. {Day.Tractor.Name}, {Day.Sprayer.Name}, {Day.Sys.Label}."));
         if (d.MaxBehindMs > 2000)
             sb.AppendLine().AppendLine(F($"_The harness fell behind its pace by up to {d.MaxBehindMs / 1000:0.0} s of wall time (the machine could not keep up)._"));
+        if (d.DeadmanPhoneAway != null && !d.DeadmanPhoneAwayLoopStuck)
+            sb.AppendLine().AppendLine("_The tablet's second Wi-Fi drop came before the phone in the pocket had stopped the map (3 minutes of wall time without the stall felt): the deadman with the broadcast loop stuck was not tested this run._");
         if (d.HarnessProblems.Count > 0)
         {
             sb.AppendLine().AppendLine("**The harness failed:**");
@@ -284,13 +330,13 @@ public static class Report
         if (findings.Count == 0) sb.AppendLine("None.");
         else
         {
-            sb.AppendLine("| Code | Severity | | Finding |").AppendLine("|---|---|---|---|");
+            sb.AppendLine("| Code | Severity | Kind | | Finding |").AppendLine("|---|---|---|---|---|");
             foreach (var f in findings)
-                sb.AppendLine($"| `{f.Code}` | {f.Severity} | {(known.Contains(f.Code) ? "Already reported" : "New")} | {f.Title} |");
+                sb.AppendLine($"| `{f.Code}` | {f.Severity} | {f.KindText} | {(known.Contains(f.Code) ? "Already reported" : "New")} | {f.Title} |");
             sb.AppendLine();
             foreach (var f in findings)
             {
-                sb.AppendLine($"**`{f.Code}`** ({f.Severity}). {f.Title}.");
+                sb.AppendLine($"**`{f.Code}`** ({f.Severity}, {f.KindText}). {f.Title}.");
                 if (f.Detail.Length > 0) sb.AppendLine().AppendLine(f.Detail);
                 sb.AppendLine();
             }

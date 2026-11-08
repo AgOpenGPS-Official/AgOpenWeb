@@ -31,6 +31,9 @@ public sealed partial class Day
     /// (ms of wall time, NaN = not within the wait) and the reason given. <see cref="Deadman"/>
     /// with the phone reading, <see cref="DeadmanPhoneAway"/> with the phone in the pocket.</summary>
     public (DateTime At, double OffMs, string? Reason)? Deadman, DeadmanPhoneAway;
+    /// <summary>The phone's stall had stopped the tablet's map (the broadcast loop stuck) when
+    /// the tablet went silent the second time: else that drop did not test the stuck loop.</summary>
+    public bool DeadmanPhoneAwayLoopStuck;
     public ProcessState? LunchStart, LunchEnd;
     public DateTime LunchStartClock, LunchEndClock;
     public double LunchHeapAtStartMB;
@@ -42,7 +45,9 @@ public sealed partial class Day
         bool phoneInPocket = PhoneStalledAt != null && PhoneWokeAt == null;
         // Sockets fill in wall time, not in the day's time: the phone stays in the pocket at least
         // a minute of wall time whatever the pace, and the tablet's second Wi-Fi drop waits until
-        // the phone's stall is felt (the tablet waiting 3 s for a map update) or 40 s of wall time.
+        // the phone's stall is felt (the tablet waiting 3 s for a map update: 20 to 55 s of wall
+        // time on the loopback, by how fast the frames fill the phone's socket buffers), or 3
+        // minutes of wall time if it never is (the report then says the case was not tested).
         double stalledWallS = WallSeconds - _phoneStalledWall;
 
         // 09:00: the tablet's Wi-Fi drops while the phone reads: the deadman on its own.
@@ -52,7 +57,7 @@ public sealed partial class Day
         else if (PhoneStalledAt == null && !_phoneDone && (_tabletDone || now >= At(4.0)) && now >= At(3.0) && Phone.Connected)
             PhonePocket();
         // Then the tablet's Wi-Fi drops again, the phone still in the pocket.
-        else if (phoneInPocket && !_tablet2Done && driving && now >= At(3.0) + DayMinutes(5) && (stalledWallS >= 40 || PhoneStallMaxGapMs > 3000))
+        else if (phoneInPocket && !_tablet2Done && driving && now >= At(3.0) + DayMinutes(5) && (PhoneStallMaxGapMs > 3000 || stalledWallS >= 180))
             await TabletSilentAsync(phoneAway: true);
         else if (phoneInPocket && (_tablet2Done || now >= At(4.0)) && now >= At(3.0) + DayMinutes(20) && stalledWallS >= 60)
             PhoneWake();
@@ -114,7 +119,8 @@ public sealed partial class Day
     /// reading, once with the phone in the pocket.</summary>
     private async Task TabletSilentAsync(bool phoneAway)
     {
-        if (phoneAway) _tablet2Done = true; else _tabletDone = true;
+        if (phoneAway) { _tablet2Done = true; DeadmanPhoneAwayLoopStuck = PhoneStallMaxGapMs > 3000; }
+        else _tabletDone = true;
         string n = phoneAway ? "-2" : "";
         _inEvent = true;
         try

@@ -467,6 +467,7 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.GpsNtripScenarios.Tests` - receivers, sentence families and an NTRIP caster on the loopback: corrections, network changes, dual heading (`gps-ntrip-scenarios.yml`; one scenario needs Linux's 127.0.0.2)
 - `AgOpenWeb.FieldJobScenarios.Tests` - whole jobs on real fields with AutoSteer, U-turns and auto sections, measuring where product really went on a 0.2 m grid (`field-job-scenarios.yml`, up to 2 h)
 - `AgOpenWeb.IsobusScenarios.Tests` - an emulated AOG-TaskController and its implements (`isobus-scenarios.yml`)
+- `AgOpenWeb.WorkingDayScenarios.Tests` - an eight-hour working day in one process (fields, refills, lunch, a tablet and a phone that drop, stall and reconnect, the next morning): memory baselines, heap census, cycle and tick times, the deadman with a second browser; about 45 minutes (`working-day-scenarios.yml`)
 
 CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/license-headers.py --check` for the licence headers, and `Tools/i18n-limits.py --check` (job `translations-fit`, only when a change touches `wwwroot/`, the check, its baseline or the workflow; otherwise skipped, which counts as passed) so every translated label fits the English layout.
 

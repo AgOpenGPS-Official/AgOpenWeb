@@ -229,9 +229,19 @@ public sealed partial class Day
     public readonly List<(DateTime Clock, string What, double Ms, string Before, string Gc)> SlowMoments = new();
     /// <summary>Control ticks over 10 ms and GPS cycles over 100 ms that a garbage collection ran in.</summary>
     public long SlowTicksWithGc, SlowCyclesWithGc;
+    /// <summary>Control ticks over 10 ms within 1.5 s of a browser connecting.</summary>
+    public long SlowTicksAtConnect;
 
     private void Slow(string what, double ms, string gc)
     {
+        // A browser that has just connected: its seed (the coverage snapshot) is being built.
+        foreach (var b in new[] { Tablet, Phone })
+            if (b != null && b.SinceConnectMs < 1500)
+            {
+                gc = (gc.Length > 0 ? gc + "; " : "") + F($"the {(b == Tablet ? "tablet" : "phone")} connected {b.SinceConnectMs / 1000:0.0} s before");
+                if (what == "control tick" && ms > 10) SlowTicksAtConnect++;
+                break;
+            }
         var last = Events.LastOrDefault();
         string before = last == null ? "" : F($"{last.Code} {(Now - last.Clock).TotalSeconds:0} s before ({WallSeconds - last.WallSeconds:0.0} s of wall time)");
         SlowMoments.Add((Now, what, ms, before, gc));

@@ -99,6 +99,9 @@ public sealed class WebClient : IAsyncDisposable
 
     public double WallMs => _wall.Elapsed.TotalMilliseconds;
 
+    /// <summary>Wall-clock ms since this browser last connected (its page loading), or infinity.</summary>
+    public double SinceConnectMs => Connects == 0 ? double.PositiveInfinity : WallMs - _connectedAtMs;
+
     public async Task ConnectAsync()
     {
         _cts = new CancellationTokenSource();
