@@ -163,5 +163,32 @@ public static class ScenarioFields
 {
     private static IReadOnlyList<ScenarioField>? _all;
     public static IReadOnlyList<ScenarioField> All => _all ??= ScenarioField.LoadAll();
-    public static ScenarioField Get(string name) => All.First(f => f.Name == name);
+    public static ScenarioField Get(string name) => name == Pivot.Name ? Pivot : All.First(f => f.Name == name);
+
+    /// <summary>The water pivot's centre and the radius of its cultivated circle.</summary>
+    public static readonly (double Lat, double Lon) PivotCentre = (41.50000, -5.50000);
+    public const double PivotRadiusM = 150;
+    /// <summary>The concrete pad round the pivot's tower in the middle: an obstacle.</summary>
+    public const double PivotPadRadiusM = 4;
+
+    /// <summary>
+    /// A field under a centre pivot (made up, not one of Renato's): a circle of 150 m (7.1 ha)
+    /// round the pivot's tower, with the tower's pad in the middle as an obstacle. Such a field
+    /// is worked in circles round the tower, the way the pivot's wheels go.
+    /// </summary>
+    public static readonly ScenarioField Pivot = new()
+    {
+        Name = "Pivot",
+        Origin = PivotCentre,
+        Outer = Circle(PivotCentre, PivotRadiusM, 180),
+        Inner = new() { (false, Circle(PivotCentre, PivotPadRadiusM, 12)) },
+    };
+
+    /// <summary>A ring of <paramref name="n"/> points, clockwise from north.</summary>
+    public static List<(double Lat, double Lon)> Circle((double Lat, double Lon) c, double radiusM, int n) =>
+        Enumerable.Range(0, n).Select(i =>
+        {
+            double a = 2 * Math.PI * i / n;
+            return Geo.Offset(c, radiusM * Math.Sin(a), radiusM * Math.Cos(a));
+        }).ToList();
 }

@@ -26,6 +26,17 @@ public static class Ring
         return Math.Abs(a) / 2;
     }
 
+    public static double Perimeter(IReadOnlyList<(double E, double N)> p)
+    {
+        double s = 0;
+        for (int i = 0; i < p.Count; i++)
+        {
+            var a = p[i]; var b = p[(i + 1) % p.Count];
+            s += Math.Sqrt((b.E - a.E) * (b.E - a.E) + (b.N - a.N) * (b.N - a.N));
+        }
+        return s;
+    }
+
     public static double DistToSegment((double E, double N) q, (double E, double N) a, (double E, double N) b)
     {
         double dx = b.E - a.E, dy = b.N - a.N, l2 = dx * dx + dy * dy;
@@ -176,6 +187,9 @@ public sealed class JobAreas
     public double MissedBetweenPasses;  // of which: strips with sprayed ground on both sides across the passes
     public double MissedAtEnds;         // of which: within 3 m of the headland line (the pass ends)
     public double MissedAtObstacles;    // of which: within 2 m of an obstacle (the sections closing and opening over it)
+    public double MissedAlongBoundary;  // of which, with no headland: within 1.5 m of the outer boundary
+    public double MissedLeftInMiddle;   // of which: the middle no lap reached, left by the operator
+    public double MissedAtCorners;      // of which: at a lap's corners
     public double Twice;                // truth ≥ 2 inside the work area
     public double OutsideBoundary;      // truth outside the outer boundary
     public double InObstacles;          // truth inside a hard obstacle
