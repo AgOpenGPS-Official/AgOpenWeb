@@ -46,8 +46,9 @@ const I18n = (() => {
 
   // The text to show for `src` (what the app wrote) in the current language.
   function render(src) {
-    // "Wheelbase (" before a unit label is the key "Wheelbase": the " (" is kept as is.
-    const tail = src.match(/\s*\(?\s*$/)[0];
+    // "Wheelbase (" before a unit label is the key "Wheelbase", and the label "Speed:" the key
+    // "Speed": the " (" or ":" is kept as is, so a word is one string with or without it (#732).
+    const tail = src.match(/\s*[(:]?\s*$/)[0];
     const key = norm(src.slice(0, src.length - tail.length));
     if (!key || !HAS_WORD.test(key)) return src;
     const p = produced.get(key);
