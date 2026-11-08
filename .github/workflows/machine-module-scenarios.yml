@@ -13,7 +13,11 @@ name: Machine Module Scenarios
 
 on:
   schedule:
-    - cron: '30 4 * * *'   # 04:30 UTC
+    # Just after midnight US Central (06:xx UTC; 01:xx in summer time), so the reports are in by
+    # morning. Off the hour on purpose: GitHub queues scheduled runs set on the hour the longest
+    # (runs set for 03:00-05:30 UTC started 6-7 hours late on 2026-11-07). Each harness has its own
+    # runner, so they run side by side.
+    - cron: '17 6 * * *'   # 06:17 UTC
   workflow_dispatch:
 
 permissions:

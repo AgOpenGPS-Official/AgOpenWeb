@@ -454,6 +454,10 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.VehicleToolScenarios.Tests` - Vehicle & Tool scenarios: a simulated machine (steering, implement linkage, antenna on a slope, the Boards simulator's GPS/IMU/motor) drives the whole backend; a careful operator on five vehicles and their implements, a careless one with wrong measures, signs, units, roll setup and profiles; a findings report; CI only builds it, `vehicle-tool-scenarios.yml` runs it nightly (its `README.md`)
 - `AgOpenWeb.FieldScenarios.Tests` - end-to-end field scenarios: the whole backend in-process, a careful and a careless operator on five real field shapes, a findings report; about 4 minutes, so CI only builds it and `field-scenarios.yml` runs it nightly (its `README.md`)
 - `AgOpenWeb.SteerWizardScenarios.Tests` - end-to-end steer wizard scenarios: the whole backend in-process, an emulated AiO steer module (firmware P controller, WAS formula, locks, either motor wiring) and a moving tractor, a careful and a careless operator, a safety watch on the wheels at 50 Hz, a findings report; about 10 minutes, so CI only builds it and `steer-wizard-scenarios.yml` runs it nightly (its `README.md`)
+- `AgOpenWeb.MachineModuleScenarios.Tests` - an emulated Sprayer_ESP32 machine module on the real UDP: sections vs valves, settings reaching the module, restarts and outages (`machine-module-scenarios.yml`)
+- `AgOpenWeb.GpsNtripScenarios.Tests` - receivers, sentence families and an NTRIP caster on the loopback: corrections, network changes, dual heading (`gps-ntrip-scenarios.yml`; one scenario needs Linux's 127.0.0.2)
+- `AgOpenWeb.FieldJobScenarios.Tests` - whole jobs on real fields with AutoSteer, U-turns and auto sections, measuring where product really went on a 0.2 m grid (`field-job-scenarios.yml`, up to 2 h)
+- `AgOpenWeb.IsobusScenarios.Tests` - an emulated AOG-TaskController and its implements (`isobus-scenarios.yml`)
 
 CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/license-headers.py --check` for the licence headers, and `Tools/i18n-limits.py --check` (job `translations-fit`, only when a change touches `wwwroot/`, the check, its baseline or the workflow; otherwise skipped, which counts as passed) so every translated label fits the English layout.
 
@@ -477,7 +481,7 @@ The arc must fit between the headland boundary (green line) and outer boundary (
 
 ## CI/CD
 
-Three GitHub Actions workflows, split by purpose:
+GitHub Actions workflows, split by purpose:
 
 - **`build-and-release.yml`** ("CI") — on every push / PR to `main`: runs the test suite plus a
   compile-check of each platform head (Desktop, Android, iOS). No packaging, no releases.
@@ -494,11 +498,14 @@ Three GitHub Actions workflows, split by purpose:
     beta from `develop` right away (title carries build time + commit); `release` publishes
     the Release named by `release_tag`; `none` builds + uploads artifacts only (dry run).
 
-- **`field-scenarios.yml`** — nightly on `develop` (when it has a commit from the last day) or by hand:
-  runs the field scenario harness (`Tests/AgOpenWeb.FieldScenarios.Tests`, real UDP included) and keeps
-  its findings report as an artifact and in the run's summary. PR CI only builds the harness.
-- **`steer-wizard-scenarios.yml`** — the same for the steer wizard harness (`Tests/AgOpenWeb.SteerWizardScenarios.Tests`),
-  at 03:30 UTC; it also fails when its safety watch saw the wheels move when they shouldn't.
+- **Scenario harnesses, nightly** — seven workflows, each running one harness on `develop` (when it has a
+  commit from the last 25 hours) or by hand, keeping its findings report as an artifact and in the run's
+  summary; PR CI only builds them. They start just after midnight US Central, off the hour (GitHub delays
+  scheduled runs set on the hour), each on its own runner: `field-scenarios.yml` 06:07 UTC,
+  `steer-wizard-scenarios.yml` 06:11 (also fails when its safety watch saw the wheels move when they
+  shouldn't), `vehicle-tool-scenarios.yml` 06:13, `machine-module-scenarios.yml` 06:17,
+  `gps-ntrip-scenarios.yml` 06:19, `field-job-scenarios.yml` 06:23 (the longest, up to 2 h),
+  `isobus-scenarios.yml` 06:29. Each harness's `README.md` says what it covers.
 
 To cut a release (about weekly, so each one stays small): bump `sys/version.h` and the three heads' display versions, then push a tag — `git tag v26.7.x && git push origin v26.7.x`. A summary on top of the generated list goes in with `gh release edit`.
 
