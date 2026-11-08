@@ -29,7 +29,11 @@ public enum Kind
     Enhancement,
 }
 
-public sealed record Finding(string Code, Severity Severity, Kind Kind, string Message);
+/// <summary>A finding. <c>Phase</c> ("replay" or "take-over") and <c>From</c>..<c>To</c> (that
+/// phase's clock, s) say when it was seen, where that is known, so a late GPS feed near it can be
+/// pointed out.</summary>
+public sealed record Finding(string Code, Severity Severity, Kind Kind, string Message,
+    string? Phase = null, double From = double.NaN, double To = double.NaN);
 
 /// <summary>One dump: what was reported, what the harness did, what it found.</summary>
 public sealed class DumpRow
@@ -42,6 +46,9 @@ public sealed class DumpRow
     public List<(string What, string Then, string Now)> ThenNow = new();
     public List<(string Name, string Value)> Metrics = new();
     public List<string> ReporterLog = new();
+    /// <summary>A private dump (not attached to a public issue): the report shows only its
+    /// finding codes and numbers.</summary>
+    public bool Private;
 }
 
 /// <summary>The steps and checks of one dump.</summary>
@@ -67,13 +74,52 @@ public sealed class Scenario
         Journal.Trace("[dr]   OK " + text);
     }
 
-    public void Problem(Severity severity, Kind kind, string code, string text)
+    public void Problem(Severity severity, Kind kind, string code, string text) => Add(new Finding(code, severity, kind, text));
+
+    /// <summary>A finding seen at a known time of the replay or the take-over (from..to on that
+    /// phase's clock), so <see cref="MarkLate"/> can say when the harness's feed was late near it.</summary>
+    public void Problem(Severity severity, Kind kind, string code, string text, string phase, double from, double? to = null)
+        => Add(new Finding(code, severity, kind, text, phase, from, to ?? from));
+
+    private void Add(Finding f)
     {
         // One line per code and dump: the first place it was seen (stable from night to night).
-        if (Row.Findings.Any(f => f.Code == code)) return;
-        Row.Checks.Add($"✗ **{severity}** ({KindText(kind)}) `{code}`: {text}");
-        Row.Findings.Add(new Finding(code, severity, kind, text));
-        Journal.Trace($"[dr]   FINDING {severity} {code}: {text}");
+        if (Row.Findings.Any(x => x.Code == f.Code)) return;
+        Row.Checks.Add(CheckLine(f));
+        Row.Findings.Add(f);
+        Journal.Trace($"[dr]   FINDING {f.Severity} {f.Code}: {f.Message}");
+    }
+
+    private static string CheckLine(Finding f) => $"✗ **{f.Severity}** ({KindText(f.Kind)}) `{f.Code}`: {f.Message}";
+
+    /// <summary>The moments the harness fed a GPS fix late (wall clock against the log's own
+    /// pace, or the take-over's 100 ms a fix): phase, that phase's clock (s) and how late (ms).
+    /// AgOpenWeb's watchdogs run on the wall clock, so a late feed can make a finding of its own.</summary>
+    public List<(string Phase, double T, double Ms)> Late { get; } = new();
+
+    /// <summary>A feed later than this (ms) makes a finding within 1 s of it a possible harness artifact.</summary>
+    public const double LateMs = 300;
+
+    /// <summary>Marks every finding seen within 1 s of a feed more than <see cref="LateMs"/> late
+    /// as a possible harness artifact, in its text. Called once the dump is done.</summary>
+    public void MarkLate()
+    {
+        for (int i = 0; i < Row.Findings.Count; i++)
+        {
+            var f = Row.Findings[i];
+            if (f.Phase == null || double.IsNaN(f.From)) continue;
+            var near = Late.Where(l => l.Phase == f.Phase && l.Ms > LateMs && l.T >= f.From - 1.0 && l.T <= f.To + 1.0).ToList();
+            if (near.Count == 0) continue;
+            var worst = near.MaxBy(l => l.Ms);
+            var marked = f with
+            {
+                Message = f.Message + string.Create(CultureInfo.InvariantCulture,
+                    $" (possible harness artifact: the harness fed the GPS {worst.Ms:0} ms late at {f.Phase} t {worst.T:0.0} s, and AgOpenWeb's watchdogs run on the wall clock)"),
+            };
+            int c = Row.Checks.IndexOf(CheckLine(f));
+            if (c >= 0) Row.Checks[c] = CheckLine(marked);
+            Row.Findings[i] = marked;
+        }
     }
 
     public void Note(string text)
@@ -127,13 +173,16 @@ public sealed class Journal
         sb.Append("## Findings (each kind once, most serious first)\n\n");
         var groups = Rows.SelectMany(r => r.Findings.Select(f => (r.Id, f)))
             .GroupBy(x => x.f.Code)
-            .Select(g => (First: g.First().f, Places: g.Select(x => x.Id).Distinct().ToList()))
+            // A private dump's finding text may name the reporter's field or track: the text shown
+            // is a public dump's, else none.
+            .Select(g => (First: g.First().f, Places: g.Select(x => x.Id).Distinct().ToList(),
+                Text: g.Where(x => !Rows.First(r => r.Id == x.Id).Private).Select(x => x.f.Message).FirstOrDefault()))
             .OrderBy(g => g.First.Severity).ThenBy(g => g.First.Code, StringComparer.Ordinal)
             .ToList();
         int n = 1;
         foreach (var g in groups)
         {
-            sb.Append(string.Create(inv, $"{n++}. **{g.First.Severity}** ({Scenario.KindText(g.First.Kind)}) `{g.First.Code}` ×{g.Places.Count}: {g.First.Message}\n"));
+            sb.Append(string.Create(inv, $"{n++}. **{g.First.Severity}** ({Scenario.KindText(g.First.Kind)}) `{g.First.Code}` ×{g.Places.Count}: {g.Text ?? "(seen in private dumps only: the details stay in the local run)"}\n"));
             sb.Append("   Seen in: ").Append(string.Join(", ", g.Places)).Append('\n');
         }
         if (groups.Count == 0) sb.Append("None.\n");
@@ -155,6 +204,25 @@ public sealed class Journal
         foreach (var r in Rows)
         {
             sb.Append("\n## ").Append(r.Id).Append(". ").Append(r.Title).Append("\n\n").Append(r.Story).Append("\n\n");
+            if (r.Private)
+            {
+                // Not attached to a public issue: codes and numbers only (no field, job or track
+                // names, no notes, no log lines). The rest is in the local run's console.
+                sb.Append("*A private dump: only finding codes and numbers are shown.*\n\n");
+                if (r.ThenNow.Count > 0)
+                {
+                    sb.Append("| | Then (reporter's build) | Now (this build) |\n|---|---|---|\n");
+                    foreach (var (w, t, now) in r.ThenNow) sb.Append("| ").Append(w).Append(" | ").Append(t).Append(" | ").Append(now).Append(" |\n");
+                    sb.Append('\n');
+                }
+                foreach (var f in r.Findings) sb.Append("- ✗ **").Append(f.Severity).Append("** (").Append(Scenario.KindText(f.Kind)).Append(") `").Append(f.Code).Append("`\n");
+                if (r.Metrics.Count > 0)
+                {
+                    sb.Append("\n| Measured | Value |\n|---|---|\n");
+                    foreach (var (k, v) in r.Metrics) sb.Append("| ").Append(k).Append(" | ").Append(v).Append(" |\n");
+                }
+                continue;
+            }
             if (r.ThenNow.Count > 0)
             {
                 sb.Append("| | Then (reporter's build) | Now (this build) |\n|---|---|---|\n");

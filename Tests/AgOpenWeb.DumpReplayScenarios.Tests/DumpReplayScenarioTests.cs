@@ -17,8 +17,9 @@ public class DumpReplayScenarioTests
     [Test]
     public async Task Replay_every_dump()
     {
-        // One run at a time on a machine: AgOpenWeb's UDP service binds port 9999 (with address
-        // reuse), so a second run's backend would hear the first run's steer module and GPS.
+        // One run at a time on a machine, and not beside the field or path job harness: they all
+        // bind AgOpenWeb's UDP port 9999 and the module port 8888 (with address reuse), so a
+        // second run's backend would hear the first run's steer module and GPS. The same lock file.
         using var exclusive = OneRunAtATime();
         var journal = new Journal();
         var root = Path.Combine(Path.GetTempPath(), "aow-dump-replay-" + Guid.NewGuid().ToString("N")[..8]);
@@ -35,11 +36,24 @@ public class DumpReplayScenarioTests
                     Journal.Trace($"[dr] {entry.Id}: not replayed: {note}");
                     continue;
                 }
-                var dump = BugDump.Open(entry.Id, zip, Path.Combine(root, "dump-" + entry.Id));
-                var s = new Scenario(entry.Id, entry.Title,
-                    (entry.Issue > 0 ? $"#{entry.Issue.ToString(CultureInfo.InvariantCulture)}, " : "") + (entry.Reporter.Length > 0 ? "reported by " + entry.Reporter + ". " : "")
-                    + entry.Reported + (entry.FixedBy.Length > 0 ? " Closed by " + entry.FixedBy + "." : "")
-                    + (dump.Notes.Length > 0 ? " The reporter's note: \"" + dump.Notes.TrimStart('#', ' ') + "\"." : ""));
+                string story = (entry.Issue > 0 ? $"#{entry.Issue.ToString(CultureInfo.InvariantCulture)}, " : "") + (entry.Reporter.Length > 0 ? "reported by " + entry.Reporter + ". " : "")
+                    + entry.Reported + (entry.FixedBy.Length > 0 ? " Closed by " + entry.FixedBy + "." : "");
+                BugDump dump;
+                try { dump = BugDump.Open(entry.Id, zip, Path.Combine(root, "dump-" + entry.Id)); }
+                catch (Exception ex)
+                {
+                    // One bad dump is a note for that dump, not a failed night.
+                    var bad = new Scenario(entry.Id, entry.Title, story);
+                    bad.Row.Private = entry.IsPrivate;
+                    bad.Note("HARNESS: the dump could not be read (" + ex.GetType().Name + (entry.IsPrivate ? "" : ": " + ex.Message) + "): not replayed");
+                    Journal.Trace(ex.ToString());
+                    journal.Add(bad.Row);
+                    continue;
+                }
+                // The reporter's own note is theirs to make public: shown only for a dump attached to a public issue.
+                var s = new Scenario(entry.Id, entry.Title, story
+                    + (dump.Notes.Length > 0 && !entry.IsPrivate ? " The reporter's note: \"" + dump.Notes.TrimStart('#', ' ') + "\"." : ""));
+                s.Row.Private = entry.IsPrivate;
                 s.Row.Metrics.Add(("Issue", entry.Issue > 0 ? "#" + entry.Issue.ToString(CultureInfo.InvariantCulture) : ""));
                 s.Row.Metrics.Add(("Reporter", entry.Reporter));
                 s.Row.Metrics.Add(("Dump", note + ", SHA-256 " + DumpCatalog.Sha256(zip)[..12]));
@@ -55,7 +69,8 @@ public class DumpReplayScenarioTests
                     continue;
                 }
                 await RunOne(entry, dump, s, Path.Combine(root, "data-" + entry.Id), takeOver);
-                ReporterLog(dump, s);
+                s.MarkLate();
+                if (!entry.IsPrivate) ReporterLog(dump, s);
                 journal.Add(s.Row);
             }
         }
@@ -67,7 +82,7 @@ public class DumpReplayScenarioTests
             TestContext.Out.WriteLine("Report: " + report);
             try { Directory.Delete(root, true); } catch { /* temp */ }
         }
-        var broken = journal.Rows.SelectMany(r => r.Findings.Where(f => f.Code is "HARNESS" or "REPLAY-NO-CYCLES").Select(f => r.Id + ": " + f.Message)).ToList();
+        var broken = journal.Rows.SelectMany(r => r.Findings.Where(f => f.Code is "HARNESS" or "REPLAY-NO-CYCLES").Select(f => r.Id + ": " + (r.Private ? f.Code : f.Message))).ToList();
         Assert.That(broken, Is.Empty, "the harness itself failed: " + string.Join("; ", broken));
     }
 
@@ -106,12 +121,12 @@ public class DumpReplayScenarioTests
 
     private static FileStream OneRunAtATime()
     {
-        string path = Path.Combine(Path.GetTempPath(), "agopenweb-dump-replay-scenarios.lock");
+        string path = Path.Combine(Path.GetTempPath(), "agopenweb-field-job-scenarios.lock");
         try { return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
         catch (IOException)
         {
-            Assert.Fail("Another dump replay run is going on this machine (" + path + " is held): the two would share "
-                + "AgOpenWeb's UDP port 9999. Run them one after the other.");
+            Assert.Fail("Another dump replay, field job or path job run is going on this machine (" + path + " is held): "
+                + "they would share AgOpenWeb's UDP ports 9999 and 8888. Run them one after the other.");
             throw;
         }
     }

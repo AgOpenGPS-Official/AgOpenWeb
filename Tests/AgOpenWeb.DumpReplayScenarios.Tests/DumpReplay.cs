@@ -77,13 +77,30 @@ public sealed class DumpReplay : IAsyncDisposable
         if (Rig.Services.GetService(typeof(IAudioService)) is AgOpenWeb.Services.Audio.WebClientAudioService audio)
             audio.EffectTriggered += e => { lock (Sounds) Sounds.Add((Volatile.Read(ref _clock), e)); };
 
-        // Vehicle & Tool, as the reporter had them.
+        // Vehicle & Tool, as the reporter had them. What the host answers to each (a value
+        // VehicleToolLimits refuses, one the section timing rules change) is kept by its key.
         var (cmds, writes, missing) = ReporterSettings.From(Dump);
-        foreach (var c in cmds) await Rig.SendAsync("config.set", c);
+        var replies = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var c in cmds)
+        {
+            await Rig.SendAsync("config.set", c);
+            string key = c[..c.IndexOf(':', StringComparison.Ordinal)];
+            foreach (var e in Collect())
+            {
+                if (e.StartsWith("failure: ", StringComparison.Ordinal))
+                {
+                    if (!replies.TryGetValue(key, out var l)) replies[key] = l = new List<string>();
+                    l.Add(e["failure: ".Length..]);
+                }
+                else Said.Add("set-up: " + e);
+            }
+        }
         await Rig.RunAsync(() => { foreach (var w in writes) w(Rig.Store); });
         S.Step(F($"Vehicle & Tool: {cmds.Count} settings typed (config.set), {writes.Count} without a web key set in the store"));
+        S.Step("roll filter off (" + ReporterSettings.RollFilterOff + "): the GPS log's roll is already filtered, the pipeline would filter it again");
         if (missing.Count > 0) S.Step("not in this dump's configuration.json (AgOpenWeb's default kept): " + string.Join(", ", missing));
-        Collect();
+        foreach (var e in Collect()) Said.Add("set-up: " + e);
+        await CompareSettingsAsync(replies);
 
         DriftE = BugDump.Get(Dump.Runtime, "Field", "DriftEasting")?.GetDouble() ?? 0;
         DriftN = BugDump.Get(Dump.Runtime, "Field", "DriftNorthing")?.GetDouble() ?? 0;
@@ -185,6 +202,98 @@ public sealed class DumpReplay : IAsyncDisposable
         Now = new ReplayRow?[Dump.Rows.Count];
         Ready = true;
         return true;
+    }
+
+    /// <summary>configuration.json paths not compared: names, units and the roll filter (off on
+    /// purpose, see <see cref="ReporterSettings.RollFilterOff"/>).</summary>
+    private static readonly HashSet<string> NotCompared = new(StringComparer.Ordinal)
+    {
+        "Vehicle.Name", "ActiveProfile", "ActiveToolProfile", "IsMetric", "Ahrs.RollFilter",
+    };
+
+    /// <summary>
+    /// The settings read back after they were typed: the store as this build's own bug report
+    /// would write it (DebugDumpService's snapshot, the same shape as the dump's
+    /// configuration.json), value by value against the dump. A value the harness typed that the
+    /// host refused or changed, and said why, is a set-up note with the host's reason; one it did
+    /// not keep without a word is a finding (the replay is not on the reporter's settings). A
+    /// value the harness has no way to set is listed.
+    /// </summary>
+    private async Task CompareSettingsAsync(Dictionary<string, List<string>> replies)
+    {
+        if (Dump.Config is not { } then) return;
+        var build = typeof(AgOpenWeb.Services.DebugDumpService).GetMethod("BuildConfigSnapshot",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        if (build == null)
+        {
+            S.Note("the settings were not read back: DebugDumpService.BuildConfigSnapshot, which writes a dump's configuration.json, is not there any more");
+            return;
+        }
+        string json = await Rig.ReadAsync(() => (string)build.Invoke(null, new object[] { Rig.Store })!);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var diffs = new List<(string Path, string Then, string Now)>();
+        int compared = Leaves(then, doc.RootElement, "", diffs);
+        string[] timing = { "tool.lookAheadOn", "tool.lookAheadOff", "tool.turnOffDelay" };
+        var untyped = new List<string>();
+        foreach (var (path, a, b) in diffs)
+        {
+            var key = ReporterSettings.KeyOf(path);
+            if (key == null) { untyped.Add(F($"{path} {a} (now {b})")); continue; }
+            var why = replies.TryGetValue(key, out var own) ? own
+                : path is "Tool.LookAheadOnSetting" or "Tool.LookAheadOffSetting" or "Tool.TurnOffDelay"
+                    ? timing.SelectMany(k => replies.TryGetValue(k, out var l) ? l : new List<string>()).ToList()
+                    : new List<string>();
+            if (why.Count > 0)
+                S.Note(F($"set-up: {path} is {b} in this build, {a} in the dump: the host said \"{string.Join("; ", why.Distinct())}\" ({key})"));
+            else
+                S.Problem(Severity.Inconsistency, Kind.HarnessArtifact, "SETUP-SETTING-NOT-KEPT",
+                    F($"{path} was set to the dump's {a} ({key}), and this build has {b} with no word from the host: the replay does not run on the reporter's value"));
+        }
+        if (untyped.Count > 0)
+            S.Note("set-up: values of the dump the harness has no way to set, different here (AgOpenWeb's own kept): " + string.Join(", ", untyped));
+        S.Step(F($"settings read back: {compared - diffs.Count} of {compared} values of the dump's configuration.json as there"));
+    }
+
+    /// <summary>Every leaf of <paramref name="then"/> against the same path in <paramref name="now"/>
+    /// (a path this build no longer has is skipped). Returns how many were compared.</summary>
+    private static int Leaves(System.Text.Json.JsonElement then, System.Text.Json.JsonElement now, string path, List<(string, string, string)> diffs)
+    {
+        if (NotCompared.Contains(path)) return 0;
+        switch (then.ValueKind)
+        {
+            case System.Text.Json.JsonValueKind.Object:
+            {
+                int n = 0;
+                if (now.ValueKind != System.Text.Json.JsonValueKind.Object) return 0;
+                foreach (var p in then.EnumerateObject())
+                    if (now.TryGetProperty(p.Name, out var q)) n += Leaves(p.Value, q, path.Length == 0 ? p.Name : path + "." + p.Name, diffs);
+                return n;
+            }
+            case System.Text.Json.JsonValueKind.Array:
+            {
+                int n = 0, i = 0;
+                if (now.ValueKind != System.Text.Json.JsonValueKind.Array) return 0;
+                int len = now.GetArrayLength();
+                foreach (var item in then.EnumerateArray())
+                {
+                    if (i < len) n += Leaves(item, now[i], path + "[" + i.ToString(CultureInfo.InvariantCulture) + "]", diffs);
+                    i++;
+                }
+                return n;
+            }
+            case System.Text.Json.JsonValueKind.Number:
+                if (now.ValueKind == System.Text.Json.JsonValueKind.Number && Math.Abs(then.GetDouble() - now.GetDouble()) <= 1e-6 * Math.Max(1, Math.Abs(then.GetDouble())))
+                    return 1;
+                diffs.Add((path, then.GetRawText(), now.GetRawText()));
+                return 1;
+            case System.Text.Json.JsonValueKind.True:
+            case System.Text.Json.JsonValueKind.False:
+            case System.Text.Json.JsonValueKind.String:
+                if (now.ValueKind != then.ValueKind || then.GetRawText() != now.GetRawText()) diffs.Add((path, then.GetRawText(), now.GetRawText()));
+                return 1;
+            default:
+                return 0;
+        }
     }
 
     private (double Lat, double Lon) Origin()
@@ -293,7 +402,8 @@ public sealed class DumpReplay : IAsyncDisposable
             .Select(l => (T: Dump.LogT(l), Cmd: l.Text.Contains("LEFT", StringComparison.Ordinal) ? "youturn.manualLeft" : "youturn.manualRight"))
             .Where(x => x.T is { } t && t >= rows[StartRow].T)
             .Select(x => (T: x.T!.Value, x.Cmd)).OrderBy(x => x.T).ToList();
-        int mi = 0, snapCheck = 0;
+        int mi = 0, snapCheck = 0, lateRows = 0;
+        double maxLate = 0;
         double passWidth = await Rig.ReadAsync(() => Rig.Store.ActualToolWidth - Rig.Store.Tool.Overlap);
         for (int i = StartRow; i < rows.Count; i++)
         {
@@ -304,6 +414,11 @@ public sealed class DumpReplay : IAsyncDisposable
                 wall += dt > 1.0 ? dt : dt / Pace;
                 double wait = wall * 1000 - sw.ElapsedMilliseconds;
                 if (wait > 1) await Task.Delay((int)wait);
+                // How late this fix goes in against the log's pace (the watchdogs run on the
+                // wall clock: a fix late enough can look like GPS lost to this build).
+                double late = sw.ElapsedMilliseconds - wall * 1000;
+                maxLate = Math.Max(maxLate, late);
+                if (late > Scenario.LateMs) { lateRows++; S.Late.Add(("replay", r.T, late)); }
             }
             // The operator's AutoSteer button, where the reporter's log shows it.
             // (At the first row: AutoSteer already on in the reporter's log is engaged at once.)
@@ -397,6 +512,7 @@ public sealed class DumpReplay : IAsyncDisposable
         await Rig.WaitForVmAsync();
         foreach (var e in Collect()) Said.Add(F($"t {rows[^1].T,6:0.0} s: {e}"));
         WriteCsv();
+        S.Row.Metrics.Add(("GPS feed lateness (replay)", F($"max {maxLate:0} ms, {lateRows} rows more than {Scenario.LateMs:0} ms late")));
         S.Step(F($"replayed rows {StartRow}..{rows.Count - 1} ({rows[^1].T - rows[StartRow].T:0} s of log) in {sw.Elapsed.TotalSeconds:0} s; AutoSteer engaged {engages}x, disengaged {disengages}x by the operator, line re-picked {resyncs}x, manual U-turns {manualTurns}"));
     }
 
@@ -404,11 +520,12 @@ public sealed class DumpReplay : IAsyncDisposable
     /// Where the reporter's build put the passes of their track, against where this build puts
     /// them. The GPS log has the reporter's pivot, pass number and cross-track error on every row
     /// with guidance, so the centre line of each of their passes is known to the centimetre. On an
-    /// AB line, if this build's passes lie half a working width from those (AgOpenGPS's pass
-    /// model, where the reference line is the edge between two passes, came after some dumps were
-    /// made, and a track from before it moves by half a width), the operator moves the line back
-    /// with Ref Nudge's half-width button, as an operator with an old track would; any other
-    /// difference is a finding and is left as it is.
+    /// AB line, if this build's passes lie half a working width from those and the reporter's build
+    /// predates AgOpenGPS's pass model (commit 1cf8ba17, 2026-10-20: the reference line became the
+    /// edge between two passes, so a track from before it moves by half a width), the operator
+    /// moves the line back with Ref Nudge's half-width button, as an operator with an old track
+    /// would. Half a width on a build that already had the pass model, or one that can't be
+    /// placed, is an app defect and is left as it is; so is any other difference.
     /// </summary>
     private async Task AlignPassesAsync()
     {
@@ -438,11 +555,20 @@ public sealed class DumpReplay : IAsyncDisposable
         double shift = Mod(then.Centre - now + w / 2, w) - w / 2;
         PassShift = shift;
         if (Math.Abs(shift) < 0.15) { S.Ok(F($"this build's passes lie where the reporter's did (within {Math.Abs(shift) * 100:0} cm, {samples.Count} rows)")); return; }
+        var (old, how) = Math.Abs(Math.Abs(shift) - w / 2) < 0.15 ? PredatesPassModel() : ((bool?)null, "");
+        if (Math.Abs(Math.Abs(shift) - w / 2) < 0.15 && old != true)
+        {
+            S.Problem(Severity.Bug, Kind.AppDefect, "TRACK-PASSES-HALF-OFF",
+                F($"this build puts the passes of the reporter's track '{track.Name}' {Math.Abs(shift):0.00} m, half a working width, from where the reporter's build (") + (Dump.BuildHash.Length >= 7 ? Dump.BuildHash[..7] : "unknown") +
+                ") drove them, and that build " + (old == false ? "already had" : "can't be placed before or after") + " the pass model change (1cf8ba17, 2026-10-20; " + how +
+                "): the same track should give the same passes. Not moved back: the replay compares guidance on lines half a width apart");
+            return;
+        }
         if (Math.Abs(Math.Abs(shift) - w / 2) < 0.15)
         {
             S.Problem(Severity.Inconsistency, Kind.Parity, "TRACK-PASSES-MOVED-HALF",
                 F($"this build puts the passes of the reporter's track '{track.Name}' {Math.Abs(shift):0.00} m, half a working width, from where the reporter's build (") + (Dump.BuildHash.Length >= 7 ? Dump.BuildHash[..7] : "older") +
-                ") drove them: the reference line is now the edge between two passes (AgOpenGPS's model, PassGeometry), so a track made before that change moves by half a width. AgOpenWeb keeps no compatibility for files of older builds (CLAUDE.md), so this is expected, but an operator with such a track is guided half a width off until the line is moved; for the replay the operator moves it back with Ref Nudge > half width");
+                ") drove them: that build predates the pass model change (1cf8ba17, 2026-10-20; " + how + "), where the reference line became the edge between two passes (AgOpenGPS's model, PassGeometry), so a track made before it moves by half a width. AgOpenWeb keeps no compatibility for files of older builds (CLAUDE.md), so this is expected, but an operator with such a track is guided half a width off until the line is moved; for the replay the operator moves it back with Ref Nudge > half width");
             await Rig.SendAsync("track.refNudgeBegin");
             await Rig.SendAsync("track.refHalfNudgeRight");
             await Rig.SendAsync("track.refNudgeSave");
@@ -456,7 +582,50 @@ public sealed class DumpReplay : IAsyncDisposable
             F($"this build puts the passes of the reporter's track '{track.Name}' {shift:0.00} m from where the reporter's build drove them (not half a width; a nudge the dump does not carry, or a change in the pass model): the replay compares guidance on lines that differ by that much"));
     }
 
-    private int _alignDir, _alignPresses;
+    /// <summary>The commit that made the reference line the edge between two passes (AgOpenGPS's
+    /// pass model, 2026-10-20). A track made on a build before it has its passes half a width off.</summary>
+    public const string PassModelCommit = "1cf8ba17";
+    private static readonly DateTime PassModelDate = new(2026, 10, 20);
+
+    /// <summary>
+    /// Whether the reporter's build predates <see cref="PassModelCommit"/>: true, false, or null
+    /// when it can't be told, and how it was told. The build hash (system_info.txt) is looked up in
+    /// this checkout's history (<c>git merge-base --is-ancestor</c>; the workflow checks out the
+    /// whole history); a hash git doesn't know falls back to the dump's date (a dump made before
+    /// that day is from an older build; one made after can be from either).
+    /// </summary>
+    public (bool? Old, string How) PredatesPassModel()
+    {
+        if (Dump.BuildHash.Length >= 7 && RepoRoot() is { } root)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("git")
+                {
+                    RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, WorkingDirectory = root,
+                };
+                foreach (var a in new[] { "merge-base", "--is-ancestor", PassModelCommit, Dump.BuildHash }) psi.ArgumentList.Add(a);
+                using var git = System.Diagnostics.Process.Start(psi);
+                if (git != null && git.WaitForExit(10000))
+                {
+                    if (git.ExitCode == 0) return (false, "git: build " + Dump.BuildHash[..7] + " has it");
+                    if (git.ExitCode == 1) return (true, "git: build " + Dump.BuildHash[..7] + " is older");
+                }
+            }
+            catch (System.ComponentModel.Win32Exception) { /* no git: the date below */ }
+        }
+        if (Dump.DumpLocalTime is { } t && t < PassModelDate) return (true, F($"the dump is from {t:yyyy-MM-dd}"));
+        return (null, Dump.BuildHash.Length >= 7 ? "build " + Dump.BuildHash[..7] + " is not in this checkout's history" : "the dump names no build");
+    }
+
+    private static string? RepoRoot()
+    {
+        for (var d = new DirectoryInfo(TestContext.CurrentContext.TestDirectory); d != null; d = d.Parent)
+            if (Directory.Exists(Path.Combine(d.FullName, ".git")) || File.Exists(Path.Combine(d.FullName, ".git"))) return d.FullName;
+        return null;
+    }
+
+    private int _alignDir, _alignPresses, _alignNet;
     private double _alignLast;
     /// <summary>Whether this build has been put on the reporter's pass (or given up on it).</summary>
     public bool AlignDone { get; private set; }
@@ -478,7 +647,14 @@ public sealed class DumpReplay : IAsyncDisposable
         if (err < 1.0)
         {
             AlignDone = true;
-            if (_alignPresses > 0) S.Step(F($"t {r.T,6:0.0} s: operator presses the lateral button {_alignPresses}x to get onto the reporter's pass {r.PathsAway} (this build had started on another)"));
+            // One pass over is how a fresh track selection can land (the nearest pass, by a
+            // hair); more needs the dump to say how the reporter got there.
+            if (Math.Abs(_alignNet) > 1 && WhyOtherPass(r.T) == null)
+                S.Problem(Severity.Inconsistency, Kind.AppDefect, "PASS-ALIGN-PRESSES",
+                    F($"t {r.T:0.0} s: this build started {Math.Abs(_alignNet)} passes from the reporter's pass {r.PathsAway}, and the dump shows nothing that took the reporter there (no U-turn, manual turn or pass change in their log or GPS log before it); the lateral button was pressed {_alignPresses}x to compare on the same line"),
+                    "replay", r.T);
+            else if (_alignPresses > 0)
+                S.Step(F($"t {r.T,6:0.0} s: operator presses the lateral button {_alignPresses}x to get onto the reporter's pass {r.PathsAway} (this build had started on another") + (Math.Abs(_alignNet) > 1 ? "; " + WhyOtherPass(r.T) : "") + ")");
             return;
         }
         if (_alignPresses >= 40)
@@ -495,19 +671,39 @@ public sealed class DumpReplay : IAsyncDisposable
                 // Right was the wrong way: back, and left from there.
                 _alignDir = -1;
                 await Rig.SendAsync("track.snapLeft");
-                _alignPresses++;
+                _alignPresses++; _alignNet--;
             }
             else
             {
                 await Rig.SendAsync(_alignDir > 0 ? "track.snapLeft" : "track.snapRight");
+                _alignNet -= _alignDir;
                 AlignDone = true;
                 S.Note(F($"t {r.T:0.0} s: the lateral button did not bring this build onto the reporter's pass {r.PathsAway}"));
                 return;
             }
         }
         await Rig.SendAsync(_alignDir > 0 ? "track.snapRight" : "track.snapLeft");
-        _alignPresses++;
+        _alignPresses++; _alignNet += _alignDir;
         _alignLast = err;
+    }
+
+    /// <summary>What in the dump explains the reporter being on another pass than a fresh
+    /// selection gives, up to <paramref name="t"/>: a U-turn or a manual turn in their log, a U-turn
+    /// or a pass change in the GPS log. Null when nothing does.</summary>
+    private string? WhyOtherPass(double t)
+    {
+        foreach (var l in Dump.Log)
+            if (Dump.LogT(l) is { } lt && lt <= t
+                && (l.Text.Contains("Turn complete", StringComparison.Ordinal) || l.Text.Contains("[ManualYouTurn]", StringComparison.Ordinal)
+                    || l.Text.Contains("Triggered on the path", StringComparison.Ordinal)))
+                return "the reporter's log has a U-turn before it";
+        var rows = Dump.Rows;
+        for (int i = 0; i < rows.Count && rows[i].T <= t; i++)
+        {
+            if (rows[i].YtExecuting) return "the GPS log has a U-turn before it";
+            if (i > 0 && rows[i].HasGuidance && rows[i - 1].HasGuidance && rows[i].PathsAway != rows[i - 1].PathsAway) return "the GPS log has a pass change before it";
+        }
+        return null;
     }
 
     /// <summary>The reporter's build's pass centres minus this build's, after the alignment (m).</summary>

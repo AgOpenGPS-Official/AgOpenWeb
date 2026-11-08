@@ -108,12 +108,13 @@ public sealed class TakeOver : IAsyncDisposable
         // The machine lives in the field's frame (the recorded pivot, after the drift), so the
         // boundary checks hold; its receiver reports the position before the drift.
         Truth.Place(r0.E, r0.N, r0.Heading * Math.PI / 180.0);
-        bool turnsOn = await rig.ReadAsync(() => rig.Vm.IsYouTurnEnabled);
-        if (!turnsOn && _base.UTurnsUsed) await rig.SendAsync("youturn.toggle");
+        // U-turns on, whatever the reporter had: the take-over drives 4 minutes toward the
+        // headland, and with them off its run off the field would be the harness's doing.
+        if (!await rig.ReadAsync(() => rig.Vm.IsYouTurnEnabled)) await rig.SendAsync("youturn.toggle");
         if (!await rig.ReadAsync(() => rig.Vm.IsAutoSteerEngaged)) await rig.SendAsync("autosteer.toggle");
         if (_base.SectionsAuto && !await rig.ReadAsync(() => rig.Vm.IsSectionMasterOn)) await rig.SendAsync("section.master");
         bool engaged0 = await rig.ReadAsync(() => rig.Vm.IsAutoSteerEngaged);
-        _s.Step(F($"take-over at t {r0.T:0.0} s on pass {r0.PathsAway}: a machine with the reporter's geometry ({type} implement {t.Width:0.##} m, wheelbase {v.Wheelbase:0.##} m) at {speedKmh:0} km/h, AutoSteer {(engaged0 ? "on" : "did NOT engage")}, U-turns {(await rig.ReadAsync(() => rig.Vm.IsYouTurnEnabled) ? "on" : "off")}"));
+        _s.Step(F($"take-over at t {r0.T:0.0} s on pass {r0.PathsAway}: a machine with the reporter's geometry ({type} implement {t.Width:0.##} m, wheelbase {v.Wheelbase:0.##} m) at {speedKmh:0} km/h, AutoSteer {(engaged0 ? "on" : "did NOT engage")}, U-turns {(await rig.ReadAsync(() => rig.Vm.IsYouTurnEnabled) ? "on" : "did NOT switch on")}{(_base.UTurnsUsed ? "" : " (the reporter's were off: switched on for the take-over)")}"));
         if (!engaged0) { _s.Problem(Severity.Bug, Kind.AppDefect, "TAKEOVER-NO-AUTOSTEER", "AutoSteer did not engage at the take-over: " + string.Join(" | ", _base.Collect().Take(3))); return; }
 
         lock (_base.Sounds) _base.Sounds.Clear();
@@ -127,19 +128,29 @@ public sealed class TakeOver : IAsyncDisposable
         bool warned = false;
         var turnLines = new List<string>();
         var said = new List<string>();
+        // How late each fix goes in against the 100 ms pace (the watchdogs run on the wall clock).
+        var pace = System.Diagnostics.Stopwatch.StartNew();
+        double maxLate = 0; int lateFixes = 0;
         while (fix < maxFixes)
         {
             fix++;
             double secs = fix * FixSeconds;
             Truth.Advance(FixSeconds, cmd);
             _base.Clock = secs;
+            if (PaceMs > 0)
+            {
+                double late = pace.Elapsed.TotalMilliseconds - PaceMs;
+                maxLate = Math.Max(maxLate, late);
+                if (late > Scenario.LateMs) { lateFixes++; _s.Late.Add(("take-over", secs, late)); }
+                pace.Restart();
+            }
             rig.Gps.MarkRealGpsParsed();
             rig.Feed(Fix(rig, dualLike, imuLike));
             rig.TickLoop(10);
             var c = rig.LastCycle;
             bool engaged = c?.IsAutoSteerEngaged == true;
             cmd = engaged && c!.Guidance is { HasGuidance: true } g ? g.SteerAngle : 0;
-            if (!double.IsFinite(cmd)) { _s.Problem(Severity.Safety, Kind.AppDefect, "NOT-A-NUMBER", F($"take-over {secs:0.0} s: steer angle {cmd}")); cmd = 0; }
+            if (!double.IsFinite(cmd)) { _s.Problem(Severity.Safety, Kind.AppDefect, "NOT-A-NUMBER", F($"take-over {secs:0.0} s: steer angle {cmd}"), "take-over", secs); cmd = 0; }
             bool exec = c?.YouTurn?.IsExecuting == true;
             var (pivotOut, toolOut, pivotIn, toolIn) = Where(outer);
             if (exec && !wasExec) { turnStart = secs; turnMinPivot = turnMinTool = double.MaxValue; turnPivotOut = turnToolOut = 0; }
@@ -149,7 +160,7 @@ public sealed class TakeOver : IAsyncDisposable
                 turnMinTool = Math.Min(turnMinTool, toolIn);
                 turnPivotOut = Math.Max(turnPivotOut, pivotOut);
                 turnToolOut = Math.Max(turnToolOut, toolOut);
-                if (secs - turnStart > 120) { _s.Problem(Severity.Bug, Kind.AppDefect, "TURN-NOT-FINISHED", F($"take-over: a U-turn still running after 120 s")); break; }
+                if (secs - turnStart > 120) { _s.Problem(Severity.Bug, Kind.AppDefect, "TURN-NOT-FINISHED", F($"take-over: a U-turn still running after 120 s"), "take-over", turnStart, secs); break; }
             }
             if (!exec && wasExec)
             {
@@ -157,13 +168,13 @@ public sealed class TakeOver : IAsyncDisposable
                 turnLines.Add(F($"U-turn {turnsDone}: {secs - turnStart:0} s, nearest the boundary: pivot {turnMinPivot:0.0} m, implement {turnMinTool:0.0} m inside (set: {setDist:0.0} m){(turnPivotOut > 0 ? F($", the pivot {turnPivotOut:0.0} m OUTSIDE") : "")}{(turnToolOut > 0 ? F($", an implement end {turnToolOut:0.0} m outside") : "")}"));
                 _s.Step(F($"take-over {secs:0.0} s: ") + turnLines[^1]);
                 if (turnPivotOut > 0.3)
-                    _s.Problem(Severity.Safety, Kind.AppDefect, "TURN-OUTSIDE-BOUNDARY", F($"take-over U-turn {turnsDone} took the tractor itself {turnPivotOut:0.0} m past the outer boundary (distance from boundary {setDist:0.0} m)"));
+                    _s.Problem(Severity.Safety, Kind.AppDefect, "TURN-OUTSIDE-BOUNDARY", F($"take-over U-turn {turnsDone} took the tractor itself {turnPivotOut:0.0} m past the outer boundary (distance from boundary {setDist:0.0} m)"), "take-over", turnStart, secs);
                 else if (turnToolOut > 0.3)
                     // As the field job harness: 'distance from boundary' keeps the tractor inside, not
                     // the implement, in AgOpenWeb as in AgOpenGPS.
-                    _s.Problem(Severity.Improvement, Kind.Parity, "TURN-IMPLEMENT-OUTSIDE", F($"take-over U-turn {turnsDone}: the tractor stayed inside, but the {Truth.T.Width:0.#} m implement's end swung {turnToolOut:0.0} m past the boundary (distance from boundary {setDist:0.0} m)"));
+                    _s.Problem(Severity.Improvement, Kind.Parity, "TURN-IMPLEMENT-OUTSIDE", F($"take-over U-turn {turnsDone}: the tractor stayed inside, but the {Truth.T.Width:0.#} m implement's end swung {turnToolOut:0.0} m past the boundary (distance from boundary {setDist:0.0} m)"), "take-over", turnStart, secs);
                 if (turnPivotOut <= 0.3 && setDist > 1.5 && turnMinPivot < setDist - 1.0)
-                    _s.Problem(Severity.Bug, Kind.AppDefect, "TURN-CLOSER-THAN-SET", F($"take-over U-turn {turnsDone}: the pivot came {turnMinPivot:0.0} m from the boundary, the setting asks {setDist:0.0} m"));
+                    _s.Problem(Severity.Bug, Kind.AppDefect, "TURN-CLOSER-THAN-SET", F($"take-over U-turn {turnsDone}: the pivot came {turnMinPivot:0.0} m from the boundary, the setting asks {setDist:0.0} m"), "take-over", turnStart, secs);
                 if (turnsDone >= 2 && doneAt < 0) doneAt = secs;
             }
             wasExec = exec;
@@ -184,7 +195,7 @@ public sealed class TakeOver : IAsyncDisposable
                     _s.Step(F($"take-over {secs:0.0} s: AutoSteer off: {c.DisengageReason ?? "no reason given"}"));
                     if (warned) break;
                     if (reengaged == 0)
-                        _s.Problem(Severity.Bug, Kind.AppDefect, "TAKEOVER-AUTOSTEER-DROPPED", F($"take-over: AutoSteer went off by itself ({c.DisengageReason ?? "no reason given"})"));
+                        _s.Problem(Severity.Bug, Kind.AppDefect, "TAKEOVER-AUTOSTEER-DROPPED", F($"take-over: AutoSteer went off by itself ({c.DisengageReason ?? "no reason given"})"), "take-over", secs);
                 }
                 else if (fix - offSince == 20 && reengaged < 3)
                 {
@@ -196,12 +207,14 @@ public sealed class TakeOver : IAsyncDisposable
             if (pivotOut > 3 && !exec)
             {
                 if (warned) { _s.Note(F($"take-over {secs:0.0} s: no U-turn, the operator was warned (\"No U-turn fits ...\"): the job stops here")); }
-                else _s.Problem(Severity.Safety, Kind.AppDefect, "TAKEOVER-RAN-OFF", F($"take-over {secs:0.0} s: the machine left the field ({pivotOut:0} m past the boundary) with AutoSteer on, no U-turn and no warning"));
+                else _s.Problem(Severity.Safety, Kind.AppDefect, "TAKEOVER-RAN-OFF", F($"take-over {secs:0.0} s: the machine left the field ({pivotOut:0} m past the boundary) with AutoSteer on, no U-turn and no warning"), "take-over", secs);
                 break;
             }
-            if (PaceMs > 0) await Task.Delay(PaceMs);
+            // The pace: 100 ms from the start of this fix to the start of the next.
+            if (PaceMs > 0) { double rest = PaceMs - pace.Elapsed.TotalMilliseconds; if (rest > 1) await Task.Delay((int)rest); }
         }
         ReplayJudge.Alarms(_s, _base.Sounds, "take-over", 0);
+        if (PaceMs > 0) _s.Row.Metrics.Add(("GPS feed lateness (take-over)", F($"max {maxLate:0} ms, {lateFixes} fixes more than {Scenario.LateMs:0} ms late")));
         _s.Row.Metrics.Add(("Take-over", F($"{fix * FixSeconds:0} s driven, {turnsDone} U-turn{(turnsDone == 1 ? "" : "s")}") + (turnLines.Count > 0 ? ": " + string.Join("; ", turnLines) : "")));
         foreach (var l in said.Where(l => !l.Contains("status:", StringComparison.Ordinal)).Take(12)) _s.Step("take-over " + l);
         if (_base.Exceptions.Count > 0) _s.Problem(Severity.Bug, Kind.AppDefect, "EXCEPTION", "an exception on the host loop (take-over): " + _base.Exceptions[0].Split('\n')[0]);

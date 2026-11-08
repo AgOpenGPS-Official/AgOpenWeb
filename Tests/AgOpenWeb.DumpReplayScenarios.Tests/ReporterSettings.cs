@@ -62,7 +62,6 @@ public static class ReporterSettings
         (new[] { "Gps", "RtkLostAlarm" }, "gps.rtkLostAlarm"),
         (new[] { "Gps", "RtkLostAction" }, "gps.rtkLostAction"),
         (new[] { "Ahrs", "RollZero" }, "roll.rollZero"),
-        (new[] { "Ahrs", "RollFilter" }, "roll.rollFilter"),
         (new[] { "Ahrs", "IsRollInvert" }, "roll.isRollInvert"),
         (new[] { "AutoSteer", "WasOffset" }, "autosteer.wasOffset"),
         (new[] { "AutoSteer", "CountsPerDegree" }, "autosteer.countsPerDegree"),
@@ -108,6 +107,25 @@ public static class ReporterSettings
         "section off outside boundary", "section control in the headland", "vehicle type", "hitch type",
         "machine relay functions", "tram line settings",
     };
+
+    /// <summary>The roll filter: off for the replay. The GPS log's roll is the roll after the
+    /// reporter's filter; filtering it again would lag it twice (and move the antenna the replay
+    /// rebuilds from it).</summary>
+    public const string RollFilterOff = "roll.rollFilter:0";
+
+    /// <summary>The configuration.json paths (dotted, an array's item as <c>[i]</c>) the harness
+    /// sets, and the <c>config.set</c> key that sets each ("store" for a direct write). Null for a
+    /// path the harness does not set.</summary>
+    public static string? KeyOf(string path)
+    {
+        foreach (var (p, key) in Keys) if (string.Join(".", p) == path) return key;
+        foreach (var (p, _) in Direct) if (string.Join(".", p) == path) return "store";
+        if (path is "Tool.IsToolTBT" or "Tool.IsToolTrailing" or "Tool.IsToolFrontFixed" or "Tool.IsToolRearFixed") return "tool.type";
+        if (path == "NumSections") return "tool.numSections";
+        if (path.StartsWith("SectionWidthsCm[", StringComparison.Ordinal)) return "tool.sectionWidth";
+        if (path == "Ahrs.RollFilter") return "roll.rollFilter";
+        return null;
+    }
 
     /// <summary>The commands and direct writes for this dump's settings, and the paths the dump
     /// did not have (an older build's configuration.json has fewer).</summary>
@@ -156,6 +174,7 @@ public static class ReporterSettings
             };
             if (text != null) cmds.Add(key + ":" + text);
         }
+        cmds.Add(RollFilterOff);
         foreach (var (path, set) in Direct)
         {
             var v = BugDump.Get(d.Config, path);

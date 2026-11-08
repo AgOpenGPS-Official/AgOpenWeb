@@ -72,7 +72,22 @@ public static class ReplayJudge
         if (steer.Count > 0) R.S.Row.Metrics.Add(("Steer angle now against then, AutoSteer on (median / 95% / max)", F($"{Pct(steer, 50):0.0} / {Pct(steer, 95):0.0} / {steer.Max():0.0}°")));
         if (div < b)
         {
-            S.Note(F($"from t {rows[div].T:0.0} s this build guides on another line than the reporter's build did (distance from the line now {Math.Abs(now[div]!.Xte):0.0} m, then {Math.Abs(rows[div].Xte):0.0} m), and the replay goes on with the reporter's own path: the guidance comparisons stop there (the take-over shows what this build does)"));
+            var n = now[div]!;
+            string what = n.HasGuidance
+                ? F($"guides on another line than the reporter's build did (distance from the line now {Math.Abs(n.Xte):0.0} m, then {Math.Abs(rows[div].Xte):0.0} m)")
+                : F($"has no line where the reporter's build guided ({Math.Abs(rows[div].Xte):0.0} m from its line)");
+            string rest = ", and the replay goes on with the reporter's own path: the guidance comparisons stop there (the take-over shows what this build does)";
+            // The reporter changing pass just before (a lateral move, a re-pick, a U-turn) is a
+            // place the two builds may part for a reason the dump does not hold: a note. Anywhere
+            // else this build left the reporter's line on its own.
+            if (PassChangeBefore(R, div, 5.0) is { } change)
+                S.Note(F($"from t {rows[div].T:0.0} s this build ") + what + ", " + change + rest);
+            else if (!n.HasGuidance)
+                S.Problem(Severity.Bug, Kind.AppDefect, "GUIDANCE-LOST",
+                    F($"from t {rows[div].T:0.0} s this build ") + what + " for 3 s, with no pass change by the reporter in the 5 s before" + rest, "replay", rows[div].T);
+            else
+                S.Problem(Severity.Inconsistency, Kind.AppDefect, "GUIDANCE-DIVERGED",
+                    F($"from t {rows[div].T:0.0} s this build ") + what + " for 3 s, with no pass change by the reporter in the 5 s before" + rest, "replay", rows[div].T);
             R.S.Row.ThenNow.Add(("Replay compares guidance until", "", F($"t {rows[div].T:0} s of {rows[^1].T:0} s")));
         }
 
@@ -81,24 +96,27 @@ public static class ReplayJudge
         PassAndXteJumps(R);
         for (int i = a; i < b; i++)
             if (now[i] is { } n && (!double.IsFinite(n.Steer) || !double.IsFinite(n.Xte) || !double.IsFinite(n.Heading)))
-            { S.Problem(Severity.Safety, Kind.AppDefect, "NOT-A-NUMBER", F($"t {rows[i].T:0.0} s: steer {n.Steer}, cross-track {n.Xte}, heading {n.Heading}")); break; }
+            { S.Problem(Severity.Safety, Kind.AppDefect, "NOT-A-NUMBER", F($"t {rows[i].T:0.0} s: steer {n.Steer}, cross-track {n.Xte}, heading {n.Heading}"), "replay", rows[i].T); break; }
 
         Alarms(S, R.Sounds, "replay", rows[a].T);
 
         // ---- AutoSteer: dropped by the app, then and now.
-        int dropsNow = 0; string? firstDrop = null;
+        int dropsNow = 0; string? firstDrop = null; double firstDropT = 0;
         for (int i = a + 1; i < b; i++)
         {
             if (now[i] is not { } n || now[i - 1] is not { } p) continue;
             if (p.Engaged && !n.Engaged && rows[i].AutoSteer)
             {
                 dropsNow++;
-                firstDrop ??= F($"t {rows[i].T:0.0} s: {n.Disengage ?? "no reason given"}");
+                if (firstDrop == null) { firstDrop = F($"t {rows[i].T:0.0} s: {n.Disengage ?? "no reason given"}"); firstDropT = rows[i].T; }
             }
         }
         int dropsThen = d.Log.Count(l => l.Text.Contains("[AutoSteer] Off", StringComparison.Ordinal) && !l.Text.Contains("button", StringComparison.OrdinalIgnoreCase) && d.LogT(l) is { } t && t >= rows[a].T && t <= rows[^1].T);
+        // This build dropping AutoSteer where the reporter's stayed engaged, on the same fixes:
+        // the operator loses steering this build would not have taken from them before.
         if (dropsNow > 0)
-            S.Note(F($"AutoSteer went off by itself {dropsNow}x while the reporter's stayed on; first {firstDrop}"));
+            S.Problem(Severity.Bug, Kind.AppDefect, "AUTOSTEER-DROPPED",
+                F($"AutoSteer went off by itself {dropsNow}x in this build while the reporter's stayed engaged on the same fixes; first {firstDrop}"), "replay", firstDropT);
 
         // ---- U-turns: episodes and headland approaches, then and now.
         // A turn already running when the GPS log starts can't be replayed: not counted, then or now.
@@ -112,7 +130,8 @@ public static class ReplayJudge
         var missedNow = appr.Where(x => !x.Now && x.Engaged && x.Decided && R.UTurnsUsed && x.Row < R.DivergedRow).ToList();
         if (missedNow.Count > 0)
             S.Problem(Severity.Bug, Kind.AppDefect, "UTURN-MISSED",
-                F($"AgOpenWeb made no U-turn when the reporter's tractor reached the headland line with AutoSteer and U-turns on (t {rows[missedNow[0].Row].T:0.0} s, pass {rows[missedNow[0].Row].PathsAway}); then: {(missedNow[0].Then ? "a U-turn was made" : "no U-turn either")}"));
+                F($"AgOpenWeb made no U-turn when the reporter's tractor reached the headland line with AutoSteer and U-turns on (t {rows[missedNow[0].Row].T:0.0} s, pass {rows[missedNow[0].Row].PathsAway}); then: {(missedNow[0].Then ? "a U-turn was made" : "no U-turn either")}"),
+                "replay", rows[Math.Max(a, missedNow[0].Row - 100)].T, rows[Math.Min(b - 1, missedNow[0].Row + 150)].T);
 
         R.S.Row.ThenNow.Add(("U-turns run", turnsThen.Count.ToString(CultureInfo.InvariantCulture), turnsNow.Count.ToString(CultureInfo.InvariantCulture)));
         if (appr.Count > 0)
@@ -152,7 +171,7 @@ public static class ReplayJudge
         }
         if (worstRow >= 0 && worst > 10)
             R.S.Problem(Severity.Bug, Kind.AppDefect, "HEADING-MOVES-AT-STANDSTILL",
-                F($"standing still from about t {rows[worstRow].T:0.0} s, the heading moved {worst:0} degrees while the receiver's own heading held (then: {worstThen:0} degrees)"));
+                F($"standing still from about t {rows[worstRow].T:0.0} s, the heading moved {worst:0} degrees while the receiver's own heading held (then: {worstThen:0} degrees)"), "replay", rows[worstRow].T);
     }
 
     /// <summary>The pass number and the cross-track error must not jump while the machine moves
@@ -178,33 +197,53 @@ public static class ReplayJudge
             {
                 bool then = Math.Abs(rows[i].PathsAway - rows[i - 1].PathsAway) >= 2;
                 R.S.Problem(Severity.Bug, Kind.AppDefect, "PASS-JUMP",
-                    F($"t {rows[i].T:0.0} s: the pass number jumped {p.PathsAway} -> {n.PathsAway} while the machine moved {moved:0.00} m on the line (then: {(then ? "the same" : F($"{rows[i - 1].PathsAway} -> {rows[i].PathsAway}"))})"));
+                    F($"t {rows[i].T:0.0} s: the pass number jumped {p.PathsAway} -> {n.PathsAway} while the machine moved {moved:0.00} m on the line (then: {(then ? "the same" : F($"{rows[i - 1].PathsAway} -> {rows[i].PathsAway}"))})"), "replay", rows[i].T);
             }
             // The sign of the distance from the line turns with the direction of travel across it
             // (square to the line it flips): the size is what must not jump.
             else if (n.PathsAway == p.PathsAway && Math.Abs(Math.Abs(n.Xte) - Math.Abs(p.Xte)) > 1.5)
                 R.S.Problem(Severity.Bug, Kind.AppDefect, "XTE-JUMP",
-                    F($"t {rows[i].T:0.0} s: the cross-track error jumped {p.Xte:0.00} -> {n.Xte:0.00} m on pass {n.PathsAway} while the machine moved {moved:0.00} m"));
+                    F($"t {rows[i].T:0.0} s: the cross-track error jumped {p.Xte:0.00} -> {n.Xte:0.00} m on pass {n.PathsAway} while the machine moved {moved:0.00} m"), "replay", rows[i].T);
         }
     }
 
-    /// <summary>A headland approach. <c>Decided</c>: the GPS log goes on long enough after it (15 s)
-    /// to tell whether a U-turn came, or one did.</summary>
-    /// <summary>The first row from which this build has guided on another line than the reporter's
-    /// for 3 s (both engaged, both on a line, no turn then or now): from there the reporter's
-    /// tractor, steered by their build, is no test of this one. <c>rows.Count</c> if never.</summary>
+    /// <summary>
+    /// The first row from which this build has left the reporter's line for 3 s: rows where the
+    /// reporter's build guided with AutoSteer on and no turn, and this build either has no line
+    /// or one at another distance (more than 1 m apart; no turn now). A row where the two agree
+    /// ends the run, and so does a U-turn of the reporter's; a row that can't be compared (the
+    /// reporter's AutoSteer off, no line then, a turn now) leaves it as it is. From there the
+    /// reporter's tractor, steered by their build, is no test of this one. <c>rows.Count</c> if never.
+    /// </summary>
     public static int Divergence(DumpReplay R)
     {
         var rows = R.Dump.Rows; var now = R.Now;
-        int run = 0;
+        int run = 0, from = -1;
         for (int i = R.StartRow; i < rows.Count; i++)
         {
             var r = rows[i];
-            bool both = now[i] is { } n && r.AutoSteer && n.Engaged && r.HasGuidance && n.HasGuidance && !r.YtExecuting && !n.YtExecuting && !r.YtTriggered;
-            if (both && Math.Abs(Math.Abs(now[i]!.Xte) - Math.Abs(r.Xte)) > 1.0) { if (++run >= 30) return i - run + 1; }
-            else run = 0;
+            if (r.YtExecuting || r.YtTriggered) { run = 0; continue; }
+            if (now[i] is not { } n || !r.AutoSteer || !r.HasGuidance || (n.HasGuidance && n.YtExecuting)) continue;
+            bool apart = !n.HasGuidance || Math.Abs(Math.Abs(n.Xte) - Math.Abs(r.Xte)) > 1.0;
+            if (!apart) { run = 0; continue; }
+            if (run++ == 0) from = i;
+            if (run >= 30) return from;
         }
         return rows.Count;
+    }
+
+    /// <summary>The reporter's build changed pass in the <paramref name="seconds"/> before row
+    /// <paramref name="i"/> (a lateral move, a re-pick of the line, a U-turn): what it was, or null.</summary>
+    public static string? PassChangeBefore(DumpReplay R, int i, double seconds)
+    {
+        var rows = R.Dump.Rows;
+        for (int k = i; k > R.StartRow && rows[i].T - rows[k].T <= seconds; k--)
+        {
+            if (rows[k].YtExecuting || rows[k].YtTriggered) return F($"just after a U-turn of the reporter's (t {rows[k].T:0.0} s)");
+            if (rows[k].HasGuidance && rows[k - 1].HasGuidance && rows[k].PathsAway != rows[k - 1].PathsAway)
+                return F($"just after the reporter's build changed pass {rows[k - 1].PathsAway} -> {rows[k].PathsAway} (t {rows[k].T:0.0} s: a lateral move or a re-pick the dump does not record)");
+        }
+        return null;
     }
 
     /// <summary>The alarms the operator heard, and an alarm played again and again (#570: a missed
@@ -223,12 +262,14 @@ public static class ReplayJudge
                 if (t[i + 3] - t[i] <= 2.0)
                 {
                     int n = t.Count(x => x >= t[i] && x <= t[i] + 2.0);
-                    s.Problem(Severity.Bug, Kind.AppDefect, "ALARM-REPEATED", F($"{phase} t {t[i]:0.0} s: the {g.Key} alarm played {n} times within 2 s"));
+                    s.Problem(Severity.Bug, Kind.AppDefect, "ALARM-REPEATED", F($"{phase} t {t[i]:0.0} s: the {g.Key} alarm played {n} times within 2 s"), phase, t[i], t[i] + 2.0);
                     break;
                 }
         }
     }
 
+    /// <summary>A headland approach. <c>Decided</c>: the GPS log goes on long enough after it (15 s)
+    /// to tell whether a U-turn came, or one did.</summary>
     public sealed record Approach(int Row, bool Then, bool Now, bool Engaged, bool Decided);
 
     /// <summary>Where the reporter's tractor crossed from the cultivated area into the headland,
