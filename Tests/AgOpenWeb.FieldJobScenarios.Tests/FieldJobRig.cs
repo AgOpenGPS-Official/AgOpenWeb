@@ -66,12 +66,13 @@ public sealed class FieldJobRig : IAsyncDisposable
     private readonly HostLoopDispatcher _hostLoop;
     /// <summary>The 100 Hz control loop, advanced by the harness (<see cref="TickLoop"/>).</summary>
     public ManualSteerMachineLoop Loop => Services.GetRequiredService<ManualSteerMachineLoop>();
-    /// <summary>Runs the control loop <paramref name="times"/> times, with the wall clock's
-    /// timestamp (the position estimator stamps fixes with it).</summary>
+    /// <summary>Runs the control loop <paramref name="times"/> times, with AgOpenWeb's clock's
+    /// timestamp (the position estimator stamps fixes with it): the wall clock, or the job's
+    /// simulated time where the job sets one (<see cref="SimClock"/>).</summary>
     public void TickLoop(int times)
     {
         var loop = Loop;
-        for (int i = 0; i < times; i++) loop.Tick(System.Diagnostics.Stopwatch.GetTimestamp());
+        for (int i = 0; i < times; i++) loop.Tick(AgOpenWeb.Models.Timing.Clock.Current.GetTimestamp());
     }
 
     private FieldJobRig(string dataRoot, IServiceProvider sp, MainViewModel vm,

@@ -121,11 +121,12 @@ public sealed class Journal
         }
     }
 
-    public string ToMarkdown()
+    public string ToMarkdown(string? title = null, string? intro = null)
     {
         var inv = CultureInfo.InvariantCulture;
         var sb = new StringBuilder();
-        sb.Append("# Field job scenarios: the careful and the careless operator\n\n");
+        sb.Append("# ").Append(title ?? "Field job scenarios: the careful and the careless operator").Append("\n\n");
+        if (intro != null) sb.Append(intro).Append("\n\n");
         sb.Append("AgOpenWeb's whole backend runs in-process with its real UDP service on port 9999, as the other scenario harnesses. ")
           .Append("A real machine (the Vehicle & Tool harness's bicycle model, steering motor and trailed implement) drives whole fields with ")
           .Append("AutoSteer, automatic U-turns and automatic sections, on RTK fixes at 10 Hz; an emulated machine module (the Sprayer_ESP32 ")
