@@ -82,8 +82,9 @@ minutes for the whole set. CI only builds it; the full run is nightly on develop
 to `field-job-scenarios-report.md` in the test output folder, or to `AGOPENWEB_SCENARIO_REPORT`.
 
 **One run at a time per machine.** The emulated module binds UDP 8888, so two runs side by side
-hear each other's section commands and both measure wrong valves without an error. A second run
-fails at once on a lock file (`agopenweb-field-job-scenarios.lock` in the temp folder).
+hear each other's section commands and both measure wrong valves without an error. A second run,
+field jobs or path jobs, fails at once on a lock file (`agopenweb-field-job-scenarios.lock` in the
+temp folder) that both fixtures take.
 
 | Variable | Effect |
 |---|---|
@@ -98,3 +99,51 @@ fails at once on a lock file (`agopenweb-field-job-scenarios.lock` in the temp f
 The tests fail only when the harness itself breaks. The findings are the product: the report
 lists each kind once, most serious first, then each job with what was measured and its
 timeline.
+
+## Path jobs: curves, laps, a water pivot, contour, a recorded path
+
+`PathJobScenarioTests` runs the same rig on lines that are not straight (`PathJobs.cs`), with
+the careful operator, the Case Puma and the 8 m mounted sprayer:
+
+| Job | Field | Line |
+|---|---|---|
+| P1 | Olival | Boundary Curve: the outer boundary as a closed loop, no headland, worked lap by lap from the outside in |
+| P2 | Olival | Bnd. Curve along the west boundary (vertices 20 to 33, the narrow south-western end), headland 16 m, U-turns |
+| P3 | Pivot | Water pivot from the tower's lat/lon |
+| P4 | Pivot | Water pivot recorded by driving a third of the outer circle |
+| P5 | Pivot | Contour: the outer circle by hand, then Contour and AutoSteer |
+| P6 | Olival | Contour |
+| P7 | Olival | Record Path by hand, then play it back with AutoSteer |
+
+`Pivot` is made up, not a real field: a circle of 150 m round a pivot tower whose 4 m pad is an
+obstacle (`ScenarioFields.Pivot`).
+
+Each line has its own pass frame (`PassFrame.cs`: straight, polyline, circle), so the checks
+measure across and along the passes as on an AB line. Where AgOpenWeb makes no U-turn (a closed
+loop, a pivot, contour) the operator (`PathOperators.cs`) taps "move one pass" (or, on contour,
+takes the wheel and moves a width in) at the end of each lap, waits for AutoSteer to settle on
+the new pass, and stops when no lap is left: when the ground deep enough for the next lap is
+gone, or falls into pieces one closed line cannot go round (`DepthGrid`). What no lap reaches is
+counted apart (left for an AB line or by hand), and so are the laps' corners, where an inner lap
+pulls away from the outer one. AgOpenWeb's clock runs on the job's simulated time (`SimClock.cs`):
+contour rebuilds its line every 2 s of it.
+
+Findings these jobs add:
+
+| Check | Finding |
+|---|---|
+| The implement off the pass it should be on (the reference offset by whole widths) | `OFF-ITS-PASS` |
+| "Move one pass" refused, or AutoSteer never settling on the next lap | `LAP-CHANGE-REFUSED`, `LAP-CHANGE-NOT-SETTLED` |
+| The pivot circle away from the tower or the field's edge | `PIVOT-CIRCLE-OFF` |
+| AgOpenWeb's lap line running out of the field (checked before each lap, as the operator sees it) | `LAP-LINE-LEAVES-FIELD` |
+| Contour not engaging, its line lost, or AutoSteer taking the tractor off the lap it follows | `CONTOUR-NOT-ENGAGED`, `CONTOUR-LINE-LOST`, `CONTOUR-LEFT-THE-LAP` |
+| A recorded route not played, not followed, or not finished | `RECORDED-PATH-NOT-PLAYED`, `RECORDED-PATH-NOT-FOLLOWED`, `RECORDED-PATH-NOT-DONE` |
+| With no headland, the strip along the boundary never sprayed | `EDGE-NOT-SPRAYED` |
+
+```bash
+dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedName~PathJobScenarioTests"
+```
+
+About half an hour for the seven jobs; nightly on develop (`.github/workflows/path-job-scenarios.yml`, started by the bug report Worker as the other harnesses).
+The same variables pick jobs (`AGOPENWEB_SCENARIO_ONLY=P1,P3`), trace and dump; the report goes
+to `path-job-scenarios-report.md`, or to `AGOPENWEB_SCENARIO_REPORT`.
