@@ -63,8 +63,8 @@ Two operators:
   Tapada da Casa; the trailed 19-section seed drill on Baetas; a trailed 21 m cultivator on
   Couto Ribeira. Headland twice the implement wide, "Off outside boundary" on.
 - **Careless** (`CarelessOperator.cs`): the same jobs with one thing wrong or done at the wrong
-  moment. C8 sets look-ahead 1 s longer than the valves; C16 leaves it at AgOpenWeb's default
-  (0 s) with the same valves.
+  moment. C8 sets look-ahead 1 s longer than the valves; C16 sets it to 0 s with the same
+  valves (AgOpenWeb's default before it took AgOpenGPS's 1.0 s / 0.5 s).
 
 When AgOpenWeb says "No U-turn fits inside the boundary at this end - take over manually", the
 operator takes over and the job stops (`TURN-REFUSED`), as a person would; before, AutoSteer

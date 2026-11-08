@@ -647,6 +647,10 @@ public class AutoSteerUTurnNUnitTests
         config.Tool.IsHeadlandSectionControl = true;
         config.Machine.HydraulicLiftEnabled = true;
         config.Machine.LookAhead = 2.0;
+        // The headland rule, not the timing: with the default look-ahead (1.0 s) the outer
+        // sections, faster coming off the arc, are asked on a little before the line.
+        config.Tool.LookAheadOnSetting = 0;
+        config.Tool.LookAheadOffSetting = 0;
 
         _pipeline.SetLocalPlane(new LocalPlane(new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties()));
         var outerPoly = new BoundaryPolygon();
