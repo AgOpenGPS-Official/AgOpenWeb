@@ -983,9 +983,16 @@ public sealed class JobRun : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (SimTime != null) AgOpenWeb.Models.Timing.Clock.Reset();
-        try { Steer?.Dispose(); } catch { }
-        try { Module?.Dispose(); } catch { }
-        try { if (Rig != null) await Rig.DisposeAsync(); } catch { }
+        try
+        {
+            try { Steer?.Dispose(); } catch { }
+            try { Module?.Dispose(); } catch { }
+            try { if (Rig != null) await Rig.DisposeAsync(); } catch { }
+        }
+        finally
+        {
+            // Only once the backend is gone: it would see its clock jump back while shutting down.
+            if (SimTime != null) AgOpenWeb.Models.Timing.Clock.Reset();
+        }
     }
 }

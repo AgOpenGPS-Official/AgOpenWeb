@@ -27,6 +27,8 @@ public class PathJobScenarioTests
     [CancelAfter(5_400_000)]
     public async Task Path_jobs(CancellationToken ct)
     {
+        // The field jobs' lock: both fixtures' emulated module binds UDP 8888.
+        using var exclusive = FieldJobScenarioTests.OneRunAtATime();
         string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
         var journal = new Journal();
         foreach (var job in PathJobs.Jobs())

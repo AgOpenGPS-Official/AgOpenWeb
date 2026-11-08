@@ -82,8 +82,9 @@ minutes for the whole set. CI only builds it; the full run is nightly on develop
 to `field-job-scenarios-report.md` in the test output folder, or to `AGOPENWEB_SCENARIO_REPORT`.
 
 **One run at a time per machine.** The emulated module binds UDP 8888, so two runs side by side
-hear each other's section commands and both measure wrong valves without an error. A second run
-fails at once on a lock file (`agopenweb-field-job-scenarios.lock` in the temp folder).
+hear each other's section commands and both measure wrong valves without an error. A second run,
+field jobs or path jobs, fails at once on a lock file (`agopenweb-field-job-scenarios.lock` in the
+temp folder) that both fixtures take.
 
 | Variable | Effect |
 |---|---|
