@@ -71,9 +71,18 @@ public abstract class Operator
         var path = Rounded(ring, 3.0);
         await R.PlaceAsync(path[0].Lat, path[0].Lon, Geo.BearingDeg(path[0], path[1]));
         await Cmd(inner ? "boundary.driveAroundInner" : "boundary.driveAround");
-        // The tractor drives on the line itself, so record at the antenna, not at the
-        // implement's edge (which is the default and would put the line 4 m to one side).
-        if (atPivot && !await R.ReadAsync(() => R.Vm.IsDrawAtPivot)) await Cmd("boundary.toggleAntennaTool");
+        // The tractor drives on the line itself, so record at the pivot, not at the
+        // implement's edge (which is the default and would put the line 4 m to one side),
+        // and with no sideways offset: the recording offset (1 m by default, as AgOpenGPS's
+        // createBndOffset) shifts the pivot's point to one side. Left at 1 m, every recorded
+        // ring sat 1 m inside the drive, which made Couto Ribeira's outline, 0.33 m from
+        // touching itself near its first vertex, cross itself, and put a recorded obstacle
+        // 0.17 m from the fence outside it. That was the harness, not the recorder.
+        if (atPivot)
+        {
+            if (!await R.ReadAsync(() => R.Vm.IsDrawAtPivot)) await Cmd("boundary.toggleAntennaTool");
+            await Cmd("boundary.setOffset", "0");
+        }
         await Cmd("boundary.toggleRecording");
         var closed = path.Append(path[0]).ToList();
         await R.DriveAsync(closed, stepM);
