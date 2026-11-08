@@ -156,6 +156,9 @@ jobs:
       # And the web client harness (web-client-scenarios.yml runs it nightly, in headless Chromium).
       - name: Build Web Client Scenario harness
         run: dotnet build Tests/AgOpenWeb.WebClientScenarios.Tests/ --verbosity minimal
+      # And the update and settings-survival harness (update-scenarios.yml runs it nightly).
+      - name: Build Update Scenario harness
+        run: dotnet build Tests/AgOpenWeb.UpdateScenarios.Tests/ --verbosity minimal
 
   # Work budgets for the GPS cycle and the 100 Hz control tick (Performance/HotPathBudgetTests):
   # a large field driven through the real pipeline, every cycle held to a budget of polygon
