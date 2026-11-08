@@ -192,6 +192,24 @@ screen simultaneously.
 
 ---
 
+## Moving from AgOpenGPS
+
+AgOpenGPS can stay installed: AgOpenWeb only reads copies of its files and never changes its folder.
+
+1. Close AgOpenWeb.
+2. Copy these folders from `Documents/AgOpenGPS` into AgOpenWeb's data folder (`Documents/AgOpenWeb`,
+   or `/home/agopenweb/AgOpenWeb/` for the Linux daemon): `Fields`, and from AgOpenGPS 6.8.2 on
+   `VehicleProfiles`, `ToolProfiles`, `Environment` and `AgIO`.
+3. Start AgOpenWeb. Each tractor becomes a vehicle profile (with its steer, roll and GPS settings),
+   each implement a tool profile (with its sections and the U-turn and tram settings), and AgIO's
+   NTRIP caster an NTRIP profile with its login. The tractor and implement AgOpenGPS used last are
+   the pair in use. A field is converted the first time it is opened.
+
+The copied files are deleted from AgOpenWeb's folder once converted, so a profile you delete later
+does not come back. A profile AgOpenWeb already has by the same name is left as it is.
+
+---
+
 ## Troubleshooting
 
 **The screen doesn't open on Windows.** Make sure the **WebView2 Runtime** is installed (it ships

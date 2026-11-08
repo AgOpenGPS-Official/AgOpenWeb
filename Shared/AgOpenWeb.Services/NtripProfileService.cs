@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using AgOpenWeb.Models.Ntrip;
 using AgOpenWeb.Services.Interfaces;
+using AgOpenWeb.Services.Profile;
 using AgOpenWeb.Services.Storage;
 
 namespace AgOpenWeb.Services;
@@ -98,10 +99,71 @@ public class NtripProfileService : INtripProfileService
             await MigrateLegacySettingsAsync();
         }
 
+        await ImportAgIoCastersAsync();
+
         // Sort by name
         _profiles.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
 
         ProfilesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// AgOpenGPS's NTRIP caster, from AgIO's settings (<c>AgIO/&lt;name&gt;.XML</c>, copied into the
+    /// data folder with the AgOpenGPS profiles): a profile for each caster and mount point not
+    /// here yet, the default when there is none. As with the AgOpenGPS profiles, the copied file
+    /// is deleted once read, so a profile deleted later does not come back.
+    /// </summary>
+    private async Task ImportAgIoCastersAsync()
+    {
+        string agIo = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ProfilesDirectory)) ?? "", "AgIO");
+        if (!Directory.Exists(agIo))
+            return;
+        var files = Directory.EnumerateFiles(agIo)
+            .Where(f => string.Equals(Path.GetExtension(f), ".xml", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(f => f, StringComparer.Ordinal)
+            .ToList();
+        foreach (var file in files)
+        {
+            Dictionary<string, string> s;
+            try { s = AgOpenGpsSettings.Read(file); }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "AgIO settings '{File}' could not be read", file);
+                continue;
+            }
+            string Value(string key) => s.TryGetValue(key, out var v) ? v.Trim() : "";
+            string host = Value("setNTRIP_casterURL");
+            if (host.Length == 0) host = Value("setNTRIP_casterIP");
+            string mount = Value("setNTRIP_mount");
+            if (host.Length == 0 || mount.Length == 0)
+                continue; // no caster set in AgIO
+            int port = int.TryParse(Value("setNTRIP_casterPort"), System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var p) && p > 0 ? p : 2101;
+
+            bool known = _profiles.Any(x => string.Equals(x.CasterHost, host, StringComparison.OrdinalIgnoreCase)
+                && x.CasterPort == port && string.Equals(x.MountPoint, mount, StringComparison.Ordinal));
+            if (!known)
+            {
+                string name = mount + " (AgIO)";
+                for (int n = 2; _profiles.Any(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)); n++)
+                    name = mount + " (AgIO " + n.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")";
+                var profile = new NtripProfile
+                {
+                    Name = name,
+                    CasterHost = host,
+                    CasterPort = port,
+                    MountPoint = mount,
+                    Username = Value("setNTRIP_userName"),
+                    Password = s.TryGetValue("setNTRIP_userPassword", out var pw) ? pw : "",
+                    AutoConnectOnFieldLoad = !bool.TryParse(Value("setNTRIP_isOn"), out var on) || on,
+                    IsDefault = DefaultProfile == null,
+                };
+                await SaveProfileAsync(profile);
+                _logger.LogInformation("Imported AgIO's NTRIP caster {Host}:{Port}/{Mount} as '{Name}'", host, port, mount, name);
+            }
+            try { File.Delete(file); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Could not delete the imported AgIO settings '{File}'", file); }
+        }
     }
 
     /// <summary>

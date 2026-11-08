@@ -141,6 +141,15 @@ public interface IConfigurationService
     /// </summary>
     bool MigrateV1ProfilesIfNeeded();
 
+    /// <summary>
+    /// One-way import of AgOpenGPS 6.8.2+ profiles copied into the data folder
+    /// (<c>VehicleProfiles</c>, <c>ToolProfiles</c>, <c>Environment</c>): each becomes an
+    /// AgOpenWeb vehicle or tool profile unless one of that name exists, and the copied file is
+    /// deleted. On a first start the newest pair becomes the one in use. Run after
+    /// <see cref="MigrateV1ProfilesIfNeeded"/>.
+    /// </summary>
+    AgOpenGpsImport ImportAgOpenGpsProfiles();
+
     #endregion
 
     #region App Settings Management
