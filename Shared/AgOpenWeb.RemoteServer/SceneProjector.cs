@@ -340,7 +340,9 @@ public sealed class SceneProjector : System.IDisposable
             _state.Operation.IsSectionAutoMaster,
             _state.Operation.IsSectionManualAll,
             _state.Operation.IsYouTurnEnabled,
-            _state.YouTurn.IsTurnLeft,
+            // The arrow's side: the operator's pick waiting for the next plan (#693: shown with
+            // no turn planned too), else the planned turn's.
+            _state.YouTurn.NextUTurnDirectionLeftOverride ?? _state.YouTurn.IsTurnLeft,
             _state.YouTurn.DistanceToTrigger,
             _state.Field.ActiveTrack?.IsClosed == true,
             _state.Vehicle.Roll,
