@@ -408,6 +408,16 @@ public static class SettingsSweep
         {
             row.Verdict = "works";
         }
+        else if ((c.Expect & Effect.Sections) != 0 && AllSwitchedNoisy(t, noise))
+        {
+            // Every section that switched on this drive switched a different number of times
+            // between the base runs: none of its switches can be compared, so "nothing moved"
+            // says nothing about the setting.
+            row.Verdict = "not judged: every section that switched was noisy on the base runs";
+            row.Kind = "harness gap";
+            journal.Add(new Finding("SWEEP-PROBE-NOISY " + c.Key, Severity.Improvement,
+                $"{c.What}: the {c.Probe} probe's sections switched differently on each base run, so the row could not be judged (harness gap until the probe is steady)"), where);
+        }
         else
         {
             row.Verdict = "**no effect**";
@@ -417,6 +427,15 @@ public static class SettingsSweep
                 (words.Count > 0 ? " (it did change: " + row.Changed + ")" : "")), where);
         }
         return row;
+    }
+
+    /// <summary>True when the drive switched sections and every one of them was noisy
+    /// between the base runs (so no switch of this drive could be judged).</summary>
+    private static bool AllSwitchedNoisy(Trace t, TraceDiff noise)
+    {
+        var noisy = noise.EdgeDiffs.Keys.Where(k => k.Switch < 0).Select(k => k.Section).ToHashSet();
+        var switched = TraceDiff.EdgesOf(t).Keys.ToList();
+        return noisy.Count > 0 && switched.Count > 0 && switched.All(noisy.Contains);
     }
 
     public static string Expected(Effect e) => e == Effect.None ? "nothing (display)" : string.Join(" or ", new[]
