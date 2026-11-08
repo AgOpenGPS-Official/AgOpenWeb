@@ -771,7 +771,7 @@ public partial class MainViewModel
                         boundary.InnerBoundaries[i].IsDriveThrough = !boundary.InnerBoundaries[i].IsDriveThrough;
                         SaveFieldBoundary(boundary, fieldPath);
                         SetCurrentBoundary(boundary);
-                        RefreshBoundaryList();
+                        RefreshBoundaryList(keepSelection: true);
                         StatusMessage = $"Inner {i + 1} drive-through: {(boundary.InnerBoundaries[i].IsDriveThrough ? "On" : "Off")}";
                         return;
                     }
@@ -803,7 +803,7 @@ public partial class MainViewModel
                     boundary.OuterBoundary.IsHard = !boundary.OuterBoundary.IsHard;
                     SaveFieldBoundary(boundary, fieldPath);
                     SetCurrentBoundary(boundary);
-                    RefreshBoundaryList();
+                    RefreshBoundaryList(keepSelection: true);
                     StatusMessage = $"Outer boundary hard: {(boundary.OuterBoundary.IsHard ? "On" : "Off")}";
                     return;
                 }
@@ -819,7 +819,7 @@ public partial class MainViewModel
                         boundary.InnerBoundaries[i].IsHard = !boundary.InnerBoundaries[i].IsHard;
                         SaveFieldBoundary(boundary, fieldPath);
                         SetCurrentBoundary(boundary);
-                        RefreshBoundaryList();
+                        RefreshBoundaryList(keepSelection: true);
                         StatusMessage = $"Inner {i + 1} hard: {(boundary.InnerBoundaries[i].IsHard ? "On" : "Off")}";
                         return;
                     }

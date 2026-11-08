@@ -126,6 +126,6 @@ Findings these jobs add:
 dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedName~PathJobScenarioTests"
 ```
 
-About an hour for the seven jobs; nightly on develop (`.github/workflows/path-job-scenarios.yml`).
+About half an hour for the seven jobs; nightly on develop (`.github/workflows/path-job-scenarios.yml`, started by the bug report Worker as the other harnesses).
 The same variables pick jobs (`AGOPENWEB_SCENARIO_ONLY=P1,P3`), trace and dump; the report goes
 to `path-job-scenarios-report.md`, or to `AGOPENWEB_SCENARIO_REPORT`.

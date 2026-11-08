@@ -3664,8 +3664,12 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    // Boundary list for the boundary panel
-    public ObservableCollection<BoundaryListItem> BoundaryItems { get; } = new();
+    // Boundary list for the boundary panel. Replaced whole on each refresh, never cleared and
+    // filled again: the web projector reads it on the broadcaster thread, and a tick that fell
+    // between the clear and the refill (the field file is read in between) sent the panel an
+    // empty or half list, which threw the panel's scroll back to the top.
+    private volatile IReadOnlyList<BoundaryListItem> _boundaryItems = Array.Empty<BoundaryListItem>();
+    public IReadOnlyList<BoundaryListItem> BoundaryItems => _boundaryItems;
 
     private int _selectedBoundaryIndex = -1;
     public int SelectedBoundaryIndex
@@ -4699,26 +4703,35 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Refresh the boundary list from the current field's boundary file
+    /// Refresh the boundary list from the current field's boundary file. The selection is
+    /// cleared, unless <paramref name="keepSelection"/>: a flag toggled on the selected row
+    /// leaves the rows as they were, so that row stays selected.
     /// </summary>
-    public void RefreshBoundaryList()
+    public void RefreshBoundaryList(bool keepSelection = false)
     {
-        BoundaryItems.Clear();
-        SelectedBoundaryIndex = -1;
+        if (!keepSelection) SelectedBoundaryIndex = -1;
+        var items = ReadBoundaryListItems();
+        _boundaryItems = items;
+        if (SelectedBoundaryIndex >= items.Count) SelectedBoundaryIndex = -1;
+    }
 
-        if (string.IsNullOrEmpty(CurrentFieldName)) return;
+    // The list's rows: the valid outer boundary first, then the valid inner ones in order.
+    private List<BoundaryListItem> ReadBoundaryListItems()
+    {
+        var items = new List<BoundaryListItem>();
+        if (string.IsNullOrEmpty(CurrentFieldName)) return items;
 
         var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
         var boundary = LoadFieldBoundary(fieldPath);
 
-        if (boundary == null) return;
+        if (boundary == null) return items;
 
         int index = 0;
 
         // Add outer boundary if exists
         if (boundary.OuterBoundary != null && boundary.OuterBoundary.IsValid)
         {
-            BoundaryItems.Add(new BoundaryListItem
+            items.Add(new BoundaryListItem
             {
                 Index = index++,
                 BoundaryType = "Outer",
@@ -4734,7 +4747,7 @@ public partial class MainViewModel : ObservableObject
             var inner = boundary.InnerBoundaries[i];
             if (inner.IsValid)
             {
-                BoundaryItems.Add(new BoundaryListItem
+                items.Add(new BoundaryListItem
                 {
                     Index = index++,
                     BoundaryType = $"Inner {i + 1}",
@@ -4744,6 +4757,8 @@ public partial class MainViewModel : ObservableObject
                 });
             }
         }
+
+        return items;
     }
 
     /// <summary>
