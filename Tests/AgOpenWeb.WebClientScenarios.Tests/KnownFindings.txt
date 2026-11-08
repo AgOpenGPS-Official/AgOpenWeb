@@ -1,0 +1,3 @@
+# Finding codes already reported (an issue, a PR, or accepted as by design), one per line:
+#   CODE  where it was reported
+# The report marks every other code New.
