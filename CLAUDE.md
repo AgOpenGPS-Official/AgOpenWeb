@@ -137,7 +137,9 @@ send. A client can't take control from a live operator, only fill an empty seat.
 buttons only set them all, as AgOpenGPS. In Auto the look-ahead asks for on/off early: the
 **module** gets that request at once (`IsCommandedOn` → PGN 239/229 bits), while `IsOn` and the
 coverage map wait the look-ahead time, so the valve acts at the edge and the map paints where
-the product lands (#707). With look-ahead off at 0 the turn-off delay is a plain overrun of both.
+the product lands (#707). With look-ahead off at 0 the turn-off delay is a plain overrun of both. Look-ahead
+installs at AgOpenGPS's 1.0 s on / 0.5 s off (`ToolConfig.DefaultLookAheadOn/Off`): the time it
+assumes a sprayer's valves take; saved profiles keep their own.
 The control loop sends the PGNs at 100 Hz, PGN 229 every tick whatever the section count (the
 ISOBUS task controller reads sections from 229 only).
 

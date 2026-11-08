@@ -19,6 +19,11 @@ public class FieldJobScenarioTests
     [CancelAfter(3_600_000)]
     public async Task Field_jobs(CancellationToken ct)
     {
+        // One run at a time on a machine: the emulated machine module binds UDP 8888 (with address
+        // reuse, as the firmware's port), so a second run's module hears the first run's section
+        // commands and both runs' valves are wrong without any error.
+        using var exclusive = OneRunAtATime();
+
         string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
         string op = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_OPERATOR") ?? "";
         var journal = new Journal();
@@ -47,5 +52,17 @@ public class FieldJobScenarioTests
 
         var harness = journal.Findings.Where(f => f.Key == "HARNESS").ToList();
         Assert.That(harness, Is.Empty, "the harness itself failed: " + string.Join("; ", harness.Select(h => h.Value.First.Message)));
+    }
+
+    private static FileStream OneRunAtATime()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "agopenweb-field-job-scenarios.lock");
+        try { return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+        catch (IOException)
+        {
+            Assert.Fail("Another field job run is going on this machine (" + path + " is held): the two would share the "
+                + "emulated module's UDP port 8888 and each other's section commands. Run them one after the other.");
+            throw;
+        }
     }
 }
