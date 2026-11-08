@@ -2832,7 +2832,11 @@ public partial class MainViewModel : ObservableObject
     {
         if (index < 0 || index >= SavedTracks.Count) return;
         var track = SavedTracks[index];
-        if (!track.IsVisible) return; // a hidden track can't be the active one (AgOpenGPS)
+        if (!track.IsVisible) // a hidden track can't be the active one (AgOpenGPS)
+        {
+            ReportFailure($"Track hidden: {track.Name}"); // was silent (#695)
+            return;
+        }
         IsAutoTrackEnabled = false;
         SelectedTrack = track;
         StatusMessage = $"Active track: {track.Name}";
