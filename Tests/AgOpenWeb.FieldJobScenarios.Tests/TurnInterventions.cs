@@ -403,10 +403,12 @@ public static class TurnInterventions
                 bool left = !sameWay;   // passes count up to the right of A->B
                 int before = r.TurnsStarted;
                 await r.SendAsync(left ? "youturn.manualLeft" : "youturn.manualRight");
+                // Whether it started is judged from the turns recorded (the turn shows on the next
+                // GPS cycle, not at once): Judge counts a tap with no turn within 1.5 s as refused.
                 bool started = await r.Rig.ReadAsync(() => r.Rig.State.YouTurn.IsExecuting);
                 string said = string.Join(" | ", r.Collect().Select(s => { r.Said.Add(JobRun.F($"{r.Seconds:0.0} s: {s}")); return s; }).TakeLast(2));
                 Taps.Add((before + 1, r.Seconds, left, started, said));
-                r.Did(JobRun.F($"manual U-turn {(left ? "left" : "right")} at the headland line, from pass {k}{(started ? "" : " (it did NOT start: " + said + ")")}"));
+                r.Did(JobRun.F($"manual U-turn {(left ? "left" : "right")} at the headland line, from pass {k}"));
                 _inWorkM = 0;
             }
             _wasInWork = inWork;
@@ -414,7 +416,8 @@ public static class TurnInterventions
 
         public void Judge(Scenario sc, JobRun r, Action<Severity, string, string> flag)
         {
-            int refused = Taps.Count(t => !t.Started && !r.Turns.Any(x => Math.Abs(x.StartSeconds - t.At) < 1.5));
+            bool Refused((int Index, double At, bool Left, bool Started, string Said) t) => !t.Started && !r.Turns.Any(x => Math.Abs(x.StartSeconds - t.At) < 1.5);
+            int refused = Taps.Count(Refused);
             // A turn hands back to the line with 4 m of its arc left (EarlyCompletionLookahead), the
             // automatic ones and the manual ones alike: 4/R radians off the pass at the hand-back.
             double handBackDeg = 4.0 / Math.Max(r.Spec.UTurnRadius, 1) * 180 / Math.PI, limitDeg = handBackDeg + 10;
@@ -427,7 +430,7 @@ public static class TurnInterventions
             if (outside.Count > 0)
                 sc.Note(JobRun.F($"manual U-turns are built with no look at the boundary (a Dubins path from 4 m ahead of the tractor, as AgOpenGPS's BuildManualYouTurn): tapped at the headland line of a {r.Spec.HeadlandM:0} m headland, radius {r.Spec.UTurnRadius:0} m for {r.Spacing:0} m passes, {outside.Count} of {r.Turns.Count} took the tractor past the boundary, up to {outside.Max(t => t.MaxPivotOutsideM):0.0} m. A manual turn that would leave the field could be refused as an automatic one is (LeavesField, #698)"));
             if (refused > 0)
-                flag(Severity.Bug, "MANUAL-TURN-REFUSED", JobRun.F($"{refused} of {Taps.Count} taps on the manual U-turn button started no turn: {Taps.First(t => !t.Started).Said}"));
+                flag(Severity.Bug, "MANUAL-TURN-REFUSED", JobRun.F($"{refused} of {Taps.Count} taps on the manual U-turn button started no turn: {Taps.First(Refused).Said}"));
             if (early.Count > 0)
             {
                 var w = early.OrderByDescending(t => t.EndHeadingOffDeg).First();
