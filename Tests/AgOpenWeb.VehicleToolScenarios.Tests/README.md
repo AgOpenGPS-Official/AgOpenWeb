@@ -121,7 +121,7 @@ folder, or to `AGOPENWEB_SCENARIO_REPORT`. Other switches:
 | Variable | Effect |
 |---|---|
 | `AGOPENWEB_SCENARIO_REPORT=path.md` | where to write the report |
-| `AGOPENWEB_SCENARIO_OPERATOR=careful` | only one operator (`careful` or `careless`), or only the settings sweep (`sweep`) |
+| `AGOPENWEB_SCENARIO_OPERATOR=careful` | only one operator (`careful` or `careless`), or only the settings sweep (`sweep`); a comma-separated list for several (the nightly runs `careful,careless` and `sweep` as two jobs side by side) |
 | `AGOPENWEB_SCENARIO_ONLY=V-WB` | only drives whose code or name contains this (`settings`, `profiles` for those checks); in the sweep, only settings or probes containing it (`Slope\|Deadzone`: either) |
 | `AGOPENWEB_SCENARIO_VERBOSE=1` | the machine and AgOpenWeb side by side every 4 s, and every finding |
 
