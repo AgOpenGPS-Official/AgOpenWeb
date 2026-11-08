@@ -202,4 +202,18 @@ public class TramOffSendsNothingTests
         _config.Tram.DisplayMode = TramDisplayMode.Off;
         Assert.That(MachineFrameAfterAFix()[8], Is.EqualTo(AgOpenGpsControlByte(0, 1.5, 1.8, true, true, false, false)), "off");
     }
+
+    // The ISOBUS task controller reads the sections from PGN 229 only: it goes with every 239,
+    // with one section as with 64, as AgOpenGPS sends it on every fix (#696's harness).
+    [Test]
+    public void Pgn229_goes_with_every_239_whatever_the_section_count()
+    {
+        _autoSteer.ProcessSimulatedPosition(43.7, -74.0, 0, headingDegrees: 0, speedMps: SpeedMps,
+            fixQuality: 4, satellites: 12, hdop: 0.7, easting: 0, northing: 0);
+        _sent.Clear();
+        _autoSteer.SendPgnsForControlTick();
+        Assert.That(_sent.Count(f => f.Length > 3 && f[3] == PgnBuilder.PGN_MACHINE), Is.EqualTo(1));
+        Assert.That(_sent.Count(f => f.Length > 3 && f[3] == PgnBuilder.PGN_SECTIONS_64), Is.EqualTo(1),
+            "one PGN 229 per control tick with a single section");
+    }
 }
