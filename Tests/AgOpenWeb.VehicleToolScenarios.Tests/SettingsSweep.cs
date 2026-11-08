@@ -224,7 +224,7 @@ public static class SettingsSweep
     public static bool OutOfScope(string key) =>
         key == "units" || key.StartsWith("display.", StringComparison.Ordinal) || key.StartsWith("conn.", StringComparison.Ordinal);
 
-    public static async Task RunAsync(Journal journal, string? only)
+    public static async Task RunAsync(Journal journal, string? only, Action<string>? progress = null)
     {
         var v = Machines.Puma;
         var tool = Machines.Sprayer8;
@@ -241,6 +241,7 @@ public static class SettingsSweep
         {
             var list = group.ToList();
             var probe = list[0].Probe;
+            progress?.Invoke($"sweep: {group.Key} ({list.Count} setting(s), probe {probe})");
             var truthTool = list[0].Setup.Any(s => s == "tool.type:trailing") ? Machines.Trailing6
                 : list[0].Setup.Any(s => s == "tool.type:tbt") ? Machines.Tbt6 : tool;
             string dir = Path.Combine(Drive.DataRootBase, "s-" + probe + "-" + Guid.NewGuid().ToString("N")[..6]);
