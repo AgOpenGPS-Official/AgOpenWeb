@@ -1,0 +1,101 @@
+name: Working Day Scenarios
+
+# The working day scenario harness (Tests/AgOpenWeb.WorkingDayScenarios.Tests): an eight-hour
+# day of AgOpenWeb in one process on the day's clock (12.5x): fields one after another with
+# AutoSteer, U-turns and automatic sections, refills, lunch, the road between fields, NTRIP all
+# day, the operator's tablet and a helper's phone on the web socket going away the ways tablets
+# and phones do. Every five minutes it looks at memory, threads, timers, open files, GPS cycle
+# and control tick times and the tablet's frames; a heap census says what piled up. About 45
+# minutes, so it runs nightly on develop, not on every PR (CI only builds it). The run fails
+# when the harness breaks; the findings are in the report, kept as an artifact and shown in the
+# run's summary.
+#
+#   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;
+#   - manual dispatch: always, on the branch picked; `hours` and `pace` for a shorter or a
+#     real-time day (pace 100 = real time: 8 hours of wall time, past a hosted runner's 6 h).
+
+on:
+  # Nightly: the bug report Worker (Tools/bugreport-worker) starts the nightly harnesses with
+  # nightly=true once this one is in its NIGHTLY_WORKFLOWS list.
+  workflow_dispatch:
+    inputs:
+      nightly:
+        description: 'Nightly run: skip when develop has no commit from the last 25 hours'
+        type: boolean
+        default: false
+      hours:
+        description: 'Length of the day, hours'
+        type: string
+        default: '8'
+      pace:
+        description: 'Wall-clock ms per 0.1 s fix (8 = 12.5x, 100 = real time)'
+        type: string
+        default: '8'
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.401'   # as build-and-release.yml
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+concurrency:
+  group: working-day-scenarios
+  cancel-in-progress: true
+
+jobs:
+  scenarios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Anything new since the last night?
+        id: fresh
+        run: |
+          if [ "${{ inputs.nightly }}" != "true" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          last=$(git log -1 --format=%ct HEAD)
+          age=$(( $(date +%s) - last ))
+          if [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No commit on develop in the last 25 hours; nothing to run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Setup .NET
+        if: steps.fresh.outputs.run == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Run the working day
+        if: steps.fresh.outputs.run == 'true'
+        env:
+          AGOPENWEB_DAY_REPORT: ${{ runner.temp }}/working-day-scenarios-report.md
+          AGOPENWEB_DAY_CSV: ${{ runner.temp }}/working-day-samples.csv
+          AGOPENWEB_DAY_HOURS: ${{ inputs.hours || '8' }}
+          AGOPENWEB_DAY_PACE: ${{ inputs.pace || '8' }}
+          AGOPENWEB_DAY_VERBOSE: '1'
+        run: dotnet test Tests/AgOpenWeb.WorkingDayScenarios.Tests/ -c Release --filter "FullyQualifiedName~WorkingDayScenarioTests" --logger "console;verbosity=detailed"
+
+      - name: Report to the summary
+        if: always() && steps.fresh.outputs.run == 'true'
+        run: |
+          f="${{ runner.temp }}/working-day-scenarios-report.md"
+          if [ -f "$f" ]; then
+            # The summary has a size limit; the whole report is in the artifact.
+            head -c 900000 "$f" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report written." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep the report
+        if: always() && steps.fresh.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: working-day-scenarios-report
+          path: |
+            ${{ runner.temp }}/working-day-scenarios-report.md
+            ${{ runner.temp }}/working-day-samples.csv
+          if-no-files-found: ignore
+          retention-days: 30
