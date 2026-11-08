@@ -601,7 +601,7 @@ public sealed class JobRun : IAsyncDisposable
                     double want = PathOp.ExpectedU(this, Pass);
                     double err = double.IsFinite(want) ? U((tcc.E, tcc.N)) - want : double.NaN;
                     if (!_passJoined && Math.Abs(err) < 0.3) _passJoined = true;
-                    if (_passJoined && double.IsFinite(err))
+                    if (_passJoined && double.IsFinite(err) && !PathOp.PassErrorJudgedElsewhere(this, err))
                     {
                         if (Math.Abs(err) > 1.0 && Fix - _passErrorTraced >= 50)
                         {

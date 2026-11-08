@@ -36,6 +36,8 @@ public abstract class PathOperator
     /// <summary>Put the tractor at the first pass and get going (AutoSteer, sections).</summary>
     public abstract Task<bool> StartAsync(JobRun r);
     public virtual Task OnFixAsync(JobRun r) => Task.CompletedTask;
+    /// <summary>An error this large is another finding's (contour: leaving the lap), not the pass error's.</summary>
+    public virtual bool PassErrorJudgedElsewhere(JobRun r, double err) => false;
     /// <summary>Where pass <paramref name="pass"/> runs, as u in <see cref="JobRun.Frame"/>.</summary>
     public virtual double ExpectedU(JobRun r, int pass) => (pass + 0.5) * r.Spacing;
     public virtual void Metrics(Scenario sc, JobRun r) { }
@@ -663,7 +665,9 @@ public sealed class ContourOperator : PathOperator
         // Near the lap's end the contour follows the strip where the operator moved in, and so
         // turns in towards the next lap before the operator takes over: that is the spiral a
         // contour makes, not the tractor leaving its pass.
-        bool nearLapEnd = _cum - _lapStart > r.Frame.Length - 3 - 2 * r.Spec.T.Width;
+        // (V runs along the outer boundary: on a circle an inner lap's metres are fewer.)
+        double vPerM = r.Frame is CircleFrame circ ? circ.Radius / Math.Max(circ.Radius - Math.Abs(ExpectedU(r, _k)), 1) : 1;
+        bool nearLapEnd = _cum - _lapStart > r.Frame.Length - (3 + 2 * r.Spec.T.Width) * vPerM;
         if (nearLapEnd) r.InCorner = true;
         else if (r.Frame is CircleFrame) r.InCorner = false;
 
@@ -815,6 +819,9 @@ public sealed class ContourOperator : PathOperator
         r.Stopped = true;
         r.Did(why);
     }
+
+    /// <summary>More than half a width off the lap is leaving it (<c>CONTOUR-LEFT-THE-LAP</c> once it lasts 3 s).</summary>
+    public override bool PassErrorJudgedElsewhere(JobRun r, double err) => Math.Abs(err) > r.Spec.T.Width / 2;
 
     public override void Metrics(Scenario sc, JobRun r) =>
         sc.Row.Metrics.Add(("Laps (the first by hand) / seconds AutoSteer had no contour line to follow", F($"{Laps} / {NoLineSeconds}")));
