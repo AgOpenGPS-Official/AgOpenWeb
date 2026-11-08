@@ -118,7 +118,8 @@ public sealed class AgOpenGpsInstall
             A("setVehicle_toolWidth", "Tool.Width", "8", "tool", stale: "6.5"),
             A("setVehicle_toolOverlap", "Tool.Overlap", "0.05", "tool", stale: "0.1"),
             A("setVehicle_toolOffset", "Tool.Offset", "0.1", "tool", stale: "0.2"),
-            A("setVehicle_hitchLength", "Tool.HitchLength", "1.6", "tool", stale: "1.4"),
+            // AgOpenGPS writes a hitch behind the tractor negative; AgOpenWeb keeps the distance.
+            A("setVehicle_hitchLength", "Tool.HitchLength", "-1.6", "tool", stale: "-1.4", reads: "1.6", staleReads: "1.4"),
             A("setTool_isToolRearFixed", "Tool.IsToolRearFixed", "True", "tool"),
             A("setVehicle_toolLookAheadOn", "Tool.LookAheadOnSetting", "1.2", "sections", stale: "1.1"),
             A("setVehicle_toolLookAheadOff", "Tool.LookAheadOffSetting", "0.4", "sections", stale: "0.6"),
@@ -131,13 +132,15 @@ public sealed class AgOpenGpsInstall
             A("setHeadland_isSectionControlled", "Tool.IsHeadlandSectionControl", "False", "sections"),
         }, Positions(8, 1.0), Positions(6, 1.0)));
 
-        // The seed drill, trailed, added on 6.8.6 (its trailing hitch length negative, as
-        // AgOpenGPS writes it; AgOpenWeb keeps the distance).
+        // The seed drill, trailed, added on 6.8.6 (its hitch and trailing hitch lengths negative,
+        // as AgOpenGPS writes them; AgOpenWeb keeps the distances). Its hitch length is the
+        // tractor's hitch pin, which AgOpenWeb keeps with the tractor.
         a.Tools.Add(new AogTool("Semeador 3 m", new()
         {
             A("setVehicle_toolWidth", "Tool.Width", "3", "tool"),
             A("setTool_isToolTrailing", "Tool.IsToolTrailing", "True", "tool"),
             A("setTool_isToolRearFixed", "Tool.IsToolRearFixed", "False", "tool"),
+            A("setVehicle_hitchLength", "Vehicle.HitchLength", "-1.5", "tool", reads: "1.5"),
             A("setVehicle_toolTrailingHitchLength", "Tool.TrailingHitchLength", "-2.4", "tool", reads: "2.4"),
             A("setVehicle_numSections", "NumSections", "12", "sections"),
             A("setSection_position", "ActualToolWidth", "3", "sections"),
