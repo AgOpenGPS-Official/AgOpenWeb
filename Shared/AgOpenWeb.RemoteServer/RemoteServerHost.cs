@@ -39,6 +39,14 @@ public sealed class RemoteServerHost
     /// <summary>How each browser draws the map, for the bug report dump's <c>system_info.txt</c>.</summary>
     public string ClientDiagnosticsSummary() => _ws?.DiagnosticsSummary() ?? "";
 
+    /// <summary>The 10 Hz broadcaster (null before <see cref="StartAsync"/>).</summary>
+    public MapBroadcaster? Broadcaster => _broadcaster;
+
+    /// <summary>False (set before <see cref="StartAsync"/>): the 10 Hz loop stays off and
+    /// nothing is broadcast until <see cref="MapBroadcaster.BroadcastOnceAsync"/> is called.
+    /// The host-loop budget (HostLoopBudgetTests) runs the ticks itself to count their cost.</summary>
+    public bool BroadcastLoop { get; set; } = true;
+
     /// <summary>
     /// Broadcast a one-shot alert sound to every connected client. The host never
     /// plays audio itself (it may be a headless box with no speaker); the operator's
@@ -449,7 +457,7 @@ public sealed class RemoteServerHost
                  AgOpenWeb.Services.BugReport.BugReportAttachments.Remove(path, name)))));
 
         await server.StartAsync().ConfigureAwait(false);
-        _broadcaster.Start();
+        _broadcaster.Start(BroadcastLoop);
         _server = server;
     }
 

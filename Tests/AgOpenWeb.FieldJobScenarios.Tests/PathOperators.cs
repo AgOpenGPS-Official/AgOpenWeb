@@ -105,9 +105,8 @@ public abstract class PathOperator
         if (track == null) return null;
         var pts = await r.Rig.ReadAsync(() => track.Points.ToList());
         double dist = AgOpenWeb.Models.Track.PassGeometry.Offset(track, pass, r.Spacing);
-        var made = AgOpenWeb.Models.Guidance.CurveProcessing.CreateOffsetCurveWithInfo(pts, dist, track.IsClosed).Points;
-        if (limit) made = AgOpenWeb.Models.Guidance.CurveProcessing.LimitTurnRadius(made, r.Rig.Store.Guidance.UTurnRadius, track.IsClosed);
-        if (extend && !track.IsClosed) made = AgOpenWeb.Models.Guidance.CurveProcessing.ExtendCurveEnds(made);
+        var curvePass = AgOpenWeb.Models.Guidance.CurveProcessing.CurvePass(pts, dist, track.IsClosed, limit ? r.Rig.Store.Guidance.UTurnRadius : 0);
+        var made = extend && !track.IsClosed ? AgOpenWeb.Models.Guidance.CurveProcessing.ExtendPass(curvePass) : curvePass.Points;
         return made.Select(p => (p.Easting, p.Northing)).ToList();
     }
 

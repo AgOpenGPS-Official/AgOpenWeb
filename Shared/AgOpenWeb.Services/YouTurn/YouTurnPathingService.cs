@@ -109,8 +109,7 @@ public sealed class YouTurnPathingService
             // next-track curve reaches the exit leg's end (no gap) and is the same
             // length as the magenta line that replaces it after the turn completes.
             // ExtendCurveEnds is a no-op on closed loops.
-            var offsetPoints = CurveProcessing.ExtendCurveEnds(
-                CurveProcessing.CreateOffsetCurve(referenceTrack.Points, nextDistAway));
+            var offsetPoints = CurveProcessing.ExtendPass(CurveProcessing.CurvePass(referenceTrack.Points, nextDistAway));
             nextTrack = Models.Track.Track.FromCurve($"Path {nextPathsAway}", offsetPoints, referenceTrack.IsClosed);
         }
         nextTrack.IsActive = false;

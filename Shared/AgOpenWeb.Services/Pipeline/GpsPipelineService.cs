@@ -892,11 +892,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn;
 
         var tickPosition = pos with { Easting = driftedEasting, Northing = driftedNorthing };
+        // An open curve whose ends face each other turns at the opening between them as at a
+        // headland: the U-turn gets the field with that opening as a virtual boundary (#694).
+        var turnField = hasTickableTrack && hasValidHeadlandLine
+            ? CurveEndTurnField(track!, boundary, headlandLine, headlandCalculatedWidth)
+            : null;
         var tickCtx = new YouTurnStateMachine.TickContext(
             tickPosition,
             track,
-            boundary,
-            headlandLine,
+            turnField?.Boundary ?? boundary,
+            turnField?.HeadlandLine ?? headlandLine,
             uTurnSkipRows,
             isSkipWorkedMode,
             headlandCalculatedWidth,
@@ -1108,9 +1113,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
             else
             {
-                var offsetPoints = extendDisp
-                    ? CurveProcessing.ExtendCurveEnds(_offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius).Points)
-                    : new List<Vec3>(_offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius).Points);
+                // A pass the offset removed altogether has no points: nothing is drawn (#694).
+                var pass = _offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius);
+                var offsetPoints = extendDisp ? CurveProcessing.ExtendPass(pass) : new List<Vec3>(pass.Points);
                 displayTrack = new Models.Track.Track
                 {
                     Name = $"{track.Name} (path {passNumber})",
@@ -1196,7 +1201,25 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 var guidanceResult = CalculateTrackGuidance(
                     pos, track!, passNumber, nudgeOffset, driftedEasting, driftedNorthing, headingRad,
                     isYouTurnTriggered);
-                if (guidanceResult != null)
+                if (guidanceResult is { hasLine: false } noLine)
+                {
+                    // No pass where the tractor is (#694): steer straight and tell the module
+                    // there is no line (PGN 254's no-line distance), as AgOpenGPS does.
+                    statusMessage = noLine.statusMessage;
+                    _autoSteerService.UpdateGuidanceResults(0, NoLineDistance);
+                }
+                else if (guidanceResult is { atEnd: true } && !(youTurnEnabled && youTurnPath is { Count: > 0 }))
+                {
+                    // Past the end of an open curve, and no U-turn there to take over: AutoSteer
+                    // off, as AgOpenGPS ("Guidance Stopped" / "Past end of curve"), rather than
+                    // steering on into what the line leaves out (#694).
+                    autoSteerEngaged = false;
+                    autoSteerDisengaged = true;
+                    disengageReason = PastEndOfCurveReason;
+                    lock (_stateLock) _autoSteerEngaged = false;
+                    _autoSteerService.UpdateGuidanceResults(0, NoLineDistance);
+                }
+                else if (guidanceResult != null)
                 {
                     steerAngle = guidanceResult.Value.steerAngle;
                     crossTrackError = guidanceResult.Value.xte;
@@ -1583,7 +1606,35 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // Guidance helpers (run on background thread, no Avalonia types)
     // ══════════════════════════════════════════════════════════════════════
 
-    private (double steerAngle, double xte, double goalE, double goalN, string? statusMessage)?
+    // The cross-track error that tells the steer module there is no line (TrackGuidanceService's,
+    // AgOpenGPS's 32000; PgnBuilder sends it as such).
+    private const double NoLineDistance = 32000;
+
+    // The U-turn's field for a curve whose ends face each other, kept until the track, its
+    // points, the boundary, the headland or its width change (CurveEndOpening, #694).
+    private (Models.Track.Track? Track, List<Vec3>? Points, int Count, Boundary? Boundary, List<Vec3>? Headland, double Width) _turnFieldKey;
+    private CurveEndOpening.TurnField? _turnField;
+
+    private CurveEndOpening.TurnField? CurveEndTurnField(Models.Track.Track track, Boundary? boundary,
+        List<Vec3>? headlandLine, double headlandWidth)
+    {
+        var key = (track, track.Points, track.Points.Count, boundary, headlandLine, headlandWidth);
+        if (!ReferenceEquals(key.track, _turnFieldKey.Track) || !ReferenceEquals(key.Points, _turnFieldKey.Points)
+            || key.Count != _turnFieldKey.Count || !ReferenceEquals(boundary, _turnFieldKey.Boundary)
+            || !ReferenceEquals(headlandLine, _turnFieldKey.Headland) || headlandWidth != _turnFieldKey.Width)
+        {
+            _turnFieldKey = key;
+            _turnField = track.Points.Count > 2 && !track.IsClosed && !track.IsPivot
+                ? CurveEndOpening.Build(track.Points, boundary, headlandLine, headlandWidth)
+                : null;
+        }
+        return _turnField;
+    }
+
+    /// <summary>Why AutoSteer went off at the end of an open curve (AgOpenGPS gsGuidanceStopped, gsPastEndOfCurve).</summary>
+    public const string PastEndOfCurveReason = "AutoSteer disengaged - past end of curve";
+
+    private (double steerAngle, double xte, double goalE, double goalN, string? statusMessage, bool hasLine, bool atEnd)?
         CalculateTrackGuidance(
             Position currentPosition, Models.Track.Track track, int passNumber, double nudgeOffset,
             double driftedEasting, double driftedNorthing, double headingRad,
@@ -1634,8 +1685,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
         else
         {
-            var (cachedPoints, percentRemoved) = _offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius);
-            var offsetPoints = extendCurve ? CurveProcessing.ExtendCurveEnds(cachedPoints) : new List<Vec3>(cachedPoints);
+            var cached = _offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius);
+            double percentRemoved = cached.PercentRemoved;
+            var offsetPoints = extendCurve ? CurveProcessing.ExtendPass(cached) : new List<Vec3>(cached.Points);
 
             // Warn on tight curves
             if (percentRemoved > 10 && passNumber != _lastWarnedPathsAway)
@@ -1662,6 +1714,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 // than treating an offset boundary loop as an open polyline (#422).
                 IsClosed = track.IsClosed
             };
+
+            // No pass here: the offset removed all of it (#694). Nothing to steer to, as in
+            // AgOpenGPS, whose empty pass sends the module its no-line distance (32000).
+            if (offsetPoints.Count < 2)
+                return (0, 0, 0, 0, statusMessage, false, false);
         }
 
         if (_cycleCounter % 50 == 0 && currentTrack.Points.Count >= 2)
@@ -1713,7 +1770,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _trackGuidanceState.CurrentLocationIndex = output.CurrentLocationIndex;
 
         return (output.SteerAngle, output.CrossTrackError, output.GoalPoint.Easting, output.GoalPoint.Northing,
-                statusMessage);
+                statusMessage, true, output.IsAtEndOfTrack);
     }
 
     /// <summary>
@@ -1893,8 +1950,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
         else
         {
-            var points = Math.Abs(dist) < 0.01 ? track.Points : _offsetPasses.Get(track, dist, radius).Points;
-            line = extend ? CurveProcessing.ExtendCurveEnds(points) : points;
+            var made = Math.Abs(dist) < 0.01 ? (track.Points, 0, true, true) : _offsetPasses.Get(track, dist, radius);
+            line = extend ? CurveProcessing.ExtendPass(made) : made.Points;
         }
         _toolPassKey = key;
         return _toolPass = line;
@@ -1943,8 +2000,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     lines.Add(new List<Vec3> { new(a.Easting + de, a.Northing + dn, a.Heading), new(b.Easting + de, b.Northing + dn, b.Heading) });
                     continue;
                 }
-                var points = Math.Abs(dist) < 0.01 ? track.Points : _offsetPasses.Get(track, dist, _configStore.Guidance.UTurnRadius).Points;
-                lines.Add(extend ? CurveProcessing.ExtendCurveEnds(points) : points);
+                var made = Math.Abs(dist) < 0.01 ? (track.Points, 0, true, true) : _offsetPasses.Get(track, dist, _configStore.Guidance.UTurnRadius);
+                if (made.Points.Count < 2) continue; // no pass there (#694)
+                lines.Add(extend ? CurveProcessing.ExtendPass(made) : made.Points);
             }
         _guideKey = key;
         return _guideLines = lines;
@@ -2015,8 +2073,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
         {
             // The extended reference is the line itself: the caller leaves baseTrack out so it
             // isn't drawn twice at the same position.
-            var pass = onReference ? track.Points : _offsetPasses.Get(track, distAway, turnRadius).Points;
-            var offsetPoints = extend ? CurveProcessing.ExtendCurveEnds(pass) : new List<Vec3>(pass);
+            // A pass the offset removed altogether has no points: nothing is drawn (#694).
+            var pass = onReference ? (track.Points, 0, true, true) : _offsetPasses.Get(track, distAway, turnRadius);
+            var offsetPoints = extend ? CurveProcessing.ExtendPass(pass) : new List<Vec3>(pass.Points);
             resultTrack = new Models.Track.Track
             {
                 Name = $"{track.Name} (pass {nearestPass})",

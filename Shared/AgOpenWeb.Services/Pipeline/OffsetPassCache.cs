@@ -12,7 +12,8 @@ namespace AgOpenWeb.Services.Pipeline;
 /// offset point against the curve, and a boundary curve has a point every metre or so (#450):
 /// the displayed pass, the steered pass and the guidelines beside them were rebuilt every GPS
 /// cycle. Now a pass is offset once, when the tractor moves to it. The lists returned are shared:
-/// callers copy before changing them.
+/// callers copy before changing them. A pass the offset removes altogether has no points (no pass
+/// there); <see cref="CurveProcessing.ExtendPass"/> runs a pass on past the ends the offset kept.
 /// </summary>
 internal sealed class OffsetPassCache
 {
@@ -20,7 +21,7 @@ internal sealed class OffsetPassCache
     private const int Capacity = 128;
 
     private readonly object _lock = new();
-    private readonly Dictionary<double, (List<Vec3> Points, double PercentRemoved)> _passes = new();
+    private readonly Dictionary<double, (List<Vec3> Points, double PercentRemoved, bool StartKept, bool EndKept)> _passes = new();
     private Models.Track.Track? _track;
     private List<Vec3>? _points;
     private int _count;
@@ -29,7 +30,7 @@ internal sealed class OffsetPassCache
 
     /// <param name="minTurnRadius">No bend of a curve's pass is tighter than this (the U-turn radius,
     /// what the rig can turn); 0 leaves the passes as offset.</param>
-    public (List<Vec3> Points, double PercentRemoved) Get(Models.Track.Track track, double distAway, double minTurnRadius = 0)
+    public (List<Vec3> Points, double PercentRemoved, bool StartKept, bool EndKept) Get(Models.Track.Track track, double distAway, double minTurnRadius = 0)
     {
         lock (_lock)
         {
@@ -45,19 +46,18 @@ internal sealed class OffsetPassCache
             }
             if (_passes.TryGetValue(distAway, out var hit)) return hit;
             if (_passes.Count >= Capacity) _passes.Clear();
-            (List<Vec3> Points, double PercentRemoved) made;
+            (List<Vec3> Points, double PercentRemoved, bool StartKept, bool EndKept) made;
             if (track.IsPivot)
             {
                 // A water pivot's passes are circles about its centre, as AgOpenGPS builds them.
                 var (center, radius) = _pivot ??= track.PivotCircle();
-                made = (CurveProcessing.PivotPass(center, radius, distAway), 0);
+                made = (CurveProcessing.PivotPass(center, radius, distAway), 0, true, true);
             }
             else
             {
-                made = CurveProcessing.CreateOffsetCurveWithInfo(track.Points, distAway, track.IsClosed);
                 // A corner tighter than the rig can turn (an inner pass at a field corner) becomes an
                 // arc it can drive; pure pursuit cut it anyway, by up to 2 m.
-                made.Points = CurveProcessing.LimitTurnRadius(made.Points, minTurnRadius, track.IsClosed);
+                made = CurveProcessing.CurvePass(track.Points, distAway, track.IsClosed, minTurnRadius);
             }
             _passes[distAway] = made;
             return made;

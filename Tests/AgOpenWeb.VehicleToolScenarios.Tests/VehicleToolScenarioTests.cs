@@ -7,7 +7,7 @@ using NUnit.Framework;
 namespace AgOpenWeb.VehicleToolScenarios.Tests;
 
 /// <summary>
-/// The Vehicle &amp; Tool scenarios: the careful operator, then the careless one, into one
+/// The Vehicle &amp; Tool scenarios: the careful operator, the careless one and the settings sweep, into one
 /// report. The test fails only when the harness breaks; the findings are the product.
 /// </summary>
 [TestFixture]
@@ -16,7 +16,6 @@ namespace AgOpenWeb.VehicleToolScenarios.Tests;
 public class VehicleToolScenarioTests
 {
     [Test]
-    [CancelAfter(1_800_000)]
     public async Task Careful_and_careless_operator()
     {
         var journal = new Journal();
@@ -24,8 +23,15 @@ public class VehicleToolScenarioTests
         if (string.IsNullOrWhiteSpace(only)) only = null;
         string? who = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_OPERATOR");
 
-        if (who is null or "careful") await CarefulOperator.RunAsync(journal, only);
-        if (who is null or "careless") await CarelessOperator.RunAsync(journal, only);
+        // One operator, or several comma-separated ("careful,careless"): the nightly runs the two
+        // operators and the sweep as two jobs side by side.
+        bool Wants(string w) => who is null || who.Split(',', StringSplitOptions.TrimEntries).Contains(w);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        void Progress(string what) => TestContext.Progress.WriteLine($"[{clock.Elapsed:hh\\:mm\\:ss}] {what}");
+        if (Wants("careful")) { Progress("careful operator"); await CarefulOperator.RunAsync(journal, only); }
+        if (Wants("careless")) { Progress("careless operator"); await CarelessOperator.RunAsync(journal, only); }
+        if (Wants("sweep")) { Progress("settings sweep"); await SettingsSweep.RunAsync(journal, only, Progress); }
+        Progress("done");
 
         string report = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
             ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, "vehicle-tool-scenarios-report.md");
@@ -36,6 +42,6 @@ public class VehicleToolScenarioTests
 
         var harness = journal.Findings.Values.Where(v => v.First.Code == "HARNESS").Select(v => v.First.Message + " (" + string.Join("; ", v.Places) + ")").ToList();
         Assert.That(harness, Is.Empty, "the harness itself failed");
-        Assert.That(journal.Drives.Count, Is.GreaterThan(0), "nothing was driven (AGOPENWEB_SCENARIO_ONLY matched nothing?)");
+        Assert.That(journal.Drives.Count + journal.Sweep.Count, Is.GreaterThan(0), "nothing was driven (AGOPENWEB_SCENARIO_ONLY matched nothing?)");
     }
 }

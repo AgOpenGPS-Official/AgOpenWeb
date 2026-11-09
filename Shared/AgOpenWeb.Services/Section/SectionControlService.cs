@@ -655,15 +655,14 @@ public class SectionControlService : ISectionControlService
             _yawRate = 0;
             _instantYawRate = 0;
 
-            // Get zone index (for multi-colored sections or zones)
-            int zoneIndex = GetZoneIndex(index);
-            _coverageMapService.StartMapping(zoneIndex, leftEdge, rightEdge);
+            // Each section paints its own strip, zones or not (see StopMapping).
+            _coverageMapService.StartMapping(index, leftEdge, rightEdge);
 
             // Record initial position for minimum distance filtering
             var center = new Vec2(
                 (leftEdge.Easting + rightEdge.Easting) / 2,
                 (leftEdge.Northing + rightEdge.Northing) / 2);
-            _lastCoveragePosition[zoneIndex] = center;
+            _lastCoveragePosition[index] = center;
         }
     }
 
@@ -687,16 +686,14 @@ public class SectionControlService : ISectionControlService
             return;
         }
 
-        int zoneIndex = GetZoneIndex(index);
-
         // The section's own edges: the coverage service paints them widened by the coverage
         // margin (no hairline seams between sections or quads) and counts the worked area
         // without it, as AgOpenGPS's patches do.
-        _coverageMapService.AddCoveragePoint(zoneIndex, leftEdge, rightEdge);
+        _coverageMapService.AddCoveragePoint(index, leftEdge, rightEdge);
 
-        // Update last position for this zone (kept for any downstream readers
+        // Update last position for this section (kept for any downstream readers
         // even though it's no longer used as a skip threshold).
-        _lastCoveragePosition[zoneIndex] = new Vec2(
+        _lastCoveragePosition[index] = new Vec2(
             (leftEdge.Easting + rightEdge.Easting) / 2,
             (leftEdge.Northing + rightEdge.Northing) / 2);
     }
@@ -714,35 +711,21 @@ public class SectionControlService : ISectionControlService
             section.IsMappingOn = false;
             section.MappingOffTimer = 0;
 
-            int zoneIndex = GetZoneIndex(index);
-            _coverageMapService.StopMapping(zoneIndex);
+            _coverageMapService.StopMapping(index);
 
             // Clear last position so next patch starts fresh
-            _lastCoveragePosition.Remove(zoneIndex);
+            _lastCoveragePosition.Remove(index);
         }
     }
 
-    /// <summary>
-    /// Get zone index for a section (handles zones vs individual sections)
-    /// </summary>
-    private int GetZoneIndex(int sectionIndex)
-    {
-        var tool = _configStore.Tool;
-        if (tool.IsSectionsNotZones)
-        {
-            return sectionIndex;
-        }
-
-        // Find which zone this section belongs to
-        for (int z = 1; z <= tool.Zones; z++)
-        {
-            if (sectionIndex < tool.GetZoneEndSection(z))
-            {
-                return z - 1;
-            }
-        }
-        return 0;
-    }
+    // The coverage stream is always the section's own index. Zones group the section buttons
+    // only; they don't change what is painted. AgOpenGPS paints each run of mapping sections
+    // from its first section's left point to its last one's right point, zones or not
+    // (OpenGL.Designer triStrip loop, CPatches.AddMappingPoint). Keyed by zone, the sections of
+    // one zone shared one stream: each section's edges replaced the last one's, so the quads ran
+    // across the tool between neighbouring sections and a strip worked with every section on
+    // painted about a quarter of its width; what the next pass then found painted depended on
+    // where those slivers fell, which made its switching differ from run to run.
 
     /// <summary>
     /// Project a point forward along a heading (straight line)
