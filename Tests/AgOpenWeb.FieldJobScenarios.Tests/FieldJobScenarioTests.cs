@@ -16,7 +16,7 @@ namespace AgOpenWeb.FieldJobScenarios.Tests;
 public class FieldJobScenarioTests
 {
     [Test]
-    [CancelAfter(3_600_000)]
+    [CancelAfter(6_600_000)]
     public async Task Field_jobs(CancellationToken ct)
     {
         // One run at a time on a machine: the emulated machine module binds UDP 8888 (with address

@@ -140,7 +140,7 @@ The old build and this build use UDP port 9999 and web port 5174 one after the o
 once; nothing else of AgOpenWeb may run on the machine. Releases before 26.7 have no Linux
 bundle (the Avalonia era) and are not run. `update-scenarios.yml` runs the harness nightly on
 `develop` when there is a new commit (the bug report Worker, `Tools/bugreport-worker`, starts it
-with `nightly=true` at 03:07 UTC, 21:07 US Central), caches the bundles, keeps the report as an
+with `nightly=true` at 05:07 UTC, 23:07 US Central), caches the bundles, keeps the report as an
 artifact and shows it in the run's summary; CI only builds the project.
 
 ## Files
