@@ -2138,6 +2138,12 @@ public partial class MainViewModel : ObservableObject
             LogAutoSteerOff("field closed");
         }
 
+        // The sections too, switched on by hand included: with no field the section bar is
+        // gone, so the operator could not switch them off, and the module went on getting
+        // the on bits every tick (PGN 239, 229). Opening another field closes this one here
+        // first, so that is covered too (web client flows F6, F7).
+        SwitchAllSectionsOff();
+
         // A boundary being recorded and a line being drawn, driven or recorded belong to this
         // field: end them unsaved. Left running, their points went on into the next field and
         // were saved there as its boundary or line, in the wrong field's coordinates.
