@@ -56,16 +56,19 @@ public sealed class ScenarioJournal
         else Findings[key] = (f, where, 1, new List<string> { where });
     }
 
-    /// <summary>Numbers and quoted names vary from field to field; the rest identifies the finding.</summary>
+    /// <summary>Numbers (their sign included) and quoted names vary from field to field; the rest
+    /// identifies the finding, so "near -0.0,-0.0" and "near 50.0,50.0" are one kind.</summary>
     private static string Normalize(string m)
     {
         var sb = new StringBuilder();
         bool inNum = false, inQuote = false;
-        foreach (char c in m)
+        for (int i = 0; i < m.Length; i++)
         {
+            char c = m[i];
             if (c == '\'') { inQuote = !inQuote; sb.Append("'…'"); continue; }
             if (inQuote) continue;
-            bool digit = char.IsDigit(c) || (inNum && (c == '.' || c == '-'));
+            bool digit = char.IsDigit(c) || (inNum && (c == '.' || c == '-'))
+                || (!inNum && c == '-' && i + 1 < m.Length && char.IsDigit(m[i + 1]));
             if (digit) { if (!inNum) sb.Append('#'); inNum = true; continue; }
             inNum = false;
             sb.Append(c);
