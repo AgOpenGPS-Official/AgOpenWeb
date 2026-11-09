@@ -4,8 +4,8 @@ An end-to-end harness for the web client as farms use it (checklists 12.4, 12.5,
 13.11): a 10" and a 7" tablet, a 720p cab PC, a 5" cab screen, a phone in both orientations, a
 tablet upright; a phone or an office PC watching beside the cab tablet; and the cab tablet
 going away while the tractor works. Then the operator's own flows on the cab tablet, done by
-taps and typing only (Chris's harness plan, item 3.5): tracks made every way, renamed, hidden and
-deleted; the boundary and the headland; tram lines; fields and jobs opened, closed and resumed;
+taps and typing only (Chris's harness plan, item 3.5): tracks made every way Quick AB offers but
+the water pivot, renamed, hidden and deleted; the boundary and the headland; tram lines; fields and jobs opened, closed and resumed;
 the section bar; the U-turn and lateral buttons.
 
 The whole backend runs in the test process, as the Desktop head boots it, on a temporary
@@ -75,11 +75,15 @@ the module port at the end, so a module that stopped hearing it is not read as s
 **The flows** (`TrackFlows.cs`, `BoundaryFlows.cs`, `TramFlows.cs`, `FieldFlows.cs`,
 `SectionBarFlows.cs`, `UTurnFlows.cs`, on `FlowKit.cs`). Each group works in its own field, 1 km
 east of the last one (`FlowFields`): a 240 m wide field with a slanted north edge (420 m on the
-west side, 380 m on the east), made the farmer's way from a KML file copied into the Import
-folder (Field Operations › Fields and Jobs › From KML) and opened again from Fields and Jobs when
-the group needs it. Everything the operator does is a tap, a drag of the map or typing on the
-cab tablet (10" 1280×800); the harness only places the simulated tractor, sets its speed and
-steering, and reads. Each step is read back where the operator reads it (the dialog, the list,
+west side, 380 m on the east). T, R, F, X and U make it the farmer's way, from a KML file copied
+into the Import folder (Field Operations › Fields and Jobs › From KML), and open it again from
+Fields and Jobs when the group needs it; B starts with New Field at the tractor and gets that
+outline in B4 (Boundary › Import KML). Everything the operator does is a tap on a control's
+centre, a pick in a drop-down, a drag of the map or typing on the cab tablet (10" 1280×800). A
+control off the screen or covered is a finding; one missing from the page is a `HARNESS` line.
+The harness places the simulated tractor, sets its speed and steering, and reads; between steps
+it closes menus and dialogs through the page's own functions, and before placing the tractor and
+at a scenario's end it switches AutoSteer, the sections and U-turn off on the host. Each step is read back where the operator reads it (the dialog, the list,
 the Scene and Tick the screen draws from, the toast or hint it showed) and where it acts (the
 host's tracks, boundary, headland, tram systems, jobs and files, and PGN 254 at the module port).
 A careful operator does each flow as meant; a careless one types a comma for a decimal point,
@@ -130,7 +134,7 @@ U-turn from the right-hand bar, taken at the north headland at 10 km/h; U2 the o
 U-turn (hidden without AutoSteer), with the lateral and U-turn buttons tapped again during the
 turn; U3 Lateral right and left; U4 skip rows 1 and a manual U-turn (two passes over). Where the
 tractor lands is read on the host: one pass over (two with skip rows 1), measured square to the
-line (Quick AB takes the tractor's heading, a degree or two off north), heading back, and its
+line (Quick AB takes the tractor's heading, so a line can be a hair off north), heading back, and its
 cross-track error.
 
 Finding codes of the link scenarios:
@@ -198,7 +202,8 @@ other scenario harnesses first: they share the ports).
 - The host's UDP socket listens on every interface (port 9999): a real module on the LAN that
   talks to it would make the host send to that module's subnet. Run it away from a bench board.
 - The flows run on the 10" tablet only, in English; the other screens are covered by S.
-- Flags, hotkeys, contour, recorded paths and AgShare are not in the flows yet (plan section 2).
+- Not in the flows yet: flags, hotkeys and recorded paths (named in plan section 2), the water
+  pivot, contour and AgShare.
 - The tractor is put where a flow starts by moving the simulator. A move keeps the heading
   fusion's IMU offset, so after a turn the heading standing still can be a degree or so off; the
   harness then drives it 1.5 m straight (as the app tells an operator to) and puts it back.

@@ -451,28 +451,31 @@ public static class TrackFlows
         await op.PlaceAsync(FlowFields.At(Slot, 120, 200), 0);
         var ring = await op.Rig.ReadAsync(() => op.Rig.Vm.OuterBoundaryPoints()?.ToList());
         if (ring == null || ring.Count < 3) { op.S.Harness("the field has no outer boundary"); return; }
-        // The longest edge of the boundary the host holds.
-        int li = 0; double ll = 0;
-        for (int i = 0; i < ring.Count; i++)
-        {
-            var a = ring[i]; var b = ring[(i + 1) % ring.Count];
-            double l = Math.Sqrt((b.E - a.E) * (b.E - a.E) + (b.N - a.N) * (b.N - a.N));
-            if (l > ll) { ll = l; li = i; }
-        }
-        var ea = ring[li]; var eb = ring[(li + 1) % ring.Count];
-        op.S.Step(FlowOp.F($"the boundary has {ring.Count} points; its longest edge is {ll:0} m"));
+        // The field's sides as the operator sees them: runs of boundary pieces in one direction
+        // (the field loader cuts a long side into pieces of at most 50 m, BoundaryResolution).
+        var fieldSides = Sides(ring);
+        var side = fieldSides.OrderByDescending(x => x.Len).First();
+        double piece = 0;
+        for (int i = 0; i < ring.Count; i++) piece = Math.Max(piece, Dist(ring[i], ring[(i + 1) % ring.Count]));
+        op.S.Step(FlowOp.F($"the boundary has {ring.Count} points and {fieldSides.Count} sides; its longest side is {side.Len:0} m, its longest piece between two points {piece:0} m"));
 
         int before = await op.Rig.ReadAsync(() => op.Rig.Vm.SavedTracks.Count);
         if (!await OpenQuickAbAsync(op)) return;
         if (!await op.TapAsync("[data-qab=boundaryEdge]", "Longest Edge")) return;
         if (await NewTrackAsync(op, before, "Longest Edge") is var (info, t))
         {
-            double da = PointToLine(info.AE, info.AN, ea, eb), db = PointToLine(info.BE, info.BN, ea, eb);
-            double eh = (Math.Atan2(eb.E - ea.E, eb.N - ea.N) * 180 / Math.PI + 360) % 360;
-            double dh = Math.Abs(((info.HeadingDeg - eh + 540) % 360) - 180);
-            dh = Math.Min(dh, 180 - dh);
-            if (da < 0.5 && db < 0.5 && dh < 1) op.S.Ok(FlowOp.F($"the line lies on the longest edge ({da:0.00} and {db:0.00} m off it)"));
-            else op.S.Problem(Severity.Bug, "BOUNDARY-EDGE-LINE-OFF", FlowOp.F($"Longest Edge: the line is {da:0.0}/{db:0.0} m off the {ll:0} m edge and {dh:0.0}° from it"));
+            // Which side the line lies on: both its ends on that side's line, and along it.
+            bool On(((double E, double N) A, (double E, double N) B, double Len) x)
+            {
+                double eh = (Math.Atan2(x.B.E - x.A.E, x.B.N - x.A.N) * 180 / Math.PI + 360) % 360;
+                double dh = Math.Abs(((info.HeadingDeg - eh + 540) % 360) - 180);
+                return PointToLine(info.AE, info.AN, x.A, x.B) < 0.5 && PointToLine(info.BE, info.BN, x.A, x.B) < 0.5 && Math.Min(dh, 180 - dh) < 1;
+            }
+            op.S.Step(FlowOp.F($"'{Masked(info.Name)}' runs at {info.HeadingDeg:0.0}°"));
+            if (On(side)) op.S.Ok(FlowOp.F($"the line lies on the field's longest side ({side.Len:0} m)"));
+            else if (fieldSides.FirstOrDefault(On) is { Len: > 0 } other)
+                op.S.Problem(Severity.Bug, "LONGEST-EDGE-NOT-LONGEST", FlowOp.F($"Longest Edge: the line runs along the {other.Len:0} m side, not the field's longest ({side.Len:0} m): it takes the longest piece between two boundary points"), FindingKind.AppDefect);
+            else op.S.Problem(Severity.Bug, "BOUNDARY-EDGE-LINE-OFF", "Longest Edge: the line lies on no side of the field (see the steps)", FindingKind.AppDefect);
             await ShownAsync(op, info);
         }
 
@@ -536,6 +539,32 @@ public static class TrackFlows
             if (t > 5) c++;
         }
         return c;
+    }
+
+    private static double Dist((double E, double N) a, (double E, double N) b) => Math.Sqrt((b.E - a.E) * (b.E - a.E) + (b.N - a.N) * (b.N - a.N));
+
+    /// <summary>A boundary's sides: runs of pieces within 2° of one direction, from corner to corner.</summary>
+    private static List<((double E, double N) A, (double E, double N) B, double Len)> Sides(List<(double E, double N)> ring)
+    {
+        var pts = new List<(double E, double N)>();
+        foreach (var q in ring) if (pts.Count == 0 || Dist(pts[^1], q) > 0.01) pts.Add(q);
+        if (pts.Count > 1 && Dist(pts[0], pts[^1]) <= 0.01) pts.RemoveAt(pts.Count - 1);
+        int n = pts.Count;
+        double Dir(int i) { var a = pts[i]; var b = pts[(i + 1) % n]; return Math.Atan2(b.E - a.E, b.N - a.N) * 180 / Math.PI; }
+        bool Corner(int i) => Math.Abs(((Dir((i + n - 1) % n) - Dir(i)) % 360 + 540) % 360 - 180) >= 2;
+        // Start at a corner, so no side is split across the ring's first point.
+        int s0 = 0;
+        for (int i = 0; i < n; i++) if (Corner(i)) { s0 = i; break; }
+        var sides = new List<((double E, double N) A, (double E, double N) B, double Len)>();
+        int start = s0;
+        for (int k = 1; k <= n; k++)
+        {
+            int i = (s0 + k) % n;
+            if (k < n && !Corner(i)) continue;
+            sides.Add((pts[start], pts[i], Dist(pts[start], pts[i])));
+            start = i;
+        }
+        return sides;
     }
 
     private static double PointToLine(double e, double n, (double E, double N) a, (double E, double N) b)
