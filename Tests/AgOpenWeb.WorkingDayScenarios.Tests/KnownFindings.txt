@@ -1,3 +1,11 @@
 # Finding codes already reported (an issue or a PR exists): the report marks them "Already
 # reported" instead of "New", so two nights' reports diff. One code per line; text after the
 # code is a note (the issue or PR number).
+#
+# The first nightly report (official PR #729, merged 2026-11-08) listed these six.
+DEADMAN-BLOCKED-BY-A-PHONE       #729 report: MapBroadcaster.BroadcastAsync awaits every client, SweepStale runs in the same loop
+MAP-FROZEN-BY-A-PHONE            #729 report: same cause, every map stops while one browser does not read
+MAP-PAUSED-WHILE-A-BROWSER-LOADS #729 report: the seed goes on the new connection's send gate, the coverage snapshot in it
+BACKEND-NOT-FREED-AFTER-EXIT     #729 report: static ConfigurationStore keeps the MainViewModel after the shut-down
+CONTROL-TICK-OVER-10-MS          #729 report: GetPaintedDisplayCells holds the coverage lock while a browser connects
+CLOSED-FIELD-COVERAGE-KEPT       #729 report (enhancement): CoverageMapService keeps the last field's buffers
