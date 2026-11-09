@@ -53,7 +53,7 @@ npx wrangler dev         # local run on :8787 with a local R2 bucket
 ## Nightly scenario harnesses
 
 GitHub's own schedule started this repo's runs 5–8 hours late every day, so the Worker starts
-them: at `NIGHTLY_CRON` (03:07 UTC, 21:07 US Central) it dispatches each workflow in
+them: at `NIGHTLY_CRON` (05:07 UTC, 23:07 US Central) it dispatches each workflow in
 `NIGHTLY_WORKFLOWS` on `NIGHTLY_REF` with `nightly=true`, and the workflow skips itself when
 develop has no commit from the last 25 hours. `NIGHTLY_CRON` must be one of `[triggers] crons`.
 The App needs **Actions: Read and write**; after adding it in the App's settings, accept the new
