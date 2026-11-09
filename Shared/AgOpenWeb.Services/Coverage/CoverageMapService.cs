@@ -805,7 +805,7 @@ public class CoverageMapService : ICoverageMapService
     private ushort GetZoneColorRgb565(int zoneIndex)
     {
         var tool = _configStore.Tool;
-        uint rgb888 = tool.IsMultiColoredSections
+        uint rgb888 = tool.IsMultiColoredSections && tool.IsSectionsNotZones
             ? tool.GetSectionColor(zoneIndex)
             : tool.SingleCoverageColor;
         return Rgb888ToRgb565(rgb888);
@@ -2672,7 +2672,9 @@ public class CoverageMapService : ICoverageMapService
     {
         var tool = _configStore.Tool;
 
-        if (!tool.IsMultiColoredSections)
+        // Zones paint in the one colour, as AgOpenGPS (CPatches.TurnMappingOn: section colours
+        // with sections only).
+        if (!tool.IsMultiColoredSections || !tool.IsSectionsNotZones)
         {
             // Use single coverage color
             uint color = tool.SingleCoverageColor;
