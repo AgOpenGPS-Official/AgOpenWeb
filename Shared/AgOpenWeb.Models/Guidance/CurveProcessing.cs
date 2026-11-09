@@ -305,6 +305,18 @@ namespace AgOpenWeb.Models.Guidance
             double lengthMeters = DefaultExtension)
             => ExtendCurveEnds(pass.Points, pass.StartKept ? lengthMeters : 0, pass.EndKept ? lengthMeters : 0, 1.0);
 
+        /// <summary>
+        /// <see cref="ExtendPass"/> for the U-turn's own geometry: an end that faces the other end
+        /// (the line's real end, not extended for steering or drawing) runs on into the opening
+        /// between them, short of halfway across, so the turn generator sees the pass cross the
+        /// opening's virtual turn line there (<c>CurveEndOpening</c>, #694). Other ends as
+        /// <see cref="ExtendPass"/>.
+        /// </summary>
+        public static List<Vec3> ExtendPassForTurn((List<Vec3> Points, double PercentRemoved, bool StartKept, bool EndKept) pass,
+            double lengthMeters = DefaultExtension)
+            => ExtendCurveEnds(pass.Points, pass.StartKept ? lengthMeters : 0, pass.EndKept ? lengthMeters : 0, 1.0,
+                intoOpening: true);
+
         /// <summary>How far a curve's pass runs on straight past each end, as AgOpenGPS's extended reference.</summary>
         public const double DefaultExtension = 200.0;
 
@@ -329,6 +341,10 @@ namespace AgOpenWeb.Models.Guidance
         /// </summary>
         public static List<Vec3> ExtendCurveEnds(IReadOnlyList<Vec3> points,
             double startLength, double endLength, double spacing)
+            => ExtendCurveEnds(points, startLength, endLength, spacing, intoOpening: false);
+
+        private static List<Vec3> ExtendCurveEnds(IReadOnlyList<Vec3> points,
+            double startLength, double endLength, double spacing, bool intoOpening)
         {
             if (points == null || points.Count < 2 || (startLength <= 0 && endLength <= 0) || spacing <= 0)
                 return points != null ? new List<Vec3>(points) : new List<Vec3>();
@@ -360,16 +376,17 @@ namespace AgOpenWeb.Models.Guidance
             var inTo = points[span];
             double inHead = Math.Atan2(inTo.Easting - first.Easting, inTo.Northing - first.Northing);
 
-            // An end pointing at the other end stops short of halfway across the gap between them.
-            // A boundary curve made the long way round has both ends on one side of the field,
-            // facing each other: extended 200 m each, they ran past each other along that side,
-            // drawn as tails past its corners, and the tractor followed the straight line on through
-            // the corner instead of the curve (#694).
-            double gapE = last.Easting - first.Easting, gapN = last.Northing - first.Northing;
-            double gap = Math.Sqrt(closeSq);
-            int capSteps = Math.Max(0, (int)((gap / 2 - 1.0) / spacing));
-            int inSteps = FacesOtherEnd(-Math.Sin(inHead), -Math.Cos(inHead), gapE, gapN, gap) ? Math.Min(startSteps, capSteps) : startSteps;
-            int outSteps = FacesOtherEnd(Math.Sin(outHead), Math.Cos(outHead), -gapE, -gapN, gap) ? Math.Min(endSteps, capSteps) : endSteps;
+            // An end pointing at the other end is not extended at all: there A and B are the line's
+            // real ends, not points along it. A boundary curve made the long way round has both ends
+            // on one side of the field, facing each other across the part it leaves out; extended
+            // 200 m each they ran past each other, and cut 1 m short of halfway they left a 2 m hole
+            // the tractor drove into and looped back from (#694). The opening between them is a
+            // virtual boundary the U-turn turns at (CurveEndOpening); for the turn's geometry
+            // only, such an end runs on into the opening, short of halfway (intoOpening).
+            var (startFaces, endFaces) = EndsFacingEachOther(points);
+            int openingSteps = intoOpening ? Math.Max(0, (int)((Math.Sqrt(closeSq) / 2 - 0.5) / spacing)) : 0;
+            int inSteps = startFaces ? Math.Min(startSteps, openingSteps) : startSteps;
+            int outSteps = endFaces ? Math.Min(endSteps, openingSteps) : endSteps;
 
             // Lead-in: walk backward from the first point (opposite the into-curve direction).
             double sinH = Math.Sin(inHead), cosH = Math.Cos(inHead);
@@ -412,6 +429,29 @@ namespace AgOpenWeb.Models.Guidance
             double e = end.Easting + outward * Math.Sin(head) + Math.Sin(head + Math.PI / 2) * offset;
             double no = end.Northing + outward * Math.Cos(head) + Math.Cos(head + Math.PI / 2) * offset;
             return near != null ? !near.AnyCloser(points, e, no, distSqAway) : !AnyCloser(points, e, no, distSqAway);
+        }
+
+        /// <summary>
+        /// Which ends of an open curve point at the other end (within 30°), measured along the
+        /// smoothed end direction <see cref="ExtendCurveEnds(IReadOnlyList{Vec3}, double, double, double)"/>
+        /// extends it by: the start running on backwards, the end forwards. Such an end is the
+        /// line's real end and gets no extension (#694). A closed loop (ends within 1 m) has none.
+        /// </summary>
+        public static (bool Start, bool End) EndsFacingEachOther(IReadOnlyList<Vec3> points)
+        {
+            if (points == null || points.Count < 2) return (false, false);
+            var first = points[0];
+            var last = points[points.Count - 1];
+            double gapE = last.Easting - first.Easting, gapN = last.Northing - first.Northing;
+            double gap = Math.Sqrt(gapE * gapE + gapN * gapN);
+            if (gap < 1.0) return (false, false);
+            int span = Math.Min(5, points.Count - 1);
+            var outFrom = points[points.Count - 1 - span];
+            double outHead = Math.Atan2(last.Easting - outFrom.Easting, last.Northing - outFrom.Northing);
+            var inTo = points[span];
+            double inHead = Math.Atan2(inTo.Easting - first.Easting, inTo.Northing - first.Northing);
+            return (FacesOtherEnd(-Math.Sin(inHead), -Math.Cos(inHead), gapE, gapN, gap),
+                    FacesOtherEnd(Math.Sin(outHead), Math.Cos(outHead), -gapE, -gapN, gap));
         }
 
         // The extension direction (de, dn) points at the other end, which lies (toE, toN) away:

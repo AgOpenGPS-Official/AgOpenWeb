@@ -892,11 +892,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn;
 
         var tickPosition = pos with { Easting = driftedEasting, Northing = driftedNorthing };
+        // An open curve whose ends face each other turns at the opening between them as at a
+        // headland: the U-turn gets the field with that opening as a virtual boundary (#694).
+        var turnField = hasTickableTrack && hasValidHeadlandLine
+            ? CurveEndTurnField(track!, boundary, headlandLine, headlandCalculatedWidth)
+            : null;
         var tickCtx = new YouTurnStateMachine.TickContext(
             tickPosition,
             track,
-            boundary,
-            headlandLine,
+            turnField?.Boundary ?? boundary,
+            turnField?.HeadlandLine ?? headlandLine,
             uTurnSkipRows,
             isSkipWorkedMode,
             headlandCalculatedWidth,
@@ -1201,6 +1206,17 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     // No pass where the tractor is (#694): steer straight and tell the module
                     // there is no line (PGN 254's no-line distance), as AgOpenGPS does.
                     statusMessage = noLine.statusMessage;
+                    _autoSteerService.UpdateGuidanceResults(0, NoLineDistance);
+                }
+                else if (guidanceResult is { atEnd: true } && !(youTurnEnabled && youTurnPath is { Count: > 0 }))
+                {
+                    // Past the end of an open curve, and no U-turn there to take over: AutoSteer
+                    // off, as AgOpenGPS ("Guidance Stopped" / "Past end of curve"), rather than
+                    // steering on into what the line leaves out (#694).
+                    autoSteerEngaged = false;
+                    autoSteerDisengaged = true;
+                    disengageReason = PastEndOfCurveReason;
+                    lock (_stateLock) _autoSteerEngaged = false;
                     _autoSteerService.UpdateGuidanceResults(0, NoLineDistance);
                 }
                 else if (guidanceResult != null)
@@ -1594,7 +1610,31 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // AgOpenGPS's 32000; PgnBuilder sends it as such).
     private const double NoLineDistance = 32000;
 
-    private (double steerAngle, double xte, double goalE, double goalN, string? statusMessage, bool hasLine)?
+    // The U-turn's field for a curve whose ends face each other, kept until the track, its
+    // points, the boundary, the headland or its width change (CurveEndOpening, #694).
+    private (Models.Track.Track? Track, List<Vec3>? Points, int Count, Boundary? Boundary, List<Vec3>? Headland, double Width) _turnFieldKey;
+    private CurveEndOpening.TurnField? _turnField;
+
+    private CurveEndOpening.TurnField? CurveEndTurnField(Models.Track.Track track, Boundary? boundary,
+        List<Vec3>? headlandLine, double headlandWidth)
+    {
+        var key = (track, track.Points, track.Points.Count, boundary, headlandLine, headlandWidth);
+        if (!ReferenceEquals(key.track, _turnFieldKey.Track) || !ReferenceEquals(key.Points, _turnFieldKey.Points)
+            || key.Count != _turnFieldKey.Count || !ReferenceEquals(boundary, _turnFieldKey.Boundary)
+            || !ReferenceEquals(headlandLine, _turnFieldKey.Headland) || headlandWidth != _turnFieldKey.Width)
+        {
+            _turnFieldKey = key;
+            _turnField = track.Points.Count > 2 && !track.IsClosed && !track.IsPivot
+                ? CurveEndOpening.Build(track.Points, boundary, headlandLine, headlandWidth)
+                : null;
+        }
+        return _turnField;
+    }
+
+    /// <summary>Why AutoSteer went off at the end of an open curve (AgOpenGPS gsGuidanceStopped, gsPastEndOfCurve).</summary>
+    public const string PastEndOfCurveReason = "AutoSteer disengaged - past end of curve";
+
+    private (double steerAngle, double xte, double goalE, double goalN, string? statusMessage, bool hasLine, bool atEnd)?
         CalculateTrackGuidance(
             Position currentPosition, Models.Track.Track track, int passNumber, double nudgeOffset,
             double driftedEasting, double driftedNorthing, double headingRad,
@@ -1678,7 +1718,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // No pass here: the offset removed all of it (#694). Nothing to steer to, as in
             // AgOpenGPS, whose empty pass sends the module its no-line distance (32000).
             if (offsetPoints.Count < 2)
-                return (0, 0, 0, 0, statusMessage, false);
+                return (0, 0, 0, 0, statusMessage, false, false);
         }
 
         if (_cycleCounter % 50 == 0 && currentTrack.Points.Count >= 2)
@@ -1730,7 +1770,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _trackGuidanceState.CurrentLocationIndex = output.CurrentLocationIndex;
 
         return (output.SteerAngle, output.CrossTrackError, output.GoalPoint.Easting, output.GoalPoint.Northing,
-                statusMessage, true);
+                statusMessage, true, output.IsAtEndOfTrack);
     }
 
     /// <summary>

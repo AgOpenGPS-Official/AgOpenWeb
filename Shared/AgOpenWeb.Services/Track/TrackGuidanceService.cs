@@ -177,6 +177,12 @@ public class TrackGuidanceService : ITrackGuidanceService
         if (input.UseStanley)
         {
             CalculateStanleyGuidance(input, output, points, indexA, indexB, ptA, ptB, dx, dz, isHeadingSameWay);
+
+            // Stanley has no goal point: the curve has ended when the pivot is past its end (#694).
+            if (!isABLine && !isClosed && !input.Track.IsPivot && input.IsAutoSteerOn && !input.IsReverse
+                && !input.IsYouTurnTriggered
+                && PastOpenEnd(points, indexA, indexB, output.ClosestPointPivot, reverseHeading, out _, out _))
+                output.IsAtEndOfTrack = true;
         }
         else
         {
@@ -230,16 +236,18 @@ public class TrackGuidanceService : ITrackGuidanceService
                 output.ClosestPointPivot,
                 input.GoalPointDistance,
                 reverseHeading,
-                isClosed);
+                isClosed,
+                out bool goalAtEnd);
 
-            // Check for end of track
-            if (!isClosed && input.IsAutoSteerOn && !input.IsReverse)
+            // Past the end of the curve, as AgOpenGPS (CABCurve.GetCurrentCurveLine): with AutoSteer
+            // on and going forward, a goal point at the open curve's end in the direction of travel
+            // (within 0.5 m of it, or beyond it on the straight past it, so a fix that steps over
+            // the 0.5 m doesn't miss it) stops guidance: the pipeline turns AutoSteer off unless a
+            // U-turn takes over there (#694).
+            if (goalAtEnd && !isClosed && !input.Track.IsPivot && input.IsAutoSteerOn && !input.IsReverse
+                && !input.IsYouTurnTriggered)
             {
-                var endPoint = isHeadingSameWay ? points[^1] : points[0];
-                if (GeometryMath.Distance(output.GoalPoint, endPoint) < 0.5)
-                {
-                    output.IsAtEndOfTrack = true;
-                }
+                output.IsAtEndOfTrack = true;
             }
         }
 
@@ -717,7 +725,9 @@ public class TrackGuidanceService : ITrackGuidanceService
     }
 
     /// <summary>
-    /// Calculate goal point by walking along curve points.
+    /// Calculate goal point by walking along curve points. <paramref name="atEnd"/>: on an open
+    /// curve the goal point is at its end in the direction of travel, within 0.5 m of it or
+    /// beyond it (AgOpenGPS's "past end of curve").
     /// </summary>
     private Vec2 CalculateCurveGoalPoint(
         List<Vec3> points,
@@ -725,14 +735,62 @@ public class TrackGuidanceService : ITrackGuidanceService
         Vec2 startPoint,
         double goalDistance,
         bool reverseDirection,
-        bool isClosed)
+        bool isClosed,
+        out bool atEnd)
     {
+        var goal = CurveGoalPoint(points, indexA, indexB, startPoint, goalDistance, reverseDirection, isClosed, out atEnd);
+        if (!isClosed && !atEnd)
+            atEnd = GeometryMath.Distance(goal, reverseDirection ? points[^1] : points[0]) < 0.5;
+        return goal;
+    }
+
+    /// <summary>
+    /// <paramref name="p"/> (on the nearest segment's line) lies past the open curve's end in
+    /// the direction of travel: the segment is the last one that way and p is beyond its end
+    /// point. (<paramref name="ux"/>, <paramref name="uz"/>): the unit direction of travel there.
+    /// </summary>
+    private static bool PastOpenEnd(List<Vec3> points, int indexA, int indexB, Vec2 p, bool forward,
+        out double ux, out double uz)
+    {
+        ux = uz = 0;
+        int count = points.Count;
+        int endIdx = forward ? indexB : indexA;
+        if (count < 2 || endIdx != (forward ? count - 1 : 0)) return false;
+        var end = points[endIdx];
+        var before = points[forward ? indexA : indexB];
+        double tx = end.Easting - before.Easting, tz = end.Northing - before.Northing;
+        double tlen = Math.Sqrt(tx * tx + tz * tz);
+        if (tlen < 1e-6) return false;
+        ux = tx / tlen; uz = tz / tlen;
+        return (p.Easting - end.Easting) * ux + (p.Northing - end.Northing) * uz >= 0;
+    }
+
+    private Vec2 CurveGoalPoint(
+        List<Vec3> points,
+        int indexA, int indexB,
+        Vec2 startPoint,
+        double goalDistance,
+        bool reverseDirection,
+        bool isClosed,
+        out bool pastEnd)
+    {
+        pastEnd = false;
         int direction = reverseDirection ? 1 : -1;
         Vec3 current = new Vec3(startPoint.Easting, startPoint.Northing, 0);
         double distSoFar = 0;
         int count = points.Count;
 
         int startIdx = reverseDirection ? indexB : indexA;
+
+        // Already past the open curve's end: the closest point lies on the last segment's line
+        // beyond its end point. Walking from there to that point went BACK, and once the tractor
+        // was a look-ahead past the end the goal point was behind it, so it turned round and
+        // came back to the end (#694). Look ahead along the straight past the end instead.
+        if (!isClosed && PastOpenEnd(points, indexA, indexB, startPoint, reverseDirection, out double ux, out double uz))
+        {
+            pastEnd = true;
+            return new Vec2(startPoint.Easting + ux * goalDistance, startPoint.Northing + uz * goalDistance);
+        }
 
         for (int i = startIdx; ; )
         {
@@ -766,8 +824,10 @@ public class TrackGuidanceService : ITrackGuidanceService
                 // project the remaining look-ahead along the LAST segment's tangent instead
                 // of clamping at the endpoint. Clamping froze the goal at the last point, so
                 // the tractor reached it and spun 180° instead of driving on to the turn.
+                // The goal point is then past the end: AutoSteer stops (#694).
                 if (i < 0 || i >= count)
                 {
+                    pastEnd = true;
                     int lastIdx = i - direction;        // endpoint just consumed (== current)
                     int prevIdx = lastIdx - direction;  // point before it → travel tangent
                     if (prevIdx < 0 || prevIdx >= count)
