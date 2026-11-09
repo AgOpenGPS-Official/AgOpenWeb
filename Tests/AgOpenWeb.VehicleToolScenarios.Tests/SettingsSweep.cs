@@ -181,8 +181,12 @@ public static class SettingsSweep
         new("tool.isMultiColoredSections", "0", "1", Probe.Sections, Effect.None, "Multi-coloured coverage (display)"),
         new("tool.singleCoverageColor", "98FB98", "FF0000", Probe.Sections, Effect.None, "Coverage colour (display)"),
         new("tool.sectionColor", "0,98FB98", "0,FF0000", Probe.Sections, Effect.None, "Section 1 colour (display)"),
-        new("tool.zones", "2", "4", Probe.Sections, Effect.Sections, "Number of zones", "tool.isSectionsNotZones:0"),
-        new("tool.zoneEnd", "0,4", "0,2", Probe.Sections, Effect.Sections, "Zone 1 last section", "tool.isSectionsNotZones:0"),
+        // Zones group the section buttons and the remote switches (AgOpenGPS: zoneRanges in
+        // Sections.Designer); automatic switching and painting stay per section. On a drive with
+        // every section on Auto, changing them must move nothing. The group's base runs also
+        // check that zone mode paints the full width (SECTIONS-PAINT-SHORT).
+        new("tool.zones", "2", "4", Probe.Sections, Effect.None, "Number of zones (buttons only)", "tool.isSectionsNotZones:0"),
+        new("tool.zoneEnd", "0,4", "0,2", Probe.Sections, Effect.None, "Zone 1 last section (buttons only)", "tool.isSectionsNotZones:0"),
         new("vehicle.hitchLength", "1.1", "3", Probe.Sections, Effect.Sections, "Drawbar length (trailed)", "tool.type:trailing"),
         new("tool.trailingHitchLength", "2.5", "5", Probe.Sections, Effect.Sections, "Trailed hitch length", "tool.type:trailing"),
         new("tool.trailingToolToPivotLength", "0", "1.5", Probe.Sections, Effect.Sections, "Trailed: working line behind its wheels", "tool.type:trailing"),
