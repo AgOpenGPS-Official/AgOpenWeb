@@ -53,6 +53,9 @@ public sealed record JobSpec(
     public bool Reengage { get; init; } = true;
     /// <summary>Findings this job is expected to produce (the operator's own doing): noted, not counted.</summary>
     public IReadOnlyList<string> Expected { get; init; } = Array.Empty<string>();
+    /// <summary>When an <see cref="Expected"/> code is the operator's doing only up to a size (a
+    /// 50 cm nudge leaves a 50 cm strip, not a wider one): false = report it as a finding after all.</summary>
+    public Func<string, JobAreas, bool>? ExpectedWhen { get; init; }
     /// <summary>How the operator guides the job: the AB line named in <see cref="Track"/> (the
     /// default), or a curve, a closed loop, a water pivot, contour or a recorded path
     /// (<see cref="PathOperator"/>).</summary>
@@ -65,6 +68,24 @@ public sealed record JobSpec(
     /// <summary>AgOpenWeb's clock runs on the job's simulated time (<see cref="SimClock"/>), as
     /// it must where AgOpenWeb times guidance itself (contour rebuilds its line every 2 s).</summary>
     public bool SimulatedClock { get; init; }
+    /// <summary>On an AB line too: the implement measured against the pass it should be on
+    /// (<c>OFF-ITS-PASS</c>), from when it first reaches it, or 30 s after a turn at the latest.</summary>
+    public bool PassCheck { get; init; }
+    /// <summary>The U-turn style typed in (0 Sagitta, AgOpenWeb's default; 1 K-turn; 2 Keyhole); null = left alone.</summary>
+    public int? UTurnStyle { get; init; }
+    /// <summary>Start on the first pass whose implement line runs in the cultivated area even if
+    /// the tractor's own line (an implement to one side) does not; otherwise both must.</summary>
+    public bool EdgePass { get; init; }
+    /// <summary>Checks of the job's own, after the common ones (what a careless operator's action must not cost).</summary>
+    public Action<Scenario, JobRun, Action<Severity, string, string>>? ExtraJudge { get; init; }
+    /// <summary>What the operator does once everything is set up, before the job starts (skip
+    /// rows, the units, a setting typed the wrong way).</summary>
+    public Func<JobRun, Task>? BeforeStart { get; init; }
+    /// <summary>How the operator types the machine's settings (the units pass types those with a
+    /// unit into the web client's own boxes); null = each as config.set, as the page sends it.</summary>
+    public Func<JobRun, IReadOnlyList<string>, Task<bool>>? TypeSettings { get; init; }
+    /// <summary>How the operator makes the headland from the whole boundary; null = headland.wholeBoundary with <see cref="HeadlandM"/>.</summary>
+    public Func<JobRun, Task<bool>>? MakeHeadland { get; init; }
 }
 
 /// <summary>How the operator guides a job.</summary>
@@ -84,6 +105,10 @@ public enum GuideKind
     Contour,
     /// <summary>A path recorded by driving it, then played back.</summary>
     RecordedPath,
+    /// <summary>A curve recorded by driving it by hand (Curve, Record, Finish): the field file's
+    /// curve track (<see cref="JobSpec.Track"/>) is where the operator drives; the passes are
+    /// the recorded curve offset across the field, with U-turns as on an AB line.</summary>
+    DrivenCurve,
 }
 
 /// <summary>What one U-turn did.</summary>
@@ -97,10 +122,23 @@ public sealed class TurnRecord
     public bool Fallback;               // AgOpenWeb used its simple fallback path for this turn
     public bool Left;
     public double MinSpeedKmh = 99;
+    public double MaxHitchDeg;          // trailed / TBT: the largest angle between the tractor and the drawbar
     public double HeadingAtStart, UAtStart, TangentAtStart;
     /// <summary>Seconds into the turn when the tractor was back on a pass line, facing the other
     /// way, inside the cultivated area (the turn done on the ground); -1 if never seen.</summary>
     public double BackOnPassSeconds = -1;
+    /// <summary>The pass the real implement was on when the turn began, and 15 s after it ended
+    /// (AB lines; int.MinValue = not known).</summary>
+    public int TruthPassBefore = int.MinValue, TruthPassAfter = int.MinValue;
+    /// <summary>When AgOpenWeb ended the turn: the tractor's heading against the pass direction
+    /// (either way), and the implement's distance from the nearest pass.</summary>
+    public double EndHeadingOffDeg = double.NaN, EndOffPassM = double.NaN;
+    public double EndSeconds = double.NaN;
+    /// <summary>The implement centre across the passes (m) when AgOpenWeb ended the turn: against
+    /// the pass it is on 15 s later, how far the turn's exit leg put it beside that pass.</summary>
+    public double EndU = double.NaN;
+    public double ExitOffM => TruthPassAfter == int.MinValue || double.IsNaN(EndU) ? double.NaN : EndU - Spacing * (TruthPassAfter + 0.5);
+    public double Spacing;
 }
 
 /// <summary>
@@ -141,6 +179,7 @@ public sealed class JobRun : IAsyncDisposable
     /// <summary>Unsprayed ground at a lap's corner, where the passes pull apart.</summary>
     public Func<(double E, double N), bool>? AtCorner;
     private bool _passJoined;
+    private int _passStartFix;
     private int _passErrorTraced = -1000;
     /// <summary>The operator numbers the passes (contour, recorded path): AgOpenWeb's pass number is not read.</summary>
     public bool PassFromOperator;
@@ -199,6 +238,10 @@ public sealed class JobRun : IAsyncDisposable
     public readonly List<string> Said = new();
     public readonly List<string> Problems = new();
     public readonly List<string> Notes = new();
+    /// <summary>"End of field reached" said by AgOpenWeb, then a U-turn it made after all: when and where.</summary>
+    public readonly List<string> EarlyEnds = new();
+    private double _endSaidAt = -1;
+    private int _endSaidPass;
     public int Reengaged;
     public readonly double[] ScreenOnValveShut = new double[64], ScreenOffValveOpen = new double[64];
     /// <summary>Disagreement that lasted more than a second at a stretch (the switching latency
@@ -212,6 +255,9 @@ public sealed class JobRun : IAsyncDisposable
     public double ToolAlongSum, ToolAcrossSum, ToolAlongMax, ToolAcrossMax; public int ToolSamples;
     /// <summary>Seconds the module was told geo-stop (PGN 239 byte 9) while the job ran.</summary>
     public double SecondsGeoStop;
+    /// <summary>Trailed / TBT: the largest angle between the tractor and the drawbar over the whole job, and where.</summary>
+    public double MaxHitchDeg;
+    public string MaxHitchWhere = "";
     /// <summary>How many fixes behind the receiver AgOpenWeb's last cycle is: for each fix, the
     /// recent truth pivot position nearest AgOpenWeb's own pivot. Histogram by fixes of lag.</summary>
     public readonly int[] LagHistogram = new int[40];
@@ -272,13 +318,15 @@ public sealed class JobRun : IAsyncDisposable
         settings.Add("tool.isHeadlandSectionControl:" + (Spec.HeadlandSections ? "1" : "0"));
         settings.Add(F($"uturn.radius:{Spec.UTurnRadius}"));
         settings.Add(F($"uturn.distanceFromBoundary:{Spec.UTurnDistanceFromBoundary}"));
+        if (Spec.UTurnStyle is int style) settings.Add(F($"uturn.style:{style}"));
         if (Spec.LookAheadMatchesValves)
         {
             settings.Add(F($"tool.lookAheadOn:{Spec.ValveOnS}"));
             settings.Add(F($"tool.lookAheadOff:{Spec.ValveOffS}"));
         }
         settings.AddRange(Spec.Extra);
-        foreach (var kv in settings) await SendAsync("config.set", kv);
+        if (Spec.TypeSettings != null) { if (!await Spec.TypeSettings(this, settings)) return false; }
+        else foreach (var kv in settings) await SendAsync("config.set", kv);
         await SendAsync("profile.save");
 
         // A few fixes at the field first, as a receiver gives before the field opens.
@@ -323,11 +371,13 @@ public sealed class JobRun : IAsyncDisposable
         double abHeading = Math.Atan2(Along.E, Along.N) * 180 / Math.PI;
         S.Step(F($"AB line '{Spec.Track}' at {(abHeading + 360) % 360:0}°, active"));
         Frame = new StraightFrame(A, Along);
+        Truth.FieldAlong = Along;
         }
 
         if (Spec.HeadlandM > 0)
         {
-            await SendAsync("headland.wholeBoundary", F($"{Spec.HeadlandM}"));
+            if (Spec.MakeHeadland != null) { if (!await Spec.MakeHeadland(this)) return false; }
+            else await SendAsync("headland.wholeBoundary", F($"{Spec.HeadlandM}"));
             if (!await Rig.WaitUntilAsync(() => Rig.State.Field.HeadlandLine is { Count: > 2 }, 15000))
             { Harness("no headland line was built"); return false; }
             Work = await Rig.ReadAsync(() => Rig.State.Field.HeadlandLine!.Select(p => (p.Easting, p.Northing)).ToList());
@@ -350,6 +400,7 @@ public sealed class JobRun : IAsyncDisposable
             if (!hard) Harness("boundary.hard did not mark the outer boundary hard");
         }
 
+        if (Spec.BeforeStart != null) await Spec.BeforeStart(this);
         await SendAsync("field.startJob", name + "\tSpraying\tscenario\tSpraying " + name);
         S.Step("job started");
 
@@ -413,10 +464,12 @@ public sealed class JobRun : IAsyncDisposable
     /// <summary>Where the operator starts: the pass nearest the field's left edge (looking along
     /// A->B), the tractor 12 m before the boundary on that pass line, facing in.</summary>
     /// <summary>How long pass k's line runs inside the cultivated area (the longest stretch), m.</summary>
-    public double InsideChordM(int k)
+    public double InsideChordM(int k) => InsideChordAtU((k + 0.5) * Spacing);
+
+    /// <summary>How long the line at <paramref name="u"/> runs inside the cultivated area (the longest stretch), m.</summary>
+    public double InsideChordAtU(double u)
     {
         var work = Work ?? Outer;
-        double u = (k + 0.5) * Spacing;
         if (Frame is not StraightFrame)
         {
             // Walk pass k's line in 1 m steps (past the ends of an open curve too).
@@ -455,7 +508,17 @@ public sealed class JobRun : IAsyncDisposable
             double chord = InsideChordM(i);
             if (chord > 0 && chord < 20) SliverPasses.Add((i, chord));
         }
-        for (k = kMin; k <= kMax && InsideChordM(k) < 20; k++) { }
+        // With an implement to one side the operator starts with it on the boundary side (the
+        // tractor inwards of it, as a mower is driven along a fence): along A->B for an implement
+        // on the left, against A->B for one on the right. The tractor's own line must run in the
+        // cultivated area too. A job that starts on the edge pass on purpose (EdgePass) goes along
+        // A->B with whatever the tractor's line does.
+        int dir = Spec.T.Offset > 0 && !Spec.EdgePass ? -1 : 1;
+        double TractorU(int i) => (i + 0.5) * Spacing - Spec.T.Offset * dir;
+        for (k = kMin; k <= kMax && (InsideChordM(k) < 20 || (!Spec.EdgePass && Spec.T.Offset != 0 && InsideChordAtU(TractorU(k)) < 20)); k++) { }
+        if (k > kMin && Spec.T.Offset != 0)
+            for (int i = kMin; i < k; i++)
+                if (InsideChordM(i) >= 20) Journal.Trace(F($"[fj] pass {i} skipped at the start: the implement's line has {InsideChordM(i):0} m in the cultivated area, the tractor's {InsideChordAtU(TractorU(i)):0} m"));
         Journal.Trace("[fj] passes (number: metres of line inside the cultivated area): " + string.Join(", ",
             Enumerable.Range(kMin, kMax - kMin + 1).Select(i => F($"{i}: {InsideChordM(i):0}"))));
         double u = (k + 0.5) * Spacing;
@@ -465,15 +528,24 @@ public sealed class JobRun : IAsyncDisposable
         // cultivated area, as a person would, not at the first crossing along the line.
         var tw = Ring.LineCrossings(onLine, Along, work);
         tw.Sort();
-        double chordStart = tw.Count >= 2 ? tw[0] : Outer.Min(Vv);
+        double chordStart = tw.Count >= 2 ? tw[0] : Outer.Min(Vv), chordEnd = tw.Count >= 2 ? tw[1] : Outer.Max(Vv);
         for (int i = 0, bestLen = -1; i + 1 < tw.Count; i += 2)
-            if (tw[i + 1] - tw[i] > bestLen) { bestLen = (int)(tw[i + 1] - tw[i]); chordStart = tw[i]; }
-        var ts = Ring.LineCrossings(onLine, Along, Outer).Where(t => t <= chordStart + 0.01).ToList();
-        double vStart = ts.Count > 0 ? ts.Max() : chordStart;
-        double vPivot = vStart - 12;
-        double uPivot = u - Spec.T.Offset;   // the implement sits Offset to the tractor's right
+            if (tw[i + 1] - tw[i] > bestLen) { bestLen = (int)(tw[i + 1] - tw[i]); chordStart = tw[i]; chordEnd = tw[i + 1]; }
+        var outer = Ring.LineCrossings(onLine, Along, Outer);
+        double vPivot;
+        if (dir > 0)
+        {
+            var ts = outer.Where(t => t <= chordStart + 0.01).ToList();
+            vPivot = (ts.Count > 0 ? ts.Max() : chordStart) - 12;
+        }
+        else
+        {
+            var ts = outer.Where(t => t >= chordEnd - 0.01).ToList();
+            vPivot = (ts.Count > 0 ? ts.Min() : chordEnd) + 12;
+        }
+        double uPivot = TractorU(k);   // the implement sits Offset to the tractor's right
         return ((A.E + Across.E * uPivot + Along.E * vPivot, A.N + Across.N * uPivot + Along.N * vPivot),
-                Math.Atan2(Along.E, Along.N), k);
+                Math.Atan2(Along.E * dir, Along.N * dir), k);
     }
 
     public async Task<bool> DriveAsync()
@@ -487,7 +559,7 @@ public sealed class JobRun : IAsyncDisposable
         {
         var (pivot, hdg, k0) = StartPose();
         Truth.Place(pivot.E, pivot.N, hdg);
-        S.Step(F($"tractor put at the start of pass {k0} ({pivot.E:0},{pivot.N:0}), 12 m before the boundary, heading {hdg * 180 / Math.PI:0}°"));
+        S.Step(F($"tractor put at the start of pass {k0} ({pivot.E:0},{pivot.N:0}), 12 m before the boundary, heading {(hdg * 180 / Math.PI + 360) % 360:0}°"));
         for (int i = 0; i < 30; i++) { Truth.Advance(FixSeconds, 0); SendFix(); await Task.Delay(PaceMs); }
         await Rig.WaitForVmAsync();
         await SendAsync("autosteer.toggle");
@@ -542,7 +614,15 @@ public sealed class JobRun : IAsyncDisposable
                 bool executing = yt?.IsExecuting == true;
                 if (executing && !wasExecuting)
                 {
-                    turn = new TurnRecord { Index = ++TurnsStarted, PassBefore = lastPassSeen, StartSeconds = Seconds, Left = yt!.IsTurnLeft, HeadingAtStart = Truth.Heading, UAtStart = U((Truth.E, Truth.N)), TangentAtStart = Frame.TangentHeading((Truth.E, Truth.N)) };
+                    // AgOpenWeb said the field was done, then turned onto another pass after all (the
+                    // message came at a bite in the boundary, the turn at the real end): the operator,
+                    // driving the pass out, lets it turn, and the job goes on.
+                    if (FieldDone && _endSaidAt >= 0 && !Stopped)
+                    {
+                        EarlyEnds.Add(F($"\"End of field reached\" at {_endSaidAt:0} s on pass {_endSaidPass}, then U-turn {TurnsStarted + 1} at {Seconds:0} s"));
+                        FieldDone = false; _endSaidAt = -1; leftWorkAt = -1; inWorkSinceEnd = false;
+                    }
+                    turn = new TurnRecord { Index = ++TurnsStarted, PassBefore = lastPassSeen, StartSeconds = Seconds, Left = yt!.IsTurnLeft, HeadingAtStart = Truth.Heading, UAtStart = U((Truth.E, Truth.N)), TangentAtStart = Frame.TangentHeading((Truth.E, Truth.N)), TruthPassBefore = TruthPass() };
                     saidAtTurnStart = Math.Max(0, Said.Count - 6);
                     Turns.Add(turn);
                     InTurn = true;
@@ -554,6 +634,7 @@ public sealed class JobRun : IAsyncDisposable
                     turn.MaxOutsideM = Math.Max(turn.MaxOutsideM, outside);
                     turn.MaxPivotOutsideM = Math.Max(turn.MaxPivotOutsideM, pivotOut);
                     turn.MinSpeedKmh = Math.Min(turn.MinSpeedKmh, Truth.SpeedKmh);
+                    turn.MaxHitchDeg = Math.Max(turn.MaxHitchDeg, Math.Abs(Truth.HitchAngleDeg));
                     if (turn.BackOnPassSeconds < 0)
                     {
                         double dh = Math.Abs(Math.IEEERemainder((Truth.Heading - Frame.TangentHeading((Truth.E, Truth.N))) - (turn.HeadingAtStart - turn.TangentAtStart) - Math.PI, 2 * Math.PI));
@@ -569,8 +650,13 @@ public sealed class JobRun : IAsyncDisposable
                 if (TurnsStarted == 0 && !executing && yt?.TurnPath is { Count: > 1 } path && !_arrowChecked)
                 {
                     _arrowChecked = true;
-                    var end = path[^1];
-                    double uEnd = U((end.Easting, end.Northing)), uNow = U((Truth.E, Truth.N));
+                    // Where the implement lands: the path ends at the tractor; an implement to one
+                    // side sits Offset to its right, the right of the path's last heading.
+                    var end = path[^1]; var pre = path[^2];
+                    double he = Math.Atan2(end.Easting - pre.Easting, end.Northing - pre.Northing);
+                    double rightU = Math.Cos(he) * Across.E - Math.Sin(he) * Across.N;
+                    var tcNow = Truth.ToolCentre;
+                    double uEnd = U((end.Easting, end.Northing)) + Spec.T.Offset * rightU, uNow = U((tcNow.E, tcNow.N));
                     int target = (int)Math.Floor(uEnd / Spacing);
                     if (uEnd < uNow - Spacing / 2)
                     {
@@ -584,9 +670,20 @@ public sealed class JobRun : IAsyncDisposable
                 {
                     if (!turn.Fallback && Said.Skip(saidAtTurnStart).Any(l => l.Contains("using simple fallback", StringComparison.Ordinal))) turn.Fallback = true;
                     turn.Seconds = Seconds - turn.StartSeconds;
+                    turn.EndSeconds = Seconds;
+                    {
+                        var tce = Truth.ToolCentre;
+                        double dh = Math.Abs(Math.IEEERemainder(Truth.Heading - Frame.TangentHeading((tce.E, tce.N)), Math.PI));
+                        turn.EndHeadingOffDeg = dh * 180 / Math.PI;
+                        double uq = U((tce.E, tce.N)) / Spacing - 0.5;
+                        turn.EndOffPassM = Math.Abs(uq - Math.Round(uq)) * Spacing;
+                        turn.EndU = U((tce.E, tce.N));
+                        turn.Spacing = Spacing;
+                    }
                     InTurn = false;
                     afterTurnUntil = Fix + 200;
                     _passJoined = false;
+                    _passStartFix = Fix;
                 }
                 // The 20 s after a turn, once a second: where AgOpenWeb thinks the tractor is
                 // (zone and distance to the headland line), to see why a turn is or is not made.
@@ -596,6 +693,8 @@ public sealed class JobRun : IAsyncDisposable
                     string where = Ring.Inside((Truth.E, Truth.N), Work ?? Outer) ? "cultivated" : Ring.Inside((Truth.E, Truth.N), Outer) ? "headland" : "outside";
                     Journal.Trace(F($"[fj] {Seconds,7:0.0} s   after turn {TurnsStarted}: AgOpenWeb zone {yt.CurrentZone}, headland {(yt.DistanceToHeadland > 1e6 ? "none" : F($"{yt.DistanceToHeadland:0.0} m"))} ahead, executing {yt.IsExecuting}, path {(yt.TurnPath == null ? "none" : "ready")}; really {where}, u {U((tcc.E, tcc.N)):0.0}, steer {c.IsAutoSteerEngaged}"));
                 }
+                if (!executing && turn is { TruthPassAfter: int.MinValue } && !double.IsNaN(turn.EndSeconds) && Seconds - turn.EndSeconds >= 15)
+                    turn.TruthPassAfter = TruthPass();
                 wasExecuting = executing;
                 if (!executing && !PassFromOperator && c.Guidance is { HasGuidance: true } gg)
                 {
@@ -609,13 +708,16 @@ public sealed class JobRun : IAsyncDisposable
                 }
                 // Curve, loop and pivot jobs: the implement against the pass it should be on.
                 // Not before the implement first reaches its pass (the start, after a U-turn).
-                if (PathOp != null && engaged && HandSteer == null && !executing && !InChange && !InCorner && Pass != int.MinValue)
+                if ((PathOp != null || Spec.PassCheck) && engaged && HandSteer == null && !executing && !InChange && !InCorner && Pass != int.MinValue)
                 {
                     var tcc = Truth.ToolCentre;
-                    double want = PathOp.ExpectedU(this, Pass);
+                    double want = PathOp?.ExpectedU(this, Pass) ?? (Pass + 0.5) * Spacing;
                     double err = double.IsFinite(want) ? U((tcc.E, tcc.N)) - want : double.NaN;
                     if (!_passJoined && Math.Abs(err) < 0.3) _passJoined = true;
-                    if (_passJoined && double.IsFinite(err) && !PathOp.PassErrorJudgedElsewhere(this, err))
+                    // An implement that never reaches its pass is off it too: measured from 30 s
+                    // after the turn (the jobs that ask for the check on an AB line).
+                    if (!_passJoined && Spec.PassCheck && Fix - _passStartFix > 300) _passJoined = true;
+                    if (_passJoined && double.IsFinite(err) && PathOp?.PassErrorJudgedElsewhere(this, err) != true)
                     {
                         if (Math.Abs(err) > 1.0 && Fix - _passErrorTraced >= 50)
                         {
@@ -632,7 +734,10 @@ public sealed class JobRun : IAsyncDisposable
                 if (!executing && Pass != int.MinValue && (c.ToolEasting != 0 || c.ToolNorthing != 0))
                 {
                     var tcc = Truth.ToolCentre;
-                    double de = c.ToolEasting - tcc.E, dn = c.ToolNorthing - tcc.N;
+                    // AgOpenWeb's tool position is the implement's reference point; its sections
+                    // sit Offset to the right of it (SectionControlService), as the real one's.
+                    double off = Spec.T.Offset, th = c.ToolHeadingRadians;
+                    double de = c.ToolEasting + Math.Cos(th) * off - tcc.E, dn = c.ToolNorthing - Math.Sin(th) * off - tcc.N;
                     double along = de * Math.Sin(tcc.Heading) + dn * Math.Cos(tcc.Heading);
                     double across = de * Math.Cos(tcc.Heading) - dn * Math.Sin(tcc.Heading);
                     ToolAlongSum += along; ToolAcrossSum += across; ToolSamples++;
@@ -662,6 +767,12 @@ public sealed class JobRun : IAsyncDisposable
             }
             else offSince = -1;
 
+            double hitch = Math.Abs(Truth.HitchAngleDeg);
+            if (hitch > MaxHitchDeg)
+            {
+                MaxHitchDeg = hitch;
+                MaxHitchWhere = F($"at {Seconds:0} s, ({Truth.E:0},{Truth.N:0}){(InTurn ? F($", U-turn {TurnsStarted}") : "")}{(Truth.SpeedKmh < 0 ? ", reversing" : "")}");
+            }
             if (Spec.OnFix != null) await Spec.OnFix(this);
             if (PathOp != null) await PathOp.OnFixAsync(this);
 
@@ -671,8 +782,13 @@ public sealed class JobRun : IAsyncDisposable
                 foreach (var e in Collect())
                 {
                     Said.Add(F($"{Seconds:0.0} s: {e}"));
-                    if (e.Contains("End of field reached", StringComparison.Ordinal) || e.Contains("Field complete", StringComparison.Ordinal))
+                    // AgOpenWeb says it only while it plans a turn, never during one: read once a second,
+                    // a message from just before a turn started is stale and is not the end.
+                    if ((e.Contains("End of field reached", StringComparison.Ordinal) || e.Contains("Field complete", StringComparison.Ordinal)) && !wasExecuting)
+                    {
+                        if (!FieldDone) { _endSaidAt = Seconds; _endSaidPass = Pass; }
                         FieldDone = true;
+                    }
                     // AgOpenWeb refused the turn and said so (#698, #716): the operator takes over
                     // here and the job stops, instead of riding on with AutoSteer out of the field.
                     if (e.Contains("No U-turn fits", StringComparison.Ordinal) && TookOverAt < 0)
@@ -686,9 +802,18 @@ public sealed class JobRun : IAsyncDisposable
             bool inWork = Ring.Inside((tc.E, tc.N), Work ?? Outer);
             if (FieldDone)
             {
-                if (inWork) inWorkSinceEnd = true;
-                else if (inWorkSinceEnd || (leftWorkAt >= 0 && Seconds - leftWorkAt > 6)) break;
-                if (!inWork && leftWorkAt < 0) leftWorkAt = Seconds;
+                // The operator drives the last pass to its end: AgOpenWeb says it as the last turn ends,
+                // the implement still in the headland (a front boom with a tight turn, a drill behind its
+                // tank take a while to come back in), and the pass may cross a bit of headland (round a
+                // bite in the boundary) and go on. Done when the implement is out of the cultivated area
+                // with none of it ahead (40 m), or after 45 s out of it.
+                if (inWork) { inWorkSinceEnd = true; leftWorkAt = -1; }
+                else
+                {
+                    if (leftWorkAt < 0) leftWorkAt = Seconds;
+                    if (Seconds - leftWorkAt > 45) break;
+                    if (!WorkAhead(tc, 40) && (inWorkSinceEnd || Seconds - leftWorkAt > 6)) break;
+                }
             }
             if (TookOverAt >= 0) break;
             double far = OutsideBoundaryM().Worst;
@@ -706,6 +831,23 @@ public sealed class JobRun : IAsyncDisposable
     }
 
     public (double E, double N, double Heading) ToolCentre() => Truth.ToolCentre;
+
+    /// <summary>Is the cultivated area straight ahead of the implement, within <paramref name="m"/> metres?</summary>
+    private bool WorkAhead((double E, double N, double Heading) tc, double m)
+    {
+        double fe = Math.Sin(tc.Heading), fn = Math.Cos(tc.Heading);
+        for (double d = 2; d <= m; d += 2)
+            if (Ring.Inside((tc.E + fe * d, tc.N + fn * d), Work ?? Outer)) return true;
+        return false;
+    }
+
+    /// <summary>The pass the real implement is on (the nearest), on an AB line; int.MinValue otherwise.</summary>
+    public int TruthPass()
+    {
+        if (Frame is not StraightFrame || Spacing <= 0) return int.MinValue;
+        var t = Truth.ToolCentre;
+        return (int)Math.Round(U((t.E, t.N)) / Spacing - 0.5);
+    }
 
     /// <summary>How far the pivot or an implement end is past the outer boundary, 0 inside.</summary>
     /// <summary>How far past the outer boundary the pivot or an implement end is (0 inside), and the pivot alone.</summary>
@@ -725,7 +867,6 @@ public sealed class JobRun : IAsyncDisposable
         var tc = Truth.ToolCentre;
         double re = Math.Cos(tc.Heading), rn = -Math.Sin(tc.Heading);
         int n = Spec.T.Sections;
-        double sw = Spec.T.Width / n, left = -Spec.T.Width / 2;
         ulong open = Module.SectionsOpen;       // the relays: what the module was told
         ulong spray = Module.SectionsSpraying;  // the nozzles: the relays after the valves' time
         bool link = Module.LinkOk;
@@ -739,7 +880,7 @@ public sealed class JobRun : IAsyncDisposable
         var cur = new (double E, double N)[n + 1];
         for (int s = 0; s <= n; s++)
         {
-            double o = left + s * sw;
+            double o = Spec.T.Edge(s);
             cur[s] = (tc.E + re * o, tc.N + rn * o);
         }
         for (int s = 0; s < n && s < 64; s++)
@@ -768,7 +909,7 @@ public sealed class JobRun : IAsyncDisposable
         {
             double are = Math.Cos(c.ToolHeadingRadians), arn = -Math.Sin(c.ToolHeadingRadians);
             var acur = new (double E, double N)[n + 1];
-            for (int s = 0; s <= n; s++) { double o = left + s * sw; acur[s] = (c.ToolEasting + are * o, c.ToolNorthing + arn * o); }
+            for (int s = 0; s <= n; s++) { double o = Spec.T.Edge(s) + Spec.T.Offset; acur[s] = (c.ToolEasting + are * o, c.ToolNorthing + arn * o); }
             ScreenGrid.BeginFix();
             for (int s = 0; s < n && s < 64; s++)
                 if (s < ss.Length && ss[s] && _prevAppEdge[s] is { } q0 && _prevAppEdge[s + 1] is { } q1)
@@ -878,6 +1019,30 @@ public sealed class JobRun : IAsyncDisposable
         double cell = TruthGrid.Cell * TruthGrid.Cell;
         var g = Grid;
         int reach = (int)Math.Ceiling(1.5 * Spacing / TruthGrid.Cell);
+        // The seams between neighbouring passes where both ran at full width, by 1 m bin along
+        // the line: where the gap between them lies across the passes, and how wide it is.
+        var seams = new Dictionary<int, List<(double Mid, double Gap)>>();
+        {
+            var ordered = _passEdges.OrderBy(p => p.Value.Values.Average(x => (x.L + x.R) / 2)).ToList();
+            for (int k = 0; k + 1 < ordered.Count; k++)
+                foreach (var (bin, x) in ordered[k].Value)
+                {
+                    if (!ordered[k + 1].Value.TryGetValue(bin, out var x2)) continue;
+                    if (x.R - x.L < Spec.T.Width - 0.3 || x2.R - x2.L < Spec.T.Width - 0.3) continue;
+                    if (!seams.TryGetValue(bin, out var l)) seams[bin] = l = new();
+                    l.Add(((x.R + x2.L) / 2, x2.L - x.R));
+                }
+        }
+        bool OnSeam((double E, double N) c)
+        {
+            if (seams.Count == 0) return false;
+            double u = U(c); int b = (int)Math.Floor(Vv(c));
+            for (int db = -1; db <= 1; db++)
+                if (seams.TryGetValue(b + db, out var l))
+                    foreach (var (mid, gap) in l)
+                        if (Math.Abs(u - mid) <= Math.Max(gap, 0) / 2 + TruthGrid.Cell / 2) return true;
+            return false;
+        }
         for (int i = 0; i < g.Count.Length; i++)
         {
             byte z = g.Zone[i];
@@ -900,7 +1065,7 @@ public sealed class JobRun : IAsyncDisposable
                     else if (Work == null && Ring.DistToRing(c, Outer) < 1.5) a.MissedAlongBoundary += cell;
                     else if (LeftOnPurpose?.Invoke(c) == true) a.MissedLeftInMiddle += cell;
                     else if (AtCorner?.Invoke(c) == true) a.MissedAtCorners += cell;
-                    else if (SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; }
+                    else if (SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; if (OnSeam(c)) a.MissedAtSeams += cell; }
                 }
                 if (t >= 2) a.Twice += cell;
                 if (app) a.AppPainted += cell;
@@ -981,10 +1146,14 @@ public sealed class JobRun : IAsyncDisposable
 
     public void Harness(string text) { Problems.Add("HARNESS: " + text); S.Harness(text); }
 
+    /// <summary>What the job opened besides the rig (a browser), closed with it.</summary>
+    public readonly List<IAsyncDisposable> Owned = new();
+
     public async ValueTask DisposeAsync()
     {
         try
         {
+            foreach (var o in Owned) try { await o.DisposeAsync(); } catch { }
             try { Steer?.Dispose(); } catch { }
             try { Module?.Dispose(); } catch { }
             try { if (Rig != null) await Rig.DisposeAsync(); } catch { }

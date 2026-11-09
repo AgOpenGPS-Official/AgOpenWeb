@@ -185,6 +185,7 @@ public sealed class JobAreas
     public double Sprayed;              // truth, inside the work area, at least once
     public double Missed;               // work area never sprayed
     public double MissedBetweenPasses;  // of which: strips with sprayed ground on both sides across the passes
+    public double MissedAtSeams;        // of those: on the seam of two neighbouring passes where both ran at full width (the grid's rounding of a hairline gap)
     public double MissedAtEnds;         // of which: within 3 m of the headland line (the pass ends)
     public double MissedAtObstacles;    // of which: within 2 m of an obstacle (the sections closing and opening over it)
     public double MissedAlongBoundary;  // of which, with no headland: within 1.5 m of the outer boundary

@@ -21,6 +21,7 @@ public abstract class PathOperator
         GuideKind.BoundaryLoop or GuideKind.PivotCentre or GuideKind.PivotDriven => new LapOperator(k),
         GuideKind.Contour => new ContourOperator(),
         GuideKind.RecordedPath => new RecordedPathOperator(),
+        GuideKind.DrivenCurve => new DrivenCurveOperator(),
         _ => throw new ArgumentOutOfRangeException(nameof(k), k, "not a path job"),
     };
 
@@ -153,7 +154,7 @@ public abstract class PathOperator
 /// curve along the fence between them; the passes are that curve offset across the field, with
 /// automatic U-turns at the headland as on an AB line.
 /// </summary>
-public sealed class CurveOperator : PathOperator
+public class CurveOperator : PathOperator
 {
     public override async Task<bool> CreateTrackAsync(JobRun r)
     {
@@ -220,6 +221,11 @@ public sealed class CurveOperator : PathOperator
 
     public override void Judge(Scenario sc, JobRun r, JobAreas a, Action<Severity, string, string> flag)
     {
+        JudgeCurve(sc, r, flag);
+    }
+
+    protected void JudgeCurve(Scenario sc, JobRun r, Action<Severity, string, string> flag)
+    {
         if (Worst is { } w)
             sc.Row.Metrics.Add(("AgOpenWeb's line against the reference offset (in the cultivated area): the most it comes nearer, offset alone / with the bends limited / with the straight ends", F($"pass {w.Pass} ({w.Want:0} m): {w.ShortOffsetOnly:0.0} / {w.ShortNoExtend:0.0} / {w.Short:0.0} m at ({w.At.E:0},{w.At.N:0}); the harness's copy {w.Shown:0.00} m from the line shown")));
         if (Worst is { Short: > 1.5 } ww)
@@ -232,6 +238,92 @@ public sealed class CurveOperator : PathOperator
         LapOperator.JudgePassError(sc, r, flag, "the curve's passes", null, Explained);
     }
     public string? Explained;
+}
+
+/// <summary>
+/// A curve recorded by driving it: the operator drives the field file's curve track
+/// (<see cref="JobSpec.Track"/>) by hand with the sprayer off, taps Curve > Record as the
+/// implement crosses the boundary going in and Finish as it crosses it going out. AgOpenWeb makes
+/// the reference from the recorded positions (moved to the implement's edge, #345); the pass the
+/// operator drove must be one of its passes. Then the field is worked from that curve with
+/// U-turns at the headland, as from a Bnd. Curve.
+/// </summary>
+public sealed class DrivenCurveOperator : CurveOperator
+{
+    // Where the implement's centre went while the curve was recorded, inside the boundary.
+    private readonly List<(double E, double N)> _driven = new();
+    public double DrivenMeanM, DrivenWorstM; public (double E, double N) DrivenWorstAt; public int DrivenSamples;
+    public double DrivenM;
+    public bool UTurnsBefore, UTurnsAfter;
+    public int RecordedPoints;
+
+    public override async Task<bool> CreateTrackAsync(JobRun r)
+    {
+        var tr = r.Field.Tracks.FirstOrDefault(t => t.Name == r.Spec.Track);
+        if (tr.Points is not { Count: > 2 }) { r.Harness($"no curve '{r.Spec.Track}' in field '{r.Spec.Field}'"); return false; }
+        // Where the operator drives: the curve in the field file (the implement's centre on it).
+        var plan = new PolylineFrame(tr.Points.Select(p => r.Local(p.Lat, p.Lon)).ToList(), closed: false);
+        r.Frame = plan;
+        double vIn = double.NaN, vOut = double.NaN;
+        for (double v = -150; v <= plan.Length + 150; v += 0.5)
+            if (Ring.Inside(plan.At(0, v), r.Outer)) { if (double.IsNaN(vIn)) vIn = v; vOut = v; }
+        if (double.IsNaN(vIn)) { r.Harness("the curve never enters the field"); return false; }
+        PlaceOn(r, 0, vIn - 25);
+        await r.RollAsync(60, Follow(r, () => 0));
+        double ToolV() { var t = r.Truth.ToolCentre; return plan.V((t.E, t.N)); }
+        for (int i = 0; i < 300 && ToolV() < vIn; i++) await r.RollAsync(1, Follow(r, () => 0));
+        UTurnsBefore = await r.Rig.ReadAsync(() => r.Rig.Vm.IsYouTurnEnabled);
+        await r.SendAsync("track.recordCurve");
+        bool recording = await r.Rig.ReadAsync(() => r.Rig.Vm.IsRecordingCurve);
+        if (!recording) { r.Harness("Curve > Record did not start recording: " + string.Join(" | ", r.Collect())); return false; }
+        r.S.Step(F($"Curve > Record with the implement at the boundary ({r.Truth.ToolCentre.E:0},{r.Truth.ToolCentre.N:0}); driving the field's curve '{r.Spec.Track}' by hand at {r.Truth.SpeedKmh:0} km/h, sprayer off"));
+        int guard = (int)((vOut - vIn + 50) / (r.Truth.SpeedKmh / 3.6) / JobRun.FixSeconds) + 100;
+        for (int i = 0; i < guard && ToolV() < vOut; i++)
+        {
+            await r.RollAsync(1, Follow(r, () => 0));
+            var t = r.Truth.ToolCentre;
+            if (i % 5 == 0 && Ring.Inside((t.E, t.N), r.Outer)) _driven.Add((t.E, t.N));
+        }
+        await r.SendAsync("track.finishCurve");
+        RecordedPoints = await r.Rig.ReadAsync(() => r.Rig.Vm.SelectedTrack?.Points.Count ?? 0);
+        UTurnsAfter = await r.Rig.ReadAsync(() => r.Rig.Vm.IsYouTurnEnabled);
+        var pts = await ActiveTrackPointsAsync(r);
+        bool closed = await r.Rig.ReadAsync(() => r.Rig.Vm.SelectedTrack?.IsClosed == true);
+        if (pts == null || pts.Count < 3 || closed) { r.Harness("Finish made no open curve: " + string.Join(" | ", r.Collect())); return false; }
+        r.Frame = new PolylineFrame(pts, closed: false);
+        for (int i = 1; i < _driven.Count; i++) DrivenM += Math.Sqrt(Math.Pow(_driven[i].E - _driven[i - 1].E, 2) + Math.Pow(_driven[i].N - _driven[i - 1].N, 2));
+        r.S.Step(F($"Finish with the implement at the boundary going out: {DrivenM:0} m driven inside the field, a curve of {pts.Count} points, {r.Frame.Length:0} m with its extensions, active; U-turns {(UTurnsBefore ? "on" : "off")} before, {(UTurnsAfter ? "on" : "off")} after Finish"));
+        foreach (var e in r.Collect()) r.Said.Add(F($"{r.Seconds:0.0} s: {e}"));
+        return true;
+    }
+
+    public override Task<bool> StartAsync(JobRun r)
+    {
+        // The pass the operator drove: the implement's centre half a width from the reference.
+        double half = r.Spacing / 2;
+        foreach (var q in _driven)
+        {
+            if (r.Work != null && !Ring.Inside(q, r.Work)) continue;
+            double d = Math.Abs(Math.Abs(r.Frame.U(q)) - half);
+            DrivenMeanM += d; DrivenSamples++;
+            if (d > DrivenWorstM) { DrivenWorstM = d; DrivenWorstAt = q; }
+        }
+        if (DrivenSamples > 0) DrivenMeanM /= DrivenSamples;
+        Journal.Trace(F($"[fj] the curve as driven against AgOpenWeb's pass that should be it: mean {DrivenMeanM:0.00} m, worst {DrivenWorstM:0.00} m at ({DrivenWorstAt.E:0},{DrivenWorstAt.N:0}), {DrivenSamples} samples"));
+        return base.StartAsync(r);
+    }
+
+    public override void Judge(Scenario sc, JobRun r, JobAreas a, Action<Severity, string, string> flag)
+    {
+        sc.Row.Metrics.Add(("The curve as recorded: driven inside the field / AgOpenWeb's curve; the implement's path as driven against the pass AgOpenWeb made of it (in the cultivated area), mean / worst", F($"{DrivenM:0} m / {RecordedPoints} points; {DrivenMeanM:0.00} m / {DrivenWorstM:0.00} m at ({DrivenWorstAt.E:0},{DrivenWorstAt.N:0})")));
+        if (DrivenSamples > 0 && (DrivenMeanM > 0.15 || DrivenWorstM > 0.5))
+            flag(Severity.Bug, "RECORDED-CURVE-SHIFTED", F($"the pass the operator drove to record the curve is not one of AgOpenWeb's passes: the implement's path as driven is {DrivenMeanM:0.00} m from the nearest pass on average, {DrivenWorstM:0.00} m at worst at ({DrivenWorstAt.E:0},{DrivenWorstAt.N:0}); the next pass beside it will leave a strip or overlap by that much."));
+        else if (DrivenSamples > 0)
+            sc.Ok(F($"the pass driven to record the curve is one of AgOpenWeb's passes ({DrivenMeanM:0.00} m mean, {DrivenWorstM:0.00} m worst)"));
+        if (UTurnsBefore != UTurnsAfter)
+            sc.Note(F($"Finish switched U-turns {(UTurnsAfter ? "on" : "off")} (they were {(UTurnsBefore ? "on" : "off")}): FinishCurveRecordingCommand toggles them"));
+        JudgeCurve(sc, r, flag);
+    }
 }
 
 /// <summary>
@@ -526,7 +618,7 @@ public sealed class LapOperator : PathOperator
     {
         sc.Row.Metrics.Add(("Laps / moves to the next lap: mean and longest time to settle on it", F($"{Laps} / {ChangeSeconds.Count}: {(ChangeSeconds.Count > 0 ? ChangeSeconds.Average() : 0):0.0} s and {(ChangeSeconds.Count > 0 ? ChangeSeconds.Max() : 0):0.0} s")));
         if (FitCentreErrorM is { } ce)
-            sc.Row.Metrics.Add(("AgOpenWeb's pivot circle: centre from the tower / reference radius against the field's edge", F($"{ce:0.00} m / {FitRadiusErrorM:+0.00;-0.00} m")));
+            sc.Row.Metrics.Add(("AgOpenWeb's pivot circle: centre from the tower / reference radius against the field's edge", F($"{ce:0.00} m / {FitRadiusErrorM:+0.00;-0.00;+0.00} m")));
     }
 
     public override void Judge(Scenario sc, JobRun r, JobAreas a, Action<Severity, string, string> flag)
@@ -551,7 +643,7 @@ public sealed class LapOperator : PathOperator
         if (LineCopyOff > 0.5) sc.Harness(F($"the harness's copy of AgOpenWeb's lap line was {LineCopyOff:0.00} m off the line AgOpenWeb shows: the next-lap check is not looking at AgOpenWeb's line"));
         if (ChangeTrouble.Count > 0) flag(Severity.Bug, "LAP-CHANGE-NOT-SETTLED", F($"{ChangeTrouble.Count} of {ChangeSeconds.Count} moves to the next lap never settled: {ChangeTrouble[0]}"));
         if (FitCentreErrorM is { } ce && (ce > 1.0 || Math.Abs(FitRadiusErrorM ?? 0) > 0.5))
-            flag(Severity.Bug, "PIVOT-CIRCLE-OFF", F($"AgOpenWeb's water pivot is off the real one: centre {ce:0.00} m from the tower, reference circle {FitRadiusErrorM:+0.00;-0.00} m from the field's edge; every circle is off by as much."));
+            flag(Severity.Bug, "PIVOT-CIRCLE-OFF", F($"AgOpenWeb's water pivot is off the real one: centre {ce:0.00} m from the tower, reference circle {FitRadiusErrorM:+0.00;-0.00;+0.00} m from the field's edge; every circle is off by as much."));
         // Where the lap line itself left the field, LAP-LINE-LEAVES-FIELD says it already.
         var outAt = _lineOut.Select(l => l.At).ToList();
         string? why = null;
@@ -570,7 +662,7 @@ public sealed class LapOperator : PathOperator
     {
         if (r.PassErrorSamples == 0) return;
         double mean = r.PassErrorSum / r.PassErrorSamples;
-        sc.Row.Metrics.Add(("The implement against its pass (the reference line offset by whole widths): mean / worst", F($"{mean:0.00} m / {r.PassErrorWorst:+0.00;-0.00} m (pass {r.PassErrorWhere.Pass}, at ({r.PassErrorWhere.E:0},{r.PassErrorWhere.N:0}), {r.PassErrorWhere.V:0} m along the line)")));
+        sc.Row.Metrics.Add(("The implement against its pass (the reference line offset by whole widths): mean / worst", F($"{mean:0.00} m / {r.PassErrorWorst:+0.00;-0.00;+0.00} m (pass {r.PassErrorWhere.Pass}, at ({r.PassErrorWhere.E:0},{r.PassErrorWhere.N:0}), {r.PassErrorWhere.V:0} m along the line)")));
         // The worst outside the places another finding already explains (the large errors are kept).
         double worst = r.PassErrorWorst; var where = r.PassErrorWhere;
         if (excused != null && excused((where.E, where.N)))
