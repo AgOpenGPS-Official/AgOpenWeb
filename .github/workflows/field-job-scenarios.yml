@@ -3,10 +3,11 @@ name: Field Job Scenarios
 # The field job scenario harness (Tests/AgOpenWeb.FieldJobScenarios.Tests): a simulated real
 # machine drives whole fields with AutoSteer, automatic U-turns and automatic sections, with an
 # emulated machine module opening the valves; what the implement swept with a valve open is
-# compared with the field, the headland, the obstacles and AgOpenWeb's own map. It takes tens
-# of minutes, so it runs nightly on develop, not on every PR (CI only builds it). The run fails
-# when the harness breaks; the findings are in the report, kept as an artifact and shown in the
-# run's summary.
+# compared with the field, the headland, the obstacles and AgOpenWeb's own map. It takes about
+# an hour per operator, so it runs nightly on develop, not on every PR (CI only builds it), and
+# the careful and the careless operator run as two jobs side by side, each on its own runner.
+# The run fails when the harness breaks; the findings are in the report (one per operator),
+# kept as an artifact and shown in the run's summary.
 #
 #   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;
 #   - manual dispatch: always, on the branch picked.
@@ -37,6 +38,13 @@ concurrency:
 
 jobs:
   scenarios:
+    # One operator per job: the careful set alone took 57 min on a runner (2026-11-09), and the
+    # two together did not fit the test's time limit, which lost the whole run.
+    strategy:
+      fail-fast: false
+      matrix:
+        operator: [careful, careless]
+    name: scenarios (${{ matrix.operator }})
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -66,6 +74,7 @@ jobs:
         if: steps.fresh.outputs.run == 'true'
         env:
           AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/field-job-scenarios-report.md
+          AGOPENWEB_SCENARIO_OPERATOR: ${{ matrix.operator }}
         run: dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedName~FieldJobScenarioTests" --verbosity normal
 
       - name: Report to the summary
@@ -83,7 +92,7 @@ jobs:
         if: always() && steps.fresh.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: field-job-scenarios-report
+          name: field-job-scenarios-report-${{ matrix.operator }}
           path: ${{ runner.temp }}/field-job-scenarios-report.md
           if-no-files-found: ignore
           retention-days: 30

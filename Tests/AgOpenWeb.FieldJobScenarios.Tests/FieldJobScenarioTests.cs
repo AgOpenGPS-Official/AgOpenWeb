@@ -2,6 +2,8 @@
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Globalization;
+
 namespace AgOpenWeb.FieldJobScenarios.Tests;
 
 /// <summary>
@@ -15,8 +17,11 @@ namespace AgOpenWeb.FieldJobScenarios.Tests;
 [NonParallelizable]
 public class FieldJobScenarioTests
 {
+    // 100 minutes for one operator's jobs (the workflow runs the careful and the careless operator
+    // as two jobs, each on its own runner): the careful set alone took 57 min on a GitHub runner
+    // on 2026-11-09, so both in one hour lost the whole run, report and all.
     [Test]
-    [CancelAfter(3_600_000)]
+    [CancelAfter(6_000_000)]
     public async Task Field_jobs(CancellationToken ct)
     {
         // One run at a time on a machine: the emulated machine module binds UDP 8888 (with address
@@ -28,25 +33,45 @@ public class FieldJobScenarioTests
         string op = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_OPERATOR") ?? "";
         var journal = new Journal();
 
-        if (op is "" or "careful")
-            foreach (var job in CarefulOperator.Jobs())
-            {
-                if (!Jobs.Want(only, job.Code)) continue;
-                ct.ThrowIfCancellationRequested();
-                await Jobs.RunAsync(journal, "Careful", job);
-            }
-        if (op is "" or "careless")
-            foreach (var job in CarelessOperator.Jobs())
-            {
-                if (!Jobs.Want(only, job.Code)) continue;
-                ct.ThrowIfCancellationRequested();
-                await Jobs.RunAsync(journal, "Careless", job);
-            }
+        var wanted = new List<(string Op, JobSpec Job)>();
+        if (op is "" or "careful") wanted.AddRange(CarefulOperator.Jobs().Where(j => Jobs.Want(only, j.Code)).Select(j => ("Careful", j)));
+        if (op is "" or "careless") wanted.AddRange(CarelessOperator.Jobs().Where(j => Jobs.Want(only, j.Code)).Select(j => ("Careless", j)));
+        await RunAllAsync(journal, wanted, ct);
 
-        string report = journal.ToMarkdown();
+        await WriteReportAsync(journal, journal.ToMarkdown(), "field-job-scenarios-report.md");
+    }
+
+    /// <summary>
+    /// Runs the jobs in order. When the test's time is up, the jobs not run are a HARNESS finding
+    /// (a run that did not reach its situations is the harness's fault) and the report is still
+    /// written: a time limit used to lose the whole run, with nothing to read the next morning.
+    /// </summary>
+    internal static async Task RunAllAsync(Journal journal, IReadOnlyList<(string Op, JobSpec Job)> wanted, CancellationToken ct)
+    {
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        for (int i = 0; i < wanted.Count; i++)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                var left = wanted.Skip(i).Select(w => w.Op + " " + w.Job.Code).ToList();
+                var sc = new Scenario(wanted[i].Op, "TIME-UP", "The run's time limit was reached",
+                    "The test's CancelAfter limit was reached before every job had run.");
+                sc.Harness(string.Create(CultureInfo.InvariantCulture,
+                    $"the time limit was reached after {started.Elapsed.TotalMinutes:0} min and {i} job(s): {left.Count} not run ({string.Join(", ", left)})"));
+                journal.Add(sc.Row);
+                return;
+            }
+            await Jobs.RunAsync(journal, wanted[i].Op, wanted[i].Job);
+        }
+    }
+
+    /// <summary>Writes the report (whatever the token says: the report is the point of the run) and
+    /// fails the test on a HARNESS finding.</summary>
+    internal static async Task WriteReportAsync(Journal journal, string report, string defaultName)
+    {
         string path = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
-            ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, "field-job-scenarios-report.md");
-        await File.WriteAllTextAsync(path, report, ct);
+            ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, defaultName);
+        await File.WriteAllTextAsync(path, report, CancellationToken.None);
         TestContext.Out.WriteLine(report);
         TestContext.Out.WriteLine("Report: " + path);
 

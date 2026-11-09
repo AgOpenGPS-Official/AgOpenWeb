@@ -31,21 +31,8 @@ public class PathJobScenarioTests
         using var exclusive = FieldJobScenarioTests.OneRunAtATime();
         string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
         var journal = new Journal();
-        foreach (var job in PathJobs.Jobs())
-        {
-            if (!Jobs.Want(only, job.Code)) continue;
-            ct.ThrowIfCancellationRequested();
-            await Jobs.RunAsync(journal, "Careful", job);
-        }
-
-        string report = journal.ToMarkdown(Title, Intro);
-        string path = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
-            ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, "path-job-scenarios-report.md");
-        await File.WriteAllTextAsync(path, report, ct);
-        TestContext.Out.WriteLine(report);
-        TestContext.Out.WriteLine("Report: " + path);
-
-        var harness = journal.Findings.Where(f => f.Key == "HARNESS").ToList();
-        Assert.That(harness, Is.Empty, "the harness itself failed: " + string.Join("; ", harness.Select(h => h.Value.First.Message)));
+        var wanted = PathJobs.Jobs().Where(j => Jobs.Want(only, j.Code)).Select(j => ("Careful", j)).ToList();
+        await FieldJobScenarioTests.RunAllAsync(journal, wanted, ct);
+        await FieldJobScenarioTests.WriteReportAsync(journal, journal.ToMarkdown(Title, Intro), "path-job-scenarios-report.md");
     }
 }
