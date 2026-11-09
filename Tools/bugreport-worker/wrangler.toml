@@ -11,9 +11,9 @@ binding = "DUMPS"
 bucket_name = "agopenweb-bugreports"
 
 [triggers]
-# 03:17 UTC: pending issues + pruning. 03:07 UTC (21:07 US Central, 22:07 in summer time): the
-# nightly scenario harnesses, in by morning.
-crons = ["17 3 * * *", "7 3 * * *"]
+# 03:17 UTC: pending issues + pruning. 05:07 UTC (23:07 US Central, 00:07 in summer time): the
+# nightly scenario harnesses, in by morning, clear of evening test runs.
+crons = ["17 3 * * *", "7 5 * * *"]
 
 # Per IP: 2 reports a minute (the binding only counts over 10 s or 60 s; the daily caps
 # below are counted from the bucket).
@@ -31,9 +31,9 @@ PER_IP_DAILY = "10"
 PRUNE_AT_BYTES = "9000000000"
 PRUNE_TO_BYTES = "8000000000"
 TRACKING_ISSUE = ""
-NIGHTLY_CRON = "7 3 * * *"
+NIGHTLY_CRON = "7 5 * * *"
 NIGHTLY_REF = "develop"
-NIGHTLY_WORKFLOWS = "field-scenarios.yml,steer-wizard-scenarios.yml,vehicle-tool-scenarios.yml,machine-module-scenarios.yml,gps-ntrip-scenarios.yml,field-job-scenarios.yml,isobus-scenarios.yml,path-job-scenarios.yml,web-client-scenarios.yml,update-scenarios.yml,working-day-scenarios.yml,dump-replay-scenarios.yml"
+NIGHTLY_WORKFLOWS = "field-scenarios.yml,steer-wizard-scenarios.yml,vehicle-tool-scenarios.yml,machine-module-scenarios.yml,gps-ntrip-scenarios.yml,field-job-scenarios.yml,isobus-scenarios.yml,path-job-scenarios.yml,web-client-scenarios.yml,update-scenarios.yml,working-day-scenarios.yml,dump-replay-scenarios.yml,rig-job-scenarios.yml,turn-intervention-scenarios.yml,imperial-job-scenarios.yml"
 
 [observability]
 enabled = true

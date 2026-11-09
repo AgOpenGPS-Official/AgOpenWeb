@@ -1,9 +1,12 @@
-# Web client scenarios: the screens, a second screen, and losing the screen
+# Web client scenarios: the screens, a second screen, losing the screen, and the operator's flows
 
 An end-to-end harness for the web client as farms use it (checklists 12.4, 12.5, 12.8 and
 13.11): a 10" and a 7" tablet, a 720p cab PC, a 5" cab screen, a phone in both orientations, a
 tablet upright; a phone or an office PC watching beside the cab tablet; and the cab tablet
-going away while the tractor works.
+going away while the tractor works. Then the operator's own flows on the cab tablet, done by
+taps and typing only (Chris's harness plan, item 3.5): tracks made every way Quick AB offers but
+the water pivot, renamed, hidden and deleted; the boundary and the headland; tram lines; fields and jobs opened, closed and resumed;
+the section bar; the U-turn and lateral buttons.
 
 The whole backend runs in the test process, as the Desktop head boots it, on a temporary
 `AGOPENWEB_DATA` folder, **with its real UDP service** on port 9999 and the embedded web server
@@ -69,6 +72,71 @@ long the module kept getting AutoSteer on and sections open, what the screen sho
 and what the screen shows when it comes back. C9 and C10 also check that PGN 254 still reaches
 the module port at the end, so a module that stopped hearing it is not read as still steering.
 
+**The flows** (`TrackFlows.cs`, `BoundaryFlows.cs`, `TramFlows.cs`, `FieldFlows.cs`,
+`SectionBarFlows.cs`, `UTurnFlows.cs`, on `FlowKit.cs`). Each group works in its own field, 1 km
+east of the last one (`FlowFields`): a 240 m wide field with a slanted north edge (420 m on the
+west side, 380 m on the east). T, R, F, X and U make it the farmer's way, from a KML file copied
+into the Import folder (Field Operations › Fields and Jobs › From KML), and open it again from
+Fields and Jobs when the group needs it; B starts with New Field at the tractor and gets that
+outline in B4 (Boundary › Import KML). Everything the operator does is a tap on a control's
+centre, a pick in a drop-down, a drag of the map or typing on the cab tablet (10" 1280×800). A
+control off the screen or covered is a finding; one missing from the page is a `HARNESS` line.
+The harness places the simulated tractor, sets its speed and steering, and reads; between steps
+it closes menus and dialogs through the page's own functions, and before placing the tractor and
+at a scenario's end it switches AutoSteer, the sections and U-turn off on the host. Each step is read back where the operator reads it (the dialog, the list,
+the Scene and Tick the screen draws from, the toast or hint it showed) and where it acts (the
+host's tracks, boundary, headland, tram systems, jobs and files, and PGN 254 at the module port).
+A careful operator does each flow as meant; a careless one types a comma for a decimal point,
+leaves a box empty, types a value out of range, taps a button in the middle of something, closes
+the field while working. Each finding says what kind it is: an **app defect**, a **harness**
+fault, a **parity** difference from AgOpenGPS, or an **enhancement** (the app does no harm but
+could say or do better).
+
+**T, tracks**: T1 A+ while driving at 8 km/h; T2 A+ with a typed heading; T3 Drive AB (heading
+359.97°, so the name of a line just under 360° is fixed); T4 a curve recorded by driving with a
+60° bend; T5 Lat/Lon + Heading and Lat/Lon A, B; T6 coordinates typed carelessly (a comma, an
+empty heading, B = A, latitude and longitude swapped); T7 Longest Edge, All Edges, Bnd. Curve;
+T8 a line and a curve drawn on the map, and a tap on a button in the middle of drawing; T9
+rename (Enter, a tap away, a comma and accents, an empty name, another track's name); T10 hide
+and show, and hiding the line AutoSteer steers on at 8 km/h; T11 swap A/B, delete (Cancel,
+Confirm), deleting the line AutoSteer steers on; T12 the tracks after the field is closed and
+opened. Each line is checked where it should be: on the pass the tractor drove (half the boom to
+its right), through the taps, on the boundary's edge, at the typed point and heading.
+
+**B, boundary and headland**: B1 a New Field at the tractor, and an obstacle asked for before the
+boundary (#621); B2 the boundary recorded by driving a 60 × 40 m loop; B3 deleted, then drawn on
+the map with five taps; B4 imported from a KML; B5 the headland round the whole boundary (2 tool
+widths), then 24 m; B6 a headland line on one side by two taps on the fence; B7 the Headland and
+Section-control-in-headland buttons; B8 a headland of 0 m and of 150 m in a 240 m field; B9
+boundary and headland after the field is closed and opened.
+
+**R, tram lines**: R1 a tram system on the active line (its width from the tool, #675); R2 24 m,
+3 passes, Right, a 2 m offset, Edge, each measured on the lines the screen draws, square to the
+line; R3 a width of 0 and 150 m, 1500 and -3 passes; R4 the boundary as the reference, and 0
+passes on it (#112); R5 Enabled off and on, the bottom bar's Tram button; R6 the line it follows
+renamed; R7 after the field is closed and opened; R8 deleted (Cancel, Confirm), its file removed.
+
+**F, fields and jobs**: F1 a job started (task name, work type) and 100 m worked; F2 closed with
+the job: no question, coverage on disk, the job listed; F3 Resume Last Job; F4 Resume Job from
+the list; F5 a field worked without a job and closed: Unsaved Coverage Cancel, Save, Discard; F6
+the field closed at 10 km/h with AutoSteer and the sections on; F7 another field opened in the
+middle of a job at 8 km/h; F8 field names with a slash, accents, a name that exists, no name; F9
+Drive In; F10 deleting the open field and job (refused), then a job (Cancel, Confirm) and a
+field; F11 another field opened after working without a job (the question before the coverage
+is dropped).
+
+**X, the section bar**: X1 one section's button round Off, Auto, On, Off at 8 km/h, read at the
+module; X2 the master Auto on fresh ground and back over the strip it covered; X3 Manual over
+covered ground, and off; X4 a section On by hand, then the master off.
+
+**U, the U-turn and lateral buttons** (a 16 m headland made in Field Builder): U1 the automatic
+U-turn from the right-hand bar, taken at the north headland at 10 km/h; U2 the on-screen manual
+U-turn (hidden without AutoSteer), with the lateral and U-turn buttons tapped again during the
+turn; U3 Lateral right and left; U4 skip rows 1 and a manual U-turn (two passes over). Where the
+tractor lands is read on the host: one pass over (two with skip rows 1), measured square to the
+line (Quick AB takes the tractor's heading, so a line can be a hair off north), heading back, and its
+cross-track error.
+
 Finding codes of the link scenarios:
 
 | Code | Meaning |
@@ -80,6 +148,17 @@ Finding codes of the link scenarios:
 | `DEAD-LINK-STALLS-BROADCAST` | (C12) while one screen's link was dead another screen got no frame for over 2 s: the host's sends to the dead link held up everyone's |
 | `TWO-SCREENS-SAY-OPERATOR`, `TWO-OPERATORS` | two screens show, or hold, control |
 
+Finding codes the flows share (each group adds its own, named for what was wrong):
+
+| Code | Meaning |
+|---|---|
+| `FLOW-CONTROL-UNREACHABLE` | a control the flow needs is off the screen or under another element |
+| `FLOW-MENU-DID-NOT-OPEN`, `FLOW-NO-CONFIRM` | a button didn't open its menu or dialog, or a delete didn't ask |
+| `FLOW-MAP-POINT-COVERED` | a point the operator must tap on the map stays under a panel or a bar, after zooming out and dragging the map |
+| `FLOW-FIELD-NOT-OPENED`, `FLOW-FIELD-NOT-LISTED`, `FLOW-IMPORT-FILE-NOT-LISTED` | the group's field could not be made or opened the operator's way |
+| `…-LIST-STALE`, `…-NOT-SHOWN`, `…-STALE` | the host has it, the screen doesn't show it (or shows the old) |
+| `…-SILENT` | the app did something other than what was typed, or nothing, and said nothing |
+
 ## Running
 
 The browser is Playwright's Chromium:
@@ -90,7 +169,7 @@ pwsh Tests/AgOpenWeb.WebClientScenarios.Tests/bin/Debug/net10.0/playwright.ps1 i
 dotnet test Tests/AgOpenWeb.WebClientScenarios.Tests/ --logger "console;verbosity=detailed"
 ```
 
-About 6 minutes. Environment variables:
+About 25 minutes (the screens, the second screen and the link scenarios about 7, the flows about 17). Environment variables:
 
 | Variable | Meaning |
 |---|---|
@@ -122,3 +201,15 @@ other scenario harnesses first: they share the ports).
   up the host's sends than over a real radio; C12 runs a minute for that reason.
 - The host's UDP socket listens on every interface (port 9999): a real module on the LAN that
   talks to it would make the host send to that module's subnet. Run it away from a bench board.
+- The flows run on the 10" tablet only, in English; the other screens are covered by S.
+- Not in the flows yet: flags, hotkeys and recorded paths (named in plan section 2), the water
+  pivot, contour and AgShare.
+- The tractor is put where a flow starts by moving the simulator. A move keeps the heading
+  fusion's IMU offset, so after a turn the heading standing still can be a degree or so off; the
+  harness then drives it 1.5 m straight (as the app tells an operator to) and puts it back.
+- The simulator drives in real time, so a flow drives short distances (a 60 × 40 m boundary,
+  a few hundred metres to a headland); a whole job's worth of passes is the field job harness's.
+- Typing is at a quick tablet pace (150 ms between keys). At machine speed (15 ms) the stream of
+  key events kept the page's presence timer from running for over 1.5 s in the tram field, with
+  no long task; the deadman took control away and the name being typed was dropped. A rename
+  that doesn't take records what the page sent, the control changes and the presence gaps.

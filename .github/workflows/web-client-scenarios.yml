@@ -5,8 +5,10 @@ name: Web Client Scenarios
 # (Playwright) on the screens a farm uses (10" and 7" tablets, a 720p cab PC, a 5" screen, a phone
 # both ways), a second screen beside the operator's, and the operator's screen going away while the
 # tractor works (tab closed, Wi-Fi out of range or dropped, tablet asleep, reload, Free Drive, a
-# section on by hand), with what the steer module and the sections got read at the module port.
-# It takes about 6 minutes of real time, so it runs nightly on develop, not on every PR (CI only
+# section on by hand), with what the steer module and the sections got read at the module port;
+# and the operator's flows by taps and typing (tracks, boundary and headland, tram lines, fields
+# and jobs, the section bar, the U-turn buttons), careful and careless.
+# It takes about 25 minutes of real time, so it runs nightly on develop, not on every PR (CI only
 # builds it). The run fails when the harness breaks; the findings are in the report, kept as an
 # artifact with the screenshots and shown in the run's summary.
 #
@@ -14,7 +16,7 @@ name: Web Client Scenarios
 #   - manual dispatch: always, on the branch picked.
 
 on:
-  # Nightly: the bug report Worker (Tools/bugreport-worker, cron 03:07 UTC, 21:07 US Central)
+  # Nightly: the bug report Worker (Tools/bugreport-worker, cron 05:07 UTC, 23:07 US Central)
   # starts it with nightly=true, as the other harnesses.
   workflow_dispatch:
     inputs:
@@ -38,7 +40,7 @@ concurrency:
 jobs:
   scenarios:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 

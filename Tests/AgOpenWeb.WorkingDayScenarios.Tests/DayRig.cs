@@ -275,7 +275,9 @@ public sealed class DayRig : IAsyncDisposable
         services.AddSingleton(_ => PersistentAppState.Instance);
         services.AddTransient<MainViewModel>();
         services.AddTransient<ConfigurationViewModel>();
-        services.AddSingleton<ILocalNetworkInfoProvider, SystemLocalNetworkInfoProvider>();
+        // Loopback only: with the machine's real interfaces the UDP service broadcasts steer and
+        // machine settings to the LAN, where a real module saves them to its EEPROM.
+        services.AddSingleton<ILocalNetworkInfoProvider, NoNetworkInterfaces>();
         services.AddSingleton<AgOpenWeb.Services.Network.INetworkWatcher, AgOpenWeb.Services.Network.NetworkWatcher>();
         services.AddSingleton<IUdpCommunicationService, UdpCommunicationService>();
         services.AddSingleton<IGpsService, GpsService>();
@@ -601,4 +603,12 @@ internal sealed class CapturingLoggerProvider : ILoggerProvider
             Sink?.Invoke(new RigEvent(logLevel >= LogLevel.Error ? RigEventKind.Error : RigEventKind.Warning, text));
         }
     }
+}
+
+/// <summary>A machine with no network but the loopback: the UDP service's discovery sends go
+/// to 127.0.0.1:8888 only (it always adds that one), and the module scan and subnet commands,
+/// sent once per interface, go nowhere. Nothing reaches a real module on the LAN.</summary>
+internal sealed class NoNetworkInterfaces : ILocalNetworkInfoProvider
+{
+    public IReadOnlyList<LocalNetworkAddress> GetIPv4Addresses() => Array.Empty<LocalNetworkAddress>();
 }

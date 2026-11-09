@@ -20,7 +20,7 @@ name: Dump Replay Scenarios
 #   - manual dispatch: always, on the branch picked; `only` replays a few dumps by id.
 
 on:
-  # Nightly: the bug report Worker (Tools/bugreport-worker, cron 03:07 UTC) starts it with
+  # Nightly: the bug report Worker (Tools/bugreport-worker, cron 05:07 UTC) starts it with
   # nightly=true, as the other harnesses, once it is listed in the Worker's NIGHTLY_WORKFLOWS.
   workflow_dispatch:
     inputs:

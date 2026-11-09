@@ -76,6 +76,21 @@ public sealed class TruthMachine
     /// <summary>Roll the tractor stands at: + = tilted right (the right wheels lower).</summary>
     public double RollDeg => SlopeDeg * Math.Sin(Math.PI / 2 - Heading);
 
+    /// <summary>The field's A->B direction, for an implement whose side follows the field, not the
+    /// tractor (<see cref="ToolSpec.FieldOffset"/>: a reversible plough); null until the job knows its line.</summary>
+    public (double E, double N)? FieldAlong;
+    /// <summary>The implement's offset right of the tractor now: its own, plus a reversible plough's
+    /// to the same side of the field whichever way it is driven.</summary>
+    public double OffsetNow
+    {
+        get
+        {
+            if (T.FieldOffset == 0 || FieldAlong is not { } a) return T.Offset;
+            var (de, dn) = Dir;
+            return T.Offset + (de * a.E + dn * a.N >= 0 ? T.FieldOffset : -T.FieldOffset);
+        }
+    }
+
     public (double E, double N) Dir => (Math.Sin(Heading), Math.Cos(Heading));
     public (double E, double N) Right => (Math.Cos(Heading), -Math.Sin(Heading));
 
@@ -140,6 +155,23 @@ public sealed class TruthMachine
         ay = hy - dy / d * len;
     }
 
+    /// <summary>Trailed and TBT: the angle between the tractor and the drawbar of what it pulls
+    /// (the tank's for a TBT), degrees, + with the drawbar swung to the tractor's right; 0 otherwise.</summary>
+    public double HitchAngleDeg
+    {
+        get
+        {
+            if (T.Type is not ("trailing" or "tbt")) return 0;
+            var (hx, hy) = HitchPin;
+            double ax = T.Type == "tbt" ? TankAxE : ToolAxE, ay = T.Type == "tbt" ? TankAxN : ToolAxN;
+            // The drawbar points back from the pin; straight behind the tractor is 0.
+            double back = Math.Atan2(ax - hx, ay - hy), tractorBack = Heading + Math.PI;
+            double d = (back - tractorBack) % (2 * Math.PI);
+            if (d > Math.PI) d -= 2 * Math.PI; else if (d < -Math.PI) d += 2 * Math.PI;
+            return -d * 180 / Math.PI;
+        }
+    }
+
     public (double E, double N) HitchPin
     {
         get { var (de, dn) = Dir; return (E - de * V.HitchLength, N - dn * V.HitchLength); }
@@ -167,9 +199,9 @@ public sealed class TruthMachine
             switch (T.Type)
             {
                 case "front":
-                    return (E + de * T.HitchLength + re * T.Offset, N + dn * T.HitchLength + rn * T.Offset, Heading);
+                    return (E + de * T.HitchLength + re * OffsetNow, N + dn * T.HitchLength + rn * OffsetNow, Heading);
                 case "rear":
-                    return (E - de * T.HitchLength + re * T.Offset, N - dn * T.HitchLength + rn * T.Offset, Heading);
+                    return (E - de * T.HitchLength + re * OffsetNow, N - dn * T.HitchLength + rn * OffsetNow, Heading);
                 default:
                 {
                     double px, py;

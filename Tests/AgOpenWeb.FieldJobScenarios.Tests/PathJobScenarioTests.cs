@@ -29,10 +29,6 @@ public class PathJobScenarioTests
     {
         // The field jobs' lock: both fixtures' emulated module binds UDP 8888.
         using var exclusive = FieldJobScenarioTests.OneRunAtATime();
-        string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
-        var journal = new Journal();
-        var wanted = PathJobs.Jobs().Where(j => Jobs.Want(only, j.Code)).Select(j => ("Careful", j)).ToList();
-        await FieldJobScenarioTests.RunAllAsync(journal, wanted, ct);
-        await FieldJobScenarioTests.WriteReportAsync(journal, journal.ToMarkdown(Title, Intro), "path-job-scenarios-report.md");
+        await Jobs.RunFixtureAsync(PathJobs.Jobs().Select(j => ("Careful", j)), "path-job-scenarios-report.md", j => j.ToMarkdown(Title, Intro), ct);
     }
 }

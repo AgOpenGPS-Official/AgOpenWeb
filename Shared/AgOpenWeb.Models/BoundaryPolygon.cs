@@ -235,6 +235,19 @@ public class BoundaryPolygon
             return BoundaryResult.FullyInside;
         }
 
+        // FAST PATH: the section's line, with the 1 m margin the crossings below are counted
+        // in, lies wholly beside the bounding box: no edge can cross it and its ends and centre
+        // are outside, so the walk below would answer fully outside. An obstacle away from the
+        // tool is this case, every section three times a control tick (82 obstacles cost
+        // 0.8 ms and 1.5 MB a tick without it).
+        {
+            double reach = halfWidth + 1.0;
+            double dE = Math.Abs(Math.Cos(heading)) * reach, dN = Math.Abs(Math.Sin(heading)) * reach;
+            if (sectionCenter.Easting + dE < index.MinEasting || sectionCenter.Easting - dE > index.MaxEasting ||
+                sectionCenter.Northing + dN < index.MinNorthing || sectionCenter.Northing - dN > index.MaxNorthing)
+                return BoundaryResult.FullyOutside;
+        }
+
         // Precompute transform
         double cos = Math.Cos(-heading);
         double sin = Math.Sin(-heading);

@@ -177,7 +177,7 @@ public static class SettingsSweep
         new("vehicle.type", "0", "1", Probe.Sections, Effect.Sections, "Vehicle type (tractor → combine: header in front)"),
         new("tool.type", "rear", "front", Probe.Sections, Effect.Sections, "Implement type (rear → front)"),
         new("tool.numSections", "8", "4", Probe.Sections, Effect.Sections, "Number of sections"),
-        new("tool.isSectionsNotZones", "1", "0", Probe.Sections, Effect.Sections, "Sections, not zones"),
+        new("tool.isSectionsNotZones", "1", "0", Probe.Sections, Effect.None, "Sections, not zones (buttons and map colour only)"),
         new("tool.isMultiColoredSections", "0", "1", Probe.Sections, Effect.None, "Multi-coloured coverage (display)"),
         new("tool.singleCoverageColor", "98FB98", "FF0000", Probe.Sections, Effect.None, "Coverage colour (display)"),
         new("tool.sectionColor", "0,98FB98", "0,FF0000", Probe.Sections, Effect.None, "Section 1 colour (display)"),
