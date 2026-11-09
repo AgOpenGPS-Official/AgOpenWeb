@@ -53,6 +53,9 @@ public sealed record JobSpec(
     public bool Reengage { get; init; } = true;
     /// <summary>Findings this job is expected to produce (the operator's own doing): noted, not counted.</summary>
     public IReadOnlyList<string> Expected { get; init; } = Array.Empty<string>();
+    /// <summary>When an <see cref="Expected"/> code is the operator's doing only up to a size (a
+    /// 50 cm nudge leaves a 50 cm strip, not a wider one): false = report it as a finding after all.</summary>
+    public Func<string, JobAreas, bool>? ExpectedWhen { get; init; }
     /// <summary>How the operator guides the job: the AB line named in <see cref="Track"/> (the
     /// default), or a curve, a closed loop, a water pivot, contour or a recorded path
     /// (<see cref="PathOperator"/>).</summary>
@@ -1016,6 +1019,30 @@ public sealed class JobRun : IAsyncDisposable
         double cell = TruthGrid.Cell * TruthGrid.Cell;
         var g = Grid;
         int reach = (int)Math.Ceiling(1.5 * Spacing / TruthGrid.Cell);
+        // The seams between neighbouring passes where both ran at full width, by 1 m bin along
+        // the line: where the gap between them lies across the passes, and how wide it is.
+        var seams = new Dictionary<int, List<(double Mid, double Gap)>>();
+        {
+            var ordered = _passEdges.OrderBy(p => p.Value.Values.Average(x => (x.L + x.R) / 2)).ToList();
+            for (int k = 0; k + 1 < ordered.Count; k++)
+                foreach (var (bin, x) in ordered[k].Value)
+                {
+                    if (!ordered[k + 1].Value.TryGetValue(bin, out var x2)) continue;
+                    if (x.R - x.L < Spec.T.Width - 0.3 || x2.R - x2.L < Spec.T.Width - 0.3) continue;
+                    if (!seams.TryGetValue(bin, out var l)) seams[bin] = l = new();
+                    l.Add(((x.R + x2.L) / 2, x2.L - x.R));
+                }
+        }
+        bool OnSeam((double E, double N) c)
+        {
+            if (seams.Count == 0) return false;
+            double u = U(c); int b = (int)Math.Floor(Vv(c));
+            for (int db = -1; db <= 1; db++)
+                if (seams.TryGetValue(b + db, out var l))
+                    foreach (var (mid, gap) in l)
+                        if (Math.Abs(u - mid) <= Math.Max(gap, 0) / 2 + TruthGrid.Cell / 2) return true;
+            return false;
+        }
         for (int i = 0; i < g.Count.Length; i++)
         {
             byte z = g.Zone[i];
@@ -1038,7 +1065,7 @@ public sealed class JobRun : IAsyncDisposable
                     else if (Work == null && Ring.DistToRing(c, Outer) < 1.5) a.MissedAlongBoundary += cell;
                     else if (LeftOnPurpose?.Invoke(c) == true) a.MissedLeftInMiddle += cell;
                     else if (AtCorner?.Invoke(c) == true) a.MissedAtCorners += cell;
-                    else if (SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; }
+                    else if (SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; if (OnSeam(c)) a.MissedAtSeams += cell; }
                 }
                 if (t >= 2) a.Twice += cell;
                 if (app) a.AppPainted += cell;

@@ -29,23 +29,6 @@ public class RigJobScenarioTests
     {
         // The field jobs' lock: every fixture's emulated module binds UDP 8888.
         using var exclusive = FieldJobScenarioTests.OneRunAtATime();
-        string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
-        var journal = new Journal();
-        foreach (var job in RigJobs.Jobs())
-        {
-            if (!Jobs.Want(only, job.Code)) continue;
-            ct.ThrowIfCancellationRequested();
-            await Jobs.RunAsync(journal, "Careful", job);
-        }
-
-        string report = journal.ToMarkdown(Title, Intro);
-        string path = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
-            ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, "rig-job-scenarios-report.md");
-        await File.WriteAllTextAsync(path, report, ct);
-        TestContext.Out.WriteLine(report);
-        TestContext.Out.WriteLine("Report: " + path);
-
-        var harness = journal.Findings.Where(f => f.Key == "HARNESS").ToList();
-        Assert.That(harness, Is.Empty, "the harness itself failed: " + string.Join("; ", harness.Select(h => h.Value.First.Message)));
+        await Jobs.RunFixtureAsync(RigJobs.Jobs().Select(j => ("Careful", j)), "rig-job-scenarios-report.md", j => j.ToMarkdown(Title, Intro), ct);
     }
 }

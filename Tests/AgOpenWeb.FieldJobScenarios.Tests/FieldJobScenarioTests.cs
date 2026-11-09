@@ -24,34 +24,11 @@ public class FieldJobScenarioTests
         // commands and both runs' valves are wrong without any error.
         using var exclusive = OneRunAtATime();
 
-        string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
         string op = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_OPERATOR") ?? "";
-        var journal = new Journal();
-
-        if (op is "" or "careful")
-            foreach (var job in CarefulOperator.Jobs())
-            {
-                if (!Jobs.Want(only, job.Code)) continue;
-                ct.ThrowIfCancellationRequested();
-                await Jobs.RunAsync(journal, "Careful", job);
-            }
-        if (op is "" or "careless")
-            foreach (var job in CarelessOperator.Jobs())
-            {
-                if (!Jobs.Want(only, job.Code)) continue;
-                ct.ThrowIfCancellationRequested();
-                await Jobs.RunAsync(journal, "Careless", job);
-            }
-
-        string report = journal.ToMarkdown();
-        string path = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
-            ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, "field-job-scenarios-report.md");
-        await File.WriteAllTextAsync(path, report, ct);
-        TestContext.Out.WriteLine(report);
-        TestContext.Out.WriteLine("Report: " + path);
-
-        var harness = journal.Findings.Where(f => f.Key == "HARNESS").ToList();
-        Assert.That(harness, Is.Empty, "the harness itself failed: " + string.Join("; ", harness.Select(h => h.Value.First.Message)));
+        var jobs = Enumerable.Empty<(string, JobSpec)>();
+        if (op is "" or "careful") jobs = jobs.Concat(CarefulOperator.Jobs().Select(j => ("Careful", j)));
+        if (op is "" or "careless") jobs = jobs.Concat(CarelessOperator.Jobs().Select(j => ("Careless", j)));
+        await Jobs.RunFixtureAsync(jobs, "field-job-scenarios-report.md", j => j.ToMarkdown(), ct);
     }
 
     internal static FileStream OneRunAtATime()

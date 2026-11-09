@@ -19,6 +19,40 @@ public static class Jobs
         return root;
     }
 
+    /// <summary>
+    /// Runs a fixture's jobs one after the other (those AGOPENWEB_SCENARIO_ONLY picks), with a
+    /// progress line per job (NUnit shows the console only at the end, so a slow nightly shows
+    /// where it is), and writes the report after every job, so a run cut short by its time limit
+    /// keeps what it did. The report goes to AGOPENWEB_SCENARIO_REPORT, else <paramref name="reportName"/>
+    /// in the test's work directory; the harness's own failures are asserted at the end.
+    /// </summary>
+    public static async Task RunFixtureAsync(IEnumerable<(string Op, JobSpec Job)> jobs, string reportName,
+        Func<Journal, string> toMarkdown, CancellationToken ct)
+    {
+        string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
+        string path = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
+            ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, reportName);
+        var journal = new Journal();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        void Progress(string what) => TestContext.Progress.WriteLine(F($"[{clock.Elapsed:hh\\:mm\\:ss}] {what}"));
+        foreach (var (op, job) in jobs)
+        {
+            if (!Want(only, job.Code)) continue;
+            ct.ThrowIfCancellationRequested();
+            Progress($"{job.Code} ({op}): {job.Title}");
+            await RunAsync(journal, op, job);
+            await File.WriteAllTextAsync(path, toMarkdown(journal), CancellationToken.None);
+        }
+        Progress("done");
+        string report = toMarkdown(journal);
+        await File.WriteAllTextAsync(path, report, CancellationToken.None);
+        TestContext.Out.WriteLine(report);
+        TestContext.Out.WriteLine("Report: " + path);
+
+        var harness = journal.Findings.Where(f => f.Key == "HARNESS").ToList();
+        Assert.That(harness, Is.Empty, "the harness itself failed: " + string.Join("; ", harness.Select(h => h.Value.First.Message)));
+    }
+
     public static bool Want(string? only, string code) =>
         string.IsNullOrEmpty(only) || only.Split(',').Any(o => code.Contains(o.Trim(), StringComparison.OrdinalIgnoreCase));
 
@@ -58,7 +92,7 @@ public static class Jobs
         var spec = r.Spec;
         void flag(Severity sev, string code, string text)
         {
-            if (spec.Expected.Contains(code)) sc.Note($"expected from what the operator did (`{code}`): {text}");
+            if (spec.Expected.Contains(code) && (spec.ExpectedWhen?.Invoke(code, a) ?? true)) sc.Note($"expected from what the operator did (`{code}`): {text}");
             else sc.Problem(sev, code, text);
         }
         double ha = a.Work / 1e4;
@@ -116,12 +150,15 @@ public static class Jobs
             sc.Note(F($"{a.MissedAtObstacles:0} m² of the cultivated area within 2 m of the obstacles were never sprayed: the sections closing over an obstacle and opening again after it (the section look-ahead and the valves' latency)"));
         // Passes that meet within 5 cm leave only the 0.2 m grid's rounding between them: with a
         // narrow implement the many pass edges add that up past the area threshold (a note, not a gap).
-        // (At most half a cell, 0.1 m, along every pass edge; more than that is real ground.) A gap
-        // the operator asked for (a negative overlap: a drill's row spacing between passes) is allowed.
+        // Only the cells on a seam where both passes ran at full width count as rounding, at most
+        // 0.05 m along every pass (what a gap of 5 cm or less can leave); the rest (wedges at the
+        // pass ends, a section late) is held to the usual 0.5 % as before. A gap the operator asked
+        // for (a negative overlap: a drill's row spacing between passes) is allowed.
         double askedGap = Math.Max(0, -spec.T.Overlap), passM = a.Work / Math.Max(r.Spacing, 0.1);
         double stripArea = 0.005 * a.Work + askedGap * passM;
-        if (a.LargestMissedStripM <= 0.05 + askedGap && a.MissedBetweenPasses > stripArea && a.MissedBetweenPasses <= (0.1 + askedGap) * passM)
-            sc.Note(F($"{a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}) between passes counted unsprayed on the 0.2 m grid, but the implement's ends met within {a.LargestMissedStripM:0.00} m on every pass{(askedGap > 0 ? F($" ({askedGap:0.00} m gap asked for)") : "")}: the grid's rounding along {r.Spacing:0.0} m passes, not a strip"));
+        double beyondRounding = (a.MissedBetweenPasses - a.MissedAtSeams) + Math.Max(0, a.MissedAtSeams - (0.05 + askedGap) * passM);
+        if (a.LargestMissedStripM <= 0.05 + askedGap && a.MissedBetweenPasses > stripArea && beyondRounding <= 0.005 * a.Work)
+            sc.Note(F($"{a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}) between passes counted unsprayed on the 0.2 m grid, {a.MissedAtSeams:0} m² of it on the seams where the implement's ends met within {a.LargestMissedStripM:0.00} m{(askedGap > 0 ? F($" ({askedGap:0.00} m gap asked for)") : "")}: the grid's rounding along {r.Spacing:0.0} m passes, not a strip"));
         else if (a.LargestMissedStripM <= 0.15 + askedGap && a.MissedBetweenPasses > stripArea)
             flag(Severity.Bug, "MISSED-STRIPS", F($"{a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}) between sprayed ground were never sprayed, centred on ({a.MissedBetweenE / Math.Max(a.MissedBetweenPasses, 1e-9):0},{a.MissedBetweenN / Math.Max(a.MissedBetweenPasses, 1e-9):0}), though wherever two neighbouring passes run at full width their edges meet (widest {a.LargestMissedStripM:0.00} m): wedges where a pass starts or ends with the implement still turning or a section still off, not a strip along the passes."));
         else if (a.LargestMissedStripM > 0.15 + askedGap || a.MissedBetweenPasses > stripArea)
