@@ -177,14 +177,17 @@ public static class SettingsSweep
         new("vehicle.type", "0", "1", Probe.Sections, Effect.Sections, "Vehicle type (tractor → combine: header in front)"),
         new("tool.type", "rear", "front", Probe.Sections, Effect.Sections, "Implement type (rear → front)"),
         new("tool.numSections", "8", "4", Probe.Sections, Effect.Sections, "Number of sections"),
-        new("tool.isSectionsNotZones", "1", "0", Probe.Sections, Effect.Sections, "Sections, not zones"),
         new("tool.isMultiColoredSections", "0", "1", Probe.Sections, Effect.None, "Multi-coloured coverage (display)"),
         new("tool.singleCoverageColor", "98FB98", "FF0000", Probe.Sections, Effect.None, "Coverage colour (display)"),
         new("tool.sectionColor", "0,98FB98", "0,FF0000", Probe.Sections, Effect.None, "Section 1 colour (display)"),
         // Zones group the section buttons and the remote switches (AgOpenGPS: zoneRanges in
         // Sections.Designer); automatic switching and painting stay per section. On a drive with
-        // every section on Auto, changing them must move nothing. The group's base runs also
-        // check that zone mode paints the full width (SECTIONS-PAINT-SHORT).
+        // every section on Auto, switching to zones and changing them must move nothing. The
+        // group's base runs also check that zone mode paints the full width (SECTIONS-PAINT-SHORT).
+        // Until 5bef54a4 zones painted a quarter of the width, which made the sections switch
+        // differently and read as the switch "working"; with the full width painted, the honest
+        // expectation is nothing, as for the zone rows below.
+        new("tool.isSectionsNotZones", "1", "0", Probe.Sections, Effect.None, "Sections, not zones (buttons and the module's switches only)"),
         new("tool.zones", "2", "4", Probe.Sections, Effect.None, "Number of zones (buttons only)", "tool.isSectionsNotZones:0"),
         new("tool.zoneEnd", "0,4", "0,2", Probe.Sections, Effect.None, "Zone 1 last section (buttons only)", "tool.isSectionsNotZones:0"),
         new("vehicle.hitchLength", "1.1", "3", Probe.Sections, Effect.Sections, "Drawbar length (trailed)", "tool.type:trailing"),
