@@ -165,11 +165,16 @@ public class AutoSteerConfigEmitTests
 
     private short SentAngle()
     {
-        _udp.ClearReceivedCalls();
-        _service.SendPgnsForControlTick();
-        foreach (var call in _udp.ReceivedCalls())
-            if (call.GetArguments() is [byte[] b, ..] && b.Length > 9 && b[3] == 0xFE) // calls only: a tick also reads IsConnected
-                return (short)(b[8] | (b[9] << 8));
+        // The next PGN 254 sent: right after the engage the unchanged ones are held for a few
+        // ticks (AutoSteerService.SteerStatusHoldTicks, for the AIO v4's engage edge).
+        for (int tick = 0; tick <= AutoSteerService.SteerStatusHoldTicks; tick++)
+        {
+            _udp.ClearReceivedCalls();
+            _service.SendPgnsForControlTick();
+            foreach (var call in _udp.ReceivedCalls())
+                if (call.GetArguments() is [byte[] b, ..] && b.Length > 9 && b[3] == 0xFE) // calls only: a tick also reads IsConnected
+                    return (short)(b[8] | (b[9] << 8));
+        }
         return short.MinValue;
     }
 
