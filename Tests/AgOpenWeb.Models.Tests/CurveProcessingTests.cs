@@ -370,13 +370,62 @@ public class CurveProcessingTests
         // The U-turn's own geometry: the pass runs on into the opening so the turn generator sees
         // it cross the opening's turn line, but not as far as halfway (the other end's side).
         var curve = Walk((30, 0), (0, 0), (0, 100), (100, 100), (100, 0), (70, 0));
-        var ext = CurveProcessing.ExtendPassForTurn((curve, 0, true, true));
+        var ext = CurveProcessing.ExtendPassForTurn((curve, 0, true, true, true, true));
         Assert.Multiple(() =>
         {
             Assert.That(ext[0].Easting, Is.GreaterThan(45).And.LessThan(50), "the start runs most of the way to halfway");
             Assert.That(ext[^1].Easting, Is.GreaterThan(50).And.LessThan(55), "the end too, from the other side");
             Assert.That(ext[0].Northing, Is.EqualTo(0).Within(1e-9));
         });
+    }
+
+    [Test]
+    public void Ends_on_two_sides_of_a_corner_meet_and_are_not_extended()
+    {
+        // Round a 100 m square the long way, from (40,0) on the south side to (100,20) on the east,
+        // leaving the south-east corner out. Neither end points at the other (45° and more off), but
+        // run on they meet at the corner: A and B are the line's ends, as across a straight opening.
+        // Extended, the two tails crossed there, past B and across the corner (#694, Graeme).
+        var curve = Walk((40, 0), (0, 0), (0, 100), (100, 100), (100, 20));
+        var ext = CurveProcessing.ExtendCurveEnds(curve);
+        var turn = CurveProcessing.ExtendPassForTurn(CurveProcessing.CurvePass(curve, 0));
+        Assert.Multiple(() =>
+        {
+            Assert.That(CurveProcessing.EndsFacingEachOther(curve), Is.EqualTo((true, true)));
+            Assert.That(ext, Has.Count.EqualTo(curve.Count), "no extension at either end");
+            // For the U-turn's geometry each end runs on into the opening, short of the corner.
+            Assert.That(turn[0].Easting, Is.GreaterThan(95).And.LessThan(100), "A runs on east to just short of the corner");
+            Assert.That(turn[^1].Northing, Is.GreaterThan(0).And.LessThan(5), "B runs on south to just short of it");
+        });
+    }
+
+    [Test]
+    public void Every_pass_has_the_references_ends()
+    {
+        // The corner curve above with A 60 m from the corner and B 20 m: on the pass 30 m in, the
+        // ends no longer meet (B's end is past where A's would run to), and judged on the pass, B
+        // ran on 200 m south across the opening and out of the field. The ends are the track's:
+        // no pass of it is extended.
+        var curve = Walk((40, 0), (0, 0), (0, 100), (100, 100), (100, 20));
+        foreach (double offset in new[] { 6.0, 18.0, 30.0, 42.0 })
+        {
+            var made = CurveProcessing.CurvePass(curve, offset);
+            var line = CurveProcessing.ExtendPass(made);
+            Assert.That((line[0], line[^1]), Is.EqualTo((made.Points[0], made.Points[^1])), $"pass {offset} m in");
+        }
+    }
+
+    [Test]
+    public void Ends_converging_slowly_still_extend()
+    {
+        // A U whose sides lean in by 10° each: run on they meet far beyond the opening, at 20°. The
+        // passes run on past both ends, as on any open curve.
+        var curve = Walk((0, 0), (0, 100), (100, 100), (100, 0));
+        double lean = 10 * Math.PI / 180;
+        curve.Insert(0, new Vec3(Math.Sin(lean) * 20, -Math.Cos(lean) * 20, 0));
+        curve.Add(new Vec3(100 - Math.Sin(lean) * 20, -Math.Cos(lean) * 20, 0));
+        curve = CurveProcessing.CalculateHeadings(curve);
+        Assert.That(CurveProcessing.EndsFacingEachOther(curve), Is.EqualTo((false, false)));
     }
 
     [Test]

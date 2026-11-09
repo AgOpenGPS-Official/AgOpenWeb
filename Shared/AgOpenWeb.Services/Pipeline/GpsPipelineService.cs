@@ -1950,7 +1950,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
         else
         {
-            var made = Math.Abs(dist) < 0.01 ? (track.Points, 0, true, true) : _offsetPasses.Get(track, dist, radius);
+            var made = Math.Abs(dist) < 0.01 ? CurveProcessing.ReferencePass(track.Points, track.IsClosed) : _offsetPasses.Get(track, dist, radius);
             line = extend ? CurveProcessing.ExtendPass(made) : made.Points;
         }
         _toolPassKey = key;
@@ -2000,7 +2000,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     lines.Add(new List<Vec3> { new(a.Easting + de, a.Northing + dn, a.Heading), new(b.Easting + de, b.Northing + dn, b.Heading) });
                     continue;
                 }
-                var made = Math.Abs(dist) < 0.01 ? (track.Points, 0, true, true) : _offsetPasses.Get(track, dist, _configStore.Guidance.UTurnRadius);
+                var made = Math.Abs(dist) < 0.01 ? CurveProcessing.ReferencePass(track.Points, track.IsClosed) : _offsetPasses.Get(track, dist, _configStore.Guidance.UTurnRadius);
                 if (made.Points.Count < 2) continue; // no pass there (#694)
                 lines.Add(extend ? CurveProcessing.ExtendPass(made) : made.Points);
             }
@@ -2074,7 +2074,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // The extended reference is the line itself: the caller leaves baseTrack out so it
             // isn't drawn twice at the same position.
             // A pass the offset removed altogether has no points: nothing is drawn (#694).
-            var pass = onReference ? (track.Points, 0, true, true) : _offsetPasses.Get(track, distAway, turnRadius);
+            var pass = onReference ? CurveProcessing.ReferencePass(track.Points, track.IsClosed) : _offsetPasses.Get(track, distAway, turnRadius);
             var offsetPoints = extend ? CurveProcessing.ExtendPass(pass) : new List<Vec3>(pass.Points);
             resultTrack = new Models.Track.Track
             {

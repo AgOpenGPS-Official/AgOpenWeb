@@ -44,9 +44,15 @@ public class OpenCurveEndTurnTests
     private const double SpeedKmh = 10;
     private static readonly Wgs84 Origin = new(55.27030725780243, -7.1667352803176785);
 
-    private static readonly Lazy<(List<Vec2> Fence, List<Vec3> Headland, TrackModel Curve)> Field = new(() =>
+    private static readonly Lazy<(List<Vec2> Fence, List<Vec3> Headland, TrackModel Curve)> Field = new(() => LoadField("issue694_open_curve_field.json"));
+
+    // His second try (2026-11-09): A on the south-west side, B on the south-east, the south corner
+    // left out between them.
+    private static readonly Lazy<(List<Vec2> Fence, List<Vec3> Headland, TrackModel Curve)> CornerField = new(() => LoadField("issue694_corner_curve_field.json"));
+
+    private static (List<Vec2> Fence, List<Vec3> Headland, TrackModel Curve) LoadField(string file)
     {
-        var path = Path.Combine(TestContext.CurrentContext.TestDirectory, "Pipeline", "Fixtures", "issue694_open_curve_field.json");
+        var path = Path.Combine(TestContext.CurrentContext.TestDirectory, "Pipeline", "Fixtures", file);
         using var doc = JsonDocument.Parse(File.ReadAllText(path));
         List<(double E, double N)> Read(string name) => doc.RootElement.GetProperty(name).EnumerateArray()
             .Select(p => (p[0].GetDouble(), p[1].GetDouble())).ToList();
@@ -55,7 +61,7 @@ public class OpenCurveEndTurnTests
         var curve = TrackModel.FromCurve("Boundary Curve",
             CurveProcessing.CalculateHeadings(Read("curve").Select(p => new Vec3(p.E, p.N, 0)).ToList()));
         return (fence, headland, curve);
-    });
+    }
 
     /// <summary>One fix of a drive.</summary>
     public readonly record struct Sample(int Tick, double E, double N, double HeadingDeg, int Pass, bool InTurn, bool Engaged, string? Reason);
@@ -183,11 +189,13 @@ public class OpenCurveEndTurnTests
         }
     }
 
-    private static Boundary FieldBoundary() => new()
+    private static Boundary FieldBoundary() => BoundaryOf(Field.Value.Fence);
+
+    private static Boundary BoundaryOf(List<Vec2> fence) => new()
     {
         OuterBoundary = new BoundaryPolygon
         {
-            Points = Field.Value.Fence.Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList(),
+            Points = fence.Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList(),
         },
     };
 
@@ -195,9 +203,10 @@ public class OpenCurveEndTurnTests
     private const double StartE = -27.215, StartN = 51.600, StartHeadingDeg = 318.70;
 
     // The reporter's pass and its two ends, as the reference offset gives them.
-    private static (Vec3 A, Vec3 B) PassEnds(int pass)
+    private static (Vec3 A, Vec3 B) PassEnds(int pass) => PassEnds(Field.Value.Curve, pass);
+
+    private static (Vec3 A, Vec3 B) PassEnds(TrackModel curve, int pass)
     {
-        var curve = Field.Value.Curve;
         var made = CurveProcessing.CurvePass(curve.Points, Models.Track.PassGeometry.Offset(curve, pass, ToolWidth), false, 6);
         return (made.Points[0], made.Points[^1]);
     }
@@ -286,6 +295,71 @@ public class OpenCurveEndTurnTests
             // The last 25 m (past the corner before it) straight on to the end: no turn back towards the line.
             double h0 = run[0].HeadingDeg;
             Assert.That(run.Max(s => Math.Abs(((s.HeadingDeg - h0 + 540) % 360) - 180)), Is.LessThan(15), "no turn back");
+        });
+    }
+
+    [Test]
+    public void A_and_B_on_two_sides_of_a_corner_are_the_lines_ends()
+    {
+        var (fence, headland, curve) = CornerField.Value;
+        var made = CurveProcessing.CurvePass(curve.Points, Models.Track.PassGeometry.Offset(curve, 4, ToolWidth));
+        var line = CurveProcessing.ExtendPass(made);
+        Assert.Multiple(() =>
+        {
+            Assert.That(CurveProcessing.EndsFacingEachOther(curve.Points), Is.EqualTo((true, true)), "run on, A and B meet at the corner");
+            Assert.That(line[0], Is.EqualTo(made.Points[0]), "no extension at A");
+            Assert.That(line[^1], Is.EqualTo(made.Points[^1]), "nor at B");
+            Assert.That(CurveEndOpening.Build(curve.Points, BoundaryOf(fence), headland, 12), Is.Not.Null,
+                "the corner left out is a virtual boundary for the U-turn");
+        });
+    }
+
+    [Test]
+    public void With_A_and_B_on_two_sides_of_a_corner_the_tractor_keeps_its_pass_and_turns_at_B()
+    {
+        // His pass 5R (4) on the south-east side, heading south-west towards B. Run on, the pass
+        // went past B across the corner left out, where the other side's passes crossed it, and
+        // the turn was made at the field's corner. Now it stays on its pass to B and turns there
+        // onto the next one.
+        var (fence, headland, curve) = CornerField.Value;
+        const int pass = 4;
+        var made = CurveProcessing.CurvePass(curve.Points, Models.Track.PassGeometry.Offset(curve, pass, ToolWidth), false, 6);
+        // Start 80 m back from B along the pass, heading for B.
+        int i = made.Points.Count - 1;
+        double back = 0;
+        while (i > 0 && back < 80)
+        {
+            back += Dist(made.Points[i].Easting, made.Points[i].Northing, made.Points[i - 1]);
+            i--;
+        }
+        var from = made.Points[i];
+        var to = made.Points[Math.Min(i + 5, made.Points.Count - 1)];
+        double heading = Math.Atan2(to.Easting - from.Easting, to.Northing - from.Northing);
+
+        using var drive = new Drive(curve, pass, youTurn: true, BoundaryOf(fence), headland);
+        drive.Start(from.Easting, from.Northing, heading);
+        drive.Run(30 * 120);
+
+        var turns = Turns(drive.Samples);
+        var (_, b) = PassEnds(curve, pass);
+        var beforeTurn = drive.Samples.TakeWhile(s => !s.InTurn).ToList();
+        Assert.Multiple(() =>
+        {
+            Assert.That(beforeTurn.All(s => s.Pass == pass), Is.True,
+                "on its pass until the turn: " + string.Join(",", beforeTurn.Select(s => s.Pass).Distinct()));
+            Assert.That(drive.Samples.All(s => s.Engaged), Is.True, $"AutoSteer stayed on ({drive.DisengageReason})");
+            Assert.That(turns, Is.Not.Empty, "a U-turn at B");
+            if (turns.Count > 0)
+            {
+                Assert.That(Math.Abs(turns[0].To - turns[0].From), Is.EqualTo(1), "onto the next pass");
+                // The turn starts before B, the way the pass runs there: not past it, as when the
+                // pass ran on across the opening and turned at the field's corner 30 m on.
+                var nearB = made.Points[^6];
+                double dE = b.Easting - nearB.Easting, dN = b.Northing - nearB.Northing, len = Math.Sqrt(dE * dE + dN * dN);
+                double pastB = ((turns[0].Start.E - b.Easting) * dE + (turns[0].Start.N - b.Northing) * dN) / len;
+                Assert.That(pastB, Is.LessThan(0), $"the turn starts before B ({pastB:F1} m past it)");
+                Assert.That(Dist(turns[0].Start.E, turns[0].Start.N, b), Is.LessThan(40), "at B");
+            }
         });
     }
 }
