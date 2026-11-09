@@ -266,7 +266,9 @@ public sealed class YouTurnStateMachine
         {
             _logger.LogDebug("[YouTurn] In the headland heading out with no turn - turn missed");
             SoundMissed(effects);
-            effects.StatusMessage = "U-turn missed: no turn can be made from the headland. Take over manually.";
+            // Also for a pass that lies in the headland strip the whole way (along a side of the
+            // field), where it comes mid-pass: worded for both, and it keeps "take over manually".
+            effects.StatusMessage = "No U-turn can be made from the headland on this pass. Take over manually at the end of the field.";
         }
 
         // ── TURN TRIGGER ────────────────────────────────────────────────

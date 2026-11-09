@@ -251,7 +251,7 @@ public class AutoTurnMatchesAgOpenGpsTests
         {
             Assert.That(turn.TurnPath, Is.Null, "no turn from the headland");
             Assert.That(effects[0].TurnCreationFailedSound, Is.True, "the operator hears it");
-            Assert.That(effects[0].StatusMessage, Does.Contain("missed"));
+            Assert.That(effects[0].StatusMessage, Does.Contain("No U-turn").And.Contain("Take over manually"));
             Assert.That(effects.Skip(1).Any(e => e.TurnCreationFailedSound), Is.False, "once");
         });
     }
@@ -289,7 +289,7 @@ public class AutoTurnMatchesAgOpenGpsTests
             new Position { Easting = 48.5, Northing = 40, Heading = 180, Speed = 2.78 },
             track, boundary, headland, UTurnSkipRows: 0, IsSkipWorkedMode: false,
             HeadlandCalculatedWidth: HeadlandWidth, HeadlandDistance: HeadlandWidth), guidance, turn);
-        Assert.That(effects.TurnCreationFailedSound || (effects.StatusMessage?.Contains("missed") ?? false), Is.False,
+        Assert.That(effects.TurnCreationFailedSound || (effects.StatusMessage?.Contains("No U-turn") ?? false), Is.False,
             $"no warning: the pass bends into the field ('{effects.StatusMessage}')");
     }
 
@@ -300,7 +300,7 @@ public class AutoTurnMatchesAgOpenGpsTests
         ConfigurationStore.SetInstance(new ConfigurationStore());
         // Heading south from the north headland into the field: the headland line is ahead.
         var (_, effects) = PlanAlongHeading(1.5, 180, new[] { 50.0, 49.0, 48.0 });
-        Assert.That(effects.Any(e => e.TurnCreationFailedSound || (e.StatusMessage?.Contains("missed") ?? false)), Is.False);
+        Assert.That(effects.Any(e => e.TurnCreationFailedSound || (e.StatusMessage?.Contains("No U-turn") ?? false)), Is.False);
     }
 
     private static (YouTurnWorkingState, List<YouTurnEffects>) PlanAlongHeading(double x, double headingDeg, double[] ys)
