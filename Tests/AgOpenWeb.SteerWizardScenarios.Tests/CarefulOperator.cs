@@ -288,10 +288,14 @@ public static class CarefulOperator
             bool on = await rig.ReadAsync(() => rig.Vm.IsAutoSteerEngaged);
             if (!on)
             {
-                s.Rig.Note("AutoSteer did not engage");
+                // The check never reached its situation: a harness fault that fails the run, not a
+                // quiet note (the 2026-11-06 runs passed this scenario with no AB line to steer on).
+                s.Report(new Finding(Severity.Bug, "HARNESS_AUTOSTEER_NOT_ENGAGED",
+                    "AutoSteer did not engage for the check " + when + ", so the calibration was not checked (see what the app said)."));
                 return;
             }
             double maxXte = 0, lastXte = 0, maxWheel = 0;
+            bool moduleSteered = false;
             for (int i = 0; i < 300; i++)
             {
                 await Task.Delay(100);
@@ -299,6 +303,18 @@ public static class CarefulOperator
                 if (i > 150) maxXte = Math.Max(maxXte, Math.Abs(xte));
                 lastXte = xte;
                 maxWheel = Math.Max(maxWheel, Math.Abs(s.Module.WheelAngleDeg));
+                moduleSteered |= s.Module.MotorEnabled;
+            }
+            if (!moduleSteered)
+            {
+                // The screen said engaged and the module never ran its motor: the line check means
+                // nothing then, and this is the finding.
+                s.Report(new Finding(Severity.Inconsistency, "MODULE_NEVER_STEERED",
+                    $"AutoSteer was engaged for 30 s ({when}) and the steer module never enabled its motor: the screen says steering, the wheels are not moved."));
+                await s.Send("autosteer.toggle");
+                s.Drive(0);
+                await s.SettleAsync(500);
+                return;
             }
             rig.Note(string.Create(Inv, $"AutoSteer: max off-line {maxXte * 100:F0} cm in the last 15 s, ended at {lastXte * 100:F0} cm, wheels up to {maxWheel:F0}°"));
             if (maxXte > 0.3)

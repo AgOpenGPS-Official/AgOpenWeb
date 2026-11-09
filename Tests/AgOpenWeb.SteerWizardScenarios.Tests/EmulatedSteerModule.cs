@@ -142,7 +142,11 @@ public sealed class EmulatedSteerModule : IDisposable
                     _gpsSpeed = (p[5] | p[6] << 8) * 0.1;
                     _prevStatus = _status;
                     _status = p[7];
-                    _statusChanged = _status != _prevStatus;
+                    // Latched until the 50 Hz loop reads it: AgOpenWeb sends PGN 254 at 100 Hz, so
+                    // two arrive between two loops, and a flag set per packet lost the rising edge
+                    // (0 then 1, then 1 again) the "no switch" logic engages on. The firmware's own
+                    // task runs at 100 Hz and sees every packet.
+                    _statusChanged |= _status != _prevStatus;
                     _setPoint = (short)(p[8] | p[9] << 8) * 0.01;
                     if ((_status & 1) == 0 || _gpsSpeed < 0.1 || _steerSwitch == 1)
                         _watchdog = WatchdogForce;
