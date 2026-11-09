@@ -26,6 +26,9 @@ public sealed class PassResult
     public double SectionsOnShare = double.NaN;
     public int AppPass;
     public bool RanOff;
+    /// <summary>Not NaN when AutoSteer went to the line the app's (wrong) tool width puts this
+    /// many metres from the real pass, east positive.</summary>
+    public double SteeredToAppLine = double.NaN;
     /// <summary>AutoSteer came on when the operator engaged it for this pass.</summary>
     public bool Engaged;
     public string? Disengaged;
@@ -131,7 +134,7 @@ public sealed class FieldRun : IAsyncDisposable
             bool north = k % 2 == 0;
             var pr = await DrivePassAsync(k, north, target, k % 2 == 0 ? 0.4 : -0.4, midPass);
             Passes.Add(pr);
-            if (pr.RanOff) break;
+            if (pr.RanOff || !double.IsNaN(pr.SteeredToAppLine)) break;
             double next = (double.IsNaN(pr.MeanX) ? target : pr.MeanX) + w;
             target = next;
         }
@@ -244,6 +247,18 @@ public sealed class FieldRun : IAsyncDisposable
             }
             if (Math.Abs(tc.E - targetX) > 8 || Math.Abs(AngleDiff(Truth.Heading, hdg)) > 70)
             {
+                // A wrong tool width moves every pass line (pass n's centre is (n + ½) × spacing
+                // from the AB line, as AgOpenGPS's CABLine): AutoSteer then rightly steers to the
+                // nearest line of the width it was told, not to the pass the real implement fits.
+                // That is what the setting does, not AutoSteer leaving its line.
+                double appLine = AppLineNear(targetX + startError);
+                double toApp = appLine - targetX;
+                if (Math.Abs(toApp) > 8 && Math.Sign(tc.E - targetX) == Math.Sign(toApp))
+                {
+                    pr.SteeredToAppLine = toApp;
+                    Problems.Add(F($"pass {k + 1}: AutoSteer steered to the line AgOpenWeb's tool width ({Rig.Store.ActualToolWidth:0.##} m) puts {Math.Abs(toApp):F1} m {(toApp > 0 ? "east" : "west")} of the real pass"));
+                    break;
+                }
                 pr.RanOff = true;
                 Problems.Add(F($"pass {k + 1}: the tractor left the pass (implement {tc.E - targetX:F1} m off, heading {AngleDiff(Truth.Heading, hdg):F0}° off) at N={Truth.N:F0}"));
                 break;
@@ -259,8 +274,7 @@ public sealed class FieldRun : IAsyncDisposable
             pr.MeanX = xs.Average();
             pr.MinX = xs.Min();
             pr.MaxX = xs.Max();
-            double spacing = Math.Max(0.1, Rig.Store.ActualToolWidth - Rig.Store.Tool.Overlap);
-            double line = (Math.Round(pr.MeanX / spacing - 0.5) + 0.5) * spacing;  // pass n at (n + ½) × spacing
+            double line = AppLineNear(pr.MeanX);
             pr.LineError = pr.MeanX - line;
             pr.MaxLineDev = xs.Max(x => Math.Abs(x - line));
             pr.SaturatedShare = sat / n;
@@ -273,6 +287,14 @@ public sealed class FieldRun : IAsyncDisposable
         }
         CollectMessages();
         return pr;
+    }
+
+    /// <summary>The centre of the pass AgOpenWeb's own tool width puts nearest to
+    /// <paramref name="e"/>: pass n at (n + ½) × (width − overlap) from the AB line.</summary>
+    private double AppLineNear(double e)
+    {
+        double spacing = Math.Max(0.1, Rig.Store.ActualToolWidth - Rig.Store.Tool.Overlap);
+        return (Math.Round(e / spacing - 0.5) + 0.5) * spacing;
     }
 
     /// <summary>What the app said since the last call (status lines, warnings, errors; not
