@@ -285,7 +285,11 @@ public sealed class YouTurnStateMachine
                 var fromHere = _creation.CreateManualArcPath(
                     currentPosition, abHeading, turn.IsTurnLeft,
                     ctx.Boundary, guidance, ctx.UTurnSkipRows, turn.NextTrack);
-                if (fromHere.Count > 2)
+                // Only a turn that stays in the field. The manual builder checks no more than
+                // where the turn ends; started by the app itself, a turn must keep inside the
+                // boundary and out of obstacles, or the operator takes over (#698's rule for the
+                // fallback turn).
+                if (fromHere.Count > 2 && !YouTurnCreationService.LeavesField(fromHere, ctx.Boundary))
                 {
                     turn.TurnPath = fromHere;
                     turn.ArcStart = null;

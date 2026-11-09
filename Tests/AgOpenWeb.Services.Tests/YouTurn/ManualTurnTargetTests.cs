@@ -49,24 +49,29 @@ public class ManualTurnTargetTests
             $"the path ends at x = {end.Easting:F1}, guidance went to pass {g.HowManyPathsAway}");
     }
 
+    /// <summary>
+    /// Past the arc start, 2 m beside the pass: the planned turn can't be joined, and a turn from
+    /// here (about 24 m from the tractor at radius 8) would run 6 m past the fence of this 16 m
+    /// headland. A turn the app starts by itself stays in the field: missed, and the operator is
+    /// told. (Where it fits, the turn from here is made: YouTurnTriggerOnPathTests.)
+    /// </summary>
     [Test]
-    public void Snake_TurnFromHere_EndsOnThePlannedPass()
+    public void Snake_TurnFromHere_ThatWouldLeaveTheField_IsMissedWithAWarning()
     {
         var b = new Bench { SkipRows = 1, SkipWorked = true };
         var (g, t) = b.OnPass(1);
         b.Tick(g, t);
         Assert.That(t.TurnPath, Is.Not.Null, "the scenario: a snake turn planned");
 
-        // Into the headland past the arc start, 2 m beside the pass: never on the path.
         b.Y = t.ArcStart!.Value.Northing + 6;
         b.X = PassX(1) + 2.0;
         var e = b.Tick(g, t);
-        Assert.That(t.IsExecuting, Is.True, "turned from here: " + e.StatusMessage);
-        var end = t.TurnPath![^1];
-        b.Sm.CompleteFromGuidance(b.Ctx(), g, t);
-
-        Assert.That(end.Easting, Is.EqualTo(PassX(g.HowManyPathsAway)).Within(1.0),
-            $"the path ends at x = {end.Easting:F1}, guidance went to pass {g.HowManyPathsAway}");
+        Assert.Multiple(() =>
+        {
+            Assert.That(t.IsExecuting, Is.False, "no turn out of the field");
+            Assert.That(t.TurnPath, Is.Null);
+            Assert.That(e.StatusMessage, Does.Contain("missed"));
+        });
     }
 
     // The tool 2.5 m right of the tractor: on pass 0 heading north the tractor steers x = 1.5;
