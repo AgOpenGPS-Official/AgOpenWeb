@@ -488,6 +488,7 @@ turns from the on-screen buttons) with paths built by `YouTurnCreationService`:
 - The turn hands back to line guidance with 4 m of arc remaining (`EarlyCompletionLookahead`).
 - The turn is built from the headland crossing **ahead** of the tractor (`FindTrackHeadlandIntersectionAhead`; one behind only past the last crossing). When no real turn fits, the simple fallback (a semicircle) is used only if every point of it stays in the field, outside obstacles a turn may not drive through (`LeavesField`, #698); otherwise no turn and the creation-failed sound, as AgOpenGPS (which has no fallback). A hard boundary refuses a turn that would start under or behind the tractor.
 - The next pass must have room at this end: at least 20 m of it inside the cultivated area back from the end ahead (`IsPathLandable` / `LandingLength`), not just any piece of it inside the field; otherwise "End of field reached - no room on the next pass at this end" (#712). Driving on across a headland gap to the next piece is not done (an enhancement).
+- An open curve whose ends face each other (a boundary curve made the long way round, A and B with an opening between them): A and B are the line's ends, no run-on past them, and the opening is a virtual boundary (`CurveEndOpening`): the U-turn turns there into the next pass as at a headland. Past an open curve's end with no turn to take over, AutoSteer goes off ("past end of curve", AgOpenGPS `CABCurve`) instead of steering back (#694).
 
 Key parameters:
 - `HeadlandDistance` - width of headland zone (green to yellow line)
