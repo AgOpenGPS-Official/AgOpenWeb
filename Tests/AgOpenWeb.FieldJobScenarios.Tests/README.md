@@ -78,8 +78,10 @@ dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedNam
 ```
 
 A job is a field driven at about 12x real time: a few minutes for the small field, tens of
-minutes for the whole set. CI only builds it; the full run is nightly on develop
-(`.github/workflows/field-job-scenarios.yml`, also run by hand from Actions). The report goes
+minutes for the whole set (the careful operator's jobs about 80 minutes on a GitHub runner, J6
+with its 82 obstacles most of it). CI only builds it; the full run is nightly on develop
+(`.github/workflows/field-job-scenarios.yml`, also run by hand from Actions), the careful and the
+careless operator as two jobs side by side, each with its own report. The report goes
 to `field-job-scenarios-report.md` in the test output folder, or to `AGOPENWEB_SCENARIO_REPORT`.
 
 **One run at a time per machine.** The emulated module binds UDP 8888, so two runs side by side

@@ -16,7 +16,7 @@ name: Update Scenarios
 #   - manual dispatch: always, on the branch picked, from the releases given.
 
 on:
-  # Nightly: the bug report Worker (Tools/bugreport-worker, NIGHTLY_CRON 03:07 UTC, 21:07 US
+  # Nightly: the bug report Worker (Tools/bugreport-worker, NIGHTLY_CRON 05:07 UTC, 23:07 US
   # Central) starts it with nightly=true. GitHub's own schedule started this repo's runs 5-8 hours
   # late every day (2026-10 and 11), so the reports weren't in by morning. Each harness has its
   # own runner, so they run side by side.

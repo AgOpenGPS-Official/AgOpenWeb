@@ -4,7 +4,7 @@ name: Field Job Scenarios
 # machine drives whole fields with AutoSteer, automatic U-turns and automatic sections, with an
 # emulated machine module opening the valves; what the implement swept with a valve open is
 # compared with the field, the headland, the obstacles and AgOpenWeb's own map. It takes tens
-# of minutes, so it runs nightly on develop, not on every PR (CI only builds it). The run fails
+# of minutes (the careful and the careless operator side by side), so it runs nightly on develop, not on every PR (CI only builds it). The run fails
 # when the harness breaks; the findings are in the report, kept as an artifact and shown in the
 # run's summary.
 #
@@ -12,7 +12,7 @@ name: Field Job Scenarios
 #   - manual dispatch: always, on the branch picked.
 
 on:
-  # Nightly: the bug report Worker (Tools/bugreport-worker, cron 03:07 UTC, 21:07 US Central)
+  # Nightly: the bug report Worker (Tools/bugreport-worker, cron 05:07 UTC, 23:07 US Central)
   # starts it with nightly=true. GitHub's own schedule started this repo's runs 5-8 hours late
   # every day (2026-10 and 11), so the reports weren't in by morning. Each harness has its own
   # runner, so they run side by side.
@@ -37,6 +37,13 @@ concurrency:
 
 jobs:
   scenarios:
+    # The careful and the careless operator run as two jobs side by side, each on its own runner:
+    # since the U-turns work whole fields (2026-11) the careful jobs alone take about 80 minutes.
+    strategy:
+      fail-fast: false
+      matrix:
+        who: [careful, careless]
+    name: scenarios (${{ matrix.who }})
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -66,7 +73,8 @@ jobs:
         if: steps.fresh.outputs.run == 'true'
         env:
           AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/field-job-scenarios-report.md
-        run: dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedName~FieldJobScenarioTests" --verbosity normal
+          AGOPENWEB_SCENARIO_OPERATOR: ${{ matrix.who }}
+        run: dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ -c Release --filter "FullyQualifiedName~FieldJobScenarioTests" --verbosity normal
 
       - name: Report to the summary
         if: always() && steps.fresh.outputs.run == 'true'
@@ -83,7 +91,7 @@ jobs:
         if: always() && steps.fresh.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: field-job-scenarios-report
+          name: field-job-scenarios-report-${{ matrix.who }}
           path: ${{ runner.temp }}/field-job-scenarios-report.md
           if-no-files-found: ignore
           retention-days: 30
