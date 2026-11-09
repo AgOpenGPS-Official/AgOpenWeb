@@ -1,4 +1,20 @@
 # Finding codes already reported (one per line: CODE, then where it was reported).
 # The report lists these under "Already reported" so a night's new findings stand out.
-# Example:
-# UPDATE-TRACK-MOVED  issue #123
+#
+# The first nightly report (official PR #719, merged 2026-11-08) listed these. The OLD-BUILD-*
+# codes are about released bundles (v26.7.1, v26.7.2), which never change: every night finds
+# them again. The AOG-* codes are about the AgOpenGPS 6.8.2+ importer; the fork
+# renatorgr/AgOpenWeb has one (PRs #144 and #152), not upstream yet.
+OLD-BUILD-SETTING-NOT-SAVED   #719 report: v26.7.1 profile.new did not activate the new profile
+OLD-BUILD-FILE-INCONSISTENT   #719 report: v26.7.2 default section width not applied to the sections
+OLD-BUILD-SAVE-ERROR          #719 report: v26.7.1 wrote appsettings.json twice at once (save_error.txt)
+POWERCUT-UNSAVED-PROFILE-EDIT-LOST  #719 report (was POWERCUT-DEVICE-SETTING-CHANGED): a profile edit since the last profile save is lost on a power cut
+AOG-PROFILE-STALE-SOURCE      #719 report (R8); importer in fork PRs renatorgr/AgOpenWeb#144 and #152
+AOG-TOOL-NOT-LISTED           #719 report (R8); same importer
+AOG-VEHICLE-NOT-LISTED        #719 report (R8); same importer
+AOG-NTRIP-NOT-IMPORTED        #719 report (R8); same importer
+AOG-SETTING-NOT-IMPORTED      #719 report (R8); same importer
+AOG-SETTING-KEY-MISMATCH      #719 report (R8); same importer
+AOG-SETTING-READ-THEN-RESET   #719 report (R8); same importer
+BOTH-DAMAGED-NOT-TOLD         #719 report (R9, power-cut leftovers)
+ZERO-LENGTH-LAST-SAVE-LOST    #719 report (R9, power-cut leftovers)

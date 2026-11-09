@@ -147,6 +147,8 @@ public static class Kit
             try { lines = File.ReadAllLines(f); } catch { continue; }
             string path = lines.FirstOrDefault(l => l.StartsWith("Path:", StringComparison.Ordinal))?[5..].Trim() ?? "?";
             string error = lines.FirstOrDefault(l => l.StartsWith("Error:", StringComparison.Ordinal))?[6..].Trim() ?? lines.FirstOrDefault() ?? "";
+            // The data folder is a fresh temp folder each run: named as a placeholder, two nights' reports diff.
+            error = error.Replace(dataRoot, "<data folder>", StringComparison.Ordinal);
             int at = Array.FindIndex(lines, l => l.StartsWith("Error:", StringComparison.Ordinal));
             var stack = (at >= 0 ? lines.Skip(at + 1) : Enumerable.Empty<string>())
                 .Select(l => l.Trim()).Where(l => l.Length > 0).Take(4).ToList();
