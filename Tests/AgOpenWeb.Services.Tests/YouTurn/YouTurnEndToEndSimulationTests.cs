@@ -116,8 +116,9 @@ public class YouTurnEndToEndSimulationTests
 
     private void RunSimulation()
     {
-        // Start ~30 m south of the north headland edge, heading north.
-        Vec2 pivot = new(0, 10);
+        // Start ~30 m south of the north headland edge, heading north, on pass 0: its centre is
+        // half the 6 m tool from the AB line (x = 3), where the planned turn's entry leg runs.
+        Vec2 pivot = new(Models.Track.PassGeometry.Offset(_track, 0, 6.0), 10);
         double heading = 0; // north, radians
 
         var phase = Phase.Approach;

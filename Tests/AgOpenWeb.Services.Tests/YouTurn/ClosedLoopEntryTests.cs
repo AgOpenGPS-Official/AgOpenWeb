@@ -8,6 +8,7 @@ using System.Linq;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Models.Guidance;
 using AgOpenWeb.Models.Pipeline;
 using AgOpenWeb.Models.YouTurn;
 using AgOpenWeb.Services.Geometry;
@@ -78,10 +79,17 @@ public class ClosedLoopEntryTests
         }
         curve[^1] = new Vec3(curve[^1].Easting, curve[^1].Northing, curve[^2].Heading);
         var track = Models.Track.Track.FromCurve("c", curve);
+        // The tractor drives pass 0, half the 6 m tool right of the reference curve: the planned
+        // turn's entry leg runs there. Driven on the reference curve itself it never joined the
+        // path and every turn was made from where it was instead.
+        var passZero = CurveProcessing.CalculateHeadings(
+            CurveProcessing.CreateOffsetCurve(curve, Models.Track.PassGeometry.Offset(track, 0, 6.0)));
+        var passTrack = Models.Track.Track.FromCurve("pass 0", passZero);
 
-        // Walk the curve by arc length for a clean on-curve approach.
+        // Walk pass 0 by arc length for a clean on-line approach.
         (Vec2 pos, double head) WalkCurve(double dist)
         {
+            var curve = passZero;
             double traveled = 0;
             for (int k = 1; k < curve.Count; k++)
             {
@@ -150,7 +158,7 @@ public class ClosedLoopEntryTests
             {
                 var tin = new Models.Track.TrackGuidanceInput
                 {
-                    Track = track,
+                    Track = passTrack,
                     PivotPosition = new Vec3(pivot.Easting, pivot.Northing, heading),
                     SteerPosition = new Vec3(pivot.Easting + Math.Sin(heading) * Wheelbase,
                                              pivot.Northing + Math.Cos(heading) * Wheelbase, heading),
