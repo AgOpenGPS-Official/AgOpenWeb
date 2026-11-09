@@ -84,6 +84,18 @@ public class HotPathBudgetTests
         CheckControlTicks(h);
     }
 
+    // A field with many obstacles (Tapada da Casa has 82): each one is tested for every section
+    // three times a control tick, so the test of an obstacle away from the tool must cost next
+    // to nothing (it allocated 1.5 MB a tick with 82).
+    [Test]
+    public void Obstacles_stay_within_budget()
+    {
+        using var h = new HotPathHarness(PassTrack.ABLine, Skip.Normal, fieldWorked: false, hasHeadland: true, obstacles: 82);
+        h.Drive(126, 240, waitFixes: 50);
+        CheckGpsCycles(h);
+        CheckControlTicks(h);
+    }
+
     private static void CheckGpsCycles(HotPathHarness h)
     {
         var over = h.Fixes.Select((c, i) => (c, i)).Where(x =>
