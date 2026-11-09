@@ -4,6 +4,7 @@
 
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace AgOpenWeb.WebClientScenarios.Tests;
 
@@ -22,7 +23,18 @@ public enum Severity
     Improvement,
 }
 
-public sealed record Finding(string Code, Severity Severity, string Message);
+public sealed record Finding(string Code, Severity Severity, string Message, FindingKind? Kind = null)
+{
+    /// <summary>The kind as the plan's rule asks (section 5): given by the scenario, else an
+    /// improvement is an enhancement and the rest app defects.</summary>
+    public string KindText => Code == "HARNESS" ? "harness" : (Kind ?? (Severity == Severity.Improvement ? FindingKind.Enhancement : FindingKind.AppDefect)) switch
+    {
+        FindingKind.AppDefect => "app defect",
+        FindingKind.HarnessArtifact => "harness artifact",
+        FindingKind.Parity => "parity",
+        _ => "enhancement",
+    };
+}
 
 /// <summary>One scenario: what the operator did, what the screens showed, what the machine got.</summary>
 public sealed class ScenarioRow
@@ -61,11 +73,12 @@ public sealed class Scenario
         Journal.Trace("  OK " + text);
     }
 
-    public void Problem(Severity severity, string code, string text)
+    public void Problem(Severity severity, string code, string text, FindingKind? kind = null)
     {
-        Row.Checks.Add($"✗ **{severity}** `{code}`: {text}");
-        Row.Findings.Add(new Finding(code, severity, text));
-        Journal.Trace($"  FINDING {severity} {code}: {text}");
+        var f = new Finding(code, severity, text, kind);
+        Row.Checks.Add($"✗ **{severity}** `{code}` ({f.KindText}): {Journal.Stable(text)}");
+        Row.Findings.Add(f);
+        Journal.Trace($"  FINDING {severity} {code} ({f.KindText}): {text}");
     }
 
     public void Note(string text)
@@ -127,7 +140,7 @@ public static class Journal
         var byCode = rows.SelectMany(r => r.Findings.Select(f => (Row: r, F: f)))
             .GroupBy(x => x.F.Code)
             .Select(g => (Code: g.Key, Sev: g.Min(x => x.F.Severity), Where: g.Select(x => x.Row.Code).Distinct().ToList(),
-                          First: g.First().F.Message))
+                          First: g.First().F.Message, Kind: g.First().F.KindText))
             .OrderBy(x => x.Sev).ThenBy(x => x.Code, StringComparer.Ordinal)
             .ToList();
         int fresh = byCode.Count(c => !known.ContainsKey(c.Code));
@@ -137,12 +150,12 @@ public static class Journal
         if (byCode.Count == 0) sb.Append("None.\n\n");
         else
         {
-            sb.Append("| Code | Severity | Status | Scenarios | First seen as |\n|---|---|---|---|---|\n");
+            sb.Append("| Code | Severity | Kind | Status | Scenarios | First seen as |\n|---|---|---|---|---|---|\n");
             foreach (var c in byCode)
             {
                 string status = known.TryGetValue(c.Code, out var where) ? "Already reported" + (where.Length > 0 ? " (" + where + ")" : "") : "**New**";
-                sb.Append("| `").Append(c.Code).Append("` | ").Append(c.Sev).Append(" | ").Append(status).Append(" | ")
-                  .Append(string.Join(", ", c.Where)).Append(" | ").Append(Cell(c.First)).Append(" |\n");
+                sb.Append("| `").Append(c.Code).Append("` | ").Append(c.Sev).Append(" | ").Append(c.Kind).Append(" | ").Append(status).Append(" | ")
+                  .Append(string.Join(", ", c.Where)).Append(" | ").Append(Cell(Stable(c.First))).Append(" |\n");
             }
             sb.Append('\n');
         }
@@ -172,4 +185,16 @@ public static class Journal
     }
 
     private static string Cell(string s) => s.Replace("|", "\\|").Replace("\n", " ");
+
+    /// <summary>A finding's text, as the report writes it, with dates and clock times masked (job
+    /// names carry the date; A+, driven and drawn track names the time, with ' (2)' when two fall
+    /// in one minute), so the findings of two nights differ only where the app did. Digits, not
+    /// word boundaries, end a match: a list row's text runs its spans together ('A+ 21:07AB',
+    /// '2026-11-08Flows Field', '2026-11-08_2').</summary>
+    internal static string Stable(string s)
+    {
+        s = Regex.Replace(s, @"(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)", "yyyy-mm-dd");
+        s = Regex.Replace(s, @"(?<![\d:])\d{1,2}:\d{2}(?::\d{2})?(?![\d:])", "hh:mm");
+        return Regex.Replace(s, @"hh:mm \(\d+\)", "hh:mm");
+    }
 }

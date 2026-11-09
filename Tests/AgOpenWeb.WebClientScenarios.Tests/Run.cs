@@ -32,7 +32,8 @@ public sealed class Run
                          || (o.Length == 1 && code.StartsWith(o, StringComparison.OrdinalIgnoreCase)));
 
     /// <summary>Run one scenario with its own clean start; a harness fault is recorded, not thrown.</summary>
-    public async Task ScenarioAsync(string group, string code, string title, string story, Func<Scenario, Task> body)
+    public async Task ScenarioAsync(string group, string code, string title, string story, Func<Scenario, Task> body,
+        bool onTheRunsLine = true)
     {
         if (!Wanted(code)) return;
         var s = new Scenario(group, code, title, story);
@@ -40,9 +41,13 @@ public sealed class Run
         {
             // Each scenario on ground not yet worked, so a section in Auto is open because the
             // boom is over unworked ground, and closes only when something closes it: four starts
-            // 130 m apart along the line, then two passes (16 m) over, and so on.
-            int n = _started++;
-            await Rig.PlaceTractorAsync(40 + n % 4 * 130.0, WebClientRig.LineE + n / 4 * 16.0);
+            // 130 m apart along the line, then two passes (16 m) over, and so on. The flows work
+            // in fields of their own and place the tractor themselves.
+            if (onTheRunsLine)
+            {
+                int n = _started++;
+                await Rig.PlaceTractorAsync(40 + n % 4 * 130.0, WebClientRig.LineE + n / 4 * 16.0);
+            }
             Rig.TakeEvents();
             await body(s);
         }
