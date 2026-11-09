@@ -1416,7 +1416,7 @@ namespace AgOpenWeb.Services.YouTurn
             // the arc end near the boundary.
             // The shared pass routine (CurveProcessing.CurvePass / ExtendPass): empty where the offset
             // removes the whole pass, no tail at an end it removed (#694).
-            return CurveProcessing.ExtendPass(CurveProcessing.CurvePass(reference, distAway));
+            return CurveProcessing.ExtendPassForTurn(CurveProcessing.CurvePass(reference, distAway));
         }
 
         private void FindInnerTurnPoints(Vec3 fromPt, double heading, TurnClosePoint turnPt, bool isSameWay)

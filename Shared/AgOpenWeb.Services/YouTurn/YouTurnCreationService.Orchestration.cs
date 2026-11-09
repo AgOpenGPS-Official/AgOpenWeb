@@ -409,7 +409,7 @@ public partial class YouTurnCreationService
             _logger.LogDebug("[YouTurn] Pass {Path} has no line (curve too tight)", guidance.HowManyPathsAway);
             return null;
         }
-        List<Vec3> currentCurvePoints = CurveProcessing.ExtendPass(offsetCurve);
+        List<Vec3> currentCurvePoints = CurveProcessing.ExtendPassForTurn(offsetCurve);
 
         int currentLocationIndex = 0;
         double minDistSq = double.MaxValue;

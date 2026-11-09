@@ -96,10 +96,11 @@ public class BoundaryCurveSegmentTests
         var pts = _vm.SelectedTrack!.Points;
         Assert.That(DistanceToLine(pts, 100, 100), Is.LessThan(10), "runs down the east side");
         Assert.That(DistanceToLine(pts, 50, 0), Is.LessThan(10), "and along the south side");
-        // Both ends face each other across the gap between the taps: they run on towards each
-        // other, but stop short of halfway instead of overlapping.
+        // Both ends face each other across the gap between the taps: A and B are the line's
+        // ends, not extended towards each other (#694).
         Assert.That(pts[0].Easting, Is.EqualTo(pts[^1].Easting).Within(1e-6), "both ends on the west side");
-        Assert.That(pts[0].Northing, Is.LessThan(pts[^1].Northing - 1.5), "the ends stop apart, not overlapping");
+        Assert.That(pts[0].Northing, Is.EqualTo(50).Within(1e-6), "the line starts at A");
+        Assert.That(pts[^1].Northing, Is.EqualTo(150).Within(1e-6), "and ends at B");
     }
 
     [Test]

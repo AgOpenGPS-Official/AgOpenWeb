@@ -110,8 +110,6 @@ public class CurvePassCollapseTests
 
     [TestCase("d1", 0)] [TestCase("d1", 1)] [TestCase("d1", 2)]    // 1R-3R
     [TestCase("d1", -1)] [TestCase("d1", -2)] [TestCase("d1", -3)] // 1L-3L
-    [TestCase("d2", 0)] [TestCase("d2", 1)] [TestCase("d2", 2)]
-    [TestCase("d2", -1)] [TestCase("d2", -2)] [TestCase("d2", -3)]
     public void The_first_passes_keep_their_tails(string dump, int pass)
     {
         var (points, line, startKept, endKept) = Steered(Dump(dump), pass);
@@ -120,6 +118,19 @@ public class CurvePassCollapseTests
             Assert.That(startKept && endKept, Is.True, "both ends of the reference kept");
             Assert.That(Dist(line[0], points[0]), Is.GreaterThan(5), "a tail before the start");
             Assert.That(Dist(line[^1], points[^1]), Is.GreaterThan(5), "a tail past the end");
+        });
+    }
+
+    // The second dump's curve goes the long way round: its ends face each other across what it
+    // leaves out, and there they are the line's ends (#694): no tail at either.
+    [TestCase(0)] [TestCase(1)] [TestCase(2)] [TestCase(-1)] [TestCase(-2)] [TestCase(-3)]
+    public void Passes_of_a_curve_whose_ends_face_each_other_end_at_A_and_B(int pass)
+    {
+        var (points, line, _, _) = Steered(Dump("d2"), pass);
+        Assert.Multiple(() =>
+        {
+            Assert.That(Dist(line[0], points[0]), Is.LessThan(1e-9), "no tail before A");
+            Assert.That(Dist(line[^1], points[^1]), Is.LessThan(1e-9), "no tail past B");
         });
     }
 
@@ -193,11 +204,11 @@ public class CurvePassCollapseTests
     }
 
     [Test]
-    public void A_kept_end_facing_the_other_end_is_still_capped()
+    public void A_kept_end_facing_the_other_end_is_not_extended()
     {
         // Round a 100 m square the long way, from (30,0) west, round, back along the south side
-        // to (70,0): the ends face each other across 40 m (#699). Only the end extended: it stops
-        // short of halfway, as with both.
+        // to (70,0): the ends face each other across 40 m (#699). Only the end asked for: it is
+        // the line's end, and gets none either (#694).
         var pts = new List<Vec3>();
         void Leg(double e0, double n0, double e1, double n1)
         {
@@ -213,7 +224,7 @@ public class CurvePassCollapseTests
         Assert.Multiple(() =>
         {
             Assert.That(ext[0].Easting, Is.EqualTo(30).Within(1e-9), "the start as it is");
-            Assert.That(ext[^1].Easting, Is.GreaterThan(50).And.LessThan(55), "the end stops short of halfway");
+            Assert.That(ext[^1].Easting, Is.EqualTo(70).Within(1e-9), "the end as it is");
         });
     }
 }
