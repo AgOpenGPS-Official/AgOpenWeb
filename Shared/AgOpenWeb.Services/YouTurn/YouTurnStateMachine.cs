@@ -954,7 +954,8 @@ public sealed class YouTurnStateMachine
         bool positiveOffset = pathDiff > 0;
         turn.IsTurnLeft = positiveOffset ^ guidance.IsHeadingSameWay;
         turn.WasHeadingSameWayAtTurnStart = guidance.IsHeadingSameWay;
-        turn.NextTrackTurnOffset = Math.Abs(pathDiff * widthMinusOverlap + 2 * toolShift);
+        // Signed in the turn direction, as in YouTurnPathingService.
+        turn.NextTrackTurnOffset = (pathDiff * widthMinusOverlap + 2 * toolShift) * (positiveOffset ? 1 : -1);
 
         var refA = track.Points[0];
         var refB = track.Points[track.Points.Count - 1];
@@ -1007,8 +1008,12 @@ public sealed class YouTurnStateMachine
         int baseWidth = Math.Max(2, ctx.UTurnSkipRows + 1); // AgOpenGPS "at least 1" row skipped
         if (turn.AltSign == 0 || turn.AltBaseWidth != baseWidth)
         {
+            // Start the pattern the way the turns have been going, away from the worked passes,
+            // as normal turns do (#523) and AgOpenGPS's alternating isTurnLeft carries on. Left
+            // to the pass number's sign it went back over worked passes (turn intervention T4).
+            bool? keepPositive = _lastStep != 0 && _lastStepTrack == track.Name ? _lastStep > 0 : null;
             var (_, positive) = _pathing.WouldNextLineBeInsideBoundary(
-                track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, baseWidth - 1, null, ctx.CurrentPosition, turn.DistanceToHeadland);
+                track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, baseWidth - 1, keepPositive, ctx.CurrentPosition, turn.DistanceToHeadland);
             turn.AltSign = positive ? 1 : -1;
             turn.AltBaseWidth = turn.AltWidth = baseWidth;
             turn.AltTurnSkips = baseWidth * 2 - 1;

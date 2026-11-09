@@ -93,10 +93,13 @@ namespace AgOpenWeb.Services.YouTurn
             // puts the tool, not the tractor, on the pass (#446), as AgOpenGPS does, so with a
             // tool offset that is the pass spacing ± 2*ToolOffset: TurnOffset carries it.
             double turnOffset;
-            if (input.TurnOffset > 0)
+            // TurnOffset is signed (AgOpenGPS turnOffset): negative when the tractor's next line
+            // lies against the turn direction, a tool offset over half the pass spacing; the arc
+            // then goes round the other way (ArcTurnLeft) and its width is the size.
+            if (input.TurnOffset != 0)
             {
                 // Use the pre-calculated offset (matches cyan next-track line exactly)
-                turnOffset = input.TurnOffset;
+                turnOffset = Math.Abs(input.TurnOffset);
                 _logger.LogDebug("Using pre-calculated TurnOffset: {TurnOffset}m", turnOffset);
             }
             else
@@ -213,7 +216,7 @@ namespace AgOpenWeb.Services.YouTurn
                         Vec3 goal = new Vec3();
 
                         // Neat trick to not have to add pi/2
-                        if (input.IsTurnLeft)
+                        if (input.ArcTurnLeft)
                         {
                             goal.Easting = input.GuidancePoints[curveIndex - count].Easting + (Math.Cos(-invertHead) * turnOffset);
                             goal.Northing = input.GuidancePoints[curveIndex - count].Northing + (Math.Sin(-invertHead) * turnOffset);
@@ -455,7 +458,7 @@ namespace AgOpenWeb.Services.YouTurn
             // Pull the arc back from a full 2R semicircle so it lands exactly on the
             // next row: landing lateral = 2R - pullback, hence pullback = 2R - turnOffset.
             double sagittaPullback = input.TurnRadius * 2.0 - Math.Abs(turnOffset);
-            bool isTurningRight = !input.IsTurnLeft;
+            bool isTurningRight = !input.ArcTurnLeft;
 
             isOutOfBounds = true;
             int stopIfWayOut = 0;
@@ -618,7 +621,7 @@ namespace AgOpenWeb.Services.YouTurn
                             currentPos.Northing += pointSpacing * Math.Cos(currentPos.Heading);
 
                             // Which way are we turning?
-                            double turnParameter = input.IsTurnLeft ? -1.0 : 1.0;
+                            double turnParameter = input.ArcTurnLeft ? -1.0 : 1.0;
 
                             // Update the heading
                             currentPos.Heading += (pointSpacing / input.TurnRadius) * turnParameter;
@@ -715,7 +718,7 @@ namespace AgOpenWeb.Services.YouTurn
                         {
                             currentPos.Easting += pointSpacing * Math.Sin(currentPos.Heading);
                             currentPos.Northing += pointSpacing * Math.Cos(currentPos.Heading);
-                            double turnParameter = input.IsTurnLeft ? 1.0 : -1.0;
+                            double turnParameter = input.ArcTurnLeft ? 1.0 : -1.0;
                             currentPos.Heading += (pointSpacing / input.TurnRadius) * turnParameter;
                             ytList2.Add(currentPos);
                         }
@@ -912,14 +915,16 @@ namespace AgOpenWeb.Services.YouTurn
         /// (TurnOffset), not the skip setting: snake, alternative and skip-worked turns pick their
         /// own target pass, and skip-and-fill forces the skip to at least 1 (#411). With a tool
         /// offset the tractor steers beside the pass, on the other side after the turn (#446):
-        /// TurnOffset is the tractor's sideways move, the passes apart plus twice the tool shift.
+        /// TurnOffset is the tractor's sideways move, the passes apart plus twice the tool shift,
+        /// signed in the turn direction (IsTurnLeft): negative when the tool offset carries the
+        /// tractor's line to the other side.
         /// </summary>
         private static double NextPassDistAway(YouTurnCreationInput input)
         {
             double widthMinusOverlap = input.ToolWidth - input.ToolOverlap;
             double toolShift = input.IsHeadingSameWay ? input.ToolOffset : -input.ToolOffset;
             int side = (input.IsTurnLeft ^ input.IsHeadingSameWay) ? 1 : -1;
-            int passes = input.TurnOffset > 0 && widthMinusOverlap > 0
+            int passes = input.TurnOffset != 0 && widthMinusOverlap > 0
                 ? Math.Max(1, (int)Math.Round((input.TurnOffset - 2 * toolShift * side) / widthMinusOverlap))
                 : input.RowSkipsWidth + 1;
             int passDelta = side * passes;
@@ -984,7 +989,7 @@ namespace AgOpenWeb.Services.YouTurn
                     currentPos.Northing += pointSpacing * Math.Cos(currentPos.Heading);
 
                     // Which way are we turning?
-                    double turnParameter = input.IsTurnLeft ? -1.0 : 1.0;
+                    double turnParameter = input.ArcTurnLeft ? -1.0 : 1.0;
 
                     // Update the heading
                     currentPos.Heading += (pointSpacing / input.TurnRadius) * turnParameter;

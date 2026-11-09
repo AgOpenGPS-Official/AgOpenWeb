@@ -86,9 +86,11 @@ public sealed class YouTurnPathingService
         double nextDistAway = PassGeometry.Offset(referenceTrack, nextPathsAway, widthMinusOverlap, guidance.NudgeOffset, -toolShift);
         double currentDistAway = PassGeometry.Offset(referenceTrack, guidance.HowManyPathsAway, widthMinusOverlap, guidance.NudgeOffset, toolShift);
 
-        // Authoritative perpendicular width for the U-turn arc — direction lives in IsTurnLeft:
-        // from the line steered now to the next, the passes apart ± twice the tool offset.
-        turn.NextTrackTurnOffset = Math.Abs(nextDistAway - currentDistAway);
+        // Authoritative perpendicular width for the U-turn arc: from the line steered now to the
+        // next, the passes apart ± twice the tool offset, signed in the turn direction as
+        // AgOpenGPS's turnOffset. A tool offset over half the pass spacing makes it negative:
+        // the tractor's next line is on the other side, and the arc goes round that way.
+        turn.NextTrackTurnOffset = (nextDistAway - currentDistAway) * (positiveOffset ? 1 : -1);
 
         Models.Track.Track nextTrack;
         if (referenceTrack.Points.Count == 2)

@@ -118,6 +118,65 @@ public class AutoTurnMatchesAgOpenGpsTests
         return (turn.TurnPath!, turn.IsTurnLeft);
     }
 
+    /// <summary>
+    /// A tool offset more than half the pass spacing (a side-shift mower: 3 m tool, 2.5 m to the
+    /// right): the tractor's next line is on the other side of the turn, 2 m against the turn
+    /// direction, because the tool must move 3 m with it. AgOpenGPS keeps the sign of its
+    /// turnOffset (w ± 2 × offset) and a negative one flips the end of the turn (CYouTurn);
+    /// ours took its absolute value and landed every such turn 4 m from the line it then
+    /// steered (field job J8/J9 TURN-EXIT-OFF-PASS: every other turn, the implement 3 m off).
+    /// </summary>
+    [TestCase(2.5, 0, TestName = "ToolOffset_2_5_on_3m_U_LandsOnTheNextLine")]
+    [TestCase(-2.5, 0, TestName = "ToolOffset_minus_2_5_on_3m_U_LandsOnTheNextLine")]
+    [TestCase(0.5, 0, TestName = "ToolOffset_0_5_on_3m_U_LandsOnTheNextLine")]
+    public void A_turn_with_a_large_tool_offset_lands_on_the_next_line(double toolOffset, int style)
+    {
+        ConfigurationStore.SetInstance(new ConfigurationStore());
+        var c = ConfigurationStore.Instance;
+        c.Vehicle.Wheelbase = 2.5;
+        c.Vehicle.MaxSteerAngle = 35;
+        c.Tool.Overlap = 0;
+        c.Tool.Offset = toolOffset;
+        c.NumSections = 1;
+        c.Tool.SetSectionWidth(0, 300);
+        c.Guidance.UTurnRadius = 6;
+        c.Guidance.UTurnExtension = 16.0;
+        c.Guidance.UTurnDistanceFromBoundary = 2;
+        c.Guidance.UTurnStyle = style;
+
+        var offset = new PolygonOffsetService();
+        var creation = new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, offset, c);
+        var pathing = new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, c);
+        var sm = new YouTurnStateMachine(creation, pathing, NullLogger<YouTurnStateMachine>.Instance, c);
+        var fence = SquareFence();
+        var boundary = new Boundary
+        {
+            OuterBoundary = new BoundaryPolygon { Points = fence.Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList() },
+        };
+        var headland = offset.CalculatePointHeadings(offset.CreateInwardOffset(fence, HeadlandWidth)!);
+        var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
+
+        // Heading north on pass 0: the tractor steers beside the pass so the tool runs on it.
+        double x = Models.Track.PassGeometry.Offset(track, 0, 3.0, 0, Models.Track.PassGeometry.ToolShift(toolOffset, true));
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = 0, IsHeadingSameWay = true };
+        var turn = new YouTurnWorkingState { IsEnabled = true };
+        var ctx = new YouTurnStateMachine.TickContext(
+            new Position { Easting = x, Northing = PivotNorthing, Heading = 0, Speed = 2.78 },
+            track, boundary, headland,
+            UTurnSkipRows: 0, IsSkipWorkedMode: false,
+            HeadlandCalculatedWidth: HeadlandWidth, HeadlandDistance: HeadlandWidth);
+        sm.Tick(ctx, guidance, turn);
+
+        Assert.That(turn.TurnPath, Is.Not.Null.And.Count.GreaterThan(10), "a turn is planned");
+        Assert.That(turn.NextTrack, Is.Not.Null, "the next line is known");
+        // The line the tractor steers after the turn (the cyan line): AB lines run north, so
+        // its easting is the line.
+        double nextX = turn.NextTrack!.Points[0].Easting;
+        double exitX = turn.TurnPath![^1].Easting;
+        TestContext.Out.WriteLine($"tractor x {x:F2}, next line x {nextX:F2}, turn ends at x {exitX:F2}, turn left {turn.IsTurnLeft}");
+        Assert.That(exitX, Is.EqualTo(nextX).Within(0.3), "the turn ends on the line the tractor steers next");
+    }
+
     private static List<Vec3> PlanTheirs(Rig rig, List<Vec2> fence, bool turnLeft)
     {
         var oracle = new AgOpenGpsYouTurnOracle(fence)

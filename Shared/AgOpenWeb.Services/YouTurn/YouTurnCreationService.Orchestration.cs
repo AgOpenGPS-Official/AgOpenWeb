@@ -825,7 +825,9 @@ public partial class YouTurnCreationService
         currentPosition = OntoPassLine(currentPosition, selectedTrack, abHeading, guidance);
 
         const double pointSpacing = 0.5;
-        double turnOffset = turn.NextTrackTurnOffset;
+        // Signed in the turn direction: negative, the arc goes round the other way.
+        double turnOffset = Math.Abs(turn.NextTrackTurnOffset);
+        if (turn.NextTrackTurnOffset < 0) turnLeft = !turnLeft;
 
         if (turnOffset < 0.1)
         {
