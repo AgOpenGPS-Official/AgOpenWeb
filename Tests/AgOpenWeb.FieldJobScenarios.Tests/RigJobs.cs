@@ -82,7 +82,7 @@ public static class RigJobs
     private sealed class EdgePassWatch
     {
         private readonly Dictionary<AgOpenWeb.Models.State.TractorZone, int> _zones = new();
-        private bool _turned, _inside;
+        private bool _turned, _inside, _wentOut;
         private (double E, double N) _outAt;
         private string _said = "";
 
@@ -100,7 +100,7 @@ public static class RigJobs
             }
             else if (!_turned && r.OutsideBoundaryM().Pivot > 3)
             {
-                _outAt = (r.Truth.E, r.Truth.N);
+                _outAt = (r.Truth.E, r.Truth.N); _wentOut = true;
                 _said = string.Join(" | ", r.Said.TakeLast(3));
                 r.EndedBy = "the operator took over: the tractor was 3 m past the boundary and no U-turn had started";
                 r.EndedEarly = true; r.Stopped = true; r.Did(r.EndedBy);
@@ -113,7 +113,9 @@ public static class RigJobs
             int all = Math.Max(1, _zones.Values.Sum());
             string zones = string.Join(", ", _zones.OrderByDescending(z => z.Value).Select(z => JobRun.F($"{z.Key} {100.0 * z.Value / all:0} %")));
             sc.Row.Metrics.Add(("AgOpenWeb's zone for the tractor on the edge pass (share of fixes)", zones));
-            if (!_turned)
+            if (!_turned && !_wentOut)
+                r.Harness(JobRun.F($"the edge pass ended with no U-turn and the tractor never 3 m past the boundary ({(r.EndedBy.Length > 0 ? r.EndedBy : r.FieldDone ? "AgOpenWeb reported the end of the field" : "the job stopped")}): where AgOpenWeb turns at the pass's end was not seen. Last messages: {string.Join(" | ", r.Said.TakeLast(3))}"));
+            else if (!_turned)
                 flag(Severity.Safety, "EDGE-PASS-NO-TURN", JobRun.F($"on the first pass along the edge, with the mower in the cultivated area and the tractor 2.5 m outside it in the headland, AgOpenWeb planned no U-turn at the end of the pass and AutoSteer drove the tractor on past the boundary (3 m past at ({_outAt.E:0},{_outAt.N:0})), with no warning on the screen; AgOpenWeb's zone for the tractor: {zones}. Last messages: {(_said.Length > 0 ? _said : "none")}."));
             else
                 sc.Ok("AgOpenWeb turned at the end of the edge pass");

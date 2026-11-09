@@ -298,6 +298,11 @@ public static class Jobs
         var spec = r.Spec;
         if (spec.T.Type is not ("trailing" or "tbt") || r.Fix == 0) return;
         double contact = spec.V.DrawbarContactDeg(spec.T.DrawbarWidth);
+        if (double.IsNaN(contact))
+        {
+            r.Harness(F($"the drawbar check cannot judge {spec.V.Name} with {spec.T.Name}: track {spec.V.TrackWidth:0.00} m, rear tyres {spec.V.RearTyreWidth:0.00} m wide, drawbar {spec.T.DrawbarWidth:0.00} m wide, pin {spec.V.HitchLength:0.00} m behind the axle"));
+            return;
+        }
         bool stop = spec.T.SwivelStopDeg > 0 && spec.T.SwivelStopDeg < contact;
         double limit = stop ? spec.T.SwivelStopDeg : contact;
         string what = stop

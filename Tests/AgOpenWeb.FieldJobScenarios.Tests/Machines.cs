@@ -27,12 +27,12 @@ public sealed record VehicleSpec(
     /// <summary>The hitch angle at which a drawbar <paramref name="drawbarWidth"/> wide reaches the
     /// inner side of a rear tyre, seen from above: the tyre reaches its radius behind the axle (at
     /// axle height; a drawbar rises towards its implement), the drawbar's side swings from the pin.
-    /// With the pin inside the tyres' rear edge, well short of 90°. Degrees; 180 when it cannot.</summary>
+    /// With the pin inside the tyres' rear edge, well short of 90°. Degrees; NaN when the measures make no sense (tyres meeting in the middle, a drawbar wider than the gap at the pin): the check cannot judge.</summary>
     public double DrawbarContactDeg(double drawbarWidth)
     {
         double inner = TrackWidth / 2 - RearTyreWidth / 2, back = RearTyreRadius - HitchLength;   // the tyre's inner rear corner from the pin
         double dist = Math.Sqrt(back * back + inner * inner);
-        if (inner <= 0 || dist <= drawbarWidth / 2) return 0;
+        if (inner <= 0 || dist <= drawbarWidth / 2) return double.NaN;
         return Math.Min(180, (Math.Atan2(inner, back) - Math.Asin(drawbarWidth / 2 / dist)) * 180 / Math.PI);
     }
 

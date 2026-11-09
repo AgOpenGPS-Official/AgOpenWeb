@@ -82,6 +82,13 @@ public static class ImperialJobs
         private readonly bool _careless;
         private readonly List<Entry> _entries = new();
         private readonly List<string> _pageErrors = new();
+        /// <summary>The settings sent as config.set because the page has no box with a unit for them.</summary>
+        private readonly List<string> _rawKeys = new();
+
+        /// <summary>A setting whose name says it is a length (a heading or angle offset is not).</summary>
+        private static bool LooksLikeLength(string key) =>
+            System.Text.RegularExpressions.Regex.IsMatch(key, "(length|width|height|distance|radius|extension|overlap|spacing|wheelbase|hitch|antennaPivot|antennaOffset|tool\\.offset)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+            && !System.Text.RegularExpressions.Regex.IsMatch(key, "(heading|angle|deg)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
         private IPlaywright? _pw;
         private IBrowser? _browser;
         private IPage? _page;
@@ -167,7 +174,14 @@ public static class ImperialJobs
                 string? unit = await _page.EvaluateAsync<string?>(@"key => { const i = document.querySelector('.cfg-num[data-key=""' + key + '""][data-unit]'); return i ? i.dataset.unit : null; }", key);
                 if (unit == null || !double.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out double metric))
                 {
-                    // No unit: the page's buttons and lists send these as they are.
+                    // No unit: the page's buttons and lists send these as they are. A length sent
+                    // this way would skip the imperial path the job is here to test.
+                    _rawKeys.Add(key);
+                    if (LooksLikeLength(key))
+                    {
+                        r.Harness(F($"{key} ({val}) looks like a length but has no box with a unit on the page: it would go in metric, not typed in imperial"));
+                        return false;
+                    }
                     await _page.EvaluateAsync("c => transport.send(c)", "config.set|" + kv);
                     await Task.Delay(30);
                     continue;
@@ -312,6 +326,8 @@ public static class ImperialJobs
                 sc.Row.Metrics.Add((F($"{e.Key}: wanted / typed / kept / the box then shows"),
                     F($"{e.Metric:0.###} {(e.Unit == "cm" ? "cm" : e.Unit == "kmh" ? "km/h" : "m")} / {e.Typed} {UnitName(e.Unit)} / {(e.Stored is double s ? s.ToString("0.####", CultureInfo.InvariantCulture) : "nothing")} / {e.Shows}")));
 
+            sc.Row.Metrics.Add(("Sent as config.set, no box with a unit on the page (types, counts, switches, angles)",
+                _rawKeys.Count == 0 ? "none" : string.Join(", ", _rawKeys.Distinct())));
             var lost = _entries.Where(e => e.Stored == null).ToList();
             if (lost.Count > 0)
                 flag(Severity.Bug, "IMPERIAL-VALUE-LOST", F($"{lost.Count} value(s) typed in imperial never reached AgOpenWeb: {string.Join(", ", lost.Take(5).Select(e => F($"{e.Key} ({e.Typed} {UnitName(e.Unit)})")))}."));
@@ -321,7 +337,7 @@ public static class ImperialJobs
                 var off = _entries.Where(e => e.Stored is double s && Math.Abs(s - e.Metric) > Tolerance(e.Unit)).ToList();
                 if (off.Count > 0)
                     flag(Severity.Bug, "IMPERIAL-VALUE-OFF", F($"{off.Count} of {_entries.Count} values typed in feet and inches were kept as another length than the metric one: {string.Join("; ", off.Take(5).Select(e => F($"{e.Key} {e.Typed} {UnitName(e.Unit)} kept as {e.Stored:0.####}, wanted {e.Metric:0.###}")))}."));
-                else sc.Ok(F($"all {_entries.Count} values typed in feet and inches were kept as the metric ones, within what was typed (worst {(_entries.Count == 0 ? 0 : _entries.Where(e => e.Stored != null).Max(e => Math.Abs(e.Stored!.Value - e.Metric) / (e.Unit == "cm" ? 100 : 1))) * 1000:0.0} mm)"));
+                else sc.Ok(F($"all {_entries.Count} values typed in feet and inches were kept as the metric ones, within what was typed (worst length {_entries.Where(e => e.Stored != null && e.Unit is "m" or "cm").Select(e => Math.Abs(e.Stored!.Value - e.Metric) / (e.Unit == "cm" ? 100 : 1)).DefaultIfEmpty(0).Max() * 1000:0.0} mm{(_entries.Any(e => e.Stored != null && e.Unit == "kmh") ? F($", worst speed {_entries.Where(e => e.Stored != null && e.Unit == "kmh").Max(e => Math.Abs(e.Stored!.Value - e.Metric)):0.00} km/h") : "")})"));
                 var drift = _entries.Where(e => e.Stored != null && !SameNumber(e.Shows, e.Typed)).ToList();
                 if (drift.Count > 0)
                     flag(Severity.Bug, "IMPERIAL-BOX-CHANGES", F($"{drift.Count} box(es) show another number than was typed once AgOpenWeb echoes it: {string.Join("; ", drift.Take(5).Select(e => F($"{e.Key} typed {e.Typed}, shows {e.Shows}")))}."));

@@ -64,7 +64,23 @@ jobs:
         if: steps.fresh.outputs.run == 'true'
         run: dotnet build Tests/AgOpenWeb.FieldJobScenarios.Tests/ --verbosity minimal
 
-      # Playwright's own Chromium, the version the harness's Microsoft.Playwright package expects.
+      # Playwright's own Chromium, kept between runs for the version of Microsoft.Playwright the
+      # harness uses (a new version gets its own browser), as web-client-scenarios.yml. The system
+      # libraries are installed every run (--with-deps), as they live outside the cache.
+      - name: Microsoft.Playwright version
+        if: steps.fresh.outputs.run == 'true'
+        id: pw
+        run: |
+          v=$(grep -o 'Include="Microsoft.Playwright" Version="[^"]*"' Tests/AgOpenWeb.FieldJobScenarios.Tests/AgOpenWeb.FieldJobScenarios.Tests.csproj | sed 's/.*Version="\([^"]*\)"/\1/')
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright's Chromium
+        if: steps.fresh.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
       - name: Install Chromium
         if: steps.fresh.outputs.run == 'true'
         run: pwsh Tests/AgOpenWeb.FieldJobScenarios.Tests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
