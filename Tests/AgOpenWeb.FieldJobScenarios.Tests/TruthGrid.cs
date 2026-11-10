@@ -191,6 +191,7 @@ public sealed class JobAreas
     public double MissedAlongBoundary;  // of which, with no headland: within 1.5 m of the outer boundary
     public double MissedLeftInMiddle;   // of which: the middle no lap reached, left by the operator
     public double MissedAtCorners;      // of which: at a lap's corners
+    public double MissedInWorkedPasses; // of the rest: lying in a pass that was driven (worked along part of its length)
     public double Twice;                // truth ≥ 2 inside the work area
     public double OutsideBoundary;      // truth outside the outer boundary
     public double InObstacles;          // truth inside a hard obstacle

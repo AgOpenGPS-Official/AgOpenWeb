@@ -44,7 +44,7 @@ its neighbours':
 | Check | Finding |
 |---|---|
 | Ground never sprayed between neighbouring passes, widest strip | `MISSED-STRIPS` |
-| The field reported done with ground left, or never reported done | `FIELD-LEFT-UNDONE`, `FIELD-NOT-FINISHED` |
+| The field reported done with ground left (inside the worked passes, or on a side of the field / in passes skipped), or never reported done | `FIELD-LEFT-UNDONE`, `FIELD-NOT-FINISHED` |
 | "End of field reached" said, then a U-turn onto another pass after all (the operator drives on) | `END-OF-FIELD-TOO-EARLY` |
 | Sprayed outside the boundary, inside an obstacle, inside the headland | `SPRAYED-OUTSIDE-BOUNDARY`, `SPRAYED-IN-OBSTACLE`, `SPRAYED-IN-HEADLAND` |
 | AgOpenWeb's map painted where no valve was open, or blank where one was | `MAP-SHOWS-UNSPRAYED`, `SPRAYED-NOT-ON-MAP` |
@@ -54,7 +54,7 @@ its neighbours':
 | U-turns missed or cancelled, AutoSteer dropping out | `TURN-MISSED`, `AUTOSTEER-DROPPED` |
 | The first U-turn arrow pointing at the edge the operator started from | `FIRST-TURN-TOWARD-EDGE` |
 | The screen's sections and the nozzles disagreeing | `VALVES-NOT-FOLLOWING`, `SECTION-WITHOUT-RELAY` |
-| AgOpenWeb refused a U-turn and asked the operator to take over (the job stops there) | `TURN-REFUSED` |
+| AgOpenWeb found no U-turn that fits and asked the operator to take over (the job stops there, as at a missed turn's warning; a turn blocked by a hard boundary or an obstacle is a note) | `TURN-REFUSED` |
 | The tractor more than 25 m out of the field with no such warning | `RAN-OFF` |
 
 Two operators:
@@ -67,9 +67,18 @@ Two operators:
   moment. C8 sets look-ahead 1 s longer than the valves; C16 sets it to 0 s with the same
   valves (AgOpenWeb's default before it took AgOpenGPS's 1.0 s / 0.5 s).
 
-When AgOpenWeb says "No U-turn fits inside the boundary at this end - take over manually", the
-operator takes over and the job stops (`TURN-REFUSED`), as a person would; before, AutoSteer
-was left to drive on and the job ended as a run-off.
+When AgOpenWeb says "No U-turn fits inside the boundary at this end - take over manually" or
+"U-turn blocked: ... take over manually", or that a U-turn was missed ("U-turn missed: ... Take
+over manually"; "No U-turn can be made from the headland on this pass. Take over manually at the
+end of the field", #761), the operator takes over and the job stops, as a person would
+(`TURN-REFUSED` when no turn fits; a blocked turn is the app refusing a swing into a hard boundary
+or an obstacle, as it must (#698), noted; a missed turn is `TURN-MISSED`, expected where the
+operator caused it, as T10's AutoSteer off in the headland). A warning for "the end of the field" comes mid-pass: the operator
+drives the pass to its end (the implement out of the cultivated area with none ahead, or the
+tractor at the boundary) and takes over there. The ground left from there is the consequence of
+that one finding, not `FIELD-NOT-FINISHED` too. A tractor that drives on after such a warning is
+AgOpenGPS behaviour (leaving the field does not switch AutoSteer off, #494), so `RAN-OFF` is a
+run-off with no warning. Before, AutoSteer was left to drive on and the job ended as a run-off.
 
 ## Running
 
@@ -185,7 +194,7 @@ from the wrong side lands beside the pass and AutoSteer pulls the implement acro
 |---|---|
 | A U-turn's exit leg more than a quarter of a pass (1 m at least) beside the pass the implement then works | `TURN-EXIT-OFF-PASS` |
 | The curve AgOpenWeb keeps away from where the implement was driven | `RECORDED-CURVE-SHIFTED` |
-| On the edge pass, no U-turn and AutoSteer driving on past the boundary | `EDGE-PASS-NO-TURN` |
+| On the edge pass, no U-turn: AutoSteer driving on past the boundary with no warning (Safety), or AgOpenWeb's warning and the operator taking over at the pass's end (Bug) | `EDGE-PASS-NO-TURN` |
 | A reversible plough shown across from where it works (no setting for an offset that keeps to one side of the field) | `REVERSIBLE-PLOUGH-NO-SETTING` |
 | Trailed and TBT, every job of the harness: the hitch angle (tractor to drawbar) reaching the angle where the drawbar touches a rear tyre, from the tractor's hitch, track and tyre size (`RearTyreRadius`, `RearTyreWidth`) and the drawbar's width where it passes the tyres (`DrawbarWidth`, 0.6 m by default for an A-frame), seen from above with the tyre's whole radius; or the implement's own swivel stop (`SwivelStopDeg`) when that comes first | `DRAWBAR-HITS-WHEEL` |
 
