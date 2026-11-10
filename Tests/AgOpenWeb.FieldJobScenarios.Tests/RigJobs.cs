@@ -113,7 +113,9 @@ public static class RigJobs
             int all = Math.Max(1, _zones.Values.Sum());
             string zones = string.Join(", ", _zones.OrderByDescending(z => z.Value).Select(z => JobRun.F($"{z.Key} {100.0 * z.Value / all:0} %")));
             sc.Row.Metrics.Add(("AgOpenWeb's zone for the tractor on the edge pass (share of fixes)", zones));
-            if (!_turned && !_wentOut)
+            if (!_turned && !_wentOut && r.TookOverAt >= 0)
+                flag(Severity.Bug, "EDGE-PASS-NO-TURN", JobRun.F($"on the first pass along the edge, with the mower in the cultivated area and the tractor 2.5 m outside it in the headland, AgOpenWeb planned no U-turn at the end of the pass and said so ({r.EndedBy}); a turn is due there, since the pass line (the mower's run) is in the cultivated area (#761 plans from it); AgOpenWeb's zone for the tractor: {zones}."));
+            else if (!_turned && !_wentOut)
                 r.Harness(JobRun.F($"the edge pass ended with no U-turn and the tractor never 3 m past the boundary ({(r.EndedBy.Length > 0 ? r.EndedBy : r.FieldDone ? "AgOpenWeb reported the end of the field" : "the job stopped")}): where AgOpenWeb turns at the pass's end was not seen. Last messages: {string.Join(" | ", r.Said.TakeLast(3))}"));
             else if (!_turned)
                 flag(Severity.Safety, "EDGE-PASS-NO-TURN", JobRun.F($"on the first pass along the edge, with the mower in the cultivated area and the tractor 2.5 m outside it in the headland, AgOpenWeb planned no U-turn at the end of the pass and AutoSteer drove the tractor on past the boundary (3 m past at ({_outAt.E:0},{_outAt.N:0})), with no warning on the screen; AgOpenWeb's zone for the tractor: {zones}. Last messages: {(_said.Length > 0 ? _said : "none")}."));

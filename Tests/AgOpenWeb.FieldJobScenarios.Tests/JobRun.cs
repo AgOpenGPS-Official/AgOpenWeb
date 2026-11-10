@@ -230,6 +230,9 @@ public sealed class JobRun : IAsyncDisposable
     public int TurnsStarted;
     /// <summary>When AgOpenWeb asked the operator to take over (a refused or a missed U-turn), s; -1 never.</summary>
     public double TookOverAt = -1;
+    /// <summary>AgOpenWeb's warning to take over "at the end of the field" (when it was said, its text,
+    /// the pass): the operator drives the pass to its end first and takes over there.</summary>
+    private (double At, string Text, int Pass)? _takeOverAtEnd;
     bool _arrowChecked;
     /// <summary>Set when AgOpenWeb's first U-turn arrow pointed at the field's edge the operator
     /// started from (a sliver pass): the pass it pointed at and how much of it is inside.</summary>
@@ -789,27 +792,34 @@ public sealed class JobRun : IAsyncDisposable
                         if (!FieldDone) { _endSaidAt = Seconds; _endSaidPass = Pass; }
                         FieldDone = true;
                     }
-                    // AgOpenWeb refused the turn (#698, #716) or missed it ("U-turn missed: ... Take over
-                    // manually", as when AutoSteer comes on again in the headland past where a turn could
-                    // start, #740 T10) and said so: the operator takes over here and the job stops, as a
-                    // farmer would, instead of riding on with AutoSteer out of the field. Driving on after
-                    // the warning is AgOpenGPS behaviour too (leaving the field does not switch AutoSteer
-                    // off, #494); RAN-OFF is for a run-off with no such warning. The ground left from here
-                    // is the consequence (EndedEarly), reported once through the warning's own finding.
-                    if (TookOverAt < 0 && (e.Contains("No U-turn fits", StringComparison.Ordinal)
-                        || e.Contains("U-turn missed", StringComparison.Ordinal)
-                        || e.Contains("take over manually", StringComparison.OrdinalIgnoreCase)))
+                    // AgOpenWeb refused the turn (#698, #716: "No U-turn fits", "U-turn blocked") or
+                    // missed it ("U-turn missed: ...", or "No U-turn can be made from the headland on
+                    // this pass", #761: AutoSteer came on again in the headland past where a turn could
+                    // start, #740 T10, or the pass runs along the headland strip) and said so: the
+                    // operator takes over and the job stops, as a farmer would, instead of riding on with
+                    // AutoSteer out of the field. A warning for "the end of the field" comes mid-pass:
+                    // the operator drives the pass to its end and takes over there. Driving on after the
+                    // warning is AgOpenGPS behaviour too (leaving the field does not switch AutoSteer
+                    // off, #494); RAN-OFF is for a run-off with no such warning. The ground left from
+                    // there is the consequence (EndedEarly), reported once through the warning's own finding.
+                    if (TookOverAt < 0 && _takeOverAtEnd == null && e.Contains("take over manually", StringComparison.OrdinalIgnoreCase))
                     {
-                        TookOverAt = Seconds;
-                        string what = e.Contains("U-turn missed", StringComparison.Ordinal) ? "missed" : "refused";
-                        Problems.Add(F($"{Seconds:0.0} s: AgOpenWeb {what} the U-turn at the end of pass {Pass} and asked the operator to take over (\"{e}\")"));
-                        EndedBy = F($"the operator took over at AgOpenWeb's warning at {Seconds:0} s: \"{e}\"");
-                        EndedEarly = true;
+                        if (e.Contains("at the end of the field", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _takeOverAtEnd = (Seconds, e, Pass);
+                            Did(F($"AgOpenWeb asked the operator to take over at the end of the field (\"{e}\"): the operator drives pass {Pass} to its end"));
+                        }
+                        else TakeOver(e, Seconds, Pass, atEnd: false);
                     }
                 }
             }
             var tc = ToolCentre();
             bool inWork = Ring.Inside((tc.E, tc.N), Work ?? Outer);
+            // The end of the field the warning asked for: the implement out of the cultivated area
+            // with none of it ahead (as the end of the job is judged), or the tractor itself at the
+            // boundary, whichever comes first.
+            if (_takeOverAtEnd is { } w && TookOverAt < 0 && ((!inWork && !WorkAhead(tc, 40)) || OutsideBoundaryM().Pivot > 0.5))
+                TakeOver(w.Text, w.At, w.Pass, atEnd: true);
             if (FieldDone)
             {
                 // The operator drives the last pass to its end: AgOpenWeb says it as the last turn ends,
@@ -848,6 +858,22 @@ public sealed class JobRun : IAsyncDisposable
     }
 
     public (double E, double N, double Heading) ToolCentre() => Truth.ToolCentre;
+
+    /// <summary>The operator takes over at AgOpenWeb's warning <paramref name="e"/> (said at <paramref name="warnedAt"/> s
+    /// on pass <paramref name="pass"/>), now; <paramref name="atEnd"/> when the warning asked for the end of the field and
+    /// the pass was driven to its end first. A refused turn ("No U-turn fits", "U-turn blocked") is a
+    /// problem the judge flags; a missed one is what the app said, noted.</summary>
+    private void TakeOver(string e, double warnedAt, int pass, bool atEnd)
+    {
+        TookOverAt = Seconds;
+        bool missed = e.Contains("U-turn missed", StringComparison.Ordinal) || e.Contains("No U-turn can be made", StringComparison.Ordinal);
+        string what = missed ? "missed" : "refused";
+        Problems.Add(F($"{warnedAt:0.0} s: AgOpenWeb {what} the U-turn at the end of pass {pass} and asked the operator to take over{(atEnd ? " at the end of the field" : "")} (\"{e}\")"));
+        EndedBy = atEnd && Seconds - warnedAt >= 1
+            ? F($"the operator drove pass {pass} to its end and took over there at {Seconds:0} s, as AgOpenWeb's warning at {warnedAt:0} s asked: \"{e}\"")
+            : F($"the operator took over at AgOpenWeb's warning at {warnedAt:0} s{(atEnd ? " (the pass was at its end)" : "")}: \"{e}\"");
+        EndedEarly = true;
+    }
 
     /// <summary>Is the cultivated area straight ahead of the implement, within <paramref name="m"/> metres?</summary>
     private bool WorkAhead((double E, double N, double Heading) tc, double m)

@@ -267,7 +267,8 @@ public static class Jobs
             sc.Ok(F($"all {r.Turns.Count} U-turns kept the tractor and the implement inside the boundary"));
         if (fallbacks > 0)
             sc.Note(F($"AgOpenWeb's turn service failed ('path invalid or out of bounds') and the simple fallback path was used in {fallbacks} of {r.Turns.Count} turns"));
-        var missed = r.Said.Where(s => s.Contains("U-turn missed", StringComparison.Ordinal) || s.Contains("cancelled", StringComparison.Ordinal)).ToList();
+        var missed = r.Said.Where(s => s.Contains("U-turn missed", StringComparison.Ordinal) || s.Contains("No U-turn can be made", StringComparison.Ordinal)
+            || s.Contains("cancelled", StringComparison.Ordinal)).ToList();
         if (missed.Count > 0)
             flag(Severity.Bug, "TURN-MISSED", F($"{missed.Count} U-turn(s) were missed or cancelled while the operator did nothing wrong: {missed[0]}"));
         r.PathOp?.Judge(sc, r, a, flag);
