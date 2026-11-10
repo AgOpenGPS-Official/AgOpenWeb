@@ -402,7 +402,8 @@ public static class TurnInterventions
             // After a turn, a pass with no work on it (the cultivated area narrows past the turn):
             // the operator stops rather than drive on out of the field. Not at the start, where
             // the tractor drives in from outside the work.
-            if (Taps.Count > 0 && !inWork && _inWorkM == 0 && _outOfWorkM > 40)
+            if (Taps.Count > 0 && !inWork && _inWorkM == 0 && _outOfWorkM > 40
+                && r.InsideChordM(PassAt(r, (r.Truth.ToolCentre.E, r.Truth.ToolCentre.N))) < 20)
             {
                 r.EndedBy = JobRun.F($"the operator finished at the headland: the pass after the last turn has no work on it");
                 r.FieldDone = true; r.Stopped = true; r.Did(r.EndedBy);
