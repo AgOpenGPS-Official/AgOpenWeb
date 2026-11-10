@@ -1,6 +1,6 @@
 # Steer wizard scenarios: the careful and the careless operator
 
-An end-to-end harness for the steer wizard: every one of its fifteen steps, from the vehicle
+An end-to-end harness for the steer wizard: every one of its sixteen steps, from the vehicle
 type to Finish, then a drive on an AB line with AutoSteer to see that the result steers.
 
 The whole backend runs in the test process, as the Desktop head boots it (DI, settings,
@@ -16,7 +16,11 @@ for the outside world:
   sensor subtracts the offset), the steer switch edge logic and the watchdog. Behind it, the
   steering: a sensor with its own counts per degree, centre and mounting direction, a motor that
   can be wired either way, break-away PWM, mechanical locks, and the operator's hands on the
-  wheel. Only the network is replaced (`ModuleWire.cs`); every service above it is the real one.
+  wheel. For the tuning stories the steering can also be a valve that answers late (dead time,
+  lag, a top speed), have play between motor and wheels, sensor noise, a different break-away
+  each side, and the firmware's kickouts (turn sensor, pressure, current) that let go when the
+  operator holds the wheel; all off unless a story sets them. Only the network is replaced
+  (`ModuleWire.cs`); every service above it is the real one.
 - **The tractor** (`SteerWizardRig.cs`): a bicycle model driven by the real wheel angle at the
   operator's speed, reported as RTK fixes at 10 Hz from the antenna's position.
 
@@ -36,6 +40,27 @@ antenna) the operator doesn't know; at the end the settings are compared with th
   while the wizard is open, circles stopped after a quarter, driven the wrong way or with the
   wheel eased off, the wizard opened again while a circle is recording, and a GPS-only tractor.
 
+## Tuning the wheels
+
+`TuneScenarios.cs` runs the wizard's *Tune steering* step (it finds Minimum To Move, Max Limit and
+Proportional Gain by moving the wheels through Free Drive) on three steerings the step knows
+nothing about, then checks the values against the steering itself:
+
+- **A PWM valve that answers late, with a pressure sensor** (settings as on a Maxxum 135), **a Keya
+  on the steering wheel with a kickout sensor**, **a motor on the steering wheel with no stop at
+  the wheel**: the stop check as the page asks, the run, *Use these values*, Finish. Minimum To
+  Move must not move the wheels by itself, the Max Limit must give the wheel speed asked for, a
+  6° turn each way with the new values must not swing, and the profile on disk must carry them.
+  The valve is then driven on an AB line with AutoSteer.
+- **Careless**: takes the wheel in the first part and in the middle (with and without a kickout
+  sensor), the steer switch off, ✕, Next or the browser lost in the middle, the motor wired
+  backwards with the motor test skipped (and with a Minimum To Move that moves the wheels), Start
+  with the wheels turned, while driving, Continue before the stop check, the stop check left out,
+  and values found but not taken. After each one the module must have let go and the operator's
+  own values must be back in the settings and in the module.
+
+The careful operator's whole wizard does the step too, between the Ackermann circle and the gains.
+
 Some careless values cannot be typed in the web client (its inputs check numbers); they are
 sent anyway, because the host is the last line: any browser on the LAN can send any command.
 
@@ -54,7 +79,7 @@ angle (the motor direction is wrong), or the motor drives against the operator's
 dotnet test Tests/AgOpenWeb.SteerWizardScenarios.Tests/
 ```
 
-About ten minutes. CI only builds it; the full run is nightly on develop
+About 20 minutes. CI only builds it; the full run is nightly on develop
 (`.github/workflows/steer-wizard-scenarios.yml`, also run by hand from Actions), with the report
 kept as an artifact and in the run's summary. The report goes to `steer-wizard-report.md` in the
 test output folder, or to `AGOPENWEB_SCENARIO_REPORT`. Other switches:

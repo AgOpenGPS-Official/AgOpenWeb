@@ -47,7 +47,7 @@ public static class CarelessOperator
     // ------------------------------------------------------------ the careful part before the mistake
 
     private static readonly string[] Order =
-        { "welcome", "vehicleType", "hardware", "dimensions", "antenna", "hwconfig", "roll", "was", "motor", "maxangle", "cpd", "ackermann", "gains", "speed", "finish" };
+        { "welcome", "vehicleType", "hardware", "dimensions", "antenna", "hwconfig", "roll", "was", "motor", "maxangle", "cpd", "ackermann", "tune", "gains", "speed", "finish" };
 
     /// <summary>Open the wizard and do every step before <paramref name="kind"/> the careful way,
     /// knowing the tractor's truth (sensor and motor direction). One log line.</summary>
@@ -860,7 +860,7 @@ public static class CarelessOperator
                 else if (!await s.NextAsync()) break;
             }
             s.Rig.Note("steps shown: " + string.Join(", ", seen));
-            var steer = seen.Where(k => k is "roll" or "was" or "motor" or "maxangle" or "cpd" or "ackermann" or "gains").Distinct().ToList();
+            var steer = seen.Where(k => k is "roll" or "was" or "motor" or "maxangle" or "cpd" or "ackermann" or "tune" or "gains").Distinct().ToList();
             if (steer.Count > 0)
                 s.Report(new Finding(Severity.Inconsistency, "GPS_ONLY_SHOWS_STEER_STEPS",
                     "With 'GPS only' chosen, Skip still lands on AutoSteer steps (" + string.Join(", ", steer) + "): Skip moves one step on without leaving out the steps that don't apply, Next does."));

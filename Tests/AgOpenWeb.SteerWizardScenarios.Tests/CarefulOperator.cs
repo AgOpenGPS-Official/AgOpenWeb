@@ -168,8 +168,17 @@ public static class CarefulOperator
         {
             await s.CheckAsync(await s.NextAsync(), Blocked("ackermann"));
         });
-        await s.StepAsync("Gains: keep the defaults → Next", async () =>
+        // Wheel tuning: the stop check as the page asks, the run, Use these values.
+        var tuned = await TuneScenarios.CarefulAsync(s);
+        await s.StepAsync("Tuning: done → Next", async () =>
         {
+            await s.CheckAsync(await s.NextAsync(), Blocked("tune"));
+        });
+        await s.StepAsync("Gains: the page shows the values found; keep the rest → Next", async () =>
+        {
+            if (tuned is { } v && await TuneScenarios.ValuesAsync(s) != v)
+                s.Report(new Finding(Severity.Bug, "TUNE_VALUES_LOST_ON_THE_NEXT_PAGE",
+                    $"The gains page holds {await TuneScenarios.ValuesAsync(s)}, the tuning step had put {v} in use."));
             await s.CheckAsync(await s.NextAsync(), Blocked("gains"));
         });
         await s.StepAsync("Speed: min 1.0 km/h, max 18 km/h → Next", async () =>

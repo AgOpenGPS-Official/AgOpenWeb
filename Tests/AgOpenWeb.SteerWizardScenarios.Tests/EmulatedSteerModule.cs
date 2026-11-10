@@ -28,6 +28,13 @@ namespace AgOpenWeb.SteerWizardScenarios.Tests;
 /// <item>The motor: P-only PID with min PWM and the low/high limit as the firmware, then the
 /// real wiring direction; the wheel moves only above the break-away PWM, stops at the
 /// mechanical locks, and follows the operator's hands when they hold the wheel.</item>
+/// <item>For the wheel tuning step, what makes one steering unlike another, all off unless a
+/// scenario sets them: a valve that answers late and builds up its flow
+/// (<see cref="DeadTimeMs"/>, <see cref="LagMs"/>), sides that start to move at different PWM
+/// (<see cref="BreakawayLeftPwm"/>), a top speed (<see cref="MaxRateDegPerSec"/>), play between
+/// the motor and the wheels (<see cref="BacklashDeg"/>), a sensor that is never quite still
+/// (<see cref="WasNoiseCounts"/>), the firmware's LOW_HIGH_DEGREES (<see cref="LowHighDegrees"/>)
+/// and a kickout sensor (<see cref="KickoutFitted"/>), read as Autosteer.ino reads it.</item>
 /// </list>
 /// Every loop is recorded (<see cref="Samples"/>) for the safety checks.
 /// </summary>
@@ -50,6 +57,37 @@ public sealed class EmulatedSteerModule : IDisposable
     /// <summary>Below this PWM the motor/valve doesn't move the wheels.</summary>
     public int BreakawayPwm { get; set; } = 28;
     public double DegPerSecPerPwm { get; set; } = 0.25;
+    /// <summary>Break-away PWM to the left, when it is not the same as to the right
+    /// (<see cref="BreakawayPwm"/>): a valve whose two coils open at different currents.</summary>
+    public int? BreakawayLeftPwm { get; set; }
+    /// <summary>The valve or motor answers this long after the module's PWM changes (0 = in the same loop).</summary>
+    public int DeadTimeMs { get; set; }
+    /// <summary>After the dead time the wheel speed builds up with this time constant (0 = at once).</summary>
+    public int LagMs { get; set; }
+    /// <summary>The valve fully open, the motor at its top speed: the wheels turn no faster (0 = no limit).</summary>
+    public double MaxRateDegPerSec { get; set; }
+    /// <summary>Play between the motor and the wheels: on a change of direction the motor turns
+    /// this far before the wheels follow.</summary>
+    public double BacklashDeg { get; set; }
+    /// <summary>Sensor noise, ± counts, new every loop.</summary>
+    public double WasNoiseCounts { get; set; }
+    /// <summary>The firmware's LOW_HIGH_DEGREES: within this of the set point the PWM is limited
+    /// to a share of the Max Limit. 3.0 in the AiO v4 firmware, 1.5 in others.</summary>
+    public double LowHighDegrees { get; set; } = 3.0;
+    /// <summary>
+    /// A kickout sensor is fitted (a turn sensor on the steering shaft, a pressure sensor or a
+    /// current sensor). The module uses it only when the host turned one on in PGN 251, with
+    /// the trip point of byte 6, as Autosteer.ino: the turn sensor counts a pulse every loop
+    /// the operator's hands turn the wheel against the steering, the pressure / current
+    /// reading (filtered 0.6 / 0.4 as the firmware) goes to 200 of 255 while the motor works
+    /// against the hands. At the trip point: <c>steerSwitch = 1; currentState = 1;
+    /// previous = 0</c>. With a steer switch that is one or two loops of "not steering" (the
+    /// switch is read again on the next loop); with a button or neither it stays until the
+    /// host makes a new edge or the button is pressed.
+    /// </summary>
+    public bool KickoutFitted { get; set; }
+    /// <summary>The lower of the two break-away PWMs: from here the motor moves the wheels at least one way.</summary>
+    public int LowestBreakawayPwm => Math.Min(BreakawayPwm, BreakawayLeftPwm ?? BreakawayPwm);
     /// <summary>Real roll of the tractor (+ = right side down).</summary>
     public double TruthRollDeg { get; set; }
     /// <summary>IMU bolted the other way round: reports −roll.</summary>
@@ -79,6 +117,13 @@ public sealed class EmulatedSteerModule : IDisposable
     public bool MotorDriveDirection { get; private set; }
     public bool SwitchConfigured { get; private set; }
     public bool ButtonConfigured { get; private set; }
+    /// <summary>PGN 251: turn sensor (set0 bit 7), pressure or current sensor (set1 bits 1, 2) turned on.</summary>
+    public bool KickoutConfigured { get; private set; }
+    public bool TurnSensorConfigured { get; private set; }
+    /// <summary>PGN 251 byte 6: pulse count, or the pressure / current trip point (0-255).</summary>
+    public byte PulseCountMax { get; private set; } = 255;
+    /// <summary>Times a kickout sensor tripped.</summary>
+    public int Kickouts { get; private set; }
     public int SettingsReceived { get; private set; }
     public int ConfigReceived { get; private set; }
 
@@ -86,6 +131,13 @@ public sealed class EmulatedSteerModule : IDisposable
 
     private readonly object _lock = new();
     private double _angle;          // real wheel angle, + right
+    private double _motor;          // where the motor side of the play is (= _angle with no play)
+    private double _rate;           // wheel speed, deg/s, + right
+    private readonly Queue<int> _driveLine = new(); // the dead time: drive of the last loops
+    private double _noiseCounts;
+    private int _pulseCount;
+    private double _sensorReading;
+    private readonly Random _random = new(20261110);
     private int _pwmOut;            // signed, after the wiring direction
     private byte _pwmDisplay;
     private byte _steerSwitch = 1;  // firmware variable: 1 = not steering
@@ -133,7 +185,7 @@ public sealed class EmulatedSteerModule : IDisposable
         _loop = Task.Run(() => LoopAsync(_cts.Token));
     }
 
-    public void SetWheel(double deg) { lock (_lock) _angle = Math.Clamp(deg, -LockLeftDeg, LockRightDeg); }
+    public void SetWheel(double deg) { lock (_lock) { _angle = Math.Clamp(deg, -LockLeftDeg, LockRightDeg); _motor = _angle; _rate = 0; } }
 
     /// <summary>A packet from the host (PGN 254 / 252 / 251; others ignored).</summary>
     public void Receive(byte[] p)
@@ -177,6 +229,9 @@ public sealed class EmulatedSteerModule : IDisposable
                     MotorDriveDirection = (s & 0x04) != 0;
                     SwitchConfigured = (s & 0x20) != 0;
                     ButtonConfigured = (s & 0x40) != 0;
+                    TurnSensorConfigured = (s & 0x80) != 0;
+                    PulseCountMax = p[6];
+                    KickoutConfigured = TurnSensorConfigured || (p[8] & 0x06) != 0;
                     ConfigReceived++;
                     break;
             }
@@ -190,7 +245,7 @@ public sealed class EmulatedSteerModule : IDisposable
     private double RawCounts()
     {
         double s = SensorDeg(_angle) * TruthCpd * (TruthWasReversed ? -1 : 1);
-        return 6805 + TruthCentreCounts + s;
+        return 6805 + TruthCentreCounts + s + _noiseCounts;
     }
 
     private double Reported()
@@ -268,8 +323,36 @@ public sealed class EmulatedSteerModule : IDisposable
                 else _switchCounter = 0;
             }
 
-            double actual = Reported();
+            _noiseCounts = WasNoiseCounts > 0 ? (_random.NextDouble() * 2 - 1) * WasNoiseCounts : 0;
+
+            // Kickout sensors (Autosteer.ino, after the switch is read): what the sensor felt
+            // during the loop before this one.
             bool enabled = _watchdog < WatchdogThreshold;
+            if (KickoutFitted && KickoutConfigured)
+            {
+                bool againstHands = enabled && HandAngleDeg != null && Math.Abs(_pwmOut) >= 10;
+                bool trip;
+                if (TurnSensorConfigured)
+                {
+                    if (againstHands) _pulseCount++;
+                    trip = _pulseCount >= PulseCountMax;
+                }
+                else
+                {
+                    _sensorReading = _sensorReading * 0.6 + (againstHands ? 200 : 20) * 0.4;
+                    trip = _sensorReading >= PulseCountMax;
+                }
+                if (trip)
+                {
+                    if (_steerSwitch == 0) Kickouts++;
+                    _steerSwitch = 1; // reset values like it turned off
+                    _currentState = 1;
+                    _previous = 0;
+                }
+            }
+            if (!enabled) _pulseCount = 0; // the firmware clears it whenever it is not steering
+
+            double actual = Reported();
             int pwm = 0;
             if (enabled)
             {
@@ -277,7 +360,7 @@ public sealed class EmulatedSteerModule : IDisposable
                 double p = Kp * err;
                 pwm = (int)p;
                 double errAbs = Math.Abs(err);
-                const double lowHighDeg = 3.0;
+                double lowHighDeg = LowHighDegrees;
                 double highLowPerDeg = (HighPwm - LowPwm) / lowHighDeg;
                 int newMax = errAbs < lowHighDeg ? (int)(errAbs * highLowPerDeg + LowPwm) : HighPwm;
                 if (pwm < 0) pwm -= MinPwm; else if (pwm > 0) pwm += MinPwm;
@@ -288,20 +371,39 @@ public sealed class EmulatedSteerModule : IDisposable
             _pwmDisplay = (byte)Math.Min(255, Math.Abs(pwm));
 
             // Physics: positive pwm out moves the wheel left (it corrects "actual > set point")
-            // when the motor is wired the normal way.
+            // when the motor is wired the normal way. The drive reaches the valve or motor
+            // after the dead time; above the break-away PWM of its side the wheels turn, at a
+            // speed that builds up with the lag and stops at the top speed.
+            int drive = -pwm * (TruthMotorReversed ? -1 : 1); // + = to the right
+            _driveLine.Enqueue(drive);
+            int deadLoops = Math.Max(0, DeadTimeMs / LoopTimeMs);
+            int delayed = 0;
+            while (_driveLine.Count > deadLoops) delayed = _driveLine.Dequeue();
+            int breakaway = delayed > 0 ? BreakawayPwm : BreakawayLeftPwm ?? BreakawayPwm;
+            double want = 0;
+            if (Math.Abs(delayed) >= breakaway)
+            {
+                want = (Math.Abs(delayed) - breakaway + 4) * DegPerSecPerPwm;
+                if (MaxRateDegPerSec > 0) want = Math.Min(want, MaxRateDegPerSec);
+                want *= Math.Sign(delayed);
+            }
+            _rate = LagMs > 0 ? _rate + (want - _rate) * Math.Min(1.0, (double)LoopTimeMs / LagMs) : want;
             if (HandAngleDeg is { } hand)
             {
                 _angle = Math.Clamp(hand, -LockLeftDeg, LockRightDeg);
+                _motor = _angle;
             }
-            else if (Math.Abs(pwm) >= BreakawayPwm)
+            else if (_rate != 0)
             {
-                double dir = -Math.Sign(pwm) * (TruthMotorReversed ? -1 : 1);
-                double rate = (Math.Abs(pwm) - BreakawayPwm + 4) * DegPerSecPerPwm;
-                _angle = Math.Clamp(_angle + dir * rate * LoopDt, -LockLeftDeg, LockRightDeg);
+                double half = BacklashDeg / 2;
+                _motor = Math.Clamp(_motor + _rate * LoopDt, -LockLeftDeg - half, LockRightDeg + half);
+                if (_motor - _angle > half) _angle = _motor - half;
+                else if (_angle - _motor > half) _angle = _motor + half;
+                _angle = Math.Clamp(_angle, -LockLeftDeg, LockRightDeg);
             }
 
             bool atLock = (_angle >= LockRightDeg - 0.05 || _angle <= -LockLeftDeg + 0.05)
-                          && Math.Abs(pwm) >= BreakawayPwm
+                          && Math.Abs(pwm) >= LowestBreakawayPwm
                           && Math.Sign(-pwm * (TruthMotorReversed ? -1 : 1)) == Math.Sign(_angle);
             _samples.Add(new Sample(NowMs, _angle, _setPoint, pwm, enabled, _status, _gpsSpeed, atLock, HandAngleDeg));
             if (_samples.Count > 60000) _samples.RemoveRange(0, 10000);

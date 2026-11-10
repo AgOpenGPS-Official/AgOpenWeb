@@ -86,7 +86,7 @@ public sealed class SafetyWatch : IDisposable
             double angle = m.WheelAngleDeg;
             int pwm = m.PwmOut;
             bool enabled = m.MotorEnabled;
-            bool driving = enabled && Math.Abs(pwm) >= m.BreakawayPwm;
+            bool driving = enabled && Math.Abs(pwm) >= m.LowestBreakawayPwm;
             double? hand = m.HandAngleDeg;
             string where = "step " + Kind(step) + (w == null ? " (wizard closed)" : "");
 

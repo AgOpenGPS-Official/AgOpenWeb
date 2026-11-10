@@ -368,6 +368,7 @@ public static partial class RemoteServerWiring
             "MaxSteeringAngleStepViewModel" => "maxangle",
             "CpdCircleTestStepViewModel" => "cpd",
             "AckermannTestStepViewModel" => "ackermann",
+            "TuneSteeringStepViewModel" => "tune",
             "SteeringGainsStepViewModel" => "gains",
             "SpeedAndSensorsStepViewModel" => "speed",
             "FinishStepViewModel" => "finish",
@@ -389,7 +390,8 @@ public static partial class RemoteServerWiring
             GPs("PhaseDescription"), phaseResult.Length > 0 ? phaseResult : GPs("TestResult"),
             GP("Progress"), testActive,
             GPb("IsRtkFixed"), GPs("FixQualityLabel"), GP("Diameter"),
-            GPs("RecordHint"), GPb("CanRecord"));
+            GPs("RecordHint"), GPb("CanRecord"),
+            GPi("TestStage"), GP("TestChoice"));
     }
 
     // Vehicle & Tool picker hub (Phase 9). Mirrors LoadVehicleToolDialogViewModel's
