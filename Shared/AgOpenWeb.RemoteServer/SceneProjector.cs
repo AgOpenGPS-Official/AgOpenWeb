@@ -394,7 +394,9 @@ public sealed class SceneProjector : System.IDisposable
             _state.FieldTools.TramLights
                 | (_config.Guidance.TramDisplay && _config.Tram.DisplayMode != TramDisplayMode.Off
                    && _config.ActualToolWidth > _config.Vehicle.TrackWidth ? 16 : 0),
-            _state.Field.IsOutOfBounds);
+            _state.Field.IsOutOfBounds,
+            _state.Guidance.IsContourMode ? _state.Guidance.ContourAhead : 0,
+            _state.Guidance.ContourAheadM);
     }
 
     // Top status-bar readouts (Phase 1). All state-projected: fix/age/sats from

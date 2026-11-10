@@ -227,6 +227,23 @@ function updateHeadlandHud() {
   hlHud.style.display = 'block';
 }
 
+// Contour: the line ahead can't be driven as a lap, so the operator should take over before
+// it gets there (ContourAheadCheck on the host): it turns back where the field narrows, runs
+// onto ground already sprayed, or ends.
+const contourAheadHud = document.getElementById('contour-ahead-hud');
+function updateContourAheadHud() {
+  const op = tick && tick.op;
+  const what = op && op.contour ? op.contourAhead | 0 : 0;
+  if (!what) { contourAheadHud.style.display = 'none'; return; }
+  const m = Math.max(0, op.contourAheadM || 0);
+  const dist = fmtUnit(m, 'm', 0);
+  const text = what === 1 ? tr('The contour line turns back in {d}: take over', { d: dist })
+    : what === 2 ? tr('The contour line runs onto sprayed ground in {d}: take over', { d: dist })
+    : tr('The contour line ends in {d}: take over', { d: dist });
+  if (contourAheadHud.textContent !== text) contourAheadHud.textContent = text;
+  contourAheadHud.style.display = 'block';
+}
+
 // Top status bar — DOM overlay: a two-line
 // left stack (Fix dot + text + Age on top, a rotating Field/Stats/AB-line below
 // with a pause toggle), and a right cluster (aggregate Modules dot + per-module

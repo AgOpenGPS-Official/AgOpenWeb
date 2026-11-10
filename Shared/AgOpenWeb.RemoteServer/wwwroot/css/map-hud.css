@@ -138,6 +138,14 @@ body.fs-on #sb-role { margin-left: 75px; }
   pointer-events: none; z-index: 10; text-shadow: 0 1px 2px #000;
 }
 #headland-hud.warn { background: rgba(130,32,32,0.9); border-color: #ff6b5b; }
+/* Contour: the line ahead can't be driven as a lap (it turns back, or runs onto sprayed ground):
+   take over. Red as the headland warning; shown while it lasts (updateContourAheadHud). */
+#contour-ahead-hud {
+  display: none; margin-top: calc(4px * var(--hud-s)); max-width: min(90vw, 560px);
+  padding: calc(6px * var(--hud-s)) calc(14px * var(--hud-s)); border-radius: 8px; border: 1px solid #ff6b5b;
+  background: rgba(130,32,32,0.92); color: #fff; font: 700 calc(16px * var(--hud-s))/1.3 system-ui, sans-serif;
+  text-align: center; pointer-events: none; z-index: 10; text-shadow: 0 1px 2px #000;
+}
 /* Map-tap capture hint — top-centre pill shown while a feature is
    capturing an on-map tap (place-flag, boundary draw, AB, …). Esc cancels. */
 #maptap-hint {

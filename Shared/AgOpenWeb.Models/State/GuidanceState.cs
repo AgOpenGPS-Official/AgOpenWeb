@@ -201,10 +201,29 @@ public class GuidanceState : ObservableObject
         set => SetProperty(ref _isContourMode, value);
     }
 
+    /// <summary>Contour: what the line ahead holds (GpsCycleResult.ContourAhead: 0 clear, 1 the
+    /// line turns back, 2 it runs over sprayed ground, 3 it ends), so the operator can take over in time.</summary>
+    private byte _contourAhead;
+    public byte ContourAhead
+    {
+        get => _contourAhead;
+        set => SetProperty(ref _contourAhead, value);
+    }
+
+    /// <summary>How far ahead along the contour line <see cref="ContourAhead"/> starts (m).</summary>
+    private double _contourAheadM;
+    public double ContourAheadM
+    {
+        get => _contourAheadM;
+        set => SetProperty(ref _contourAheadM, value);
+    }
+
     public void Reset()
     {
         ActiveTrack = null;
         DisplayLine = null;
+        ContourAhead = 0;
+        ContourAheadM = 0;
         GuideLines = null;
         ToolPass = null;
         IsGuidanceActive = false;

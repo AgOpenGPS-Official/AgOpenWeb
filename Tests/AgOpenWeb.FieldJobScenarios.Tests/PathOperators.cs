@@ -69,8 +69,34 @@ public abstract class PathOperator
     protected static Func<double> Follow(JobRun r, Func<double> u, double lookM = 7) => () =>
     {
         var p = (r.Truth.E, r.Truth.N);
-        return PurePursuit(r.Truth, r.Frame.At(u() - r.Spec.T.Offset, r.Frame.V(p) + lookM));
+        return PurePursuit(r.Truth, LookAhead(r.Frame, p, u() - r.Spec.T.Offset, lookM));
     };
+
+    /// <summary>The point the operator looks at: <paramref name="lookM"/> ahead on the line
+    /// <paramref name="u"/> off the reference. At a sharp bend the two sides' offsets overlap,
+    /// and the part of one side's offset past the corner of the line runs closer than u to the
+    /// other side (at a boundary's corner, towards or past the boundary): an operator doesn't
+    /// look there, so those points are passed over and the target goes round the bend on the
+    /// line that keeps u from both sides.</summary>
+    protected static (double E, double N) LookAhead(PassFrame f, (double E, double N) p, double u, double lookM)
+    {
+        // Where the ground is narrower than twice u (a neck of the field), the line skips that
+        // stretch of the reference altogether: look on past it, up to half the reference.
+        double v0 = f.V(p), reach = Math.Max(4 * lookM, f.Closed ? f.Length / 2 : 0);
+        for (double dv = 0.5; dv <= reach; dv += 0.5)
+        {
+            var q = f.At(u, v0 + dv);
+            if ((q.E - p.E) * (q.E - p.E) + (q.N - p.N) * (q.N - p.N) < lookM * lookM) continue;
+            if (OnLine(f, q, u)) return q;
+        }
+        return f.At(u, v0 + lookM);
+    }
+
+    /// <summary>Whether <paramref name="q"/> (a point u off the reference, on one segment's
+    /// offset) really is u from the whole reference: not on the cut-off part of an offset
+    /// that runs closer than u to another stretch of it.</summary>
+    protected static bool OnLine(PassFrame f, (double E, double N) q, double u) =>
+        Math.Abs(u) <= 0.1 || f.U(q) * Math.Sign(u) >= Math.Abs(u) - Math.Max(0.05, Math.Abs(u) * 0.02);
 
     /// <summary>+1 when the field lies to the right of the reference (passes count up inwards),
     /// -1 when to the left: the side where half a width off the reference is inside the field.</summary>
@@ -705,6 +731,12 @@ public sealed class ContourOperator : PathOperator
     private readonly List<string> _leftAt = new();
     /// <summary>Driving back onto the lap by hand after the contour left it.</summary>
     private bool _recovering;
+    /// <summary>Driving the lap by hand after AgOpenWeb warned the line ahead can't be driven.</summary>
+    private bool _tookOverAhead;
+    /// <summary>Times AgOpenWeb warned the contour line ahead can't be driven as a lap (it turns
+    /// back, or runs onto ground already sprayed, where the field narrows) and the operator took
+    /// over and drove the lap by hand there.</summary>
+    public int TookOverAhead;
 
     public override Task<bool> CreateTrackAsync(JobRun r)
     {
@@ -767,6 +799,8 @@ public sealed class ContourOperator : PathOperator
             // Moving a width in by hand; then Contour (once) and AutoSteer.
             double off = Math.Abs(r.U(p) + r.Spec.T.Offset - ExpectedU(r, _k));
             _settle = off < 0.1 ? _settle + 1 : 0;
+            // Round a hairpin, on again only once it is behind.
+            if (_tookOverAhead && _settle > 0 && r.Fix % 5 == 0 && await TakeOverAheadAsync(r) != null) _settle = 0;
             if (_settle < 20 && r.Fix - _changeFix < 600) return;
             if (_settle < 20 && _recovering)
             {
@@ -777,6 +811,7 @@ public sealed class ContourOperator : PathOperator
                 return;
             }
             _recovering = false;
+            _tookOverAhead = false;
             if (!_contourOn)
             {
                 await r.SendAsync("contour.toggle");
@@ -808,6 +843,22 @@ public sealed class ContourOperator : PathOperator
             double u = r.U((tcc.E, tcc.N)), want = ExpectedU(r, _k);
             if (r.Fix % 100 == 0)
                 Journal.Trace(F($"[fj] {r.Seconds,7:0.0} s   contour: implement ({tcc.E:0.0},{tcc.N:0.0}) u {u:0.00} for {want:0.00}, heading {Math.IEEERemainder(r.Truth.Heading - r.Frame.TangentHeading(p), 2 * Math.PI) * 180 / Math.PI:0} deg off the lap's way, AgOpenWeb's cross-track {(c.Guidance?.CrossTrackError ?? double.NaN):0.00} m, guidance {c.Guidance?.HasGuidance}"));
+            // Where the field narrows the lap turns back on itself or has no room: warned by
+            // AgOpenWeb that the line ahead can't be driven as a lap, the operator takes over and
+            // drives the lap by hand there.
+            if (!nearLapEnd && r.Fix % 5 == 0 && await TakeOverAheadAsync(r) is { } why)
+            {
+                TookOverAhead++;
+                Journal.Trace(F($"[fj] {r.Seconds,7:0.0} s   {why} on lap {Laps + 1} at ({r.Truth.E:0},{r.Truth.N:0}): the operator takes over"));
+                r.Did(F($"{why} on lap {Laps + 1} at ({r.Truth.E:0},{r.Truth.N:0}): the operator takes over and drives the lap by hand there"));
+                await r.SendAsync("autosteer.toggle");
+                r.ExpectEngaged = false;
+                r.HandSteer = Follow(r, () => ExpectedU(r, _k), 12);
+                r.InChange = true;
+                _tookOverAhead = true;
+                _settle = 0; _changeFix = r.Fix; _offLapFixes = 0;
+                return;
+            }
             var (_, outNow) = r.OutsideBoundaryM();
             _offLapFixes = Math.Abs(u - want) > r.Spec.T.Width / 2 && (!nearLapEnd || outNow > 0.5) ? _offLapFixes + 1 : 0;
             if (r.Fix - _windowFix >= 30) { _windowFix = r.Fix; _cumWindowStart = _cum; }
@@ -871,6 +922,21 @@ public sealed class ContourOperator : PathOperator
         r.Did(F($"lap {Laps} done: took over, moving a width in to pass {_k} by hand"));
     }
 
+    /// <summary>AgOpenWeb's warning that the contour line ahead can't be driven as a lap
+    /// (State.Guidance.ContourAhead: it turns back where the field narrows, or runs onto ground
+    /// already sprayed, or ends), as the operator reads it on the screen; null when there is none.</summary>
+    private static async Task<string?> TakeOverAheadAsync(JobRun r)
+    {
+        var (what, m) = await r.Rig.ReadAsync(() => (r.Rig.State.Guidance.ContourAhead, r.Rig.State.Guidance.ContourAheadM));
+        return what switch
+        {
+            1 => F($"AgOpenWeb warns the contour line turns back {m:0} m ahead"),
+            2 => F($"AgOpenWeb warns the contour line runs onto sprayed ground {m:0} m ahead"),
+            3 => F($"AgOpenWeb warns the contour line ends {m:0} m ahead"),
+            _ => null,
+        };
+    }
+
     /// <summary>
     /// For the trace: where AgOpenWeb's contour line runs beside the tractor against the strip
     /// it follows (State.Guidance.DisplayLine and State.Operation.ContourRef), in metres in from
@@ -914,8 +980,11 @@ public sealed class ContourOperator : PathOperator
     /// <summary>More than half a width off the lap is leaving it (<c>CONTOUR-LEFT-THE-LAP</c> once it lasts 3 s).</summary>
     public override bool PassErrorJudgedElsewhere(JobRun r, double err) => Math.Abs(err) > r.Spec.T.Width / 2;
 
-    public override void Metrics(Scenario sc, JobRun r) =>
+    public override void Metrics(Scenario sc, JobRun r)
+    {
         sc.Row.Metrics.Add(("Laps (the first by hand) / seconds AutoSteer had no contour line to follow", F($"{Laps} / {NoLineSeconds}")));
+        sc.Row.Metrics.Add(("AgOpenWeb warned the contour line ahead could not be driven as a lap: times the operator took over", F($"{TookOverAhead}")));
+    }
 
     public override void Judge(Scenario sc, JobRun r, JobAreas a, Action<Severity, string, string> flag)
     {

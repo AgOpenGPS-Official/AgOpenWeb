@@ -683,6 +683,8 @@ public static class WireCodec
         w.Write((float)t.ChartGpsHeading); // f32 — heading chart GPS fix-to-fix (#111)
         w.Write((byte)t.TramLights);  // #451 — tram lights bits
         w.Write((byte)(t.IsOutOfBounds ? 1 : 0)); // #494 — pivot outside the field
+        w.Write((byte)t.ContourAhead);   // contour: 0 clear, 1 the line turns back, 2 runs over sprayed ground, 3 ends
+        w.Write((float)t.ContourAheadM); // f32 — how far ahead along the line (m)
         return ms.ToArray();
     }
 

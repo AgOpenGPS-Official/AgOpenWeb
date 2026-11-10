@@ -1469,6 +1469,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
             HeadlandProximityDistance = headlandDist,
             HeadlandProximityWarning = headlandWarning,
 
+            // Contour: a stretch ahead that can't be driven as a lap
+            ContourAhead = (byte)_contourAhead.What,
+            ContourAheadM = _contourAhead.AtM,
+
             // Phase E: first-fix LocalPlane auto-create — non-null only on
             // the single cycle where the cycle bootstrapped the plane.
             FirstFixLocalPlane = firstFixLocalPlane,
@@ -1842,9 +1846,34 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
             _contourLockedShown = contourOn && _contour.IsLocked;
             _contourHasPending = _contour.PendingSave.Count > 0;
+
+            // Look along the line ahead for a stretch that can't be driven as a lap, early enough
+            // for the operator to take over; the alarm sounds once as it appears.
+            // Checked again when the line changes or the tractor has moved a metre.
+            if (!contourOn || _contour.Line.Count < 3)
+            {
+                _contourAhead = (ContourAhead.Clear, 0);
+                _contourAheadVersion = -1;
+            }
+            else if (_contour.LineVersion != _contourAheadVersion
+                || Math.Abs(pivotE - _contourAheadPos.Easting) + Math.Abs(pivotN - _contourAheadPos.Northing) > 1)
+            {
+                _contourAheadVersion = _contour.LineVersion;
+                _contourAheadPos = new Vec2(pivotE, pivotN);
+                var ahead = ContourAheadCheck.Check(_contour.Line, _contourAheadPos, headingRad,
+                    ContourAheadCheck.Reach(speedKmh), _isPointCovered, config.Guidance.UTurnRadius);
+                if (ahead.What != ContourAhead.Clear && _contourAhead.What != ahead.What && autoSteerEngaged)
+                    _audioService.Play(SoundEffect.BoundaryAlarm);
+                _contourAhead = ahead;
+            }
         }
         return steer;
     }
+
+    /// <summary>What the contour line ahead holds (<see cref="ContourAheadCheck"/>), and how far ahead.</summary>
+    private (ContourAhead What, double AtM) _contourAhead;
+    private int _contourAheadVersion = -1;
+    private Vec2 _contourAheadPos;
 
     private ContourParams ContourParamsFor(double speedKmh)
     {

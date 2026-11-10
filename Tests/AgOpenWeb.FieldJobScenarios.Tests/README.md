@@ -129,7 +129,11 @@ the new pass, and stops when no lap is left: when the ground deep enough for the
 gone, or falls into pieces one closed line cannot go round (`DepthGrid`). What no lap reaches is
 counted apart (left for an AB line or by hand), and so are the laps' corners, where an inner lap
 pulls away from the outer one. AgOpenWeb's clock runs on the job's simulated time (`SimClock.cs`):
-contour rebuilds its line every 2 s of it.
+contour rebuilds its line every 2 s of it. When AgOpenWeb warns that the contour line ahead can't
+be driven as a lap (it turns back tighter than the rig turns, runs onto ground already sprayed, or
+ends: where the field narrows), the operator takes over, drives that stretch of the lap by hand and
+engages again past it. Driving by hand, the operator looks ahead on the line that keeps its
+distance from every side of the reference, so a sharp corner is driven round, not overshot.
 
 Findings these jobs add:
 
