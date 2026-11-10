@@ -969,12 +969,13 @@ public partial class MainViewModel : ObservableObject
 
                 // Check module status using appropriate method for each:
                 // - AutoSteer: Data flow (sends PGN 250/253 regularly)
-                // - Machine: Hello only (receive-only, no data sent)
+                // - Machine: Hello reply, or its own PGN 237
                 // - IMU: Hello only (only sends when active)
                 // - GPS: Data flow (sends NMEA regularly)
 
                 var steerOk = _udpService.IsModuleDataOk(ModuleType.AutoSteer);
-                var machineOk = _udpService.IsModuleHelloOk(ModuleType.Machine);
+                var machineOk = _udpService.IsModuleHelloOk(ModuleType.Machine)
+                    || _udpService.IsModuleDataOk(ModuleType.Machine);
                 var imuOk = _udpService.IsModuleHelloOk(ModuleType.IMU);
                 var gpsOk = _gpsService.IsGpsDataOk();
 
