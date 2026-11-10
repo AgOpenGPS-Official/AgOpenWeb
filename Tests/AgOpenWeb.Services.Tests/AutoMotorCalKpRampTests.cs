@@ -127,8 +127,8 @@ public class AutoMotorCalKpRampTests
     [Test]
     public async Task MotorCal_FoundMinPwm_IsTheSettingAfterward()
     {
-        // The web wizard goes from the ramp's result straight to Next; the step only saved
-        // MinPWM after its second part (ContinueToMaxAngle), which the web never runs.
+        // Next right after the ramp's result keeps the MinPWM it found. (The step once saved
+        // it only after a max angle part of its own, which the web wizard never ran.)
         _store.AutoSteer.ProportionalGain = 12;
         _store.AutoSteer.MinPwm = 10;
         var step = CreateStep(kp => kp < 40 ? ModuleAt(0.0, 0) : ModuleAt(2.0, 29));

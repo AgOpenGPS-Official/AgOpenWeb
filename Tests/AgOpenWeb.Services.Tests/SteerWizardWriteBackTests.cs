@@ -93,6 +93,7 @@ public class SteerWizardWriteBackTests
         auto.LastSteerData.Returns(new AgOpenWeb.Models.SteerModuleData(
             ActualSteerAngle: 2.0, ImuHeading: 0, ImuRoll: 0, WorkSwitchActive: false,
             SteerSwitchActive: false, RemoteButtonPressed: false, VwasFusionActive: false, PwmDisplay: 0));
+        auto.LastSteerDataUtc.Returns(DateTime.UtcNow);
         _store.AutoSteer.CountsPerDegree = 100;
         _store.AutoSteer.WasOffset = 0;
         var cfg = Substitute.For<IConfigurationService>();

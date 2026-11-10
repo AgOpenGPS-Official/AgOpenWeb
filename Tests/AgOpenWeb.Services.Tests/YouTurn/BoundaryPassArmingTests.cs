@@ -49,7 +49,10 @@ public class BoundaryPassArmingTests
         c.Tool.Overlap = 0;
         c.NumSections = 1;
         c.Tool.SetSectionWidth(0, (int)(ToolWidth * 100)); // 6 m
-        c.Guidance.UTurnRadius = 8.0;
+        // A radius that fits: the pass is 3 m from the fence, and a larger radius makes an omega that
+        // swings past it. The fallback turn this test once armed with 8 m went 5.8 m outside the
+        // field, which is no longer made (#692).
+        c.Guidance.UTurnRadius = 3.0;
         c.Guidance.UTurnExtension = 16.0;
         c.Guidance.UTurnDistanceFromBoundary = DistFromBoundary;
         c.Guidance.UTurnStyle = 0;
@@ -125,5 +128,31 @@ public class BoundaryPassArmingTests
         double avgNextEasting = tState.NextTrack!.Points.Average(p => p.Easting);
         Assert.That(avgNextEasting, Is.GreaterThan(-47.0 + 1.0),
             "next track must land on the inward side of the boundary pass");
+    }
+
+    [Test]
+    public void A_fallback_turn_that_would_leave_the_field_is_refused_with_a_status_line()
+    {
+        // With an 8 m radius no real turn fits from the pass 3 m from the fence, and the fallback
+        // semicircle would go 5.8 m outside the field: no turn (#692), and the operator is told
+        // why, not only sounded at.
+        ConfigurationStore.Instance.Guidance.UTurnRadius = 8.0;
+        var gState = new GuidanceWorkingState();
+        var tState = new YouTurnWorkingState { IsEnabled = true };
+        var ctx = MakeContext(-47, -20, 0);
+
+        var statuses = new List<string>();
+        bool sounded = false;
+        for (int i = 0; i < 8; i++)
+        {
+            tState.YouTurnCounter++;
+            var effects = _sm.Tick(in ctx, gState, tState);
+            if (effects.StatusMessage != null) statuses.Add(effects.StatusMessage);
+            sounded |= effects.TurnCreationFailedSound;
+        }
+
+        Assert.That(tState.TurnPath, Is.Null, "no turn that leaves the field");
+        Assert.That(sounded, Is.True, "the creation-failed sound, as before");
+        Assert.That(statuses, Does.Contain("No U-turn fits inside the boundary at this end - take over manually"));
     }
 }

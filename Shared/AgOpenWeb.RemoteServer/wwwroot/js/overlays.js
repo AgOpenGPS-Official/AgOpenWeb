@@ -227,6 +227,23 @@ function updateHeadlandHud() {
   hlHud.style.display = 'block';
 }
 
+// Contour: the line ahead can't be driven as a lap, so the operator should take over before
+// it gets there (ContourAheadCheck on the host): it turns back where the field narrows, runs
+// onto ground already sprayed, or ends.
+const contourAheadHud = document.getElementById('contour-ahead-hud');
+function updateContourAheadHud() {
+  const op = tick && tick.op;
+  const what = op && op.contour ? op.contourAhead | 0 : 0;
+  if (!what) { contourAheadHud.style.display = 'none'; return; }
+  const m = Math.max(0, op.contourAheadM || 0);
+  const dist = fmtUnit(m, 'm', 0);
+  const text = what === 1 ? tr('The contour line turns back in {d}: take over', { d: dist })
+    : what === 2 ? tr('The contour line runs onto sprayed ground in {d}: take over', { d: dist })
+    : tr('The contour line ends in {d}: take over', { d: dist });
+  if (contourAheadHud.textContent !== text) contourAheadHud.textContent = text;
+  contourAheadHud.style.display = 'block';
+}
+
 // Top status bar — DOM overlay: a two-line
 // left stack (Fix dot + text + Age on top, a rotating Field/Stats/AB-line below
 // with a pause toggle), and a right cluster (aggregate Modules dot + per-module
@@ -592,10 +609,10 @@ function buildZoneRow(zones) {
   sectionBar.appendChild(row);
 }
 function renderSectionBar() {
-  // Only with a field open AND a master (auto or manual) engaged.
+  // Whenever a field is open, as AgOpenGPS shows them once a job starts (#681): each section
+  // runs by its own state (a tap cycles Off, Auto, On) and the master buttons set them all.
   const secs = tick && tick.sections;
-  const visible = !!(scene && scene.hasField && tick && tick.op
-    && (tick.op.sectionManual || tick.op.sectionAuto) && secs && secs.length);
+  const visible = !!(scene && scene.hasField && secs && secs.length);
   sectionBar.classList.toggle('open', visible);
   if (!visible) { _secCount = -1; return; } // force a rebuild when it reappears
   const zones = zoneLayout();
@@ -728,10 +745,11 @@ function renderRightNav() {
   RN.steerI.parentElement.classList.toggle('not-steering', !!(op.autoSteer && op.moduleNotSteering));
 }
 
-// Auto-U-turn approach indicator (upper-right): green direction arrow + distance to
-// trigger + turn-type glyph; shown while auto U-turn is
-// armed with a pending turn. Turn type comes from config (Omega / Sagitta); distance honours
-// the metric/imperial unit like the headland HUD.
+// Auto-U-turn approach indicator (upper-right): direction arrow + distance to trigger +
+// turn-type glyph; shown while auto U-turn is on with a field and a track, except during a
+// turn. Green with the distance while a turn is planned; orange with no distance when none is,
+// as AgOpenGPS's button, so the direction can still be swapped then (#693). Turn type comes
+// from config (Omega / Sagitta); distance honours the metric/imperial unit like the headland HUD.
 const UTI = {
   root: document.getElementById('uturn-indicator'),
   arrow: document.getElementById('uti-arrow'),
@@ -751,10 +769,13 @@ const UTURN_GLYPH = {
 function renderUTurnIndicator() {
   if (!UTI.root) return;
   const op = tick && tick.op;
-  const show = !!(scene && scene.hasField && op && op.youturn && op.distToTrigger > 0);
+  const planned = !!(op && op.distToTrigger > 0);
+  const turning = !planned && !!(scene && scene.uTurnPath && scene.uTurnPath.length);
+  const show = !!(scene && scene.hasField && op && op.youturn && tick.activeTrackName) && !turning;
   UTI.root.hidden = !show;
   if (!show) return;
-  UTI.dist.textContent = fmtUnit(op.distToTrigger, 'm', 0);
+  UTI.root.classList.toggle('none', !planned);
+  UTI.dist.textContent = planned ? fmtUnit(op.distToTrigger, 'm', 0) : '—';
   UTI.arrow.classList.toggle('left', !!op.turnLeft);
   const style = (config && config.uturn && config.uturn.style) || 0;
   UTI.typePath.setAttribute('d', UTURN_GLYPH[style] || UTURN_GLYPH[0]);

@@ -112,7 +112,6 @@
   "Selected: {name}": "Seleccionado: {name}",
   "Send Subnet to Modules": "Envie Subred a Módulos",
   "Send+Save": "Enviar+Guardar",
-  "Sentence:": "Sentencia:",
   "Server URL": "URL del Servidor",
   "Set ALL connected modules to subnet {subnet}.x and restart them?": "Fije TODOS los módulos conectados a subred {subnet}.x y luego reinicielos?",
   "Set Angle": "Fije Ángulo",
@@ -122,7 +121,6 @@
   "Set Point A": "Fije Punto A",
   "Set Point B": "Fije punto B",
   "Set the roll offset back to 0": "Fije el roll offset a 0",
-  "Set:": "Fije:",
   "Short summary": "Resumen corto",
   "Shorten line at A (−5 m)": "Acorte línea en A (-5 m)",
   "Shorten line at B (−5 m)": "Acorte línea en B (-5 m)",
@@ -142,7 +140,6 @@
   "Snap to pivot": "Pegarse al pivot",
   "Soft": "Suave",
   "Speed Limits": "Límites de velocidad",
-  "Speed:": "Velocidad:",
   "Stanley": "Stanley",
   "Start at 0, only increase for drift": "inicie en 0, solo aumente por deriva",
   "Start at 10, increase for faster correction": "Inicie en 10, aumente para correción rápida",
@@ -151,7 +148,6 @@
   "Start New Job": "Inicie Nuevo Trabajo",
   "Start or Delete Boundary": "Inicie o Borre Lindero",
   "Statistics": "Estadísticas",
-  "Status:": "Estado:",
   "Std Dev": "Desv Est",
   "Steer": "Manejo",
   "Steer Chart": "Gráfico de Manejo",
@@ -207,5 +203,8 @@
   "Sentences from the GPS module": "Sentencias del módulo GPS",
   "Speed": "Velocidad",
   "System Data": "Datos de Sistema",
-  "The simulator is supplying the position; no sentence is being received.": "El simulador está dando la posición; no se están recibiendo sentencias."
+  "The simulator is supplying the position; no sentence is being received.": "El simulador está dando la posición; no se están recibiendo sentencias.",
+  "Sentence": "Sentencia",
+  "Set": "Fije",
+  "Status": "Estado"
 }

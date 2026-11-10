@@ -53,14 +53,24 @@ public partial class MainViewModel
             LogAutoSteerOff("GPS data lost");
         }
 
-        // Also a section switched on by its own button or hotkey with neither master on (#316).
-        if (IsSectionMasterOn || IsManualSectionMode || AnySectionNotOff())
-        {
-            IsSectionMasterOn = false;
-            IsManualSectionMode = false;
-            _sectionControlService.SetAllSections(SectionButtonState.Off);
+        if (SwitchAllSectionsOff())
             _audioService.Play(SoundEffect.SectionOff);
-        }
+    }
+
+    /// <summary>
+    /// Both masters off and every section button Off, at once: the module gets no on bit from
+    /// the next tick. Also a section switched on by its own button or hotkey with neither
+    /// master on (#316). Used when the GPS is lost and when the field closes (AgOpenGPS
+    /// JobClose: manual and auto off, AllSectionsAndButtonsToState(Off)). True when anything
+    /// was on.
+    /// </summary>
+    private bool SwitchAllSectionsOff()
+    {
+        if (!(IsSectionMasterOn || IsManualSectionMode || AnySectionNotOff())) return false;
+        IsSectionMasterOn = false;
+        IsManualSectionMode = false;
+        _sectionControlService.SetAllSections(SectionButtonState.Off);
+        return true;
     }
 
     private bool AnySectionNotOff()

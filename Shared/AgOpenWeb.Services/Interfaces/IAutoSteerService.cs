@@ -55,7 +55,8 @@ public interface IAutoSteerService
 
     /// <summary>
     /// The pressure or current sensor (PGN 250) reached its trip point while AutoSteer was
-    /// engaged, so the service stopped steering. Raised once per kickout, on the UDP receive
+    /// engaged, or the wheels ran away from the set point (<see cref="AutoSteer.SteerRunawayDetector"/>),
+    /// so the service stopped steering. Raised once per kickout, on the UDP receive
     /// thread, with the reason; the handler should marshal to the UI and take AutoSteer off.
     /// </summary>
     event EventHandler<string>? SensorKickout;
@@ -174,7 +175,7 @@ public interface IAutoSteerService
     bool IsInFreeDriveMode { get; }
 
     /// <summary>
-    /// Current free drive steer angle in degrees (-40 to +40).
+    /// Current free drive steer angle in degrees (within ±<see cref="FreeDriveLimitDeg"/>).
     /// </summary>
     double FreeDriveSteerAngle { get; }
 
@@ -190,10 +191,18 @@ public interface IAutoSteerService
     void DisableFreeDrive();
 
     /// <summary>
+    /// The most a free drive command asks for, in degrees, either way: past any tractor's lock,
+    /// so the max steer angle test, which commands this and reads where the wheels stop, reads
+    /// the lock (±40° read a 38° lock, 42° as the left side reports it, as 40°). The operator's
+    /// own free drive is held to the vehicle's max steer angle by its view model.
+    /// </summary>
+    const double FreeDriveLimitDeg = 60;
+
+    /// <summary>
     /// Set the free drive steer angle.
     /// Only effective when IsInFreeDriveMode is true.
     /// </summary>
-    /// <param name="angleDegrees">Target steer angle (-40 to +40 degrees)</param>
+    /// <param name="angleDegrees">Target steer angle, held within ±<see cref="FreeDriveLimitDeg"/></param>
     void SetFreeDriveAngle(double angleDegrees);
 
     /// <summary>
@@ -238,6 +247,13 @@ public interface IAutoSteerService
     /// Contains actual steer angle, switch states, PWM feedback.
     /// </summary>
     SteerModuleData LastSteerData { get; }
+
+    /// <summary>
+    /// When <see cref="LastSteerData"/> arrived (UTC); <see cref="DateTime.MinValue"/> before
+    /// the first PGN 253. A calibration that reads the module (Zero WAS) checks it is recent:
+    /// with the module unplugged the last reading stays, and a zero taken from it is wrong.
+    /// </summary>
+    DateTime LastSteerDataUtc => DateTime.MinValue;
 
     /// <summary>
     /// Latest sensor data from module (PGN 250).

@@ -54,6 +54,8 @@ public static partial class RemoteServerWiring
 
         ApplyConfigSet(store, cfg, key, val);
 
+        if (AgOpenWeb.Models.Configuration.VehicleToolLimits.ApplySectionTiming(key, store) is { } timing)
+            return timing;
         // A harvester's header is front-mounted (#111): say so rather than ignore the choice.
         if (key == "tool.type" && harvester && !string.Equals(val, "front", System.StringComparison.OrdinalIgnoreCase))
             return "A combine takes only a front implement (its header)";
@@ -162,9 +164,10 @@ public static partial class RemoteServerWiring
             case "tool.trailingToolToPivotLength": if (D(out var t10)) tool.TrailingToolToPivotLength = t10; return;
             case "tool.slowSpeedCutoff": if (D(out var t11)) tool.SlowSpeedCutoff = t11; return;
             case "tool.coverageMargin": if (D(out var t12)) tool.CoverageMargin = t12; return;
-            case "tool.defaultSectionWidth": if (D(out var t13)) tool.DefaultSectionWidth = t13; return;
+            // The operator's section count and default width set every section (#676).
+            case "tool.defaultSectionWidth": if (D(out var t13)) store.ApplyDefaultSectionWidth(t13); return;
             case "tool.minCoverage": if (I(out var t14)) tool.MinCoverage = t14; return;
-            case "tool.numSections": if (I(out var t15)) store.NumSections = t15; return;
+            case "tool.numSections": if (I(out var t15)) store.ApplySectionCount(t15); return;
             case "tool.zones": if (I(out var t16)) tool.Zones = t16; return;
             case "tool.isSectionsNotZones": tool.IsSectionsNotZones = B(); return;
             case "tool.isMultiColoredSections": tool.IsMultiColoredSections = B(); return;
@@ -271,7 +274,7 @@ public static partial class RemoteServerWiring
             case "autosteer.currentTripPoint": if (I(out var a18)) { ast.CurrentTripPoint = a18; store.MarkChanged(); } return;
             // Tab 6 — Hardware Config
             case "autosteer.danfossEnabled": ast.DanfossEnabled = B(); store.MarkChanged(); return;
-            case "autosteer.invertWas": ast.InvertWas = B(); store.MarkChanged(); return;
+            case "autosteer.invertWas": ast.SetInvertWasKeepingCentre(B()); store.MarkChanged(); return; // the offset flips with it
             case "autosteer.invertMotor": ast.InvertMotor = B(); store.MarkChanged(); return;
             case "autosteer.invertRelays": ast.InvertRelays = B(); store.MarkChanged(); return;
             case "autosteer.motorDriver": if (I(out var a19)) { ast.MotorDriver = a19; store.MarkChanged(); } return;
@@ -376,7 +379,7 @@ public static partial class RemoteServerWiring
         int GPi(string n) { var p = s?.GetType().GetProperty(n); return p?.GetValue(s) is { } v ? System.Convert.ToInt32(v, System.Globalization.CultureInfo.InvariantCulture) : 0; }
         var sb = w.StatusBar;
         string phaseResult = GPs("PhaseResult");
-        bool testActive = GPb("IsRecording") || GPb("IsMeasuring") || GPb("IsPhaseA1") || GPb("IsPhaseB1");
+        bool testActive = GPb("IsRecording") || GPb("IsMeasuring") || GPb("IsPhaseA1");
         return new AgOpenWeb.RemoteServer.WizardDto(
             w.CurrentStepIndex, w.TotalSteps, kind, step?.Title ?? "", step?.Description ?? "",
             w.CanGoBack, w.CanGoNext, w.CanSkip, w.IsOnLastStep, step?.ValidationMessage ?? "",

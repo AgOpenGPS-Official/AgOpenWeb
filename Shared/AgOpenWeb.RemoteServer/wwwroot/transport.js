@@ -131,6 +131,8 @@ window.RemoteTransport = {
           const chartGpsHeading = f32(); // #111 — heading chart, GPS fix-to-fix
           tools.tramLights = u8(); // #451 — bit 0/1 R/L on a tram, 2/3 R/L forced, 4 show
           op.outOfBounds = !!u8(); // #494 — pivot outside the field: red boundary, orange frame
+          op.contourAhead = u8();    // contour: 0 clear, 1 the line turns back, 2 runs over sprayed ground, 3 ends
+          op.contourAheadM = f32();  // ... that far ahead along the line (m): take over
           handlers.onTick && handlers.onTick({
             sceneVersion, pose, fix, sections, crossTrackError, guidanceActive, lineLabel,
             activeTrackName: atn.length ? atn : null, tool, op, roll, tools,

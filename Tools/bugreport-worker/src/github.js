@@ -99,3 +99,10 @@ export async function closedReportIssues(env) {
     if (batch.length < 100) return closed;
   }
 }
+
+/** Starts a workflow_dispatch workflow (the App needs Actions: read and write). */
+export async function dispatchWorkflow(env, workflow, ref, inputs = {}) {
+  const token = await installationToken(env);
+  return call(`/repos/${env.GITHUB_REPO}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`, token,
+    { method: 'POST', body: JSON.stringify({ ref, inputs }) });
+}

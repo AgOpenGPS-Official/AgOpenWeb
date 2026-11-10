@@ -30,8 +30,9 @@ VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "met
 
 
 def norm(s):
-    """As the loader does: collapse whitespace; "Wheelbase (" before a unit label is "Wheelbase"."""
-    return re.sub(r"\s+", " ", re.sub(r"\s*\(?\s*$", "", s)).strip()
+    """As the loader does: collapse whitespace; "Wheelbase (" before a unit label is "Wheelbase",
+    the label "Speed:" is "Speed"."""
+    return re.sub(r"\s+", " ", re.sub(r"\s*[(:]?\s*$", "", s)).strip()
 
 
 def translatable(s):

@@ -374,6 +374,33 @@ public class NmeaParserServiceFastTests
         Assert.That(state.SentenceType, Is.EqualTo(GpsSentenceType.Paogi));
     }
 
+    // A $PAOGI with an empty heading field has no dual-antenna solution: it must not read as
+    // a heading of 0° (north), or Dual GPS steers to north. The next one with a heading is
+    // a dual heading again.
+    [Test]
+    public void ParseIntoState_PAOGI_EmptyHeading_IsNoDualHeading()
+    {
+        var state = new VehicleState();
+        NmeaParserServiceFast.ParseIntoState(BuildSentence(
+            "PAOGI,123456.00,4807.038,N,01131.000,E,4,12,0.9,100.0,0.0,5.5,,,0,0.00"), ref state, ConfigurationStore.Instance);
+        Assert.That(state.SentenceType, Is.EqualTo(GpsSentenceType.Paogi));
+        Assert.That(state.HasDualHeading, Is.False, "no heading in the sentence: no dual heading");
+        Assert.That(state.FixQuality, Is.EqualTo(4), "the position is still used");
+
+        NmeaParserServiceFast.ParseIntoState(BuildPaogiBytes(4807.038, "N", 01131.000, "E", 4, 12, 0.9, 100, 0, 5.5,
+            heading: 90.0, roll: 0, pitch: 0, yawRate: 0), ref state, ConfigurationStore.Instance);
+        Assert.That(state.HasDualHeading, Is.True);
+        Assert.That(state.Heading, Is.EqualTo(90.0).Within(1e-6));
+    }
+
+    [Test]
+    public void ParseSpan_PAOGI_EmptyHeading_IsNoDualHeading()
+    {
+        _parser.ParseSpan(BuildSentence("PAOGI,123456.00,4807.038,N,01131.000,E,4,12,0.9,100.0,0.0,5.5,,,0,0.00"));
+        Assert.That(_lastGpsData!.HasDualHeading, Is.False);
+        Assert.That(_lastGpsData.SentenceType, Is.EqualTo(GpsSentenceType.Paogi));
+    }
+
     [Test]
     public void ParseSpan_DualHeadingFlag_OnlyForPaogi()
     {
@@ -554,6 +581,32 @@ public class NmeaParserServiceFastTests
         Assert.That(state.Satellites, Is.EqualTo(31));
         Assert.That(state.Roll, Is.EqualTo(0), "heading solution is float, so the baseline pitch isn't trusted as roll");
         Assert.That(state.DifferentialAge, Is.EqualTo(0));
+    }
+
+    // A receiver leaves the age empty when it has no corrections. The state lives from one
+    // sentence to the next, so the age must not stay at the last one the corrections had,
+    // and it is not a fresh 0 either: NaN, which the screen shows as "—".
+    [Test]
+    public void ParseIntoState_PANDA_EmptyAge_IsNoAge_NotTheLastOne()
+    {
+        var state = new VehicleState();
+        NmeaParserServiceFast.ParseIntoState(BuildPandaBytes(4807.038, "N", 01131.000, "E", 5, 12, 0.9, 100, 12.5, 5.5,
+            heading: 95.0, roll: 0, pitch: 0, yawRate: 0), ref state, ConfigurationStore.Instance);
+        Assert.That(state.DifferentialAge, Is.EqualTo(12.5).Within(1e-9));
+
+        NmeaParserServiceFast.ParseIntoState(BuildSentence(
+            "PANDA,123456.00,4807.038,N,01131.000,E,1,12,0.9,100.0,,5.5,950,0,0,0.00"), ref state, ConfigurationStore.Instance);
+        Assert.That(state.FixQuality, Is.EqualTo(1));
+        Assert.That(double.IsNaN(state.DifferentialAge), Is.True, "no corrections: no age, not 12.5 s");
+    }
+
+    [Test]
+    public void ParseIntoState_PAOGI_EmptyAge_IsNoAge()
+    {
+        var state = new VehicleState();
+        NmeaParserServiceFast.ParseIntoState(BuildSentence(
+            "PAOGI,123456.00,4807.038,N,01131.000,E,1,12,0.9,100.0,,5.5,90.00,0.00,0,0.00"), ref state, ConfigurationStore.Instance);
+        Assert.That(double.IsNaN(state.DifferentialAge), Is.True, "not a reassuring 0.0");
     }
 
     [Test]

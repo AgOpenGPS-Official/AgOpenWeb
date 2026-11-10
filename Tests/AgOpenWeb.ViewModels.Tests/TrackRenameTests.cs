@@ -77,4 +77,21 @@ public class TrackRenameTests
         vm.RenameTrackAt(5, "X");
         Assert.That(vm.SavedTracks.Select(t => t.Name), Is.EqualTo(new[] { "AB 1", "AB 2" }).AsCollection);
     }
+
+    // #695: a hidden track can't be made active (AgOpenGPS), and the operator is told why
+    // instead of the tap doing nothing.
+    [Test]
+    public void Selecting_a_hidden_track_is_refused_with_a_reason()
+    {
+        var vm = Vm();
+        vm.SelectTrackAt(0);
+        vm.SavedTracks[1].IsVisible = false;
+        string? reported = null;
+        vm.FailureReported += m => reported = m;
+
+        vm.SelectTrackAt(1);
+
+        Assert.That(vm.SelectedTrack?.Name, Is.EqualTo("AB 1"), "the active track stays");
+        Assert.That(reported, Does.Contain("hidden").IgnoreCase);
+    }
 }

@@ -38,6 +38,11 @@ public class SectionControlServiceTests
         config.Tool.SetSectionWidth(1, 200);
         config.Tool.SetSectionWidth(2, 200);
         config.Tool.Offset = 0;
+        // These tests drive the section logic one Update at a time: no look-ahead, so a section
+        // switches in the Update that asks for it (the default is AgOpenGPS's 1.0 s / 0.5 s;
+        // the timing has its own tests, LookAheadReachesModuleTests).
+        config.Tool.LookAheadOnSetting = 0;
+        config.Tool.LookAheadOffSetting = 0;
 
         _coverageMap = Substitute.For<ICoverageMapService>();
         _toolPosition = Substitute.For<IToolPositionService>();

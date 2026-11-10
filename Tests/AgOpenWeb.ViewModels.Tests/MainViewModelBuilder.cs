@@ -45,6 +45,10 @@ public class MainViewModelBuilder
     public AgOpenWeb.Services.Interfaces.ITramLineService TramLineService { get; set; } = Substitute.For<AgOpenWeb.Services.Interfaces.ITramLineService>();
     public AgOpenWeb.Services.Pipeline.PipelineIntents Intents { get; } = new();
     public AgOpenWeb.Services.Geometry.IPolygonOffsetService PolygonOffsetService { get; set; } = Substitute.For<AgOpenWeb.Services.Geometry.IPolygonOffsetService>();
+    /// <summary>Wires the map's 30 Hz render pull (none without one, as before).</summary>
+    public IPositionEstimator? PositionEstimator { get; set; }
+    /// <summary>Every timer the view model makes; none fires until a test calls <c>Fire</c>.</summary>
+    public List<AgOpenWeb.Services.Threading.ManualUiTimer> Timers { get; } = new();
 
     public MainViewModelBuilder()
     {
@@ -106,6 +110,18 @@ public class MainViewModelBuilder
             persistentStateService: Substitute.For<IPersistentStateService>(),
             batteryService: new NullBatteryService(),
             uiDispatcher: new AgOpenWeb.Services.Threading.InlineUiDispatcher(),
-            uiTimerFactory: new AgOpenWeb.Services.Threading.ManualUiTimerFactory());
+            uiTimerFactory: new RecordingTimerFactory(Timers),
+            positionEstimator: PositionEstimator);
+    }
+}
+
+/// <summary>A <see cref="AgOpenWeb.Services.Threading.ManualUiTimerFactory"/> that keeps the timers it makes.</summary>
+internal sealed class RecordingTimerFactory(List<AgOpenWeb.Services.Threading.ManualUiTimer> timers) : IUiTimerFactory
+{
+    public IUiTimer Create()
+    {
+        var t = new AgOpenWeb.Services.Threading.ManualUiTimer();
+        timers.Add(t);
+        return t;
     }
 }

@@ -150,6 +150,7 @@ public sealed class FieldScenarioRig : IAsyncDisposable
         await hostLoop.InvokeAsync(() => vm.IsSimulatorEnabled = false);
         await rig.DrainAsync();
         rig.TakeEvents();
+        rig.StartStandingFixes();
         return rig;
     }
 
@@ -210,7 +211,9 @@ public sealed class FieldScenarioRig : IAsyncDisposable
         services.AddSingleton(_ => PersistentAppState.Instance);
         services.AddTransient<MainViewModel>();
         services.AddTransient<ConfigurationViewModel>();
-        services.AddSingleton<ILocalNetworkInfoProvider, SystemLocalNetworkInfoProvider>();
+        // Loopback only: with the machine's real interfaces the UDP service broadcasts steer and
+        // machine settings to the LAN, where a real module saves them to its EEPROM.
+        services.AddSingleton<ILocalNetworkInfoProvider, NoNetworkInterfaces>();
         services.AddSingleton<AgOpenWeb.Services.Network.INetworkWatcher, AgOpenWeb.Services.Network.NetworkWatcher>();
         services.AddSingleton<IUdpCommunicationService, UdpCommunicationService>();
         services.AddSingleton<IGpsService, GpsService>();
@@ -333,6 +336,36 @@ public sealed class FieldScenarioRig : IAsyncDisposable
     /// converts it with the open field's plane, as for real GPS).</summary>
     public void Fix(double lat, double lon, double headingDeg, double speedKmh = 8.0)
     {
+        lock (_fixLock)
+        {
+            _lastFix = (lat, lon, headingDeg);
+            _lastFixAt = Environment.TickCount64;
+            SendFix(lat, lon, headingDeg, speedKmh);
+        }
+    }
+
+    // A receiver keeps sending while the tractor stands still (10 Hz). Between the harness's
+    // moves its last position goes on being sent at walking-pace zero, so the app sees live GPS
+    // as in a cab: with no fix for 300 ms it counts GPS as lost (GpsService.GPS_TIMEOUT_MS), and
+    // a step that came later than that ran with no GPS, which a real tractor never does.
+    private readonly object _fixLock = new();
+    private (double Lat, double Lon, double Heading)? _lastFix;
+    private long _lastFixAt;
+    private Timer? _standingFixes;
+
+    private void StartStandingFixes() =>
+        _standingFixes = new Timer(_ =>
+        {
+            lock (_fixLock)
+            {
+                if (_lastFix is not { } f || Environment.TickCount64 - _lastFixAt < 100) return;
+                _lastFixAt = Environment.TickCount64;
+                SendFix(f.Lat, f.Lon, f.Heading, 0.0);
+            }
+        }, null, 100, 100);
+
+    private void SendFix(double lat, double lon, double headingDeg, double speedKmh)
+    {
         var pos = new Position
         {
             Latitude = lat,
@@ -444,6 +477,7 @@ public sealed class FieldScenarioRig : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        _standingFixes?.Dispose();
         try
         {
             await ReadAsync(() => { Vm.SaveOpenFieldForExit(TimeSpan.FromSeconds(5)); return 0; });
@@ -554,4 +588,12 @@ internal sealed class CapturingLoggerProvider : ILoggerProvider
             Sink?.Invoke(new RigEvent(logLevel >= LogLevel.Error ? RigEventKind.Error : RigEventKind.Warning, text));
         }
     }
+}
+
+/// <summary>A machine with no network but the loopback: the UDP service's discovery sends go
+/// to 127.0.0.1:8888 only (it always adds that one), and the module scan and subnet commands,
+/// sent once per interface, go nowhere. Nothing reaches a real module on the LAN.</summary>
+internal sealed class NoNetworkInterfaces : ILocalNetworkInfoProvider
+{
+    public IReadOnlyList<LocalNetworkAddress> GetIPv4Addresses() => Array.Empty<LocalNetworkAddress>();
 }

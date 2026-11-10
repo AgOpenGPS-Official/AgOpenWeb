@@ -129,12 +129,19 @@ public sealed class MapBroadcaster : IAsyncDisposable
         return frames;
     }
 
-    public void Start()
+    /// <summary>Follow coverage and start the 10 Hz loop. With <paramref name="loop"/> false
+    /// nothing is broadcast until <see cref="BroadcastOnceAsync"/> is called: the host-loop
+    /// budget (HostLoopBudgetTests) runs the ticks itself, to count what each one costs.</summary>
+    public void Start(bool loop = true)
     {
+        if (_started) return;
+        _started = true;
         _coverage.CoverageUpdated += OnCoverageUpdated;
         _coverage.BoundsExpanded += OnBoundsExpanded;
-        _loop ??= Task.Run(() => RunAsync(_cts.Token));
+        if (loop) _loop = Task.Run(() => RunAsync(_cts.Token));
     }
+
+    private bool _started;
 
     // Bounds growth / cell-size rescale changes the grid. We DON'T force a full re-init here:
     // the broadcast loop notices the grid change by comparing BuildInit() to the last-announced
@@ -160,240 +167,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
         {
             try
             {
-                // Deadman: revoke a holder whose presence heartbeat has lapsed
-                // (fires the failsafe). Cheap; runs every 100 ms tick.
-                _authority.SweepStale();
-
-                var fp = _projector.SceneFingerprint();
-                if (fp != _lastFingerprint)
-                {
-                    _lastFingerprint = fp;
-                    _currentScene = _projector.BuildScene(++_sceneVersion);
-                    await _ws.BroadcastAsync(WireCodec.EncodeScene(_currentScene), ct).ConfigureAwait(false);
-                }
-
-                // Config read-frame: re-send only when an editable value changes (or a
-                // refused value asks for it, ResendConfig).
-                var cfp = _projector.ConfigFingerprint();
-                if (cfp != Volatile.Read(ref _lastConfigFp))
-                {
-                    Volatile.Write(ref _lastConfigFp, cfp);
-                    await _ws.BroadcastAsync(WireCodec.EncodeConfig(_projector.BuildConfig()), ct).ConfigureAwait(false);
-                }
-
-                // Profiles read-frame (picker hub): list / active pair / preview changes.
-                var pfp = _projector.ProfilesFingerprint();
-                if (pfp != _lastProfilesFp)
-                {
-                    _lastProfilesFp = pfp;
-                    await _ws.BroadcastAsync(WireCodec.EncodeProfiles(_projector.BuildProfiles()), ct).ConfigureAwait(false);
-                }
-
-                // NTRIP profiles read-frame (Network IO): add / edit / delete / default.
-                var nfp = _projector.NtripProfilesFingerprint();
-                if (nfp != _lastNtripFp)
-                {
-                    _lastNtripFp = nfp;
-                    await _ws.BroadcastAsync(WireCodec.EncodeNtripProfiles(_projector.BuildNtripProfiles()), ct).ConfigureAwait(false);
-                }
-
-                // NTRIP mount points (profile editor): a request started or finished.
-                var mfp = _projector.NtripMountpointsFingerprint();
-                if (mfp != _lastMountpointsFp)
-                {
-                    _lastMountpointsFp = mfp;
-                    await _ws.BroadcastAsync(WireCodec.EncodeNtripMountpoints(_projector.BuildNtripMountpoints()), ct).ConfigureAwait(false);
-                }
-
-                // Web cards' bookmarks: add / edit / delete.
-                var wfp = _projector.WebCardsFingerprint();
-                if (wfp != _lastWebCardsFp)
-                {
-                    _lastWebCardsFp = wfp;
-                    await _ws.BroadcastAsync(WireCodec.EncodeWebCards(_projector.BuildWebCards()), ct).ConfigureAwait(false);
-                }
-
-                // Field Operations read-frame: field/job add / delete / open.
-                var fofp = _projector.FieldOpsFingerprint();
-                if (fofp != _lastFieldOpsFp)
-                {
-                    _lastFieldOpsFp = fofp;
-                    await _ws.BroadcastAsync(WireCodec.EncodeFieldOps(_projector.BuildFieldOps()), ct).ConfigureAwait(false);
-                }
-
-                // AgShare read-frame: settings change or a cloud action result.
-                var afp = _projector.AgShareFingerprint();
-                if (afp != _lastAgShareFp)
-                {
-                    _lastAgShareFp = afp;
-                    await _ws.BroadcastAsync(WireCodec.EncodeAgShare(_projector.BuildAgShare()), ct).ConfigureAwait(false);
-                }
-
-                // App Info read-frame: language / hotkeys / logs / bug-report status.
-                var aifp = _projector.AppInfoFingerprint();
-                if (aifp != _lastAppInfoFp)
-                {
-                    _lastAppInfoFp = aifp;
-                    await _ws.BroadcastAsync(WireCodec.EncodeAppInfo(_projector.BuildAppInfo()), ct).ConfigureAwait(false);
-                }
-
-                // Field Tools read-frame: import-track field list (field add/delete/open).
-                var ftfp = _projector.FieldToolsFingerprint();
-                if (ftfp != _lastFieldToolsFp)
-                {
-                    _lastFieldToolsFp = ftfp;
-                    await _ws.BroadcastAsync(WireCodec.EncodeFieldTools(_projector.BuildFieldTools()), ct).ConfigureAwait(false);
-                }
-
-                // Recorded Path read-frame (host-driven): rec-file list + record/play state.
-                if (RecordedPathProvider?.Invoke() is { } rpDto)
-                {
-                    var rpfp = RecPathFingerprint(rpDto);
-                    if (rpfp != _lastRecPathFp)
-                    {
-                        _lastRecPathFp = rpfp;
-                        await _ws.BroadcastAsync(WireCodec.EncodeRecordedPath(rpDto), ct).ConfigureAwait(false);
-                    }
-                }
-
-                // Boundary read-frame (host-driven): menu list + drive-around recording.
-                if (BoundaryProvider?.Invoke() is { } bDto)
-                {
-                    var bfp = BoundaryFingerprint(bDto);
-                    if (bfp != _lastBoundaryFp)
-                    {
-                        _lastBoundaryFp = bfp;
-                        await _ws.BroadcastAsync(WireCodec.EncodeBoundary(bDto), ct).ConfigureAwait(false);
-                    }
-                }
-
-                // Pending confirm/error prompt (host-driven, #109). Records compare by value.
-                var prompt = PromptProvider?.Invoke() ?? PromptDto.None;
-                if (prompt != _lastPrompt)
-                {
-                    _lastPrompt = prompt;
-                    await _ws.BroadcastAsync(WireCodec.EncodePrompt(prompt), ct).ConfigureAwait(false);
-                }
-
-                // Virtual terminal (VT card): pictures before the screens that use them, in order.
-                if (VtFramesProvider?.Invoke() is { Count: > 0 } vtFrames)
-                    foreach (var frame in vtFrames)
-                        await _ws.BroadcastAsync(frame, ct).ConfigureAwait(false);
-
-                await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)
-                    .ConfigureAwait(false);
-
-                // Coverage — diff + broadcast on THIS (broadcaster) thread, NEVER the 100 Hz
-                // control loop. Steady state drains the server-dedicated incremental stream
-                // (O(new cells)). This is the 10 Hz coverage cadence. Three cases (issue #34):
-                //
-                //  • Cold start / field reload / cell-size change → a full snapshot is needed
-                //    (the client has nothing usable). Snapshot now enumerates ONLY painted cells
-                //    (CoverageProjector.Snapshot → GetPaintedDisplayCells, O(worked area) — it no
-                //    longer walks the whole field), and it's built + broadcast on a BACKGROUND
-                //    task so the scan can't stall the 10 Hz pose/tick feed (which was the freeze:
-                //    the map stopped, then jumped when it resumed). Per-client send gates
-                //    (WebSocketHub) make the concurrent broadcast safe. Deltas are suspended while
-                //    that snapshot is in flight; we do NOT DiscardIncremental after it, so cells
-                //    laid mid-snapshot ride the resumed delta stream (harmless idempotent repaint,
-                //    client BlendMode.Src, newer alpha wins) rather than being dropped.
-                //
-                //  • Bounds EXPANSION at the same cell size → the added ground is empty, so the
-                //    host resends NOTHING. It announces the new grid (reset:false) and the client
-                //    re-anchors the coverage it already has; incremental deltas just continue.
-                //
-                //  • Otherwise → an incremental delta of newly-painted cells.
-                try
-                {
-                    if (_coverageProjector.BuildInit() is { } cvInit)
-                    {
-                        bool coldOrReload = !_coverageInitSent || _coverageReload;
-                        bool cellSizeChanged = _coverageInitSent && cvInit.CellSize != _lastCellSize;
-                        bool gridGrew = _coverageInitSent && !cellSizeChanged &&
-                            (cvInit.OriginE != _lastOriginE || cvInit.OriginN != _lastOriginN ||
-                             cvInit.Width != _lastWidth || cvInit.Height != _lastHeight);
-
-                        if ((coldOrReload || cellSizeChanged) && !_snapshotInFlight)
-                        {
-                            // Cold start / field reload / cell-size change: the client has nothing
-                            // usable, so send a fresh init + full snapshot (built off-loop). Snapshot
-                            // now enumerates only painted cells (O(worked area)), not the whole field.
-                            _coverageReload = false;
-                            _coverageInitSent = true;
-                            _lastCellSize = cvInit.CellSize;
-                            RecordGrid(cvInit);
-                            _snapshotInFlight = true;
-                            _coverageProjector.ResetSent();
-                            _snapshotTask = Task.Run(async () =>
-                            {
-                                try
-                                {
-                                    await _ws.BroadcastAsync(WireCodec.EncodeCoverageInit(cvInit, reset: true), ct).ConfigureAwait(false);
-                                    if (_coverageProjector.Snapshot() is { } full)
-                                        await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(full), ct).ConfigureAwait(false);
-                                }
-                                catch { /* tolerate transient coverage-layer races / cancellation */ }
-                                finally { _snapshotInFlight = false; }
-                            }, ct);
-                        }
-                        else if (gridGrew && !_snapshotInFlight)
-                        {
-                            // Bounds EXPANSION at the same cell size: the added ground is empty, so
-                            // nothing is rescanned or resent. Announce the new grid; the client
-                            // re-anchors the coverage it already has. Incremental deltas (already in
-                            // new-grid coords) continue immediately.
-                            RecordGrid(cvInit);
-                            await _ws.BroadcastAsync(WireCodec.EncodeCoverageInit(cvInit, reset: false), ct).ConfigureAwait(false);
-                            if (_coverageProjector.IncrementalDelta() is { } grow)
-                                await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(grow), ct).ConfigureAwait(false);
-                        }
-                        else if (!_snapshotInFlight && _coverageProjector.IncrementalDelta() is { } delta)
-                        {
-                            await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(delta), ct).ConfigureAwait(false);
-                        }
-                    }
-                    else if (_coverageInitSent && !_snapshotInFlight)
-                    {
-                        // The grid is gone (field closed → ClearFieldBounds). Nothing above runs
-                        // without a grid, so say so explicitly or the clients keep drawing the
-                        // closed field's coverage and perimeter until the next field's init.
-                        _coverageInitSent = false;
-                        _coverageReload = false;
-                        _lastCellSize = 0;
-                        _coverageProjector.ResetSent();
-                        await _ws.BroadcastAsync(WireCodec.EncodeCoverageClear(), ct).ConfigureAwait(false);
-                    }
-                }
-                catch { /* tolerate transient coverage-layer races */ }
-
-                // Crisp worked-area edge: the vector perimeter (bounded by perimeter length,
-                // not area). ~2 Hz — it shifts slowly as passes are laid, and the client just
-                // replaces its set. Only once a field/coverage grid exists.
-                if (++_perimTick >= 5)
-                {
-                    _perimTick = 0;
-                    if (_coverageInitSent)
-                        await _ws.BroadcastAsync(WireCodec.EncodeCoverageEdge(_coverage.GetCoveragePerimeter()), ct)
-                            .ConfigureAwait(false);
-                }
-
-                // Status bar changes slowly (fix/age/modules) — send at ~2 Hz, not
-                // every 10 Hz tick. Speed (which updates fast) rides the Tick.
-                // The ISOBUS implement's reported sections sit beside the section buttons,
-                // so a change there goes out with this tick (#312).
-                var isobus = _projector.IsobusProvider?.Invoke();
-                if (++_statusTick >= 5 || !Equals(isobus, _lastIsobus))
-                {
-                    _statusTick = 0;
-                    _lastIsobus = isobus;
-                    await _ws.BroadcastAsync(WireCodec.EncodeStatus(_projector.BuildStatus()), ct)
-                        .ConfigureAwait(false);
-                }
-
-                // Steer Wizard (host-driven): while the remote wizard is open, project
-                // the live VM state every tick so calibration phases/angles stay live.
-                if (WizardProvider?.Invoke() is { } wiz)
-                    await _ws.BroadcastAsync(WireCodec.EncodeWizard(wiz), ct).ConfigureAwait(false);
+                await TickAsync(ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { break; }
             catch
@@ -402,6 +176,261 @@ public sealed class MapBroadcaster : IAsyncDisposable
                 // mutated on the UI thread; an occasional dropped frame is fine.
             }
         }
+    }
+
+    /// <summary>
+    /// One tick of the 10 Hz broadcast, for a caller that runs the ticks itself: the deadman
+    /// sweep, every frame whose fingerprint moved, the Tick, coverage, the edge and the Status
+    /// at about 2 Hz. With no client connected it runs to the end on the calling thread (a full
+    /// coverage snapshot is built on a task of its own, as always). Only with the loop off
+    /// (<see cref="Start"/> with <c>loop</c> false): two ticks at once would race over the
+    /// fingerprints and the coverage stream, so with the loop running it throws
+    /// <see cref="InvalidOperationException"/>.
+    /// </summary>
+    public Task BroadcastOnceAsync(CancellationToken ct = default)
+    {
+        if (_loop != null)
+            throw new InvalidOperationException("BroadcastOnceAsync runs the ticks only while the 10 Hz loop is off (Start(loop: false)); the loop is running");
+        return TickAsync(ct);
+    }
+
+    /// <summary>One tick of the broadcast (the loop's, or <see cref="BroadcastOnceAsync"/>'s).</summary>
+    private async Task TickAsync(CancellationToken ct)
+    {
+        // Deadman: revoke a holder whose presence heartbeat has lapsed
+        // (fires the failsafe). Cheap; runs every 100 ms tick.
+        _authority.SweepStale();
+
+        var fp = _projector.SceneFingerprint();
+        if (fp != _lastFingerprint)
+        {
+            _lastFingerprint = fp;
+            _currentScene = _projector.BuildScene(++_sceneVersion);
+            await _ws.BroadcastAsync(WireCodec.EncodeScene(_currentScene), ct).ConfigureAwait(false);
+        }
+
+        // Config read-frame: re-send only when an editable value changes (or a
+        // refused value asks for it, ResendConfig).
+        var cfp = _projector.ConfigFingerprint();
+        if (cfp != Volatile.Read(ref _lastConfigFp))
+        {
+            Volatile.Write(ref _lastConfigFp, cfp);
+            await _ws.BroadcastAsync(WireCodec.EncodeConfig(_projector.BuildConfig()), ct).ConfigureAwait(false);
+        }
+
+        // Profiles read-frame (picker hub): list / active pair / preview changes.
+        var pfp = _projector.ProfilesFingerprint();
+        if (pfp != _lastProfilesFp)
+        {
+            _lastProfilesFp = pfp;
+            await _ws.BroadcastAsync(WireCodec.EncodeProfiles(_projector.BuildProfiles()), ct).ConfigureAwait(false);
+        }
+
+        // NTRIP profiles read-frame (Network IO): add / edit / delete / default.
+        var nfp = _projector.NtripProfilesFingerprint();
+        if (nfp != _lastNtripFp)
+        {
+            _lastNtripFp = nfp;
+            await _ws.BroadcastAsync(WireCodec.EncodeNtripProfiles(_projector.BuildNtripProfiles()), ct).ConfigureAwait(false);
+        }
+
+        // NTRIP mount points (profile editor): a request started or finished.
+        var mfp = _projector.NtripMountpointsFingerprint();
+        if (mfp != _lastMountpointsFp)
+        {
+            _lastMountpointsFp = mfp;
+            await _ws.BroadcastAsync(WireCodec.EncodeNtripMountpoints(_projector.BuildNtripMountpoints()), ct).ConfigureAwait(false);
+        }
+
+        // Web cards' bookmarks: add / edit / delete.
+        var wfp = _projector.WebCardsFingerprint();
+        if (wfp != _lastWebCardsFp)
+        {
+            _lastWebCardsFp = wfp;
+            await _ws.BroadcastAsync(WireCodec.EncodeWebCards(_projector.BuildWebCards()), ct).ConfigureAwait(false);
+        }
+
+        // Field Operations read-frame: field/job add / delete / open.
+        var fofp = _projector.FieldOpsFingerprint();
+        if (fofp != _lastFieldOpsFp)
+        {
+            _lastFieldOpsFp = fofp;
+            await _ws.BroadcastAsync(WireCodec.EncodeFieldOps(_projector.BuildFieldOps()), ct).ConfigureAwait(false);
+        }
+
+        // AgShare read-frame: settings change or a cloud action result.
+        var afp = _projector.AgShareFingerprint();
+        if (afp != _lastAgShareFp)
+        {
+            _lastAgShareFp = afp;
+            await _ws.BroadcastAsync(WireCodec.EncodeAgShare(_projector.BuildAgShare()), ct).ConfigureAwait(false);
+        }
+
+        // App Info read-frame: language / hotkeys / logs / bug-report status.
+        var aifp = _projector.AppInfoFingerprint();
+        if (aifp != _lastAppInfoFp)
+        {
+            _lastAppInfoFp = aifp;
+            await _ws.BroadcastAsync(WireCodec.EncodeAppInfo(_projector.BuildAppInfo()), ct).ConfigureAwait(false);
+        }
+
+        // Field Tools read-frame: import-track field list (field add/delete/open).
+        var ftfp = _projector.FieldToolsFingerprint();
+        if (ftfp != _lastFieldToolsFp)
+        {
+            _lastFieldToolsFp = ftfp;
+            await _ws.BroadcastAsync(WireCodec.EncodeFieldTools(_projector.BuildFieldTools()), ct).ConfigureAwait(false);
+        }
+
+        // Recorded Path read-frame (host-driven): rec-file list + record/play state.
+        if (RecordedPathProvider?.Invoke() is { } rpDto)
+        {
+            var rpfp = RecPathFingerprint(rpDto);
+            if (rpfp != _lastRecPathFp)
+            {
+                _lastRecPathFp = rpfp;
+                await _ws.BroadcastAsync(WireCodec.EncodeRecordedPath(rpDto), ct).ConfigureAwait(false);
+            }
+        }
+
+        // Boundary read-frame (host-driven): menu list + drive-around recording.
+        if (BoundaryProvider?.Invoke() is { } bDto)
+        {
+            var bfp = BoundaryFingerprint(bDto);
+            if (bfp != _lastBoundaryFp)
+            {
+                _lastBoundaryFp = bfp;
+                await _ws.BroadcastAsync(WireCodec.EncodeBoundary(bDto), ct).ConfigureAwait(false);
+            }
+        }
+
+        // Pending confirm/error prompt (host-driven, #109). Records compare by value.
+        var prompt = PromptProvider?.Invoke() ?? PromptDto.None;
+        if (prompt != _lastPrompt)
+        {
+            _lastPrompt = prompt;
+            await _ws.BroadcastAsync(WireCodec.EncodePrompt(prompt), ct).ConfigureAwait(false);
+        }
+
+        // Virtual terminal (VT card): pictures before the screens that use them, in order.
+        if (VtFramesProvider?.Invoke() is { Count: > 0 } vtFrames)
+            foreach (var frame in vtFrames)
+                await _ws.BroadcastAsync(frame, ct).ConfigureAwait(false);
+
+        await _ws.BroadcastAsync(WireCodec.EncodeTick(_projector.BuildTick(_sceneVersion)), ct)
+            .ConfigureAwait(false);
+
+        // Coverage — diff + broadcast on THIS (broadcaster) thread, NEVER the 100 Hz
+        // control loop. Steady state drains the server-dedicated incremental stream
+        // (O(new cells)). This is the 10 Hz coverage cadence. Three cases (issue #34):
+        //
+        //  • Cold start / field reload / cell-size change → a full snapshot is needed
+        //    (the client has nothing usable). Snapshot now enumerates ONLY painted cells
+        //    (CoverageProjector.Snapshot → GetPaintedDisplayCells, O(worked area) — it no
+        //    longer walks the whole field), and it's built + broadcast on a BACKGROUND
+        //    task so the scan can't stall the 10 Hz pose/tick feed (which was the freeze:
+        //    the map stopped, then jumped when it resumed). Per-client send gates
+        //    (WebSocketHub) make the concurrent broadcast safe. Deltas are suspended while
+        //    that snapshot is in flight; we do NOT DiscardIncremental after it, so cells
+        //    laid mid-snapshot ride the resumed delta stream (harmless idempotent repaint,
+        //    client BlendMode.Src, newer alpha wins) rather than being dropped.
+        //
+        //  • Bounds EXPANSION at the same cell size → the added ground is empty, so the
+        //    host resends NOTHING. It announces the new grid (reset:false) and the client
+        //    re-anchors the coverage it already has; incremental deltas just continue.
+        //
+        //  • Otherwise → an incremental delta of newly-painted cells.
+        try
+        {
+            if (_coverageProjector.BuildInit() is { } cvInit)
+            {
+                bool coldOrReload = !_coverageInitSent || _coverageReload;
+                bool cellSizeChanged = _coverageInitSent && cvInit.CellSize != _lastCellSize;
+                bool gridGrew = _coverageInitSent && !cellSizeChanged &&
+                    (cvInit.OriginE != _lastOriginE || cvInit.OriginN != _lastOriginN ||
+                     cvInit.Width != _lastWidth || cvInit.Height != _lastHeight);
+
+                if ((coldOrReload || cellSizeChanged) && !_snapshotInFlight)
+                {
+                    // Cold start / field reload / cell-size change: the client has nothing
+                    // usable, so send a fresh init + full snapshot (built off-loop). Snapshot
+                    // now enumerates only painted cells (O(worked area)), not the whole field.
+                    _coverageReload = false;
+                    _coverageInitSent = true;
+                    _lastCellSize = cvInit.CellSize;
+                    RecordGrid(cvInit);
+                    _snapshotInFlight = true;
+                    _coverageProjector.ResetSent();
+                    _snapshotTask = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await _ws.BroadcastAsync(WireCodec.EncodeCoverageInit(cvInit, reset: true), ct).ConfigureAwait(false);
+                            if (_coverageProjector.Snapshot() is { } full)
+                                await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(full), ct).ConfigureAwait(false);
+                        }
+                        catch { /* tolerate transient coverage-layer races / cancellation */ }
+                        finally { _snapshotInFlight = false; }
+                    }, ct);
+                }
+                else if (gridGrew && !_snapshotInFlight)
+                {
+                    // Bounds EXPANSION at the same cell size: the added ground is empty, so
+                    // nothing is rescanned or resent. Announce the new grid; the client
+                    // re-anchors the coverage it already has. Incremental deltas (already in
+                    // new-grid coords) continue immediately.
+                    RecordGrid(cvInit);
+                    await _ws.BroadcastAsync(WireCodec.EncodeCoverageInit(cvInit, reset: false), ct).ConfigureAwait(false);
+                    if (_coverageProjector.IncrementalDelta() is { } grow)
+                        await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(grow), ct).ConfigureAwait(false);
+                }
+                else if (!_snapshotInFlight && _coverageProjector.IncrementalDelta() is { } delta)
+                {
+                    await _ws.BroadcastAsync(WireCodec.EncodeCoverageCells(delta), ct).ConfigureAwait(false);
+                }
+            }
+            else if (_coverageInitSent && !_snapshotInFlight)
+            {
+                // The grid is gone (field closed → ClearFieldBounds). Nothing above runs
+                // without a grid, so say so explicitly or the clients keep drawing the
+                // closed field's coverage and perimeter until the next field's init.
+                _coverageInitSent = false;
+                _coverageReload = false;
+                _lastCellSize = 0;
+                _coverageProjector.ResetSent();
+                await _ws.BroadcastAsync(WireCodec.EncodeCoverageClear(), ct).ConfigureAwait(false);
+            }
+        }
+        catch { /* tolerate transient coverage-layer races */ }
+
+        // Crisp worked-area edge: the vector perimeter (bounded by perimeter length,
+        // not area). ~2 Hz — it shifts slowly as passes are laid, and the client just
+        // replaces its set. Only once a field/coverage grid exists.
+        if (++_perimTick >= 5)
+        {
+            _perimTick = 0;
+            if (_coverageInitSent)
+                await _ws.BroadcastAsync(WireCodec.EncodeCoverageEdge(_coverage.GetCoveragePerimeter()), ct)
+                    .ConfigureAwait(false);
+        }
+
+        // Status bar changes slowly (fix/age/modules) — send at ~2 Hz, not
+        // every 10 Hz tick. Speed (which updates fast) rides the Tick.
+        // The ISOBUS implement's reported sections sit beside the section buttons,
+        // so a change there goes out with this tick (#312).
+        var isobus = _projector.IsobusProvider?.Invoke();
+        if (++_statusTick >= 5 || !Equals(isobus, _lastIsobus))
+        {
+            _statusTick = 0;
+            _lastIsobus = isobus;
+            await _ws.BroadcastAsync(WireCodec.EncodeStatus(_projector.BuildStatus()), ct)
+                .ConfigureAwait(false);
+        }
+
+        // Steer Wizard (host-driven): while the remote wizard is open, project
+        // the live VM state every tick so calibration phases/angles stay live.
+        if (WizardProvider?.Invoke() is { } wiz)
+            await _ws.BroadcastAsync(WireCodec.EncodeWizard(wiz), ct).ConfigureAwait(false);
     }
 
     // Remember the coverage grid we last announced, so the next tick can tell a bounds-expansion

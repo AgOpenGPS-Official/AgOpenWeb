@@ -56,16 +56,19 @@ public sealed class ScenarioJournal
         else Findings[key] = (f, where, 1, new List<string> { where });
     }
 
-    /// <summary>Numbers and quoted names vary from field to field; the rest identifies the finding.</summary>
+    /// <summary>Numbers (their sign included) and quoted names vary from field to field; the rest
+    /// identifies the finding, so "near -0.0,-0.0" and "near 50.0,50.0" are one kind.</summary>
     private static string Normalize(string m)
     {
         var sb = new StringBuilder();
         bool inNum = false, inQuote = false;
-        foreach (char c in m)
+        for (int i = 0; i < m.Length; i++)
         {
+            char c = m[i];
             if (c == '\'') { inQuote = !inQuote; sb.Append("'…'"); continue; }
             if (inQuote) continue;
-            bool digit = char.IsDigit(c) || (inNum && (c == '.' || c == '-'));
+            bool digit = char.IsDigit(c) || (inNum && (c == '.' || c == '-'))
+                || (!inNum && c == '-' && i + 1 < m.Length && char.IsDigit(m[i + 1]));
             if (digit) { if (!inNum) sb.Append('#'); inNum = true; continue; }
             inNum = false;
             sb.Append(c);
@@ -104,8 +107,11 @@ public sealed class ScenarioJournal
             {
                 sb.Append(string.Create(inv, $"{st.Index}. {st.What}"));
                 if (st.Expect == Expect.Refused) sb.Append(" *(should be refused)*");
-                sb.Append(string.Create(inv, $" — {st.Ms} ms"));
-                if (st.Messages.Count > 0) sb.Append(" — says: ").Append(string.Join(" / ", st.Messages.Select(m => "\"" + Trim(m) + "\"")));
+                // A step's time is noise from night to night; only a slow one is worth a word.
+                if (st.Ms >= 2000) sb.Append(string.Create(inv, $" — slow: {st.Ms / 1000.0:0.0} s"));
+                // The same status line can arrive two or three times in one step (events race the
+                // snapshot): once is the fact, so two nights' reports read the same.
+                if (st.Messages.Count > 0) sb.Append(" — says: ").Append(string.Join(" / ", st.Messages.Distinct(StringComparer.Ordinal).Select(m => "\"" + Trim(m) + "\"")));
                 sb.Append('\n');
                 foreach (var f in st.NewFindings)
                     sb.Append("   - **").Append(f.Severity.ToString()).Append("** `").Append(f.Code).Append("` ").Append(f.Message).Append('\n');

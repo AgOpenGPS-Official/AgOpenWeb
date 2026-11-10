@@ -1,0 +1,112 @@
+name: Imperial Job Scenarios
+
+# The imperial job scenarios (ImperialJobScenarioTests in Tests/AgOpenWeb.FieldJobScenarios.Tests):
+# the careful field job once in metric and once typed in feet and inches through the real web
+# client (headless Chromium, Playwright), which must come out the same; and centimetres typed into
+# the inch boxes, to see what AgOpenWeb keeps and what the machine module gets. About 20 minutes,
+# so it runs nightly on develop, not on every PR (CI only builds it). The run fails when the harness
+# breaks; the findings are in the report, kept as an artifact and shown in the run's summary.
+#
+#   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;
+#   - manual dispatch: always, on the branch picked.
+
+on:
+  # Nightly: the bug report Worker (Tools/bugreport-worker, cron 05:07 UTC, 23:07 US Central)
+  # starts it with nightly=true, as the other harnesses. Each harness has its own runner, so they
+  # run side by side.
+  workflow_dispatch:
+    inputs:
+      nightly:
+        description: 'Nightly run: skip when develop has no commit from the last 25 hours'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.401'   # as build-and-release.yml
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+concurrency:
+  group: imperial-job-scenarios
+  cancel-in-progress: true
+
+jobs:
+  scenarios:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Anything new since the last night?
+        id: fresh
+        run: |
+          if [ "${{ inputs.nightly }}" != "true" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          last=$(git log -1 --format=%ct HEAD)
+          age=$(( $(date +%s) - last ))
+          if [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No commit on develop in the last 25 hours; nothing to run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: ./.github/actions/sharpisoterm-cache
+        if: steps.fresh.outputs.run == 'true'
+
+      - name: Setup .NET
+        if: steps.fresh.outputs.run == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build the harness
+        if: steps.fresh.outputs.run == 'true'
+        run: dotnet build Tests/AgOpenWeb.FieldJobScenarios.Tests/ --verbosity minimal
+
+      # Playwright's own Chromium, kept between runs for the version of Microsoft.Playwright the
+      # harness uses (a new version gets its own browser), as web-client-scenarios.yml. The system
+      # libraries are installed every run (--with-deps), as they live outside the cache.
+      - name: Microsoft.Playwright version
+        if: steps.fresh.outputs.run == 'true'
+        id: pw
+        run: |
+          v=$(grep -o 'Include="Microsoft.Playwright" Version="[^"]*"' Tests/AgOpenWeb.FieldJobScenarios.Tests/AgOpenWeb.FieldJobScenarios.Tests.csproj | sed 's/.*Version="\([^"]*\)"/\1/')
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright's Chromium
+        if: steps.fresh.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Chromium
+        if: steps.fresh.outputs.run == 'true'
+        run: pwsh Tests/AgOpenWeb.FieldJobScenarios.Tests/bin/Debug/net10.0/playwright.ps1 install --with-deps chromium
+
+      - name: Run the imperial job scenarios
+        if: steps.fresh.outputs.run == 'true'
+        env:
+          AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/imperial-job-scenarios-report.md
+        run: dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --no-build --filter "FullyQualifiedName~ImperialJobScenarioTests" --verbosity normal
+
+      - name: Report to the summary
+        if: always() && steps.fresh.outputs.run == 'true'
+        run: |
+          f="${{ runner.temp }}/imperial-job-scenarios-report.md"
+          if [ -f "$f" ]; then
+            # The summary has a size limit; the whole report is in the artifact.
+            head -c 900000 "$f" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report written." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep the report
+        if: always() && steps.fresh.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: imperial-job-scenarios-report
+          path: ${{ runner.temp }}/imperial-job-scenarios-report.md
+          if-no-files-found: ignore
+          retention-days: 30

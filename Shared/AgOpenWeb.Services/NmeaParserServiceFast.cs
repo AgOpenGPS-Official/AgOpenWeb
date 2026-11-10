@@ -403,18 +403,24 @@ public class NmeaParserServiceFast
         if (fieldCount < MIN_PANDA_FIELDS) return false;
         DecodeAogPositionFields(data, commas, ref state);
 
-        state.HasDualHeading = true;
         state.SentenceType = GpsSentenceType.Paogi;
         var headingField = GetField(data, commas, FIELD_HEADING);
         var rollField = GetField(data, commas, FIELD_ROLL);
 
-        if (headingField.Length > 0)
+        // An empty heading field is a receiver without a dual-antenna solution this epoch (an
+        // antenna lost, a cable off), not a heading of 0° (north): AutoSteer would turn the
+        // wheels to full lock on any other course. Without a dual heading the fix takes the
+        // Fix path, as a $PANDA does with Dual GPS on, and the operator is told the dual
+        // heading is missing (#157). AgIO reads the empty field as 0.
+        if (headingField.Length > 0 && Utf8Parser.TryParse(headingField, out double dualHeading, out _))
         {
-            Utf8Parser.TryParse(headingField, out state.Heading, out _);
+            state.Heading = dualHeading;
+            state.HasDualHeading = true;
         }
         else
         {
             state.Heading = 0;
+            state.HasDualHeading = false;
         }
         state.ImuHeading = 0;
         state.ImuValid = false;
@@ -491,12 +497,14 @@ public class NmeaParserServiceFast
             Utf8Parser.TryParse(altField, out state.Altitude, out _);
         }
 
-        // Age of differential (field 10)
+        // Age of differential (field 10). A receiver leaves it empty when it has no corrections:
+        // NaN then, so the screen reads "—" rather than a reassuring 0.0, or the age the
+        // corrections had when they stopped minutes ago (the state lives from one sentence to
+        // the next). AgIO resets it to 0 on every sentence.
         var ageField = GetField(data, commas, FIELD_AGE);
-        if (ageField.Length > 0)
-        {
-            Utf8Parser.TryParse(ageField, out state.DifferentialAge, out _);
-        }
+        state.DifferentialAge = ageField.Length > 0 && Utf8Parser.TryParse(ageField, out double age, out _)
+            ? age
+            : double.NaN;
 
         // Speed in knots (field 11) - convert to m/s
         var speedField = GetField(data, commas, FIELD_SPEED);

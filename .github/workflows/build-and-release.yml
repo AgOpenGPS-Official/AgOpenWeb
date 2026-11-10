@@ -65,6 +65,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ./.github/actions/sharpisoterm-cache
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -126,6 +128,13 @@ jobs:
       - name: Build Vehicle & Tool Scenario harness
         run: dotnet build Tests/AgOpenWeb.VehicleToolScenarios.Tests/ --verbosity minimal
 
+      # The field job scenario harness (whole fields driven with AutoSteer, U-turns and automatic
+      # sections; its path jobs on curves, pivots and contour, the testers' rigs, U-turn
+      # interventions, imperial units) takes tens of minutes: built here, run nightly
+      # (field-job-, path-job-, rig-job-, turn-intervention-, imperial-job-scenarios.yml).
+      - name: Build Field Job Scenario harness
+        run: dotnet build Tests/AgOpenWeb.FieldJobScenarios.Tests/ --verbosity minimal
+
       # The field scenario harness takes minutes, so it runs nightly (field-scenarios.yml);
       # here it is only built, so a backend change can't break it unnoticed.
       - name: Build Field Scenario harness
@@ -135,14 +144,41 @@ jobs:
       - name: Build Steer Wizard Scenario harness
         run: dotnet build Tests/AgOpenWeb.SteerWizardScenarios.Tests/ --verbosity minimal
 
+      # And the machine module harness (machine-module-scenarios.yml runs it nightly).
+      - name: Build Machine Module Scenario harness
+        run: dotnet build Tests/AgOpenWeb.MachineModuleScenarios.Tests/ --verbosity minimal
+
+      # And the GPS and NTRIP harness (gps-ntrip-scenarios.yml runs it nightly).
+      - name: Build GPS and NTRIP Scenario harness
+        run: dotnet build Tests/AgOpenWeb.GpsNtripScenarios.Tests/ --verbosity minimal
+      # And the ISOBUS harness (isobus-scenarios.yml runs it nightly).
+      - name: Build ISOBUS Scenario harness
+        run: dotnet build Tests/AgOpenWeb.IsobusScenarios.Tests/ --verbosity minimal
+      # And the web client harness (web-client-scenarios.yml runs it nightly, in headless Chromium).
+      - name: Build Web Client Scenario harness
+        run: dotnet build Tests/AgOpenWeb.WebClientScenarios.Tests/ --verbosity minimal
+      # And the update and settings-survival harness (update-scenarios.yml runs it nightly).
+      - name: Build Update Scenario harness
+        run: dotnet build Tests/AgOpenWeb.UpdateScenarios.Tests/ --verbosity minimal
+      # And the working day harness (working-day-scenarios.yml runs it).
+      - name: Build Working Day Scenario harness
+        run: dotnet build Tests/AgOpenWeb.WorkingDayScenarios.Tests/ --verbosity minimal
+      # And the dump replay harness (dump-replay-scenarios.yml runs it nightly).
+      - name: Build Dump Replay Scenario harness
+        run: dotnet build Tests/AgOpenWeb.DumpReplayScenarios.Tests/ --verbosity minimal
+
   # Work budgets for the GPS cycle and the 100 Hz control tick (Performance/HotPathBudgetTests):
   # a large field driven through the real pipeline, every cycle held to a budget of polygon
   # edges, coverage lookups, offset points and bytes allocated. Counts, not time, so the
   # runner's speed doesn't matter; Release only because it is five times faster than Debug.
+  # Then the host loop and the 10 Hz broadcast with a field open (the Vehicle & Tool
+  # harness's HostLoopBudgetTests: the whole backend, about 16 s; also files read).
   hot-path-budgets:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -151,6 +187,9 @@ jobs:
 
       - name: Run hot-path budgets
         run: dotnet test Tests/AgOpenWeb.Services.Tests/ -c Release --filter "TestCategory=HotPath" --verbosity normal
+
+      - name: Run host-loop budgets
+        run: dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ -c Release --filter "TestCategory=HotPath" --verbosity normal
 
   # Every translated label must fit the English layout (Docs/TRANSLATIONS.md): the app runs
   # headless and Tools/i18n-limits.py --check measures each translation in place. Roboto
@@ -166,6 +205,8 @@ jobs:
     container: mcr.microsoft.com/playwright/python:v1.64.0-noble
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -207,6 +248,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: ./.github/actions/sharpisoterm-cache
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -221,6 +264,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -257,6 +302,8 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Select Xcode 26.4.1
         # The .NET for iOS workload is pinned to 26.4.x via dotnet-ios-rollback.json to match

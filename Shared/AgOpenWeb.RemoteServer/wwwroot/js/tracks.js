@@ -678,7 +678,7 @@ function openTracksManager() { trkSel = -1; renderTracksList(); openDialog('dlg-
 function renderTracksList() {
   // Dim the guidance-affecting actions when we're not the operator. Delete/swap/activate
   // change the active line (every action needs control, #397; these are dimmed).
-  for (const id of ['trk-delete', 'trk-swap', 'trk-activate'])
+  for (const id of ['trk-delete', 'trk-swap', 'trk-activate', 'trk-rename'])
     document.getElementById(id).classList.toggle('disabled', !iHoldControl);
   const list = document.getElementById('trk-list');
   const tl = (scene && scene.trackList) || [];
@@ -702,7 +702,8 @@ function renderTracksList() {
       if (e.target.classList.contains('trk-vis')) return; // let the checkbox handle it
       e.stopPropagation();
       trkSel = t.visible ? i : -1;
-      if (t.visible && iHoldControl) transport.send('track.select|' + t.index);
+      if (!t.visible) showToast(tr('Hidden track: tick it in Tracks to use it'));
+      else if (iHoldControl) transport.send('track.select|' + t.index);
       renderTracksList();
     });
     const cb = row.querySelector('.trk-vis');
@@ -729,6 +730,23 @@ document.getElementById('trk-swap').addEventListener('pointerdown', e => {
   if (!t) { showToast(tr('Select a track first')); return; }
   transport.send('track.swapAB|' + t.index);
 });
+// Rename the highlighted track in its row, as in the Field Builder (AgOpenGPS: the Tracks
+// form's Edit Name, #695).
+document.getElementById('trk-rename').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  if (!iHoldControl) return;
+  const t = (scene && scene.trackList || [])[trkSel];
+  if (!t) { showToast(tr('Select a track first')); return; }
+  const row = document.querySelectorAll('#trk-list .trk-row')[trkSel]; if (!row) return;
+  const nameEl = row.querySelector('.trk-name');
+  const input = document.createElement('input'); input.className = 'flg-nameedit'; input.value = t.name;
+  input.addEventListener('pointerdown', ev => ev.stopPropagation()); // not a row tap
+  nameEl.replaceWith(input); input.focus(); input.select();
+  let done = false;
+  const commit = () => { if (done) return; done = true; const v = input.value.trim(); if (v && v !== t.name) transport.send('track.rename|' + t.index + ',' + v); renderTracksList(); };
+  input.addEventListener('keydown', ev => { ev.stopPropagation(); if (ev.key === 'Enter') commit(); else if (ev.key === 'Escape') { done = true; renderTracksList(); } });
+  input.addEventListener('blur', commit);
+});
 // Activate = AgOpenGPS "Use": the highlighted track (or the first visible one) becomes
 // active and the dialog closes. On the already-active track it turns guidance off.
 document.getElementById('trk-activate').addEventListener('pointerdown', e => {
@@ -737,6 +755,11 @@ document.getElementById('trk-activate').addEventListener('pointerdown', e => {
   const t = (scene && scene.trackList || [])[trkSel];
   transport.send('track.activate|' + (t ? t.index : -1));
   closeDialog();
+});
+// New = AgOpenGPS's "New track" in its track manager: straight on to Quick AB (#694).
+document.getElementById('trk-new').addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  closeDialog(); qabHeadingReset(); qabSetSide('right'); openDialog('dlg-quickab');
 });
 document.getElementById('trk-recpaths').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('track.toggleRecPaths'); });
 document.getElementById('trk-import').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); closeDialog(); lnOpen('importtracks'); });

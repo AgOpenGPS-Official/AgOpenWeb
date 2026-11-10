@@ -36,12 +36,15 @@ function renderFbTracks() {
   list.innerHTML = '';
   tl.forEach((t, i) => {
     const row = document.createElement('div');
-    row.className = 'fb-trkrow' + (t.active ? ' active' : '') + (i === fbSel ? ' sel' : '');
+    row.className = 'fb-trkrow' + (t.active ? ' active' : '') + (i === fbSel ? ' sel' : '') + (t.visible ? '' : ' hidden-trk');
     row.innerHTML = '<span class="fb-dot"></span><span class="fb-tname"></span>';
     row.querySelector('.fb-tname').textContent = t.name;
+    // A hidden track (unticked in Tracks) can't be the active one, as in AgOpenGPS: it is
+    // dimmed, and a tap says so (#695). It is still selected, for Rename, Edit and Delete.
     row.addEventListener('pointerdown', ev => {
       ev.stopPropagation(); fbSel = i;
-      if (iHoldControl) transport.send('track.select|' + t.index); // activate (highlights on map)
+      if (!t.visible) showToast(tr('Hidden track: tick it in Tracks to use it'));
+      else if (iHoldControl) transport.send('track.select|' + t.index); // activate (highlights on map)
       renderFbTracks();
     });
     list.appendChild(row);
@@ -82,7 +85,9 @@ document.getElementById('fb-trk-deleteall').addEventListener('pointerdown', e =>
     () => { if (iHoldControl) transport.send('track.deleteAll'); fbSel = -1; });
 });
 document.getElementById('fb-trk-rename').addEventListener('pointerdown', e => {
-  e.stopPropagation();
+  // preventDefault: with a mouse, the button took the focus right after the name box got it,
+  // and the blur closed the box before anything could be typed.
+  e.preventDefault(); e.stopPropagation();
   const tl = scene && scene.trackList; if (fbSel < 0 || !tl || !tl[fbSel]) return;
   const t = tl[fbSel];
   renderFbTracks();
@@ -136,6 +141,13 @@ document.getElementById('fb-hl-off').addEventListener('change', e => {
 // Inset = N tool widths (dropdown, mirrors AgOpen's cboxToolWidths) → fills the metre box;
 // editing the metre box directly flips the dropdown to Custom.
 const fbTwSel = document.getElementById('fb-hl-tw');
+// 2 to 6 tool widths: one string for translators, not five (#732).
+for (let n = 6; n >= 2; n--) {
+  const o = document.createElement('option');
+  o.value = String(n);
+  o.textContent = tr('{n} tool widths', { n });
+  fbTwSel.options[0].after(o);
+}
 const fbNewOff = document.getElementById('fb-hl-newoff');
 function fbApplyTw() {
   const n = parseInt(fbTwSel.value), tw = toolWidthM();

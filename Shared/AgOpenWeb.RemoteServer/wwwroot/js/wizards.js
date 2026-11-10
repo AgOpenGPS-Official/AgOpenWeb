@@ -108,12 +108,14 @@ function buildWizardContent(w) {
         '</svg></div>' +
         '<div class="wz-rows">' + wzTgl(tr('Invert roll'), null, 'roll.isRollInvert') +
         '<div class="wz-row"><div class="lbl">Zero Roll</div><button class="wz-testbtn" data-act="ZeroRoll">Zero Roll</button></div>' +
-        '<div class="wz-row"><div class="lbl">Roll Zero Offset</div><div class="lbl"><span data-live="rollzero">—</span></div></div></div>';
+        '<div class="wz-row"><div class="lbl">Roll Zero Offset</div><div class="lbl"><span data-live="rollzero">—</span></div></div></div>' +
+        '<div class="wz-desc" data-live="result"></div>';
     case 'was':
       return head + wzLive(tr('Live Steer Angle'), 'angle') +
         '<div class="wz-rows"><div class="wz-row"><div class="lbl">Zero WAS</div><button class="wz-testbtn" data-act="ZeroWas">Zero WAS</button></div>' +
         wzTgl(tr('Invert WAS'), tr('Enable if steering reads backwards'), 'autosteer.invertWas') +
-        '<div class="wz-row"><div class="lbl">WAS Offset</div><div class="lbl"><span data-live="wasoffset">—</span> counts</div></div></div>';
+        '<div class="wz-row"><div class="lbl">WAS Offset</div><div class="lbl"><span data-live="wasoffset">—</span> counts</div></div></div>' +
+        '<div class="wz-desc" data-live="result"></div>';
     case 'motor':
       return head + wzLive(tr('Live Steer Angle'), 'angle') + '<div class="wz-center"><button class="wz-testbtn" data-act="StartTest">Start Motor Test</button>' +
         '<div class="wz-hint" data-live="hint"></div><div class="wz-desc" data-live="phase"></div><div class="wz-desc" data-live="result"></div></div>';
@@ -144,7 +146,8 @@ function buildWizardContent(w) {
         wzTgl(tr('Steer in reverse'), tr('Allow steering while reversing'), 'autosteer.steerInReverse') +
         wzNum(tr('Deadzone heading'), tr('Heading error tolerance'), 'autosteer.deadzoneHeading', '0.01', 'deg') + '</div>';
     case 'finish':
-      return head + '<div class="wz-center"><div class="wz-okcard"><div class="ok">OK</div><div class="t">Configuration saved!</div><div class="s">Click Finish to close the wizard</div></div></div>';
+      // The result line names the tests not run (empty when all were).
+      return head + '<div class="wz-desc" data-live="result"></div><div class="wz-center"><div class="wz-okcard"><div class="ok">OK</div><div class="t">Ready to finish</div><div class="s">Click Finish to save the settings and close the wizard</div></div></div>';
     default: return head;
   }
 }

@@ -58,6 +58,9 @@ public sealed class Journal
 {
     public List<DriveRow> Drives { get; } = new();
     public List<SettingRow> Settings { get; } = new();
+    /// <summary>The settings-effect sweep: one row per setting tried.</summary>
+    public List<SweepRow> Sweep { get; } = new();
+    public List<string> SweepNotes { get; } = new();
     public Dictionary<string, (Finding First, int Count, List<string> Places)> Findings { get; } = new();
 
     public void Add(Finding f, string where)
@@ -117,6 +120,23 @@ public sealed class Journal
                 sb.Append($"| {s.Group} | {s.What} | `{s.Sent}` | {s.Stored} | {s.Effect} | {string.Join(" / ", s.Said.Select(Trim))} |\n");
         }
 
+        if (Sweep.Count > 0)
+        {
+            sb.Append("\n## Settings effect sweep\n\n");
+            sb.Append("Each setting flipped on a short drive that excites it, against the same drive on the base settings (run three times: the noise; a section that switched a different number of times between them is shown as noisy and not judged). ")
+              .Append("**Changed** is what moved beyond the noise: the steer angle AgOpenWeb computes or sends in PGN 254, whether it steers (PGN 254 status, AutoSteer on), ")
+              .Append("the bytes the modules are sent (PGN 251/252/247/238/236/235, `[byte] old→new`), where the sections switch (PGN 239), the pass shown. ")
+              .Append("**Kind** proposes app defect / harness artifact / parity / enhancement / harness gap for a reviewer to confirm.\n\n");
+            foreach (var note in SweepNotes) sb.Append(note).Append("\n\n");
+            sb.Append("| Setting | From → to | Probe | Expected | Changed | Verdict | Kind |\n|---|---|---|---|---|---|---|\n");
+            foreach (var r in Sweep.OrderBy(r => r.Case.Probe == Probe.None).ThenBy(r => r.Case.Key, StringComparer.Ordinal).ThenBy(r => r.Case.Group, StringComparer.Ordinal))
+            {
+                var c = r.Case;
+                string fromTo = c.Probe == Probe.None ? "–" : c.Base.Length > 0 ? $"`{c.Base}` → `{c.Flip}`" : "(button)";
+                sb.Append($"| `{c.Key}` {Trim(c.What)} | {fromTo} | {c.Group} | {SettingsSweep.Expected(c.Expect)} | {Trim(r.Changed)} | {r.Verdict} | {r.Kind} |\n");
+            }
+        }
+
         sb.Append("\n## Pass logs\n");
         foreach (var d in Drives)
         {
@@ -124,7 +144,7 @@ public sealed class Journal
             if (d.Note.Length > 0) sb.Append(d.Note).Append("\n\n");
             foreach (var p in d.Passes)
                 sb.Append(string.Create(inv,
-                    $"- pass {p.Index + 1} {(p.Northbound ? "N" : "S")}: implement at {N(p.MeanX, "0.000")} m [{N(p.MinX, "0.000")} … {N(p.MaxX, "0.000")}], line {N(p.LineError, "0.000")}, dev {N(p.MaxLineDev, "0.000")}, AgOpenWeb pass {p.AppPass}, steer ≤ {N(p.MaxSteerCmd, "0.0")}° ({N(p.SaturatedShare * 100, "0")} % at the stop), tool side {N(p.AppToolSide, "0.000")} along {N(p.AppToolAlong, "0.000")}, pivot {N(p.AppPivotErr, "0.000")}, heading {N(p.AppHeadingErr, "0.00")}°, sections {N(p.SectionsOnShare)}, {p.Samples} fixes{(p.Disengaged != null ? ", AutoSteer off " + p.Disengaged : "")}{(p.RanOff ? ", LEFT THE PASS" : "")}\n"));
+                    $"- pass {p.Index + 1} {(p.Northbound ? "N" : "S")}: implement at {N(p.MeanX, "0.000")} m [{N(p.MinX, "0.000")} … {N(p.MaxX, "0.000")}], line {N(p.LineError, "0.000")}, dev {N(p.MaxLineDev, "0.000")}, AgOpenWeb pass {p.AppPass}, steer ≤ {N(p.MaxSteerCmd, "0.0")}° ({N(p.SaturatedShare * 100, "0")} % at the stop), tool side {N(p.AppToolSide, "0.000")} along {N(p.AppToolAlong, "0.000")}, pivot {N(p.AppPivotErr, "0.000")}, heading {N(p.AppHeadingErr, "0.00")}°, sections {N(p.SectionsOnShare)}, {p.Samples} fixes{(p.Disengaged != null ? ", AutoSteer off " + p.Disengaged : "")}{(p.RanOff ? ", LEFT THE PASS" : "")}{(double.IsNaN(p.SteeredToAppLine) ? "" : ", STEERED TO THE LINE OF ITS TOOL WIDTH (" + N(p.SteeredToAppLine, "+0.0;-0.0") + " m)")}\n"));
             foreach (var f in d.Findings)
                 sb.Append("- **").Append(f.Severity.ToString()).Append("** `").Append(f.Code).Append("` ").Append(f.Message).Append('\n');
         }

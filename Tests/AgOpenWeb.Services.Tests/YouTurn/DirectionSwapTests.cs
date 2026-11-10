@@ -523,6 +523,35 @@ public class DirectionSwapTests
         Assert.That(turn.PlannedNextPath, Is.EqualTo(5));
     }
 
+    // ── Alternative skip switched on mid-field: it goes on the way the turns were going ──
+
+    /// <summary>
+    /// The turns had been stepping east (pass -5 to -4); alternative skip (1 row) switched on
+    /// then: its first turn must go on east, away from the worked passes, as AgOpenGPS's
+    /// alternating isTurnLeft carries on from the last turn. It took its side from the pass
+    /// number's sign instead (west, from a negative pass) and went back over pass -5 to -6
+    /// (turn intervention T4, SKIP-TURNS-BACK). Normal turns already keep the direction (#523).
+    /// </summary>
+    [Test]
+    public void Alternate_SwitchedOnMidField_KeepsTheDirectionTheTurnsWereGoing()
+    {
+        var bench = new Bench(skipRows: 0);
+        var (guidance, turn) = bench.OnPass(-5);
+        bench.Tick(guidance, turn);
+        bool east = turn.NextTrack!.Points[0].Easting > PassX(-5);
+        int landed = bench.TurnAndComplete(guidance, turn, swap: !east);
+        Assume.That(landed, Is.EqualTo(-4), "the scenario: a turn from pass -5 east onto -4");
+
+        bench.SkipRows = 1;
+        bench.Alternate = true;
+        YouTurnStateMachine.DiscardPlannedTurn(turn);
+        bench.Tick(guidance, turn);
+
+        double nextX = turn.NextTrack!.Points[0].Easting;
+        Assert.That(nextX, Is.GreaterThan(PassX(-4)),
+            $"the first alternative turn goes on east (next pass at x {nextX:F1}, pass -4 at {PassX(-4):F1})");
+    }
+
     // ── Bench ────────────────────────────────────────────────────────────
 
     /// <summary>The real planner on a 120 m square field (6 m tool, 8 m radius, 16 m legs).</summary>

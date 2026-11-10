@@ -34,7 +34,8 @@ public class NtripSessionTests
 
     /// <param name="stopAfterWaits">Cancels the session once it has waited this many times, so a retrying run ends.</param>
     private static Run Start(NtripFakeCaster caster, int stopAfterWaits = int.MaxValue, NtripTimeouts? timeouts = null,
-        Func<string?>? gga = null, ConcurrentDictionary<string, NtripVersion>? memory = null, int ggaInterval = 0)
+        Func<string?>? gga = null, ConcurrentDictionary<string, NtripVersion>? memory = null, int ggaInterval = 0,
+        Func<Task>? networkChanged = null)
     {
         var run = new Run();
         var config = new NtripConfiguration
@@ -54,6 +55,7 @@ public class NtripSessionTests
             },
             StreamStarted = chunked => { Volatile.Write(ref run.BodyBytes, 0); run.StreamStarts.Enqueue(chunked); },
             VersionMemory = memory,
+            NetworkChanged = networkChanged,
         };
         run.Session.StatusChanged += s => run.Statuses.Enqueue(s);
         run.Task = Task.Run(() => run.Session.RunAsync(run.Stop.Token));
@@ -310,6 +312,43 @@ public class NtripSessionTests
         changed.SetResult();
         Assert.That(WaitFor(() => caster.Accepted > before), Is.True, "tried again at once");
         run.Dispose();
+    }
+
+    // Wi-Fi to the phone's hotspot: the old connection is on a path that is gone and nothing
+    // tells TCP. Once the network has changed, a quiet stream is lost at once, not after NoData.
+    [Test]
+    public async Task ANetworkChange_EndsAStreamThatWentQuiet()
+    {
+        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var caster = new NtripFakeCaster(async (_, _, s) => { await Accept(s); await s.WriteAsync(Rtcm); await Task.Delay(10000); });
+        using var run = Start(caster, networkChanged: () => Volatile.Read(ref changed).Task,
+            timeouts: new NtripTimeouts { QuietAfterNetworkChange = TimeSpan.FromMilliseconds(300) });
+        Assert.That(WaitFor(() => run.Last.State == NtripState.Streaming), Is.True);
+
+        Interlocked.Exchange(ref changed, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).SetResult();
+
+        Assert.That(WaitFor(() => caster.Accepted >= 2, 3000), Is.True, "connected again well before the 30 s NoData");
+        Assert.That(run.Statuses.Any(s => s.LastError == NtripCategory.StreamLost && s.Message.StartsWith("The network changed")), Is.True);
+    }
+
+    [Test]
+    public async Task ANetworkChange_KeepsAStreamThatGoesOn()
+    {
+        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var caster = new NtripFakeCaster(async (_, _, s) =>
+        {
+            await Accept(s);
+            for (int i = 0; i < 100; i++) { await s.WriteAsync(Rtcm); await Task.Delay(50); }
+        });
+        using var run = Start(caster, networkChanged: () => Volatile.Read(ref changed).Task,
+            timeouts: new NtripTimeouts { QuietAfterNetworkChange = TimeSpan.FromMilliseconds(300) });
+        Assert.That(WaitFor(() => run.Last.State == NtripState.Streaming), Is.True);
+
+        Interlocked.Exchange(ref changed, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).SetResult();
+        await Task.Delay(1000);
+
+        Assert.That(caster.Accepted, Is.EqualTo(1), "the connection still works: kept");
+        Assert.That(run.Last.State, Is.EqualTo(NtripState.Streaming));
     }
 
     // ── Stopping ─────────────────────────────────────────────────────────

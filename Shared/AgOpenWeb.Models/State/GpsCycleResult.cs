@@ -87,6 +87,11 @@ public record GpsCycleResult
     public double? HeadlandProximityDistance { get; init; }
     public bool HeadlandProximityWarning { get; init; }
 
+    /// <summary>Contour: what the line ahead holds (AgOpenWeb.Services.Contour.ContourAhead:
+    /// 0 clear, 1 turns back, 2 runs over sprayed ground, 3 ends), and how far ahead along the line (m).</summary>
+    public byte ContourAhead { get; init; }
+    public double ContourAheadM { get; init; }
+
     /// <summary>
     /// Phase E: non-null on the single cycle where the cycle worker auto-creates
     /// a <see cref="LocalPlane"/> from the first GPS fix (no field open yet).

@@ -19,7 +19,7 @@ document.getElementById('tc-resetpins').addEventListener('pointerdown', e => { e
 document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stopPropagation(); saveProfile(); });
 // PinFunction enum labels (as the host's PinFunction).
 const PIN_FUNCS = ['None', 'Sec1', 'Sec2', 'Sec3', 'Sec4', 'Sec5', 'Sec6', 'Sec7', 'Sec8', 'Sec9', 'Sec10',
-  'Sec11', 'Sec12', 'Sec13', 'Sec14', 'Sec15', 'Sec16', 'HydUp', 'HydDown', 'TramLeft', 'TramRight', 'GeoStop'];
+  'Sec11', 'Sec12', 'Sec13', 'Sec14', 'Sec15', 'Sec16', 'HydUp', 'HydDown', 'TramRight', 'TramLeft', 'GeoStop'];
 const _tcBuilt = { sw: -1, ze: -1, sc: false, pins: false };
 function tcDynInput(parent, idx, label, type, onChange, unit, step) {
   const c = document.createElement('div'); c.className = 'tc-cell';
@@ -47,6 +47,11 @@ function populateToolCfg(force) {
   const hi = document.getElementById('tc-img-hitch');
   const hp = '/icons/' + (['ToolHitchPageFront', 'ToolHitchPageRear', 'ToolHitchPageTBT', 'ToolHitchPageTrailing'][t.type] || 'ToolHitchPageRear') + '.png';
   if (!hi.src.endsWith(hp)) hi.src = hp;
+  // The pivot picture shows the choice, as AgOpenGPS's buttons do: the tool ahead of its wheels,
+  // or behind them (also for Zero).
+  const pi = document.getElementById('tc-img-pivot');
+  const pp = '/icons/ToolHitchPivotOffset' + (cfgGet('tool.pivotSide') === 'ahead' ? 'Pos' : 'Neg') + '.png';
+  if (!pi.src.endsWith(pp)) pi.src = pp;
   // Conditional visibility by tool type (0 front, 1 rear, 2 TBT, 3 trailing).
   const trailing = t.type === 3, tbt = t.type === 2, trailtbt = trailing || tbt;
   tcShow('rigid', !trailing); tcShow('trailtbt', trailtbt); tcShow('tbt', tbt); tcShow('notrailtbt', !trailtbt);

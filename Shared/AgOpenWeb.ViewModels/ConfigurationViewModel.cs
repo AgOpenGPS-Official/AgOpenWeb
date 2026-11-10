@@ -502,7 +502,7 @@ public partial class ConfigurationViewModel : ObservableObject
         "Section 5", "Section 6", "Section 7", "Section 8",
         "Section 9", "Section 10", "Section 11", "Section 12",
         "Section 13", "Section 14", "Section 15", "Section 16",
-        "Hyd Up", "Hyd Down", "Tram Left", "Tram Right", "Geo Stop"
+        "Hyd Up", "Hyd Down", "Tram Right", "Tram Left", "Geo Stop"
     };
 
     // ISO 11783 hitch/coupling types, in code order (list index = ISO code + 1, so

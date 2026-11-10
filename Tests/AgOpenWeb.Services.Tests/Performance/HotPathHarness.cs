@@ -56,7 +56,7 @@ public sealed class HotPathHarness : IDisposable
     public GpsCycleResult? Last { get; private set; }
 
 
-    public HotPathHarness(PassTrack trackKind, Skip skip, bool fieldWorked, bool hasHeadland = true)
+    public HotPathHarness(PassTrack trackKind, Skip skip, bool fieldWorked, bool hasHeadland = true, int obstacles = 0)
     {
         ConfigurationStore.SetInstance(new ConfigurationStore());
         var config = ConfigurationStore.Instance;
@@ -114,6 +114,7 @@ public sealed class HotPathHarness : IDisposable
             },
         };
         var headland = Ring(HeadlandWidth).Select(p => new Vec3(p.Easting, p.Northing, 0)).ToList();
+        foreach (var o in Obstacles(obstacles)) boundary.InnerBoundaries.Add(o);
 
         // Passes run north. The track lies inside the cultivated area: the snake plans nothing
         // from a track whose pass 0 is in the headland.
@@ -147,6 +148,24 @@ public sealed class HotPathHarness : IDisposable
     }
 
     public const double TrackEasting = -100;
+
+    /// <summary>Round obstacles 8 m across on a grid over the cultivated area, none within
+    /// 20 m of the pass driven (a field like Tapada da Casa has 82).</summary>
+    private static IEnumerable<BoundaryPolygon> Obstacles(int count)
+    {
+        int made = 0;
+        for (double n = -FieldLength / 2 + 40; n <= FieldLength / 2 - 40 && made < count; n += 20)
+        for (double e = -FieldWidth / 2 + 40; e <= FieldWidth / 2 - 40 && made < count; e += 20)
+        {
+            if (Math.Abs(e - PassEasting) < 20) continue;
+            made++;
+            yield return new BoundaryPolygon
+            {
+                Points = Enumerable.Range(0, 24).Select(i => new BoundaryPoint(
+                    e + 4 * Math.Cos(i * Math.PI / 12), n + 4 * Math.Sin(i * Math.PI / 12), 0)).ToList(),
+            };
+        }
+    }
 
     /// <summary>The pass driven: mid-field, with passes either side.</summary>
     public const int Pass = 8;

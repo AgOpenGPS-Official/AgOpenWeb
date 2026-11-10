@@ -163,6 +163,8 @@ public partial class MainViewModel
         // hand-drawn curve tool (ExtendCurvePastBoundary) and an AB line. Without this the curve
         // stops inside the field and the U-turn generator has no boundary crossing to anchor the
         // turn at each pass end; with it, the ends run past the fence and turns fire normally.
+        // An end facing the other one (the curve the long way round) stays where it was tapped:
+        // the line ends there, and AutoSteer stops at it (#694).
         var curvePoints = ExtendCurvePastBoundary(headed, keepEndsApart: true);
         var track = new Models.Track.Track
         {
@@ -172,7 +174,7 @@ public partial class MainViewModel
             IsVisible = true,
             IsClosed = false,
         };
-        SavedTracks.Add(track);
+        AddSavedTrack(track);
         SelectedTrack = track;
         SaveTracksToFile();
         StatusMessage = $"Created boundary curve ({curvePoints.Count} points)";
@@ -447,6 +449,12 @@ public partial class MainViewModel
             // A driven curve is a pass: move the reference to the implement's edge (#345)
             var refPoints = Models.Guidance.CurveProcessing.CreateOffsetCurve(
                 Models.Guidance.CurveProcessing.CalculateHeadings(driven), RefSideOffset());
+            if (refPoints.Count < 2)
+            {
+                // The offset removed all of it (#694): a curve tighter everywhere than half the tool.
+                ReportFailure("Curve too tight to make a track from");
+                return;
+            }
 
             // Extend curve ends past boundary for U-turn detection
             var extendedPoints = ExtendCurvePastBoundary(refPoints);
@@ -458,7 +466,7 @@ public partial class MainViewModel
                 isClosed: false);
 
             // Add track and select it as active (SelectedTrack setter handles IsActive and map update)
-            SavedTracks.Add(newTrack);
+            AddSavedTrack(newTrack);
             SelectedTrack = newTrack;
             SaveTracksToFile();
 
@@ -558,7 +566,7 @@ public partial class MainViewModel
             }
 
             // Add track and select it as active (SelectedTrack setter handles IsActive and map update)
-            SavedTracks.Add(newTrack);
+            AddSavedTrack(newTrack);
             SelectedTrack = newTrack;
             SaveTracksToFile();
 
@@ -713,7 +721,7 @@ public partial class MainViewModel
                         extendedB);
 
                     // Add track and select it as active (SelectedTrack setter handles IsActive and map update)
-                    SavedTracks.Add(newTrack);
+                    AddSavedTrack(newTrack);
                     SelectedTrack = newTrack;
                     SaveTracksToFile();
                     StatusMessage = $"Created AB line: {newTrack.Name} ({heading:F1})";
@@ -1397,7 +1405,7 @@ public partial class MainViewModel
                 IsVisible = true
             };
 
-            SavedTracks.Add(track);
+            AddSavedTrack(track);
             SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
                                 // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
@@ -1429,7 +1437,7 @@ public partial class MainViewModel
                 IsVisible = true
             };
 
-            SavedTracks.Add(track);
+            AddSavedTrack(track);
             SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
                                 // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
@@ -1490,7 +1498,7 @@ public partial class MainViewModel
                 IsClosed = true
             };
 
-            SavedTracks.Add(track);
+            AddSavedTrack(track);
             SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
                                 // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
@@ -1508,7 +1516,7 @@ public partial class MainViewModel
 
             // A straight edge becomes an AB line, a curved one an AB curve (#365).
             var edges = Models.Track.BoundaryEdgeTracks.Build(boundary.Points);
-            foreach (var t in edges) SavedTracks.Add(t);
+            foreach (var t in edges) AddSavedTrack(t);
             int created = edges.Count;
             int curves = edges.Count(t => t.Type == Models.Track.TrackType.Curve);
 
@@ -1629,9 +1637,9 @@ public partial class MainViewModel
     /// </summary>
     /// <param name="points">Original curve points</param>
     /// <param name="marginMeters">How far past the boundary to extend (default 20m)</param>
-    /// <param name="keepEndsApart">An end heading towards the other end stops short of halfway
-    /// across the gap between them, so they don't overlap: a boundary curve the long way round
-    /// has both ends on the fence, facing each other across what it leaves out (#450).</param>
+    /// <param name="keepEndsApart">An end heading towards the other end is not extended: a boundary
+    /// curve the long way round has both ends on the fence, facing each other across what it
+    /// leaves out, and there A and B are the line's real ends (#450, #694).</param>
     /// <returns>New list with extended endpoints</returns>
     private List<Vec3> ExtendCurvePastBoundary(List<Vec3> points, double marginMeters = 20.0, bool keepEndsApart = false)
     {
@@ -1712,13 +1720,10 @@ public partial class MainViewModel
 
         if (keepEndsApart)
         {
-            double gapE = lastPoint.Easting - firstPoint.Easting, gapN = lastPoint.Northing - firstPoint.Northing;
-            double cap = Math.Max(1.0, Math.Sqrt(gapE * gapE + gapN * gapN) / 2 - 1.0);
-            // The start extends backwards (−heading), the end forwards (+heading).
-            if (-Math.Sin(startHeading) * gapE - Math.Cos(startHeading) * gapN > 0)
-                extendStart = Math.Min(extendStart, cap);
-            if (-Math.Sin(endHeading) * gapE - Math.Cos(endHeading) * gapN > 0)
-                extendEnd = Math.Min(extendEnd, cap);
+            // An end pointing at the other end is the line's real end: no extension (#694).
+            var (startFaces, endFaces) = Models.Guidance.CurveProcessing.EndsFacingEachOther(points);
+            if (startFaces) extendStart = 0;
+            if (endFaces) extendEnd = 0;
         }
 
         // Create extended start point
@@ -1749,7 +1754,7 @@ public partial class MainViewModel
         const double extSpacing = 2.0;
         var densified = new List<Vec3>(result.Count + 64);
 
-        int leadSteps = Math.Max(1, (int)(extendStart / extSpacing));
+        int leadSteps = extendStart > 0 ? Math.Max(1, (int)(extendStart / extSpacing)) : 0;
         for (int i = 0; i < leadSteps; i++)
         {
             double f = (double)i / leadSteps; // 0 at extended tip → 1 at firstPoint (exclusive)
@@ -1760,7 +1765,7 @@ public partial class MainViewModel
         }
         densified.AddRange(result); // keeps the original first/last points and the curve body
 
-        int tailSteps = Math.Max(1, (int)(extendEnd / extSpacing));
+        int tailSteps = extendEnd > 0 ? Math.Max(1, (int)(extendEnd / extSpacing)) : 0;
         for (int i = 1; i <= tailSteps; i++)
         {
             double f = (double)i / tailSteps; // firstPoint-after-last → extended tip
@@ -1852,8 +1857,9 @@ public partial class MainViewModel
     public void CreateAPlusLine(double? headingDeg)
     {
         State.UI.CloseDialog();
+        if (!FieldIsOpen()) return;
         var v = State.Vehicle; // the cycle's pivot (AgOpenGPS pivotAxlePos), not the 5 Hz status mirror
-        if (v.Easting == 0 && v.Northing == 0)
+        if (!HasGpsPosition(v.Easting, v.Northing))
         {
             ReportFailure("No GPS position - cannot create A+ line");
             return;
@@ -1940,7 +1946,7 @@ public partial class MainViewModel
     {
         foreach (var t in SavedTracks) t.IsActive = false;
         var track = Track.FromPivot($"Pivot {DateTime.Now:HH:mm}", center, referenceRadius);
-        SavedTracks.Add(track);
+        AddSavedTrack(track);
         SaveTracksToFile(); // before selecting: the previous track's pass and nudge stay its own
         SelectedTrack = track;
         StatusMessage = $"Created pivot: centre {center.Easting:F1}, {center.Northing:F1}, passes {PassWidth:F1} m apart";
@@ -1983,6 +1989,7 @@ public partial class MainViewModel
     private bool TryLatLonToLocal(double lat, double lon, out GeoCoord local)
     {
         local = default;
+        if (!FieldIsOpen()) return false;
         if (!double.IsFinite(lat) || lat < -90 || lat > 90)
         {
             ReportFailure("Invalid latitude (must be -90 to 90)");
@@ -2012,7 +2019,7 @@ public partial class MainViewModel
         var pointB = new Vec3(e + Math.Sin(headingRad) * 100.0, n + Math.Cos(headingRad) * 100.0, headingRad);
 
         var track = Track.FromABLine(name, pointA, pointB);
-        SavedTracks.Add(track);
+        AddSavedTrack(track);
         SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
                             // previous track's live pass/nudge isn't written onto the new one
         SelectedTrack = track;

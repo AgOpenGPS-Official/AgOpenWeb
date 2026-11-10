@@ -337,7 +337,9 @@ public class SectionControlService : ISectionControlService
         // Auto mode - check boundary/overlap conditions.
         // Look-ahead distances and TURNING_ON / TURNING_OFF phase durations
         // come straight from user config. The phase delay exactly cancels the
-        // projection, so the physical IsOn flip lands on the boundary edge.
+        // projection, so IsOn (the map) flips on the boundary edge; the module
+        // is told at the start of the phase (IsCommandedOn), the look-ahead
+        // ahead of the edge, so the valve acts there too (#707).
         // With both settings at 0, no anticipation and no wait — section
         // flips on the first tick that shouldBe(On|Off) becomes true.
         double turnOnPhaseSec = tool.LookAheadOnSetting;
@@ -367,23 +369,33 @@ public class SectionControlService : ISectionControlService
         // Check boundary conditions using segment-based detection
         // Use halfWidthWithMargin for current position to prevent coverage outside boundary
         _sectionSw.Restart();
-        var currentBoundaryResult = GetSegmentBoundaryStatus(sectionCenter, toolHeading, halfWidthWithMargin);
-        var lookOnBoundaryResult = GetSegmentBoundaryStatus(onCheckPoint, toolHeading, halfWidth);
-        var lookOffBoundaryResult = GetSegmentBoundaryStatus(offCheckPoint, toolHeading, halfWidth);
+        bool isInBoundary, lookOnInBoundary, lookOffInBoundary;
+        if (tool.IsSectionOffWhenOut)
+        {
+            // "Off outside boundary" (AgOpenGPS tool.isSectionOffWhenOut): a section is out as
+            // soon as it isn't (all but) fully inside the field and clear of obstacles. One rule
+            // (SectionIsIn) for where the section is now and for where it is about to be, so the
+            // valve, told the look-ahead time early, closes at the edge. The look-ahead used to
+            // be judged by a weaker rule (50 %, no edge points) on a single line: an obstacle that
+            // only touched a section's edge, or one shorter than the look-ahead distance that the
+            // line had already passed, was found only on arrival, and the valve sprayed into it
+            // for its closing time (field job J2/J6). Off: the whole band from here to the look-off
+            // point. On: the look-on point.
+            isInBoundary = SectionIsIn(sectionCenter, toolHeading, halfWidthWithMargin, coverageMargin > 0);
+            lookOnInBoundary = SectionIsIn(onCheckPoint, toolHeading, halfWidthWithMargin, coverageMargin > 0);
+            lookOffInBoundary = isInBoundary && BandIsIn(sectionCenter, toolHeading, lookAheadOffDist, speed,
+                halfWidthWithMargin, coverageMargin > 0);
+        }
+        else
+        {
+            // Off: a section counts as in while any part of it is inside, i.e. either edge in
+            // (#110); the look-ahead anticipates with half the section inside.
+            const double BOUNDARY_THRESHOLD_LOOKAHEAD = 0.50;
+            isInBoundary = GetSegmentBoundaryStatus(sectionCenter, toolHeading, halfWidthWithMargin).InsidePercent > 0;
+            lookOnInBoundary = GetSegmentBoundaryStatus(onCheckPoint, toolHeading, halfWidth).InsidePercent >= BOUNDARY_THRESHOLD_LOOKAHEAD;
+            lookOffInBoundary = GetSegmentBoundaryStatus(offCheckPoint, toolHeading, halfWidth).InsidePercent >= BOUNDARY_THRESHOLD_LOOKAHEAD;
+        }
         _totalBoundaryMs += _sectionSw.Elapsed.TotalMilliseconds;
-
-        // Use strict threshold for current position - section must be fully inside to spray
-        // This prevents spraying outside boundary when implement swings during turns
-        const double BOUNDARY_THRESHOLD_STRICT = 0.95; // 95% inside required to be "in boundary"
-        const double BOUNDARY_THRESHOLD_LOOKAHEAD = 0.50; // 50% for look-ahead anticipation
-        // "Off outside boundary" (AgOpenGPS tool.isSectionOffWhenOut): on = a section is out
-        // as soon as it isn't (all but) fully inside; off = it counts as in while any part
-        // is inside, i.e. either edge in (#110). It used to be always on.
-        bool isInBoundary = tool.IsSectionOffWhenOut
-            ? currentBoundaryResult.InsidePercent >= BOUNDARY_THRESHOLD_STRICT
-            : currentBoundaryResult.InsidePercent > 0;
-        bool lookOnInBoundary = lookOnBoundaryResult.InsidePercent >= BOUNDARY_THRESHOLD_LOOKAHEAD;
-        bool lookOffInBoundary = lookOffBoundaryResult.InsidePercent >= BOUNDARY_THRESHOLD_LOOKAHEAD;
 
         // Check headland conditions
         // Use speed-dependent look-ahead so coverage edges land exactly on
@@ -454,28 +466,6 @@ public class SectionControlService : ISectionControlService
         {
             UpdateSectionOff(index);
             return;
-        }
-
-        // ADDITIONAL CHECK: Verify both expanded edge points are inside boundary.
-        // The segment-based check can sometimes pass when edges are outside,
-        // especially when tool heading is perpendicular to boundary.
-        // Only with "Off outside boundary" on — off, a section straddling the edge stays
-        // on (AgOpenGPS isSectionOffWhenOut, #110).
-        if (coverageMargin > 0 && tool.IsSectionOffWhenOut)
-        {
-            double perpHeading = toolHeading + Math.PI / 2.0;
-            var expandedLeftEdge = new Vec2(
-                sectionCenter.Easting + Math.Sin(perpHeading) * (-halfWidthWithMargin),
-                sectionCenter.Northing + Math.Cos(perpHeading) * (-halfWidthWithMargin));
-            var expandedRightEdge = new Vec2(
-                sectionCenter.Easting + Math.Sin(perpHeading) * halfWidthWithMargin,
-                sectionCenter.Northing + Math.Cos(perpHeading) * halfWidthWithMargin);
-
-            if (!IsPointInBoundary(expandedLeftEdge) || !IsPointInBoundary(expandedRightEdge))
-            {
-                UpdateSectionOff(index);
-                return;
-            }
         }
 
         // Determine if section should be on.
@@ -653,15 +643,14 @@ public class SectionControlService : ISectionControlService
             _yawRate = 0;
             _instantYawRate = 0;
 
-            // Get zone index (for multi-colored sections or zones)
-            int zoneIndex = GetZoneIndex(index);
-            _coverageMapService.StartMapping(zoneIndex, leftEdge, rightEdge);
+            // Each section paints its own strip, zones or not (see StopMapping).
+            _coverageMapService.StartMapping(index, leftEdge, rightEdge);
 
             // Record initial position for minimum distance filtering
             var center = new Vec2(
                 (leftEdge.Easting + rightEdge.Easting) / 2,
                 (leftEdge.Northing + rightEdge.Northing) / 2);
-            _lastCoveragePosition[zoneIndex] = center;
+            _lastCoveragePosition[index] = center;
         }
     }
 
@@ -685,16 +674,14 @@ public class SectionControlService : ISectionControlService
             return;
         }
 
-        int zoneIndex = GetZoneIndex(index);
-
         // The section's own edges: the coverage service paints them widened by the coverage
         // margin (no hairline seams between sections or quads) and counts the worked area
         // without it, as AgOpenGPS's patches do.
-        _coverageMapService.AddCoveragePoint(zoneIndex, leftEdge, rightEdge);
+        _coverageMapService.AddCoveragePoint(index, leftEdge, rightEdge);
 
-        // Update last position for this zone (kept for any downstream readers
+        // Update last position for this section (kept for any downstream readers
         // even though it's no longer used as a skip threshold).
-        _lastCoveragePosition[zoneIndex] = new Vec2(
+        _lastCoveragePosition[index] = new Vec2(
             (leftEdge.Easting + rightEdge.Easting) / 2,
             (leftEdge.Northing + rightEdge.Northing) / 2);
     }
@@ -712,35 +699,21 @@ public class SectionControlService : ISectionControlService
             section.IsMappingOn = false;
             section.MappingOffTimer = 0;
 
-            int zoneIndex = GetZoneIndex(index);
-            _coverageMapService.StopMapping(zoneIndex);
+            _coverageMapService.StopMapping(index);
 
             // Clear last position so next patch starts fresh
-            _lastCoveragePosition.Remove(zoneIndex);
+            _lastCoveragePosition.Remove(index);
         }
     }
 
-    /// <summary>
-    /// Get zone index for a section (handles zones vs individual sections)
-    /// </summary>
-    private int GetZoneIndex(int sectionIndex)
-    {
-        var tool = _configStore.Tool;
-        if (tool.IsSectionsNotZones)
-        {
-            return sectionIndex;
-        }
-
-        // Find which zone this section belongs to
-        for (int z = 1; z <= tool.Zones; z++)
-        {
-            if (sectionIndex < tool.GetZoneEndSection(z))
-            {
-                return z - 1;
-            }
-        }
-        return 0;
-    }
+    // The coverage stream is always the section's own index. Zones group the section buttons
+    // only; they don't change what is painted. AgOpenGPS paints each run of mapping sections
+    // from its first section's left point to its last one's right point, zones or not
+    // (OpenGL.Designer triStrip loop, CPatches.AddMappingPoint). Keyed by zone, the sections of
+    // one zone shared one stream: each section's edges replaced the last one's, so the quads ran
+    // across the tool between neighbouring sections and a strip worked with every section on
+    // painted about a quarter of its width; what the next pass then found painted depended on
+    // where those slivers fell, which made its switching differ from run to run.
 
     /// <summary>
     /// Project a point forward along a heading (straight line)
@@ -818,6 +791,39 @@ public class SectionControlService : ISectionControlService
     /// <summary>
     /// Check if a point is inside the field boundary
     /// </summary>
+    /// <summary>
+    /// With "Off outside boundary" on: is a section at <paramref name="center"/> in the field? At
+    /// least 95 % of its width (margin included) inside the field and out of the obstacles, and,
+    /// with a coverage margin, both ends of it too: the segment test can pass with an end over the
+    /// edge, especially when the tool runs square to it. The one rule for where the section is and
+    /// where it is about to be.
+    /// </summary>
+    private bool SectionIsIn(Vec2 center, double heading, double halfWidthWithMargin, bool checkEnds)
+    {
+        const double BOUNDARY_THRESHOLD_STRICT = 0.95;
+        if (GetSegmentBoundaryStatus(center, heading, halfWidthWithMargin).InsidePercent < BOUNDARY_THRESHOLD_STRICT)
+            return false;
+        if (!checkEnds) return true;
+        double perpHeading = heading + Math.PI / 2.0;
+        double dE = Math.Sin(perpHeading) * halfWidthWithMargin, dN = Math.Cos(perpHeading) * halfWidthWithMargin;
+        return IsPointInBoundary(new Vec2(center.Easting - dE, center.Northing - dN))
+            && IsPointInBoundary(new Vec2(center.Easting + dE, center.Northing + dN));
+    }
+
+    /// <summary>
+    /// The ground the section crosses from here to <paramref name="distance"/> ahead (the look-off
+    /// distance), sampled every 0.5 m and at its end: all of it in (<see cref="SectionIsIn"/>)? An
+    /// obstacle shorter than the look-ahead distance stays ahead until the section has crossed it.
+    /// </summary>
+    private bool BandIsIn(Vec2 center, double heading, double distance, double speed, double halfWidthWithMargin, bool checkEnds)
+    {
+        const double Step = 0.5;
+        for (double d = Step; d < distance; d += Step)
+            if (!SectionIsIn(ProjectForwardCurved(center, heading, d, speed), heading, halfWidthWithMargin, checkEnds))
+                return false;
+        return SectionIsIn(ProjectForwardCurved(center, heading, distance, speed), heading, halfWidthWithMargin, checkEnds);
+    }
+
     private bool IsPointInBoundary(Vec2 point)
     {
         var boundary = Volatile.Read(ref _field).Boundary;
@@ -1028,15 +1034,29 @@ public class SectionControlService : ISectionControlService
         // Configured sections only; unused bits stay 0 on the wire, as in AgOpenGPS (#317).
         ushort bits = 0;
         int count = Math.Min(16, NumSections);
+        bool earlyOff = _configStore.Tool.LookAheadOffSetting > 0;
         for (int i = 0; i < count; i++)
         {
-            if (_sectionStates[i].IsOn)
+            if (IsCommandedOn(_sectionStates[i], earlyOff))
             {
                 bits |= (ushort)(1 << i);
             }
         }
         return bits;
     }
+
+    /// <summary>
+    /// What the module is told for a section, as AgOpenGPS (OpenGL.Designer.cs, Section Control):
+    /// its isSectionOn follows the look-ahead's on or off request at once, and only the map waits
+    /// the look-ahead time (mappingOnTimer / mappingOffTimer), so the valve, which takes that long
+    /// to act, opens and shuts at the edge while the coverage is painted where the product lands.
+    /// Here <see cref="SectionControlState.IsOn"/> is the map's state (it flips after the TURNING_ON /
+    /// TURNING_OFF phase); the module gets the request: on from the first tick of an on request,
+    /// off from the first tick of an off request while look-ahead off is set. With look-ahead off
+    /// at 0 the off wait is the turn-off delay, a plain overrun the valve follows too (#707).
+    /// </summary>
+    private static bool IsCommandedOn(SectionControlState s, bool earlyOff)
+        => s.IsOn ? !(earlyOff && s.SectionOffRequest) : s.SectionOnRequest;
 
     /// <summary>
     /// Section on/off as a 64-bit mask (sections 1–64 in bits 0–63). The low
@@ -1047,9 +1067,10 @@ public class SectionControlService : ISectionControlService
     {
         ulong bits = 0;
         int count = Math.Min(Math.Min(_sectionStates.Length, ToolConfig.MaxSections), NumSections);
+        bool earlyOff = _configStore.Tool.LookAheadOffSetting > 0;
         for (int i = 0; i < count; i++)
         {
-            if (_sectionStates[i].IsOn)
+            if (IsCommandedOn(_sectionStates[i], earlyOff))
             {
                 bits |= 1UL << i;
             }

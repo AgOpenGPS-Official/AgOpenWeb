@@ -61,6 +61,26 @@ public class VehicleToolLimitsTests
     [TestCase("tool.minCoverage", "150")]
     [TestCase("tool.turnOffDelay", "100")]
     [TestCase("tool.zones", "9")]
+    [TestCase("autosteer.proportionalGain", "0")]
+    [TestCase("autosteer.proportionalGain", "999")]
+    [TestCase("autosteer.integralGain", "9")]
+    [TestCase("autosteer.countsPerDegree", "0")]
+    [TestCase("autosteer.countsPerDegree", "300")]
+    [TestCase("autosteer.wasOffset", "5000")]
+    [TestCase("autosteer.ackermann", "250")]
+    [TestCase("autosteer.maxSteerAngle", "5")]
+    [TestCase("autosteer.maxSteerAngle", "NaN")]
+    [TestCase("autosteer.speedFactor", "0")]
+    [TestCase("autosteer.acquireFactor", "10")]
+    [TestCase("autosteer.maxPwm", "10")]
+    [TestCase("autosteer.minPwm", "0")]
+    [TestCase("autosteer.minSteerSpeed", "25")]
+    [TestCase("autosteer.minSteerSpeed", "-1")]
+    [TestCase("autosteer.maxSteerSpeed", "60")]
+    [TestCase("autosteer.manualTurnsSpeed", "30")]
+    [TestCase("autosteer.sideHillCompensation", "2")]
+    [TestCase("autosteer.uTurnCompensation", "-100")]
+    [TestCase("autosteer.lineWidth", "0")]
     public void An_impossible_value_is_refused_with_the_reason(string key, string value)
     {
         string? why = VehicleToolLimits.Check(key, value, Sprayer());
@@ -85,6 +105,17 @@ public class VehicleToolLimitsTests
     [TestCase("tool.overlap", "-1")]
     [TestCase("tool.trailingToolToPivotLength", "-0.6")]
     [TestCase("tool.slowSpeedCutoff", "0.5")]
+    [TestCase("autosteer.proportionalGain", "50")]
+    [TestCase("autosteer.proportionalGain", "1")]
+    [TestCase("autosteer.proportionalGain", "200")]
+    [TestCase("autosteer.integralGain", "0")]
+    [TestCase("autosteer.countsPerDegree", "110")]
+    [TestCase("autosteer.wasOffset", "-260")]
+    [TestCase("autosteer.maxSteerAngle", "35")]
+    [TestCase("autosteer.minSteerSpeed", "0.5")]
+    [TestCase("autosteer.maxSteerSpeed", "15")]
+    [TestCase("autosteer.uTurnCompensation", "-80")]
+    [TestCase("autosteer.invertWas", "1")]        // toggles have no range
     [TestCase("conn.ntripEnabled", "1")]          // keys with no range are not checked
     [TestCase("vehicle.wheelbase", "abc")]        // not a number: ignored by the setter, as before
     public void A_real_value_passes(string key, string value)
@@ -100,6 +131,28 @@ public class VehicleToolLimitsTests
         Assert.That(VehicleToolLimits.Check("tool.overlap", "8", s), Is.EqualTo("Overlap must be less than the implement width (8 m)"));
         s.IsMetric = false;
         Assert.That(VehicleToolLimits.Check("vehicle.wheelbase", "-2.88", s), Is.EqualTo("Wheelbase must be 1.64 to 65.62 ft (not -9.45 ft)"));
+    }
+
+    // The Speed step took 25 km/h as the minimum and 5 km/h as the maximum (the steer wizard
+    // scenarios): AutoSteer could then never engage, and nothing said so.
+    [Test]
+    public void The_steer_speeds_must_leave_a_band_between_them()
+    {
+        var s = Sprayer();
+        s.AutoSteer.MinSteerSpeed = 0.5;
+        s.AutoSteer.MaxSteerSpeed = 8;
+        Assert.Multiple(() =>
+        {
+            Assert.That(VehicleToolLimits.Check("autosteer.proportionalGain", "0", s), Is.EqualTo("Proportional gain must be 1 to 200 (not 0)"));
+            Assert.That(VehicleToolLimits.Check("autosteer.minSteerSpeed", "8", s), Is.EqualTo("Min steer speed must be below the max steer speed (8 km/h)"));
+            Assert.That(VehicleToolLimits.Check("autosteer.minSteerSpeed", "7", s), Is.Null);
+            Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "0.5", s), Is.EqualTo("Max steer speed must be above the min steer speed (0.5 km/h)"));
+            Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "25", s), Is.Null);
+            Assert.That(VehicleToolLimits.Check("autosteer.minSteerSpeed", "25", s), Is.EqualTo("Min steer speed must be 0 to 10 km/h (not 25 km/h)"));
+        });
+        s.IsMetric = false;
+        Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "0.5", s), Is.EqualTo("Max steer speed must be above the min steer speed (0.31 mph)"));
+        Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "60", s), Is.EqualTo("Max steer speed must be 0 to 31.07 mph (not 37.28 mph)"));
     }
 
     [Test]
@@ -121,6 +174,10 @@ public class VehicleToolLimitsTests
 
         s.Vehicle.AntennaOffset = double.NaN;
         Assert.That(VehicleToolLimits.WhyCannotSteer(s), Does.Contain("antenna"));
+        s.Vehicle.AntennaOffset = 0;
+
+        s.AutoSteer.MinSteerSpeed = s.AutoSteer.MaxSteerSpeed;
+        Assert.That(VehicleToolLimits.WhyCannotSteer(s), Does.Contain("min steer speed"));
     }
 
     // Checked before the change: a refused section count used to be undone afterwards, and the
@@ -157,6 +214,147 @@ public class VehicleToolLimitsTests
             Assert.That(VehicleToolLimits.Check("tool.sectionWidth", "0,90", s), Does.Contain("wider than the overlap"));
             Assert.That(VehicleToolLimits.Check("tool.sectionWidth", "0,150", s), Is.Null);
             Assert.That(VehicleToolLimits.Check("tool.sectionWidth", "3,10", s), Is.Null, "section 4 is not in use");
+        });
+    }
+
+    // The Vehicle & Tool scenarios: a 10 m gap on an 8 m boom drove the passes 18 m apart.
+    [TestCase("-10", false)]
+    [TestCase("-8", false)]
+    [TestCase("-7.9", true)]
+    [TestCase("-0.2", true)]
+    public void A_gap_must_be_less_than_the_implement(string gap, bool ok)
+    {
+        var why = VehicleToolLimits.Check("tool.overlap", gap, Sprayer());
+        Assert.That(why == null, Is.EqualTo(ok), why);
+        if (!ok) Assert.That(why, Does.StartWith("A gap must be less than the implement width"));
+    }
+
+    [TestCase("gps.minGpsStep", "0", false)]
+    [TestCase("gps.minGpsStep", "0.05", true)]
+    [TestCase("gps.minGpsStep", "0.1", true)]
+    [TestCase("gps.fixToFixDistance", "-1", false)]
+    [TestCase("gps.fixToFixDistance", "0.5", true)]
+    [TestCase("gps.fixToFixDistance", "1", true)]
+    public void The_GPS_steps_take_a_positive_distance(string key, string value, bool ok)
+    {
+        Assert.That(VehicleToolLimits.Check(key, value, Sprayer()) == null, Is.EqualTo(ok));
+    }
+
+    // AgOpenGPS ConfigTool: look ahead off at most 0.8 x look ahead on; it and the turn off delay
+    // exclude each other.
+    [Test]
+    public void Look_ahead_off_is_held_to_0_8_of_look_ahead_on()
+    {
+        var s = Sprayer();
+        s.Tool.LookAheadOnSetting = 1.0;
+        s.Tool.LookAheadOffSetting = 5.0;
+
+        var note = VehicleToolLimits.ApplySectionTiming("tool.lookAheadOff", s);
+
+        Assert.That(s.Tool.LookAheadOffSetting, Is.EqualTo(0.8).Within(1e-9));
+        Assert.That(note, Does.Contain("at most 0.8"));
+    }
+
+    [Test]
+    public void Lowering_look_ahead_on_lowers_look_ahead_off_with_it()
+    {
+        var s = Sprayer();
+        s.Tool.LookAheadOffSetting = 0.5;
+        s.Tool.LookAheadOnSetting = 0.5;
+
+        VehicleToolLimits.ApplySectionTiming("tool.lookAheadOn", s);
+
+        Assert.That(s.Tool.LookAheadOffSetting, Is.EqualTo(0.4).Within(1e-9));
+    }
+
+    [Test]
+    public void Look_ahead_off_and_the_turn_off_delay_exclude_each_other()
+    {
+        var s = Sprayer();
+        s.Tool.LookAheadOnSetting = 1.0;
+        s.Tool.TurnOffDelay = 2;
+        s.Tool.LookAheadOffSetting = 0.5;
+        VehicleToolLimits.ApplySectionTiming("tool.lookAheadOff", s);
+        Assert.That(s.Tool.TurnOffDelay, Is.EqualTo(0), "look ahead off set: the delay goes to 0");
+
+        s.Tool.TurnOffDelay = 1;
+        VehicleToolLimits.ApplySectionTiming("tool.turnOffDelay", s);
+        Assert.That(s.Tool.LookAheadOffSetting, Is.EqualTo(0), "a delay set: look ahead off goes to 0");
+    }
+
+    [Test]
+    public void Section_timing_within_the_rules_is_left_alone()
+    {
+        var s = Sprayer();
+        s.Tool.LookAheadOnSetting = 1.0;
+        s.Tool.LookAheadOffSetting = 0.5;
+        s.Tool.TurnOffDelay = 0;
+
+        Assert.That(VehicleToolLimits.ApplySectionTiming("tool.lookAheadOff", s), Is.Null);
+        Assert.That(s.Tool.LookAheadOffSetting, Is.EqualTo(0.5));
+    }
+
+    // Imperial: the box shows the 50 km/h limit as 31.1 mph; typed back it is 50.05 km/h.
+    [Test]
+    public void An_imperial_value_typed_back_as_shown_at_the_limit_is_taken()
+    {
+        var s = new ConfigurationStore { IsMetric = false };
+        s.AutoSteer.MinSteerSpeed = 0;
+        s.AutoSteer.MaxSteerSpeed = 15;
+        double typedBack = 31.1 * 1.609344;
+        Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", typedBack.ToString(System.Globalization.CultureInfo.InvariantCulture), s), Is.Null);
+        Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", (31.3 * 1.609344).ToString(System.Globalization.CultureInfo.InvariantCulture), s), Is.Not.Null,
+            "past half a shown step it is still refused");
+    }
+
+    [Test]
+    public void Metric_input_past_the_limit_is_refused()
+    {
+        var s = new ConfigurationStore { IsMetric = true };
+        Assert.That(VehicleToolLimits.Check("autosteer.maxSteerSpeed", "50.05", s), Is.Not.Null);
+    }
+
+    // #676: AgOpenGPS sets every section to the default width when the section count changes;
+    // here a count change only seeded new sections and a default width changed none.
+    [Test]
+    public void A_section_count_sets_every_section_to_the_default_width()
+    {
+        var s = new ConfigurationStore();
+        s.ApplyDefaultSectionWidth(100);
+        s.ApplySectionCount(5);
+        s.Tool.SetSectionWidth(2, 60);
+        s.Tool.DefaultSectionWidth = 350; // as a profile sets it: no section changes
+
+        s.ApplySectionCount(5); // the same count again
+
+        Assert.That(Enumerable.Range(0, 5).Select(s.Tool.GetSectionWidth), Is.All.EqualTo(350));
+        Assert.That(s.ActualToolWidth, Is.EqualTo(17.5).Within(1e-9));
+    }
+
+    [Test]
+    public void A_default_width_sets_every_section()
+    {
+        var s = new ConfigurationStore();
+        s.ApplySectionCount(5);
+        s.Tool.SetSectionWidth(0, 60);
+
+        s.ApplyDefaultSectionWidth(350);
+
+        Assert.That(Enumerable.Range(0, 5).Select(s.Tool.GetSectionWidth), Is.All.EqualTo(350));
+        Assert.That(s.ActualToolWidth, Is.EqualTo(17.5).Within(1e-9));
+    }
+
+    [Test]
+    public void A_default_width_that_leaves_the_implement_no_wider_than_the_overlap_is_refused()
+    {
+        var s = new ConfigurationStore();
+        s.ApplySectionCount(2);
+        s.Tool.Overlap = 1.0;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(VehicleToolLimits.Check("tool.defaultSectionWidth", "40", s), Does.Contain("wider than the overlap"), "2 x 0.4 m");
+            Assert.That(VehicleToolLimits.Check("tool.defaultSectionWidth", "60", s), Is.Null, "2 x 0.6 m");
         });
     }
 }

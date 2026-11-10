@@ -154,6 +154,9 @@ public class AckermannTestStepViewModel : WizardStepViewModel
     // ratio. AgOpenGPS disables its test unless the value is 100; here Record sets it (#154),
     // waits for the module to apply it, and puts the old value back if nothing is measured.
     private int? _ackermannBeforeTest;
+
+    /// <summary>A circle was driven and Ackermann set from it, in this wizard.</summary>
+    public bool TestCompleted { get; private set; }
     private bool _isSettling;
     private long _settleStartTick;
 
@@ -323,6 +326,7 @@ public class AckermannTestStepViewModel : WizardStepViewModel
             _ackermannBeforeTest = null;
             _configService.Store.AutoSteer.Ackermann = newAckermann;
             SetUntouched(() => Ackermann = newAckermann);
+            TestCompleted = true;
 
             TestResult = $"Ackermann set to {newAckermann} — circle {Diameter:F1} m, calculated angle {calcAngle:F1}°, "
                 + $"sensor {Math.Abs(_startAngle):F1}°."

@@ -148,6 +148,7 @@ public partial class MainViewModel
             sy.PathIndex = yt.PathIndex;
             sy.ArcStart = yt.ArcStart;
             sy.IsTurnLeft = yt.IsTurnLeft;
+            sy.NextUTurnDirectionLeftOverride = yt.NextUTurnDirectionLeftOverride;
             sy.LastTurnWasLeft = yt.LastTurnWasLeft;
             sy.DistanceToHeadland = yt.DistanceToHeadland;
             sy.DistanceToTrigger = yt.DistanceToTrigger;
@@ -284,6 +285,10 @@ public partial class MainViewModel
         // Headland proximity
         State.Field.HeadlandProximityDistance = result.HeadlandProximityDistance;
         State.Field.HeadlandProximityWarning = result.HeadlandProximityWarning;
+
+        // Contour: a stretch ahead that can't be driven as a lap
+        State.Guidance.ContourAhead = result.ContourAhead;
+        State.Guidance.ContourAheadM = result.ContourAheadM;
 
         // Phase E E1: the cycle's first-fix LocalPlane auto-create arrives
         // here. The cycle already holds a cache of it for coord conversion;

@@ -5,15 +5,23 @@ name: Vehicle & Tool Scenarios
 # steering motor) drives the whole backend in process, set up by a careful and a careless
 # operator. It takes minutes, so it runs nightly on develop, not on every PR (CI only builds it).
 # The run fails when the harness breaks; the findings are in the report, kept as an artifact
-# and shown in the run's summary.
+# and shown in the run's summary. The settings sweep (every guidance, AutoSteer, tool and
+# vehicle setting flipped, about 50 minutes) runs after the careful and careless operators.
 #
-#   - schedule (nightly): only when develop has a commit from the last day;
+#   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;
 #   - manual dispatch: always, on the branch picked.
 
 on:
-  schedule:
-    - cron: '0 4 * * *'   # 04:00 UTC
+  # Nightly: the bug report Worker (Tools/bugreport-worker, cron 05:07 UTC, 23:07 US Central)
+  # starts it with nightly=true. GitHub's own schedule started this repo's runs 5-8 hours late
+  # every day (2026-10 and 11), so the reports weren't in by morning. Each harness has its own
+  # runner, so they run side by side.
   workflow_dispatch:
+    inputs:
+      nightly:
+        description: 'Nightly run: skip when develop has no commit from the last 25 hours'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -29,21 +37,33 @@ concurrency:
 
 jobs:
   scenarios:
+    # The two operators and the settings sweep run as two jobs side by side, each on its own
+    # runner: together they no longer fit in one job's time.
+    strategy:
+      fail-fast: false
+      matrix:
+        part:
+          - { name: operators, who: 'careful,careless' }
+          - { name: sweep, who: sweep }
+    name: scenarios (${{ matrix.part.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
 
       - name: Anything new since the last night?
         id: fresh
         run: |
-          if [ "${{ github.event_name }}" != "schedule" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "${{ inputs.nightly }}" != "true" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
           last=$(git log -1 --format=%ct HEAD)
           age=$(( $(date +%s) - last ))
           if [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "No commit on develop in the last 25 hours; nothing to run." >> "$GITHUB_STEP_SUMMARY"
           fi
+
+      - uses: ./.github/actions/sharpisoterm-cache
+        if: steps.fresh.outputs.run == 'true'
 
       - name: Setup .NET
         if: steps.fresh.outputs.run == 'true'
@@ -55,7 +75,8 @@ jobs:
         if: steps.fresh.outputs.run == 'true'
         env:
           AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/vehicle-tool-scenarios-report.md
-        run: dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ --filter "FullyQualifiedName~VehicleToolScenarioTests" --verbosity normal
+          AGOPENWEB_SCENARIO_OPERATOR: ${{ matrix.part.who }}
+        run: dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ -c Release --filter "FullyQualifiedName~VehicleToolScenarioTests" --verbosity normal
 
       - name: Report to the summary
         if: always() && steps.fresh.outputs.run == 'true'
@@ -72,7 +93,7 @@ jobs:
         if: always() && steps.fresh.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: vehicle-tool-scenarios-report
+          name: vehicle-tool-scenarios-report-${{ matrix.part.name }}
           path: ${{ runner.temp }}/vehicle-tool-scenarios-report.md
           if-no-files-found: ignore
           retention-days: 30
