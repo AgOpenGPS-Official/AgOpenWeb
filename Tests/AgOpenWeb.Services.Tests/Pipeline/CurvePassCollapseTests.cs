@@ -195,11 +195,11 @@ public class CurvePassCollapseTests
         var line = North(10);
         Assert.Multiple(() =>
         {
-            Assert.That(CurveProcessing.ExtendPass((line, 0, true, false), 20)[^1].Northing, Is.EqualTo(10).Within(1e-9));
-            Assert.That(CurveProcessing.ExtendPass((line, 0, true, false), 20)[0].Northing, Is.EqualTo(-20).Within(1e-9));
-            Assert.That(CurveProcessing.ExtendPass((line, 0, false, true), 20)[0].Northing, Is.EqualTo(0).Within(1e-9));
-            Assert.That(CurveProcessing.ExtendPass((line, 0, false, false), 20), Is.EqualTo(line));
-            Assert.That(CurveProcessing.ExtendPass((new List<Vec3>(), 100, false, false)), Is.Empty, "no pass, nothing to extend");
+            Assert.That(CurveProcessing.ExtendPass((line, 0, true, false, false, false), 20)[^1].Northing, Is.EqualTo(10).Within(1e-9));
+            Assert.That(CurveProcessing.ExtendPass((line, 0, true, false, false, false), 20)[0].Northing, Is.EqualTo(-20).Within(1e-9));
+            Assert.That(CurveProcessing.ExtendPass((line, 0, false, true, false, false), 20)[0].Northing, Is.EqualTo(0).Within(1e-9));
+            Assert.That(CurveProcessing.ExtendPass((line, 0, false, false, false, false), 20), Is.EqualTo(line));
+            Assert.That(CurveProcessing.ExtendPass((new List<Vec3>(), 100, false, false, false, false)), Is.Empty, "no pass, nothing to extend");
         });
     }
 

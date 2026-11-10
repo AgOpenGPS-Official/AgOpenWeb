@@ -25,7 +25,7 @@ public class PivotPassTests
 
         foreach (double d in new[] { 3.0, 9.0, 45.0, -3.0, -33.0 })
         {
-            var (pts, removed, _, _) = cache.Get(pivot, d);
+            var (pts, removed, _, _, _, _) = cache.Get(pivot, d);
             Assert.That(removed, Is.Zero);
             Assert.That(pts.All(p => Math.Abs(Math.Sqrt(Math.Pow(p.Easting - c.Easting, 2) + Math.Pow(p.Northing - c.Northing, 2)) - Math.Abs(50 - d)) < 1e-6),
                 $"offset {d}");

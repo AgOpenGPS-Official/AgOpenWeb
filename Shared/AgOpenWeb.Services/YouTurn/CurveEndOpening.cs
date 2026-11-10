@@ -22,7 +22,8 @@ namespace AgOpenWeb.Services.YouTurn;
 /// <para>
 /// The opening is the corridor between the line square to the curve's end at A and the one at B,
 /// from outside the fence in to halfway across the field (where the passes round the far side
-/// begin). The U-turn is given, in place of the field's:
+/// begin), or, with A and B on two sides of a corner, in to where those two lines meet. The
+/// U-turn is given, in place of the field's:
 /// <list type="bullet">
 /// <item>a headland line with the whole corridor cut out of the cultivated area, so the passes'
 /// ends are where it meets them (the turn trigger, the zones, the landing room);</item>
@@ -103,9 +104,23 @@ public static class CurveEndOpening
         {
             double aE = a.Easting + dAE * inset, aN = a.Northing + dAN * inset;
             double bE = b.Easting + dBE * inset, bN = b.Northing + dBN * inset;
+            var outA = P(aE - nAE * outside, aN - nAN * outside);
+            var outB = P(bE - nBE * outside, bN - nBN * outside);
+            // A and B on two sides of a corner: the lines square to the ends meet in the field, and
+            // the passes further in than that have no opening (the curve's far legs cover it). The
+            // corridor ends where they meet; run on to `depth` they crossed and made a bowtie.
+            double den = nAE * nBN - nAN * nBE;
+            if (Math.Abs(den) > 1e-9)
+            {
+                // a + nA·s = b + nB·r
+                double s = ((bE - aE) * nBN - (bN - aN) * nBE) / den;
+                double r = ((bE - aE) * nAN - (bN - aN) * nAE) / den;
+                if (s > 0 && r > 0 && (s < depth || r < depth))
+                    return new Path64 { outA, outB, P(aE + nAE * s, aN + nAN * s) };
+            }
             return new Path64
             {
-                P(aE - nAE * outside, aN - nAN * outside), P(bE - nBE * outside, bN - nBN * outside),
+                outA, outB,
                 P(bE + nBE * depth, bN + nBN * depth), P(aE + nAE * depth, aN + nAN * depth),
             };
         }
