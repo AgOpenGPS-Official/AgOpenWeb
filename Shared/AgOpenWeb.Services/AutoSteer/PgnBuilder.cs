@@ -146,7 +146,9 @@ public static class PgnBuilder
             // AutosteerProcessor: status & 0x01; AIO v4: guidanceStatus == 1).
             // This used to put the module's own echoed steer state in bit 0 and
             // AgOpenWeb's engage in bit 2, which no firmware reads (#125).
-            buf[7] = (byte)(state.IsAutoSteerEngaged && !state.IsSteerPaused ? 1 : 0);
+            // Not 1 on the simulator: the module would steer a real tractor to a
+            // simulated line (VehicleState.SimulatorHoldsSteering).
+            buf[7] = (byte)(state.IsAutoSteerEngaged && !state.IsSteerPaused && !state.SimulatorHoldsSteering ? 1 : 0);
 
             // Steer angle * 100 (signed, 2 bytes)
             short angleInt = (short)(state.SteerAngle * 100);

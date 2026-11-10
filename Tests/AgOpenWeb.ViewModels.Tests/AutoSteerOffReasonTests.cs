@@ -35,6 +35,7 @@ public class AutoSteerOffReasonTests
             ModuleCommunicationService = new ModuleCommunicationService(ConfigurationStore.Instance),
         };
         _vm = _b.Build();
+        _vm.IsSimulatorEnabled = false;   // a receiver's fix: on the simulator the module is never asked to steer
         _vm.IsAutoSteerAvailable = true;
     }
 

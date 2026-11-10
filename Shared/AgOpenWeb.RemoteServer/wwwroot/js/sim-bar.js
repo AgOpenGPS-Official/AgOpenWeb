@@ -13,6 +13,7 @@ const SIM = {
   enable: document.getElementById('sim-enable'), tenx: document.getElementById('sim-10x'),
   steer: document.getElementById('sim-steer'), steerVal: document.getElementById('sim-steerval'),
   speedVal: document.getElementById('sim-speedval'), gps: document.getElementById('sim-gps'),
+  drive: document.getElementById('sim-drive'),
 };
 let _steerDragging = false;     // suppress state→slider sync while the user drags
 // Sim-bar visibility is host-driven (PersistentAppState.SimulatorPanelVisible) so the
@@ -32,6 +33,16 @@ for (const b of document.querySelectorAll('#simbar button[data-cmd]')) {
     transport.send(b.dataset.cmd);
   });
 }
+// Bench test: the simulator moves the real steering. The host keeps the choice (never saved,
+// off again when the simulator is turned off or the steer module goes silent). Asked before it
+// goes on; off at once.
+SIM.drive.addEventListener('pointerdown', e => {
+  e.preventDefault(); e.stopPropagation();
+  if (statusBar && statusBar.simDrivesSteering) { transport.send('sim.driveSteering|0'); return; }
+  showConfirm(tr('Move the real steering?'),
+    tr('With this on, AutoSteer on the simulator makes the steer module turn the real wheels or motor. Use it for a bench test only, never on a tractor with the engine running. It goes off by itself when the simulator is turned off.'),
+    () => transport.send('sim.driveSteering|1'));
+});
 // Steer slider → command-with-arg; optimistic local readout while dragging.
 SIM.steer.addEventListener('input', () => {
   _steerDragging = true;

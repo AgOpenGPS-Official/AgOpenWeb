@@ -129,6 +129,14 @@ public struct VehicleState
     /// while AutoSteer stays engaged (AgOpenGPS, #125).</summary>
     public bool IsSteerPaused;
 
+    /// <summary>The internal simulator is the GPS source and may not steer the module: PGN 254
+    /// status stays 0. The steer module is on the network while the simulator runs, and a
+    /// simulated speed with status 1 made it open the lock valve and drive the steering of a
+    /// parked tractor. AutoSteer stays engaged in the app, so the simulator follows the line.
+    /// False with the simulator off, and when the operator let the simulator move the steering
+    /// for a bench test. Free Drive, the operator's own test of the steering, is not held back.</summary>
+    public bool SimulatorHoldsSteering;
+
     // ═══════════════════════════════════════════════════════════════════════
     // Section Control (updated by section control logic)
     // ═══════════════════════════════════════════════════════════════════════

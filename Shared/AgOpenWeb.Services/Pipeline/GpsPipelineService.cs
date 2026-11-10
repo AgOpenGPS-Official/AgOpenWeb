@@ -152,6 +152,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // it changes: field open, the cycle's own first-fix / re-anchor commits, field close.
     private LocalPlane? _committedLocalPlane;
     private bool _simulatorEnabled;
+    private bool _simulatorSteersModule;
     private bool _headlandOn;
     // Set by SetYouTurnConfig when the skip pattern changes, so the cycle drops the snake
     // sequence and the next turn rebuilds it for the new pattern.
@@ -415,10 +416,36 @@ public sealed class GpsPipelineService : IGpsPipelineService
         lock (_stateLock) _committedLocalPlane = localPlane;
     }
 
-    /// <summary>Whether the internal simulator is the GPS source (no steer speed limits then, #106).</summary>
+    /// <summary>Whether the internal simulator is the GPS source (no steer speed limits then, #106).
+    /// It does not steer the real module (<see cref="HoldSteeringOnTheSimulator"/>).</summary>
     public void SetSimulatorEnabled(bool enabled)
     {
         lock (_stateLock) _simulatorEnabled = enabled;
+        HoldSteeringOnTheSimulator();
+    }
+
+    /// <summary>The operator let the simulator move the real steering, for a bench test. Off, a
+    /// simulated drive never asks the steer module to steer (the default).</summary>
+    public void SetSimulatorSteersModule(bool steers)
+    {
+        lock (_stateLock) _simulatorSteersModule = steers;
+        HoldSteeringOnTheSimulator();
+    }
+
+    /// <summary>
+    /// The simulator does not steer the real module. The steer module stays on the network
+    /// while the simulator runs; PGN 254 status 1 with the simulator's speed made it open the
+    /// lock valve and drive the steering valve of a parked tractor. So the status stays 0
+    /// while the simulator is the chosen source, from the moment it is chosen and not from the
+    /// next fix (the receiver's first fixes arrive before the simulator's timer notices them
+    /// and stops), unless the operator let it move the steering for a bench test. AutoSteer
+    /// stays engaged in the app, so the simulator follows the line.
+    /// </summary>
+    private void HoldSteeringOnTheSimulator()
+    {
+        bool hold;
+        lock (_stateLock) hold = _simulatorEnabled && !_simulatorSteersModule;
+        _autoSteerService.SetSimulatorHoldsSteering(hold);
     }
 
     /// <summary>The headland toggle: the distance HUD and the hydraulic lift follow it (#106).</summary>

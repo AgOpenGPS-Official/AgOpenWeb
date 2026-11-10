@@ -978,6 +978,8 @@ public partial class MainViewModel : ObservableObject
                 var imuOk = _udpService.IsModuleHelloOk(ModuleType.IMU);
                 var gpsOk = _gpsService.IsGpsDataOk();
 
+                DropBenchChoiceWhenSteerModuleGoesSilent(steerOk);
+
                 // Update centralized state (single source of truth)
                 State.Connections.IsAutoSteerDataOk = steerOk;
                 State.Connections.IsMachineDataOk = machineOk;
@@ -1375,10 +1377,14 @@ public partial class MainViewModel : ObservableObject
     /// it isn't, whatever the switch type. Here: engaged + module connected + bit high =
     /// "module not steering". With a Switch/Button configured the bit also disengages
     /// (UpdateModuleSwitches, #124); with None it only shows, as in AgOpenGPS.
+    /// Not on the simulator, unless the operator let it move the steering: the module is not
+    /// asked to steer then (VehicleState.SimulatorHoldsSteering), so "not steering" is what it
+    /// should say, and no alert.
     /// </summary>
     internal void UpdateModuleSteeringState()
     {
-        bool connected = State.Connections.IsAutoSteerDataOk;
+        bool held = _isSimulatorEnabled && !_isSimulatorDrivingSteering;
+        bool connected = State.Connections.IsAutoSteerDataOk && !held;
         bool notSteering = IsAutoSteerEngaged && connected && _autoSteerService.LastSteerData.SteerSwitchActive;
         State.Connections.IsModuleNotSteering = notSteering;
 

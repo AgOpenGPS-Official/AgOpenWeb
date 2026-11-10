@@ -550,6 +550,10 @@ function renderSimBar() {
   if (!s || s.simPanelVisible === false) return;
   SIM.enable.classList.toggle('on', !!s.simEnabled);
   SIM.tenx.classList.toggle('on', !!s.sim10x);
+  // Bench test button: only where it can do something (simulator on, a steer module answering).
+  // The host drops the choice when either ends, so it is never on while hidden.
+  SIM.drive.classList.toggle('show', !!s.simEnabled && !!s.autoSteerOk);
+  SIM.drive.classList.toggle('on', !!s.simDrivesSteering);
   // Steer: reflect the host value unless the user is mid-drag (don't fight them).
   if (!_steerDragging) {
     const deg = s.simSteerAngle || 0;

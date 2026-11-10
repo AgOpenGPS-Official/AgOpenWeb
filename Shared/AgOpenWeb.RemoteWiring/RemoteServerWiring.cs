@@ -94,6 +94,9 @@ public static partial class RemoteServerWiring
                                     vm.IsSimulatorEnabled = !vm.IsSimulatorEnabled; return;
                                 case "sim.toggle10x":
                                     vm.IsSimulatorSpeed10x = !vm.IsSimulatorSpeed10x; return;
+                                case "sim.driveSteering": // arg = 1|0: the simulator moves the real
+                                    // steering (a bench test). Not hardware-safe: only what is asked.
+                                    vm.IsSimulatorDrivingSteering = arg == "1"; return;
                                 case "sim.togglePanel": // show/hide the sim panel; persisted across runs
                                 {
                                     var ps = services.GetRequiredService<IPersistentStateService>();

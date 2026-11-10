@@ -862,6 +862,8 @@ public static class WireCodec
             WriteStr(w, ns.Profile);
             WriteStr(w, ns.Service);
         }
+        // The simulator moves the real steering, a bench test (append-only): u8.
+        w.Write((byte)(s.SimDrivesSteering ? 1 : 0));
         return ms.ToArray();
     }
 

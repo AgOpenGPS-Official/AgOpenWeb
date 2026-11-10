@@ -153,6 +153,11 @@ public interface IAutoSteerService
     /// reversing with Steer in reverse off, or while a direction change is unclear (#125).</summary>
     void SetSteerPaused(bool paused);
 
+    /// <summary>The internal simulator is the GPS source and may not steer the module: PGN 254
+    /// status stays 0, engaged or not, so a simulated drive does not move the real steering
+    /// of a module on the network. Free Drive still does.</summary>
+    void SetSimulatorHoldsSteering(bool hold);
+
     /// <summary>Reverse state for the deadzone, which is off in reverse (#110).</summary>
     void SetReverse(bool isReverse);
 

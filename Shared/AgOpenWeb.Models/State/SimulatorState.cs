@@ -25,4 +25,8 @@ public sealed class SimulatorState
 
     /// <summary>10× speed multiplier toggle (for testing large fields).</summary>
     public bool Is10x { get; set; }
+
+    /// <summary>The operator let the simulator move the real steering (a bench test). Off, the
+    /// steer module is never asked to steer on the simulator.</summary>
+    public bool DrivesSteering { get; set; }
 }

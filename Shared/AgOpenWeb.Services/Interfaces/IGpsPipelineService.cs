@@ -113,8 +113,13 @@ public interface IGpsPipelineService
     /// </summary>
     void SetLocalPlane(Models.LocalPlane? localPlane);
 
-    /// <summary>Whether the internal simulator is the GPS source (steer speed limits are off then).</summary>
+    /// <summary>Whether the internal simulator is the GPS source: steer speed limits are off
+    /// then, and the steer module is not asked to steer (PGN 254 status stays 0).</summary>
     void SetSimulatorEnabled(bool enabled);
+
+    /// <summary>Whether the simulator may steer the module on the network (a bench test). Off by
+    /// default: PGN 254 status stays 0 while the simulator is the GPS source.</summary>
+    void SetSimulatorSteersModule(bool steers);
 
     /// <summary>The headland toggle: the headland distance HUD and the hydraulic lift follow it.</summary>
     void SetHeadlandOn(bool on);
