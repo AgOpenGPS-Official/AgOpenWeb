@@ -282,6 +282,10 @@ public partial class MainViewModel
         State.Field.HeadlandProximityDistance = result.HeadlandProximityDistance;
         State.Field.HeadlandProximityWarning = result.HeadlandProximityWarning;
 
+        // Contour: a stretch ahead that can't be driven as a lap
+        State.Guidance.ContourAhead = result.ContourAhead;
+        State.Guidance.ContourAheadM = result.ContourAheadM;
+
         // Phase E E1: the cycle's first-fix LocalPlane auto-create arrives
         // here. The cycle already holds a cache of it for coord conversion;
         // we commit to the observable so subsequent UI readers see it. Only

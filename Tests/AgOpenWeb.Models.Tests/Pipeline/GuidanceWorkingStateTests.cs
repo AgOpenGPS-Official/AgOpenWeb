@@ -25,10 +25,11 @@ public class GuidanceWorkingStateTests
         // — not values the cycle iterates on. DisplayLine is the followed offset
         // line (the points form of the snapshot's cycle-only DisplayTrack), drawn
         // by the remote/web map; GuideLines are the curve's extra guidelines beside it
-        // (the snapshot's GuideLines, #450). The guard's real intent — every WORKING field
+        // (the snapshot's GuideLines, #450); ContourAhead/ContourAheadM say the contour line
+        // ahead can't be driven as a lap (GpsCycleResult). The guard's real intent — every WORKING field
         // has an observable mirror — is unaffected; only the reverse direction
         // carries these documented exceptions.
-        var observableOnly = new HashSet<string> { "DisplayLine", "GuideLines", "ToolPass" };
+        var observableOnly = new HashSet<string> { "DisplayLine", "GuideLines", "ToolPass", "ContourAhead", "ContourAheadM" };
         var observableProps = DeclaredProps(typeof(GuidanceState))
             .Where(p => !observableOnly.Contains(p.Name))
             .ToArray();
