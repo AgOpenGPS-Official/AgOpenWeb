@@ -229,12 +229,32 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
                 _lastWasDual = true;
                 _fixHeading = _gpsHeading = dual;
                 PushStep(easting, northing);
+                _hasPrevFix = false;          // the dual heading takes no fix-to-fix heading
                 return Output(_fixHeading);
             }
         }
 
         // ── Fix ──────────────────────────────────────────────────────────
         _lastWasDual = false;
+
+        // A position jump: the receiver changed its solution (another base, a re-fix) and the
+        // reported position moved sideways while the tractor drove on. A heading taken across
+        // it turned 57° for a 1 m jump (GPS/NTRIP scenarios, JUMP-HEADING-SPIKE) and AutoSteer
+        // put the wheels to 35°. The step history starts again from the new position and the
+        // heading is kept until the next FixToFixDistance of travel; the new position itself
+        // is followed (it is where the receiver says the tractor is). AgOpenGPS's own jump
+        // check is commented out.
+        double jE = easting - _prevFixE, jN = northing - _prevFixN;
+        bool jumped = _hasPrevFix && _hasHeading && IsSidewaysJump(jE, jN, _fixHeading);
+        _prevFixE = easting; _prevFixN = northing; _hasPrevFix = true;
+        if (jumped)
+        {
+            LastJumpM = Math.Sqrt(jE * jE + jN * jN);
+            JumpCount++;
+            Reset();
+            PushStep(easting, northing);
+            return ByPass(gpsHeading, imu);
+        }
         if (!_isFirstHeadingSet)
         {
             // Too slow to tell a direction: the run towards a first heading starts again
@@ -474,6 +494,28 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
         deg %= 360.0;
         if (deg < 0) deg += 360.0;
         return deg;
+    }
+
+    /// <summary>A step sideways to the heading of at least this much between two fixes, and
+    /// more than half as large as the step along it, is a position jump, m. Driving never moves
+    /// the antenna that far sideways from one fix to the next: a 10 m radius turn at 30 km/h
+    /// and 5 Hz moves it 0.14 m.</summary>
+    public const double JumpSidewaysM = 0.5;
+
+    private bool _hasPrevFix;
+    private double _prevFixE, _prevFixN;
+
+    /// <summary>How many position jumps the heading was kept across (<see cref="JumpSidewaysM"/>).</summary>
+    public int JumpCount { get; private set; }
+
+    /// <summary>The size of the last position jump, m.</summary>
+    public double LastJumpM { get; private set; }
+
+    private static bool IsSidewaysJump(double dE, double dN, double heading)
+    {
+        double along = dE * Math.Sin(heading) + dN * Math.Cos(heading);
+        double across = dE * Math.Cos(heading) - dN * Math.Sin(heading);
+        return Math.Abs(across) >= JumpSidewaysM && Math.Abs(across) > 0.5 * Math.Abs(along);
     }
 
     private void PushStep(double e, double n)

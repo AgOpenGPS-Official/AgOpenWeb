@@ -47,6 +47,13 @@ public interface IGpsHeadingFusionService
     /// heading is flipped so it still points the way the vehicle faces.</summary>
     bool IsReverse { get; }
 
+    /// <summary>How many sideways position jumps the fix-to-fix heading was kept across (the
+    /// receiver changed its solution); the pipeline says so on the status line.</summary>
+    int JumpCount { get; }
+
+    /// <summary>The size of the last such jump, m.</summary>
+    double LastJumpM { get; }
+
     /// <summary>True while a single antenna with no IMU can't yet tell whether the
     /// vehicle changed direction (AgOpenGPS isChangingDirection).</summary>
     bool IsChangingDirection { get; }

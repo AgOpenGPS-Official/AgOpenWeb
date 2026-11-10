@@ -812,6 +812,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
             pos.Speed, posEasting, posNorthing, data.HasDualHeading);
         _headingFusion.UpdateDualHeadingWarning(data.FixQuality);
         pos = pos with { Heading = fusedHeading };
+        // A sideways position jump (the receiver changed its solution): the heading was kept
+        // across it; say so, since AutoSteer now follows a position that moved.
+        string? jumpNotice = null;
+        if (_headingFusion.JumpCount != _lastJumpCount)
+        {
+            _lastJumpCount = _headingFusion.JumpCount;
+            jumpNotice = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "GPS position jumped {0:F1} m sideways (the receiver changed its solution): heading kept, AutoSteer follows the new position",
+                _headingFusion.LastJumpM);
+        }
         // Reverse (#125): guidance, U-turn and hydraulic lift need to know, and the
         // heading above already faces the way the vehicle points.
         _isReverse = _headingFusion.IsReverse;
@@ -1499,7 +1509,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             FarFromFieldWarning = farFromFieldWarning,
 
             // Status
-            StatusMessage = statusMessage ?? youTurnTickEffects?.StatusMessage ?? fixRejectionReason
+            StatusMessage = jumpNotice ?? statusMessage ?? youTurnTickEffects?.StatusMessage ?? fixRejectionReason
         };
 
         CycleCompleted?.Invoke(result);
@@ -2458,6 +2468,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // Monotonic ms clock; tests substitute it to step past the below-min-speed grace period.
     internal Func<long> NowMs { get; set; } = () => Environment.TickCount64;
     private long? _belowMinSteerSpeedSinceMs;
+    private int _lastJumpCount; // the fusion's JumpCount already told
     private const long BelowMinSteerSpeedGraceMs = 8000; // AgOpenGPS: 80 frames at 10 Hz
 
     /// <summary>Why AutoSteer won't steer with a dual heading that runs across the direction of
