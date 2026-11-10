@@ -58,6 +58,22 @@ public partial class MainViewModel
         _logger.LogInformation("[AutoSteer] Off: {Reason}", reason);
 
     /// <summary>
+    /// Why the dual antenna's heading can't be steered with, from the last GPS cycle, or null.
+    /// Across the direction of travel: its offset doesn't match how the antennas are mounted.
+    /// Reversing while the operator engages: either the tractor is reversing (drive forward
+    /// first), or it isn't and the offset is 180° out. Either way guidance would steer the
+    /// wrong way.
+    /// </summary>
+    private string? WhyDualHeadingCannotSteer()
+    {
+        if (double.IsFinite(_dualHeadingOffTravelDeg))
+            return Services.Pipeline.GpsPipelineService.DualHeadingOffTravelText(_dualHeadingOffTravelDeg);
+        if (_dualReadsReverse)
+            return "the dual antenna reads reversing: drive forward, and if the tractor already is, its Heading offset is 180° out (GPS tab)";
+        return null;
+    }
+
+    /// <summary>
     /// Why the steer module stopped steering, as far as the app can tell. The module's own
     /// pressure or current kickout clears the same PGN 253 bit as its switch and button, so
     /// the latest sensor reading (PGN 250) goes with it when a sensor is in use.

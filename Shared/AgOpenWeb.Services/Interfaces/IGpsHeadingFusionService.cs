@@ -55,6 +55,15 @@ public interface IGpsHeadingFusionService
     /// heading ($PANDA), so the single-antenna heading is used (#157).</summary>
     bool IsDualHeadingMissing { get; }
 
+    /// <summary>How far the dual heading (with its offset) was from the direction the antenna
+    /// moved at the last check, degrees 0–90 (reversing reads as along it); NaN until
+    /// measured, and while the heading doesn't come from the dual antenna.</summary>
+    double DualHeadingOffTravelDeg { get; }
+
+    /// <summary>True while the dual heading runs across the direction of travel: its offset
+    /// doesn't match how the antennas are mounted, and AutoSteer won't steer with it.</summary>
+    bool IsDualHeadingOffTravel { get; }
+
     /// <summary>True when the missing dual heading should be shown to the operator
     /// (#313): the receiver has a position, and the heading was lost or hasn't come
     /// within a short grace period. Not while the receiver is still starting up.</summary>

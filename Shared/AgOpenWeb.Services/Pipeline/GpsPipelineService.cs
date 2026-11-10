@@ -1007,6 +1007,18 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _isOutOfBounds = OutOfBounds(boundary, headlandLine, youTurnEnabled && hasValidHeadlandLine,
             driftedEasting, driftedNorthing);
 
+        // (5a) A dual heading across the direction of travel: its offset doesn't match how
+        // the antennas are mounted (front to back set up as side by side). Guidance would
+        // steer for a tractor driving across its line, and the tractor leaves the pass.
+        // Also on the simulator, which takes the offset too.
+        if (autoSteerEngaged && _headingFusion.IsDualHeadingOffTravel)
+        {
+            autoSteerEngaged = false;
+            autoSteerDisengaged = true;
+            disengageReason = "AutoSteer disengaged - " + DualHeadingOffTravelText(_headingFusion.DualHeadingOffTravelDeg);
+            lock (_stateLock) _autoSteerEngaged = false;
+        }
+
         // (5b) Steering speed limits (#106) — like AgOpenGPS, and like it not on the simulator.
         if (autoSteerEngaged && !simulatorEnabled)
         {
@@ -1428,6 +1440,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             ImuValid = data.ImuValid,
             IsReverse = _isReverse,
             IsDualHeadingMissing = _headingFusion.IsDualHeadingMissing,
+            IsDualHeadingOffTravel = _headingFusion.IsDualHeadingOffTravel,
+            DualHeadingOffTravelDeg = _headingFusion.DualHeadingOffTravelDeg,
 
             // Tool position
             ToolEasting = toolPos.Easting,
@@ -2445,6 +2459,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
     internal Func<long> NowMs { get; set; } = () => Environment.TickCount64;
     private long? _belowMinSteerSpeedSinceMs;
     private const long BelowMinSteerSpeedGraceMs = 8000; // AgOpenGPS: 80 frames at 10 Hz
+
+    /// <summary>Why AutoSteer won't steer with a dual heading that runs across the direction of
+    /// travel (<see cref="IGpsHeadingFusionService.IsDualHeadingOffTravel"/>), for the toast.</summary>
+    public static string DualHeadingOffTravelText(double offDeg) =>
+        string.Format(System.Globalization.CultureInfo.InvariantCulture,
+            "the dual antenna heading is {0:F0}° off the direction of travel: check its Heading offset (GPS tab)",
+            double.IsFinite(offDeg) ? offDeg : 90);
 
     /// <summary>
     /// AgOpenGPS steering speed limits: above Max steer speed disengages at once; below Min

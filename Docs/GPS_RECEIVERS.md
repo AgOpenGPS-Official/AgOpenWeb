@@ -113,6 +113,12 @@ GPHPR 0.1
 With `HEADING OFFSET` set on the receiver, the app's Dual Heading Offset stays 0. The
 receiver's `SMOOTH` settings do their own filtering; the app adds none.
 
+The app holds the dual heading against the way the antenna moves (`GpsHeadingFusionService`,
+every 2 m above 2 km/h). An offset 90° out (antennas across the cab with neither offset
+set) reads as a tractor driving sideways: AutoSteer won't engage and, if engaged, stops with
+the reason. One 180° out (both offsets set, or the antennas swapped) reads as reversing while
+the tractor drives forward: AutoSteer won't engage while the dual antenna reads reversing.
+
 ### Unicore UM981, single antenna with INS
 
 ```
