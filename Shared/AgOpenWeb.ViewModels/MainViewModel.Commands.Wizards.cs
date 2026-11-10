@@ -66,15 +66,24 @@ public partial class MainViewModel
         DisengageForSteerWizard();
     }
 
-    /// <summary>Tear down the remote wizard (Finish / Cancel from the browser).</summary>
+    /// <summary>Tear down the remote wizard (Finish / Cancel from the browser, or the browser
+    /// gone). What the finished steps set is saved, however the wizard ends, as AgOpenGPS saves
+    /// its settings when the steer wizard closes (FormSteerWiz): Cancel kept the steps' values
+    /// (Invert Motor, the WAS and roll zeros) in the live settings, and the module ran them,
+    /// but did not save them, so the next restart lost them (Steer wizard scenarios,
+    /// CANCEL_KEEPS_LIVE_NOT_SAVED).</summary>
     public void EndRemoteSteerWizard()
     {
         var wizard = SteerWizardViewModel;
+        if (wizard == null) return;
         // Cancel cannot leave a motor test running with the AutoSteer lockout lifted.
-        (wizard?.CurrentStep as SwitchGatedWizardStep)?.StopFreeDriveTest();
+        (wizard.CurrentStep as SwitchGatedWizardStep)?.StopFreeDriveTest();
         SteerWizardViewModel = null;
-        // Leave the step (a CPD / Ackermann circle stops recording) and drop the handlers.
-        wizard?.Close();
+        // Leave the step (a CPD / Ackermann circle stops recording, a test's temporary value
+        // goes back) and drop the handlers; then save what is left.
+        wizard.Close();
+        if (_configurationService.Store is { } store)
+            _configurationService.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
     }
 
     /// <summary>
@@ -83,7 +92,7 @@ public partial class MainViewModel
     /// sections off, and the steer wizard closed. Closing the wizard stops a motor test
     /// that would otherwise go on turning the wheels lock to lock; a wizard left open
     /// would also keep AutoSteer locked out (#154) with nothing on the reloaded page to
-    /// close it. What the finished steps set stays in the live settings, as with Cancel.
+    /// close it. What the finished steps set stays, saved, as with Cancel.
     /// </summary>
     public void OnBrowserControlEnded(string offReason)
     {

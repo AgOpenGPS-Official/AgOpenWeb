@@ -337,7 +337,12 @@ public class AckermannTestStepViewModel : WizardStepViewModel
 
     /// <summary>
     /// Pure math function for Ackermann calculation from circle test results.
-    /// Uses the ratio of calculated angle to the starting (initial) WAS angle.
+    /// Uses the ratio of calculated angle to the starting (initial) WAS angle, with the CPD
+    /// step's bias (<see cref="CpdCircleTestStepViewModel.CpdBias"/>): the CPD step leaves
+    /// the right side reading about 11 % high on purpose. AgOpenGPS (FormSteerWiz) matches the
+    /// left side to the true angle instead, so after both circles the same angle read 13 %
+    /// apart left and right and AutoSteer steered one way harder than the other (Steer wizard
+    /// scenarios, LEFT_RIGHT_READ_DIFFERENTLY). Here the left side reads high by the same.
     /// </summary>
     /// <param name="wheelbase">Vehicle wheelbase in meters</param>
     /// <param name="trackWidth">Vehicle track width in meters</param>
@@ -350,7 +355,7 @@ public class AckermannTestStepViewModel : WizardStepViewModel
         double leftAngle = Math.Atan(wheelbase / ((diameter - trackWidth * 0.5) / 2));
         leftAngle = leftAngle * 180.0 / Math.PI;
 
-        int ackermann = (int)((leftAngle / Math.Abs(startAngle)) * 100);
+        int ackermann = (int)(leftAngle / (CpdCircleTestStepViewModel.CpdBias * Math.Abs(startAngle)) * 100);
         return Math.Clamp(ackermann, 0, 200);
     }
 

@@ -339,13 +339,18 @@ public class CpdCircleTestStepViewModel : WizardStepViewModel
         return null;
     }
 
+    /// <summary>AgOpenGPS's "force cpd a bit on the low side" (FormSteerWiz): the CPD found
+    /// is taken 10 % low, so the sensor reads the angle about 11 % high and AutoSteer steers a
+    /// little less hard. The Ackermann step keeps the same bias on the left side.</summary>
+    public const double CpdBias = 0.9;
+
     public static double CalculateCpdFromCircle(double wheelbase, double trackWidth,
         double diameter, double actualAngle, double currentCpd)
     {
         double calcAngle = Math.Atan(wheelbase / ((diameter - trackWidth * 0.5) / 2));
         calcAngle = calcAngle * 180.0 / Math.PI;
 
-        double newCpd = (actualAngle / calcAngle) * currentCpd * 0.9;
+        double newCpd = (actualAngle / calcAngle) * currentCpd * CpdBias;
         return Math.Clamp((int)newCpd, 1, 255);
     }
 
