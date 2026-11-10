@@ -861,13 +861,15 @@ public sealed class JobRun : IAsyncDisposable
 
     /// <summary>The operator takes over at AgOpenWeb's warning <paramref name="e"/> (said at <paramref name="warnedAt"/> s
     /// on pass <paramref name="pass"/>), now; <paramref name="atEnd"/> when the warning asked for the end of the field and
-    /// the pass was driven to its end first. A refused turn ("No U-turn fits", "U-turn blocked") is a
-    /// problem the judge flags; a missed one is what the app said, noted.</summary>
+    /// the pass was driven to its end first. A refused turn ("No U-turn fits") is a problem the
+    /// judge flags; a blocked one ("U-turn blocked": the turn would swing into a hard boundary or
+    /// an obstacle, which the app must refuse, #698) and a missed one are what the app said, noted.</summary>
     private void TakeOver(string e, double warnedAt, int pass, bool atEnd)
     {
         TookOverAt = Seconds;
         bool missed = e.Contains("U-turn missed", StringComparison.Ordinal) || e.Contains("No U-turn can be made", StringComparison.Ordinal);
-        string what = missed ? "missed" : "refused";
+        bool blocked = e.Contains("U-turn blocked", StringComparison.Ordinal);
+        string what = missed ? "missed" : blocked ? "blocked" : "refused";
         Problems.Add(F($"{warnedAt:0.0} s: AgOpenWeb {what} the U-turn at the end of pass {pass} and asked the operator to take over{(atEnd ? " at the end of the field" : "")} (\"{e}\")"));
         EndedBy = atEnd && Seconds - warnedAt >= 1
             ? F($"the operator drove pass {pass} to its end and took over there at {Seconds:0} s, as AgOpenWeb's warning at {warnedAt:0} s asked: \"{e}\"")

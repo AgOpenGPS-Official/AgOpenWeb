@@ -290,7 +290,10 @@ public static class Jobs
             if (p.Contains("refused the U-turn", StringComparison.Ordinal)) flag(Severity.Bug, "TURN-REFUSED", p);
             // A missed turn the app warned about is TURN-MISSED (from what it said); the operator
             // taking over at the warning, as a farmer would, is what the job did, not a finding.
+            // A blocked turn (it would swing into a hard boundary or an obstacle, #698) is the app
+            // refusing what it must refuse: noted, with the ground left from there as its consequence.
             else if (p.Contains("missed the U-turn", StringComparison.Ordinal)) sc.Note("the operator took over at the warning and the job stopped there, as a person would: " + p);
+            else if (p.Contains("blocked the U-turn", StringComparison.Ordinal)) sc.Note("AgOpenWeb refused a turn that would have swung into a hard boundary or an obstacle, as it must (#698); the operator took over at the warning and the job stopped there: " + p);
             else if (p.Contains("ran", StringComparison.Ordinal)) flag(Severity.Safety, "RAN-OFF", p);
         }
     }
