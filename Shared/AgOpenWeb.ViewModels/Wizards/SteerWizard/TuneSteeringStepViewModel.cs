@@ -110,9 +110,9 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
     /// <see cref="QuickPwmPerSecMin"/>); the slow rises after it are a third of that.</summary>
     internal const double QuickRateShare = 0.4;
     /// <summary>The quick look at one side stops at this share of the PWM that moved the wheels before, plus 8.</summary>
-    internal const double QuickLimitShare = 1.45;
+    internal const double QuickLimitShare = 1.3;
     /// <summary>The slow look rises at this share of the quick one; holding a PWM then settles what a rise reads high.</summary>
-    internal const double SlowRateShare = 0.5;
+    internal const double SlowRateShare = 0.7;
     /// <summary>Wheels that creep after the set point stay (their PWM - 1) / gain behind it, so the
     /// search goes this much PWM further to see them move <see cref="MoveDetectDeg"/>.</summary>
     internal static readonly int CreepPwm = (int)Math.Ceiling(ProbeKp * MoveDetectDeg) + 2;
@@ -157,10 +157,25 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
     /// <summary>Wheels left further than this from a turn's target get a line in the result.</summary>
     internal const double ShortNoteDeg = 0.5;
     internal const int StepWindowMs = 2500;
-    /// <summary>Wheels that have not moved this long after a step or the start of a run are held.</summary>
+    /// <summary>Wheels that have not moved this long after the start of a run are held.</summary>
     internal const double StepStartSeconds = 1.0;
+    /// <summary>The same for a turn of the set point, once the steering's reaction time is known:
+    /// twice that plus 0.3 s, between these two.</summary>
+    internal const double StepStartMinSeconds = 0.5;
+    internal const double StepStartMaxSeconds = 1.5;
+    /// <summary>A turn this much longer than the wheels can stop short of it has to move them
+    /// (or, at a low gain, long enough to ask for <see cref="MustMovePwm"/> more than moves them).</summary>
+    internal const double MustMoveDeg = 0.8;
+    internal const double MustMovePwm = 6;
+    /// <summary>Wheels at rest this much further from the target than they can stop short of it are
+    /// held (at a low gain: far enough to be asked for <see cref="HeldShortPwm"/> more than moves them).</summary>
+    internal const double HeldShortDeg = 1.2;
+    internal const double HeldShortPwm = 12;
     /// <summary>Wheels that were moving and stand still this long while still driven are held.</summary>
     internal const double StallSeconds = 0.4;
+    /// <summary>The widest LOW_HIGH_DEGREES of the firmwares (3.0 in the AiO v4 firmware, 1.5 in
+    /// others): assumed where the module's PWM is worked out, so the figure is never over the module's.</summary>
+    internal const double WidestLowHighDeg = 5.0;
 
     internal const string WrongWayText =
         "The wheels turned the wrong way, so the test stopped and left them where they are. " +
@@ -185,7 +200,12 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
     private volatile bool _holdWatch;
     private volatile bool _holdTripped;
     private double _holdAt;
-    private int _stiffSidePwm;
+    // The PWM that moves each side (from the first part): a turn that asks for more has to move the wheels.
+    private int _rightPwm, _leftPwm;
+    /// <summary>Since when (ms) the module has been asking for clearly more than moves the wheels
+    /// with the wheels still at <see cref="_pushAngle"/>; NaN when it is not.</summary>
+    private double _pushSinceMs = double.NaN;
+    private double _pushAngle;
     private bool _screenStop;
     private bool _inStopCheck;
     private TuneStopKind _stopKind;
@@ -495,7 +515,8 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
             _anchor = CurrentWasAngle;
             var (right, left, notes) = await MeasureMinToMoveAsync(token);
             int lower = Math.Min(right, left);
-            _stiffSidePwm = Math.Max(right, left);
+            _rightPwm = right;
+            _leftPwm = left;
             int min = Math.Clamp(lower - Math.Max(2, (int)Math.Round(lower * MinMarginShare)), 1, 200);
 
             var (max, speed, maxNote) = await MeasureMaxLimitAsync(lower, token);
@@ -617,7 +638,7 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
             // Slower, the wheels move no later than they did on the quick rise: still a little
             // past that PWM (creeping wheels take a moment to show), they are held.
             int? slow = await FindAsync(dir, (int)(quick.Value * 0.75), slowRate, (int)(quick.Value * 1.25) + 5 + CreepPwm,
-                (int)(quick.Value * 1.1) + 3 + (int)Math.Ceiling(ProbeKp * MoveNoiseDeg), token);
+                quick.Value + Math.Max(3, quick.Value / 20) + (int)Math.Ceiling(ProbeKp * MoveNoiseDeg), token);
             if (slow == null)
                 throw new TuneAbort(StuckText);
 
@@ -663,9 +684,15 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
         int before = 0, hits = 0;
         int? result = null;
         bool atOnce = false;
+        // Wheels that begin to move reach MoveDetectDeg while the PWM rises by CreepPwm at
+        // most (they follow the set point). Begun, and not there by then: they are held.
+        double stallMs = Math.Max(600, (CreepPwm + 2) / pwmPerSec * 1000);
+        double begunAt = double.NaN;
+        int begun = 0, notBegun = 0;
         while (true)
         {
-            double want = fromPwm + pwmPerSec * (NowMs() - t0) / 1000.0;
+            double now = NowMs();
+            double want = fromPwm + pwmPerSec * (now - t0) / 1000.0;
             if (want > limitPwm)
                 break;
             AutoSteerService?.SetFreeDriveAngle(start + dir * (want - 1) / ProbeKp);
@@ -682,6 +709,15 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
                 // Not moving at all past this PWM: no further (a hand on the wheel is not pushed harder).
                 if (want > stillLimitPwm)
                     break;
+                begun = 0;
+                if (++notBegun >= 3) begunAt = double.NaN;
+            }
+            else
+            {
+                notBegun = 0;
+                if (++begun >= 3 && double.IsNaN(begunAt)) begunAt = now;
+                if (now - begunAt >= stallMs && moved < MoveDetectDeg)
+                    throw new TuneAbort(StuckText);
             }
             hits = moved >= MoveDetectDeg ? hits + 1 : 0;
             if (hits >= 2)
@@ -1009,17 +1045,20 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
         double half = stepDeg / 2;
         double hard = Math.Max(2.0, stepDeg / 2);
 
-        // The stiffer side stops (its PWM - Minimum To Move) / gain short of the target by the
-        // firmware's rule; well over that, and standing still, is a hand on the wheel.
-        double stuck = 2.0 + 1.5 * Math.Max(0, _stiffSidePwm - min) / kp;
+        // By the firmware's rule each side stops (its PWM - Minimum To Move) / gain short of the
+        // target. A turn longer than that has to move the wheels, and wheels at rest further
+        // from the target than that are held: a hand on the wheel.
+        double shortRight = Math.Max(0, _rightPwm - min) / (double)kp;
+        double shortLeft = Math.Max(0, _leftPwm - min) / (double)kp;
 
-        var (pre, preCut) = await StepAsync(_anchor - half, hard, stuck, token);
+        var law = (kp, min, max);
+        var (pre, preCut) = await StepAsync(_anchor - half, hard, law, shortRight, shortLeft, token, measured: false);
         if (preCut)
             return new LevelResult(kp, true, StepWindowMs / 1000.0, pre.OvershootDeg, 0);
-        var (right, rightCut) = await StepAsync(_anchor + half, hard, stuck, token);
+        var (right, rightCut) = await StepAsync(_anchor + half, hard, law, shortRight, shortLeft, token);
         if (rightCut)
             return new LevelResult(kp, true, StepWindowMs / 1000.0, right.OvershootDeg, 0);
-        var (left, leftCut) = await StepAsync(_anchor - half, hard, stuck, token);
+        var (left, leftCut) = await StepAsync(_anchor - half, hard, law, shortRight, shortLeft, token);
 
         double over = Math.Max(right.OvershootDeg, left.OvershootDeg);
         double shortOf = Math.Max(0, Math.Max(right.FinalErrorDeg, left.FinalErrorDeg));
@@ -1030,11 +1069,17 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
     /// <summary>
     /// One step of the set point, sampled until the wheels are at rest or <see cref="StepWindowMs"/>.
     /// Wheels that swing across the target, or go <paramref name="hardOvershootDeg"/> past it,
-    /// stop the module at once (Cut). Wheels that come to rest more than
-    /// <paramref name="stuckShortDeg"/> short of it are held by something: the test stops.
+    /// stop the module at once (Cut). <paramref name="shortRightDeg"/> and
+    /// <paramref name="shortLeftDeg"/>: how far short of a target each side can stop by itself;
+    /// wheels that do not start on a longer turn, or rest further from the target, are held by
+    /// something and the test stops. So are wheels that stand still, in this turn or since an
+    /// earlier one, while the module asks for clearly more than moves them
+    /// (<paramref name="law"/>: the settings under test).
     /// </summary>
-    private async Task<(StepResponse Response, bool Cut)> StepAsync(double target, double hardOvershootDeg, double stuckShortDeg, CancellationToken token)
+    private async Task<(StepResponse Response, bool Cut)> StepAsync(double target, double hardOvershootDeg,
+        (int Kp, int Min, int Max) law, double shortRightDeg, double shortLeftDeg, CancellationToken token, bool measured = true)
     {
+        int kp = law.Kp;
         double start = CurrentWasAngle;
         double step = Math.Abs(target - start);
         AutoSteerService?.SetFreeDriveAngle(target);
@@ -1044,6 +1089,11 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
             return (new StepResponse(0, 0, 0, 0, true), false);
         }
         int dir = target > start ? 1 : -1;
+        double canStopShort = dir > 0 ? shortRightDeg : shortLeftDeg;
+        double mustMove = canStopShort + Math.Max(MustMoveDeg, MustMovePwm / kp);
+        double held = canStopShort + Math.Max(HeldShortDeg, HeldShortPwm / kp);
+        double startBy = StepStartBySeconds();
+        double startedAt = double.NaN;
         double t0 = NowMs();
         var samples = new List<(double T, double Moved)>();
         while (true)
@@ -1053,14 +1103,31 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
             samples.Add((t, moved));
             if (moved <= -WrongWayDeg)
                 throw new TuneAbort(WrongWayText);
-            // A step this size asks for more PWM than moved the wheels before: wheels that do not
-            // start, or that stop well short of where this gain can take them, are held.
-            // (A step smaller than that shortfall may not move the stiffer side at all: that is
+            // The module asking for clearly more than moves this side, and the wheels still for
+            // longer than they take to start: held. This clock runs on from turn to turn, so a
+            // hand that stops the wheels near the end of one turn is not pushed for the next.
+            double errNow = target - s.Angle;
+            bool pushing = SteerTuneMath.ModulePwm(errNow, law.Kp, law.Min, law.Max, WidestLowHighDeg)
+                           >= (errNow > 0 ? _rightPwm : _leftPwm) + HeldShortPwm;
+            if (!pushing || double.IsNaN(_pushSinceMs) || Math.Abs(s.Angle - _pushAngle) > 0.35)
+            {
+                _pushSinceMs = pushing ? s.T : double.NaN;
+                _pushAngle = s.Angle;
+            }
+            else if (s.T - _pushSinceMs >= (startBy + 0.2) * 1000)
+                throw new TuneAbort(StuckText);
+            // A turn longer than the wheels can stop short of asks for more PWM than moved this
+            // side before: wheels that do not start, or that rest well short of where this gain
+            // can take them, are held. (A shorter turn may not move a stiff side at all: that is
             // a poor gain, not a hand, and the level's result says so.)
             double most = samples.Max(x => Math.Abs(x.Moved));
-            if (t >= StepStartSeconds && step >= 2 && step > stuckShortDeg && most < 0.3)
+            if (double.IsNaN(startedAt) && most >= 0.3)
+                startedAt = t;
+            if (t >= startBy && step > mustMove && double.IsNaN(startedAt))
                 throw new TuneAbort(StuckText);
-            if (most >= 0.5 && step - moved > stuckShortDeg && AtRest(samples, StallSeconds + 0.1))
+            // (At rest since they started, not before: a steering that answers late stands
+            // still for its dead time first.)
+            if (t - startedAt >= StallSeconds + 0.1 && step - moved > held && AtRest(samples, StallSeconds + 0.1))
                 throw new TuneAbort(StuckText);
             if (moved - step > hardOvershootDeg || SteerTuneMath.Crossings(samples, step) >= 3)
             {
@@ -1070,11 +1137,20 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
             }
             if (t * 1000 >= StepWindowMs)
                 break;
-            if (AtRest(samples, 0.3) && (moved >= 0.8 * step || t >= 1.5))
+            // (A turn that only gets the wheels there is not waited for longer than they take to start.)
+            if (AtRest(samples, 0.3) && (moved >= 0.8 * step || t >= startBy + (measured ? 0.5 : 0)))
                 break;
         }
         return (SteerTuneMath.StepResponse(samples, step), false);
     }
+
+    /// <summary>
+    /// By when the wheels must have started after a turn of the set point: twice the time they
+    /// took to start in the Max Limit runs (a turn asks for less PWM than those) plus 0.3 s.
+    /// </summary>
+    private double StepStartBySeconds() => _reactionMs.Count == 0
+        ? StepStartSeconds
+        : Math.Clamp(2 * SteerTuneMath.Median(_reactionMs) / 1000.0 + 0.3, StepStartMinSeconds, StepStartMaxSeconds);
 
     /// <summary>The wheels moved less than 0.35° over the last <paramref name="seconds"/>.</summary>
     private static bool AtRest(List<(double T, double Moved)> samples, double seconds)
@@ -1096,11 +1172,17 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
         PhaseDescription = "Putting the wheels back where they were…";
         if (!_armed)
             await ArmAsync(token);
+        int startByLoops = (int)Math.Ceiling(StepStartBySeconds() * 1000 / 50);
+        var seen = new List<double> { CurrentWasAngle };
         AutoSteerService?.SetFreeDriveAngle(_anchor);
         for (int waited = 0; waited < 2500; waited += 50)
         {
             var s = await SampleAsync(token, 50);
             if (Math.Abs(s.Angle - _anchor) <= 1.0)
+                break;
+            // Wheels that do not come, or no longer come, are held: let go, the values are found already.
+            seen.Add(s.Angle);
+            if (seen.Count > startByLoops && Math.Abs(s.Angle - seen[seen.Count - 1 - startByLoops]) < 0.2)
                 break;
         }
         Disarm();
@@ -1123,6 +1205,7 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
     private async Task ArmAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        _pushSinceMs = double.NaN;
         _holdAt = CurrentWasAngle;
         _holdTripped = false;
         _holdWatch = true;

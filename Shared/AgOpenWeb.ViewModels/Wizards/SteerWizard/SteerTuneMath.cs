@@ -25,6 +25,20 @@ internal static class SteerTuneMath
     /// <summary>The wheels have settled once they stay this close to their final angle.</summary>
     internal const double SettleBandDeg = 0.3;
 
+    /// <summary>
+    /// The PWM the module's own loop asks for this far from the target (the firmware's rule:
+    /// gain × error plus Minimum To Move, never over Max Limit and, within
+    /// <paramref name="lowHighDeg"/> of the target, never over a share of it rising from 1.2 ×
+    /// Minimum To Move).
+    /// </summary>
+    internal static double ModulePwm(double errDeg, int kp, int min, int max, double lowHighDeg)
+    {
+        double e = Math.Abs(errDeg);
+        double low = Math.Floor(min * 1.2);
+        double cap = e < lowHighDeg ? Math.Floor(e * (max - low) / lowHighDeg + low) : max;
+        return e <= 0 ? 0 : Math.Min(Math.Floor(kp * e) + min, cap);
+    }
+
     internal static int Median(IReadOnlyList<int> values)
     {
         if (values.Count == 0) return 0;

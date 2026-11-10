@@ -561,6 +561,61 @@ public class SteerWizardTuneTests
         Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(25));
     }
 
+    /// <summary>
+    /// With no kickout sensor the step itself has to notice a hand on the wheel. The wheel is
+    /// taken at every tenth of a second of a whole run, one run per moment, and the longest the
+    /// motor then goes on pushing without a break (at the PWM that moves the wheels, or more)
+    /// is held to a bound. A few chosen moments are no test of this: a first version passed
+    /// those and pushed for 22 s at others.
+    /// </summary>
+    [TestCase("motor")]
+    [TestCase("motor with play")]
+    [TestCase("late valve, uneven sides")]
+    public async Task A_hand_on_the_wheel_at_any_moment_is_let_go_within_2_5_seconds(string steering)
+    {
+        var rows = new List<(int Pushed, int Loops, string Phase, string Result)>();
+        for (int after = 4; after < 2600; after += 4)
+        {
+            SetUp();
+            switch (steering)
+            {
+                case "motor with play":
+                    _fake.BreakawayRight = _fake.BreakawayLeft = 28; _fake.DeadTimeMs = 25; _fake.BacklashDeg = 0.6; _fake.NoiseDeg = 0.02;
+                    break;
+                case "late valve, uneven sides":
+                    _fake.BreakawayRight = 62; _fake.BreakawayLeft = 68; _fake.DegPerSecPerPwm = 0.3; _fake.DeadTimeMs = 100;
+                    _fake.LagMs = 80; _fake.MaxRate = 40; _fake.LowHighDeg = 1.5; _fake.NoiseDeg = 0.03;
+                    break;
+            }
+            int loops = 0, run = 0, worstRun = 0;
+            string phase = "";
+            bool grabbed = false;
+            var step = await RunWithAsync((f, st) =>
+            {
+                if (!grabbed && f.Steering && ++loops >= after)
+                {
+                    grabbed = true;
+                    f.Hands = f.Angle;
+                    phase = st.PhaseDescription;
+                }
+                if (f.Hands != null && f.Steering && Math.Abs(f.Pwm) >= Math.Min(f.BreakawayRight, f.BreakawayLeft))
+                    worstRun = Math.Max(worstRun, run += f.LoopMs);
+                else
+                    run = 0;
+            });
+            if (grabbed)
+                rows.Add((worstRun, after, phase, step.Stage + ": " + step.PhaseResult.Split('\n')[0]));
+        }
+
+        Console.WriteLine($"{steering}: {rows.Count} moments, longest push {rows.Max(r => r.Pushed)} ms");
+        foreach (var g in rows.GroupBy(r => r.Phase.Split(':')[0]))
+            Console.WriteLine($"   {g.Key}: {g.Count()} moments, longest push {g.Max(r => r.Pushed)} ms");
+        Assert.That(rows, Has.Count.GreaterThan(250), "the wheel was taken all through the run");
+        var worst = rows.MaxBy(r => r.Pushed);
+        Assert.That(worst.Pushed, Is.LessThan(2500),
+            $"taken after {worst.Loops} loops in '{worst.Phase}' the motor pushed on for {worst.Pushed} ms -> {worst.Result}");
+    }
+
     [Test]
     public void A_pressure_or_current_sensor_with_no_trip_point_is_no_stop_at_the_wheel()
     {
@@ -654,6 +709,19 @@ public class SteerWizardTuneTests
     {
         Assert.That(SteerTuneMath.Median(new[] { 31, 30, 58 }), Is.EqualTo(31));
         Assert.That(SteerTuneMath.Median(new[] { 30, 34 }), Is.EqualTo(32));
+    }
+
+    [Test]
+    public void The_modules_pwm_follows_the_firmwares_rule()
+    {
+        // Gain × error + Minimum To Move, never over Max Limit; within LOW_HIGH_DEGREES of the
+        // target never over a share of it that starts at 1.2 × Minimum To Move.
+        Assert.That(SteerTuneMath.ModulePwm(10, 40, 25, 180, 3), Is.EqualTo(180));
+        Assert.That(SteerTuneMath.ModulePwm(-4, 20, 25, 180, 3), Is.EqualTo(105));
+        Assert.That(SteerTuneMath.ModulePwm(1, 40, 25, 180, 3), Is.EqualTo(65));
+        Assert.That(SteerTuneMath.ModulePwm(1, 100, 25, 180, 3), Is.EqualTo(80));
+        Assert.That(SteerTuneMath.ModulePwm(1, 100, 25, 180, 5), Is.EqualTo(60), "a wider band: less");
+        Assert.That(SteerTuneMath.ModulePwm(0, 100, 25, 180, 3), Is.EqualTo(0));
     }
 
     [Test]
