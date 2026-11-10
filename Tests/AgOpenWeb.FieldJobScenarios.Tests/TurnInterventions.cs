@@ -399,9 +399,10 @@ public static class TurnInterventions
             bool inWork = Ring.Inside((r.Truth.E, r.Truth.N), r.Work);
             double step = Math.Abs(r.Truth.SpeedKmh) / 3.6 * JobRun.FixSeconds;
             if (inWork) { _inWorkM += step; _outOfWorkM = 0; } else _outOfWorkM += step;
-            // A pass with no work on it (the cultivated area narrows past the turn): the operator
-            // stops rather than drive on out of the field.
-            if (!inWork && _inWorkM == 0 && _outOfWorkM > 40)
+            // After a turn, a pass with no work on it (the cultivated area narrows past the turn):
+            // the operator stops rather than drive on out of the field. Not at the start, where
+            // the tractor drives in from outside the work.
+            if (Taps.Count > 0 && !inWork && _inWorkM == 0 && _outOfWorkM > 40)
             {
                 r.EndedBy = JobRun.F($"the operator finished at the headland: the pass after the last turn has no work on it");
                 r.FieldDone = true; r.Stopped = true; r.Did(r.EndedBy);
