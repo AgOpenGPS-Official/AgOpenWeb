@@ -83,6 +83,7 @@ const EXTRAP_CAP_MS = 200;
 // host monotonic timestamp on each Tick (EMA, so one jittery arrival can't shift the timeline).
 let clockOffset = null;
 let connState = 'connecting…';
+let everConnected = false; // the link-lost banner shows only after a first connection
 let ckStatus = 'loading…'; // CanvasKit init status (renderer migration prep)
 let statusBar = null;  // top status-bar readouts (fix/age/sats/units/modules)
 let config = null;     // config read-frame (vehicle config, …) for the left-nav panels
@@ -476,7 +477,17 @@ const transport = RemoteTransport.create({
     const rtt = performance.now() - parseFloat(token);
     if (rtt >= 0 && rtt < 60000) linkRttMs = (linkRttMs === null) ? rtt : linkRttMs + 0.3 * (rtt - linkRttMs);
   },
-  onStatus(s) { connState = s; renderRole(); claimSeatIfFree(); },
+  onStatus(s) {
+    connState = s;
+    // Once connected, a lost link puts up the banner until the page is connected again
+    // (not on the first load: nothing is on the screen to be out of date).
+    if (s === 'connected') everConnected = true;
+    const ll = document.getElementById('linklost');
+    // A short quiet spell only changes the role line ('No link'); the banner is for a link
+    // given up (transport.js gives up after 2.5 s without a frame) or closed.
+    if (ll) ll.classList.toggle('show', everConnected && s !== 'connected' && s !== 'quiet');
+    renderRole(); claimSeatIfFree();
+  },
   // Persisted web-camera view (issue #35): restore last tilt+zoom from the host seed.
   onViewPrefs(pitch, zoom, mode) { applyViewPrefs(pitch, zoom, mode); },
 });

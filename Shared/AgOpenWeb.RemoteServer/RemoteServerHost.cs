@@ -344,6 +344,18 @@ public sealed class RemoteServerHost
         };
         authority.Revoked += reason => FailsafeHandler?.Invoke(reason);
 
+        // A command from a screen without control is dropped (#397). Tell that screen, and
+        // send the settings again so a box edited there shows the host's value, not the
+        // one typed (an edit on an observer looked saved).
+        _ws.CommandRefused = (conn, id, tell) =>
+        {
+            if (id == "config.set") _broadcaster.ResendConfig();
+            if (tell)
+                _ws.SendTo(conn, WireCodec.EncodeToast(authority.Snapshot().Held
+                    ? "This screen is view only: another screen has control"
+                    : "This screen has no control: nothing was changed"));
+        };
+
         var server = new SimpleWebServer(port);
 
         // The /ws receive loop's token is linked to the server's shutdown inside

@@ -850,13 +850,20 @@ public static partial class RemoteServerWiring
                         if (held)
                         {
                             System.Diagnostics.Debug.WriteLine($"[remote] control taken by {name}");
+                            // What the last loss of control switched off, told to the screen
+                            // that has control now (the one that came back, or another).
+                            dispatcher.Post(() =>
+                            {
+                                if (vm.TakeControlLostNotice() is { } notice) vm.ReportFailure(notice);
+                            });
                             return;
                         }
+                        bool involuntary = controlLostReason != null;
                         string offReason = "browser control ended: " + (controlLostReason ?? "released");
                         controlLostReason = null;
                         dispatcher.Post(() =>
                         {
-                            vm.OnBrowserControlEnded(offReason);
+                            vm.OnBrowserControlEnded(offReason, involuntary);
                             wizardActive = false;
                         });
                     };

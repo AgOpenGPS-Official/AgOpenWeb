@@ -1045,41 +1045,76 @@ public class CoverageMapService : ICoverageMapService
     /// </summary>
     public IReadOnlyList<(int X, int Y, CoverageColor Color, int Alpha)> GetPaintedDisplayCells()
     {
-        var result = new List<(int, int, CoverageColor, int)>();
-        // MUST hold _coverageLock: a bounds-expansion on the control thread clears the display
-        // buffer in SetFieldBounds and then spends tens of ms resampling the old pixels back in
-        // (CheckAndExpandBounds) — all under this lock. A lock-free read here could catch the
-        // buffer cleared-but-not-yet-refilled and return an EMPTY snapshot, which (with the client
-        // tearing down on a reset init and re-anchor no longer resending) permanently dropped the
-        // pre-expansion coverage on the first cell-size-change expansion. Locking waits for the
-        // fully-resampled buffer. Alpha is folded in here too so it's consistent with the cells.
-        lock (_coverageLock)
+        // MUST hold _coverageLock while reading: a bounds-expansion on the control thread clears
+        // the display buffer in SetFieldBounds and then spends tens of ms resampling the old
+        // pixels back in (CheckAndExpandBounds) — all under this lock. A lock-free read here
+        // could catch the buffer cleared-but-not-yet-refilled and return an EMPTY snapshot,
+        // which (with the client tearing down on a reset init and re-anchor no longer resending)
+        // permanently dropped the pre-expansion coverage on the first cell-size-change expansion.
+        // Alpha is folded in here too so it's consistent with the cells.
+        //
+        // But not for the whole walk: a worked field has a million painted cells or more, each
+        // counting the detection cells under it, and the 100 Hz control tick paints coverage
+        // under the same lock, so one snapshot (a browser connecting) held the tick up to 200 ms
+        // (Working Day scenarios, CONTROL-TICK-OVER-10-MS). The walk takes the lock per band of
+        // rows. Between bands the control thread paints on: a band read later may hold newer
+        // paint, which the live stream sends again anyway (idempotent, newer alpha wins). A grid
+        // change between bands (an expansion swaps the buffer) starts the walk again.
+        for (int attempt = 0; ; attempt++)
         {
-            var buf = _displayPixels;
-            int w = _displayWidth, h = _displayHeight;
-            if (buf == null || !_fieldBoundsSet || !_boundsValid || w <= 0 || h <= 0)
-                return result;
-            double cell = _displayCellSize, fMinE = _displayOriginX * cell, fMinN = _displayOriginY * cell;
-
-            // Painted bounding box (detection cells at 0.1 m) → display-pixel index window, clamped.
-            int dxMin = ClampIndex((int)Math.Floor((_minCellE * BITMAP_CELL_SIZE - fMinE) / cell), w);
-            int dxMax = ClampIndex((int)Math.Floor(((_maxCellE + 1) * BITMAP_CELL_SIZE - fMinE) / cell), w);
-            int dyMin = ClampIndex((int)Math.Floor((_minCellN * BITMAP_CELL_SIZE - fMinN) / cell), h);
-            int dyMax = ClampIndex((int)Math.Floor(((_maxCellN + 1) * BITMAP_CELL_SIZE - fMinN) / cell), h);
-
-            for (int dy = dyMin; dy <= dyMax; dy++)
+            var result = new List<(int, int, CoverageColor, int)>();
+            ushort[]? buf;
+            int w, h, oX, oY, dxMin, dxMax, dyMin, dyMax;
+            double cell;
+            lock (_coverageLock)
             {
-                long row = (long)dy * w;
-                for (int dx = dxMin; dx <= dxMax; dx++)
+                buf = _displayPixels;
+                w = _displayWidth; h = _displayHeight;
+                if (buf == null || !_fieldBoundsSet || !_boundsValid || w <= 0 || h <= 0)
+                    return result;
+                cell = _displayCellSize; oX = _displayOriginX; oY = _displayOriginY;
+                double fMinE = oX * cell, fMinN = oY * cell;
+                // Painted bounding box (detection cells at 0.1 m) → display-pixel index window, clamped.
+                dxMin = ClampIndex((int)Math.Floor((_minCellE * BITMAP_CELL_SIZE - fMinE) / cell), w);
+                dxMax = ClampIndex((int)Math.Floor(((_maxCellE + 1) * BITMAP_CELL_SIZE - fMinE) / cell), w);
+                dyMin = ClampIndex((int)Math.Floor((_minCellN * BITMAP_CELL_SIZE - fMinN) / cell), h);
+                dyMax = ClampIndex((int)Math.Floor(((_maxCellN + 1) * BITMAP_CELL_SIZE - fMinN) / cell), h);
+            }
+
+            // Whole bands only after a few restarts: a field that keeps growing mid-walk must
+            // still get its snapshot.
+            int band = attempt >= 3 ? int.MaxValue : Math.Max(1, PaintedCellsBandPixels / Math.Max(1, dxMax - dxMin + 1));
+            bool changed = false;
+            for (int y0 = dyMin; y0 <= dyMax && !changed; y0 += band)
+            {
+                int y1 = (int)Math.Min((long)y0 + band - 1, dyMax);
+                lock (_coverageLock)
                 {
-                    ushort px = buf[row + dx];
-                    if (px == 0) continue; // unpainted display pixel
-                    result.Add((dx, dy, Rgb565ToColor(px), GetDisplayCellAlpha255(dx, dy)));
+                    if (!ReferenceEquals(buf, _displayPixels) || w != _displayWidth || h != _displayHeight
+                        || oX != _displayOriginX || oY != _displayOriginY || cell != _displayCellSize || !_fieldBoundsSet)
+                    {
+                        changed = true;
+                        break;
+                    }
+                    for (int dy = y0; dy <= y1; dy++)
+                    {
+                        long row = (long)dy * w;
+                        for (int dx = dxMin; dx <= dxMax; dx++)
+                        {
+                            ushort px = buf[row + dx];
+                            if (px == 0) continue; // unpainted display pixel
+                            result.Add((dx, dy, Rgb565ToColor(px), GetDisplayCellAlpha255(dx, dy)));
+                        }
+                    }
                 }
             }
+            if (!changed) return result;
         }
-        return result;
     }
+
+    /// <summary>Display pixels the snapshot walks per hold of the coverage lock (a band of
+    /// whole rows of the painted window). About a millisecond of work on a CM4.</summary>
+    private const int PaintedCellsBandPixels = 16_384;
 
     private static int ClampIndex(int v, int size) => v < 0 ? 0 : (v >= size ? size - 1 : v);
 

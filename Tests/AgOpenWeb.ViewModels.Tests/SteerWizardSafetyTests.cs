@@ -145,6 +145,56 @@ public class SteerWizardSafetyTests
         Assert.That(vm.IsAutoSteerEngaged, Is.False);
     }
 
+    [Test]
+    public void Browser_lost_switches_a_section_switched_On_by_hand_off()
+    {
+        // Web client scenarios, FORCED-SECTION-STAYS-ON: master off, manual off, section 2
+        // On by hand: the module went on getting it with nobody at the screen.
+        var b = new MainViewModelBuilder();
+        var states = new[]
+        {
+            new SectionControlState { Index = 0, ButtonState = SectionButtonState.Auto },
+            new SectionControlState { Index = 1, ButtonState = SectionButtonState.On },
+            new SectionControlState { Index = 2, ButtonState = SectionButtonState.Off },
+        };
+        b.SectionControlService.NumSections.Returns(3);
+        b.SectionControlService.SectionStates.Returns(states);
+        var vm = b.Build();
+
+        vm.OnBrowserControlEnded("browser control ended: presence lost (deadman)", involuntary: true);
+
+        b.SectionControlService.Received().SetSectionState(1, SectionButtonState.Off);
+        b.SectionControlService.DidNotReceive().SetSectionState(0, Arg.Any<SectionButtonState>());
+        Assert.That(vm.ControlLostNotice, Does.Contain("the sections").And.Contain("stopped answering"));
+    }
+
+    [Test]
+    public void Browser_lost_ends_Free_Drive_outside_the_wizard()
+    {
+        // FREE-DRIVE-KEEPS-STEERING: Free Drive from the AutoSteer panel (no wizard) kept the
+        // wheels at 10° with a made-up 8 km/h after the screen went.
+        var b = new MainViewModelBuilder();
+        b.AutoSteerService.IsInFreeDriveMode.Returns(true);
+        var vm = b.Build();
+
+        vm.OnBrowserControlEnded("browser control ended: client disconnected", involuntary: true);
+
+        b.AutoSteerService.Received().DisableFreeDrive();
+        Assert.That(vm.TakeControlLostNotice(), Does.Contain("Free Drive").And.Contain("lost its connection"));
+        Assert.That(vm.TakeControlLostNotice(), Is.Null, "told once");
+    }
+
+    [Test]
+    public void A_release_with_nothing_on_leaves_no_notice()
+    {
+        var b = new MainViewModelBuilder();
+        var vm = b.Build();
+
+        vm.OnBrowserControlEnded("browser control ended: released");
+
+        Assert.That(vm.ControlLostNotice, Is.Null);
+    }
+
     private static void SwitchCycle(MainViewModelBuilder b, MainViewModel vm, bool steering)
     {
         b.AutoSteerService.LastSteerData.Returns(Module(steering));

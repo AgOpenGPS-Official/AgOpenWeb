@@ -16,14 +16,22 @@ function renderRole() {
   const t = document.getElementById('sb-roletext'), d = document.getElementById('sb-roledot');
   if (!t) return;
   let label, color;
-  if (connState !== 'connected') { label = tr('Disconnected'); color = '#ff5a5a'; }
+  if (connState === 'quiet')     { label = tr('No link');      color = '#ff5a5a'; }
+  else if (connState !== 'connected') { label = tr('Disconnected'); color = '#ff5a5a'; }
   else if (iHoldControl)         { label = tr('Operator');     color = '#39FF6A'; }
   else if (lastControl.held)     { label = tr('Observer');     color = '#ff7a3d'; }
   else                           { label = tr('No operator');  color = '#9fb3cc'; }
   t.textContent = label; t.style.color = color; d.style.background = color;
 }
+let wasObserver = false; // this screen watched another hold control: taking it over is news
 function updateControlUi() {
+  const had = iHoldControl;
   iHoldControl = lastControl.held && lastControl.holderId === myClientId;
+  // A screen that was only watching and now has control is told so: the seat moved to it
+  // because the screen that had it went away, and nothing else on it changes.
+  if (iHoldControl && !had && wasObserver && typeof showToast === 'function')
+    showToast(tr('This screen now has control'));
+  wasObserver = !iHoldControl && lastControl.held;
   if (iHoldControl) { applyMobileQualityCap(); reportMaxTexture(); } // host-wide: sent once we may (#397)
   if (typeof renderHostPrompt === 'function') renderHostPrompt(); // who may answer
   if (typeof updateAsGated === 'function') updateAsGated(); // re-gate AutoSteer actions
