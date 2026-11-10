@@ -390,15 +390,26 @@ public static class TurnInterventions
     /// unworked side as the tractor crosses the headland line, and stops when no pass is left.</summary>
     private sealed class ManualTurns
     {
-        private bool _wasInWork; private double _inWorkM;
+        private bool _wasInWork; private double _inWorkM, _outOfWorkM;
         public readonly List<(int Index, double At, bool Left, bool Started, string Said)> Taps = new();
 
         public async Task OnFixAsync(JobRun r)
         {
-            if (r.InTurn || r.Work == null) { _wasInWork = false; _inWorkM = 0; return; }
+            if (r.InTurn || r.Work == null) { _wasInWork = false; _inWorkM = 0; _outOfWorkM = 0; return; }
             bool inWork = Ring.Inside((r.Truth.E, r.Truth.N), r.Work);
-            if (inWork) _inWorkM += Math.Abs(r.Truth.SpeedKmh) / 3.6 * JobRun.FixSeconds;
-            if (_wasInWork && !inWork && _inWorkM > 20)
+            double step = Math.Abs(r.Truth.SpeedKmh) / 3.6 * JobRun.FixSeconds;
+            if (inWork) { _inWorkM += step; _outOfWorkM = 0; } else _outOfWorkM += step;
+            // A pass with no work on it (the cultivated area narrows past the turn): the operator
+            // stops rather than drive on out of the field.
+            if (!inWork && _inWorkM == 0 && _outOfWorkM > 40)
+            {
+                r.EndedBy = JobRun.F($"the operator finished at the headland: the pass after the last turn has no work on it");
+                r.FieldDone = true; r.Stopped = true; r.Did(r.EndedBy);
+                return;
+            }
+            // Out of the work at the end of a pass: any work on it (a short pass where the field
+            // narrows counts too), not a brief dip out of it in the first metres after a turn.
+            if (_wasInWork && !inWork && _inWorkM > 3)
             {
                 var tc = r.Truth.ToolCentre;
                 int k = PassAt(r, (tc.E, tc.N));
