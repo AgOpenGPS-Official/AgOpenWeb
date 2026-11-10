@@ -131,7 +131,11 @@ public sealed class SafetyWatch : IDisposable
                 _errHistory.Enqueue((now, err));
                 while (_errHistory.Count > 0 && now - _errHistory.Peek().Ms > 1000) _errHistory.Dequeue();
                 double grew = err - _errHistory.Min(x => x.Err);
-                Track("runaway", grew > 6 && !atLock, 0, now, angle, where,
+                // AgOpenWeb takes AutoSteer off when the wheels run away from the set point
+                // (SteerRunawayDetector), which stops the motor in a fraction of a second; one
+                // the app ends within RunawayStoppedMs is its protection working (a note), one
+                // that goes on, the lock included, is the finding.
+                Track("runaway", grew > 6, RunawayStoppedMs, now, angle, where,
                     d => new Finding(Severity.Safety, "RUNAWAY",
                         "The wheels drove AWAY from the commanded angle (wrong motor direction: positive feedback) (" + d + ")."));
             }
@@ -148,6 +152,10 @@ public sealed class SafetyWatch : IDisposable
                     "The motor kept driving against the operator's hands on the wheel for over 3 s (" + d + ")."));
         }
     }
+
+    /// <summary>A runaway that stops within this long (AgOpenWeb's runaway check took AutoSteer
+    /// off) is noted, not a finding.</summary>
+    private const int RunawayStoppedMs = 500;
 
     private void Track(string key, bool on, int limitMs, long now, double angle, string where, Func<string, Finding> make)
     {
@@ -168,6 +176,8 @@ public sealed class SafetyWatch : IDisposable
         {
             if (e.Reported)
                 _notes.Enqueue(string.Create(inv, $"[watch] {key} lasted {(now - e.Since) / 1000.0:F1} s, wheels {e.Min:F1}° … {e.Max:F1}°"));
+            else if (key == "runaway")
+                _notes.Enqueue(string.Create(inv, $"[watch] runaway stopped after {(now - e.Since) / 1000.0:F2} s, wheels {e.Min:F1}° … {e.Max:F1}°"));
             e.Since = -1;
             e.Reported = false;
         }

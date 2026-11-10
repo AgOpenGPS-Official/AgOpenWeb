@@ -55,7 +55,8 @@ public interface IAutoSteerService
 
     /// <summary>
     /// The pressure or current sensor (PGN 250) reached its trip point while AutoSteer was
-    /// engaged, so the service stopped steering. Raised once per kickout, on the UDP receive
+    /// engaged, or the wheels ran away from the set point (<see cref="AutoSteer.SteerRunawayDetector"/>),
+    /// so the service stopped steering. Raised once per kickout, on the UDP receive
     /// thread, with the reason; the handler should marshal to the UI and take AutoSteer off.
     /// </summary>
     event EventHandler<string>? SensorKickout;
