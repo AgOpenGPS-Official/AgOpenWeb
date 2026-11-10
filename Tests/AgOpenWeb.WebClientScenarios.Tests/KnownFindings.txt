@@ -1,3 +1,8 @@
 # Finding codes already reported (an issue, a PR, or accepted as by design), one per line:
 #   CODE  where it was reported
 # The report marks every other code New.
+#
+# A code goes here when an issue or a merged PR exists for it, or the finding is accepted as
+# by design. A code that was only listed in a nightly report stays New: the report is where it
+# waits for an issue, not where it was dealt with.
+CAB-SCREEN-LOCKED-OUT      by design (#397): a browser cannot take control from a live operator, only fill an empty seat

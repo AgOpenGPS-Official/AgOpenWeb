@@ -23,7 +23,9 @@ public static class Jobs
     /// Runs a fixture's jobs one after the other (those AGOPENWEB_SCENARIO_ONLY picks), with a
     /// progress line per job (NUnit shows the console only at the end, so a slow nightly shows
     /// where it is), and writes the report after every job, so a run cut short by its time limit
-    /// keeps what it did. The report goes to AGOPENWEB_SCENARIO_REPORT, else <paramref name="reportName"/>
+    /// keeps what it did. When the time is up before every job has run, the jobs not run are a
+    /// HARNESS finding (TIME-UP) in the report, so a short report says what it lacks instead of
+    /// reading as a quiet night. The report goes to AGOPENWEB_SCENARIO_REPORT, else <paramref name="reportName"/>
     /// in the test's work directory; the harness's own failures are asserted at the end.
     /// </summary>
     public static async Task RunFixtureAsync(IEnumerable<(string Op, JobSpec Job)> jobs, string reportName,
@@ -35,10 +37,20 @@ public static class Jobs
         var journal = new Journal();
         var clock = System.Diagnostics.Stopwatch.StartNew();
         void Progress(string what) => TestContext.Progress.WriteLine(F($"[{clock.Elapsed:hh\\:mm\\:ss}] {what}"));
-        foreach (var (op, job) in jobs)
+        var wanted = jobs.Where(j => Want(only, j.Job.Code)).ToList();
+        for (int i = 0; i < wanted.Count; i++)
         {
-            if (!Want(only, job.Code)) continue;
-            ct.ThrowIfCancellationRequested();
+            var (op, job) = wanted[i];
+            if (ct.IsCancellationRequested)
+            {
+                var left = wanted.Skip(i).Select(w => w.Op + " " + w.Job.Code).ToList();
+                var sc = new Scenario(op, "TIME-UP", "The run's time limit was reached",
+                    "The test's CancelAfter limit was reached before every job had run.");
+                sc.Harness(F($"the time limit was reached after {clock.Elapsed.TotalMinutes:0} min and {i} job(s): {left.Count} not run ({string.Join(", ", left)})"));
+                journal.Add(sc.Row);
+                Progress($"time up: {left.Count} job(s) not run");
+                break;
+            }
             Progress($"{job.Code} ({op}): {job.Title}");
             await RunAsync(journal, op, job);
             await File.WriteAllTextAsync(path, toMarkdown(journal), CancellationToken.None);
@@ -98,7 +110,7 @@ public static class Jobs
         double ha = a.Work / 1e4;
         sc.Row.Metrics.Add(("Cultivated area (inside the headland line, outside obstacles)", F($"{ha:0.00} ha")));
         sc.Row.Metrics.Add(("Sprayed at least once (valves open, real implement)", F($"{a.Sprayed / 1e4:0.00} ha = {Pct(a.Sprayed, a.Work)}")));
-        sc.Row.Metrics.Add(("Never sprayed, of which between passes / at the pass ends (within 3 m of the headland line) / next to the obstacles (within 2 m)", F($"{a.Missed:0} m² = {Pct(a.Missed, a.Work)}, {a.MissedBetweenPasses:0} / {a.MissedAtEnds:0} / {a.MissedAtObstacles:0} m²")));
+        sc.Row.Metrics.Add(("Never sprayed, of which between passes / at the pass ends (within 3 m of the headland line) / next to the obstacles (within 2 m) / elsewhere inside the worked passes", F($"{a.Missed:0} m² = {Pct(a.Missed, a.Work)}, {a.MissedBetweenPasses:0} / {a.MissedAtEnds:0} / {a.MissedAtObstacles:0} / {a.MissedInWorkedPasses:0} m²")));
         sc.Row.Metrics.Add(("Widest missed strip / overlap between neighbouring passes", F($"{a.LargestMissedStripM:0.00} m / {a.LargestOverlapM:0.00} m")));
         sc.Row.Metrics.Add(("Sprayed twice or more", F($"{a.Twice:0} m² = {Pct(a.Twice, a.Work)}")));
         sc.Row.Metrics.Add(("Sprayed outside the boundary / in obstacles / in the headland", F($"{a.OutsideBoundary:0} / {a.InObstacles:0} / {a.InHeadland:0} m²")));
@@ -133,7 +145,16 @@ public static class Jobs
         else if (!r.FieldDone)
             flag(Severity.Bug, "FIELD-NOT-FINISHED", F($"AgOpenWeb never reported the end of the field; the job stopped after {r.Seconds / 60:0} min with {Pct(a.Missed, a.Work)} of the cultivated area unsprayed. {string.Join(" | ", r.Problems)}"));
         else if (a.Missed - a.MissedBetweenPasses - a.MissedLeftInMiddle - a.MissedAtCorners > 0.05 * a.Work)
-            flag(Severity.Bug, "FIELD-LEFT-UNDONE", F($"{(r.EndedBy.Length > 0 ? "The job ended (" + r.EndedBy + ")" : "AgOpenWeb reported the end of the field")} with {Pct(a.Missed - a.MissedBetweenPasses - a.MissedAtEnds - a.MissedAtObstacles - a.MissedAlongBoundary - a.MissedLeftInMiddle - a.MissedAtCorners, a.Work)} of the cultivated area never sprayed outside the strips between passes, the pass ends and the obstacles (a side of the field, or passes it skipped)."));
+        {
+            // Where the ground left lies: in passes that were driven but not along their whole
+            // length (a U-turn cut a corner off them), or in no driven pass (a side of the field,
+            // passes skipped). Said apart, since the two have different causes.
+            double left = a.Missed - a.MissedBetweenPasses - a.MissedAtEnds - a.MissedAtObstacles - a.MissedAlongBoundary - a.MissedLeftInMiddle - a.MissedAtCorners;
+            string where = a.MissedInWorkedPasses >= 0.9 * left ? "unsprayed inside the worked passes (passes it drove, but not along their whole length)"
+                : a.MissedInWorkedPasses <= 0.1 * left ? "a side of the field, or passes it skipped"
+                : F($"{a.MissedInWorkedPasses:0} m² unsprayed inside the worked passes, {left - a.MissedInWorkedPasses:0} m² on a side of the field or in passes it skipped");
+            flag(Severity.Bug, "FIELD-LEFT-UNDONE", F($"{(r.EndedBy.Length > 0 ? "The job ended (" + r.EndedBy + ")" : "AgOpenWeb reported the end of the field")} with {Pct(left, a.Work)} of the cultivated area never sprayed outside the strips between passes, the pass ends and the obstacles: {where}."));
+        }
         else if (a.MissedLeftInMiddle > 0.003 * a.Work && r.PathOp == null)
             sc.Ok(F($"the field was worked as the operator chose: {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed, {Pct(a.MissedLeftInMiddle, a.Work)} left where the operator turned back in the middle of a pass; {(r.EndedBy.Length > 0 ? r.EndedBy : F($"AgOpenWeb reported the end of the field after {r.Turns.Count} U-turns"))}"));
         else if (a.MissedLeftInMiddle > 0.003 * a.Work)
@@ -258,7 +279,8 @@ public static class Jobs
             sc.Ok(F($"all {r.Turns.Count} U-turns kept the tractor and the implement inside the boundary"));
         if (fallbacks > 0)
             sc.Note(F($"AgOpenWeb's turn service failed ('path invalid or out of bounds') and the simple fallback path was used in {fallbacks} of {r.Turns.Count} turns"));
-        var missed = r.Said.Where(s => s.Contains("U-turn missed", StringComparison.Ordinal) || s.Contains("cancelled", StringComparison.Ordinal)).ToList();
+        var missed = r.Said.Where(s => s.Contains("U-turn missed", StringComparison.Ordinal) || s.Contains("No U-turn can be made", StringComparison.Ordinal)
+            || s.Contains("cancelled", StringComparison.Ordinal)).ToList();
         if (missed.Count > 0)
             flag(Severity.Bug, "TURN-MISSED", F($"{missed.Count} U-turn(s) were missed or cancelled while the operator did nothing wrong: {missed[0]}"));
         r.PathOp?.Judge(sc, r, a, flag);
@@ -277,7 +299,13 @@ public static class Jobs
         if (r.Problems.Any(p => p.StartsWith("HARNESS", StringComparison.Ordinal))) return;
         foreach (var p in r.Problems)
         {
-            if (p.Contains("asked the operator to take over", StringComparison.Ordinal)) flag(Severity.Bug, "TURN-REFUSED", p);
+            if (p.Contains("refused the U-turn", StringComparison.Ordinal)) flag(Severity.Bug, "TURN-REFUSED", p);
+            // A missed turn the app warned about is TURN-MISSED (from what it said); the operator
+            // taking over at the warning, as a farmer would, is what the job did, not a finding.
+            // A blocked turn (it would swing into a hard boundary or an obstacle, #698) is the app
+            // refusing what it must refuse: noted, with the ground left from there as its consequence.
+            else if (p.Contains("missed the U-turn", StringComparison.Ordinal)) sc.Note("the operator took over at the warning and the job stopped there, as a person would: " + p);
+            else if (p.Contains("blocked the U-turn", StringComparison.Ordinal)) sc.Note("AgOpenWeb refused a turn that would have swung into a hard boundary or an obstacle, as it must (#698); the operator took over at the warning and the job stopped there: " + p);
             else if (p.Contains("ran", StringComparison.Ordinal)) flag(Severity.Safety, "RAN-OFF", p);
         }
     }

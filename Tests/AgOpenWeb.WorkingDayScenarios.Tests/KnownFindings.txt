@@ -1,3 +1,7 @@
 # Finding codes already reported (an issue or a PR exists): the report marks them "Already
 # reported" instead of "New", so two nights' reports diff. One code per line; text after the
 # code is a note (the issue or PR number).
+#
+# A code goes here when an issue or a merged PR exists for it, or the finding is accepted as
+# by design. A code that was only listed in a nightly report stays New: the report is where it
+# waits for an issue, not where it was dealt with.

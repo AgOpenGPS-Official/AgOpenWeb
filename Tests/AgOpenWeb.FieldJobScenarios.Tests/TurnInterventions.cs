@@ -167,7 +167,7 @@ public static class TurnInterventions
             var w = new TurnWatch();
             int offAt = -1;
             yield return Olival("T10", "AutoSteer off half way round a turn, on again",
-                "Ten seconds into the second U-turn the operator switches AutoSteer off, holds the wheel where it was for 3 s, and switches it on again (a touch on the wheel, a bump of the button). AgOpenWeb drops the turn when AutoSteer goes off; re-engaging is meant to build it again from scratch (GpsPipelineService). Does it, with the tractor already in the headland, and does the turn land on its pass?") with
+                "Ten seconds into the second U-turn the operator switches AutoSteer off, holds the wheel where it was for 3 s, and switches it on again (a touch on the wheel, a bump of the button). AgOpenWeb drops the turn when AutoSteer goes off; re-engaging is meant to build it again from scratch (GpsPipelineService). Does it, with the tractor already in the headland, and does the turn land on its pass? Where no turn can be made from there (AgOpenGPS cannot either) AgOpenWeb must say so: at its warning the operator takes over and stops the job, as a farmer would; a run-off with no warning is the Safety finding.") with
             {
                 OnFix = Seq(InTurnAfter(2, 10, async r =>
                 {
@@ -189,7 +189,9 @@ public static class TurnInterventions
                         r.Did("AutoSteer ON again" + (on ? "" : " (did NOT engage)"));
                     }
                 }, w.TrackAsync),
-                Expected = new[] { "AUTOSTEER-DROPPED" },
+                // The missed turn is the operator's own doing (AutoSteer off in the headland): the
+                // warning is what is wanted, not a finding.
+                Expected = new[] { "AUTOSTEER-DROPPED", "TURN-MISSED" },
                 ExtraJudge = w.Judge,
             };
         }

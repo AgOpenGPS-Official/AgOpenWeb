@@ -21,7 +21,14 @@ namespace AgOpenWeb.SteerWizardScenarios.Tests;
 /// forgiving than the reference board: a host that sends an unchanged packet inside the 25 ms
 /// wipes the edge and the board never steers (AgOpenWeb at 100 Hz, fixed by holding the
 /// unchanged packets 30 ms, AioV4EngageEdgeTests). The motor runs only while the watchdog is
-/// fresh: status bit 0, speed ≥ 0.1 km/h, switch on.</item>
+/// fresh: status bit 0, speed ≥ 0.1 km/h, switch on (the firmware has the speed condition
+/// commented out; kept here, and no scenario drives below walking pace). With a steer switch
+/// or button configured the firmware still runs the tablet-engage and switch-counter blocks
+/// after the switch block, every loop; here they run only without a switch or button. The
+/// difference: with the switch open, the firmware's tablet block holds steerSwitch at 0 from an
+/// engage until the next unchanged packet (the 30 ms hold at most), a motor pulse too short to
+/// move the wheels past break-away; not emulated. One scenario uses the switch (careless X8b),
+/// none a button.</item>
 /// <item>The WAS counts come from the real wheel angle through the sensor's real counts per
 /// degree, centre offset and mounting direction; the reported angle is the firmware's formula
 /// on the host's settings, Ackermann fix applied to left (negative) readings.</item>
@@ -297,7 +304,9 @@ public sealed class EmulatedSteerModule : IDisposable
             if (_watchdog < WatchdogForce) _watchdog++;
             if (!Online) _watchdog = WatchdogForce;
 
-            // Switches (Autosteer.ino).
+            // Switches (Autosteer.ino). The firmware runs the tablet-engage and switch-counter
+            // blocks below after the switch block whatever is configured; here only without a
+            // switch or button (the class comment says what that leaves out).
             if (SwitchConfigured)
                 _steerSwitch = (byte)(SteerSwitchClosed ? 0 : 1);
             else if (ButtonConfigured)

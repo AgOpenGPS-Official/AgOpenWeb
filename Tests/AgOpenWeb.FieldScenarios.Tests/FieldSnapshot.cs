@@ -31,6 +31,7 @@ public sealed class FieldSnapshot
     public string? SelectedTrack;
     public string? ActiveTrack;
 
+    public bool TramDisplay;
     public List<TramSystemInfo> TramSystems = new();
     public List<List<(double E, double N)>> TramLines = new();
     public List<(double E, double N)> TramOuterTrack = new();
@@ -75,6 +76,7 @@ public sealed class FieldSnapshot
             IsPromptPending = vm.IsPromptPending,
             PromptText = vm.IsPromptPending ? (vm.ConfirmationDialogTitle ?? vm.ErrorDialogTitle ?? "") + ": " + (vm.ConfirmationDialogMessage ?? vm.ErrorDialogMessage ?? "") : "",
             ToolWidth = AgOpenWeb.Models.Configuration.ConfigurationStore.Instance.ActualToolWidth,
+            TramDisplay = AgOpenWeb.Models.Configuration.ConfigurationStore.Instance.Guidance.TramDisplay,
         };
         var b = st.Field.CurrentBoundary;
         if (b?.OuterBoundary is { } ob && ob.Points.Count > 0)

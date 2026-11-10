@@ -325,7 +325,9 @@ public sealed class GoodOperator : Operator
             await Cmd("tram.set", "1,passes,2");
         });
         S.Check(S.Last.TramSystems.Count == 2, Severity.Bug, F($"{S.Last.TramSystems.Count} tram systems, wanted 2"));
-        await S.Step("tram display on", () => Cmd("config.set", "tram.display:true"));
+        // config.set booleans are "1" / "0" as the web client sends them: "true" reads as off.
+        await S.Step("tram display on", () => Cmd("config.set", "tram.display:1"));
+        S.Check(S.Last.TramDisplay, Severity.Bug, "tram display is still off after turning it on");
 
         // ---------------------------------------------------------------- 7. flags
         var (fe, fn) = await R.ToFieldAsync(inside.Lat, inside.Lon);
