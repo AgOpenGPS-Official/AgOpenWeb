@@ -46,7 +46,15 @@ whatever the operator is doing, and raises a Safety finding when the motor moves
 with neither Free Drive nor AutoSteer on, Free Drive stays on with the wizard closed, with no
 browser in control or after its step was left, AutoSteer is engaged while the wizard is open,
 the motor pushes against a lock for more than 2.5 s, the wheels run away from the commanded
-angle (the motor direction is wrong), or the motor drives against the operator's hands.
+angle (the motor direction is wrong) for more than 0.5 s, or the motor drives against the
+operator's hands. AgOpenWeb takes AutoSteer off at a runaway and says why
+(`SteerRunawayDetector`), which stops the motor within a fraction of a second: a runaway it ends
+within 0.5 s is a note in the step (`[watch] runaway stopped after …`), not a finding.
+
+After the wizard, the AutoSteer check drives an AB line for 30 s. If AgOpenWeb takes AutoSteer
+off during it, the check stops there: for a runaway (the careless operator who presses Next
+through every step with the sensor mounted the other way) that is the app doing its job; for
+any other reason it is `AUTOSTEER_DROPPED`.
 
 ## Running
 
