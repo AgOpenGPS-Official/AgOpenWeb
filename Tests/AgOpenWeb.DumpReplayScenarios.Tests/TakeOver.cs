@@ -171,8 +171,9 @@ public sealed class TakeOver : IAsyncDisposable
                     _s.Problem(Severity.Safety, Kind.AppDefect, "TURN-OUTSIDE-BOUNDARY", F($"take-over U-turn {turnsDone} took the tractor itself {turnPivotOut:0.0} m past the outer boundary (distance from boundary {setDist:0.0} m)"), "take-over", turnStart, secs);
                 else if (turnToolOut > 0.3)
                     // As the field job harness: 'distance from boundary' keeps the tractor inside, not
-                    // the implement, in AgOpenWeb as in AgOpenGPS.
-                    _s.Problem(Severity.Improvement, Kind.Parity, "TURN-IMPLEMENT-OUTSIDE", F($"take-over U-turn {turnsDone}: the tractor stayed inside, but the {Truth.T.Width:0.#} m implement's end swung {turnToolOut:0.0} m past the boundary (distance from boundary {setDist:0.0} m)"), "take-over", turnStart, secs);
+                    // the implement, in AgOpenWeb as in AgOpenGPS, kept on purpose (decided
+                    // 2026-11-10): the step line above says how far the implement swung; no finding.
+                    _s.Step(F($"take-over U-turn {turnsDone}: as in AgOpenGPS, the implement's end swung {turnToolOut:0.0} m past the boundary (distance from boundary keeps the tractor inside)"));
                 if (turnPivotOut <= 0.3 && setDist > 1.5 && turnMinPivot < setDist - 1.0)
                     _s.Problem(Severity.Bug, Kind.AppDefect, "TURN-CLOSER-THAN-SET", F($"take-over U-turn {turnsDone}: the pivot came {turnMinPivot:0.0} m from the boundary, the setting asks {setDist:0.0} m"), "take-over", turnStart, secs);
                 if (turnsDone >= 2 && doneAt < 0) doneAt = secs;

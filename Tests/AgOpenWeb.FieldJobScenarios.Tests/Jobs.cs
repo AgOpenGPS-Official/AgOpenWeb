@@ -274,7 +274,10 @@ public static class Jobs
         if (outTurns.Count > 0)
             flag(Severity.Safety, "TURN-OUTSIDE-BOUNDARY", F($"{outTurns.Count} of {r.Turns.Count} U-turns took the tractor itself past the field boundary, the furthest by {outTurns.Max(t => t.MaxPivotOutsideM):0.0} m (turn {outTurns.OrderByDescending(t => t.MaxPivotOutsideM).First().Index}{(outTurns.Any(t => t.Fallback) ? ", AgOpenWeb's simple fallback path" : "")}); 'distance from boundary' was {spec.UTurnDistanceFromBoundary:0.0} m."));
         else if (outTool.Count > 0)
-            flag(Severity.Improvement, "TURN-IMPLEMENT-OUTSIDE", F($"the tractor stayed inside the boundary in every U-turn, but the {spec.T.Width:0} m implement's end swung past it in {outTool.Count} of {r.Turns.Count} turns, the furthest by {outTool.Max(t => t.MaxOutsideM):0.0} m: 'distance from boundary' ({spec.UTurnDistanceFromBoundary:0.0} m) keeps the tractor inside, not the implement."));
+            // AgOpenGPS behaviour, kept on purpose (decided 2026-11-10): 'distance from boundary'
+            // keeps the tractor inside, not the implement; an operator who wants the boom inside
+            // sets a larger distance. Noted, not a finding.
+            sc.Note(F($"as in AgOpenGPS, 'distance from boundary' ({spec.UTurnDistanceFromBoundary:0.0} m) keeps the tractor inside, not the implement: the {spec.T.Width:0} m implement's end swung past the boundary in {outTool.Count} of {r.Turns.Count} turns, the furthest by {outTool.Max(t => t.MaxOutsideM):0.0} m"));
         else if (r.Turns.Count > 0)
             sc.Ok(F($"all {r.Turns.Count} U-turns kept the tractor and the implement inside the boundary"));
         if (fallbacks > 0)

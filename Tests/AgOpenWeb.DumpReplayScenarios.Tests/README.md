@@ -107,7 +107,7 @@ leaves the field.
 | The machine leaving the headland line on a line, moving forward, with no U-turn planned or running (now, whatever the reporter's build did) | `UTURN-MISSED` | app defect |
 | Take-over: AutoSteer will not engage, or goes off by itself | `TAKEOVER-NO-AUTOSTEER`, `TAKEOVER-AUTOSTEER-DROPPED` | app defect |
 | Take-over: a U-turn takes the tractor itself past the boundary | `TURN-OUTSIDE-BOUNDARY` | app defect (safety) |
-| Take-over: the tractor stays inside but an end of the implement swings past the boundary (*Distance from boundary* keeps the tractor inside, as in AgOpenGPS; the field job harness's finding too) | `TURN-IMPLEMENT-OUTSIDE` | parity with AgOpenGPS (improvement) |
+| Take-over: the tractor stays inside but an end of the implement swings past the boundary (*Distance from boundary* keeps the tractor inside, as in AgOpenGPS, kept on purpose) | none: a step line says how far | |
 | Take-over: a U-turn comes more than 1 m closer to the boundary than *Distance from boundary* asks (#544) | `TURN-CLOSER-THAN-SET` | app defect |
 | Take-over: a U-turn still running after 2 minutes | `TURN-NOT-FINISHED` | app defect |
 | Take-over: the machine leaves the field with AutoSteer on, no U-turn and no warning. When AgOpenWeb refused the turn and said so ("No U-turn fits ...", #698), that is the operator's cue and not a finding | `TAKEOVER-RAN-OFF` | app defect (safety) |

@@ -73,10 +73,23 @@ public class ManualTurnHardBoundaryTests
     }
 
     [Test]
-    public void SoftBoundary_NearEdge_PlotsTurn()
+    public void SoftBoundary_ImplementSwingsPast_TractorInside_PlotsTurn()
     {
-        var path = ManualTurn(Square(hard: false), startN: 45);
+        // Started at N=36 the tractor stays inside (its arc tops out short of +50) while the 16 m
+        // implement's end swings past: a soft boundary allows that, as AgOpenGPS does.
+        var path = ManualTurn(Square(hard: false), startN: 36);
         Assert.That(path.Count, Is.GreaterThan(2), "soft boundary should still plot the manual turn");
+        Assert.That(path.Max(p => p.Northing), Is.LessThan(50), "the tractor itself stays inside");
+    }
+
+    [Test]
+    public void SoftBoundary_TractorWouldLeaveTheField_RefusesTurn()
+    {
+        // Started at N=45 the tractor's own arc goes past the +50 edge: refused, as an automatic
+        // turn is (#698). AgOpenGPS's manual turn has no such check (Turn intervention T11 went
+        // 7 m out of the field).
+        var path = ManualTurn(Square(hard: false), startN: 45);
+        Assert.That(path.Count, Is.LessThanOrEqualTo(2), "a manual turn that leaves the field is refused");
     }
 
     [Test]
