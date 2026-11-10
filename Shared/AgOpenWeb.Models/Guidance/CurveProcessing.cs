@@ -569,7 +569,6 @@ namespace AgOpenWeb.Models.Guidance
             // A long curve (a boundary with a point every metre) is bucketed once, so the test
             // looks only at the points near each offset point instead of all of them.
             var near = refCount > NearGridMinPoints ? new PointGrid(originalPoints, Math.Abs(offsetDistance)) : null;
-            int lastClear = -1; // the last reference point whose offset point cleared the collision test
 
             for (int i = 0; i < refCount; i++)
             {
@@ -582,18 +581,25 @@ namespace AgOpenWeb.Models.Guidance
 
                 // AgOpenGPS collision detection: check if offset point is too close
                 // to ANY original curve point (indicates self-intersection)
-                bool addPoint = near != null
-                    ? !near.AnyCloser(originalPoints, offsetE, offsetN, distSqAway)
-                    : !AnyCloser(originalPoints, offsetE, offsetN, distSqAway);
+                bool addPoint = !SharpInsideBend(originalPoints, i, offsetDistance, closed)
+                    && (near != null
+                        ? !near.AnyCloser(originalPoints, offsetE, offsetN, distSqAway)
+                        : !AnyCloser(originalPoints, offsetE, offsetN, distSqAway));
                 if (!addPoint) skippedCount++;
+
+                // Round the outside of a bend: the offset jumps from the last point's normal to this
+                // one's, which left a chord with a kink at each end that the tractor overshot. Every
+                // arc point goes through the collision test, and the arc is added whether or not the
+                // points either side cleared it: where a short zigzag in a boundary removes them, the
+                // arc round its inward bump is the offset, and without it a chord across the gap ran
+                // up to 2 m nearer the boundary than the pass's distance (Path job scenarios P1,
+                // OFF-ITS-PASS).
+                if (i > 0)
+                    AddArc(offsetPoints, pt, originalPoints[i - 1].Heading, pt.Heading, offsetDistance,
+                        (e, n) => near != null ? !near.AnyCloser(originalPoints, e, n, distSqAway) : !AnyCloser(originalPoints, e, n, distSqAway));
 
                 if (addPoint)
                 {
-                    // Round the outside of a bend: the offset jumps from the last point's normal to
-                    // this one's, which left a chord with a kink at each end that the tractor overshot.
-                    if (lastClear == i - 1 && i > 0)
-                        AddArc(offsetPoints, pt, originalPoints[i - 1].Heading, pt.Heading, offsetDistance);
-                    lastClear = i;
 
                     // Also check minimum spacing from previous offset point (AgOpenGPS uses ~0.48 * tool width)
                     // We use a simpler 1m minimum spacing check
@@ -720,7 +726,27 @@ namespace AgOpenWeb.Models.Guidance
         /// offset points either side, already there). Nothing on the inside of a bend, where the
         /// collision test removes the points instead, or for a turn that spans under two metres.
         /// </summary>
-        private static void AddArc(List<Vec3> pts, Vec3 corner, double fromHeading, double toHeading, double offset)
+        /// <summary>
+        /// Does the curve bend more than 90° towards the offset side at point <paramref name="i"/>?
+        /// There the point's own offset (along its heading, the next segment's) lies on the part of
+        /// the next offset line the corner cuts away: it belongs to the self-intersection, though it
+        /// is exactly the offset from the point itself and so passes the collision test. At the tip
+        /// of a thin spike in a boundary (Olival's, a 177° turn) it landed outside the field, and the
+        /// smoothing after drew 37 m of the lap line 5 m out of it (Path job scenarios P1,
+        /// LAP-LINE-LEAVES-FIELD). AgOpenGPS takes a point's heading from both neighbours, which
+        /// points such an offset back along the spike, into the test. A gentler bend's point is kept:
+        /// its error is negligible.
+        /// </summary>
+        private static bool SharpInsideBend(IReadOnlyList<Vec3> pts, int i, double offset, bool closed)
+        {
+            int prev = i > 0 ? i - 1 : closed && pts.Count > 2 ? pts.Count - 2 : -1;
+            if (prev < 0) return false;
+            double turn = Math.IEEERemainder(pts[i].Heading - pts[prev].Heading, 2 * Math.PI); // + = a right turn
+            return Math.Sign(turn) == Math.Sign(offset) && Math.Abs(turn) > Math.PI / 2;
+        }
+
+        private static void AddArc(List<Vec3> pts, Vec3 corner, double fromHeading, double toHeading, double offset,
+            Func<double, double, bool>? clear = null)
         {
             double turn = Math.IEEERemainder(toHeading - fromHeading, 2 * Math.PI); // + = a right turn
             if (Math.Sign(turn) != -Math.Sign(offset)) return; // a right turn's outside is on the left
@@ -728,7 +754,8 @@ namespace AgOpenWeb.Models.Guidance
             for (int k = 1; k < steps; k++)
             {
                 double a = fromHeading + turn * k / steps + Math.PI / 2;
-                pts.Add(new Vec3(corner.Easting + Math.Sin(a) * offset, corner.Northing + Math.Cos(a) * offset, 0));
+                double e = corner.Easting + Math.Sin(a) * offset, n = corner.Northing + Math.Cos(a) * offset;
+                if (clear == null || clear(e, n)) pts.Add(new Vec3(e, n, 0));
             }
         }
 
