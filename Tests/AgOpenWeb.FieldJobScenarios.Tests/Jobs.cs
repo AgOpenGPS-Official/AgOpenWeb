@@ -23,7 +23,9 @@ public static class Jobs
     /// Runs a fixture's jobs one after the other (those AGOPENWEB_SCENARIO_ONLY picks), with a
     /// progress line per job (NUnit shows the console only at the end, so a slow nightly shows
     /// where it is), and writes the report after every job, so a run cut short by its time limit
-    /// keeps what it did. The report goes to AGOPENWEB_SCENARIO_REPORT, else <paramref name="reportName"/>
+    /// keeps what it did. When the time is up before every job has run, the jobs not run are a
+    /// HARNESS finding (TIME-UP) in the report, so a short report says what it lacks instead of
+    /// reading as a quiet night. The report goes to AGOPENWEB_SCENARIO_REPORT, else <paramref name="reportName"/>
     /// in the test's work directory; the harness's own failures are asserted at the end.
     /// </summary>
     public static async Task RunFixtureAsync(IEnumerable<(string Op, JobSpec Job)> jobs, string reportName,
@@ -35,10 +37,20 @@ public static class Jobs
         var journal = new Journal();
         var clock = System.Diagnostics.Stopwatch.StartNew();
         void Progress(string what) => TestContext.Progress.WriteLine(F($"[{clock.Elapsed:hh\\:mm\\:ss}] {what}"));
-        foreach (var (op, job) in jobs)
+        var wanted = jobs.Where(j => Want(only, j.Job.Code)).ToList();
+        for (int i = 0; i < wanted.Count; i++)
         {
-            if (!Want(only, job.Code)) continue;
-            ct.ThrowIfCancellationRequested();
+            var (op, job) = wanted[i];
+            if (ct.IsCancellationRequested)
+            {
+                var left = wanted.Skip(i).Select(w => w.Op + " " + w.Job.Code).ToList();
+                var sc = new Scenario(op, "TIME-UP", "The run's time limit was reached",
+                    "The test's CancelAfter limit was reached before every job had run.");
+                sc.Harness(F($"the time limit was reached after {clock.Elapsed.TotalMinutes:0} min and {i} job(s): {left.Count} not run ({string.Join(", ", left)})"));
+                journal.Add(sc.Row);
+                Progress($"time up: {left.Count} job(s) not run");
+                break;
+            }
             Progress($"{job.Code} ({op}): {job.Title}");
             await RunAsync(journal, op, job);
             await File.WriteAllTextAsync(path, toMarkdown(journal), CancellationToken.None);
