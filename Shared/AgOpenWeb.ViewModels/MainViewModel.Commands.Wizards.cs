@@ -90,8 +90,9 @@ public partial class MainViewModel
     /// The browser that held control is gone (released, disconnected, or the deadman ran
     /// out). Nothing may keep actuating with no screen and no Stop button: AutoSteer off,
     /// Free Drive off (it steers to its angle at a made-up speed), sections off (a section
-    /// switched On by hand too: the master does not reach it), and the steer wizard closed. Closing the wizard stops a motor test
-    /// that would otherwise go on turning the wheels lock to lock; a wizard left open
+    /// switched On by hand too: the master does not reach it), and the steer wizard closed.
+    /// Closing the wizard stops a motor test that would otherwise go on turning the wheels lock
+    /// to lock; a wizard left open
     /// would also keep AutoSteer locked out (#154) with nothing on the reloaded page to
     /// close it. What the finished steps set stays, saved, as with Cancel.
     /// </summary>
