@@ -14,10 +14,21 @@ namespace AgOpenWeb.SteerWizardScenarios.Tests;
 /// <item>PGN 252 / 251 are applied byte by byte as the firmware reads them (Kp, high/low/min PWM,
 /// counts per degree, WAS offset, Ackermann fix; invert WAS, motor direction, steer switch or
 /// button).</item>
-/// <item>PGN 254: status bit 0, speed and set point. The firmware's "no switch" logic: the steer
-/// switch variable goes on at a rising edge of the status and off at a falling one, and the
-/// edge is seen only by the 50 Hz loop, so two packets inside one loop can hide it (#240).
-/// The motor runs only while the watchdog is fresh: status 1, speed ≥ 0.1 km/h, switch on.</item>
+/// <item>PGN 254: status, speed and set point, read as Autosteer.ino reads them: every packet
+/// sets <c>guidanceStatusChanged = (status != previous status)</c>, and the control block, every
+/// LOOP_TIME = 25 ms, engages on <c>guidanceStatusChanged &amp;&amp; guidanceStatus == 1</c>
+/// without clearing the flag, so the next packet overwrites it. That is deliberately no more
+/// forgiving than the reference board: a host that sends an unchanged packet inside the 25 ms
+/// wipes the edge and the board never steers (AgOpenWeb at 100 Hz, fixed by holding the
+/// unchanged packets 30 ms, AioV4EngageEdgeTests). The motor runs only while the watchdog is
+/// fresh: status bit 0, speed ≥ 0.1 km/h, switch on (the firmware has the speed condition
+/// commented out; kept here, and no scenario drives below walking pace). With a steer switch
+/// or button configured the firmware still runs the tablet-engage and switch-counter blocks
+/// after the switch block, every loop; here they run only without a switch or button. The
+/// difference: with the switch open, the firmware's tablet block holds steerSwitch at 0 from an
+/// engage until the next unchanged packet (the 30 ms hold at most), a motor pulse too short to
+/// move the wheels past break-away; not emulated. One scenario uses the switch (careless X8b),
+/// none a button.</item>
 /// <item>The WAS counts come from the real wheel angle through the sensor's real counts per
 /// degree, centre offset and mounting direction; the reported angle is the firmware's formula
 /// on the host's settings, Ackermann fix applied to left (negative) readings.</item>
@@ -87,14 +98,16 @@ public sealed class EmulatedSteerModule : IDisposable
     private byte _steerSwitch = 1;  // firmware variable: 1 = not steering
     private byte _previous;
     private byte _currentState = 1;
+    private int _switchCounter;
     private byte _status, _prevStatus;
     private bool _statusChanged;
     private double _setPoint;
     private double _gpsSpeed;
     private int _watchdog = WatchdogForce;
-    private const int WatchdogThreshold = 100; // loops at 50 Hz = 2 s
+    private const int LoopTimeMs = 25;          // Autosteer.ino LOOP_TIME
+    private const int WatchdogThreshold = 100;  // WATCHDOG_THRESHOLD: loops of 25 ms = 2.5 s
     private const int WatchdogForce = WatchdogThreshold + 2;
-    private const double LoopDt = 0.02;
+    private const double LoopDt = LoopTimeMs / 1000.0;
     private readonly long _t0 = Environment.TickCount64;
 
     public double WheelAngleDeg { get { lock (_lock) return _angle; } }
@@ -140,6 +153,11 @@ public sealed class EmulatedSteerModule : IDisposable
             {
                 case PgnProtocol.PGN_AUTOSTEER_TO_MODULE when p.Length >= 14:
                     _gpsSpeed = (p[5] | p[6] << 8) * 0.1;
+                    // ReceiveUdp, as Autosteer.ino: the flag is set from every packet, not
+                    // latched, so an unchanged packet arriving before the next 25 ms pass wipes
+                    // the edge exactly as it does on an AIO v4 board. Without the host's 30 ms
+                    // hold after a status change (#758) that is a missed engage, and this harness
+                    // must show it rather than forgive it.
                     _prevStatus = _status;
                     _status = p[7];
                     _statusChanged = _status != _prevStatus;
@@ -216,14 +234,14 @@ public sealed class EmulatedSteerModule : IDisposable
         long next = 0;
         while (!ct.IsCancellationRequested)
         {
-            next += 20;
+            next += LoopTimeMs;
             Step();
             long wait = next - sw.ElapsedMilliseconds;
             if (wait > 0) { try { await Task.Delay((int)wait, ct); } catch (OperationCanceledException) { break; } }
         }
     }
 
-    /// <summary>One 50 Hz firmware loop plus the physics of the wheels.</summary>
+    /// <summary>One LOOP_TIME (25 ms) pass of the firmware's control block plus the physics of the wheels.</summary>
     private void Step()
     {
         lock (_lock)
@@ -231,7 +249,9 @@ public sealed class EmulatedSteerModule : IDisposable
             if (_watchdog < WatchdogForce) _watchdog++;
             if (!Online) _watchdog = WatchdogForce;
 
-            // Switches (Autosteer.ino).
+            // Switches (Autosteer.ino). The firmware runs the tablet-engage and switch-counter
+            // blocks below after the switch block whatever is configured; here only without a
+            // switch or button (the class comment says what that leaves out).
             if (SwitchConfigured)
                 _steerSwitch = (byte)(SteerSwitchClosed ? 0 : 1);
             else if (ButtonConfigured)
@@ -246,17 +266,15 @@ public sealed class EmulatedSteerModule : IDisposable
             }
             else
             {
-                if (_statusChanged && _status == 1 && _steerSwitch == 1 && _previous == 0)
+                // No switch and no button: the tablet engages (Autosteer.ino, "2 Has tablet
+                // button been pressed?"). The flag is not cleared here; the next packet does it.
+                if (_statusChanged && _status == 1) _steerSwitch = 0;
+                // If AOG has stopped steering, wait then turn off steerswitch ready for next engage.
+                if (_steerSwitch == 0 && _status == 0)
                 {
-                    _steerSwitch = 0;
-                    _previous = 1;
+                    if (_switchCounter++ > 30) _steerSwitch = 1;
                 }
-                if (_statusChanged && _status == 0 && _steerSwitch == 0 && _previous == 1)
-                {
-                    _steerSwitch = 1;
-                    _previous = 0;
-                }
-                _statusChanged = false;
+                else _switchCounter = 0;
             }
 
             double actual = Reported();

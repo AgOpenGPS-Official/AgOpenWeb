@@ -68,12 +68,14 @@ public sealed class ScenarioJournal
         var sb = new StringBuilder();
         sb.Append("# ").Append(title).Append("\n\n").Append(intro).Append("\n\n");
 
-        sb.Append("## Scenarios\n\n| Scenario | Operator | Steps | Safety | Bug | Inconsistency | Robustness | Improvement | Time |\n|---|---|---|---|---|---|---|---|---|\n");
+        // The times vary from night to night and are not findings: the total once, not a column.
+        sb.Append(string.Create(inv, $"{Scenarios.Count} scenarios in {Scenarios.Sum(s => s.Ms) / 60000.0:0.0} min.\n\n"));
+        sb.Append("## Scenarios\n\n| Scenario | Operator | Steps | Safety | Bug | Inconsistency | Robustness | Improvement |\n|---|---|---|---|---|---|---|---|\n");
         foreach (var s in Scenarios)
         {
             var all = s.Steps.SelectMany(x => x.Findings).ToList();
             int C(Severity v) => all.Count(x => x.Severity == v);
-            sb.Append(string.Create(inv, $"| {s.Name} | {s.Operator} | {s.Steps.Count} | {C(Severity.Safety)} | {C(Severity.Bug)} | {C(Severity.Inconsistency)} | {C(Severity.Robustness)} | {C(Severity.Improvement)} | {s.Ms / 1000.0:F0} s |\n"));
+            sb.Append(string.Create(inv, $"| {s.Name} | {s.Operator} | {s.Steps.Count} | {C(Severity.Safety)} | {C(Severity.Bug)} | {C(Severity.Inconsistency)} | {C(Severity.Robustness)} | {C(Severity.Improvement)} |\n"));
         }
 
         sb.Append("\n## Findings (each kind once, most serious first)\n\n");
@@ -95,8 +97,10 @@ public sealed class ScenarioJournal
             {
                 sb.Append(string.Create(inv, $"{st.Index}. {st.What}"));
                 if (st.Expect == Expect.Refused) sb.Append(" *(should be refused)*");
-                sb.Append(string.Create(inv, $" — {st.Ms} ms"));
-                if (st.Says.Count > 0) sb.Append(" — says: ").Append(string.Join(" / ", st.Says.Select(m => "\"" + Trim(m) + "\"")));
+                // A step's time is noise from night to night; only a slow one is worth a word, and
+                // a status line the app repeated within one step is listed once.
+                if (st.Ms >= 2000) sb.Append(string.Create(inv, $" — slow: {st.Ms / 1000.0:0.0} s"));
+                if (st.Says.Count > 0) sb.Append(" — says: ").Append(string.Join(" / ", st.Says.Distinct(StringComparer.Ordinal).Select(m => "\"" + Trim(m) + "\"")));
                 sb.Append('\n');
                 foreach (var f in st.Findings)
                     sb.Append("   - **").Append(f.Severity.ToString()).Append("** `").Append(f.Code).Append("` ").Append(f.Message).Append('\n');
