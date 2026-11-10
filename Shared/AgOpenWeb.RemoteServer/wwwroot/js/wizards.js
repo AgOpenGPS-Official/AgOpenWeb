@@ -13,6 +13,7 @@ const wzContent = document.getElementById('wz-content');
 // stepKind|index of the currently-built content (rebuild on change — and on a unit
 // flip, which onUnitsChanged forces by clearing this).
 let _wzKey = '';
+let _wzStage = '', _wzStageAt = 0;   // the stage of a step with stages, and when it changed
 function openSteerWizard() { _wzKey = ''; wizard = null; transport.send('wizard.open'); wzOverlay.classList.add('open'); }
 function wzClose(send) { if (send) transport.send('wizard.cancel'); wzOverlay.classList.remove('open'); wizard = null; _wzKey = ''; }
 document.getElementById('wz-cancel').addEventListener('pointerdown', e => { e.stopPropagation(); wzClose(true); });
@@ -31,7 +32,12 @@ wzContent.addEventListener('pointerdown', e => {
   e.stopPropagation();
   if (el.dataset.cfg) { const i = el.dataset.cfg.indexOf(':'); cfgSend(el.dataset.cfg.slice(0, i), el.dataset.cfg.slice(i + 1)); }
   else if (el.dataset.hw != null) transport.send('wizard.hw|' + el.dataset.hw);
-  else if (el.dataset.act) rnSend('wizard.action|' + el.dataset.act);
+  else if (el.dataset.act) {
+    // A button that appeared a moment ago where another was (Stop, then Continue or Use these
+    // values) gets the tap meant for the old one: not taken. Stop is always taken.
+    if (el.dataset.stage && el.dataset.act !== 'StopTest' && performance.now() - _wzStageAt < 700) return;
+    rnSend('wizard.action|' + el.dataset.act);
+  }
   else if (el.dataset.wzset) rnSend('wizard.set|' + el.dataset.wzset);
   else if (el.dataset.tgl) cfgSend(el.dataset.tgl, cfgGet(el.dataset.tgl) ? '0' : '1');
 });
@@ -135,7 +141,8 @@ function buildWizardContent(w) {
       // The host's step says where it is (testStage: 0 idle, 1 running, 2 stop check passed,
       // 3 values found, 4 values in use); each button names the stages it shows in.
       const sp = (v, t) => '<button data-wzset="TargetWheelSpeed:' + v + '" data-choice="' + v + '">' + esc(t) + '</button>';
-      return head + '<div class="wz-testtop"><div class="wz-prereq"><div class="ttl">Wheel speed wanted</div>' +
+      // (The speed choice and the live angle make room for the values found: a 5" screen shows them without scrolling.)
+      return head + '<div class="wz-testtop" data-stage="0 1 2 4"><div class="wz-prereq"><div class="ttl">Wheel speed wanted</div>' +
         '<div class="it">' + esc(tr('How fast the wheels turn at the Max Limit: 15, 25 or 35°/s')) + '</div>' +
         '<div class="wz-seg wz-tunespeed">' + sp(15, tr('Gentle')) + sp(25, tr('Normal')) + sp(35, tr('Fast')) + '</div></div>' +
         wzLive(tr('Live Steer Angle'), 'angle') + '</div>' +
@@ -203,6 +210,7 @@ function renderWizard() {
   for (const el of wzContent.querySelectorAll('[data-act],[data-wzset]')) el.classList.toggle('disabled', !iHoldControl);
   // A step with stages (the wheel tuning): its buttons and fields show in the stages they name.
   const stage = String(w.testStage | 0);
+  if (stage !== _wzStage) { _wzStage = stage; _wzStageAt = performance.now(); }
   for (const el of wzContent.querySelectorAll('[data-stage]'))
     el.style.display = el.dataset.stage.split(' ').includes(stage) ? '' : 'none';
   for (const el of wzContent.querySelectorAll('[data-choice]'))

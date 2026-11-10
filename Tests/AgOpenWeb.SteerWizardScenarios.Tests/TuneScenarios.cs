@@ -673,7 +673,7 @@ public static class TuneScenarios
             await s.ActAsync("StartTest");
             await Task.Delay(32000);
             await s.WaitTestEndAsync(5000);
-            await NothingMovedAsync(at, from, "Stop check not done", "not seen to stop");
+            await NothingMovedAsync(at, from, "Stop check not done", "within 30 seconds");
             await AftermathAsync(s, before, at, null);
         }, Expect.Any);
     }

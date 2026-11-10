@@ -438,8 +438,10 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
                 if (Math.Abs(d.ActualSteerAngle - held) > mayMove)
                     throw new TuneAbort(HoldMovedText);
                 if (NowMs() - t0 > StopCheckTimeoutMs)
-                    throw new TuneAbort("The module was not seen to stop within 30 seconds, so the wheels were not " +
-                        "moved. Check the steer switch or the kickout sensor (Speed and Sensors, two steps on), then press Start.");
+                    throw new TuneAbort(_stopKind == TuneStopKind.Screen
+                        ? "Stop was not pressed within 30 seconds, so the wheels were not moved. Press Start to begin again."
+                        : "The module was not seen to stop within 30 seconds, so the wheels were not " +
+                          "moved. Check the steer switch or the kickout sensor (Speed and Sensors, two steps on), then press Start.");
             }
             Disarm();
             PhaseDescription = "";
