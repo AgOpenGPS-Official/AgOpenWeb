@@ -2,18 +2,7 @@
 #   CODE  where it was reported
 # The report marks every other code New.
 #
-# The first nightly report (official PR #722, merged 2026-11-08) listed these; the fork
-# renatorgr/AgOpenWeb carries fixes for the first four (PRs #146 and #148), not upstream yet.
-FORCED-SECTION-STAYS-ON    #722 report; fix in fork PR renatorgr/AgOpenWeb#146 (the failsafe closes hand-On sections)
-FREE-DRIVE-KEEPS-STEERING  #722 report; fix in fork PR renatorgr/AgOpenWeb#146 (the failsafe ends Free Drive)
-SILENT-LINK-LOOKS-LIVE     #722 report; fix in fork PRs renatorgr/AgOpenWeb#146 and #148 (quiet-link watchdog in transport.js)
-TWO-SCREENS-SAY-OPERATOR   #722 report; same watchdog
-BUTTON-UNREACHABLE         #722 report (5" 800x480 status bar does not scroll)
-MENU-CONTROL-UNREACHABLE   #722 report (AutoSteer panel footer cut at 600 px height)
-MENU-WONT-OPEN             #722 report (AutoSteer panel '◀ Less' under the scrim)
-READOUT-OFF-SCREEN         #722 report (5" 800x480: the GPS fix readout)
-CAB-SCREEN-LOCKED-OUT      by design (#397): the phone keeps control until it gives it back
-CONTROL-LOSS-NOT-EXPLAINED #722 report
-CONTROL-MOVED-SILENTLY     #722 report
-OBSERVER-EDIT-LOOKS-SAVED  #722 report
-SMALL-TOUCH-TARGET         #722 report
+# A code goes here when an issue or a merged PR exists for it, or the finding is accepted as
+# by design. A code that was only listed in a nightly report stays New: the report is where it
+# waits for an issue, not where it was dealt with.
+CAB-SCREEN-LOCKED-OUT      by design (#397): a browser cannot take control from a live operator, only fill an empty seat
