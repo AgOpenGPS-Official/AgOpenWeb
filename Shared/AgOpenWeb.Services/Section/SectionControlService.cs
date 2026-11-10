@@ -369,23 +369,33 @@ public class SectionControlService : ISectionControlService
         // Check boundary conditions using segment-based detection
         // Use halfWidthWithMargin for current position to prevent coverage outside boundary
         _sectionSw.Restart();
-        var currentBoundaryResult = GetSegmentBoundaryStatus(sectionCenter, toolHeading, halfWidthWithMargin);
-        var lookOnBoundaryResult = GetSegmentBoundaryStatus(onCheckPoint, toolHeading, halfWidth);
-        var lookOffBoundaryResult = GetSegmentBoundaryStatus(offCheckPoint, toolHeading, halfWidth);
+        bool isInBoundary, lookOnInBoundary, lookOffInBoundary;
+        if (tool.IsSectionOffWhenOut)
+        {
+            // "Off outside boundary" (AgOpenGPS tool.isSectionOffWhenOut): a section is out as
+            // soon as it isn't (all but) fully inside the field and clear of obstacles. One rule
+            // (SectionIsIn) for where the section is now and for where it is about to be, so the
+            // valve, told the look-ahead time early, closes at the edge. The look-ahead used to
+            // be judged by a weaker rule (50 %, no edge points) on a single line: an obstacle that
+            // only touched a section's edge, or one shorter than the look-ahead distance that the
+            // line had already passed, was found only on arrival, and the valve sprayed into it
+            // for its closing time (field job J2/J6). Off: the whole band from here to the look-off
+            // point. On: the look-on point.
+            isInBoundary = SectionIsIn(sectionCenter, toolHeading, halfWidthWithMargin, coverageMargin > 0);
+            lookOnInBoundary = SectionIsIn(onCheckPoint, toolHeading, halfWidthWithMargin, coverageMargin > 0);
+            lookOffInBoundary = isInBoundary && BandIsIn(sectionCenter, toolHeading, lookAheadOffDist, speed,
+                halfWidthWithMargin, coverageMargin > 0);
+        }
+        else
+        {
+            // Off: a section counts as in while any part of it is inside, i.e. either edge in
+            // (#110); the look-ahead anticipates with half the section inside.
+            const double BOUNDARY_THRESHOLD_LOOKAHEAD = 0.50;
+            isInBoundary = GetSegmentBoundaryStatus(sectionCenter, toolHeading, halfWidthWithMargin).InsidePercent > 0;
+            lookOnInBoundary = GetSegmentBoundaryStatus(onCheckPoint, toolHeading, halfWidth).InsidePercent >= BOUNDARY_THRESHOLD_LOOKAHEAD;
+            lookOffInBoundary = GetSegmentBoundaryStatus(offCheckPoint, toolHeading, halfWidth).InsidePercent >= BOUNDARY_THRESHOLD_LOOKAHEAD;
+        }
         _totalBoundaryMs += _sectionSw.Elapsed.TotalMilliseconds;
-
-        // Use strict threshold for current position - section must be fully inside to spray
-        // This prevents spraying outside boundary when implement swings during turns
-        const double BOUNDARY_THRESHOLD_STRICT = 0.95; // 95% inside required to be "in boundary"
-        const double BOUNDARY_THRESHOLD_LOOKAHEAD = 0.50; // 50% for look-ahead anticipation
-        // "Off outside boundary" (AgOpenGPS tool.isSectionOffWhenOut): on = a section is out
-        // as soon as it isn't (all but) fully inside; off = it counts as in while any part
-        // is inside, i.e. either edge in (#110). It used to be always on.
-        bool isInBoundary = tool.IsSectionOffWhenOut
-            ? currentBoundaryResult.InsidePercent >= BOUNDARY_THRESHOLD_STRICT
-            : currentBoundaryResult.InsidePercent > 0;
-        bool lookOnInBoundary = lookOnBoundaryResult.InsidePercent >= BOUNDARY_THRESHOLD_LOOKAHEAD;
-        bool lookOffInBoundary = lookOffBoundaryResult.InsidePercent >= BOUNDARY_THRESHOLD_LOOKAHEAD;
 
         // Check headland conditions
         // Use speed-dependent look-ahead so coverage edges land exactly on
@@ -456,28 +466,6 @@ public class SectionControlService : ISectionControlService
         {
             UpdateSectionOff(index);
             return;
-        }
-
-        // ADDITIONAL CHECK: Verify both expanded edge points are inside boundary.
-        // The segment-based check can sometimes pass when edges are outside,
-        // especially when tool heading is perpendicular to boundary.
-        // Only with "Off outside boundary" on — off, a section straddling the edge stays
-        // on (AgOpenGPS isSectionOffWhenOut, #110).
-        if (coverageMargin > 0 && tool.IsSectionOffWhenOut)
-        {
-            double perpHeading = toolHeading + Math.PI / 2.0;
-            var expandedLeftEdge = new Vec2(
-                sectionCenter.Easting + Math.Sin(perpHeading) * (-halfWidthWithMargin),
-                sectionCenter.Northing + Math.Cos(perpHeading) * (-halfWidthWithMargin));
-            var expandedRightEdge = new Vec2(
-                sectionCenter.Easting + Math.Sin(perpHeading) * halfWidthWithMargin,
-                sectionCenter.Northing + Math.Cos(perpHeading) * halfWidthWithMargin);
-
-            if (!IsPointInBoundary(expandedLeftEdge) || !IsPointInBoundary(expandedRightEdge))
-            {
-                UpdateSectionOff(index);
-                return;
-            }
         }
 
         // Determine if section should be on.
@@ -803,6 +791,39 @@ public class SectionControlService : ISectionControlService
     /// <summary>
     /// Check if a point is inside the field boundary
     /// </summary>
+    /// <summary>
+    /// With "Off outside boundary" on: is a section at <paramref name="center"/> in the field? At
+    /// least 95 % of its width (margin included) inside the field and out of the obstacles, and,
+    /// with a coverage margin, both ends of it too: the segment test can pass with an end over the
+    /// edge, especially when the tool runs square to it. The one rule for where the section is and
+    /// where it is about to be.
+    /// </summary>
+    private bool SectionIsIn(Vec2 center, double heading, double halfWidthWithMargin, bool checkEnds)
+    {
+        const double BOUNDARY_THRESHOLD_STRICT = 0.95;
+        if (GetSegmentBoundaryStatus(center, heading, halfWidthWithMargin).InsidePercent < BOUNDARY_THRESHOLD_STRICT)
+            return false;
+        if (!checkEnds) return true;
+        double perpHeading = heading + Math.PI / 2.0;
+        double dE = Math.Sin(perpHeading) * halfWidthWithMargin, dN = Math.Cos(perpHeading) * halfWidthWithMargin;
+        return IsPointInBoundary(new Vec2(center.Easting - dE, center.Northing - dN))
+            && IsPointInBoundary(new Vec2(center.Easting + dE, center.Northing + dN));
+    }
+
+    /// <summary>
+    /// The ground the section crosses from here to <paramref name="distance"/> ahead (the look-off
+    /// distance), sampled every 0.5 m and at its end: all of it in (<see cref="SectionIsIn"/>)? An
+    /// obstacle shorter than the look-ahead distance stays ahead until the section has crossed it.
+    /// </summary>
+    private bool BandIsIn(Vec2 center, double heading, double distance, double speed, double halfWidthWithMargin, bool checkEnds)
+    {
+        const double Step = 0.5;
+        for (double d = Step; d < distance; d += Step)
+            if (!SectionIsIn(ProjectForwardCurved(center, heading, d, speed), heading, halfWidthWithMargin, checkEnds))
+                return false;
+        return SectionIsIn(ProjectForwardCurved(center, heading, distance, speed), heading, halfWidthWithMargin, checkEnds);
+    }
+
     private bool IsPointInBoundary(Vec2 point)
     {
         var boundary = Volatile.Read(ref _field).Boundary;

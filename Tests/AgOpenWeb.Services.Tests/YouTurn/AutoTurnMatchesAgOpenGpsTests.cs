@@ -177,6 +177,157 @@ public class AutoTurnMatchesAgOpenGpsTests
         Assert.That(exitX, Is.EqualTo(nextX).Within(0.3), "the turn ends on the line the tractor steers next");
     }
 
+    /// <summary>The planner on the 120 m square (16 m headland: the cultivated area is |x|, |y| &lt; 44),
+    /// a 3 m tool with <paramref name="toolOffset"/>, an AB line north; ticks with the pivot at
+    /// each northing of <paramref name="ys"/> in turn (x = <paramref name="x"/>), heading north.</summary>
+    private static (YouTurnWorkingState turn, List<YouTurnEffects> effects) PlanAlong(double x, double toolOffset, params double[] ys)
+    {
+        ConfigurationStore.SetInstance(new ConfigurationStore());
+        var c = ConfigurationStore.Instance;
+        c.Vehicle.Wheelbase = 2.5;
+        c.Vehicle.MaxSteerAngle = 35;
+        c.Tool.Overlap = 0;
+        c.Tool.Offset = toolOffset;
+        c.NumSections = 1;
+        c.Tool.SetSectionWidth(0, 300);
+        c.Guidance.UTurnRadius = 6;
+        c.Guidance.UTurnExtension = 16.0;
+        c.Guidance.UTurnDistanceFromBoundary = 2;
+        c.Guidance.UTurnStyle = 0;
+        var offset = new PolygonOffsetService();
+        var sm = new YouTurnStateMachine(
+            new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, offset, c),
+            new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, c),
+            NullLogger<YouTurnStateMachine>.Instance, c);
+        var fence = SquareFence();
+        var boundary = new Boundary
+        {
+            OuterBoundary = new BoundaryPolygon { Points = fence.Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList() },
+        };
+        var headland = offset.CalculatePointHeadings(offset.CreateInwardOffset(fence, HeadlandWidth)!);
+        var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
+        int pass = (int)Math.Round((x + toolOffset - 1.5) / 3.0);
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = pass, IsHeadingSameWay = true };
+        var turn = new YouTurnWorkingState { IsEnabled = true };
+        var effects = new List<YouTurnEffects>();
+        foreach (double y in ys)
+        {
+            var ctx = new YouTurnStateMachine.TickContext(
+                new Position { Easting = x, Northing = y, Heading = 0, Speed = 2.78 },
+                track, boundary, headland,
+                UTurnSkipRows: 0, IsSkipWorkedMode: false,
+                HeadlandCalculatedWidth: HeadlandWidth, HeadlandDistance: HeadlandWidth);
+            effects.Add(sm.Tick(ctx, guidance, turn));
+        }
+        return (turn, effects);
+    }
+
+    /// <summary>
+    /// The edge pass with a side-shift mower (field job J12): the tool, 2.5 m to the right, works
+    /// the cultivated area along the headland line; the tractor runs in the headland, outside the
+    /// headland line and parallel to it. The turn is planned from the pass line, as AgOpenGPS plans
+    /// from the line (rEastAB); from the pivot the headland line was never ahead, no turn was
+    /// planned and AutoSteer drove on through the boundary in silence.
+    /// </summary>
+    [Test]
+    public void Edge_pass_with_the_tractor_in_the_headland_plans_a_turn()
+    {
+        // Pivot at x -45.5 (headland, |x| &gt; 44); the tool at -43 (cultivated).
+        var (turn, _) = PlanAlong(-45.5, 2.5, -20);
+        Assert.That(turn.TurnPath, Is.Not.Null.And.Count.GreaterThan(10), "a turn is planned at the end of the edge pass");
+    }
+
+    /// <summary>
+    /// In the headland heading out with no turn (AutoSteer switched on again there after a dropped
+    /// turn, field job T10): no turn can be made from there, in AgOpenGPS either (FailCreate, its
+    /// "too close" sound), but the operator must hear it; this drove on out of the field in
+    /// silence. Told once.
+    /// </summary>
+    [Test]
+    public void In_the_headland_heading_out_with_no_turn_the_operator_is_told_once()
+    {
+        var (turn, effects) = PlanAlong(1.5, 0, 46, 46.5, 47);
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.TurnPath, Is.Null, "no turn from the headland");
+            Assert.That(effects[0].TurnCreationFailedSound, Is.True, "the operator hears it");
+            Assert.That(effects[0].StatusMessage, Does.Contain("No U-turn").And.Contain("Take over manually"));
+            Assert.That(effects.Skip(1).Any(e => e.TurnCreationFailedSound), Is.False, "once");
+        });
+    }
+
+    /// <summary>
+    /// A curved pass that runs on in the headland and bends into the field further on (field job
+    /// J10, a recorded curve, just after a turn): a straight line ahead from the tractor runs along
+    /// the headland and never meets the headland line, but the pass reaches the cultivated area.
+    /// That is not heading out; nothing is said.
+    /// </summary>
+    [Test]
+    public void A_curved_pass_bending_into_the_field_is_not_heading_out()
+    {
+        ConfigurationStore.SetInstance(new ConfigurationStore());
+        var c = ConfigurationStore.Instance;
+        c.Tool.Overlap = 0; c.NumSections = 1; c.Tool.SetSectionWidth(0, 300);
+        c.Guidance.UTurnRadius = 6; c.Guidance.UTurnDistanceFromBoundary = 2;
+        // South along x = 50 (the east headland strip is 44..60), then bending west into the field.
+        var pts = new List<Vec3>();
+        for (double y = 70; y >= 20; y -= 1) pts.Add(new Vec3(50, y, 0));
+        for (int i = 1; i <= 60; i++) { double a = i / 60.0 * Math.PI / 2; pts.Add(new Vec3(50 - 40 * (1 - Math.Cos(a)), 20 - 40 * Math.Sin(a), 0)); }
+        var track = Models.Track.Track.FromCurve("bend", AgOpenWeb.Models.Guidance.CurveProcessing.CalculateHeadings(pts));
+        var offset = new PolygonOffsetService();
+        var sm = new YouTurnStateMachine(
+            new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, offset, c),
+            new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, c),
+            NullLogger<YouTurnStateMachine>.Instance, c);
+        var fence = SquareFence();
+        var boundary = new Boundary { OuterBoundary = new BoundaryPolygon { Points = fence.Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList() } };
+        var headland = offset.CalculatePointHeadings(offset.CreateInwardOffset(fence, HeadlandWidth)!);
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = 0, IsHeadingSameWay = true };
+        var turn = new YouTurnWorkingState { IsEnabled = true };
+        // On pass 0 (1.5 m right of the curve heading south: x = 48.5), in the headland at y = 40.
+        var effects = sm.Tick(new YouTurnStateMachine.TickContext(
+            new Position { Easting = 48.5, Northing = 40, Heading = 180, Speed = 2.78 },
+            track, boundary, headland, UTurnSkipRows: 0, IsSkipWorkedMode: false,
+            HeadlandCalculatedWidth: HeadlandWidth, HeadlandDistance: HeadlandWidth), guidance, turn);
+        Assert.That(effects.TurnCreationFailedSound || (effects.StatusMessage?.Contains("No U-turn") ?? false), Is.False,
+            $"no warning: the pass bends into the field ('{effects.StatusMessage}')");
+    }
+
+    /// <summary>Heading into the field from the headland (the headland line ahead), nothing is said.</summary>
+    [Test]
+    public void Entering_the_field_from_the_headland_says_nothing()
+    {
+        ConfigurationStore.SetInstance(new ConfigurationStore());
+        // Heading south from the north headland into the field: the headland line is ahead.
+        var (_, effects) = PlanAlongHeading(1.5, 180, new[] { 50.0, 49.0, 48.0 });
+        Assert.That(effects.Any(e => e.TurnCreationFailedSound || (e.StatusMessage?.Contains("No U-turn") ?? false)), Is.False);
+    }
+
+    private static (YouTurnWorkingState, List<YouTurnEffects>) PlanAlongHeading(double x, double headingDeg, double[] ys)
+    {
+        var c = ConfigurationStore.Instance;
+        c.Tool.Overlap = 0; c.NumSections = 1; c.Tool.SetSectionWidth(0, 300);
+        c.Guidance.UTurnRadius = 6; c.Guidance.UTurnDistanceFromBoundary = 2;
+        var offset = new PolygonOffsetService();
+        var sm = new YouTurnStateMachine(
+            new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, offset, c),
+            new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, c),
+            NullLogger<YouTurnStateMachine>.Instance, c);
+        var fence = SquareFence();
+        var boundary = new Boundary { OuterBoundary = new BoundaryPolygon { Points = fence.Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList() } };
+        var headland = offset.CalculatePointHeadings(offset.CreateInwardOffset(fence, HeadlandWidth)!);
+        var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = 0, IsHeadingSameWay = false };
+        var turn = new YouTurnWorkingState { IsEnabled = true };
+        var effects = new List<YouTurnEffects>();
+        foreach (double y in ys)
+            effects.Add(sm.Tick(new YouTurnStateMachine.TickContext(
+                new Position { Easting = x, Northing = y, Heading = headingDeg, Speed = 2.78 },
+                track, boundary, headland, UTurnSkipRows: 0, IsSkipWorkedMode: false,
+                HeadlandCalculatedWidth: HeadlandWidth, HeadlandDistance: HeadlandWidth), guidance, turn));
+        return (turn, effects);
+    }
+
     private static List<Vec3> PlanTheirs(Rig rig, List<Vec2> fence, bool turnLeft)
     {
         var oracle = new AgOpenGpsYouTurnOracle(fence)

@@ -997,7 +997,7 @@ public class AutoSteerService : IAutoSteerService
         // Always send PGN 254 - the engage status is a bit in the status byte
         // This keeps the module informed of current position/speed even when not engaged
         var pgn = PgnBuilder.BuildAutoSteerPgn(ref _state);
-        _udpService.SendToModules(pgn);
+        SendSteerPgn(pgn);
 
         // Send PGN 239 (Machine Data) - section control, speed, tramline state
         // Sent every GPS cycle so machine module has current section/speed info
@@ -1010,6 +1010,40 @@ public class AutoSteerService : IAutoSteerService
         // firmware doesn't listen for 229; the HAT prefers a fresh 229 over 254.
         var sections64Pgn = PgnBuilder.BuildSection64Pgn(ref _state);
         _udpService.SendToModules(sections64Pgn);
+    }
+
+    /// <summary>
+    /// Control ticks (10 ms each) during which a PGN 254 with the same status as the last one sent
+    /// is held back after the status changed. The AgOpenGPS reference firmware (AIO v4,
+    /// Autosteer.ino) takes the engage from the tablet as an edge: every PGN 254 sets
+    /// guidanceStatusChanged = (status != previous status), and its control block reads that flag
+    /// only every 25 ms (LOOP_TIME) without clearing it. AgOpenGPS sends PGN 254 once per fix
+    /// (10 Hz), so the flag always lasts until the block runs; at our 100 Hz the next, unchanged
+    /// packet cleared it after 10 ms and the firmware missed about 60 % of engages (the screen said
+    /// steering, the motor never ran; AioV4EngageEdgeTests). Three ticks, 30 ms, outlast one 25 ms
+    /// pass. A packet with a different status (a disengage) is never held.
+    /// </summary>
+    internal const int SteerStatusHoldTicks = 3;
+
+    private byte _lastSentSteerStatus;
+    private int _steerStatusHold;
+
+    private void SendSteerPgn(byte[] pgn)
+    {
+        byte status = pgn[7];
+        if (status != _lastSentSteerStatus)
+        {
+            _lastSentSteerStatus = status;
+            _steerStatusHold = SteerStatusHoldTicks;
+            _udpService.SendToModules(pgn);
+            return;
+        }
+        if (_steerStatusHold > 0)
+        {
+            _steerStatusHold--;
+            return;
+        }
+        _udpService.SendToModules(pgn);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

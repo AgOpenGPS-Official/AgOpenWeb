@@ -102,7 +102,7 @@ public class YouTurnTriggerOnPathTests
     {
         var sm = BuildStateMachine();
         // A path on another line entirely; the tractor is in the headland (between the ±45
-        // turn line and the ±50 fence) and never joined it.
+        // turn line and the ±60 fence) and never joined it.
         var turn = new YouTurnWorkingState { TurnPath = LegThenArc(easting: 20), ArcStart = new Vec3(20, 20, 0) };
 
         var effects = sm.Tick(Ctx(0, 47, headingDeg: 0), new GuidanceWorkingState(), turn);
@@ -159,7 +159,7 @@ public class YouTurnTriggerOnPathTests
         for (int i = 0; i < 40 && !turn.IsExecuting; i++, y += 0.5)
         {
             turn.YouTurnCounter++;
-            sm.Tick(ctxAt(0, y, 0), guidance, turn);
+            sm.Tick(ctxAt(PassZeroX, y, 0), guidance, turn);
             if (turn.TurnPath != null && turn.TurnPath[0].Northing < y) pathWasBehind = true;
             Assert.That(turn.CurrentZone, Is.EqualTo(TractorZone.InCultivatedArea),
                 $"reached the headland at y={y:F1} without the turn starting");
@@ -226,7 +226,7 @@ public class YouTurnTriggerOnPathTests
         for (double y = -20; y < 58 && !turn.IsExecuting; y += 0.2)
         {
             turn.YouTurnCounter++;
-            var effects = sm.Tick(ctxAt(0, y, 0), guidance, turn);
+            var effects = sm.Tick(ctxAt(PassZeroX, y, 0), guidance, turn);
             failed |= effects.TurnCreationFailedSound;
             if (turn.TurnPath != null && turn.TurnPath[0].Northing > 30) startWasInHeadland = true;
         }
@@ -298,12 +298,13 @@ public class YouTurnTriggerOnPathTests
         return new YouTurnStateMachine(creation, pathing, NullLogger<YouTurnStateMachine>.Instance, c);
     }
 
-    /// <summary>100 m square fence at ±50, turn line at ±45, AB line north along x = 0.</summary>
+    /// <summary>Fence at ±60, turn line at ±45, AB line north along x = 0. A turn started from
+    /// the tractor must stay inside the fence, so the headland is wide enough for one.</summary>
     private static YouTurnStateMachine.TickContext Ctx(double e, double n, double headingDeg)
     {
         var outer = new BoundaryPolygon
         {
-            Points = new List<Vec2> { new(-50, -50), new(50, -50), new(50, 50), new(-50, 50) }
+            Points = new List<Vec2> { new(-60, -60), new(60, -60), new(60, 60), new(-60, 60) }
                 .Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList(),
         };
         return new YouTurnStateMachine.TickContext(
@@ -314,6 +315,10 @@ public class YouTurnTriggerOnPathTests
             UTurnSkipRows: 0, IsSkipWorkedMode: false,
             HeadlandCalculatedWidth: 5.0, HeadlandDistance: 5.0);
     }
+
+    /// <summary>Pass 0's centre on the planner bench: half the 6 m tool east of the AB line,
+    /// where the planned turn's entry leg runs (the tractor steers there).</summary>
+    private const double PassZeroX = 3.0;
 
     /// <summary>
     /// The real planner on a 120 m square field: fence at ±60, turn line 15 m inside it,
