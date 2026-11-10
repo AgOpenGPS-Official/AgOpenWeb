@@ -812,6 +812,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
             pos.Speed, posEasting, posNorthing, data.HasDualHeading);
         _headingFusion.UpdateDualHeadingWarning(data.FixQuality);
         pos = pos with { Heading = fusedHeading };
+        // A sideways position jump (the receiver changed its solution): the heading was kept
+        // across it; say so, since AutoSteer now follows a position that moved.
+        string? jumpNotice = null;
+        if (_headingFusion.JumpCount != _lastJumpCount)
+        {
+            _lastJumpCount = _headingFusion.JumpCount;
+            jumpNotice = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "GPS position jumped {0:F1} m sideways (the receiver changed its solution): heading kept, AutoSteer follows the new position",
+                _headingFusion.LastJumpM);
+        }
         // Reverse (#125): guidance, U-turn and hydraulic lift need to know, and the
         // heading above already faces the way the vehicle points.
         _isReverse = _headingFusion.IsReverse;
@@ -1006,6 +1016,18 @@ public sealed class GpsPipelineService : IGpsPipelineService
         string? disengageReason = null;
         _isOutOfBounds = OutOfBounds(boundary, headlandLine, youTurnEnabled && hasValidHeadlandLine,
             driftedEasting, driftedNorthing);
+
+        // (5a) A dual heading across the direction of travel: its offset doesn't match how
+        // the antennas are mounted (front to back set up as side by side). Guidance would
+        // steer for a tractor driving across its line, and the tractor leaves the pass.
+        // Also on the simulator, which takes the offset too.
+        if (autoSteerEngaged && _headingFusion.IsDualHeadingOffTravel)
+        {
+            autoSteerEngaged = false;
+            autoSteerDisengaged = true;
+            disengageReason = "AutoSteer disengaged - " + DualHeadingOffTravelText(_headingFusion.DualHeadingOffTravelDeg);
+            lock (_stateLock) _autoSteerEngaged = false;
+        }
 
         // (5b) Steering speed limits (#106) — like AgOpenGPS, and like it not on the simulator.
         if (autoSteerEngaged && !simulatorEnabled)
@@ -1428,6 +1450,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             ImuValid = data.ImuValid,
             IsReverse = _isReverse,
             IsDualHeadingMissing = _headingFusion.IsDualHeadingMissing,
+            IsDualHeadingOffTravel = _headingFusion.IsDualHeadingOffTravel,
+            DualHeadingOffTravelDeg = _headingFusion.DualHeadingOffTravelDeg,
 
             // Tool position
             ToolEasting = toolPos.Easting,
@@ -1485,7 +1509,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             FarFromFieldWarning = farFromFieldWarning,
 
             // Status
-            StatusMessage = statusMessage ?? youTurnTickEffects?.StatusMessage ?? fixRejectionReason
+            StatusMessage = jumpNotice ?? statusMessage ?? youTurnTickEffects?.StatusMessage ?? fixRejectionReason
         };
 
         CycleCompleted?.Invoke(result);
@@ -2444,7 +2468,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // Monotonic ms clock; tests substitute it to step past the below-min-speed grace period.
     internal Func<long> NowMs { get; set; } = () => Environment.TickCount64;
     private long? _belowMinSteerSpeedSinceMs;
+    private int _lastJumpCount; // the fusion's JumpCount already told
     private const long BelowMinSteerSpeedGraceMs = 8000; // AgOpenGPS: 80 frames at 10 Hz
+
+    /// <summary>Why AutoSteer won't steer with a dual heading that runs across the direction of
+    /// travel (<see cref="IGpsHeadingFusionService.IsDualHeadingOffTravel"/>), for the toast.</summary>
+    public static string DualHeadingOffTravelText(double offDeg) =>
+        string.Format(System.Globalization.CultureInfo.InvariantCulture,
+            "the dual antenna heading is {0:F0}° off the direction of travel: check its Heading offset (GPS tab)",
+            double.IsFinite(offDeg) ? offDeg : 90);
 
     /// <summary>
     /// AgOpenGPS steering speed limits: above Max steer speed disengages at once; below Min

@@ -1074,6 +1074,16 @@ public partial class MainViewModel
                 return;
             }
 
+            // A dual heading that doesn't match the way the tractor moves: guidance would steer
+            // for a tractor driving across its line (offset 90° out), or backwards along it
+            // (180° out, which reads as reversing). Engaging while really reversing isn't needed:
+            // engaged AutoSteer keeps on when the tractor reverses, as before.
+            if (!IsAutoSteerEngaged && WhyDualHeadingCannotSteer() is { } dualWhy)
+            {
+                ReportFailure("AutoSteer not available - " + dualWhy);
+                return;
+            }
+
             // The steer wizard drives the steering itself (#154). Every engage — screen button,
             // web command, hotkey, the module's steer switch / button — comes through here.
             if (!IsAutoSteerEngaged && IsSteerWizardOpen)

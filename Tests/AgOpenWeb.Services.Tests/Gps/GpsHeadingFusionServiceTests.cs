@@ -568,4 +568,52 @@ public class GpsHeadingFusionServiceTests
         Fixes(clock, 30, fixQuality: 4, hasDualHeading: false);
         Assert.That(_service.IsDualHeadingWarning, Is.False);
     }
+
+    // ── Position jumps (GPS/NTRIP scenarios C11, JUMP-HEADING-SPIKE) ─────
+
+    [Test]
+    public void ASidewaysPositionJump_KeepsTheHeading()
+    {
+        // Driving north at 8 km/h, 10 Hz (0.22 m a fix), single antenna, no IMU. The position
+        // jumps 1 m east and stays there; the tractor drives straight on. A heading taken
+        // across the jump turned 57°.
+        double n = 0, worst = 0;
+        for (int i = 0; i < 30; i++, n += 0.22) _service.FuseHeading(0, 0, false, 2.2, 0, n, false);
+        for (int i = 0; i < 40; i++, n += 0.22)
+        {
+            double h = _service.FuseHeading(0, 0, false, 2.2, 1.0, n, false);
+            worst = Math.Max(worst, Math.Min(h, 360 - h));
+        }
+
+        Assert.That(worst, Is.LessThan(1.0), "the heading stays north across the jump");
+        Assert.That(_service.JumpCount, Is.EqualTo(1));
+        Assert.That(_service.LastJumpM, Is.EqualTo(1.02).Within(0.05));
+        Assert.That(_service.IsReverse, Is.False);
+    }
+
+    [Test]
+    public void ATightTurn_IsNoJump()
+    {
+        // A 5 m radius circle at 10 km/h, 5 Hz: 0.56 m a fix, all of it along the turn.
+        const double r = 5, step = 0.56;
+        for (int i = 0; i < 150; i++)
+        {
+            double a = i * step / r;
+            _service.FuseHeading(0, 0, false, 2.8, r - r * Math.Cos(a), r * Math.Sin(a), false);
+        }
+        Assert.That(_service.JumpCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void AJumpAlongTheTravel_IsLeftToTheHeading()
+    {
+        // A jump straight ahead changes no direction: nothing to keep.
+        double n = 0;
+        for (int i = 0; i < 30; i++, n += 0.22) _service.FuseHeading(0, 0, false, 2.2, 0, n, false);
+        n += 1.0;
+        double h = 0;
+        for (int i = 0; i < 20; i++, n += 0.22) h = _service.FuseHeading(0, 0, false, 2.2, 0, n, false);
+        Assert.That(_service.JumpCount, Is.EqualTo(0));
+        Assert.That(Math.Min(h, 360 - h), Is.LessThan(1e-6));
+    }
 }

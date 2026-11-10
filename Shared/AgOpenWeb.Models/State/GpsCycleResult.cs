@@ -37,6 +37,12 @@ public record GpsCycleResult
     public bool ImuValid { get; init; }
     public bool IsReverse { get; init; }
     public bool IsDualHeadingMissing { get; init; }
+    /// <summary>The dual heading runs across the direction of travel (its offset doesn't match
+    /// how the antennas are mounted): AutoSteer won't engage, and disengages.</summary>
+    public bool IsDualHeadingOffTravel { get; init; }
+    /// <summary>How far the dual heading was from the direction of travel at the last check,
+    /// degrees 0–90; NaN until measured, and while the heading isn't from the dual antenna.</summary>
+    public double DualHeadingOffTravelDeg { get; init; } = double.NaN;
     public bool GpsValid { get; init; }
 
     // Tool position

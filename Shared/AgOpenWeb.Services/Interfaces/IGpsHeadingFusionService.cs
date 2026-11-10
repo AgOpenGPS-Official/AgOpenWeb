@@ -47,6 +47,13 @@ public interface IGpsHeadingFusionService
     /// heading is flipped so it still points the way the vehicle faces.</summary>
     bool IsReverse { get; }
 
+    /// <summary>How many sideways position jumps the fix-to-fix heading was kept across (the
+    /// receiver changed its solution); the pipeline says so on the status line.</summary>
+    int JumpCount { get; }
+
+    /// <summary>The size of the last such jump, m.</summary>
+    double LastJumpM { get; }
+
     /// <summary>True while a single antenna with no IMU can't yet tell whether the
     /// vehicle changed direction (AgOpenGPS isChangingDirection).</summary>
     bool IsChangingDirection { get; }
@@ -54,6 +61,15 @@ public interface IGpsHeadingFusionService
     /// <summary>True while Dual GPS is on but the latest fix had no dual-antenna
     /// heading ($PANDA), so the single-antenna heading is used (#157).</summary>
     bool IsDualHeadingMissing { get; }
+
+    /// <summary>How far the dual heading (with its offset) was from the direction the antenna
+    /// moved at the last check, degrees 0–90 (reversing reads as along it); NaN until
+    /// measured, and while the heading doesn't come from the dual antenna.</summary>
+    double DualHeadingOffTravelDeg { get; }
+
+    /// <summary>True while the dual heading runs across the direction of travel: its offset
+    /// doesn't match how the antennas are mounted, and AutoSteer won't steer with it.</summary>
+    bool IsDualHeadingOffTravel { get; }
 
     /// <summary>True when the missing dual heading should be shown to the operator
     /// (#313): the receiver has a position, and the heading was lost or hasn't come

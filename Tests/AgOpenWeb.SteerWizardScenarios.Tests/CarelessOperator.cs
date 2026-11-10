@@ -563,17 +563,25 @@ public static class CarelessOperator
     {
         await using var s = await WizardScenario.StartAsync(j, name, "careless", m => m.TruthMotorReversed = true);
         await PrepareAsync(s, "motor");
+        // Next may skip the motor test (an operator who knows the motor direction, as in
+        // AgOpenGPS's wizard); what matters is that the next step can't run the wheels to the
+        // lock with the direction wrong: the max-angle test must stop by itself and say why.
         await s.StepAsync("Motor step: Next without the test", async () =>
         {
-            if (await s.NextAsync())
-                s.Report(new Finding(Severity.Improvement, "MOTOR_TEST_SKIPPABLE",
-                    "Next leaves the motor step with the test never run: the motor direction is unknown and the next step drives the wheels to full lock."));
-        }, Expect.Refused);
+            if (await s.NextAsync()) s.Rig.Note("Next skipped the motor test");
+        }, Expect.Any);
         await s.StepAsync("Max-angle test with the motor backwards", async () =>
         {
             await s.ActAsync("StartTest");
             await s.WaitTestEndAsync();
             await s.SettleAsync(500);
+            var f = await s.Rig.FrameAsync();
+            string result = (f?.TestResult ?? "").Replace("\n", " ");
+            double wheels = s.Module.WheelAngleDeg;
+            if (Math.Abs(wheels) > 10 || !result.Contains("wrong way", StringComparison.OrdinalIgnoreCase))
+                s.Report(new Finding(Severity.Safety, "MAX_ANGLE_TEST_RAN_WRONG_WAY",
+                    string.Create(Inv, $"With the motor test skipped and the motor wired backwards, the max-angle test did not stop on the wrong direction (wheels at {wheels:F1}°): \"{result}\".")));
+            else s.Rig.Note(string.Create(Inv, $"the max-angle test stopped on the wrong direction, wheels at {wheels:F1}°"));
         }, Expect.Any);
     }
 
