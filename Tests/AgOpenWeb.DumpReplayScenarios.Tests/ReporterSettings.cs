@@ -167,6 +167,9 @@ public static class ReporterSettings
             if (v is not { } e) { missing.Add(string.Join(".", path)); continue; }
             string? text = e.ValueKind switch
             {
+                // The dump holds the multiplier (1.0 = none); the web key takes the panel's percent.
+                JsonValueKind.Number when key == "autosteer.uTurnCompensation" =>
+                    GuidanceConfig.UTurnCompensationToPercent(e.GetDouble()).ToString("R", Inv),
                 JsonValueKind.Number => e.GetDouble().ToString("R", Inv),
                 JsonValueKind.True => "1",
                 JsonValueKind.False => "0",
