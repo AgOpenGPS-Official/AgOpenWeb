@@ -511,6 +511,18 @@ public class AutoSteerService : IAutoSteerService
         // ProcessSimulatedPosition and the guidance step), so the gate reads no UI mirror.
         _smartWas?.AddSample(steerData.ActualSteerAngle, _state.Speed, _state.CrossTrackError);
 
+        // A runaway (the wheels turning away from the set point while the motor drives: motor
+        // or WAS the wrong way round) takes AutoSteer off at once and says why. Judged only
+        // while the module steers for AutoSteer: engaged, not paused, and its motor driving
+        // (PWM above 0; the firmware drives 0 whenever it is not steering).
+        if (_isEngaged && !_state.IsSteerPaused && steerData.PwmDisplay > 0)
+        {
+            if (_runaway.Add(Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency,
+                    steerData.ActualSteerAngle, _state.SteerAngle))
+                RunawayKickout();
+        }
+        else _runaway.Reset();
+
         if (switchChanged)
         {
             Debug.WriteLine(
@@ -566,6 +578,19 @@ public class AutoSteerService : IAutoSteerService
         if (wasEngaged)
             SensorKickout?.Invoke(this, FormattableString.Invariant(
                 $"{sensor} sensor {_sensorPercent:F0}% reached the trip point ({tripPoint}%)"));
+    }
+
+    private readonly SteerRunawayDetector _runaway = new();
+
+    /// <summary>The wheels ran away from the set point: off, and the reason through the same
+    /// event as a sensor kickout (the app takes AutoSteer off and shows it).</summary>
+    private void RunawayKickout()
+    {
+        bool wasEngaged = _isEngaged;
+        Disengage();
+        if (wasEngaged)
+            SensorKickout?.Invoke(this, FormattableString.Invariant(
+                $"steering runaway: the wheels turned away from the steer angle (at {_runaway.LastActualDeg:F1}°, asked for {_runaway.LastSetPointDeg:F1}°). Check the motor direction and the WAS direction in the steer wizard (Invert Motor, Invert WAS)"));
     }
 
     public void Engage()

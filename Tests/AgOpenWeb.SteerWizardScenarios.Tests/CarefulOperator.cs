@@ -292,46 +292,87 @@ public static class CarefulOperator
         {
             s.Drive(8);
             await s.SettleAsync(1500);
-            await s.Send("autosteer.toggle");
-            await s.SettleAsync(300);
-            bool on = await rig.ReadAsync(() => rig.Vm.IsAutoSteerEngaged);
-            if (!on)
+            // What the app reports as a failure during the check (the status line is overwritten
+            // by routine messages within a tick, so it is no record of why AutoSteer went off).
+            var failures = new System.Collections.Concurrent.ConcurrentQueue<string>();
+            void OnFailure(string m) => failures.Enqueue(m);
+            rig.Vm.FailureReported += OnFailure;
+            try
             {
-                // The check never reached its situation: a harness fault that fails the run, not a
-                // quiet note (the 2026-11-06 runs passed this scenario with no AB line to steer on).
-                s.Report(new Finding(Severity.Bug, "HARNESS_AUTOSTEER_NOT_ENGAGED",
-                    "AutoSteer did not engage for the check " + when + ", so the calibration was not checked (see what the app said)."));
-                return;
-            }
-            double maxXte = 0, lastXte = 0, maxWheel = 0;
-            bool moduleSteered = false;
-            for (int i = 0; i < 300; i++)
-            {
-                await Task.Delay(100);
-                double xte = await rig.ReadAsync(() => rig.State.Guidance.CrossTrackError);
-                if (i > 150) maxXte = Math.Max(maxXte, Math.Abs(xte));
-                lastXte = xte;
-                maxWheel = Math.Max(maxWheel, Math.Abs(s.Module.WheelAngleDeg));
-                moduleSteered |= s.Module.MotorEnabled;
-            }
-            if (!moduleSteered)
-            {
-                // The screen said engaged and the module never ran its motor: the line check means
-                // nothing then, and this is the finding.
-                s.Report(new Finding(Severity.Inconsistency, "MODULE_NEVER_STEERED",
-                    $"AutoSteer was engaged for 30 s ({when}) and the steer module never enabled its motor: the screen says steering, the wheels are not moved."));
+                await s.Send("autosteer.toggle");
+                await s.SettleAsync(300);
+                bool on = await rig.ReadAsync(() => rig.Vm.IsAutoSteerEngaged);
+                string Runaway() => failures.FirstOrDefault(f => f.Contains("steering runaway", StringComparison.Ordinal)) ?? "";
+                if (!on && Runaway().Length > 0)
+                {
+                    // Engaged, and taken off again within the first 300 ms: the wheels ran away at
+                    // once (the motor or the WAS the wrong way round) and the app caught it.
+                    rig.Note("AutoSteer went off right after engaging: \"" + Runaway() + "\"");
+                    s.Drive(0);
+                    await s.SettleAsync(500);
+                    return;
+                }
+                if (!on)
+                {
+                    // The check never reached its situation: a harness fault that fails the run, not a
+                    // quiet note (the 2026-11-06 runs passed this scenario with no AB line to steer on).
+                    s.Report(new Finding(Severity.Bug, "HARNESS_AUTOSTEER_NOT_ENGAGED",
+                        "AutoSteer did not engage for the check " + when + ", so the calibration was not checked (see what the app said)."));
+                    return;
+                }
+                double maxXte = 0, lastXte = 0, maxWheel = 0;
+                bool moduleSteered = false;
+                string offBecause = "";
+                bool wentOff = false;
+                for (int i = 0; i < 300; i++)
+                {
+                    await Task.Delay(100);
+                    double xte = await rig.ReadAsync(() => rig.State.Guidance.CrossTrackError);
+                    if (i > 150) maxXte = Math.Max(maxXte, Math.Abs(xte));
+                    lastXte = xte;
+                    maxWheel = Math.Max(maxWheel, Math.Abs(s.Module.WheelAngleDeg));
+                    moduleSteered |= s.Module.MotorEnabled;
+                    if (!await rig.ReadAsync(() => rig.Vm.IsAutoSteerEngaged))
+                    {
+                        wentOff = true;
+                        await Task.Delay(200);  // the reason is posted to the host loop with the switch-off
+                        offBecause = Runaway().Length > 0 ? Runaway() : string.Join(" / ", failures);
+                        rig.Note(string.Create(Inv, $"AutoSteer went off after {(i + 1) / 10.0:F1} s, wheels up to {maxWheel:F0}°: \"{offBecause}\""));
+                        break;
+                    }
+                }
+                if (wentOff)
+                {
+                    // The app took AutoSteer off by itself. With the wheels running away from the set
+                    // point (the motor or the WAS the wrong way round) that is what it must do, and
+                    // say so; any other reason is AutoSteer dropping out on a calibration it accepted.
+                    if (!offBecause.Contains("steering runaway", StringComparison.Ordinal))
+                        s.Report(new Finding(Severity.Bug, "AUTOSTEER_DROPPED",
+                            $"AutoSteer went off by itself during the check ({when}): \"{offBecause}\"."));
+                    s.Drive(0);
+                    await s.SettleAsync(500);
+                    return;
+                }
+                if (!moduleSteered)
+                {
+                    // The screen said engaged and the module never ran its motor: the line check means
+                    // nothing then, and this is the finding.
+                    s.Report(new Finding(Severity.Inconsistency, "MODULE_NEVER_STEERED",
+                        $"AutoSteer was engaged for 30 s ({when}) and the steer module never enabled its motor: the screen says steering, the wheels are not moved."));
+                    await s.Send("autosteer.toggle");
+                    s.Drive(0);
+                    await s.SettleAsync(500);
+                    return;
+                }
+                rig.Note(string.Create(Inv, $"AutoSteer: max off-line {maxXte * 100:F0} cm in the last 15 s, ended at {lastXte * 100:F0} cm, wheels up to {maxWheel:F0}°"));
+                if (maxXte > 0.3)
+                    s.Report(new Finding(Severity.Safety, "AUTOSTEER_DOES_NOT_HOLD_LINE",
+                        string.Create(Inv, $"With the wizard's settings AutoSteer does not hold the line ({when}): up to {maxXte * 100:F0} cm off after 15 s, wheels up to {maxWheel:F0}°.")));
                 await s.Send("autosteer.toggle");
                 s.Drive(0);
                 await s.SettleAsync(500);
-                return;
             }
-            rig.Note(string.Create(Inv, $"AutoSteer: max off-line {maxXte * 100:F0} cm in the last 15 s, ended at {lastXte * 100:F0} cm, wheels up to {maxWheel:F0}°"));
-            if (maxXte > 0.3)
-                s.Report(new Finding(Severity.Safety, "AUTOSTEER_DOES_NOT_HOLD_LINE",
-                    string.Create(Inv, $"With the wizard's settings AutoSteer does not hold the line ({when}): up to {maxXte * 100:F0} cm off after 15 s, wheels up to {maxWheel:F0}°.")));
-            await s.Send("autosteer.toggle");
-            s.Drive(0);
-            await s.SettleAsync(500);
+            finally { rig.Vm.FailureReported -= OnFailure; }
         });
     }
 
