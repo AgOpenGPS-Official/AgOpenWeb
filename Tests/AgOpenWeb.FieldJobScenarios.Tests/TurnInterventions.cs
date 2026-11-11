@@ -70,6 +70,8 @@ public static class TurnInterventions
                             flag(Severity.Bug, "SKIP-NOT-APPLIED", JobRun.F($"skip rows (alternative, 1 row) was set during turn 2; turn 3 went from pass {next.TruthPassBefore} to pass {next.TruthPassAfter} ({step} over), not 2 over."));
                         else sc.Ok(JobRun.F($"the next turn skipped a row, on the side not yet worked: pass {next.TruthPassBefore} -> {next.TruthPassAfter}"));
                     }
+                    else if (next == null && r.ShortStopped)
+                        sc.Note("a short run: turn 3 not reached, the skip after turn 2 not judged");
                     else if (next == null)
                         flag(Severity.Bug, "TURN-LOST", "skip rows (alternative, 1 row) was set during turn 2; no turn 3 followed.");
                     else
@@ -324,6 +326,11 @@ public static class TurnInterventions
             sc.Row.Metrics.Add(($"Turn {Turn} ({What}): side and pass planned / landed; AgOpenWeb's path moved near the tractor; the tractor off the path it had", t == null
                 ? "the turn never started"
                 : JobRun.F($"{(PlannedLeft ? "left" : "right")}, pass {StartPass} -> {PlannedPass} / {(t.Left ? "left" : "right")}, pass {t.TruthPassBefore} -> {(t.TruthPassAfter == int.MinValue ? "?" : t.TruthPassAfter.ToString())}; {PathMovedM:0.0} m; {TractorOffM:0.0} m")));
+            if (t == null && r.ShortStopped)
+            {
+                sc.Note(JobRun.F($"a short run: turn {Turn} not reached, the operator's action ({What}) not judged"));
+                return;
+            }
             if (t == null)
             {
                 flag(Severity.Bug, "TURN-LOST", JobRun.F($"the operator {What} with turn {Turn} {(Executing ? "under way" : "planned")}; that turn never started."));
@@ -438,7 +445,9 @@ public static class TurnInterventions
 
         public void Judge(Scenario sc, JobRun r, Action<Severity, string, string> flag)
         {
-            bool Refused((int Index, double At, bool Left, bool Started, string Said) t) => !t.Started && !r.Turns.Any(x => Math.Abs(x.StartSeconds - t.At) < 1.5);
+            // A tap whose turn the short run stopped in is not judged (its turn was dropped unfinished).
+            bool Cut((int Index, double At, bool Left, bool Started, string Said) t) => Math.Abs(r.DroppedTurnAt - t.At) < 2.0;
+            bool Refused((int Index, double At, bool Left, bool Started, string Said) t) => !Cut(t) && !t.Started && !r.Turns.Any(x => Math.Abs(x.StartSeconds - t.At) < 1.5);
             int refused = Taps.Count(Refused);
             // A turn hands back to the line with 4 m of its arc left (EarlyCompletionLookahead), the
             // automatic ones and the manual ones alike: 4/R radians off the pass at the hand-back.
@@ -502,6 +511,11 @@ public static class TurnInterventions
             var manual = r.Turns.FirstOrDefault(t => t.StartSeconds >= _tapAt - 0.5 && t.StartSeconds <= _tapAt + 2.0);
             var after = manual == null ? new List<TurnRecord>() : r.Turns.Where(t => t.Index > manual.Index).ToList();
             sc.Row.Metrics.Add(("The manual turn mid-pass: from / to (pass); the automatic turns after it, passes", manual == null ? "no turn" : JobRun.F($"{manual.TruthPassBefore} -> {manual.TruthPassAfter}; {string.Join(", ", after.Take(4).Select(t => JobRun.F($"{t.TruthPassBefore}->{t.TruthPassAfter}")))}")));
+            if (manual == null && r.DroppedTurnAt >= _tapAt - 0.5 && r.DroppedTurnAt <= _tapAt + 2.0)
+            {
+                sc.Note("a short run: it stopped in the manual U-turn, which was not judged");
+                return;
+            }
             if (manual == null)
             {
                 flag(Severity.Bug, "MANUAL-TURN-REFUSED", JobRun.F($"the manual U-turn tapped in the middle of pass {_from} at {_tapAt:0} s started no turn within 2 s: ") + _said);

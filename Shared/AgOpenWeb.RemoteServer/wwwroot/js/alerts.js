@@ -293,9 +293,19 @@ transport.send = cmd => {
   const id = String(cmd).split('|')[0];
   if (!iHoldControl && !OBSERVER_IDS.has(id)) {
     const now = performance.now();
-    if (navigator.userActivation && navigator.userActivation.isActive && now - _viewOnlyToastT > 3000) {
+    // A setting typed into a box is always the operator's own edit (sent when the box loses
+    // focus or on Enter, often after the tap's user activation has lapsed).
+    const edit = id === 'config.set';
+    if ((edit || (navigator.userActivation && navigator.userActivation.isActive)) && now - _viewOnlyToastT > 3000) {
       _viewOnlyToastT = now;
       showToast(tr('View only: another screen has control'));
+    }
+    if (edit) {
+      // Put the box back to the host's value: it was not saved. The open panel re-reads the
+      // config on the next frame, skipping a box that still has the focus, so let go of it.
+      const a = document.activeElement;
+      if (a && a.tagName === 'INPUT' && a.blur) a.blur();
+      configDirty = true;
     }
     return;
   }

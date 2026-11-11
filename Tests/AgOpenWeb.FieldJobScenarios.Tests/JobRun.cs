@@ -231,6 +231,12 @@ public sealed class JobRun : IAsyncDisposable
     /// run ends as an early end does (the whole-field checks are not made).</summary>
     public static readonly int FromPass = int.TryParse(Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_FROM_PASS"), out var fp) ? fp : int.MinValue;
     public int StartedAtPass = int.MinValue;
+    /// <summary>The run was stopped short (AGOPENWEB_SCENARIO_TURNS / _MINUTES): a check that waits for a
+    /// later turn notes it was not reached rather than reporting it lost.</summary>
+    public bool ShortStopped;
+    /// <summary>When the turn dropped at a short stop had started (NaN: none): a manual tap that started
+    /// it is not judged.</summary>
+    public double DroppedTurnAt = double.NaN;
     public static readonly int ShortTurns = int.TryParse(Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_TURNS"), out var st) ? st : 0;
     public static readonly double ShortMinutes = double.TryParse(Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_MINUTES"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var sm) ? sm : 0;
     /// <summary>False = the receiver sends nothing (a careless operator's GPS loss).</summary>
@@ -619,6 +625,9 @@ public sealed class JobRun : IAsyncDisposable
                 EndedBy = (EndedBy.Length > 0 ? EndedBy + "; " : "") + (ShortTurns > 0 && TurnsStarted > ShortTurns
                     ? F($"a short run, stopped after {ShortTurns} U-turn(s) (AGOPENWEB_SCENARIO_TURNS)")
                     : F($"a short run, stopped after {ShortMinutes} min (AGOPENWEB_SCENARIO_MINUTES)"));
+                // The turn that had just started never finished: not judged as a turn.
+                if (InTurn && Turns.Count > 0 && Turns[^1].Index == TurnsStarted) { DroppedTurnAt = Turns[^1].StartSeconds; Turns.RemoveAt(Turns.Count - 1); InTurn = false; }
+                ShortStopped = true;
                 EndedEarly = true; Stopped = true; Did(EndedBy);
                 break;
             }

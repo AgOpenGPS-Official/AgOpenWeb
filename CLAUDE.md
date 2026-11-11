@@ -131,6 +131,14 @@ Several browsers may be connected; only one holds control (`ControlAuthority`, d
 Every command is dropped unless the sender holds fresh control: the others are observers, who
 see everything and change nothing (#397). `ObserverIds` lists the few requests an observer may
 send. A client can't take control from a live operator, only fill an empty seat.
+The deadman (1.5 s without the holder's presence) runs on a timer of its own. The page sends
+presence on a timer and on every frame from the host (`sendPresence` in `js/control.js`): a
+minimized window or a background tab gets its timers throttled but still hears the host (#766). When control
+ends, `MainViewModel.OnBrowserControlEnded` turns off AutoSteer, Free Drive, the sections (a
+section On by hand too) and the steer wizard, and the next screen to take control is told why.
+`WebSocketHub` gives each browser its own outgoing queue: a broadcast never waits on a socket,
+and a browser that stops reading for 15 s is cut off (it reconnects and gets a fresh seed).
+The page drops a link that has carried no frame for 2.5 s and reconnects (`transport.js`).
 
 ### Section control timing
 `SectionControlService` runs every section by its own button state (Off / Auto / On); the master

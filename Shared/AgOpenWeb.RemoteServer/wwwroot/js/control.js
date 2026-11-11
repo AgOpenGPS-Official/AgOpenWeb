@@ -16,14 +16,22 @@ function renderRole() {
   const t = document.getElementById('sb-roletext'), d = document.getElementById('sb-roledot');
   if (!t) return;
   let label, color;
-  if (connState !== 'connected') { label = tr('Disconnected'); color = '#ff5a5a'; }
+  if (connState === 'quiet')     { label = tr('No link');      color = '#ff5a5a'; }
+  else if (connState !== 'connected') { label = tr('Disconnected'); color = '#ff5a5a'; }
   else if (iHoldControl)         { label = tr('Operator');     color = '#39FF6A'; }
   else if (lastControl.held)     { label = tr('Observer');     color = '#ff7a3d'; }
   else                           { label = tr('No operator');  color = '#9fb3cc'; }
   t.textContent = label; t.style.color = color; d.style.background = color;
 }
+let wasObserver = false; // this screen watched another hold control: taking it over is news
 function updateControlUi() {
+  const had = iHoldControl;
   iHoldControl = lastControl.held && lastControl.holderId === myClientId;
+  // A screen that was only watching and now has control is told so: the seat moved to it
+  // because the screen that had it went away, and nothing else on it changes.
+  if (iHoldControl && !had && wasObserver && typeof showToast === 'function')
+    showToast(tr('This screen now has control'));
+  wasObserver = !iHoldControl && lastControl.held;
   if (iHoldControl) { applyMobileQualityCap(); reportMaxTexture(); } // host-wide: sent once we may (#397)
   if (typeof renderHostPrompt === 'function') renderHostPrompt(); // who may answer
   if (typeof updateAsGated === 'function') updateAsGated(); // re-gate AutoSteer actions
@@ -43,9 +51,21 @@ function claimSeatIfFree() {
   if (connState === 'connected' && myClientId && !iHoldControl && !lastControl.held)
     transport.send('control.acquire|Browser');
 }
-// Heartbeat keeps our hold alive while we control; a lapse trips the host deadman
-// (disengage autosteer + sections).
-setInterval(() => { if (iHoldControl) transport.send('control.presence'); }, 500);
+// Heartbeat keeps our hold alive while we control; a lapse (1.5 s) trips the host deadman
+// (disengage autosteer + sections). Sent on a timer and on every frame from the host, at most
+// every 400 ms. A minimized window or a background tab gets its timers throttled to once a
+// second, and after a few minutes to once a minute, which lapsed the deadman while the page was
+// alive and hearing the host's ten Ticks a second (#766). Frames still arrive there; a page the
+// system has frozen (a tablet asleep, a phone's screen off) answers neither, and the deadman trips.
+let presenceSentAt = 0;
+function sendPresence() {
+  if (!iHoldControl) return;
+  const now = Date.now();
+  if (now - presenceSentAt < 400) return;
+  presenceSentAt = now;
+  transport.send('control.presence');
+}
+setInterval(sendPresence, 500);
 updateControlUi();
 
 // Right-nav toolbar actuation. Each button sends its Tier-2 command,
