@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
@@ -142,12 +143,33 @@ public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDispos
     }
 
     // --- IUiTimerFactory: timers that marshal their Tick onto this same loop ---
-    public IUiTimer Create() => new HostLoopTimer(this);
+    // Every timer made on this loop, stopped with it: a System.Threading.Timer outlives the loop
+    // otherwise, and its Tick handlers (MainViewModel's) kept the stopped backend alive (the
+    // working day harness's BACKEND-NOT-FREED-AFTER-EXIT).
+    private readonly List<HostLoopTimer> _timers = new();
+    private bool _disposed;
+
+    public IUiTimer Create()
+    {
+        var t = new HostLoopTimer(this);
+        lock (_timers)
+        {
+            if (_disposed) t.Dispose();
+            else _timers.Add(t);
+        }
+        return t;
+    }
 
     public void Dispose()
     {
         _running = false;
         _queue.CompleteAdding();
+        lock (_timers)
+        {
+            _disposed = true;
+            foreach (var t in _timers) t.Dispose();
+            _timers.Clear();
+        }
     }
 
     /// <summary>
@@ -192,6 +214,6 @@ public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDispos
 
         public void Start() { IsEnabled = true; _timer.Change(_interval, _interval); }
         public void Stop() { IsEnabled = false; _timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan); }
-        public void Dispose() => _timer.Dispose();
+        public void Dispose() { IsEnabled = false; Tick = null; _timer.Dispose(); }
     }
 }
