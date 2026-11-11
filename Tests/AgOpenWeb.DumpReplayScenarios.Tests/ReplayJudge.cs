@@ -240,7 +240,7 @@ public static class ReplayJudge
         var rows = R.Dump.Rows; var now = R.Now;
         for (int k = i; k > R.StartRow && rows[i].T - rows[k].T <= seconds; k--)
             if (now[k] is { } n && (n.YtExecuting || n.YtTriggered) && !rows[k].YtExecuting && !rows[k].YtTriggered)
-                return F($"just after a U-turn of this build's where the reporter's drove on (t {rows[k].T:0.0} s): the replay goes on along the reporter's path, which did not turn");
+                return F($"just after a U-turn of this build's where the reporter's drove on (t {rows[k].T:0.0} s), which did not turn");
         return null;
     }
 
