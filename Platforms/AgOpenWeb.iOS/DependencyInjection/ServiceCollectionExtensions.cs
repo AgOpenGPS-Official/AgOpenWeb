@@ -42,9 +42,11 @@ public static class ServiceCollectionExtensions
         });
 
         // Centralized application state (single source of truth)
-        services.AddSingleton<ApplicationState>();           // ephemeral, in-memory only
-        services.AddSingleton(_ => AgOpenWeb.Models.Configuration.ConfigurationStore.Instance); // config SoT; same object as .Instance (Views/tests use the static seam)
-        services.AddSingleton(_ => PersistentAppState.Instance); // persisted to appstate.json (same object as .Instance)
+        // The backend's state: the statics point to it while it runs, let go when it stops (BackendStateLease).
+        services.AddSingleton<AgOpenWeb.Models.State.BackendStateLease>();
+        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().State);
+        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().Store);
+        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().Persistent);
 
         // "UI-thread" dispatcher + timer abstraction: the VM/pipeline run on a single
         // HostLoopDispatcher, off the WKWebView's main thread, exactly as on the desktop

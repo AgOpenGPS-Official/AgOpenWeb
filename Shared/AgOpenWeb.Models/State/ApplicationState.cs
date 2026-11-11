@@ -29,6 +29,11 @@ public class ApplicationState : ObservableObject
         _instance = this;
     }
 
+    /// <summary>The backend that owned <paramref name="state"/> stopped: the static lets go of it
+    /// (<see cref="BackendStateLease"/>), unless another took its place already.</summary>
+    internal static void Release(ApplicationState state) =>
+        System.Threading.Interlocked.CompareExchange(ref _instance, null, state);
+
     // Domain state objects
     public VehicleState Vehicle { get; } = new();
     public GuidanceState Guidance { get; } = new();
