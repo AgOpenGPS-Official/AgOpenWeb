@@ -48,7 +48,8 @@ public static class ProfileFlows
         if (!await op.TypeAsync(box, metres.ToString("0.00", CultureInfo.InvariantCulture), "Antenna height")) return;
         if (!await op.TapAsync("#vehiclecfg " + leaveButton, leaveName)) return;
 
-        string path = await op.Rig.ReadAsync(() => op.Rig.Store.ActiveVehicleProfilePath ?? "");
+        string name = await op.Rig.ReadAsync(() => op.Rig.Store.ActiveVehicleProfileName ?? "");
+        string path = Path.Combine(op.Rig.DataRoot, "AgOpenWeb", "Vehicles", name + ".json");
         double? live = await op.Rig.ReadAsync(() => op.Rig.Store.Vehicle.AntennaHeight);
         double? onDisk = null;
         await op.HostAsync(() => (onDisk = OnDisk(path)) is { } d && Math.Abs(d - metres) < 0.005, 3000);
@@ -69,7 +70,7 @@ public static class ProfileFlows
             using var doc = JsonDocument.Parse(File.ReadAllText(path));
             return Find(doc.RootElement);
         }
-        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { return null; }
+        catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException or ArgumentException) { return null; }
 
         static double? Find(JsonElement e)
         {
