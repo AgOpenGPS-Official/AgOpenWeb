@@ -248,6 +248,9 @@ public sealed class JobRun : IAsyncDisposable
     /// <summary>AgOpenWeb's warning to take over "at the end of the field" (when it was said, its text,
     /// the pass): the operator drives the pass to its end first and takes over there.</summary>
     private (double At, string Text, int Pass)? _takeOverAtEnd;
+    // After "no room on the next pass at this end": the implement left the cultivated area, then
+    // came back into it on the same pass (a headland gap the pass crosses; field job J10).
+    private bool _noRoomLeftWork, _noRoomCrossedGap;
     bool _arrowChecked;
     /// <summary>Set when AgOpenWeb's first U-turn arrow pointed at the field's edge the operator
     /// started from (a sliver pass): the pass it pointed at and how much of it is inside.</summary>
@@ -672,10 +675,16 @@ public sealed class JobRun : IAsyncDisposable
                     }
                     // Said there was no room at this end, then turned after all: the operator lets it
                     // turn and goes on; the message was early all the same.
+                    // When the pass crossed a headland gap since, the message was for the end at the
+                    // gap and this turn is at the next one: not early.
                     if (_takeOverAtEnd is { } nr && TookOverAt < 0 && nr.Text.Contains("no room on the next pass at this end", StringComparison.Ordinal))
                     {
-                        EarlyEnds.Add(F($"\"{nr.Text}\" at {nr.At:0} s on pass {nr.Pass}, then U-turn {TurnsStarted + 1} at {Seconds:0} s"));
+                        if (_noRoomCrossedGap)
+                            Did(F($"AgOpenWeb's \"no room at this end\" at {nr.At:0} s was for a headland gap on pass {nr.Pass}: the operator drove across it and AgOpenWeb made U-turn {TurnsStarted + 1} at the next end"));
+                        else
+                            EarlyEnds.Add(F($"\"{nr.Text}\" at {nr.At:0} s on pass {nr.Pass}, then U-turn {TurnsStarted + 1} at {Seconds:0} s"));
                         _takeOverAtEnd = null;
+                        _noRoomLeftWork = _noRoomCrossedGap = false;
                     }
                     turn = new TurnRecord { Index = ++TurnsStarted, PassBefore = lastPassSeen, StartSeconds = Seconds, Left = yt!.IsTurnLeft, HeadingAtStart = Truth.Heading, UAtStart = U((Truth.E, Truth.N)), TangentAtStart = Frame.TangentHeading((Truth.E, Truth.N)), TruthPassBefore = TruthPass() };
                     saidAtTurnStart = Math.Max(0, Said.Count - 6);
@@ -877,6 +886,11 @@ public sealed class JobRun : IAsyncDisposable
             }
             var tc = ToolCentre();
             bool inWork = Ring.Inside((tc.E, tc.N), Work ?? Outer);
+            if (_takeOverAtEnd is { } nrg && nrg.Text.Contains("no room on the next pass at this end", StringComparison.Ordinal) && !InTurn)
+            {
+                if (!inWork) _noRoomLeftWork = true;
+                else if (_noRoomLeftWork) _noRoomCrossedGap = true;
+            }
             // The end of the field the warning asked for: the implement out of the cultivated area
             // with none of it ahead (as the end of the job is judged), or the tractor itself at the
             // boundary, whichever comes first.
