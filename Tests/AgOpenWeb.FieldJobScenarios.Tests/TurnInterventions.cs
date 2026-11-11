@@ -200,9 +200,10 @@ public static class TurnInterventions
         {
             var m = new ManualTurns();
             yield return Olival("T11", "U-turns made by hand with the manual buttons (#272, #163)",
-                "Automatic U-turns off. At each end the operator taps the manual U-turn button towards the unworked side as the tractor crosses the headland line, AutoSteer on; the job ends when no pass is left. Each turn must start, land on the next pass and hand back to the line as the automatic turns do.") with
+                "Automatic U-turns off. At each end the operator taps the manual U-turn button towards the unworked side as the tractor crosses the headland line, AutoSteer on; the job ends when no pass is left. Each turn must start, land on the next pass and hand back to the line as the automatic turns do. The headland is 26 m: a manual turn tapped at the line of the usual 16 m one goes up to 7 m out of the field, and AgOpenWeb refuses a manual turn that would leave the field, as an automatic one (#698).") with
             {
                 UTurns = false,
+                HeadlandM = 26,
                 OnFix = m.OnFixAsync,
                 ExtraJudge = m.Judge,
             };
@@ -389,15 +390,28 @@ public static class TurnInterventions
     /// unworked side as the tractor crosses the headland line, and stops when no pass is left.</summary>
     private sealed class ManualTurns
     {
-        private bool _wasInWork; private double _inWorkM;
+        private bool _wasInWork; private double _inWorkM, _outOfWorkM;
         public readonly List<(int Index, double At, bool Left, bool Started, string Said)> Taps = new();
 
         public async Task OnFixAsync(JobRun r)
         {
-            if (r.InTurn || r.Work == null) { _wasInWork = false; _inWorkM = 0; return; }
+            if (r.InTurn || r.Work == null) { _wasInWork = false; _inWorkM = 0; _outOfWorkM = 0; return; }
             bool inWork = Ring.Inside((r.Truth.E, r.Truth.N), r.Work);
-            if (inWork) _inWorkM += Math.Abs(r.Truth.SpeedKmh) / 3.6 * JobRun.FixSeconds;
-            if (_wasInWork && !inWork && _inWorkM > 20)
+            double step = Math.Abs(r.Truth.SpeedKmh) / 3.6 * JobRun.FixSeconds;
+            if (inWork) { _inWorkM += step; _outOfWorkM = 0; } else _outOfWorkM += step;
+            // After a turn, a pass with no work on it (the cultivated area narrows past the turn):
+            // the operator stops rather than drive on out of the field. Not at the start, where
+            // the tractor drives in from outside the work.
+            if (Taps.Count > 0 && !inWork && _inWorkM == 0 && _outOfWorkM > 40
+                && r.InsideChordM(PassAt(r, (r.Truth.ToolCentre.E, r.Truth.ToolCentre.N))) < 20)
+            {
+                r.EndedBy = JobRun.F($"the operator finished at the headland: the pass after the last turn has no work on it");
+                r.FieldDone = true; r.Stopped = true; r.Did(r.EndedBy);
+                return;
+            }
+            // Out of the work at the end of a pass: any work on it (a short pass where the field
+            // narrows counts too), not a brief dip out of it in the first metres after a turn.
+            if (_wasInWork && !inWork && _inWorkM > 3)
             {
                 var tc = r.Truth.ToolCentre;
                 int k = PassAt(r, (tc.E, tc.N));
@@ -434,9 +448,11 @@ public static class TurnInterventions
             var ended = r.Turns.Where(t => !double.IsNaN(t.EndHeadingOffDeg)).ToList();
             sc.Row.Metrics.Add((JobRun.F($"Manual U-turns tapped / started / handed back to the line as designed (4 m of arc left: {handBackDeg:0}° off the pass, flagged beyond {limitDeg:0}°) / landed on the next pass; at the hand-back the most off the pass direction / the implement furthest from its pass"), JobRun.F($"{Taps.Count} / {r.Turns.Count} / {r.Turns.Count - early.Count} / {r.Turns.Count(t => t.TruthPassAfter != int.MinValue && t.TruthPassAfter - t.TruthPassBefore == 1)}; {(ended.Count > 0 ? ended.Max(t => t.EndHeadingOffDeg) : 0):0}° / {(ended.Count > 0 ? ended.Max(t => t.EndOffPassM) : 0):0.0} m")));
             if (Taps.Count == 0) { r.Harness("the operator never reached a headland line with AutoSteer on: no manual U-turn was tapped"); return; }
+            // A manual turn that would leave the field is refused (as an automatic one, #698), so one
+            // that took the tractor out anyway is the check missing it.
             var outside = r.Turns.Where(t => t.MaxPivotOutsideM > 0.5).ToList();
             if (outside.Count > 0)
-                sc.Note(JobRun.F($"manual U-turns are built with no look at the boundary (a Dubins path from 4 m ahead of the tractor, as AgOpenGPS's BuildManualYouTurn): tapped at the headland line of a {r.Spec.HeadlandM:0} m headland, radius {r.Spec.UTurnRadius:0} m for {r.Spacing:0} m passes, {outside.Count} of {r.Turns.Count} took the tractor past the boundary, up to {outside.Max(t => t.MaxPivotOutsideM):0.0} m. A manual turn that would leave the field could be refused as an automatic one is (LeavesField, #698)"));
+                flag(Severity.Safety, "MANUAL-TURN-LEFT-FIELD", JobRun.F($"{outside.Count} of {r.Turns.Count} manual U-turns took the tractor past the boundary, up to {outside.Max(t => t.MaxPivotOutsideM):0.0} m (tapped at the headland line of a {r.Spec.HeadlandM:0} m headland, radius {r.Spec.UTurnRadius:0} m for {r.Spacing:0} m passes): AgOpenWeb should have refused them."));
             if (refused > 0)
                 flag(Severity.Bug, "MANUAL-TURN-REFUSED", JobRun.F($"{refused} of {Taps.Count} taps on the manual U-turn button started no turn: {Taps.First(Refused).Said}"));
             if (early.Count > 0)

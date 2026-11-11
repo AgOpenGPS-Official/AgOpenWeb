@@ -50,7 +50,7 @@ its neighbours':
 | AgOpenWeb's map painted where no valve was open, or blank where one was | `MAP-SHOWS-UNSPRAYED`, `SPRAYED-NOT-ON-MAP` |
 | AgOpenWeb's area covered once against the truth | `APP-AREA-OFF` |
 | Sprayed twice beyond the overlap asked for | `DOUBLE-SPRAYED` |
-| A U-turn that took the tractor or an implement end past the boundary | `TURN-OUTSIDE-BOUNDARY` |
+| A U-turn that took the tractor past the boundary (an implement end past it is a note: *Distance from boundary* keeps the tractor inside, not the implement, as in AgOpenGPS, kept on purpose) | `TURN-OUTSIDE-BOUNDARY` |
 | U-turns missed or cancelled, AutoSteer dropping out | `TURN-MISSED`, `AUTOSTEER-DROPPED` |
 | The first U-turn arrow pointing at the edge the operator started from | `FIRST-TURN-TOWARD-EDGE` |
 | The screen's sections and the nozzles disagreeing | `VALVES-NOT-FOLLOWING`, `SECTION-WITHOUT-RELAY` |
@@ -220,7 +220,7 @@ thing while a U-turn is planned or under way (`TurnInterventions.cs`), the repor
 | T8 | Reverses 7 m in the middle of a turn (#588), then drives on |
 | T9 | Reverses out of a turn just finished (#588) |
 | T10 | Switches AutoSteer off half way round a turn and on again (AgOpenWeb drops the turn; re-engaging should build it again) |
-| T11 | U-turns off: every turn made with the manual buttons (#272, #163) |
+| T11 | U-turns off: every turn made with the manual buttons (#272, #163), on a 26 m headland the turn fits in from the headland line; a manual turn that would leave the field is refused (as an automatic one, #698), so one that leaves it is `MANUAL-TURN-LEFT-FIELD` (Safety) |
 | T12 | A manual U-turn in the middle of a pass, then automatic turns (the rest of that pass is left on purpose) |
 
 Each turn is watched from the action to 15 s after it ends: the path AgOpenWeb follows, the side
