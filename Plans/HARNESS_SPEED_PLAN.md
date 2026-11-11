@@ -1,7 +1,7 @@
 # Scenario harnesses: faster to run, faster to work with
 
-**Status:** in progress, 2026-11-11. The way of working and #771 are in place; #772 and the items
-in section 4 are open.
+**Status:** in progress, 2026-11-11. The way of working, #771 and #772 are in place, and so are 4.2–4.5;
+4.6 waits for the memory theme, 4.7 for a week of nightlies.
 
 ## 1. Why this plan
 
@@ -82,20 +82,20 @@ GitHub mirror in a volume, so Runner needs no checkout:
 
 ## 4. Open
 
-### 4.1 Short runs: the turn the run stopped in (#772)
+### 4.1 Short runs: the turn the run stopped in (#772, merged)
 
 The first two-turn run failed in the turn job. The run stops as turn N+1 starts, so T4's check,
 which needs turn 3 finished, reported a harness failure, and in T11/T12 the manual tap that started
 the cut-off turn counted as refused. #772 drops the cut-off turn from judging and turns a check that
-waits for a turn the run didn't reach into a note. Open, CI to check, then merge.
+waits for a turn the run didn't reach into a note. Merged 2026-11-11.
 
-### 4.2 A `minutes` input for the path job
+### 4.2 A `minutes` input for the path job (done)
 
 The path job's lap and pivot jobs make no U-turns, so `turns` doesn't shorten them: 26 of the 33
 minutes of the two-turn run. `job-scenarios.yml` needs a `minutes` input passed as
-`AGOPENWEB_SCENARIO_MINUTES`, so a manual short run is short for every harness.
+`AGOPENWEB_SCENARIO_MINUTES`, so a manual short run is short for every harness. Added.
 
-### 4.3 The Runner image in the repo
+### 4.3 The Runner image in the repo (done)
 
 The Dockerfile and `run-harness.sh` live only in a session's scratch folder, so a lost session
 loses the way to rebuild Runner. Move them to `Tools/harness-runner/` with a short README:
@@ -103,18 +103,33 @@ loses the way to rebuild Runner. Move them to `Tools/harness-runner/` with a sho
 - run one harness;
 - run a fix and its base side by side.
 
-### 4.4 Comparing a fix with its base
+Done: `Tools/harness-runner/` (`Dockerfile`, `run-harness.sh`, `runner-compare.sh`, README). The
+image on Runner is now built from it. `run-harness` also points the working day's own report
+variable (`AGOPENWEB_DAY_REPORT`) at `/out`, where the other harnesses' reports already went.
+
+### 4.4 Comparing a fix with its base (done)
 
 Every fix is judged against its base, and today that comparison is done by reading two reports
 side by side. A script that takes two job reports and lists the findings gone, new and unchanged
 (with their numbers, such as m² missed) would make the before/after check one step. It can share
 the parsing in `combine-job-reports.py`.
 
-### 4.5 Fail loudly on a busy port
+Done: `Tools/compare-reports.py BASE.md FIX.md [OUT.md]` works on every harness's report and on
+the combined one (they share the findings format), new findings first. `runner-compare.sh` runs
+both sides on Runner, refuses to start beside a running harness, copies both `/out` folders back
+and writes `compare.md`.
+
+### 4.5 Fail loudly on a busy port (done)
 
 On the main Mac an AgOpenWeb app held UDP 9999. A harness run beside it showed valves shut for up to
 192 s, which the same jobs on GitHub didn't. The rig should check its ports at the start and stop
 with a clear harness failure when one is taken, instead of producing findings.
+
+Done: the app binds 9999 with `ReuseAddress`, so a second process binds it too without an error,
+and the two split the packets. `Tests/ScenarioShared/PortGuard.cs`, linked into every harness, is
+an assembly-wide NUnit set-up that binds 9999 and 8888 without `ReuseAddress`; when that fails the
+run stops at once (13 ms) with one message. Checked against a holder with `SO_REUSEADDR` and with
+`SO_REUSEPORT`. Runner's containers each have their own network, so it never fires there.
 
 ### 4.6 Memory findings across machines
 

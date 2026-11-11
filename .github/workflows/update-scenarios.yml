@@ -78,6 +78,7 @@ jobs:
             Shared/AgOpenWeb.Models/GeoJson \
             Shared/AgOpenWeb.Models/Job \
             Tests/AgOpenWeb.UpdateScenarios.Tests \
+            Tests/ScenarioShared \
             .github/workflows/update-scenarios.yml
 
       - uses: ./.github/actions/sharpisoterm-cache
