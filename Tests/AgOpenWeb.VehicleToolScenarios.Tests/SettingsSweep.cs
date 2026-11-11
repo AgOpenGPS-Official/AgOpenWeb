@@ -313,6 +313,18 @@ public static class SettingsSweep
                 var after = await driver.RunAsync(probe);
                 var drift = TraceDiff.Of(b1, after);
                 var (moved, _, _) = Changes(drift, noise);
+                // State the app kept shows again on the next run; a switch that happened by chance
+                // doesn't. Three base runs don't always show a trailed implement's spread (the TBT
+                // group: section 8 ends anywhere from 58 to 64 m, and once flickered on/off near
+                // the end in the after-run only, every night), so a drift counts when a second run
+                // on the base settings drifts too.
+                if (moved != Effect.None && probe != Probe.Module)
+                {
+                    var again = TraceDiff.Of(b1, await driver.RunAsync(probe));
+                    var (movedAgain, _, _) = Changes(again, noise);
+                    if (movedAgain == Effect.None) moved = Effect.None;
+                    else drift = again;
+                }
                 if (moved != Effect.None && probe != Probe.Module)
                     journal.Add(new Finding("SWEEP-BASELINE-DRIFT", Severity.Improvement,
                         $"the {probe} probe on the base settings gave a different result after the group's rows than before ({Describe(drift)}): a setting was not put back, or the app kept state (harness artifact until shown otherwise)"),
