@@ -242,7 +242,10 @@ public static class UpgraderOperator
             var pairs = farm.Vehicles.Zip(farm.Tools, (v, t) => (v.Name, t.Name)).ToList();
             var after = await Snapshot.TakeAsync(rig, openFields: true, pairs);
             // The job's coverage: whatever the 30 s autosave wrote; none at all is the finding.
-            Judge.Farm(sc, farm, after, "POWERCUT", what => skip(what) || what is "lastfield" or "view" or "theme", oldFiles);
+            // Profile edits the older release had not saved when the power went: its settings
+            // screen saved only at Save Profile or the exit save, so it lost them, not this build.
+            sc.Note(Kit.F($"{tag} saved profile edits only at Save Profile or the exit save: the {farm.ProfileEdits.Count} tuned after the last save were lost by {tag} at the power cut, not judged"));
+            Judge.Farm(sc, farm, after, "POWERCUT", what => skip(what) || what is "lastfield" or "view" or "theme" or "unsaved", oldFiles);
             var fr = after.Fields.FirstOrDefault(f => f.Name == farm.Fields[^1].Name);
             var job = fr?.Jobs.FirstOrDefault(j => j.Task == farm.Fields[^1].Job!.Task);
             if (job != null) sc.Note(Kit.F($"the job interrupted by the power cut resumes with {job.WorkedSqM:0} m² worked ({farm.Fields[^1].Job!.DriveSeconds} s driven; the autosave runs every 30 s)"));

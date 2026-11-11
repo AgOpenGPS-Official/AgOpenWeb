@@ -283,6 +283,9 @@ public static class FarmBuilder
         foreach (var st in farm.Device) await s.SendAsync("config.set", st.Key + ":" + st.Value);
         // Profile settings tuned afterwards, with no profile save after them.
         foreach (var st in farm.ProfileEdits) await s.SendAsync("config.set", st.Key + ":" + st.Value);
+        // This build's web client saves the profile when the settings panel closes (as AgOpenGPS
+        // when its form closes); an older release's waited for Save Profile or the exit save.
+        if (s is RigSender) await s.SendAsync("profile.save");
         await s.SendAsync("app.setLanguage", farm.Language);
         foreach (var (action, key) in farm.Hotkeys) await s.SendAsync("app.setHotkey", action + ":" + key);
         if (farm.NightMode) await s.SendAsync("display.toggleTheme");
