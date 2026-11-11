@@ -917,6 +917,7 @@ public sealed class JobRun : IAsyncDisposable
         bool link = Module.LinkOk;
         if (!link) SecondsLinkDown += FixSeconds;
         var ss = c.SectionStates;
+        var live = Rig.Services.GetRequiredService<ISectionControlService>().SectionStates;
         Grid.BeginFix();
         double uL = double.MaxValue, uR = double.MinValue;
         bool any = false;
@@ -933,7 +934,10 @@ public sealed class JobRun : IAsyncDisposable
             // What must match the screen is the product at the nozzles: the relays rightly lead the
             // screen by the look-ahead (#714), the valves then take that long, and the two meet.
             bool valve = ((spray >> s) & 1) != 0;
-            bool screen = ss != null && s < ss.Length && ss[s];
+            // The screen as the browser draws it: the section service's live state, which the
+            // 100 Hz control loop keeps up without GPS. The last GPS cycle's copy stays as it was
+            // through an outage (careless C2: 'on' for 5 s while the app had closed the valves).
+            bool screen = s < live.Count && live[s].IsOn;
             if (screen && !valve) { ScreenOnValveShut[s] += FixSeconds; if (!link) SecondsPaintingLinkDown += FixSeconds / n; }
             if (!screen && valve) ScreenOffValveOpen[s] += FixSeconds;
             if (screen != valve) { if (++_disagreeRun[s] > 10) PersistentDisagreement[s] += FixSeconds; }
