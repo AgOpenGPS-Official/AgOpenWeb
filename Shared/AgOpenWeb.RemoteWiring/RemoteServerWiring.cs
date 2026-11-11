@@ -40,6 +40,7 @@ public static partial class RemoteServerWiring
         // next one (BACKEND-NOT-FREED-AFTER-EXIT); the next backend then wires its own.
         server.Stopped += () =>
         {
+            vm.StopBackgroundLoops();
             if (ReferenceEquals(AgShareRemote.Ui, dispatcher)) AgShareRemote.Ui = null;
             BugReportRemote.Stop();
         };

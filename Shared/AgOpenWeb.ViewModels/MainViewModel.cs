@@ -954,12 +954,21 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    // Cancelled when the backend stops (StopBackgroundLoops): the loops below end at once
+    // rather than keep the stopped backend alive from a pending delay.
+    private readonly System.Threading.CancellationTokenSource _backendStopping = new();
+
+    /// <summary>The backend is stopping: end the background loops (the module hello loop). The
+    /// process may outlive the backend (Android), and a loop still waiting kept the whole
+    /// backend alive (the working day harness's BACKEND-NOT-FREED-AFTER-EXIT).</summary>
+    public void StopBackgroundLoops() => _backendStopping.Cancel();
+
     private async Task StartHelloTimerAsync()
     {
         try
         {
             int helloCounter = 0;
-            while (_udpService.IsConnected)
+            while (_udpService.IsConnected && !_backendStopping.IsCancellationRequested)
             {
                 // Send hello packet every second (every 10 ticks * 100ms)
                 if (helloCounter++ % 10 == 0)
@@ -1011,9 +1020,10 @@ public partial class MainViewModel : ObservableObject
                     UpdateStatusMessage();
                 }
 
-                await System.Threading.Tasks.Task.Delay(100); // Check every 100ms for fast response
+                await System.Threading.Tasks.Task.Delay(100, _backendStopping.Token); // Check every 100ms for fast response
             }
         }
+        catch (OperationCanceledException) { /* the backend stopped */ }
         catch (Exception ex)
         {
             _logger.LogError(ex, "HelloTimer error");
