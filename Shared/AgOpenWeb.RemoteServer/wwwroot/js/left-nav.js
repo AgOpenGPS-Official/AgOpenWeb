@@ -19,7 +19,17 @@ const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'field
 // moment a problem shows, since the dump holds only the last 60 s of GPS data.
 const NO_SCRIM = new Set(['smartwas', 'recpath', 'boundaryplayer', 'fieldbuilder', 'bugreport', 'ntripsettings', 'ntripprofiles', 'ntripeditor']);
 const lnScrim = document.getElementById('ln-scrim');
+// The panels whose settings belong to the vehicle and implement profiles.
+const PROFILE_PANELS = ['vehiclecfg', 'toolcfg', 'autosteercfg'];
 function lnCloseAll() {
+  if (PROFILE_PANELS.some(id => document.getElementById(id).classList.contains('open'))) {
+    // A box still being typed in sends its value when it loses focus, after this tap: blur it
+    // first so the value is in before the save (as Save Profile does).
+    const a = document.activeElement;
+    if (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement) a.blur();
+    if (cfgEditedSinceOpen) saveProfile();
+  }
+  cfgEditedSinceOpen = false;
   for (const id of LN_NAV_PANELS) document.getElementById(id).classList.remove('open');
   lnScrim.classList.remove('open');
   document.getElementById('ln-screenalerts').classList.remove('active');

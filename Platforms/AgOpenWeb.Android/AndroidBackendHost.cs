@@ -97,6 +97,8 @@ internal sealed class AndroidBackendHost
         }
         _hostLoop?.Dispose();
         try { _provider?.Dispose(); } catch { /* a dispose fault must not wedge teardown */ }
+        // The process outlives the backend: the static must not keep the stopped one's services.
+        if (ReferenceEquals(AndroidApp.Services, _provider)) AndroidApp.Services = null;
         _hostLoop = null;
         _provider = null;
         _remoteServer = null;

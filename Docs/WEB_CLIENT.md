@@ -17,6 +17,14 @@ wwwroot/
 └── manifest.webmanifest
 ```
 
+## The screen it is made for
+
+A 10" tablet in landscape: the reference is the Panasonic Toughpad FZ-G1 (10.1", 1920×1200 at
+150% scaling, so 1280×800 CSS pixels). Layout is judged and fixed on that screen and larger
+landscape ones; smaller screens, portrait and phones are out of scope. A handheld screen would
+want a layout of its own with fewer, larger controls, not this one made smaller. The web client
+harness checks the target screen (`Tests/AgOpenWeb.WebClientScenarios.Tests`, S1).
+
 ## Where things are
 
 | File | Holds |

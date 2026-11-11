@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
@@ -205,6 +206,28 @@ public sealed class YouTurnStateMachine
 
         // ── TURN CREATION ───────────────────────────────────────────────
         bool canCreateTurn = isInCultivatedArea && headlandInRange;
+        // On a curve the headland ahead is found by a straight ray along the heading, which
+        // leaves the field early on the outside of a bend while the pass runs on. Whether the
+        // next pass has room is judged at that end, so mid-pass a turn was refused and "End of
+        // field reached" said, then the turn made at the real end (field job J10, a recorded
+        // S-curve). The ray's direction is the reference curve's heading at its nearest point,
+        // which on a pass far out from an S-shaped reference is not the pass's own, so the ray
+        // can also cross the pass and meet the headland beside it. The pass itself is walked
+        // ahead: when it goes on in the field past the ray's end, the end is further on and is
+        // judged once the ray finds it. The walk stops at twice the margin past the ray (it is
+        // counted from the nearest point of the offset curve, about a metre either way).
+        if (canCreateTurn && turn.TurnPath == null && !turn.IsExecuting && track.Points.Count > 2)
+        {
+            const double RayShortBy = 5.0;
+            double along = _pathing.LandingLength(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
+                passPoint, !headingSameWay, 0, stopAt: turn.DistanceToHeadland + 2 * RayShortBy);
+            if (along > turn.DistanceToHeadland + RayShortBy)
+            {
+                canCreateTurn = false;
+                _logger.LogDebug("[YouTurn] Curve: the pass runs on {Along:F1}m+ in the field past the headland the straight line meets at {Dist:F1}m - the end is further on",
+                    along, turn.DistanceToHeadland);
+            }
+        }
         if (!canCreateTurn && ctx.IsSkipWorkedMode && isInHeadlandZone && isAlignedWithABLine
             && turn.SnakeSequence != null && turn.TurnPath == null && !turn.IsExecuting)
         {
@@ -1140,10 +1163,17 @@ public sealed class YouTurnStateMachine
         {
             // A pass inside the field somewhere, but with no room to land on at this end (a
             // corner pass, the far lobe of an hourglass): the operator takes over here too.
-            bool roomSomewhere = !steppedBack && _pathing.WouldNextLineBeInsideBoundary(
-                track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive).isInside;
-            _logger.LogDebug("[YouTurn] Next line would be outside boundary{Room} - stopping U-turns",
-                roomSomewhere ? " at this end" : "");
+            // Stepped back, that is the next pass on the way the turns go: the pass just worked
+            // has room but is no pass to go to, and the next one may still run on through the
+            // field (field job J3, a narrowing lobe with 40 % of the field left), which is not
+            // the end of the field.
+            bool roomSomewhere = steppedBack
+                ? _pathing.IsPathInsideCultivated(track, abHeading,
+                    guidance.HowManyPathsAway + (keepPositive == true ? 1 : -1) * (ctx.UTurnSkipRows + 1), ctx.Boundary, ctx.HeadlandLine)
+                : _pathing.WouldNextLineBeInsideBoundary(
+                    track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive).isInside;
+            _logger.LogDebug("[YouTurn] Next line would be outside boundary{Room} - stopping U-turns (headland {Dist:F1}m ahead of ({E:F1},{N:F1}) heading {Hdg:F0}°, zone {Zone})",
+                roomSomewhere ? " at this end" : "", turn.DistanceToHeadland, currentPosition.Easting, currentPosition.Northing, currentPosition.Heading, turn.CurrentZone);
             effects.StatusMessage = roomSomewhere ? "End of field reached - no room on the next pass at this end" : "End of field reached";
             SoundCreationFailed(effects);
             return;
@@ -1262,9 +1292,45 @@ public sealed class YouTurnStateMachine
         turn.TurnPath = result.Path;
         turn.ArcStart = result.ArcStart;
         turn.YouTurnCounter = 0;
-        if (!result.UsedFallback && effects.StatusMessage == null)
+        double startsInside = TurnStartInsideHeadlandLine(result.ArcStart, ctx.HeadlandLine);
+        if (startsInside > NarrowHeadlandToleranceM && effects.StatusMessage == null)
+            effects.StatusMessage = HeadlandTooNarrowMessage(startsInside);
+        else if (!result.UsedFallback && effects.StatusMessage == null)
             effects.StatusMessage = $"YouTurn path created ({result.Path.Count} points)";
         effects.SyncTurnPathToMap = true;
+    }
+
+    /// <summary>Less than this inside the headland line is the turn line's own rounding.</summary>
+    private const double NarrowHeadlandToleranceM = 0.5;
+
+    /// <summary>
+    /// The operator's warning for a turn that leaves its pass before the headland line: the
+    /// headland is narrower than the turn needs at this radius and pass spacing, so the turn,
+    /// moved in to stay inside the turn line (as AgOpenGPS), starts in the cultivated area with
+    /// the sections still on: a wedge of the pass end is left unsprayed and the other side is
+    /// sprayed twice (field job scenarios: a 16 m headland, an 8 m radius on 8 m passes, the
+    /// turn starting 4.6 m inside).
+    /// </summary>
+    public static string HeadlandTooNarrowMessage(double insideM) => string.Format(CultureInfo.InvariantCulture,
+        "Headland too narrow for this U-turn: it leaves the pass {0:0.0} m before the headland line, still working. Widen the headland or reduce the U-turn radius.", insideM);
+
+    /// <summary>How far inside the headland line (in the cultivated area) the turn leaves its
+    /// pass: the arc's start, before the entry leg. 0 when it starts in the headland or there
+    /// is no headland line.</summary>
+    public static double TurnStartInsideHeadlandLine(Vec3? arcStart, IReadOnlyList<Vec3>? headlandLine)
+    {
+        if (arcStart is not { } a || headlandLine == null || headlandLine.Count < 3) return 0;
+        if (!GeometryMath.IsPointInPolygon(headlandLine, a)) return 0;
+        double best = double.MaxValue;
+        for (int i = 0, j = headlandLine.Count - 1; i < headlandLine.Count; j = i++)
+        {
+            var p = headlandLine[j]; var q = headlandLine[i];
+            double dx = q.Easting - p.Easting, dy = q.Northing - p.Northing, l2 = dx * dx + dy * dy;
+            double t = l2 < 1e-12 ? 0 : Math.Clamp(((a.Easting - p.Easting) * dx + (a.Northing - p.Northing) * dy) / l2, 0, 1);
+            double ex = p.Easting + t * dx - a.Easting, ey = p.Northing + t * dy - a.Northing;
+            best = Math.Min(best, ex * ex + ey * ey);
+        }
+        return Math.Sqrt(best);
     }
 
     private void CompleteTurn(

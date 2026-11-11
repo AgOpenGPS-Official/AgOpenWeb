@@ -28,12 +28,22 @@ public static partial class RemoteServerWiring
         var dispatcher = services.GetRequiredService<IUiDispatcher>();
 
         // AgShareRemote marshals its async cloud-op results back to the UI thread via
-        // this dispatcher (set once; it's a process singleton).
+        // this dispatcher (this backend's; let go when it stops).
         AgShareRemote.Ui = dispatcher;
 
         // Send Report: the outbox retries reports queued while offline, from now on.
         BugReportRemote.Start(services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>(), dispatcher,
             services.GetService<AgOpenWeb.Services.Network.INetworkWatcher>());
+
+        // The statics above hold this backend: they let go of it when it stops, or it stays
+        // alive after Exit, and on Android, where the process outlives the backend, beside the
+        // next one (BACKEND-NOT-FREED-AFTER-EXIT); the next backend then wires its own.
+        server.Stopped += () =>
+        {
+            vm.StopBackgroundLoops();
+            if (ReferenceEquals(AgShareRemote.Ui, dispatcher)) AgShareRemote.Ui = null;
+            BugReportRemote.Stop();
+        };
 
         // Alert sounds play on the CLIENT, not the host (a headless box has no speaker).
         // The gating-aware WebClientAudioService raises an effect; forward it to clients.
@@ -853,13 +863,20 @@ public static partial class RemoteServerWiring
                         if (held)
                         {
                             System.Diagnostics.Debug.WriteLine($"[remote] control taken by {name}");
+                            // What the last loss of control switched off, told to the screen
+                            // that has control now (the one that came back, or another).
+                            dispatcher.Post(() =>
+                            {
+                                if (vm.TakeControlLostNotice() is { } notice) vm.ReportFailure(notice);
+                            });
                             return;
                         }
+                        bool involuntary = controlLostReason != null;
                         string offReason = "browser control ended: " + (controlLostReason ?? "released");
                         controlLostReason = null;
                         dispatcher.Post(() =>
                         {
-                            vm.OnBrowserControlEnded(offReason);
+                            vm.OnBrowserControlEnded(offReason, involuntary);
                             wizardActive = false;
                         });
                     };

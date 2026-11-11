@@ -16,7 +16,8 @@ import re
 import sys
 
 ORDER = ["Safety", "DataLoss", "Bug", "Inconsistency", "Improvement", "Harness"]
-ENTRY = re.compile(r"^\d+\. \*\*(?P<sev>[A-Za-z]+)\*\* `(?P<code>[A-Z0-9-]+)` ×(?P<n>\d+): (?P<text>.*)$")
+# Some harnesses put the kind after the severity: "**Bug** (app defect) `CODE`" (dump replay).
+ENTRY = re.compile(r"^\d+\. \*\*(?P<sev>[A-Za-z]+)\*\* (?:\([^)]*\) )?`(?P<code>[A-Z0-9-]+)` ×(?P<n>\d+): (?P<text>.*)$")
 
 
 def findings(path):
@@ -25,12 +26,14 @@ def findings(path):
         lines = open(path, encoding="utf-8").read().splitlines()
     except OSError:
         return None
-    out, inside = [], False
+    # A harness report lists them under "## Findings"; the combined report has no such heading
+    # and is all findings.
+    out, inside = [], not any(l.startswith("## Findings") for l in lines)
     for i, line in enumerate(lines):
         if line.startswith("## Findings"):
             inside = True
             continue
-        if inside and line.startswith("## "):
+        if inside and line.startswith("## ") and not line.startswith("## Findings"):
             break
         m = ENTRY.match(line) if inside else None
         if m:

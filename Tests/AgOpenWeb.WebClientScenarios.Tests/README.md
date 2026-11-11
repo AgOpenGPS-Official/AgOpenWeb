@@ -1,9 +1,10 @@
 # Web client scenarios: the screens, a second screen, losing the screen, and the operator's flows
 
 An end-to-end harness for the web client as farms use it (checklists 12.4, 12.5, 12.8 and
-13.11): a 10" and a 7" tablet, a 720p cab PC, a 5" cab screen, a phone in both orientations, a
-tablet upright; a phone or an office PC watching beside the cab tablet; and the cab tablet
-going away while the tractor works. Then the operator's own flows on the cab tablet, done by
+13.11) on AgOpenWeb's screen target, a 10" tablet in landscape (the Panasonic FZ-G1: 1280×800
+CSS px; other screens are out of scope, `Docs/WEB_CLIENT.md`): the screen itself, in English and
+Portuguese; a second 10" tablet watching beside the cab tablet; and the cab tablet going away
+while the tractor works. Then the operator's own flows on the cab tablet, done by
 taps and typing only (Chris's harness plan, item 3.5): tracks made every way Quick AB offers but
 the water pivot, renamed, hidden and deleted; the boundary and the headland; tram lines; fields and jobs opened, closed and resumed;
 the section bar; the U-turn and lateral buttons.
@@ -43,23 +44,21 @@ so a section in Auto is open until something closes it.
 
 ## Scenarios
 
-**S, the screens** (`ScreenScenarios.cs`). The only screen, holding control, a job running:
-S1 10" tablet 1280×800, S2 720p cab PC 1280×720, S3 7" tablet 1024×600, S4 5" cab screen 800×480,
-S5 phone landscape 844×390, S6 phone portrait 390×844, S7 10" tablet portrait 800×1280, S8 the
-5" screen in Portuguese. On each: the page doesn't scroll; every button of the status bar, left
+**S, the screen** (`ScreenScenarios.cs`). The only screen, holding control, a job running: S1 the
+10" tablet 1280×800, S2 the same in Portuguese (the longest labels). On each: the page doesn't scroll; every button of the status bar, left
 nav, right nav, bottom nav, section bar and camera pad can be tapped (after scrolling its bar if
 the bar scrolls); buttons under 40 px are listed; the role, speed, heading, fix, field line and
 cross-track are on the screen and not cut; AutoSteer and the section master work by touch; eleven
 menus open by their own buttons (File, Screen & Alerts, Tools, Vehicle & Tool, Vehicle settings,
 Tool settings, AutoSteer and its full view, Field Operations, Field Tools, Network) and every
-control in them can be reached; a phone keeps control when turned around; no script errors.
+control in them can be reached; no script errors.
 
-**O, a second screen** (`ObserverScenarios.cs`). O1 the phone joins as observer and sees what the
-operator does; O2 from the phone, every button of its bars tapped and every command id in the
+**O, a second screen** (`ObserverScenarios.cs`). O1 a second tablet joins as observer and sees what the
+operator does; O2 from the second tablet, every button of its bars tapped and every command id in the
 client's scripts sent (plus the most harmful ones with real arguments), then the host's switches,
-track, tool, vehicle and files compared; O3 a setting edited on the phone: is it shown as saved?;
-O4 the phone asks for control while the operator is live; O5 the operator's tab closes: the
-machine stops, the phone takes over (is it told?), the tablet comes back; O6 three screens, the
+track, tool, vehicle and files compared; O3 a setting edited on the second tablet: is it shown as saved?;
+O4 the second tablet asks for control while the operator is live; O5 the operator's tab closes: the
+machine stops, the second tablet takes over (is it told?), the tablet comes back; O6 three screens, the
 operator leaves: exactly one takes over.
 
 **C, the operator's screen goes** (`ControlLostScenarios.cs`), working with AutoSteer and sections
@@ -68,8 +67,8 @@ on: C1 the tab closes; C2 Wi-Fi out of range 10 s; C3 the same with taps on the 
 presence every 0.5 s and the deadman at 1.5 s, a longer one may or may not reach it); C6 a
 2.5 s hiccup; C7 the access point drops the tablet; C8 the page reloads; C9 Free Drive on and
 steered 10° right, then the tab closes; C10 a section switched on by hand, then the tab closes;
-C11 the cab tablet's link goes silent with a phone watching; C12 the cab tablet's link silent
-for a minute with sections painting and a phone watching, so the host's sends to the dead link
+C11 the cab tablet's link goes silent with a second tablet watching; C12 the cab tablet's link silent
+for a minute with sections painting and a second tablet watching, so the host's sends to the dead link
 fill its buffers and wait (the deadman runs in the same loop as the sends). Each measures how
 long the module kept getting AutoSteer on and sections open, what the screen showed meanwhile,
 and what the screen shows when it comes back. C9 and C10 also check that PGN 254 still reaches
@@ -193,8 +192,8 @@ other scenario harnesses first: they share the ports).
 
 - Chromium only: Safari on an iPad and the Android and iOS web views are not covered, nor the
   heads' own shells (`MainActivity`, `LauncherViewController`, Photino).
-- Sizes, not devices: a phone is Chromium's mobile emulation (viewport, touch, device scale),
-  not a phone's browser with its own toolbars and keyboard.
+- Sizes, not devices: the tablet is a Chromium viewport with touch, not a tablet's browser with
+  its own toolbars and keyboard.
 - A background tab's timer throttling (1 Hz, then once a minute after five minutes in Chrome) is
   not emulated; a sleeping tablet is a page whose script is paused.
 - Taps land on the centre of a control; the layout check counts a control as reachable when one

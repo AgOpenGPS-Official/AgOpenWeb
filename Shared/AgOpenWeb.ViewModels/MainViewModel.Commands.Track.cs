@@ -899,11 +899,13 @@ public partial class MainViewModel
         });
 
         // Cycle Normal → Alternative → Ignore worked tracks, like AgOpenGPS's skip button;
-        // the two skip modes skip at least 1 row (#111).
+        // the two skip modes skip at least 1 row (#111). Every tap starts from the operator's
+        // own row count, as AgOpenGPS resets rowSkipsWidth to the saved setting, so back in
+        // Normal the 1 row the skip modes needed is gone (nightly C5).
         ToggleUTurnSkipRowsCommand = new RelayCommand(() =>
         {
             UTurnSkipMode = (UTurnSkipMode + 1) % 3;
-            if (UTurnSkipMode != 0 && UTurnSkipRows < 1) UTurnSkipRows = 1;
+            UTurnSkipRows = UTurnSkipMode != 0 ? Math.Max(1, _uTurnSkipRowsChosen) : _uTurnSkipRowsChosen;
             // The setters above push the new pattern to the pipeline (SetYouTurnConfig),
             // which drops the snake sequence so it rebuilds on the next turn.
             StatusMessage = UTurnSkipMode switch
@@ -917,6 +919,7 @@ public partial class MainViewModel
         CycleUTurnSkipRowsCommand = new RelayCommand(() =>
         {
             UTurnSkipRows = (UTurnSkipRows + 1) % 10;
+            _uTurnSkipRowsChosen = UTurnSkipRows;
             StatusMessage = $"Skip rows: {UTurnSkipRows}";
         });
 
@@ -994,6 +997,7 @@ public partial class MainViewModel
                 : Services.Interfaces.SoundEffect.SectionOff);
 
             StatusMessage = IsManualSectionMode ? "All sections ON" : "All sections OFF";
+            if (IsManualSectionMode) WarnSectionsWithoutRelay();
         });
 
         ToggleSectionMasterCommand = new RelayCommand(() =>
@@ -1009,6 +1013,7 @@ public partial class MainViewModel
                 : Services.Interfaces.SoundEffect.SectionOff);
 
             StatusMessage = IsSectionMasterOn ? "All sections AUTO" : "All sections OFF";
+            if (IsSectionMasterOn) WarnSectionsWithoutRelay();
         });
 
         ToggleSectionCommand = new RelayCommand<object>(param =>
@@ -1040,6 +1045,7 @@ public partial class MainViewModel
                 ? Services.Interfaces.SoundEffect.SectionOff
                 : Services.Interfaces.SoundEffect.SectionOn);
             StatusMessage = $"Section {sectionIndex + 1}: {newState}";
+            if (newState != SectionButtonState.Off) WarnSectionsWithoutRelay();
         });
 
         ToggleYouTurnCommand = new RelayCommand(() =>
@@ -1368,7 +1374,20 @@ public partial class MainViewModel
                 return;
             }
 
-            // Find the longest edge of the boundary polygon
+            // The longest side, between two corners (as All Edges finds them): a straight side an
+            // AB line, a bowed one a curve.
+            if (Models.Track.BoundaryEdgeTracks.BuildSides(boundary.Points) is { Count: > 0 } sides)
+            {
+                var (side, length) = sides.MaxBy(x => x.Length);
+                side.Name = $"Longest Edge ({length:F0}m)";
+                AddSavedTrack(side);
+                SaveTracksToFile(); // persist now (#107), before selecting — see A+ below
+                SelectedTrack = side;
+                StatusMessage = $"Created a line along the longest boundary side ({length:F0}m)";
+                return;
+            }
+
+            // No corners (a round field): the longest piece between two boundary points.
             var pts = boundary.Points;
             double maxDist = 0;
             int bestIdx = 0;

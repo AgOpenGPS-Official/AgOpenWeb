@@ -40,6 +40,7 @@ public class WebClientScenarioTests
         await FieldFlows.RunAsync(run);
         await SectionBarFlows.RunAsync(run);
         await UTurnFlows.RunAsync(run);
+        await ProfileFlows.RunAsync(run);
 
         string commit = Environment.GetEnvironmentVariable("GITHUB_SHA") is { Length: >= 7 } sha ? sha[..7] : "local";
         string header = "Commit " + commit + ", Chromium " + browsers.Version + " (headless). The backend runs in the test process with every service real; "
@@ -47,7 +48,7 @@ public class WebClientScenarioTests
             + "8 m boom in 8 sections; what the machine gets is read from PGN 254 on the module port (127.0.0.1:8888). "
             + "A button counts as tappable when its centre is on the screen and not under another element (after scrolling its bar, if that bar scrolls); "
             + Run.F($"touch targets under {Layout.MinTouchPx:0} px are listed as an improvement. ")
-            + Run.F($"The flows (T, B, R, F, X, U) each work in a field of their own (T, R, F, X and U make it from a KML file; B makes its own and imports the KML's outline in B4), on the 10\" tablet by taps and typing ({FlowOp.KeyDelayMs} ms between keys); ")
+            + Run.F($"The flows (T, B, R, F, X, U, V) each work in a field of their own (T, R, F, X and U make it from a KML file; B makes its own and imports the KML's outline in B4), on the 10\" tablet by taps and typing ({FlowOp.KeyDelayMs} ms between keys); ")
             + "each finding says its kind: app defect, harness, parity or enhancement. Screenshots are in `web-client-shots/`.\n";
         var text = Journal.Write(run.Rows, header, clock.Elapsed);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(report))!);

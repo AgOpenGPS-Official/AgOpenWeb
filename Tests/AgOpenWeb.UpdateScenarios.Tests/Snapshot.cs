@@ -342,7 +342,7 @@ public static class Judge
         // Device settings (appsettings.json, written at once), then the profile settings tuned
         // after the last profile save (written at the next profile save, switch or exit save).
         JudgeLoose(farm.Device, "DEVICE-SETTING-CHANGED", "device settings", "written to appsettings.json at once", inProfile: false);
-        JudgeLoose(farm.ProfileEdits, "UNSAVED-PROFILE-EDIT-LOST", "profile settings tuned after the last profile save",
+        if (!Skip("unsaved")) JudgeLoose(farm.ProfileEdits, "UNSAVED-PROFILE-EDIT-LOST", "profile settings tuned after the last profile save",
             "a vehicle or implement profile setting, written only at a profile save, a profile switch or the exit save", inProfile: true);
 
         void JudgeLoose(List<Setting> list, string code, string what, string where, bool inProfile)

@@ -27,6 +27,11 @@ public class ConfigurationStore : ObservableObject
     /// </summary>
     public static void SetInstance(ConfigurationStore store) => _instance = store;
 
+    /// <summary>The backend that owned <paramref name="store"/> stopped: the static lets go of it,
+    /// unless another store took its place already (<see cref="AgOpenWeb.Models.State.BackendStateLease"/>).</summary>
+    internal static void Release(ConfigurationStore store) =>
+        System.Threading.Interlocked.CompareExchange(ref _instance, null, store);
+
     // Sub-configurations (each is an ObservableObject for binding)
     public VehicleConfig Vehicle { get; } = new();
     public ToolConfig Tool { get; } = new();

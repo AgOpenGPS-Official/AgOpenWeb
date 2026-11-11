@@ -58,6 +58,14 @@
   background: rgba(190,24,24,0.94); border: 2px solid #ff8a8a; color: #fff; text-align: center;
   pointer-events: none; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
 #gpslost.show { display: block; }
+/* Same box as GPS lost; above it (both can be up, and this one explains the other). */
+#linklost { position: fixed; top: 50%; left: calc(50% + var(--map-dx)); transform: translate(-50%, -50%); z-index: 10;
+  width: min(420px, calc(100 * var(--vw) - var(--map-l) - var(--map-r) - 32px)); padding: 26px 24px; border-radius: 14px; display: none;
+  background: rgba(190,24,24,0.94); border: 2px solid #ff8a8a; color: #fff; text-align: center;
+  pointer-events: none; box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
+#linklost.show { display: block; }
+#linklost .gl-title { font: 800 26px system-ui, sans-serif; letter-spacing: 0.02em; margin-bottom: 10px; }
+#linklost .gl-body { font: 500 16px/1.4 system-ui, sans-serif; }
 #gpslost .gl-title { font: 800 28px system-ui, sans-serif; letter-spacing: 0.02em; margin-bottom: 10px; }
 #gpslost .gl-body { font: 500 16px/1.4 system-ui, sans-serif; }
 #hwmsg { position: fixed; top: calc(var(--bar-bottom) + 50px); left: calc(50% + var(--map-dx)); transform: translateX(-50%);

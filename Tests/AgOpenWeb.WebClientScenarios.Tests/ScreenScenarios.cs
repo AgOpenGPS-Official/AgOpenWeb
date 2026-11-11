@@ -31,22 +31,19 @@ public static class ScreenScenarios
 
     public static async Task RunAsync(Run run)
     {
-        var devices = new[]
-        {
-            ("S1", Device.Tablet10), ("S2", Device.Pc720), ("S3", Device.Tablet7), ("S4", Device.Screen5),
-            ("S5", Device.PhoneLandscape), ("S6", Device.PhonePortrait), ("S7", Device.TabletPortrait),
-        };
-        foreach (var (code, d) in devices)
-            await run.ScenarioAsync(Group, code, $"{d.Name} ({d.Size})",
-                $"The only screen, holding control, {d.Size} CSS px{(d.Touch ? ", touch" : ", mouse")}{(d.Phone ? ", phone browser" : "")}; a job running on the AB line.",
-                s => OneScreenAsync(run, s, code, d, "en-US"));
+        // The screen target: a 10" tablet in landscape (the Panasonic FZ-G1, 1920×1200 at 150% =
+        // 1280×800 CSS px). Other screens are out of scope (Docs/WEB_CLIENT.md).
+        var d = Device.Tablet10;
+        await run.ScenarioAsync(Group, "S1", $"{d.Name} ({d.Size})",
+            $"The only screen, holding control, {d.Size} CSS px, touch; a job running on the AB line.",
+            s => OneScreenAsync(run, s, "S1", d, "en-US"));
 
-        await run.ScenarioAsync(Group, "S8", "5\" cab screen in Portuguese",
-            "As S4 with the app in Portuguese (pt-PT), the longest labels on the smallest screen.",
+        await run.ScenarioAsync(Group, "S2", "10\" tablet in Portuguese",
+            "As S1 with the app in Portuguese (pt-PT): the longest labels on the target screen.",
             async s =>
             {
                 await run.Rig.SendAsync("app.setLanguage", "pt");
-                try { await OneScreenAsync(run, s, "S8", Device.Screen5, "pt-PT"); }
+                try { await OneScreenAsync(run, s, "S2", Device.Tablet10, "pt-PT"); }
                 finally { await run.Rig.SendAsync("app.setLanguage", "en"); }
             });
     }
@@ -119,19 +116,8 @@ public static class ScreenScenarios
         foreach (var (name, taps) in Menus)
             await MenuAsync(run, s, screen, d, name, taps);
 
-        // A phone turns around.
-        if (d.Phone)
-        {
-            await screen.Page.SetViewportSizeAsync(d.Height, d.Width);
-            await Task.Delay(800);
-            var turned = await Layout.MeasureAsync(screen);
-            var view = await screen.ViewAsync();
-            s.Step($"turned to {d.Height}×{d.Width}: {view}, {turned.Controls.Count(c => !c.Reachable)} buttons unreachable");
-            if (!view.HoldsControl) s.Problem(Severity.Bug, "ROTATE-LOST-CONTROL", "turning the phone lost control: " + view);
-            else s.Ok("turning the phone keeps control and redraws");
-            await screen.Page.SetViewportSizeAsync(d.Width, d.Height);
-        }
-
+        // The whole screen as the operator sees it, for reviewing a layout change.
+        await run.ShotAsync(s, screen, $"{code}-{d.Code}-screen.png");
         Run.PageErrors(s, screen);
     }
 
@@ -161,7 +147,7 @@ public static class ScreenScenarios
             s.Problem(Severity.Layout, "MENU-CONTROL-UNREACHABLE",
                 $"{name} ({where}): {lost.Count} of {p.Controls.Count} controls can't be reached{(close ? ", including its close/back button" : "")}: "
                 + string.Join("; ", lost.Take(5).Select(c => $"{Label(c)} {c.How}")) + (lost.Count > 5 ? "; …" : ""));
-            if (d.Phone || d.Height <= 600) await run.ShotAsync(s, screen, $"{s.Row.Code}-{d.Code}-{Slug(name)}.png");
+            await run.ShotAsync(s, screen, $"{s.Row.Code}-{d.Code}-{Slug(name)}.png");
         }
         else s.Ok($"{name}: all {p.Controls.Count} controls reachable ({where})");
         await screen.EvalAsync<object?>("() => { lnCloseAll(); return null; }");

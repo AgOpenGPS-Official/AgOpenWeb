@@ -344,6 +344,18 @@ public sealed class RemoteServerHost
         };
         authority.Revoked += reason => FailsafeHandler?.Invoke(reason);
 
+        // A command from a screen without control is dropped (#397). Tell that screen, and
+        // send the settings again so a box edited there shows the host's value, not the
+        // one typed (an edit on an observer looked saved).
+        _ws.CommandRefused = (conn, id, tell) =>
+        {
+            if (id == "config.set") _broadcaster.ResendConfig();
+            if (tell)
+                _ws.SendTo(conn, WireCodec.EncodeToast(authority.Snapshot().Held
+                    ? "This screen is view only: another screen has control"
+                    : "This screen has no control: nothing was changed"));
+        };
+
         var server = new SimpleWebServer(port);
 
         // The /ws receive loop's token is linked to the server's shutdown inside
@@ -501,12 +513,19 @@ public sealed class RemoteServerHost
             new[] { ("Cache-Control", "no-store") });
     }
 
+    /// <summary>Raised once the server has stopped (the backend is shutting down): what was
+    /// wired to this backend in statics lets go of it, as the process may outlive the backend
+    /// (Android) and start another.</summary>
+    public event Action? Stopped;
+
     public async Task StopAsync()
     {
         if (_server is null) return;
         if (_broadcaster is not null) await _broadcaster.DisposeAsync().ConfigureAwait(false);
         await _server.StopAsync().ConfigureAwait(false);
         _server = null;
+        try { Stopped?.Invoke(); } catch { /* a teardown fault must not wedge the shut-down */ }
+        Stopped = null;
     }
 
     // Web imagery: cap the longest side so an iOS WKWebView can decode it. Native

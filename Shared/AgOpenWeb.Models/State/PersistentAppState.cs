@@ -38,6 +38,11 @@ public class PersistentAppState : ObservableObject
     /// <summary>For testing — replace the singleton instance.</summary>
     public static void SetInstance(PersistentAppState state) => _instance = state;
 
+    /// <summary>The backend that used <paramref name="state"/> stopped: the static lets go of it
+    /// (<see cref="BackendStateLease"/>); the next backend reads appstate.json into a new one.</summary>
+    internal static void Release(PersistentAppState state) =>
+        System.Threading.Interlocked.CompareExchange(ref _instance, null, state);
+
     // ---- Window geometry (Desktop; ignored on mobile) ----
     private double _windowWidth = 1200;
     public double WindowWidth { get => _windowWidth; set => SetProperty(ref _windowWidth, value); }

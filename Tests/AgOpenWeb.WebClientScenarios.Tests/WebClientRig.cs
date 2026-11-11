@@ -268,6 +268,10 @@ public sealed class WebClientRig : IAsyncDisposable
     /// 8 m boom in eight 1 m sections, the field from a KML file, an AB line along it, a job.</summary>
     public async Task<string?> SetUpJobAsync()
     {
+        // Auto day/night switches the theme by the clock (the hours, then the sun at the field once
+        // there is a fix) during the run: O2 read that as the observer changing IsDayMode. Off, so
+        // the theme is the same whenever the run starts.
+        await SendAsync("config.set", "display.autoDayNight:0");
         await SendAsync("config.set", "tool.numSections:8");
         for (int i = 0; i < 8; i++) await SendAsync("config.set", F($"tool.sectionWidth:{i},100"));
         await SendAsync("profile.save");

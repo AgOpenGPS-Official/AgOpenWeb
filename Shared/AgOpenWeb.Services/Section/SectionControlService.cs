@@ -367,7 +367,6 @@ public class SectionControlService : ISectionControlService
         var offCheckPoint = ProjectForwardCurved(sectionCenter, toolHeading, lookAheadOffDist, speed);
 
         // Check boundary conditions using segment-based detection
-        // Use halfWidthWithMargin for current position to prevent coverage outside boundary
         _sectionSw.Restart();
         bool isInBoundary, lookOnInBoundary, lookOffInBoundary;
         if (tool.IsSectionOffWhenOut)
@@ -380,11 +379,13 @@ public class SectionControlService : ISectionControlService
             // only touched a section's edge, or one shorter than the look-ahead distance that the
             // line had already passed, was found only on arrival, and the valve sprayed into it
             // for its closing time (field job J2/J6). Off: the whole band from here to the look-off
-            // point. On: the look-on point.
-            isInBoundary = SectionIsIn(sectionCenter, toolHeading, halfWidthWithMargin, coverageMargin > 0);
-            lookOnInBoundary = SectionIsIn(onCheckPoint, toolHeading, halfWidthWithMargin, coverageMargin > 0);
-            lookOffInBoundary = isInBoundary && BandIsIn(sectionCenter, toolHeading, lookAheadOffDist, speed,
-                halfWidthWithMargin, coverageMargin > 0);
+            // point. On: the look-on point. The section's real width, not the map's coverage
+            // margin: the valve sprays the section, and with the margin in the test a first lap
+            // with the boom's end on the boundary never opened its outer section (path job
+            // scenarios EDGE-NOT-SPRAYED, a 1 m strip round the field).
+            isInBoundary = SectionIsIn(sectionCenter, toolHeading, halfWidth);
+            lookOnInBoundary = SectionIsIn(onCheckPoint, toolHeading, halfWidth);
+            lookOffInBoundary = isInBoundary && BandIsIn(sectionCenter, toolHeading, lookAheadOffDist, speed, halfWidth);
         }
         else
         {
@@ -404,17 +405,22 @@ public class SectionControlService : ISectionControlService
         //   ON:  lookahead = speed * turnOnPhaseSec  (cancels TURNING_ON wait)
         //   OFF: lookahead = speed * turnOffPhaseSec (cancels TURNING_OFF wait)
         // With MAPPING_ON_DELAY = 0, the TURNING phases are the only wait,
-        // so this gives strip start/end at the line with no gap and no
-        // overspray when all timings are 0.
+        // so a section's ends switch at the line when all timings are 0.
+        // A section is in the headland only with both its ends in it (AgOpenGPS
+        // WhereAreToolCorners / WhereAreToolLookOnPoints): where a pass meets the
+        // line at an angle the section stays on until its last end crosses, and
+        // comes on as its first end leaves, so nothing inside the line is left
+        // unsprayed; the rest of the section lands in the headland, which its
+        // laps work anyway.
         double headlandOnLookAhead = speed * turnOnPhaseSec;
         double headlandOffLookAhead = speed * turnOffPhaseSec;
         var headlandOnCheckPoint = ProjectForwardCurved(sectionCenter, toolHeading, headlandOnLookAhead, speed);
         var headlandOffCheckPoint = ProjectForwardCurved(sectionCenter, toolHeading, headlandOffLookAhead, speed);
 
         _sectionSw.Restart();
-        bool isInHeadland = IsPointInHeadland(sectionCenter);
-        bool lookOnInHeadland = IsPointInHeadland(headlandOnCheckPoint);
-        bool lookOffInHeadland = IsPointInHeadland(headlandOffCheckPoint);
+        bool isInHeadland = SectionInHeadland(sectionCenter, toolHeading, halfWidth);
+        bool lookOnInHeadland = SectionInHeadland(headlandOnCheckPoint, toolHeading, halfWidth);
+        bool lookOffInHeadland = SectionInHeadland(headlandOffCheckPoint, toolHeading, halfWidth);
         _totalHeadlandMs += _sectionSw.Elapsed.TotalMilliseconds;
 
         // Bitmap-based coverage check is O(width / cellSize) bit reads per section
@@ -793,19 +799,21 @@ public class SectionControlService : ISectionControlService
     /// </summary>
     /// <summary>
     /// With "Off outside boundary" on: is a section at <paramref name="center"/> in the field? At
-    /// least 95 % of its width (margin included) inside the field and out of the obstacles, and,
-    /// with a coverage margin, both ends of it too: the segment test can pass with an end over the
-    /// edge, especially when the tool runs square to it. The one rule for where the section is and
-    /// where it is about to be.
+    /// least 95 % of its width inside the field and out of the obstacles, and both its ends too
+    /// (AgOpenGPS: <c>isLeftIn &amp;&amp; isRightIn</c>): the segment test can pass with an end over
+    /// the edge, especially when the tool runs square to it. An end may be up to
+    /// <see cref="EdgeLeewayM"/> over the line: a lap with the boom's end on the boundary keeps its
+    /// outer section open through the receiver's centimetres of jitter. The one rule for where the
+    /// section is and where it is about to be.
     /// </summary>
-    private bool SectionIsIn(Vec2 center, double heading, double halfWidthWithMargin, bool checkEnds)
+    private bool SectionIsIn(Vec2 center, double heading, double halfWidth)
     {
         const double BOUNDARY_THRESHOLD_STRICT = 0.95;
-        if (GetSegmentBoundaryStatus(center, heading, halfWidthWithMargin).InsidePercent < BOUNDARY_THRESHOLD_STRICT)
+        double h = Math.Max(halfWidth - EdgeLeewayM, halfWidth / 2);
+        if (GetSegmentBoundaryStatus(center, heading, h).InsidePercent < BOUNDARY_THRESHOLD_STRICT)
             return false;
-        if (!checkEnds) return true;
         double perpHeading = heading + Math.PI / 2.0;
-        double dE = Math.Sin(perpHeading) * halfWidthWithMargin, dN = Math.Cos(perpHeading) * halfWidthWithMargin;
+        double dE = Math.Sin(perpHeading) * h, dN = Math.Cos(perpHeading) * h;
         return IsPointInBoundary(new Vec2(center.Easting - dE, center.Northing - dN))
             && IsPointInBoundary(new Vec2(center.Easting + dE, center.Northing + dN));
     }
@@ -815,14 +823,18 @@ public class SectionControlService : ISectionControlService
     /// distance), sampled every 0.5 m and at its end: all of it in (<see cref="SectionIsIn"/>)? An
     /// obstacle shorter than the look-ahead distance stays ahead until the section has crossed it.
     /// </summary>
-    private bool BandIsIn(Vec2 center, double heading, double distance, double speed, double halfWidthWithMargin, bool checkEnds)
+    private bool BandIsIn(Vec2 center, double heading, double distance, double speed, double halfWidth)
     {
         const double Step = 0.5;
         for (double d = Step; d < distance; d += Step)
-            if (!SectionIsIn(ProjectForwardCurved(center, heading, d, speed), heading, halfWidthWithMargin, checkEnds))
+            if (!SectionIsIn(ProjectForwardCurved(center, heading, d, speed), heading, halfWidth))
                 return false;
-        return SectionIsIn(ProjectForwardCurved(center, heading, distance, speed), heading, halfWidthWithMargin, checkEnds);
+        return SectionIsIn(ProjectForwardCurved(center, heading, distance, speed), heading, halfWidth);
     }
+
+    /// <summary>How far a section's end may be over the boundary, or into an obstacle, before
+    /// "Off outside boundary" closes it: the receiver's jitter on a lap run along the edge.</summary>
+    public const double EdgeLeewayM = 0.05;
 
     private bool IsPointInBoundary(Vec2 point)
     {
@@ -858,6 +870,19 @@ public class SectionControlService : ISectionControlService
         }
 
         return boundary.GetSegmentBoundaryStatus(sectionCenter, heading, halfWidth);
+    }
+
+    /// <summary>
+    /// A section is in the headland when both its ends are (AgOpenGPS: <c>isInHeadlandArea =
+    /// !isLeftIn &amp;&amp; !isRightIn</c>). The left end first: away from the headland that one
+    /// test settles it.
+    /// </summary>
+    private bool SectionInHeadland(Vec2 center, double heading, double halfWidth)
+    {
+        double perpHeading = heading + Math.PI / 2.0;
+        double dE = Math.Sin(perpHeading) * halfWidth, dN = Math.Cos(perpHeading) * halfWidth;
+        return IsPointInHeadland(new Vec2(center.Easting - dE, center.Northing - dN))
+            && IsPointInHeadland(new Vec2(center.Easting + dE, center.Northing + dN));
     }
 
     /// <summary>

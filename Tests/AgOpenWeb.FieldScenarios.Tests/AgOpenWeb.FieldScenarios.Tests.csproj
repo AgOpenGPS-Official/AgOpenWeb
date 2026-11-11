@@ -45,4 +45,9 @@
     <Content Include="TestData\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Stops the run when another process holds the module ports (Tests/ScenarioShared). -->
+    <Compile Include="..\ScenarioShared\PortGuard.cs" Link="PortGuard.cs" />
+  </ItemGroup>
+
 </Project>

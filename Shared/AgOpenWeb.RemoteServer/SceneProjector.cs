@@ -166,8 +166,9 @@ public sealed class SceneProjector : System.IDisposable
         if (tp is { Length: >= 2 })
             uTurnPath = tp.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
 
-        // The next pass the tractor will pick up after the turn (cyan until it
-        // becomes the active line). State.YouTurn.NextTrack is the upcoming Track.
+        // The next pass the tractor will pick up after the turn (cyan while the turn
+        // is planned; once the turn is driven the highlighted line is on it too).
+        // State.YouTurn.NextTrack is the upcoming Track.
         IReadOnlyList<Vec2Dto>? nextTrack = null;
         var nt = _state.YouTurn.NextTrack?.Points?.ToArray();
         if (nt is { Length: >= 2 })

@@ -242,7 +242,10 @@ public static class UpgraderOperator
             var pairs = farm.Vehicles.Zip(farm.Tools, (v, t) => (v.Name, t.Name)).ToList();
             var after = await Snapshot.TakeAsync(rig, openFields: true, pairs);
             // The job's coverage: whatever the 30 s autosave wrote; none at all is the finding.
-            Judge.Farm(sc, farm, after, "POWERCUT", what => skip(what) || what is "lastfield" or "view" or "theme", oldFiles);
+            // Profile edits the older release had not saved when the power went: its settings
+            // screen saved only at Save Profile or the exit save, so it lost them, not this build.
+            sc.Note(Kit.F($"{tag} saved profile edits only at Save Profile or the exit save: the {farm.ProfileEdits.Count} tuned after the last save were lost by {tag} at the power cut, not judged"));
+            Judge.Farm(sc, farm, after, "POWERCUT", what => skip(what) || what is "lastfield" or "view" or "theme" or "unsaved", oldFiles);
             var fr = after.Fields.FirstOrDefault(f => f.Name == farm.Fields[^1].Name);
             var job = fr?.Jobs.FirstOrDefault(j => j.Task == farm.Fields[^1].Job!.Task);
             if (job != null) sc.Note(Kit.F($"the job interrupted by the power cut resumes with {job.WorkedSqM:0} m² worked ({farm.Fields[^1].Job!.DriveSeconds} s driven; the autosave runs every 30 s)"));
@@ -269,6 +272,19 @@ public static class UpgraderOperator
         }
         Expect("appsettings.json", "settings");
         Expect("appstate.json", "state");
+        // The theme the older build saved at exit is what this build must keep: the harness taps
+        // the theme button blind on an old build, and it toggles from what the clock had set.
+        try
+        {
+            using var st = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(aow, "appstate.json")));
+            if (st.RootElement.TryGetProperty("isDayMode", out var day) && day.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
+            {
+                bool night = day.ValueKind == System.Text.Json.JsonValueKind.False;
+                if (night != farm.NightMode) sc.Note(Kit.F($"{tag} saved {(night ? "night" : "day")} mode (the theme button toggles from what auto day/night had set): judged against that"));
+                farm.NightMode = night;
+            }
+        }
+        catch (Exception e) when (e is IOException or System.Text.Json.JsonException) { }
         foreach (var v in farm.Vehicles) Expect(Path.Combine("Vehicles", v.Name + ".json"), "vehicle " + v.Name);
         foreach (var t in farm.Tools) Expect(Path.Combine("Tools", t.Name + ".json"), "tool " + t.Name);
         if (!Directory.Exists(Path.Combine(aow, "NtripProfiles")) || Directory.GetFiles(Path.Combine(aow, "NtripProfiles"), "*.json").Length == 0) { left.Add("ntrip"); sc.Note(Kit.F($"{tag} wrote no NTRIP profile: casters are not judged")); }

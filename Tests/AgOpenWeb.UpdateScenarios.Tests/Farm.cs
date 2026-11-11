@@ -37,7 +37,9 @@ public sealed class Farm
     public List<Setting> ProfileEdits { get; } = new();
     public string Language { get; init; } = "pt";
     public Dictionary<string, string> Hotkeys { get; } = new();
-    public bool NightMode { get; init; } = true;
+    /// <summary>Night mode wanted; after the build, the theme the app really had (the theme
+    /// button toggles, and with auto day/night on the app starts in night before 06:00).</summary>
+    public bool NightMode { get; set; } = true;
     public (double Pitch, double Zoom) View { get; init; } = (-1.1, 14.0);
     public List<NtripSpec> Ntrips { get; } = new();
     public List<FieldSpec> Fields { get; } = new();
@@ -283,9 +285,19 @@ public static class FarmBuilder
         foreach (var st in farm.Device) await s.SendAsync("config.set", st.Key + ":" + st.Value);
         // Profile settings tuned afterwards, with no profile save after them.
         foreach (var st in farm.ProfileEdits) await s.SendAsync("config.set", st.Key + ":" + st.Value);
+        // This build's web client saves the profile when the settings panel closes (as AgOpenGPS
+        // when its form closes); an older release's waited for Save Profile or the exit save.
+        if (s is RigSender) await s.SendAsync("profile.save");
         await s.SendAsync("app.setLanguage", farm.Language);
         foreach (var (action, key) in farm.Hotkeys) await s.SendAsync("app.setHotkey", action + ":" + key);
-        if (farm.NightMode) await s.SendAsync("display.toggleTheme");
+        if (farm.NightMode)
+        {
+            // The button toggles from whatever the app shows: with auto day/night on (the default)
+            // that's night before 06:00, when the nightly runs, and one tap made it day.
+            await s.SendAsync("display.toggleTheme");
+            if (s is RigSender rs && await rs.Rig.ReadAsync(() => rs.Rig.Vm.IsDayMode))
+                await s.SendAsync("display.toggleTheme");
+        }
         await s.SendAsync("view.save", Kit.F($"{farm.View.Pitch}|{farm.View.Zoom}|0"));
         await s.PauseAsync(slow ? 1.0 : 0);
         sc.Step(Kit.F($"{farm.Device.Count} device settings, {farm.ProfileEdits.Count} profile settings tuned after the profile save, language '{farm.Language}', {farm.Hotkeys.Count} hotkeys, night mode {farm.NightMode}, camera saved"));
@@ -441,6 +453,7 @@ public sealed class RigSender : ICommandSender
 {
     private readonly UpdateRig _rig;
     public RigSender(UpdateRig rig) { _rig = rig; }
+    public UpdateRig Rig => _rig;
     public string DataRoot => _rig.DataRoot;
     public Task SendAsync(string cmd, string arg = "") => _rig.SendAsync(cmd, arg);
     public async Task PauseAsync(double seconds)

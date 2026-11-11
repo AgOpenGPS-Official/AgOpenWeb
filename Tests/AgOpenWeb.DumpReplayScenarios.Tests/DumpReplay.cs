@@ -392,10 +392,23 @@ public sealed class DumpReplay : IAsyncDisposable
     public async Task ReplayAsync()
     {
         var rows = Dump.Rows;
+        // The steering speed limits don't apply on the simulator (AgOpenGPS neither), and the
+        // replay feeds a simulator log as real GPS: with the reporter's limits AutoSteer would go
+        // off in the cycle it was engaged (#570's log runs at 20 km/h with a 15 km/h maximum).
+        // So the widest the settings screen allows: no minimum, 50 km/h.
+        if (Dump.IsSimulator && await Rig.ReadAsync(() => Rig.Store.AutoSteer.MaxSteerSpeed is > 0 and < 50 || Rig.Store.AutoSteer.MinSteerSpeed > 0))
+        {
+            await Rig.SendAsync("config.set", "autosteer.minSteerSpeed:0");
+            await Rig.SendAsync("config.set", "autosteer.maxSteerSpeed:50");
+            foreach (var e in Collect()) Said.Add("set-up: " + e);
+            var (min, max) = await Rig.ReadAsync(() => (Rig.Store.AutoSteer.MinSteerSpeed, Rig.Store.AutoSteer.MaxSteerSpeed));
+            S.Step(F($"steering speed limits {min:0}-{max:0} km/h: the reporter drove the simulator, where they don't apply, and the replay feeds its log as real GPS"));
+        }
         var sw = System.Diagnostics.Stopwatch.StartNew();
         double wall = 0;
         bool sectionsDone = false;
         int engages = 0, disengages = 0, resyncs = 0, manualTurns = 0;
+        bool checkEngaged = false;
         // The manual U-turn buttons the reporter pressed (their log has each one).
         var manual = Dump.Log
             .Where(l => l.Text.Contains("[ManualYouTurn] Triggering", StringComparison.Ordinal))
@@ -431,6 +444,7 @@ public sealed class DumpReplay : IAsyncDisposable
                     await Rig.SendAsync("autosteer.toggle");
                     engages++;
                     bool now = await Rig.ReadAsync(() => Rig.Vm.IsAutoSteerEngaged);
+                    checkEngaged = now;
                     S.Step(F($"t {r.T,6:0.0} s: operator engages AutoSteer (as the reporter did){(now ? "" : ": it did NOT engage: " + string.Join(" | ", Collect().Take(2)))}"));
                     if (SectionsAuto && !sectionsDone && now)
                     {
@@ -479,6 +493,18 @@ public sealed class DumpReplay : IAsyncDisposable
             int ticks = (int)Math.Clamp(Math.Round(dt * 100), 1, 300);
             Rig.TickLoop(ticks);
             var c = Rig.LastCycle;
+            // An engage the first cycle drops again is never seen as a drop (no cycle had it on).
+            if (checkEngaged && c != null)
+            {
+                checkEngaged = false;
+                if (!c.IsAutoSteerEngaged)
+                {
+                    bool vmOn = await Rig.ReadAsync(() => Rig.Vm.IsAutoSteerEngaged);
+                    var said = Collect().ToList(); foreach (var e in said) Said.Add(F($"t {r.T,6:0.0} s: {e}"));
+                    S.Problem(Severity.Bug, Kind.AppDefect, "AUTOSTEER-DROPPED",
+                        F($"t {r.T:0.0} s: AutoSteer went off in the cycle it was engaged, where the reporter's stayed on: {c.DisengageReason ?? "no reason given"} (the screen: {(vmOn ? "on" : "off")}; {(said.Count > 0 ? string.Join(" | ", said.Take(3)) : "no message")})"), "replay", r.T);
+                }
+            }
             await AlignPassStepAsync(r);
             // The lateral button moves one pass right or left of the direction of travel: the
             // side that puts this build on the reporter's line is the one (right first).
@@ -566,7 +592,9 @@ public sealed class DumpReplay : IAsyncDisposable
         }
         if (Math.Abs(Math.Abs(shift) - w / 2) < 0.15)
         {
-            S.Problem(Severity.Inconsistency, Kind.Parity, "TRACK-PASSES-MOVED-HALF",
+            // Expected by the rule (no compatibility for older AgOpenWeb builds' files): a note.
+            // The same shift from a build that had the pass model is TRACK-PASSES-HALF-OFF above.
+            S.Note(
                 F($"this build puts the passes of the reporter's track '{track.Name}' {Math.Abs(shift):0.00} m, half a working width, from where the reporter's build (") + (Dump.BuildHash.Length >= 7 ? Dump.BuildHash[..7] : "older") +
                 ") drove them: that build predates the pass model change (1cf8ba17, 2026-10-20; " + how + "), where the reference line became the edge between two passes (AgOpenGPS's model, PassGeometry), so a track made before it moves by half a width. AgOpenWeb keeps no compatibility for files of older builds (CLAUDE.md), so this is expected, but an operator with such a track is guided half a width off until the line is moved; for the replay the operator moves it back with Ref Nudge > half width");
             await Rig.SendAsync("track.refNudgeBegin");
@@ -649,12 +677,12 @@ public sealed class DumpReplay : IAsyncDisposable
             AlignDone = true;
             // One pass over is how a fresh track selection can land (the nearest pass, by a
             // hair); more needs the dump to say how the reporter got there.
-            if (Math.Abs(_alignNet) > 1 && WhyOtherPass(r.T) == null)
+            if (Math.Abs(_alignNet) > 1 && WhyOtherPass(r.T, r.PathsAway) == null)
                 S.Problem(Severity.Inconsistency, Kind.AppDefect, "PASS-ALIGN-PRESSES",
                     F($"t {r.T:0.0} s: this build started {Math.Abs(_alignNet)} passes from the reporter's pass {r.PathsAway}, and the dump shows nothing that took the reporter there (no U-turn, manual turn or pass change in their log or GPS log before it); the lateral button was pressed {_alignPresses}x to compare on the same line"),
                     "replay", r.T);
             else if (_alignPresses > 0)
-                S.Step(F($"t {r.T,6:0.0} s: operator presses the lateral button {_alignPresses}x to get onto the reporter's pass {r.PathsAway} (this build had started on another") + (Math.Abs(_alignNet) > 1 ? "; " + WhyOtherPass(r.T) : "") + ")");
+                S.Step(F($"t {r.T,6:0.0} s: operator presses the lateral button {_alignPresses}x to get onto the reporter's pass {r.PathsAway} (this build had started on another") + (Math.Abs(_alignNet) > 1 ? "; " + WhyOtherPass(r.T, r.PathsAway) : "") + ")");
             return;
         }
         if (_alignPresses >= 40)
@@ -690,8 +718,15 @@ public sealed class DumpReplay : IAsyncDisposable
     /// <summary>What in the dump explains the reporter being on another pass than a fresh
     /// selection gives, up to <paramref name="t"/>: a U-turn or a manual turn in their log, a U-turn
     /// or a pass change in the GPS log. Null when nothing does.</summary>
-    private string? WhyOtherPass(double t)
+    private string? WhyOtherPass(double t, int pass)
     {
+        // The reporter's log names the pass they were on (a turn planned from it, "pathsAway=-9")
+        // before the GPS log starts: they got there before the five minutes it keeps (#591a).
+        string onPass = F($"pathsAway={pass}");
+        foreach (var l in Dump.Log)
+            if (Dump.LogT(l) is { } lt && lt <= t && pass != 0
+                && (l.Text.EndsWith(onPass, StringComparison.Ordinal) || l.Text.Contains(onPass + ",", StringComparison.Ordinal) || l.Text.Contains(onPass + " ", StringComparison.Ordinal)))
+                return F($"the reporter's log has them on pass {pass} at t {lt:0.0} s ({onPass})");
         foreach (var l in Dump.Log)
             if (Dump.LogT(l) is { } lt && lt <= t
                 && (l.Text.Contains("Turn complete", StringComparison.Ordinal) || l.Text.Contains("[ManualYouTurn]", StringComparison.Ordinal)

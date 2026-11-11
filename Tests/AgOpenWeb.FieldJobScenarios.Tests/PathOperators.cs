@@ -168,10 +168,11 @@ public abstract class PathOperator
     }
 
     /// <summary>The tractor on pass <paramref name="k"/> at <paramref name="v"/>, facing along the line.</summary>
-    protected static void PlaceOn(JobRun r, double u, double v)
+    protected static void PlaceOn(JobRun r, double u, double v, bool reverse = false)
     {
         var p = r.Frame.At(u - r.Spec.T.Offset, v);
-        r.Truth.Place(p.E, p.N, r.Frame.TangentHeading(r.Frame.At(u, v)));
+        double h = r.Frame.TangentHeading(r.Frame.At(u, v));
+        r.Truth.Place(p.E, p.N, reverse ? h + Math.PI : h);
     }
 }
 
@@ -205,18 +206,42 @@ public class CurveOperator : PathOperator
         int kMin = (int)Math.Floor(uMin / r.Spacing) - 1, kMax = (int)Math.Ceiling(uMax / r.Spacing) + 1;
         int k = kMin;
         for (; k <= kMax && r.InsideChordM(k) < 20; k++) { }
+        // A run from a pass on (AGOPENWEB_SCENARIO_FROM_PASS), as on an AB line: that pass,
+        // driven the way the whole job would drive it (the passes alternate), the ones before
+        // it left unworked.
+        bool reverse = false;
+        if (JobRun.FromPass != int.MinValue && JobRun.FromPass > k)
+        {
+            reverse = ((JobRun.FromPass - k) & 1) == 1;
+            Journal.Trace(F($"[fj] started at pass {JobRun.FromPass} (AGOPENWEB_SCENARIO_FROM_PASS), not {k}"));
+            k = JobRun.FromPass;
+            r.StartedAtPass = k;
+            r.EndedEarly = true;
+            r.EndedBy = F($"a run from pass {k} on (AGOPENWEB_SCENARIO_FROM_PASS), the passes before it not worked");
+        }
         double u = (k + 0.5) * r.Spacing;
-        // The longest stretch of the pass inside the cultivated area, and the boundary before it.
-        double best = -1, startV = 0, run = 0, runStart = 0;
+        // The longest stretch of the pass inside the cultivated area, and the boundary before it
+        // (after it, driven the other way).
+        double best = -1, startV = 0, endV = 0, run = 0, runStart = 0;
         for (double v = -200; v <= r.Frame.Length + 200; v += 1)
         {
-            if (Ring.Inside(r.Frame.At(u, v), work)) { if (run++ == 0) runStart = v; if (run > best) { best = run; startV = runStart; } }
+            if (Ring.Inside(r.Frame.At(u, v), work)) { if (run++ == 0) runStart = v; if (run > best) { best = run; startV = runStart; endV = v; } }
             else run = 0;
         }
-        double vb = startV;
-        while (vb > startV - 300 && Ring.Inside(r.Frame.At(u, vb), r.Outer)) vb -= 1;
-        PlaceOn(r, u, vb - 12);
-        r.S.Step(F($"tractor put at the start of pass {k} ({r.Truth.E:0},{r.Truth.N:0}), 12 m before the boundary, heading {r.Truth.Heading * 180 / Math.PI:0}°"));
+        if (!reverse)
+        {
+            double vb = startV;
+            while (vb > startV - 300 && Ring.Inside(r.Frame.At(u, vb), r.Outer)) vb -= 1;
+            PlaceOn(r, u, vb - 12);
+        }
+        else
+        {
+            double vb = endV;
+            while (vb < endV + 300 && Ring.Inside(r.Frame.At(u, vb), r.Outer)) vb += 1;
+            PlaceOn(r, u, vb + 12, reverse: true);
+        }
+        r.S.Step(F($"tractor put at the start of pass {k} ({r.Truth.E:0},{r.Truth.N:0}), 12 m before the boundary, heading {(r.Truth.Heading * 180 / Math.PI + 360) % 360:0}°"));
+        if (r.StartedAtPass != int.MinValue) r.Did(r.EndedBy);
         await r.RollAsync(30);
         if (!await EngageAsync(r)) { r.Harness("AutoSteer did not engage at the start: " + string.Join(" | ", r.Collect())); return false; }
         r.S.Step("AutoSteer engaged, sections Auto; AgOpenWeb drives from here");
@@ -1136,7 +1161,7 @@ public sealed class RecordedPathOperator : PathOperator
         if (!Started) flag(Severity.Bug, "RECORDED-PATH-NOT-PLAYED", "Play did not start the recorded route: " + string.Join(" | ", r.Said.TakeLast(3)));
         else if (FollowWorst > 2 || Trouble != null)
             flag(r.Problems.Any(p => p.Contains("ran", StringComparison.Ordinal)) ? Severity.Safety : Severity.Bug, "RECORDED-PATH-NOT-FOLLOWED",
-                F($"with the recorded route playing{(Engaged ? " and AutoSteer engaged" : F($", AutoSteer would not engage ({Refusal})"))}, the tractor did not follow it: {(FollowSamples > 0 ? FollowSum / FollowSamples : 0):0.0} m off on average, {FollowWorst:0.0} m at worst; AgOpenWeb's steer angle to the steer module was not zero in {(SteerSamples > 0 ? 100.0 * SteerNonZero / SteerSamples : 0):0} % of the fixes.{(Trouble != null ? " " + Trouble + "." : "")}{(Engaged ? "" : " Playback (MainViewModel.UpdateRecordedPathPlayback) steers only the built-in simulator's wheel (SimulatorSteerAngle) and gives AutoSteer no line, so on a real machine nothing steers along the route.")}"));
+                F($"with the recorded route playing{(Engaged ? " and AutoSteer engaged" : F($", AutoSteer would not engage ({Refusal})"))}, the tractor did not follow it: {(FollowSamples > 0 ? FollowSum / FollowSamples : 0):0.0} m off on average, {FollowWorst:0.0} m at worst; AgOpenWeb's steer angle to the steer module was not zero in {(SteerSamples > 0 ? 100.0 * SteerNonZero / SteerSamples : 0):0} % of the fixes.{(Trouble != null ? " " + Trouble + "." : "")}"));
         else
             sc.Ok(F($"the tractor followed the recorded route ({FollowSum / Math.Max(1, FollowSamples):0.00} m mean, {FollowWorst:0.00} m worst)"));
         if (Started && !Completed && FollowWorst <= 2)
