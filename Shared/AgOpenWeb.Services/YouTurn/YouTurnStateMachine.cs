@@ -210,13 +210,17 @@ public sealed class YouTurnStateMachine
         // leaves the field early on the outside of a bend while the pass runs on. Whether the
         // next pass has room is judged at that end, so mid-pass a turn was refused and "End of
         // field reached" said, then the turn made at the real end (field job J10, a recorded
-        // S-curve). The pass itself is walked ahead (no further than a little past the ray): when
-        // it goes on in the field, the end is further on and is judged once the ray finds it.
+        // S-curve). The ray's direction is the reference curve's heading at its nearest point,
+        // which on a pass far out from an S-shaped reference is not the pass's own, so the ray
+        // can also cross the pass and meet the headland beside it. The pass itself is walked
+        // ahead: when it goes on in the field past the ray's end, the end is further on and is
+        // judged once the ray finds it. The walk stops at twice the margin past the ray (it is
+        // counted from the nearest point of the offset curve, about a metre either way).
         if (canCreateTurn && turn.TurnPath == null && !turn.IsExecuting && track.Points.Count > 2)
         {
             const double RayShortBy = 5.0;
             double along = _pathing.LandingLength(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
-                passPoint, !headingSameWay, 0, stopAt: turn.DistanceToHeadland + RayShortBy + 1);
+                passPoint, !headingSameWay, 0, stopAt: turn.DistanceToHeadland + 2 * RayShortBy);
             _logger.LogDebug("[YouTurn] Curve: pass walked {Along:F1}m ahead in the field, the straight line {Dist:F1}m, from ({E:F1},{N:F1})",
                 along, turn.DistanceToHeadland, passPoint.Easting, passPoint.Northing);
             if (along > turn.DistanceToHeadland + RayShortBy)
