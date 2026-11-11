@@ -196,4 +196,18 @@ public class YouTurnShownPassTests
         foreach (var line in g.GuideLines!) eastings.Add(System.Math.Round(line[0].Easting, 6));
         Assert.That(eastings, Is.EquivalentTo(new[] { 6.0, 18.0 }));
     }
+
+    [Test]
+    public void With_a_tool_offset_the_guidelines_lie_where_their_passes_are_steered()
+    {
+        // The tool 0.5 m to the right. The landing pass 2 is driven back down; its neighbours 1
+        // and 3 are driven north, as pass 0 was: steered 0.5 m to the left of each pass.
+        ConfigurationStore.Instance.Tool.Offset = 0.5;
+        ConfigurationStore.Instance.Display.ExtraGuidelines = true;
+        ConfigurationStore.Instance.Display.ExtraGuidelinesCount = 1;
+        var g = CycleWithTurn(driven: true);
+        var eastings = new List<double>();
+        foreach (var line in g.GuideLines!) eastings.Add(System.Math.Round(line[0].Easting, 6));
+        Assert.That(eastings, Is.EquivalentTo(new[] { 5.5, 17.5 }));
+    }
 }
