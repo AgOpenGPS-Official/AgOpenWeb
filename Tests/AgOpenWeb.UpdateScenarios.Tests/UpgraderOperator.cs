@@ -269,6 +269,19 @@ public static class UpgraderOperator
         }
         Expect("appsettings.json", "settings");
         Expect("appstate.json", "state");
+        // The theme the older build saved at exit is what this build must keep: the harness taps
+        // the theme button blind on an old build, and it toggles from what the clock had set.
+        try
+        {
+            using var st = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(aow, "appstate.json")));
+            if (st.RootElement.TryGetProperty("isDayMode", out var day) && day.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
+            {
+                bool night = day.ValueKind == System.Text.Json.JsonValueKind.False;
+                if (night != farm.NightMode) sc.Note(Kit.F($"{tag} saved {(night ? "night" : "day")} mode (the theme button toggles from what auto day/night had set): judged against that"));
+                farm.NightMode = night;
+            }
+        }
+        catch (Exception e) when (e is IOException or System.Text.Json.JsonException) { }
         foreach (var v in farm.Vehicles) Expect(Path.Combine("Vehicles", v.Name + ".json"), "vehicle " + v.Name);
         foreach (var t in farm.Tools) Expect(Path.Combine("Tools", t.Name + ".json"), "tool " + t.Name);
         if (!Directory.Exists(Path.Combine(aow, "NtripProfiles")) || Directory.GetFiles(Path.Combine(aow, "NtripProfiles"), "*.json").Length == 0) { left.Add("ntrip"); sc.Note(Kit.F($"{tag} wrote no NTRIP profile: casters are not judged")); }
