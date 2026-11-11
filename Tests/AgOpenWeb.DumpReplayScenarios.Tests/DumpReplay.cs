@@ -497,8 +497,12 @@ public sealed class DumpReplay : IAsyncDisposable
             {
                 checkEngaged = false;
                 if (!c.IsAutoSteerEngaged)
+                {
+                    bool vmOn = await Rig.ReadAsync(() => Rig.Vm.IsAutoSteerEngaged);
+                    var said = Collect().ToList(); foreach (var e in said) Said.Add(F($"t {r.T,6:0.0} s: {e}"));
                     S.Problem(Severity.Bug, Kind.AppDefect, "AUTOSTEER-DROPPED",
-                        F($"t {r.T:0.0} s: AutoSteer went off in the cycle it was engaged, where the reporter's stayed on: {c.DisengageReason ?? "no reason given"}"), "replay", r.T);
+                        F($"t {r.T:0.0} s: AutoSteer went off in the cycle it was engaged, where the reporter's stayed on: {c.DisengageReason ?? "no reason given"} (the screen: {(vmOn ? "on" : "off")}; {(said.Count > 0 ? string.Join(" | ", said.Take(3)) : "no message")})"), "replay", r.T);
+                }
             }
             await AlignPassStepAsync(r);
             // The lateral button moves one pass right or left of the direction of travel: the
