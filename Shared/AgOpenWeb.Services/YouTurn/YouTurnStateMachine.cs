@@ -206,6 +206,28 @@ public sealed class YouTurnStateMachine
 
         // ── TURN CREATION ───────────────────────────────────────────────
         bool canCreateTurn = isInCultivatedArea && headlandInRange;
+        // On a curve the headland ahead is found by a straight ray along the heading, which
+        // leaves the field early on the outside of a bend while the pass runs on. Whether the
+        // next pass has room is judged at that end, so mid-pass a turn was refused and "End of
+        // field reached" said, then the turn made at the real end (field job J10, a recorded
+        // S-curve). The ray's direction is the reference curve's heading at its nearest point,
+        // which on a pass far out from an S-shaped reference is not the pass's own, so the ray
+        // can also cross the pass and meet the headland beside it. The pass itself is walked
+        // ahead: when it goes on in the field past the ray's end, the end is further on and is
+        // judged once the ray finds it. The walk stops at twice the margin past the ray (it is
+        // counted from the nearest point of the offset curve, about a metre either way).
+        if (canCreateTurn && turn.TurnPath == null && !turn.IsExecuting && track.Points.Count > 2)
+        {
+            const double RayShortBy = 5.0;
+            double along = _pathing.LandingLength(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
+                passPoint, !headingSameWay, 0, stopAt: turn.DistanceToHeadland + 2 * RayShortBy);
+            if (along > turn.DistanceToHeadland + RayShortBy)
+            {
+                canCreateTurn = false;
+                _logger.LogDebug("[YouTurn] Curve: the pass runs on {Along:F1}m+ in the field past the headland the straight line meets at {Dist:F1}m - the end is further on",
+                    along, turn.DistanceToHeadland);
+            }
+        }
         if (!canCreateTurn && ctx.IsSkipWorkedMode && isInHeadlandZone && isAlignedWithABLine
             && turn.SnakeSequence != null && turn.TurnPath == null && !turn.IsExecuting)
         {
