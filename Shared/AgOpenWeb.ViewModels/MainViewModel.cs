@@ -873,6 +873,18 @@ public partial class MainViewModel : ObservableObject
                 _logger.LogInformation("Migrated v1 vehicle profiles to v2 (split vehicle/tool)");
             }
 
+            var imported = _configurationService.ImportAgOpenGpsProfiles();
+            if (imported.Any)
+            {
+                _logger.LogInformation("Imported AgOpenGPS profiles: vehicles {Vehicles}, tools {Tools}",
+                    string.Join(", ", imported.Vehicles), string.Join(", ", imported.Tools));
+            }
+            if (imported.Skipped.Count > 0)
+            {
+                _logger.LogWarning("AgOpenGPS profiles not imported (a profile of that name exists, or the file is unreadable): {Files}",
+                    string.Join(", ", imported.Skipped));
+            }
+
             var profiles = _configurationService.GetAvailableProfiles();
             if (profiles.Count == 0)
             {

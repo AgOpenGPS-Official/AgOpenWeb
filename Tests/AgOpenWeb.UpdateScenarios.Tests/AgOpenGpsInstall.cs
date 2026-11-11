@@ -88,7 +88,9 @@ public sealed class AgOpenGpsInstall
             A("setVehicle_wheelbase", "Vehicle.Wheelbase", "2.7", "vehicle", stale: "2.55"),
             A("setVehicle_antennaHeight", "Vehicle.AntennaHeight", "2.8", "vehicle", stale: "2.9", before: "2.75"),
             A("setVehicle_antennaPivot", "Vehicle.AntennaPivot", "1.2", "vehicle", stale: "0.9"),
-            A("setVehicle_antennaOffset", "Vehicle.AntennaOffset", "-0.3", "vehicle", stale: "0.1"),
+            // AgOpenGPS measures the antenna offset to the left (ConfigVehicle: "Right" saves the
+            // number typed × -1), AgOpenWeb to the right: 30 cm right of centre today, 10 cm left in 2024.
+            A("setVehicle_antennaOffset", "Vehicle.AntennaOffset", "-0.3", "vehicle", stale: "0.1", reads: "0.3", staleReads: "-0.1"),
             A("setVehicle_maxSteerAngle", "Vehicle.MaxSteerAngle", "36", "vehicle", stale: "33"),
             A("setVehicle_maxAngularVelocity", "Vehicle.MaxAngularVelocity", "0.64", "vehicle", stale: "0.55"),
             A("setVehicle_trackWidth", "Vehicle.TrackWidth", "1.95", "vehicle", stale: "1.85"),
@@ -102,10 +104,10 @@ public sealed class AgOpenGpsInstall
             A("setAS_minSteerSpeed", "AutoSteer.MinSteerSpeed", "0.6", "steer", stale: "0.4"),
             A("setAS_isSteerInReverse", "AutoSteer.SteerInReverse", "True", "steer"),
             // PGN 251's bytes as AgOpenGPS keeps them: 0x58 = single A/D, Cytron, steer button;
-            // 2 = pressure sensor, its trip point raw 91 (36 %).
+            // 2 = pressure sensor, its trip point raw 91 (35 %, as FormSteer shows it: (int)(raw × 0.392)).
             A("setArdSteer_setting0", "AutoSteer.ExternalEnable", "88", "steer", reads: "2", stale: "56", staleReads: "1"),
             A("setArdSteer_setting1", "AutoSteer.PressureSensorEnabled", "2", "steer", reads: "True"),
-            A("setArdSteer_maxPulseCounts", "AutoSteer.PressureTripPoint", "91", "steer", reads: "36"),
+            A("setArdSteer_maxPulseCounts", "AutoSteer.PressureTripPoint", "91", "steer", reads: "35"),
             A("setIMU_rollZero", "Ahrs.RollZero", "1.3", "imu", stale: "0.7"),
             A("setIMU_rollFilter", "Ahrs.RollFilter", "0.35", "imu", stale: "0.22"),
             A("setIMU_invertRoll", "Ahrs.IsRollInvert", "True", "imu"),
@@ -146,15 +148,18 @@ public sealed class AgOpenGpsInstall
             A("setHeadland_isSectionControlled", "Tool.IsHeadlandSectionControl", "False", "sections"),
         }, Positions(8, 1.0), Positions(6, 1.0)));
 
-        // The seed drill, trailed, added on 6.8.6 (its hitch and trailing hitch lengths negative,
-        // as AgOpenGPS writes them; AgOpenWeb keeps the distances). Its hitch length is the
+        // The seed drill behind its seed cart (tow-between), added on 6.8.6 (its hitch, tank
+        // hitch and trailing hitch lengths negative, as AgOpenGPS writes them: ConfigTool saves
+        // the number typed × -1; AgOpenWeb keeps the distances). Its hitch length is the
         // tractor's hitch pin, which AgOpenWeb keeps with the tractor.
         a.Tools.Add(new AogTool("Semeador 3 m", new()
         {
             A("setVehicle_toolWidth", "Tool.Width", "3", "tool"),
             A("setTool_isToolTrailing", "Tool.IsToolTrailing", "True", "tool"),
+            A("setTool_isToolTBT", "Tool.IsToolTBT", "True", "tool"),
             A("setTool_isToolRearFixed", "Tool.IsToolRearFixed", "False", "tool"),
             A("setVehicle_hitchLength", "Vehicle.HitchLength", "-1.5", "tool", reads: "1.5"),
+            A("setVehicle_tankTrailingHitchLength", "Tool.TankTrailingHitchLength", "-1.8", "tool", reads: "1.8"),
             A("setVehicle_toolTrailingHitchLength", "Tool.TrailingHitchLength", "-2.4", "tool", reads: "2.4"),
             A("setVehicle_numSections", "NumSections", "12", "sections"),
             A("setSection_position", "ActualToolWidth", "3", "sections"),

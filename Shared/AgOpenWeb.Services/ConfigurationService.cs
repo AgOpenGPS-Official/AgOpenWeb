@@ -392,6 +392,27 @@ public class ConfigurationService(
         return migrated;
     }
 
+    /// <inheritdoc/>
+    public AgOpenGpsImport ImportAgOpenGpsProfiles()
+    {
+        string? dataRoot = Path.GetDirectoryName(Path.GetFullPath(ProfilesDirectory));
+        if (string.IsNullOrEmpty(dataRoot))
+            return AgOpenGpsImport.None;
+        var result = AgOpenGpsProfileImport.Run(dataRoot, ProfilesDirectory, toolProfileService, SaveAutoSteerConfig);
+        // A first start on AgOpenGPS's profiles: the tractor and implement AgOpenGPS saved last
+        // are the pair in use, as they were there.
+        if (result.Any && string.IsNullOrEmpty(settingsService.Settings.LastUsedVehicleProfile))
+        {
+            if (result.Vehicles.Count > 0) settingsService.Settings.LastUsedVehicleProfile = result.Vehicles[0];
+            if (result.Tools.Count > 0) settingsService.Settings.LastUsedToolProfile = result.Tools[0];
+            settingsService.Save();
+        }
+        return result;
+    }
+
+    private static bool IsAgOpenGpsFile(string? path) =>
+        !string.IsNullOrEmpty(path) && string.Equals(Path.GetExtension(path), ".xml", StringComparison.OrdinalIgnoreCase);
+
     private static int? PeekFormatVersion(string path)
     {
         try
@@ -651,12 +672,14 @@ public class ConfigurationService(
     /// <summary>
     /// Save AutoSteerConfig to JSON file alongside the profile.
     /// </summary>
-    private void SaveAutoSteerConfig(string profileName)
+    private void SaveAutoSteerConfig(string profileName) => SaveAutoSteerConfig(profileName, Store.AutoSteer);
+
+    private void SaveAutoSteerConfig(string profileName, AutoSteerConfig config)
     {
         try
         {
             var path = GetAutoSteerConfigPath(profileName);
-            var dto = Store.AutoSteer.ToDto();
+            var dto = config.ToDto();
             var json = JsonSerializer.Serialize(dto, JsonOptions);
             File.WriteAllText(path, json);
         }
@@ -706,8 +729,11 @@ public class ConfigurationService(
             var path = GetAutoSteerConfigPath(profileName);
             if (!File.Exists(path))
             {
-                // No AutoSteer config file - reset to defaults
-                Store.AutoSteer.ResetToDefaults();
+                // A vehicle read from an AgOpenGPS settings file brought its own AutoSteer
+                // settings (AgOpenGpsSettings.ApplyAutoSteer): keep them until the first save
+                // writes the AutoSteer file. Otherwise there is none yet: the defaults.
+                if (!IsAgOpenGpsFile(Store.ActiveVehicleProfilePath))
+                    Store.AutoSteer.ResetToDefaults();
                 return;
             }
 
