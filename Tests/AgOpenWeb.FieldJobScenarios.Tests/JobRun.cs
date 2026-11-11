@@ -962,6 +962,7 @@ public sealed class JobRun : IAsyncDisposable
         bool link = Module.LinkOk;
         if (!link) SecondsLinkDown += FixSeconds;
         var ss = c.SectionStates;
+        var live = Rig.Services.GetRequiredService<ISectionControlService>().SectionStates;
         Grid.BeginFix();
         double uL = double.MaxValue, uR = double.MinValue;
         bool any = false;
@@ -978,7 +979,10 @@ public sealed class JobRun : IAsyncDisposable
             // What must match the screen is the product at the nozzles: the relays rightly lead the
             // screen by the look-ahead (#714), the valves then take that long, and the two meet.
             bool valve = ((spray >> s) & 1) != 0;
-            bool screen = ss != null && s < ss.Length && ss[s];
+            // The screen as the browser draws it: the section service's live state, which the
+            // 100 Hz control loop keeps up without GPS. The last GPS cycle's copy stays as it was
+            // through an outage (careless C2: 'on' for 5 s while the app had closed the valves).
+            bool screen = s < live.Count && live[s].IsOn;
             if (screen && !valve) { ScreenOnValveShut[s] += FixSeconds; if (!link) SecondsPaintingLinkDown += FixSeconds / n; }
             if (!screen && valve) ScreenOffValveOpen[s] += FixSeconds;
             if (screen != valve) { if (++_disagreeRun[s] > 10) PersistentDisagreement[s] += FixSeconds; }
@@ -1109,6 +1113,7 @@ public sealed class JobRun : IAsyncDisposable
         double cell = TruthGrid.Cell * TruthGrid.Cell;
         var g = Grid;
         int reach = (int)Math.Ceiling(1.5 * Spacing / TruthGrid.Cell);
+        double widestSection = Enumerable.Range(0, Spec.T.Sections).Max(k => Spec.T.SectionCm(k)) / 100.0;
         // The seams between neighbouring passes where both ran at full width, by 1 m bin along
         // the line: where the gap between them lies across the passes, and how wide it is.
         var seams = new Dictionary<int, List<(double Mid, double Gap)>>();
@@ -1151,10 +1156,12 @@ public sealed class JobRun : IAsyncDisposable
                     if (Work != null && Ring.DistToRing(c, Work) < 3) a.MissedAtEnds += cell;
                     // Within 2 m of an obstacle: the sections closing over it and opening again.
                     else if (g.Near(i, j => (g.Zone[j] & (TruthGrid.InObstacle | TruthGrid.InDriveThrough)) != 0, 10)) a.MissedAtObstacles += cell;
+                    // The laps' corners first: a lap rounds a corner of the boundary and cannot reach
+                    // into it, whatever the sections do (near the fence too).
+                    else if (AtCorner?.Invoke(c) == true) a.MissedAtCorners += cell;
                     // No headland (the lap jobs): the edge of the field along the boundary.
                     else if (Work == null && Ring.DistToRing(c, Outer) < 1.5) a.MissedAlongBoundary += cell;
                     else if (LeftOnPurpose?.Invoke(c) == true) a.MissedLeftInMiddle += cell;
-                    else if (AtCorner?.Invoke(c) == true) a.MissedAtCorners += cell;
                     else if (SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; if (OnSeam(c)) a.MissedAtSeams += cell; }
                     // The rest: in a pass that was driven (worked along part of its length, as the
                     // first passes of a field whose corner a U-turn cut off), or in no driven pass
@@ -1169,7 +1176,13 @@ public sealed class JobRun : IAsyncDisposable
                 if ((z & TruthGrid.InOuter) == 0) a.OutsideBoundary += cell;
                 else if ((z & TruthGrid.InObstacle) != 0) a.InObstacles += cell;
                 else if ((z & TruthGrid.InDriveThrough) != 0) a.InDriveThrough += cell;
-                else if ((z & TruthGrid.InWork) == 0) a.InHeadland += cell;
+                else if ((z & TruthGrid.InWork) == 0)
+                {
+                    a.InHeadland += cell;
+                    // A section is in the headland only with both ends in it (AgOpenGPS), so where
+                    // a pass meets the line at an angle up to a section's width goes past the line.
+                    if (Work != null && Ring.DistToRing(c, Work) > widestSection + TruthGrid.Cell) a.InHeadlandPastSection += cell;
+                }
                 if (!app && !g.Near(i, j => Coverage.IsPointCovered(g.Centre(j).E, g.Centre(j).N), 2)) a.SprayedNotAppPainted += cell;
             }
             if (app && !truth && !g.Near(i, j => g.Count[j] > 0, 2))

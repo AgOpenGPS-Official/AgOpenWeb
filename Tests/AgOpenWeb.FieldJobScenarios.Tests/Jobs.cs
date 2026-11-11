@@ -180,6 +180,8 @@ public static class Jobs
         double beyondRounding = (a.MissedBetweenPasses - a.MissedAtSeams) + Math.Max(0, a.MissedAtSeams - (0.05 + askedGap) * passM);
         if (a.LargestMissedStripM <= 0.05 + askedGap && a.MissedBetweenPasses > stripArea && beyondRounding <= 0.005 * a.Work)
             sc.Note(F($"{a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}) between passes counted unsprayed on the 0.2 m grid, {a.MissedAtSeams:0} m² of it on the seams where the implement's ends met within {a.LargestMissedStripM:0.00} m{(askedGap > 0 ? F($" ({askedGap:0.00} m gap asked for)") : "")}: the grid's rounding along {r.Spacing:0.0} m passes, not a strip"));
+        else if (a.LargestMissedStripM <= 0.15 + askedGap && a.MissedBetweenPasses > stripArea && r.Said.FirstOrDefault(l => l.Contains("Headland too narrow", StringComparison.Ordinal)) is { } narrow)
+            sc.Note(F($"{a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}) between sprayed ground were never sprayed (widest strip along the passes {a.LargestMissedStripM:0.00} m): wedges at the pass ends where the U-turn leaves its pass inside the headland line, as AgOpenWeb warned (\"{narrow}\"): the headland is narrower than the turn needs at this radius and pass spacing"));
         else if (a.LargestMissedStripM <= 0.15 + askedGap && a.MissedBetweenPasses > stripArea)
             flag(Severity.Bug, "MISSED-STRIPS", F($"{a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}) between sprayed ground were never sprayed, centred on ({a.MissedBetweenE / Math.Max(a.MissedBetweenPasses, 1e-9):0},{a.MissedBetweenN / Math.Max(a.MissedBetweenPasses, 1e-9):0}), though wherever two neighbouring passes run at full width their edges meet (widest {a.LargestMissedStripM:0.00} m): wedges where a pass starts or ends with the implement still turning or a section still off, not a strip along the passes."));
         else if (a.LargestMissedStripM > 0.15 + askedGap || a.MissedBetweenPasses > stripArea)
@@ -189,10 +191,9 @@ public static class Jobs
         // ---- the edge of a field worked with no headland (laps along the boundary)
         if (r.Work == null)
         {
-            double margin = r.Rig.Store.Tool.CoverageMarginMeters;
             sc.Row.Metrics.Add(("Never sprayed along the boundary (no headland: within 1.5 m of it) / at the laps' corners / in the middle no lap reaches", F($"{a.MissedAlongBoundary:0} / {a.MissedAtCorners:0} / {a.MissedLeftInMiddle:0} m²")));
             if (a.MissedAlongBoundary > 0.003 * a.Work)
-                flag(Severity.Improvement, "EDGE-NOT-SPRAYED", F($"{a.MissedAlongBoundary:0} m² ({Pct(a.MissedAlongBoundary, a.Work)}) along the boundary were never sprayed with the boom's end on the boundary (the first lap half a width inside it): a strip about {a.MissedAlongBoundary / Math.Max(Ring.Perimeter(r.Outer), 1):0.00} m wide round the field. With 'Off outside boundary' on, AgOpenWeb widens each section by the coverage margin ({margin * 100:0} cm) and closes it when that edge is outside the boundary, so the outermost section stays closed along the fence."));
+                flag(Severity.Improvement, "EDGE-NOT-SPRAYED", F($"{a.MissedAlongBoundary:0} m² ({Pct(a.MissedAlongBoundary, a.Work)}) along the boundary were never sprayed with the boom's end on the boundary (the first lap half a width inside it): a strip about {a.MissedAlongBoundary / Math.Max(Ring.Perimeter(r.Outer), 1):0.00} m wide round the field. With 'Off outside boundary' on, a section closes when either of its ends is more than {AgOpenWeb.Services.Section.SectionControlService.EdgeLeewayM * 100:0} cm outside the boundary, as it must, so wherever the lap bends or the tractor runs a little outward the outermost section closes."));
             else
                 sc.Ok(F($"the edge along the boundary was sprayed ({a.MissedAlongBoundary:0} m² missed within 1.5 m of it)"));
         }
@@ -217,10 +218,14 @@ public static class Jobs
         }
         if (spec.HeadlandM > 0 && spec.HeadlandSections)
         {
-            if (a.InHeadland > 20)
-                flag(Severity.Bug, "SPRAYED-IN-HEADLAND", F($"{a.InHeadland:0} m² of the headland were sprayed with section control in the headland on (the sections should be off there)."));
+            // A section is in the headland only with both its ends in it (AgOpenGPS): where a pass
+            // meets the headland line at an angle, up to a section's width lands past the line so
+            // that nothing inside it is left unsprayed. Only spray further in is a fault.
+            double widest = Enumerable.Range(0, spec.T.Sections).Max(k => spec.T.SectionCm(k)) / 100.0;
+            if (a.InHeadlandPastSection > 20)
+                flag(Severity.Bug, "SPRAYED-IN-HEADLAND", F($"{a.InHeadlandPastSection:0} m² of the headland were sprayed further past the headland line than a section's width ({widest:0.00} m), with section control in the headland on (the sections should be off there); {a.InHeadland:0} m² in all."));
             else
-                sc.Ok(F($"the headland was left alone ({a.InHeadland:0} m² sprayed in it)"));
+                sc.Ok(F($"the headland was left alone: {a.InHeadland:0} m² sprayed in it, all within a section's width ({widest:0.00} m) of the line, where a section crosses it at an angle and stays on until both its ends are in (AgOpenGPS)"));
         }
 
         // ---- the map against the valves

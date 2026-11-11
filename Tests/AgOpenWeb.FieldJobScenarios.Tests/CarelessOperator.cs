@@ -191,7 +191,9 @@ public static class CarelessOperator
             "The sections are typed 75 cm wide for a boom whose sections are really 1 m: AgOpenWeb lays the passes 6 m apart and 2 m of every pass is sprayed twice; nothing can tell it, but the map must not hide it either.") with
         {
             Extra = Enumerable.Range(0, 8).Select(s => $"tool.sectionWidth:{s},75").ToArray(),
-            Expected = new[] { "DOUBLE-SPRAYED", "APP-AREA-OFF", "SPRAYED-NOT-ON-MAP" },
+            // The app's outermost section ends at 3 m, the real boom's at 4 m: near an angled
+            // headland line the real outer sections run past it by more than a section's width.
+            Expected = new[] { "DOUBLE-SPRAYED", "APP-AREA-OFF", "SPRAYED-NOT-ON-MAP", "SPRAYED-IN-HEADLAND" },
         };
         yield return Olival("C14", "Skip one row at every U-turn",
             "The operator works the field in the alternate pattern (skip 1 row, come back for the skipped ones): a longer job that must still end with every pass worked and the field reported done.") with
