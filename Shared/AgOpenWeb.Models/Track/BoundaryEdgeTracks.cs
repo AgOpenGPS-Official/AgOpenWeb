@@ -39,11 +39,18 @@ public static class BoundaryEdgeTracks
 
     /// <summary>The edge tracks of a closed boundary, in boundary order. Empty when fewer
     /// than two corners are found (a round field: use Boundary Curve).</summary>
-    public static List<Track> Build(IReadOnlyList<BoundaryPoint> pts)
+    public static List<Track> Build(IReadOnlyList<BoundaryPoint> pts) => BuildSides(pts).ConvertAll(s => s.Track);
+
+    /// <summary>The edge tracks with each side's length along the boundary. "Longest Edge" takes
+    /// the longest side, not the longest piece between two boundary points: a side is drawn in many
+    /// short pieces (the web client harness's LONGEST-EDGE-NOT-LONGEST took a 49 m piece of a
+    /// 244 m side over a 420 m side).</summary>
+    public static List<(Track Track, double Length)> BuildSides(IReadOnlyList<BoundaryPoint> pts)
     {
         var tracks = new List<Track>();
+        var sides = new List<(Track Track, double Length)>();
         int n = pts.Count;
-        if (n < 3) return tracks;
+        if (n < 3) return sides;
 
         // Boundary points are densified along each edge, so one track per point would make
         // dozens on a 4-sided field: find the corners and make one track per edge between them.
@@ -63,7 +70,7 @@ public static class BoundaryEdgeTracks
         // Points next to a corner see it in their span too: one corner per run, at its sharpest.
         var corners = new List<int>();
         int start = Array.FindIndex(turns, t => t <= CornerTurnThreshold);
-        if (start < 0) return tracks;
+        if (start < 0) return sides;
         for (int k = 1, best = -1; k <= n; k++)
         {
             int i = (start + k) % n;
@@ -71,7 +78,7 @@ public static class BoundaryEdgeTracks
             else if (best >= 0) { corners.Add(best); best = -1; }
         }
         corners.Sort();
-        if (corners.Count < 2) return tracks;
+        if (corners.Count < 2) return sides;
 
         for (int k = 0; k < corners.Count; k++)
         {
@@ -129,6 +136,7 @@ public static class BoundaryEdgeTracks
                     Type = TrackType.Curve,
                     IsVisible = true,
                 });
+                sides.Add((tracks[^1], along[^1]));
             }
             else
             {
@@ -147,9 +155,10 @@ public static class BoundaryEdgeTracks
                     Type = TrackType.ABLine,
                     IsVisible = true,
                 });
+                sides.Add((tracks[^1], along[^1]));
             }
         }
-        return tracks;
+        return sides;
     }
 
     // The boundary point CornerSpan along the ring from point i (dir ±1), or the furthest

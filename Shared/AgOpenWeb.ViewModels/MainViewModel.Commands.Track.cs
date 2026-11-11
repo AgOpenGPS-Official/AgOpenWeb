@@ -1368,7 +1368,20 @@ public partial class MainViewModel
                 return;
             }
 
-            // Find the longest edge of the boundary polygon
+            // The longest side, between two corners (as All Edges finds them): a straight side an
+            // AB line, a bowed one a curve.
+            if (Models.Track.BoundaryEdgeTracks.BuildSides(boundary.Points) is { Count: > 0 } sides)
+            {
+                var (side, length) = sides.MaxBy(x => x.Length);
+                side.Name = $"Longest Edge ({length:F0}m)";
+                AddSavedTrack(side);
+                SaveTracksToFile(); // persist now (#107), before selecting — see A+ below
+                SelectedTrack = side;
+                StatusMessage = $"Created a line along the longest boundary side ({length:F0}m)";
+                return;
+            }
+
+            // No corners (a round field): the longest piece between two boundary points.
             var pts = boundary.Points;
             double maxDist = 0;
             int bestIdx = 0;
