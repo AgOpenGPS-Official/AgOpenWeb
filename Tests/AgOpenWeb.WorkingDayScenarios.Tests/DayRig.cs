@@ -270,10 +270,11 @@ public sealed class DayRig : IAsyncDisposable
     /// on a head without it).</summary>
     private static void AddBackendServices(IServiceCollection services)
     {
-        services.AddSingleton<ApplicationState>();
-        services.AddSingleton<AgOpenWeb.Models.Configuration.ConfigurationStoreLease>();
-        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStoreLease>().Store);
-        services.AddSingleton(_ => PersistentAppState.Instance);
+        // The backend's state: the statics point to it while it runs, let go when it stops (BackendStateLease).
+        services.AddSingleton<AgOpenWeb.Models.State.BackendStateLease>();
+        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().State);
+        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().Store);
+        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().Persistent);
         services.AddTransient<MainViewModel>();
         services.AddTransient<ConfigurationViewModel>();
         // Loopback only: with the machine's real interfaces the UDP service broadcasts steer and

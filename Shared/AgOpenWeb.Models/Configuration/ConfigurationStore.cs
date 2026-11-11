@@ -28,7 +28,7 @@ public class ConfigurationStore : ObservableObject
     public static void SetInstance(ConfigurationStore store) => _instance = store;
 
     /// <summary>The backend that owned <paramref name="store"/> stopped: the static lets go of it,
-    /// unless another store took its place already (<see cref="ConfigurationStoreLease"/>).</summary>
+    /// unless another store took its place already (<see cref="AgOpenWeb.Models.State.BackendStateLease"/>).</summary>
     internal static void Release(ConfigurationStore store) =>
         System.Threading.Interlocked.CompareExchange(ref _instance, null, store);
 
@@ -180,22 +180,4 @@ public class ConfigurationStore : ObservableObject
     /// Marks the configuration as having unsaved changes
     /// </summary>
     public void MarkChanged() => HasUnsavedChanges = true;
-}
-
-/// <summary>
-/// A backend's own configuration store: a new one, which the static seam
-/// (<see cref="ConfigurationStore.Instance"/>) points to while that backend runs, let go when the
-/// backend's service container disposes the lease. Every head registers its store through it.
-/// The static used to be one store for the whole process, and the backend's handlers on it
-/// (MainViewModel's on Guidance, Display, Connections…) kept that backend alive after it stopped:
-/// on Android, where the process outlives the backend, every Exit and reopen kept the backend
-/// before it running beside the new one (the working day harness's BACKEND-NOT-FREED-AFTER-EXIT).
-/// </summary>
-public sealed class ConfigurationStoreLease : IDisposable
-{
-    public ConfigurationStore Store { get; } = new();
-
-    public ConfigurationStoreLease() => ConfigurationStore.SetInstance(Store);
-
-    public void Dispose() => ConfigurationStore.Release(Store);
 }
