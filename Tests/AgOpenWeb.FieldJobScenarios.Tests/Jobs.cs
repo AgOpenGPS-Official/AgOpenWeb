@@ -217,10 +217,14 @@ public static class Jobs
         }
         if (spec.HeadlandM > 0 && spec.HeadlandSections)
         {
-            if (a.InHeadland > 20)
-                flag(Severity.Bug, "SPRAYED-IN-HEADLAND", F($"{a.InHeadland:0} m² of the headland were sprayed with section control in the headland on (the sections should be off there)."));
+            // A section is in the headland only with both its ends in it (AgOpenGPS): where a pass
+            // meets the headland line at an angle, up to a section's width lands past the line so
+            // that nothing inside it is left unsprayed. Only spray further in is a fault.
+            double widest = Enumerable.Range(0, spec.T.Sections).Max(k => spec.T.SectionCm(k)) / 100.0;
+            if (a.InHeadlandPastSection > 20)
+                flag(Severity.Bug, "SPRAYED-IN-HEADLAND", F($"{a.InHeadlandPastSection:0} m² of the headland were sprayed further past the headland line than a section's width ({widest:0.00} m), with section control in the headland on (the sections should be off there); {a.InHeadland:0} m² in all."));
             else
-                sc.Ok(F($"the headland was left alone ({a.InHeadland:0} m² sprayed in it)"));
+                sc.Ok(F($"the headland was left alone: {a.InHeadland:0} m² sprayed in it, all within a section's width ({widest:0.00} m) of the line, where a section crosses it at an angle and stays on until both its ends are in (AgOpenGPS)"));
         }
 
         // ---- the map against the valves

@@ -404,17 +404,22 @@ public class SectionControlService : ISectionControlService
         //   ON:  lookahead = speed * turnOnPhaseSec  (cancels TURNING_ON wait)
         //   OFF: lookahead = speed * turnOffPhaseSec (cancels TURNING_OFF wait)
         // With MAPPING_ON_DELAY = 0, the TURNING phases are the only wait,
-        // so this gives strip start/end at the line with no gap and no
-        // overspray when all timings are 0.
+        // so a section's ends switch at the line when all timings are 0.
+        // A section is in the headland only with both its ends in it (AgOpenGPS
+        // WhereAreToolCorners / WhereAreToolLookOnPoints): where a pass meets the
+        // line at an angle the section stays on until its last end crosses, and
+        // comes on as its first end leaves, so nothing inside the line is left
+        // unsprayed; the rest of the section lands in the headland, which its
+        // laps work anyway.
         double headlandOnLookAhead = speed * turnOnPhaseSec;
         double headlandOffLookAhead = speed * turnOffPhaseSec;
         var headlandOnCheckPoint = ProjectForwardCurved(sectionCenter, toolHeading, headlandOnLookAhead, speed);
         var headlandOffCheckPoint = ProjectForwardCurved(sectionCenter, toolHeading, headlandOffLookAhead, speed);
 
         _sectionSw.Restart();
-        bool isInHeadland = IsPointInHeadland(sectionCenter);
-        bool lookOnInHeadland = IsPointInHeadland(headlandOnCheckPoint);
-        bool lookOffInHeadland = IsPointInHeadland(headlandOffCheckPoint);
+        bool isInHeadland = SectionInHeadland(sectionCenter, toolHeading, halfWidth);
+        bool lookOnInHeadland = SectionInHeadland(headlandOnCheckPoint, toolHeading, halfWidth);
+        bool lookOffInHeadland = SectionInHeadland(headlandOffCheckPoint, toolHeading, halfWidth);
         _totalHeadlandMs += _sectionSw.Elapsed.TotalMilliseconds;
 
         // Bitmap-based coverage check is O(width / cellSize) bit reads per section
@@ -858,6 +863,19 @@ public class SectionControlService : ISectionControlService
         }
 
         return boundary.GetSegmentBoundaryStatus(sectionCenter, heading, halfWidth);
+    }
+
+    /// <summary>
+    /// A section is in the headland when both its ends are (AgOpenGPS: <c>isInHeadlandArea =
+    /// !isLeftIn &amp;&amp; !isRightIn</c>). The left end first: away from the headland that one
+    /// test settles it.
+    /// </summary>
+    private bool SectionInHeadland(Vec2 center, double heading, double halfWidth)
+    {
+        double perpHeading = heading + Math.PI / 2.0;
+        double dE = Math.Sin(perpHeading) * halfWidth, dN = Math.Cos(perpHeading) * halfWidth;
+        return IsPointInHeadland(new Vec2(center.Easting - dE, center.Northing - dN))
+            && IsPointInHeadland(new Vec2(center.Easting + dE, center.Northing + dN));
     }
 
     /// <summary>

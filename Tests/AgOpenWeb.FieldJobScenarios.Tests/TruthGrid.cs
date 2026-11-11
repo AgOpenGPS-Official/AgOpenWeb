@@ -197,6 +197,7 @@ public sealed class JobAreas
     public double InObstacles;          // truth inside a hard obstacle
     public double InDriveThrough;       // truth inside a drive-through inner boundary (allowed)
     public double InHeadland;           // truth inside the boundary but outside the headland line
+    public double InHeadlandPastSection; // of which: further past the headland line than the widest section
     public double AppPainted;           // AgOpenWeb's map, inside the work area
     public double AppPaintedNotSprayed; // AgOpenWeb painted, no valve open within 0.3 m (anywhere)
     public double AppPaintedScreenSweptNotSprayed; // of which: AgOpenWeb's own sections swept it (on screen), the valves did not
