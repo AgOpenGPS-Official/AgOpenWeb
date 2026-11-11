@@ -899,11 +899,13 @@ public partial class MainViewModel
         });
 
         // Cycle Normal → Alternative → Ignore worked tracks, like AgOpenGPS's skip button;
-        // the two skip modes skip at least 1 row (#111).
+        // the two skip modes skip at least 1 row (#111). Every tap starts from the operator's
+        // own row count, as AgOpenGPS resets rowSkipsWidth to the saved setting, so back in
+        // Normal the 1 row the skip modes needed is gone (nightly C5).
         ToggleUTurnSkipRowsCommand = new RelayCommand(() =>
         {
             UTurnSkipMode = (UTurnSkipMode + 1) % 3;
-            if (UTurnSkipMode != 0 && UTurnSkipRows < 1) UTurnSkipRows = 1;
+            UTurnSkipRows = UTurnSkipMode != 0 ? Math.Max(1, _uTurnSkipRowsChosen) : _uTurnSkipRowsChosen;
             // The setters above push the new pattern to the pipeline (SetYouTurnConfig),
             // which drops the snake sequence so it rebuilds on the next turn.
             StatusMessage = UTurnSkipMode switch
@@ -917,6 +919,7 @@ public partial class MainViewModel
         CycleUTurnSkipRowsCommand = new RelayCommand(() =>
         {
             UTurnSkipRows = (UTurnSkipRows + 1) % 10;
+            _uTurnSkipRowsChosen = UTurnSkipRows;
             StatusMessage = $"Skip rows: {UTurnSkipRows}";
         });
 
