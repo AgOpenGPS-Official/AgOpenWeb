@@ -25,6 +25,7 @@ public partial class MainViewModel
 
     // Backing fields for properties
     private bool _isSimulatorEnabled;
+    private bool _isSimulatorDrivingSteering;
     private double _simulatorSteerAngle;
     // The operator's steer while guidance drives the sim; restored when it stops (#411).
     private double _simManualSteerAngle;
@@ -161,6 +162,20 @@ public partial class MainViewModel
 
             if (SetProperty(ref _isSimulatorEnabled, value))
             {
+                // A change of GPS source takes AutoSteer off, before the pipeline is told.
+                // Engaged on the simulator, it would go on steering the real tractor to the
+                // simulated line as soon as the receiver's fix takes over (the simulator
+                // stops by itself then, OnSimulatorTick): nobody engaged it on that tractor.
+                if (IsAutoSteerEngaged)
+                {
+                    string why = value ? "simulator turned on" : "simulator turned off";
+                    ToggleAutoSteerCommand?.Execute(why);
+                    ReportFailure("AutoSteer off: " + why);
+                }
+                // The bench choice ends with the simulator: the next time it is turned on
+                // the tablet may be on the tractor.
+                if (!value) IsSimulatorDrivingSteering = false;
+
                 State.Simulator.IsEnabled = value; // mirror for the web-UI projector
                 _gpsPipelineService.SetSimulatorEnabled(value); // no steer speed limits on the sim (#106)
                 // Persist the "simulator is the GPS source" preference through
@@ -186,6 +201,50 @@ public partial class MainViewModel
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// The operator's choice, for a bench test (a steering motor on the desk): the simulator
+    /// moves the real steering, so PGN 254 says steer while AutoSteer is engaged on the
+    /// simulator. Off by default, when the simulator never asks the steer module to steer.
+    /// It is never saved, and it is dropped when the simulator is turned off (a receiver's fix
+    /// does that too) and when the steer module goes silent (the next one heard may be the
+    /// tractor's): it must not be left on when the tablet goes back to the tractor. A change
+    /// takes AutoSteer off first, so the steering never starts or stops under an engaged line.
+    /// </summary>
+    public bool IsSimulatorDrivingSteering
+    {
+        get => _isSimulatorDrivingSteering;
+        set
+        {
+            if (value && !_isSimulatorEnabled) value = false;   // only with the simulator on
+            if (_isSimulatorDrivingSteering == value) return;
+
+            if (IsAutoSteerEngaged)
+            {
+                string why = value ? "the simulator now moves the real steering"
+                                   : "the simulator no longer moves the real steering";
+                ToggleAutoSteerCommand?.Execute(why);
+                ReportFailure("AutoSteer off: " + why);
+            }
+
+            SetProperty(ref _isSimulatorDrivingSteering, value);
+            _gpsPipelineService.SetSimulatorSteersModule(value);
+            _logger.LogInformation("[Simulator] The steer module is {What}",
+                value ? "driven by the simulator (bench test)" : "not driven by the simulator");
+            StatusMessage = value
+                ? "Simulator: AutoSteer now moves the real steering (bench test)"
+                : "Simulator: the steer module is not driven";
+        }
+    }
+
+    /// <summary>The steer module went silent (it answered until now): the simulator's leave to
+    /// move the steering ends with it. The next module heard may be the tractor's. Called with
+    /// the module check's result, before it is stored.</summary>
+    internal void DropBenchChoiceWhenSteerModuleGoesSilent(bool steerModuleOk)
+    {
+        if (State.Connections.IsAutoSteerDataOk && !steerModuleOk)
+            IsSimulatorDrivingSteering = false;
     }
 
     public double SimulatorSteerAngle

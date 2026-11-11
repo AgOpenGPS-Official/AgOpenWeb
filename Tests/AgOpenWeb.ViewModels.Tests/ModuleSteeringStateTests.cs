@@ -20,6 +20,7 @@ public class ModuleSteeringStateTests
     {
         var b = new MainViewModelBuilder();
         var vm = b.Build();
+        vm.IsSimulatorEnabled = false;   // a receiver's fix: on the simulator the module is never asked to steer
         vm.State.Connections.IsAutoSteerDataOk = true;
         vm.IsAutoSteerEngaged = true;
         return (vm, b);
@@ -71,6 +72,48 @@ public class ModuleSteeringStateTests
         vm.State.Connections.IsAutoSteerDataOk = false;          // simulator / no steer module
         vm.UpdateModuleSteeringState();
         Assert.That(vm.State.Connections.IsModuleNotSteering, Is.False);
+    }
+
+    [Test]
+    public void OnTheSimulator_TheModuleIsNotAskedToSteer_SoNothingIsShownOrAlerted()
+    {
+        // PGN 254 status stays 0 on the simulator, so a module on the network reports "not
+        // steering" all the time: that is what it should do, not a kickout.
+        var (vm, b) = Engaged();
+        int alerts = 0; vm.FailureReported += _ => alerts++;
+        b.AutoSteerService.LastSteerData.Returns(Bit(false));
+        vm.UpdateModuleSteeringState();                          // steering on the receiver's fix
+
+        vm.IsAutoSteerEngaged = false;
+        vm.IsSimulatorEnabled = true;
+        vm.IsAutoSteerEngaged = true;
+        b.AutoSteerService.LastSteerData.Returns(Bit(true));
+        vm.UpdateModuleSteeringState();
+        vm.UpdateModuleSteeringState();
+
+        Assert.That(vm.State.Connections.IsModuleNotSteering, Is.False);
+        Assert.That(alerts, Is.Zero);
+    }
+
+    [Test]
+    public void OnTheSimulator_WithTheBenchChoice_AModuleThatStopsSteeringIsShown()
+    {
+        // The operator let the simulator move the steering: the module is asked to steer,
+        // so one that stops is a kickout again.
+        var (vm, b) = Engaged();
+        vm.IsAutoSteerEngaged = false;
+        vm.IsSimulatorEnabled = true;
+        vm.IsSimulatorDrivingSteering = true;
+        vm.IsAutoSteerEngaged = true;
+        int alerts = 0; vm.FailureReported += _ => alerts++;
+
+        b.AutoSteerService.LastSteerData.Returns(Bit(false));
+        vm.UpdateModuleSteeringState();
+        b.AutoSteerService.LastSteerData.Returns(Bit(true));
+        vm.UpdateModuleSteeringState();
+
+        Assert.That(vm.State.Connections.IsModuleNotSteering, Is.True);
+        Assert.That(alerts, Is.EqualTo(1));
     }
 
     [Test]

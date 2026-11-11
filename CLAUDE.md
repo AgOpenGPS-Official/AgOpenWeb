@@ -151,6 +151,24 @@ assumes a sprayer's valves take; saved profiles keep their own.
 The control loop sends the PGNs at 100 Hz, PGN 229 every tick whatever the section count (the
 ISOBUS task controller reads sections from 229 only).
 
+### The simulator never steers the module
+The steer module stays on the network while the simulator runs. While the simulator is the chosen GPS
+source (`GpsPipelineService.SetSimulatorEnabled`, from the moment it is chosen) `VehicleState.SimulatorHoldsSteering`
+is set (`IAutoSteerService.SetSimulatorHoldsSteering`) and `PgnBuilder.BuildAutoSteerPgn` sends status 0:
+the module would open the lock valve and steer a parked tractor to a simulated line. AutoSteer stays
+engaged in the app, so the simulator follows the line, and the red "module not steering" button is not
+shown. Turning the simulator on or off (the receiver's fix arriving does it too) takes AutoSteer off
+first. Free Drive is the operator's own test of the steering and still sends status 1; PGN 239/229
+(sections, lift) still go to the machine module, as a bench test of a sprayer needs. The hold is the
+app's simulator, not the label on a fix: the scenario rigs feed their own fixes as
+`GpsSentenceType.Simulator` with the simulator off, and are steered.
+
+**Bench choice** (a steering motor on the desk): not in the UI yet (an enhancement). The seam is there:
+`MainViewModel.IsSimulatorDrivingSteering` (`GpsPipelineService.SetSimulatorSteersModule`) lets AutoSteer on
+the simulator send status 1; never saved, dropped when the simulator is turned off and when the steer module
+goes silent, and a change takes AutoSteer off first. The web client harness reads PGN 254 on the simulator,
+so its rig sets it (`WebClientRig`).
+
 ### Host ↔ client commands
 The client sends `id|arg` strings (`transport.send('track.select|0')`). `RemoteServerWiring`
 (in `RemoteWiring`) switches on the id and calls the VM; `RemoteServerWiring.Helpers.cs` holds

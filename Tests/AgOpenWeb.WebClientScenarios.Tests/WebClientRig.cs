@@ -135,6 +135,13 @@ public sealed class WebClientRig : IAsyncDisposable
             port: FreePort());
         await hostLoop.InvokeAsync(() =>
             RemoteServerWiring.Wire(server, vm, sp, configService, new NoImagery()));
+        // The tractor here is the internal simulator, and the harness reads what the steer module
+        // is told. On the simulator that is "don't steer" unless the operator chose the bench
+        // test, so the rig makes that choice: PGN 254 then says what it says on a receiver.
+        await hostLoop.InvokeAsync(() => vm.IsSimulatorDrivingSteering = true);
+        if (!vm.IsSimulatorDrivingSteering)
+            throw new InvalidOperationException("The rig's simulator may not drive the steer module: "
+                + "PGN 254 would say 'don't steer' whatever a scenario does (is the simulator off?).");
 
         var rig = new WebClientRig(dataRoot, sp, vm, server, hostLoop, module);
         while (events.TryDequeue(out var e)) rig._events.Enqueue(e);

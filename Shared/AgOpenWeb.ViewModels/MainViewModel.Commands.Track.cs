@@ -1134,7 +1134,10 @@ public partial class MainViewModel
                 _autoSteerService.Disengage();
             }
             SyncGuidanceStateToPipeline();
-            StatusMessage = IsAutoSteerEngaged ? "AutoSteer ENGAGED" : "AutoSteer disengaged";
+            StatusMessage = !IsAutoSteerEngaged ? "AutoSteer disengaged"
+                : !IsSimulatorEnabled ? "AutoSteer ENGAGED"
+                : IsSimulatorDrivingSteering ? "AutoSteer ENGAGED on the simulator - it moves the real steering"
+                : "AutoSteer ENGAGED on the simulator - the steer module is not driven";
         });
 
         // Contour commands
