@@ -80,7 +80,7 @@ public static class ReplayJudge
             // The reporter changing pass just before (a lateral move, a re-pick, a U-turn) is a
             // place the two builds may part for a reason the dump does not hold: a note. Anywhere
             // else this build left the reporter's line on its own.
-            if (PassChangeBefore(R, div, 5.0) is { } change)
+            if ((PassChangeBefore(R, div, 5.0) ?? OwnTurnBefore(R, div, 5.0)) is { } change)
                 S.Note(F($"from t {rows[div].T:0.0} s this build ") + what + ", " + change + rest);
             else if (!n.HasGuidance)
                 S.Problem(Severity.Bug, Kind.AppDefect, "GUIDANCE-LOST",
@@ -230,6 +230,18 @@ public static class ReplayJudge
             if (run >= 30) return from;
         }
         return rows.Count;
+    }
+
+    /// <summary>This build ran a U-turn in the <paramref name="seconds"/> before row <paramref name="i"/>
+    /// where the reporter's build drove on (#570: no valid path then, a turn now): the replay feeds
+    /// the reporter's straight path, so this build ends on the next pass and the lines part.</summary>
+    public static string? OwnTurnBefore(DumpReplay R, int i, double seconds)
+    {
+        var rows = R.Dump.Rows; var now = R.Now;
+        for (int k = i; k > R.StartRow && rows[i].T - rows[k].T <= seconds; k--)
+            if (now[k] is { } n && (n.YtExecuting || n.YtTriggered) && !rows[k].YtExecuting && !rows[k].YtTriggered)
+                return F($"just after a U-turn of this build's where the reporter's drove on (t {rows[k].T:0.0} s), which did not turn");
+        return null;
     }
 
     /// <summary>The reporter's build changed pass in the <paramref name="seconds"/> before row

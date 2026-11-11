@@ -16,7 +16,8 @@ import re
 import sys
 
 ORDER = ["Safety", "DataLoss", "Bug", "Inconsistency", "Improvement", "Harness"]
-ENTRY = re.compile(r"^\d+\. \*\*(?P<sev>[A-Za-z]+)\*\* `(?P<code>[A-Z0-9-]+)` ×(?P<n>\d+): (?P<text>.*)$")
+# Some harnesses put the kind after the severity: "**Bug** (app defect) `CODE`" (dump replay).
+ENTRY = re.compile(r"^\d+\. \*\*(?P<sev>[A-Za-z]+)\*\* (?:\([^)]*\) )?`(?P<code>[A-Z0-9-]+)` ×(?P<n>\d+): (?P<text>.*)$")
 
 
 def findings(path):
