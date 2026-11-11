@@ -125,6 +125,12 @@ public record GpsCycleResult
 
     // Status
     public string? StatusMessage { get; init; }
+
+    /// <summary>
+    /// Non-null on the cycle where a manual U-turn was refused, or a turn could not be made or
+    /// was missed (once, with its sound): why, shown to the operator.
+    /// </summary>
+    public string? YouTurnNotice { get; init; }
 }
 
 /// <summary>

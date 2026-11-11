@@ -1588,7 +1588,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             FarFromFieldWarning = farFromFieldWarning,
 
             // Status
-            StatusMessage = jumpNotice ?? statusMessage ?? youTurnTickEffects?.StatusMessage ?? fixRejectionReason
+            StatusMessage = jumpNotice ?? statusMessage ?? youTurnTickEffects?.StatusMessage ?? fixRejectionReason,
+            YouTurnNotice = youTurnTickEffects is { TellOperator: true } ? youTurnTickEffects.StatusMessage : null,
         };
 
         CycleCompleted?.Invoke(result);
