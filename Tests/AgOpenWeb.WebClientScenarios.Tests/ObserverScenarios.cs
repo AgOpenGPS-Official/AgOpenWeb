@@ -9,7 +9,7 @@ using System.Text.Json;
 namespace AgOpenWeb.WebClientScenarios.Tests;
 
 /// <summary>
-/// O: a second screen beside the operator's (a phone in the cab, a PC in the farm office).
+/// O: a second screen beside the operator's (another 10" tablet: a helper's, or in the farm office).
 /// It must see everything and change nothing (#397, checklist 13.11); it must not take control
 /// from a live operator; and when the operator's screen goes, someone has to be able to carry on.
 /// </summary>
@@ -20,22 +20,22 @@ public static class ObserverScenarios
     public static async Task RunAsync(Run run)
     {
         await run.ScenarioAsync(Group, "O1", "The second screen sees what the operator does",
-            "The cab tablet opens first and holds control; a phone joins. The operator engages AutoSteer and the sections.",
+            "The cab tablet opens first and holds control; a second tablet joins. The operator engages AutoSteer and the sections.",
             s => SeesTheSameAsync(run, s));
         await run.ScenarioAsync(Group, "O2", "The second screen changes nothing",
-            "From the phone: every button of its bars tapped, and every command the web client can send (read from its scripts) sent, with plausible values. The host's state and files are compared before and after.",
+            "From the second tablet: every button of its bars tapped, and every command the web client can send (read from its scripts) sent, with plausible values. The host's state and files are compared before and after.",
             s => ChangesNothingAsync(run, s));
         await run.ScenarioAsync(Group, "O3", "An edit on the second screen",
-            "On the phone: Vehicle & Tool > Tool settings > Hitch, a number changed in the first number box. Does the phone show it as saved?",
+            "On the second tablet: Vehicle & Tool > Tool settings > Hitch, a number changed in the first number box. Does the second tablet show it as saved?",
             s => EditOnObserverAsync(run, s));
         await run.ScenarioAsync(Group, "O4", "The second screen asks for control",
-            "The phone sends control.acquire and control.release while the operator is live.",
+            "The second tablet sends control.acquire and control.release while the operator is live.",
             s => AsksForControlAsync(run, s));
-        await run.ScenarioAsync(Group, "O5", "The operator's tablet closes: the phone carries on",
+        await run.ScenarioAsync(Group, "O5", "The operator's tablet closes: the second tablet carries on",
             "Working with AutoSteer and sections on, the cab tablet's tab is closed; then the tablet opens the page again.",
             s => OperatorLeavesAsync(run, s));
         await run.ScenarioAsync(Group, "O6", "Three screens, the operator leaves",
-            "A tablet holds control, a phone and an office PC observe; the tablet's tab closes.",
+            "A tablet holds control, two more tablets observe; the tablet's tab closes.",
             s => ThreeScreensAsync(run, s));
     }
 
@@ -44,8 +44,8 @@ public static class ObserverScenarios
         var op = await run.OpenAsync(Device.Tablet10, "cab tablet");
         if (!await op.WaitReadyAsync() || !await op.WaitForAsync("iHoldControl", 5000))
         { s.Harness("the cab tablet did not connect and take control"); await op.DisposeAsync(); return null; }
-        var obs = await run.OpenAsync(obsDevice ?? Device.PhoneLandscape, "phone");
-        if (!await obs.WaitReadyAsync()) { s.Harness("the phone did not connect"); await op.DisposeAsync(); await obs.DisposeAsync(); return null; }
+        var obs = await run.OpenAsync(obsDevice ?? Device.Tablet10, "second tablet");
+        if (!await obs.WaitReadyAsync()) { s.Harness("the second tablet did not connect"); await op.DisposeAsync(); await obs.DisposeAsync(); return null; }
         await Task.Delay(300);
         return (op, obs);
     }
@@ -55,8 +55,8 @@ public static class ObserverScenarios
         if (await PairAsync(run, s) is not var (op, obs)) return;
         await using var _1 = op; await using var _2 = obs;
         var v = await obs.ViewAsync();
-        if (!v.HoldsControl && v.Role == "Observer") s.Ok($"the phone joins as {v}");
-        else s.Problem(Severity.Bug, "OBSERVER-ROLE-WRONG", $"the phone joined as {v} while the tablet holds control");
+        if (!v.HoldsControl && v.Role == "Observer") s.Ok($"the second tablet joins as {v}");
+        else s.Problem(Severity.Bug, "OBSERVER-ROLE-WRONG", $"the second tablet joined as {v} while the tablet holds control");
         string ro = await obs.EvalAsync<string>("() => (document.getElementById('rn-readonly') || {}).textContent || ''");
         if (ro.Length > 0) s.Ok($"its right nav says '{ro}'");
 
@@ -64,8 +64,8 @@ public static class ObserverScenarios
         long t0 = ModuleListener.NowMs;
         bool seen = await obs.WaitForAsync("tick && tick.op && tick.op.autoSteer", 3000);
         long dt = ModuleListener.NowMs - t0;
-        if (seen) s.Ok($"the phone shows AutoSteer on ({dt} ms after the module got it)");
-        else s.Problem(Severity.Inconsistency, "OBSERVER-STATE-STALE", "the phone did not show AutoSteer on within 3 s");
+        if (seen) s.Ok($"the second tablet shows AutoSteer on ({dt} ms after the module got it)");
+        else s.Problem(Severity.Inconsistency, "OBSERVER-STATE-STALE", "the second tablet did not show AutoSteer on within 3 s");
 
         // Both screens draw the tractor where the host has it.
         await Task.Delay(1000);
@@ -76,12 +76,12 @@ public static class ObserverScenarios
         if (a is { Length: 2 } && b is { Length: 2 })
         {
             double gap = Math.Sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]));
-            s.Step(Run.F($"tractor on the tablet {a[0]:0.0},{a[1]:0.0}, on the phone {b[0]:0.0},{b[1]:0.0}, host {host.Easting:0.0},{host.Northing:0.0} (m)"));
+            s.Step(Run.F($"tractor on the tablet {a[0]:0.0},{a[1]:0.0}, on the second tablet {b[0]:0.0},{b[1]:0.0}, host {host.Easting:0.0},{host.Northing:0.0} (m)"));
             if (gap > 3) s.Problem(Severity.Inconsistency, "OBSERVER-POSITION-DIFFERS", Run.F($"the two screens put the tractor {gap:0.0} m apart at 8 km/h"));
             else s.Ok(Run.F($"both screens put the tractor within {gap:0.0} m of each other"));
         }
         else s.Note("the tick frame carries no pose in e/n form; position not compared");
-        await run.ShotAsync(s, obs, "O1-phone-observing.png");
+        await run.ShotAsync(s, obs, "O1-second tablet-observing.png");
         Run.PageErrors(s, op); Run.PageErrors(s, obs);
     }
 
@@ -123,7 +123,7 @@ public static class ObserverScenarios
         await Task.Delay(800);
         var before = await FingerprintAsync(run.Rig);
 
-        // Taps on every button of the phone's bars (the menus' buttons are behind panels).
+        // Taps on every button of the second tablet's bars (the menus' buttons are behind panels).
         var lay = await Layout.MeasureAsync(obs);
         int tapped = 0;
         foreach (var c in lay.Controls.Where(c => c.Reachable && c.Group is "right nav" or "bottom nav" or "section bar"))
@@ -138,14 +138,14 @@ public static class ObserverScenarios
         foreach (var c in Dangerous) await obs.SendAsync(c);
         await Task.Delay(1500);
         var after = await FingerprintAsync(run.Rig);
-        s.Step($"the phone tapped {tapped} buttons and sent {ids.Length * 2 + Dangerous.Length} commands ({ids.Length} ids from its scripts)");
+        s.Step($"the second tablet tapped {tapped} buttons and sent {ids.Length * 2 + Dangerous.Length} commands ({ids.Length} ids from its scripts)");
 
         var changed = before.Keys.Union(after.Keys).Where(k => !before.TryGetValue(k, out var x) || !after.TryGetValue(k, out var y) || x != y).ToList();
         if (changed.Count == 0) s.Ok("nothing changed on the host: settings, field, track, sections, AutoSteer and files are as before");
-        else s.Problem(Severity.Safety, "OBSERVER-CHANGED-SOMETHING", "the observing phone changed the host: "
+        else s.Problem(Severity.Safety, "OBSERVER-CHANGED-SOMETHING", "the observing second tablet changed the host: "
             + string.Join("; ", changed.Take(8).Select(k => $"{k}: {(before.TryGetValue(k, out var x) ? x : "(none)")} → {(after.TryGetValue(k, out var y) ? y : "(gone)")}")));
         var v = await op.ViewAsync();
-        if (!v.HoldsControl) s.Problem(Severity.Bug, "OBSERVER-TOOK-CONTROL", $"after the phone's commands the tablet shows {v}");
+        if (!v.HoldsControl) s.Problem(Severity.Bug, "OBSERVER-TOOK-CONTROL", $"after the second tablet's commands the tablet shows {v}");
         else s.Ok("the tablet still holds control");
         Run.PageErrors(s, op); Run.PageErrors(s, obs);
     }
@@ -210,10 +210,10 @@ public static class ObserverScenarios
         foreach (var sel in new[] { "#ln-vehicle", "#vth-toolconfig", "#toolcfg button.cfg-tab[data-tab='tcs-hitch']" })
         {
             await obs.ScrollToAsync(sel);
-            if (!(await obs.TapAsync(sel)).Hit) { s.Harness($"the phone could not tap {sel}"); return; }
+            if (!(await obs.TapAsync(sel)).Hit) { s.Harness($"the second tablet could not tap {sel}"); return; }
             await Task.Delay(400);
         }
-        // The first number box in Tool settings: what it shows, what the phone shows after an edit.
+        // The first number box in Tool settings: what it shows, what the second tablet shows after an edit.
         var e = await obs.EvalAsync<JsonElement>(@"() => {
             const p = document.getElementById('toolcfg');
             const box = [...p.querySelectorAll('input')].find(i => i.offsetParent !== null && !i.disabled && !i.readOnly
@@ -236,14 +236,14 @@ public static class ObserverScenarios
         string shows = await obs.EvalAsync<string>("id => document.getElementById(id).value", id);
         var configAfter = await ConfigFrameAsync(op);
         bool hostChanged = configBefore != configAfter;
-        s.Step($"Tool settings '{label}': was {was}, typed {typed} on the phone; after 1.5 s the phone shows {shows}; the host's config {(hostChanged ? "changed" : "is unchanged")}");
-        if (hostChanged) s.Problem(Severity.Safety, "OBSERVER-CHANGED-SOMETHING", $"an edit of '{label}' on the observing phone reached the host");
+        s.Step($"Tool settings '{label}': was {was}, typed {typed} on the second tablet; after 1.5 s the second tablet shows {shows}; the host's config {(hostChanged ? "changed" : "is unchanged")}");
+        if (hostChanged) s.Problem(Severity.Safety, "OBSERVER-CHANGED-SOMETHING", $"an edit of '{label}' on the observing second tablet reached the host");
         else if (shows == typed)
-            s.Problem(Severity.Improvement, "OBSERVER-EDIT-LOOKS-SAVED", $"the phone keeps showing {typed} for '{label}' as if saved; the host still has {was} and the phone is not told the edit was refused");
-        else s.Ok($"the phone went back to {shows}: the refused edit does not look saved");
+            s.Problem(Severity.Improvement, "OBSERVER-EDIT-LOOKS-SAVED", $"the second tablet keeps showing {typed} for '{label}' as if saved; the host still has {was} and the second tablet is not told the edit was refused");
+        else s.Ok($"the second tablet went back to {shows}: the refused edit does not look saved");
         bool disabled = await obs.EvalAsync<bool>("id => document.getElementById(id).disabled || document.getElementById(id).readOnly", id);
         if (!disabled) s.Note("the observer's setting boxes are editable (not shown as read-only)");
-        await run.ShotAsync(s, obs, "O3-phone-tool-settings.png");
+        await run.ShotAsync(s, obs, "O3-second tablet-tool-settings.png");
         Run.PageErrors(s, op); Run.PageErrors(s, obs);
     }
 
@@ -257,13 +257,13 @@ public static class ObserverScenarios
         if (await PairAsync(run, s) is not var (op, obs)) return;
         await using var _1 = op; await using var _2 = obs;
         int changes = run.Rig.ControlLog.Count;
-        await obs.SendAsync("control.acquire|Phone");
+        await obs.SendAsync("control.acquire|Second tablet");
         await obs.SendAsync("control.release");
         await Task.Delay(800);
         var vo = await op.ViewAsync(); var vp = await obs.ViewAsync();
         if (vo.HoldsControl && !vp.HoldsControl && run.Rig.ControlLog.Count == changes)
-            s.Ok($"the operator keeps control ({vo}); the phone stays {vp}");
-        else s.Problem(Severity.Safety, "OBSERVER-TOOK-CONTROL", $"after the phone asked: tablet {vo}, phone {vp}");
+            s.Ok($"the operator keeps control ({vo}); the second tablet stays {vp}");
+        else s.Problem(Severity.Safety, "OBSERVER-TOOK-CONTROL", $"after the second tablet asked: tablet {vo}, second tablet {vp}");
         Run.PageErrors(s, op); Run.PageErrors(s, obs);
     }
 
@@ -285,13 +285,13 @@ public static class ObserverScenarios
         string toast = await obs.EvalAsync<string>("() => toastMsg || ''");
         if (took)
         {
-            s.Step($"{tookMs} ms: the phone holds control ({await obs.ViewAsync()}); its last notice: '{toast}'");
-            if (await run.Rig.ReadAsync(() => run.Rig.Vm.IsAutoSteerEngaged)) s.Problem(Severity.Safety, "CONTROL-HANDOVER-KEEPS-STEERING", "the phone took over with AutoSteer still on");
+            s.Step($"{tookMs} ms: the second tablet holds control ({await obs.ViewAsync()}); its last notice: '{toast}'");
+            if (await run.Rig.ReadAsync(() => run.Rig.Vm.IsAutoSteerEngaged)) s.Problem(Severity.Safety, "CONTROL-HANDOVER-KEEPS-STEERING", "the second tablet took over with AutoSteer still on");
             if (toast.Length == 0)
-                s.Problem(Severity.Improvement, "CONTROL-MOVED-SILENTLY", "the phone became the operator without being told (no notice); only its role line turned to 'Operator'");
-            else s.Ok($"the phone is told: '{toast}'");
+                s.Problem(Severity.Improvement, "CONTROL-MOVED-SILENTLY", "the second tablet became the operator without being told (no notice); only its role line turned to 'Operator'");
+            else s.Ok($"the second tablet is told: '{toast}'");
         }
-        else s.Problem(Severity.Bug, "NOBODY-TAKES-OVER", "the phone did not get control within 5 s of the tablet leaving");
+        else s.Problem(Severity.Bug, "NOBODY-TAKES-OVER", "the second tablet did not get control within 5 s of the tablet leaving");
 
         // The tablet comes back: it finds the seat taken.
         await op.NewTabAsync();
@@ -300,7 +300,7 @@ public static class ObserverScenarios
         var v = await op.ViewAsync();
         s.Step($"the cab tablet opens the page again: {v}");
         if (!v.HoldsControl && took)
-            s.Problem(Severity.Improvement, "CAB-SCREEN-LOCKED-OUT", $"the cab tablet comes back as {v}: the phone keeps control and the tablet has no way to take it back while the phone's page stays open (by design, #397: no take-over from a live screen)");
+            s.Problem(Severity.Improvement, "CAB-SCREEN-LOCKED-OUT", $"the cab tablet comes back as {v}: the second tablet keeps control and the tablet has no way to take it back while the second tablet's page stays open (by design, #397: no take-over from a live screen)");
         Run.PageErrors(s, obs);
     }
 
@@ -310,18 +310,18 @@ public static class ObserverScenarios
     {
         if (await PairAsync(run, s) is not var (op, phone)) return;
         await using var _1 = op; await using var _2 = phone;
-        await using var pc = await run.OpenAsync(Device.Pc720, "office PC");
-        if (!await pc.WaitReadyAsync()) { s.Harness("the office PC did not connect"); return; }
+        await using var pc = await run.OpenAsync(Device.Tablet10, "third tablet");
+        if (!await pc.WaitReadyAsync()) { s.Harness("the third tablet did not connect"); return; }
         await Task.Delay(300);
         await op.CloseTabAsync();
         await Task.Delay(3000);
         var vp = await phone.ViewAsync(); var vc = await pc.ViewAsync();
         int holders = (vp.HoldsControl ? 1 : 0) + (vc.HoldsControl ? 1 : 0);
-        s.Step($"3 s after the tablet left: phone {vp}, office PC {vc}");
-        if (holders == 1) s.Ok($"exactly one screen took over: the {(vp.HoldsControl ? "phone" : "office PC")}");
+        s.Step($"3 s after the tablet left: second tablet {vp}, third tablet {vc}");
+        if (holders == 1) s.Ok($"exactly one screen took over: the {(vp.HoldsControl ? "second tablet" : "third tablet")}");
         else s.Problem(holders == 0 ? Severity.Bug : Severity.Safety, holders == 0 ? "NOBODY-TAKES-OVER" : "TWO-OPERATORS",
             $"{holders} screens hold control 3 s after the operator left");
-        if (vc.HoldsControl) s.Note("the office PC, not a screen in the cab, now drives the tractor");
+        if (vc.HoldsControl) s.Note("the third tablet, not a screen in the cab, now drives the tractor");
         Run.PageErrors(s, phone); Run.PageErrors(s, pc);
     }
 

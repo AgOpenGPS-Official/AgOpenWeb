@@ -8,18 +8,13 @@ using Microsoft.Playwright;
 
 namespace AgOpenWeb.WebClientScenarios.Tests;
 
-/// <summary>A screen a farm uses for AgOpenWeb: size in CSS pixels, touch or mouse, phone or not.</summary>
+/// <summary>A screen AgOpenWeb is tested on: size in CSS pixels, touch or mouse. The target is a 10" tablet
+/// in landscape (the Panasonic FZ-G1, 1920×1200 at 150% = 1280×800 CSS px); other screens are out of scope.</summary>
 public sealed record Device(string Code, string Name, int Width, int Height, bool Touch, bool Phone, float Scale = 1)
 {
     public string Size => string.Create(CultureInfo.InvariantCulture, $"{Width}×{Height}");
 
     public static readonly Device Tablet10 = new("tablet10", "10\" tablet, landscape", 1280, 800, true, false);
-    public static readonly Device Pc720 = new("pc720", "720p cab PC, mouse", 1280, 720, false, false);
-    public static readonly Device Tablet7 = new("tablet7", "7\" tablet, landscape", 1024, 600, true, false);
-    public static readonly Device Screen5 = new("screen5", "5\" cab screen", 800, 480, true, false);
-    public static readonly Device PhoneLandscape = new("phone-landscape", "phone, landscape", 844, 390, true, true, 2);
-    public static readonly Device PhonePortrait = new("phone-portrait", "phone, portrait", 390, 844, true, true, 2);
-    public static readonly Device TabletPortrait = new("tablet-portrait", "10\" tablet, portrait", 800, 1280, true, false);
 }
 
 /// <summary>Headless Chromium for every screen of a run (Playwright).</summary>
