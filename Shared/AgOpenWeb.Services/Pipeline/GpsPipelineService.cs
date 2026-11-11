@@ -359,6 +359,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
         lock (_stateLock) { _driftE = driftE; _driftN = driftN; }
     }
 
+    // Recorded route playback (P7): the line AutoSteer follows while a route plays, set from
+    // the UI thread, followed by the cycle.
+    private PathPlanning.RecordedPathFollower? _recordedPath;
+
+    public void SetRecordedPathGuidance(IReadOnlyList<Vec3>? path, int startIndex, bool approach) =>
+        Volatile.Write(ref _recordedPath, path is { Count: >= 2 } ? new PathPlanning.RecordedPathFollower(path, startIndex, approach) : null);
+
     public void SetContourMode(bool on)
     {
         lock (_contourLock)
@@ -720,6 +727,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool contourOn;
         lock (_contourLock) contourOn = _contourOn;
         _guidanceWorking.IsContourMode = contourOn;
+        var recordedPath = contourOn ? null : Volatile.Read(ref _recordedPath);
 
         var pos = data.CurrentPosition;
         bool hasTrack = track != null && track.Points.Count >= 2;
@@ -899,7 +907,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         YouTurnEffects? youTurnTickEffects = null;
         bool hasValidHeadlandLine = headlandLine != null && headlandLine.Count >= 3;
         // No U-turns in contour mode (AgOpenGPS DisableYouTurnButtons).
-        bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn;
+        bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn && recordedPath == null;
 
         var tickPosition = pos with { Easting = driftedEasting, Northing = driftedNorthing };
         // An open curve whose ends face each other turns at the opening between them as at a
@@ -1184,6 +1192,28 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
                 }
             }
+        }
+        else if (recordedPath != null)
+        {
+            // A recorded route playing replaces the track, as contour does: AutoSteer steers
+            // along it (AgOpenGPS steers the module along it; here the operator engages AutoSteer).
+            var cfgRp = _configStore.Vehicle;
+            if (recordedPath.Follow(driftedEasting, driftedNorthing, headingRad, cfgRp.Wheelbase, cfgRp.MaxSteerAngle) is { } rp)
+            {
+                crossTrackError = rp.CrossTrackError;
+                goalE = rp.GoalE;
+                goalN = rp.GoalN;
+                hasGoal = !_configStore.Guidance.IsStanley;
+                if (autoSteerEngaged)
+                {
+                    steerAngle = rp.SteerAngleDegrees;
+                    hasGuidance = true;
+                    Volatile.Write(ref _simulatorSteerAngle, steerAngle);
+                    _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
+                }
+            }
+            else if (autoSteerEngaged)
+                _autoSteerService.UpdateGuidanceResults(0, NoLineDistance); // the end: nothing left ahead
         }
         else if (autoSteerEngaged && hasTrack)
         {

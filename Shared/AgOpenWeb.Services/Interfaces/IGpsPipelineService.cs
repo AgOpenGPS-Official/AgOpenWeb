@@ -74,6 +74,10 @@ public interface IGpsPipelineService
     /// </summary>
     void SetDriftCompensation(double driftE, double driftN);
 
+    /// <summary>A recorded route playing (P7): the path AutoSteer follows instead of the track
+    /// (the Dubins approach with <paramref name="approach"/>, then the route), or null when playback stops.</summary>
+    void SetRecordedPathGuidance(IReadOnlyList<Vec3>? path, int startIndex, bool approach);
+
     // ── Contour (#110, AgOpenGPS CContour) ───────────────────────────────
 
     /// <summary>Contour button: guide along recorded contour strips instead of the track.</summary>
