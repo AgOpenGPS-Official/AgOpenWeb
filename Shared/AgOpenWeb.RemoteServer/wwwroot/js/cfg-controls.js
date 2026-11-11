@@ -19,7 +19,11 @@ function cfgGet(key) {
   }
   const p = key.split('.'); return config[p[0]] && config[p[0]][p[1]];
 }
-function cfgSend(key, val) { transport.send('config.set|' + key + ':' + val); }
+// A setting changed since the settings panel opened: closing the Vehicle, Tool or AutoSteer
+// panel then saves the profile, as AgOpenGPS does when its settings form closes. Unsaved, a
+// change was lost when the key went off before the exit save (POWERCUT-UNSAVED-PROFILE-EDIT-LOST).
+let cfgEditedSinceOpen = false;
+function cfgSend(key, val) { cfgEditedSinceOpen = true; transport.send('config.set|' + key + ':' + val); }
 // Save Profile acts on press, but the box still being typed in sends its value only when it loses
 // focus, which comes after the press: the save went out first and missed the last edit. Blur it
 // before saving so its 'change' reaches the host ahead of the save.
@@ -27,6 +31,7 @@ function saveProfile() {
   const a = document.activeElement;
   if (a instanceof HTMLInputElement || a instanceof HTMLTextAreaElement) a.blur();
   transport.send('profile.save');
+  cfgEditedSinceOpen = false;
 }
 
 // Generic config controls keyed by data-key="<section>.<field>" — reused by the
