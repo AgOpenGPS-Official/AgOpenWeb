@@ -64,7 +64,15 @@ public static class Kit
         if (lag.Count > 0)
             sc.Problem(Severity.Bug, "VALVES-NOT-FOLLOWING", what + ": with the module online, the valves did not follow the screen for section(s) " + string.Join(", ", lag));
         if (noRelay.Count > 0)
-            sc.Problem(Severity.Robustness, "SECTION-WITHOUT-RELAY", what + F($": section(s) {string.Join(", ", noRelay)} showed on and painted coverage, but no relay of the module has that function, so their valves never opened. AgOpenWeb lets the tool have {n} sections while the relay functions it sends (PGN 236) stop at section {MaxSectionRelay(s)}, and says nothing."));
+        {
+            // The operator was told which sections have no relay (when the sections went on):
+            // the setup is theirs to fix; told nothing, it is AgOpenWeb's.
+            string? told = s.Rig.FailuresSeen.FirstOrDefault(m => m.Contains("No relay of the machine module", StringComparison.Ordinal));
+            if (told != null)
+                sc.Note(what + F($": section(s) {string.Join(", ", noRelay)} have no relay of the module (the pin map stops at section {MaxSectionRelay(s)}), so their valves stay shut; AgOpenWeb said so: '{told}'"));
+            else
+                sc.Problem(Severity.Robustness, "SECTION-WITHOUT-RELAY", what + F($": section(s) {string.Join(", ", noRelay)} showed on and painted coverage, but no relay of the module has that function, so their valves never opened. AgOpenWeb lets the tool have {n} sections while the relay functions it sends (PGN 236) stop at section {MaxSectionRelay(s)}, and says nothing."));
+        }
         return w;
     }
 

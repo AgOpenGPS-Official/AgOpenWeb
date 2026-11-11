@@ -61,6 +61,9 @@ public sealed class MachineModuleRig : IAsyncDisposable
     /// <summary>Everything the operator would notice or a developer would want to see,
     /// in order. Drained by <see cref="TakeEvents"/> after each step.</summary>
     private readonly ConcurrentQueue<RigEvent> _events = new();
+    /// <summary>Every failure message AgOpenWeb put on the screen, kept for the whole run (the
+    /// events above are drained after each step).</summary>
+    public ConcurrentQueue<string> FailuresSeen { get; } = new();
 
     private readonly CapturingDispatcher _dispatcher;
     private readonly HostLoopDispatcher _hostLoop;
@@ -143,7 +146,7 @@ public sealed class MachineModuleRig : IAsyncDisposable
         while (events.TryDequeue(out var e)) rig._events.Enqueue(e);
         dispatcher.OnException = ex => rig._events.Enqueue(new RigEvent(RigEventKind.Exception, ex.ToString()));
         CapturingLoggerProvider.Sink = e => rig._events.Enqueue(e);
-        vm.FailureReported += msg => rig._events.Enqueue(new RigEvent(RigEventKind.Failure, msg));
+        vm.FailureReported += msg => { rig._events.Enqueue(new RigEvent(RigEventKind.Failure, msg)); rig.FailuresSeen.Enqueue(msg); };
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.StatusMessage))

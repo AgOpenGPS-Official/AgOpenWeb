@@ -248,7 +248,11 @@ public static class Jobs
         for (int s = 0; s < Math.Min(64, spec.T.Sections); s++)
             if (r.PersistentDisagreement[s] > 1)
                 lag.Add(F($"{s + 1} (on screen, valve shut {r.ScreenOnValveShut[s]:0.0} s; off, valve open {r.ScreenOffValveOpen[s]:0.0} s; {r.PersistentDisagreement[s]:0.0} s of it in stretches over 1 s)"));
-        if (lag.Count > 0)
+        string? toldNoRelay = r.Said.FirstOrDefault(m => m.Contains("No relay of the machine module", StringComparison.Ordinal));
+        if (lag.Count > 0 && spec.DefaultRelays && toldNoRelay != null)
+            // The relay functions left at the defaults (sections 1 to 6), and the operator told so.
+            sc.Note("the valves did not follow the screen for section(s) " + string.Join(", ", lag) + ": the relay functions were left at the defaults, and AgOpenWeb said so: " + toldNoRelay);
+        else if (lag.Count > 0)
             flag(spec.DefaultRelays ? Severity.Robustness : Severity.Bug, spec.DefaultRelays ? "SECTION-WITHOUT-RELAY" : "VALVES-NOT-FOLLOWING",
                 "the valves did not follow the screen for section(s) " + string.Join(", ", lag));
         else
