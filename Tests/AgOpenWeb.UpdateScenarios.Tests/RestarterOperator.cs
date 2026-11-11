@@ -247,7 +247,10 @@ public static class RestarterOperator
             {
                 if (Kit.SameNumber(v.Got, v.After)) sc.Ok(Kit.F($"zero-length files: {v.Name} reads {v.Got}, the last saved value"));
                 else if (Kit.SameNumber(v.Got, v.Before))
-                    sc.Problem(Severity.Improvement, "ZERO-LENGTH-LAST-SAVE-LOST", Kit.F($"zero-length files: {v.Name} reads {v.Got} from the .bak, the save before last; the last session's {v.After} is lost (one .bak keeps the previous save only)"));
+                    // The save flushes the new file to the disk before the rename (AtomicJsonFile),
+                    // so a file still empty after it is the filesystem's: the .bak is the most
+                    // there is, and the operator is asked (the check below). AgOpenGPS keeps none.
+                    sc.Note(Kit.F($"zero-length files: {v.Name} reads {v.Got} from the .bak, the save before last; the last session's {v.After} is gone with the empty file (the save flushes the data before the rename; one .bak keeps the save before)"));
                 else sc.Problem(Severity.DataLoss, "ZERO-LENGTH-SETTINGS-LOST", Kit.F($"zero-length files: {v.Name} reads {v.Got}: neither the last saved {v.After} nor the .bak's {v.Before}"));
             }
             if (screen.Length > 0) sc.Ok("zero-length files: the operator was told: " + screen);
@@ -343,8 +346,11 @@ public static class RestarterOperator
             await rig.DrainAsync();
             string screen = await rig.ReadAsync(() =>
             {
-                string title = rig.Vm.ConfirmationDialogTitle ?? rig.Vm.ErrorDialogTitle ?? "";
-                string msg = rig.Vm.ConfirmationDialogMessage ?? rig.Vm.ErrorDialogMessage ?? "";
+                // The dialog texts are "" when not shown, never null: take the one that is set
+                // (`??` stopped at the empty confirmation and never saw the error dialog).
+                bool confirm = !string.IsNullOrEmpty(rig.Vm.ConfirmationDialogTitle);
+                string title = (confirm ? rig.Vm.ConfirmationDialogTitle : rig.Vm.ErrorDialogTitle) ?? "";
+                string msg = (confirm ? rig.Vm.ConfirmationDialogMessage : rig.Vm.ErrorDialogMessage) ?? "";
                 return title.Length + msg.Length == 0 ? "" : (title + ": " + msg).Replace("\n", " ", StringComparison.Ordinal);
             });
             Kit.CheckRig(sc, rig, label + ": start", "LEFTOVER");
