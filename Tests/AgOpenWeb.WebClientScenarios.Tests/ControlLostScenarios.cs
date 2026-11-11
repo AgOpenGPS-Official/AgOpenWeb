@@ -57,10 +57,10 @@ public static class ControlLostScenarios
             "The operator taps section 1 twice (Off → Auto → On: forced on, as for a headland strip), master off, driving; then the tab closes.",
             s => ForcedSectionAsync(run, s));
         await run.ScenarioAsync(Group, "C11", "Two screens, the tablet's Wi-Fi goes out of range",
-            "The cab tablet holds control, a phone observes. The tablet's link goes silent for 6 s, then comes back.",
+            "The cab tablet holds control, a second tablet observes. The tablet's link goes silent for 6 s, then comes back.",
             s => TwoScreensSilentAsync(run, s));
-        await run.ScenarioAsync(Group, "C12", "A minute out of range, a phone watching",
-            "The cab tablet holds control with sections painting, a phone observes. The tablet's link goes silent for 60 s: the host's sends to it fill the small buffers of a dead radio link and then wait. Does the host still stop the work within the deadman, and does the phone keep getting frames?",
+        await run.ScenarioAsync(Group, "C12", "A minute out of range, a second tablet watching",
+            "The cab tablet holds control with sections painting, a second tablet observes. The tablet's link goes silent for 60 s: the host's sends to it fill the small buffers of a dead radio link and then wait. Does the host still stop the work within the deadman, and does the second tablet keep getting frames?",
             s => LongSilentAsync(run, s, 60000));
     }
 
@@ -306,31 +306,31 @@ public static class ControlLostScenarios
     {
         if (await OperatorAsync(run, s) is not { } op) return;
         await using var _1 = op;
-        await using var phone = await run.OpenAsync(Device.PhonePortrait, "phone");
-        if (!await phone.WaitReadyAsync()) { s.Harness("the phone did not connect"); return; }
+        await using var phone = await run.OpenAsync(Device.Tablet10, "second tablet");
+        if (!await phone.WaitReadyAsync()) { s.Harness("the second tablet did not connect"); return; }
         if (await run.StartWorkAsync(s, op) is { } why) { s.Harness(why); return; }
         long t0 = ModuleListener.NowMs;
         op.Wifi!.Mode = LinkMode.Silent;
         bool phoneTook = await phone.WaitForAsync("iHoldControl", 4000);
         long tookMs = ModuleListener.NowMs - t0;
         var vt = await op.ViewAsync(); var vp = await phone.ViewAsync();
-        s.Step($"{tookMs} ms: tablet {vt}, phone {vp}");
+        s.Step($"{tookMs} ms: tablet {vt}, second tablet {vp}");
         if (phoneTook && vt.ClaimsOperator)
         {
             await run.ShotAsync(s, op, "C11-tablet.png");
-            await run.ShotAsync(s, phone, "C11-phone.png");
+            await run.ShotAsync(s, phone, "C11-second tablet.png");
             s.Problem(Severity.Inconsistency, "TWO-SCREENS-SAY-OPERATOR",
-                $"the phone took control {tookMs} ms after the tablet's link went silent, and the tablet still says {vt}: two screens show 'Operator'");
+                $"the second tablet took control {tookMs} ms after the tablet's link went silent, and the tablet still says {vt}: two screens show 'Operator'");
         }
-        else if (phoneTook) s.Ok($"the phone took over and the tablet no longer says Operator: {vt}");
+        else if (phoneTook) s.Ok($"the second tablet took over and the tablet no longer says Operator: {vt}");
         await Task.Delay(Math.Max(0, 6000 - (int)(ModuleListener.NowMs - t0)));
         op.Wifi.Mode = LinkMode.Up;
         await Task.Delay(2500);
         vt = await op.ViewAsync(); vp = await phone.ViewAsync();
-        s.Step($"link back: tablet {vt}, phone {vp}");
+        s.Step($"link back: tablet {vt}, second tablet {vp}");
         if (vt.HoldsControl && vp.HoldsControl) s.Problem(Severity.Safety, "TWO-OPERATORS", "after the link came back both screens hold control");
         else if (!vt.HoldsControl && phoneTook)
-            s.Problem(Severity.Improvement, "CAB-SCREEN-LOCKED-OUT", $"the cab tablet is back as {vt}; the phone keeps control and the tablet can't take it back (by design, #397: no take-over from a live screen), so the operator has to go and close the phone's page");
+            s.Problem(Severity.Improvement, "CAB-SCREEN-LOCKED-OUT", $"the cab tablet is back as {vt}; the second tablet keeps control and the tablet can't take it back (by design, #397: no take-over from a live screen), so the operator has to go and close the second tablet's page");
         Run.PageErrors(s, op); Run.PageErrors(s, phone);
     }
 
@@ -349,8 +349,8 @@ public static class ControlLostScenarios
     {
         if (await OperatorAsync(run, s) is not { } op) return;
         await using var _1 = op;
-        await using var phone = await run.OpenAsync(Device.PhonePortrait, "phone");
-        if (!await phone.WaitReadyAsync()) { s.Harness("the phone did not connect"); return; }
+        await using var phone = await run.OpenAsync(Device.Tablet10, "second tablet");
+        if (!await phone.WaitReadyAsync()) { s.Harness("the second tablet did not connect"); return; }
         int atStart = run.Rig.ControlLog.Count;
         if (await run.StartWorkAsync(s, op) is { } why) { s.Harness(why); return; }
         // A few seconds of painting first, so coverage frames are going out when the link goes.
@@ -376,7 +376,7 @@ public static class ControlLostScenarios
             ? $"the host ended the tablet's control {Run.Ms(ended[0].Ms - t0)} into the outage ({ended[0].Reason})"
             : "the host did not report the tablet's control ending");
 
-        // The phone, on its own link, every second: how old its last frame is.
+        // The second tablet, on its own link, every second: how old its last frame is.
         long worstGap = 0, worstAt = 0;
         while (ModuleListener.NowMs - t0 < outageMs)
         {
@@ -386,13 +386,13 @@ public static class ControlLostScenarios
         }
         var vp = await phone.ViewAsync();
         var host = await run.Rig.HostAsync();
-        s.Step($"{outageMs / 1000} s into the outage: the phone went up to {Run.Ms(worstGap)} without a frame (read once a second; the longest at {Run.Ms(worstAt)}), the phone shows {vp}; host: {host}");
-        await run.ShotAsync(s, phone, $"{s.Row.Code}-phone-during-outage.png");
+        s.Step($"{outageMs / 1000} s into the outage: the second tablet went up to {Run.Ms(worstGap)} without a frame (read once a second; the longest at {Run.Ms(worstAt)}), the second tablet shows {vp}; host: {host}");
+        await run.ShotAsync(s, phone, $"{s.Row.Code}-second tablet-during-outage.png");
         if (worstGap > 2000)
             s.Problem(Severity.Safety, "DEAD-LINK-STALLS-BROADCAST",
-                $"while the tablet's link was dead the phone, on a working link, got no frame for {Run.Ms(worstGap)} ({Run.Ms(worstAt)} into the outage): the host's sends to the dead link held up the other screens' frames"
-                + (vp.HoldsControl ? "; the phone holds control now, so its operator watches a still map" : ""));
-        else s.Ok($"the phone kept getting frames during the outage (none older than {Run.Ms(worstGap)})");
+                $"while the tablet's link was dead the second tablet, on a working link, got no frame for {Run.Ms(worstGap)} ({Run.Ms(worstAt)} into the outage): the host's sends to the dead link held up the other screens' frames"
+                + (vp.HoldsControl ? "; the second tablet holds control now, so its operator watches a still map" : ""));
+        else s.Ok($"the second tablet kept getting frames during the outage (none older than {Run.Ms(worstGap)})");
         if (host.AutoSteer)
             s.Problem(Severity.Safety, "STEERING-NOT-STOPPED", $"{outageMs / 1000} s after the tablet's link went the host still has {host}");
 
@@ -401,7 +401,7 @@ public static class ControlLostScenarios
         await Task.Delay(5000);
         var vt = await op.ViewAsync(); vp = await phone.ViewAsync();
         host = await run.Rig.HostAsync();
-        s.Step($"5 s after the link came back: tablet {vt}, phone {vp}; host: {host}");
+        s.Step($"5 s after the link came back: tablet {vt}, second tablet {vp}; host: {host}");
         if (vt.HoldsControl && vp.HoldsControl) s.Problem(Severity.Safety, "TWO-OPERATORS", "after the link came back both screens hold control");
         if (host.AutoSteer) s.Problem(Severity.Safety, "STEERING-BACK-BY-ITSELF", "AutoSteer is on again without a tap");
         Run.PageErrors(s, op); Run.PageErrors(s, phone);
