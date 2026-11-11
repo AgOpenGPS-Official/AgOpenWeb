@@ -191,10 +191,9 @@ public static class Jobs
         // ---- the edge of a field worked with no headland (laps along the boundary)
         if (r.Work == null)
         {
-            double margin = r.Rig.Store.Tool.CoverageMarginMeters;
             sc.Row.Metrics.Add(("Never sprayed along the boundary (no headland: within 1.5 m of it) / at the laps' corners / in the middle no lap reaches", F($"{a.MissedAlongBoundary:0} / {a.MissedAtCorners:0} / {a.MissedLeftInMiddle:0} m²")));
             if (a.MissedAlongBoundary > 0.003 * a.Work)
-                flag(Severity.Improvement, "EDGE-NOT-SPRAYED", F($"{a.MissedAlongBoundary:0} m² ({Pct(a.MissedAlongBoundary, a.Work)}) along the boundary were never sprayed with the boom's end on the boundary (the first lap half a width inside it): a strip about {a.MissedAlongBoundary / Math.Max(Ring.Perimeter(r.Outer), 1):0.00} m wide round the field. With 'Off outside boundary' on, AgOpenWeb widens each section by the coverage margin ({margin * 100:0} cm) and closes it when that edge is outside the boundary, so the outermost section stays closed along the fence."));
+                flag(Severity.Improvement, "EDGE-NOT-SPRAYED", F($"{a.MissedAlongBoundary:0} m² ({Pct(a.MissedAlongBoundary, a.Work)}) along the boundary were never sprayed with the boom's end on the boundary (the first lap half a width inside it): a strip about {a.MissedAlongBoundary / Math.Max(Ring.Perimeter(r.Outer), 1):0.00} m wide round the field. With 'Off outside boundary' on, a section closes when either of its ends is more than {AgOpenWeb.Services.Section.SectionControlService.EdgeLeewayM * 100:0} cm outside the boundary, as it must, so wherever the lap bends or the tractor runs a little outward the outermost section closes."));
             else
                 sc.Ok(F($"the edge along the boundary was sprayed ({a.MissedAlongBoundary:0} m² missed within 1.5 m of it)"));
         }
