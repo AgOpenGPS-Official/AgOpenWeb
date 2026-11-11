@@ -16,6 +16,7 @@ import importlib.util
 import os
 import sys
 
+sys.dont_write_bytecode = True  # no __pycache__ beside the tools
 _spec = importlib.util.spec_from_file_location(
     "combine", os.path.join(os.path.dirname(os.path.abspath(__file__)), "combine-job-reports.py"))
 _combine = importlib.util.module_from_spec(_spec)
