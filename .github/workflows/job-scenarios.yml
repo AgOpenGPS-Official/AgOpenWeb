@@ -19,7 +19,8 @@ name: Job Scenarios
 #   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;
 #   - manual dispatch: always, on the branch picked. `only` picks harnesses (e.g. "rig,turn"), and
 #     `turns` makes a short run: each job stops after that many U-turns (AGOPENWEB_SCENARIO_TURNS),
-#     to confirm a fix on the first passes in minutes.
+#     to confirm a fix on the first passes in minutes; `from_pass` starts each job on that pass
+#     (AGOPENWEB_SCENARIO_FROM_PASS), to rework the passes where a finding was.
 
 on:
   # Nightly: the bug report Worker (Tools/bugreport-worker, cron 05:07 UTC, 23:07 US Central)
@@ -39,6 +40,10 @@ on:
         description: 'Short run: stop each job after this many U-turns (0 = whole fields)'
         type: string
         default: '0'
+      from_pass:
+        description: 'Start each job on this pass (AgOpenWeb pass number); empty = the first'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -153,6 +158,7 @@ jobs:
           AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/job-scenarios-report-${{ matrix.key }}.md
           AGOPENWEB_SCENARIO_OPERATOR: ${{ matrix.operator }}
           AGOPENWEB_SCENARIO_TURNS: ${{ inputs.turns }}
+          AGOPENWEB_SCENARIO_FROM_PASS: ${{ inputs.from_pass }}
         run: dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ -c Release --no-build --filter "FullyQualifiedName~${{ matrix.filter }}" --verbosity normal
 
       - name: Report to the summary

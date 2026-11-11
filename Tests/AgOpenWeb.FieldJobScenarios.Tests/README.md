@@ -114,7 +114,8 @@ timeline.
 
 ### Short runs: confirm a fix in a minute
 
-A whole job is 5 to 80 minutes. To confirm a fix on the first passes:
+A whole job is 5 to 80 minutes. To confirm a fix on the first passes, or on the passes where a
+finding was:
 
 ```bash
 AGOPENWEB_SCENARIO_TURNS=2 AGOPENWEB_SCENARIO_ONLY=J1 AGOPENWEB_SCENARIO_OPERATOR=careful \
@@ -125,7 +126,15 @@ AGOPENWEB_SCENARIO_TURNS=2 AGOPENWEB_SCENARIO_ONLY=J1 AGOPENWEB_SCENARIO_OPERATO
 them worked); `AGOPENWEB_SCENARIO_MINUTES=N` after N simulated minutes (the lap and pivot jobs, which
 have no U-turns). The job ends as an early end does: the report says "a short run", and the checks
 that need the whole field (finished, left undone) are not made; the rest are judged on the ground
-covered so far. J1 with two turns: 43 s. On GitHub, `job-scenarios.yml`'s `only` and `turns` inputs
+covered so far. J1 with two turns: 43 s.
+
+To rework the passes where a finding was, start there: `AGOPENWEB_SCENARIO_FROM_PASS=28` puts the
+tractor at the start of pass 28 (AgOpenWeb's pass number, as the report's turn lines and findings
+give it), driven the way the whole job drives it (the passes alternate from the first), with the
+passes before it unworked; `AGOPENWEB_SCENARIO_TURNS=4` then stops after pass 32. Rig J8 from pass
+-8 with two turns: 42 s. What depends on the passes before (a strip against the pass before 28, the
+coverage there) needs the start a pass or two earlier. Jobs whose passes don't alternate one by one
+(skip rows) start the right way only on a pass the whole job reaches after an even number of turns. On GitHub, `job-scenarios.yml`'s `only` and `turns` inputs
 do the same. Work out a finding with a unit test first; a short run confirms the fix in the real
 backend, the whole nightly last.
 
