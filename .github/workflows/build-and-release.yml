@@ -131,7 +131,7 @@ jobs:
       # The field job scenario harness (whole fields driven with AutoSteer, U-turns and automatic
       # sections; its path jobs on curves, pivots and contour, the testers' rigs, U-turn
       # interventions, imperial units) takes tens of minutes: built here, run nightly
-      # (field-job-, path-job-, rig-job-, turn-intervention-, imperial-job-scenarios.yml).
+      # (job-scenarios.yml).
       - name: Build Field Job Scenario harness
         run: dotnet build Tests/AgOpenWeb.FieldJobScenarios.Tests/ --verbosity minimal
 

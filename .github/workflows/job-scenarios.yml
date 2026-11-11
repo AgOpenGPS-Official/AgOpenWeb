@@ -1,0 +1,217 @@
+name: Job Scenarios
+
+# The job harnesses in Tests/AgOpenWeb.FieldJobScenarios.Tests, one engine (JobRun): a simulated
+# real machine works whole fields with AutoSteer, U-turns and automatic sections, an emulated
+# machine module opening the valves, and what the implement swept with a valve open is compared
+# with the field, the headland, the obstacles and AgOpenWeb's own map. Six jobs side by side, each
+# on its own runner:
+#   - field (careful, careless): FieldJobScenarioTests, the five real fields;
+#   - path: PathJobScenarioTests, curves, laps, a water pivot, contour, a recorded route;
+#   - rig: RigJobScenarioTests, the testers' rigs (offset implements, skip rows, TBT, a plough...);
+#   - turn: TurnInterventionScenarioTests, an operator who acts during a U-turn, manual U-turns;
+#   - imperial: ImperialJobScenarioTests, the job typed in feet and inches through the web client.
+# One cause shows up in several of them under the same code, so a last job combines the reports
+# (Tools/combine-job-reports.py): each code once, with every harness and job it was seen in. The
+# run fails when a harness breaks; the findings are in the reports, kept as artifacts and shown in
+# the summaries. The runs take up to about 80 minutes, so they run nightly on develop, not on
+# every PR (CI only builds the harness).
+#
+#   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;
+#   - manual dispatch: always, on the branch picked. `only` picks harnesses (e.g. "rig,turn"), and
+#     `turns` makes a short run: each job stops after that many U-turns (AGOPENWEB_SCENARIO_TURNS),
+#     to confirm a fix on the first passes in minutes; `from_pass` starts each job on that pass
+#     (AGOPENWEB_SCENARIO_FROM_PASS), to rework the passes where a finding was; `minutes` stops each
+#     job after that many simulated minutes (AGOPENWEB_SCENARIO_MINUTES), which shortens the path
+#     job's laps and pivots too: they make no U-turns.
+
+on:
+  # Nightly: the bug report Worker (Tools/bugreport-worker, cron 05:07 UTC, 23:07 US Central)
+  # starts it with nightly=true. GitHub's own schedule started this repo's runs 5-8 hours late
+  # every day (2026-10 and 11), so the reports weren't in by morning.
+  workflow_dispatch:
+    inputs:
+      nightly:
+        description: 'Nightly run: skip when develop has no commit from the last 25 hours'
+        type: boolean
+        default: false
+      only:
+        description: 'Harnesses to run, comma-separated (field-careful, field-careless, path, rig, turn, imperial); empty = all'
+        type: string
+        default: ''
+      turns:
+        description: 'Short run: stop each job after this many U-turns (0 = whole fields)'
+        type: string
+        default: '0'
+      from_pass:
+        description: 'Start each job on this pass (AgOpenWeb pass number); empty = the first'
+        type: string
+        default: ''
+      minutes:
+        description: 'Short run: stop each job after this many simulated minutes (0 = no limit; laps and pivots make no U-turns)'
+        type: string
+        default: '0'
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.401'   # as build-and-release.yml
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+concurrency:
+  group: job-scenarios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fresh:
+    name: Anything new since the last night?
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.fresh.outputs.run }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: fresh
+        run: |
+          if [ "${{ inputs.nightly }}" != "true" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          last=$(git log -1 --format=%ct HEAD)
+          age=$(( $(date +%s) - last ))
+          if [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No commit on develop in the last 25 hours; nothing to run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  scenarios:
+    needs: fresh
+    if: needs.fresh.outputs.run == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - key: field-careful
+            filter: FieldJobScenarioTests
+            operator: careful
+            minutes: 120
+          - key: field-careless
+            filter: FieldJobScenarioTests
+            operator: careless
+            minutes: 120
+          - key: path
+            filter: PathJobScenarioTests
+            minutes: 60
+          - key: rig
+            filter: RigJobScenarioTests
+            minutes: 150
+          - key: turn
+            filter: TurnInterventionScenarioTests
+            minutes: 60
+          - key: imperial
+            filter: ImperialJobScenarioTests
+            playwright: true
+            minutes: 60
+    name: ${{ matrix.key }}
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.minutes }}
+    steps:
+      - name: Picked?
+        id: picked
+        run: |
+          only="${{ inputs.only }}"
+          if [ -z "$only" ] || echo ",${only// /}," | grep -q ",${{ matrix.key }},"; then echo "run=true" >> "$GITHUB_OUTPUT"
+          else echo "run=false" >> "$GITHUB_OUTPUT"; echo "Not picked (only: $only)." >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - uses: actions/checkout@v4
+        if: steps.picked.outputs.run == 'true'
+
+      - uses: ./.github/actions/sharpisoterm-cache
+        if: steps.picked.outputs.run == 'true'
+
+      - name: Setup .NET
+        if: steps.picked.outputs.run == 'true'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Build the harness
+        if: steps.picked.outputs.run == 'true'
+        run: dotnet build Tests/AgOpenWeb.FieldJobScenarios.Tests/ -c Release --verbosity minimal
+
+      # The imperial job drives the real web client in Playwright's own Chromium, kept between runs
+      # for the version of Microsoft.Playwright the harness uses (a new version gets its own
+      # browser), as web-client-scenarios.yml. The system libraries are installed every run
+      # (--with-deps), as they live outside the cache.
+      - name: Microsoft.Playwright version
+        if: steps.picked.outputs.run == 'true' && matrix.playwright
+        id: pw
+        run: |
+          v=$(grep -o 'Include="Microsoft.Playwright" Version="[^"]*"' Tests/AgOpenWeb.FieldJobScenarios.Tests/AgOpenWeb.FieldJobScenarios.Tests.csproj | sed 's/.*Version="\([^"]*\)"/\1/')
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright's Chromium
+        if: steps.picked.outputs.run == 'true' && matrix.playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Chromium
+        if: steps.picked.outputs.run == 'true' && matrix.playwright
+        run: pwsh Tests/AgOpenWeb.FieldJobScenarios.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
+      - name: Run the ${{ matrix.key }} scenarios
+        if: steps.picked.outputs.run == 'true'
+        env:
+          AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/job-scenarios-report-${{ matrix.key }}.md
+          AGOPENWEB_SCENARIO_OPERATOR: ${{ matrix.operator }}
+          AGOPENWEB_SCENARIO_TURNS: ${{ inputs.turns }}
+          AGOPENWEB_SCENARIO_FROM_PASS: ${{ inputs.from_pass }}
+          AGOPENWEB_SCENARIO_MINUTES: ${{ inputs.minutes }}
+        run: dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ -c Release --no-build --filter "FullyQualifiedName~${{ matrix.filter }}" --verbosity normal
+
+      - name: Report to the summary
+        if: always() && steps.picked.outputs.run == 'true'
+        run: |
+          f="${{ runner.temp }}/job-scenarios-report-${{ matrix.key }}.md"
+          if [ -f "$f" ]; then
+            # The summary has a size limit; the whole report is in the artifact.
+            head -c 900000 "$f" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No report written." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep the report
+        if: always() && steps.picked.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-scenarios-report-${{ matrix.key }}
+          path: ${{ runner.temp }}/job-scenarios-report-${{ matrix.key }}.md
+          if-no-files-found: ignore
+          retention-days: 30
+
+  combined:
+    name: Combined findings
+    needs: [fresh, scenarios]
+    if: always() && needs.fresh.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: job-scenarios-report-*
+          path: reports
+      - name: Combine the reports
+        run: |
+          args=()
+          for k in field-careful field-careless path rig turn imperial; do
+            only="${{ inputs.only }}"
+            if [ -n "$only" ] && ! echo ",${only// /}," | grep -q ",$k,"; then continue; fi
+            args+=("$k=reports/job-scenarios-report-$k/job-scenarios-report-$k.md")
+          done
+          python3 Tools/combine-job-reports.py "${{ runner.temp }}/job-scenarios-combined.md" "${args[@]}"
+          head -c 900000 "${{ runner.temp }}/job-scenarios-combined.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the combined report
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-scenarios-combined
+          path: ${{ runner.temp }}/job-scenarios-combined.md
+          retention-days: 30

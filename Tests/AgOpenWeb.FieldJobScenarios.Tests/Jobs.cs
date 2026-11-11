@@ -275,7 +275,9 @@ public static class Jobs
             var worst = late.OrderByDescending(t => t.Seconds - t.BackOnPassSeconds).First();
             flag(Severity.Improvement, "TURN-ENDS-LATE", F($"in {late.Count} of {r.Turns.Count} U-turns AgOpenWeb kept the turn 'executing' long after the tractor was back on the next pass inside the cultivated area: turn {worst.Index} ended {worst.Seconds - worst.BackOnPassSeconds:0} s ({(worst.Seconds - worst.BackOnPassSeconds) * 2.5:0} m at 9 km/h) after the tractor was on the pass{(worst.Fallback ? ", a simple fallback path" : "")}; until then no next turn can be planned and the screen says the turn is still on."));
         }
-        if (r.ArrowAtEdge is { } edge)
+        // Started mid-field (AGOPENWEB_SCENARIO_FROM_PASS): the pass behind is not the edge, and
+        // which way AgOpenWeb's first arrow points there is not this check's question.
+        if (r.ArrowAtEdge is { } edge && r.StartedAtPass == int.MinValue)
             flag(Severity.Bug, "FIRST-TURN-TOWARD-EDGE", F($"before the first U-turn AgOpenWeb's arrow pointed at the edge the operator started from: pass {edge.Pass}, with only {edge.ChordM:0} m of line inside the cultivated area (any 5 m sample inside counts as a pass); left alone, AgOpenWeb turns onto it and then reports the end of the field with the whole field undone. The operator tapped the arrow the other way."));
         if (outTurns.Count > 0)
             flag(Severity.Safety, "TURN-OUTSIDE-BOUNDARY", F($"{outTurns.Count} of {r.Turns.Count} U-turns took the tractor itself past the field boundary, the furthest by {outTurns.Max(t => t.MaxPivotOutsideM):0.0} m (turn {outTurns.OrderByDescending(t => t.MaxPivotOutsideM).First().Index}{(outTurns.Any(t => t.Fallback) ? ", AgOpenWeb's simple fallback path" : "")}); 'distance from boundary' was {spec.UTurnDistanceFromBoundary:0.0} m."));

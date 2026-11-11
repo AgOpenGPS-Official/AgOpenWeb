@@ -89,7 +89,7 @@ dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedNam
 A job is a field driven at about 12x real time: a few minutes for the small field, tens of
 minutes for the whole set (the careful operator's jobs about 80 minutes on a GitHub runner, J6
 with its 82 obstacles most of it). CI only builds it; the full run is nightly on develop
-(`.github/workflows/field-job-scenarios.yml`, also run by hand from Actions), the careful and the
+(`.github/workflows/job-scenarios.yml` with the path, rig, turn intervention and imperial jobs, also run by hand from Actions), the careful and the
 careless operator as two jobs side by side, each with its own report. The report goes
 to `field-job-scenarios-report.md` in the test output folder, or to `AGOPENWEB_SCENARIO_REPORT`.
 
@@ -111,6 +111,32 @@ of any fixture here (field, path, rig, turn or imperial jobs) fails at once on a
 The tests fail only when the harness itself breaks. The findings are the product: the report
 lists each kind once, most serious first, then each job with what was measured and its
 timeline.
+
+### Short runs: confirm a fix in a minute
+
+A whole job is 5 to 80 minutes. To confirm a fix on the first passes, or on the passes where a
+finding was:
+
+```bash
+AGOPENWEB_SCENARIO_TURNS=2 AGOPENWEB_SCENARIO_ONLY=J1 AGOPENWEB_SCENARIO_OPERATOR=careful \
+  dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ -c Release --filter "FullyQualifiedName~FieldJobScenarioTests"
+```
+
+`AGOPENWEB_SCENARIO_TURNS=N` stops each job as its (N+1)th U-turn starts (N turns and the pass after
+them worked); `AGOPENWEB_SCENARIO_MINUTES=N` after N simulated minutes (the lap and pivot jobs, which
+have no U-turns). The job ends as an early end does: the report says "a short run", and the checks
+that need the whole field (finished, left undone) are not made; the rest are judged on the ground
+covered so far. J1 with two turns: 43 s.
+
+To rework the passes where a finding was, start there: `AGOPENWEB_SCENARIO_FROM_PASS=28` puts the
+tractor at the start of pass 28 (AgOpenWeb's pass number, as the report's turn lines and findings
+give it), driven the way the whole job drives it (the passes alternate from the first), with the
+passes before it unworked; `AGOPENWEB_SCENARIO_TURNS=4` then stops after pass 32. Rig J8 from pass
+-8 with two turns: 42 s. What depends on the passes before (a strip against the pass before 28, the
+coverage there) needs the start a pass or two earlier. Jobs whose passes don't alternate one by one
+(skip rows) start the right way only on a pass the whole job reaches after an even number of turns. On GitHub, `job-scenarios.yml`'s `only` and `turns` inputs
+do the same. Work out a finding with a unit test first; a short run confirms the fix in the real
+backend, the whole nightly last.
 
 ## Path jobs: curves, laps, a water pivot, contour, a recorded path
 
@@ -160,7 +186,7 @@ Findings these jobs add:
 dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedName~PathJobScenarioTests"
 ```
 
-About half an hour for the seven jobs; nightly on develop (`.github/workflows/path-job-scenarios.yml`, started by the bug report Worker as the other harnesses).
+About half an hour for the seven jobs; nightly on develop (`.github/workflows/job-scenarios.yml`, its `path` job).
 The same variables pick jobs (`AGOPENWEB_SCENARIO_ONLY=P1,P3`), trace and dump; the report goes
 to `path-job-scenarios-report.md`, or to `AGOPENWEB_SCENARIO_REPORT`.
 
@@ -202,7 +228,7 @@ from the wrong side lands beside the pass and AutoSteer pulls the implement acro
 dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedName~RigJobScenarioTests"
 ```
 
-About an hour and a half; nightly on develop (`.github/workflows/rig-job-scenarios.yml`). The report goes to
+About an hour and a half; nightly on develop (`.github/workflows/job-scenarios.yml`, its `rig` job). The report goes to
 `rig-job-scenarios-report.md`, or to `AGOPENWEB_SCENARIO_REPORT`.
 
 ## Turn interventions: an operator who acts during a U-turn
@@ -238,7 +264,7 @@ it turns to, the pass the implement lands on.
 dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedName~TurnInterventionScenarioTests"
 ```
 
-About half an hour; nightly on develop (`.github/workflows/turn-intervention-scenarios.yml`). The report
+About half an hour; nightly on develop (`.github/workflows/job-scenarios.yml`, its `turn` job). The report
 goes to `turn-intervention-scenarios-report.md`.
 
 ## Imperial units: the same job typed in feet and inches
@@ -271,4 +297,4 @@ dotnet test Tests/AgOpenWeb.FieldJobScenarios.Tests/ --filter "FullyQualifiedNam
 ```
 
 `AGOPENWEB_CHROMIUM=/path/to/chrome` uses another Chromium. About 20 minutes; nightly on develop
-(`.github/workflows/imperial-job-scenarios.yml`). The report goes to `imperial-job-scenarios-report.md`.
+(`.github/workflows/job-scenarios.yml`, its `imperial` job). The report goes to `imperial-job-scenarios-report.md`.

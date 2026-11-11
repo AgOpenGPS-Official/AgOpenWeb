@@ -49,17 +49,37 @@ jobs:
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 300
 
       - name: Anything new since the last night?
         id: fresh
         run: |
-          if [ "${{ inputs.nightly }}" != "true" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
-          last=$(git log -1 --format=%ct HEAD)
-          age=$(( $(date +%s) - last ))
-          if [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "No commit on develop in the last 25 hours; nothing to run." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          # A slow harness: only when what it covers changed, and on Sundays (the script).
+          .github/scripts/nightly-fresh.sh "${{ inputs.nightly }}" \
+            Shared/AgOpenWeb.Services/ConfigurationService.cs \
+            Shared/AgOpenWeb.Services/SettingsService.cs \
+            Shared/AgOpenWeb.Services/Profile \
+            Shared/AgOpenWeb.Services/VehicleProfileService.cs \
+            Shared/AgOpenWeb.Services/ToolProfileService.cs \
+            Shared/AgOpenWeb.Services/NtripProfileService.cs \
+            Shared/AgOpenWeb.Services/FieldService.cs \
+            Shared/AgOpenWeb.Services/Fields \
+            Shared/AgOpenWeb.Services/GeoJson \
+            Shared/AgOpenWeb.Services/Storage \
+            Shared/AgOpenWeb.Services/Coverage \
+            Shared/AgOpenWeb.Services/JobService.cs \
+            Shared/AgOpenWeb.Services/ImportFolder.cs \
+            Shared/AgOpenWeb.Services/ImportFolderScanner.cs \
+            Shared/AgOpenWeb.Services/PersistentStateService.cs \
+            Shared/AgOpenWeb.Models/Configuration \
+            Shared/AgOpenWeb.Models/AppSettings.cs \
+            Shared/AgOpenWeb.Models/Field \
+            Shared/AgOpenWeb.Models/GeoJson \
+            Shared/AgOpenWeb.Models/Job \
+            Tests/AgOpenWeb.UpdateScenarios.Tests \
+            Tests/ScenarioShared \
+            .github/workflows/update-scenarios.yml
 
       - uses: ./.github/actions/sharpisoterm-cache
         if: steps.fresh.outputs.run == 'true'

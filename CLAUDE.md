@@ -131,6 +131,14 @@ Several browsers may be connected; only one holds control (`ControlAuthority`, d
 Every command is dropped unless the sender holds fresh control: the others are observers, who
 see everything and change nothing (#397). `ObserverIds` lists the few requests an observer may
 send. A client can't take control from a live operator, only fill an empty seat.
+The deadman (1.5 s without the holder's presence) runs on a timer of its own. The page sends
+presence on a timer and on every frame from the host (`sendPresence` in `js/control.js`): a
+minimized window or a background tab gets its timers throttled but still hears the host (#766). When control
+ends, `MainViewModel.OnBrowserControlEnded` turns off AutoSteer, Free Drive, the sections (a
+section On by hand too) and the steer wizard, and the next screen to take control is told why.
+`WebSocketHub` gives each browser its own outgoing queue: a broadcast never waits on a socket,
+and a browser that stops reading for 15 s is cut off (it reconnects and gets a fresh seed).
+The page drops a link that has carried no frame for 2.5 s and reconnects (`transport.js`).
 
 ### Section control timing
 `SectionControlService` runs every section by its own button state (Off / Auto / On); the master
@@ -467,12 +475,14 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.SteerWizardScenarios.Tests` - end-to-end steer wizard scenarios: the whole backend in-process, an emulated AiO steer module (firmware P controller on its 25 ms loop, WAS formula, locks, either motor wiring) and a moving tractor, a careful and a careless operator, a safety watch on the wheels at 50 Hz, a findings report; about 10 minutes, so CI only builds it and `steer-wizard-scenarios.yml` runs it nightly (its `README.md`)
 - `AgOpenWeb.MachineModuleScenarios.Tests` - an emulated Sprayer_ESP32 machine module on the real UDP: sections vs valves, settings reaching the module, restarts and outages (`machine-module-scenarios.yml`)
 - `AgOpenWeb.GpsNtripScenarios.Tests` - receivers, sentence families and an NTRIP caster on the loopback: corrections, network changes, dual heading (`gps-ntrip-scenarios.yml`; one scenario needs Linux's 127.0.0.2)
-- `AgOpenWeb.FieldJobScenarios.Tests` - whole jobs on real fields with AutoSteer, U-turns and auto sections, measuring where product really went on a 0.2 m grid (`field-job-scenarios.yml`, up to 2 h); its `PathJobScenarioTests` do the same on curves, the boundary as a loop, a water pivot, contour and a recorded path (`path-job-scenarios.yml`, about 30 min); `RigJobScenarioTests` with the testers' rigs: an implement shifted to one side, a curve recorded by driving, a wide implement skipping rows (`rig-job-scenarios.yml`); `TurnInterventionScenarioTests` with an operator who acts during a U-turn, and manual U-turns (`turn-intervention-scenarios.yml`); `ImperialJobScenarioTests` the job typed in feet and inches through the real web client, headless Chromium (`imperial-job-scenarios.yml`)
+- `AgOpenWeb.FieldJobScenarios.Tests` - whole jobs on real fields with AutoSteer, U-turns and auto sections, measuring where product really went on a 0.2 m grid (`FieldJobScenarioTests`, the careful and the careless operator); its `PathJobScenarioTests` do the same on curves, the boundary as a loop, a water pivot, contour and a recorded path; `RigJobScenarioTests` with the testers' rigs: an implement shifted to one side, a curve recorded by driving, a wide implement skipping rows; `TurnInterventionScenarioTests` with an operator who acts during a U-turn, and manual U-turns; `ImperialJobScenarioTests` the job typed in feet and inches through the real web client, headless Chromium. One engine (`JobRun`), so one nightly, `job-scenarios.yml`: the six side by side, then one combined report listing each finding once with every harness and job it was seen in (`Tools/combine-job-reports.py`). **Short runs:** `AGOPENWEB_SCENARIO_TURNS=N` stops each job at its (N+1)th U-turn, `AGOPENWEB_SCENARIO_MINUTES=N` after N simulated minutes, `AGOPENWEB_SCENARIO_FROM_PASS=K` starts on pass K (rework passes 28-32 of a finding: `FROM_PASS=28 TURNS=4`) (a job of a few passes in under a minute, not 5-80), with the whole-field checks skipped; `AGOPENWEB_SCENARIO_ONLY=J1,J8` picks jobs; the workflow's `only`, `turns`, `from_pass` and `minutes` inputs do the same on GitHub. Confirm a fix with a unit test first, then a short run, the whole job last
 - `AgOpenWeb.IsobusScenarios.Tests` - an emulated AOG-TaskController and its implements (`isobus-scenarios.yml`)
 - `AgOpenWeb.WebClientScenarios.Tests` - the real web client in headless Chromium (Playwright) on the screens a farm uses (tablets, a 720p PC, a 5" screen, a phone), a second screen as observer, and the operator's screen going away while working (tab closed, Wi-Fi silent or cut, tablet asleep, Free Drive, a section on by hand), read at the module port; and the operator's flows done by taps and typing (tracks made every way but the water pivot, boundary and headland, tram lines, fields and jobs, the section bar, the U-turn and lateral buttons) with a careful and a careless operator (`web-client-scenarios.yml`)
 - `AgOpenWeb.UpdateScenarios.Tests` - settings, profiles, casters, fields and a job made on older releases (their Linux bundles, SHA-256 checked) then read back by this build, a rollback; on this build a restart, a power cut, damaged and leftover files, a moved data folder, a comma-decimal locale, AgOpenGPS fields and a whole AgOpenGPS 6.8.6 folder; about 15 minutes (`update-scenarios.yml`)
 - `AgOpenWeb.WorkingDayScenarios.Tests` - an eight-hour working day in one process (fields, refills, lunch, a tablet and a phone that drop, stall and reconnect, the next morning): memory baselines, heap census, cycle and tick times, the deadman with a second browser; about 45 minutes (`working-day-scenarios.yml`)
 - `AgOpenWeb.DumpReplayScenarios.Tests` - the bug report dumps attached to public issues, replayed on this build: the reporter's settings, field, job and track, their GPS log fed back through the pipeline and compared with what their build did, then a machine of their shape taken over with AutoSteer and U-turns; the bug report service's dumps only in a local run (`AGOPENWEB_REPLAY_PRIVATE=1`), never in CI (`dump-replay-scenarios.yml`)
+
+**Running the harnesses:** on the harness host, never on a development machine (`Tools/harness-runner`: a Docker image run on the `runner` context; `runner-compare.sh` runs a fix and its base side by side and lists the findings new, gone and in both, `Tools/compare-reports.py`). Every harness stops at the start when another process holds UDP 9999 or 8888 (`Tests/ScenarioShared/PortGuard.cs`, linked into each): an app left running shares the packets and the findings are noise. Before rerunning, read the saved report, pictures and traces; one confirming run per fix.
 
 CI also runs `Tools/i18n-extract.py --check` so `en.json` stays current, `Tools/license-headers.py --check` for the licence headers, and `Tools/i18n-limits.py --check` (job `translations-fit`, only when a change touches `wwwroot/`, the check, its baseline or the workflow; otherwise skipped, which counts as passed) so every translated label fits the English layout.
 
@@ -517,14 +527,18 @@ GitHub Actions workflows, split by purpose:
     beta from `develop` right away (title carries build time + commit); `release` publishes
     the Release named by `release_tag`; `none` builds + uploads artifacts only (dry run).
 
-- **Scenario harnesses, nightly** — fifteen workflows, each running one harness on `develop` (when it has a
+- **Scenario harnesses, nightly** — eleven workflows, each running its harness on `develop` (when it has a
   commit from the last 25 hours) or by hand, keeping its findings report as an artifact and in the run's
   summary; PR CI only builds them. GitHub's own schedule started them 5–8 hours late every day, so the bug
-  report Worker starts them (`Tools/bugreport-worker`, `NIGHTLY_CRON` 05:07 UTC, 23:07 US Central) as a
-  `workflow_dispatch` with `nightly=true`, which keeps the 25-hour check; all fifteen side by side, each on its
-  own runner: `field-scenarios.yml`, `steer-wizard-scenarios.yml` (also fails when its safety watch saw the
+  report Worker starts them (`Tools/bugreport-worker`, `NIGHTLY_CRON` 05:07 UTC, 23:07 US Central, `NIGHTLY_WORKFLOWS`
+  in its `wrangler.toml`: a change there needs `wrangler deploy`) as a `workflow_dispatch` with `nightly=true`, which keeps the 25-hour check;
+  side by side, each on its own runner: `field-scenarios.yml`, `steer-wizard-scenarios.yml` (also fails when its safety watch saw the
   wheels move when they shouldn't), `vehicle-tool-scenarios.yml`, `machine-module-scenarios.yml`,
-  `gps-ntrip-scenarios.yml`, `field-job-scenarios.yml` (the longest, up to 2 h), `isobus-scenarios.yml`, `path-job-scenarios.yml`, `web-client-scenarios.yml`, `update-scenarios.yml`, `working-day-scenarios.yml`, `dump-replay-scenarios.yml`, `rig-job-scenarios.yml`, `turn-intervention-scenarios.yml`, `imperial-job-scenarios.yml` (Playwright's Chromium). Each harness's `README.md` says what it covers.
+  `gps-ntrip-scenarios.yml`, `job-scenarios.yml` (the five job harnesses, up to about 80 min, one combined report), `isobus-scenarios.yml`,
+  `web-client-scenarios.yml`, `update-scenarios.yml`, `working-day-scenarios.yml`, `dump-replay-scenarios.yml`.
+  The slow ones that rarely change (the Vehicle & Tool settings sweep, working day, update, dump replay) run only when a
+  commit of the last 25 hours touched what they cover, and every Sunday whatever changed (`.github/scripts/nightly-fresh.sh`,
+  the paths in each workflow; add a path there when a harness starts covering more). Each harness's `README.md` says what it covers.
 
 To cut a release (about weekly, so each one stays small): bump `sys/version.h` and the three heads' display versions, then push a tag — `git tag v26.7.x && git push origin v26.7.x`. A summary on top of the generated list goes in with `gh release edit`.
 

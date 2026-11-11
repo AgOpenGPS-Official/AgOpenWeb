@@ -89,25 +89,71 @@ public partial class MainViewModel
     /// <summary>
     /// The browser that held control is gone (released, disconnected, or the deadman ran
     /// out). Nothing may keep actuating with no screen and no Stop button: AutoSteer off,
-    /// sections off, and the steer wizard closed. Closing the wizard stops a motor test
-    /// that would otherwise go on turning the wheels lock to lock; a wizard left open
+    /// Free Drive off (it steers to its angle at a made-up speed), sections off (a section
+    /// switched On by hand too: the master does not reach it), and the steer wizard closed.
+    /// Closing the wizard stops a motor test that would otherwise go on turning the wheels lock
+    /// to lock; a wizard left open
     /// would also keep AutoSteer locked out (#154) with nothing on the reloaded page to
     /// close it. What the finished steps set stays, saved, as with Cancel.
     /// </summary>
-    public void OnBrowserControlEnded(string offReason)
+    public void OnBrowserControlEnded(string offReason, bool involuntary = false)
     {
+        var off = new List<string>();
         if (IsAutoSteerEngaged && ToggleAutoSteerCommand?.CanExecute(offReason) == true)
+        {
             ToggleAutoSteerCommand.Execute(offReason);
+            off.Add("AutoSteer");
+        }
+        bool sections = IsManualSectionMode || IsSectionMasterOn;
         if (IsManualSectionMode && ToggleManualModeCommand?.CanExecute(null) == true)
             ToggleManualModeCommand.Execute(null);
         if (IsSectionMasterOn && ToggleSectionMasterCommand?.CanExecute(null) == true)
             ToggleSectionMasterCommand.Execute(null);
+        for (int i = 0; i < _sectionControlService.NumSections; i++)
+            if (_sectionControlService.SectionStates[i].ButtonState == Services.Interfaces.SectionButtonState.On)
+            {
+                _sectionControlService.SetSectionState(i, Services.Interfaces.SectionButtonState.Off);
+                sections = true;
+            }
+        if (sections) off.Add("the sections");
+        if (_autoSteerService.IsInFreeDriveMode || AutoSteerConfigViewModel?.IsFreeDriveMode == true)
+        {
+            AutoSteerConfigViewModel?.StopFreeDrive();
+            _autoSteerService.DisableFreeDrive();
+            off.Add("Free Drive");
+        }
         if (IsSteerWizardOpen)
         {
             EndRemoteSteerWizard();
             StatusMessage = "Steer wizard closed: " + offReason;
+            off.Add("the steer wizard");
         }
+        // The screen that comes back (or the next one to take control) is told why, once:
+        // otherwise AutoSteer and the sections are just off, and the reason only in the log.
+        if (involuntary && off.Count > 0)
+            ControlLostNotice = FormattableString.Invariant(
+                $"{JoinAnd(off)} turned off at {DateTime.Now:HH:mm:ss}: the screen in control {ScreenLostWords(offReason)}");
     }
+
+    /// <summary>Why the last involuntary loss of control switched things off, for the next
+    /// screen to take control (<see cref="TakeControlLostNotice"/>); null when there is none.</summary>
+    public string? ControlLostNotice { get; private set; }
+
+    /// <summary>The notice, once: the caller shows it to the screen that now holds control.</summary>
+    public string? TakeControlLostNotice()
+    {
+        var n = ControlLostNotice;
+        ControlLostNotice = null;
+        return n;
+    }
+
+    private static string JoinAnd(List<string> items) =>
+        items.Count == 1 ? items[0] : string.Join(", ", items.Take(items.Count - 1)) + " and " + items[^1];
+
+    private static string ScreenLostWords(string reason) =>
+        reason.Contains("deadman", StringComparison.Ordinal) ? "stopped answering (its link went quiet)"
+        : reason.Contains("disconnected", StringComparison.Ordinal) ? "lost its connection"
+        : "was gone (" + reason + ")";
 
     private void DisengageForSteerWizard()
     {

@@ -20,6 +20,7 @@ window.RemoteTransport = {
    *           onHello?:(clientId:string)=>void,
    *           onControlState?:(state:object)=>void,
    *           onSound?:(effectId:number)=>void,
+   *           onFrame?:()=>void,
    *           onStatus?:(state:string)=>void }} handlers
    */
   create(handlers) {
@@ -27,6 +28,18 @@ window.RemoteTransport = {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = `${proto}//${location.host}/ws`;
     let ws = null, stopped = false;
+    // Quiet-link watchdog. The host sends a Tick ten times a second, so a link that has
+    // carried nothing for QUIET_MS is dead even though the socket still looks open (Wi-Fi
+    // gone silent, tablet out of range: the close can take minutes to come). The page
+    // then shows Disconnected instead of a frozen map that still says Operator and
+    // AutoSteer ON (the host's deadman has already stopped the steering), drops the socket
+    // and connects again. Armed by the first Tick: a large seed (the coverage snapshot is
+    // one frame) can take several seconds to arrive on a slow link.
+    // Two stages: after QUIET_WARN_MS the page stops claiming the link (status 'quiet': the
+    // role no longer says Operator, since the host's deadman gives the seat away at 1.5 s);
+    // after QUIET_MS it gives the socket up and connects again.
+    const QUIET_WARN_MS = 800, QUIET_MS = 2500, CONNECT_MS = 30000;
+    let lastFrameAt = 0, sawTick = false, quietSaid = false;
 
     const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19, COVERAGE_EDGE: 20, VIEW_PREFS: 21, PROMPT: 22, TOAST: 23, DRIVE_PICK: 24, HW_MSG: 25, VT: 26, VT_IMAGE: 27, NTRIP_MOUNTPOINTS: 28, WEB_CARDS: 29 };
     const td = new TextDecoder();
@@ -504,13 +517,47 @@ window.RemoteTransport = {
 
     function connect() {
       status('connecting…');
-      ws = new WebSocket(url);
-      ws.binaryType = 'arraybuffer';
-      ws.onopen = () => status('connected');
-      ws.onmessage = e => { try { decode(e.data); } catch (err) { /* drop a malformed frame */ } };
-      ws.onerror = () => status('error');
-      ws.onclose = () => { status('disconnected'); if (!stopped) setTimeout(connect, 1000); };
+      const sock = new WebSocket(url);
+      ws = sock;
+      lastFrameAt = Date.now(); sawTick = false; quietSaid = false;
+      sock.binaryType = 'arraybuffer';
+      sock.onopen = () => { if (ws === sock) status('connected'); };
+      sock.onmessage = e => {
+        if (ws !== sock) return;
+        lastFrameAt = Date.now();
+        if (quietSaid) { quietSaid = false; status('connected'); }
+        try {
+          if (!sawTick && new DataView(e.data).getUint8(0) === TYPE.TICK) sawTick = true;
+          decode(e.data);
+        } catch (err) { /* drop a malformed frame */ }
+        // Every frame, after it is handled: the page is alive and hearing the host. Unlike a
+        // timer, this still runs when the window is minimized or the tab is in the background.
+        handlers.onFrame && handlers.onFrame();
+      };
+      sock.onerror = () => { if (ws === sock) status('error'); };
+      sock.onclose = () => { if (ws !== sock) return; status('disconnected'); if (!stopped) setTimeout(connect, 1000); };
     }
+
+    // Give up on a socket that has gone quiet: forget it (a late close or frame from it is
+    // ignored), say so, and connect again.
+    function abandon(why) {
+      const sock = ws;
+      ws = null;
+      status(why);
+      try { sock && sock.close(); } catch (err) { /* already closing */ }
+      if (!stopped) setTimeout(connect, 1000);
+    }
+    setInterval(() => {
+      if (stopped || !ws) return;
+      const quiet = Date.now() - lastFrameAt;
+      if (ws.readyState === WebSocket.OPEN ? quiet > (sawTick ? QUIET_MS : CONNECT_MS)
+          : ws.readyState === WebSocket.CONNECTING && quiet > CONNECT_MS)
+        abandon('disconnected');
+      else if (ws.readyState === WebSocket.OPEN && sawTick && !quietSaid && quiet > QUIET_WARN_MS) {
+        quietSaid = true;
+        status('quiet');
+      }
+    }, 200);
 
     return {
       start() { stopped = false; connect(); },
