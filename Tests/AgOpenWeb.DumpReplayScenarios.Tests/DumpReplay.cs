@@ -101,6 +101,16 @@ public sealed class DumpReplay : IAsyncDisposable
         if (missing.Count > 0) S.Step("not in this dump's configuration.json (AgOpenWeb's default kept): " + string.Join(", ", missing));
         foreach (var e in Collect()) Said.Add("set-up: " + e);
         await CompareSettingsAsync(replies);
+        // The steering speed limits don't apply on the simulator (AgOpenGPS neither), and the
+        // replay feeds a simulator log as real GPS: with the reporter's limits AutoSteer would go
+        // off in the cycle it was engaged (#570's log runs at 20 km/h with a 15 km/h maximum).
+        if (Dump.IsSimulator && await Rig.ReadAsync(() => Rig.Store.AutoSteer.MaxSteerSpeed > 0 || Rig.Store.AutoSteer.MinSteerSpeed > 0))
+        {
+            await Rig.SendAsync("config.set", "autosteer.maxSteerSpeed:0");
+            await Rig.SendAsync("config.set", "autosteer.minSteerSpeed:0");
+            foreach (var e in Collect()) Said.Add("set-up: " + e);
+            S.Step("steering speed limits off: the reporter drove the simulator, where they don't apply, and the replay feeds its log as real GPS");
+        }
 
         DriftE = BugDump.Get(Dump.Runtime, "Field", "DriftEasting")?.GetDouble() ?? 0;
         DriftN = BugDump.Get(Dump.Runtime, "Field", "DriftNorthing")?.GetDouble() ?? 0;
@@ -396,6 +406,7 @@ public sealed class DumpReplay : IAsyncDisposable
         double wall = 0;
         bool sectionsDone = false;
         int engages = 0, disengages = 0, resyncs = 0, manualTurns = 0;
+        bool checkEngaged = false;
         // The manual U-turn buttons the reporter pressed (their log has each one).
         var manual = Dump.Log
             .Where(l => l.Text.Contains("[ManualYouTurn] Triggering", StringComparison.Ordinal))
@@ -430,6 +441,7 @@ public sealed class DumpReplay : IAsyncDisposable
                 {
                     await Rig.SendAsync("autosteer.toggle");
                     engages++;
+                    checkEngaged = true;
                     bool now = await Rig.ReadAsync(() => Rig.Vm.IsAutoSteerEngaged);
                     S.Step(F($"t {r.T,6:0.0} s: operator engages AutoSteer (as the reporter did){(now ? "" : ": it did NOT engage: " + string.Join(" | ", Collect().Take(2)))}"));
                     if (SectionsAuto && !sectionsDone && now)
@@ -479,6 +491,14 @@ public sealed class DumpReplay : IAsyncDisposable
             int ticks = (int)Math.Clamp(Math.Round(dt * 100), 1, 300);
             Rig.TickLoop(ticks);
             var c = Rig.LastCycle;
+            // An engage the first cycle drops again is never seen as a drop (no cycle had it on).
+            if (checkEngaged && c != null)
+            {
+                checkEngaged = false;
+                if (!c.IsAutoSteerEngaged)
+                    S.Problem(Severity.Bug, Kind.AppDefect, "AUTOSTEER-DROPPED",
+                        F($"t {r.T:0.0} s: AutoSteer went off in the cycle it was engaged, where the reporter's stayed on: {c.DisengageReason ?? "no reason given"}"), "replay", r.T);
+            }
             await AlignPassStepAsync(r);
             // The lateral button moves one pass right or left of the direction of travel: the
             // side that puts this build on the reporter's line is the one (right first).
