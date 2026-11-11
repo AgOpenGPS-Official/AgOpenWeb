@@ -1,4 +1,6 @@
 #!/bin/bash
+# AgOpenWeb
+# Copyright (C) 2026 AgOpenWeb Contributors
 # SPDX-License-Identifier: Apache-2.0
 # Should this nightly harness run? Writes run=true|false to $GITHUB_OUTPUT.
 #

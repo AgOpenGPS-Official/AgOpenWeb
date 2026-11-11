@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# AgOpenWeb
+# Copyright (C) 2026 AgOpenWeb Contributors
 # SPDX-License-Identifier: Apache-2.0
 """Combine the job harness reports (field, path, rig, turn intervention, imperial) into one.
 
