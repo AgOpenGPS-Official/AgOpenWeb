@@ -997,6 +997,7 @@ public partial class MainViewModel
                 : Services.Interfaces.SoundEffect.SectionOff);
 
             StatusMessage = IsManualSectionMode ? "All sections ON" : "All sections OFF";
+            if (IsManualSectionMode) WarnSectionsWithoutRelay();
         });
 
         ToggleSectionMasterCommand = new RelayCommand(() =>
@@ -1012,6 +1013,7 @@ public partial class MainViewModel
                 : Services.Interfaces.SoundEffect.SectionOff);
 
             StatusMessage = IsSectionMasterOn ? "All sections AUTO" : "All sections OFF";
+            if (IsSectionMasterOn) WarnSectionsWithoutRelay();
         });
 
         ToggleSectionCommand = new RelayCommand<object>(param =>
@@ -1043,6 +1045,7 @@ public partial class MainViewModel
                 ? Services.Interfaces.SoundEffect.SectionOff
                 : Services.Interfaces.SoundEffect.SectionOn);
             StatusMessage = $"Section {sectionIndex + 1}: {newState}";
+            if (newState != SectionButtonState.Off) WarnSectionsWithoutRelay();
         });
 
         ToggleYouTurnCommand = new RelayCommand(() =>
