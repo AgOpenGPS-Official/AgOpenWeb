@@ -1141,10 +1141,17 @@ public sealed class YouTurnStateMachine
         {
             // A pass inside the field somewhere, but with no room to land on at this end (a
             // corner pass, the far lobe of an hourglass): the operator takes over here too.
-            bool roomSomewhere = !steppedBack && _pathing.WouldNextLineBeInsideBoundary(
-                track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive).isInside;
-            _logger.LogDebug("[YouTurn] Next line would be outside boundary{Room} - stopping U-turns",
-                roomSomewhere ? " at this end" : "");
+            // Stepped back, that is the next pass on the way the turns go: the pass just worked
+            // has room but is no pass to go to, and the next one may still run on through the
+            // field (field job J3, a narrowing lobe with 40 % of the field left), which is not
+            // the end of the field.
+            bool roomSomewhere = steppedBack
+                ? _pathing.IsPathInsideCultivated(track, abHeading,
+                    guidance.HowManyPathsAway + (keepPositive == true ? 1 : -1) * (ctx.UTurnSkipRows + 1), ctx.Boundary, ctx.HeadlandLine)
+                : _pathing.WouldNextLineBeInsideBoundary(
+                    track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive).isInside;
+            _logger.LogDebug("[YouTurn] Next line would be outside boundary{Room} - stopping U-turns (headland {Dist:F1}m ahead of ({E:F1},{N:F1}) heading {Hdg:F0}°, zone {Zone})",
+                roomSomewhere ? " at this end" : "", turn.DistanceToHeadland, currentPosition.Easting, currentPosition.Northing, currentPosition.Heading, turn.CurrentZone);
             effects.StatusMessage = roomSomewhere ? "End of field reached - no room on the next pass at this end" : "End of field reached";
             SoundCreationFailed(effects);
             return;

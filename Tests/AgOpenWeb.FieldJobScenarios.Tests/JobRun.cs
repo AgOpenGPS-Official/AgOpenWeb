@@ -670,6 +670,13 @@ public sealed class JobRun : IAsyncDisposable
                         EarlyEnds.Add(F($"\"End of field reached\" at {_endSaidAt:0} s on pass {_endSaidPass}, then U-turn {TurnsStarted + 1} at {Seconds:0} s"));
                         FieldDone = false; _endSaidAt = -1; leftWorkAt = -1; inWorkSinceEnd = false;
                     }
+                    // Said there was no room at this end, then turned after all: the operator lets it
+                    // turn and goes on; the message was early all the same.
+                    if (_takeOverAtEnd is { } nr && TookOverAt < 0 && nr.Text.Contains("no room on the next pass at this end", StringComparison.Ordinal))
+                    {
+                        EarlyEnds.Add(F($"\"{nr.Text}\" at {nr.At:0} s on pass {nr.Pass}, then U-turn {TurnsStarted + 1} at {Seconds:0} s"));
+                        _takeOverAtEnd = null;
+                    }
                     turn = new TurnRecord { Index = ++TurnsStarted, PassBefore = lastPassSeen, StartSeconds = Seconds, Left = yt!.IsTurnLeft, HeadingAtStart = Truth.Heading, UAtStart = U((Truth.E, Truth.N)), TangentAtStart = Frame.TangentHeading((Truth.E, Truth.N)), TruthPassBefore = TruthPass() };
                     saidAtTurnStart = Math.Max(0, Said.Count - 6);
                     Turns.Add(turn);
@@ -832,7 +839,17 @@ public sealed class JobRun : IAsyncDisposable
                     Said.Add(F($"{Seconds:0.0} s: {e}"));
                     // AgOpenWeb says it only while it plans a turn, never during one: read once a second,
                     // a message from just before a turn started is stale and is not the end.
-                    if ((e.Contains("End of field reached", StringComparison.Ordinal) || e.Contains("Field complete", StringComparison.Ordinal)) && !wasExecuting)
+                    // "End of field reached - no room on the next pass at this end": the field goes on
+                    // beyond, but no turn can reach it from here (a narrowing lobe, a corner pass). Not
+                    // the end of the field: the operator drives the pass to its end and takes over,
+                    // as for the warning below (field job J3).
+                    bool noRoomHere = e.Contains("no room on the next pass at this end", StringComparison.Ordinal);
+                    if (noRoomHere && !wasExecuting && TookOverAt < 0 && _takeOverAtEnd == null)
+                    {
+                        _takeOverAtEnd = (Seconds, e, Pass);
+                        Did(F($"AgOpenWeb said there is no room for a U-turn at this end (\"{e}\"): the operator drives pass {Pass} to its end and takes over"));
+                    }
+                    if (!noRoomHere && (e.Contains("End of field reached", StringComparison.Ordinal) || e.Contains("Field complete", StringComparison.Ordinal)) && !wasExecuting)
                     {
                         if (!FieldDone) { _endSaidAt = Seconds; _endSaidPass = Pass; }
                         FieldDone = true;
@@ -914,8 +931,11 @@ public sealed class JobRun : IAsyncDisposable
         TookOverAt = Seconds;
         bool missed = e.Contains("U-turn missed", StringComparison.Ordinal) || e.Contains("No U-turn can be made", StringComparison.Ordinal);
         bool blocked = e.Contains("U-turn blocked", StringComparison.Ordinal);
+        bool noRoom = e.Contains("no room on the next pass at this end", StringComparison.Ordinal);
         string what = missed ? "missed" : blocked ? "blocked" : "refused";
-        Problems.Add(F($"{warnedAt:0.0} s: AgOpenWeb {what} the U-turn at the end of pass {pass} and asked the operator to take over{(atEnd ? " at the end of the field" : "")} (\"{e}\")"));
+        Problems.Add(noRoom
+            ? F($"{warnedAt:0.0} s: AgOpenWeb had no room for a U-turn at the end of pass {pass}, with the field going on beyond (\"{e}\")")
+            : F($"{warnedAt:0.0} s: AgOpenWeb {what} the U-turn at the end of pass {pass} and asked the operator to take over{(atEnd ? " at the end of the field" : "")} (\"{e}\")"));
         EndedBy = atEnd && Seconds - warnedAt >= 1
             ? F($"the operator drove pass {pass} to its end and took over there at {Seconds:0} s, as AgOpenWeb's warning at {warnedAt:0} s asked: \"{e}\"")
             : F($"the operator took over at AgOpenWeb's warning at {warnedAt:0} s{(atEnd ? " (the pass was at its end)" : "")}: \"{e}\"");
