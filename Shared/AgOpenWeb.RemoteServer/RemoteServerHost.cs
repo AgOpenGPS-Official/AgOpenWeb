@@ -513,12 +513,19 @@ public sealed class RemoteServerHost
             new[] { ("Cache-Control", "no-store") });
     }
 
+    /// <summary>Raised once the server has stopped (the backend is shutting down): what was
+    /// wired to this backend in statics lets go of it, as the process may outlive the backend
+    /// (Android) and start another.</summary>
+    public event Action? Stopped;
+
     public async Task StopAsync()
     {
         if (_server is null) return;
         if (_broadcaster is not null) await _broadcaster.DisposeAsync().ConfigureAwait(false);
         await _server.StopAsync().ConfigureAwait(false);
         _server = null;
+        try { Stopped?.Invoke(); } catch { /* a teardown fault must not wedge the shut-down */ }
+        Stopped = null;
     }
 
     // Web imagery: cap the longest side so an iOS WKWebView can decode it. Native

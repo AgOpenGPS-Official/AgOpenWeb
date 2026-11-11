@@ -28,7 +28,17 @@ internal static class BugReportRemote
 
     internal static string ReportsDirectory => Path.Combine(AppDataRoot.Documents, "BugReports");
 
-    /// <summary>Once, from RemoteServerWiring.Wire.</summary>
+    /// <summary>The backend stopped: let go of it. The next backend in this process (Android)
+    /// starts the outbox again with its own state.</summary>
+    public static void Stop()
+    {
+        _outbox = null;
+        _state = null;
+        _ui = null;
+        _current = null;
+    }
+
+    /// <summary>Once per backend, from RemoteServerWiring.Wire.</summary>
     public static void Start(ApplicationState state, IUiDispatcher ui, INetworkWatcher? network)
     {
         if (_outbox != null) return;
