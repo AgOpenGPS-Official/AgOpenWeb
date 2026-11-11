@@ -116,6 +116,8 @@ public static class ScreenScenarios
         foreach (var (name, taps) in Menus)
             await MenuAsync(run, s, screen, d, name, taps);
 
+        // The whole screen as the operator sees it, for reviewing a layout change.
+        await run.ShotAsync(s, screen, $"{code}-{d.Code}-screen.png");
         Run.PageErrors(s, screen);
     }
 
