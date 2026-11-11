@@ -1213,7 +1213,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 }
             }
             else if (autoSteerEngaged)
-                _autoSteerService.UpdateGuidanceResults(0, NoLineDistance); // the end: nothing left ahead
+            {
+                // The end of the route: nothing left ahead to steer to. AutoSteer off with the
+                // reason, as past the end of an open curve (AgOpenGPS stops playback there).
+                autoSteerEngaged = false;
+                autoSteerDisengaged = true;
+                disengageReason = RecordedPathEndReason;
+                lock (_stateLock) _autoSteerEngaged = false;
+                _autoSteerService.UpdateGuidanceResults(0, NoLineDistance);
+            }
         }
         else if (autoSteerEngaged && hasTrack)
         {
@@ -1691,6 +1699,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     /// <summary>Why AutoSteer went off at the end of an open curve (AgOpenGPS gsGuidanceStopped, gsPastEndOfCurve).</summary>
     public const string PastEndOfCurveReason = "AutoSteer disengaged - past end of curve";
+    public const string RecordedPathEndReason = "AutoSteer disengaged - end of the recorded path";
 
     private (double steerAngle, double xte, double goalE, double goalN, string? statusMessage, bool hasLine, bool atEnd)?
         CalculateTrackGuidance(

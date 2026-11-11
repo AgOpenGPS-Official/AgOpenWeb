@@ -303,7 +303,9 @@ public static class Jobs
     /// <summary>AutoSteer dropping out on its own, and the tractor running off the field.</summary>
     private static void JudgeAutoSteer(Scenario sc, JobRun r, Action<Severity, string, string> flag)
     {
-        var offs = r.Said.Where(s => s.Contains("AutoSteer off", StringComparison.Ordinal)).ToList();
+        // At the end of a played route AutoSteer goes off by design (P7), with the reason.
+        var offs = r.Said.Where(s => s.Contains("AutoSteer off", StringComparison.Ordinal)
+            && !s.Contains("end of the recorded path", StringComparison.Ordinal) && !s.Contains("recorded path stopped", StringComparison.Ordinal)).ToList();
         if (offs.Count > 0 && r.Spec.OnFix == null)
             flag(Severity.Bug, "AUTOSTEER-DROPPED", F($"AutoSteer switched itself off {offs.Count} time(s) during the job, re-engaged by the operator {r.Reengaged} time(s): {offs[0]}"));
         if (r.Problems.Any(p => p.StartsWith("HARNESS", StringComparison.Ordinal))) return;
