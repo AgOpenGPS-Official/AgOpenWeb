@@ -397,9 +397,9 @@ public sealed class DumpReplay : IAsyncDisposable
         // off in the cycle it was engaged (#570's log runs at 20 km/h with a 15 km/h maximum).
         if (Dump.IsSimulator && await Rig.ReadAsync(() => Rig.Store.AutoSteer.MaxSteerSpeed > 0 || Rig.Store.AutoSteer.MinSteerSpeed > 0))
         {
-            await Rig.SendAsync("config.set", "autosteer.maxSteerSpeed:0");
-            await Rig.SendAsync("config.set", "autosteer.minSteerSpeed:0");
-            foreach (var e in Collect()) Said.Add("set-up: " + e);
+            // Straight into the store: the settings screen keeps the maximum above the minimum,
+            // so it can't set both to 0 (the pipeline's "no limit").
+            await Rig.RunAsync(() => { Rig.Store.AutoSteer.MinSteerSpeed = 0; Rig.Store.AutoSteer.MaxSteerSpeed = 0; });
             double max = await Rig.ReadAsync(() => Rig.Store.AutoSteer.MaxSteerSpeed);
             S.Step(F($"steering speed limits off (now {max:0} km/h): the reporter drove the simulator, where they don't apply, and the replay feeds its log as real GPS"));
         }
