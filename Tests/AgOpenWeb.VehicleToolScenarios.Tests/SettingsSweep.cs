@@ -310,12 +310,6 @@ public static class SettingsSweep
                     if (probe == Probe.Module) latest = await driver.RunAsync(probe);
                 }
 
-                // A trailed implement carries its articulation from the last drive: right after a
-                // row driven with another hitch, the tank and tool start the probe at another angle
-                // than in the base runs, and the first fixes switch differently (the TBT group's
-                // drift, 3 fixes, every night). One probe on the base settings lets it settle, as the
-                // base runs before them did.
-                if (driver.Trailed) await driver.RunAsync(probe);
                 var after = await driver.RunAsync(probe);
                 var drift = TraceDiff.Of(b1, after);
                 var (moved, _, _) = Changes(drift, noise);
