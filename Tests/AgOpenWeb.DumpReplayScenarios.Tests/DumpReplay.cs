@@ -101,16 +101,6 @@ public sealed class DumpReplay : IAsyncDisposable
         if (missing.Count > 0) S.Step("not in this dump's configuration.json (AgOpenWeb's default kept): " + string.Join(", ", missing));
         foreach (var e in Collect()) Said.Add("set-up: " + e);
         await CompareSettingsAsync(replies);
-        // The steering speed limits don't apply on the simulator (AgOpenGPS neither), and the
-        // replay feeds a simulator log as real GPS: with the reporter's limits AutoSteer would go
-        // off in the cycle it was engaged (#570's log runs at 20 km/h with a 15 km/h maximum).
-        if (Dump.IsSimulator && await Rig.ReadAsync(() => Rig.Store.AutoSteer.MaxSteerSpeed > 0 || Rig.Store.AutoSteer.MinSteerSpeed > 0))
-        {
-            await Rig.SendAsync("config.set", "autosteer.maxSteerSpeed:0");
-            await Rig.SendAsync("config.set", "autosteer.minSteerSpeed:0");
-            foreach (var e in Collect()) Said.Add("set-up: " + e);
-            S.Step("steering speed limits off: the reporter drove the simulator, where they don't apply, and the replay feeds its log as real GPS");
-        }
 
         DriftE = BugDump.Get(Dump.Runtime, "Field", "DriftEasting")?.GetDouble() ?? 0;
         DriftN = BugDump.Get(Dump.Runtime, "Field", "DriftNorthing")?.GetDouble() ?? 0;
@@ -402,6 +392,17 @@ public sealed class DumpReplay : IAsyncDisposable
     public async Task ReplayAsync()
     {
         var rows = Dump.Rows;
+        // The steering speed limits don't apply on the simulator (AgOpenGPS neither), and the
+        // replay feeds a simulator log as real GPS: with the reporter's limits AutoSteer would go
+        // off in the cycle it was engaged (#570's log runs at 20 km/h with a 15 km/h maximum).
+        if (Dump.IsSimulator && await Rig.ReadAsync(() => Rig.Store.AutoSteer.MaxSteerSpeed > 0 || Rig.Store.AutoSteer.MinSteerSpeed > 0))
+        {
+            await Rig.SendAsync("config.set", "autosteer.maxSteerSpeed:0");
+            await Rig.SendAsync("config.set", "autosteer.minSteerSpeed:0");
+            foreach (var e in Collect()) Said.Add("set-up: " + e);
+            double max = await Rig.ReadAsync(() => Rig.Store.AutoSteer.MaxSteerSpeed);
+            S.Step(F($"steering speed limits off (now {max:0} km/h): the reporter drove the simulator, where they don't apply, and the replay feeds its log as real GPS"));
+        }
         var sw = System.Diagnostics.Stopwatch.StartNew();
         double wall = 0;
         bool sectionsDone = false;
