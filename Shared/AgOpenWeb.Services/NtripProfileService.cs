@@ -110,8 +110,10 @@ public class NtripProfileService : INtripProfileService
     /// <summary>
     /// AgOpenGPS's NTRIP caster, from AgIO's settings (<c>AgIO/&lt;name&gt;.XML</c>, copied into the
     /// data folder with the AgOpenGPS profiles): a profile for each caster and mount point not
-    /// here yet, the default when there is none. As with the AgOpenGPS profiles, the copied file
-    /// is deleted once read, so a profile deleted later does not come back.
+    /// here yet. It becomes the default, and connects by itself, only when NTRIP was switched on
+    /// in AgIO and there is no default yet. AgIO writes every field, so a farmer who never set
+    /// NTRIP up has the caster AgIO ships with: that one is not imported. As with the AgOpenGPS
+    /// profiles, the copied file is deleted once read, so a profile deleted later does not come back.
     /// </summary>
     private async Task ImportAgIoCastersAsync()
     {
@@ -139,10 +141,17 @@ public class NtripProfileService : INtripProfileService
                 continue; // no caster set in AgIO
             int port = int.TryParse(Value("setNTRIP_casterPort"), System.Globalization.NumberStyles.Integer,
                 System.Globalization.CultureInfo.InvariantCulture, out var p) && p > 0 ? p : 2101;
+            bool isOn = bool.TryParse(Value("setNTRIP_isOn"), out var on) && on;
+            string user = Value("setNTRIP_userName");
+            string password = s.TryGetValue("setNTRIP_userPassword", out var pw) ? pw : "";
 
             bool known = _profiles.Any(x => string.Equals(x.CasterHost, host, StringComparison.OrdinalIgnoreCase)
                 && x.CasterPort == port && string.Equals(x.MountPoint, mount, StringComparison.Ordinal));
-            if (!known)
+            if (IsAgIoShippedCaster(host, port, mount, user, password, isOn))
+            {
+                _logger.LogInformation("AgIO's settings '{File}' hold the caster AgIO ships with, NTRIP off: not imported", file);
+            }
+            else if (!known)
             {
                 string name = mount + " (AgIO)";
                 for (int n = 2; _profiles.Any(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)); n++)
@@ -153,10 +162,10 @@ public class NtripProfileService : INtripProfileService
                     CasterHost = host,
                     CasterPort = port,
                     MountPoint = mount,
-                    Username = Value("setNTRIP_userName"),
-                    Password = s.TryGetValue("setNTRIP_userPassword", out var pw) ? pw : "",
-                    AutoConnectOnFieldLoad = !bool.TryParse(Value("setNTRIP_isOn"), out var on) || on,
-                    IsDefault = DefaultProfile == null,
+                    Username = user,
+                    Password = password,
+                    AutoConnectOnFieldLoad = isOn,
+                    IsDefault = isOn && DefaultProfile == null,
                 };
                 await SaveProfileAsync(profile);
                 _logger.LogInformation("Imported AgIO's NTRIP caster {Host}:{Port}/{Mount} as '{Name}'", host, port, mount, name);
@@ -165,6 +174,17 @@ public class NtripProfileService : INtripProfileService
             catch (Exception ex) { _logger.LogWarning(ex, "Could not delete the imported AgIO settings '{File}'", file); }
         }
     }
+
+    /// <summary>
+    /// The caster AgIO's settings start with (AgOpenGPS <c>AgIO/Source/Properties/Settings.cs</c>:
+    /// <c>NTRIP.itsware.net</c>:2101, mount <c>SCSC</c>, no login, NTRIP off): nobody set it up.
+    /// With NTRIP switched on or a login typed in, it is the farmer's caster.
+    /// </summary>
+    private static bool IsAgIoShippedCaster(string host, int port, string mount, string user, string password, bool isOn)
+        => !isOn && user.Length == 0 && password.Length == 0 && port == 2101
+           && string.Equals(mount, "SCSC", StringComparison.Ordinal)
+           && (string.Equals(host, "NTRIP.itsware.net", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(host, "69.75.31.235", StringComparison.Ordinal));
 
     /// <summary>
     /// Migrates legacy NTRIP settings from appsettings.json to a default profile

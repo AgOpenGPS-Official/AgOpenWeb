@@ -201,12 +201,19 @@ AgOpenGPS can stay installed: AgOpenWeb only reads copies of its files and never
    or `/home/agopenweb/AgOpenWeb/` for the Linux daemon): `Fields`, and from AgOpenGPS 6.8.2 on
    `VehicleProfiles`, `ToolProfiles`, `Environment` and `AgIO`.
 3. Start AgOpenWeb. Each tractor becomes a vehicle profile (with its steer, roll and GPS settings),
-   each implement a tool profile (with its sections and the U-turn and tram settings), and AgIO's
-   NTRIP caster an NTRIP profile with its login. The tractor and implement AgOpenGPS used last are
-   the pair in use. A field is converted the first time it is opened.
+   each implement a tool profile (with its sections, switches, relay pins and hydraulic lift, and
+   the U-turn and tram settings), and AgIO's NTRIP caster an NTRIP profile with its login. A field
+   is converted the first time it is opened.
+4. Check the pair in use (Vehicle and Tool). AgOpenWeb takes the tractor and the implement whose
+   files were saved last. AgOpenGPS keeps its own choice in the Windows registry, which a copy
+   does not bring, and a copy that does not keep the files' dates can make another pair the
+   newest.
 
 The copied files are deleted from AgOpenWeb's folder once converted, so a profile you delete later
 does not come back. A profile AgOpenWeb already has by the same name is left as it is.
+
+The NTRIP profile is the default, and connects by itself, only if NTRIP was switched on in AgIO.
+The caster AgIO starts with (`NTRIP.itsware.net`, mount `SCSC`, never set up) is not imported.
 
 ---
 

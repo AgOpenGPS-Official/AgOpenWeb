@@ -39,13 +39,16 @@ public static class AgOpenGpsProfileImport
     /// made only when a combined profile from before 6.8.2 is converted.</summary>
     public const string DefaultEnvironmentFile = "DefaultEnvironment.xml";
 
-    /// <summary>The guidance gains: AgOpenGPS 6.8.2+ keeps them with the implement, AgOpenWeb with
-    /// the vehicle. They are taken from the implement AgOpenGPS saved last, the one in use.</summary>
+    /// <summary>The guidance gains, the steering dead zone and the nudge steps: AgOpenGPS 6.8.2+
+    /// keeps them with the implement, AgOpenWeb with the vehicle. They are taken from the
+    /// implement AgOpenGPS saved last, the one in use. The U-turn compensation too, where the
+    /// implement has it (AgOpenGPS after 6.8.6; before, the environment's stands).</summary>
     private static readonly string[] GuidanceKeys =
     {
         "setVehicle_isStanleyUsed", "setVehicle_goalPointLookAheadHold", "setVehicle_goalPointLookAheadMult",
         "setVehicle_goalPointAcquireFactor", "stanleyDistanceErrorGain", "stanleyHeadingErrorGain",
-        "stanleyIntegralGainAB", "purePursuitIntegralGainAB",
+        "stanleyIntegralGainAB", "purePursuitIntegralGainAB", "setAS_uTurnCompensation",
+        "setAS_deadZoneHeading", "setAS_deadZoneDelay", "setAS_snapDistance", "setAS_snapDistanceRef",
     };
 
     private const string HitchKey = "setVehicle_hitchLength";

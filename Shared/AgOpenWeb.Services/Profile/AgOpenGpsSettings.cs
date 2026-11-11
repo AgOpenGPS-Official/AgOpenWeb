@@ -39,7 +39,7 @@ public static class AgOpenGpsSettings
 
     /// <summary>
     /// Apply AgOpenGPS settings to the store: the vehicle, guidance, U-turn, tool, sections,
-    /// AutoSteer, GPS, roll and tram settings AgOpenWeb has. <paramref name="filePath"/> becomes the
+    /// machine module, AutoSteer, GPS, roll and tram settings AgOpenWeb has. <paramref name="filePath"/> becomes the
     /// active vehicle profile's path (an AgOpenGPS .xml: <see cref="ConfigurationService"/> then
     /// keeps the AutoSteer settings read here instead of looking for its own AutoSteer file).
     /// </summary>
@@ -50,7 +50,11 @@ public static class AgOpenGpsSettings
         store.Vehicle.Type = (VehicleType)GetInt(settings, "setVehicle_vehicleType", 0);
         store.Vehicle.AntennaHeight = GetDouble(settings, "setVehicle_antennaHeight", 3.0);
         store.Vehicle.AntennaPivot = GetDouble(settings, "setVehicle_antennaPivot", 0.0);
-        store.Vehicle.AntennaOffset = GetDouble(settings, "setVehicle_antennaOffset", 0.0);
+        // AgOpenGPS measures the antenna offset to the left (ConfigVehicle: "Left" is checked when
+        // it is above 0 and "Right" is saved negative; Position moves the fix by +offset to the
+        // right to reach the centreline). AgOpenWeb measures it to the right
+        // (AntennaToPivotTransform), so the sign turns round.
+        store.Vehicle.AntennaOffset = Negated(GetDouble(settings, "setVehicle_antennaOffset", 0.0));
         store.Vehicle.Wheelbase = GetDouble(settings, "setVehicle_wheelbase", 2.5);
         store.Vehicle.TrackWidth = GetDouble(settings, "setVehicle_trackWidth", 1.8);
         store.Vehicle.MaxSteerAngle = GetDouble(settings, "setVehicle_maxSteerAngle", 35.0);
@@ -74,7 +78,7 @@ public static class AgOpenGpsSettings
         store.Guidance.UTurnExtension = GetDouble(settings, "set_youTurnExtensionLength", 20.0);
         store.Guidance.UTurnDistanceFromBoundary = GetDouble(settings, "set_youTurnDistanceFromBoundary", 2.0);
         store.Guidance.UTurnStyle = GetInt(settings, "set_uTurnStyle", (int)Models.YouTurn.YouTurnType.SagittaStyle);
-        store.Guidance.UTurnSmoothing = GetInt(settings, "setAS_uTurnSmoothing", 14);
+        store.Guidance.UTurnSmoothing = GetRounded(settings, "setAS_uTurnSmoothing", 14); // a double in AgOpenGPS
 
         // Tool config
         store.Tool.Width = GetDouble(settings, "setVehicle_toolWidth", 6.0);
@@ -89,11 +93,14 @@ public static class AgOpenGpsSettings
         store.Vehicle.HitchLength = xmlHitch;
         store.Tool.HitchLength = xmlHitch;
         // AgOpenGPS stores the trailing hitch negative (behind the hitch); AgOpenWeb keeps the
-        // distance. Before 6.8.2 the combined file named it setTool_…, the tool profile names
-        // it setVehicle_….
+        // distance. 6.8.2+ names it setVehicle_… (ToolSettings, and SettingsLegacy for a combined
+        // file); the combined file AgOpenGPS wrote up to 6.8.1 names it setTool_… (its Settings.cs).
         store.Tool.TrailingHitchLength = Math.Abs(GetDouble(settings, "setVehicle_toolTrailingHitchLength",
             GetDouble(settings, "setTool_toolTrailingHitchLength", 2.5)));
-        store.Tool.TankTrailingHitchLength = GetDouble(settings, "setVehicle_tankTrailingHitchLength", 3.0);
+        // The tank's hitch of a tow-between tool: AgOpenGPS saves what the farmer types negative
+        // (ConfigTool: nudTankHitch × -1; its default is +3) and shows Math.Abs of it; AgOpenWeb
+        // keeps the distance (ToolPositionService).
+        store.Tool.TankTrailingHitchLength = Math.Abs(GetDouble(settings, "setVehicle_tankTrailingHitchLength", 3.0));
         store.Tool.TrailingToolToPivotLength = GetDouble(settings, "setTool_trailingToolToPivotLength", 0.0);
         store.Tool.IsToolTrailing = GetBool(settings, "setTool_isToolTrailing", false);
         store.Tool.IsToolTBT = GetBool(settings, "setTool_isToolTBT", false);
@@ -102,7 +109,7 @@ public static class AgOpenGpsSettings
         store.Tool.LookAheadOnSetting = GetDouble(settings, "setVehicle_toolLookAheadOn", 1.0);
         store.Tool.LookAheadOffSetting = GetDouble(settings, "setVehicle_toolLookAheadOff", 0.5);
         store.Tool.TurnOffDelay = GetDouble(settings, "setVehicle_toolOffDelay", 0.0);
-        store.Tool.MinCoverage = GetInt(settings, "setVehicle_minCoverage", 100);
+        store.Tool.MinCoverage = GetRounded(settings, "setVehicle_minCoverage", 100); // a double in AgOpenGPS
         store.Tool.SlowSpeedCutoff = GetDouble(settings, "setVehicle_slowSpeedCutoff", 0.5);
         // AgOpenGPS writes setColor_isMultiColorSections; setTool_isMultiColoredSections was read before.
         store.Tool.IsMultiColoredSections = GetBool(settings, "setColor_isMultiColorSections",
@@ -113,6 +120,15 @@ public static class AgOpenGpsSettings
         // read here before, is a name it never wrote).
         store.Tool.IsHeadlandSectionControl = GetBool(settings, "setHeadland_isSectionControlled",
             GetBool(settings, "setTool_isHeadlandSectionControl", true));
+        // The work switch and the steer switch as section switches (AgOpenGPS ConfigTool's
+        // switches tab, CModuleComm). 6.8.2+ keeps them in the environment, but the steer
+        // switch's own on/off with the implement.
+        var defaultTool = new ToolConfig();
+        store.Tool.IsWorkSwitchEnabled = GetBool(settings, "setF_isWorkSwitchEnabled", defaultTool.IsWorkSwitchEnabled);
+        store.Tool.IsWorkSwitchActiveLow = GetBool(settings, "setF_isWorkSwitchActiveLow", defaultTool.IsWorkSwitchActiveLow);
+        store.Tool.IsWorkSwitchManualSections = GetBool(settings, "setF_isWorkSwitchManualSections", defaultTool.IsWorkSwitchManualSections);
+        store.Tool.IsSteerSwitchEnabled = GetBool(settings, "setF_isSteerWorkSwitchEnabled", defaultTool.IsSteerSwitchEnabled);
+        store.Tool.IsSteerSwitchManualSections = GetBool(settings, "setF_isSteerWorkSwitchManualSections", defaultTool.IsSteerSwitchManualSections);
 
         // Section config. AgOpenGPS runs setVehicle_numSections sections between the edges
         // setSection_position1..17 (metres, left first), or in zones mode setTool_numSectionsMulti
@@ -140,9 +156,6 @@ public static class AgOpenGpsSettings
                 for (int i = 0; i < sectionCount; i++)
                     sectionPositions[i + 1] = sectionPositions[i] + width;
             }
-            if (settings.TryGetValue("setTool_zones", out var zoneList)
-                && int.TryParse(zoneList.Split(',')[0].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int zoneCount))
-                store.Tool.Zones = zoneCount;
         }
         else
         {
@@ -154,11 +167,16 @@ public static class AgOpenGpsSettings
             }
         }
         store.SectionPositions = sectionPositions;
+        if (settings.TryGetValue("setTool_zones", out var zoneList))
+            ApplyZones(zoneList, store.Tool);
 
         // Tram lines
         store.Tram.TramWidth = GetDouble(settings, "setTram_tramWidth", new TramConfig().TramWidth);
         store.Guidance.TramPasses = GetInt(settings, "setTram_passes", new GuidanceConfig().TramPasses);
+        // AgOpenGPS ConfigModule's "Override" of the tram control side (CTram: isOuter = !isOuter).
+        store.Tram.IsOuterInverted = GetBool(settings, "setTool_isTramOuterInverted", new TramConfig().IsOuterInverted);
 
+        ApplyMachine(settings, store.Machine);
         ApplyAutoSteer(settings, store.AutoSteer);
         ApplyGpsAndRoll(settings, store);
 
@@ -177,9 +195,69 @@ public static class AgOpenGpsSettings
     }
 
     /// <summary>
+    /// AgOpenGPS's zones: <c>setTool_zones</c> is "count,end1,end2,…" (CTool: its zoneRanges[0]
+    /// is the count, zoneRanges[i] the section zone i ends at). AgOpenWeb keeps the count apart
+    /// and <see cref="ToolConfig.ZoneRanges"/>[0] at 0, so each end keeps its index.
+    /// </summary>
+    private static void ApplyZones(string zoneList, ToolConfig tool)
+    {
+        var words = zoneList.Split(',');
+        if (!int.TryParse(words[0].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int count))
+            return;
+        var ranges = new int[9];
+        for (int i = 1; i < ranges.Length && i < words.Length; i++)
+        {
+            if (int.TryParse(words[i].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int end))
+                ranges[i] = end;
+        }
+        tool.Zones = count;
+        tool.ZoneRanges = ranges;
+    }
+
+    /// <summary>
+    /// The machine module settings (AgOpenGPS ConfigModule): the relay pin map, the hydraulic
+    /// lift and the four user values of PGN 238. AgOpenWeb keeps them with the implement.
+    /// </summary>
+    public static void ApplyMachine(IReadOnlyDictionary<string, string> settings, MachineConfig m)
+    {
+        var d = new MachineConfig();
+        // setArdMac_setting0 is PGN 238's set0 byte: bit 0 inverts the relays, bit 1 is
+        // ConfigModule's hydraulic lift switch (it also shows the lift button). No form writes
+        // setArdMac_isHydEnabled, so it is not read.
+        bool hasSet0 = TryGetInt(settings, "setArdMac_setting0", out int set0);
+        m.InvertRelay = hasSet0 ? (set0 & 1) != 0 : d.InvertRelay;
+        m.HydraulicLiftEnabled = hasSet0 ? (set0 & 2) != 0 : d.HydraulicLiftEnabled;
+        m.RaiseTime = GetInt(settings, "setArdMac_hydRaiseTime", d.RaiseTime);
+        m.LowerTime = GetInt(settings, "setArdMac_hydLowerTime", d.LowerTime);
+        m.LookAhead = GetDouble(settings, "setVehicle_hydraulicLiftLookAhead", d.LookAhead);
+        m.User1Value = GetInt(settings, "setArdMac_user1", d.User1Value);
+        m.User2Value = GetInt(settings, "setArdMac_user2", d.User2Value);
+        m.User3Value = GetInt(settings, "setArdMac_user3", d.User3Value);
+        m.User4Value = GetInt(settings, "setArdMac_user4", d.User4Value);
+
+        // setRelay_pinConfig: the 24 pins of PGN 236, each with AgOpenGPS's function number
+        // (0 none, 1-16 a section, 17 Hyd Up, 18 Hyd Down, 19 Tram Right, 20 Tram Left,
+        // 21 Geo Stop), the numbers PinFunction keeps.
+        if (!settings.TryGetValue("setRelay_pinConfig", out var pinList))
+        {
+            m.ResetPinAssignments();
+            return;
+        }
+        var words = pinList.Split(',');
+        var pins = new PinFunction[24];
+        for (int i = 0; i < pins.Length && i < words.Length; i++)
+        {
+            if (int.TryParse(words[i].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int function)
+                && Enum.IsDefined(typeof(PinFunction), function))
+                pins[i] = (PinFunction)function;
+        }
+        m.PinAssignments = pins;
+    }
+
+    /// <summary>
     /// The steer module settings (AgOpenGPS's Steer Settings form): gains, PWM, WAS, and the
-    /// two setting bytes of PGN 251 exactly as AgOpenGPS sends them. Everything else is
-    /// AgOpenWeb's default.
+    /// two setting bytes of PGN 251 exactly as AgOpenGPS sends them; the dead zone and the nudge
+    /// steps, which 6.8.2+ keeps with the implement. Everything else is AgOpenWeb's default.
     /// </summary>
     public static void ApplyAutoSteer(IReadOnlyDictionary<string, string> settings, AutoSteerConfig a)
     {
@@ -201,15 +279,24 @@ public static class AgOpenGpsSettings
         // WAS offset is kept as AgOpenGPS wrote it: it was already set for the inverted sensor.
         if (TryGetInt(settings, "setArdSteer_setting0", out int set0)) a.SetFromSetting0Byte((byte)set0);
         if (TryGetInt(settings, "setArdSteer_setting1", out int set1)) a.SetFromSetting1Byte((byte)set1);
-        // PGN 251 byte 6: the pressure or current trip point (raw 0-255; AgOpenWeb keeps %),
-        // otherwise the turn sensor count.
+        // PGN 251 byte 6: the pressure or current trip point (raw 0-255; AgOpenWeb keeps the
+        // % AgOpenGPS shows for it, FormSteer: (int)(raw × 0.392), cut not rounded), otherwise
+        // the turn sensor count.
         if (TryGetInt(settings, "setArdSteer_maxPulseCounts", out int pulse))
         {
-            int pct = (int)Math.Round(Math.Clamp(pulse, 0, 255) * 100.0 / 255.0);
+            int pct = (int)(Math.Clamp(pulse, 0, 255) * 0.3921568627);
             if (a.PressureSensorEnabled) a.PressureTripPoint = pct;
             else if (a.CurrentSensorEnabled) a.CurrentTripPoint = pct;
             else a.TurnSensorCounts = Math.Clamp(pulse, 0, 255);
         }
+        // The dead zone: AgOpenGPS keeps the heading in hundredths of a degree (FormSteer:
+        // nudDeadZoneHeading × 100), AgOpenWeb in degrees; the delay is seconds in both.
+        if (TryGetDouble(settings, "setAS_deadZoneHeading", out double deadZoneHeading))
+            a.DeadzoneHeading = deadZoneHeading / 100.0;
+        a.DeadzoneDelay = GetInt(settings, "setAS_deadZoneDelay", a.DeadzoneDelay);
+        // The nudge steps (FormNudge, FormRefNudge), cm in both.
+        a.NudgeDistance = GetRounded(settings, "setAS_snapDistance", a.NudgeDistance);
+        a.RefNudgeDistance = GetRounded(settings, "setAS_snapDistanceRef", a.RefNudgeDistance);
     }
 
     /// <summary>The GPS and roll settings AgOpenWeb keeps with the vehicle.</summary>
@@ -230,6 +317,11 @@ public static class AgOpenGpsSettings
         c.HeadingFusionWeight = TryGetDouble(settings, "setIMU_fusionWeight2", out var weight)
             ? Math.Clamp(weight / GpsHeadingFusionService.FusionShareToWeight, 0.0, 1.0)
             : dc.HeadingFusionWeight;
+        // AgOpenGPS's RTK alarm and "kill AutoSteer" on it (ConfigData; the environment).
+        c.RtkLostAlarm = GetBool(settings, "setGPS_isRTK", dc.RtkLostAlarm);
+        c.RtkLostAction = settings.ContainsKey("setGPS_isRTK_KillAutoSteer")
+            ? (GetBool(settings, "setGPS_isRTK_KillAutoSteer", false) ? 1 : 0)
+            : dc.RtkLostAction;
 
         store.Ahrs.RollZero = GetDouble(settings, "setIMU_rollZero", 0.0);
         store.Ahrs.RollFilter = GetDouble(settings, "setIMU_rollFilter", 0.0);
@@ -255,6 +347,13 @@ public static class AgOpenGpsSettings
 
     private static int GetInt(IReadOnlyDictionary<string, string> settings, string key, int defaultValue)
         => TryGetInt(settings, key, out var v) ? v : defaultValue;
+
+    /// <summary>A setting AgOpenGPS keeps as a double and AgOpenWeb as a whole number.</summary>
+    private static int GetRounded(IReadOnlyDictionary<string, string> settings, string key, int defaultValue)
+        => TryGetDouble(settings, key, out var v) ? (int)Math.Round(v, MidpointRounding.AwayFromZero) : defaultValue;
+
+    /// <summary>The other sign, and 0 stays 0 (not -0, which a profile file would show).</summary>
+    private static double Negated(double value) => value == 0 ? 0 : -value;
 
     private static bool GetBool(IReadOnlyDictionary<string, string> settings, string key, bool defaultValue)
         => settings.TryGetValue(key, out var text) && bool.TryParse(text, out var v) ? v : defaultValue;
