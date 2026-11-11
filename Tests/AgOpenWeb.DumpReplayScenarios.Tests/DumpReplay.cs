@@ -592,7 +592,9 @@ public sealed class DumpReplay : IAsyncDisposable
         }
         if (Math.Abs(Math.Abs(shift) - w / 2) < 0.15)
         {
-            S.Problem(Severity.Inconsistency, Kind.Parity, "TRACK-PASSES-MOVED-HALF",
+            // Expected by the rule (no compatibility for older AgOpenWeb builds' files): a note.
+            // The same shift from a build that had the pass model is TRACK-PASSES-HALF-OFF above.
+            S.Note(
                 F($"this build puts the passes of the reporter's track '{track.Name}' {Math.Abs(shift):0.00} m, half a working width, from where the reporter's build (") + (Dump.BuildHash.Length >= 7 ? Dump.BuildHash[..7] : "older") +
                 ") drove them: that build predates the pass model change (1cf8ba17, 2026-10-20; " + how + "), where the reference line became the edge between two passes (AgOpenGPS's model, PassGeometry), so a track made before it moves by half a width. AgOpenWeb keeps no compatibility for files of older builds (CLAUDE.md), so this is expected, but an operator with such a track is guided half a width off until the line is moved; for the replay the operator moves it back with Ref Nudge > half width");
             await Rig.SendAsync("track.refNudgeBegin");
@@ -675,12 +677,12 @@ public sealed class DumpReplay : IAsyncDisposable
             AlignDone = true;
             // One pass over is how a fresh track selection can land (the nearest pass, by a
             // hair); more needs the dump to say how the reporter got there.
-            if (Math.Abs(_alignNet) > 1 && WhyOtherPass(r.T) == null)
+            if (Math.Abs(_alignNet) > 1 && WhyOtherPass(r.T, r.PathsAway) == null)
                 S.Problem(Severity.Inconsistency, Kind.AppDefect, "PASS-ALIGN-PRESSES",
                     F($"t {r.T:0.0} s: this build started {Math.Abs(_alignNet)} passes from the reporter's pass {r.PathsAway}, and the dump shows nothing that took the reporter there (no U-turn, manual turn or pass change in their log or GPS log before it); the lateral button was pressed {_alignPresses}x to compare on the same line"),
                     "replay", r.T);
             else if (_alignPresses > 0)
-                S.Step(F($"t {r.T,6:0.0} s: operator presses the lateral button {_alignPresses}x to get onto the reporter's pass {r.PathsAway} (this build had started on another") + (Math.Abs(_alignNet) > 1 ? "; " + WhyOtherPass(r.T) : "") + ")");
+                S.Step(F($"t {r.T,6:0.0} s: operator presses the lateral button {_alignPresses}x to get onto the reporter's pass {r.PathsAway} (this build had started on another") + (Math.Abs(_alignNet) > 1 ? "; " + WhyOtherPass(r.T, r.PathsAway) : "") + ")");
             return;
         }
         if (_alignPresses >= 40)
@@ -716,8 +718,15 @@ public sealed class DumpReplay : IAsyncDisposable
     /// <summary>What in the dump explains the reporter being on another pass than a fresh
     /// selection gives, up to <paramref name="t"/>: a U-turn or a manual turn in their log, a U-turn
     /// or a pass change in the GPS log. Null when nothing does.</summary>
-    private string? WhyOtherPass(double t)
+    private string? WhyOtherPass(double t, int pass)
     {
+        // The reporter's log names the pass they were on (a turn planned from it, "pathsAway=-9")
+        // before the GPS log starts: they got there before the five minutes it keeps (#591a).
+        string onPass = F($"pathsAway={pass}");
+        foreach (var l in Dump.Log)
+            if (Dump.LogT(l) is { } lt && lt <= t && pass != 0
+                && (l.Text.EndsWith(onPass, StringComparison.Ordinal) || l.Text.Contains(onPass + ",", StringComparison.Ordinal) || l.Text.Contains(onPass + " ", StringComparison.Ordinal)))
+                return F($"the reporter's log has them on pass {pass} at t {lt:0.0} s ({onPass})");
         foreach (var l in Dump.Log)
             if (Dump.LogT(l) is { } lt && lt <= t
                 && (l.Text.Contains("Turn complete", StringComparison.Ordinal) || l.Text.Contains("[ManualYouTurn]", StringComparison.Ordinal)
