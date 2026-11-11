@@ -15,9 +15,10 @@ harnesses on a development machine, where the app and other runs share its ports
   copied back, and `Tools/compare-reports.py` listing the findings new, gone and in both.
 
 Each container has its own network, so runs side by side don't share UDP 9999/8888. They do share
-the CPU: start nothing new while a harness runs, or a starved run misses its watchdogs and reports
-it (a false `AUTOSTEER-DROPPED`, 2026-11-10). `runner-compare.sh` refuses to start beside a running
-harness.
+the CPU, and a starved run misses its watchdogs and reports it (a false `AUTOSTEER-DROPPED`,
+2026-11-10, a build beside an unlimited run). So every run gets `--cpus 4`, and at most three run at
+once on the 6-core, 12-thread Mac mini: a comparison (two) and one more. `runner-compare.sh` does both
+(`CPUS`, `MAX_RUNS` to change them); a run started by hand needs `--cpus 4` too.
 
 ## Set up
 
@@ -38,7 +39,7 @@ AGOPENWEB_SCENARIO_ONLY=J1,J8 AGOPENWEB_SCENARIO_TURNS=2 \
   Tests/AgOpenWeb.FieldJobScenarios.Tests --filter FullyQualifiedName~FieldJobScenarioTests
 
 # One run by hand
-docker --context runner run -d --name j1 -v aow-cache:/cache -e CONFIG=Release \
+docker --context runner run -d --cpus 4 --name j1 -v aow-cache:/cache -e CONFIG=Release \
   -e AGOPENWEB_SCENARIO_ONLY=J1 aow-harness:latest develop Tests/AgOpenWeb.FieldJobScenarios.Tests
 docker --context runner wait j1 && docker --context runner cp j1:/out ./j1 && docker --context runner rm j1
 ```

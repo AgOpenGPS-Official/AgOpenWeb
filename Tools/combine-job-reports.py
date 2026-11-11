@@ -25,12 +25,14 @@ def findings(path):
         lines = open(path, encoding="utf-8").read().splitlines()
     except OSError:
         return None
-    out, inside = [], False
+    # A harness report lists them under "## Findings"; the combined report has no such heading
+    # and is all findings.
+    out, inside = [], not any(l.startswith("## Findings") for l in lines)
     for i, line in enumerate(lines):
         if line.startswith("## Findings"):
             inside = True
             continue
-        if inside and line.startswith("## "):
+        if inside and line.startswith("## ") and not line.startswith("## Findings"):
             break
         m = ENTRY.match(line) if inside else None
         if m:

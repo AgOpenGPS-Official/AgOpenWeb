@@ -26,13 +26,17 @@ dk() { docker --context "$ctx" "$@"; }
 envs=(-e "CONFIG=${CONFIG:-Release}")
 while IFS='=' read -r k _; do envs+=(-e "$k"); done < <(env | grep '^AGOPENWEB_' || true)
 
-# No new build next to a running harness: a starved run misses its watchdogs (false findings).
+# Each run is held to CPUS cores (default 4), so up to MAX_RUNS (default 3) share the host's 12
+# threads without starving one another: a starved run misses its watchdogs and reports false
+# findings (a false AUTOSTEER-DROPPED, 2026-11-10, a build beside an unlimited run). This
+# comparison starts two.
+cpus="${CPUS:-4}"; max="${MAX_RUNS:-3}"
 busy=$(dk ps --filter ancestor=aow-harness:latest -q | wc -l | tr -d ' ')
-[ "$busy" = 0 ] || { echo "The host already runs $busy harness container(s); wait for them."; exit 1; }
+[ $((busy + 2)) -le "$max" ] || { echo "The host already runs $busy harness container(s) of $max; wait for one to finish."; exit 1; }
 
 for side in fix base; do
   ref=$fix; [ $side = base ] && ref=$base
-  dk run -d --name "$name-$side" -v aow-cache:/cache "${envs[@]}" aow-harness:latest "$ref" "$proj" "$@" >/dev/null
+  dk run -d --cpus "$cpus" --name "$name-$side" -v aow-cache:/cache "${envs[@]}" aow-harness:latest "$ref" "$proj" "$@" >/dev/null
   echo "== $side ($ref): $name-$side"
 done
 for side in fix base; do

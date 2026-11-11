@@ -44,8 +44,10 @@ These need no code. They cut the most time.
    its base side by side on Runner, from the same image.
 5. **Don't build next to a running harness.** A starved process misses its watchdogs. It gave a
    false `AUTOSTEER-DROPPED` on Runner.
-6. **Before asking for a merge,** dispatch the nightlies on the branch on GitHub and compare their
-   reports with the night's report on develop.
+6. **The merge gate is a short run** (Chris, 2026-11-11): the unit test, the unit suites, and a short
+   fix-vs-base run of the jobs the fix touches on Runner, then merge. The nightly on develop is the
+   full check the next morning; a regression it shows gets its own fix PR. Whole nightlies on a
+   branch before merging held every fix for up to 80 minutes.
 
 ## 3. Done
 
@@ -139,7 +141,15 @@ machine ended higher (255 MB against 208 MB resident). Decide with the memory th
 threshold should be relative to the run's own early baseline, or the finding needs two runs before
 it is a Bug.
 
-### 4.7 Check the saving after a week
+### 4.7 Short runs everywhere, runs side by side (done)
+
+- `FROM_PASS` worked only on AB-line jobs: a job on a curve (J10, a recorded curve) started at its
+  first pass whatever was asked, so seeing its end of field meant 115 simulated minutes. The curve
+  start now takes it too, the pass driven the way the whole job would drive it.
+- Runner ran one harness at a time, to keep a run from being starved. Each run is now held to
+  4 CPUs (`--cpus`), and up to three run at once on its 12 threads: a comparison and one more.
+
+### 4.8 Check the saving after a week
 
 After a week of nightlies on the new workflows, add up the runner-minutes per night (weekday and
 Sunday) and the time from a finding to a merged fix, and compare them with section 1.
