@@ -206,6 +206,24 @@ public sealed class YouTurnStateMachine
 
         // ── TURN CREATION ───────────────────────────────────────────────
         bool canCreateTurn = isInCultivatedArea && headlandInRange;
+        // On a curve the headland ahead is found by a straight ray along the heading, which
+        // leaves the field early on the outside of a bend while the pass runs on. Whether the
+        // next pass has room is judged at that end, so mid-pass a turn was refused and "End of
+        // field reached" said, then the turn made at the real end (field job J10, a recorded
+        // S-curve). The pass itself is walked ahead (no further than a little past the ray): when
+        // it goes on in the field, the end is further on and is judged once the ray finds it.
+        if (canCreateTurn && turn.TurnPath == null && !turn.IsExecuting && track.Points.Count > 2)
+        {
+            const double RayShortBy = 5.0;
+            double along = _pathing.LandingLength(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
+                passPoint, !headingSameWay, 0, stopAt: turn.DistanceToHeadland + RayShortBy + 1);
+            if (along > turn.DistanceToHeadland + RayShortBy)
+            {
+                canCreateTurn = false;
+                _logger.LogDebug("[YouTurn] Curve: the pass runs on past the headland the straight line meets at {Dist:F1}m - the end is further on",
+                    turn.DistanceToHeadland);
+            }
+        }
         if (!canCreateTurn && ctx.IsSkipWorkedMode && isInHeadlandZone && isAlignedWithABLine
             && turn.SnakeSequence != null && turn.TurnPath == null && !turn.IsExecuting)
         {
