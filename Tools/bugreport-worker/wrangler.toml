@@ -33,7 +33,7 @@ PRUNE_TO_BYTES = "8000000000"
 TRACKING_ISSUE = ""
 NIGHTLY_CRON = "7 5 * * *"
 NIGHTLY_REF = "develop"
-NIGHTLY_WORKFLOWS = "field-scenarios.yml,steer-wizard-scenarios.yml,vehicle-tool-scenarios.yml,machine-module-scenarios.yml,gps-ntrip-scenarios.yml,field-job-scenarios.yml,isobus-scenarios.yml,path-job-scenarios.yml,web-client-scenarios.yml,update-scenarios.yml,working-day-scenarios.yml,dump-replay-scenarios.yml,rig-job-scenarios.yml,turn-intervention-scenarios.yml,imperial-job-scenarios.yml"
+NIGHTLY_WORKFLOWS = "field-scenarios.yml,steer-wizard-scenarios.yml,vehicle-tool-scenarios.yml,machine-module-scenarios.yml,gps-ntrip-scenarios.yml,job-scenarios.yml,isobus-scenarios.yml,web-client-scenarios.yml,update-scenarios.yml,working-day-scenarios.yml,dump-replay-scenarios.yml"
 
 [observability]
 enabled = true

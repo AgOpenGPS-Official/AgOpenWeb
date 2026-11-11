@@ -224,6 +224,15 @@ public sealed class JobRun : IAsyncDisposable
     /// <summary>The operator stopped the job because AgOpenWeb went wrong (a finding says how):
     /// the ground left is its consequence, not judged again.</summary>
     public bool EndedEarly;
+    /// <summary>A short run: stop at the start of U-turn N+1 (the Nth turn and the pass after it
+    /// driven), or after N simulated minutes. 0 = the whole job (the nightly).</summary>
+    /// <summary>Start on this pass (AgOpenWeb's pass number, as the reports give it) instead of the
+    /// first along the edge; int.MinValue = the first. The passes before it stay unworked, so the
+    /// run ends as an early end does (the whole-field checks are not made).</summary>
+    public static readonly int FromPass = int.TryParse(Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_FROM_PASS"), out var fp) ? fp : int.MinValue;
+    public int StartedAtPass = int.MinValue;
+    public static readonly int ShortTurns = int.TryParse(Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_TURNS"), out var st) ? st : 0;
+    public static readonly double ShortMinutes = double.TryParse(Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_MINUTES"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var sm) ? sm : 0;
     /// <summary>False = the receiver sends nothing (a careless operator's GPS loss).</summary>
     public volatile bool GpsOn = true;
     public int Pass = int.MinValue;
@@ -519,6 +528,16 @@ public sealed class JobRun : IAsyncDisposable
         int dir = Spec.T.Offset > 0 && !Spec.EdgePass ? -1 : 1;
         double TractorU(int i) => (i + 0.5) * Spacing - Spec.T.Offset * dir;
         for (k = kMin; k <= kMax && (InsideChordM(k) < 20 || (!Spec.EdgePass && Spec.T.Offset != 0 && InsideChordAtU(TractorU(k)) < 20)); k++) { }
+        // A run from a pass on (AGOPENWEB_SCENARIO_FROM_PASS): the tractor starts on that pass,
+        // driven the way the whole job would drive it (the passes alternate), the passes before it
+        // left unworked. With AGOPENWEB_SCENARIO_TURNS it reworks a few passes where a finding was.
+        if (FromPass != int.MinValue && FromPass > k)
+        {
+            if (((FromPass - k) & 1) == 1) dir = -dir;
+            Journal.Trace(F($"[fj] started at pass {FromPass} (AGOPENWEB_SCENARIO_FROM_PASS), not {k}"));
+            k = FromPass;
+            StartedAtPass = FromPass;
+        }
         if (k > kMin && Spec.T.Offset != 0)
             for (int i = kMin; i < k; i++)
                 if (InsideChordM(i) >= 20) Journal.Trace(F($"[fj] pass {i} skipped at the start: the implement's line has {InsideChordM(i):0} m in the cultivated area, the tractor's {InsideChordAtU(TractorU(i)):0} m"));
@@ -563,6 +582,12 @@ public sealed class JobRun : IAsyncDisposable
         var (pivot, hdg, k0) = StartPose();
         Truth.Place(pivot.E, pivot.N, hdg);
         S.Step(F($"tractor put at the start of pass {k0} ({pivot.E:0},{pivot.N:0}), 12 m before the boundary, heading {(hdg * 180 / Math.PI + 360) % 360:0}°"));
+        if (StartedAtPass != int.MinValue)
+        {
+            EndedEarly = true;
+            EndedBy = F($"a run from pass {StartedAtPass} on (AGOPENWEB_SCENARIO_FROM_PASS), the passes before it not worked");
+            Did(EndedBy);
+        }
         for (int i = 0; i < 30; i++) { Truth.Advance(FixSeconds, 0); SendFix(); await Task.Delay(PaceMs); }
         await Rig.WaitForVmAsync();
         await SendAsync("autosteer.toggle");
@@ -586,6 +611,17 @@ public sealed class JobRun : IAsyncDisposable
         var prevOpen = 0UL;
         while (Fix < maxFixes && !Stopped)
         {
+            // A short run (AGOPENWEB_SCENARIO_TURNS / _MINUTES): to confirm a fix on the first
+            // passes without driving the whole field. It ends as an early end does, so the
+            // checks that need the whole field are not made; the report says so.
+            if ((ShortTurns > 0 && TurnsStarted > ShortTurns) || (ShortMinutes > 0 && Seconds >= ShortMinutes * 60))
+            {
+                EndedBy = (EndedBy.Length > 0 ? EndedBy + "; " : "") + (ShortTurns > 0 && TurnsStarted > ShortTurns
+                    ? F($"a short run, stopped after {ShortTurns} U-turn(s) (AGOPENWEB_SCENARIO_TURNS)")
+                    : F($"a short run, stopped after {ShortMinutes} min (AGOPENWEB_SCENARIO_MINUTES)"));
+                EndedEarly = true; Stopped = true; Did(EndedBy);
+                break;
+            }
             Fix++;
             SimMs += 100;
             Truth.Advance(FixSeconds, cmd);
