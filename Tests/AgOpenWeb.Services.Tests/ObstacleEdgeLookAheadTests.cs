@@ -137,4 +137,20 @@ public class ObstacleEdgeLookAheadTests
             Assert.That(map.Select(x => x.On), Is.EqualTo(new[] { true }), "map: " + Show(map));
         });
     }
+    /// <summary>
+    /// A lap with the boom's end on the boundary: the section's real ends are judged, not the
+    /// map's 5 cm coverage margin, with <see cref="SectionControlService.EdgeLeewayM"/> of leeway
+    /// for the receiver's jitter. With the margin in the test the outer section never opened on
+    /// the first lap (path job scenarios EDGE-NOT-SPRAYED, a 1 m strip round the field).
+    /// </summary>
+    [TestCase(199.00, true, TestName = "The section's end on the boundary sprays")]
+    [TestCase(199.04, true, TestName = "The section's end 4 cm over the boundary sprays")]
+    [TestCase(199.10, false, TestName = "The section's end 10 cm over the boundary stays shut")]
+    public void A_lap_along_the_boundary(double e, bool sprays)
+    {
+        Field(Rect(10, 10, 12, 12));             // an obstacle far off; the 2 m section spans e ± 1
+        var (bit, _) = DriveNorth(e, 60, 150);
+        bool openAt100 = bit.LastOrDefault(x => x.N <= 100).On;
+        Assert.That(openAt100, Is.EqualTo(sprays), "module: " + Show(bit));
+    }
 }

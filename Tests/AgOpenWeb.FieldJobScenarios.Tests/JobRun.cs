@@ -1107,10 +1107,12 @@ public sealed class JobRun : IAsyncDisposable
                     if (Work != null && Ring.DistToRing(c, Work) < 3) a.MissedAtEnds += cell;
                     // Within 2 m of an obstacle: the sections closing over it and opening again.
                     else if (g.Near(i, j => (g.Zone[j] & (TruthGrid.InObstacle | TruthGrid.InDriveThrough)) != 0, 10)) a.MissedAtObstacles += cell;
+                    // The laps' corners first: a lap rounds a corner of the boundary and cannot reach
+                    // into it, whatever the sections do (near the fence too).
+                    else if (AtCorner?.Invoke(c) == true) a.MissedAtCorners += cell;
                     // No headland (the lap jobs): the edge of the field along the boundary.
                     else if (Work == null && Ring.DistToRing(c, Outer) < 1.5) a.MissedAlongBoundary += cell;
                     else if (LeftOnPurpose?.Invoke(c) == true) a.MissedLeftInMiddle += cell;
-                    else if (AtCorner?.Invoke(c) == true) a.MissedAtCorners += cell;
                     else if (SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; if (OnSeam(c)) a.MissedAtSeams += cell; }
                     // The rest: in a pass that was driven (worked along part of its length, as the
                     // first passes of a field whose corner a U-turn cut off), or in no driven pass

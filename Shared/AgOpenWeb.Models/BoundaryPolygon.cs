@@ -235,8 +235,7 @@ public class BoundaryPolygon
             return BoundaryResult.FullyInside;
         }
 
-        // FAST PATH: the section's line, with the 1 m margin the crossings below are counted
-        // in, lies wholly beside the bounding box: no edge can cross it and its ends and centre
+        // FAST PATH: the section's line, with a 1 m margin, lies wholly beside the bounding box: no edge can cross it and its ends and centre
         // are outside, so the walk below would answer fully outside. An obstacle away from the
         // tool is this case, every section three times a control tick (82 obstacles cost
         // 0.8 ms and 1.5 MB a tick without it).
@@ -276,8 +275,12 @@ public class BoundaryPolygon
             var intercept = GeometryMath.GetXInterceptAtYZero(p1, p2);
             if (intercept.HasValue)
             {
-                // Only count crossings within section width (with margin)
-                if (intercept.Value >= -halfWidth - 1.0 && intercept.Value <= halfWidth + 1.0)
+                // Only crossings on the section itself: the walk below starts at its left end
+                // (inside or not), so a crossing beyond either end must not toggle it. Counted up to
+                // 1 m beyond the ends, an edge crossing the section's line just past its end turned
+                // a section wholly in the field to 0 % inside (path job scenarios P1, the outer
+                // section shut along the boundary on the first lap).
+                if (intercept.Value > -halfWidth && intercept.Value < halfWidth)
                 {
                     crossings.Add(intercept.Value);
                 }
