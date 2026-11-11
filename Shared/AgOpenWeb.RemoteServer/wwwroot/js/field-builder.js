@@ -227,6 +227,21 @@ function renderFbTram() {
 }
 function curTram() { const ts = scene && scene.tramSystems; return (fbTramSel >= 0 && ts && ts[fbTramSel]) ? ts[fbTramSel] : null; }
 function tramSet(field, value) { const s = curTram(); if (s) transport.send('tram.set|' + s.index + ',' + field + ',' + value); }
+// A typed value goes to the host as typed: it refuses one out of range with the reason (a width
+// of 0, a negative pass count), where the editor used to drop or clamp it silently. A refused
+// value changes nothing, so no new scene rewrites the box: unless the operator typed on, it
+// shows the system's value again a moment later (TRAM-BOX-SHOWS-UNUSED-VALUE).
+function tramSetTyped(field, el, value) {
+  tramSet(field, value);
+  const typed = el.value;
+  setTimeout(() => {
+    const s = curTram();
+    if (!s || el.value !== typed || document.getElementById('fb-tramedit').hidden) return;
+    if (field === 'width') writeUnitInput(el, s.width);
+    else if (field === 'offset') writeUnitInput(el, s.offset);
+    else if (field === 'passes') el.value = s.isBoundary ? Math.max(1, s.passCount) : s.passCount;
+  }, 700);
+}
 document.getElementById('fb-tram-add').addEventListener('pointerdown', e => { e.stopPropagation(); fbTramPendingEdit = true; transport.send('tram.add'); });
 document.getElementById('fb-tram-delete').addEventListener('pointerdown', e => {
   e.stopPropagation();
@@ -263,9 +278,9 @@ function populateTramEdit() {
 }
 document.getElementById('fb-tram-en').addEventListener('pointerdown', e => { e.stopPropagation(); const s = curTram(); if (s) tramSet('enabled', s.enabled ? '0' : '1'); });
 document.getElementById('fb-tram-ref').addEventListener('change', e => { e.stopPropagation(); tramSet('ref', e.target.value); });
-document.getElementById('fb-tram-w').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (v > 0) tramSet('width', v); });
-document.getElementById('fb-tram-off').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (Number.isFinite(v)) tramSet('offset', v); });
-document.getElementById('fb-tram-passes').addEventListener('change', e => { e.stopPropagation(); const v = parseInt(e.target.value); const s = curTram(); if (Number.isFinite(v)) tramSet('passes', Math.max(s && s.isBoundary ? 1 : 0, v)); });
+document.getElementById('fb-tram-w').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (Number.isFinite(v)) tramSetTyped('width', e.target, v); });
+document.getElementById('fb-tram-off').addEventListener('change', e => { e.stopPropagation(); const v = readUnitInput(e.target); if (Number.isFinite(v)) tramSetTyped('offset', e.target, v); });
+document.getElementById('fb-tram-passes').addEventListener('change', e => { e.stopPropagation(); const v = parseInt(e.target.value); if (Number.isFinite(v)) tramSetTyped('passes', e.target, v); });
 for (const b of document.querySelectorAll('#fb-tramedit [data-tmode]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('mode', b.dataset.tmode); });
 for (const b of document.querySelectorAll('#fb-tramedit [data-tdir]')) b.addEventListener('pointerdown', e => { e.stopPropagation(); tramSet('dir', b.dataset.tdir); });
 document.getElementById('bm-delete').addEventListener('pointerdown', e => {
