@@ -1150,8 +1150,8 @@ public sealed class YouTurnStateMachine
                     guidance.HowManyPathsAway + (keepPositive == true ? 1 : -1) * (ctx.UTurnSkipRows + 1), ctx.Boundary, ctx.HeadlandLine)
                 : _pathing.WouldNextLineBeInsideBoundary(
                     track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive).isInside;
-            _logger.LogDebug("[YouTurn] Next line would be outside boundary{Room} - stopping U-turns",
-                roomSomewhere ? " at this end" : "");
+            _logger.LogDebug("[YouTurn] Next line would be outside boundary{Room} - stopping U-turns (headland {Dist:F1}m ahead of ({E:F1},{N:F1}) heading {Hdg:F0}°, zone {Zone})",
+                roomSomewhere ? " at this end" : "", turn.DistanceToHeadland, currentPosition.Easting, currentPosition.Northing, currentPosition.Heading, turn.CurrentZone);
             effects.StatusMessage = roomSomewhere ? "End of field reached - no room on the next pass at this end" : "End of field reached";
             SoundCreationFailed(effects);
             return;
