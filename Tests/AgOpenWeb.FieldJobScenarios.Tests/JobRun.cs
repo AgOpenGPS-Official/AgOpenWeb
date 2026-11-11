@@ -224,6 +224,10 @@ public sealed class JobRun : IAsyncDisposable
     /// <summary>The operator stopped the job because AgOpenWeb went wrong (a finding says how):
     /// the ground left is its consequence, not judged again.</summary>
     public bool EndedEarly;
+    /// <summary>A short run: stop at the start of U-turn N+1 (the Nth turn and the pass after it
+    /// driven), or after N simulated minutes. 0 = the whole job (the nightly).</summary>
+    public static readonly int ShortTurns = int.TryParse(Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_TURNS"), out var st) ? st : 0;
+    public static readonly double ShortMinutes = double.TryParse(Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_MINUTES"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var sm) ? sm : 0;
     /// <summary>False = the receiver sends nothing (a careless operator's GPS loss).</summary>
     public volatile bool GpsOn = true;
     public int Pass = int.MinValue;
@@ -586,6 +590,17 @@ public sealed class JobRun : IAsyncDisposable
         var prevOpen = 0UL;
         while (Fix < maxFixes && !Stopped)
         {
+            // A short run (AGOPENWEB_SCENARIO_TURNS / _MINUTES): to confirm a fix on the first
+            // passes without driving the whole field. It ends as an early end does, so the
+            // checks that need the whole field are not made; the report says so.
+            if ((ShortTurns > 0 && TurnsStarted > ShortTurns) || (ShortMinutes > 0 && Seconds >= ShortMinutes * 60))
+            {
+                EndedBy = ShortTurns > 0 && TurnsStarted > ShortTurns
+                    ? F($"a short run, stopped after {ShortTurns} U-turn(s) (AGOPENWEB_SCENARIO_TURNS)")
+                    : F($"a short run, stopped after {ShortMinutes} min (AGOPENWEB_SCENARIO_MINUTES)");
+                EndedEarly = true; Stopped = true; Did(EndedBy);
+                break;
+            }
             Fix++;
             SimMs += 100;
             Truth.Advance(FixSeconds, cmd);

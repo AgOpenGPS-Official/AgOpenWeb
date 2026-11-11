@@ -50,17 +50,37 @@ jobs:
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 300
 
       - name: Anything new since the last night?
         id: fresh
         run: |
-          if [ "${{ inputs.nightly }}" != "true" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
-          last=$(git log -1 --format=%ct HEAD)
-          age=$(( $(date +%s) - last ))
-          if [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "No commit on develop in the last 25 hours; nothing to run." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          # The settings sweep (about 100 min) only when what it covers changed, and on Sundays;
+          # the operators every night with a commit.
+          if [ "${{ matrix.part.name }}" = sweep ]; then
+            .github/scripts/nightly-fresh.sh "${{ inputs.nightly }}" \
+            Shared/AgOpenWeb.Services/AutoSteer \
+            Shared/AgOpenWeb.Services/Track \
+            Shared/AgOpenWeb.Services/Tool \
+            Shared/AgOpenWeb.Services/Section \
+            Shared/AgOpenWeb.Services/Pipeline \
+            Shared/AgOpenWeb.Services/YouTurn \
+            Shared/AgOpenWeb.Services/Gps \
+            Shared/AgOpenWeb.Services/GpsService.cs \
+            Shared/AgOpenWeb.Services/UdpCommunicationService.cs \
+            Shared/AgOpenWeb.Services/ModuleCommunicationService.cs \
+            Shared/AgOpenWeb.Services/ConfigurationService.cs \
+            Shared/AgOpenWeb.Models/Configuration \
+            Shared/AgOpenWeb.Models/Tool \
+            Shared/AgOpenWeb.Models/Vehicle \
+            Shared/AgOpenWeb.Models/Guidance \
+            Shared/AgOpenWeb.Models/Track \
+            Shared/AgOpenWeb.RemoteWiring/RemoteServerWiring.Helpers.cs \
+            Simulators/AgOpenWeb.VirtualModules \
+            Tests/AgOpenWeb.VehicleToolScenarios.Tests \
+            .github/workflows/vehicle-tool-scenarios.yml
+          else .github/scripts/nightly-fresh.sh "${{ inputs.nightly }}"; fi
 
       - uses: ./.github/actions/sharpisoterm-cache
         if: steps.fresh.outputs.run == 'true'
