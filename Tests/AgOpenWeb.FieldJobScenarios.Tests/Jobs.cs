@@ -162,7 +162,7 @@ public static class Jobs
         else
             sc.Ok(F($"the whole field was worked: {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed, {(r.EndedBy.Length > 0 ? r.EndedBy : F($"AgOpenWeb reported the end of the field after {r.Turns.Count} U-turns"))}"));
         if (r.EarlyEnds.Count > 0)
-            flag(Severity.Bug, "END-OF-FIELD-TOO-EARLY", F($"AgOpenWeb said \"End of field reached\" and then made a U-turn onto another pass after all ({string.Join("; ", r.EarlyEnds)}): an operator who stops at the message leaves the rest of the field undone. The operator here drove on."));
+            flag(Severity.Bug, "END-OF-FIELD-TOO-EARLY", F($"AgOpenWeb said \"End of field reached\" (or that there was no room at this end) and then made a U-turn onto another pass after all ({string.Join("; ", r.EarlyEnds)}): an operator who stops at the message leaves the rest of the field undone. The operator here drove on."));
         if (a.MissedAtCorners > 0)
             sc.Note(F($"{a.MissedAtCorners:0} m² ({Pct(a.MissedAtCorners, a.Work)}) at the laps' corners were never sprayed: a lap is rounded where it turns tighter than the rig can (the U-turn radius, {r.Rig.Store.Guidance.UTurnRadius:0} m), so at a corner the next lap in pulls away from it"));
 
