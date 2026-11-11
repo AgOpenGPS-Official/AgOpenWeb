@@ -395,13 +395,14 @@ public sealed class DumpReplay : IAsyncDisposable
         // The steering speed limits don't apply on the simulator (AgOpenGPS neither), and the
         // replay feeds a simulator log as real GPS: with the reporter's limits AutoSteer would go
         // off in the cycle it was engaged (#570's log runs at 20 km/h with a 15 km/h maximum).
-        if (Dump.IsSimulator && await Rig.ReadAsync(() => Rig.Store.AutoSteer.MaxSteerSpeed > 0 || Rig.Store.AutoSteer.MinSteerSpeed > 0))
+        // So the widest the settings screen allows: no minimum, 50 km/h.
+        if (Dump.IsSimulator && await Rig.ReadAsync(() => Rig.Store.AutoSteer.MaxSteerSpeed is > 0 and < 50 || Rig.Store.AutoSteer.MinSteerSpeed > 0))
         {
-            // Straight into the store: the settings screen keeps the maximum above the minimum,
-            // so it can't set both to 0 (the pipeline's "no limit").
-            await Rig.RunAsync(() => { Rig.Store.AutoSteer.MinSteerSpeed = 0; Rig.Store.AutoSteer.MaxSteerSpeed = 0; });
-            double max = await Rig.ReadAsync(() => Rig.Store.AutoSteer.MaxSteerSpeed);
-            S.Step(F($"steering speed limits off (now {max:0} km/h): the reporter drove the simulator, where they don't apply, and the replay feeds its log as real GPS"));
+            await Rig.SendAsync("config.set", "autosteer.minSteerSpeed:0");
+            await Rig.SendAsync("config.set", "autosteer.maxSteerSpeed:50");
+            foreach (var e in Collect()) Said.Add("set-up: " + e);
+            var (min, max) = await Rig.ReadAsync(() => (Rig.Store.AutoSteer.MinSteerSpeed, Rig.Store.AutoSteer.MaxSteerSpeed));
+            S.Step(F($"steering speed limits {min:0}-{max:0} km/h: the reporter drove the simulator, where they don't apply, and the replay feeds its log as real GPS"));
         }
         var sw = System.Diagnostics.Stopwatch.StartNew();
         double wall = 0;
@@ -442,8 +443,8 @@ public sealed class DumpReplay : IAsyncDisposable
                 {
                     await Rig.SendAsync("autosteer.toggle");
                     engages++;
-                    checkEngaged = true;
                     bool now = await Rig.ReadAsync(() => Rig.Vm.IsAutoSteerEngaged);
+                    checkEngaged = now;
                     S.Step(F($"t {r.T,6:0.0} s: operator engages AutoSteer (as the reporter did){(now ? "" : ": it did NOT engage: " + string.Join(" | ", Collect().Take(2)))}"));
                     if (SectionsAuto && !sectionsDone && now)
                     {
