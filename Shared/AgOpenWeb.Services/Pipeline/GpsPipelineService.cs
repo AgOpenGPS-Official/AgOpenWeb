@@ -361,10 +361,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     // Recorded route playback (P7): the line AutoSteer follows while a route plays, set from
     // the UI thread, followed by the cycle.
-    private PathPlanning.RecordedPathFollower? _recordedPath;
+    private PathPlanning.RecordedRouteGuide? _recordedPath;
 
-    public void SetRecordedPathGuidance(IReadOnlyList<Vec3>? path, int startIndex, bool approach) =>
-        Volatile.Write(ref _recordedPath, path is { Count: >= 2 } ? new PathPlanning.RecordedPathFollower(path, startIndex, approach) : null);
+    public void SetRecordedPathGuidance(IReadOnlyList<Vec3>? approach, IReadOnlyList<Vec3>? route, int routeStartIndex) =>
+        Volatile.Write(ref _recordedPath, route is { Count: >= 2 } ? new PathPlanning.RecordedRouteGuide(approach, route, routeStartIndex) : null);
 
     public void SetContourMode(bool on)
     {

@@ -349,7 +349,8 @@ public partial class MainViewModel
         // AutoSteer follows the approach, then the route, once the operator engages it on them
         // (P7). Steering on another line stops here, so it never jumps from it to the route.
         StopAutoSteerForPlayback("recorded path started");
-        _gpsPipelineService.SetRecordedPathGuidance(dubinsPath, 0, approach: true);
+        _gpsPipelineService.SetRecordedPathGuidance(dubinsPath,
+            recState.RecordedPoints.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)).ToList(), startIdx);
         IsAutoSteerAvailable = true;
 
         // Set Dubins approach path on map
@@ -371,7 +372,7 @@ public partial class MainViewModel
         recState.IsFollowingRecPath = false;
         recState.IsEndOfLine = false;
         recState.DubinsApproachPath.Clear();
-        _gpsPipelineService.SetRecordedPathGuidance(null, 0, approach: false);
+        _gpsPipelineService.SetRecordedPathGuidance(null, null, 0);
         StopAutoSteerForPlayback("recorded path stopped");
         IsAutoSteerAvailable = SelectedTrack != null || IsContourModeOn;
 
@@ -446,8 +447,6 @@ public partial class MainViewModel
             recState.IsFollowingRecPath = true;
             recState.CurrentPositionIndex = nearestRecIdx;
             recState.DubinsApproachPath.Clear();
-            _gpsPipelineService.SetRecordedPathGuidance(
-                recState.RecordedPoints.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)).ToList(), nearestRecIdx, approach: false);
             _dubinsClosestIdx = 0;
             _mapService.SetYouTurnPath(null);
             StatusMessage = "Following recorded path...";

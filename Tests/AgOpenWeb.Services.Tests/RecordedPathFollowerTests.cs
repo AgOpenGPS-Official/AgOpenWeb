@@ -61,4 +61,21 @@ public class RecordedPathFollowerTests
         f = new RecordedPathFollower(Route(), 0, approach: false);
         Assert.That(f.Follow(-0.5, 5, 0, 3, 35)!.Value.CrossTrackError, Is.EqualTo(-0.5).Within(1e-9));
     }
+
+    [Test]
+    public void The_approach_hands_over_to_the_route_without_a_cycle_with_no_line()
+    {
+        // The approach: 10 m north from (0,-10) to the route's start at (0,0).
+        var approach = new List<Vec3>();
+        for (double y = -10; y <= 0; y += 0.5) approach.Add(new Vec3(0, y, 0));
+        var g = new RecordedRouteGuide(approach, Route(), 0);
+        double e = 0, n = -10, h = 0, step = 8 / 3.6 * 0.1;
+        for (int fix = 0; n < 40; fix++)
+        {
+            var s = g.Follow(e, n, h, 3, 35);
+            Assert.That(s, Is.Not.Null, $"a line at every fix (fix {fix}, {n:0.0} m north)");
+            h += step * Math.Tan(s!.Value.SteerAngleDegrees * Math.PI / 180) / 3;
+            e += step * Math.Sin(h); n += step * Math.Cos(h);
+        }
+    }
 }

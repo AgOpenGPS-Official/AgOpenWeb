@@ -74,9 +74,10 @@ public interface IGpsPipelineService
     /// </summary>
     void SetDriftCompensation(double driftE, double driftN);
 
-    /// <summary>A recorded route playing (P7): the path AutoSteer follows instead of the track
-    /// (the Dubins approach with <paramref name="approach"/>, then the route), or null when playback stops.</summary>
-    void SetRecordedPathGuidance(IReadOnlyList<Vec3>? path, int startIndex, bool approach);
+    /// <summary>A recorded route playing (P7): what AutoSteer follows instead of the track, the
+    /// Dubins approach (if any) and then the route from its point nearest the tractor; a null
+    /// route when playback stops.</summary>
+    void SetRecordedPathGuidance(IReadOnlyList<Vec3>? approach, IReadOnlyList<Vec3>? route, int routeStartIndex);
 
     // ── Contour (#110, AgOpenGPS CContour) ───────────────────────────────
 

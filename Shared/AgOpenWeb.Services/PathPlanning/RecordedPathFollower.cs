@@ -82,3 +82,35 @@ public sealed class RecordedPathFollower
         return new Steer(steerRad * 180.0 / Math.PI, xte, goal.Easting, goal.Northing);
     }
 }
+
+/// <summary>
+/// A played route as the GPS pipeline follows it: the Dubins approach, then the route from the
+/// point the approach leads to, handed over in the same cycle (no gap where AutoSteer has no
+/// line). The search starts there, not at the route's nearest point: a lap's two ends can lie
+/// side by side.
+/// </summary>
+public sealed class RecordedRouteGuide
+{
+    private readonly IReadOnlyList<Vec3> _route;
+    private readonly int _routeStart;
+    private RecordedPathFollower _current;
+    private bool _onRoute;
+
+    public RecordedRouteGuide(IReadOnlyList<Vec3>? approach, IReadOnlyList<Vec3> route, int routeStartIndex)
+    {
+        _route = route;
+        _routeStart = routeStartIndex;
+        _onRoute = approach is not { Count: >= 2 };
+        _current = _onRoute ? new RecordedPathFollower(route, routeStartIndex, approach: false) : new RecordedPathFollower(approach!, 0, approach: true);
+    }
+
+    /// <summary>The steer along the approach or the route; null at the route's end.</summary>
+    public RecordedPathFollower.Steer? Follow(double e, double n, double headingRad, double wheelbase, double maxSteerDegrees)
+    {
+        if (_current.Follow(e, n, headingRad, wheelbase, maxSteerDegrees) is { } s) return s;
+        if (_onRoute) return null;
+        _onRoute = true;
+        _current = new RecordedPathFollower(_route, _routeStart, approach: false);
+        return _current.Follow(e, n, headingRad, wheelbase, maxSteerDegrees);
+    }
+}

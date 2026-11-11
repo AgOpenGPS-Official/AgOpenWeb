@@ -14,7 +14,7 @@ namespace AgOpenWeb.ViewModels.Tests;
 /// <summary>
 /// A played recorded route is a line AutoSteer can follow (P7, as AgOpenGPS steers the module
 /// along it): with no track, AutoSteer engages while the route plays; the GPS pipeline gets the
-/// approach, then the route; starting and stopping playback turn AutoSteer off.
+/// approach and the route together; starting and stopping playback turn AutoSteer off.
 /// </summary>
 [TestFixture]
 [NonParallelizable] // ConfigurationStore is a singleton
@@ -41,7 +41,7 @@ public class RecordedPathAutoSteerTests
         Assert.That(vm.IsAutoSteerAvailable, Is.True);
         vm.ToggleAutoSteerCommand!.Execute(null);
         Assert.That(vm.IsAutoSteerEngaged, Is.True);
-        b.GpsPipelineService.Received().SetRecordedPathGuidance(Arg.Is<IReadOnlyList<Vec3>?>(p => p != null && p.Count >= 2), 0, true);
+        b.GpsPipelineService.Received().SetRecordedPathGuidance(Arg.Is<IReadOnlyList<Vec3>?>(p => p != null && p.Count >= 2), Arg.Is<IReadOnlyList<Vec3>?>(p => p != null && p.Count == 200), Arg.Any<int>());
     }
 
     [Test]
@@ -52,6 +52,6 @@ public class RecordedPathAutoSteerTests
         vm.StopPlaybackCommand!.Execute(null);
         Assert.That(vm.IsAutoSteerEngaged, Is.False);
         Assert.That(vm.IsAutoSteerAvailable, Is.False, "no track, no route");
-        b.GpsPipelineService.Received().SetRecordedPathGuidance(null, 0, false);
+        b.GpsPipelineService.Received().SetRecordedPathGuidance(null, null, 0);
     }
 }
