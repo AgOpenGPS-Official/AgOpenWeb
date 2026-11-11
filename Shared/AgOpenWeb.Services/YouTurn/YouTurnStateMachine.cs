@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
@@ -1262,9 +1263,45 @@ public sealed class YouTurnStateMachine
         turn.TurnPath = result.Path;
         turn.ArcStart = result.ArcStart;
         turn.YouTurnCounter = 0;
-        if (!result.UsedFallback && effects.StatusMessage == null)
+        double startsInside = TurnStartInsideHeadlandLine(result.ArcStart, ctx.HeadlandLine);
+        if (startsInside > NarrowHeadlandToleranceM && effects.StatusMessage == null)
+            effects.StatusMessage = HeadlandTooNarrowMessage(startsInside);
+        else if (!result.UsedFallback && effects.StatusMessage == null)
             effects.StatusMessage = $"YouTurn path created ({result.Path.Count} points)";
         effects.SyncTurnPathToMap = true;
+    }
+
+    /// <summary>Less than this inside the headland line is the turn line's own rounding.</summary>
+    private const double NarrowHeadlandToleranceM = 0.5;
+
+    /// <summary>
+    /// The operator's warning for a turn that leaves its pass before the headland line: the
+    /// headland is narrower than the turn needs at this radius and pass spacing, so the turn,
+    /// moved in to stay inside the turn line (as AgOpenGPS), starts in the cultivated area with
+    /// the sections still on: a wedge of the pass end is left unsprayed and the other side is
+    /// sprayed twice (field job scenarios: a 16 m headland, an 8 m radius on 8 m passes, the
+    /// turn starting 4.6 m inside).
+    /// </summary>
+    public static string HeadlandTooNarrowMessage(double insideM) => string.Format(CultureInfo.InvariantCulture,
+        "Headland too narrow for this U-turn: it leaves the pass {0:0.0} m before the headland line, still working. Widen the headland or reduce the U-turn radius.", insideM);
+
+    /// <summary>How far inside the headland line (in the cultivated area) the turn leaves its
+    /// pass: the arc's start, before the entry leg. 0 when it starts in the headland or there
+    /// is no headland line.</summary>
+    public static double TurnStartInsideHeadlandLine(Vec3? arcStart, IReadOnlyList<Vec3>? headlandLine)
+    {
+        if (arcStart is not { } a || headlandLine == null || headlandLine.Count < 3) return 0;
+        if (!GeometryMath.IsPointInPolygon(headlandLine, a)) return 0;
+        double best = double.MaxValue;
+        for (int i = 0, j = headlandLine.Count - 1; i < headlandLine.Count; j = i++)
+        {
+            var p = headlandLine[j]; var q = headlandLine[i];
+            double dx = q.Easting - p.Easting, dy = q.Northing - p.Northing, l2 = dx * dx + dy * dy;
+            double t = l2 < 1e-12 ? 0 : Math.Clamp(((a.Easting - p.Easting) * dx + (a.Northing - p.Northing) * dy) / l2, 0, 1);
+            double ex = p.Easting + t * dx - a.Easting, ey = p.Northing + t * dy - a.Northing;
+            best = Math.Min(best, ex * ex + ey * ey);
+        }
+        return Math.Sqrt(best);
     }
 
     private void CompleteTurn(
