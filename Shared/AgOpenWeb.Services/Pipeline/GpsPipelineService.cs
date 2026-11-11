@@ -1102,6 +1102,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         (double Width, double Shift, bool Extend, int Count)? guideArgs = null;
         IReadOnlyList<Vec3>? toolPass = null;
         (double Width, bool Extend)? toolPassArgs = null;
+        int? shownLandingPass = null; // the pass a U-turn being driven lands on, while it is the one shown
 
         // Always compute the display track when we have a track (for map visualization)
         if (hasTrack)
@@ -1115,7 +1116,20 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 _guidanceWorking.IsHeadingSameWay = IsHeadingSameWayOn(track!, driftedEasting, driftedNorthing, headingRad);
             double toolShift = Models.Track.PassGeometry.ToolShift(config2.Tool.Offset, _guidanceWorking.IsHeadingSameWay);
             double widthMinusOverlap = config2.ActualToolWidth - config2.Tool.Overlap;
-            double distAway = Models.Track.PassGeometry.Offset(track, passNumber, widthMinusOverlap, nudgeOffset, toolShift);
+            // While a U-turn is driven, the pass shown is the one it lands on, as AgOpenGPS, which
+            // moves to the next pass when the turn starts (CYouTurn.YouTurnTrigger): the line, the
+            // tool's band, the guidelines and the pass label. The pass worked (HowManyPathsAway)
+            // moves on when the turn completes, so a turn backed out of keeps its pass (#588).
+            // The landing pass is driven the other way: its tool shift has the other sign (#446).
+            int shownPass = passNumber;
+            double shownShift = toolShift;
+            if (isInYouTurn && TurnTargetPass() is { } landing)
+            {
+                shownPass = landing;
+                shownShift = -toolShift;
+                shownLandingPass = landing;
+            }
+            double distAway = Models.Track.PassGeometry.Offset(track, shownPass, widthMinusOverlap, nudgeOffset, shownShift);
 
             // Curve tracks: extend the displayed (magenta) line straight to the U-turn so
             // there's no visible gap between the guidance line and the turn (the line the
@@ -1131,7 +1145,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     // it isn't drawn twice at the same position.
                     displayTrack = new Models.Track.Track
                     {
-                        Name = $"{track.Name} (path {passNumber})",
+                        Name = $"{track.Name} (path {shownPass})",
                         Points = CurveProcessing.ExtendCurveEnds(track.Points),
                         Type = track.Type, IsVisible = true, IsActive = true, IsClosed = track.IsClosed
                     };
@@ -1148,7 +1162,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 var offsetPoints = extendDisp ? CurveProcessing.ExtendPass(pass) : new List<Vec3>(pass.Points);
                 displayTrack = new Models.Track.Track
                 {
-                    Name = $"{track.Name} (path {passNumber})",
+                    Name = $"{track.Name} (path {shownPass})",
                     Points = offsetPoints,
                     Type = track.Type,
                     IsVisible = true,
@@ -1158,12 +1172,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
 
             toolPassArgs = (widthMinusOverlap, extendDisp);
-            toolPass = ToolPass(track, passNumber, widthMinusOverlap, nudgeOffset, extendDisp);
+            toolPass = ToolPass(track, shownPass, widthMinusOverlap, nudgeOffset, extendDisp);
 
             if (config2.Display.ExtraGuidelines)
             {
                 guideArgs = (widthMinusOverlap, toolShift, extendDisp, config2.Display.ExtraGuidelinesCount);
-                guideLines = GuideLines(track, passNumber, widthMinusOverlap, nudgeOffset, toolShift, extendDisp,
+                guideLines = GuideLines(track, shownPass, widthMinusOverlap, nudgeOffset, toolShift, extendDisp,
                     config2.Display.ExtraGuidelinesCount, TurnTargetPass());
             }
         }
@@ -1520,7 +1534,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 _youTurn,
                 justCompleted: youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false)),
             Guidance = BuildGuidanceSnapshot(
-                WithLineLabel(_guidanceWorking), displayTrack, baseTrack, hasGuidance,
+                WithLineLabel(_guidanceWorking, shownLandingPass), displayTrack, baseTrack, hasGuidance,
                 diagPathAnchorA, diagPathAnchorB, diagTurnPathCount, diagAntiTangentGuardFired) with { GuideLines = guideLines, ToolPass = toolPass },
 
             // Sections
@@ -1616,10 +1630,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // The pass label, as AgOpenGPS's DrawTrackInfo: an arrow for the way you drive (up = A→B, its
     // font's '{'; down = B→A, its '}') and the pass counted from the reference line, which is the
     // edge between passes: pass 0 is 1R, pass −1 is 1L. The map adds the nudge in its own units.
-    private static GuidanceWorkingState WithLineLabel(GuidanceWorkingState g)
+    // The label names the pass shown: during a U-turn the pass it lands on, driven the other way.
+    private static GuidanceWorkingState WithLineLabel(GuidanceWorkingState g, int? landingPass = null)
     {
-        int pass = g.HowManyPathsAway;
-        g.CurrentLineLabel = (g.IsHeadingSameWay ? "↑" : "↓") + (pass >= 0 ? $"{pass + 1}R" : $"{-pass}L");
+        int pass = landingPass ?? g.HowManyPathsAway;
+        bool sameWay = landingPass.HasValue ? !g.IsHeadingSameWay : g.IsHeadingSameWay;
+        g.CurrentLineLabel = (sameWay ? "↑" : "↓") + (pass >= 0 ? $"{pass + 1}R" : $"{-pass}L");
         return g;
     }
 
