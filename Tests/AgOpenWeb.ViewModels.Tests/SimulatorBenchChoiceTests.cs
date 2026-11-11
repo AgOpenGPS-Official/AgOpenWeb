@@ -41,7 +41,6 @@ public class SimulatorBenchChoiceTests
     public void OffUnlessAskedFor()
     {
         Assert.That(_vm.IsSimulatorDrivingSteering, Is.False);
-        Assert.That(_vm.State.Simulator.DrivesSteering, Is.False);
         _b.GpsPipelineService.DidNotReceive().SetSimulatorSteersModule(true);
     }
 
@@ -51,7 +50,6 @@ public class SimulatorBenchChoiceTests
         _vm.IsSimulatorDrivingSteering = true;
 
         Assert.That(_vm.IsSimulatorDrivingSteering, Is.True);
-        Assert.That(_vm.State.Simulator.DrivesSteering, Is.True);
         _b.GpsPipelineService.Received(1).SetSimulatorSteersModule(true);
     }
 
@@ -77,7 +75,6 @@ public class SimulatorBenchChoiceTests
 
         _vm.IsSimulatorEnabled = true;
         Assert.That(_vm.IsSimulatorDrivingSteering, Is.False);
-        Assert.That(_vm.State.Simulator.DrivesSteering, Is.False);
     }
 
     [Test]

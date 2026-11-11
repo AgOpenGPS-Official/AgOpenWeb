@@ -327,10 +327,7 @@ public record StatusDto(
     // Bytes 9–11 of the last scan reply: the subnet the scan came from (#334); "" = none.
     string ScanReplySubnet = "",
     // The NTRIP session: which service is in use, the failover state, the last failure (NTRIP plan).
-    NtripSessionDto? NtripSession = null,
-    // The operator let the simulator move the real steering (a bench test). False, the steer
-    // module is never asked to steer on the simulator.
-    bool SimDrivesSteering = false);
+    NtripSessionDto? NtripSession = null);
 
 /// <summary>What the field data card shows beyond the worked area the status frame already
 /// carries: the boundary area less inner boundaries (0 = no boundary), the ground covered

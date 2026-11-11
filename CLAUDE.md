@@ -163,12 +163,11 @@ first. Free Drive is the operator's own test of the steering and still sends sta
 app's simulator, not the label on a fix: the scenario rigs feed their own fixes as
 `GpsSentenceType.Simulator` with the simulator off, and are steered.
 
-**Bench choice** (a steering motor on the desk): the sim bar's *Bench* button (`sim.driveSteering|1|0`,
-`MainViewModel.IsSimulatorDrivingSteering`, `GpsPipelineService.SetSimulatorSteersModule`) lets AutoSteer
-on the simulator send status 1. Shown only with the simulator on and a steer module answering, asked
-before it goes on, red while on (`statusBar.simDrivesSteering`). Never saved; dropped when the simulator
-is turned off and when the steer module goes silent; a change takes AutoSteer off first. The web client
-harness reads PGN 254 on the simulator, so its rig makes this choice (`WebClientRig`).
+**Bench choice** (a steering motor on the desk): not in the UI yet (an enhancement). The seam is there:
+`MainViewModel.IsSimulatorDrivingSteering` (`GpsPipelineService.SetSimulatorSteersModule`) lets AutoSteer on
+the simulator send status 1; never saved, dropped when the simulator is turned off and when the steer module
+goes silent, and a change takes AutoSteer off first. The web client harness reads PGN 254 on the simulator,
+so its rig sets it (`WebClientRig`).
 
 ### Host ↔ client commands
 The client sends `id|arg` strings (`transport.send('track.select|0')`). `RemoteServerWiring`

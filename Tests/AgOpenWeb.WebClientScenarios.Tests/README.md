@@ -26,8 +26,8 @@ read where a module reads it: **PGN 254 on 127.0.0.1:8888** (`ModuleListener.cs`
 AgOpenWeb's UDP service always sends (the status byte the steer module steers on, the steer
 angle, the speed, sections 1-16). The rig gives the UDP service no network interfaces, so its
 PGNs, module scans and subnet commands go to the loopback only, never to the LAN's broadcast.
-On the simulator AgOpenWeb tells the steer module "don't steer" unless the operator chose the
-bench test, so the rig makes that choice at the start (`IsSimulatorDrivingSteering`, and fails
+On the simulator AgOpenWeb tells the steer module "don't steer" unless the bench choice is on (no
+button for it yet), so the rig sets it at the start (`IsSimulatorDrivingSteering`, and fails
 if it was refused): the status byte then says what it says on a receiver's fix.
 
 Each screen that loses its link does so through **its own Wi-Fi** (`LinkRelay.cs`), a TCP relay

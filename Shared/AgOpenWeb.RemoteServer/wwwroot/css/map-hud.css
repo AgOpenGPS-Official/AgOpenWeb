@@ -294,11 +294,6 @@ body.maptap #ck { cursor: crosshair; }
   background: rgba(var(--ov),0.06); color: var(--text-muted); font: 700 12px system-ui, sans-serif;
   cursor: pointer; }
 .sim-toggle.on { background: #1f8f3f; border-color: #39FF6A; color: #fff; }
-/* Bench test (the simulator moves the real steering): only with the simulator on and a steer
-   module answering; red while on, as it moves hardware. */
-.sim-drive { display: none; padding: 0 8px; }
-.sim-drive.show { display: inline-block; }
-.sim-drive.on { background: #c0392b; border-color: #ff6b5e; color: #fff; }
 .sim-sep { width: 1px; height: 28px; background: var(--border); margin: 0 2px; }
 .sim-slider { width: 150px; accent-color: #4A90D9; cursor: pointer; }
 .sim-val { width: 46px; text-align: center; color: var(--text-muted); font: 600 11px ui-monospace, monospace; }

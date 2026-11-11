@@ -479,8 +479,7 @@ public sealed class SceneProjector : System.IDisposable
             FieldDataProvider?.Invoke(),
             cfg.SendCorrectedPosition,
             c.ScanReplySubnet ?? "",
-            BuildNtripSession(cfg.NtripProfilePerField, c),
-            _state.Simulator.DrivesSteering);
+            BuildNtripSession(cfg.NtripProfilePerField, c));
     }
 
     // The NTRIP session for the Network IO card, read live for every status frame.

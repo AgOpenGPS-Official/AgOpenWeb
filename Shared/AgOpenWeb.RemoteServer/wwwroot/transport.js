@@ -230,8 +230,6 @@ window.RemoteTransport = {
             ntripSession = { usingFallback: !!u8(), mainIsBack: !!u8(), hasFallback: !!u8(), profilePerField: !!u8(),
               state: u8(), lastError: i32(), attempts: i32(), retrySeconds: f32(), notice: str(), profile: str(), service: str() };
           }
-          // The simulator moves the real steering, a bench test (append-only).
-          const simDrivesSteering = !!u8();
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -243,7 +241,7 @@ window.RemoteTransport = {
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripEnabled, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
-            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet, ntripSession, simDrivesSteering,
+            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet, ntripSession,
           });
           break;
         }
