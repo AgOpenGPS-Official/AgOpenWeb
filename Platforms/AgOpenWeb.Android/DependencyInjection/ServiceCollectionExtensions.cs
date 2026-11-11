@@ -43,7 +43,8 @@ public static class ServiceCollectionExtensions
 
         // Centralized application state (single source of truth)
         services.AddSingleton<ApplicationState>();           // ephemeral, in-memory only
-        services.AddSingleton(_ => AgOpenWeb.Models.Configuration.ConfigurationStore.Instance); // config SoT; same object as .Instance (Views/tests use the static seam)
+        services.AddSingleton<AgOpenWeb.Models.Configuration.ConfigurationStoreLease>();
+        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStoreLease>().Store); // config SoT: a new store per backend, .Instance while it runs; disposed with the backend
         services.AddSingleton(_ => PersistentAppState.Instance); // persisted to appstate.json (same object as .Instance)
 
         // UI-thread dispatcher + timer abstraction. With the native UI gone the VM/pipeline

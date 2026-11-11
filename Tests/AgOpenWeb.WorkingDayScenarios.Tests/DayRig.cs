@@ -93,10 +93,10 @@ public sealed class DayRig : IAsyncDisposable
         Config = sp.GetRequiredService<IConfigurationService>();
     }
 
-    /// <summary>Start the backend on <paramref name="dataRoot"/>. The first start in the process
-    /// begins from a fresh configuration store; a later one (the next morning) keeps the store,
-    /// as a head whose process outlives the backend does (Android, iOS): the store is the
-    /// process's own (<c>ConfigurationStore.Instance</c>), never replaced by the app.</summary>
+    /// <summary>Start the backend on <paramref name="dataRoot"/>, in the same process as any
+    /// backend before it (the next morning), as a head whose process outlives the backend does
+    /// (Android). Each backend's store is its own (<c>ConfigurationStoreLease</c>, as the
+    /// heads register it), disposed with the backend.</summary>
     public static async Task<DayRig> StartAsync(string dataRoot, bool freshStore = true)
     {
         Directory.CreateDirectory(dataRoot);
@@ -271,7 +271,8 @@ public sealed class DayRig : IAsyncDisposable
     private static void AddBackendServices(IServiceCollection services)
     {
         services.AddSingleton<ApplicationState>();
-        services.AddSingleton(_ => AgOpenWeb.Models.Configuration.ConfigurationStore.Instance);
+        services.AddSingleton<AgOpenWeb.Models.Configuration.ConfigurationStoreLease>();
+        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStoreLease>().Store);
         services.AddSingleton(_ => PersistentAppState.Instance);
         services.AddTransient<MainViewModel>();
         services.AddTransient<ConfigurationViewModel>();
