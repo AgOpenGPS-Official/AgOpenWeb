@@ -195,7 +195,10 @@ const OSK = (() => {
 // point, and a single leading minus. This converts every input[type=number] (config dialogs,
 // tool dims, offsets, IP octets, …) and any added later — some config inputs are built
 // dynamically — so all fields behave identically. parseFloat/parseInt readers are unaffected.
+// A comma is the decimal point (a Portuguese, Spanish or German keyboard): dropping it made
+// '12,5' into 125 with nothing said (the web client harness's HEADING-COMMA-DROPPED).
 function filterNumericValue(s) {
+  s = s.replace(/,/g, '.');                                         // comma = decimal point
   s = s.replace(/[^0-9.\-]/g, '');                                 // digits, dot, minus only
   s = s.replace(/(?!^)-/g, '');                                    // minus only at the start
   const d = s.indexOf('.');
