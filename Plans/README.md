@@ -6,6 +6,7 @@ Work being done or agreed, one file per plan. Each starts with a **Status** line
 |---|---|
 | [ADD_ON_CARDS_PLAN.md](ADD_ON_CARDS_PLAN.md) | Web cards and the card pane built (#503, #513); the drawer, one device run and the add-on author page left (#456) |
 | [GPS_RECEIVER_SENTENCES_PLAN.md](GPS_RECEIVER_SENTENCES_PLAN.md) | In progress: receivers straight to the app |
+| [HARNESS_SPEED_PLAN.md](HARNESS_SPEED_PLAN.md) | In progress: short runs, one job nightly, slow harnesses only when changed, Runner tooling, fix-vs-base comparison, port guard; memory threshold and a week's measurement left |
 | [ISOBUS_VT_TRANSPORTS.md](ISOBUS_VT_TRANSPORTS.md) | In progress: how the VT reaches the implement bus |
 | [JOB_FINISH_LOCK_IMPLEMENT_PLAN.md](JOB_FINISH_LOCK_IMPLEMENT_PLAN.md) | Agreed, not started: implement on the job, Finish locks it |
 | [RTCM_FORWARDING_PLAN.md](RTCM_FORWARDING_PLAN.md) | Built; open bench checks |

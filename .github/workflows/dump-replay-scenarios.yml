@@ -76,6 +76,7 @@ jobs:
             Shared/AgOpenWeb.Services/FieldService.cs \
             Shared/AgOpenWeb.Models \
             Tests/AgOpenWeb.DumpReplayScenarios.Tests \
+            Tests/ScenarioShared \
             .github/workflows/dump-replay-scenarios.yml
 
       - uses: ./.github/actions/sharpisoterm-cache

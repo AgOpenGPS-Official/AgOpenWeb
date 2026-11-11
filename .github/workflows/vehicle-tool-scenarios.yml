@@ -79,6 +79,7 @@ jobs:
             Shared/AgOpenWeb.RemoteWiring/RemoteServerWiring.Helpers.cs \
             Simulators/AgOpenWeb.VirtualModules \
             Tests/AgOpenWeb.VehicleToolScenarios.Tests \
+            Tests/ScenarioShared \
             .github/workflows/vehicle-tool-scenarios.yml
           else .github/scripts/nightly-fresh.sh "${{ inputs.nightly }}"; fi
 
