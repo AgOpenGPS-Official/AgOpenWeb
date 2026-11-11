@@ -20,6 +20,7 @@ window.RemoteTransport = {
    *           onHello?:(clientId:string)=>void,
    *           onControlState?:(state:object)=>void,
    *           onSound?:(effectId:number)=>void,
+   *           onFrame?:()=>void,
    *           onStatus?:(state:string)=>void }} handlers
    */
   create(handlers) {
@@ -529,6 +530,9 @@ window.RemoteTransport = {
           if (!sawTick && new DataView(e.data).getUint8(0) === TYPE.TICK) sawTick = true;
           decode(e.data);
         } catch (err) { /* drop a malformed frame */ }
+        // Every frame, after it is handled: the page is alive and hearing the host. Unlike a
+        // timer, this still runs when the window is minimized or the tab is in the background.
+        handlers.onFrame && handlers.onFrame();
       };
       sock.onerror = () => { if (ws === sock) status('error'); };
       sock.onclose = () => { if (ws !== sock) return; status('disconnected'); if (!stopped) setTimeout(connect, 1000); };

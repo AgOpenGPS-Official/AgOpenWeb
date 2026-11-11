@@ -51,9 +51,21 @@ function claimSeatIfFree() {
   if (connState === 'connected' && myClientId && !iHoldControl && !lastControl.held)
     transport.send('control.acquire|Browser');
 }
-// Heartbeat keeps our hold alive while we control; a lapse trips the host deadman
-// (disengage autosteer + sections).
-setInterval(() => { if (iHoldControl) transport.send('control.presence'); }, 500);
+// Heartbeat keeps our hold alive while we control; a lapse (1.5 s) trips the host deadman
+// (disengage autosteer + sections). Sent on a timer and on every frame from the host, at most
+// every 400 ms. A minimized window or a background tab gets its timers throttled to once a
+// second, and after a few minutes to once a minute, which lapsed the deadman while the page was
+// alive and hearing the host's ten Ticks a second (#766). Frames still arrive there; a page the
+// system has frozen (a tablet asleep, a phone's screen off) answers neither, and the deadman trips.
+let presenceSentAt = 0;
+function sendPresence() {
+  if (!iHoldControl) return;
+  const now = Date.now();
+  if (now - presenceSentAt < 400) return;
+  presenceSentAt = now;
+  transport.send('control.presence');
+}
+setInterval(sendPresence, 500);
 updateControlUi();
 
 // Right-nav toolbar actuation. Each button sends its Tier-2 command,
