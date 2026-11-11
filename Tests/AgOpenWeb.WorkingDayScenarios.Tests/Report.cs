@@ -55,8 +55,8 @@ public static class Report
         if (ref0 != null && end != null)
         {
             // A leak keeps rising: every later baseline is above the reference, so the growth is
-            // the lowest of them (the last field's own buffers, kept until the next field opens,
-            // are CLOSED-FIELD-COVERAGE-KEPT).
+            // the lowest of them (the last field's own buffers, kept until the next field opens
+            // for reuse, are a measure).
             var later = d.Baselines.Where(b => b.Clock > refHeap!.Clock && (b.Code == "B-END" || b.Code.StartsWith("B-J", StringComparison.Ordinal))).ToList();
             var low = later.Count > 0 ? later.MinBy(b => b.P.HeapMB)! : end;
             double hh = Math.Max(0.5, (end.Clock - refHeap!.Clock).TotalHours);
@@ -95,20 +95,28 @@ public static class Report
                     F($"{ref0.P.Sockets} -> {end.P.Sockets} sockets, the same two browsers connected (the tablet and phone reconnected during the day).")));
         }
 
-        // With no field open the coverage service should hold little: what it keeps is the last
-        // field's, until the next field opens.
+        // With no field open the coverage service keeps the last field's display and detection
+        // buffers on purpose: the next field of that size reuses them instead of a fresh
+        // large-object allocation (up to 73 MB) and the collection it brings, which the 10 ms
+        // control tick feels. They don't add up from field to field and don't raise the day's
+        // peak (the next field needs its own), so they are a measure. Anything else held is a
+        // finding (in the 11-10 nightly, 37 MB of _newCellsServer while a phone stalled the
+        // broadcast).
         if (d.Censuses.FirstOrDefault(c => c.Label == "end" && c.Error == null) is { } endCensus)
         {
-            long held = endCensus.CoverageHeld.Values.Sum();
+            var reused = new[] { "_displayPixels", "_detectionBits" };
+            long kept = endCensus.CoverageHeld.Where(kv => reused.Contains(kv.Key)).Sum(kv => kv.Value);
+            var other = endCensus.CoverageHeld.Where(kv => !reused.Contains(kv.Key)).ToList();
+            long held = other.Sum(kv => kv.Value);
+            if (kept > 0)
+                d.Measures.Add(F($"With no field open, the coverage service keeps the last field's display and detection buffers for the next field to reuse: {kept / 1048576.0:0.0} MB"));
             if (held > 8 * 1048576L)
                 list.Add(new Finding("CLOSED-FIELD-COVERAGE-KEPT", Severity.Minor,
-                    F($"With no field open, the coverage service still held {held / 1048576.0:0.0} MB of the last field's buffers"),
+                    F($"With no field open, the coverage service still held {held / 1048576.0:0.0} MB beyond the buffers kept for reuse"),
                     F($"Heap census at the end of the day, after `{d.Jobs.LastOrDefault()?.Job.Field ?? "the last field"}` was closed: `CoverageMapService` holds ")
-                    + string.Join(", ", endCensus.CoverageHeld.Where(kv => kv.Value >= 512 * 1024).OrderByDescending(kv => kv.Value).Select(kv => F($"`{kv.Key}` {kv.Value / 1048576.0:0.0} MB")))
-                    + " (each field's own size, kept until the next field opens). The baselines after each field show it: "
-                    + string.Join(", ", d.Baselines.Where(b => b.Code.StartsWith("B-J", StringComparison.Ordinal)).Select(b => F($"`{b.Code}` {b.P.HeapMB:0.0} MB")))
-                    + ". It does not grow from field to field; freeing it when the field closes would lower the day's peak.",
-                    FindingKind.Enhancement));
+                    + string.Join(", ", other.Where(kv => kv.Value >= 512 * 1024).OrderByDescending(kv => kv.Value).Select(kv => F($"`{kv.Key}` {kv.Value / 1048576.0:0.0} MB")))
+                    + F($", besides {kept / 1048576.0:0.0} MB of display and detection buffers kept for the next field to reuse."),
+                    FindingKind.AppDefect));
         }
 
         // An hour parked with the field open: nothing is worked, nothing should grow.
