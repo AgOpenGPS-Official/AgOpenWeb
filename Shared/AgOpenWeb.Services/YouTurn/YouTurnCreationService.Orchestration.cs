@@ -1138,6 +1138,21 @@ public partial class YouTurnCreationService
             return path;
         }
 
+        // A manual turn that would take the tractor out of the field (past the outer boundary,
+        // or into an obstacle a turn may not drive through) is refused, as an automatic one is
+        // (#698): tapped at the headland line with a headland narrower than the turn, it went up
+        // to 7 m out of the field (Turn intervention scenarios T11, TURN-OUTSIDE-BOUNDARY).
+        // AgOpenGPS's manual turn has no such check. Judged only with the tractor inside the field:
+        // from outside, every path starts outside.
+        var outer = boundary?.OuterBoundary;
+        if (outer != null && outer.IsValid && outer.IsPointInside(currentPosition.Easting, currentPosition.Northing)
+            && LeavesField(path, boundary))
+        {
+            _logger.LogDebug("[ManualYouTurn] The turn would leave the field — refusing");
+            path.Clear();
+            return path;
+        }
+
         _logger.LogDebug("[ManualYouTurn] Dubins path: {Count} points, radius={Rad:F1}m, offset={Off:F1}m, turnLeft={Left}",
             path.Count, turnRadius, turnOffset, turnLeft);
 
