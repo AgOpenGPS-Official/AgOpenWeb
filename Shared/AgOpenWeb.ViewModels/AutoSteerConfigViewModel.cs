@@ -164,12 +164,7 @@ public partial class AutoSteerConfigViewModel : ObservableObject
                 {
                     UnsubscribeFromUdpEvents();
                     // Disable free drive when panel closes (safety)
-                    if (IsFreeDriveMode)
-                    {
-                        _autoSteerService?.DisableFreeDrive();
-                        IsFreeDriveMode = false;
-                        FreeDriveSteerAngle = 0;
-                    }
+                    StopFreeDrive();
                 }
             }
         }
@@ -761,6 +756,16 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     {
         get => _testSteerOffset;
         set => SetProperty(ref _testSteerOffset, value);
+    }
+
+    /// <summary>Free Drive off and the wheels back to centre in the panel (the panel closed,
+    /// or the browser that held control is gone).</summary>
+    public void StopFreeDrive()
+    {
+        if (!IsFreeDriveMode) return;
+        _autoSteerService?.DisableFreeDrive();
+        IsFreeDriveMode = false;
+        FreeDriveSteerAngle = 0;
     }
 
     public ICommand ToggleFreeDriveCommand { get; private set; } = null!;

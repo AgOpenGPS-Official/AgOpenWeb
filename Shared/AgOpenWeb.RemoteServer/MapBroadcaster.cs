@@ -138,7 +138,33 @@ public sealed class MapBroadcaster : IAsyncDisposable
         _started = true;
         _coverage.CoverageUpdated += OnCoverageUpdated;
         _coverage.BoundsExpanded += OnBoundsExpanded;
-        if (loop) _loop = Task.Run(() => RunAsync(_cts.Token));
+        if (loop)
+        {
+            _loop = Task.Run(() => RunAsync(_cts.Token));
+            _deadman = Task.Run(() => DeadmanAsync(_cts.Token));
+        }
+    }
+
+    private Task? _deadman;
+
+    /// <summary>
+    /// The deadman, on a timer of its own: a holder whose presence heartbeat has lapsed
+    /// is revoked and the failsafe runs, whatever the broadcast is doing. It ran at the top
+    /// of the broadcast tick, so a tick stuck in a send (a phone in a pocket) stopped it, and
+    /// AutoSteer stayed engaged with the operator's tablet gone (DEADMAN-BLOCKED-BY-A-PHONE).
+    /// </summary>
+    private async Task DeadmanAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(100));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(false))
+            {
+                try { _authority.SweepStale(); }
+                catch { /* a failsafe handler's fault must not stop the deadman */ }
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     private bool _started;
@@ -180,7 +206,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
 
     /// <summary>
     /// One tick of the 10 Hz broadcast, for a caller that runs the ticks itself: the deadman
-    /// sweep, every frame whose fingerprint moved, the Tick, coverage, the edge and the Status
+    /// sweep (with the loop running it has a timer of its own), every frame whose fingerprint moved, the Tick, coverage, the edge and the Status
     /// at about 2 Hz. With no client connected it runs to the end on the calling thread (a full
     /// coverage snapshot is built on a task of its own, as always). Only with the loop off
     /// (<see cref="Start"/> with <c>loop</c> false): two ticks at once would race over the
@@ -197,9 +223,9 @@ public sealed class MapBroadcaster : IAsyncDisposable
     /// <summary>One tick of the broadcast (the loop's, or <see cref="BroadcastOnceAsync"/>'s).</summary>
     private async Task TickAsync(CancellationToken ct)
     {
-        // Deadman: revoke a holder whose presence heartbeat has lapsed
-        // (fires the failsafe). Cheap; runs every 100 ms tick.
-        _authority.SweepStale();
+        // Deadman: with the loop running it has its own timer (DeadmanAsync); a caller
+        // that runs the ticks itself gets the sweep here.
+        if (_deadman == null) _authority.SweepStale();
 
         var fp = _projector.SceneFingerprint();
         if (fp != _lastFingerprint)
@@ -500,6 +526,10 @@ public sealed class MapBroadcaster : IAsyncDisposable
         if (_loop is not null)
         {
             try { await _loop.ConfigureAwait(false); } catch { /* ignore */ }
+        }
+        if (_deadman is not null)
+        {
+            try { await _deadman.ConfigureAwait(false); } catch { /* ignore */ }
         }
         if (_snapshotTask is not null)
         {
