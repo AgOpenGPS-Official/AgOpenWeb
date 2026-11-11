@@ -221,13 +221,11 @@ public sealed class YouTurnStateMachine
             const double RayShortBy = 5.0;
             double along = _pathing.LandingLength(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
                 passPoint, !headingSameWay, 0, stopAt: turn.DistanceToHeadland + 2 * RayShortBy);
-            _logger.LogDebug("[YouTurn] Curve: pass walked {Along:F1}m ahead in the field, the straight line {Dist:F1}m, from ({E:F1},{N:F1})",
-                along, turn.DistanceToHeadland, passPoint.Easting, passPoint.Northing);
             if (along > turn.DistanceToHeadland + RayShortBy)
             {
                 canCreateTurn = false;
-                _logger.LogDebug("[YouTurn] Curve: the pass runs on past the headland the straight line meets at {Dist:F1}m - the end is further on",
-                    turn.DistanceToHeadland);
+                _logger.LogDebug("[YouTurn] Curve: the pass runs on {Along:F1}m+ in the field past the headland the straight line meets at {Dist:F1}m - the end is further on",
+                    along, turn.DistanceToHeadland);
             }
         }
         if (!canCreateTurn && ctx.IsSkipWorkedMode && isInHeadlandZone && isAlignedWithABLine
