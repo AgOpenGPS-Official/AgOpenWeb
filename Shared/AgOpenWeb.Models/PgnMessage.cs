@@ -158,6 +158,12 @@ public static class PgnNumbers
     public const byte HELLO_FROM_MACHINE = 123;
 
     /// <summary>
+    /// From Machine (0xED = 237), sent by the machine module on its own: Machine_UDP_v5 and
+    /// Sprayer_ESP32 every 200 ms, the AiO v26 machine code 50 times a second. Docs/PGN.md.
+    /// </summary>
+    public const byte FROM_MACHINE = 237;
+
+    /// <summary>
     /// Hello/ping from IMU module (0x79 = 121)
     /// </summary>
     public const byte HELLO_FROM_IMU = 121;

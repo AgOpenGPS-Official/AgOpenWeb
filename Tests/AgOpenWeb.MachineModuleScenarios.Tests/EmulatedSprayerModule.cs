@@ -319,8 +319,8 @@ public sealed class EmulatedSprayerModule : IDisposable
             if (++_ticks % 4 == 0)
             {
                 HydTick();
-                // PGN 237 every 200 ms (AiO v26 layout): AgOpenWeb ignores it, it is here as the
-                // network load the real module adds.
+                // PGN 237 every 200 ms (AiO v26 layout): AgOpenWeb takes it as a sign of life, as
+                // the hello reply.
                 Send(new byte[] { 0x80, 0x81, 0x7B, 237, 8, (byte)SectionsOpen, (byte)(SectionsOpen >> 8),
                     (byte)(LinkOk && IsLower ? 1 : LinkOk && IsRaise ? 2 : 0), (byte)(LinkOk ? Tramline & 3 : 0),
                     (byte)(LinkOk && GeoStop != 0 ? 1 : 0), (byte)(LinkOk ? 1 : 0), 0, 0, 0 });

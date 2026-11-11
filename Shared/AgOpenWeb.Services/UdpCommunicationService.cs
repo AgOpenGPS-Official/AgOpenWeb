@@ -112,6 +112,9 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
     private const int HELLO_TIMEOUT_MS = 3000; // 3 seconds for hello response (tolerates Wi-Fi jitter)
     private const int DATA_TIMEOUT_STEER_MACHINE_MS = 1500; // 50Hz data, allow 1500ms for Wi-Fi latency jitter
+    // The machine module's own PGN 237 (five times a second or more)
+    // counts in the same window as its hello reply.
+    private const int DATA_TIMEOUT_MACHINE_MS = HELLO_TIMEOUT_MS;
     private const int DATA_TIMEOUT_IMU_MS = 1500; // 10Hz data, allow 1500ms for Wi-Fi latency jitter
 
     // #169 diagnostics: log once when GPS NMEA or steer PGN 253 stops for over 2 s and once
@@ -356,7 +359,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         return moduleType switch
         {
             ModuleType.AutoSteer => (now - _lastDataFromAutoSteer).TotalMilliseconds < DATA_TIMEOUT_STEER_MACHINE_MS,
-            ModuleType.Machine => (now - _lastDataFromMachine).TotalMilliseconds < DATA_TIMEOUT_STEER_MACHINE_MS,
+            ModuleType.Machine => (now - _lastDataFromMachine).TotalMilliseconds < DATA_TIMEOUT_MACHINE_MS,
             ModuleType.IMU => (now - _lastDataFromIMU).TotalMilliseconds < DATA_TIMEOUT_IMU_MS,
             _ => false
         };
@@ -567,7 +570,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         _perfTxWindowStart = DateTime.UtcNow;
     }
 
-    private void UpdateModuleConnection(byte[] data, IPEndPoint remoteEndPoint)
+    internal void UpdateModuleConnection(byte[] data, IPEndPoint remoteEndPoint)
     {
         var now = DateTime.Now;
         var remoteIp = remoteEndPoint.Address.ToString();
@@ -614,7 +617,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 _lastModuleResponse = DateTime.UtcNow;
                 break;
 
-            // Machine PGNs (receive-only, only Hello matters)
+            // Machine module: its hello reply here, its own PGN 237 below.
             case PgnNumbers.HELLO_FROM_MACHINE:  // 123
                 _lastHelloFromMachine = now;
                 _machineIp = remoteIp;
@@ -639,6 +642,16 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 break;
 
             case PgnNumbers.SWITCH_CONTROL: // 234 - remote section switches; AutoSteerService reads it
+                break;
+
+            // The machine module talking on its own: present, as with its hello reply. Over Wi-Fi
+            // the hello and its reply are both broadcasts, which nothing resends, while 237 comes
+            // five times a second or more; on the hello alone the Modules dot went amber for
+            // seconds with the module working.
+            case PgnNumbers.FROM_MACHINE: // 237 - what the module's outputs do
+                _lastDataFromMachine = now;
+                _machineIp = remoteIp;
+                _lastModuleResponse = DateTime.UtcNow;
                 break;
 
             default:
