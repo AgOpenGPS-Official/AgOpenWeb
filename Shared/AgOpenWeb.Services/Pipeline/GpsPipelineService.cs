@@ -359,6 +359,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
         lock (_stateLock) { _driftE = driftE; _driftN = driftN; }
     }
 
+    // Recorded route playback (P7): the line AutoSteer follows while a route plays, set from
+    // the UI thread, followed by the cycle.
+    private PathPlanning.RecordedRouteGuide? _recordedPath;
+
+    public void SetRecordedPathGuidance(IReadOnlyList<Vec3>? approach, IReadOnlyList<Vec3>? route, int routeStartIndex) =>
+        Volatile.Write(ref _recordedPath, route is { Count: >= 2 } ? new PathPlanning.RecordedRouteGuide(approach, route, routeStartIndex) : null);
+
     public void SetContourMode(bool on)
     {
         lock (_contourLock)
@@ -720,6 +727,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool contourOn;
         lock (_contourLock) contourOn = _contourOn;
         _guidanceWorking.IsContourMode = contourOn;
+        var recordedPath = contourOn ? null : Volatile.Read(ref _recordedPath);
 
         var pos = data.CurrentPosition;
         bool hasTrack = track != null && track.Points.Count >= 2;
@@ -899,7 +907,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         YouTurnEffects? youTurnTickEffects = null;
         bool hasValidHeadlandLine = headlandLine != null && headlandLine.Count >= 3;
         // No U-turns in contour mode (AgOpenGPS DisableYouTurnButtons).
-        bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn;
+        bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn && recordedPath == null;
 
         var tickPosition = pos with { Easting = driftedEasting, Northing = driftedNorthing };
         // An open curve whose ends face each other turns at the opening between them as at a
@@ -1183,6 +1191,36 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     Volatile.Write(ref _simulatorSteerAngle, steerAngle);
                     _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
                 }
+            }
+        }
+        else if (recordedPath != null)
+        {
+            // A recorded route playing replaces the track, as contour does: AutoSteer steers
+            // along it (AgOpenGPS steers the module along it; here the operator engages AutoSteer).
+            var cfgRp = _configStore.Vehicle;
+            if (recordedPath.Follow(driftedEasting, driftedNorthing, headingRad, cfgRp.Wheelbase, cfgRp.MaxSteerAngle) is { } rp)
+            {
+                crossTrackError = rp.CrossTrackError;
+                goalE = rp.GoalE;
+                goalN = rp.GoalN;
+                hasGoal = !_configStore.Guidance.IsStanley;
+                if (autoSteerEngaged)
+                {
+                    steerAngle = rp.SteerAngleDegrees;
+                    hasGuidance = true;
+                    Volatile.Write(ref _simulatorSteerAngle, steerAngle);
+                    _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
+                }
+            }
+            else if (autoSteerEngaged)
+            {
+                // The end of the route: nothing left ahead to steer to. AutoSteer off with the
+                // reason, as past the end of an open curve (AgOpenGPS stops playback there).
+                autoSteerEngaged = false;
+                autoSteerDisengaged = true;
+                disengageReason = RecordedPathEndReason;
+                lock (_stateLock) _autoSteerEngaged = false;
+                _autoSteerService.UpdateGuidanceResults(0, NoLineDistance);
             }
         }
         else if (autoSteerEngaged && hasTrack)
@@ -1661,6 +1699,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     /// <summary>Why AutoSteer went off at the end of an open curve (AgOpenGPS gsGuidanceStopped, gsPastEndOfCurve).</summary>
     public const string PastEndOfCurveReason = "AutoSteer disengaged - past end of curve";
+    public const string RecordedPathEndReason = "AutoSteer disengaged - end of the recorded path";
 
     private (double steerAngle, double xte, double goalE, double goalN, string? statusMessage, bool hasLine, bool atEnd)?
         CalculateTrackGuidance(

@@ -304,6 +304,11 @@ public static class Jobs
     private static void JudgeAutoSteer(Scenario sc, JobRun r, Action<Severity, string, string> flag)
     {
         var offs = r.Said.Where(s => s.Contains("AutoSteer off", StringComparison.Ordinal)).ToList();
+        // At the end of a played route AutoSteer goes off by design, with the reason (P7): the
+        // last off, on a route AgOpenWeb then said was complete. One anywhere else is a drop.
+        if (offs.Count > 0 && offs[^1].Contains("end of the recorded path", StringComparison.Ordinal)
+            && r.EndedBy?.Contains("recorded path is complete", StringComparison.Ordinal) == true)
+            offs.RemoveAt(offs.Count - 1);
         if (offs.Count > 0 && r.Spec.OnFix == null)
             flag(Severity.Bug, "AUTOSTEER-DROPPED", F($"AutoSteer switched itself off {offs.Count} time(s) during the job, re-engaged by the operator {r.Reengaged} time(s): {offs[0]}"));
         if (r.Problems.Any(p => p.StartsWith("HARNESS", StringComparison.Ordinal))) return;
