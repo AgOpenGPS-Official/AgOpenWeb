@@ -210,6 +210,8 @@ do not (`RigJobs.cs`), with the careful operator:
 | J18 | Olival | A 5 m trailed disc harrow on wheels in the middle of its frame |
 | J19 | Olival | A 6-furrow mounted reversible plough (2.7 m) at 7 km/h: it keeps to one side of the field whichever way it is driven, which AgOpenWeb's tool offset can't say |
 | J20 | Olival | The J14 tractor and settings (Keyhole, radius 4.3 m) with a 3.2 m seeding roller towed from a bar on the lift arms, which swings 60° each way before it stops |
+| W1 | Baetas | The 8 m sprayer with the skip button on *ignore worked tracks* (the snake order), 1 row: the narrow end leaves passes too short to land on, so the order's next pass sometimes has no room and the nearest open pass is taken |
+| W2 | Olival, hard boundary | The same mode on J7's hard fence (some ends fit no turn); a careless operator taps the U-turn arrow mid-pass and the row button (2 rows) after the seventh turn |
 
 On these jobs the implement is also measured against the pass it should be on (`OFF-ITS-PASS`,
 from 30 s after each turn), and where each U-turn's exit leg put it: with an implement to one side
@@ -220,6 +222,7 @@ from the wrong side lands beside the pass and AutoSteer pulls the implement acro
 |---|---|
 | A U-turn's exit leg more than a quarter of a pass (1 m at least) beside the pass the implement then works | `TURN-EXIT-OFF-PASS` |
 | The curve AgOpenWeb keeps away from where the implement was driven | `RECORDED-CURVE-SHIFTED` |
+| W1, W2: a U-turn onto a pass already worked, with skip worked passes on | `TURN-ONTO-WORKED-PASS` |
 | On the edge pass, no U-turn: AutoSteer driving on past the boundary with no warning (Safety), or AgOpenWeb's warning and the operator taking over at the pass's end (Bug) | `EDGE-PASS-NO-TURN` |
 | A reversible plough shown across from where it works (no setting for an offset that keeps to one side of the field) | `REVERSIBLE-PLOUGH-NO-SETTING` |
 | Trailed and TBT, every job of the harness: the hitch angle (tractor to drawbar) reaching the angle where the drawbar touches a rear tyre, from the tractor's hitch, track and tyre size (`RearTyreRadius`, `RearTyreWidth`) and the drawbar's width where it passes the tyres (`DrawbarWidth`, 0.6 m by default for an A-frame), seen from above with the tyre's whole radius; or the implement's own swivel stop (`SwivelStopDeg`) when that comes first | `DRAWBAR-HITS-WHEEL` |
