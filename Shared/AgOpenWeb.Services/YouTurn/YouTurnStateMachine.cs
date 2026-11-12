@@ -1525,12 +1525,13 @@ public sealed class YouTurnStateMachine
     {
         if (result.ClearanceBlocked && effects.StatusMessage == null)
             effects.StatusMessage = "U-turn blocked: implement would swing into a hard boundary — take over manually.";
+        // A turn built (the fallback too) that would hand over past the end of the next pass's line.
+        if (result.LandsPastLineEnd && effects.StatusMessage == null)
+            effects.StatusMessage = "No U-turn: the next pass ends before this end - take over manually";
         // No real turn fits and the fallback would leave the field (#692): the pass is driven to its
         // end with no turn, so the operator is told, not only sounded at.
         if (result.Path == null && result.UsedFallback && effects.StatusMessage == null)
             effects.StatusMessage = "No U-turn fits inside the boundary at this end - take over manually";
-        if (result.LandsPastLineEnd && effects.StatusMessage == null)
-            effects.StatusMessage = "No U-turn: the next pass ends before this end - take over manually";
         SoundCreationFailed(effects);
     }
 
