@@ -110,7 +110,10 @@ public sealed class YouTurnStateMachine
         double HeadlandCalculatedWidth,
         double HeadlandDistance,
         bool IsAlternateSkipMode = false, // AgOpenGPS SkipMode.Alternative (#111)
-        Func<double, double, bool>? IsPointCovered = null); // the job's coverage: worked passes on the map
+        Func<double, double, bool>? IsPointCovered = null, // the job's coverage: worked passes on the map
+        // The operator's headland line, for the warning that a turn leaves its pass before it
+        // ("Headland too narrow"); null with none or with it off. HeadlandLine above is the turn line.
+        IReadOnlyList<Vec3>? WorkHeadlandLine = null);
 
     /// <summary>
     /// Run one cycle of the state machine. Precondition: autosteer engaged, track active,
@@ -1520,7 +1523,7 @@ public sealed class YouTurnStateMachine
         turn.TurnPath = result.Path;
         turn.ArcStart = result.ArcStart;
         turn.YouTurnCounter = 0;
-        double startsInside = TurnStartInsideHeadlandLine(result.ArcStart, ctx.HeadlandLine);
+        double startsInside = TurnStartInsideHeadlandLine(result.ArcStart, ctx.WorkHeadlandLine);
         if (startsInside > NarrowHeadlandToleranceM && effects.StatusMessage == null)
             effects.StatusMessage = HeadlandTooNarrowMessage(startsInside);
         else if (!result.UsedFallback && effects.StatusMessage == null)
