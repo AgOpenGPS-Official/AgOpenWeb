@@ -36,6 +36,7 @@ public class HeadlandToggleTests
     private GpsService _gpsService = null!;
     private GpsPipelineService _pipeline = null!;
     private List<GpsCycleResult> _results = null!;
+    private ToolPositionService _toolPosition = null!;
 
     [SetUp]
     public void SetUp()
@@ -52,7 +53,7 @@ public class HeadlandToggleTests
         _gpsService = new GpsService();
         _gpsService.Start();
 
-        var toolPosition = new ToolPositionService(config);
+        var toolPosition = _toolPosition = new ToolPositionService(config);
         var coverage = new CoverageMapService(config);
         var sectionControl = new SectionControlService(toolPosition, coverage, config);
         var autoSteer = new AutoSteerService(new TrackGuidanceService(),
@@ -127,6 +128,49 @@ public class HeadlandToggleTests
         Cycle();
 
         Assert.That(Last.HeadlandProximityDistance.HasValue, Is.EqualTo(headlandOn));
+    }
+
+    // A tester turned the headland off mid-pass: the box kept the last distance, frozen while the
+    // tractor drove on, until the headland was on again (Tapada da Casa, 173 m for 55 s).
+    [Test]
+    public void HeadlandDistanceHud_TurnedOffWhileDriving_ShowsNoHeldDistance()
+    {
+        _pipeline.SetHeadlandOn(true);
+        _pipeline.SetBoundary(Boundary(200));
+        _pipeline.SetHeadlandLine(Square(50));
+        DriveTool(0, 0);
+        Assert.That(Last.HeadlandProximityDistance, Is.EqualTo(50).Within(0.01));
+
+        _pipeline.SetHeadlandOn(false);
+        DriveTool(0, 10);
+        Assert.That(Last.HeadlandProximityDistance, Is.Null, "headland off: no distance, not the last one held");
+
+        _pipeline.SetHeadlandOn(true);
+        DriveTool(0, 20);
+        Assert.That(Last.HeadlandProximityDistance, Is.EqualTo(30).Within(0.01), "on again: the distance from here");
+    }
+
+    // The hold is still there for what it is for: past the headland line, heading out, the ray
+    // ahead meets no headland line and the box keeps its last distance instead of vanishing.
+    [Test]
+    public void HeadlandDistanceHud_PastTheLineHeadingOut_KeepsTheLastDistance()
+    {
+        _pipeline.SetHeadlandOn(true);
+        _pipeline.SetBoundary(Boundary(200));
+        _pipeline.SetHeadlandLine(Square(50));
+        DriveTool(0, 49);
+        Assert.That(Last.HeadlandProximityDistance, Is.EqualTo(1).Within(0.01));
+
+        DriveTool(0, 60);
+        Assert.That(Last.HeadlandProximityDistance, Is.EqualTo(1).Within(0.01));
+    }
+
+    /// <summary>The control loop's tool update (heading north, the tool on the pivot), then one GPS cycle.</summary>
+    private void DriveTool(double e, double n)
+    {
+        ConfigurationStore.Instance.Tool.HitchLength = 0;
+        _toolPosition.Update(new Vec3(e, n, 0), 0);
+        Cycle();
     }
 
     [TestCase(true, 2)]   // tool in the headland band → raise

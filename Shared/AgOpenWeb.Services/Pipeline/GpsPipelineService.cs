@@ -1471,16 +1471,24 @@ public sealed class GpsPipelineService : IGpsPipelineService
             out headlandDist, out headlandWarning);
 
         // Hold last valid distance so the HUD doesn't disappear in gaps
-        // (e.g., between crossing the headland line and entering the U-turn arc)
+        // (e.g., between crossing the headland line and entering the U-turn arc).
+        // Only with the headland on: off, there is no distance (AgOpenGPS draws none), and the
+        // held one stayed on the screen, frozen while the tractor drove on, until the headland
+        // was turned on again (a tester's box stood at 173 m for 55 s, Tapada da Casa).
         if (headlandDist != null)
         {
             _lastHeadlandDistance = headlandDist;
             _lastHeadlandWarning = headlandWarning;
         }
-        else if (_lastHeadlandDistance != null && headlandLine != null)
+        else if (headlandOn && _lastHeadlandDistance != null && headlandLine != null)
         {
             headlandDist = _lastHeadlandDistance;
             headlandWarning = _lastHeadlandWarning;
+        }
+        else
+        {
+            _lastHeadlandDistance = null;
+            _lastHeadlandWarning = false;
         }
 
         // ── (11) RTK quality sounds ─────────────────────────────────────
