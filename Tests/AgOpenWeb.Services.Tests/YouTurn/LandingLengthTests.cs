@@ -150,4 +150,29 @@ public class LandingLengthTests
         // And nothing to land on is nothing, whatever the pass driven: pass 12 is on the fence.
         Assert.That(_pathing.IsPathLandable(_track, 0, 12, _boundary, _cultivated, At(42, 20), true, 20, fromPath: 11), Is.False);
     }
+
+    [Test]
+    public void A_pass_that_leaves_the_field_before_its_cultivated_stretch_is_not_landable()
+    {
+        // The skip-worked job on Baetas (W1): the turn from pass 8 went onto pass -8 at the south
+        // end, where -8 is inside the fence for 28 m, then outside it for 265 m, then inside again.
+        // Counted from its cultivated stretch back of the end, -8 had room; the turn landed in the
+        // pocket and AutoSteer drove the tractor along -8 out of the field.
+        // Here: the fence has a bay cut into its east side from y = -42 to -10, leaving a pocket
+        // 8 m deep along the south fence. Pass 8 (x = 34) is in the pocket, outside the fence
+        // across the bay, and in the field again from y = -10 (cultivated from y = -6).
+        var fence = new List<Vec2> { new(-50, -50), new(50, -50), new(50, -42), new(25, -42), new(25, -10), new(50, -10), new(50, 50), new(-50, 50) };
+        var boundary = new Boundary
+        {
+            OuterBoundary = new BoundaryPolygon { Points = fence.Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList() },
+        };
+        var cultivated = new List<Vec3> { new(-46, -46, 0), new(21, -46, 0), new(21, -6, 0), new(46, -6, 0), new(46, 46, 0), new(-46, 46, 0) };
+
+        // Heading south on pass 3 (x = 14) at y = -30, 16 m from the south headland line.
+        Assert.That(_pathing.LandingLength(_track, 0, 8, boundary, cultivated, At(14, -30), false, 16), Is.EqualTo(0),
+            "no landing: between the end and its cultivated stretch the pass is outside the fence");
+        Assert.That(_pathing.IsPathLandable(_track, 0, 8, boundary, cultivated, At(14, -30), false, 16), Is.False);
+        // Pass 4 (x = 18) stays inside: its run back of the south end is its whole length.
+        Assert.That(_pathing.IsPathLandable(_track, 0, 4, boundary, cultivated, At(14, -30), false, 16), Is.True);
+    }
 }
