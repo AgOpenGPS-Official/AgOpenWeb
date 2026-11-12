@@ -50,6 +50,10 @@ public class OpenCurveEndTurnTests
     // left out between them.
     private static readonly Lazy<(List<Vec2> Fence, List<Vec3> Headland, TrackModel Curve)> CornerField = new(() => LoadField("issue694_corner_curve_field.json"));
 
+    // His third try (2026-11-11, 26.7.5): A on the south-east side, B on the south-west, the south
+    // corner left out; from pass -12 in, each pass's two ends meet in a V where the corner was.
+    private static readonly Lazy<(List<Vec2> Fence, List<Vec3> Headland, TrackModel Curve)> InnerField = new(() => LoadField("issue694_inner_passes_field.json"));
+
     private static (List<Vec2> Fence, List<Vec3> Headland, TrackModel Curve) LoadField(string file)
     {
         var path = Path.Combine(TestContext.CurrentContext.TestDirectory, "Pipeline", "Fixtures", file);
@@ -79,7 +83,7 @@ public class OpenCurveEndTurnTests
         public readonly List<Sample> Samples = new();
         public string? DisengageReason;
 
-        public Drive(TrackModel track, int pass, bool youTurn, Boundary boundary, List<Vec3> headland)
+        public Drive(TrackModel track, int pass, bool youTurn, Boundary boundary, List<Vec3> headland, int skipRows = 0)
         {
             ConfigurationStore.SetInstance(new ConfigurationStore());
             var c = ConfigurationStore.Instance;
@@ -139,7 +143,7 @@ public class OpenCurveEndTurnTests
             _pipeline.SetBoundary(boundary);
             _pipeline.SetHeadlandLine(headland);
             _pipeline.SetHeadlandOn(true);
-            _pipeline.SetYouTurnConfig(0, false, 12, 12, false);
+            _pipeline.SetYouTurnConfig(skipRows, false, 12, 12, false);
             _pipeline.SetActiveTrack(track, pass, 0);
             _pipeline.SetYouTurnEnabled(youTurn);
             _pipeline.SetAutoSteerEngaged(true);
@@ -362,4 +366,58 @@ public class OpenCurveEndTurnTests
             }
         });
     }
+
+    [Test]
+    public void On_the_inner_passes_whose_ends_meet_a_turn_lands_on_the_next_pass()
+    {
+        // His drive: pass -11 on the south-east side, heading south-west for the corner left out.
+        // Further in than -11 a pass's two ends meet in a V where the corner was. With no skip the
+        // turn lands on -12 and the tractor stays on it.
+        var (fence, headland, curve) = InnerField.Value;
+        using var drive = new Drive(curve, -11, youTurn: true, BoundaryOf(fence), headland);
+        drive.Start(-44.011, 67.238, 141.83 * Math.PI / 180);
+        drive.Run(30 * 120);
+
+        var turns = Turns(drive.Samples);
+        Assert.That(turns, Is.Not.Empty, "a U-turn at the corner");
+        var t = turns[0];
+        int after = drive.Samples.FindIndex(x => x.Tick > t.Start.Tick && !x.InTurn && x.Pass == t.To);
+        // Two to six seconds after the turn, before the pass's next corner; the tool is 1.5 m to
+        // the side, so the tractor steers that far from the pass.
+        var settled = drive.Samples.Skip(after + 30 * 2).Take(30 * 4).ToList();
+        var landing = PassLine(curve, -12);
+        Assert.Multiple(() =>
+        {
+            Assert.That(t.To, Is.EqualTo(-12), "onto the next pass");
+            Assert.That(drive.DisengageReason, Is.Null, "AutoSteer stayed on");
+            Assert.That(settled.Max(x => Math.Abs(Off(landing, x) - 1.5)), Is.LessThan(1.0), "on pass -12 after the turn");
+        });
+    }
+
+    [Test]
+    public void On_the_inner_passes_a_turn_onto_a_pass_that_ends_before_this_end_is_not_made()
+    {
+        // His setting: two rows skipped, so the turn from -11 is for -14, whose two ends meet 18 m
+        // further in than -11's. Built at -11's end, the turn came out past the end of -14's line:
+        // the tractor then made for the nearest pass, across -12 and -13 (26.7.5), or AutoSteer went
+        // off at once. No turn is made: the operator is told and takes over at the end of the pass.
+        var (fence, headland, curve) = InnerField.Value;
+        using var drive = new Drive(curve, -11, youTurn: true, BoundaryOf(fence), headland, skipRows: 2);
+        drive.Start(-44.011, 67.238, 141.83 * Math.PI / 180);
+        drive.Run(30 * 120);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(drive.Samples.Any(s => s.InTurn), Is.False, "no turn");
+            Assert.That(drive.Samples.All(s => s.Pass == -11), Is.True,
+                "stays on its pass: " + string.Join(",", drive.Samples.Select(s => s.Pass).Distinct()));
+            Assert.That(drive.Samples.Any(s => s.Reason?.Contains("the next pass ends before this end", StringComparison.Ordinal) == true), Is.True,
+                "the operator is told: " + string.Join(" | ", drive.Samples.Select(s => s.Reason).Where(r => r != null).Distinct().Take(6)));
+        });
+    }
+
+    private static List<Vec3> PassLine(TrackModel curve, int pass)
+        => CurveProcessing.CurvePass(curve.Points, Models.Track.PassGeometry.Offset(curve, pass, ToolWidth), false, 6).Points;
+
+    private static double Off(List<Vec3> line, Sample s) => line.Min(p => Dist(s.E, s.N, p));
 }
