@@ -298,11 +298,15 @@ public sealed class YouTurnPathingService
                 walked += Dist(at, at + fwd);
             if (!InsideAt(at))
             {
-                bool found = false;
+                // As for an AB line below: outside the fence at first, but not out of the field again.
+                bool found = false, inField = false;
                 for (double walked = 0; at - fwd >= 0 && at - fwd < curve.Count && walked <= RunBack; at -= fwd)
                 {
                     walked += Dist(at, at - fwd);
                     if (InsideAt(at - fwd)) { at -= fwd; found = true; break; }
+                    bool inFence = InsideFence(curve[at - fwd].Easting, curve[at - fwd].Northing, boundary);
+                    if (inFence) inField = true;
+                    else if (inField) return 0;
                 }
                 if (!found) return 0;
             }
@@ -341,9 +345,19 @@ public sealed class YouTurnPathingService
         double tFront = tAt;
         if (!InsideAtT(tAt))
         {
-            bool found = false;
+            // Back from the end to the first of the pass in the cultivated area: the turn lands in
+            // the headland and the tractor drives there. Outside the fence at first is the angled
+            // end of a field; once inside, the pass must not leave the field again on the way
+            // (a bay in the fence between, W1 on Baetas: AutoSteer drove out through it).
+            bool found = false, inField = false;
             for (double d = Step; d <= RunBack; d += Step)
-                if (InsideAtT(tAt - s * d)) { tAt -= s * d; found = true; break; }
+            {
+                double t = tAt - s * d;
+                if (InsideAtT(t)) { tAt = t; found = true; break; }
+                bool inFence = InsideFence(midE + abNx * t, midN + abNy * t, boundary);
+                if (inFence) inField = true;
+                else if (inField) return 0;
+            }
             if (!found) return 0;
             tFront = Edge(tAt, tAt + s * Step);
         }
@@ -353,6 +367,9 @@ public sealed class YouTurnPathingService
         double tBack = Edge(tAt - s * back, tAt - s * (back + Step));
         return Math.Abs(tFront - tBack);
     }
+
+    private static bool InsideFence(double e, double n, Boundary? boundary)
+        => boundary?.OuterBoundary is { IsValid: true } outer && outer.IsPointInside(e, n);
 
     private bool CheckOffsetLineInsideCultivated(
         Models.Track.Track currentTrack, double abHeading, int nextPathsAway,
