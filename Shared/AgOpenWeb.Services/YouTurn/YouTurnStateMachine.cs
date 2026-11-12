@@ -229,10 +229,17 @@ public sealed class YouTurnStateMachine
             }
         }
         if (!canCreateTurn && ctx.IsSkipWorkedMode && isInHeadlandZone && isAlignedWithABLine
-            && turn.SnakeSequence != null && turn.TurnPath == null && !turn.IsExecuting)
+            && turn.SnakeSequence != null && turn.TurnPath == null && !turn.IsExecuting
+            && _pathing.LandingLength(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
+                passPoint, !headingSameWay, 0, stopAt: 1.0) == 0)
         {
             // In the headland at the far end of a field: the tractor reached the end of the
-            // current pass; the snake sequence may still have more passes to work.
+            // current pass; the snake sequence may still have more passes to work. Heading out
+            // of the field, not into it: a turn that ends in the headland (the last metres of
+            // its arc are not driven) leaves the tractor there on its new pass, facing the
+            // field with the headland line just ahead. Taken as the end of that pass, every pass
+            // had no room "at this end" and the end of the field was sounded as the turn
+            // finished; the turn for the far end came a cycle later.
             canCreateTurn = _pathing.GetNextSnakePath(turn, WorkedPasses(in ctx, track, guidance, turn)).HasValue;
         }
 
@@ -269,6 +276,13 @@ public sealed class YouTurnStateMachine
                 HandleAlternateCreation(in ctx, track, abHeading, headingRadians, guidance, turn, effects);
             else
                 HandleNormalCreation(in ctx, track, abHeading, currentPosition, headingRadians, guidance, turn, effects);
+        }
+        else
+        {
+            // Not looking for a turn (a turn planned or driven, off the line, out of the creation
+            // window): an end where none built is tried again next time. A pass that crosses a
+            // headland strip has another end past it.
+            _failedEnd = null;
         }
         // ── NO TURN, HEADING OUT ────────────────────────────────────────
         // In the headland on the line, heading out of the field, with no turn planned or under
@@ -787,6 +801,7 @@ public sealed class YouTurnStateMachine
         turn.SnakeIndex = -1;
         turn.AltSign = 0;
         _coveredPasses.Clear();
+        _failedEnd = null;
     }
 
     /// <summary>
@@ -914,10 +929,21 @@ public sealed class YouTurnStateMachine
         // tractor isn't on the pass the plan has it on: the operator moved to another pass
         // midway (snap, or drove there), or a swapped turn left the order. Going on from the
         // old pass sent the turn onto a worked pass, or back onto the one the tractor was on.
-        if (!YouTurnPathingService.IsSnakeOnPass(turn, guidance.HowManyPathsAway))
+        // Planned for the field as it was before the headland or the outer boundary changed (a
+        // headland built again with another width): the passes in it and their order are not this
+        // field's. The old order sent the turn the wrong way, onto a pass by the fence where it would
+        // not build.
+        long fieldStamp = SnakeFieldStamp(ctx.Boundary, ctx.HeadlandLine);
+        if (!YouTurnPathingService.IsSnakeOnPass(turn, guidance.HowManyPathsAway)
+            || !ReferenceEquals(turn.SnakeSequence, _snakePlan) || fieldStamp != _snakePlanFieldStamp)
         {
-            _pathing.BuildSnakeSequence(track, abHeading, guidance, turn, ctx.Boundary, ctx.HeadlandLine);
+            PlanSnake(in ctx, track, abHeading, guidance, turn, fieldStamp);
         }
+
+        // This end was tried and no turn built: not again on every cycle (see _failedEnd).
+        if (_failedEnd is { } failedEnd && failedEnd == EndKey(in ctx, track, guidance, turn, fieldStamp))
+            return;
+        _failedEnd = null;
 
         // Never onto a worked pass: the next pass of the order that is still to do.
         var isWorked = WorkedPasses(in ctx, track, guidance, turn);
@@ -927,7 +953,8 @@ public sealed class YouTurnStateMachine
         if (nextPath is { } stale && !_pathing.IsPathInsideCultivated(track, abHeading, stale, ctx.Boundary, ctx.HeadlandLine))
         {
             _logger.LogDebug("[YouTurn] Snake pass {Pass} is outside the field - planning the snake again", stale);
-            _pathing.BuildSnakeSequence(track, abHeading, guidance, turn, ctx.Boundary, ctx.HeadlandLine);
+            PlanSnake(in ctx, track, abHeading, guidance, turn, fieldStamp);
+            isWorked = WorkedPasses(in ctx, track, guidance, turn);
             nextPath = _pathing.GetNextSnakePath(turn, isWorked);
         }
         if (nextPath == null)
@@ -942,9 +969,11 @@ public sealed class YouTurnStateMachine
         // as AgOpenGPS's GetNextNotWorkedTrack does. CompleteTurn then plans the snake again
         // from that pass.
         int target = nextPath.Value;
+        int operatorSide = 0; // the side the operator chose with the U-turn arrow, +1 higher passes
         if (TakeDirectionSwap(turn, guidance, target))
         {
             bool positive = target < guidance.HowManyPathsAway;
+            operatorSide = positive ? 1 : -1;
             int skip = _pathing.GetNextUnworkedPathSkip(track, guidance.HowManyPathsAway, positive, ctx.UTurnSkipRows + 1, isWorked);
             int swapped = guidance.HowManyPathsAway + (positive ? skip : -skip);
             if (_pathing.IsPathLandable(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine, currentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland, guidance.HowManyPathsAway))
@@ -955,16 +984,171 @@ public sealed class YouTurnStateMachine
 
         // The order's next pass may be inside only at the far end (an hourglass field's other
         // lobe): a turn onto it here lands in the headland and drives out of the field.
-        if (!_pathing.IsPathLandable(track, abHeading, target, ctx.Boundary, ctx.HeadlandLine, currentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland, guidance.HowManyPathsAway))
+        bool landable = _pathing.IsPathLandable(track, abHeading, target, ctx.Boundary, ctx.HeadlandLine, currentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland, guidance.HowManyPathsAway);
+        YouTurnCreationService.TurnPathResult? refused = null;
+        if (landable)
         {
-            _logger.LogDebug("[YouTurn] Snake pass {Pass} is too short inside the field at this end - no turn", target);
-            effects.StatusMessage = "End of field reached - no room on the next pass at this end";
-            SoundCreationFailed(effects);
-            return;
+            AimTurnAt(track, abHeading, guidance, turn, effects, target, "Snake");
+            var built = BuildTurnPath(in ctx, track, headingRadians, abHeading, guidance, turn, effects);
+            if (built.Path != null) return;
+            refused = built;
+        }
+        else
+        {
+            _logger.LogDebug("[YouTurn] Snake pass {Pass} is too short inside the field at this end", target);
         }
 
-        CreateTurnToPath(in ctx, track, abHeading, headingRadians, guidance, turn, effects, target, "Snake");
+        // No turn onto the order's pass here: the nearest pass still to do that has room at this
+        // end, and the order is planned again from where the turn lands. Only the order's pass was
+        // tried, so with the far side of the field next in the order, the end of the field was said
+        // with a pass three over left to do. Ours, not AgOpenGPS's: its GetNextNotWorkedTrack
+        // starts at the skip in the turn's direction and steps outward past worked tracks, checks
+        // neither room nor whether the turn builds, and never looks at the other side.
+        if (TurnOntoNearestOpenPass(in ctx, track, abHeading, headingRadians, guidance, turn, effects, isWorked, target, operatorSide))
+            return;
+
+        if (refused is { } failed)
+        {
+            // Aimed at the order's pass again: the map and the message are about that one.
+            AimTurnAt(track, abHeading, guidance, turn, effects, target, "Snake");
+            ReportNoTurn(failed, effects);
+            _failedEnd = EndKey(in ctx, track, guidance, turn, fieldStamp);
+            return;
+        }
+        effects.StatusMessage = "End of field reached - no room on the next pass at this end";
+        SoundCreationFailed(effects);
+        _failedEnd = EndKey(in ctx, track, guidance, turn, fieldStamp);
     }
+
+    // An end where no turn was made onto the order's pass or the nearest open passes (a hard fence
+    // the turns don't clear: each build moves the turn back 0.5 m at a time, up to 30 m). Tick
+    // looks for a turn on every GPS cycle while the end is ahead, and the passes tried here
+    // tripled the builds of each look, so the end is remembered and not tried again until
+    // something that can change the answer does: the pass, the direction of travel, the nudge,
+    // the snake order, the field or headland (SnakeFieldStamp), the skip, the U-turn arrow or a
+    // turn setting (the operator lowering the radius to make it fit). Forgotten when Tick stops
+    // looking for a turn, the track changes or U-turn is switched off.
+    private EndTried? _failedEnd;
+
+    private readonly record struct EndTried(Models.Track.Track Track, int Pass, bool HeadingSameWay, double Nudge,
+        List<int>? Snake, long FieldStamp, int SkipRows, bool? Arrow, int Settings);
+
+    private EndTried EndKey(in TickContext ctx, Models.Track.Track track, GuidanceWorkingState guidance,
+        YouTurnWorkingState turn, long fieldStamp)
+    {
+        var c = _configStore;
+        var g = c.Guidance;
+        int settings = HashCode.Combine(
+            HashCode.Combine(g.UTurnRadius, g.UTurnDistanceFromBoundary, g.UTurnExtension, g.UTurnSmoothing, g.UTurnStyle),
+            HashCode.Combine(c.ActualToolWidth, c.Tool.Width, c.Tool.Overlap, c.Tool.Offset, c.Tool.Length,
+                c.Tool.IsToolTrailing, c.Tool.IsToolRearFixed),
+            HashCode.Combine(c.Vehicle.HitchLength, ctx.HeadlandCalculatedWidth, ctx.HeadlandDistance));
+        return new EndTried(track, guidance.HowManyPathsAway, guidance.IsHeadingSameWay, guidance.NudgeOffset,
+            turn.SnakeSequence, fieldStamp, ctx.UTurnSkipRows, turn.NextUTurnDirectionLeftOverride, settings);
+    }
+
+    /// <summary>At most this many passes still to do are looked at on each side for one with room.</summary>
+    private const int MaxOpenPassesLookedAt = 6;
+
+    /// <summary>
+    /// A turn onto the nearest pass of the snake order other than <paramref name="orderPass"/> that is
+    /// still to do and has room at this end, on the side the order is going first (the passes on the
+    /// other side are the ones it comes back for), then on the other side; only on the operator's
+    /// side when they chose one. On each side a pass at least the skip away comes before a nearer one
+    /// (a turn onto the next pass is a loop), and one turn is built: when the nearest does not fit
+    /// (a hard fence on that side), the ones further that way fit no better. True when one was built
+    /// and is the planned turn. Ours: AgOpenGPS (CYouTurn.GetNextNotWorkedTrack) only steps outward
+    /// on the turn's side past worked tracks; the other side, passes nearer than the skip and the
+    /// room and build checks are not in it.
+    /// </summary>
+    private bool TurnOntoNearestOpenPass(
+        in TickContext ctx,
+        Models.Track.Track track,
+        double abHeading,
+        double headingRadians,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
+        YouTurnEffects effects,
+        Func<int, bool> isWorked,
+        int orderPass,
+        int operatorSide)
+    {
+        if (turn.SnakeSequence is not { } seq) return false;
+        int current = guidance.HowManyPathsAway;
+        int skip = ctx.UTurnSkipRows + 1;
+        int orderSide = orderPass >= current ? 1 : -1;
+        int[] sides = operatorSide != 0 ? new[] { operatorSide } : new[] { orderSide, -orderSide };
+        foreach (int side in sides)
+        {
+            var candidates = seq.Distinct()
+                .Where(p => p != orderPass && Math.Sign(p - current) == side)
+                .OrderBy(p => Math.Abs(p - current) < skip ? 1 : 0)
+                .ThenBy(p => Math.Abs(p - current));
+            int looked = 0;
+            foreach (int pass in candidates)
+            {
+                if (isWorked(pass)) continue;
+                if (++looked > MaxOpenPassesLookedAt) break;
+                if (!_pathing.IsPathLandable(track, abHeading, pass, ctx.Boundary, ctx.HeadlandLine, ctx.CurrentPosition,
+                        guidance.IsHeadingSameWay, turn.DistanceToHeadland, current))
+                    continue;
+                AimTurnAt(track, abHeading, guidance, turn, effects, pass, "Snake (nearest open pass)");
+                if (BuildTurnPath(in ctx, track, headingRadians, abHeading, guidance, turn, effects).Path != null)
+                {
+                    _logger.LogDebug("[YouTurn] Snake pass {Order} has no turn at this end - turning onto pass {Pass}, the nearest still to do",
+                        orderPass, pass);
+                    return true;
+                }
+                break;
+            }
+        }
+        return false;
+    }
+
+    // The snake order this state machine planned, and the field it planned it for.
+    private List<int>? _snakePlan;
+    private long _snakePlanFieldStamp;
+
+    private void PlanSnake(in TickContext ctx, Models.Track.Track track, double abHeading,
+        GuidanceWorkingState guidance, YouTurnWorkingState turn, long fieldStamp)
+    {
+        _pathing.BuildSnakeSequence(track, abHeading, guidance, turn, ctx.Boundary, ctx.HeadlandLine);
+        _snakePlan = turn.SnakeSequence;
+        _snakePlanFieldStamp = fieldStamp;
+    }
+
+    /// <summary>
+    /// A fingerprint of the field a snake order is planned for: the headland line's and the outer
+    /// boundary's point counts and four points of each, so a headland built again (another width,
+    /// edited) or a boundary changed counts. Read every cycle a turn can be made, so it reads a few
+    /// points, not the outlines.
+    /// </summary>
+    internal static long SnakeFieldStamp(Boundary? boundary, IReadOnlyList<Vec3>? headlandLine)
+    {
+        long h = 17;
+        if (headlandLine != null)
+        {
+            h = h * 31 + headlandLine.Count;
+            for (int k = 0; k < 4 && headlandLine.Count > 0; k++)
+            {
+                var p = headlandLine[headlandLine.Count * k / 4];
+                h = (h * 31 + Cm(p.Easting)) * 31 + Cm(p.Northing);
+            }
+        }
+        var outer = boundary?.OuterBoundary?.Points;
+        if (outer != null)
+        {
+            h = h * 31 + outer.Count;
+            for (int k = 0; k < 4 && outer.Count > 0; k++)
+            {
+                var p = outer[outer.Count * k / 4];
+                h = (h * 31 + Cm(p.Easting)) * 31 + Cm(p.Northing);
+            }
+        }
+        return h;
+    }
+
+    private static long Cm(double metres) => (long)Math.Round(metres * 100);
 
     /// <summary>
     /// The worked-pass test for the snake: marked worked, or covered on the job's map
@@ -1005,6 +1189,23 @@ public sealed class YouTurnStateMachine
         Models.Track.Track track,
         double abHeading,
         double headingRadians,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
+        YouTurnEffects effects,
+        int nextPath,
+        string mode)
+    {
+        AimTurnAt(track, abHeading, guidance, turn, effects, nextPath, mode);
+        CreatePathAndSync(in ctx, track, headingRadians, abHeading, guidance, turn, effects);
+    }
+
+    /// <summary>
+    /// Aim the coming turn at <paramref name="nextPath"/>: its side, its width, the next track and
+    /// the pass it completes onto. Nothing is built; aimed again, the turn is aimed only at the new pass.
+    /// </summary>
+    private void AimTurnAt(
+        Models.Track.Track track,
+        double abHeading,
         GuidanceWorkingState guidance,
         YouTurnWorkingState turn,
         YouTurnEffects effects,
@@ -1058,8 +1259,6 @@ public sealed class YouTurnStateMachine
 
         effects.SyncNextTrackToMap = true;
         effects.IsInYouTurnMapFlag = true;
-
-        CreatePathAndSync(in ctx, track, headingRadians, abHeading, guidance, turn, effects);
     }
 
     /// <summary>
@@ -1240,7 +1439,11 @@ public sealed class YouTurnStateMachine
 
     /// <summary>U-turn switched off: the next missed or failed turn sounds again (AgOpenGPS
     /// resets turnTooCloseTrigger on the U-turn button).</summary>
-    public void OnYouTurnSwitchedOff() => _missedSounded = _creationFailSounded = false;
+    public void OnYouTurnSwitchedOff()
+    {
+        _missedSounded = _creationFailSounded = false;
+        _failedEnd = null;
+    }
 
     /// <summary>
     /// No turn can be made: the turn would not build, or there is no pass to turn onto (the end of
@@ -1272,24 +1475,30 @@ public sealed class YouTurnStateMachine
         YouTurnWorkingState turn,
         YouTurnEffects effects)
     {
+        var result = BuildTurnPath(in ctx, track, headingRadians, abHeading, guidance, turn, effects);
+        if (result.Path == null) ReportNoTurn(result, effects);
+    }
+
+    /// <summary>
+    /// Build the turn onto the pass the turn is aimed at (its side, width and next track) and,
+    /// when it builds, take it as the planned turn. A turn that does not build changes nothing:
+    /// <see cref="ReportNoTurn"/> tells the operator, unless the caller tries another pass first.
+    /// </summary>
+    private YouTurnCreationService.TurnPathResult BuildTurnPath(
+        in TickContext ctx,
+        Models.Track.Track track,
+        double headingRadians,
+        double abHeading,
+        GuidanceWorkingState guidance,
+        YouTurnWorkingState turn,
+        YouTurnEffects effects)
+    {
         var result = _creation.CreateTurnPath(
             ctx.CurrentPosition, track, headingRadians, abHeading,
             ctx.Boundary, ctx.HeadlandLine,
             guidance, turn,
             ctx.UTurnSkipRows, ctx.HeadlandCalculatedWidth, ctx.HeadlandDistance);
-
-        if (result.ClearanceBlocked && effects.StatusMessage == null)
-            effects.StatusMessage = "U-turn blocked: implement would swing into a hard boundary — take over manually.";
-        // No real turn fits and the fallback would leave the field (#692): the pass is driven to its
-        // end with no turn, so the operator is told, not only sounded at.
-        if (result.Path == null && result.UsedFallback && effects.StatusMessage == null)
-            effects.StatusMessage = "No U-turn fits inside the boundary at this end - take over manually";
-
-        if (result.Path == null)
-        {
-            SoundCreationFailed(effects);
-            return;
-        }
+        if (result.Path == null) return result;
         _creationFailSounded = false;
         _approachAlarmed = false;
 
@@ -1302,6 +1511,19 @@ public sealed class YouTurnStateMachine
         else if (!result.UsedFallback && effects.StatusMessage == null)
             effects.StatusMessage = $"YouTurn path created ({result.Path.Count} points)";
         effects.SyncTurnPathToMap = true;
+        return result;
+    }
+
+    /// <summary>No turn built: say why, and sound once (<see cref="SoundCreationFailed"/>).</summary>
+    private void ReportNoTurn(YouTurnCreationService.TurnPathResult result, YouTurnEffects effects)
+    {
+        if (result.ClearanceBlocked && effects.StatusMessage == null)
+            effects.StatusMessage = "U-turn blocked: implement would swing into a hard boundary — take over manually.";
+        // No real turn fits and the fallback would leave the field (#692): the pass is driven to its
+        // end with no turn, so the operator is told, not only sounded at.
+        if (result.Path == null && result.UsedFallback && effects.StatusMessage == null)
+            effects.StatusMessage = "No U-turn fits inside the boundary at this end - take over manually";
+        SoundCreationFailed(effects);
     }
 
     /// <summary>Less than this inside the headland line is the turn line's own rounding.</summary>
