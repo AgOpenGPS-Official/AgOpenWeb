@@ -439,6 +439,17 @@ public sealed class GpsPipelineService : IGpsPipelineService
         HoldSteeringOnTheSimulator();
     }
 
+    // A tuning run's gains (Steer Response, Stanley); null = the settings'. One reference,
+    // swapped whole, read once per use: no lock on the cycle.
+    private volatile Models.Pipeline.GuidanceGainsOverride? _gainsOverride;
+
+    /// <inheritdoc />
+    public void SetGuidanceGainsOverride(Models.Pipeline.GuidanceGainsOverride? gains) => _gainsOverride = gains;
+
+    private double LookAheadHold => _gainsOverride?.LookAheadHold ?? _configStore.Guidance.GoalPointLookAheadHold;
+    private double StanleyDistanceGain => _gainsOverride?.StanleyDistanceGain ?? _configStore.Guidance.StanleyDistanceErrorGain;
+    private double StanleyHeadingGain => _gainsOverride?.StanleyHeadingGain ?? _configStore.Guidance.StanleyHeadingErrorGain;
+
     /// <summary>
     /// The simulator does not steer the real module. The steer module stays on the network
     /// while the simulator runs; PGN 254 status 1 with the simulator's speed made it open the
@@ -1846,8 +1857,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             PivotPosition = new Vec3(driftedEasting, driftedNorthing, headingRad),
             SteerPosition = new Vec3(steerE, steerN, headingRad),
             UseStanley = config.Guidance.IsStanley,
-            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
-            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
+            StanleyHeadingErrorGain = StanleyHeadingGain,
+            StanleyDistanceErrorGain = StanleyDistanceGain,
             StanleyIntegralGain = config.Guidance.StanleyIntegralGainAB,
             IsHeadingSameWay = isHeadingSameWay,
             Wheelbase = config.Vehicle.Wheelbase,
@@ -1986,7 +1997,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var c = _configStore;
         return new ContourParams(
             c.ActualToolWidth, c.Tool.Overlap, c.Tool.Offset,
-            c.Guidance.IsStanley, c.Guidance.StanleyHeadingErrorGain, c.Guidance.StanleyDistanceErrorGain,
+            c.Guidance.IsStanley, StanleyHeadingGain, StanleyDistanceGain,
             c.Vehicle.Wheelbase, c.Vehicle.MaxSteerAngle, c.Guidance.PurePursuitIntegralGain,
             c.AutoSteer.SideHillCompensation, GoalLookAheadFor(speedKmh, _contour.LastCrossTrackError));
     }
@@ -2002,7 +2013,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private double GoalLookAheadFor(double speedKmh, double lastXte)
     {
         var g = _configStore.Guidance;
-        double hold = g.GoalPointLookAheadHold;
+        double hold = LookAheadHold;
         double acquire = hold * g.GoalPointAcquireFactor;
         double xte = Math.Abs(lastXte);
         double h = xte <= 0.1 ? hold
@@ -2036,8 +2047,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 pivotNorthing + Math.Cos(headingRad) * config.Vehicle.Wheelbase,
                 headingRad),
             UseStanley = stanley,
-            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
-            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
+            StanleyHeadingErrorGain = StanleyHeadingGain,
+            StanleyDistanceErrorGain = StanleyDistanceGain,
             Wheelbase = config.Vehicle.Wheelbase,
             MaxSteerAngle = config.Vehicle.MaxSteerAngle,
             GoalPointDistance = GoalLookAhead(speedKmh),
@@ -2272,8 +2283,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             Wheelbase = config.Vehicle.Wheelbase,
             MaxSteerAngle = config.Vehicle.MaxSteerAngle,
             UseStanley = config.Guidance.IsStanley,
-            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
-            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
+            StanleyHeadingErrorGain = StanleyHeadingGain,
+            StanleyDistanceErrorGain = StanleyDistanceGain,
             GoalPointDistance = lookAhead,
             UTurnCompensation = config.Guidance.UTurnCompensation,
             FixHeading = headingRad,

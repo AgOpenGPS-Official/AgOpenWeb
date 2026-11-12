@@ -215,6 +215,15 @@ input.as-valbox { width: 80px; box-sizing: content-box; }
 .sw-b { flex: 1; padding: 9px 4px; border: 0; border-radius: 8px; cursor: pointer; color: #fff; font: 600 13px system-ui, sans-serif; }
 .sw-grey { background: rgba(var(--ov),0.12); color: var(--text); }
 .sw-green { background: #2e9e4f; } .sw-blue { background: #2f6fb0; }
+.sw-red { background: #b54430; }
+/* Tune on the line */
+.lt-mode { color: var(--text-muted); font: 500 12px system-ui, sans-serif; margin-left: 6px; }
+.lt-text { color: var(--text); font: 500 14px system-ui, sans-serif; line-height: 1.35; min-height: 19px; }
+.lt-meas { color: var(--text-2); font: 500 13px system-ui, sans-serif; line-height: 1.4; white-space: pre-wrap; margin-top: 6px; max-height: 120px; overflow-y: auto; }
+.lt-meas:empty { display: none; }
+#linetune .sw-btns { margin-bottom: 12px; }
+#lt-desc { min-height: 38px; } /* two lines, so the buttons below stay put */
+#linetune .sw-btns .sw-b { min-height: 44px; }
 /* ===== Network IO panel + NTRIP modals ===== */
 .nio-panel { width: 360px; max-height: calc(100 * var(--vh) - var(--bar-bottom) - 26px); overflow-y: auto; box-sizing: border-box; }
 .nio-modgrid { display: grid; grid-template-columns: auto auto 1fr auto auto; gap: 7px 8px; align-items: center; margin-bottom: 10px; }

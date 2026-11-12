@@ -367,6 +367,9 @@ public partial class MainViewModel
             : _autoSteerService.LastSteerData.ActualSteerAngle;
         _mapService.SetVehicleSteerAngle(steerDeg * Math.PI / 180.0);
 
+        // Tuning on the line (AutoSteer page): one sample per cycle while it runs.
+        _lineTuneViewModel?.OnCycle(result, SelectedTrack);
+
         if (perfAgc)
         {
             _perfAgcTicks += System.Diagnostics.Stopwatch.GetTimestamp() - perfAgcT0;

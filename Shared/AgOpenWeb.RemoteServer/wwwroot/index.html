@@ -805,6 +805,7 @@
         <!-- Right-pane action buttons -->
         <div class="as-actions">
           <button id="as-smartwas" class="as-actbtn blue"><img src="/icons/Chart.png" alt="">Smart WAS</button>
+          <button id="as-linetune" class="as-actbtn blue"><img src="/icons/LineTune.png" alt="">Tune on Line</button>
           <button id="as-reset" class="as-actbtn red"><img src="/icons/Reset_Default.png" alt="">Defaults</button>
           <button id="as-sendsave" class="as-actbtn blue rn-gated" data-cmd="autosteer.sendSave"><img src="/icons/OK64.png" alt="">Send+Save</button>
           <button id="as-apply" class="as-actbtn green rn-gated" data-cmd="autosteer.sendSave"><img src="/icons/ToolAcceptChange.png" alt="">OK</button>
@@ -1620,6 +1621,29 @@
       <button id="sw-stop" class="sw-b sw-grey rn-gated" data-cmd="smartwas.stop">Stop</button>
       <button id="sw-apply" class="sw-b sw-blue rn-gated" data-cmd="smartwas.apply">Apply</button>
     </div>
+  </div>
+  <!-- Tune on the line: AutoSteer on a line; the host moves the line 30 cm and back for
+       each value tried and measures how the tractor gets onto it (LineTuneViewModel). State
+       rides the Status frame (lineTune); the buttons are gated linetune.* commands. -->
+  <div id="linetune" class="ln-panel sw-panel">
+    <div class="ln-hdr"><button class="ln-x" id="lt-back" title="Back">←</button><span class="ln-hdr-title">Tune on the Line</span><button class="ln-x ln-closex" id="lt-x" title="Close">✕</button></div>
+    <div class="sw-status">Status: <b id="lt-status">Ready</b> <span id="lt-mode" class="lt-mode"></span></div>
+    <div class="sw-card">
+      <div class="sw-cardtitle">Now</div>
+      <div id="lt-desc" class="lt-text"></div>
+    </div>
+    <div class="sw-btns">
+      <button id="lt-start" class="sw-b sw-green rn-gated" data-cmd="linetune.start">Start</button>
+      <button id="lt-stop" class="sw-b sw-red rn-gated" data-cmd="linetune.stop">Stop</button>
+      <button id="lt-accept" class="sw-b sw-blue rn-gated" data-cmd="linetune.accept">Use these values</button>
+      <button id="lt-discard" class="sw-b sw-grey rn-gated" data-cmd="linetune.discard">Keep old values</button>
+    </div>
+    <div class="sw-card" id="lt-resultcard">
+      <div class="sw-cardtitle">Result</div>
+      <div id="lt-result" class="lt-text"></div>
+      <div id="lt-meas" class="lt-meas"></div>
+    </div>
+    <div class="sw-info" id="lt-info">AutoSteer on, on a long straight line, at working speed. For each value tried the line moves 30 cm to the right and back, and the time to get onto it is measured. Pure Pursuit: Steer Response. Stanley: Aggressiveness and Overshoot Reduction. Your own values steer again when AutoSteer goes off, a turn comes or you press Stop. Keep your hands near the wheel.</div>
   </div>
   <!-- Steer Wizard — full-screen, host-driven. The real SteerWizardViewModel runs on
        the host; #wz-content is rebuilt per step from the Wizard frame (editable values

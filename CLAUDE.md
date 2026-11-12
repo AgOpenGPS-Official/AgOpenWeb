@@ -527,6 +527,24 @@ Key parameters:
 
 The arc must fit between the headland boundary (green line) and outer boundary (yellow line). If the headland is too narrow for the turn radius, the arc will extend past the outer boundary.
 
+## Tuning on the line
+The AutoSteer page's *Tune on Line* panel (Full view, beside Smart WAS; `LineTuneViewModel` over
+`LineTuneRun` in `ViewModels/LineTune`) tunes the guidance gains with AutoSteer on a straight
+line at 3-20 km/h: for each value tried the line is nudged 0.30 m right through the nudge intent
+(`IPipelineIntents.RequestGuidanceNudge`) and back, and the run times how fast the cross-track error
+settles, how far past it goes and how often it swings. Pure Pursuit: Steer Response (look-ahead hold) down
+or up a ladder from the operator's own value; Stanley: Aggressiveness, then two Overshoot Reduction trials.
+The value tried steers through `IGpsPipelineService.SetGuidanceGainsOverride` (the pipeline reads the
+override instead of `GuidanceConfig`), so the settings change only on *Use these values* (saved with the
+vehicle profile). A value that runs away (0.25 m past where it started, half the step past the line, three
+swings) is cut at once: a calm value steers back to the moved line before the line moves back. AutoSteer
+off, a speed change, a turn or the headland near, no RTK, contour, reverse or a hand nudge or snap pause or end
+the run, with the line moved back and the operator's values steering again; a steering setting changed or the
+browser in control gone ends it. State rides the Status frame (`LineTuneDto`, `statusBar.lineTune`), commands
+`linetune.start|stop|accept|discard`, client in `js/config-panels.js`. Tests: `LineTuneRunTests` on a simulated
+tractor with the real `TrackGuidanceService` and a steering with dead time, rate limit and lag (`LineTuneSim`).
+Not tried on a tractor yet.
+
 ## CI/CD
 
 GitHub Actions workflows, split by purpose:
