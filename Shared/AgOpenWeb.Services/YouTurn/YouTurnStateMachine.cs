@@ -1365,8 +1365,11 @@ public sealed class YouTurnStateMachine
         {
             var (workInside, workPositive) = _pathing.WouldNextLineBeInsideBoundary(
                 track, abHeading, guidance, ctx.Boundary, work, ctx.UTurnSkipRows, null, currentPosition, turn.DistanceToHeadland);
+            _logger.LogDebug("[YouTurn] First turn: the work area's side {Side} (a pass there: {Inside})", workPositive ? "+" : "-", workInside);
             if (workInside) (nextLineInside, positiveDirection) = (true, workPositive);
         }
+        else if (keepPositive is null)
+            _logger.LogDebug("[YouTurn] First turn: no work area given (headland off or none)");
 
         _logger.LogDebug("[YouTurn] Creating turn? nextLineInside={Inside} positiveDir={Dir}", nextLineInside, positiveDirection);
         // The turns step one way across the field (#523). When that side has no pass left, the

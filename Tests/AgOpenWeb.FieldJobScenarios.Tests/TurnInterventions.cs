@@ -250,8 +250,15 @@ public static class TurnInterventions
         return async r =>
         {
             if (fired || r.InTurn || r.TurnsStarted != turn - 1) return;
+            // Measured to where the turn begins (its path's first point), not to the line it turns at:
+            // U-turns are made at the turn line (the fence moved in by the U-turn distance, as
+            // AgOpenGPS), and where a pass meets it at a shallow angle the turn begins well before
+            // it (Olival's west side: 87 m further than the headland line), so "the line 40 m ahead"
+            // came with the turn already being driven.
             var yt = r.Rig.LastCycle?.YouTurn;
-            if (yt?.TurnPath is { Count: > 1 } && yt.DistanceToHeadland < metres && yt.DistanceToHeadland > 5) { fired = true; await act(r); }
+            if (yt?.TurnPath is not { Count: > 1 } path) return;
+            double toStart = Math.Sqrt((path[0].Easting - r.Truth.E) * (path[0].Easting - r.Truth.E) + (path[0].Northing - r.Truth.N) * (path[0].Northing - r.Truth.N));
+            if (toStart < metres && toStart > 5) { fired = true; await act(r); }
         };
     }
 
