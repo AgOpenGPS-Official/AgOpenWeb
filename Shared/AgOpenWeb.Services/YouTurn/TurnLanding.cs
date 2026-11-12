@@ -17,12 +17,13 @@ public static class TurnLanding
     /// pass ends short of the turn where its line stops in the field: the inner passes of an open
     /// curve whose ends face each other, whose two ends meet in a V, each further back than the
     /// last (#694: a turn skipping two rows, built at the end of the pass it left, came out 18 m
-    /// past the end of the pass it was for). Lines that run on (an AB line, a curve's run-on) are
-    /// never passed.
+    /// past the end of the pass it was for). An AB line and a curve's run-on (200 m past an end that
+    /// is not A or B) are never passed.
     /// </summary>
     public static bool PastLineEnd(List<Vec3> path, Models.Track.Track? next)
     {
-        if (next == null || next.Points.Count < 2 || next.IsClosed || path.Count == 0) return false;
+        // An AB line's next pass is its A and B only, and guidance runs on past them: curves only.
+        if (next == null || next.Points.Count <= 2 || next.IsClosed || path.Count == 0) return false;
         // Where the turn hands over to the line: the arc's last few metres are not driven
         // (EarlyCompletionLookahead), and a little more for the steering to settle on the line.
         double back = 0;
