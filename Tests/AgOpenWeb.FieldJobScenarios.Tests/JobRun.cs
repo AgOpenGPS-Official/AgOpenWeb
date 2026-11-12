@@ -188,6 +188,9 @@ public sealed class JobRun : IAsyncDisposable
     /// <summary>The implement's centre against the pass it should be on (curve, loop and pivot jobs):
     /// the worst distance, where, and the mean.</summary>
     public double PassErrorWorst, PassErrorSum; public int PassErrorSamples; public (double E, double N, int Pass, double V) PassErrorWhere;
+    /// <summary>AgOpenWeb's own cross-track error where <see cref="PassErrorWorst"/> was measured: small, the tractor was on
+    /// the line AgOpenWeb steered, and that line is what lies off the reference.</summary>
+    public double PassErrorWorstXte = double.NaN;
     public readonly List<(double Err, double E, double N, int Pass, double V)> PassErrorBig = new();
     public FieldJobRig Rig { get; private set; } = null!;
     public EmulatedSprayerModule Module { get; private set; } = null!;
@@ -790,7 +793,7 @@ public sealed class JobRun : IAsyncDisposable
                         }
                         PassErrorSum += Math.Abs(err); PassErrorSamples++;
                         if (Math.Abs(err) > 1.5 && PassErrorBig.Count < 5000) PassErrorBig.Add((err, tcc.E, tcc.N, Pass, Vv((tcc.E, tcc.N))));
-                        if (Math.Abs(err) > Math.Abs(PassErrorWorst)) { PassErrorWorst = err; PassErrorWhere = (tcc.E, tcc.N, Pass, Vv((tcc.E, tcc.N))); }
+                        if (Math.Abs(err) > Math.Abs(PassErrorWorst)) { PassErrorWorst = err; PassErrorWhere = (tcc.E, tcc.N, Pass, Vv((tcc.E, tcc.N))); PassErrorWorstXte = c.Guidance?.CrossTrackError ?? double.NaN; }
                     }
                 }
                 // Screen vs valves, and the truth sweep.

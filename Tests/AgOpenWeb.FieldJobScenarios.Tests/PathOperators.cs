@@ -1021,8 +1021,25 @@ public sealed class ContourOperator : PathOperator
         }
         if (NoLineSeconds > 5)
             flag(Severity.Bug, "CONTOUR-LINE-LOST", F($"with Contour on and AutoSteer engaged, AgOpenWeb had no line to steer for {NoLineSeconds} s of the job."));
-        LapOperator.JudgePassError(sc, r, flag, "the contour laps");
+        // Contour's line is the lap just driven, a width over (AgOpenGPS CContour.BuildContourGuidanceLine
+        // locks onto that strip), not the boundary offset by whole widths: where the fence has a kink
+        // the rig cannot drive sharp, each lap smooths it a little more than the last (Olival's west
+        // jog and its 58° corner: 1.0, 1.1, 1.2, 1.7, 2.0 m on laps 1 to 5). With AgOpenWeb's own
+        // cross-track small there, the tractor was on its line: a note. Off its own line, a finding.
+        double mean = r.PassErrorSamples > 0 ? r.PassErrorSum / r.PassErrorSamples : 0;
+        if (Math.Abs(r.PassErrorWorst) > 1.5 && mean <= 0.3 && Math.Abs(r.PassErrorWorstXte) < OnItsLineM)
+        {
+            var w = r.PassErrorWhere;
+            sc.Row.Metrics.Add(("The implement against its pass (the reference line offset by whole widths): mean / worst",
+                F($"{mean:0.00} m / {r.PassErrorWorst:+0.00;-0.00;+0.00} m (pass {w.Pass}, at ({w.E:0},{w.N:0}), {w.V:0} m along the line)")));
+            sc.Note(F($"on the contour laps the implement ran {Math.Abs(r.PassErrorWorst):0.00} m from the boundary offset by whole widths at worst (pass {w.Pass} at ({w.E:0},{w.N:0})), with AgOpenWeb's cross-track {r.PassErrorWorstXte:+0.00;-0.00} m there: the tractor was on its contour line, which follows the lap before (as AgOpenGPS's contour) and smooths the fence's kinks a little more each lap"));
+        }
+        else
+            LapOperator.JudgePassError(sc, r, flag, "the contour laps");
     }
+
+    /// <summary>AgOpenWeb's cross-track under this at the worst point: the tractor was on the line it steered.</summary>
+    private const double OnItsLineM = 0.3;
 }
 
 /// <summary>
