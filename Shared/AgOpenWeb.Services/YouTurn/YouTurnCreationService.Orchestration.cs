@@ -42,6 +42,12 @@ public partial class YouTurnCreationService
         /// </summary>
         public bool ClearanceBlocked { get; init; }
 
+        /// <summary>
+        /// True when the turn built would hand over past the end of the next pass's line
+        /// (<see cref="TurnLanding.PastLineEnd"/>), so it was not taken: <see cref="Path"/> is null.
+        /// </summary>
+        public bool LandsPastLineEnd { get; init; }
+
         /// <summary>Where the path leaves the current pass (see <see cref="YouTurnCreationOutput.ArcStart"/>);
         /// null for a fallback path, which has no entry leg.</summary>
         public Vec3? ArcStart { get; init; }

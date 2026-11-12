@@ -1499,6 +1499,12 @@ public sealed class YouTurnStateMachine
             guidance, turn,
             ctx.UTurnSkipRows, ctx.HeadlandCalculatedWidth, ctx.HeadlandDistance);
         if (result.Path == null) return result;
+        if (TurnLanding.PastLineEnd(result.Path, turn.NextTrack))
+        {
+            // The turn would hand over past the end of the line it is for: no turn (#694).
+            _logger.LogDebug("[YouTurn] The turn would land past the end of pass {Next}'s line - no turn", turn.ReturnPassTargetPath);
+            return result with { Path = null, LandsPastLineEnd = true };
+        }
         _creationFailSounded = false;
         _approachAlarmed = false;
 
@@ -1523,6 +1529,8 @@ public sealed class YouTurnStateMachine
         // end with no turn, so the operator is told, not only sounded at.
         if (result.Path == null && result.UsedFallback && effects.StatusMessage == null)
             effects.StatusMessage = "No U-turn fits inside the boundary at this end - take over manually";
+        if (result.LandsPastLineEnd && effects.StatusMessage == null)
+            effects.StatusMessage = "No U-turn: the next pass ends before this end - take over manually";
         SoundCreationFailed(effects);
     }
 
