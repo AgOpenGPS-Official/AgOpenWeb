@@ -1047,6 +1047,15 @@ public sealed class YouTurnStateMachine
             turn.SnakeSequence, fieldStamp, ctx.UTurnSkipRows, turn.NextUTurnDirectionLeftOverride, settings);
     }
 
+    /// <summary>
+    /// The furthest pass the fallback turns onto: twice the skip's step (4 passes with 1 row
+    /// skipped). Further, the "U-turn" runs along the headland across the field (W1 on Baetas:
+    /// 80 m in two minutes, and 128 m onto a pass that took the tractor out of the field), and
+    /// AgOpenGPS never goes there (GetNextNotWorkedTrack steps outward on the turn's side past
+    /// worked tracks): the end of the field is said and the operator decides.
+    /// </summary>
+    private static int MaxFallbackStep(int skipStep) => 2 * skipStep;
+
     /// <summary>At most this many passes still to do are looked at on each side for one with room.</summary>
     private const int MaxOpenPassesLookedAt = 6;
 
@@ -1081,7 +1090,7 @@ public sealed class YouTurnStateMachine
         foreach (int side in sides)
         {
             var candidates = seq.Distinct()
-                .Where(p => p != orderPass && Math.Sign(p - current) == side)
+                .Where(p => p != orderPass && Math.Sign(p - current) == side && Math.Abs(p - current) <= MaxFallbackStep(skip))
                 .OrderBy(p => Math.Abs(p - current) < skip ? 1 : 0)
                 .ThenBy(p => Math.Abs(p - current));
             int looked = 0;
