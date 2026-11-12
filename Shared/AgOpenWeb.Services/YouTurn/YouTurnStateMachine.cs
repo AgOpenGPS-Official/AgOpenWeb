@@ -1356,6 +1356,17 @@ public sealed class YouTurnStateMachine
         bool? keepPositive = _lastStep != 0 && _lastStepTrack == track.Name ? _lastStep > 0 : null;
         var (nextLineInside, positiveDirection) = _pathing.WouldNextLineBeInsideBoundary(
             track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive, currentPosition, turn.DistanceToHeadland);
+        // The first turn on a track goes the way the work is: with a headland, the side whose next
+        // pass is in the area it encloses. The turn line alone counts the passes in the headland
+        // band too, and the pass along the fence the operator started beside (Olival, T5: -7, all
+        // of it in the 16 m band) took the first turn there, then the end of the field. With no pass
+        // in the work area on either side (a boundary curve's outer passes), the turn line decides.
+        if (keepPositive is null && ctx.WorkHeadlandLine is { Count: >= 3 } work)
+        {
+            var (workInside, workPositive) = _pathing.WouldNextLineBeInsideBoundary(
+                track, abHeading, guidance, ctx.Boundary, work, ctx.UTurnSkipRows, null, currentPosition, turn.DistanceToHeadland);
+            if (workInside) (nextLineInside, positiveDirection) = (true, workPositive);
+        }
 
         _logger.LogDebug("[YouTurn] Creating turn? nextLineInside={Inside} positiveDir={Dir}", nextLineInside, positiveDirection);
         // The turns step one way across the field (#523). When that side has no pass left, the
