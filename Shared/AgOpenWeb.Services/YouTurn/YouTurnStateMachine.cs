@@ -1363,8 +1363,11 @@ public sealed class YouTurnStateMachine
         // in the work area on either side (a boundary curve's outer passes), the turn line decides.
         if (keepPositive is null && ctx.WorkHeadlandLine is { Count: >= 3 } work)
         {
+            // Where the work is, not whether a turn can land there from here (the turn-line check
+            // above says that): any of the pass in the work area (J8 starts outside the field, the
+            // far turn line 295 m ahead, where no pass is landable yet).
             var (workInside, workPositive) = _pathing.WouldNextLineBeInsideBoundary(
-                track, abHeading, guidance, ctx.Boundary, work, ctx.UTurnSkipRows, null, currentPosition, turn.DistanceToHeadland);
+                track, abHeading, guidance, ctx.Boundary, work, ctx.UTurnSkipRows, null);
             _logger.LogDebug("[YouTurn] First turn: the work area's side {Side} (a pass there: {Inside})", workPositive ? "+" : "-", workInside);
             if (workInside) (nextLineInside, positiveDirection) = (true, workPositive);
         }
