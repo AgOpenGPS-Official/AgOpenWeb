@@ -80,6 +80,53 @@ public class ClosedPassSeamTests
         Assert.That(SharpestTurnRound(pass), Is.LessThan(120), "no stretch doubles back");
     }
 
+    // A field with a 4 m slot into it from the north, its tip 2 m from the south fence, the
+    // loop's seam at the tip: the closing arc round the tip was put in untested, out across the
+    // south fence (8.7 m on the 12 m lap), and the lap crossed itself coming back.
+    private static List<Vec3> SlotFromItsTip() => CurveProcessing.DensifyLoop(new List<Vec3>
+    {
+        new(96, 2, 0), new(100, 2, 0), new(100, 120, 0), new(200, 120, 0),
+        new(200, 0, 0), new(0, 0, 0), new(0, 120, 0), new(96, 120, 0),
+    });
+
+    // Segments i and j (not neighbours) of the line cross each other.
+    private static int SelfCrossings(IReadOnlyList<Vec3> p)
+    {
+        int count = 0, n = p.Count - 1;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 10; j < n; j++)
+            {
+                if (i < 10 && j >= n - 10 + i) continue; // neighbours across the seam
+                double r1 = p[i + 1].Easting - p[i].Easting, r2 = p[i + 1].Northing - p[i].Northing;
+                double s1 = p[j + 1].Easting - p[j].Easting, s2 = p[j + 1].Northing - p[j].Northing;
+                double den = r1 * s2 - r2 * s1;
+                if (Math.Abs(den) < 1e-12) continue;
+                double t = ((p[j].Easting - p[i].Easting) * s2 - (p[j].Northing - p[i].Northing) * s1) / den;
+                double u = ((p[j].Easting - p[i].Easting) * r2 - (p[j].Northing - p[i].Northing) * r1) / den;
+                if (t >= 0 && t <= 1 && u >= 0 && u <= 1) count++;
+            }
+        return count;
+    }
+
+    [Test]
+    public void A_lap_whose_seam_is_at_the_tip_of_a_slot_stays_in_the_field_and_does_not_cross_itself([Values(4.0, 12.0, 20.0)] double d)
+    {
+        var loop = SlotFromItsTip();
+        foreach (var pass in new[]
+        {
+            CurveProcessing.CreateOffsetCurveWithInfo(loop, d, closed: true).Points,
+            CurveProcessing.CurvePass(loop, d, closed: true, minTurnRadius: 8).Points,
+        })
+        {
+            Assert.That(SelfCrossings(pass), Is.Zero, "the lap does not cross itself");
+            // Like any lap of a field narrower than twice its offset, it may join across the slot
+            // (the pipeline leaves that stretch out, ClosedPassFitTests), never across the fence.
+            foreach (var p in pass)
+                Assert.That(GeometryMath.IsPointInPolygon(loop, p) || (p.Easting > 96 && p.Easting < 100 && p.Northing > 2), Is.True,
+                    FormattableString.Invariant($"({p.Easting:F1}, {p.Northing:F1}) is out across the fence"));
+        }
+    }
+
     [Test]
     public void Every_point_of_an_inner_lap_keeps_its_distance_from_the_fence([Values(4.0, 12.0)] double d)
     {

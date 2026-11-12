@@ -661,11 +661,16 @@ namespace AgOpenWeb.Models.Guidance
 
             // A loop's first and last points are offset along different sides of the seam corner:
             // join them, or the pass (and its guidelines) stop short there (#450). Round the join
-            // on the outside of the seam's bend, as at any other.
+            // on the outside of the seam's bend, as at any other, with the arc's points through the
+            // same collision test: untested, a seam at the tip of a narrow slot into the field (its
+            // sides closer than twice the offset) put the whole arc round the tip into the pass, out
+            // across the fence beyond it (8.7 m on a 12 m lap), and the pass crossed itself coming
+            // back.
             if (closed && offsetPoints.Count > 2)
             {
                 if (refCount > 2)
-                    AddArc(offsetPoints, originalPoints[0], originalPoints[refCount - 2].Heading, originalPoints[0].Heading, offsetDistance);
+                    AddArc(offsetPoints, originalPoints[0], originalPoints[refCount - 2].Heading, originalPoints[0].Heading, offsetDistance,
+                        (e, n) => near != null ? !near.AnyCloser(originalPoints, e, n, distSqAway) : !AnyCloser(originalPoints, e, n, distSqAway));
                 var first = offsetPoints[0];
                 var last = offsetPoints[^1];
                 if (Math.Abs(first.Easting - last.Easting) > 1e-6 || Math.Abs(first.Northing - last.Northing) > 1e-6)
