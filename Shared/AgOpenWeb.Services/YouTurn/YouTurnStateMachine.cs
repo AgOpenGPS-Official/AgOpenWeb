@@ -664,7 +664,8 @@ public sealed class YouTurnStateMachine
         GuidanceWorkingState guidance,
         YouTurnWorkingState turn)
     {
-        var effects = new YouTurnEffects();
+        // Every way out but a started turn is a press that did nothing: the operator is told why.
+        var effects = new YouTurnEffects { TellOperator = true };
 
         if (!isAutoSteerEngaged || ctx.SelectedTrack == null)
         {
@@ -753,6 +754,7 @@ public sealed class YouTurnStateMachine
             _missedSounded = false;
             ForgetDirectionChoice(turn);
             effects.StatusMessage = $"Manual {(turnLeft ? "left" : "right")} U-turn started";
+            effects.TellOperator = false;
         }
         else
         {
@@ -1233,6 +1235,7 @@ public sealed class YouTurnStateMachine
         if (_missedSounded) return;
         _missedSounded = true;
         effects.TurnCreationFailedSound = true;
+        effects.TellOperator = true;
     }
 
     /// <summary>U-turn switched off: the next missed or failed turn sounds again (AgOpenGPS
@@ -1251,6 +1254,7 @@ public sealed class YouTurnStateMachine
         if (_creationFailSounded) return;
         _creationFailSounded = true;
         effects.TurnCreationFailedSound = true;
+        effects.TellOperator = true;
     }
 
     private void RefuseDirectionSwap(int swappedPath, YouTurnEffects effects)
@@ -1531,4 +1535,12 @@ public sealed class YouTurnEffects
 
     /// <summary>U-turn sound: 18–20 m before the turn starts (AgOpenGPS sndBoundaryAlarm).</summary>
     public bool ApproachAlarmSound { get; set; }
+
+    /// <summary>
+    /// True when the operator must see <see cref="StatusMessage"/>: a manual U-turn that was
+    /// refused, and a turn that could not be made or was missed, once, with its sound. The status
+    /// message alone is not sent to the web client, so a refused press did nothing at all on the
+    /// screen and a turn that failed only sounded.
+    /// </summary>
+    public bool TellOperator { get; set; }
 }
