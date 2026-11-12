@@ -351,6 +351,10 @@ public partial class MainViewModel
         if (result.StatusMessage != null)
             StatusMessage = result.StatusMessage;
 
+        // A manual U-turn that was refused, a turn that can't be made or was missed (a toast).
+        if (result.YouTurnNotice != null)
+            ReportFailure(result.YouTurnNotice);
+
         // Map vehicle/tool/hitch positions are pushed by OnRenderPullTick at
         // 30 Hz (vehicle dead-reckoned to "now" from the estimator, tool/hitch
         // from the live ToolPositionService snapshot updated at 100 Hz by the

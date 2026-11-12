@@ -203,14 +203,14 @@ public partial class MainViewModel
 
     public void TriggerManualYouTurnLeft()
     {
-        if (IsActiveTrackClosed) { StatusMessage = "U-turns aren't available on a closed (polygon) track"; return; }
+        if (IsActiveTrackClosed) { ReportFailure("U-turns aren't available on a closed (polygon) track"); return; }
         if (ManualTurnTooFast()) return;
         _intents.RequestManualYouTurn(turnLeft: true);
     }
 
     public void TriggerManualYouTurnRight()
     {
-        if (IsActiveTrackClosed) { StatusMessage = "U-turns aren't available on a closed (polygon) track"; return; }
+        if (IsActiveTrackClosed) { ReportFailure("U-turns aren't available on a closed (polygon) track"); return; }
         if (ManualTurnTooFast()) return;
         _intents.RequestManualYouTurn(turnLeft: false);
     }
