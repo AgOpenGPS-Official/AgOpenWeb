@@ -74,6 +74,7 @@ public static class RigJobs
             // AgOpenWeb draws the plough 0.9 m from where it works: its map is off by that much at the field's sides.
             Expected = new[] { "MAP-SHOWS-UNSPRAYED", "SPRAYED-NOT-ON-MAP", "TOOL-POSITION-OFF" },
         };
+        foreach (var j in SkipWorkedJobs.Jobs()) yield return j;
     }
 
     /// <summary>J12: one pass with the tractor in the headland and the implement in the cultivated
