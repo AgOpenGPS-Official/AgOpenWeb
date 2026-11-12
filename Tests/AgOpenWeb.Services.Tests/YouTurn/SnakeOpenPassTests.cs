@@ -34,6 +34,7 @@ public class SnakeOpenPassTests
     private static double PassX(int k) => 4 * k + 2;
 
     private YouTurnStateMachine _sm = null!;
+    private YouTurnCreationService _creation = null!;
     private Boundary _boundary = null!;
     private Models.Track.Track _track = null!;
     private PolygonOffsetService _offset = null!;
@@ -54,8 +55,9 @@ public class SnakeOpenPassTests
         c.Guidance.UTurnStyle = 0;
 
         _offset = new PolygonOffsetService();
+        _creation = new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, _offset, c);
         _sm = new YouTurnStateMachine(
-            new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, _offset, c),
+            _creation,
             new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, c),
             NullLogger<YouTurnStateMachine>.Instance, c);
 
@@ -196,5 +198,79 @@ public class SnakeOpenPassTests
 
         Assert.That(turn.SnakeSequence, Is.SameAs(plan));
         Assert.That(turn.ReturnPassTargetPath, Is.EqualTo(8));
+    }
+
+    // A hard fence 2 m past the headland line and a 32 m loop: from pass 0 heading south, 30 m from
+    // the headland line, no turn onto pass 2 (the order's), 4 or -2 clears the fence, even moved
+    // back towards the tractor.
+    private (GuidanceWorkingState Guidance, YouTurnWorkingState Turn, List<Vec3> Cultivated) FailingEnd()
+    {
+        ConfigurationStore.Instance.Guidance.UTurnRadius = 16.0;
+        _boundary.OuterBoundary!.IsHard = true;
+        return (new GuidanceWorkingState { HowManyPathsAway = 0, IsHeadingSameWay = false },
+            new YouTurnWorkingState { IsEnabled = true },
+            Ring((-48, -48), (48, -48), (48, 48), (-48, 48)));
+    }
+
+    [Test]
+    public void An_end_where_no_turn_builds_is_not_tried_again_on_every_cycle()
+    {
+        // Tick looks for a turn on every GPS cycle while the end is ahead (10 m to 2 km). Each look
+        // built the order's turn and one onto the nearest open pass on each side, each moving the
+        // turn back from the fence 0.5 m at a time up to 30 m: three builds a cycle, for nothing.
+        var (guidance, turn, cultivated) = FailingEnd();
+
+        var first = _sm.Tick(Ctx(cultivated, PassX(0), -18, 180), guidance, turn);
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.TurnPath, Is.Null, "the scenario: no turn fits");
+            Assert.That(_creation.TurnPathBuilds, Is.EqualTo(3), "the order's pass, then one on each side");
+            Assert.That(first.TurnCreationFailedSound, Is.True);
+        });
+
+        // Thirty more cycles towards the end, 0.3 m apart.
+        for (int i = 1; i <= 30; i++)
+            _sm.Tick(Ctx(cultivated, PassX(0), -18 - 0.3 * i, 180), guidance, turn);
+
+        Assert.That(_creation.TurnPathBuilds, Is.EqualTo(3), "not built again on every cycle");
+    }
+
+    [Test]
+    public void An_end_where_no_turn_built_is_tried_again_when_something_changes()
+    {
+        var (guidance, turn, cultivated) = FailingEnd();
+        _sm.Tick(Ctx(cultivated, PassX(0), -18, 180), guidance, turn);
+        int builds = _creation.TurnPathBuilds;
+
+        void TriedAgain(string what, YouTurnStateMachine.TickContext ctx)
+        {
+            _sm.Tick(ctx, guidance, turn);
+            Assert.That(_creation.TurnPathBuilds, Is.GreaterThan(builds), what);
+            builds = _creation.TurnPathBuilds;
+            _sm.Tick(ctx, guidance, turn);
+            if (turn.TurnPath == null)
+                Assert.That(_creation.TurnPathBuilds, Is.EqualTo(builds), what + ": then remembered");
+        }
+
+        // The U-turn arrow: the operator picks a side.
+        turn.NextUTurnDirectionLeftOverride = true;
+        TriedAgain("the U-turn arrow", Ctx(cultivated, PassX(0), -19, 180));
+
+        // Another pass (a lateral move): its end is another end.
+        guidance.HowManyPathsAway = 1;
+        TriedAgain("another pass", Ctx(cultivated, PassX(1), -19, 180));
+
+        // The other way along the pass: the north end.
+        TriedAgain("the other direction", Ctx(cultivated, PassX(1), 18, 0));
+
+        // Closer than 10 m to the end, Tick stops looking for a turn. Looking again (a pass that
+        // crosses a headland strip has another end past it) tries again.
+        _sm.Tick(Ctx(cultivated, PassX(1), 39, 0), guidance, turn);
+        TriedAgain("after Tick stopped looking for a turn", Ctx(cultivated, PassX(1), 18, 0));
+
+        // A smaller turn radius: the operator makes it fit.
+        ConfigurationStore.Instance.Guidance.UTurnRadius = 4.0;
+        _sm.Tick(Ctx(cultivated, PassX(1), 19, 0), guidance, turn);
+        Assert.That(turn.TurnPath, Is.Not.Null, "the turn now fits and is planned");
     }
 }

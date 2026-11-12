@@ -277,6 +277,13 @@ public sealed class YouTurnStateMachine
             else
                 HandleNormalCreation(in ctx, track, abHeading, currentPosition, headingRadians, guidance, turn, effects);
         }
+        else
+        {
+            // Not looking for a turn (a turn planned or driven, off the line, out of the creation
+            // window): an end where none built is tried again next time. A pass that crosses a
+            // headland strip has another end past it.
+            _failedEnd = null;
+        }
         // ── NO TURN, HEADING OUT ────────────────────────────────────────
         // In the headland on the line, heading out of the field, with no turn planned or under
         // way and nothing said yet: no turn can be made from here, since the turn is laid out from
@@ -792,6 +799,7 @@ public sealed class YouTurnStateMachine
         turn.SnakeIndex = -1;
         turn.AltSign = 0;
         _coveredPasses.Clear();
+        _failedEnd = null;
     }
 
     /// <summary>
@@ -930,6 +938,11 @@ public sealed class YouTurnStateMachine
             PlanSnake(in ctx, track, abHeading, guidance, turn, fieldStamp);
         }
 
+        // This end was tried and no turn built: not again on every cycle (see _failedEnd).
+        if (_failedEnd is { } failedEnd && failedEnd == EndKey(in ctx, track, guidance, turn, fieldStamp))
+            return;
+        _failedEnd = null;
+
         // Never onto a worked pass: the next pass of the order that is still to do.
         var isWorked = WorkedPasses(in ctx, track, guidance, turn);
         int? nextPath = _pathing.GetNextSnakePath(turn, isWorked);
@@ -984,9 +997,11 @@ public sealed class YouTurnStateMachine
         }
 
         // No turn onto the order's pass here: the nearest pass still to do that has room at this
-        // end, as AgOpenGPS's GetNextNotWorkedTrack takes, and the order is planned again from
-        // where the turn lands. Only the order's pass was tried, so with the far side of the field
-        // next in the order, the end of the field was said with a pass three over left to do.
+        // end, and the order is planned again from where the turn lands. Only the order's pass was
+        // tried, so with the far side of the field next in the order, the end of the field was said
+        // with a pass three over left to do. Ours, not AgOpenGPS's: its GetNextNotWorkedTrack
+        // starts at the skip in the turn's direction and steps outward past worked tracks, checks
+        // neither room nor whether the turn builds, and never looks at the other side.
         if (TurnOntoNearestOpenPass(in ctx, track, abHeading, headingRadians, guidance, turn, effects, isWorked, target, operatorSide))
             return;
 
@@ -995,10 +1010,39 @@ public sealed class YouTurnStateMachine
             // Aimed at the order's pass again: the map and the message are about that one.
             AimTurnAt(track, abHeading, guidance, turn, effects, target, "Snake");
             ReportNoTurn(failed, effects);
+            _failedEnd = EndKey(in ctx, track, guidance, turn, fieldStamp);
             return;
         }
         effects.StatusMessage = "End of field reached - no room on the next pass at this end";
         SoundCreationFailed(effects);
+        _failedEnd = EndKey(in ctx, track, guidance, turn, fieldStamp);
+    }
+
+    // An end where no turn was made onto the order's pass or the nearest open passes (a hard fence
+    // the turns don't clear: each build moves the turn back 0.5 m at a time, up to 30 m). Tick
+    // looks for a turn on every GPS cycle while the end is ahead, and the passes tried here
+    // tripled the builds of each look, so the end is remembered and not tried again until
+    // something that can change the answer does: the pass, the direction of travel, the nudge,
+    // the snake order, the field or headland (SnakeFieldStamp), the skip, the U-turn arrow or a
+    // turn setting (the operator lowering the radius to make it fit). Forgotten when Tick stops
+    // looking for a turn, the track changes or U-turn is switched off.
+    private EndTried? _failedEnd;
+
+    private readonly record struct EndTried(Models.Track.Track Track, int Pass, bool HeadingSameWay, double Nudge,
+        List<int>? Snake, long FieldStamp, int SkipRows, bool? Arrow, int Settings);
+
+    private EndTried EndKey(in TickContext ctx, Models.Track.Track track, GuidanceWorkingState guidance,
+        YouTurnWorkingState turn, long fieldStamp)
+    {
+        var c = _configStore;
+        var g = c.Guidance;
+        int settings = HashCode.Combine(
+            HashCode.Combine(g.UTurnRadius, g.UTurnDistanceFromBoundary, g.UTurnExtension, g.UTurnSmoothing, g.UTurnStyle),
+            HashCode.Combine(c.ActualToolWidth, c.Tool.Width, c.Tool.Overlap, c.Tool.Offset, c.Tool.Length,
+                c.Tool.IsToolTrailing, c.Tool.IsToolRearFixed),
+            HashCode.Combine(c.Vehicle.HitchLength, ctx.HeadlandCalculatedWidth, ctx.HeadlandDistance));
+        return new EndTried(track, guidance.HowManyPathsAway, guidance.IsHeadingSameWay, guidance.NudgeOffset,
+            turn.SnakeSequence, fieldStamp, ctx.UTurnSkipRows, turn.NextUTurnDirectionLeftOverride, settings);
     }
 
     /// <summary>At most this many passes still to do are looked at on each side for one with room.</summary>
@@ -1011,7 +1055,9 @@ public sealed class YouTurnStateMachine
     /// side when they chose one. On each side a pass at least the skip away comes before a nearer one
     /// (a turn onto the next pass is a loop), and one turn is built: when the nearest does not fit
     /// (a hard fence on that side), the ones further that way fit no better. True when one was built
-    /// and is the planned turn.
+    /// and is the planned turn. Ours: AgOpenGPS (CYouTurn.GetNextNotWorkedTrack) only steps outward
+    /// on the turn's side past worked tracks; the other side, passes nearer than the skip and the
+    /// room and build checks are not in it.
     /// </summary>
     private bool TurnOntoNearestOpenPass(
         in TickContext ctx,
@@ -1390,7 +1436,11 @@ public sealed class YouTurnStateMachine
 
     /// <summary>U-turn switched off: the next missed or failed turn sounds again (AgOpenGPS
     /// resets turnTooCloseTrigger on the U-turn button).</summary>
-    public void OnYouTurnSwitchedOff() => _missedSounded = _creationFailSounded = false;
+    public void OnYouTurnSwitchedOff()
+    {
+        _missedSounded = _creationFailSounded = false;
+        _failedEnd = null;
+    }
 
     /// <summary>
     /// No turn can be made: the turn would not build, or there is no pass to turn onto (the end of
