@@ -349,6 +349,7 @@ public static class TramFlows
         // Careless: 0 passes on a boundary system means one lap (#112).
         await op.ToldAsync(); op.HostSaid();
         if (!await SetAsync(op, "#fb-tram-passes", "0", "Passes")) return;
+        await Task.Delay(500);   // the editor writes the value in use back after 700 ms (tramSetTyped), as in CarelessAsync
         var s1 = (await HostSystemAsync(op))!;
         string box = await op.PageAsync<string>("() => document.getElementById('fb-tram-passes').value");
         if (s1.PassCount >= 1) op.S.Ok($"0 passes on a boundary system: {s1.PassCount} lap(s) kept (#112)");
