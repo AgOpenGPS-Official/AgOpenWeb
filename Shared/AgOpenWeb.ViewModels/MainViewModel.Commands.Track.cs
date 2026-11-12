@@ -914,6 +914,7 @@ public partial class MainViewModel
                 2 => $"U-Turn skip: ignore worked tracks ({UTurnSkipRows} rows)",
                 _ => $"U-Turn skip: normal ({UTurnSkipRows} rows)",
             };
+            SaveUTurnSkipToField(); // the field keeps its own choice, also after the app is closed
         });
 
         CycleUTurnSkipRowsCommand = new RelayCommand(() =>
@@ -921,6 +922,7 @@ public partial class MainViewModel
             UTurnSkipRows = (UTurnSkipRows + 1) % 10;
             _uTurnSkipRowsChosen = UTurnSkipRows;
             StatusMessage = $"Skip rows: {UTurnSkipRows}";
+            SaveUTurnSkipToField();
         });
 
         // Flags Commands
