@@ -129,6 +129,26 @@ public class SnakeOpenPassTests
     }
 
     [Test]
+    public void A_pass_still_to_do_far_across_the_field_is_the_end_of_the_field_here()
+    {
+        // As the first test with passes -3 to 5 worked: the nearest pass still to do with room is
+        // -4, ten passes west. A U-turn there runs 40 m along the headland (on Baetas, W1: 80 m and
+        // 128 m, a two-minute "turn"); further than twice the skip's step, the operator decides.
+        var cultivated = Hourglass();
+        for (int k = -3; k <= 5; k++) _track.MarkPathWorked(k);
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = 6, IsHeadingSameWay = false };
+        var turn = new YouTurnWorkingState { IsEnabled = true };
+
+        var effects = _sm.Tick(Ctx(cultivated, PassX(6), -25, 180), guidance, turn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.TurnPath, Is.Null, $"no turn ten passes over (aimed at {turn.ReturnPassTargetPath})");
+            Assert.That(effects.StatusMessage, Is.EqualTo("End of field reached - no room on the next pass at this end"));
+        });
+    }
+
+    [Test]
     public void The_order_is_planned_again_when_the_headland_changes()
     {
         // The square -40..40 (passes -10..9): from pass 6 the order goes east to 8.
