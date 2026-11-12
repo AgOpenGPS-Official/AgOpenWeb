@@ -18,17 +18,17 @@ function renderSkia(canvas, rp) {
   const outOfBounds = !!(tick && tick.op && tick.op.outOfBounds); // #494
   if (scene) {
     for (let bi = 0; bi < scene.boundaries.length; bi++)
-      strokePtsSk(canvas, scene.boundaries[bi], true, outOfBounds ? SKP.boundaryOut
+      strokeFixedPtsSk(canvas, scene.boundaries[bi], true, outOfBounds ? SKP.boundaryOut
         : (scene.boundaryInner && scene.boundaryInner[bi]) ? SKP.boundaryInner : SKP.boundary);
     // Headland line shows only when the headland is ON (the bottom-nav headland button).
     if (scene.headland && tick && tick.tools && tick.tools.headlandOn)
-      strokePtsSk(canvas, scene.headland, true, SKP.headland);
+      strokeFixedPtsSk(canvas, scene.headland, true, SKP.headland);
     drawExtraGuidelinesSk(canvas); // faint adjacent passes (under the bold lines)
-    for (const l of scene.recordedPaths || []) strokePtsSk(canvas, l, false, SKP.recPath);   // #110
-    for (const l of scene.contourStrips || []) strokePtsSk(canvas, l, false, SKP.contourStrip);
+    for (const l of scene.recordedPaths || []) strokeFixedPtsSk(canvas, l, false, SKP.recPath);   // #110
+    for (const l of scene.contourStrips || []) strokeFixedPtsSk(canvas, l, false, SKP.contourStrip);
     drawContourRefSk(canvas);
-    if (scene.nextTrack) strokePtsSk(canvas, scene.nextTrack, false, SKP.next);
-    if (scene.uTurnPath) strokePtsSk(canvas, scene.uTurnPath, false, SKP.uturn);
+    if (scene.nextTrack) strokeFixedPtsSk(canvas, scene.nextTrack, false, SKP.next);
+    if (scene.uTurnPath) strokeFixedPtsSk(canvas, scene.uTurnPath, false, SKP.uturn);
     // Purple reference (extended across the field). The reference is the edge between passes
     // (PassGeometry), so pass 0 lies half a width from it; only a track driven on the line
     // itself (boundary-follow) puts the magenta guidance on top of it, and then just the one
@@ -36,15 +36,12 @@ function renderSkia(canvas, rp) {
     drawToolBandSk(canvas); // where the tool will land, under the lines
     const _onRef = scene.guidanceLine && scene.tracks.some(t => onPolyline(scene.guidanceLine, t.points));
     if (!_onRef) for (const tr of scene.tracks)
-      strokePtsSk(canvas, extendAbLine(tr.points), false, SKP.reference);
+      strokeFixedPtsSk(canvas, extendAbLine(tr.points), false, SKP.reference);
     // Magenta current pass, extended across the field. The host's DisplayLine is only ~track
     // length (a 2-point offset AB); extendAbLine spans it full-field, so an offset pass isn't a
     // short stub. Curves are >2 points and already host-extended, so they pass through unchanged.
-    if (scene.guidanceLine) {
-      const gl = extendAbLine(scene.guidanceLine);
-      strokePtsSk(canvas, gl, false, SKP.guidanceOutline);
-      strokePtsSk(canvas, gl, false, SKP.guidance);
-    }
+    if (scene.guidanceLine)
+      strokeFixedPtsSk(canvas, extendAbLine(scene.guidanceLine), false, [SKP.guidanceOutline, SKP.guidance]);
     drawActiveAbPointsSk(canvas);
     drawFlagsSk(canvas, scene.flags);
   }

@@ -125,6 +125,12 @@ sections), the `Scene` (tracks, boundary, imagery extent), `Config`, `Status`, c
 init + incremental cell deltas, and smaller frames for dialogs, prompts, sounds and toasts.
 Position between ticks is extrapolated client-side (`RENDER_DELAY`); the pose estimator on the
 host does the same for the 100 Hz control loop.
+Long lines cost the most to draw: Skia strokes a bent, anti-aliased path through a CPU mask the
+size of the path on the screen, so a curve that goes round the field costs a screen-sized mask.
+Lines from the `Scene` are drawn with `strokeFixedPtsSk` (`js/map-draw.js`: a copy without the
+points that add nothing, made once per array; the host replaces its arrays, the page never edits
+them); a line the page draws or edits uses `strokePtsSk`. Lines in one style share one path
+(`strokeCmdsSk`), as the extra guidelines do.
 
 ### Control authority
 Several browsers may be connected; only one holds control (`ControlAuthority`, deadman model).
