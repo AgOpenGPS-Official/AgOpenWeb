@@ -20,6 +20,6 @@ last=$(git log -1 --format=%ct HEAD)
 [ $(( $(date +%s) - last )) -ge 90000 ] && out false "No commit on develop in the last 25 hours; nothing to run."
 [ $# -eq 0 ] && out true
 [ "$(date -u +%u)" = "7" ] && out true "Sunday: the weekly full run."
-changed=$(git log --since="25 hours ago" --format=%h -- "$@" | head -20)
+changed=$(git log -n 20 --since="25 hours ago" --format=%h -- "$@")
 [ -n "$changed" ] && out true "Run: commits in the last 25 hours touched what this harness covers ($(echo $changed | tr '\n' ' '))."
 out false "Nothing this harness covers changed in the last 25 hours (paths: $*); it runs again when something does, and every Sunday."
