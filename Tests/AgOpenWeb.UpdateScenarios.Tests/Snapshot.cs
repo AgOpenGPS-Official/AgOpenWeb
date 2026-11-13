@@ -181,6 +181,10 @@ public sealed class Snapshot
         DumpObject(d, "Hotkeys", st.Hotkeys);
         d["NumSections"] = st.NumSections.ToString(Inv);
         d["ActualToolWidth"] = Num(st.ActualToolWidth);
+        // A fixed implement's working point from the rear axle: format 2's Tool.HitchLength, which this
+        // build splits into the vehicle's hitch and the tool's distance from it (#547). Older builds
+        // read it straight from the store, so every build is compared on the same number.
+        d["Tool.HitchLength"] = Num(AgOpenWeb.Models.Tool.RigGeometry.AxleToWorkingPoint(st.Vehicle, st.Tool));
         d["ActiveVehicleProfileName"] = st.ActiveVehicleProfileName;
         d["ActiveToolProfileName"] = st.ActiveToolProfileName;
         d["IsMetric"] = st.IsMetric.ToString();
