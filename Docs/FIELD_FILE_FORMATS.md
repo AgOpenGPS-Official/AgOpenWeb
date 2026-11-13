@@ -27,6 +27,7 @@ A field is a folder named after the field, under the user's Fields folder (defau
 | `elevation.csv` | Elevation log, one row per GPS sample | CSV | Parse and carry |
 | `HeadlandSegments.json` | Headland builder segments | JSON, plane metres | Carry as an opaque file |
 | `TramConfig.json`, `TramSystems.json` | Tram line settings | JSON | Carry as opaque files |
+| `UTurnSkip.json` | The U-turn skip button's mode and row count for this field | JSON | Carry as an opaque file |
 | `agshare.txt` | The AgShare field GUID this folder came from or was uploaded to | Text, one GUID | Write on download |
 | `jobs/<task>/job.json` | One job (work session) on the field | JSON | Parse and carry |
 | `jobs/<task>/coverage/` | That job's worked area | Tiles (section 5) | Carry; decode to display |
@@ -263,6 +264,7 @@ Not carried by AgShare today, and required (AgShare must carry all of them): hea
 | Jobs | `jobs/<task>/job.json` | Parse |
 | Coverage | `jobs/<task>/coverage/` | Carry; decode to display |
 | Headland builder and tram settings | `HeadlandSegments.json`, `TramConfig.json`, `TramSystems.json` | Carry as opaque files |
+| U-turn skip mode and row count | `UTurnSkip.json` | Carry as an opaque file |
 
 The simplest lossless design is to store each uploaded field folder's files as they are, and parse them for AgShare's own map, search and listing. Storing `field.geojson` whole also keeps feature roles and properties that a future AgOpenWeb adds. Ask the developer before choosing between that and a field-by-field API.
 

@@ -318,6 +318,7 @@ public class CodePathContinuityTests
         "appsettings.json", "appstate.json", "configuration.json", "runtime_state.json",
         "active_profile_name.txt", "user_notes.txt", "agshare.txt", "turn_path.json",
         "TramSystems.json", "TramConfig.json", "HeadlandSegments.json",
+        "UTurnSkip.json", // a field's U-turn skip mode and row count, kept after the app is closed
         "window.json", // the desktop window's size, place and maximized state, as AgOpenGPS keeps them (#571)
         ".AutoSteer.json", ".tool.xml", ".env.xml",
         // Bug report dump
