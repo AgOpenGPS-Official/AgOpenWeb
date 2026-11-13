@@ -2,6 +2,7 @@
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+using System;
 using System.Collections.Generic;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
@@ -17,6 +18,7 @@ using AgOpenWeb.Services.Section;
 using AgOpenWeb.Services.Tool;
 using AgOpenWeb.Services.Track;
 using AgOpenWeb.Services.YouTurn;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 
@@ -35,6 +37,17 @@ public class LateralMoveTests
     private GpsService _gpsService = null!;
     private GpsPipelineService _pipeline = null!;
     private List<GpsCycleResult> _results = null!;
+    private CaptureLogger _log = null!;
+
+    private sealed class CaptureLogger : ILogger<GpsPipelineService>
+    {
+        public readonly List<string> Messages = new();
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? ex,
+            Func<TState, Exception?, string> formatter) => Messages.Add($"{logLevel}: {formatter(state, ex)}");
+        private sealed class NullScope : IDisposable { public static readonly NullScope Instance = new(); public void Dispose() { } }
+    }
 
     [SetUp]
     public void SetUp()
@@ -74,7 +87,7 @@ public class LateralMoveTests
             Substitute.For<IAudioService>(),
             _intents,
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance,
+            _log = new CaptureLogger(),
             config,
             new PositionEstimator());
 
@@ -123,6 +136,31 @@ public class LateralMoveTests
             Assert.That(moved.NudgeOffset, Is.EqualTo(nudged.NudgeOffset).Within(1e-9));
             Assert.That(moved.NudgeOffset, Is.EqualTo(0.3).Within(1e-9));
         });
+    }
+
+    // The line moves a whole pass with no turn, and a tap on the lateral button is easy to miss: the
+    // log a bug report carries says so (a report of the line on the next pass with the tractor
+    // standing still had nothing in its log to show what moved it).
+    [Test]
+    public void A_lateral_move_is_logged()
+    {
+        var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
+        _pipeline.SetAutoSteerEngaged(true);
+        Cycle();
+        Assume.That(_log.Messages, Has.None.Contains("Lateral move"), "nothing logged before a move");
+
+        _intents.RequestGuidanceSnap(left: false);
+        Cycle();
+        _intents.RequestGuidanceSnap(left: true);
+        Cycle();
+        Cycle();
+
+        Assert.That(_log.Messages.FindAll(m => m.Contains("Lateral move")), Is.EqualTo(new[]
+        {
+            "Information: [Guidance] Lateral move right: pass 1R -> 2R",
+            "Information: [Guidance] Lateral move left: pass 2R -> 1R",
+        }));
     }
 
     // The pass label, as AgOpenGPS's DrawTrackInfo: an arrow for the way you drive along the line

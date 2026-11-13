@@ -577,7 +577,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
             int delta = intents.GuidanceSnap.Value
                 ? (_guidanceWorking.IsHeadingSameWay ? -1 : 1)
                 : (_guidanceWorking.IsHeadingSameWay ? 1 : -1);
+            int from = _guidanceWorking.HowManyPathsAway;
             _guidanceWorking.HowManyPathsAway += delta;
+            // Logged: the line moves a whole pass with no turn, and a tap on the lateral button is
+            // easy to miss. A bug report of the line on the next pass with the tractor standing still
+            // had nothing in its log to show what moved it.
+            _logger.LogInformation("[Guidance] Lateral move {Side}: pass {From} -> {To}",
+                intents.GuidanceSnap.Value ? "left" : "right", PassName(from), PassName(from + delta));
             // The nudge stays: a lateral move is a pass, not a reset (AgOpenGPS BuildManualYouLateral).
             _trackGuidanceState = null;
 
@@ -589,6 +595,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // Mirrors the direction-override re-arm in YouTurnStateMachine.
             YouTurnStateMachine.DiscardPlannedTurn(_youTurn);
         }
+        else if (intents.GuidanceSnap.HasValue)
+            _logger.LogInformation("[Guidance] Lateral move {Side} ignored: a U-turn is being driven",
+                intents.GuidanceSnap.Value ? "left" : "right");
         // Phase D D5. Nudge accumulates (multiple clicks between drains sum).
         // Heading-same-way flips the sign so "left" always means left from the
         // driver's seat regardless of track direction. Reset wins if both
@@ -1688,9 +1697,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
     {
         int pass = landingPass ?? g.HowManyPathsAway;
         bool sameWay = landingPass.HasValue ? !g.IsHeadingSameWay : g.IsHeadingSameWay;
-        g.CurrentLineLabel = (sameWay ? "↑" : "↓") + (pass >= 0 ? $"{pass + 1}R" : $"{-pass}L");
+        g.CurrentLineLabel = (sameWay ? "↑" : "↓") + PassName(pass);
         return g;
     }
+
+    /// <summary>The pass as its label names it: pass 0 is 1R, pass −1 is 1L.</summary>
+    private static string PassName(int pass) => pass >= 0 ? $"{pass + 1}R" : $"{-pass}L";
 
     private static GuidanceSnapshot BuildGuidanceSnapshot(
         GuidanceWorkingState src,
