@@ -164,6 +164,34 @@ public class DebugDumpJobContentTests
         });
     }
 
+    // The background image can be 10 MB or more and is rarely what a bug is about: the Bug Report
+    // panel leaves it out unless ticked, and a note in the dump says the field had one.
+    [Test]
+    public void Dump_leaves_the_background_image_out_when_asked()
+    {
+        var fieldDir = Path.Combine(_dir, "Fields", "photo");
+        Directory.CreateDirectory(fieldDir);
+        File.WriteAllBytes(Path.Combine(fieldDir, "background.png"), new byte[3 * 1048576]);
+        File.WriteAllText(Path.Combine(fieldDir, "field.geojson"), "{}");
+        var state = new ApplicationState();
+        state.Field.ActiveField = new Field { Name = "photo", DirectoryPath = fieldDir };
+        var snap = DebugDumpService.Capture(Settings(), RuntimeStateCapture.From(state), new ConfigurationStore());
+
+        using var with = ZipFile.OpenRead(DebugDumpService.WriteDump(snap, outputDirectory: Path.Combine(_dir, "with")));
+        using var without = ZipFile.OpenRead(DebugDumpService.WriteDump(snap, outputDirectory: Path.Combine(_dir, "without"),
+            includeBackgroundImage: false));
+        var note = without.GetEntry("field_background_left_out.txt");
+        Assert.Multiple(() =>
+        {
+            Assert.That(with.GetEntry("field/background.png"), Is.Not.Null, "included by default");
+            Assert.That(with.GetEntry("field_background_left_out.txt"), Is.Null);
+            Assert.That(without.GetEntry("field/background.png"), Is.Null, "left out");
+            Assert.That(without.GetEntry("field/field.geojson"), Is.Not.Null, "the rest of the field stays");
+            Assert.That(note, Is.Not.Null);
+            Assert.That(new StreamReader(note!.Open()).ReadToEnd(), Does.Contain("field/background.png (3.0 MB) was left out"));
+        });
+    }
+
     // The report shows the state when the button was pressed: Capture reads it on the host loop,
     // and what changes while WriteDump runs in the background doesn't reach the dump.
     [Test]
