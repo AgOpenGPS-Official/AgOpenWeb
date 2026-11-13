@@ -111,10 +111,10 @@ public partial class YouTurnCreationService
         // Diagnostic: one line per turn build to see whether the clearance path is
         // armed at runtime and with what geometry (note actualWidth vs storedWidth).
         _logger.LogDebug(
-            "[YouTurn][HardBoundary] hardOuter={Hard} isHard={IsHard} validOuter={Valid} actualWidth={AW:F1} storedWidth={W:F1} rearFixed={RF} trailing={TR} length={L:F1} margin={M:F1}",
+            "[YouTurn][HardBoundary] hardOuter={Hard} isHard={IsHard} validOuter={Valid} actualWidth={AW:F1} storedWidth={W:F1} mount={Mount} length={L:F1} margin={M:F1}",
             hardOuter, boundary?.OuterBoundary?.IsHard, boundary?.OuterBoundary?.IsValid,
-            config.ActualToolWidth, config.Tool.Width, config.Tool.IsToolRearFixed,
-            config.Tool.IsToolTrailing, config.Tool.Length, clearanceMargin);
+            config.ActualToolWidth, config.Tool.Width, RigGeometry.Mount(config.Tool),
+            config.Tool.Length, clearanceMargin);
 
         const double SetbackStep = 0.5;
         const double MaxExtraSetback = 30.0;
@@ -277,28 +277,10 @@ public partial class YouTurnCreationService
     /// Maps the runtime tool/vehicle config onto the pure <see cref="ToolGeometry"/>
     /// used by the implement swept-path clearance check.
     /// </summary>
-    private static ToolGeometry BuildToolGeometry(ConfigurationStore config)
-    {
-        var tool = config.Tool;
-        ToolMount mount =
-            tool.IsToolFrontFixed ? ToolMount.FrontFixed :
-            tool.IsToolTBT ? ToolMount.TBT :
-            tool.IsToolTrailing ? ToolMount.Trailing :
-            ToolMount.RearFixed; // rear-fixed is the default
-
-        return new ToolGeometry(
-            Mount: mount,
-            // Real implement width comes from the active sections (ActualToolWidth),
-            // not Tool.Width — the latter is a stored fallback (often the 6 m default).
-            Width: config.ActualToolWidth,
-            Offset: tool.Offset,
-            VehicleHitchLength: config.Vehicle.HitchLength,
-            ToolHitchLength: tool.HitchLength,
-            TrailingHitchLength: tool.TrailingHitchLength,
-            TrailingToolToPivotLength: tool.TrailingToolToPivotLength,
-            TankTrailingHitchLength: tool.TankTrailingHitchLength,
-            Length: tool.Length);
-    }
+    // Real implement width comes from the active sections (ActualToolWidth), not Tool.Width:
+    // the latter is a stored fallback (often the 6 m default).
+    private static ToolGeometry BuildToolGeometry(ConfigurationStore config) =>
+        RigGeometry.Geometry(config.Vehicle, config.Tool, config.ActualToolWidth);
 
     /// <summary>
     /// True when the implement swept along <paramref name="path"/> stays clear of a

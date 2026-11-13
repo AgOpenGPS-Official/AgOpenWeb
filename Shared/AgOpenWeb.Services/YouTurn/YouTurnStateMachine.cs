@@ -1050,9 +1050,9 @@ public sealed class YouTurnStateMachine
         var g = c.Guidance;
         int settings = HashCode.Combine(
             HashCode.Combine(g.UTurnRadius, g.UTurnDistanceFromBoundary, g.UTurnExtension, g.UTurnSmoothing, g.UTurnStyle),
-            HashCode.Combine(c.ActualToolWidth, c.Tool.Width, c.Tool.Overlap, c.Tool.Offset, c.Tool.Length,
-                c.Tool.IsToolTrailing, c.Tool.IsToolRearFixed),
-            HashCode.Combine(c.Vehicle.HitchLength, ctx.HeadlandCalculatedWidth, ctx.HeadlandDistance));
+            HashCode.Combine(c.ActualToolWidth, c.Tool.Width, c.Tool.Overlap,
+                AgOpenWeb.Models.Tool.RigGeometry.Stamp(c.Vehicle, c.Tool)),
+            HashCode.Combine(ctx.HeadlandCalculatedWidth, ctx.HeadlandDistance));
         return new EndTried(track, guidance.HowManyPathsAway, guidance.IsHeadingSameWay, guidance.NudgeOffset,
             turn.SnakeSequence, fieldStamp, ctx.UTurnSkipRows, turn.NextUTurnDirectionLeftOverride, settings);
     }

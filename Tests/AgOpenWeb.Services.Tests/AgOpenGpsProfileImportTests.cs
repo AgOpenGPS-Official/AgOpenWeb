@@ -170,7 +170,7 @@ public class AgOpenGpsProfileImportTests
 
         Assert.That(store.Tool.TankTrailingHitchLength, Is.EqualTo(1.8));
         // Heading north, straight behind the tractor: the tool is 4.2 m south of the hitch.
-        var (easting, northing) = ToolPositionService.TrailedToolCentre(0, 0, 0.0, 0.0, store.Tool);
+        var (easting, northing) = AgOpenWeb.Models.Tool.RigGeometry.TrailedToolCentre(0, 0, 0.0, 0.0, store.Tool);
         Assert.That(easting, Is.EqualTo(0.0).Within(1e-9));
         Assert.That(northing, Is.EqualTo(-4.2).Within(1e-9), "tank and tool behind the hitch (-0.6 with the tank ahead of it)");
     }

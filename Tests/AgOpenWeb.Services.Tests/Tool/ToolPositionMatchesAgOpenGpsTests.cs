@@ -157,7 +157,7 @@ public class ToolPositionMatchesAgOpenGpsTests
             {
                 // The map's implement (MainViewModel's render pull) is placed from the hitch and
                 // the headings with TrailedToolCentre: it must land on the tool position, every step.
-                var (me, mn) = ToolPositionService.TrailedToolCentre(ours.HitchPosition.Easting, ours.HitchPosition.Northing,
+                var (me, mn) = AgOpenWeb.Models.Tool.RigGeometry.TrailedToolCentre(ours.HitchPosition.Easting, ours.HitchPosition.Northing,
                     ours.TankPosition.Heading, ours.ToolHeading, c.Tool);
                 double dm = Math.Sqrt(Math.Pow(me - ours.ToolPosition.Easting, 2) + Math.Pow(mn - ours.ToolPosition.Northing, 2));
                 if (dm > worstMap) { worstMap = dm; worstMapAt = step; }
