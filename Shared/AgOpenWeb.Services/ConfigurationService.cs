@@ -108,10 +108,13 @@ public class ConfigurationService(
     private static string FormatTool(ConfigurationStore store, bool isMetric)
     {
         var t = store.Tool;
-        string attach = t.IsToolFrontFixed ? "Front fixed"
-                      : t.IsToolRearFixed ? "Rear fixed"
-                      : t.IsToolTrailing ? "Trailing"
-                      : "—";
+        string attach = AgOpenWeb.Models.Tool.RigGeometry.Mount(t) switch
+        {
+            AgOpenWeb.Models.Tool.ToolMount.FrontFixed => "Front fixed",
+            AgOpenWeb.Models.Tool.ToolMount.RearFixed => "Rear fixed",
+            AgOpenWeb.Models.Tool.ToolMount.TBT => "TBT",
+            _ => "Trailing",
+        };
         return
             // The sections' total, as guidance and coverage use; Tool.Width is a stored
             // default the section editor never updates (#345).

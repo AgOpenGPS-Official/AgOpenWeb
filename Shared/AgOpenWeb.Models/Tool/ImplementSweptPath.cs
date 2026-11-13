@@ -101,12 +101,8 @@ namespace AgOpenWeb.Models.Tool
 
             double halfWidth = geom.Width / 2.0;
 
-            // Hitch distance + sign: rigid tools measure axle→implement centre,
-            // trailing/TBT measure axle→tractor pin. Behind for everything except
-            // a front-fixed tool.
-            bool rigid = geom.Mount == ToolMount.FrontFixed || geom.Mount == ToolMount.RearFixed;
-            double hitchDistance = Math.Abs(rigid ? geom.ToolHitchLength : geom.VehicleHitchLength);
-            if (geom.Mount != ToolMount.FrontFixed) hitchDistance = -hitchDistance;
+            // The point the tool hangs on, as the tool position has it (RigGeometry).
+            double hitchDistance = RigGeometry.AttachX(geom);
 
             Vec3 lastToolPivot = default;
             Vec3 lastTank = default;

@@ -6,6 +6,7 @@ using System;
 using System.Threading;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Models.Tool;
 using AgOpenWeb.Services.Interfaces;
 
 namespace AgOpenWeb.Services.Tool;
@@ -62,32 +63,6 @@ public class ToolPositionService : IToolPositionService
     private const double TOOL_JACKKNIFE = 1.9;
     private const double TANK_JACKKNIFE = 2.0;
 
-    /// <summary>
-    /// How far the tool's working centre is behind what pulls it (the hitch, or the TBT tank):
-    /// the trailing hitch length plus the pivot distance. The pivot distance is AgOpenGPS's
-    /// (setTool_trailingToolToPivotLength; the Tool panel's Behind / Ahead): positive with the
-    /// tool behind its wheels, negative with it ahead. It used to be subtracted, so a tool set
-    /// "Behind" (or imported from AgOpenGPS) worked ahead of its wheels, twice the distance off.
-    /// </summary>
-    internal static double ToolBehindPivot(ToolConfig tool) => tool.TrailingHitchLength + tool.TrailingToolToPivotLength;
-
-    /// <summary>
-    /// A trailed or TBT tool's working centre, from the tractor's hitch and the headings of the
-    /// TBT tank and of the tool: the geometry <see cref="Update"/> gives the sections and the
-    /// coverage. The map's implement (MainViewModel's render pull, which dead-reckons the hitch
-    /// between fixes) is placed with it, so the map draws the tool where it works.
-    /// </summary>
-    public static (double Easting, double Northing) TrailedToolCentre(
-        double hitchEasting, double hitchNorthing, double tankHeading, double toolHeading, ToolConfig tool)
-    {
-        if (tool.IsToolTBT)
-        {
-            hitchEasting -= Math.Sin(tankHeading) * tool.TankTrailingHitchLength;
-            hitchNorthing -= Math.Cos(tankHeading) * tool.TankTrailingHitchLength;
-        }
-        double behind = ToolBehindPivot(tool);
-        return (hitchEasting - Math.Sin(toolHeading) * behind, hitchNorthing - Math.Cos(toolHeading) * behind);
-    }
 
     private static double AngleBetween(double a, double b) => Math.Abs(Math.PI - Math.Abs(Math.Abs(a - b) - Math.PI));
 
@@ -143,44 +118,16 @@ public class ToolPositionService : IToolPositionService
             var tool = _configStore.Tool;
             var vehicle = _configStore.Vehicle;
 
-            // Calculate hitch point on vehicle.
-            // Two distinct measurements feed this, chosen by tool type:
-            //  - Rigid front/rear-fixed: Tool.HitchLength = axle -> implement working
-            //    center (tool-dependent).
-            //  - Trailing/TBT: Vehicle.HitchLength = axle -> tractor hitch pin
-            //    (the trailer attach point).
-            // Stored positive; sign applied by direction (front ahead, rest behind).
-            double hitchDistance = (tool.IsToolFrontFixed || tool.IsToolRearFixed)
-                ? Math.Abs(tool.HitchLength)
-                : Math.Abs(vehicle.HitchLength);
-            if (tool.IsToolRearFixed || tool.IsToolTrailing || tool.IsToolTBT)
-            {
-                hitchDistance = -hitchDistance; // Behind the vehicle
-            }
-            // Front fixed keeps positive (ahead of vehicle)
+            // The point the tool hangs on (RigGeometry): a fixed tool's working point, or the
+            // tractor's hitch pin for a trailed one.
+            var mount = RigGeometry.Mount(tool);
+            _hitchPosition = RigGeometry.AlongTractor(vehiclePivot, vehicleHeading, RigGeometry.AttachX(vehicle, tool));
 
-            _hitchPosition = new Vec3(
-                vehiclePivot.Easting + Math.Sin(vehicleHeading) * hitchDistance,
-                vehiclePivot.Northing + Math.Cos(vehicleHeading) * hitchDistance,
-                vehicleHeading
-            );
-
-            if (tool.IsToolFrontFixed || tool.IsToolRearFixed)
+            switch (mount)
             {
-                CalculateFixedToolPosition(vehiclePivot, vehicleHeading, tool);
-            }
-            else if (tool.IsToolTBT)
-            {
-                CalculateTBTToolPosition(vehicleHeading, tool);
-            }
-            else if (tool.IsToolTrailing)
-            {
-                CalculateTrailingToolPosition(vehicleHeading, tool);
-            }
-            else
-            {
-                // Default: treat as fixed rear
-                CalculateFixedToolPosition(vehiclePivot, vehicleHeading, tool);
+                case ToolMount.TBT: CalculateTBTToolPosition(vehicleHeading, tool); break;
+                case ToolMount.Trailing: CalculateTrailingToolPosition(vehicleHeading, tool); break;
+                default: CalculateFixedToolPosition(vehiclePivot, vehicleHeading, tool); break;
             }
 
             // No lateral offset here: the section spans carry it (SectionControlService,
@@ -261,7 +208,7 @@ public class ToolPositionService : IToolPositionService
         );
 
         // Calculate tool center position (offset from pivot by TrailingToolToPivotLength)
-        double pivotOffset = ToolBehindPivot(tool);
+        double pivotOffset = RigGeometry.ToolBehindPivot(tool);
         _toolPosition = new Vec3(
             _hitchPosition.Easting - Math.Sin(_toolHeading) * pivotOffset,
             _hitchPosition.Northing - Math.Cos(_toolHeading) * pivotOffset,
@@ -345,7 +292,7 @@ public class ToolPositionService : IToolPositionService
         );
 
         // Tool center position
-        double pivotOffset = ToolBehindPivot(tool);
+        double pivotOffset = RigGeometry.ToolBehindPivot(tool);
         _toolPosition = new Vec3(
             _tankPosition.Easting - Math.Sin(_toolHeading) * pivotOffset,
             _tankPosition.Northing - Math.Cos(_toolHeading) * pivotOffset,
@@ -371,7 +318,7 @@ public class ToolPositionService : IToolPositionService
             vehicleHeading
         );
 
-        double pivotOffset = ToolBehindPivot(tool);
+        double pivotOffset = RigGeometry.ToolBehindPivot(tool);
         _toolPosition = new Vec3(
             _hitchPosition.Easting - Math.Sin(vehicleHeading) * pivotOffset,
             _hitchPosition.Northing - Math.Cos(vehicleHeading) * pivotOffset,
@@ -404,7 +351,7 @@ public class ToolPositionService : IToolPositionService
             vehicleHeading
         );
 
-        double pivotOffset = ToolBehindPivot(tool);
+        double pivotOffset = RigGeometry.ToolBehindPivot(tool);
         _toolPosition = new Vec3(
             _tankPosition.Easting - Math.Sin(vehicleHeading) * pivotOffset,
             _tankPosition.Northing - Math.Cos(vehicleHeading) * pivotOffset,
@@ -468,24 +415,9 @@ public class ToolPositionService : IToolPositionService
             var tool = _configStore.Tool;
             var vehicle = _configStore.Vehicle;
 
-            // Calculate hitch position - must match Update() sign convention and
-            // tool-type hitch reference: rigid tools use Tool.HitchLength (working
-            // center), trailing/TBT use Vehicle.HitchLength (tractor hitch pin).
-            double hitchDistance = (tool.IsToolFrontFixed || tool.IsToolRearFixed)
-                ? Math.Abs(tool.HitchLength)
-                : Math.Abs(vehicle.HitchLength);
-            if (tool.IsToolRearFixed || tool.IsToolTrailing || tool.IsToolTBT)
-            {
-                hitchDistance = -hitchDistance;
-            }
+            _hitchPosition = RigGeometry.AlongTractor(vehiclePivot, vehicleHeading, RigGeometry.AttachX(vehicle, tool));
 
-            _hitchPosition = new Vec3(
-                vehiclePivot.Easting + Math.Sin(vehicleHeading) * hitchDistance,
-                vehiclePivot.Northing + Math.Cos(vehicleHeading) * hitchDistance,
-                vehicleHeading
-            );
-
-            if (tool.IsToolTBT)
+            if (RigGeometry.Mount(tool) == ToolMount.TBT)
             {
                 SnapTBTBehindVehicle(vehicleHeading, tool);
             }

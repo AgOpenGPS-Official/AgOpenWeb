@@ -810,7 +810,14 @@ public sealed class SceneProjector : System.IDisposable
         var t = _config.Tool;
         var g = _config.Guidance;
         var m = _config.Machine;
-        int toolType = t.IsToolFrontFixed ? 0 : t.IsToolRearFixed ? 1 : t.IsToolTBT ? 2 : 3;
+        // The mount the tool position uses (RigGeometry), as the panel's type: 0 front, 1 rear, 2 TBT, 3 trailing.
+        int toolType = AgOpenWeb.Models.Tool.RigGeometry.Mount(t) switch
+        {
+            AgOpenWeb.Models.Tool.ToolMount.FrontFixed => 0,
+            AgOpenWeb.Models.Tool.ToolMount.RearFixed => 1,
+            AgOpenWeb.Models.Tool.ToolMount.TBT => 2,
+            _ => 3,
+        };
         // Send all MaxSections widths/colours (not 16) so sections 17-64 get their data too (#41).
         var widths = new double[ToolConfig.MaxSections]; for (int i = 0; i < widths.Length; i++) widths[i] = t.GetSectionWidth(i);
         var colors = new int[ToolConfig.MaxSections]; for (int i = 0; i < colors.Length; i++) colors[i] = (int)t.GetSectionColor(i);
@@ -925,7 +932,7 @@ public sealed class SceneProjector : System.IDisposable
             h = h * 31 + d.GetHashCode();
         // Tool / U-Turn / Tram / Machine (so Tool-dialog edits re-send the frame).
         var t = _config.Tool; var g = _config.Guidance; var mc = _config.Machine;
-        h = h * 31 + (t.IsToolFrontFixed ? 1 : t.IsToolRearFixed ? 2 : t.IsToolTBT ? 3 : 4);
+        h = h * 31 + (int)AgOpenWeb.Models.Tool.RigGeometry.Mount(t) + 1;
         h = h * 31 + t.HitchType + t.Zones * 31 + _config.NumSections * 7
               + (t.IsSectionsNotZones ? 1 : 0) + (t.IsMultiColoredSections ? 2 : 0)
               + (t.IsSectionOffWhenOut ? 4 : 0) + (t.IsHeadlandSectionControl ? 8 : 0) + t.MinCoverage
