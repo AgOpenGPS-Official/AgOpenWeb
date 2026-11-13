@@ -73,9 +73,11 @@ const WebCards = (() => {
     };
 
     pick.addEventListener('change', () => { state.url = pick.value; save(); c.render(); CardPane.renamed(); });
-    // Another card, a little below and right of this one, so both headers can be reached.
+    // Another card, a little below and right of this one, so both headers can be reached. It
+    // opens on top: the event stops here, or this card's header and card handlers would raise
+    // this card back over it.
     q('.web-add').addEventListener('pointerdown', e => {
-      e.preventDefault();
+      e.preventDefault(); e.stopPropagation();
       const r = zoomRect(card);
       add({ url: '', size: state.size, x: r.left / uiZoom + 36, y: r.top / uiZoom + 36 });
     });
