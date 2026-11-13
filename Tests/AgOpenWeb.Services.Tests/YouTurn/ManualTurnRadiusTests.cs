@@ -36,7 +36,9 @@ public class ManualTurnRadiusTests
         _config = ConfigurationStore.Instance;
         _config.NumSections = 1;
         _config.Tool.Overlap = 0;
-        _config.Tool.HitchLength = 2;
+        // A fixed tool's working point 2 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        _config.Vehicle.ThreePointHitchLength = _config.Vehicle.FrontHitchLength = System.Math.Abs(2);
+        _config.Tool.WorkingPointFromHitch = 0;
         _config.Tool.IsToolRearFixed = true;
         _config.Tool.IsToolTrailing = false;
         _config.Tool.IsToolTBT = false;

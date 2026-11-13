@@ -80,7 +80,8 @@ public class ProfileJsonServiceV1Tests
         _store.Tool.Width = 12.0;
         _store.Tool.Overlap = 0.15;
         _store.Tool.Offset = -0.5;
-        _store.Tool.HitchLength = 2.5;
+        _store.Vehicle.ThreePointHitchLength = 2.5; // v1 kept one hitch length (#547)
+        _store.Tool.WorkingPointFromHitch = 0;
         _store.Tool.IsToolTrailing = true;
         _store.Tool.IsToolTBT = false;
         _store.NumSections = 4;
@@ -94,7 +95,8 @@ public class ProfileJsonServiceV1Tests
         Assert.That(loadStore.Tool.Width, Is.EqualTo(12.0).Within(1e-6));
         Assert.That(loadStore.Tool.Overlap, Is.EqualTo(0.15).Within(1e-6));
         Assert.That(loadStore.Tool.Offset, Is.EqualTo(-0.5).Within(1e-6));
-        Assert.That(loadStore.Tool.HitchLength, Is.EqualTo(2.5).Within(1e-6));
+        Assert.That(loadStore.Vehicle.HitchLength, Is.EqualTo(2.5).Within(1e-6), "v1's one hitch length: the drawbar");
+        Assert.That(AgOpenWeb.Models.Tool.RigGeometry.AxleToWorkingPoint(loadStore.Vehicle, loadStore.Tool), Is.EqualTo(2.5).Within(1e-6));
         Assert.That(loadStore.Tool.IsToolTrailing, Is.True);
         Assert.That(loadStore.Tool.IsToolTBT, Is.False);
         Assert.That(loadStore.NumSections, Is.EqualTo(4));

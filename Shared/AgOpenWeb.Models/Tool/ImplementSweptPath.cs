@@ -28,8 +28,8 @@ namespace AgOpenWeb.Models.Tool
     /// <param name="Mount">Attachment type.</param>
     /// <param name="Width">Implement working width.</param>
     /// <param name="Offset">Lateral offset of the tool centre (right positive).</param>
-    /// <param name="VehicleHitchLength">Axle → tractor hitch pin (used by Trailing/TBT).</param>
-    /// <param name="ToolHitchLength">Axle → implement working centre (used by rigid tools).</param>
+    /// <param name="AttachX">Where the tool hangs along the tractor from the rear axle, + ahead: a fixed
+    /// tool's working point, a trailed tool's drawbar pin (<see cref="RigGeometry.AttachX(ToolMount, double, double, double, double)"/>).</param>
     /// <param name="TrailingHitchLength">Hitch → tool pivot, along the tool.</param>
     /// <param name="TrailingToolToPivotLength">Tool pivot → tool working centre, AgOpenGPS's sign: positive with the tool behind its wheels.</param>
     /// <param name="TankTrailingHitchLength">Hitch → tank pivot (TBT only).</param>
@@ -44,8 +44,7 @@ namespace AgOpenWeb.Models.Tool
         ToolMount Mount,
         double Width,
         double Offset,
-        double VehicleHitchLength,
-        double ToolHitchLength,
+        double AttachX,
         double TrailingHitchLength,
         double TrailingToolToPivotLength,
         double TankTrailingHitchLength,
@@ -102,7 +101,7 @@ namespace AgOpenWeb.Models.Tool
             double halfWidth = geom.Width / 2.0;
 
             // The point the tool hangs on, as the tool position has it (RigGeometry).
-            double hitchDistance = RigGeometry.AttachX(geom);
+            double hitchDistance = geom.AttachX;
 
             Vec3 lastToolPivot = default;
             Vec3 lastTank = default;

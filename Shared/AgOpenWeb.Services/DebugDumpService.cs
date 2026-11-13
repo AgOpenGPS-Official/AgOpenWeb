@@ -402,14 +402,20 @@ public class DebugDumpService
                 store.Vehicle.AntennaHeight,
                 store.Vehicle.AntennaPivot,
                 store.Vehicle.AntennaOffset,
-                store.Vehicle.MaxSteerAngle
+                store.Vehicle.MaxSteerAngle,
+                store.Vehicle.HitchLength,
+                store.Vehicle.ThreePointHitchLength,
+                store.Vehicle.FrontHitchLength
             },
             Tool = new
             {
                 store.Tool.Width,
                 store.Tool.Overlap,
                 store.Tool.Offset,
-                store.Tool.HitchLength,
+                // The working point from the tractor's hitch (format 3, #547), and from the rear axle
+                // as format 2 had it (what older dumps carry as HitchLength).
+                store.Tool.WorkingPointFromHitch,
+                HitchLength = AgOpenWeb.Models.Tool.RigGeometry.AxleToWorkingPoint(store.Vehicle, store.Tool),
                 store.Tool.TrailingHitchLength,
                 // Where the working line is (#679: a placement report needs these, and they were missing).
                 store.Tool.TrailingToolToPivotLength,

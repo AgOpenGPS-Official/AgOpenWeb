@@ -172,7 +172,8 @@ public static class SettingsSweep
         // flip would be set back to 0 and try nothing.
         new("tool.lookAheadOff", "0", "1.5", Probe.Sections, Effect.Sections, "Look-ahead off, s", "tool.lookAheadOn:2"),
         new("tool.turnOffDelay", "0", "2", Probe.Sections, Effect.Sections, "Turn-off delay, s"),
-        new("tool.hitchLength", "1.5", "4", Probe.Sections, Effect.Sections, "Hitch length (mounted)"),
+        new("vehicle.threePointHitchLength", "1.5", "4", Probe.Sections, Effect.Sections, "Rear 3-point hitch (mounted)"),
+        new("tool.workingPointFromHitch", "0", "2.5", Probe.Sections, Effect.Sections, "Hitch to working point (mounted)"),
         // AgOpenGPS uses the vehicle type for the picture and, for a combine, a header in front only.
         new("vehicle.type", "0", "1", Probe.Sections, Effect.Sections, "Vehicle type (tractor → combine: header in front)"),
         new("tool.type", "rear", "front", Probe.Sections, Effect.Sections, "Implement type (rear → front)"),

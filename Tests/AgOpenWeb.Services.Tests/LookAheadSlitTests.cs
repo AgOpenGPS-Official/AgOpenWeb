@@ -73,7 +73,9 @@ public class LookAheadSlitTests
         double sectionWidthCm = (totalToolWidth / numSections) * 100.0;
         for (int i = 0; i < numSections; i++)
             config.Tool.SetSectionWidth(i, (int)sectionWidthCm);
-        config.Tool.HitchLength = 0;
+        // A fixed tool's working point 0 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        config.Vehicle.ThreePointHitchLength = config.Vehicle.FrontHitchLength = System.Math.Abs(0);
+        config.Tool.WorkingPointFromHitch = 0;
         config.Tool.TrailingHitchLength = 0;
         config.Tool.IsToolRearFixed = true;
         config.Tool.IsToolTrailing = false;

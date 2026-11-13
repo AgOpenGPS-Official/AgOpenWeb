@@ -43,6 +43,15 @@ public static class AgOpenGpsSettings
     /// active vehicle profile's path (an AgOpenGPS .xml: <see cref="ConfigurationService"/> then
     /// keeps the AutoSteer settings read here instead of looking for its own AutoSteer file).
     /// </summary>
+    /// <summary>
+    /// Not AgOpenGPS's: the tractor's rear 3-point and front hitch, from the rear- and front-mounted
+    /// implements saved last (<see cref="AgOpenGpsProfileImport"/>), so a fixed implement's distance
+    /// from its hitch keeps it where AgOpenGPS has it (#547).
+    /// </summary>
+    public const string ThreePointHitchKey = "agopenweb_threePointHitchLength";
+    /// <inheritdoc cref="ThreePointHitchKey"/>
+    public const string FrontHitchKey = "agopenweb_frontHitchLength";
+
     public static void ApplyToStore(IReadOnlyDictionary<string, string> settings, string profileName, string filePath, ConfigurationStore store)
     {
         // Vehicle config
@@ -84,14 +93,17 @@ public static class AgOpenGpsSettings
         store.Tool.Width = GetDouble(settings, "setVehicle_toolWidth", 6.0);
         store.Tool.Overlap = GetDouble(settings, "setVehicle_toolOverlap", 0.0);
         store.Tool.Offset = GetDouble(settings, "setVehicle_toolOffset", 0.0);
-        // AOG's single setVehicle_hitchLength is the tractor hitch pin (now a vehicle
-        // property, used by trailing/TBT) AND doubles as the rigid working-center distance.
-        // Import into both so the value is present whichever tool type the profile uses.
-        // AgOpenGPS writes it negative behind the tractor; AgOpenWeb keeps the distance (the
-        // tool's direction gives the side), and Tool.HitchLength took a negative one as 0.
+        // AgOpenGPS's one setVehicle_hitchLength, kept per implement: a trailed implement's is the
+        // tractor's drawbar pin, a fixed implement's is its working point from the rear axle (CTool:
+        // the working point is at the hitch). AgOpenWeb keeps the tractor's hitch points with the
+        // tractor and a fixed tool's distance from its hitch (#547). The import names the tractor's
+        // 3-point and front hitch (ThreePointHitchKey, FrontHitchKey: from the implements saved last);
+        // without them the hitch length is both, and a fixed tool's distance from it is 0: the tool
+        // where AgOpenGPS has it. AgOpenGPS writes it negative behind the tractor; AgOpenWeb keeps
+        // the distance (the hitch's side gives the direction).
         double xmlHitch = Math.Abs(GetDouble(settings, "setVehicle_hitchLength", 1.8));
         store.Vehicle.HitchLength = xmlHitch;
-        store.Tool.HitchLength = xmlHitch;
+        store.Vehicle.ThreePointHitchLength = Math.Abs(GetDouble(settings, ThreePointHitchKey, xmlHitch));
         // AgOpenGPS stores the trailing hitch negative (behind the hitch); AgOpenWeb keeps the
         // distance. 6.8.2+ names it setVehicle_… (ToolSettings, and SettingsLegacy for a combined
         // file); the combined file AgOpenGPS wrote up to 6.8.1 names it setTool_… (its Settings.cs).
@@ -106,6 +118,9 @@ public static class AgOpenGpsSettings
         store.Tool.IsToolTBT = GetBool(settings, "setTool_isToolTBT", false);
         store.Tool.IsToolRearFixed = GetBool(settings, "setTool_isToolRearFixed", true);
         store.Tool.IsToolFrontFixed = GetBool(settings, "setTool_isToolFront", false);
+        store.Vehicle.FrontHitchLength = Math.Abs(GetDouble(settings, FrontHitchKey, store.Tool.IsToolFrontFixed ? xmlHitch : 0));
+        store.Tool.WorkingPointFromHitch = xmlHitch - (store.Tool.IsToolFrontFixed
+            ? store.Vehicle.FrontHitchLength : store.Vehicle.ThreePointHitchLength);
         store.Tool.LookAheadOnSetting = GetDouble(settings, "setVehicle_toolLookAheadOn", 1.0);
         store.Tool.LookAheadOffSetting = GetDouble(settings, "setVehicle_toolLookAheadOff", 0.5);
         store.Tool.TurnOffDelay = GetDouble(settings, "setVehicle_toolOffDelay", 0.0);

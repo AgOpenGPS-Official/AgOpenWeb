@@ -47,15 +47,18 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _offset, value);
     }
 
-    // Hitch (rigid tool): axle center -> implement working center (e.g. tiller rotary
-    // shaft, disc shaft). Tool-dependent, so it lives with the tool. Used ONLY by
-    // front/rear-fixed rigid tools. Trailing/TBT tools instead use Vehicle.HitchLength
-    // for the tractor hitch pin. Front tools use this positive (ahead), rear negative.
-    private double _hitchLength = 1.8;
-    public double HitchLength
+    // Rigid (front/rear fixed) tool: its working point (e.g. a tiller's rotor, a boom) from the
+    // tractor hitch it is mounted on (the rear 3-point's lower links, or the front 3-point), measured
+    // away from the tractor: behind a rear hitch, ahead of a front one. Negative = the working point
+    // is on the tractor's side of the hitch. The tractor's hitch is the vehicle's
+    // (Vehicle.ThreePointHitchLength / FrontHitchLength), so one tool profile fits every tractor
+    // (#547; ISO 11783-10: the device element's offset from its connector). Trailing/TBT tools hang
+    // on the drawbar (Vehicle.HitchLength) and use their own lengths below.
+    private double _workingPointFromHitch;
+    public double WorkingPointFromHitch
     {
-        get => _hitchLength;
-        set => SetProperty(ref _hitchLength, Math.Max(0, value));
+        get => _workingPointFromHitch;
+        set => SetProperty(ref _workingPointFromHitch, value);
     }
 
     // Fore-aft length of the implement body, from its attachment (hitch for rigid

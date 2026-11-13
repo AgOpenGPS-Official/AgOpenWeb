@@ -141,7 +141,7 @@ public static class ProfileJsonServiceV1
                 Width = store.Tool.Width,
                 Overlap = store.Tool.Overlap,
                 Offset = store.Tool.Offset,
-                HitchLength = store.Tool.HitchLength,
+                HitchLength = Models.Tool.RigGeometry.AxleToWorkingPoint(store.Vehicle, store.Tool),
                 TrailingHitchLength = store.Tool.TrailingHitchLength,
                 TankTrailingHitchLength = store.Tool.TankTrailingHitchLength,
                 TrailingToolToPivotLength = store.Tool.TrailingToolToPivotLength,
@@ -246,11 +246,13 @@ public static class ProfileJsonServiceV1
         store.Tool.Width = dto.Tool?.Width ?? 6.0;
         store.Tool.Overlap = dto.Tool?.Overlap ?? 0.0;
         store.Tool.Offset = dto.Tool?.Offset ?? 0.0;
-        store.Tool.HitchLength = dto.Tool?.HitchLength ?? 1.8;
-        // v1 stored a single combined hitch length under Tool. After the vehicle/tool
-        // split the tractor hitch pin lives on the vehicle (used by trailing/TBT), so
-        // seed it from the same legacy value. Rigid tools keep reading Tool.HitchLength.
-        store.Vehicle.HitchLength = dto.Tool?.HitchLength ?? 1.8;
+        // v1 stored one hitch length under Tool: the tractor's hitch, and a fixed tool's working
+        // point at it. It is the vehicle's drawbar and 3-point; the tool's distance is converted
+        // after its type (below).
+        double v1Hitch = Math.Abs(dto.Tool?.HitchLength ?? 1.8);
+        store.Vehicle.HitchLength = v1Hitch;
+        store.Vehicle.ThreePointHitchLength = v1Hitch;
+        store.Vehicle.FrontHitchLength = 0;
         // Legacy profiles may have negative TrailingHitchLength from the old default;
         // migrate to "positive = behind hitch" by taking abs.
         store.Tool.TrailingHitchLength = Math.Abs(dto.Tool?.TrailingHitchLength ?? 2.5);
@@ -260,6 +262,7 @@ public static class ProfileJsonServiceV1
         store.Tool.IsToolTBT = dto.Tool?.IsToolTBT ?? false;
         store.Tool.IsToolRearFixed = dto.Tool?.IsToolRearFixed ?? true;
         store.Tool.IsToolFrontFixed = dto.Tool?.IsToolFrontFixed ?? false;
+        HitchMigration.FromAxleToWorkingPoint(store, v1Hitch);
         store.Tool.LookAheadOnSetting = dto.Tool?.LookAheadOn ?? Models.Configuration.ToolConfig.DefaultLookAheadOn;
         store.Tool.LookAheadOffSetting = dto.Tool?.LookAheadOff ?? Models.Configuration.ToolConfig.DefaultLookAheadOff;
         store.Tool.TurnOffDelay = dto.Tool?.TurnOffDelay ?? 0.0;

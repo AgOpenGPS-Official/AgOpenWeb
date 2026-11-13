@@ -108,9 +108,10 @@ public class ProfileMigrationTests
 
         _configService.MigrateV1ProfilesIfNeeded();
 
-        // The vehicle file should now have FormatVersion = 2 and no Tool block.
+        // The vehicle file should now be the current format (3 since the hitch moved to the vehicle,
+        // #547) with no Tool block.
         var json = File.ReadAllText(Path.Combine(_vehiclesDir, "MyTractor.json"));
-        Assert.That(json, Does.Contain("\"formatVersion\": 2"));
+        Assert.That(json, Does.Contain("\"formatVersion\": 3"));
         Assert.That(json, Does.Not.Contain("\"tool\":"),
             "v2 vehicle file must not carry the Tool block (it lives in Tools/<name>.json)");
         Assert.That(json, Does.Not.Contain("\"sections\":"),

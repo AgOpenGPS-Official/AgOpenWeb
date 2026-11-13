@@ -38,8 +38,12 @@ public static class ToolProfileJsonService
         if (!Directory.Exists(toolsDirectory))
             Directory.CreateDirectory(toolsDirectory);
 
+        // A profile from a newer build is left as it is: this build would drop what it doesn't read.
+        var path = GetJsonPath(toolsDirectory, profileName);
+        if (HitchMigration.IsNewerFormat(path)) return;
+
         // Atomic write + .bak last-known-good (see AtomicJsonFile).
-        AtomicJsonFile.WriteJson(GetJsonPath(toolsDirectory, profileName), ToDto(store), Options);
+        AtomicJsonFile.WriteJson(path, ToDto(store), Options);
     }
 
     public static bool Load(string toolsDirectory, string profileName, ConfigurationStore store)
@@ -116,13 +120,15 @@ public static class ToolProfileJsonService
 
         return new ToolProfileDto
         {
-            FormatVersion = 2,
+            FormatVersion = HitchMigration.CurrentFormatVersion,
             Tool = new ToolDto
             {
                 Width = store.Tool.Width,
                 Overlap = store.Tool.Overlap,
                 Offset = store.Tool.Offset,
-                HitchLength = store.Tool.HitchLength,
+                // Format 2's axle → working point, with this vehicle: an older build reads it.
+                HitchLength = Models.Tool.RigGeometry.AxleToWorkingPoint(store.Vehicle, store.Tool),
+                WorkingPointFromHitch = store.Tool.WorkingPointFromHitch,
                 Length = store.Tool.Length,
                 TrailingHitchLength = store.Tool.TrailingHitchLength,
                 TankTrailingHitchLength = store.Tool.TankTrailingHitchLength,
@@ -201,7 +207,6 @@ public static class ToolProfileJsonService
         store.Tool.Width = dto.Tool?.Width ?? 6.0;
         store.Tool.Overlap = dto.Tool?.Overlap ?? 0.0;
         store.Tool.Offset = dto.Tool?.Offset ?? 0.0;
-        store.Tool.HitchLength = dto.Tool?.HitchLength ?? 1.8;
         store.Tool.Length = dto.Tool?.Length ?? 0.0;
         // Legacy AOG sign convention used negative TrailingHitchLength; canonicalize.
         store.Tool.TrailingHitchLength = Math.Abs(dto.Tool?.TrailingHitchLength ?? 2.5);
@@ -212,6 +217,12 @@ public static class ToolProfileJsonService
         store.Tool.IsToolTBT = dto.Tool?.IsToolTBT ?? false;
         store.Tool.IsToolRearFixed = dto.Tool?.IsToolRearFixed ?? true;
         store.Tool.IsToolFrontFixed = dto.Tool?.IsToolFrontFixed ?? false;
+        // The working point from the tractor's hitch (format 3); a format-2 tool's axle → working
+        // point is converted against the vehicle loaded with it (HitchMigration), after the type.
+        if (dto.FormatVersion >= 3 && dto.Tool?.WorkingPointFromHitch is double fromHitch)
+            store.Tool.WorkingPointFromHitch = fromHitch;
+        else
+            store.ProfileMigrationNote = $"Tool '{profileName}': " + HitchMigration.FromAxleToWorkingPoint(store, dto.Tool?.HitchLength ?? 1.8);
         store.Tool.LookAheadOnSetting = dto.Tool?.LookAheadOn ?? Models.Configuration.ToolConfig.DefaultLookAheadOn;
         store.Tool.LookAheadOffSetting = dto.Tool?.LookAheadOff ?? Models.Configuration.ToolConfig.DefaultLookAheadOff;
         store.Tool.TurnOffDelay = dto.Tool?.TurnOffDelay ?? 0.0;
@@ -328,7 +339,11 @@ public static class ToolProfileJsonService
         public double Width { get; set; }
         public double Overlap { get; set; }
         public double Offset { get; set; }
+        /// <summary>Format 2: rear axle → working point. Format 3 still writes it (with the vehicle it
+        /// was saved with) for older builds; it reads <see cref="WorkingPointFromHitch"/>.</summary>
         public double HitchLength { get; set; }
+        /// <summary>Format 3: the working point from the tractor's hitch, away from the tractor.</summary>
+        public double? WorkingPointFromHitch { get; set; }
         public double Length { get; set; }
         public double TrailingHitchLength { get; set; }
         public double TankTrailingHitchLength { get; set; }
