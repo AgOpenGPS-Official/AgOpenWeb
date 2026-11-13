@@ -175,6 +175,7 @@ function renderBugReport() {
   brSendBusy = ['sending', 'queued', 'sent', 'accepted'].includes(kind);
   if (brFile !== brFilesFor) { brFiles = []; brFilesFor = brFile; renderBrFiles(); }
   document.getElementById('br-attach').disabled = brSendBusy || brAttaching;
+  document.getElementById('br-mappic').disabled = brSendBusy || brAttaching;
   brUpdateSend();
 }
 // Screenshots and files: each one is posted to the host as it is picked and goes into the
@@ -229,6 +230,24 @@ document.getElementById('br-file').addEventListener('change', async e => {
     if (!await brChangeFiles('attach', f.name, f)) break;
   }
   brAttaching = false; document.getElementById('br-attach').disabled = brSendBusy;
+});
+// Add Picture of the Map: the map as it is drawn now, without this panel or the bars over it,
+// added like a picked file (map-HHMMSS.jpg).
+document.getElementById('br-mappic').addEventListener('click', async e => {
+  e.stopPropagation();
+  if (!brFile || brSendBusy || brAttaching) return;
+  brAttaching = true;
+  for (const id of ['br-attach', 'br-mappic']) document.getElementById(id).disabled = true;
+  const st = document.getElementById('br-attachstatus');
+  try {
+    const jpeg = await mapPictureJpeg();
+    const d = new Date(), two = n => String(n).padStart(2, '0');
+    const name = 'map-' + two(d.getHours()) + two(d.getMinutes()) + two(d.getSeconds()) + '.jpg';
+    st.textContent = tr('Adding {name}…', { name });
+    await brChangeFiles('attach', name, jpeg);
+  } catch (_) { st.textContent = tr('Could not take a picture of the map'); }
+  brAttaching = false;
+  for (const id of ['br-attach', 'br-mappic']) document.getElementById(id).disabled = brSendBusy;
 });
 let brIssueUrl = null, brSendBusy = false;
 // Send needs what the bug report service checks too (Tools/bugreport-worker reports.js):
