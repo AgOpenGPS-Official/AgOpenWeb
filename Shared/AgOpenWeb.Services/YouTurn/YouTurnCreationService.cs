@@ -55,6 +55,7 @@ namespace AgOpenWeb.Services.YouTurn
         private double pointSpacing;
         private double iE, iN; // Line intersection results
         private int semiCircleIndex = -1;
+        private int turnLineEndIndex = -1; // the pass's first point outside the turn area at the end turned at
         private bool isOutOfBounds = false;
         private bool isOutSameCurve = false;
         private Vec3? arcStart;
@@ -69,6 +70,7 @@ namespace AgOpenWeb.Services.YouTurn
 
             // Store input for helper methods
             _currentInput = input;
+            turnLineEndIndex = -1;
 
             // Validate input
             if (input.MakeUTurnCounter < 4)
@@ -126,6 +128,7 @@ namespace AgOpenWeb.Services.YouTurn
                 output.InClosestTurnPoint = inClosestTurnPt.ClosePt;
                 output.OutClosestTurnPoint = outClosestTurnPt.ClosePt;
                 output.ArcStart = arcStart;
+                output.TurnLineEndIndex = turnLineEndIndex;
             }
             else
             {
@@ -1134,7 +1137,20 @@ namespace AgOpenWeb.Services.YouTurn
 
             bool loop = input.TrackMode == 32 || input.TrackMode == 64; // bndCurve or waterPivot
 
-            for (j = input.CurrentLocationIndex; j > 0 && j < input.GuidancePoints.Count; j += count)
+            // Tried again with the turn lines moved in: seated back from the end the first try found,
+            // at the moved line's crossing nearest to it (see TurnLineEndIndex).
+            if (TurnLineEndOnRetry(input, count) is int end)
+            {
+                closestTurnPt.CurveIndex = end - count;
+                closestTurnPt.TurnLineNum = turnNum = Math.Clamp(input.IsPointInsideTurnArea(input.GuidancePoints[end]),
+                    0, input.BoundaryTurnLines.Count - 1);
+                turnLineEndIndex = end;
+                j = -1; // no search
+            }
+            else
+                j = input.CurrentLocationIndex;
+
+            for (; j > 0 && j < input.GuidancePoints.Count; j += count)
             {
                 if (j < 0)
                 {
@@ -1170,6 +1186,7 @@ namespace AgOpenWeb.Services.YouTurn
                     closestTurnPt.CurveIndex = j - count;
                     closestTurnPt.TurnLineNum = boundaryIndex;
                     turnNum = boundaryIndex;
+                    turnLineEndIndex = j;
                     break;
                 }
             }
@@ -1237,6 +1254,31 @@ namespace AgOpenWeb.Services.YouTurn
             }
 
             return closestTurnPt.TurnLineIndex != -1 && closestTurnPt.CurveIndex != -1;
+        }
+
+        /// <summary>
+        /// On a try with the turn lines moved in (<see cref="YouTurnCreationInput.TurnLineEndIndex"/>):
+        /// walking back from the end the first try found towards the tractor, the first point of the
+        /// run of points outside the moved turn area that reaches that end. Null on a first try, or
+        /// when that end is not ahead on this pass or not outside the moved turn area.
+        /// The moved line only seats the turn further back. Where the fence comes in beside the pass
+        /// (a narrowing of the field the pass runs past, inside the turn line all the way), the line
+        /// moved in crosses the pass there, and the first crossing ahead was that one: a field with an
+        /// 8 m boom near a hard fence at the far end had its turn line moved in 5 m, and the turn was
+        /// made 260 m before the end, beside the narrowing, landing on the next pass 16 m after its
+        /// edge entered the crop, which was never worked.
+        /// </summary>
+        private static int? TurnLineEndOnRetry(YouTurnCreationInput input, int count)
+        {
+            if (input.TurnLineEndIndex is not int end) return null;
+            var pts = input.GuidancePoints;
+            int from = input.CurrentLocationIndex;
+            if (end <= 0 || end >= pts.Count || (end - from) * count <= 0) return null;
+            if (input.IsPointInsideTurnArea(pts[end]) == 0) return null;
+            int j = end;
+            while (j != from && j - count > 0 && j - count < pts.Count && input.IsPointInsideTurnArea(pts[j - count]) != 0)
+                j -= count;
+            return j;
         }
 
         private List<Vec3> MoveTurnInsideTurnLine(YouTurnCreationInput input, List<Vec3> uTurnList, double head, bool deleteSecondHalf, bool invertHeading)

@@ -121,6 +121,9 @@ public partial class YouTurnCreationService
         // A turn seated back to clear a hard boundary must still start this far ahead of the tractor.
         const double MinArcStartAhead = 2.0;
         double extraSetback = 0.0;
+        // Where the pass leaves the turn area on the first try: a try with the turn lines moved in
+        // seats the turn back from there (YouTurnCreationInput.TurnLineEndIndex).
+        int? turnLineEnd = null;
 
         while (true)
         {
@@ -134,8 +137,11 @@ public partial class YouTurnCreationService
                 _logger.LogWarning("[YouTurn] Failed to build creation input - no boundary available?");
                 return new TurnPathResult(null, false);
             }
+            if (extraSetback > 0) input.TurnLineEndIndex = turnLineEnd;
 
             var output = CreateTurn(input);
+            if (turnLineEnd == null && output.Success && output.TurnLineEndIndex >= 0)
+                turnLineEnd = output.TurnLineEndIndex;
 
             if (output.Success && output.TurnPath != null && output.TurnPath.Count > 10)
             {

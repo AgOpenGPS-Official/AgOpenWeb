@@ -40,6 +40,15 @@ namespace AgOpenWeb.Models.YouTurn
         public int CurrentLocationIndex { get; set; }
 
         /// <summary>
+        /// The pass's first point outside the turn area on the plan's first try, when a turn is tried
+        /// again with the turn lines moved in (the clearance from a hard fence, a landing on a bend):
+        /// the turn is then seated back from that end, at the moved turn line's crossing nearest to
+        /// it. Null on the first try. Moved in, the fence's turn line can cross the pass much earlier
+        /// where the fence comes in beside it, and the turn was made there.
+        /// </summary>
+        public int? TurnLineEndIndex { get; set; }
+
+        /// <summary>
         /// For curves: the BASE (path 0) reference curve points with headings.
         /// <see cref="GuidancePoints"/> is the current pass — this base track offset
         /// by <see cref="HowManyPathsAway"/> — whereas the destination pass for the

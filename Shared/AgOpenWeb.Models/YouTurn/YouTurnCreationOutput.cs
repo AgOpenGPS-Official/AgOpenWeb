@@ -63,5 +63,11 @@ namespace AgOpenWeb.Models.YouTurn
         /// entry leg was prepended. Null when the path has no entry leg.
         /// </summary>
         public Vec3? ArcStart { get; set; }
+
+        /// <summary>
+        /// The pass's first point (index in <see cref="YouTurnCreationInput.GuidancePoints"/>) outside
+        /// the turn area at the end the turn was made at; -1 when not found.
+        /// </summary>
+        public int TurnLineEndIndex { get; set; } = -1;
     }
 }
