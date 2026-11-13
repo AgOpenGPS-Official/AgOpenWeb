@@ -71,9 +71,36 @@ internal sealed class CoverageTileStore
 
     // ---------- manifest ----------
 
+    /// <summary>
+    /// The manifest version this build writes. A coverage folder in a newer version is never
+    /// read or written by this build (<see cref="IsNewerFormat"/>): reading it would set the
+    /// manifest aside as damaged, and the next save would replace it and delete the tiles it
+    /// doesn't know.
+    /// </summary>
+    public const int CurrentSchemaVersion = 1;
+
+    /// <summary>The manifest (or its backup) was written by a newer build.</summary>
+    public bool IsNewerFormat =>
+        ManifestVersionOf(ManifestPath) > CurrentSchemaVersion
+        || ManifestVersionOf(ManifestPath + AtomicJsonFile.BackupSuffix) > CurrentSchemaVersion;
+
+    private static int ManifestVersionOf(string path)
+    {
+        if (!File.Exists(path)) return CurrentSchemaVersion;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty(nameof(Manifest.SchemaVersion), out var v) && v.TryGetInt32(out int n))
+                return n;
+        }
+        catch (Exception ex) when (ex is JsonException or IOException) { }
+        return CurrentSchemaVersion;
+    }
+
     public sealed class Manifest
     {
-        public int SchemaVersion { get; set; } = 1;
+        public int SchemaVersion { get; set; } = CurrentSchemaVersion;
         public double DisplayCellSize { get; set; }
         public double TotalWorkedArea { get; set; }
         public double MinE { get; set; }
@@ -87,8 +114,10 @@ internal sealed class CoverageTileStore
 
     public Manifest? ReadManifest()
     {
+        if (IsNewerFormat)
+            return null; // never set a newer build's manifest aside as damaged
         var result = AtomicJsonFile.Read<Manifest>(ManifestPath, JsonOptions,
-            m => m.SchemaVersion == 1 && m.DisplayCellSize > 0 && m.MaxE > m.MinE && m.MaxN > m.MinN);
+            m => m.SchemaVersion == CurrentSchemaVersion && m.DisplayCellSize > 0 && m.MaxE > m.MinE && m.MaxN > m.MinN);
         return result.Loaded ? result.Value : null;
     }
 

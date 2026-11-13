@@ -175,6 +175,8 @@ A job's worked area is stored as square binary tiles on the field's plane grid: 
 
 CamelCase JSON: `schemaVersion` (1), `id` (GUID), `fieldName`, `taskName` (same as the folder name), `workType`, `notes`, `startedAt`, `endedAt`, `lastOpenedAt` (ISO 8601), `status` (`"InProgress"`, `"Done"` or `"Abandoned"`), `distanceTraveledMeters`, `areaWorkedHectares`, `uTurnCount`. A `jobs/<task>/` folder without `job.json` is not listed as a job.
 
+`schemaVersion` follows the rules of `formatVersion` (section 3): members a reader doesn't know are kept by a writer, and the version goes up only for a change of meaning. A job whose `job.json` or coverage `manifest.json` is in a newer version than the reader knows is listed, but its coverage is not read and nothing is written to the job (AgOpenWeb tells the operator to start a new job). A `status` the reader doesn't know reads as `"InProgress"`.
+
 ### manifest.json
 
 PascalCase JSON. A previous good copy is kept as `manifest.json.bak`.
@@ -193,7 +195,7 @@ PascalCase JSON. A previous good copy is kept as `manifest.json.bak`.
 
 - `DisplayCellSize`: metres per display pixel. It names the display folder: `s` + round(cell × 10⁶), e.g. 0.35 m → `s350000`.
 - `TotalWorkedArea`: square metres.
-- `MinE` … `MaxN`: the coverage grid's bounds in plane metres. A manifest is valid only if `SchemaVersion` is 1, `DisplayCellSize` > 0, `MaxE` > `MinE` and `MaxN` > `MinN`.
+- `MinE` … `MaxN`: the coverage grid's bounds in plane metres. A manifest is valid only if `SchemaVersion` is 1, `DisplayCellSize` > 0, `MaxE` > `MinE` and `MaxN` > `MinN`. A manifest (or its `.bak`) with a higher `SchemaVersion` is a newer format, not damage: it is never set aside, and the coverage folder is neither read nor written.
 
 ### Tile addressing
 

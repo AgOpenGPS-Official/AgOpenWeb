@@ -1911,6 +1911,10 @@ public partial class MainViewModel : ObservableObject
             {
                 _coverageMapService.LoadFromFile(fieldPath, activeJob.TaskName);
                 _logger.LogDebug($"[Coverage] Loaded coverage from {fieldPath} job={activeJob.TaskName}");
+                // A newer AgOpenWeb's job: its coverage isn't read, and nothing is written to it
+                // (JobJsonService.IsNewerFormat), so the work done now is not kept.
+                if (Services.Fields.JobJsonService.IsNewerFormat(fieldPath, activeJob.TaskName))
+                    ReportFailure("This job was saved by a newer AgOpenWeb: its coverage is not shown and work done in it is not saved. Start a new job, or update AgOpenWeb.");
             }
             else
             {
