@@ -324,6 +324,7 @@ public class CodePathContinuityTests
         "gps_data_log.csv", "logs.txt", "system_info.txt", "ntrip_rtcm.txt",
         "ntrip_session.txt", // what the NTRIP connection did and why it failed (Plans/Completed/NTRIP_MAIN_FALLBACK_PLAN.md, Phase 2)
         "contact.txt", // the reporter's email, maintainers only (#407 follow-up)
+        "field_background_left_out.txt", // the background image was left out of the report (Bug Report panel box off)
         "appsettings_error.txt", "configuration_error.txt", "field_error.txt", "job_error.txt",
         "logs_error.txt", "save_error.txt", "screenshot_error.txt", "state_error.txt",
         "turn_path_error.txt", "gps_data_log_error.txt",
