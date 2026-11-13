@@ -1991,6 +1991,11 @@ public partial class MainViewModel : ObservableObject
             FieldFullyLoaded?.Invoke(field);
 
             StatusMessage = $"Opened field: {fieldName}";
+
+            // A newer AgOpenWeb's field: this build reads it but writes nothing to it, so it
+            // can't overwrite what it doesn't understand (GeoJsonFieldService.CurrentFormatVersion).
+            if (Services.GeoJson.GeoJsonFieldService.IsNewerFormat(fieldPath))
+                ReportFailure("This field was saved by a newer AgOpenWeb: changes to its boundaries, tracks, flags and headland are not saved. Update AgOpenWeb to edit it.");
         }
         catch (Exception ex)
         {

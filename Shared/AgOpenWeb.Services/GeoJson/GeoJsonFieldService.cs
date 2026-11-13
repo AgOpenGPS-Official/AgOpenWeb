@@ -25,6 +25,48 @@ public partial class GeoJsonFieldService
 {
     private const string FileName = "field.geojson";
 
+    /// <summary>
+    /// The version of the format this build writes (the metadata feature's "formatVersion"; a
+    /// file without one is version 1). A new role or a new property doesn't change it: a reader
+    /// ignores what it doesn't know and a writer keeps it (the parts' UnknownProperties). Raise
+    /// it only when a change alters what something already in the file means. A build that
+    /// finds a higher version reads the field but writes nothing to it (<see cref="IsNewerFormat"/>),
+    /// so it can't overwrite what it doesn't understand.
+    /// </summary>
+    public const int CurrentFormatVersion = 1;
+
+    // The properties each role's reader reads (and its builder writes). Every other property of
+    // a feature is kept in the part's UnknownProperties and written back.
+    private static readonly HashSet<string> MetadataKeys = new()
+    {
+        FieldPropertyKeys.Role, FieldPropertyKeys.FormatVersion, FieldPropertyKeys.Name,
+        FieldPropertyKeys.OriginLatitude, FieldPropertyKeys.OriginLongitude, FieldPropertyKeys.Convergence,
+        FieldPropertyKeys.AreaHectares, FieldPropertyKeys.CreatedDate, FieldPropertyKeys.LastModifiedDate,
+    };
+    private static readonly HashSet<string> BoundaryKeys = new()
+    {
+        FieldPropertyKeys.Role, FieldPropertyKeys.IsDriveThrough, FieldPropertyKeys.IsHard, FieldPropertyKeys.AreaHectares,
+    };
+    private static readonly HashSet<string> TrackKeys = new()
+    {
+        FieldPropertyKeys.Role, FieldPropertyKeys.Name, FieldPropertyKeys.TrackType, FieldPropertyKeys.IsClosed,
+        FieldPropertyKeys.NoPassOffset, FieldPropertyKeys.NudgeDistance, FieldPropertyKeys.IsVisible,
+    };
+    private static readonly HashSet<string> FlagKeys = new()
+    {
+        FieldPropertyKeys.Role, FieldPropertyKeys.Name, FieldPropertyKeys.Color, FieldPropertyKeys.Id, FieldPropertyKeys.Notes,
+    };
+    private static readonly HashSet<string> HeadlandLineKeys = new()
+    {
+        FieldPropertyKeys.Role, FieldPropertyKeys.Name, FieldPropertyKeys.MoveDistance, FieldPropertyKeys.Mode,
+        FieldPropertyKeys.APointIndex,
+    };
+    private static readonly HashSet<string> BackgroundKeys = new()
+    {
+        FieldPropertyKeys.Role, FieldPropertyKeys.Image, FieldPropertyKeys.MercatorMinX, FieldPropertyKeys.MercatorMaxX,
+        FieldPropertyKeys.MercatorMinY, FieldPropertyKeys.MercatorMaxY,
+    };
+
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         WriteIndented = true,
@@ -100,13 +142,15 @@ public partial class GeoJsonFieldService
                 try { existing = ReadCollection(path); }
                 catch (Exception ex) when (ex is InvalidDataException or JsonException) { }
             }
+            if (existing != null && FormatVersionOf(existing) > CurrentFormatVersion)
+                return; // a newer build's field: read, never written (CurrentFormatVersion)
             if (existing != null)
                 features.AddRange(existing.Features.Where(f =>
                 {
                     var role = GetStringProp(f, FieldPropertyKeys.Role) ?? "";
                     return !FieldRoles.Contains(role) && !(tracks != null && role == FeatureRoles.Track);
                 }));
-            Write(path, new GeoJsonFeatureCollection { Features = features });
+            Write(path, new GeoJsonFeatureCollection { Features = features, Other = existing?.Other });
         }
     }
 
@@ -151,6 +195,8 @@ public partial class GeoJsonFieldService
         lock (FileLock)
         {
             var fc = ReadCollection(path);
+            if (FormatVersionOf(fc) > CurrentFormatVersion)
+                return; // a newer build's field: read, never written (CurrentFormatVersion)
             var geo = ProjectionOf(fc);
             fc.Features.RemoveAll(f => GetStringProp(f, FieldPropertyKeys.Role) == role);
             fc.Features.AddRange(build(geo));
@@ -176,6 +222,47 @@ public partial class GeoJsonFieldService
             throw new FileNotFoundException("field.geojson not found", path);
         return JsonSerializer.Deserialize<GeoJsonFeatureCollection>(File.ReadAllText(path), SerializerOptions)
             ?? throw new InvalidDataException("Failed to deserialize GeoJSON");
+    }
+
+    /// <summary>The format version of the field's file (1 when it has none, or no file).</summary>
+    public static int FormatVersion(string fieldDirectory)
+    {
+        var path = Path.Combine(fieldDirectory, FileName);
+        if (!File.Exists(path)) return CurrentFormatVersion;
+        try { return FormatVersionOf(ReadCollection(path)); }
+        catch (Exception ex) when (ex is InvalidDataException or JsonException or IOException) { return CurrentFormatVersion; }
+    }
+
+    /// <summary>
+    /// The field was written by a newer build in a format this one doesn't fully understand: it
+    /// is read and can be worked, but nothing is written to its field.geojson.
+    /// </summary>
+    public static bool IsNewerFormat(string fieldDirectory) => FormatVersion(fieldDirectory) > CurrentFormatVersion;
+
+    private static int FormatVersionOf(GeoJsonFeatureCollection fc)
+    {
+        var meta = fc.Features.FirstOrDefault(f => GetStringProp(f, FieldPropertyKeys.Role) == FeatureRoles.Metadata);
+        if (meta == null || !HasProp(meta, FieldPropertyKeys.FormatVersion)) return 1;
+        return Math.Max(1, GetIntProp(meta, FieldPropertyKeys.FormatVersion));
+    }
+
+    /// <summary>A feature's properties outside <paramref name="known"/>, or null if none.</summary>
+    private static IReadOnlyDictionary<string, object?>? Unknown(GeoJsonFeature f, HashSet<string> known)
+    {
+        Dictionary<string, object?>? extra = null;
+        foreach (var (key, value) in f.Properties)
+            if (!known.Contains(key))
+                (extra ??= new Dictionary<string, object?>())[key] = value;
+        return extra;
+    }
+
+    /// <summary>Add a part's unknown properties back; a property the builder wrote wins.</summary>
+    private static Dictionary<string, object?> WithUnknown(Dictionary<string, object?> props, IReadOnlyDictionary<string, object?>? unknown)
+    {
+        if (unknown != null)
+            foreach (var (key, value) in unknown)
+                props.TryAdd(key, value);
+        return props;
     }
 
     private static GeoJsonFeature MetadataOf(GeoJsonFeatureCollection fc) =>
@@ -220,6 +307,7 @@ public partial class GeoJsonFieldService
             DirectoryPath = fieldDirectory,
             Origin = new Position { Latitude = originLat, Longitude = originLon },
             Convergence = GetDoubleProp(metaFeature, FieldPropertyKeys.Convergence),
+            UnknownProperties = Unknown(metaFeature, MetadataKeys),
         };
 
         var nameProp = GetStringProp(metaFeature, FieldPropertyKeys.Name);
@@ -331,9 +419,10 @@ public partial class GeoJsonFieldService
                 Type = GeoJsonTypes.Point,
                 Coordinates = new[] { field.Origin.Longitude, field.Origin.Latitude }
             },
-            Properties = new Dictionary<string, object?>
+            Properties = WithUnknown(new Dictionary<string, object?>
             {
                 [FieldPropertyKeys.Role] = FeatureRoles.Metadata,
+                [FieldPropertyKeys.FormatVersion] = CurrentFormatVersion,
                 [FieldPropertyKeys.Name] = field.Name,
                 [FieldPropertyKeys.OriginLatitude] = field.Origin.Latitude,
                 [FieldPropertyKeys.OriginLongitude] = field.Origin.Longitude,
@@ -341,7 +430,7 @@ public partial class GeoJsonFieldService
                 [FieldPropertyKeys.AreaHectares] = field.TotalArea,
                 [FieldPropertyKeys.CreatedDate] = field.CreatedDate.ToString("O"),
                 [FieldPropertyKeys.LastModifiedDate] = field.LastModifiedDate.ToString("O"),
-            }
+            }, field.UnknownProperties)
         };
     }
 
@@ -355,13 +444,13 @@ public partial class GeoJsonFieldService
                 Type = GeoJsonTypes.Polygon,
                 Coordinates = new[] { ring }
             },
-            Properties = new Dictionary<string, object?>
+            Properties = WithUnknown(new Dictionary<string, object?>
             {
                 [FieldPropertyKeys.Role] = role,
                 [FieldPropertyKeys.IsDriveThrough] = polygon.IsDriveThrough,
                 [FieldPropertyKeys.IsHard] = polygon.IsHard,
                 [FieldPropertyKeys.AreaHectares] = polygon.AreaHectares,
-            }
+            }, polygon.UnknownProperties)
         };
     }
 
@@ -375,7 +464,7 @@ public partial class GeoJsonFieldService
                 Type = GeoJsonTypes.LineString,
                 Coordinates = coords.Select(c => (object)c).ToArray()
             },
-            Properties = new Dictionary<string, object?>
+            Properties = WithUnknown(new Dictionary<string, object?>
             {
                 [FieldPropertyKeys.Role] = FeatureRoles.Track,
                 [FieldPropertyKeys.Name] = track.Name,
@@ -384,7 +473,7 @@ public partial class GeoJsonFieldService
                 [FieldPropertyKeys.NoPassOffset] = track.NoPassOffset,
                 [FieldPropertyKeys.NudgeDistance] = track.NudgeDistance,
                 [FieldPropertyKeys.IsVisible] = track.IsVisible,
-            }
+            }, track.UnknownProperties)
         };
     }
 
@@ -411,7 +500,7 @@ public partial class GeoJsonFieldService
                 Type = GeoJsonTypes.Polygon,
                 Coordinates = new[] { new object[] { new[] { w, n }, new[] { e, n }, new[] { e, s }, new[] { w, s }, new[] { w, n } } },
             },
-            Properties = props,
+            Properties = WithUnknown(props, bg.UnknownProperties),
         };
     }
 
@@ -451,7 +540,7 @@ public partial class GeoJsonFieldService
         return new GeoJsonFeature
         {
             Geometry = new GeoJsonGeometry { Type = GeoJsonTypes.Point, Coordinates = new[] { lon, lat } },
-            Properties = props,
+            Properties = WithUnknown(props, flag.UnknownProperties),
         };
     }
 
@@ -464,14 +553,14 @@ public partial class GeoJsonFieldService
                 Type = GeoJsonTypes.LineString,
                 Coordinates = geo.ToGeoJsonCoordinates(path.TrackPoints).Select(c => (object)c).ToArray(),
             },
-            Properties = new Dictionary<string, object?>
+            Properties = WithUnknown(new Dictionary<string, object?>
             {
                 [FieldPropertyKeys.Role] = FeatureRoles.HeadlandLine,
                 [FieldPropertyKeys.Name] = path.Name,
                 [FieldPropertyKeys.MoveDistance] = path.MoveDistance,
                 [FieldPropertyKeys.Mode] = path.Mode,
                 [FieldPropertyKeys.APointIndex] = path.APointIndex,
-            }
+            }, path.UnknownProperties)
         };
     }
 
@@ -506,6 +595,7 @@ public partial class GeoJsonFieldService
         }
 
         polygon.UpdateBounds();
+        polygon.UnknownProperties = Unknown(feature, BoundaryKeys);
         return polygon;
     }
 
@@ -535,6 +625,7 @@ public partial class GeoJsonFieldService
             NoPassOffset = GetBoolProp(feature, FieldPropertyKeys.NoPassOffset),
             NudgeDistance = GetDoubleProp(feature, FieldPropertyKeys.NudgeDistance),
             IsVisible = GetBoolPropDefault(feature, FieldPropertyKeys.IsVisible, true),
+            UnknownProperties = Unknown(feature, TrackKeys),
         };
     }
 
@@ -553,6 +644,7 @@ public partial class GeoJsonFieldService
             GetStringProp(feature, FieldPropertyKeys.Name) is { Length: > 0 } name ? name : $"Flag {id}");
         if (GetStringProp(feature, FieldPropertyKeys.Notes) is { Length: > 0 } notes)
             flag.Notes = notes;
+        flag.UnknownProperties = Unknown(feature, FlagKeys);
         return flag;
     }
 
@@ -568,6 +660,7 @@ public partial class GeoJsonFieldService
             MoveDistance = GetDoubleProp(feature, FieldPropertyKeys.MoveDistance),
             Mode = GetIntProp(feature, FieldPropertyKeys.Mode),
             APointIndex = GetIntProp(feature, FieldPropertyKeys.APointIndex),
+            UnknownProperties = Unknown(feature, HeadlandLineKeys),
         };
     }
 
@@ -584,7 +677,7 @@ public partial class GeoJsonFieldService
         return new FieldBackground(image,
             coords.Max(c => c[1]), coords.Min(c => c[0]),
             coords.Min(c => c[1]), coords.Max(c => c[0]),
-            mercator);
+            mercator) { UnknownProperties = Unknown(feature, BackgroundKeys) };
     }
 
     // ---------------------------------------------------------------

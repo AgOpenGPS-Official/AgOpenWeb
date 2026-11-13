@@ -56,6 +56,10 @@ public class Track : INotifyPropertyChanged
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
+    /// <summary>The properties of this part's feature in field.geojson that this build does not
+    /// read (a newer build's, another tool's), written back as they were (FIELD_FILE_FORMATS.md).</summary>
+    public IReadOnlyDictionary<string, object?>? UnknownProperties { get; set; }
+
     /// <summary>
     /// Track name for display and file storage.
     /// </summary>

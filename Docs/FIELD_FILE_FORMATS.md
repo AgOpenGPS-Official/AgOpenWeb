@@ -67,7 +67,7 @@ Their points are `[longitude, latitude, heading]`: drop the third value, which i
 
 | Role | Geometry | Count | Properties |
 | --- | --- | --- | --- |
-| `metadata` | Point at the origin | Exactly 1, first | `name`, `originLatitude`, `originLongitude`, `convergence`, `areaHectares`, `createdDate`, `lastModifiedDate` |
+| `metadata` | Point at the origin | Exactly 1, first | `formatVersion`, `name`, `originLatitude`, `originLongitude`, `convergence`, `areaHectares`, `createdDate`, `lastModifiedDate` |
 | `outer-boundary` | Polygon, 1 ring, closed, with headings | 0 or 1 | `isDriveThrough`, `isHard`, `areaHectares` |
 | `inner-boundary` | Polygon, as above | 0 or more | `isDriveThrough`, `isHard`, `areaHectares` |
 | `headland` | Polygon, as above | 0 or 1 | `isDriveThrough`, `isHard`, `areaHectares` (only geometry is read) |
@@ -89,7 +89,14 @@ Property details:
 - **`headland-line`:** headland guidance paths built from the boundary. `moveDistance` in metres; `mode` and `aPointIndex` are AgOpenWeb builder state, preserve them as read.
 - **Mercator bounds:** EPSG:3857 metres of the image, present only when the image was captured from a web-map tile service.
 
-A reader must ignore roles and properties it doesn't know, and a writer must keep them: AgOpenWeb saves each part on its own and leaves other features untouched.
+A reader must ignore roles and properties it doesn't know, and a writer must keep them: AgOpenWeb saves each part on its own and leaves other features untouched, and writes a part's properties it doesn't read back as they were (a newer build's, another tool's). Members of a feature other than `type`, `geometry` and `properties` (an `id`, a `bbox`) are kept on the features AgOpenWeb doesn't rewrite; new data goes in `properties`.
+
+### Format version
+
+- **`formatVersion`:** integer, on the `metadata` feature; a file without one is version `1`. This document describes version `1`.
+- **Adding** a role or a property does not change the version: an older reader ignores it and keeps it.
+- **The version goes up** only when a change alters what something already in the file means (a property's unit or reference point, a role's geometry). Such a change says here how the earlier version is read.
+- **A file in a newer version than the reader knows** is read as far as it understands it and is never written: AgOpenWeb opens such a field, tells the operator that changes to its boundaries, tracks, flags and headland are not saved, and writes nothing to its `field.geojson`. Another tool should do the same.
 
 ### Example
 
@@ -104,6 +111,7 @@ The metadata and boundary come from a real field (ring shortened to 3 points); t
       "geometry": { "type": "Point", "coordinates": [-87.1802554, 32.59058587] },
       "properties": {
         "role": "metadata",
+        "formatVersion": 1,
         "name": "Test1",
         "originLatitude": 32.59058587,
         "originLongitude": -87.1802554,

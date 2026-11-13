@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace AgOpenWeb.Models.GeoJson;
@@ -18,6 +19,10 @@ public class GeoJsonFeatureCollection
 
     [JsonPropertyName("features")]
     public List<GeoJsonFeature> Features { get; set; } = new();
+
+    /// <summary>Other members (a "bbox", another tool's), kept as they were.</summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Other { get; set; }
 }
 
 /// <summary>
@@ -33,6 +38,11 @@ public class GeoJsonFeature
 
     [JsonPropertyName("properties")]
     public Dictionary<string, object?> Properties { get; set; } = new();
+
+    /// <summary>Other members (an "id", a "bbox"), kept as they were on a feature this build
+    /// does not rewrite. New data of AgOpenWeb's goes in <see cref="Properties"/>.</summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Other { get; set; }
 }
 
 /// <summary>
@@ -74,6 +84,7 @@ public static class GeoJsonTypes
 public static class FieldPropertyKeys
 {
     public const string Role = "role";
+    public const string FormatVersion = "formatVersion";
     public const string Name = "name";
     public const string TrackType = "trackType";
     public const string IsClosed = "isClosed";
