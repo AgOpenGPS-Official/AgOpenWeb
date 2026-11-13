@@ -1585,7 +1585,7 @@
       <div class="sa-hint" style="margin-top:4px">We need one of the two to reply. An email goes only to the maintainers with the report, never into the public issue, and is deleted with the report.</div>
       <div class="cfg-label" style="margin-top:8px">Screenshots or files (optional)</div>
       <div id="br-files"></div>
-      <button class="cfg-act cfg-actwide" id="br-mappic" style="margin-top:4px">Add Picture of the Map</button>
+      <button class="cfg-act cfg-actwide" id="br-screenshot" style="margin-top:4px">Take Screenshot</button>
       <button class="cfg-act cfg-actwide" id="br-attach" style="margin-top:4px">Add Screenshot or File</button>
       <input type="file" id="br-file" multiple hidden>
       <div class="sa-hint" id="br-attachstatus" style="margin-top:4px">Like the rest of the report, attachments go only to the maintainers.</div>
@@ -1976,6 +1976,9 @@
   <!-- CanvasKit (WASM Skia) — bundled locally, no CDN (offline in-cab). Defines
        CanvasKitInit, started at the end of js/frame.js. -->
   <script src="/vendor/canvaskit.js"></script>
+  <!-- html-to-image 1.11.13 (MIT): draws the page into a picture for the Bug Report's Take
+       Screenshot (js/app-menu.js). Bundled locally, no CDN. -->
+  <script src="/vendor/html-to-image.js"></script>
   <!-- Binary-WebSocket transport — no external client lib (works offline in-cab). -->
   <script src="/transport.js"></script>
   <script src="/i18n.js"></script>

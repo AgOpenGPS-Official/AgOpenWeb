@@ -80,12 +80,11 @@ function noteInput(e) {
 for (const t of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown'])
   addEventListener(t, noteInput, { capture: true, passive: true });
 let _overlayError = '';
-// A picture of the map for a bug report (Add Picture of the Map): the map as this frame drew it,
-// read from the GL surface right after the draw. Panels, bars and labels are DOM over the canvas,
-// so the open Bug Report panel is not in it. The browser encodes it as JPEG (this CanvasKit build
-// has only PNG, and a satellite background makes a PNG several MB).
+// The map as this frame drew it, for the Bug Report's Take Screenshot: read from the GL surface
+// right after the draw (a WebGL canvas is cleared once shown, so it can't be read later), as a 2D
+// canvas. Nothing runs per frame unless a picture was asked for.
 let _mapPictureWaiters = [];
-function mapPictureJpeg() {
+function mapPictureCanvas() {
   return new Promise((resolve, reject) => {
     if (!skSurface || CardPane.coversMap) { reject(new Error('map not drawn')); return; }
     const w = { resolve, reject };
@@ -95,19 +94,19 @@ function mapPictureJpeg() {
 }
 function giveMapPictures() {
   const waiters = _mapPictureWaiters; _mapPictureWaiters = [];
-  const fail = () => { for (const w of waiters) w.reject(new Error('no picture')); };
-  let img = null;
+  let img = null, cv = null;
   try {
     img = skSurface.makeImageSnapshot();
     const width = img.width(), height = img.height();
     const px = img.readPixels(0, 0, { width, height, colorType: CK.ColorType.RGBA_8888,
       alphaType: CK.AlphaType.Unpremul, colorSpace: CK.ColorSpace.SRGB });
-    if (!px) { fail(); return; }
-    const cv = document.createElement('canvas'); cv.width = width; cv.height = height;
-    cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset, px.length), width, height), 0, 0);
-    cv.toBlob(b => { for (const w of waiters) b ? w.resolve(b) : w.reject(new Error('no picture')); }, 'image/jpeg', 0.9);
-  } catch (_) { fail(); }
+    if (px) {
+      cv = document.createElement('canvas'); cv.width = width; cv.height = height;
+      cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset, px.length), width, height), 0, 0);
+    }
+  } catch (_) { cv = null; }
   finally { if (img) img.delete(); }
+  for (const w of waiters) cv ? w.resolve(cv) : w.reject(new Error('no picture'));
 }
 function skFrame(ts) {
   // rAF runs at the display's rate; a frame that comes too soon is skipped whole (map and DOM
