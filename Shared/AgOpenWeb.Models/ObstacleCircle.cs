@@ -30,10 +30,12 @@ public readonly record struct ObstacleCircle(double CenterEasting, double Center
     public const double MaxAreaRatio = 3.0;
 
     /// <summary>
-    /// The widest circle made for every obstacle at once: a tree's crown. A ditch or a pond, even
-    /// a squat one (60 × 20 m is a 63 m circle, 2.6 times its area), keeps its shape.
+    /// The widest circle made for every obstacle at once: one tree's crown, about 10 m across. A
+    /// clump of trees, a rock outcrop, a ditch or a pond keeps its shape, even a squat one (60 × 20 m
+    /// is a 63 m circle, only 2.6 times its area): the circle round a big obstacle takes in a wide
+    /// strip of crop beside it. One bigger tree is made round by itself (Round).
     /// </summary>
-    public const double MaxRoundAllDiameter = 30.0;
+    public const double MaxRoundAllDiameter = 10.0;
 
     public double Radius => Diameter / 2.0;
 

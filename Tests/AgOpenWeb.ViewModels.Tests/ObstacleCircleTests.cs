@@ -126,8 +126,9 @@ public class ObstacleCircleTests
     [Test]
     public async Task RoundAll_MakesEveryTreeRound_AndLeavesTheOthers()
     {
-        // A strip of stones 20 m by 1 m (its circle 15 times its area), and a ditch 60 m by 20 m:
-        // a 63 m circle, only 2.6 times its area, but no tree is that big.
+        // A strip of stones 20 m by 1 m (its circle 15 times its area), a ditch 60 m by 20 m (a 63 m
+        // circle, only 2.6 times its area), a clump of trees 12 m square (a 17 m circle, 1.6 times its
+        // area) and one big tree drawn 7 m square (a 9.9 m circle): Round all stops at 10 m across.
         var fs = new FieldService();
         var field = fs.LoadField(_dir);
         var strip = new BoundaryPolygon { AtObstacle = ObstacleAction.DriveThrough };
@@ -140,17 +141,39 @@ public class ObstacleCircleTests
             ditch.Points.Add(new BoundaryPoint(e, n, 0));
         ditch.UpdateBounds();
         field.Boundary!.InnerBoundaries.Add(ditch);
+        field.Boundary!.InnerBoundaries.Add(Square(20, 120, 12, ObstacleAction.DriveThrough)); // the clump
+        field.Boundary!.InnerBoundaries.Add(Square(170, 160, 7, ObstacleAction.DriveThrough)); // the big tree
         fs.SaveField(field);
         var vm = await Open();
 
         vm.RemoteMakeObstaclesRound();
 
         var inner = OnDisk(_dir).InnerBoundaries;
-        Assert.That(inner.Select(i => i.Circle.HasValue), Is.EqualTo(new[] { false, true, true, false, false }).AsCollection);
+        Assert.That(inner.Select(i => i.Circle.HasValue), Is.EqualTo(new[] { false, true, true, false, false, false, true }).AsCollection);
         Assert.That(inner[0].Points, Has.Count.EqualTo(4), "the 30 m patch keeps its shape");
         Assert.That(inner[3].Points, Has.Count.EqualTo(4), "the long, thin strip keeps its shape");
         Assert.That(inner[4].Points, Has.Count.EqualTo(4), "the ditch keeps its shape");
-        Assert.That(vm.StatusMessage, Does.Contain("2 obstacles made round").And.Contain("3 long and thin or too big"));
+        Assert.That(inner[5].Points, Has.Count.EqualTo(4), "the 12 m clump (a 17 m circle) keeps its shape");
+        Assert.That(inner[6].Circle!.Value.Diameter, Is.EqualTo(9.9), "7 x sqrt 2, rounded up to 10 cm: under 10 m, made round");
+        Assert.That(vm.StatusMessage, Does.Contain("3 obstacles made round").And.Contain("4 long and thin or over 10.0 m across"));
+
+        vm.RemoteMakeObstacleRound(6); // Round, one at a time, has no 10 m limit
+        Assert.That(OnDisk(_dir).InnerBoundaries[5].Circle!.Value.Diameter, Is.EqualTo(17.0), "12 x sqrt 2, rounded up to 10 cm");
+    }
+
+    [Test]
+    public async Task RoundAll_WithOnlyBigObstacles_SaysTheyAreOver10m()
+    {
+        var fs = new FieldService();
+        var field = fs.LoadField(_dir);
+        field.Boundary!.InnerBoundaries.RemoveRange(1, 2); // the two trees; the 30 m patch is left
+        fs.SaveField(field);
+        var vm = await Open();
+
+        vm.RemoteMakeObstaclesRound();
+
+        Assert.That(OnDisk(_dir).InnerBoundaries[0].Circle, Is.Null);
+        Assert.That(vm.StatusMessage, Does.Contain("No obstacle made round: 1 long and thin or over 10.0 m across"));
     }
 
     [Test]

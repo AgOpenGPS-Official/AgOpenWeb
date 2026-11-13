@@ -406,6 +406,7 @@ for (const h of document.querySelectorAll('#boundarymenu .bm-colhdr')) h.addEven
 // the selected drawn obstacle the smallest circle that holds it, "Round all" every one up to a
 // tree's size. A tap on an obstacle already there selects it instead of adding a circle on it.
 const CIRCLE_D_KEY = 'aow.newCircleDiameter';
+const ROUND_ALL_MAX_D = 10; // metres across: the host's ObstacleCircle.MaxRoundAllDiameter
 let bmNewD = 6;
 try { const v = parseFloat(localStorage.getItem(CIRCLE_D_KEY)); if (v >= 0.5 && v <= 100) bmNewD = v; } catch (_) {}
 const bmCircD = document.getElementById('bm-circ-d');
@@ -475,7 +476,7 @@ document.getElementById('bm-circ-all').addEventListener('pointerdown', ev => {
   const n = boundary ? boundary.items.filter(i => i.isInner && !(i.circleD > 0)).length : 0;
   if (!n) { showToast(tr('No obstacle to make round')); return; }
   showConfirm(tr('Round obstacles'),
-    tr('Make the obstacles up to {d} across round? Each becomes the smallest circle that holds it; long, thin ones and bigger ones keep their shape. This cannot be undone.', { d: fmtUnit(30, 'm', 0) }),
+    tr('Make the obstacles up to {d} across round? Each becomes the smallest circle that holds it; long, thin ones and bigger ones keep their shape. This cannot be undone.', { d: fmtUnit(ROUND_ALL_MAX_D, 'm', 0) }),
     () => transport.send('boundary.circle.roundAll'));
 });
 // The scene ring of the smallest obstacle holding the point (world metres), or -1.

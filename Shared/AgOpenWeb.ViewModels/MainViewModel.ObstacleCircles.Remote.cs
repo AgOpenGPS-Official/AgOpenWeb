@@ -89,7 +89,7 @@ public partial class MainViewModel
     /// Every obstacle that is not a circle yet becomes the smallest circle that holds it, the
     /// trees drawn by hand. One that is long and thin (its circle more than
     /// <see cref="ObstacleCircle.MaxAreaRatio"/> times its area) or bigger than a tree (its circle
-    /// over <see cref="ObstacleCircle.MaxRoundAllDiameter"/>) keeps its shape.
+    /// over <see cref="ObstacleCircle.MaxRoundAllDiameter"/>, 10 m) keeps its shape.
     /// </summary>
     public void RemoteMakeObstaclesRound()
     {
@@ -111,12 +111,12 @@ public partial class MainViewModel
         }
         if (made == 0)
         {
-            ReportFailure(kept > 0 ? $"No obstacle made round: {kept} long and thin or too big, kept as drawn" : "No obstacle to make round");
+            ReportFailure(kept > 0 ? $"No obstacle made round: {kept} long and thin or over {Metres(ObstacleCircle.MaxRoundAllDiameter)} across, kept as drawn" : "No obstacle to make round");
             return;
         }
 
         SaveObstacleChoice(boundary, fieldPath, SelectedBoundaryIndex);
-        if (kept > 0) ReportFailure($"{made} obstacles made round; {kept} long and thin or too big, kept as drawn");
+        if (kept > 0) ReportFailure($"{made} obstacles made round; {kept} long and thin or over {Metres(ObstacleCircle.MaxRoundAllDiameter)} across, kept as drawn");
         else StatusMessage = $"{made} obstacles made round";
     }
 
