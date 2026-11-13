@@ -1202,7 +1202,10 @@ public sealed class JobRun : IAsyncDisposable
                     // No headland (the lap jobs): the edge of the field along the boundary.
                     else if (Work == null && Ring.DistToRing(c, Outer) < 1.5) a.MissedAlongBoundary += cell;
                     else if (LeftOnPurpose?.Invoke(c) == true) a.MissedLeftInMiddle += cell;
-                    else if (SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; if (OnSeam(c)) a.MissedAtSeams += cell; }
+                    // Between passes only where the pass is one that was driven: with skip rows a pass
+                    // left for the way back (or never reached) lies between sprayed passes too, and is
+                    // a pass not worked, not a strip or a wedge (W1: 22 % "between passes" in a short run).
+                    else if (PassDriven(c) && SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; if (OnSeam(c)) a.MissedAtSeams += cell; }
                     // The rest: in a pass that was driven (worked along part of its length, as the
                     // first passes of a field whose corner a U-turn cut off), or in no driven pass
                     // (a side of the field, passes skipped).

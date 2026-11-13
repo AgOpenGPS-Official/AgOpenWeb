@@ -141,7 +141,7 @@ public class OpenCurveEndTurnTests
             _pipeline.SetHasActiveField(true);
             _pipeline.SetSimulatorEnabled(true);
             _pipeline.SetBoundary(boundary);
-            _pipeline.SetHeadlandLine(headland);
+            _pipeline.SetHeadlandLine(headland.Count == 0 ? null : headland); // none: no headland built
             _pipeline.SetHeadlandOn(true);
             _pipeline.SetYouTurnConfig(skipRows, false, 12, 12, false);
             _pipeline.SetActiveTrack(track, pass, 0);
@@ -413,6 +413,45 @@ public class OpenCurveEndTurnTests
                 "stays on its pass: " + string.Join(",", drive.Samples.Select(s => s.Pass).Distinct()));
             Assert.That(drive.Samples.Any(s => s.Reason?.Contains("the next pass ends before this end", StringComparison.Ordinal) == true), Is.True,
                 "the operator is told: " + string.Join(" | ", drive.Samples.Select(s => s.Reason).Where(r => r != null).Distinct().Take(6)));
+        });
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void An_outer_pass_in_the_headland_band_turns_at_the_turn_line(bool withHeadland)
+    {
+        // Graeme (#694, 26.7.5): "If I delete the headland, I can make U-turns on the outer passes."
+        // His boundary curve's pass -2 runs 9 m in from the fence (the curve is the fence, passes half
+        // a width either side), inside the 12 m headland band for its whole length: it never crossed
+        // the headland line, so it never turned. (Pass -1, 3 m in, is outside the turn line with a
+        // 4 m U-turn distance: no turn there, as in AgOpenGPS.) AgOpenGPS turns
+        // at the turn line only (the fence moved in by the U-turn distance, CTurn.BuildTurnLines),
+        // whatever the headland: the pass turns at the opening like the passes further in.
+        var (fence, headland, curve) = InnerField.Value;
+        const int pass = -2;
+        var made = CurveProcessing.CurvePass(curve.Points, Models.Track.PassGeometry.Offset(curve, pass, ToolWidth), false, 6);
+        // 80 m back from the pass's end, heading for it.
+        int i = made.Points.Count - 1;
+        double back = 0;
+        while (i > 0 && back < 80)
+        {
+            back += Dist(made.Points[i].Easting, made.Points[i].Northing, made.Points[i - 1]);
+            i--;
+        }
+        var from = made.Points[i];
+        var to = made.Points[Math.Min(i + 5, made.Points.Count - 1)];
+        // With the headland or without it, the same turn: the headland is for the sections.
+        using var drive = new Drive(curve, pass, youTurn: true, BoundaryOf(fence), withHeadland ? headland : new List<Vec3>());
+        drive.Start(from.Easting, from.Northing, Math.Atan2(to.Easting - from.Easting, to.Northing - from.Northing));
+        drive.Run(30 * 90);
+
+        var turns = Turns(drive.Samples);
+        Assert.Multiple(() =>
+        {
+            Assert.That(drive.Samples.Any(s => s.InTurn), Is.True,
+                "a U-turn at the end of the outer pass: " + string.Join(" | ", drive.Samples.Select(s => s.Reason).Where(r => r != null).Distinct().Take(5)));
+            Assert.That(turns.Select(t => Math.Abs(t.To - t.From)), Is.All.EqualTo(1), "onto the next pass");
+            Assert.That(drive.DisengageReason, Is.Null, "AutoSteer stayed on");
         });
     }
 

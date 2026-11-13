@@ -201,7 +201,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
     // ── Headland proximity ──────────────────────────────────────────────
     private readonly HeadlandDetectionService _headlandDetector = new();
-    private readonly PolygonIndexCache _headlandIndex = new(); // the hydraulic lift's and out-of-bounds tests
+    private readonly PolygonIndexCache _headlandIndex = new(); // the hydraulic lift's test
+    private readonly PolygonIndexCache _turnLineIndex = new(); // the out-of-bounds test's turn area
 
     // Out of bounds (#494): the pivot outside the field. Kept between cycles: during a U-turn
     // outside the turn area it holds its last value, as AgOpenGPS's mc.isOutOfBounds does.
@@ -731,6 +732,21 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
         }
 
+        // The U-turn turns at the turn line, as AgOpenGPS (CYouTurn uses bndList[].turnLine only,
+        // CTurn.BuildTurnLines: the fence moved in by the U-turn distance from boundary): with a
+        // headland too. The headland is for the sections, the hydraulic lift and the drawing; a
+        // pass inside the headland band (a boundary curve's outer passes) turns at the turn line
+        // like any other (#694, Graeme: "if I delete the headland I can make U-turns on the outer
+        // passes"). The operator's headland is kept for the warning that a turn leaves its pass
+        // before the headland line.
+        List<Vec3>? turnLine = headlandLine;
+        if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid)
+        {
+            var tl = GetOrComputeSyntheticHeadland(boundary);
+            if (tl.Line != null && tl.Line.Count >= 3) turnLine = tl.Line;
+        }
+        var workHeadland = headlandOn && _headlandLine != null && _headlandLine.Count >= 3 ? _headlandLine : null;
+
         // YouTurn working state is cycle-owned — no cross-thread writers.
         // TriggerManual (manual U-turn) and ClearState (field close / track
         // deselect) run on the cycle thread via intents drained above.
@@ -932,7 +948,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // Snapshots built later in the cycle; the VM mirrors them back
         // via ApplyGpsCycleResult on the UI thread.
         YouTurnEffects? youTurnTickEffects = null;
-        bool hasValidHeadlandLine = headlandLine != null && headlandLine.Count >= 3;
+        bool hasValidHeadlandLine = turnLine != null && turnLine.Count >= 3;
         // No U-turns in contour mode (AgOpenGPS DisableYouTurnButtons).
         bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn && recordedPath == null;
 
@@ -940,19 +956,20 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // An open curve whose ends face each other turns at the opening between them as at a
         // headland: the U-turn gets the field with that opening as a virtual boundary (#694).
         var turnField = hasTickableTrack && hasValidHeadlandLine
-            ? CurveEndTurnField(track!, boundary, headlandLine, headlandCalculatedWidth)
+            ? CurveEndTurnField(track!, boundary, turnLine, OpeningTurnRoom())
             : null;
         var tickCtx = new YouTurnStateMachine.TickContext(
             tickPosition,
             track,
             turnField?.Boundary ?? boundary,
-            turnField?.HeadlandLine ?? headlandLine,
+            turnField?.HeadlandLine ?? turnLine,
             uTurnSkipRows,
             isSkipWorkedMode,
             headlandCalculatedWidth,
             headlandDistanceConfig,
             isAlternateSkipMode,
-            _isPointCovered);
+            _isPointCovered,
+            workHeadland);
 
         // Manual trigger — runs even when the auto gate would fail (e.g., YouTurn
         // toggle off). TriggerManual enforces its own preconditions (autosteer +
@@ -1049,7 +1066,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // "Youturn"): the boundary shows it and PGN 239 carries geoStop for the machine module.
         bool autoSteerDisengaged = false;
         string? disengageReason = null;
-        _isOutOfBounds = OutOfBounds(boundary, headlandLine, youTurnEnabled && hasValidHeadlandLine,
+        _isOutOfBounds = OutOfBounds(boundary, turnLine, youTurnEnabled && hasValidHeadlandLine,
             driftedEasting, driftedNorthing);
 
         // (5a) A dual heading across the direction of travel: its offset doesn't match how
@@ -1719,6 +1736,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // The cross-track error that tells the steer module there is no line (TrackGuidanceService's,
     // AgOpenGPS's 32000; PgnBuilder sends it as such).
     private const double NoLineDistance = 32000;
+
+    // How deep a strip past A and B the U-turn has in a curve's opening (CurveEndOpening): room for
+    // the turn itself, twice its radius, and the distance from boundary it keeps from that virtual
+    // fence; not the headland's width, since the turn is made at the turn line whatever the headland
+    // (with none, the strip was the 4 m U-turn distance and no turn fitted there).
+    private double OpeningTurnRoom()
+    {
+        var g = _configStore.Guidance;
+        return 2 * g.UTurnRadius + Math.Max(0, g.UTurnDistanceFromBoundary);
+    }
 
     // The U-turn's field for a curve whose ends face each other, kept until the track, its
     // points, the boundary, the headland or its width change (CurveEndOpening, #694).
@@ -2462,13 +2489,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// Is the pivot out of bounds (#494)? AgOpenGPS mc.isOutOfBounds (CFence.IsPointInsideFenceArea):
     /// outside the outer boundary or inside any inner one, drive-through or not (an inner boundary
     /// is an obstacle: a creek, a wet hole, a pylon); no boundary, never. With automatic U-turns on,
-    /// inside the turn area (the headland line) is in bounds, and outside it the test is made only
+    /// inside the turn area (the turn line: the fence moved in by the U-turn distance) is in bounds, and outside it the test is made only
     /// when no turn is under way: a turn reaching past the turn line keeps the last answer.
     /// Inside an inner boundary is out of bounds whatever U-turns are doing (#611): AgOpenGPS
     /// counts it as turn area with U-turns on (IsPointInsideTurnArea != -1), so a tractor in a
     /// ditch sent no geoStop there; an inner boundary is never driven through.
     /// </summary>
-    private bool OutOfBounds(Boundary? boundary, List<Vec3>? headlandLine, bool youTurnArea,
+    private bool OutOfBounds(Boundary? boundary, List<Vec3>? turnLine, bool youTurnArea,
         double easting, double northing)
     {
         if (boundary?.OuterBoundary is not { IsValid: true }) return false;
@@ -2476,7 +2503,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             if (inner.IsPointInside(easting, northing)) return true;
         if (youTurnArea)
         {
-            if (_headlandIndex.Contains(headlandLine!, easting, northing)) return false;
+            if (_turnLineIndex.Contains(turnLine!, easting, northing)) return false;
             if (_youTurn.IsTriggered || _youTurn.IsExecuting) return _isOutOfBounds;
         }
         return !boundary.OuterBoundary.IsPointInside(easting, northing);

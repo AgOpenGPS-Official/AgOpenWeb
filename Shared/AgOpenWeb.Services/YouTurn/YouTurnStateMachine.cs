@@ -110,7 +110,10 @@ public sealed class YouTurnStateMachine
         double HeadlandCalculatedWidth,
         double HeadlandDistance,
         bool IsAlternateSkipMode = false, // AgOpenGPS SkipMode.Alternative (#111)
-        Func<double, double, bool>? IsPointCovered = null); // the job's coverage: worked passes on the map
+        Func<double, double, bool>? IsPointCovered = null, // the job's coverage: worked passes on the map
+        // The operator's headland line, for the warning that a turn leaves its pass before it
+        // ("Headland too narrow"); null with none or with it off. HeadlandLine above is the turn line.
+        IReadOnlyList<Vec3>? WorkHeadlandLine = null);
 
     /// <summary>
     /// Run one cycle of the state machine. Precondition: autosteer engaged, track active,
@@ -1353,6 +1356,23 @@ public sealed class YouTurnStateMachine
         bool? keepPositive = _lastStep != 0 && _lastStepTrack == track.Name ? _lastStep > 0 : null;
         var (nextLineInside, positiveDirection) = _pathing.WouldNextLineBeInsideBoundary(
             track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive, currentPosition, turn.DistanceToHeadland);
+        // The first turn on a track goes the way the work is: with a headland, the side whose next
+        // pass is in the area it encloses. The turn line alone counts the passes in the headland
+        // band too, and the pass along the fence the operator started beside (Olival, T5: -7, all
+        // of it in the 16 m band) took the first turn there, then the end of the field. With no pass
+        // in the work area on either side (a boundary curve's outer passes), the turn line decides.
+        if (keepPositive is null && ctx.WorkHeadlandLine is { Count: >= 3 } work)
+        {
+            // Where the work is, not whether a turn can land there from here (the turn-line check
+            // above says that): any of the pass in the work area (J8 starts outside the field, the
+            // far turn line 295 m ahead, where no pass is landable yet).
+            var (workInside, workPositive) = _pathing.WouldNextLineBeInsideBoundary(
+                track, abHeading, guidance, ctx.Boundary, work, ctx.UTurnSkipRows, null);
+            _logger.LogDebug("[YouTurn] First turn: the work area's side {Side} (a pass there: {Inside})", workPositive ? "+" : "-", workInside);
+            if (workInside) (nextLineInside, positiveDirection) = (true, workPositive);
+        }
+        else if (keepPositive is null)
+            _logger.LogDebug("[YouTurn] First turn: no work area given (headland off or none)");
 
         _logger.LogDebug("[YouTurn] Creating turn? nextLineInside={Inside} positiveDir={Dir}", nextLineInside, positiveDirection);
         // The turns step one way across the field (#523). When that side has no pass left, the
@@ -1520,7 +1540,7 @@ public sealed class YouTurnStateMachine
         turn.TurnPath = result.Path;
         turn.ArcStart = result.ArcStart;
         turn.YouTurnCounter = 0;
-        double startsInside = TurnStartInsideHeadlandLine(result.ArcStart, ctx.HeadlandLine);
+        double startsInside = TurnStartInsideHeadlandLine(result.ArcStart, ctx.WorkHeadlandLine);
         if (startsInside > NarrowHeadlandToleranceM && effects.StatusMessage == null)
             effects.StatusMessage = HeadlandTooNarrowMessage(startsInside);
         else if (!result.UsedFallback && effects.StatusMessage == null)
