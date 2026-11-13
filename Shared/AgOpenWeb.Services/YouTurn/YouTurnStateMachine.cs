@@ -64,6 +64,8 @@ public sealed class YouTurnStateMachine
     // _missedSounded: a missed turn sounds once (#570). Not re-armed by a new plan, which a
     // missed turn is followed by at once: only when a turn starts or U-turn is switched off.
     private bool _creationFailSounded, _approachAlarmed, _missedSounded;
+    /// <summary>The AB line heading last logged (rad), so its debug line is written when it changes.</summary>
+    private double _loggedAbHeading = double.NaN;
     private readonly YouTurnPathingService _pathing;
     private readonly PolygonIndexCache _headlandIndex = new(); // the zone test, every GPS cycle
     private readonly ILogger<YouTurnStateMachine> _logger;
@@ -145,8 +147,13 @@ public sealed class YouTurnStateMachine
             double abDx = trackPointB.Easting - trackPointA.Easting;
             double abDy = trackPointB.Northing - trackPointA.Northing;
             abHeading = Math.Atan2(abDx, abDy);
-            if (turn.YouTurnCounter % 30 == 0)
+            // Only when it changes: written every 30th count, it was 1273 of the 2000 lines a bug
+            // report keeps (a simulator report), so the report reached back only 21 minutes.
+            if (!(Math.Abs(abHeading - _loggedAbHeading) < 1e-3))
+            {
+                _loggedAbHeading = abHeading;
                 _logger.LogDebug("[YouTurn] AB Line: abHeading={Deg:F1}°", abHeading * 180 / Math.PI);
+            }
         }
 
         // Is the vehicle heading the same way as the AB line (forward) or reverse?
