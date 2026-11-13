@@ -6,7 +6,8 @@
 # The code: the repo mounted read-only at /repo, or else GitHub through a mirror kept in the
 # /cache volume (refreshed under a lock, so parallel runs share it). <ref> is a branch, a commit,
 # or pr/<number> (a pull request's head, forks included). Reports go to /out
-# (AGOPENWEB_SCENARIO_REPORT and the working day's AGOPENWEB_DAY_REPORT default to /out/report.md);
+# (AGOPENWEB_SCENARIO_REPORT and the working day's AGOPENWEB_DAY_REPORT default to /out/, each report
+# under its own name);
 # AGOPENWEB_* pass through with -e.
 set -euo pipefail
 ref="$1"; proj="$2"; shift 2
@@ -27,8 +28,12 @@ else
 fi
 git checkout -q "$ref"
 echo "== $(git log --oneline -1)"
-export AGOPENWEB_SCENARIO_REPORT="${AGOPENWEB_SCENARIO_REPORT:-/out/report.md}"
-export AGOPENWEB_DAY_REPORT="${AGOPENWEB_DAY_REPORT:-/out/report.md}"
+# Each report goes to /out under its own name (Tests/ScenarioShared/ReportPath.cs), so a project
+# with several fixtures (the field job harness's six) keeps them all. A ref from before that file
+# writes the one /out/report.md, as it always did.
+if [ -f Tests/ScenarioShared/ReportPath.cs ]; then out_report=/out/; else out_report=/out/report.md; fi
+export AGOPENWEB_SCENARIO_REPORT="${AGOPENWEB_SCENARIO_REPORT:-$out_report}"
+export AGOPENWEB_DAY_REPORT="${AGOPENWEB_DAY_REPORT:-$out_report}"
 # A failed build stops here with its errors.
 if ! dotnet build "$proj" -c "${CONFIG:-Debug}" --verbosity minimal > /out/build.log 2>&1; then
   grep -E "error" /out/build.log | sort -u | head -20

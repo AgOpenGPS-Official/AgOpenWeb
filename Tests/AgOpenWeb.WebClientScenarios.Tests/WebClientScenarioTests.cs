@@ -18,8 +18,7 @@ public class WebClientScenarioTests
     public async Task Web_client_scenarios()
     {
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        var report = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT");
-        if (string.IsNullOrEmpty(report)) report = Path.Combine(TestContext.CurrentContext.WorkDirectory, "web-client-scenarios-report.md");
+        var report = ReportPath.For("web-client-scenarios-report.md");
         var shots = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(report))!, "web-client-shots");
         if (Directory.Exists(shots)) Directory.Delete(shots, true);
         var dataRoot = Path.Combine(Path.GetTempPath(), "aow-web-scenarios-" + Guid.NewGuid().ToString("N")[..8]);

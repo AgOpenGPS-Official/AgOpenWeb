@@ -28,8 +28,7 @@ public class WorkingDayScenarioTests
         day.CountCensuses();
 
         var report = Report.Markdown(day);
-        string path = Environment.GetEnvironmentVariable("AGOPENWEB_DAY_REPORT")
-            ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, "working-day-scenarios-report.md");
+        string path = ReportPath.For("working-day-scenarios-report.md", "AGOPENWEB_DAY_REPORT");
         await File.WriteAllTextAsync(path, report, CancellationToken.None);
         if (Environment.GetEnvironmentVariable("AGOPENWEB_DAY_CSV") is { Length: > 0 } csv)
             await File.WriteAllTextAsync(csv, Report.Csv(day), CancellationToken.None);

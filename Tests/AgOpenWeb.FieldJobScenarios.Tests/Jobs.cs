@@ -32,12 +32,15 @@ public static class Jobs
         Func<Journal, string> toMarkdown, CancellationToken ct)
     {
         string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
-        string path = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
-            ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, reportName);
+        string path = ReportPath.For(reportName);
         var journal = new Journal();
         var clock = System.Diagnostics.Stopwatch.StartNew();
         void Progress(string what) => TestContext.Progress.WriteLine(F($"[{clock.Elapsed:hh\\:mm\\:ss}] {what}"));
         var wanted = jobs.Where(j => Want(only, j.Job.Code)).ToList();
+        // None of AGOPENWEB_SCENARIO_ONLY's jobs is in this fixture: no report, which would read
+        // as a clean run of jobs that never ran.
+        if (wanted.Count == 0)
+            Assert.Ignore($"none of AGOPENWEB_SCENARIO_ONLY={only} is in this fixture");
         for (int i = 0; i < wanted.Count; i++)
         {
             var (op, job) = wanted[i];

@@ -27,8 +27,7 @@ public class MachineModuleScenarioTests
         if (who is null or "careful") await CarefulOperator.RunAsync(journal, only);
         if (who is null or "careless") await CarelessOperator.RunAsync(journal, only);
 
-        string report = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
-            ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, "machine-module-scenarios-report.md");
+        string report = ReportPath.For("machine-module-scenarios-report.md");
         File.WriteAllText(report, journal.ToMarkdown());
         TestContext.Out.WriteLine("Report: " + report);
         foreach (var g in journal.Findings.Values.OrderBy(v => v.First.Severity))

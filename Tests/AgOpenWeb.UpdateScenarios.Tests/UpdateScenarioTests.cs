@@ -29,8 +29,7 @@ public class UpdateScenarioTests
         if (who is null or "restarter") await RestarterOperator.RunAsync(journal, only);
         if (who is null or "upgrader") await UpgraderOperator.RunAsync(journal, only);
 
-        string report = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
-            ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, "update-scenarios-report.md");
+        string report = ReportPath.For("update-scenarios-report.md");
         File.WriteAllText(report, journal.ToMarkdown());
         TestContext.Out.WriteLine("Report: " + report);
         foreach (var g in journal.Findings.Values.OrderBy(v => v.First.Severity))

@@ -33,8 +33,7 @@ public class VehicleToolScenarioTests
         if (Wants("sweep")) { Progress("settings sweep"); await SettingsSweep.RunAsync(journal, only, Progress); }
         Progress("done");
 
-        string report = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
-            ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, "vehicle-tool-scenarios-report.md");
+        string report = ReportPath.For("vehicle-tool-scenarios-report.md");
         File.WriteAllText(report, journal.ToMarkdown());
         TestContext.Out.WriteLine("Report: " + report);
         foreach (var g in journal.Findings.Values.OrderBy(v => v.First.Severity))
