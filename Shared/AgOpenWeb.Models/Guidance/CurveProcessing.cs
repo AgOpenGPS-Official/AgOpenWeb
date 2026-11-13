@@ -527,6 +527,10 @@ namespace AgOpenWeb.Models.Guidance
         private static bool FacesOtherEnd(double de, double dn, double toE, double toN, double dist)
             => dist > 1e-9 && (de * toE + dn * toN) / dist > Math.Cos(Math.PI / 6);
 
+        // The same place (a loop's closing point repeating its first).
+        private static bool SamePoint(Vec3 a, Vec3 b)
+            => Math.Abs(a.Easting - b.Easting) <= 1e-6 && Math.Abs(a.Northing - b.Northing) <= 1e-6;
+
         /// <summary>
         /// Creates a clean offset curve and returns information about whether points were removed.
         /// Uses AgOpenGPS collision detection: if an offset point is within offset² distance
@@ -570,8 +574,20 @@ namespace AgOpenWeb.Models.Guidance
             // looks only at the points near each offset point instead of all of them.
             var near = refCount > NearGridMinPoints ? new PointGrid(originalPoints, Math.Abs(offsetDistance)) : null;
 
+            // A loop's last point repeats its first, so the seam's point is offset twice: along the
+            // last stretch's normal and along the first's. On the inside of the bend there the second
+            // copy lies behind the first: the pass ran on past the seam and back (0.2 m on a 26 m lap),
+            // its closing stretch pointing backwards, and a tractor a little off the line at the seam
+            // was steered to a goal behind it and turned round. There it is left out, and the pass
+            // goes from the last stretch's offset straight to the first's, as at any inside bend; on
+            // the outside it starts the arc round the seam (below).
+            bool seamInside = closed && refCount > 2
+                && SamePoint(originalPoints[0], originalPoints[refCount - 1])
+                && Math.IEEERemainder(originalPoints[0].Heading - originalPoints[refCount - 2].Heading, 2 * Math.PI) * offsetDistance > 0;
+
             for (int i = 0; i < refCount; i++)
             {
+                if (seamInside && i == refCount - 1) break;
                 var pt = originalPoints[i];
 
                 // Calculate offset point position
@@ -645,11 +661,16 @@ namespace AgOpenWeb.Models.Guidance
 
             // A loop's first and last points are offset along different sides of the seam corner:
             // join them, or the pass (and its guidelines) stop short there (#450). Round the join
-            // on the outside of the seam's bend, as at any other.
+            // on the outside of the seam's bend, as at any other, with the arc's points through the
+            // same collision test: untested, a seam at the tip of a narrow slot into the field (its
+            // sides closer than twice the offset) put the whole arc round the tip into the pass, out
+            // across the fence beyond it (8.7 m on a 12 m lap), and the pass crossed itself coming
+            // back.
             if (closed && offsetPoints.Count > 2)
             {
                 if (refCount > 2)
-                    AddArc(offsetPoints, originalPoints[0], originalPoints[refCount - 2].Heading, originalPoints[0].Heading, offsetDistance);
+                    AddArc(offsetPoints, originalPoints[0], originalPoints[refCount - 2].Heading, originalPoints[0].Heading, offsetDistance,
+                        (e, n) => near != null ? !near.AnyCloser(originalPoints, e, n, distSqAway) : !AnyCloser(originalPoints, e, n, distSqAway));
                 var first = offsetPoints[0];
                 var last = offsetPoints[^1];
                 if (Math.Abs(first.Easting - last.Easting) > 1e-6 || Math.Abs(first.Northing - last.Northing) > 1e-6)
