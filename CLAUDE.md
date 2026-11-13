@@ -497,7 +497,7 @@ dotnet run --project TestRunner/TestRunner.csproj
 - `AgOpenWeb.IntegrationTests` - test-support library (fake settings etc.); not a standalone test run
 - `AgOpenWeb.VehicleToolScenarios.Tests` - Vehicle & Tool scenarios: a simulated machine (steering, implement linkage, antenna on a slope, the Boards simulator's GPS/IMU/motor) drives the whole backend; a careful operator on five vehicles and their implements, a careless one with wrong measures, signs, units, roll setup and profiles, and a settings sweep (every guidance/AutoSteer/tool/vehicle setting flipped: did the steer angle, a PGN or the sections change?); a findings report; the rig reports no network interfaces, so its PGNs go to 127.0.0.1 only and never reach a module on the LAN; CI only builds it (and runs its host-loop budget), `vehicle-tool-scenarios.yml` runs it nightly (its `README.md`)
 - `AgOpenWeb.FieldScenarios.Tests` - end-to-end field scenarios: the whole backend in-process, a careful and a careless operator on five real field shapes, a findings report; about 4 minutes, so CI only builds it and `field-scenarios.yml` runs it nightly (its `README.md`)
-- `AgOpenWeb.SteerWizardScenarios.Tests` - end-to-end steer wizard scenarios: the whole backend in-process, an emulated AiO steer module (firmware P controller on its 25 ms loop, WAS formula, locks, either motor wiring) and a moving tractor, a careful and a careless operator, a safety watch on the wheels at 50 Hz, a findings report; about 10 minutes, so CI only builds it and `steer-wizard-scenarios.yml` runs it nightly (its `README.md`)
+- `AgOpenWeb.SteerWizardScenarios.Tests` - end-to-end steer wizard scenarios: the whole backend in-process, an emulated AiO steer module (firmware P controller on its 25 ms loop, WAS formula, locks, either motor wiring) and a moving tractor, a careful and a careless operator, the wheel tuning step on a late PWM valve, a Keya and a wheel motor, a safety watch on the wheels at 50 Hz, a findings report; about 20 minutes, so CI only builds it and `steer-wizard-scenarios.yml` runs it nightly (its `README.md`)
 - `AgOpenWeb.MachineModuleScenarios.Tests` - an emulated Sprayer_ESP32 machine module on the real UDP: sections vs valves, settings reaching the module, restarts and outages (`machine-module-scenarios.yml`)
 - `AgOpenWeb.GpsNtripScenarios.Tests` - receivers, sentence families and an NTRIP caster on the loopback: corrections, network changes, dual heading (`gps-ntrip-scenarios.yml`; one scenario needs Linux's 127.0.0.2)
 - `AgOpenWeb.FieldJobScenarios.Tests` - whole jobs on real fields with AutoSteer, U-turns and auto sections, measuring where product really went on a 0.2 m grid (`FieldJobScenarioTests`, the careful and the careless operator); its `PathJobScenarioTests` do the same on curves, the boundary as a loop, a water pivot, contour and a recorded path; `RigJobScenarioTests` with the testers' rigs: an implement shifted to one side, a curve recorded by driving, a wide implement skipping rows, the snake order (skip worked passes, W1-W2); `TurnInterventionScenarioTests` with an operator who acts during a U-turn, and manual U-turns; `ImperialJobScenarioTests` the job typed in feet and inches through the real web client, headless Chromium. One engine (`JobRun`), so one nightly, `job-scenarios.yml`: the six side by side, then one combined report listing each finding once with every harness and job it was seen in (`Tools/combine-job-reports.py`). **Short runs:** `AGOPENWEB_SCENARIO_TURNS=N` stops each job at its (N+1)th U-turn, `AGOPENWEB_SCENARIO_MINUTES=N` after N simulated minutes, `AGOPENWEB_SCENARIO_FROM_PASS=K` starts on pass K (rework passes 28-32 of a finding: `FROM_PASS=28 TURNS=4`) (a job of a few passes in under a minute, not 5-80), with the whole-field checks skipped; `AGOPENWEB_SCENARIO_ONLY=J1,J8` picks jobs; the workflow's `only`, `turns`, `from_pass` and `minutes` inputs do the same on GitHub. Confirm a fix with a unit test first, then a short fix-vs-base run of the jobs it touches on the harness host, then merge: the nightly on develop is the full check the next morning (`FROM_PASS` works on AB lines and curves)
@@ -536,6 +536,30 @@ Key parameters:
 - `UTurnRadius` - the operator's turning radius (never filled in from the tractor)
 - `UTurnExtension` - the legs' length into and out of the arc
 - The headland's width plays no part in the turn: with a headland narrower than the turn is deep, the turn leaves its pass inside the headland line, still working ("Headland too narrow for this U-turn").
+
+## Steer wizard: tuning the wheels
+The Steer Wizard's *Tune steering* step (`TuneSteeringStepViewModel`, after the Ackermann circle and before the
+gains page; arithmetic in `SteerTuneMath`) finds the three settings of the module's own loop,
+Minimum To Move, Max Limit and Proportional Gain, by moving the wheels a few degrees through Free Drive, standing
+still or at walking pace (not above 6 km/h to start, 10 km/h stops it; wheels within 8° of straight). In order:
+- **Stop check**: before anything moves by itself the operator stops the module once with the stop the tractor
+  has (`StopKindFor`: steer switch or button, a turn sensor or a pressure/current sensor with a trip point, else
+  the page's Stop button, and the page says that is the only stop), and the step sees it stop.
+- **Minimum To Move**, each side: the module's PWM raised quickly, then slowly, until the wheels move; then that
+  PWM less one is held and must leave the wheels still (a steering that answers late reads high on any rise). The
+  setting is a little under the easier side.
+- **Max Limit**: the PWM that turns the wheels at the speed chosen (15, 25 or 35°/s, `wizard.set|TargetWheelSpeed`).
+- **Proportional Gain**: 4° turns up a ladder of gains; the lowest gain that settles as fast as the best one
+  without swinging, then checked with an 8° turn.
+
+The test values are in the settings only while it runs. Every way out (Stop, ✕, Next, Back, the browser lost, the
+steer switch, a kickout, wheels held, wheels moving while only held or the wrong way, too fast) lets go of the
+module and puts the operator's values back; the values found are used only after *Use these values* and saved with
+the profile on Finish. With no kickout sensor the step itself notices a hand on the wheel (wheels that stop
+answering; the wheel taken at every tenth of a second of a run on three simulated steerings is let go within 2.5 s). Web client: `case 'tune'` in `js/wizards.js` (buttons shown by
+`testStage`; the result's `Measurements:` tail is folded away). Tests: `SteerWizardTuneTests` on a simulated
+steering (`FakeSteering`); the tuning stories of the steer wizard harness (`TuneScenarios.cs`). Not tried on a
+tractor yet.
 
 ## CI/CD
 

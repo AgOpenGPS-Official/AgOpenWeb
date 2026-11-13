@@ -77,6 +77,12 @@ public class SteerWizardViewModel : WizardViewModel
         ackermannTest.SetHardwareStep(hardwareStep);
         AddStep(ackermannTest);
 
+        // Tune the wheel response (Minimum To Move, Max Limit, Proportional Gain) by
+        // measuring it; optional, before the page where the same values are typed by hand.
+        var tuneSteering = new TuneSteeringStepViewModel(configService, dispatcher, autoSteerService);
+        tuneSteering.SetHardwareStep(hardwareStep);
+        AddStep(tuneSteering);
+
         var steerGains = new SteeringGainsStepViewModel(configService, autoSteerService);
         steerGains.SetHardwareStep(hardwareStep);
         AddStep(steerGains);

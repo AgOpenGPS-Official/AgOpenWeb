@@ -45,5 +45,7 @@ public class SteerWizardScenarioTests
         yield return ("Careful: whole wizard", (j, n) => CarefulOperator.RunAsync(j, n));
         foreach (var c in CarelessOperator.All())
             yield return c;
+        foreach (var t in TuneScenarios.All())
+            yield return t;
     }
 }

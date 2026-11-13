@@ -466,6 +466,14 @@ input.as-valbox { width: 80px; box-sizing: content-box; }
 .wz-testbtn { padding: 12px 28px; border: 0; border-radius: 8px; background: #2f6fb0; color: #fff;
   font: 700 15px system-ui, sans-serif; cursor: pointer; }
 .wz-testbtn.disabled { opacity: 0.4; pointer-events: none; }
+.wz-testbtn.stop { background: #b54430; }
+.wz-testbtn.alt { background: rgba(var(--ov),0.14); color: var(--text); }
+.wz-seg button.disabled { opacity: 0.4; pointer-events: none; }
+.wz-tuneresult { text-align: center; color: var(--text); font-weight: 600; margin: 0; }
+.wz-tunespeed { margin-top: 8px; }
+.wz-tunemore { max-width: 560px; color: var(--text-2); font: 400 13px system-ui, sans-serif; }
+.wz-tunemore summary { cursor: pointer; padding: 8px 0; text-align: center; }
+.wz-tunemore .wz-desc { margin: 0; font-size: 12px; }
 .wz-circle { min-height: 0; margin: 4px 0 16px; gap: 10px; }
 .wz-btnrow { display: flex; gap: 12px; }
 .wz-validation { color: #f87171; font: 600 14px system-ui, sans-serif; text-align: center; padding: 6px 26px; }
