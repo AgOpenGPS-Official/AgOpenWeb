@@ -1911,6 +1911,10 @@ public partial class MainViewModel : ObservableObject
             {
                 _coverageMapService.LoadFromFile(fieldPath, activeJob.TaskName);
                 _logger.LogDebug($"[Coverage] Loaded coverage from {fieldPath} job={activeJob.TaskName}");
+                // A newer AgOpenWeb's job: its coverage isn't read, and nothing is written to it
+                // (JobJsonService.IsNewerFormat), so the work done now is not kept.
+                if (Services.Fields.JobJsonService.IsNewerFormat(fieldPath, activeJob.TaskName))
+                    ReportFailure("This job was saved by a newer AgOpenWeb: its coverage is not shown and work done in it is not saved. Start a new job, or update AgOpenWeb.");
             }
             else
             {
@@ -1991,6 +1995,11 @@ public partial class MainViewModel : ObservableObject
             FieldFullyLoaded?.Invoke(field);
 
             StatusMessage = $"Opened field: {fieldName}";
+
+            // A newer AgOpenWeb's field: this build reads it but writes nothing to it, so it
+            // can't overwrite what it doesn't understand (GeoJsonFieldService.CurrentFormatVersion).
+            if (Services.GeoJson.GeoJsonFieldService.IsNewerFormat(fieldPath))
+                ReportFailure("This field was saved by a newer AgOpenWeb: changes to its boundaries, tracks, flags and headland are not saved. Update AgOpenWeb to edit it.");
         }
         catch (Exception ex)
         {

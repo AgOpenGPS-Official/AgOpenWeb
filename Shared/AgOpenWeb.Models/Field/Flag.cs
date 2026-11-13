@@ -14,6 +14,10 @@ namespace AgOpenWeb.Models
 
     public class Flag : ObservableObject
     {
+        /// <summary>The properties of this part's feature in field.geojson that this build does not
+        /// read (a newer build's, another tool's), written back as they were (FIELD_FILE_FORMATS.md).</summary>
+        public IReadOnlyDictionary<string, object?>? UnknownProperties { get; set; }
+
         private FlagColor _flagColor;
         private string _name = "";
         private string _notes = "";

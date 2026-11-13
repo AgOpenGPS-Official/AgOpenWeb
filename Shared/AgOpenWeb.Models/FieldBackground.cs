@@ -18,6 +18,10 @@ public sealed record FieldBackground(
 {
     /// <summary>The image file name AgOpenWeb uses in a field folder.</summary>
     public const string DefaultImageFile = "background.png";
+
+    /// <summary>The properties of this part's feature in field.geojson that this build does not
+    /// read (a newer build's, another tool's), written back as they were (FIELD_FILE_FORMATS.md).</summary>
+    public IReadOnlyDictionary<string, object?>? UnknownProperties { get; init; }
 }
 
 /// <summary>Web-Mercator (EPSG:3857) bounds of an image, in metres.</summary>

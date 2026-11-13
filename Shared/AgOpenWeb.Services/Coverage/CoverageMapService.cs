@@ -1713,6 +1713,7 @@ public class CoverageMapService : ICoverageMapService
     private bool _displayFullSave = true;
 
     private string? _savedDirectory;        // job folder the tiles on disk match (null: unknown)
+    private string? _newerFormatDirectory;  // a newer build's coverage folder: never written (CoverageTileStore.IsNewerFormat)
     private string? _legacyFilesDirectory;  // job imported from coverage_*.bin or Sections.txt: delete them after its first tiled save
 
     // Serialises saves: the autosave can still be running when the field-close save starts,
@@ -1755,7 +1756,11 @@ public class CoverageMapService : ICoverageMapService
         lock (_saveLock)
         {
             string dir = Path.GetFullPath(fieldDirectory);
+            if (dir == _newerFormatDirectory)
+                return;
             var store = new CoverageTileStore(dir);
+            if (store.IsNewerFormat)
+                return; // a newer build's coverage: this build would replace its manifest and tiles
             TileSave save;
             lock (_coverageLock)
             {
@@ -1952,6 +1957,20 @@ public class CoverageMapService : ICoverageMapService
         string dir = Path.GetFullPath(fieldDirectory);
         var store = new CoverageTileStore(dir);
         bool hasDetectionBits, hasSectionDisplay, fromTiles = false, fromOldFiles = false;
+
+        // A newer build's coverage: shown as none and never saved, so it stays as that build left it.
+        _newerFormatDirectory = null;
+        if (store.IsNewerFormat)
+        {
+            ClearAll();
+            lock (_coverageLock)
+            {
+                _savedDirectory = null;
+                _legacyFilesDirectory = null;
+            }
+            _newerFormatDirectory = dir;
+            return;
+        }
 
         var manifest = store.ManifestExists || Directory.Exists(store.DetectionDir)
             ? store.ReadManifest() ?? RecoverManifest(store)
