@@ -12,7 +12,11 @@ harnesses on a development machine, where the app and other runs share its ports
   volume, so the host needs no checkout: push first. The report, `build.log` and `test.log` go to
   `/out`.
 - `runner-compare.sh`: one harness on a fix and on its base side by side, the two `/out` folders
-  copied back, and `Tools/compare-reports.py` listing the findings new, gone and in both.
+  copied back, and `Tools/compare-reports.py` listing the findings new, gone and in both, for each
+  report by name (a project with several fixtures, the field job harness's six, writes one each:
+  `Tests/ScenarioShared/ReportPath.cs`; a fixture with none of `AGOPENWEB_SCENARIO_ONLY`'s jobs writes
+  none). It exits 1, with the reason marked `!!`, when a side did not pass, a report is on one side
+  only or there is none: a comparison that read the wrong report looked like a quiet run (2026-11-13).
 
 Each container has its own network, so runs side by side don't share UDP 9999/8888. They do share
 the CPU, and a starved run misses its watchdogs and reports it (a false `AUTOSTEER-DROPPED`,

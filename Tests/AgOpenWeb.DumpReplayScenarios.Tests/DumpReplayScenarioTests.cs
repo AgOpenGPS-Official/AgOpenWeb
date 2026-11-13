@@ -76,8 +76,7 @@ public class DumpReplayScenarioTests
         }
         finally
         {
-            var report = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
-                ?? Path.Combine(TestContext.CurrentContext.TestDirectory, "dump-replay-scenarios-report.md");
+            var report = ReportPath.For("dump-replay-scenarios-report.md");
             File.WriteAllText(report, journal.ToMarkdown());
             TestContext.Out.WriteLine("Report: " + report);
             try { Directory.Delete(root, true); } catch { /* temp */ }

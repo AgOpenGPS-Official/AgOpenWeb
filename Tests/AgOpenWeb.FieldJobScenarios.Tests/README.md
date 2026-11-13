@@ -45,6 +45,7 @@ its neighbours':
 |---|---|
 | Ground never sprayed between neighbouring passes, widest strip (wedges at the pass ends after AgOpenWeb said "Headland too narrow for this U-turn" are a note: the turn leaves its pass inside the headland line) | `MISSED-STRIPS` |
 | The field reported done with ground left (inside the worked passes, or on a side of the field / in passes skipped), or never reported done | `FIELD-LEFT-UNDONE`, `FIELD-NOT-FINISHED` |
+| The operator took over before any U-turn (a turn blocked or missed at the first end): the job never got past its first pass, whatever the coverage checks say about nothing sprayed | `JOB-NEVER-TURNED` |
 | "End of field reached" said, then a U-turn onto another pass after all (the operator drives on) | `END-OF-FIELD-TOO-EARLY` |
 | Sprayed outside the boundary, inside an obstacle, inside the headland further past its line than a section's width (a section is in the headland only with both ends in it, as AgOpenGPS, so where a pass meets the line at an angle up to a section's width lands past it) | `SPRAYED-OUTSIDE-BOUNDARY`, `SPRAYED-IN-OBSTACLE`, `SPRAYED-IN-HEADLAND` |
 | AgOpenWeb's map painted where no valve was open, or blank where one was | `MAP-SHOWS-UNSPRAYED`, `SPRAYED-NOT-ON-MAP` |

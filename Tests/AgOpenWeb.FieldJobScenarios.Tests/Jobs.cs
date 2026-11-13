@@ -32,12 +32,15 @@ public static class Jobs
         Func<Journal, string> toMarkdown, CancellationToken ct)
     {
         string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
-        string path = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_REPORT")
-            ?? Path.Combine(TestContext.CurrentContext.WorkDirectory, reportName);
+        string path = ReportPath.For(reportName);
         var journal = new Journal();
         var clock = System.Diagnostics.Stopwatch.StartNew();
         void Progress(string what) => TestContext.Progress.WriteLine(F($"[{clock.Elapsed:hh\\:mm\\:ss}] {what}"));
         var wanted = jobs.Where(j => Want(only, j.Job.Code)).ToList();
+        // None of AGOPENWEB_SCENARIO_ONLY's jobs is in this fixture: no report, which would read
+        // as a clean run of jobs that never ran.
+        if (wanted.Count == 0)
+            Assert.Ignore($"none of AGOPENWEB_SCENARIO_ONLY={only} is in this fixture");
         for (int i = 0; i < wanted.Count; i++)
         {
             var (op, job) = wanted[i];
@@ -141,7 +144,18 @@ public static class Jobs
 
         // ---- the field done
         if (r.EndedEarly)
+        {
             sc.Note(F($"the job ended early ({r.EndedBy}): {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed by then"));
+            // The operator took over before any U-turn: the job never got past its first pass. A
+            // turn blocked (or missed) at the first end is noted as what the app said, and every
+            // coverage check passes on nothing sprayed, so J7 sprayed 0 % night after night with
+            // the run green (2026-11-13). A refused turn is TURN-REFUSED already; no room on the
+            // next pass is the end of the field.
+            if (r.TookOverAt >= 0 && r.Turns.Count == 0 && !r.ShortStopped
+                && !r.Problems.Any(p => p.Contains("refused the U-turn", StringComparison.Ordinal)
+                    || p.Contains("had no room for a U-turn", StringComparison.Ordinal)))
+                flag(Severity.Bug, "JOB-NEVER-TURNED", F($"the job never got past its first pass: the operator took over before any U-turn ({r.EndedBy}), with {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed."));
+        }
         else if (!r.FieldDone)
             flag(Severity.Bug, "FIELD-NOT-FINISHED", F($"AgOpenWeb never reported the end of the field; the job stopped after {r.Seconds / 60:0} min with {Pct(a.Missed, a.Work)} of the cultivated area unsprayed. {string.Join(" | ", r.Problems)}"));
         else if (a.Missed - a.MissedBetweenPasses - a.MissedLeftInMiddle - a.MissedAtCorners > 0.05 * a.Work)
