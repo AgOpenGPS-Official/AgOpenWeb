@@ -271,6 +271,12 @@ public static class Jobs
                 "the valves did not follow the screen for section(s) " + string.Join(", ", lag));
         else
             sc.Ok("every valve followed the screen within 2 s over the whole job");
+        // The harness's own machine: frames the module never got while online (a busy runner).
+        // A mismatch in those stretches is not counted against AgOpenWeb above.
+        var v = r.Valves;
+        double harnessLag = v.DuringLostFrames.Take(Math.Min(64, spec.T.Sections)).Sum();
+        if (v.FramesMissed > 0 || harnessLag > 0)
+            sc.Note(F($"harness: the module missed {v.FramesMissed} of {v.FramesExpected} PGN 239 frames while online (the runner too busy to deliver them, not AgOpenWeb){(harnessLag > 0 ? F($"; {harnessLag:0.0} section-seconds of valves not following the screen fell in those stretches and are not counted") : "")}"));
 
         // ---- where AgOpenWeb thinks the implement is
         if (r.ToolSamples > 0)

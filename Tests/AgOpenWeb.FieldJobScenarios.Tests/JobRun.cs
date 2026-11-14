@@ -268,10 +268,11 @@ public sealed class JobRun : IAsyncDisposable
     private int _endSaidPass;
     public int Reengaged;
     public readonly double[] ScreenOnValveShut = new double[64], ScreenOffValveOpen = new double[64];
-    /// <summary>Disagreement that lasted more than a second at a stretch (the switching latency
-    /// of a few fixes at each change is not a fault).</summary>
-    public readonly double[] PersistentDisagreement = new double[64];
-    private readonly int[] _disagreeRun = new int[64];
+    /// <summary>The valves against the screen: disagreement that lasted more than a second at a
+    /// stretch (the switching latency of a few fixes at each change is not a fault), apart where
+    /// the module missed frames (<see cref="ValveFollowTally"/>).</summary>
+    public readonly ValveFollowTally Valves = new();
+    public double[] PersistentDisagreement => Valves.Persistent;
     private readonly (double E, double N)?[] _prevAppEdge = new (double E, double N)?[65];
     public double SecondsLinkDown, SecondsPaintingLinkDown;
     /// <summary>AgOpenWeb's tool position against the real implement's centre, on the passes
@@ -643,7 +644,14 @@ public sealed class JobRun : IAsyncDisposable
             Module.TickNow(); Module.TickNow();   // the module's 50 ms loop, twice per 100 ms fix
             _pivotHistory[Fix % _pivotHistory.Length] = (Truth.E, Truth.N);
             if (GpsOn) SendFix();
+            bool onlineBefore = Module.IsOnline;
+            int before239 = Module.Count(239);
             for (int t = 0; t < 10; t++) { SimTime?.AdvanceMs(10); Rig.TickLoop(1); SweepMapping(); }   // the 100 Hz section/steer loop, in simulated time
+            // The module hears the app over real UDP on its own thread while the harness runs in
+            // simulated time, faster than the clock: give the frames of this fix a moment to arrive,
+            // then count what never did (a busy runner drops them; the 2026-11-14 nightly lost 4.5 %).
+            int got = WaitForFrames(before239, 10);
+            Valves.BeginFix(10, onlineBefore && Module.IsOnline ? got : null);
             var c = Rig.LastCycle;
             if (c != null && Fix > _pivotHistory.Length && !InTurn)
             {
@@ -989,6 +997,18 @@ public sealed class JobRun : IAsyncDisposable
         return (worst, pivot);
     }
 
+    /// <summary>Wait up to 5 ms of wall time for the module to have <paramref name="sent"/> more
+    /// PGN 239 frames than <paramref name="before"/>; the number it got.</summary>
+    private int WaitForFrames(int before, int sent)
+    {
+        long until = System.Diagnostics.Stopwatch.GetTimestamp() + System.Diagnostics.Stopwatch.Frequency / 200;
+        var spin = new SpinWait();
+        int got;
+        while ((got = Module.Count(239) - before) < sent && System.Diagnostics.Stopwatch.GetTimestamp() < until)
+            spin.SpinOnce();
+        return got;
+    }
+
     private void Sweep(GpsCycleResult c, ulong prevOpen)
     {
         var tc = Truth.ToolCentre;
@@ -1022,8 +1042,7 @@ public sealed class JobRun : IAsyncDisposable
             bool screen = s < live.Count && live[s].IsOn;
             if (screen && !valve) { ScreenOnValveShut[s] += FixSeconds; if (!link) SecondsPaintingLinkDown += FixSeconds / n; }
             if (!screen && valve) ScreenOffValveOpen[s] += FixSeconds;
-            if (screen != valve) { if (++_disagreeRun[s] > 10) PersistentDisagreement[s] += FixSeconds; }
-            else _disagreeRun[s] = 0;
+            Valves.Section(s, screen, valve, FixSeconds);
             bool flowing = ((spray >> s) & 1) != 0;
             if (flowing && _prevEdge[s] is { } p0 && _prevEdge[s + 1] is { } p1)
                 Grid.Sweep(p0, p1, cur[s], cur[s + 1]);

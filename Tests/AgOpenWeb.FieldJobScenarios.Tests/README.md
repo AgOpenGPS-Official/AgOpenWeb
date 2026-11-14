@@ -54,7 +54,7 @@ its neighbours':
 | A U-turn that took the tractor past the boundary (an implement end past it is a note: *Distance from boundary* keeps the tractor inside, not the implement, as in AgOpenGPS, kept on purpose) | `TURN-OUTSIDE-BOUNDARY` |
 | U-turns missed or cancelled, AutoSteer dropping out | `TURN-MISSED`, `AUTOSTEER-DROPPED` |
 | The first U-turn arrow pointing at the edge the operator started from | `FIRST-TURN-TOWARD-EDGE` |
-| The screen's sections and the nozzles disagreeing | `VALVES-NOT-FOLLOWING`, `SECTION-WITHOUT-RELAY` |
+| The screen's sections and the nozzles disagreeing for more than a second (a stretch in which the module missed PGN 239 frames while online is the runner's, not AgOpenWeb's: a note with the frames missed, `ValveFollowTally`) | `VALVES-NOT-FOLLOWING`, `SECTION-WITHOUT-RELAY` |
 | AgOpenWeb found no U-turn that fits and asked the operator to take over (the job stops there, as at a missed turn's warning; a turn blocked by a hard boundary or an obstacle is a note) | `TURN-REFUSED` |
 | The tractor more than 25 m out of the field with no such warning | `RAN-OFF` |
 
