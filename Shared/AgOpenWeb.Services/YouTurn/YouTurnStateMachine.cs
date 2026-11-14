@@ -318,6 +318,28 @@ public sealed class YouTurnStateMachine
             effects.StatusMessage = "No U-turn can be made from the headland on this pass. Take over manually at the end of the field.";
         }
 
+        // ── TOO CLOSE TO PLAN ───────────────────────────────────────────
+        // In the cultivated area on the line, heading for the headland, with no turn planned or
+        // under way, and already closer to it than a turn is planned (MinDistanceToCreate): none
+        // will be. AutoSteer switched on again a few metres before the headland after a dropped
+        // turn (field job T10, 2026-11-14 nightly: 6 m), or the line joined that late. It drove on
+        // through the headland and out of the field with nothing said; AgOpenGPS can't turn there
+        // either and sounds "too close". Said once, before the headland. Not after an end of field
+        // or a refused turn (the operator was told then). Only at the pass's last crossing: a pass
+        // that cuts across a corner of the cultivated area and comes back into it further on (field
+        // jobs W1 and J3 on Baetas, at the start) has its end there, and on a curve the straight ray
+        // can meet the headland early on the outside of a bend while the pass runs on (field job
+        // J10). The pass is walked ahead past the crossing for cultivated ground.
+        if (turn.TurnPath == null && !turn.IsExecuting && !_creationFailSounded && !_missedSounded
+            && isInCultivatedArea && isAlignedWithABLine && turn.DistanceToHeadland <= MinDistanceToCreate
+            && !_pathing.CultivatedAhead(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
+                passPoint, headingSameWay, from: turn.DistanceToHeadland + 2))
+        {
+            _logger.LogDebug("[YouTurn] {Dist:F1}m from the headland with no turn planned - too close, turn missed", turn.DistanceToHeadland);
+            SoundMissed(effects);
+            effects.StatusMessage = "U-turn missed: too close to the headland to turn. Take over manually.";
+        }
+
         // ── TURN TRIGGER ────────────────────────────────────────────────
         // The planned path begins with an entry leg that IS the current pass, so the tractor
         // is on the path as soon as it is on that leg and takes the turn from wherever it
