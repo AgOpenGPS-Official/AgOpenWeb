@@ -103,6 +103,12 @@ public interface IJobService
     Job? ActiveJob { get; }
 
     /// <summary>
+    /// Keep the machine the active job is worked with (#547): the job's copy is replaced and its
+    /// job.json saved when it differs. Nothing without an active job.
+    /// </summary>
+    void RecordRig(JobRig rig);
+
+    /// <summary>
     /// Fired whenever <see cref="ActiveJob"/> changes (including to null).
     /// </summary>
     event EventHandler<Job?>? ActiveJobChanged;

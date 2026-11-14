@@ -77,4 +77,10 @@ public class Job
     /// Number of U-turns executed during this job.
     /// </summary>
     public int UTurnCount { get; set; }
+
+    /// <summary>
+    /// The vehicle and the chain of tools the job was worked with (#547), a copy of the loaded
+    /// profiles kept up to date while the job is open; null for a job saved before it was kept.
+    /// </summary>
+    public JobRig? Rig { get; set; }
 }
