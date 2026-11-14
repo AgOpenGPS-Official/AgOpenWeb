@@ -257,6 +257,35 @@ public class AutoTurnMatchesAgOpenGpsTests
     }
 
     /// <summary>
+    /// AutoSteer switched on again in the cultivated area closer to the headland than a turn can be
+    /// planned (field job T10, 2026-11-14 nightly: re-engaged 6 m before it after a dropped turn).
+    /// No turn is planned there, in AgOpenGPS either, so the tractor drove on through the headland
+    /// and out of the field with nothing said. The missed turn is said once, before the headland.
+    /// </summary>
+    [Test]
+    public void Too_close_to_the_headland_to_plan_a_turn_the_operator_is_told_once()
+    {
+        // The headland line at y 44: 8, 6 and 4 m ahead.
+        var (turn, effects) = PlanAlong(1.5, 0, 36, 38, 40);
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.TurnPath, Is.Null, "no turn this close");
+            Assert.That(effects[0].TurnCreationFailedSound, Is.True, "the operator hears it at once");
+            Assert.That(effects[0].StatusMessage, Does.Contain("U-turn missed").And.Contain("Take over manually"));
+            Assert.That(effects.Skip(1).Any(e => e.TurnCreationFailedSound), Is.False, "once");
+        });
+    }
+
+    /// <summary>A turn planned in time is driven up to the headland with no missed-turn warning.</summary>
+    [Test]
+    public void A_turn_planned_in_time_says_nothing_near_the_headland()
+    {
+        var (turn, effects) = PlanAlong(1.5, 0, -20, 30, 36, 40);
+        Assert.That(turn.TurnPath, Is.Not.Null, "planned further back");
+        Assert.That(effects.Any(e => e.TurnCreationFailedSound), Is.False, $"no warning ('{string.Join("' '", effects.Select(e => e.StatusMessage))}')");
+    }
+
+    /// <summary>
     /// A curved pass that runs on in the headland and bends into the field further on (field job
     /// J10, a recorded curve, just after a turn): a straight line ahead from the tractor runs along
     /// the headland and never meets the headland line, but the pass reaches the cultivated area.
