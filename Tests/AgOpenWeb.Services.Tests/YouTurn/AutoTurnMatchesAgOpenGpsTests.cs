@@ -35,9 +35,11 @@ public class AutoTurnMatchesAgOpenGpsTests
 
     private static double PassX(double width, int n) => n * width + width / 2;
 
-    private static List<Vec2> SquareFence()
+    private static List<Vec2> SquareFence() => Densified(new List<Vec2> { new(-Half, -Half), new(Half, -Half), new(Half, Half), new(-Half, Half) });
+
+    /// <summary>The ring through these corners with a point every 2 m or less.</summary>
+    private static List<Vec2> Densified(List<Vec2> ring)
     {
-        var ring = new List<Vec2> { new(-Half, -Half), new(Half, -Half), new(Half, Half), new(-Half, Half) };
         var points = new List<Vec2>();
         for (int i = 0; i < ring.Count; i++)
         {
@@ -181,6 +183,11 @@ public class AutoTurnMatchesAgOpenGpsTests
     /// a 3 m tool with <paramref name="toolOffset"/>, an AB line north; ticks with the pivot at
     /// each northing of <paramref name="ys"/> in turn (x = <paramref name="x"/>), heading north.</summary>
     private static (YouTurnWorkingState turn, List<YouTurnEffects> effects) PlanAlong(double x, double toolOffset, params double[] ys)
+        => PlanAlongIn(null, x, toolOffset, ys);
+
+    /// <summary><see cref="PlanAlong"/> with the headland line given (corners, densified here);
+    /// null is the 16 m headland.</summary>
+    private static (YouTurnWorkingState turn, List<YouTurnEffects> effects) PlanAlongIn(List<Vec2>? headlandCorners, double x, double toolOffset, params double[] ys)
     {
         ConfigurationStore.SetInstance(new ConfigurationStore());
         var c = ConfigurationStore.Instance;
@@ -204,7 +211,9 @@ public class AutoTurnMatchesAgOpenGpsTests
         {
             OuterBoundary = new BoundaryPolygon { Points = fence.Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList() },
         };
-        var headland = offset.CalculatePointHeadings(offset.CreateInwardOffset(fence, HeadlandWidth)!);
+        var headland = offset.CalculatePointHeadings(headlandCorners == null
+            ? offset.CreateInwardOffset(fence, HeadlandWidth)!
+            : Densified(headlandCorners));
         var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
         int pass = (int)Math.Round((x + toolOffset - 1.5) / 3.0);
         var guidance = new GuidanceWorkingState { HowManyPathsAway = pass, IsHeadingSameWay = true };
@@ -274,6 +283,28 @@ public class AutoTurnMatchesAgOpenGpsTests
             Assert.That(effects[0].StatusMessage, Does.Contain("U-turn missed").And.Contain("Take over manually"));
             Assert.That(effects.Skip(1).Any(e => e.TurnCreationFailedSound), Is.False, "once");
         });
+    }
+
+    /// <summary>
+    /// A pass that cuts across a corner of the cultivated area, leaves it for the headland and comes
+    /// back into it further on (field jobs W1 and J3 on Baetas, where a bay cuts into the field):
+    /// a few metres into the corner the headland line is close ahead, but that is not the end of the
+    /// pass and the turn is planned at the real end. Nothing is said there: the operator was told
+    /// to take over at the start of the job (#836's first Runner run).
+    /// </summary>
+    [Test]
+    public void A_pass_crossing_a_corner_of_the_field_is_not_a_missed_turn()
+    {
+        // The cultivated area with a notch from the west side, y -30..-20, as far as x 10: the pass
+        // at x 1.5 is in the cultivated area at y -36, meets the notch 6 m ahead and is back in it at y -20.
+        var corners = new List<Vec2>
+        {
+            new(-44, -44), new(44, -44), new(44, 44), new(-44, 44),
+            new(-44, -20), new(10, -20), new(10, -30), new(-44, -30),
+        };
+        var (turn, effects) = PlanAlongIn(corners, 1.5, 0, -36, -34, -32);
+        Assert.That(effects.Any(e => e.TurnCreationFailedSound || (e.StatusMessage?.Contains("missed") ?? false)), Is.False,
+            $"the pass goes on in the field past the notch ('{string.Join("' '", effects.Select(e => e.StatusMessage))}')");
     }
 
     /// <summary>A turn planned in time is driven up to the headland with no missed-turn warning.</summary>

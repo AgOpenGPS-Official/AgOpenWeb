@@ -368,6 +368,70 @@ public sealed class YouTurnPathingService
         return Math.Abs(tFront - tBack);
     }
 
+    /// <summary>
+    /// Is any of pass <paramref name="pathsAway"/> in the cultivated area between
+    /// <paramref name="from"/> and <paramref name="upTo"/> metres ahead of the tractor (abreast of
+    /// <paramref name="position"/>, the way it is heading)? A pass that meets the headland line
+    /// and comes back into the field further on (a corner cut across, a bay) has its end there.
+    /// Sampled every 2 m.
+    /// </summary>
+    public bool CultivatedAhead(Models.Track.Track track, double abHeading, int pathsAway,
+        Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, Position position, bool headingSameWay,
+        double from, double upTo = 2000)
+    {
+        const double Step = 2.0;
+        var config = _configStore;
+        double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
+        double distAway = PassGeometry.Offset(track, pathsAway, widthMinusOverlap);
+        if (track.Points.Count < 2) return false;
+
+        if (track.Points.Count > 2)
+        {
+            var curve = CurveProcessing.CreateOffsetCurve(track.Points, distAway);
+            if (curve.Count < 2) return false;
+            int near = 0;
+            double best = double.MaxValue;
+            for (int i = 0; i < curve.Count; i++)
+            {
+                double de = curve[i].Easting - position.Easting, dn = curve[i].Northing - position.Northing;
+                double d = de * de + dn * dn;
+                if (d < best) { best = d; near = i; }
+            }
+            int i1 = Math.Min(near + 1, curve.Count - 1), i0 = Math.Max(near - 1, 0);
+            double tdx = curve[i1].Easting - curve[i0].Easting, tdy = curve[i1].Northing - curve[i0].Northing;
+            double travel = headingSameWay ? abHeading : abHeading + Math.PI;
+            int fwd = tdx * Math.Sin(travel) + tdy * Math.Cos(travel) >= 0 ? 1 : -1;
+            double walked = 0, lastTested = double.MinValue;
+            for (int i = near; i + fwd >= 0 && i + fwd < curve.Count && walked <= upTo; i += fwd)
+            {
+                double de = curve[i + fwd].Easting - curve[i].Easting, dn = curve[i + fwd].Northing - curve[i].Northing;
+                walked += Math.Sqrt(de * de + dn * dn);
+                if (walked < from || walked - lastTested < Step) continue;
+                lastTested = walked;
+                if (IsPointInsideCultivatedArea(curve[i + fwd].Easting, curve[i + fwd].Northing, boundary, headlandLine)) return true;
+            }
+            return false;
+        }
+
+        var pointA = track.Points[0];
+        var pointB = track.Points[track.Points.Count - 1];
+        double abDx = pointB.Easting - pointA.Easting, abDy = pointB.Northing - pointA.Northing;
+        double abLen = Math.Sqrt(abDx * abDx + abDy * abDy);
+        if (abLen < 0.01) return false;
+        double abNx = abDx / abLen, abNy = abDy / abLen;
+        double perpAngle = abHeading + Math.PI / 2;
+        double midE = (pointA.Easting + pointB.Easting) / 2 + Math.Sin(perpAngle) * distAway;
+        double midN = (pointA.Northing + pointB.Northing) / 2 + Math.Cos(perpAngle) * distAway;
+        double s = headingSameWay ? 1 : -1;
+        double t0 = (position.Easting - midE) * abNx + (position.Northing - midN) * abNy;
+        for (double d = Math.Max(from, 0); d <= upTo; d += Step)
+        {
+            double t = t0 + s * d;
+            if (IsPointInsideCultivatedArea(midE + abNx * t, midN + abNy * t, boundary, headlandLine)) return true;
+        }
+        return false;
+    }
+
     private static bool InsideFence(double e, double n, Boundary? boundary)
         => boundary?.OuterBoundary is { IsValid: true } outer && outer.IsPointInside(e, n);
 
