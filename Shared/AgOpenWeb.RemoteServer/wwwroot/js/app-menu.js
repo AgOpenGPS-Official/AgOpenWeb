@@ -175,6 +175,7 @@ function renderBugReport() {
   brSendBusy = ['sending', 'queued', 'sent', 'accepted'].includes(kind);
   if (brFile !== brFilesFor) { brFiles = []; brFilesFor = brFile; renderBrFiles(); }
   document.getElementById('br-attach').disabled = brSendBusy || brAttaching;
+  document.getElementById('br-screenshot').disabled = brSendBusy || brAttaching;
   brUpdateSend();
 }
 // Screenshots and files: each one is posted to the host as it is picked and goes into the
@@ -229,6 +230,45 @@ document.getElementById('br-file').addEventListener('change', async e => {
     if (!await brChangeFiles('attach', f.name, f)) break;
   }
   brAttaching = false; document.getElementById('br-attach').disabled = brSendBusy;
+});
+// Take Screenshot: the AgOpenWeb screen as it is now, without this panel, added like a picked
+// file (screen-HHMMSS.jpg). html-to-image (vendor/) draws the page; the map's WebGL canvas can't
+// be read that way, so the map is drawn first from its own picture (mapPictureCanvas, frame.js)
+// and the page, with a see-through background, over it.
+async function brScreenshot() {
+  const map = await mapPictureCanvas();
+  const dpr = devicePixelRatio, rc = ckcv.getBoundingClientRect();
+  const panel = document.getElementById('bugreport');
+  const page = await htmlToImage.toCanvas(document.body, {
+    pixelRatio: dpr, width: innerWidth, height: innerHeight, skipFonts: true,
+    style: { background: 'transparent' },
+    filter: n => !(n === ckcv || n === panel || n.tagName === 'SCRIPT' || n.tagName === 'IFRAME'
+      || (n.nodeType === 1 && n.tagName !== 'IMG' && getComputedStyle(n).display === 'none')),
+  });
+  const out = document.createElement('canvas'); out.width = page.width; out.height = page.height;
+  const g = out.getContext('2d');
+  g.fillStyle = getComputedStyle(document.body).backgroundColor;
+  g.fillRect(0, 0, out.width, out.height);
+  g.drawImage(map, rc.left * dpr, rc.top * dpr, rc.width * dpr, rc.height * dpr);
+  g.drawImage(page, 0, 0);
+  return new Promise((ok, fail) => out.toBlob(b => b ? ok(b) : fail(new Error('no picture')), 'image/jpeg', 0.9));
+}
+document.getElementById('br-screenshot').addEventListener('click', async e => {
+  e.stopPropagation();
+  if (!brFile || brSendBusy || brAttaching) return;
+  brAttaching = true;
+  for (const id of ['br-attach', 'br-screenshot']) document.getElementById(id).disabled = true;
+  const st = document.getElementById('br-attachstatus');
+  st.textContent = tr('Taking a screenshot…');
+  try {
+    const jpeg = await brScreenshot();
+    const d = new Date(), two = n => String(n).padStart(2, '0');
+    const name = 'screen-' + two(d.getHours()) + two(d.getMinutes()) + two(d.getSeconds()) + '.jpg';
+    st.textContent = tr('Adding {name}…', { name });
+    await brChangeFiles('attach', name, jpeg);
+  } catch (_) { st.textContent = tr('Could not take a screenshot'); }
+  brAttaching = false;
+  for (const id of ['br-attach', 'br-screenshot']) document.getElementById(id).disabled = brSendBusy;
 });
 let brIssueUrl = null, brSendBusy = false;
 // Send needs what the bug report service checks too (Tools/bugreport-worker reports.js):
