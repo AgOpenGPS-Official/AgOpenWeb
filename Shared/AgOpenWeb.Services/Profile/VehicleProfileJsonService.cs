@@ -38,7 +38,10 @@ public static class VehicleProfileJsonService
 
         // Atomic write + .bak last-known-good (see AtomicJsonFile): a crash
         // mid-write can never leave a truncated profile that loads as defaults.
-        AtomicJsonFile.WriteJson(GetJsonPath(vehiclesDirectory, profileName), ToDto(store), Options);
+        var path = GetJsonPath(vehiclesDirectory, profileName);
+        // A profile from a newer build is left as it is: this build would drop what it doesn't read.
+        if (HitchMigration.IsNewerFormat(path)) return;
+        AtomicJsonFile.WriteJson(path, ToDto(store), Options);
     }
 
     public static bool Load(string vehiclesDirectory, string profileName, ConfigurationStore store)
@@ -100,7 +103,7 @@ public static class VehicleProfileJsonService
 
     internal static VehicleProfileDto ToDto(ConfigurationStore store) => new()
     {
-        FormatVersion = 2,
+        FormatVersion = HitchMigration.CurrentFormatVersion,
         Vehicle = new VehicleDto
         {
             AntennaHeight = store.Vehicle.AntennaHeight,
@@ -115,6 +118,8 @@ public static class VehicleProfileJsonService
             MaxSteerAngle = store.Vehicle.MaxSteerAngle,
             MaxAngularVelocity = store.Vehicle.MaxAngularVelocity,
             HitchLength = store.Vehicle.HitchLength,
+            ThreePointHitchLength = store.Vehicle.ThreePointHitchLength,
+            FrontHitchLength = store.Vehicle.FrontHitchLength,
             HitchType = store.Vehicle.HitchType,
         },
         Guidance = new GuidanceDto
@@ -180,6 +185,10 @@ public static class VehicleProfileJsonService
         // NaN sentinel = "not present in this file" → ConfigurationService.LoadProfiles
         // seeds it from the legacy Tool.HitchLength after the tool also loads.
         store.Vehicle.HitchLength = dto.Vehicle?.HitchLength ?? double.NaN;
+        // Format 3: the 3-point and front hitches. A format-2 vehicle had one hitch, the drawbar
+        // pin: its 3-point starts there (NaN, filled in with it when the vehicle file had none).
+        store.Vehicle.ThreePointHitchLength = dto.Vehicle?.ThreePointHitchLength ?? store.Vehicle.HitchLength;
+        store.Vehicle.FrontHitchLength = dto.Vehicle?.FrontHitchLength ?? 0.0;
         store.Vehicle.HitchType = dto.Vehicle?.HitchType ?? 0;
 
         // Guidance
@@ -259,6 +268,10 @@ public static class VehicleProfileJsonService
         // Nullable so a pre-split profile (no hitchLength) is detectable for one-way
         // migration from the legacy Tool.HitchLength (see ConfigurationService.LoadProfiles).
         public double? HitchLength { get; set; }
+        /// <summary>Format 3: the rear 3-point hitch (centre of the lower links) behind the axle.</summary>
+        public double? ThreePointHitchLength { get; set; }
+        /// <summary>Format 3: the front 3-point hitch ahead of the axle; 0 = none.</summary>
+        public double? FrontHitchLength { get; set; }
         public int HitchType { get; set; }
     }
 

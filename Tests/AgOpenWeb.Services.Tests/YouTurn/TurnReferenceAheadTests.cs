@@ -72,7 +72,9 @@ public class TurnReferenceAheadTests
         var c = ConfigurationStore.Instance;
         c.Tool.Width = 6;
         c.Tool.Overlap = 0;
-        c.Tool.HitchLength = 4.5;
+        // A fixed tool's working point 4.5 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        c.Vehicle.ThreePointHitchLength = c.Vehicle.FrontHitchLength = System.Math.Abs(4.5);
+        c.Tool.WorkingPointFromHitch = 0;
         c.Tool.Length = 3.5;
         c.Tool.IsToolRearFixed = true;
         c.Tool.IsToolTrailing = false;

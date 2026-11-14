@@ -69,17 +69,20 @@ public static class AgOpenGpsProfileImport
         if (toolFiles.Count > 0 && TryRead(toolFiles[0]) is { } inUse)
             foreach (var key in GuidanceKeys)
                 if (inUse.TryGetValue(key, out var value)) fromImplements[key] = value;
-        // The tractor's hitch pin: AgOpenGPS keeps it as a trailed implement's hitch length,
-        // AgOpenWeb with the tractor. Taken from the trailed implement saved last.
+        // The tractor's hitch points: AgOpenGPS keeps them as its implements' hitch lengths,
+        // AgOpenWeb with the tractor (#547). The drawbar pin from the trailed implement saved last;
+        // the rear 3-point and the front hitch from the rear- and front-mounted implements saved
+        // last, each fixed implement then its AgOpenGPS distance less that hitch (AgOpenGpsSettings).
+        var hitches = new Dictionary<string, string>();
         foreach (var file in toolFiles)
         {
             if (TryRead(file) is not { } tool || !tool.TryGetValue(HitchKey, out var hitch)) continue;
-            if (IsTrue(tool, "setTool_isToolTrailing") || IsTrue(tool, "setTool_isToolTBT"))
-            {
-                fromImplements[HitchKey] = hitch;
-                break;
-            }
+            string key = IsTrue(tool, "setTool_isToolTrailing") || IsTrue(tool, "setTool_isToolTBT") ? HitchKey
+                : IsTrue(tool, "setTool_isToolFront") ? AgOpenGpsSettings.FrontHitchKey
+                : AgOpenGpsSettings.ThreePointHitchKey;
+            hitches.TryAdd(key, hitch);
         }
+        foreach (var (k, v) in hitches) fromImplements[k] = v;
 
         var vehicles = new List<string>();
         var toolNames = new List<string>();
@@ -121,7 +124,12 @@ public static class AgOpenGpsProfileImport
             try
             {
                 var store = new ConfigurationStore();
-                AgOpenGpsSettings.ApplyToStore(Merge(environment, own), name, file, store);
+                // The tractor's 3-point and front hitch go with each implement, so a fixed one's
+                // distance is from them (the drawbar is the implement's own hitch length here).
+                var tractorHitches = new Dictionary<string, string>();
+                foreach (var key in new[] { AgOpenGpsSettings.ThreePointHitchKey, AgOpenGpsSettings.FrontHitchKey })
+                    if (hitches.TryGetValue(key, out var h)) tractorHitches[key] = h;
+                AgOpenGpsSettings.ApplyToStore(Merge(environment, tractorHitches, own), name, file, store);
                 tools.Save(name, store);
             }
             catch (Exception)

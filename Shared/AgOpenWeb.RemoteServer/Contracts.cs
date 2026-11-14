@@ -458,7 +458,7 @@ public record DisplayConfigDto(
 /// <summary>Tool/Implement tab (ConfigStore.Tool + NumSections). Type: 0 front, 1 rear,
 /// 2 TBT, 3 trailing. Arrays fixed-size (16 widths/colours, 9 zone ranges).</summary>
 public record ToolConfigDto(
-    int Type, int HitchType, double HitchLength, double TrailingHitchLength,
+    int Type, int HitchType, double WorkingPointFromHitch, double TrailingHitchLength,
     double TankTrailingHitchLength, double Length,
     double LookAheadOn, double LookAheadOff, double TurnOffDelay,
     double Offset, double Overlap, double TrailingToolToPivotLength,
@@ -516,7 +516,9 @@ public record VehicleConfigDto(
     string Name,
     int Type,            // VehicleType: 0 Tractor, 1 Harvester, 2 FourWD
     int HitchType,       // code; index into HitchTypeOptions = HitchType + 1
-    double HitchLength,
+    double HitchLength,            // drawbar pin behind the rear axle
+    double ThreePointHitchLength,  // rear 3-point (lower links) behind the rear axle
+    double FrontHitchLength,       // front 3-point ahead of the rear axle; 0 = none
     double Wheelbase,
     double TrackWidth,
     double AntennaPivot,

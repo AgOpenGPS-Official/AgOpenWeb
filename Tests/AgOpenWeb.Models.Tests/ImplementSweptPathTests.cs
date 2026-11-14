@@ -21,7 +21,11 @@ public class ImplementSweptPathTests
         double vehicleHitch = 1.0, double toolHitch = 2.0,
         double trailingHitch = 3.0, double toolToPivot = 0.0, double tankHitch = 2.5,
         double length = 0.0)
-        => new(mount, width, offset, vehicleHitch, toolHitch, trailingHitch, toolToPivot, tankHitch, length);
+        => new(mount, width, offset,
+            // The attach point as the tool position has it: a fixed tool's working point
+            // (toolHitch from the axle), a trailed tool's drawbar pin (vehicleHitch).
+            mount == ToolMount.FrontFixed ? toolHitch : mount == ToolMount.RearFixed ? -toolHitch : -vehicleHitch,
+            trailingHitch, toolToPivot, tankHitch, length);
 
     /// <summary>Straight path heading north (E=0), points 0.5 m apart.</summary>
     private static List<Vec3> StraightNorth(int count = 40, double spacing = 0.5)

@@ -29,7 +29,9 @@ public class ToolOffsetCoverageTests
     {
         ConfigurationStore.SetInstance(new ConfigurationStore());
         _config = ConfigurationStore.Instance;
-        _config.Tool.HitchLength = 4;
+        // A fixed tool's working point 4 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        _config.Vehicle.ThreePointHitchLength = _config.Vehicle.FrontHitchLength = System.Math.Abs(4);
+        _config.Tool.WorkingPointFromHitch = 0;
         _config.Vehicle.HitchLength = 2;
         _config.Tool.TrailingHitchLength = 3;
         _config.Tool.Offset = 0.8; // tool 0.8 m right of the tractor

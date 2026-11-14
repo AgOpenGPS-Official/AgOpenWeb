@@ -78,6 +78,9 @@ public sealed class EmulatedSprayerModule : IDisposable
     public void TickNow() => Tick();
     private bool Online => Powered && NetworkUp && NowMs - _bootAtMs >= BootMs;
 
+    /// <summary>On, booted and on the network: frames sent now should arrive.</summary>
+    public bool IsOnline { get { lock (_lock) return Online; } }
+
     // ---------------------------------------------------------------- RAM (lost at a restart)
     private bool _have239, _have229;
     private long _last239Ms, _last229Ms;

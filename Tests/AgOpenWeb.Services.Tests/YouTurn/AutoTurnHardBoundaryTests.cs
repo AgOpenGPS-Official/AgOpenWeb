@@ -38,7 +38,9 @@ public class AutoTurnHardBoundaryTests
         // the implement, letting a 16 m boom hit the fence.
         c.Tool.Width = 6;
         c.Tool.Overlap = 0;
-        c.Tool.HitchLength = 4.5;        // working-centre distance
+        // A fixed tool's working point 4.5 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        c.Vehicle.ThreePointHitchLength = c.Vehicle.FrontHitchLength = System.Math.Abs(4.5);
+        c.Tool.WorkingPointFromHitch = 0;        // working-centre distance
         c.Tool.Length = 3.5;             // overall implement length
         c.Tool.IsToolRearFixed = true;   // 3-point mounted
         c.Tool.IsToolTrailing = false;
@@ -88,8 +90,7 @@ public class AutoTurnHardBoundaryTests
 
     private static ToolGeometry Rig() => new(
         ToolMount.RearFixed, Width: 16, Offset: 0,
-        VehicleHitchLength: ConfigurationStore.Instance.Vehicle.HitchLength,
-        ToolHitchLength: 4.5, TrailingHitchLength: 0, TrailingToolToPivotLength: 0,
+        AttachX: -4.5, TrailingHitchLength: 0, TrailingToolToPivotLength: 0,
         TankTrailingHitchLength: 0, Length: 3.5);
 
     [Test]

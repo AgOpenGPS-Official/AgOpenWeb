@@ -71,6 +71,12 @@ public class ConfigurationStore : ObservableObject
         set => SetProperty(ref _activeToolProfileName, value);
     }
 
+    /// <summary>
+    /// What the last profile load converted from an older format (a tool's hitch, #547), for the
+    /// operator and the log; null when nothing was. The loader saves the converted files at once.
+    /// </summary>
+    public string? ProfileMigrationNote { get; set; }
+
     private string _activeToolProfilePath = string.Empty;
     public string ActiveToolProfilePath
     {

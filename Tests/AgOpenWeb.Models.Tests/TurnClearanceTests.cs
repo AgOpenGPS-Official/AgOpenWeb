@@ -85,11 +85,11 @@ public class TurnClearanceTests
         var path = new List<Vec3>();
         for (int i = 0; i < 10; i++) path.Add(new Vec3(50, 95 + i * 0.2, 0)); // ends ~96.8, heading north
         var geom = new ToolGeometry(ToolMount.RearFixed, Width: 4, Offset: 0,
-            VehicleHitchLength: 0, ToolHitchLength: 0, TrailingHitchLength: 0,
+            AttachX: 0, TrailingHitchLength: 0,
             TrailingToolToPivotLength: 0, TankTrailingHitchLength: 0, Length: 0);
 
         // Front-fixed so the body extends NORTH (toward the top edge) past 100.
-        var frontGeom = geom with { Mount = ToolMount.FrontFixed, ToolHitchLength = 2, Length = 6 };
+        var frontGeom = geom with { Mount = ToolMount.FrontFixed, AttachX = 2, Length = 6 };
         var swept = ImplementSweptPath.Compute(path, frontGeom);
 
         var r = TurnClearance.Evaluate(swept, Square(), TurnClearance.KeepSide.Inside, margin: 0.5);

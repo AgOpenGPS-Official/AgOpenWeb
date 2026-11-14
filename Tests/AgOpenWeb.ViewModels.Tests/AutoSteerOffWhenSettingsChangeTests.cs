@@ -44,7 +44,8 @@ public class AutoSteerOffWhenSettingsChangeTests
         yield return new TestCaseData((Action<ConfigurationStore>)(s => s.Tool.SetSectionWidth(3, 150)), "implement").SetName("A section width");
         yield return new TestCaseData((Action<ConfigurationStore>)(s => s.Tool.Offset = 2.5), "implement").SetName("Implement offset");
         yield return new TestCaseData((Action<ConfigurationStore>)(s => s.Tool.Overlap = 0.2), "implement").SetName("Overlap");
-        yield return new TestCaseData((Action<ConfigurationStore>)(s => s.Tool.HitchLength = 3), "implement").SetName("Implement hitch");
+        yield return new TestCaseData((Action<ConfigurationStore>)(s => s.Tool.WorkingPointFromHitch = 3), "implement").SetName("Implement hitch");
+        yield return new TestCaseData((Action<ConfigurationStore>)(s => s.Vehicle.ThreePointHitchLength = 0.7), "vehicle").SetName("Rear 3-point hitch");
         yield return new TestCaseData((Action<ConfigurationStore>)(s => s.Vehicle.AntennaOffset = 0.25), "vehicle").SetName("Antenna offset");
         yield return new TestCaseData((Action<ConfigurationStore>)(s => s.Vehicle.AntennaHeight = 1), "vehicle").SetName("Antenna height");
         yield return new TestCaseData((Action<ConfigurationStore>)(s => s.Vehicle.Wheelbase = 3.5), "vehicle").SetName("Wheelbase");

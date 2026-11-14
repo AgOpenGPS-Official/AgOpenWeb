@@ -23,12 +23,13 @@ public partial class MainViewModel
     {
         nameof(VehicleConfig.Type), nameof(VehicleConfig.Wheelbase), nameof(VehicleConfig.AntennaHeight),
         nameof(VehicleConfig.AntennaPivot), nameof(VehicleConfig.AntennaOffset), nameof(VehicleConfig.HitchLength),
+        nameof(VehicleConfig.ThreePointHitchLength), nameof(VehicleConfig.FrontHitchLength),
     };
 
     private static readonly HashSet<string> ToolSteersBy = new(StringComparer.Ordinal)
     {
         nameof(ToolConfig.Width), nameof(ToolConfig.SectionWidths), nameof(ToolConfig.Overlap), nameof(ToolConfig.Offset),
-        nameof(ToolConfig.HitchLength), nameof(ToolConfig.TrailingHitchLength), nameof(ToolConfig.TankTrailingHitchLength),
+        nameof(ToolConfig.WorkingPointFromHitch), nameof(ToolConfig.TrailingHitchLength), nameof(ToolConfig.TankTrailingHitchLength),
         nameof(ToolConfig.TrailingToolToPivotLength), nameof(ToolConfig.CurrentToolType),
     };
 
@@ -71,9 +72,10 @@ public partial class MainViewModel
         var s = ConfigStore; var v = s.Vehicle; var t = s.Tool;
         var h = new HashCode();
         h.Add(v.Type); h.Add(v.Wheelbase); h.Add(v.AntennaHeight); h.Add(v.AntennaPivot); h.Add(v.AntennaOffset); h.Add(v.HitchLength);
+        h.Add(v.ThreePointHitchLength); h.Add(v.FrontHitchLength);
         h.Add(s.NumSections);
         for (int i = 0; i < s.NumSections; i++) h.Add(t.GetSectionWidth(i));
-        h.Add(t.Width); h.Add(t.Overlap); h.Add(t.Offset); h.Add(t.HitchLength); h.Add(t.TrailingHitchLength);
+        h.Add(t.Width); h.Add(t.Overlap); h.Add(t.Offset); h.Add(t.WorkingPointFromHitch); h.Add(t.TrailingHitchLength);
         h.Add(t.TankTrailingHitchLength); h.Add(t.TrailingToolToPivotLength);
         h.Add(t.IsToolFrontFixed); h.Add(t.IsToolRearFixed); h.Add(t.IsToolTrailing); h.Add(t.IsToolTBT);
         h.Add(s.Connections.IsDualGps); h.Add(s.Connections.DualHeadingOffset);

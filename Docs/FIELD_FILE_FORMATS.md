@@ -175,6 +175,13 @@ A job's worked area is stored as square binary tiles on the field's plane grid: 
 
 CamelCase JSON: `schemaVersion` (1), `id` (GUID), `fieldName`, `taskName` (same as the folder name), `workType`, `notes`, `startedAt`, `endedAt`, `lastOpenedAt` (ISO 8601), `status` (`"InProgress"`, `"Done"` or `"Abandoned"`), `distanceTraveledMeters`, `areaWorkedHectares`, `uTurnCount`. A `jobs/<task>/` folder without `job.json` is not listed as a job.
 
+`rig` (optional; absent in jobs saved before it was kept): the machine the job was worked with, a copy of the profiles, not their names only, kept up to date while the job is open. As ISO 11783-10, each part is measured from the connector it hangs on, in metres, distances positive in their own direction:
+
+- `vehicle`: `profileName`, `type` (`"Tractor"`, `"Harvester"`, `"Articulated"`), `hitchType` (ISO 11783 coupling type, DDI 157: -1 not available, 0 unknown), and its connectors from the rear axle: `drawbarHitch` and `rearThreePointHitch` (the centre of the lower link points) behind it, `frontThreePointHitch` ahead of it (0: none set).
+- `tools`: the tools in order from the vehicle. Each has `profileName`, `connector` (`"RearThreePoint"`, `"Drawbar"`, `"FrontThreePoint"` on the vehicle, or `"PreviousTool"`: the rear connector of the tool before it), `mount` (`"FrontFixed"`, `"RearFixed"`, `"Trailing"`, `"TBT"`), `hitchType`, then its distances from its connector: `workingPointFromHitch` (a fixed tool; negative is on the vehicle's side of the connector), `trailingHitchLength` (a trailed tool: connector to its wheels), `tankTrailingHitchLength` (TBT: connector to the tank's wheels), `trailingToolToPivotLength` (its wheels to the working point, + behind), and `offset` (working point to the right of the vehicle's centre line), `length`, `width`, `sectionWidths` (left to right), `rearConnectorFromHitch` (its own rear connector behind its connector, for a tool hung behind it; absent when it has none). A distance the tool's `mount` doesn't use is 0.
+
+AgOpenWeb works with one tool and writes a chain of one; a reader should accept more. A job reopened in AgOpenWeb gets the machine loaded then.
+
 `schemaVersion` follows the rules of `formatVersion` (section 3): members a reader doesn't know are kept by a writer, and the version goes up only for a change of meaning. A job whose `job.json` or coverage `manifest.json` is in a newer version than the reader knows is listed, but its coverage is not read and nothing is written to the job (AgOpenWeb tells the operator to start a new job). A `status` the reader doesn't know reads as `"InProgress"`.
 
 ### manifest.json

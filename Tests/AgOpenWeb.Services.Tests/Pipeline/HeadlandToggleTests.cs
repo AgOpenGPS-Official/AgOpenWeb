@@ -168,7 +168,9 @@ public class HeadlandToggleTests
     /// <summary>The control loop's tool update (heading north, the tool on the pivot), then one GPS cycle.</summary>
     private void DriveTool(double e, double n)
     {
-        ConfigurationStore.Instance.Tool.HitchLength = 0;
+        // A fixed tool's working point 0 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        ConfigurationStore.Instance.Vehicle.ThreePointHitchLength = ConfigurationStore.Instance.Vehicle.FrontHitchLength = System.Math.Abs(0);
+        ConfigurationStore.Instance.Tool.WorkingPointFromHitch = 0;
         _toolPosition.Update(new Vec3(e, n, 0), 0);
         Cycle();
     }

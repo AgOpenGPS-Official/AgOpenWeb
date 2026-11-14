@@ -29,7 +29,8 @@ public class ToolPositionServiceConcurrencyTests
         ConfigurationStore.SetInstance(new ConfigurationStore());
         var tool = ConfigurationStore.Instance.Tool;
         tool.Width = 6;
-        tool.HitchLength = 0;
+        tool.WorkingPointFromHitch = 0; // the rigid tool at the rear axle, as before #547
+        ConfigurationStore.Instance.Vehicle.ThreePointHitchLength = 0;
         tool.IsToolRearFixed = true;
         tool.IsToolTrailing = false;
         tool.Offset = 0;

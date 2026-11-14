@@ -75,7 +75,9 @@ public class AutoSteerUTurnNUnitTests
         // speed limits (#106) have their own tests (SteerSpeedLimitTests).
         config.AutoSteer.MaxSteerSpeed = 0;
         config.Tool.Width = TOOL_WIDTH; // 6m
-        config.Tool.HitchLength = 3.0;
+        // A fixed tool's working point 3.0 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        config.Vehicle.ThreePointHitchLength = config.Vehicle.FrontHitchLength = System.Math.Abs(3.0);
+        config.Tool.WorkingPointFromHitch = 0;
         config.Tool.TrailingHitchLength = 3.0;
         config.Tool.IsToolTrailing = true;
         config.Tool.IsToolRearFixed = false;

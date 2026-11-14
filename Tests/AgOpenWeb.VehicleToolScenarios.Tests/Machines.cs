@@ -65,7 +65,14 @@ public sealed record ToolSpec(
         if (SectionWidthCm is >= 10 and <= 1000) yield return "tool.defaultSectionWidth:" + SectionWidthCm.ToString("0.###", i);
         yield return "tool.numSections:" + Sections.ToString(i);
         for (int s = 0; s < Sections; s++) yield return "tool.sectionWidth:" + s.ToString(i) + "," + SectionWidthCm.ToString("0.###", i);
-        if (Type is "front" or "rear") yield return "tool.hitchLength:" + HitchLength.ToString(i);
+        // A fixed implement's working point HitchLength from the rear axle: the tractor's 3-point
+        // (front hitch for a front implement) there and the implement at it (#547), as the
+        // AgOpenGPS import does.
+        if (Type is "front" or "rear")
+        {
+            yield return (Type == "front" ? "vehicle.frontHitchLength:" : "vehicle.threePointHitchLength:") + HitchLength.ToString(i);
+            yield return "tool.workingPointFromHitch:0";
+        }
         else
         {
             yield return "tool.trailingHitchLength:" + HitchLength.ToString(i);

@@ -1195,12 +1195,11 @@ public partial class ConfigurationViewModel : ObservableObject
                 v => Tool.Offset = v,
                 "m", integerOnly: false, allowNegative: true, min: -5, max: 5));
 
-        // Rigid tool (#2/#3): axle center -> implement working center (tiller/disc shaft).
-        // Tool-dependent; used only by front/rear-fixed tools.
+        // Rigid tool: its working point from the tractor's 3-point hitch (#547).
         EditToolHitchLengthCommand = new RelayCommand(() =>
-            ShowNumericInput("Working Center Distance", Tool.HitchLength,
-                v => Tool.HitchLength = v,
-                "m", integerOnly: false, allowNegative: true, min: -15, max: 15));
+            ShowNumericInput("Hitch to Working Point", Tool.WorkingPointFromHitch,
+                v => Tool.WorkingPointFromHitch = v,
+                "m", integerOnly: false, allowNegative: true, min: -10, max: 30));
 
         EditToolLengthCommand = new RelayCommand(() =>
             ShowNumericInput("Implement Length", Tool.Length,

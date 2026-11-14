@@ -130,7 +130,9 @@ public class OffsetFixTests
 
         // Configure a rear-fixed hitch at 2m behind
         var config = AgOpenWeb.Models.Configuration.ConfigurationStore.Instance;
-        config.Tool.HitchLength = 2.0;
+        // A fixed tool's working point 2.0 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        config.Vehicle.ThreePointHitchLength = config.Vehicle.FrontHitchLength = System.Math.Abs(2.0);
+        config.Tool.WorkingPointFromHitch = 0;
         config.Tool.IsToolRearFixed = true;
 
         // Vehicle at (100, 200) heading north (0 radians)
@@ -156,7 +158,9 @@ public class OffsetFixTests
     {
         var config = AgOpenWeb.Models.Configuration.ConfigurationStore.Instance;
         config.Vehicle.HitchLength = 2.0; // trailing pin distance (axle -> tractor hitch pin)
-        config.Tool.HitchLength = 2.0;
+        // A fixed tool's working point 2.0 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        config.Vehicle.ThreePointHitchLength = config.Vehicle.FrontHitchLength = System.Math.Abs(2.0);
+        config.Tool.WorkingPointFromHitch = 0;
         config.Tool.TrailingHitchLength = 3.0;
         config.Tool.IsToolTrailing = true;
         config.Tool.IsToolRearFixed = false;
@@ -202,7 +206,9 @@ public class OffsetFixTests
         // Bug: ResetTrailingState used +HitchLength (ahead) instead of -HitchLength (behind)
         var config = AgOpenWeb.Models.Configuration.ConfigurationStore.Instance;
         config.Vehicle.HitchLength = 5.0; // trailing pin distance (axle -> tractor hitch pin)
-        config.Tool.HitchLength = 5.0;
+        // A fixed tool's working point 5.0 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        config.Vehicle.ThreePointHitchLength = config.Vehicle.FrontHitchLength = System.Math.Abs(5.0);
+        config.Tool.WorkingPointFromHitch = 0;
         config.Tool.TrailingHitchLength = 15.0;
         config.Tool.IsToolTrailing = true;
         config.Tool.IsToolRearFixed = false;
@@ -234,7 +240,9 @@ public class OffsetFixTests
         // After reset + one Update frame, tool should be near vehicle
         var config = AgOpenWeb.Models.Configuration.ConfigurationStore.Instance;
         config.Vehicle.HitchLength = 5.0; // trailing pin distance (axle -> tractor hitch pin)
-        config.Tool.HitchLength = 5.0;
+        // A fixed tool's working point 5.0 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        config.Vehicle.ThreePointHitchLength = config.Vehicle.FrontHitchLength = System.Math.Abs(5.0);
+        config.Tool.WorkingPointFromHitch = 0;
         config.Tool.TrailingHitchLength = 15.0;
         config.Tool.IsToolTrailing = true;
         config.Tool.IsToolRearFixed = false;
@@ -272,7 +280,9 @@ public class OffsetFixTests
         // causing the tool to snap rigid every frame instead of trailing
         var config = AgOpenWeb.Models.Configuration.ConfigurationStore.Instance;
         config.Vehicle.HitchLength = 2.0; // trailing pin distance (axle -> tractor hitch pin)
-        config.Tool.HitchLength = 2.0;
+        // A fixed tool's working point 2.0 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        config.Vehicle.ThreePointHitchLength = config.Vehicle.FrontHitchLength = System.Math.Abs(2.0);
+        config.Tool.WorkingPointFromHitch = 0;
         config.Tool.TrailingHitchLength = 15.0; // Large trailing distance
         config.Tool.IsToolTrailing = true;
         config.Tool.IsToolRearFixed = false;

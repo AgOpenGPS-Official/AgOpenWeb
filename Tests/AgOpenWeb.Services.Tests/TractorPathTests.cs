@@ -414,7 +414,9 @@ public class TractorPathTests
         bool trailing = true, bool fixedRear = false)
     {
         var config = ConfigurationStore.Instance;
-        config.Tool.HitchLength = 3.0;
+        // A fixed tool's working point 3.0 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        config.Vehicle.ThreePointHitchLength = config.Vehicle.FrontHitchLength = System.Math.Abs(3.0);
+        config.Tool.WorkingPointFromHitch = 0;
         config.Tool.Width = 6.0;
         config.Tool.IsToolTrailing = trailing;
         config.Tool.IsToolRearFixed = fixedRear;

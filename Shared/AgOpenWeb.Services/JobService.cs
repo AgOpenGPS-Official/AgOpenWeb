@@ -196,6 +196,15 @@ public class JobService : IJobService
         return true;
     }
 
+    public void RecordRig(JobRig rig)
+    {
+        if (ActiveJob == null || rig.SameAs(ActiveJob.Rig)) return;
+        var fieldDir = ResolveFieldDir(ActiveJob.FieldName);
+        if (fieldDir == null) return;
+        ActiveJob.Rig = rig;
+        JobJsonService.Save(ActiveJob, fieldDir); // not to a newer build's job (Save leaves it)
+    }
+
     public void SuspendCurrentJob()
     {
         if (ActiveJob == null) return;

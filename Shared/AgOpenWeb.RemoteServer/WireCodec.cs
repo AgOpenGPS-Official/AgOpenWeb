@@ -347,6 +347,8 @@ public static class WireCodec
         w.Write(v.Type);               // i32
         w.Write(v.HitchType);          // i32
         w.Write(v.HitchLength);        // f64
+        w.Write(v.ThreePointHitchLength);
+        w.Write(v.FrontHitchLength);
         w.Write(v.Wheelbase);
         w.Write(v.TrackWidth);
         w.Write(v.AntennaPivot);
@@ -375,7 +377,7 @@ public static class WireCodec
         var t = c.Tool;
         w.Write(t.Type);               // i32
         w.Write(t.HitchType);
-        w.Write(t.HitchLength);        // f64
+        w.Write(t.WorkingPointFromHitch); // f64
         w.Write(t.TrailingHitchLength);
         w.Write(t.TankTrailingHitchLength);
         w.Write(t.Length);

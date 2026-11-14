@@ -375,7 +375,9 @@
             <img id="vc-img-hitch" class="vc-diag" alt="">
             <div class="vc-fieldcol">
               <label>Coupling type</label><select class="cfg-sel" data-key="vehicle.hitchType"></select>
-              <label>Hitch length (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.hitchLength" type="number" step="0.01" inputmode="decimal">
+              <label>Rear 3-point hitch (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.threePointHitchLength" type="number" step="0.01" inputmode="decimal">
+              <label>Drawbar pin (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.hitchLength" type="number" step="0.01" inputmode="decimal">
+              <label data-vshow="front">Front 3-point hitch (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="vehicle.frontHitchLength" data-vshow="front" type="number" step="0.01" inputmode="decimal">
             </div>
           </div>
           <div class="vc-diagrow">
@@ -494,7 +496,8 @@
           <img id="tc-img-hitch" class="vc-diag" alt="">
           <div class="vc-fieldcol">
             <label>Coupling type</label><select class="cfg-sel" data-key="tool.hitchType"></select>
-            <label data-show="rigid">Working center (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.hitchLength" data-show="rigid" type="number" step="0.01">
+            <label data-show="rigid">Hitch to working point (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.workingPointFromHitch" data-show="rigid" type="number" step="0.01">
+            <div class="sa-hint" data-show="rigid" id="tc-hitchsum"></div>
             <label data-show="trailtbt">Trailing hitch (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.trailingHitchLength" data-show="trailtbt" type="number" step="0.01">
             <label data-show="tbt">Tank trailing hitch (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.tankTrailingHitchLength" data-show="tbt" type="number" step="0.01">
             <label>Implement length (<span class="u" data-unit="m"></span>)</label><input class="cfg-num" data-unit="m" data-key="tool.length" type="number" step="0.01">

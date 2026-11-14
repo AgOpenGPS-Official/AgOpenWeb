@@ -30,7 +30,9 @@ public static class ReporterSettings
         (new[] { "Vehicle", "MaxSteerAngle" }, "autosteer.maxSteerAngle"),
         (new[] { "Tool", "Overlap" }, "tool.overlap"),
         (new[] { "Tool", "Offset" }, "tool.offset"),
-        (new[] { "Tool", "HitchLength" }, "tool.hitchLength"),
+        // A dump's Tool.HitchLength is a fixed tool's axle → working point (every build's dump
+        // carries it): applied as the tractor's 3-point and front hitch with the tool at them (#547).
+        (new[] { "Tool", "HitchLength" }, "vehicle.threePointHitchLength"),
         (new[] { "Tool", "TrailingHitchLength" }, "tool.trailingHitchLength"),
         (new[] { "Tool", "TrailingToolToPivotLength" }, "tool.trailingToolToPivotLength"),
         (new[] { "Tool", "TankTrailingHitchLength" }, "tool.tankTrailingHitchLength"),
@@ -176,6 +178,13 @@ public static class ReporterSettings
                 _ => null,
             };
             if (text != null) cmds.Add(key + ":" + text);
+        }
+        // The fixed tool's axle → working point went to the 3-point hitch above; the front hitch
+        // takes it too, and the tool sits at them (#547).
+        if (d.Num("Tool", "HitchLength") is double axleToWorking)
+        {
+            cmds.Add("vehicle.frontHitchLength:" + Math.Abs(axleToWorking).ToString("R", Inv));
+            cmds.Add("tool.workingPointFromHitch:0");
         }
         cmds.Add(RollFilterOff);
         foreach (var (path, set) in Direct)

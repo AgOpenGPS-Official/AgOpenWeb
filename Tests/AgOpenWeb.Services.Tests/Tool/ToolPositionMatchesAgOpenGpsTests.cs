@@ -127,7 +127,9 @@ public class ToolPositionMatchesAgOpenGpsTests
         var c = ConfigurationStore.Instance;
         c.Vehicle.AntennaPivot = 0;
         c.Vehicle.HitchLength = Hitch;
-        c.Tool.HitchLength = Hitch;
+        // A fixed tool's working point Hitch m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        c.Vehicle.ThreePointHitchLength = c.Vehicle.FrontHitchLength = System.Math.Abs(Hitch);
+        c.Tool.WorkingPointFromHitch = 0;
         c.Tool.TankTrailingHitchLength = Tank;
         c.Tool.TrailingHitchLength = Trailing;
         c.Tool.TrailingToolToPivotLength = pivotDistance;

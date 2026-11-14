@@ -75,10 +75,10 @@ public sealed class TakeOver : IAsyncDisposable
         var store = rig.Store;
         var v = new VehicleSpec("reporter's vehicle", 0,
             Math.Max(1.0, store.Vehicle.Wheelbase), store.Vehicle.TrackWidth, store.Vehicle.AntennaHeight,
-            store.Vehicle.AntennaPivot, store.Vehicle.AntennaOffset, Math.Abs(store.Tool.HitchLength), Math.Max(10, store.Vehicle.MaxSteerAngle));
+            store.Vehicle.AntennaPivot, store.Vehicle.AntennaOffset, Math.Abs(store.Vehicle.HitchLength), Math.Max(10, store.Vehicle.MaxSteerAngle));
         string type = store.Tool.IsToolTBT ? "tbt" : store.Tool.IsToolTrailing ? "trailing" : store.Tool.IsToolFrontFixed ? "front" : "rear";
         var t = new ToolSpec("reporter's implement", type, store.ActualToolWidth, Math.Max(1, store.NumSections), store.Tool.Offset,
-            type is "front" or "rear" ? Math.Abs(store.Tool.HitchLength) : Math.Abs(store.Tool.TrailingHitchLength),
+            type is "front" or "rear" ? AgOpenWeb.Models.Tool.RigGeometry.AxleToWorkingPoint(store.Vehicle, store.Tool) : Math.Abs(store.Tool.TrailingHitchLength),
             store.Tool.TrailingToolToPivotLength, Math.Abs(store.Tool.TankTrailingHitchLength), store.Tool.Overlap);
         Truth = new TruthMachine(v, t, 0);
         double speedKmh = Math.Clamp(Median(rows.Where(r => r.AutoSteer && r.Speed > 0.5).Select(r => r.Speed * 3.6).ToList()), 6, 12);

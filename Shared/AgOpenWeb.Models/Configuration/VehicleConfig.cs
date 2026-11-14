@@ -108,16 +108,33 @@ public class VehicleConfig : ObservableObject
         set => SetProperty(ref _imuOffset, value);
     }
 
-    // Hitch (vehicle): rear axle center -> tractor hitch pin. This is the trailer
-    // attach point and is used ONLY by trailing/TBT tools to place the hitch.
-    // Rigid front/rear-fixed tools instead use Tool.HitchLength (axle -> implement
-    // working center, which is tool-dependent). Stored unsigned/positive; the tool
-    // position geometry applies the rear sign and takes Math.Abs().
+    // The tractor's hitch points, distances from the centre of the rear axle (ISO 11783-10: the
+    // tractor's device reference point; its connectors). Kept positive, each in its own direction.
+    //
+    // Drawbar: the hitch pin, behind the axle. Trailing and TBT tools hang on it.
     private double _hitchLength = 1.8;
     public double HitchLength
     {
         get => _hitchLength;
         set => SetProperty(ref _hitchLength, value);
+    }
+
+    // Rear 3-point hitch: the centre of the lower link points, behind the axle (ISO 11783-10's CRP
+    // of a three-point hitch). Rear-fixed tools hang on it.
+    private double _threePointHitchLength = 1.8;
+    public double ThreePointHitchLength
+    {
+        get => _threePointHitchLength;
+        set => SetProperty(ref _threePointHitchLength, Math.Max(0, value));
+    }
+
+    // Front 3-point hitch: the centre of its lower link points, ahead of the axle. Front-fixed tools
+    // hang on it; asked for only when a front tool is used.
+    private double _frontHitchLength;
+    public double FrontHitchLength
+    {
+        get => _frontHitchLength;
+        set => SetProperty(ref _frontHitchLength, Math.Max(0, value));
     }
 
     // ISO 11783 hitch/coupling type code on the tractor side (-1 = not available,

@@ -118,6 +118,8 @@ public static partial class RemoteServerWiring
                 return;
             case "vehicle.hitchType": if (I(out var ht)) veh.HitchType = ht; return;
             case "vehicle.hitchLength": if (D(out var d1)) veh.HitchLength = d1; return;
+            case "vehicle.threePointHitchLength": if (D(out var d1b)) veh.ThreePointHitchLength = d1b; return;
+            case "vehicle.frontHitchLength": if (D(out var d1c)) veh.FrontHitchLength = d1c; return;
             case "vehicle.wheelbase": if (D(out var d2)) veh.Wheelbase = d2; return;
             case "vehicle.trackWidth": if (D(out var d3)) veh.TrackWidth = d3; return;
             case "vehicle.antennaPivot": if (D(out var d4)) veh.AntennaPivot = d4; return;
@@ -152,7 +154,7 @@ public static partial class RemoteServerWiring
             case "tool.type": // front/rear/tbt/trailing; a harvester only takes front (#111)
                 tool.SetToolType(veh.Type == AgOpenWeb.Models.VehicleType.Harvester ? "front" : val); return;
             case "tool.hitchType": if (I(out var th)) tool.HitchType = th; return;
-            case "tool.hitchLength": if (D(out var t1)) tool.HitchLength = t1; return;
+            case "tool.workingPointFromHitch": if (D(out var t1)) tool.WorkingPointFromHitch = t1; return;
             case "tool.trailingHitchLength": if (D(out var t2)) tool.TrailingHitchLength = t2; return;
             case "tool.tankTrailingHitchLength": if (D(out var t3)) tool.TankTrailingHitchLength = t3; return;
             case "tool.length": if (D(out var t4)) tool.Length = t4; return;
