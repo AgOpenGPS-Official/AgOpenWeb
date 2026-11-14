@@ -283,8 +283,10 @@ document.getElementById('br-download').addEventListener('pointerdown', e => {
 document.getElementById('br-submit').addEventListener('pointerdown', e => {
   e.stopPropagation();
   // No title needed: the point is to capture the moment. The host names it "untitled".
-  const t = document.getElementById('br-title').value.trim();
+  // The background image stays out unless ticked: it can be 10 MB or more and is rarely the bug.
+  const desc = document.getElementById('br-desc').value.replace(/\t/g, ' ');
+  const bg = document.getElementById('br-bgimage').checked ? '1' : '0';
   document.getElementById('br-status').textContent = tr('Creating bug report…');
   sendClientDiag(); // this browser's GPU and frame rate as they are now, into the dump
-  transport.send('app.bugReport|' + t + '\t' + document.getElementById('br-desc').value);
+  transport.send('app.bugReport|' + brOne('br-title') + '\t' + desc + '\t' + bg);
 });

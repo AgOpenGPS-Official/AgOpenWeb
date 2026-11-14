@@ -176,6 +176,8 @@ public class DebugDumpService
     /// <summary>
     /// Write a captured dump to its zip with the field's files, the active job's coverage tiles,
     /// the screenshot, notes and attachments. Reads only the disk and the snapshot: any thread.
+    /// With <paramref name="includeBackgroundImage"/> off the field's background image (it can be
+    /// 10 MB or more, and is rarely what a bug is about) is left out and a note says so.
     /// Returns the path to the created zip file.
     /// </summary>
     public static string WriteDump(
@@ -185,7 +187,8 @@ public class DebugDumpService
         string? outputDirectory = null,
         string filePrefix = "debug_dump",
         IReadOnlyList<string>? userAttachments = null,
-        string? activeJobTaskName = null)
+        string? activeJobTaskName = null,
+        bool includeBackgroundImage = true)
     {
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
         var dumpDir = outputDirectory
@@ -213,6 +216,15 @@ public class DebugDumpService
                     var ext = Path.GetExtension(file).ToLowerInvariant();
                     if (ext == ".bin" && new FileInfo(file).Length > 5_000_000)
                         continue;
+
+                    if (!includeBackgroundImage
+                        && fileName.Equals(FieldBackground.DefaultImageFile, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var mb = new FileInfo(file).Length / 1048576.0;
+                        AddTextEntry(archive, "field_background_left_out.txt", string.Create(CultureInfo.InvariantCulture,
+                            $"field/{fileName} ({mb:0.0} MB) was left out: \"Include the field's background image\" was off.\n"));
+                        continue;
+                    }
 
                     AddFileEntry(archive, $"field/{fileName}", file);
                 }
