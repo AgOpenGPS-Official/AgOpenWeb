@@ -228,6 +228,14 @@ public sealed class RemoteServerHost
     }
     private Func<IsobusDto?>? _isobusProvider;
 
+    /// <summary>Tuning on the line for the status frame; null until the panel is first used.</summary>
+    public Func<LineTuneDto?>? LineTuneProvider
+    {
+        get => _broadcaster?.Projector.LineTuneProvider;
+        set { _lineTuneProvider = value; if (_broadcaster is not null) _broadcaster.Projector.LineTuneProvider = value; }
+    }
+    private Func<LineTuneDto?>? _lineTuneProvider;
+
     /// <summary>The field data card's numbers for the status frame (#321); null with no
     /// field open.</summary>
     public Func<FieldDataDto?>? FieldDataProvider
@@ -331,6 +339,7 @@ public sealed class RemoteServerHost
         _broadcaster.Projector.HeadingChartProvider = _headingChartProvider;
         _broadcaster.Projector.GpsSourceProvider = _gpsSourceProvider;
         _broadcaster.Projector.IsobusProvider = _isobusProvider;
+        _broadcaster.Projector.LineTuneProvider = _lineTuneProvider;
         _broadcaster.Projector.FieldDataProvider = _fieldDataProvider;
         _broadcaster.Projector.SystemDataProvider = _systemDataProvider;
         _broadcaster.Projector.TramLinesProvider = _tramLinesProvider;

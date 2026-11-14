@@ -619,6 +619,22 @@ public static partial class RemoteServerWiring
                                     if (sc?.CanExecute(null) == true) sc.Execute(null);
                                     return;
                                 }
+                                // Tuning on the line (AutoSteer page): AutoSteer engaged on a line,
+                                // the run moves it and tries values; gated like every command.
+                                case "linetune.start": case "linetune.stop":
+                                case "linetune.accept": case "linetune.discard":
+                                {
+                                    var lt = vm.EnsureLineTuneViewModel();
+                                    System.Windows.Input.ICommand lc = cmd switch
+                                    {
+                                        "linetune.start" => lt.StartCommand,
+                                        "linetune.stop" => lt.StopCommand,
+                                        "linetune.accept" => lt.AcceptCommand,
+                                        _ => lt.DiscardCommand,
+                                    };
+                                    if (lc.CanExecute(null)) lc.Execute(null);
+                                    return;
+                                }
                                 // --- Steer Wizard (host-driven). The real SteerWizardViewModel
                                 // runs here; the browser forwards nav + edits + actions. Only
                                 // wizard.action (calibration/actuation) is Tier-2 gated. ---
@@ -1026,6 +1042,14 @@ public static partial class RemoteServerWiring
                             ? new AgOpenWeb.RemoteServer.IsobusDto(st.SectionControlEnabled, st.SectionCount, st.ClientCount, st.ReportedSections)
                             : null;
                     };
+
+                    // Tuning on the line (AutoSteer page): the run's state for its panel, read off
+                    // the broadcaster thread (strings and an enum: tolerates the same transient
+                    // races as the other projectors).
+                    server.LineTuneProvider = () => vm.LineTuneViewModel is { } lt
+                        ? new AgOpenWeb.RemoteServer.LineTuneDto((int)lt.Stage, lt.Stanley, lt.LevelsTried,
+                            lt.Description, lt.ResultText, lt.Measurements)
+                        : null;
 
                     // GPS source (#157): the incoming sentence for the GPS detail card, and
                     // "Dual GPS on but no dual heading" while real GPS is live ($PANDA with

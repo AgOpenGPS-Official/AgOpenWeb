@@ -864,6 +864,19 @@ public static class WireCodec
             WriteStr(w, ns.Profile);
             WriteStr(w, ns.Service);
         }
+        // Tuning on the line (append-only): [u8 present] then u8 stage, u8 stanley,
+        // u8 values tried, str description, str result, str measurements.
+        var lt = s.LineTune;
+        w.Write((byte)(lt != null ? 1 : 0));
+        if (lt != null)
+        {
+            w.Write((byte)lt.Stage);
+            w.Write((byte)(lt.Stanley ? 1 : 0));
+            w.Write((byte)Math.Clamp(lt.Tried, 0, 255));
+            WriteStr(w, lt.Description);
+            WriteStr(w, lt.Result);
+            WriteStr(w, lt.Measurements);
+        }
         return ms.ToArray();
     }
 

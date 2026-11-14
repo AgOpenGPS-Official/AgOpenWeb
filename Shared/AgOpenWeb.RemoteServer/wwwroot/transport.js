@@ -230,6 +230,12 @@ window.RemoteTransport = {
             ntripSession = { usingFallback: !!u8(), mainIsBack: !!u8(), hasFallback: !!u8(), profilePerField: !!u8(),
               state: u8(), lastError: i32(), attempts: i32(), retrySeconds: f32(), notice: str(), profile: str(), service: str() };
           }
+          // Tuning on the line (append-only): null until the panel is first used.
+          // stage: 0 idle, 1 waiting, 2 measuring, 3 result, 4 accepted, 5 stopped, 6 failed.
+          let lineTune = null;
+          if (o < dv.byteLength && u8()) {
+            lineTune = { stage: u8(), stanley: !!u8(), tried: u8(), description: str(), result: str(), measurements: str() };
+          }
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -242,6 +248,7 @@ window.RemoteTransport = {
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
             gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet, ntripSession,
+            lineTune,
           });
           break;
         }

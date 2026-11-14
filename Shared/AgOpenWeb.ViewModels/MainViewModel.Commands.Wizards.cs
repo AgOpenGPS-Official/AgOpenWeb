@@ -98,6 +98,7 @@ public partial class MainViewModel
     /// </summary>
     public void OnBrowserControlEnded(string offReason, bool involuntary = false)
     {
+        _lineTuneViewModel?.OnControlEnded();
         var off = new List<string>();
         if (IsAutoSteerEngaged && ToggleAutoSteerCommand?.CanExecute(offReason) == true)
         {

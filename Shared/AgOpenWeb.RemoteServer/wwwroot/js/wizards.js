@@ -218,6 +218,7 @@ function renderSettings() {
   if (asPanel.classList.contains('open')) renderAutoSteerLive();
   // Smart-WAS stats refresh while its modal is open.
   if (swPanel.classList.contains('open')) populateSmartWas();
+  if (ltPanel.classList.contains('open')) populateLineTune();
   // Steer Wizard: re-render while open (host-driven; live every frame).
   wizardDirty = false;
   if (wzOverlay.classList.contains('open')) renderWizard();
