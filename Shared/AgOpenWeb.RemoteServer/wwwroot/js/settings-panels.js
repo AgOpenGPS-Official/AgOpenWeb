@@ -110,6 +110,9 @@ function populateVehicleCfg(force) {
   setImg('vc-img-antside', ['AntennaTractorTop', 'AntennaHarvesterTop', 'AntennaArticulatedTop']);
   setImg('vc-img-antoffset', ['AntennaTractorOffset', 'AntennaHarvesterOffset', 'AntennaArticulatedOffset']);
   vcHitchSel.value = cfgGet('vehicle.hitchType');
+  // The front 3-point hitch is asked for only with a front-mounted tool (type 0).
+  const front = cfgGet('tool.type') === 0;
+  for (const el of vcPanel.querySelectorAll('[data-vshow="front"]')) el.hidden = !front;
   const w = cfgGet('gps.headingFusionWeight') || 0;
   vcFw.value = w; document.getElementById('vc-hfw').textContent = fusionLabel(w);
   // Dual-only fields are live only in Dual GPS mode; reverse detection only in single.

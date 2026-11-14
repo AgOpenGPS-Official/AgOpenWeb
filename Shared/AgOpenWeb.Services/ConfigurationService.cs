@@ -157,6 +157,7 @@ public class ConfigurationService(
         // Capture corruption status up-front (no mutation, no quarantine) so we
         // can record it for the startup recovery prompt after the load.
         var probe = ProbeProfiles(vehicleName, toolName);
+        Store.ProfileMigrationNote = null;
 
         // profileService.Load transparently recovers from the .bak
         // last-known-good copy when the primary v2 file is damaged.
@@ -172,18 +173,11 @@ public class ConfigurationService(
         // CreateDefaultProfile path) populated it.
         toolProfileService.Load(toolName, Store);
 
-        // One-way hitch migration (vehicle/tool config split): pre-split profiles stored
-        // the trailing/TBT tractor hitch-pin distance under Tool.HitchLength. It is now a
-        // vehicle property (Vehicle.HitchLength = axle -> hitch pin). When the vehicle file
-        // predates the split it loads as NaN (sentinel); seed it from the legacy tool value
-        // so existing trailing/TBT setups keep working, then it persists under the vehicle on
-        // next save. Rigid setups keep their own Tool.HitchLength regardless; a stray vehicle
-        // value is harmless because rigid geometry never reads it. Must run after BOTH files
-        // load (vehicle loads first), so the legacy Tool.HitchLength is available here.
-        if (double.IsNaN(Store.Vehicle.HitchLength))
-        {
-            Store.Vehicle.HitchLength = Store.Tool.HitchLength;
-        }
+        // A vehicle file from before the hitch moved to the vehicle loads with no hitch (NaN); a
+        // format-2 tool loaded with it filled it in (HitchMigration). With no tool file to take it
+        // from, the default.
+        if (double.IsNaN(Store.Vehicle.HitchLength)) Store.Vehicle.HitchLength = 1.8;
+        if (double.IsNaN(Store.Vehicle.ThreePointHitchLength)) Store.Vehicle.ThreePointHitchLength = Store.Vehicle.HitchLength;
 
         LoadAutoSteerConfig(vehicleName);
 
@@ -202,6 +196,12 @@ public class ConfigurationService(
         // so the user isn't re-prompted on every subsequent load. (The damaged
         // primary was quarantined during the recovering read.)
         if (probe.AnyRecovered)
+        {
+            SaveProfiles(vehicleName, toolName);
+        }
+        // A tool converted to the hitch on the vehicle (format 3, HitchMigration) is saved at once
+        // with its vehicle: a tool saved later without the vehicle's new hitch would move.
+        else if (Store.ProfileMigrationNote != null)
         {
             SaveProfiles(vehicleName, toolName);
         }

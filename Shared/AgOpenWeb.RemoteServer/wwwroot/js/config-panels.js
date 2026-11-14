@@ -54,7 +54,17 @@ function populateToolCfg(force) {
   if (!pi.src.endsWith(pp)) pi.src = pp;
   // Conditional visibility by tool type (0 front, 1 rear, 2 TBT, 3 trailing).
   const trailing = t.type === 3, tbt = t.type === 2, trailtbt = trailing || tbt;
-  tcShow('rigid', !trailing); tcShow('trailtbt', trailtbt); tcShow('tbt', tbt); tcShow('notrailtbt', !trailtbt);
+  tcShow('rigid', !trailtbt); tcShow('trailtbt', trailtbt); tcShow('tbt', tbt); tcShow('notrailtbt', !trailtbt);
+  // A fixed tool hangs on the tractor's 3-point hitch (the vehicle's): the sum says where its
+  // working point is from the rear axle (#547).
+  if (!trailtbt) {
+    const front = t.type === 0;
+    const hitch = (front ? cfgGet('vehicle.frontHitchLength') : cfgGet('vehicle.threePointHitchLength')) || 0;
+    const total = hitch + (t.workingPointFromHitch || 0);
+    document.getElementById('tc-hitchsum').textContent = front
+      ? tr('Front hitch {h} (vehicle) + {d} = {t} ahead of the rear axle', { h: fmtUnit(hitch, 'm', 2), d: fmtUnit(t.workingPointFromHitch || 0, 'm', 2), t: fmtUnit(total, 'm', 2) })
+      : tr('Rear 3-point hitch {h} (vehicle) + {d} = {t} behind the rear axle', { h: fmtUnit(hitch, 'm', 2), d: fmtUnit(t.workingPointFromHitch || 0, 'm', 2), t: fmtUnit(total, 'm', 2) });
+  }
   tcShow('individual', t.isSectionsNotZones); tcShow('zones', !t.isSectionsNotZones);
   tcShow('multicolor', t.isMultiColoredSections); tcShow('singlecolor', !t.isMultiColoredSections);
   tcShow('worksw', t.isWorkSwitchEnabled); tcShow('steersw', t.isSteerSwitchEnabled);

@@ -290,9 +290,14 @@ public class AgOpenGpsProfileImportTests
         Assert.That(autoSteer["Case"].ProportionalGain, Is.EqualTo(120));
         Assert.That(autoSteer["Case"].MinSteerSpeed, Is.EqualTo(1.2));
 
+        // The mounted sprayer's 1.6 m is the tractor's rear 3-point now, the sprayer at it (#547):
+        // on the tractor, its working point where AgOpenGPS has it.
+        Assert.That(store.Vehicle.ThreePointHitchLength, Is.EqualTo(1.6), "the 3-point, from the mounted implement");
         var sprayer = new ConfigurationStore();
+        Assert.That(VehicleProfileJsonService.Load(vehicles, "Case", sprayer), Is.True);
         Assert.That(tools.Load("Sprayer", sprayer), Is.True);
-        Assert.That(sprayer.Tool.HitchLength, Is.EqualTo(1.6), "the distance, not 0");
+        Assert.That(sprayer.Tool.WorkingPointFromHitch, Is.EqualTo(0).Within(1e-9));
+        Assert.That(AgOpenWeb.Models.Tool.RigGeometry.AxleToWorkingPoint(sprayer.Vehicle, sprayer.Tool), Is.EqualTo(1.6).Within(1e-9), "the distance, not 0");
 
         var tool = new ConfigurationStore();
         Assert.That(tools.Load("Seeder", tool), Is.True);

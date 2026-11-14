@@ -60,7 +60,9 @@ public class ClosedPassSeamPipelineTests
         config.Tool.IsToolRearFixed = true;
         config.Tool.IsToolTrailing = false;
         config.Tool.IsToolTBT = false;
-        config.Tool.HitchLength = -1.5;
+        // A fixed tool's working point -1.5 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        config.Vehicle.ThreePointHitchLength = config.Vehicle.FrontHitchLength = System.Math.Abs(-1.5);
+        config.Tool.WorkingPointFromHitch = 0;
         config.Guidance.UTurnRadius = 8;
 
         _gpsService = new GpsService();

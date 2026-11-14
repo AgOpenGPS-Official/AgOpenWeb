@@ -77,13 +77,13 @@ public static class CarelessOperator
         yield return new("T-OV8", "Overlap typed as wide as the boom (8 m)", Puma, Boom, Um, 0, W(Puma, Boom, Um, "tool.overlap:8"), Impossible: true);
         yield return new("T-OV10", "Overlap typed wider than the boom (10 m)", Puma, Boom, Um, 0, W(Puma, Boom, Um, "tool.overlap:10"), Impossible: true);
         yield return new("T-OVCM", "Overlap typed in cm (20 in the metre box)", Puma, Boom, Um, 0, W(Puma, Boom, Um, "tool.overlap:20"), Impossible: true);
-        yield return new("T-RIG0", "Boom distance behind the axle left at 0 (really 1.5 m)", Puma, Boom, Um, 0, W(Puma, Boom, Um, "tool.hitchLength:0"));
-        yield return new("T-RIGCM", "Boom distance typed in cm (150)", Puma, Boom, Um, 0, W(Puma, Boom, Um, "tool.hitchLength:150"), Impossible: true);
+        yield return new("T-RIG0", "Boom distance behind the axle left at 0 (really 1.5 m)", Puma, Boom, Um, 0, W(Puma, Boom, Um, "vehicle.threePointHitchLength:0"));
+        yield return new("T-RIGCM", "Boom distance typed in cm (150)", Puma, Boom, Um, 0, W(Puma, Boom, Um, "vehicle.threePointHitchLength:150"), Impossible: true);
         yield return new("T-TRAILNEG", "Trailed sprayer's drawbar typed negative (-4 m)", Puma, Machines.Sprayer10, Um, 0, W(Puma, Machines.Sprayer10, Um, "tool.trailingHitchLength:-4"), Impossible: true);
         yield return new("T-TRAIL0", "Trailed sprayer's drawbar left at 0", Puma, Machines.Sprayer10, Um, 0, W(Puma, Machines.Sprayer10, Um, "tool.trailingHitchLength:0"), Impossible: true);
         yield return new("T-TYPEXYZ", "Implement type that does not exist ('xyz')", Puma, Boom, Um, 0, W(Puma, Boom, Um, "tool.type:xyz"), Impossible: true);
         yield return new("T-TYPERIGID", "Trailed sprayer set as mounted (rear, 4 m behind)", Puma, Machines.Sprayer10, Um, 0,
-            W(Puma, Machines.Sprayer10, Um, "tool.type:rear", "tool.hitchLength:4"));
+            W(Puma, Machines.Sprayer10, Um, "tool.type:rear", "vehicle.threePointHitchLength:4", "tool.workingPointFromHitch:0"));
         yield return new("T-TBTASTRAIL", "TBT seed drill set as a plain trailed one", Machines.Big, Machines.Tbt12, Machines.BigSys, 0,
             W(Machines.Big, Machines.Tbt12, Machines.BigSys, "tool.type:trailing"));
         yield return new("T-SLOWCUT", "Slow speed cut-off typed 100 km/h (work speed 9)", Puma, Boom, Um, 0, W(Puma, Boom, Um, "tool.slowSpeedCutoff:100"), Impossible: true);
@@ -223,8 +223,8 @@ public static class CarelessOperator
         yield return new("Implement", "Overlap = width", "tool.overlap:8");
         yield return new("Implement", "Overlap > width", "tool.overlap:10");
         yield return new("Implement", "Gap wider than the implement", "tool.overlap:-10");
-        yield return new("Implement", "Mounted distance negative", "tool.hitchLength:-1.5");
-        yield return new("Implement", "Mounted distance in cm", "tool.hitchLength:150");
+        yield return new("Implement", "Mounted distance negative", "vehicle.threePointHitchLength:-1.5");
+        yield return new("Implement", "Mounted distance in cm", "vehicle.threePointHitchLength:150");
         yield return new("Implement", "Drawbar negative", "tool.trailingHitchLength:-4");
         yield return new("Implement", "Drawbar 0", "tool.trailingHitchLength:0");
         yield return new("Implement", "TBT tank hitch negative", "tool.tankTrailingHitchLength:-3");

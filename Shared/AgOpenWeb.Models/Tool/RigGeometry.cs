@@ -40,25 +40,32 @@ namespace AgOpenWeb.Models.Tool
         public static bool IsRigid(ToolMount mount) => mount is ToolMount.FrontFixed or ToolMount.RearFixed;
 
         /// <summary>
-        /// The point the tool is attached at, along the tractor from the rear axle (+ ahead).
-        /// A fixed tool: its working point, <c>Tool.HitchLength</c> (axle → working point),
-        /// ahead for a front tool, behind for a rear one. A trailed or TBT tool: the tractor's
-        /// hitch pin, <c>Vehicle.HitchLength</c>, behind. Both are kept positive; the sign is
-        /// the mount's.
+        /// Where the tool is placed along the tractor from the rear axle (+ ahead), as ISO
+        /// 11783-10 chains it: the tractor's connector, then the tool from it. A fixed tool: its
+        /// working point, the vehicle's 3-point hitch (front or rear) plus the tool's distance from
+        /// it, away from the tractor. A trailed or TBT tool: the drawbar pin, behind the axle.
         /// </summary>
-        public static double AttachX(ToolMount mount, double vehicleHitchLength, double toolHitchLength)
-        {
-            double d = Math.Abs(IsRigid(mount) ? toolHitchLength : vehicleHitchLength);
-            return mount == ToolMount.FrontFixed ? d : -d;
-        }
+        public static double AttachX(ToolMount mount, double drawbar, double threePoint, double frontHitch, double workingPointFromHitch) =>
+            mount switch
+            {
+                ToolMount.FrontFixed => Math.Abs(frontHitch) + workingPointFromHitch,
+                ToolMount.RearFixed => -(Math.Abs(threePoint) + workingPointFromHitch),
+                _ => -Math.Abs(drawbar),
+            };
 
-        /// <inheritdoc cref="AttachX(ToolMount, double, double)"/>
+        /// <inheritdoc cref="AttachX(ToolMount, double, double, double, double)"/>
         public static double AttachX(VehicleConfig vehicle, ToolConfig tool) =>
-            AttachX(Mount(tool), vehicle.HitchLength, tool.HitchLength);
+            AttachX(Mount(tool), vehicle.HitchLength, vehicle.ThreePointHitchLength, vehicle.FrontHitchLength, tool.WorkingPointFromHitch);
 
-        /// <inheritdoc cref="AttachX(ToolMount, double, double)"/>
-        public static double AttachX(in ToolGeometry geom) =>
-            AttachX(geom.Mount, geom.VehicleHitchLength, geom.ToolHitchLength);
+        /// <summary>
+        /// A fixed tool's working point from the rear axle, the way profiles stored it before the
+        /// hitch points moved to the vehicle (format 2's <c>Tool.HitchLength</c>, positive, ahead
+        /// for a front tool): what an older build reads back from a newer profile.
+        /// </summary>
+        public static double AxleToWorkingPoint(VehicleConfig vehicle, ToolConfig tool) =>
+            Mount(tool) == ToolMount.FrontFixed
+                ? Math.Abs(vehicle.FrontHitchLength) + tool.WorkingPointFromHitch
+                : Math.Abs(vehicle.ThreePointHitchLength) + tool.WorkingPointFromHitch;
 
         /// <summary>The point <paramref name="x"/> along the tractor (+ ahead) from <paramref name="pivot"/>.</summary>
         public static Vec3 AlongTractor(Vec3 pivot, double heading, double x) =>
@@ -93,8 +100,7 @@ namespace AgOpenWeb.Models.Tool
             Mount: Mount(tool),
             Width: width,
             Offset: tool.Offset,
-            VehicleHitchLength: vehicle.HitchLength,
-            ToolHitchLength: tool.HitchLength,
+            AttachX: AttachX(vehicle, tool),
             TrailingHitchLength: tool.TrailingHitchLength,
             TrailingToolToPivotLength: tool.TrailingToolToPivotLength,
             TankTrailingHitchLength: tool.TankTrailingHitchLength,
@@ -105,7 +111,7 @@ namespace AgOpenWeb.Models.Tool
         /// from the tool's position (a U-turn tried and refused at this end) is stale once it changes.
         /// </summary>
         public static int Stamp(VehicleConfig vehicle, ToolConfig tool) => HashCode.Combine(
-            Mount(tool), vehicle.HitchLength, tool.HitchLength, tool.TrailingHitchLength,
+            Mount(tool), AttachX(vehicle, tool), tool.TrailingHitchLength,
             tool.TrailingToolToPivotLength, tool.TankTrailingHitchLength, tool.Offset, tool.Length);
     }
 }

@@ -251,6 +251,23 @@ public static class FarmBuilder
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
+    /// <summary>
+    /// A setting as the build it goes to names it. A fixed implement's distance was the rear axle →
+    /// working point (tool.hitchLength) up to profile format 2; this build keeps it from the
+    /// tractor's 3-point hitch (#547), so the same place is the distance less the hitch of the
+    /// vehicle in use. The readback (Tool.HitchLength in the dump) is the axle → working point on
+    /// every build.
+    /// </summary>
+    private static string ThisBuildKey(ICommandSender s, Setting st)
+    {
+        if (s is RigSender rig && st.Key == "tool.hitchLength")
+        {
+            double fromHitch = double.Parse(st.Value, Inv) - rig.Rig.Store.Vehicle.ThreePointHitchLength;
+            return "tool.workingPointFromHitch:" + fromHitch.ToString(Inv);
+        }
+        return st.Key + ":" + st.Value;
+    }
+
     public static async Task BuildAsync(ICommandSender s, Farm farm, Scenario sc, bool slow)
     {
         // Settle a fresh install: the simulator on, standing still.
@@ -272,7 +289,7 @@ public static class FarmBuilder
         {
             await s.SendAsync("profile.new", "tool\t" + t.Name);
             await s.PauseAsync(slow ? 1.0 : 0);
-            foreach (var st in t.Settings) await s.SendAsync("config.set", st.Key + ":" + st.Value);
+            foreach (var st in t.Settings) await s.SendAsync("config.set", ThisBuildKey(s, st));
             await s.SendAsync("profile.save");
             await s.PauseAsync(slow ? 1.0 : 0);
             sc.Step(Kit.F($"implement profile '{t.Name}' made with {t.Settings.Count} settings and saved"));

@@ -46,7 +46,9 @@ public class TurnSetbackStaysAtEndTests
         c.Tool.Width = width;
         c.Tool.Overlap = 0;
         c.Tool.Offset = 0;
-        c.Tool.HitchLength = front ? 4.5 : 1.5;
+        // A fixed tool's working point front ? 4.5 : 1.5 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        c.Vehicle.ThreePointHitchLength = c.Vehicle.FrontHitchLength = System.Math.Abs(front ? 4.5 : 1.5);
+        c.Tool.WorkingPointFromHitch = 0;
         c.Tool.IsToolFrontFixed = front;
         c.Tool.IsToolRearFixed = !front;
         c.Tool.IsToolTrailing = false;

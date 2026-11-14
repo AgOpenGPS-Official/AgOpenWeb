@@ -44,7 +44,9 @@ public class TramTriggerAtToolTests
         _config.Vehicle.TrackWidth = 1.8;
         _config.Tool.IsToolRearFixed = true;
         _config.Tool.IsToolTrailing = _config.Tool.IsToolTBT = _config.Tool.IsToolFrontFixed = false;
-        _config.Tool.HitchLength = HitchLength;
+        // A fixed tool's working point HitchLength m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        _config.Vehicle.ThreePointHitchLength = _config.Vehicle.FrontHitchLength = System.Math.Abs(HitchLength);
+        _config.Tool.WorkingPointFromHitch = 0;
         _config.Tool.TrailingHitchLength = TrailingArm;
         _config.Tool.Offset = 0;
         _config.Tool.Width = 6;
