@@ -45,7 +45,9 @@ function populateToolCfg(force) {
   populateCfgControls(tcPanel, force);
   if (document.activeElement !== tcHitchSel) tcHitchSel.value = t.hitchType;
   const hi = document.getElementById('tc-img-hitch');
-  const hp = '/icons/' + (['ToolHitchPageFront', 'ToolHitchPageRear', 'ToolHitchPageTBT', 'ToolHitchPageTrailing'][t.type] || 'ToolHitchPageRear') + '.png';
+  // A fixed tool is measured from the tractor's lower-link pins (the vehicle has the pins' distance
+  // from the rear axle, #547); a trailed one from the drawbar pin to its wheels.
+  const hp = '/icons/' + (['ToolHitch3ptFront', 'ToolHitch3ptRear', 'ToolHitchPageTBT', 'ToolHitchPageTrailing'][t.type] || 'ToolHitch3ptRear') + '.png';
   if (!hi.src.endsWith(hp)) hi.src = hp;
   // The pivot picture shows the choice, as AgOpenGPS's buttons do: the tool ahead of its wheels,
   // or behind them (also for Zero).

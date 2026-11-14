@@ -83,6 +83,13 @@ for (const t of vcPanel.querySelectorAll('.cfg-tab'))
   });
 wireCfgControls(vcPanel);
 vcHitchSel.addEventListener('change', () => cfgSend('vehicle.hitchType', vcHitchSel.value));
+// The hitch field being typed in picks the hitch picture (the rear 3-point, the drawbar pin or the front 3-point).
+let vcHitchKey = null;
+for (const k of ['vehicle.threePointHitchLength', 'vehicle.hitchLength', 'vehicle.frontHitchLength']) {
+  const el = vcPanel.querySelector('.cfg-num[data-key="' + k + '"]');
+  el.addEventListener('focus', () => { vcHitchKey = k; populateVehicleCfg(false); });
+  el.addEventListener('blur', () => { if (vcHitchKey === k) vcHitchKey = null; populateVehicleCfg(false); });
+}
 // Heading fusion = GPS share (0–1), shown like AgOpenGPS: "GPS 30% · IMU 70%" (#112).
 const fusionLabel = w => tr('GPS {gps}% · IMU {imu}%', { gps: Math.round(w * 100), imu: 100 - Math.round(w * 100) });
 vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = fusionLabel(+vcFw.value); cfgSend('gps.headingFusionWeight', vcFw.value); });
@@ -104,7 +111,11 @@ function populateVehicleCfg(force) {
     if (n) { const p = '/icons/' + n + '.png'; if (!el.src.endsWith(p)) el.src = p; el.style.display = ''; }
     else el.style.display = 'none';
   };
-  setImg('vc-img-hitch', ['Hitch', '', 'HitchArticulated']);
+  // The hitch picture shows the field being typed in, else the hitch the tool hangs on (#547).
+  const hk = vcHitchKey || ({ 0: 'vehicle.frontHitchLength', 2: 'vehicle.hitchLength', 3: 'vehicle.hitchLength' }[cfgGet('tool.type')] || 'vehicle.threePointHitchLength');
+  setImg('vc-img-hitch', hk === 'vehicle.hitchLength' ? ['Hitch', '', 'HitchArticulated']
+    : hk === 'vehicle.frontHitchLength' ? ['VehicleHitch3ptFront', '', 'VehicleHitch3ptFront']
+    : ['VehicleHitch3ptRear', '', 'VehicleHitch3ptRear']);
   setImg('vc-img-wheelbase', ['WheelbaseTractor', 'WheelbaseHarvester', 'WheelbaseArticulated']);
   setImg('vc-img-track', ['TrackWidthTractor', 'TrackWidthHarvester', 'TrackWidthArticulated']);
   setImg('vc-img-antside', ['AntennaTractorTop', 'AntennaHarvesterTop', 'AntennaArticulatedTop']);
