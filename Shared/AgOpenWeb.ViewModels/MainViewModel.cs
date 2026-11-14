@@ -329,8 +329,8 @@ public partial class MainViewModel : ObservableObject
         // (load / save / picker dialog) so labels like CurrentProfileName
         // re-render. The store updates correctly on its own, but bindings
         // through computed properties on this VM need an explicit notify.
-        _configurationService.ProfileLoaded += (_, _) => RaiseProfileNameChanged();
-        _configurationService.ProfileSaved += (_, _) => RaiseProfileNameChanged();
+        _configurationService.ProfileLoaded += (_, _) => { RaiseProfileNameChanged(); RecordJobRig(); };
+        _configurationService.ProfileSaved += (_, _) => { RaiseProfileNameChanged(); RecordJobRig(); };
         _autoSteerService = autoSteerService;
         _smartWasService = smartWasService;
         _trackCopierService = trackCopierService;
@@ -345,8 +345,9 @@ public partial class MainViewModel : ObservableObject
         _jobService = jobService;
         // Refresh the field/job pill + status strip whenever the active job
         // changes (created, resumed, suspended).
-        _jobService.ActiveJobChanged += (_, _) =>
+        _jobService.ActiveJobChanged += (_, job) =>
         {
+            if (job != null) RecordJobRig();
             OnPropertyChanged(nameof(CurrentJobTaskName));
             OnPropertyChanged(nameof(CurrentFieldAndJobLabel));
             RaiseStatusStripChanged();
@@ -3899,6 +3900,21 @@ public partial class MainViewModel : ObservableObject
     /// status pill on ConfigurationPanel refresh after the picker dialog
     /// or any other profile change.
     /// </summary>
+    /// <summary>
+    /// The active job keeps the machine it is worked with (#547): the vehicle and tool loaded now,
+    /// when the job starts or resumes and whenever a profile is loaded or saved (closing a settings
+    /// panel saves it). The job's file is written only when the machine changed.
+    /// </summary>
+    private void RecordJobRig()
+    {
+        if (_jobService.ActiveJob == null) return;
+        try { _jobService.RecordRig(AgOpenWeb.Models.Job.JobRig.From(_configStore)); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "[Job] Could not save the machine to job.json");
+        }
+    }
+
     private void RaiseProfileNameChanged()
     {
         OnPropertyChanged(nameof(CurrentProfileName));
