@@ -65,6 +65,13 @@ namespace AgOpenWeb.Models.YouTurn
         public Vec3? ArcStart { get; set; }
 
         /// <summary>
+        /// When no arc fitted inside the turn line anywhere along the pass: how far the best try
+        /// still fell outside it, in metres (the least, over every start tried and both shapes).
+        /// Null for any other failure, and when the turn was built.
+        /// </summary>
+        public double? OutsideTurnLineBy { get; set; }
+
+        /// <summary>
         /// The pass's first point (index in <see cref="YouTurnCreationInput.GuidancePoints"/>) outside
         /// the turn area at the end the turn was made at; -1 when not found.
         /// </summary>

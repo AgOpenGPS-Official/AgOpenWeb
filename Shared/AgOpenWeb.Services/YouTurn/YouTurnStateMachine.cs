@@ -315,10 +315,13 @@ public sealed class YouTurnStateMachine
             SoundMissed(effects);
             // Also for a pass that lies in the headland strip the whole way (along a side of the
             // field), where it comes mid-pass: worded for both, and it keeps "take over manually".
-            effects.StatusMessage = "No U-turn can be made from the headland on this pass. Take over manually at the end of the field.";
+            effects.StatusMessage = "No U-turn can be made this close to the boundary on this pass. Take over manually at the end of the field.";
         }
 
         // ── TOO CLOSE TO PLAN ───────────────────────────────────────────
+        // "Headland" in this method is the turn line (HeadlandLine: the fence moved in by the
+        // U-turn distance from boundary), not the operator's headland. The screen doesn't draw
+        // the turn line, so the messages to the operator say "boundary".
         // In the cultivated area on the line, heading for the headland, with no turn planned or
         // under way, and already closer to it than a turn is planned (MinDistanceToCreate): none
         // will be. AutoSteer switched on again a few metres before the headland after a dropped
@@ -329,15 +332,20 @@ public sealed class YouTurnStateMachine
         // that cuts across a corner of the cultivated area and comes back into it further on (field
         // jobs W1 and J3 on Baetas, at the start) has its end there, and on a curve the straight ray
         // can meet the headland early on the outside of a bend while the pass runs on (field job
-        // J10). The pass is walked ahead past the crossing for cultivated ground.
+        // J10). The pass is walked ahead past the crossing for cultivated ground. Not with skip
+        // worked passes and the order planned: the end of the pass is judged in the headland,
+        // heading out (above), with a turn or "End of field reached"; on a pass too short to plan
+        // on (field job W1, the narrow end of Baetas) the missed turn was said first, where the
+        // field was done.
         if (turn.TurnPath == null && !turn.IsExecuting && !_creationFailSounded && !_missedSounded
+            && !(ctx.IsSkipWorkedMode && turn.SnakeSequence != null)
             && isInCultivatedArea && isAlignedWithABLine && turn.DistanceToHeadland <= MinDistanceToCreate
             && !_pathing.CultivatedAhead(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
                 passPoint, headingSameWay, from: turn.DistanceToHeadland + 2))
         {
             _logger.LogDebug("[YouTurn] {Dist:F1}m from the headland with no turn planned - too close, turn missed", turn.DistanceToHeadland);
             SoundMissed(effects);
-            effects.StatusMessage = "U-turn missed: too close to the headland to turn. Take over manually.";
+            effects.StatusMessage = "U-turn missed: too close to the boundary to turn. Take over manually.";
         }
 
         // ── TURN TRIGGER ────────────────────────────────────────────────
@@ -418,7 +426,7 @@ public sealed class YouTurnStateMachine
                         distToArcStart);
                     DiscardPlannedTurn(turn);
                     SoundMissed(effects);
-                    effects.StatusMessage = "U-turn missed: too close to the headland to turn. Take over manually.";
+                    effects.StatusMessage = "U-turn missed: too close to the boundary to turn. Take over manually.";
                 }
                 effects.SyncTurnPathToMap = true;
                 effects.SyncNextTrackToMap = true;
@@ -433,7 +441,7 @@ public sealed class YouTurnStateMachine
                 _logger.LogDebug("[YouTurn] In the headland past the path's start without joining it - turn missed");
                 DiscardPlannedTurn(turn);
                 SoundMissed(effects);
-                effects.StatusMessage = "U-turn missed: entered the headland off the turn path. Take over manually.";
+                effects.StatusMessage = "U-turn missed: near the boundary and off the turn path. Take over manually.";
                 effects.SyncTurnPathToMap = true;
                 effects.SyncNextTrackToMap = true;
             }
@@ -1587,11 +1595,24 @@ public sealed class YouTurnStateMachine
         if (result.LandsPastLineEnd && effects.StatusMessage == null)
             effects.StatusMessage = "No U-turn: the next pass ends before this end - take over manually";
         // No real turn fits and the fallback would leave the field (#692): the pass is driven to its
-        // end with no turn, so the operator is told, not only sounded at.
+        // end with no turn, so the operator is told, not only sounded at. When the planner tried
+        // every start along the pass and the arc always fell outside the turn line, the geometry
+        // is what refuses (a pass next to a fence that runs along it: an 8 m radius onto an 8 m
+        // pass needs 2 m on the fence side, which a tractor 4 m from the fence with the U-turn
+        // distance at 2 m hasn't got; AgOpenGPS can't turn there either), and the operator is told
+        // by how much, so a smaller U-turn distance from boundary or a hand turn is the choice.
         if (result.Path == null && result.UsedFallback && effects.StatusMessage == null)
-            effects.StatusMessage = "No U-turn fits inside the boundary at this end - take over manually";
+            effects.StatusMessage = result.OutsideTurnLineBy is double by
+                ? NoTurnFitsMessage(by, _configStore.Guidance.UTurnDistanceFromBoundary)
+                : "No U-turn fits inside the boundary at this end - take over manually";
         SoundCreationFailed(effects);
     }
+
+    /// <summary>The operator's message when no arc of this radius fits inside the turn line at
+    /// this end: the geometry refuses the turn, and this says by how much.</summary>
+    public static string NoTurnFitsMessage(double outsideBy, double distanceFromBoundary) => string.Format(CultureInfo.InvariantCulture,
+        "No U-turn fits inside the boundary at this end: the closest would come {0:0.0} m nearer the boundary than the U-turn distance of {1:0.0} m allows - take over manually",
+        Math.Max(outsideBy, 0.1), distanceFromBoundary);
 
     /// <summary>Less than this inside the headland line is the turn line's own rounding.</summary>
     private const double NarrowHeadlandToleranceM = 0.5;

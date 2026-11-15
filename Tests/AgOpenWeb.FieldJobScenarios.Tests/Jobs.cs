@@ -131,7 +131,7 @@ public static class Jobs
         if (r.PathOp is { JudgesCoverage: false } only)
         {
             only.Judge(sc, r, a, flag);
-            JudgeAutoSteer(sc, r, flag);
+            JudgeAutoSteer(sc, r, a, flag);
             return;
         }
         if (r.SliverPasses.Count > 0)
@@ -313,19 +313,37 @@ public static class Jobs
             sc.Ok(F($"all {r.Turns.Count} U-turns kept the tractor and the implement inside the boundary"));
         if (fallbacks > 0)
             sc.Note(F($"AgOpenWeb's turn service failed ('path invalid or out of bounds') and the simple fallback path was used in {fallbacks} of {r.Turns.Count} turns"));
-        var missed = r.Said.Where(s => s.Contains("U-turn missed", StringComparison.Ordinal) || s.Contains("No U-turn can be made", StringComparison.Ordinal)
-            || s.Contains("cancelled", StringComparison.Ordinal)).ToList();
-        if (missed.Count > 0)
-            flag(Severity.Bug, "TURN-MISSED", F($"{missed.Count} U-turn(s) were missed or cancelled while the operator did nothing wrong: {missed[0]}"));
+        // AgOpenWeb's warning that a turn can't be made from here ("U-turn missed: ...", "No U-turn
+        // can be made ..."). Heard before the tractor had driven a planning distance on its pass since
+        // the last turn landed it (or AutoSteer came on), the pass was too short at this end to plan a
+        // turn on (field job J3: landed 8.3 m from the turn line at a narrow corner, where a turn is
+        // planned from 10 m out; AgOpenGPS sounds "too close" there): the warning is the right thing to
+        // do, noted. Heard after a longer run on the pass, AgOpenWeb had room to plan the turn and
+        // didn't: TURN-MISSED. Silence where no turn can be made is RAN-OFF.
+        const double TooShortToPlanM = 5;
+        var tooShort = r.TurnWarnings.Where(w => w.LegM < TooShortToPlanM).ToList();
+        var hadRoom = r.TurnWarnings.Where(w => w.LegM >= TooShortToPlanM).ToList();
+        if (tooShort.Count > 0)
+            sc.Note(F($"AgOpenWeb warned that a U-turn could not be made {tooShort[0].LegM:0.0} m after the tractor started on its pass, too short at this end to plan one: {tooShort[0].Text}"));
+        if (hadRoom.Count > 0)
+            flag(Severity.Bug, "TURN-MISSED", F($"{hadRoom.Count} U-turn(s) were missed after the tractor had driven {hadRoom[0].LegM:0} m of its pass with AutoSteer on, room to plan the turn: {hadRoom[0].Text}"));
+        var cancelled = r.Said.Where(s => s.Contains("cancelled", StringComparison.Ordinal)).ToList();
+        if (cancelled.Count > 0)
+            flag(Severity.Bug, "TURN-MISSED", F($"{cancelled.Count} U-turn(s) were cancelled while the operator did nothing wrong: {cancelled[0]}"));
         r.PathOp?.Judge(sc, r, a, flag);
         if (r.PathOp == null && spec.PassCheck) { LapOperator.JudgePassError(sc, r, flag, "the AB line's passes"); JudgeTurnExits(sc, r, flag); }
         JudgeDrawbar(sc, r, flag);
         spec.ExtraJudge?.Invoke(sc, r, flag);
-        JudgeAutoSteer(sc, r, flag);
+        JudgeAutoSteer(sc, r, a, flag);
     }
 
+    /// <summary>Ground left, as a share of the cultivated area, below which a refused U-turn
+    /// came at the end of the field: a few square metres of the grid's rounding and the wedges
+    /// the turns leave, not a pass.</summary>
+    private const double RefusedWithNothingLeft = 0.01;
+
     /// <summary>AutoSteer dropping out on its own, and the tractor running off the field.</summary>
-    private static void JudgeAutoSteer(Scenario sc, JobRun r, Action<Severity, string, string> flag)
+    private static void JudgeAutoSteer(Scenario sc, JobRun r, JobAreas a, Action<Severity, string, string> flag)
     {
         var offs = r.Said.Where(s => s.Contains("AutoSteer off", StringComparison.Ordinal)).ToList();
         // At the end of a played route AutoSteer goes off by design, with the reason (P7): the
@@ -338,9 +356,28 @@ public static class Jobs
         if (r.Problems.Any(p => p.StartsWith("HARNESS", StringComparison.Ordinal))) return;
         foreach (var p in r.Problems)
         {
-            if (p.Contains("refused the U-turn", StringComparison.Ordinal)) flag(Severity.Bug, "TURN-REFUSED", p);
-            // A missed turn the app warned about is TURN-MISSED (from what it said); the operator
-            // taking over at the warning, as a farmer would, is what the job did, not a finding.
+            // A refusal is a finding when it left ground to work: what is left beyond the strips
+            // between passes, the pass ends, the obstacles, the boundary and the corners, as
+            // FIELD-LEFT-UNDONE counts it. With none left the field was done and the turn had
+            // nowhere to go (J8's last corner: 95.6 % sprayed, the passes there 10 m, 1 m, 0 m of
+            // cultivated ground, no loop at 8 m radius fits): the refusal is right, and noted.
+            if (p.Contains("refused the U-turn", StringComparison.Ordinal))
+            {
+                double left = a.Missed - a.MissedBetweenPasses - a.MissedAtEnds - a.MissedAtObstacles - a.MissedAlongBoundary - a.MissedLeftInMiddle - a.MissedAtCorners;
+                if (!r.ShortStopped && left <= RefusedWithNothingLeft * a.Work)
+                    sc.Note(F($"AgOpenWeb refused a U-turn with the field done ({Pct(left, a.Work)} of the cultivated area left outside the strips between passes, the pass ends and the boundary); the operator took over and the job stopped there: ") + p);
+                // The geometry refused it: the planner tried every start along the pass with both
+                // its shapes and the arc always fell outside the turn line, and the app says by how
+                // much (C14: pass -8 runs 4 m from a fence parallel to it, the turn line 2 m in; an
+                // 8 m radius onto the 8 m pass needs 2.0 m on the fence side and has 1.9 m; AgOpenGPS
+                // can't turn there either). Said, that is correct behaviour, and the operator's choice.
+                else if (p.Contains("nearer the boundary than the U-turn distance", StringComparison.Ordinal))
+                    sc.Note("AgOpenWeb refused a U-turn because no turn of this radius fits inside the turn line at this end, and said by how much; the operator took over and the job stopped there: " + p);
+                else
+                    flag(Severity.Bug, "TURN-REFUSED", F($"{p}; {left:0} m² ({Pct(left, a.Work)}) of the cultivated area left to work"));
+            }
+            // A missed turn the app warned about is noted (from what it said); the operator taking
+            // over at the warning, as a farmer would, is what the job did, not a finding.
             // A blocked turn (it would swing into a hard boundary or an obstacle, #698) is the app
             // refusing what it must refuse: noted, with the ground left from there as its consequence.
             else if (p.Contains("missed the U-turn", StringComparison.Ordinal)) sc.Note("the operator took over at the warning and the job stopped there, as a person would: " + p);

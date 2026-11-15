@@ -51,6 +51,14 @@ public partial class YouTurnCreationService
         /// <summary>Where the path leaves the current pass (see <see cref="YouTurnCreationOutput.ArcStart"/>);
         /// null for a fallback path, which has no entry leg.</summary>
         public Vec3? ArcStart { get; init; }
+
+        /// <summary>
+        /// No turn: no arc of this radius fitted inside the turn line anywhere along the pass, and
+        /// this is how far the best try fell outside it (<see cref="YouTurnCreationOutput.OutsideTurnLineBy"/>).
+        /// The geometry refuses the turn, not the planner: the operator can lower the U-turn
+        /// distance from boundary by this much, or turn by hand.
+        /// </summary>
+        public double? OutsideTurnLineBy { get; init; }
     }
 
     /// <summary>
@@ -269,7 +277,10 @@ public partial class YouTurnCreationService
                 output.FailureReason ?? "unknown");
             var fallbackPath = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
                 guidance, turn, uTurnSkipRows, headlandDistance, selectedTrack);
-            return new TurnPathResult(fallbackPath.Count > 10 ? fallbackPath : null, UsedFallback: true);
+            return new TurnPathResult(fallbackPath.Count > 10 ? fallbackPath : null, UsedFallback: true)
+            {
+                OutsideTurnLineBy = fallbackPath.Count > 10 ? null : output.OutsideTurnLineBy,
+            };
         }
     }
 
@@ -703,7 +714,8 @@ public partial class YouTurnCreationService
                     var intersection = GeometryMath.TryGetSegmentIntersection(
                         p1.Easting, p1.Northing, p2.Easting, p2.Northing,
                         h1.Easting, h1.Northing, h2.Easting, h2.Northing);
-                    if (intersection.HasValue) return intersection;
+                    if (intersection.HasValue && LeavesArea(intersection.Value, p2.Easting - p1.Easting, p2.Northing - p1.Northing, headlandLine))
+                        return intersection;
                 }
             }
             return null;
@@ -763,8 +775,11 @@ public partial class YouTurnCreationService
                 double dyi = intersection.Value.Northing - vehiclePos.Northing;
                 double distSq = dxi * dxi + dyi * dyi;
                 double along = dxi * wayE + dyi * wayN;
+                // Ahead, only where the pass leaves the area: the crossing the tractor drives in
+                // over (entering the field at the start of a job) is not the end of the pass.
                 if (along >= -BehindTolerance)
                 {
+                    if (!LeavesArea(intersection.Value, wayE, wayN, headlandLine)) continue;
                     if (distSq < closestAheadDist) { closestAheadDist = distSq; closestAhead = intersection; }
                 }
                 else if (distSq < closestBehindDist)
@@ -777,6 +792,20 @@ public partial class YouTurnCreationService
 
         // None ahead (the tractor past the last crossing): the closest behind, as before.
         return closestAhead ?? closestBehind;
+    }
+
+    /// <summary>
+    /// Whether a line crossing <paramref name="area"/>'s edge at <paramref name="at"/>, going
+    /// (<paramref name="dirE"/>, <paramref name="dirN"/>), leaves it there: just beyond the crossing
+    /// is outside. The end of a pass is where it leaves the turn area, as AgOpenGPS finds it (the
+    /// first point ahead outside the turn line); a crossing into it is where the pass begins.
+    /// </summary>
+    private static bool LeavesArea(Vec2 at, double dirE, double dirN, IReadOnlyList<Vec3> area)
+    {
+        double len = Math.Sqrt(dirE * dirE + dirN * dirN);
+        if (len < 1e-9) return true;
+        const double Probe = 0.05;
+        return !GeometryMath.IsPointInPolygon(area, at.Easting + dirE / len * Probe, at.Northing + dirN / len * Probe);
     }
 
     // ── Simple geometric fallback ───────────────────────────────────────
@@ -1043,8 +1072,12 @@ public partial class YouTurnCreationService
         // other way (AgOpenGPS BuildManualYouTurn: rowSkipsWidth ± tool.offset * 2).
         int side = (turnLeft ^ guidance.IsHeadingSameWay) ? 1 : -1;
         double toolShift = Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay);
-        double turnOffset = trackWidth * (uTurnSkipRows + 1) + 2 * toolShift * side;
-        if (turnOffset < 0.1)
+        // A tool offset over half the pass makes it negative turning away from the tool: the line
+        // steered on the next pass is on the other side of the tractor, and the turn loops back
+        // across to it, as in AgOpenGPS (J8: a 3 m mower 2.5 m to one side).
+        double nearestPassOffset = trackWidth + 2 * toolShift * side;
+        double turnOffset = trackWidth * uTurnSkipRows + nearestPassOffset;
+        if (trackWidth < 0.1)
         {
             _logger.LogWarning("[ManualYouTurn] Tool width is zero — cannot compute offset");
             return path;
@@ -1087,8 +1120,9 @@ public partial class YouTurnCreationService
         if (TryProjectOntoPass(targetPass, start, out double passE, out double passN))
         {
             double across = (passE - start.Easting) * Math.Sin(perpAngle) + (passN - start.Northing) * Math.Cos(perpAngle);
-            // Only a pass on the turn side, at least half a pass over.
-            if (across >= trackWidth / 2)
+            // Only a pass on the turn side: at least the nearest pass there, less half a pass (with
+            // no tool offset, half a pass over; the pass the tractor is on never qualifies).
+            if (across >= nearestPassOffset - trackWidth / 2)
             {
                 goal.Easting = passE;
                 goal.Northing = passN;

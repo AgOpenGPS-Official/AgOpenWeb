@@ -87,6 +87,9 @@ public static partial class RemoteServerWiring
                     server.CommandHandler = (cmd, arg) =>
                         dispatcher.Post(() =>
                         {
+                            // A feature switched off (VT, web cards, AgShare) takes no
+                            // commands: its controls are gone, and an old page can't reach it.
+                            if (!AgOpenWeb.Models.FeatureSwitches.Allows(cmd, arg, AgOpenWeb.Models.FeatureSwitches.Enabled)) return;
                             var inv = System.Globalization.CultureInfo.InvariantCulture;
                             var num = System.Globalization.NumberStyles.Float;
                             // Starting a line or path turns contour off first, like AgOpenGPS's
