@@ -875,8 +875,8 @@ public sealed class JobRun : IAsyncDisposable
                         FieldDone = true;
                     }
                     // AgOpenWeb refused the turn (#698, #716: "No U-turn fits", "U-turn blocked") or
-                    // missed it ("U-turn missed: ...", or "No U-turn can be made from the headland on
-                    // this pass", #761: AutoSteer came on again in the headland past where a turn could
+                    // missed it ("U-turn missed: ...", or "No U-turn can be made this close to the
+                    // boundary on this pass", #761: AutoSteer came on again in the headland past where a turn could
                     // start, #740 T10, or the pass runs along the headland strip) and said so: the
                     // operator takes over and the job stops, as a farmer would, instead of riding on with
                     // AutoSteer out of the field. A warning for "the end of the field" comes mid-pass:
