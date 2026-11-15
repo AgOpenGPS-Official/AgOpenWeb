@@ -315,10 +315,13 @@ public sealed class YouTurnStateMachine
             SoundMissed(effects);
             // Also for a pass that lies in the headland strip the whole way (along a side of the
             // field), where it comes mid-pass: worded for both, and it keeps "take over manually".
-            effects.StatusMessage = "No U-turn can be made from the headland on this pass. Take over manually at the end of the field.";
+            effects.StatusMessage = "No U-turn can be made this close to the boundary on this pass. Take over manually at the end of the field.";
         }
 
         // ── TOO CLOSE TO PLAN ───────────────────────────────────────────
+        // "Headland" in this method is the turn line (HeadlandLine: the fence moved in by the
+        // U-turn distance from boundary), not the operator's headland. The screen doesn't draw
+        // the turn line, so the messages to the operator say "boundary".
         // In the cultivated area on the line, heading for the headland, with no turn planned or
         // under way, and already closer to it than a turn is planned (MinDistanceToCreate): none
         // will be. AutoSteer switched on again a few metres before the headland after a dropped
@@ -342,7 +345,7 @@ public sealed class YouTurnStateMachine
         {
             _logger.LogDebug("[YouTurn] {Dist:F1}m from the headland with no turn planned - too close, turn missed", turn.DistanceToHeadland);
             SoundMissed(effects);
-            effects.StatusMessage = "U-turn missed: too close to the headland to turn. Take over manually.";
+            effects.StatusMessage = "U-turn missed: too close to the boundary to turn. Take over manually.";
         }
 
         // ── TURN TRIGGER ────────────────────────────────────────────────
@@ -423,7 +426,7 @@ public sealed class YouTurnStateMachine
                         distToArcStart);
                     DiscardPlannedTurn(turn);
                     SoundMissed(effects);
-                    effects.StatusMessage = "U-turn missed: too close to the headland to turn. Take over manually.";
+                    effects.StatusMessage = "U-turn missed: too close to the boundary to turn. Take over manually.";
                 }
                 effects.SyncTurnPathToMap = true;
                 effects.SyncNextTrackToMap = true;
@@ -438,7 +441,7 @@ public sealed class YouTurnStateMachine
                 _logger.LogDebug("[YouTurn] In the headland past the path's start without joining it - turn missed");
                 DiscardPlannedTurn(turn);
                 SoundMissed(effects);
-                effects.StatusMessage = "U-turn missed: entered the headland off the turn path. Take over manually.";
+                effects.StatusMessage = "U-turn missed: near the boundary and off the turn path. Take over manually.";
                 effects.SyncTurnPathToMap = true;
                 effects.SyncNextTrackToMap = true;
             }
