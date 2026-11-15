@@ -314,12 +314,19 @@ public static class Jobs
         if (fallbacks > 0)
             sc.Note(F($"AgOpenWeb's turn service failed ('path invalid or out of bounds') and the simple fallback path was used in {fallbacks} of {r.Turns.Count} turns"));
         // AgOpenWeb's warning that a turn can't be made from here ("U-turn missed: ...", "No U-turn
-        // can be made ...") is what it must do when the tractor is too close to the boundary to turn
-        // (AgOpenGPS sounds "too close" there): noted, not a finding. The operator takes over at it and
-        // the ground left from there is measured as usual. Silence there is RAN-OFF.
-        var warned = r.Said.Where(s => s.Contains("U-turn missed", StringComparison.Ordinal) || s.Contains("No U-turn can be made", StringComparison.Ordinal)).ToList();
-        if (warned.Count > 0)
-            sc.Note(F($"AgOpenWeb warned {warned.Count} time(s) that a U-turn could not be made and the operator should take over: {warned[0]}"));
+        // can be made ..."). Heard before the tractor had driven a planning distance on its pass since
+        // the last turn landed it (or AutoSteer came on), the pass was too short at this end to plan a
+        // turn on (field job J3: landed 8.3 m from the turn line at a narrow corner, where a turn is
+        // planned from 10 m out; AgOpenGPS sounds "too close" there): the warning is the right thing to
+        // do, noted. Heard after a longer run on the pass, AgOpenWeb had room to plan the turn and
+        // didn't: TURN-MISSED. Silence where no turn can be made is RAN-OFF.
+        const double TooShortToPlanM = 5;
+        var tooShort = r.TurnWarnings.Where(w => w.LegM < TooShortToPlanM).ToList();
+        var hadRoom = r.TurnWarnings.Where(w => w.LegM >= TooShortToPlanM).ToList();
+        if (tooShort.Count > 0)
+            sc.Note(F($"AgOpenWeb warned that a U-turn could not be made {tooShort[0].LegM:0.0} m after the tractor started on its pass, too short at this end to plan one: {tooShort[0].Text}"));
+        if (hadRoom.Count > 0)
+            flag(Severity.Bug, "TURN-MISSED", F($"{hadRoom.Count} U-turn(s) were missed after the tractor had driven {hadRoom[0].LegM:0} m of its pass with AutoSteer on, room to plan the turn: {hadRoom[0].Text}"));
         var cancelled = r.Said.Where(s => s.Contains("cancelled", StringComparison.Ordinal)).ToList();
         if (cancelled.Count > 0)
             flag(Severity.Bug, "TURN-MISSED", F($"{cancelled.Count} U-turn(s) were cancelled while the operator did nothing wrong: {cancelled[0]}"));

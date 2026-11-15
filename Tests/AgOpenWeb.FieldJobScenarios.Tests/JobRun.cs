@@ -260,6 +260,15 @@ public sealed class JobRun : IAsyncDisposable
     public (int Pass, double ChordM)? ArrowAtEdge;
     public readonly List<TurnRecord> Turns = new();
     public readonly List<string> Said = new();
+    /// <summary>Metres driven with AutoSteer on since the last U-turn ended or AutoSteer came on
+    /// (0 while a turn is driven or AutoSteer is off): how much of its pass AgOpenWeb had to plan
+    /// the next turn on.</summary>
+    public double LegM;
+    /// <summary>AgOpenWeb's warnings that a U-turn can't be made from here ("U-turn missed",
+    /// "No U-turn can be made"), each with <see cref="LegM"/> when it was heard.</summary>
+    public readonly List<(string Text, double LegM)> TurnWarnings = new();
+    public static bool IsTurnWarning(string text) =>
+        text.Contains("U-turn missed", StringComparison.Ordinal) || text.Contains("No U-turn can be made", StringComparison.Ordinal);
     public readonly List<string> Problems = new();
     public readonly List<string> Notes = new();
     /// <summary>"End of field reached" said by AgOpenWeb, then a U-turn it made after all: when and where.</summary>
@@ -674,6 +683,7 @@ public sealed class JobRun : IAsyncDisposable
                 if (HandSteer != null) cmd = HandSteer();
                 var yt = c.YouTurn;
                 bool executing = yt?.IsExecuting == true;
+                LegM = engaged && !executing ? LegM + Math.Abs(Truth.SpeedKmh) / 3.6 * FixSeconds : 0;
                 if (executing && !wasExecuting)
                 {
                     // AgOpenWeb said the field was done, then turned onto another pass after all (the
@@ -1158,6 +1168,8 @@ public sealed class JobRun : IAsyncDisposable
                 || (e.Kind == RigEventKind.Status && !e.Text.Contains("Section", StringComparison.OrdinalIgnoreCase))
                 || (e.Kind == RigEventKind.Warning && !e.Text.Contains("No GPS input", StringComparison.Ordinal)))
                 said.Add(e.ToString());
+        foreach (var e in said)
+            if (IsTurnWarning(e)) TurnWarnings.Add((F($"{Seconds:0.0} s: {e}"), LegM));
         return said;
     }
 
