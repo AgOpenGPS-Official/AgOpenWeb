@@ -467,6 +467,7 @@ namespace AgOpenWeb.Services.YouTurn
             isOutOfBounds = true;
             int stopIfWayOut = 0;
             double head = 0;
+            string lastOut = "";
 
             // Walk the start index inward until the generated arc sits inside the turn area
             while (isOutOfBounds)
@@ -479,7 +480,7 @@ namespace AgOpenWeb.Services.YouTurn
 
                 if (stopIfWayOut == 300 || curveIndex < 1 || curveIndex > (input.GuidancePoints.Count - 2))
                 {
-                    FailCreate("the arc never fitted inside the turn line, walked back to the start of the pass");
+                    FailCreate($"the arc never fitted inside the turn line, walked back {stopIfWayOut} points to index {curveIndex} of {input.GuidancePoints.Count} ({lastOut})");
                     return false;
                 }
 
@@ -487,6 +488,9 @@ namespace AgOpenWeb.Services.YouTurn
                 if (!input.IsHeadingSameWay) currentPos.Heading += Math.PI;
                 if (currentPos.Heading >= TWO_PI) currentPos.Heading -= TWO_PI;
                 head = currentPos.Heading;
+                if (stopIfWayOut == 1)
+                    _logger.LogDebug("[YouTurn] Arc from index {Idx} ({E:F1},{N:F1}) heading {Deg:F0}°, {Side}",
+                        curveIndex, currentPos.Easting, currentPos.Northing, head * 180 / Math.PI, isTurningRight ? "right" : "left");
 
                 ytList = keyhole
                     ? SagittaTurnGeometry.BuildKeyhole(currentPos, head, isTurningRight, input.TurnRadius, Math.Abs(turnOffset))
@@ -502,6 +506,8 @@ namespace AgOpenWeb.Services.YouTurn
                     if (input.IsPointInsideTurnArea(ytList[i]) != 0)
                     {
                         isOutOfBounds = true;
+                        lastOut = $"point {i} of {ytList.Count} at ({ytList[i].Easting:F1},{ytList[i].Northing:F1}) outside, arc from ({currentPos.Easting:F1},{currentPos.Northing:F1})";
+                        if (stopIfWayOut <= 2 || stopIfWayOut % 50 == 0) _logger.LogDebug("[YouTurn]   try {N}: {Out}", stopIfWayOut, lastOut);
                         break;
                     }
                 }
