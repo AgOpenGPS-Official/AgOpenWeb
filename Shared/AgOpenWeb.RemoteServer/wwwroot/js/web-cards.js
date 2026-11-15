@@ -178,11 +178,17 @@ const WebCards = (() => {
     for (const s of last.slice(0, MAX)) add(s);
   });
 
-  // Cards that were open when this browser last left.
-  try {
-    const st = JSON.parse(localStorage.getItem(KEY) || '{}');
-    if (st.shown) for (const s of (st.cards || []).slice(0, MAX)) add(s);
-  } catch (_) {}
+  // Cards that were open when this browser last left, once the host says it runs web cards
+  // (the Hello frame: they can be switched off, and then none open).
+  let restored = false;
+  function enable() {
+    if (restored) return;
+    restored = true;
+    try {
+      const st = JSON.parse(localStorage.getItem(KEY) || '{}');
+      if (st.shown) for (const s of (st.cards || []).slice(0, MAX)) add(s);
+    } catch (_) {}
+  }
 
-  return { setBookmarks, render };
+  return { setBookmarks, render, enable };
 })();

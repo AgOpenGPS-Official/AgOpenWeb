@@ -462,7 +462,15 @@ const transport = RemoteTransport.create({
     if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
   },
   onWizard(w) { wizard = w; wizardDirty = true; },
-  onHello(id) { myClientId = id; updateControlUi(); claimSeatIfFree(); Vt.render(); WebCards.render(); },
+  onHello(id, features) {
+    // The switchable features this host runs (SwitchedFeature bits): the rest stay
+    // hidden (the fs-no-* classes on the body, css/base.css).
+    document.body.classList.toggle('fs-no-vt', !(features & 1));
+    document.body.classList.toggle('fs-no-webcards', !(features & 2));
+    document.body.classList.toggle('fs-no-agshare', !(features & 4));
+    if (features & 2) WebCards.enable();
+    myClientId = id; updateControlUi(); claimSeatIfFree(); Vt.render(); WebCards.render();
+  },
   onControlState(s) { lastControl = s; updateControlUi(); claimSeatIfFree(); Vt.render(); WebCards.render(); },
   onWebCards(list) { WebCards.setBookmarks(list); },
   onSound(id) { Sounds.play(id); },

@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="/css/cards.css">
   <link rel="stylesheet" href="/css/tool-panels.css">
 </head>
-<body>
+<body class="fs-no-vt fs-no-webcards fs-no-agshare"><!-- features switched off (FeatureSwitches): cleared by the Hello frame (onHello) for those the host runs -->
   <!-- Contents, top to bottom (each panel's look is in css/, its code in js/):
        - the map (#ck) and what sits on it: status bar, light bar (#hud-top), Ref Nudge,
          map-tap hints, draw toolbar, on-screen buttons, U-turn indicator;
@@ -294,8 +294,8 @@
       <button class="sa-scale" data-scale="150">150%</button>
     </div>
     <!-- Where the VT and web cards go on this screen (CardPane in js/card-pane.js, kept by the browser). -->
-    <div class="cfg-label">VT &amp; Web Cards</div>
-    <div class="sa-grid sa-uiscale">
+    <div class="cfg-label fs-cardpane">VT &amp; Web Cards</div>
+    <div class="sa-grid sa-uiscale fs-cardpane">
       <button class="sa-scale sa-cardlay" data-lay="float" title="Over the map">Floating</button>
       <button class="sa-scale sa-cardlay" data-lay="left" title="In a pane left of the map">Left</button>
       <button class="sa-scale sa-cardlay" data-lay="right" title="In a pane right of the map">Right</button>
@@ -1040,8 +1040,8 @@
       <button class="fo-btn" id="fo-drivein"><img class="fo-ic" src="/icons/SteerDriveOn.png">Drive In</button>
       <button class="fo-btn" id="fo-close"><img class="fo-ic" src="/icons/FileClose.png">Close</button>
     </div>
-    <div class="cfg-label" style="margin-top:10px">AgShare</div>
-    <div class="fo-grid">
+    <div class="cfg-label fs-agshare" style="margin-top:10px">AgShare</div>
+    <div class="fo-grid fs-agshare">
       <button class="fo-btn" id="fo-agupload"><img class="fo-ic" src="/icons/AgShare.png">AgShare Upload</button>
       <button class="fo-btn" id="fo-agdownload"><img class="fo-ic" src="/icons/AgShare.png">AgShare Download</button>
       <button class="fo-btn" id="fo-agapi"><img class="fo-ic" src="/icons/AgShare.png">AgShare API</button>

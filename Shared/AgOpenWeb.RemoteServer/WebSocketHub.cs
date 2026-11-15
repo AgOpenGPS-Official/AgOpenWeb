@@ -123,7 +123,7 @@ public sealed class WebSocketHub
             // controller), then claim control. Control is implicit and by connection
             // order: the first client to connect becomes the controller; Acquire is
             // denied for later clients (they observe). No take-over.
-            Write(client, WireCodec.EncodeHello(id.ToString()));
+            Write(client, WireCodec.EncodeHello(id.ToString(), AgOpenWeb.Models.FeatureSwitches.Enabled));
             _authority.Acquire(id, "Browser");
             try
             {
