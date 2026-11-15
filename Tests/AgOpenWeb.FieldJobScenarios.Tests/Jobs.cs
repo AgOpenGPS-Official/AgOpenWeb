@@ -131,7 +131,7 @@ public static class Jobs
         if (r.PathOp is { JudgesCoverage: false } only)
         {
             only.Judge(sc, r, a, flag);
-            JudgeAutoSteer(sc, r, flag);
+            JudgeAutoSteer(sc, r, a, flag);
             return;
         }
         if (r.SliverPasses.Count > 0)
@@ -334,11 +334,16 @@ public static class Jobs
         if (r.PathOp == null && spec.PassCheck) { LapOperator.JudgePassError(sc, r, flag, "the AB line's passes"); JudgeTurnExits(sc, r, flag); }
         JudgeDrawbar(sc, r, flag);
         spec.ExtraJudge?.Invoke(sc, r, flag);
-        JudgeAutoSteer(sc, r, flag);
+        JudgeAutoSteer(sc, r, a, flag);
     }
 
+    /// <summary>Ground left, as a share of the cultivated area, below which a refused U-turn
+    /// came at the end of the field: a few square metres of the grid's rounding and the wedges
+    /// the turns leave, not a pass.</summary>
+    private const double RefusedWithNothingLeft = 0.01;
+
     /// <summary>AutoSteer dropping out on its own, and the tractor running off the field.</summary>
-    private static void JudgeAutoSteer(Scenario sc, JobRun r, Action<Severity, string, string> flag)
+    private static void JudgeAutoSteer(Scenario sc, JobRun r, JobAreas a, Action<Severity, string, string> flag)
     {
         var offs = r.Said.Where(s => s.Contains("AutoSteer off", StringComparison.Ordinal)).ToList();
         // At the end of a played route AutoSteer goes off by design, with the reason (P7): the
@@ -351,7 +356,19 @@ public static class Jobs
         if (r.Problems.Any(p => p.StartsWith("HARNESS", StringComparison.Ordinal))) return;
         foreach (var p in r.Problems)
         {
-            if (p.Contains("refused the U-turn", StringComparison.Ordinal)) flag(Severity.Bug, "TURN-REFUSED", p);
+            // A refusal is a finding when it left ground to work: what is left beyond the strips
+            // between passes, the pass ends, the obstacles, the boundary and the corners, as
+            // FIELD-LEFT-UNDONE counts it. With none left the field was done and the turn had
+            // nowhere to go (J8's last corner: 95.6 % sprayed, the passes there 10 m, 1 m, 0 m of
+            // cultivated ground, no loop at 8 m radius fits): the refusal is right, and noted.
+            if (p.Contains("refused the U-turn", StringComparison.Ordinal))
+            {
+                double left = a.Missed - a.MissedBetweenPasses - a.MissedAtEnds - a.MissedAtObstacles - a.MissedAlongBoundary - a.MissedLeftInMiddle - a.MissedAtCorners;
+                if (!r.ShortStopped && left <= RefusedWithNothingLeft * a.Work)
+                    sc.Note(F($"AgOpenWeb refused a U-turn with the field done ({Pct(left, a.Work)} of the cultivated area left outside the strips between passes, the pass ends and the boundary); the operator took over and the job stopped there: ") + p);
+                else
+                    flag(Severity.Bug, "TURN-REFUSED", F($"{p}; {left:0} m² ({Pct(left, a.Work)}) of the cultivated area left to work"));
+            }
             // A missed turn the app warned about is noted (from what it said); the operator taking
             // over at the warning, as a farmer would, is what the job did, not a finding.
             // A blocked turn (it would swing into a hard boundary or an obstacle, #698) is the app
