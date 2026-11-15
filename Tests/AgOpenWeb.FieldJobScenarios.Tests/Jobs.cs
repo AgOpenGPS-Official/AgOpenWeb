@@ -68,8 +68,14 @@ public static class Jobs
         Assert.That(harness, Is.Empty, "the harness itself failed: " + string.Join("; ", harness.Select(h => h.Value.First.Message)));
     }
 
+    /// <summary>
+    /// Whether AGOPENWEB_SCENARIO_ONLY names this job: its code exactly, or its letter alone for every
+    /// job of that letter (J for the careful operator's jobs). Not a substring: J1 picked J10–J19 too,
+    /// and a comparison of six jobs ran the whole rig fixture (2026-11-15).
+    /// </summary>
     public static bool Want(string? only, string code) =>
-        string.IsNullOrEmpty(only) || only.Split(',').Any(o => code.Contains(o.Trim(), StringComparison.OrdinalIgnoreCase));
+        string.IsNullOrEmpty(only) || only.Split(',').Select(o => o.Trim()).Any(o =>
+            o.Length == 1 ? code.StartsWith(o, StringComparison.OrdinalIgnoreCase) : code.Equals(o, StringComparison.OrdinalIgnoreCase));
 
     public static async Task<JobAreas?> RunAsync(Journal journal, string op, JobSpec spec)
     {

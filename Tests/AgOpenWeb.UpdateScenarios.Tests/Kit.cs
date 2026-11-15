@@ -12,8 +12,10 @@ public static class Kit
 {
     public static string F(FormattableString s) => s.ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>The code exactly, or its letter alone for every scenario of that letter (not a prefix: K1 picked K10 and K11 too).</summary>
     public static bool Want(string? only, string code) =>
-        only == null || only.Split(',').Any(o => code.StartsWith(o.Trim(), StringComparison.OrdinalIgnoreCase));
+        only == null || only.Split(',').Select(o => o.Trim()).Any(o =>
+            o.Length == 1 ? code.StartsWith(o, StringComparison.OrdinalIgnoreCase) : code.Equals(o, StringComparison.OrdinalIgnoreCase));
 
     public static string NewDataRoot(string code) =>
         Path.Combine(Path.GetTempPath(), "aow-update-" + Safe(code) + "-" + Guid.NewGuid().ToString("N")[..8]);
