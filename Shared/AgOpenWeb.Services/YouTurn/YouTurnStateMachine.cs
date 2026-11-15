@@ -170,8 +170,8 @@ public sealed class YouTurnStateMachine
         bool alignedReverse = Math.Abs(headingDiff) > (Math.PI - AlignmentTolerance);
         bool isAlignedWithABLine = alignedForward || alignedReverse;
 
-        // Distance-to-headland raycast is valid only when the tractor is aligned with the track;
-        // otherwise heading swings mid-turn create spurious proximity readings.
+        // The distance to the end of the pass is measured only when the tractor is aligned with
+        // the track; otherwise heading swings mid-turn create spurious proximity readings.
         double travelHeading = abHeading;
         if (!headingSameWay)
         {
@@ -196,7 +196,7 @@ public sealed class YouTurnStateMachine
         };
 
         turn.DistanceToHeadland = isAlignedWithABLine
-            ? RaycastDistanceToHeadland(passPoint, travelHeading, ctx.HeadlandLine, headingSameWay, turn.YouTurnCounter)
+            ? DistanceToPassEnd(in ctx, track, guidance, passPoint, headingSameWay)
             : double.MaxValue;
 
         turn.CurrentZone = DetermineZone(currentPosition.Easting, currentPosition.Northing, ctx.Boundary, ctx.HeadlandLine);
@@ -216,28 +216,6 @@ public sealed class YouTurnStateMachine
 
         // ── TURN CREATION ───────────────────────────────────────────────
         bool canCreateTurn = isInCultivatedArea && headlandInRange;
-        // On a curve the headland ahead is found by a straight ray along the heading, which
-        // leaves the field early on the outside of a bend while the pass runs on. Whether the
-        // next pass has room is judged at that end, so mid-pass a turn was refused and "End of
-        // field reached" said, then the turn made at the real end (field job J10, a recorded
-        // S-curve). The ray's direction is the reference curve's heading at its nearest point,
-        // which on a pass far out from an S-shaped reference is not the pass's own, so the ray
-        // can also cross the pass and meet the headland beside it. The pass itself is walked
-        // ahead: when it goes on in the field past the ray's end, the end is further on and is
-        // judged once the ray finds it. The walk stops at twice the margin past the ray (it is
-        // counted from the nearest point of the offset curve, about a metre either way).
-        if (canCreateTurn && turn.TurnPath == null && !turn.IsExecuting && track.Points.Count > 2)
-        {
-            const double RayShortBy = 5.0;
-            double along = _pathing.LandingLength(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
-                passPoint, !headingSameWay, 0, stopAt: turn.DistanceToHeadland + 2 * RayShortBy);
-            if (along > turn.DistanceToHeadland + RayShortBy)
-            {
-                canCreateTurn = false;
-                _logger.LogDebug("[YouTurn] Curve: the pass runs on {Along:F1}m+ in the field past the headland the straight line meets at {Dist:F1}m - the end is further on",
-                    along, turn.DistanceToHeadland);
-            }
-        }
         if (!canCreateTurn && ctx.IsSkipWorkedMode && isInHeadlandZone && isAlignedWithABLine
             && turn.SnakeSequence != null && turn.TurnPath == null && !turn.IsExecuting
             && _pathing.LandingLength(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
@@ -330,9 +308,8 @@ public sealed class YouTurnStateMachine
         // either and sounds "too close". Said once, before the headland. Not after an end of field
         // or a refused turn (the operator was told then). Only at the pass's last crossing: a pass
         // that cuts across a corner of the cultivated area and comes back into it further on (field
-        // jobs W1 and J3 on Baetas, at the start) has its end there, and on a curve the straight ray
-        // can meet the headland early on the outside of a bend while the pass runs on (field job
-        // J10). The pass is walked ahead past the crossing for cultivated ground. Not with skip
+        // jobs W1 and J3 on Baetas, at the start) has its end there. The pass is walked ahead past
+        // the crossing for cultivated ground. Not with skip
         // worked passes and the order planned: the end of the pass is judged in the headland,
         // heading out (above), with a turn or "End of field reached"; on a pass too short to plan
         // on (field job W1, the narrow end of Baetas) the missed turn was said first, where the
@@ -1740,49 +1717,96 @@ public sealed class YouTurnStateMachine
         effects.StatusMessage = $"Following path {guidance.HowManyPathsAway} ({widthMinusOverlap * Math.Abs(guidance.HowManyPathsAway):F1}m offset)";
     }
 
-    private double RaycastDistanceToHeadland(
-        Position currentPosition,
-        double headingRadians,
-        IReadOnlyList<Vec3> headlandLine,
-        bool isHeadingSameWay,
-        int counter)
+    // The pass the tractor is on, as the turn builder walks it (YouTurnCreationService.PassForTurn),
+    // and its end ahead (PassEnds.Find: the one definition of where a pass ends), kept until the
+    // pass, the way along it, the track or the field changes; the end is searched again only once
+    // the tractor is past it. A cycle then costs a nearest-point search along the pass and no
+    // polygon work (the hot-path budgets). This replaced a straight ray along the heading to the
+    // nearest turn-line edge, which on a curve left the field early on the outside of a bend while
+    // the pass ran on (field job J10), and on an AB line found the entry crossing driven in over.
+    private sealed class PassAhead
     {
-        if (headlandLine.Count < 3) return double.MaxValue;
+        public Models.Track.Track? Track;
+        public double Offset;
+        public bool SameWay;
+        public Boundary? Boundary;
+        public IReadOnlyList<Vec3>? TurnLine;
+        public long FieldStamp;
+        public List<Vec3> Points = new();
+        public PassEnd? End;
+        public int SearchedFrom = -1;
+    }
+    private readonly PassAhead _passAhead = new();
 
-        double minDistance = double.MaxValue;
-        var pos = new Vec2(currentPosition.Easting, currentPosition.Northing);
-        var dir = new Vec2(Math.Sin(headingRadians), Math.Cos(headingRadians));
-
-        int intersectionCount = 0;
-        int n = headlandLine.Count;
-        for (int i = 0; i < n; i++)
+    /// <summary>
+    /// Metres along the pass from <paramref name="passPoint"/> to where the pass leaves the turn
+    /// area ahead; <see cref="double.MaxValue"/> when it doesn't (past the last crossing).
+    /// </summary>
+    private double DistanceToPassEnd(in TickContext ctx, Models.Track.Track track, GuidanceWorkingState guidance,
+        Position passPoint, bool headingSameWay)
+    {
+        var turnLine = ctx.HeadlandLine!;
+        if (turnLine.Count < 3) return double.MaxValue;
+        // The pass is where the tool runs (passPoint: the pivot moved by the tool offset), not the
+        // line the pivot steers: on the edge pass with a side-shift mower the pivot's line runs in
+        // the headland the whole way and has no end (field job J12).
+        double width = _configStore.ActualToolWidth - _configStore.Tool.Overlap;
+        double offset = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, width, guidance.NudgeOffset);
+        long stamp = SnakeFieldStamp(ctx.Boundary, turnLine);
+        var p = _passAhead;
+        if (!ReferenceEquals(track, p.Track) || offset != p.Offset || headingSameWay != p.SameWay
+            || !ReferenceEquals(ctx.Boundary, p.Boundary) || !ReferenceEquals(turnLine, p.TurnLine) || stamp != p.FieldStamp)
         {
-            var p1 = headlandLine[i];
-            var p2 = headlandLine[(i + 1) % n];
+            p.Track = track;
+            p.Offset = offset;
+            p.SameWay = headingSameWay;
+            p.Boundary = ctx.Boundary;
+            p.TurnLine = turnLine;
+            p.FieldStamp = stamp;
+            var outer = ctx.Boundary?.OuterBoundary;
+            p.Points = outer != null && outer.IsValid
+                ? YouTurnCreationService.PassForTurn(track, outer.Points, offset).Pass
+                : YouTurnCreationService.PassForTurn(track, turnLine, offset).Pass;
+            p.End = null;
+            p.SearchedFrom = -1;
+        }
+        if (p.Points.Count < 2) return double.MaxValue;
 
-            var edge = new Vec2(p2.Easting - p1.Easting, p2.Northing - p1.Northing);
-            var toP1 = new Vec2(p1.Easting - pos.Easting, p1.Northing - pos.Northing);
-
-            double cross = dir.Easting * edge.Northing - dir.Northing * edge.Easting;
-            if (Math.Abs(cross) < 1e-10) continue;
-
-            double t = (toP1.Easting * edge.Northing - toP1.Northing * edge.Easting) / cross;
-            double u = (toP1.Easting * dir.Northing - toP1.Northing * dir.Easting) / cross;
-
-            if (t > 0 && u >= 0 && u <= 1)
+        int near = PassEnds.NearestIndex(p.Points, passPoint.Easting, passPoint.Northing);
+        int step = headingSameWay ? 1 : -1;
+        void Search(int from)
+        {
+            p.End = PassEnds.Find(p.Points, from, headingSameWay, q => _headlandIndex.Contains(turnLine, q.Easting, q.Northing), turnLine);
+            p.SearchedFrom = from;
+            if (p.End is { } e)
+                _logger.LogDebug("[YouTurn] End of pass {Pass} ahead at ({E:F1},{N:F1}), point {Idx} of {Count}, from point {From}",
+                    guidance.HowManyPathsAway, e.Crossing.Easting, e.Crossing.Northing, e.OutsideIndex, p.Points.Count, from);
+            else
+                _logger.LogDebug("[YouTurn] Pass {Pass} does not leave the turn area ahead of point {From} of {Count}",
+                    guidance.HowManyPathsAway, from, p.Points.Count);
+        }
+        // The end found is kept while the tractor is before it; once past it (over the crossing,
+        // as the straight ray then found nothing ahead), the next end on from there, if any.
+        for (int tries = 0; tries < 3; tries++)
+        {
+            if (p.End is { } end)
             {
-                intersectionCount++;
-                if (t < minDistance) minDistance = t;
+                if ((end.InsideIndex - near) * step >= 0)
+                {
+                    double d = PassEnds.DistanceAlong(p.Points, near, headingSameWay, passPoint.Easting, passPoint.Northing, end);
+                    if (d >= 0) return d;
+                    Search(end.OutsideIndex); // just over the crossing, nearest to the point before it
+                }
+                else
+                    Search(near);
+            }
+            else
+            {
+                if (p.SearchedFrom >= 0 && (near - p.SearchedFrom) * step >= 0) return double.MaxValue;
+                Search(near);
             }
         }
-
-        if (counter % 120 == 0)
-        {
-            _logger.LogDebug("[Headland] Raycast: pos=({E:F1},{N:F1}), heading={Deg:F0}°, intersections={Hits}, minDist={Dist:F1}m, isHeadingSameWay={Way}",
-                pos.Easting, pos.Northing, headingRadians * 180 / Math.PI, intersectionCount, minDistance, isHeadingSameWay);
-        }
-
-        return minDistance;
+        return double.MaxValue;
     }
 
     private TractorZone DetermineZone(
