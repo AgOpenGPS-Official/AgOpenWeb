@@ -10,6 +10,7 @@ using AgOpenWeb.Services.PathPlanning;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace AgOpenWeb.Services.YouTurn
@@ -72,6 +73,8 @@ namespace AgOpenWeb.Services.YouTurn
             _currentInput = input;
             turnLineEndIndex = -1;
             _failReason = null;
+            _outsideBy = double.MaxValue;
+            _neverFitted = false;
 
             // Validate input
             if (input.MakeUTurnCounter < 4)
@@ -135,6 +138,7 @@ namespace AgOpenWeb.Services.YouTurn
             {
                 output.Success = false;
                 output.FailureReason = _failReason ?? "Turn creation failed - path invalid or out of bounds";
+                if (_neverFitted && _outsideBy < double.MaxValue) output.OutsideTurnLineBy = _outsideBy;
                 output.IsOutOfBounds = true;
             }
 
@@ -243,19 +247,15 @@ namespace AgOpenWeb.Services.YouTurn
 
                         if (stopIfWayOut == 300 || curveIndex < 1 || curveIndex > (input.GuidancePoints.Count - 2))
                         {
-                            // For some reason it doesn't go inside boundary
-                            FailCreate("the arc never fitted inside the turn line, walked back to the start of the pass");
+                            // Nowhere along the pass: the geometry refuses this turn, and the operator is
+                            // told by how much (OutsideTurnLineBy).
+                            _neverFitted = true;
+                            FailCreate(string.Format(CultureInfo.InvariantCulture,
+                                "no arc of this radius fitted inside the turn line anywhere along the pass; the best try fell {0:0.00} m outside it", _outsideBy));
                             return false;
                         }
 
-                        for (int i = 0; i < ytList.Count; i++)
-                        {
-                            if (input.IsPointInsideTurnArea(ytList[i]) != 0)
-                            {
-                                isOutOfBounds = true;
-                                break;
-                            }
-                        }
+                        isOutOfBounds = OutsideTurnLineBy(input, ytList) > 0;
                     }
                     inClosestTurnPt.CurveIndex = curveIndex;
 
@@ -467,7 +467,6 @@ namespace AgOpenWeb.Services.YouTurn
             isOutOfBounds = true;
             int stopIfWayOut = 0;
             double head = 0;
-            string lastOut = "";
 
             // Walk the start index inward until the generated arc sits inside the turn area
             while (isOutOfBounds)
@@ -480,8 +479,20 @@ namespace AgOpenWeb.Services.YouTurn
 
                 if (stopIfWayOut == 300 || curveIndex < 1 || curveIndex > (input.GuidancePoints.Count - 2))
                 {
-                    FailCreate($"the arc never fitted inside the turn line, walked back {stopIfWayOut} points to index {curveIndex} of {input.GuidancePoints.Count} ({lastOut})");
-                    return false;
+                    // Nowhere along the pass. The sagitta's lead-in swings to the outside of the turn
+                    // first, 4 m at this radius onto a pass one radius over (R(1 - cos 60°)), which a
+                    // pass along a fence hasn't got: the fence runs with it, so no start fits. AgOpenGPS's
+                    // omega turn needs half that room, so it is tried before giving up, as the wide turn
+                    // falls back to it. The tractor on the field's edge pass turning in is every field.
+                    _logger.LogDebug("[YouTurn] The sagitta arc fitted nowhere along the pass (at best {By:F2} m outside the turn line); the omega turn instead", _outsideBy);
+                    ytList.Clear();
+                    ytList2.Clear();
+                    nextCurve.Clear();
+                    youTurnPhase = 0;
+                    isOutOfBounds = false;
+                    isOutSameCurve = false;
+                    arcStart = null;
+                    return CreateCurveOmegaTurn(input, turnOffset);
                 }
 
                 Vec3 currentPos = input.GuidancePoints[curveIndex];
@@ -501,16 +512,7 @@ namespace AgOpenWeb.Services.YouTurn
                     return false;
                 }
 
-                for (int i = 0; i < ytList.Count; i++)
-                {
-                    if (input.IsPointInsideTurnArea(ytList[i]) != 0)
-                    {
-                        isOutOfBounds = true;
-                        lastOut = $"point {i} of {ytList.Count} at ({ytList[i].Easting:F1},{ytList[i].Northing:F1}) outside, arc from ({currentPos.Easting:F1},{currentPos.Northing:F1})";
-                        if (stopIfWayOut <= 2 || stopIfWayOut % 50 == 0) _logger.LogDebug("[YouTurn]   try {N}: {Out}", stopIfWayOut, lastOut);
-                        break;
-                    }
-                }
+                isOutOfBounds = OutsideTurnLineBy(input, ytList) > 0;
             }
             inClosestTurnPt.CurveIndex = curveIndex;
 
@@ -1702,6 +1704,46 @@ namespace AgOpenWeb.Services.YouTurn
         }
 
         private string? _failReason;
+
+        /// <summary>The least, over every arc start tried, of how far the arc fell outside the turn
+        /// line; MaxValue until a try fell outside. With <see cref="_neverFitted"/> it is what the
+        /// best try lacked, told to the operator (<see cref="YouTurnCreationOutput.OutsideTurnLineBy"/>).</summary>
+        private double _outsideBy = double.MaxValue;
+        private bool _neverFitted;
+
+        /// <summary>
+        /// How far <paramref name="arc"/> falls outside the turn line: the farthest of its points
+        /// outside it, 0 with all of them inside. Keeps the least over the tries (<see cref="_outsideBy"/>).
+        /// </summary>
+        private double OutsideTurnLineBy(YouTurnCreationInput input, List<Vec3> arc)
+        {
+            double worst = 0;
+            IReadOnlyList<Vec3>? line = null;
+            for (int i = 0; i < arc.Count; i++)
+            {
+                if (input.IsPointInsideTurnArea(arc[i]) == 0) continue;
+                line ??= input.BoundaryTurnLines[Math.Clamp(closestTurnPt.TurnLineNum, 0, input.BoundaryTurnLines.Count - 1)].Points;
+                double d = DistanceToRing(arc[i], line);
+                // On the line itself (its own rounding) still counts as outside for the fit.
+                if (d < 0.001) d = 0.001;
+                if (d > worst) worst = d;
+            }
+            if (worst > 0 && worst < _outsideBy) _outsideBy = worst;
+            return worst;
+        }
+
+        private static double DistanceToRing(Vec3 p, IReadOnlyList<Vec3> ring)
+        {
+            double best = double.MaxValue;
+            for (int i = 0; i < ring.Count; i++)
+            {
+                var a = ring[i];
+                var b = ring[(i + 1) % ring.Count];
+                double d = GeometryMath.PointToSegmentDistance(p.Easting, p.Northing, a.Easting, a.Northing, b.Easting, b.Northing);
+                if (d < best) best = d;
+            }
+            return best;
+        }
 
         #endregion
 

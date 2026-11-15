@@ -153,6 +153,6 @@ public class BoundaryPassArmingTests
 
         Assert.That(tState.TurnPath, Is.Null, "no turn that leaves the field");
         Assert.That(sounded, Is.True, "the creation-failed sound, as before");
-        Assert.That(statuses, Does.Contain("No U-turn fits inside the boundary at this end - take over manually"));
+        Assert.That(statuses, Has.Some.StartsWith("No U-turn fits inside the boundary at this end").And.Some.EndsWith("take over manually"));
     }
 }

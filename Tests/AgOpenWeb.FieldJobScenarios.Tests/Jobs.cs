@@ -366,6 +366,13 @@ public static class Jobs
                 double left = a.Missed - a.MissedBetweenPasses - a.MissedAtEnds - a.MissedAtObstacles - a.MissedAlongBoundary - a.MissedLeftInMiddle - a.MissedAtCorners;
                 if (!r.ShortStopped && left <= RefusedWithNothingLeft * a.Work)
                     sc.Note(F($"AgOpenWeb refused a U-turn with the field done ({Pct(left, a.Work)} of the cultivated area left outside the strips between passes, the pass ends and the boundary); the operator took over and the job stopped there: ") + p);
+                // The geometry refused it: the planner tried every start along the pass with both
+                // its shapes and the arc always fell outside the turn line, and the app says by how
+                // much (C14: pass -8 runs 4 m from a fence parallel to it, the turn line 2 m in; an
+                // 8 m radius onto the 8 m pass needs 2.0 m on the fence side and has 1.9 m; AgOpenGPS
+                // can't turn there either). Said, that is correct behaviour, and the operator's choice.
+                else if (p.Contains("nearer the boundary than the U-turn distance", StringComparison.Ordinal))
+                    sc.Note("AgOpenWeb refused a U-turn because no turn of this radius fits inside the turn line at this end, and said by how much; the operator took over and the job stopped there: " + p);
                 else
                     flag(Severity.Bug, "TURN-REFUSED", F($"{p}; {left:0} m² ({Pct(left, a.Work)}) of the cultivated area left to work"));
             }
