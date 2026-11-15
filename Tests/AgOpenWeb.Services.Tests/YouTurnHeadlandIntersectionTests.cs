@@ -22,6 +22,9 @@ namespace AgOpenWeb.Services.Tests;
 /// amount, cascading into the U-turn arc landing perpendicular-offset from
 /// NextTrack. This was sequence-dependent — the perpendicular offset is
 /// non-zero when activation happens before the auto-pass-detect catches up.
+///
+/// The vehicles here start outside the area and drive into it: the point is where the pass
+/// leaves it again, the end of the pass (the crossing driven in over is not, 2026-11-15).
 /// </summary>
 [TestFixture]
 public class YouTurnHeadlandIntersectionTests
@@ -39,7 +42,7 @@ public class YouTurnHeadlandIntersectionTests
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.Value.Easting, Is.EqualTo(0).Within(0.001));
-        Assert.That(result.Value.Northing, Is.EqualTo(50).Within(0.001));
+        Assert.That(result.Value.Northing, Is.EqualTo(100).Within(0.001));
     }
 
     [Test]
@@ -59,14 +62,14 @@ public class YouTurnHeadlandIntersectionTests
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.Value.Easting, Is.EqualTo(0).Within(0.001),
             "Intersection must be on the AB line, not on a vehicle-anchored ray");
-        Assert.That(result.Value.Northing, Is.EqualTo(50).Within(0.001));
+        Assert.That(result.Value.Northing, Is.EqualTo(100).Within(0.001));
     }
 
     [Test]
     public void Returns_PointOnAbLine_WhenAbLineIsNotPerpendicularToHeadland()
     {
         // Diagonal AB + horizontal headland; vehicle off-line.
-        // AB from (-50,-100) to (50,100) crosses N=0 at E=0.
+        // AB from (-50,-100) to (50,100) leaves the area at N=50, E=25.
         var track = MakeAbLine(-50, -100, 50, 100);
         var headland = MakeRectangularHeadland(southN: 0, northN: 50);
         var vehicle = new Vec3(20, -50, 0);
@@ -75,9 +78,9 @@ public class YouTurnHeadlandIntersectionTests
             track, vehicle, headland, headingSameWay: true);
 
         Assert.That(result, Is.Not.Null);
-        Assert.That(result!.Value.Easting, Is.EqualTo(0).Within(0.001),
+        Assert.That(result!.Value.Easting, Is.EqualTo(25).Within(0.001),
             "Intersection must be on the AB line, not biased by vehicle E=20");
-        Assert.That(result.Value.Northing, Is.EqualTo(0).Within(0.001));
+        Assert.That(result.Value.Northing, Is.EqualTo(50).Within(0.001));
     }
 
     [Test]
@@ -85,7 +88,7 @@ public class YouTurnHeadlandIntersectionTests
     {
         // headingSameWay=false (vehicle going B→A). Same property must hold.
         var track = MakeAbLine(0, -100, 0, 100);
-        // Headland behind the vehicle (south). South edge is the close one.
+        // The area ahead of the vehicle going south; it leaves it at the south edge.
         var headland = MakeRectangularHeadland(southN: -100, northN: -50);
         var vehicle = new Vec3(10, 0, 0);
 
@@ -94,7 +97,7 @@ public class YouTurnHeadlandIntersectionTests
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.Value.Easting, Is.EqualTo(0).Within(0.001));
-        Assert.That(result.Value.Northing, Is.EqualTo(-50).Within(0.001));
+        Assert.That(result.Value.Northing, Is.EqualTo(-100).Within(0.001));
     }
 
     private static AgOpenWeb.Models.Track.Track MakeAbLine(double aE, double aN, double bE, double bN) =>

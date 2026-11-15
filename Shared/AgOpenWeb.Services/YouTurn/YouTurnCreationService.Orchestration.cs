@@ -703,7 +703,8 @@ public partial class YouTurnCreationService
                     var intersection = GeometryMath.TryGetSegmentIntersection(
                         p1.Easting, p1.Northing, p2.Easting, p2.Northing,
                         h1.Easting, h1.Northing, h2.Easting, h2.Northing);
-                    if (intersection.HasValue) return intersection;
+                    if (intersection.HasValue && LeavesArea(intersection.Value, p2.Easting - p1.Easting, p2.Northing - p1.Northing, headlandLine))
+                        return intersection;
                 }
             }
             return null;
@@ -763,8 +764,11 @@ public partial class YouTurnCreationService
                 double dyi = intersection.Value.Northing - vehiclePos.Northing;
                 double distSq = dxi * dxi + dyi * dyi;
                 double along = dxi * wayE + dyi * wayN;
+                // Ahead, only where the pass leaves the area: the crossing the tractor drives in
+                // over (entering the field at the start of a job) is not the end of the pass.
                 if (along >= -BehindTolerance)
                 {
+                    if (!LeavesArea(intersection.Value, wayE, wayN, headlandLine)) continue;
                     if (distSq < closestAheadDist) { closestAheadDist = distSq; closestAhead = intersection; }
                 }
                 else if (distSq < closestBehindDist)
@@ -777,6 +781,20 @@ public partial class YouTurnCreationService
 
         // None ahead (the tractor past the last crossing): the closest behind, as before.
         return closestAhead ?? closestBehind;
+    }
+
+    /// <summary>
+    /// Whether a line crossing <paramref name="area"/>'s edge at <paramref name="at"/>, going
+    /// (<paramref name="dirE"/>, <paramref name="dirN"/>), leaves it there: just beyond the crossing
+    /// is outside. The end of a pass is where it leaves the turn area, as AgOpenGPS finds it (the
+    /// first point ahead outside the turn line); a crossing into it is where the pass begins.
+    /// </summary>
+    private static bool LeavesArea(Vec2 at, double dirE, double dirN, IReadOnlyList<Vec3> area)
+    {
+        double len = Math.Sqrt(dirE * dirE + dirN * dirN);
+        if (len < 1e-9) return true;
+        const double Probe = 0.05;
+        return !GeometryMath.IsPointInPolygon(area, at.Easting + dirE / len * Probe, at.Northing + dirN / len * Probe);
     }
 
     // ── Simple geometric fallback ───────────────────────────────────────

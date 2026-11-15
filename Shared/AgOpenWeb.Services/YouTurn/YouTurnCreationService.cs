@@ -71,6 +71,7 @@ namespace AgOpenWeb.Services.YouTurn
             // Store input for helper methods
             _currentInput = input;
             turnLineEndIndex = -1;
+            _failReason = null;
 
             // Validate input
             if (input.MakeUTurnCounter < 4)
@@ -133,7 +134,7 @@ namespace AgOpenWeb.Services.YouTurn
             else
             {
                 output.Success = false;
-                output.FailureReason = "Turn creation failed - path invalid or out of bounds";
+                output.FailureReason = _failReason ?? "Turn creation failed - path invalid or out of bounds";
                 output.IsOutOfBounds = true;
             }
 
@@ -179,7 +180,7 @@ namespace AgOpenWeb.Services.YouTurn
                 case 0: // Find the crossing points
                     if (!FindCurveTurnPoint(input, false))
                     {
-                        FailCreate();
+                        FailCreate("no crossing of the turn line ahead");
                         return false;
                     }
 
@@ -236,14 +237,14 @@ namespace AgOpenWeb.Services.YouTurn
                         ytList = _dubinsService.GeneratePath(currentPos, goal);
                         if (ytList.Count == 0)
                         {
-                            FailCreate();
+                            FailCreate("Dubins made no path");
                             return false;
                         }
 
                         if (stopIfWayOut == 300 || curveIndex < 1 || curveIndex > (input.GuidancePoints.Count - 2))
                         {
                             // For some reason it doesn't go inside boundary
-                            FailCreate();
+                            FailCreate("the arc never fitted inside the turn line, walked back to the start of the pass");
                             return false;
                         }
 
@@ -276,7 +277,7 @@ namespace AgOpenWeb.Services.YouTurn
                     ytList = MoveTurnInsideTurnLine(input, ytList, head, false, false);
                     if (ytList.Count == 0)
                     {
-                        FailCreate();
+                        FailCreate("the arc could not be moved inside the turn line");
                         return false;
                     }
 
@@ -403,7 +404,7 @@ namespace AgOpenWeb.Services.YouTurn
             // path's pivot-to-turn-line check, NOT pivot-to-path-start).
             if (ytList.Count == 0 || Distance(turnLineCrossing, input.PivotPosition) < 3)
             {
-                FailCreate();
+                FailCreate("the turn line crossing is within 3 m of the tractor (too late)");
                 return false;
             }
 
@@ -448,7 +449,7 @@ namespace AgOpenWeb.Services.YouTurn
             // Find the crossing point
             if (!FindCurveTurnPoint(input, false))
             {
-                FailCreate();
+                FailCreate("no crossing of the turn line ahead");
                 return false;
             }
 
@@ -466,6 +467,7 @@ namespace AgOpenWeb.Services.YouTurn
             isOutOfBounds = true;
             int stopIfWayOut = 0;
             double head = 0;
+            string lastOut = "";
 
             // Walk the start index inward until the generated arc sits inside the turn area
             while (isOutOfBounds)
@@ -478,7 +480,7 @@ namespace AgOpenWeb.Services.YouTurn
 
                 if (stopIfWayOut == 300 || curveIndex < 1 || curveIndex > (input.GuidancePoints.Count - 2))
                 {
-                    FailCreate();
+                    FailCreate($"the arc never fitted inside the turn line, walked back {stopIfWayOut} points to index {curveIndex} of {input.GuidancePoints.Count} ({lastOut})");
                     return false;
                 }
 
@@ -486,13 +488,16 @@ namespace AgOpenWeb.Services.YouTurn
                 if (!input.IsHeadingSameWay) currentPos.Heading += Math.PI;
                 if (currentPos.Heading >= TWO_PI) currentPos.Heading -= TWO_PI;
                 head = currentPos.Heading;
+                if (stopIfWayOut == 1)
+                    _logger.LogDebug("[YouTurn] Arc from index {Idx} ({E:F1},{N:F1}) heading {Deg:F0}°, {Side}",
+                        curveIndex, currentPos.Easting, currentPos.Northing, head * 180 / Math.PI, isTurningRight ? "right" : "left");
 
                 ytList = keyhole
                     ? SagittaTurnGeometry.BuildKeyhole(currentPos, head, isTurningRight, input.TurnRadius, Math.Abs(turnOffset))
                     : SagittaTurnGeometry.BuildOffsetArc(currentPos, head, isTurningRight, input.TurnRadius, sagittaPullback, Math.PI);
                 if (ytList.Count == 0)
                 {
-                    FailCreate();
+                    FailCreate("the sagitta arc has no points");
                     return false;
                 }
 
@@ -501,6 +506,8 @@ namespace AgOpenWeb.Services.YouTurn
                     if (input.IsPointInsideTurnArea(ytList[i]) != 0)
                     {
                         isOutOfBounds = true;
+                        lastOut = $"point {i} of {ytList.Count} at ({ytList[i].Easting:F1},{ytList[i].Northing:F1}) outside, arc from ({currentPos.Easting:F1},{currentPos.Northing:F1})";
+                        if (stopIfWayOut <= 2 || stopIfWayOut % 50 == 0) _logger.LogDebug("[YouTurn]   try {N}: {Out}", stopIfWayOut, lastOut);
                         break;
                     }
                 }
@@ -523,7 +530,7 @@ namespace AgOpenWeb.Services.YouTurn
             ytList = MoveTurnInsideTurnLine(input, ytList, head, false, false);
             if (ytList.Count == 0)
             {
-                FailCreate();
+                FailCreate("the arc could not be moved inside the turn line");
                 return false;
             }
 
@@ -590,7 +597,7 @@ namespace AgOpenWeb.Services.YouTurn
                         if (input.TrackMode == 32 || input.TrackMode == 64) // waterPivot or bndCurve
                             youTurnPhase = 11; // Ignore
                         else
-                            FailCreate();
+                            FailCreate("wide turn: no crossing of the turn line ahead");
                         return false;
                     }
 
@@ -636,7 +643,7 @@ namespace AgOpenWeb.Services.YouTurn
                         int cnt4 = ytList.Count;
                         if (cnt4 == 0)
                         {
-                            FailCreate();
+                            FailCreate("wide turn: the entry arc has no points");
                             return false;
                         }
 
@@ -656,7 +663,7 @@ namespace AgOpenWeb.Services.YouTurn
                             ytList = MoveTurnInsideTurnLine(input, ytList, head, true, false);
                             if (ytList.Count == 0)
                             {
-                                FailCreate();
+                                FailCreate("wide turn: the entry arc could not be moved inside the turn line");
                                 return false;
                             }
                             youTurnPhase = 1;
@@ -665,7 +672,7 @@ namespace AgOpenWeb.Services.YouTurn
 
                         if (stopIfWayOut == 300 || inClosestTurnPt.CurveIndex < 1 || inClosestTurnPt.CurveIndex > (input.GuidancePoints.Count - 2))
                         {
-                            FailCreate();
+                            FailCreate("wide turn: the entry arc never fitted inside the turn line");
                             return false;
                         }
 
@@ -678,7 +685,7 @@ namespace AgOpenWeb.Services.YouTurn
                         // Set the flag to Critical stop machine
                         if (Distance(ytList[0], input.PivotPosition) < 3)
                         {
-                            FailCreate();
+                            FailCreate("wide turn: the entry arc starts within 3 m of the tractor (too late)");
                             return false;
                         }
                     }
@@ -697,7 +704,7 @@ namespace AgOpenWeb.Services.YouTurn
 
                     if (!FindCurveOutTurnPoint(nextCurve, startOfTurnPt, isTurnLineSameWay))
                     {
-                        FailCreate();
+                        FailCreate("wide turn: the next pass does not cross the turn line");
                         return false;
                     }
                     outClosestTurnPt = new TurnClosePoint(closestTurnPt);
@@ -729,7 +736,7 @@ namespace AgOpenWeb.Services.YouTurn
                         int cnt3 = ytList2.Count;
                         if (cnt3 == 0)
                         {
-                            FailCreate();
+                            FailCreate("wide turn: the exit arc has no points");
                             return false;
                         }
 
@@ -747,7 +754,7 @@ namespace AgOpenWeb.Services.YouTurn
                             ytList2 = MoveTurnInsideTurnLine(input, ytList2, head, true, true);
                             if (ytList2.Count == 0)
                             {
-                                FailCreate();
+                                FailCreate("wide turn: the exit arc could not be moved inside the turn line");
                                 return false;
                             }
                             youTurnPhase = 2;
@@ -756,7 +763,7 @@ namespace AgOpenWeb.Services.YouTurn
 
                         if (outClosestTurnPt.CurveIndex < 1 || outClosestTurnPt.CurveIndex > (nextCurve.Count - 2))
                         {
-                            FailCreate();
+                            FailCreate("wide turn: the exit arc never fitted inside the turn line");
                             return false;
                         }
 
@@ -786,7 +793,7 @@ namespace AgOpenWeb.Services.YouTurn
 
                     if (startClosestTurnPt.TurnLineNum != goalClosestTurnPt.TurnLineNum)
                     {
-                        FailCreate();
+                        FailCreate("wide turn: the two arcs are on different turn lines");
                         return false;
                     }
 
@@ -846,7 +853,7 @@ namespace AgOpenWeb.Services.YouTurn
                     // next reach back towards it, so the path's first point is no measure).
                     if (Distance(startOfTurnPt.ClosePt, input.PivotPosition) < 3)
                     {
-                        FailCreate();
+                        FailCreate("wide turn: the turn starts within 3 m of the tractor (too late)");
                         return false;
                     }
 
@@ -947,7 +954,7 @@ namespace AgOpenWeb.Services.YouTurn
 
             if (!FindCurveTurnPoint(input, true))
             {
-                FailCreate();
+                FailCreate("K turn: no crossing of the turn line ahead");
                 return false;
             }
 
@@ -973,7 +980,7 @@ namespace AgOpenWeb.Services.YouTurn
                 ytList.Clear();
                 if (curveIndex >= input.GuidancePoints.Count || curveIndex < 0)
                 {
-                    FailCreate();
+                    FailCreate("K turn: the start index is off the pass");
                     return false;
                 }
                 Vec3 currentPos = input.GuidancePoints[curveIndex];
@@ -1150,6 +1157,11 @@ namespace AgOpenWeb.Services.YouTurn
             else
                 j = input.CurrentLocationIndex;
 
+            // The end of the pass is the first point outside after the pass has been inside: the
+            // tractor driving in over the turn line (the start of a job) is outside at first, and
+            // the point under it is where the pass begins, not where it ends.
+            bool seenInside = false;
+
             for (; j > 0 && j < input.GuidancePoints.Count; j += count)
             {
                 if (j < 0)
@@ -1174,7 +1186,8 @@ namespace AgOpenWeb.Services.YouTurn
                 }
 
                 int turnIndex = input.IsPointInsideTurnArea(input.GuidancePoints[j]);
-                if (turnIndex != 0)
+                if (turnIndex == 0) seenInside = true;
+                else if (seenInside)
                 {
                     // IsPointInsideTurnArea returns 0 = inside, non-zero = outside as a FLAG
                     // (the AgOpenWeb lambda returns 1), NOT a boundary index. The turn line to
@@ -1677,11 +1690,18 @@ namespace AgOpenWeb.Services.YouTurn
             return Math.PI - Math.Abs(Math.Abs(ytList[ytList.Count - 2].Heading - ytList[1].Heading) - Math.PI) < PI_BY_2;
         }
 
-        private void FailCreate()
+        /// <summary>The turn can't be built; <paramref name="reason"/> says why, for the log and the
+        /// caller (<see cref="YouTurnCreationOutput.FailureReason"/>): every failure used to read the
+        /// same "path invalid or out of bounds", and the fallback's refusal then blamed the boundary.</summary>
+        private void FailCreate(string reason)
         {
             isOutOfBounds = true;
             youTurnPhase = 11;
+            _failReason = reason;
+            _logger.LogDebug("[YouTurn] Turn not built: {Reason}", reason);
         }
+
+        private string? _failReason;
 
         #endregion
 

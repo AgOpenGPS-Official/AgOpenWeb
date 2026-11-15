@@ -53,6 +53,73 @@ public class TurnReferenceAheadTests
         Assert.That(r!.Value.Northing, Is.EqualTo(-40).Within(1e-6));
     }
 
+    // Driving into the field across the turn line at the start of a job (harness C11, C15, J12,
+    // J20, 2026-11-13 on): the crossing under the tractor was taken for the end of the pass, the
+    // turn was built there, didn't fit, and AgOpenWeb told the operator to take over with the
+    // whole field to do. The end is where the pass leaves the area, as in AgOpenGPS (the walk
+    // ahead to the first point outside the turn line).
+    [TestCase(-40.5)] // just short of the line
+    [TestCase(-40.0)] // on it
+    [TestCase(-39.5)] // just over it
+    public void Driving_into_the_field_the_crossing_under_the_tractor_is_not_the_end(double y)
+    {
+        var r = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(Track, new Vec3(0, y, 0), Headland, headingSameWay: true);
+        Assert.That(r, Is.Not.Null);
+        Assert.That(r!.Value.Northing, Is.EqualTo(-27).Within(1e-6));
+    }
+
+    [TestCase(-40.5)]
+    [TestCase(-40.0)]
+    [TestCase(-39.5)]
+    public void Driving_into_the_field_on_a_curve_the_crossing_under_the_tractor_is_not_the_end(double y)
+    {
+        var curve = new AgOpenWeb.Models.Track.Track
+        {
+            Name = "curve",
+            Points = Enumerable.Range(0, 201).Select(i => new Vec3(0, -100 + i, 0)).ToList(),
+        };
+        var r = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(curve, new Vec3(0, y, 0), Headland, headingSameWay: true);
+        Assert.That(r, Is.Not.Null);
+        Assert.That(r!.Value.Northing, Is.EqualTo(-27).Within(1e-6));
+    }
+
+    // The same in the turn builder (FindCurveTurnPoint): walking ahead from the tractor to the first
+    // point outside the turn area, the tractor still on the turn line as it drives in found the
+    // point under it, and the turn was failed as too late (the crossing within 3 m).
+    [TestCase(0.0)]   // mid-field: the control
+    [TestCase(-48.5)] // just short of the turn line
+    [TestCase(-48.0)] // on it
+    [TestCase(-47.5)] // just over it
+    public void Driving_into_the_field_the_turn_is_built_at_the_far_end(double y)
+    {
+        ConfigurationStore.SetInstance(new ConfigurationStore());
+        var c = ConfigurationStore.Instance;
+        c.Tool.Overlap = 0;
+        c.NumSections = 1;
+        c.Tool.SetSectionWidth(0, 800);
+        c.Guidance.UTurnDistanceFromBoundary = 2.0;
+        c.Guidance.UTurnRadius = 8.0;
+        var creation = new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, new PolygonOffsetService(), c);
+
+        var fence = new List<Vec2> { new(-50, -50), new(50, -50), new(50, 50), new(-50, 50) };
+        var boundary = new Boundary
+        {
+            OuterBoundary = new BoundaryPolygon { Points = fence.Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList() },
+        };
+        var turnLine = new List<Vec3> { new(-48, -48, 0), new(48, -48, 0), new(48, 48, 0), new(-48, 48, 0) };
+        var track = AgOpenWeb.Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
+
+        var guidance = new GuidanceWorkingState { IsHeadingSameWay = true, HowManyPathsAway = 0 };
+        var turn = new YouTurnWorkingState { IsTurnLeft = false, DistanceToHeadland = 48 - y };
+        var r = creation.CreateTurnPath(new Position { Easting = 4, Northing = y, Heading = 0 }, track,
+            headingRadians: 0, abHeading: 0, boundary, turnLine, guidance, turn,
+            uTurnSkipRows: 0, headlandCalculatedWidth: 8, headlandDistance: 48 - y);
+
+        Assert.That(r.Path, Is.Not.Null, "a turn is built");
+        Assert.That(r.Path!.Max(p => p.Northing), Is.GreaterThan(40), "at the north end");
+        Assert.That(r.Path.Min(p => p.Northing), Is.GreaterThan(0), "not at the south end, where the tractor drives in");
+    }
+
     [Test]
     public void Past_the_last_crossing_the_one_behind_is_kept()
     {
