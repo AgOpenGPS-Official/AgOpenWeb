@@ -1150,6 +1150,11 @@ namespace AgOpenWeb.Services.YouTurn
             else
                 j = input.CurrentLocationIndex;
 
+            // The end of the pass is the first point outside after the pass has been inside: the
+            // tractor driving in over the turn line (the start of a job) is outside at first, and
+            // the point under it is where the pass begins, not where it ends.
+            bool seenInside = false;
+
             for (; j > 0 && j < input.GuidancePoints.Count; j += count)
             {
                 if (j < 0)
@@ -1174,7 +1179,8 @@ namespace AgOpenWeb.Services.YouTurn
                 }
 
                 int turnIndex = input.IsPointInsideTurnArea(input.GuidancePoints[j]);
-                if (turnIndex != 0)
+                if (turnIndex == 0) seenInside = true;
+                else if (seenInside)
                 {
                     // IsPointInsideTurnArea returns 0 = inside, non-zero = outside as a FLAG
                     // (the AgOpenWeb lambda returns 1), NOT a boundary index. The turn line to
