@@ -55,7 +55,7 @@ its neighbours':
 | U-turns missed with room to plan them (the warning came after 5 m or more of the pass with AutoSteer on since the last turn or since AutoSteer came on; one sooner is a pass too short at this end to plan a turn on, and the warning is noted, as it is the right thing to say) or cancelled, AutoSteer dropping out | `TURN-MISSED`, `AUTOSTEER-DROPPED` |
 | The first U-turn arrow pointing at the edge the operator started from | `FIRST-TURN-TOWARD-EDGE` |
 | The screen's sections and the nozzles disagreeing for more than a second (a stretch in which the module missed PGN 239 frames while online is the runner's, not AgOpenWeb's: a note with the frames missed, `ValveFollowTally`) | `VALVES-NOT-FOLLOWING`, `SECTION-WITHOUT-RELAY` |
-| AgOpenWeb found no U-turn that fits and asked the operator to take over (the job stops there, as at a missed turn's warning; a turn blocked by a hard boundary or an obstacle is a note) | `TURN-REFUSED` |
+| AgOpenWeb found no U-turn that fits and asked the operator to take over with ground left to work: more than 1 % of the cultivated area outside the strips between passes, the pass ends, the boundary and the corners (the job stops there, as at a missed turn's warning; a refusal with the field done, or a turn blocked by a hard boundary or an obstacle, is a note) | `TURN-REFUSED` |
 | The tractor more than 25 m out of the field with no such warning | `RAN-OFF` |
 
 Two operators:
@@ -72,7 +72,7 @@ When AgOpenWeb says "No U-turn fits inside the boundary at this end - take over 
 "U-turn blocked: ... take over manually", or that a U-turn was missed ("U-turn missed: ... Take
 over manually"; "No U-turn can be made this close to the boundary on this pass. Take over manually at
 the end of the field", #761), the operator takes over and the job stops, as a person would
-(`TURN-REFUSED` when no turn fits; a blocked turn is the app refusing a swing into a hard boundary
+(`TURN-REFUSED` when no turn fits and ground is left to work, noted when the field was done; a blocked turn is the app refusing a swing into a hard boundary
 or an obstacle, as it must (#698), noted; a missed turn is `TURN-MISSED` when AgOpenWeb had room
 on the pass to plan it, and noted when the pass was too short at this end to plan a turn on, where
 the warning is what it must do; silence there is `RAN-OFF`). A warning for "the end of the field" comes mid-pass: the operator
