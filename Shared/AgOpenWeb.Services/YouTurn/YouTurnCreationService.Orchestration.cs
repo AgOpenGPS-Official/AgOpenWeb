@@ -1043,8 +1043,12 @@ public partial class YouTurnCreationService
         // other way (AgOpenGPS BuildManualYouTurn: rowSkipsWidth ± tool.offset * 2).
         int side = (turnLeft ^ guidance.IsHeadingSameWay) ? 1 : -1;
         double toolShift = Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay);
-        double turnOffset = trackWidth * (uTurnSkipRows + 1) + 2 * toolShift * side;
-        if (turnOffset < 0.1)
+        // A tool offset over half the pass makes it negative turning away from the tool: the line
+        // steered on the next pass is on the other side of the tractor, and the turn loops back
+        // across to it, as in AgOpenGPS (J8: a 3 m mower 2.5 m to one side).
+        double nearestPassOffset = trackWidth + 2 * toolShift * side;
+        double turnOffset = trackWidth * uTurnSkipRows + nearestPassOffset;
+        if (trackWidth < 0.1)
         {
             _logger.LogWarning("[ManualYouTurn] Tool width is zero — cannot compute offset");
             return path;
@@ -1087,8 +1091,9 @@ public partial class YouTurnCreationService
         if (TryProjectOntoPass(targetPass, start, out double passE, out double passN))
         {
             double across = (passE - start.Easting) * Math.Sin(perpAngle) + (passN - start.Northing) * Math.Cos(perpAngle);
-            // Only a pass on the turn side, at least half a pass over.
-            if (across >= trackWidth / 2)
+            // Only a pass on the turn side: at least the nearest pass there, less half a pass (with
+            // no tool offset, half a pass over; the pass the tractor is on never qualifies).
+            if (across >= nearestPassOffset - trackWidth / 2)
             {
                 goal.Easting = passE;
                 goal.Northing = passN;

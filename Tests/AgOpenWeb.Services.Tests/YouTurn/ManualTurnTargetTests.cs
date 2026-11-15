@@ -107,6 +107,42 @@ public class ManualTurnTargetTests
         Assert.That(path[^1].Easting, Is.EqualTo(endX).Within(0.5));
     }
 
+    // The tool 5 m right of the tractor, more than half the 8 m pass: on pass 0 heading north the
+    // tractor steers x = -1 (4 - 5); left onto pass -1 (centre -4) heading south, the tool on the
+    // tractor's right is west of it, so the tractor steers x = 1 (-4 + 5): 2 m to the RIGHT of
+    // where it started. AgOpenGPS builds that turn (BuildManualYouTurn: the offset goes negative,
+    // the goal is on the other side, Dubins loops to it); it was refused as "tool width is zero"
+    // (job harness J8: the turn from here that would have saved the end of a pass).
+    [Test]
+    public void ToolOffset_OverHalfThePass_TurnAwayFromTheTool_WithoutAPlannedPass_IsBuilt()
+    {
+        var b = new Bench(toolOffset: 5);
+        var (g, _) = b.OnPass(0);
+        b.X = PassX(0) - 5;
+
+        var path = b.Creation.CreateManualArcPath(b.Ctx().CurrentPosition, 0, turnLeft: true, b.Boundary, g, uTurnSkipRows: 0);
+
+        Assert.That(path, Is.Not.Empty);
+        Assert.That(path[^1].Easting, Is.EqualTo(1).Within(0.5));
+    }
+
+    [Test]
+    public void ToolOffset_OverHalfThePass_ManualTurnAwayFromTheTool_EndsOnTheLineSteeredAfterIt()
+    {
+        var b = new Bench(toolOffset: 5) { SkipRows = 0, SkipWorked = false };
+        var (g, t) = b.OnPass(0);
+        b.X = PassX(0) - 5;
+
+        var e = b.Sm.TriggerManual(turnLeft: true, isAutoSteerEngaged: true, b.Ctx(), g, t);
+        Assert.That(t.IsExecuting, Is.True, e.StatusMessage);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(t.NextTrack!.Points[0].Easting, Is.EqualTo(1).Within(0.01), "the line steered on pass -1");
+            Assert.That(t.TurnPath![^1].Easting, Is.EqualTo(1).Within(0.5));
+        });
+    }
+
     /// <summary>The real planner on a 76 x 120 m field (8 m tool, 8 m radius, 16 m headland).</summary>
     private sealed class Bench
     {
