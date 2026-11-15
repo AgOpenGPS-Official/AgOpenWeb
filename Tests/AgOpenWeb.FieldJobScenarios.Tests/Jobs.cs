@@ -258,7 +258,9 @@ public static class Jobs
         else
             sc.Ok(F($"everything sprayed is on the map ({a.SprayedNotAppPainted:0} m² not)"));
         double truthTotal = a.Sprayed + a.OutsideBoundary + a.InObstacles + a.InDriveThrough + a.InHeadland;
-        if (truthTotal > 0 && Math.Abs(a.AppActualCovered - truthTotal) > 0.05 * truthTotal)
+        // Over 20 m² as the map checks: on a job cut at its first U-turn the areas are a few
+        // hundred m², and a second of driving at the stop is 5 % of them (J12, J19, 2026-11-15).
+        if (truthTotal > 0 && Math.Abs(a.AppActualCovered - truthTotal) > 20 && Math.Abs(a.AppActualCovered - truthTotal) > 0.05 * truthTotal)
             flag(Severity.Inconsistency, "APP-AREA-OFF", F($"AgOpenWeb's 'area covered once' is {a.AppActualCovered / 1e4:0.00} ha, the real implement sprayed {truthTotal / 1e4:0.00} ha ({(a.AppActualCovered / truthTotal - 1) * 100:+0.0;-0.0;+0.0} %)."));
         else
             sc.Ok(F($"AgOpenWeb's area covered once ({a.AppActualCovered / 1e4:0.00} ha) matches the truth ({truthTotal / 1e4:0.00} ha)"));
