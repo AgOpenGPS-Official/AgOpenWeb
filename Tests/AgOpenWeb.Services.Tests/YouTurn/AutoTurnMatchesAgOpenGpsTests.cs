@@ -194,6 +194,10 @@ public class AutoTurnMatchesAgOpenGpsTests
     /// passes on and the snake order <paramref name="snake"/> already planned (the tractor on its
     /// first pass) when it is given.</summary>
     private static (YouTurnWorkingState turn, List<YouTurnEffects> effects) PlanAlongIn(List<Vec2>? headlandCorners, List<int>? snake, double x, double toolOffset, params double[] ys)
+        => PlanAlongIn(null, headlandCorners, snake, x, toolOffset, ys);
+
+    /// <summary>... with the fence given too (corners, densified here); null is the 120 m square.</summary>
+    private static (YouTurnWorkingState turn, List<YouTurnEffects> effects) PlanAlongIn(List<Vec2>? fenceCorners, List<Vec2>? headlandCorners, List<int>? snake, double x, double toolOffset, params double[] ys)
     {
         ConfigurationStore.SetInstance(new ConfigurationStore());
         var c = ConfigurationStore.Instance;
@@ -212,7 +216,7 @@ public class AutoTurnMatchesAgOpenGpsTests
             new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, offset, c),
             new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, c),
             NullLogger<YouTurnStateMachine>.Instance, c);
-        var fence = SquareFence();
+        var fence = fenceCorners == null ? SquareFence() : Densified(fenceCorners);
         var boundary = new Boundary
         {
             OuterBoundary = new BoundaryPolygon { Points = fence.Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList() },
@@ -312,6 +316,38 @@ public class AutoTurnMatchesAgOpenGpsTests
         var (turn, effects) = PlanAlongIn(corners, 1.5, 0, -36, -34, -32);
         Assert.That(effects.Any(e => e.TurnCreationFailedSound || (e.StatusMessage?.Contains("missed") ?? false)), Is.False,
             $"the pass goes on in the field past the notch ('{string.Join("' '", effects.Select(e => e.StatusMessage))}')");
+    }
+
+    /// <summary>
+    /// A pass that leaves the field across a bay in the fence and comes back into the cultivated
+    /// area beyond it (field job J3 on Baetas, pass 8, 2026-11-15 nightly: a turn landed 8.3 m
+    /// before the headland line, too close to plan the next). The cultivated ground beyond the bay
+    /// is not the same pass going on: it can't be driven to. The missed turn is said; it drove on
+    /// out of the field with nothing said.
+    /// </summary>
+    [Test]
+    public void A_pass_that_leaves_the_field_before_coming_back_is_a_missed_turn()
+    {
+        // A bay in the fence from the west side, y -10..0, as far as x 20; the headland 16 m in
+        // from it: the cultivated area is cut at y -26..16 west of x 36. The pass at x 1.5 is in
+        // the cultivated area at y -34, outside the fence at y -10..0 and back in it past y 16.
+        var fence = new List<Vec2>
+        {
+            new(-60, -60), new(60, -60), new(60, 60), new(-60, 60),
+            new(-60, 0), new(20, 0), new(20, -10), new(-60, -10),
+        };
+        var headland = new List<Vec2>
+        {
+            new(-44, -44), new(44, -44), new(44, 44), new(-44, 44),
+            new(-44, 16), new(36, 16), new(36, -26), new(-44, -26),
+        };
+        var (turn, effects) = PlanAlongIn(fence, headland, null, 1.5, 0, -34, -32, -30);
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.TurnPath, Is.Null, "no turn this close");
+            Assert.That(effects[0].StatusMessage, Does.Contain("U-turn missed"),
+                $"the pass leaves the field ahead ('{string.Join("' '", effects.Select(e => e.StatusMessage))}')");
+        });
     }
 
     /// <summary>

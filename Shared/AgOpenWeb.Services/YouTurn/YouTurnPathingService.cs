@@ -372,8 +372,9 @@ public sealed class YouTurnPathingService
     /// Is any of pass <paramref name="pathsAway"/> in the cultivated area between
     /// <paramref name="from"/> and <paramref name="upTo"/> metres ahead of the tractor (abreast of
     /// <paramref name="position"/>, the way it is heading)? A pass that meets the headland line
-    /// and comes back into the field further on (a corner cut across, a bay) has its end there.
-    /// Sampled every 2 m.
+    /// and comes back into the cultivated area further on (a corner of the headland cut across) has
+    /// its end there; not when it leaves the field (outside the fence) on the way: the pass ends
+    /// at the headland ahead. Sampled every 2 m.
     /// </summary>
     public bool CultivatedAhead(Models.Track.Track track, double abHeading, int pathsAway,
         Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, Position position, bool headingSameWay,
@@ -408,6 +409,7 @@ public sealed class YouTurnPathingService
                 walked += Math.Sqrt(de * de + dn * dn);
                 if (walked < from || walked - lastTested < Step) continue;
                 lastTested = walked;
+                if (OutsideFence(curve[i + fwd].Easting, curve[i + fwd].Northing, boundary)) return false;
                 if (IsPointInsideCultivatedArea(curve[i + fwd].Easting, curve[i + fwd].Northing, boundary, headlandLine)) return true;
             }
             return false;
@@ -427,10 +429,16 @@ public sealed class YouTurnPathingService
         for (double d = Math.Max(from, 0); d <= upTo; d += Step)
         {
             double t = t0 + s * d;
+            if (OutsideFence(midE + abNx * t, midN + abNy * t, boundary)) return false;
             if (IsPointInsideCultivatedArea(midE + abNx * t, midN + abNy * t, boundary, headlandLine)) return true;
         }
         return false;
     }
+
+    // The pass leaves the field here: cultivated ground beyond is not the same pass going on, it
+    // can't be driven to (field job J3, pass 8 across a bay in Baetas's fence, 2026-11-15 nightly).
+    private static bool OutsideFence(double easting, double northing, Boundary? boundary) =>
+        boundary?.OuterBoundary is { IsValid: true } outer && !outer.IsPointInside(easting, northing);
 
     private static bool InsideFence(double e, double n, Boundary? boundary)
         => boundary?.OuterBoundary is { IsValid: true } outer && outer.IsPointInside(e, n);
