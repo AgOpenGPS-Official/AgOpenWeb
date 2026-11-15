@@ -44,12 +44,12 @@ public class TurnReferenceAheadTests
     {
         // Heading north at y = -35: the crossing just passed (y = -40) is 5 m behind, the end of
         // the clip (y = -27) 8 m ahead.
-        var r = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(Track, new Vec3(0, -35, 0), Headland, headingSameWay: true);
+        var r = YouTurnCreationService.PassEndAhead(Track, new Vec3(0, -35, 0), Headland, headingSameWay: true)?.Crossing;
         Assert.That(r, Is.Not.Null);
         Assert.That(r!.Value.Northing, Is.EqualTo(-27).Within(1e-6));
 
         // Heading south at y = -35: the crossing ahead is y = -40.
-        r = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(Track, new Vec3(0, -35, 0), Headland, headingSameWay: false);
+        r = YouTurnCreationService.PassEndAhead(Track, new Vec3(0, -35, 0), Headland, headingSameWay: false)?.Crossing;
         Assert.That(r!.Value.Northing, Is.EqualTo(-40).Within(1e-6));
     }
 
@@ -63,7 +63,7 @@ public class TurnReferenceAheadTests
     [TestCase(-39.5)] // just over it
     public void Driving_into_the_field_the_crossing_under_the_tractor_is_not_the_end(double y)
     {
-        var r = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(Track, new Vec3(0, y, 0), Headland, headingSameWay: true);
+        var r = YouTurnCreationService.PassEndAhead(Track, new Vec3(0, y, 0), Headland, headingSameWay: true)?.Crossing;
         Assert.That(r, Is.Not.Null);
         Assert.That(r!.Value.Northing, Is.EqualTo(-27).Within(1e-6));
     }
@@ -78,7 +78,7 @@ public class TurnReferenceAheadTests
             Name = "curve",
             Points = Enumerable.Range(0, 201).Select(i => new Vec3(0, -100 + i, 0)).ToList(),
         };
-        var r = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(curve, new Vec3(0, y, 0), Headland, headingSameWay: true);
+        var r = YouTurnCreationService.PassEndAhead(curve, new Vec3(0, y, 0), Headland, headingSameWay: true)?.Crossing;
         Assert.That(r, Is.Not.Null);
         Assert.That(r!.Value.Northing, Is.EqualTo(-27).Within(1e-6));
     }
@@ -121,12 +121,25 @@ public class TurnReferenceAheadTests
     }
 
     [Test]
-    public void Past_the_last_crossing_the_one_behind_is_kept()
+    public void Past_the_last_crossing_there_is_no_end_ahead()
     {
-        // Heading north at y = 45, past the north edge: nothing ahead, the edge behind as before.
-        var r = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(Track, new Vec3(0, 45, 0), Headland, headingSameWay: true);
+        // Heading north at y = 45, past the north edge: the pass does not leave the area ahead.
+        var r = YouTurnCreationService.PassEndAhead(Track, new Vec3(0, 45, 0), Headland, headingSameWay: true);
+        Assert.That(r, Is.Null);
+    }
+
+    // The clip of the turn line at a notch (field job J19 on Olival, 2026-11-15: pass -18 runs
+    // 1.65 m from the notch's tip, 0.35 m outside the 2 m turn line for a few metres): the end of
+    // the pass is there, as AgOpenGPS has it (the first point outside the turn line).
+    [Test]
+    public void A_short_clip_of_the_turn_line_is_the_end_of_the_pass()
+    {
+        // The AB line at x = 3 clips the bay (x < 5 from y = -27 to -10) for 17 m.
+        var track = AgOpenWeb.Models.Track.Track.FromABLine("AB", new Vec3(3, -100, 0), new Vec3(3, 100, 0));
+        var r = YouTurnCreationService.PassEndAhead(track, new Vec3(3, -35, 0), Headland, headingSameWay: true);
         Assert.That(r, Is.Not.Null);
-        Assert.That(r!.Value.Northing, Is.EqualTo(40).Within(1e-6));
+        Assert.That(r!.Value.Crossing.Northing, Is.EqualTo(-27).Within(1e-6));
+        Assert.That(r.Value.Heading, Is.EqualTo(0).Within(1e-6), "the pass's heading there, north");
     }
 
     [Test]
