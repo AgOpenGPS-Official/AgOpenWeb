@@ -313,10 +313,23 @@ public static class Jobs
             sc.Ok(F($"all {r.Turns.Count} U-turns kept the tractor and the implement inside the boundary"));
         if (fallbacks > 0)
             sc.Note(F($"AgOpenWeb's turn service failed ('path invalid or out of bounds') and the simple fallback path was used in {fallbacks} of {r.Turns.Count} turns"));
-        var missed = r.Said.Where(s => s.Contains("U-turn missed", StringComparison.Ordinal) || s.Contains("No U-turn can be made", StringComparison.Ordinal)
-            || s.Contains("cancelled", StringComparison.Ordinal)).ToList();
-        if (missed.Count > 0)
-            flag(Severity.Bug, "TURN-MISSED", F($"{missed.Count} U-turn(s) were missed or cancelled while the operator did nothing wrong: {missed[0]}"));
+        // AgOpenWeb's warning that a turn can't be made from here ("U-turn missed: ...", "No U-turn
+        // can be made ..."). Heard before the tractor had driven a planning distance on its pass since
+        // the last turn landed it (or AutoSteer came on), the pass was too short at this end to plan a
+        // turn on (field job J3: landed 8.3 m from the turn line at a narrow corner, where a turn is
+        // planned from 10 m out; AgOpenGPS sounds "too close" there): the warning is the right thing to
+        // do, noted. Heard after a longer run on the pass, AgOpenWeb had room to plan the turn and
+        // didn't: TURN-MISSED. Silence where no turn can be made is RAN-OFF.
+        const double TooShortToPlanM = 5;
+        var tooShort = r.TurnWarnings.Where(w => w.LegM < TooShortToPlanM).ToList();
+        var hadRoom = r.TurnWarnings.Where(w => w.LegM >= TooShortToPlanM).ToList();
+        if (tooShort.Count > 0)
+            sc.Note(F($"AgOpenWeb warned that a U-turn could not be made {tooShort[0].LegM:0.0} m after the tractor started on its pass, too short at this end to plan one: {tooShort[0].Text}"));
+        if (hadRoom.Count > 0)
+            flag(Severity.Bug, "TURN-MISSED", F($"{hadRoom.Count} U-turn(s) were missed after the tractor had driven {hadRoom[0].LegM:0} m of its pass with AutoSteer on, room to plan the turn: {hadRoom[0].Text}"));
+        var cancelled = r.Said.Where(s => s.Contains("cancelled", StringComparison.Ordinal)).ToList();
+        if (cancelled.Count > 0)
+            flag(Severity.Bug, "TURN-MISSED", F($"{cancelled.Count} U-turn(s) were cancelled while the operator did nothing wrong: {cancelled[0]}"));
         r.PathOp?.Judge(sc, r, a, flag);
         if (r.PathOp == null && spec.PassCheck) { LapOperator.JudgePassError(sc, r, flag, "the AB line's passes"); JudgeTurnExits(sc, r, flag); }
         JudgeDrawbar(sc, r, flag);
@@ -339,8 +352,8 @@ public static class Jobs
         foreach (var p in r.Problems)
         {
             if (p.Contains("refused the U-turn", StringComparison.Ordinal)) flag(Severity.Bug, "TURN-REFUSED", p);
-            // A missed turn the app warned about is TURN-MISSED (from what it said); the operator
-            // taking over at the warning, as a farmer would, is what the job did, not a finding.
+            // A missed turn the app warned about is noted (from what it said); the operator taking
+            // over at the warning, as a farmer would, is what the job did, not a finding.
             // A blocked turn (it would swing into a hard boundary or an obstacle, #698) is the app
             // refusing what it must refuse: noted, with the ground left from there as its consequence.
             else if (p.Contains("missed the U-turn", StringComparison.Ordinal)) sc.Note("the operator took over at the warning and the job stopped there, as a person would: " + p);
