@@ -52,7 +52,7 @@ its neighbours':
 | AgOpenWeb's area covered once against the truth | `APP-AREA-OFF` |
 | Sprayed twice beyond the overlap asked for | `DOUBLE-SPRAYED` |
 | A U-turn that took the tractor past the boundary (an implement end past it is a note: *Distance from boundary* keeps the tractor inside, not the implement, as in AgOpenGPS, kept on purpose) | `TURN-OUTSIDE-BOUNDARY` |
-| U-turns missed or cancelled, AutoSteer dropping out | `TURN-MISSED`, `AUTOSTEER-DROPPED` |
+| U-turns cancelled, AutoSteer dropping out (AgOpenWeb's warning that a turn can't be made from here is a note: it is what it must say there) | `TURN-MISSED`, `AUTOSTEER-DROPPED` |
 | The first U-turn arrow pointing at the edge the operator started from | `FIRST-TURN-TOWARD-EDGE` |
 | The screen's sections and the nozzles disagreeing for more than a second (a stretch in which the module missed PGN 239 frames while online is the runner's, not AgOpenWeb's: a note with the frames missed, `ValveFollowTally`) | `VALVES-NOT-FOLLOWING`, `SECTION-WITHOUT-RELAY` |
 | AgOpenWeb found no U-turn that fits and asked the operator to take over (the job stops there, as at a missed turn's warning; a turn blocked by a hard boundary or an obstacle is a note) | `TURN-REFUSED` |
@@ -70,11 +70,11 @@ Two operators:
 
 When AgOpenWeb says "No U-turn fits inside the boundary at this end - take over manually" or
 "U-turn blocked: ... take over manually", or that a U-turn was missed ("U-turn missed: ... Take
-over manually"; "No U-turn can be made from the headland on this pass. Take over manually at the
-end of the field", #761), the operator takes over and the job stops, as a person would
+over manually"; "No U-turn can be made this close to the boundary on this pass. Take over manually at
+the end of the field", #761), the operator takes over and the job stops, as a person would
 (`TURN-REFUSED` when no turn fits; a blocked turn is the app refusing a swing into a hard boundary
-or an obstacle, as it must (#698), noted; a missed turn is `TURN-MISSED`, expected where the
-operator caused it, as T10's AutoSteer off in the headland). A warning for "the end of the field" comes mid-pass: the operator
+or an obstacle, as it must (#698), noted; a missed turn's warning is noted too: too close to the
+boundary to turn, the warning is what AgOpenWeb must do, and silence there is `RAN-OFF`). A warning for "the end of the field" comes mid-pass: the operator
 drives the pass to its end (the implement out of the cultivated area with none ahead, or the
 tractor at the boundary) and takes over there. The ground left from there is the consequence of
 that one finding, not `FIELD-NOT-FINISHED` too. A tractor that drives on after such a warning is

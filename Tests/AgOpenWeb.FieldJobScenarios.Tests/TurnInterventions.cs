@@ -192,8 +192,8 @@ public static class TurnInterventions
                     }
                 }, w.TrackAsync),
                 // The missed turn is the operator's own doing (AutoSteer off in the headland): the
-                // warning is what is wanted, not a finding.
-                Expected = new[] { "AUTOSTEER-DROPPED", "TURN-MISSED" },
+                // warning is what is wanted (a note, not a finding).
+                Expected = new[] { "AUTOSTEER-DROPPED" },
                 ExtraJudge = w.Judge,
             };
         }
