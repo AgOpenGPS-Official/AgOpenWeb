@@ -1595,11 +1595,24 @@ public sealed class YouTurnStateMachine
         if (result.LandsPastLineEnd && effects.StatusMessage == null)
             effects.StatusMessage = "No U-turn: the next pass ends before this end - take over manually";
         // No real turn fits and the fallback would leave the field (#692): the pass is driven to its
-        // end with no turn, so the operator is told, not only sounded at.
+        // end with no turn, so the operator is told, not only sounded at. When the planner tried
+        // every start along the pass and the arc always fell outside the turn line, the geometry
+        // is what refuses (a pass next to a fence that runs along it: an 8 m radius onto an 8 m
+        // pass needs 2 m on the fence side, which a tractor 4 m from the fence with the U-turn
+        // distance at 2 m hasn't got; AgOpenGPS can't turn there either), and the operator is told
+        // by how much, so a smaller U-turn distance from boundary or a hand turn is the choice.
         if (result.Path == null && result.UsedFallback && effects.StatusMessage == null)
-            effects.StatusMessage = "No U-turn fits inside the boundary at this end - take over manually";
+            effects.StatusMessage = result.OutsideTurnLineBy is double by
+                ? NoTurnFitsMessage(by, _configStore.Guidance.UTurnDistanceFromBoundary)
+                : "No U-turn fits inside the boundary at this end - take over manually";
         SoundCreationFailed(effects);
     }
+
+    /// <summary>The operator's message when no arc of this radius fits inside the turn line at
+    /// this end: the geometry refuses the turn, and this says by how much.</summary>
+    public static string NoTurnFitsMessage(double outsideBy, double distanceFromBoundary) => string.Format(CultureInfo.InvariantCulture,
+        "No U-turn fits inside the boundary at this end: the closest would come {0:0.0} m nearer the boundary than the U-turn distance of {1:0.0} m allows - take over manually",
+        Math.Max(outsideBy, 0.1), distanceFromBoundary);
 
     /// <summary>Less than this inside the headland line is the turn line's own rounding.</summary>
     private const double NarrowHeadlandToleranceM = 0.5;

@@ -51,6 +51,14 @@ public partial class YouTurnCreationService
         /// <summary>Where the path leaves the current pass (see <see cref="YouTurnCreationOutput.ArcStart"/>);
         /// null for a fallback path, which has no entry leg.</summary>
         public Vec3? ArcStart { get; init; }
+
+        /// <summary>
+        /// No turn: no arc of this radius fitted inside the turn line anywhere along the pass, and
+        /// this is how far the best try fell outside it (<see cref="YouTurnCreationOutput.OutsideTurnLineBy"/>).
+        /// The geometry refuses the turn, not the planner: the operator can lower the U-turn
+        /// distance from boundary by this much, or turn by hand.
+        /// </summary>
+        public double? OutsideTurnLineBy { get; init; }
     }
 
     /// <summary>
@@ -269,7 +277,10 @@ public partial class YouTurnCreationService
                 output.FailureReason ?? "unknown");
             var fallbackPath = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
                 guidance, turn, uTurnSkipRows, headlandDistance, selectedTrack);
-            return new TurnPathResult(fallbackPath.Count > 10 ? fallbackPath : null, UsedFallback: true);
+            return new TurnPathResult(fallbackPath.Count > 10 ? fallbackPath : null, UsedFallback: true)
+            {
+                OutsideTurnLineBy = fallbackPath.Count > 10 ? null : output.OutsideTurnLineBy,
+            };
         }
     }
 
