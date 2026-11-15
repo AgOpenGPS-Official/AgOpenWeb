@@ -188,6 +188,12 @@ public class AutoTurnMatchesAgOpenGpsTests
     /// <summary><see cref="PlanAlong"/> with the headland line given (corners, densified here);
     /// null is the 16 m headland.</summary>
     private static (YouTurnWorkingState turn, List<YouTurnEffects> effects) PlanAlongIn(List<Vec2>? headlandCorners, double x, double toolOffset, params double[] ys)
+        => PlanAlongIn(headlandCorners, null, x, toolOffset, ys);
+
+    /// <summary><see cref="PlanAlongIn(List{Vec2}?, double, double, double[])"/>, with skip worked
+    /// passes on and the snake order <paramref name="snake"/> already planned (the tractor on its
+    /// first pass) when it is given.</summary>
+    private static (YouTurnWorkingState turn, List<YouTurnEffects> effects) PlanAlongIn(List<Vec2>? headlandCorners, List<int>? snake, double x, double toolOffset, params double[] ys)
     {
         ConfigurationStore.SetInstance(new ConfigurationStore());
         var c = ConfigurationStore.Instance;
@@ -218,13 +224,14 @@ public class AutoTurnMatchesAgOpenGpsTests
         int pass = (int)Math.Round((x + toolOffset - 1.5) / 3.0);
         var guidance = new GuidanceWorkingState { HowManyPathsAway = pass, IsHeadingSameWay = true };
         var turn = new YouTurnWorkingState { IsEnabled = true };
+        if (snake != null) (turn.SnakeSequence, turn.SnakeIndex) = (snake, 0);
         var effects = new List<YouTurnEffects>();
         foreach (double y in ys)
         {
             var ctx = new YouTurnStateMachine.TickContext(
                 new Position { Easting = x, Northing = y, Heading = 0, Speed = 2.78 },
                 track, boundary, headland,
-                UTurnSkipRows: 0, IsSkipWorkedMode: false,
+                UTurnSkipRows: 0, IsSkipWorkedMode: snake != null,
                 HeadlandCalculatedWidth: HeadlandWidth, HeadlandDistance: HeadlandWidth);
             effects.Add(sm.Tick(ctx, guidance, turn));
         }
@@ -305,6 +312,27 @@ public class AutoTurnMatchesAgOpenGpsTests
         var (turn, effects) = PlanAlongIn(corners, 1.5, 0, -36, -34, -32);
         Assert.That(effects.Any(e => e.TurnCreationFailedSound || (e.StatusMessage?.Contains("missed") ?? false)), Is.False,
             $"the pass goes on in the field past the notch ('{string.Join("' '", effects.Select(e => e.StatusMessage))}')");
+    }
+
+    /// <summary>
+    /// Skip worked passes, on a pass too short to plan a turn on (field job W1 on Baetas, the
+    /// narrow end: the turn landed on it already closer to the headland than a turn is planned).
+    /// With the order planned, the end of the pass is judged in the headland, heading out: a turn
+    /// onto the next pass, or "End of field reached". The missed-turn warning came first, before
+    /// the headland, and told the operator a turn was missed where the field was done.
+    /// </summary>
+    [Test]
+    public void Skip_worked_passes_judges_a_short_pass_at_its_end_not_as_a_missed_turn()
+    {
+        // Pass 13 (x 40.5), the order going on to 12; the headland line at y 44.
+        var (turn, effects) = PlanAlongIn(null, new List<int> { 13, 12 }, 40.5, 0, 36, 38, 40, 42, 45, 46, 47);
+        string said = string.Join("' '", effects.Select(e => e.StatusMessage));
+        Assert.Multiple(() =>
+        {
+            Assert.That(effects.Any(e => e.StatusMessage?.Contains("missed") ?? false), Is.False, $"no missed turn ('{said}')");
+            Assert.That(turn.TurnPath != null || effects.Any(e => e.TurnCreationFailedSound), Is.True,
+                $"the end is judged in the headland: a turn, or the operator told ('{said}')");
+        });
     }
 
     /// <summary>A turn planned in time is driven up to the headland with no missed-turn warning.</summary>
