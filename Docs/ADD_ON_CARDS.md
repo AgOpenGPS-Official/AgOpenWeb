@@ -3,6 +3,10 @@
 An add-on reaches the operator in AgOpenWeb through a **card** beside the map. There are two
 kinds, and an add-on uses one or the other:
 
+> **Both kinds of card are switched off for now**, while the work is on the foundation and
+> navigation. To work on an add-on, start AgOpenWeb with `AGOPENWEB_FEATURES=vt,webcards` in its
+> environment.
+
 | | **VT card** | **Web card** |
 |---|---|---|
 | For | ISOBUS implements (a sprayer, a seeder, a baler) | Anything with a web page: a rate controller, a section or machine module, a camera, the HAT's own pages |

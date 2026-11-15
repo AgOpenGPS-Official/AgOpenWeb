@@ -78,3 +78,10 @@ body > :not(#ck, #maptap-ab, #ab-dot-labels, script) { zoom: var(--ui-zoom); }
 }
 html, body { margin: 0; height: 100%; background: var(--bg-input); overflow: hidden; touch-action: manipulation; }
 #ck { position: fixed; top: 0; bottom: 0; left: 0; display: block; touch-action: none; } /* CanvasKit (Skia) — the only renderer */
+
+/* Features switched off (FeatureSwitches on the host): the body starts with every fs-no-*
+   class, and the Hello frame clears those the host runs (onHello in js/core.js). */
+.fs-no-vt #ln-vt, .fs-no-vt .vt-card,
+.fs-no-webcards #ln-web, .fs-no-webcards .web-card,
+.fs-no-vt.fs-no-webcards .fs-cardpane,
+.fs-no-agshare .fs-agshare { display: none !important; }

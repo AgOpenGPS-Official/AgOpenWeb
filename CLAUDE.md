@@ -409,6 +409,15 @@ the receiver's correction age, warnings and a message table; bug report dumps ca
 `ntrip_rtcm.txt`. Design, bench results and open checks: `Plans/RTCM_FORWARDING_PLAN.md`;
 bench scripts: `Tools/rtcm-bench`.
 
+## Features switched off
+The work is on the foundation and navigation first. The VT cards, web cards (with the card pane) and AgShare
+are built but switched off (`FeatureSwitches` in `AgOpenWeb.Models`, `Default` none): the host doesn't register
+the VT service (no terminal, no gateway browsing) and refuses `vt.*`, `webcard.*`, `agshare.*` and the
+`conn.agShare*` settings; the page starts with them hidden (`fs-no-*` classes on the body, `css/base.css`)
+and the Hello frame's feature byte shows the ones the host runs. Settings made for them are kept.
+`AGOPENWEB_FEATURES=vt,webcards,agshare` (or `all`) turns them on for development. The ISOBUS task
+controller's section control (#312) is not hidden.
+
 ## ISOBUS virtual terminal (VT card)
 The VT cards show ISOBUS implements' own screens. `Shared/AgOpenWeb.VirtualTerminal`
 (`IVirtualTerminalService`) runs SharpIsoTerm's terminal stack on the implement bus through
