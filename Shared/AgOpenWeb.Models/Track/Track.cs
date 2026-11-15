@@ -197,6 +197,50 @@ public class Track : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// An AB line with A and B closer than this, metres, is made longer when it is read from a file
+    /// (<see cref="LengthenShortABLine"/>).
+    /// </summary>
+    public const double MinABLineLength = 10.0;
+
+    /// <summary>The length a short AB line is given: B as far from A as the app's own A+ line puts it.</summary>
+    public const double ShortABLineNewLength = 100.0;
+
+    /// <summary>
+    /// An AB line's two points, B moved to <see cref="ShortABLineNewLength"/> from A along the line
+    /// when they are closer than <see cref="MinABLineLength"/>: the same line, A and its heading as they
+    /// were. AgOpenGPS's A+ line puts B 1 m from A along the heading (FormQuickAB.btnAPlus_Click; 200 m
+    /// when the heading is typed in), and read as it was, AgOpenWeb had no pass on it but the line
+    /// itself: an offset pass leaves out a point within 1 m of the one before
+    /// (<see cref="Guidance.CurveProcessing.CreateOffsetCurveWithInfo"/>), so pass after pass had one
+    /// point and nothing to steer, and AutoSteer held the wheels straight (a tester's field, a line
+    /// brought from AgOpenGPS with A and B 0.96 m apart). <paramref name="heading"/> (radians) is the
+    /// line's own, from the file, when it has one: over 1 m the points' rounding turns the line a tenth
+    /// of a degree, half a metre 300 m away. It is used only within 5° of A to B, else A to B is.
+    /// Any other list (a curve, A and B on one spot) is returned as it is.
+    /// </summary>
+    public static List<Vec3> LengthenShortABLine(List<Vec3> points, double? heading = null)
+    {
+        if (points.Count != 2) return points;
+        var a = points[0];
+        var b = points[1];
+        double de = b.Easting - a.Easting, dn = b.Northing - a.Northing;
+        double length = Math.Sqrt(de * de + dn * dn);
+        if (length >= MinABLineLength || length < 0.01) return points;
+        double h = Math.Atan2(de, dn);
+        if (heading is { } given && double.IsFinite(given))
+        {
+            double diff = Math.Abs(Math.IEEERemainder(given - h, 2 * Math.PI));
+            if (diff <= 5.0 * Math.PI / 180.0) h = given;
+        }
+        if (h < 0) h += 2 * Math.PI;
+        return new List<Vec3>
+        {
+            new Vec3(a.Easting, a.Northing, h),
+            new Vec3(a.Easting + Math.Sin(h) * ShortABLineNewLength, a.Northing + Math.Cos(h) * ShortABLineNewLength, h),
+        };
+    }
+
+    /// <summary>
     /// Create a curve track from a list of points.
     /// </summary>
     /// <param name="name">Track name</param>

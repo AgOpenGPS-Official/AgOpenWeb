@@ -609,12 +609,19 @@ public partial class GeoJsonFieldService
         // segment starting there, and curve offsets build on it, so it is worked out again the
         // same way for every track, an AB line too. A file from AgOpenGPS (headings averaged
         // over both neighbours) or another writer (none, or anything) reads the same.
-        var points = Models.Guidance.CurveProcessing.CalculateHeadings(geo.FromGeoJsonCoordinatesVec3(coords));
+        var local = geo.FromGeoJsonCoordinatesVec3(coords);
+        double? storedHeading = coords[0].Length >= 3 ? local[0].Heading : null; // before it is worked out again
+        var points = Models.Guidance.CurveProcessing.CalculateHeadings(local);
 
         var trackTypeInt = GetIntProp(feature, FieldPropertyKeys.TrackType);
         var trackType = Enum.IsDefined(typeof(TrackType), trackTypeInt)
             ? (TrackType)trackTypeInt
             : TrackType.ABLine;
+
+        // An AB line from AgOpenGPS (its A+ line) can have B 1 m from A: no pass could be offset
+        // from it. B is moved out along the line, its stored heading kept where it agrees.
+        if (trackType == TrackType.ABLine && points.Count == 2)
+            points = Models.Track.Track.LengthenShortABLine(points, storedHeading);
 
         return new Models.Track.Track
         {
