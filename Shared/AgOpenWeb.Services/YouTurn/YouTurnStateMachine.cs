@@ -329,8 +329,13 @@ public sealed class YouTurnStateMachine
         // that cuts across a corner of the cultivated area and comes back into it further on (field
         // jobs W1 and J3 on Baetas, at the start) has its end there, and on a curve the straight ray
         // can meet the headland early on the outside of a bend while the pass runs on (field job
-        // J10). The pass is walked ahead past the crossing for cultivated ground.
+        // J10). The pass is walked ahead past the crossing for cultivated ground. Not with skip
+        // worked passes and the order planned: the end of the pass is judged in the headland,
+        // heading out (above), with a turn or "End of field reached"; on a pass too short to plan
+        // on (field job W1, the narrow end of Baetas) the missed turn was said first, where the
+        // field was done.
         if (turn.TurnPath == null && !turn.IsExecuting && !_creationFailSounded && !_missedSounded
+            && !(ctx.IsSkipWorkedMode && turn.SnakeSequence != null)
             && isInCultivatedArea && isAlignedWithABLine && turn.DistanceToHeadland <= MinDistanceToCreate
             && !_pathing.CultivatedAhead(track, abHeading, guidance.HowManyPathsAway, ctx.Boundary, ctx.HeadlandLine,
                 passPoint, headingSameWay, from: turn.DistanceToHeadland + 2))
