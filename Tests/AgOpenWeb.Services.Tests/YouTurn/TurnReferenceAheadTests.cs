@@ -53,6 +53,36 @@ public class TurnReferenceAheadTests
         Assert.That(r!.Value.Northing, Is.EqualTo(-40).Within(1e-6));
     }
 
+    // Driving into the field across the turn line at the start of a job (harness C11, C15, J12,
+    // J20, 2026-11-13 on): the crossing under the tractor was taken for the end of the pass, the
+    // turn was built there, didn't fit, and AgOpenWeb told the operator to take over with the
+    // whole field to do. The end is where the pass leaves the area, as in AgOpenGPS (the walk
+    // ahead to the first point outside the turn line).
+    [TestCase(-40.5)] // just short of the line
+    [TestCase(-40.0)] // on it
+    [TestCase(-39.5)] // just over it
+    public void Driving_into_the_field_the_crossing_under_the_tractor_is_not_the_end(double y)
+    {
+        var r = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(Track, new Vec3(0, y, 0), Headland, headingSameWay: true);
+        Assert.That(r, Is.Not.Null);
+        Assert.That(r!.Value.Northing, Is.EqualTo(-27).Within(1e-6));
+    }
+
+    [TestCase(-40.5)]
+    [TestCase(-40.0)]
+    [TestCase(-39.5)]
+    public void Driving_into_the_field_on_a_curve_the_crossing_under_the_tractor_is_not_the_end(double y)
+    {
+        var curve = new AgOpenWeb.Models.Track.Track
+        {
+            Name = "curve",
+            Points = Enumerable.Range(0, 201).Select(i => new Vec3(0, -100 + i, 0)).ToList(),
+        };
+        var r = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(curve, new Vec3(0, y, 0), Headland, headingSameWay: true);
+        Assert.That(r, Is.Not.Null);
+        Assert.That(r!.Value.Northing, Is.EqualTo(-27).Within(1e-6));
+    }
+
     [Test]
     public void Past_the_last_crossing_the_one_behind_is_kept()
     {
