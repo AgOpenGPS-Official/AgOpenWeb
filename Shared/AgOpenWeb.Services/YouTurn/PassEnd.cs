@@ -35,7 +35,8 @@ public readonly record struct PassEnd(int OutsideIndex, int InsideIndex, Vec2 Cr
 /// search took the first point outside the turn line for its end, 49 m into the pass; the turn
 /// there landed on a pass 11 m short of its own end, and the job stopped. AgOpenGPS turns at the
 /// first point outside the turn line. A stretch that leaves the fence is an end, at the turn
-/// line's crossing before it, as at any ordinary end of the field.
+/// line's crossing before it, as at any ordinary end of the field; so is one after which the pass
+/// is back inside the turn line for less than <see cref="DriveOnLength"/> (J14).
 /// </para>
 /// </summary>
 public static class PassEnds
@@ -60,6 +61,11 @@ public static class PassEnds
             if (insideField != null)
             {
                 var why = IsClip(pass, j, step, insideTurnArea, insideField, out int back);
+                if (back != j && RunInside(pass, back, step, insideTurnArea) is var run && run < DriveOnLength)
+                {
+                    why += FormattableString.Invariant($", but inside it for only {run:F1} m: the end of the pass");
+                    back = j;
+                }
                 debug?.Invoke(FormattableString.Invariant($"point {j} ({pass[j].Easting:F1},{pass[j].Northing:F1}) is outside the turn line: {why}"));
                 if (back != j)
                 {
@@ -78,6 +84,32 @@ public static class PassEnds
             return new PassEnd(j, i, crossing ?? new Vec2((a.Easting + b.Easting) / 2, (a.Northing + b.Northing) / 2), heading);
         }
         return null;
+    }
+
+    /// <summary>
+    /// How much of the pass must lie inside the turn line after a stretch outside it for the stretch
+    /// to be driven through: the landing length (<see cref="YouTurnPathingService.MinLandingLength"/>),
+    /// room to work. A pass that dips out over a wiggle of the edge and is back inside for a few
+    /// metres before it leaves for good ends at the first crossing: driven through, the end moved
+    /// 10 m on into a corner, where the next pass had no room, and the job stopped at its first
+    /// turn (field job J14 on Baetas, pass -23: back inside for 4 m, 2026-11-16).
+    /// </summary>
+    public const double DriveOnLength = YouTurnPathingService.MinLandingLength;
+
+    /// <summary>
+    /// Metres of the pass inside the turn area from <paramref name="from"/> on, up to
+    /// <see cref="DriveOnLength"/>; a pass whose points end while inside counts as long enough.
+    /// </summary>
+    private static double RunInside(IReadOnlyList<Vec3> pass, int from, int step, Func<Vec3, bool> insideTurnArea)
+    {
+        double length = 0;
+        for (int k = from; k + step >= 0 && k + step < pass.Count; k += step)
+        {
+            if (!insideTurnArea(pass[k + step])) return length;
+            length += Distance(pass[k], pass[k + step]);
+            if (length >= DriveOnLength) return length;
+        }
+        return DriveOnLength;
     }
 
     /// <summary>
