@@ -761,6 +761,7 @@ public sealed class ContourOperator : PathOperator
     private int _noLineRun;
     private DepthGrid? _depth;
     private readonly LapCorners _corners = new();
+    private readonly LapReach _driven = new(), _change = new();
     // AutoSteer on the contour leaving the lap it should follow (onto another lap, out of the field, or back the way it came).
     private int _offLapFixes;
     private double _cumWindowStart; private int _windowFix;
@@ -822,7 +823,13 @@ public sealed class ContourOperator : PathOperator
         _cum += r.Frame.DeltaV(_prev, v);
         _prev = v;
         var c = r.Rig.LastCycle;
-        if (r.Frame is PolylineFrame && r.HandSteer == null) _corners.Update(r, _cum);
+        // The laps' corners whoever steers: the first lap is driven by hand along the boundary, and
+        // where it turns tight (a notch in the fence) the next lap, following it, pulls away (P6).
+        if (r.Frame is PolylineFrame) _corners.Update(r, _cum);
+        // Where the tool went: on the laps (the middle is what none of them reaches) and while the
+        // operator moves a width in by hand (the lap change).
+        var tool = r.Truth.ToolCentre;
+        if (r.InChange) _change.Add((tool.E, tool.N)); else _driven.Add((tool.E, tool.N));
         // Near the lap's end the contour follows the strip where the operator moved in, and so
         // turns in towards the next lap before the operator takes over: that is the spiral a
         // contour makes, not the tractor leaving its pass.
@@ -1006,9 +1013,15 @@ public sealed class ContourOperator : PathOperator
 
     private void Finish(JobRun r, string why)
     {
+        // The middle no lap reaches: further in than the last lap, or (where the field narrows and
+        // the inner laps stop short) further than half a width and 0.3 m from where the tool went
+        // on every lap (P6: the spine between the inner laps' two sides was counted as strips).
         double depthDone = Math.Abs(ExpectedU(r, _k)) + r.Spec.T.Width / 2;
+        double clear = r.Spec.T.Width / 2 + 0.3, reachChange = r.Spec.T.Width / 2 + 1;
         int sign = _sign;
-        r.LeftOnPurpose = p => sign * r.Frame.U(p) > depthDone - 0.2;
+        var driven = _driven; var change = _change;
+        r.LeftOnPurpose = p => sign * r.Frame.U(p) > depthDone - 0.2 || (driven.Any && !driven.AnyWithin(p, clear));
+        r.AtLapChange = p => change.Any && change.AnyWithin(p, reachChange);
         r.EndedBy = why;
         r.FieldDone = true;
         r.Stopped = true;
@@ -1265,6 +1278,15 @@ public sealed class LapReach
 {
     private readonly Dictionary<(int, int), List<(double E, double N, double Depth)>> _points = new();
     public bool Any => _points.Count > 0;
+
+    /// <summary>One point (a lap's depth not needed).</summary>
+    public void Add((double E, double N) p)
+    {
+        var key = ((int)Math.Floor(p.E / 5), (int)Math.Floor(p.N / 5));
+        if (!_points.TryGetValue(key, out var l)) _points[key] = l = new();
+        if (l.Count > 0 && Math.Abs(l[^1].E - p.E) < 0.5 && Math.Abs(l[^1].N - p.N) < 0.5) return;
+        l.Add((p.E, p.N, 0));
+    }
 
     public void Add(IReadOnlyList<(double E, double N)>? line, double depth)
     {

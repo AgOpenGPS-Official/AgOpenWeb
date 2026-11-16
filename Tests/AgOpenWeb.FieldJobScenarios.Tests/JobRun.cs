@@ -182,6 +182,8 @@ public sealed class JobRun : IAsyncDisposable
     public Func<(double E, double N), bool>? LeftOnPurpose;
     /// <summary>Unsprayed ground at a lap's corner, where the passes pull apart.</summary>
     public Func<(double E, double N), bool>? AtCorner;
+    /// <summary>Ground where the operator moved a width in by hand to the next lap (the contour laps).</summary>
+    public Func<(double E, double N), bool>? AtLapChange;
     private bool _passJoined;
     private int _passStartFix;
     private int _passErrorTraced = -1000;
@@ -1242,6 +1244,9 @@ public sealed class JobRun : IAsyncDisposable
                     // The laps' corners first: a lap rounds a corner of the boundary and cannot reach
                     // into it, whatever the sections do (near the fence too).
                     else if (AtCorner?.Invoke(c) == true) a.MissedAtCorners += cell;
+                    // Where the operator moved a width in by hand between laps: the implement crosses
+                    // from one lap to the next, and what it leaves is the operator's lap change.
+                    else if (AtLapChange?.Invoke(c) == true) a.MissedAtLapChange += cell;
                     // No headland (the lap jobs): the edge of the field along the boundary.
                     else if (Work == null && Ring.DistToRing(c, Outer) < 1.5) a.MissedAlongBoundary += cell;
                     else if (LeftOnPurpose?.Invoke(c) == true) a.MissedLeftInMiddle += cell;
