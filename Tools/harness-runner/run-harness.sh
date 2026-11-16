@@ -58,8 +58,11 @@ mkdir -p /cache/build /cache/nuget
     tar -xf "/cache/build/$bkey.tar" -C /work/src
     echo "== build $bkey from the cache"
   else
-    # A failed build stops here with its errors.
-    if ! dotnet build "$proj" -c "${CONFIG:-Debug}" --verbosity minimal > /out/build.log 2>&1; then
+    # One restore at a time across every container: two restoring into the same empty packages
+    # folder tread on each other's extraction ("Could not find file ...nuget/.../n03m1jii.1wb",
+    # 2026-11-15). A failed build stops here with its errors.
+    if ! flock /cache/nuget.lock dotnet restore "$proj" --verbosity minimal > /out/build.log 2>&1 \
+       || ! dotnet build "$proj" -c "${CONFIG:-Debug}" --no-restore --verbosity minimal >> /out/build.log 2>&1; then
       grep -E "error" /out/build.log | sort -u | head -20
       echo "== build failed (/out/build.log)"; exit 1
     fi

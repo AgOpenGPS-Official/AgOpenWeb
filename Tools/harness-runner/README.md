@@ -31,7 +31,8 @@ harnesses on a development machine, where the app and other runs share its ports
   - **The build is cached.** `run-harness.sh` keeps each build (bin/ and obj/ of the tree, one tar)
     in the volume by commit, project and configuration, the newest 15: the shards of one comparison
     build once, under a lock, and the others take it; a later run of the same commit (a debug run,
-    a second comparison) skips the build. NuGet packages live in the volume too. The volume is the
+    a second comparison) skips the build. NuGet packages live in the volume too, restored by one
+    container at a time (two restores into one empty folder break each other). The volume is the
     harness host's to fill: `docker --context runner volume rm aow-cache` empties it.
 
 Each container has its own network, so runs side by side don't share UDP 9999/8888. They do share
