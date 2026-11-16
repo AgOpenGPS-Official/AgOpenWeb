@@ -361,7 +361,8 @@ function renderBoundaryMenu() {
       Object.entries(OBSTACLE_ACTIONS).forEach(([act, k]) => {
         const c = document.createElement('button');
         c.className = 'bm-choice' + (it.atObstacle === k ? ' on' : '');
-        c.innerHTML = '<span class="bm-dot k' + (k + 1) + '"></span>';
+        const dot = document.createElement('span'); dot.className = 'bm-dot k' + (k + 1);
+        c.appendChild(dot);
         c.title = choiceLabel(k);
         c.addEventListener('pointerdown', ev => {
           ev.stopPropagation();
@@ -404,7 +405,8 @@ for (const h of document.querySelectorAll('#boundarymenu .bm-colhdr')) h.addEven
 // the next tree gets the size of the one just placed. "+ Circles" stays armed: every tap on the
 // map puts a circle centred there, until it is tapped again or the menu closes. "Round" makes
 // the selected drawn obstacle the smallest circle that holds it, "Round all" every one up to a
-// tree's size. A tap on an obstacle already there selects it instead of adding a circle on it.
+// tree's size. A tap on an obstacle already there selects it instead of adding a circle on it
+// (the host decides: MainViewModel.RemoteAddObstacleCircle).
 const CIRCLE_D_KEY = 'aow.newCircleDiameter';
 const ROUND_ALL_MAX_D = 10; // metres across: the host's ObstacleCircle.MaxRoundAllDiameter
 let bmNewD = 6;
@@ -442,8 +444,6 @@ document.getElementById('bm-circ-add').addEventListener('pointerdown', ev => {
   startMapTap({
     bmTool: 'add', hint: tr('Tap the centre of each tree. Tap "+ Circles" again to stop.'), onCancel: endCircleTaps,
     onTap: (te, tn) => {
-      const there = obstacleRingAt(te, tn);
-      if (there >= 0) { transport.send('boundary.select|' + there); return; }
       const d = readUnitInput(bmCircD);
       transport.send('boundary.circle.add|' + te.toFixed(2) + ',' + tn.toFixed(2) + ',' + (circleDiameterOk(d) ? d : bmNewD));
     },
@@ -479,55 +479,16 @@ document.getElementById('bm-circ-all').addEventListener('pointerdown', ev => {
     tr('Make the obstacles up to {d} across round? Each becomes the smallest circle that holds it; long, thin ones and bigger ones keep their shape. This cannot be undone.', { d: fmtUnit(ROUND_ALL_MAX_D, 'm', 0) }),
     () => transport.send('boundary.circle.roundAll'));
 });
-// The scene ring of the smallest obstacle holding the point (world metres), or -1.
-function obstacleRingAt(e, n) {
-  if (!scene || !scene.boundaries) return -1;
-  let best = -1, bestArea = Infinity;
-  for (let i = 0; i < scene.boundaries.length; i++) {
-    if (!scene.boundaryInner[i] || !pointInRing(scene.boundaries[i], e, n)) continue;
-    const a = shoelace(scene.boundaries[i]);
-    if (a < bestArea) { bestArea = a; best = i; }
-  }
-  return best;
-}
-// With the boundary menu open, a tap on an obstacle on the map selects its row: the smallest
-// obstacle holding the point, else the one whose edge is within reach of the finger (a tree is
-// a few pixels across when zoomed out). The rings and the list share their index. True when
-// the tap picked one.
+// With the boundary menu open, a tap on the map is the menu's: the host picks the obstacle there
+// and selects its row (boundary.selectAt, MainViewModel.RemoteSelectObstacleAt: the smallest
+// obstacle holding the point, else the one whose edge is within reach of the finger, a tree being
+// a few pixels across when zoomed out). The page sends where the tap was and how far a finger
+// reaches at this zoom. True when the menu is open: the tap is not the vehicle's then.
 function boundaryMenuTap(px, py) {
-  if (!document.getElementById('boundarymenu').classList.contains('open') || !scene || !scene.boundaries) return false;
-  const w = s2w(px, py); if (!w) return false;
-  const reach = 24 / pxPerM; // metres within the finger's reach
-  let best = -1, bestScore = Infinity;
-  for (let i = 0; i < scene.boundaries.length; i++) {
-    if (!scene.boundaryInner[i]) continue;
-    const ring = scene.boundaries[i];
-    if (pointInRing(ring, w.e, w.n)) {
-      const score = -1e9 + shoelace(ring); // inside wins, the smallest first
-      if (score < bestScore) { bestScore = score; best = i; }
-      continue;
-    }
-    const d = ringDistance(ring, w.e, w.n);
-    if (d <= reach && d < bestScore) { bestScore = d; best = i; }
-  }
-  if (best < 0) return false;
-  transport.send('boundary.select|' + best);
+  if (!document.getElementById('boundarymenu').classList.contains('open')) return false;
+  const w = s2w(px, py);
+  if (w) transport.send('boundary.selectAt|' + w.e.toFixed(2) + ',' + w.n.toFixed(2) + ',' + (24 / pxPerM).toFixed(2));
   return true;
-}
-function pointInRing(r, e, n) {
-  let inside = false;
-  for (let i = 0, j = r.length - 1; i < r.length; j = i++)
-    if ((r[i].n > n) !== (r[j].n > n) && e < (r[j].e - r[i].e) * (n - r[i].n) / (r[j].n - r[i].n) + r[i].e) inside = !inside;
-  return inside;
-}
-function ringDistance(r, e, n) {
-  let best = Infinity;
-  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
-    const ax = r[j].e, ay = r[j].n, dx = r[i].e - ax, dy = r[i].n - ay, l2 = dx * dx + dy * dy;
-    const t = l2 > 0 ? Math.max(0, Math.min(1, ((e - ax) * dx + (n - ay) * dy) / l2)) : 0;
-    best = Math.min(best, Math.hypot(ax + t * dx - e, ay + t * dy - n));
-  }
-  return best;
 }
 
 // Boundary player: live drive-around recording controls + point count / area.

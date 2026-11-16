@@ -54,6 +54,22 @@ public partial class MainViewModel
         StatusMessage = $"All {count} inner boundaries: {Describe(action)}";
     }
 
+    /// <summary>
+    /// A tap on the map with the boundary menu open (<c>boundary.selectAt</c>): the row of the
+    /// obstacle there is selected (<see cref="Services.ObstacleEditing.ObstacleAt"/>: the smallest one holding the
+    /// point, else the nearest edge within <paramref name="reach"/> metres, which the page sends for
+    /// its zoom). Nothing there: the selection stays. True when an obstacle was picked.
+    /// </summary>
+    public bool RemoteSelectObstacleAt(double easting, double northing, double reach)
+    {
+        var boundary = CurrentBoundary;
+        if (boundary == null || !double.IsFinite(easting) || !double.IsFinite(northing)) return false;
+        int inner = Services.ObstacleEditing.ObstacleAt(boundary, easting, northing, double.IsFinite(reach) ? Math.Max(0, reach) : 0);
+        if (inner < 0) return false;
+        SelectedBoundaryIndex = ListRowOfInner(boundary, inner);
+        return true;
+    }
+
     private bool TryLoadBoundaryForEdit(out Boundary boundary, out string fieldPath)
     {
         boundary = null!;

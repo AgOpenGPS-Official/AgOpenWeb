@@ -285,6 +285,15 @@ public static partial class RemoteServerWiring
                                 case "boundary.select": // arg = boundary list index (Tier-1)
                                     if (int.TryParse(arg, out var bsi)) vm.SelectedBoundaryIndex = bsi;
                                     return;
+                                case "boundary.selectAt": // arg = "e,n,reach": a tap on the map with the
+                                {                         // boundary menu open picks the obstacle there
+                                    var bsa = arg.Split(',');
+                                    if (bsa.Length == 3 && double.TryParse(bsa[0], num, inv, out var bse)
+                                        && double.TryParse(bsa[1], num, inv, out var bsn)
+                                        && double.TryParse(bsa[2], num, inv, out var bsr))
+                                        vm.RemoteSelectObstacleAt(bse, bsn, bsr);
+                                    return;
+                                }
                                 case "boundary.atObstacle": // arg = "index:turn|driveThrough": the
                                 {                           // obstacle on that list row (field data)
                                     var bc = arg.IndexOf(':');

@@ -18,11 +18,18 @@ public partial class MainViewModel
     /// <summary>
     /// A new round obstacle at (<paramref name="easting"/>, <paramref name="northing"/>), field
     /// metres, <paramref name="diameter"/> metres across; its choice is Drive through, as a tree's
-    /// would be, and it is Hard. Its row is selected.
+    /// would be, and it is Hard. Its row is selected. A tap inside an obstacle already there
+    /// selects that one instead of putting a circle on it.
     /// </summary>
     public void RemoteAddObstacleCircle(double easting, double northing, double diameter)
     {
         if (!CheckDiameter(diameter) || !TryLoadBoundaryForEdit(out var boundary, out var fieldPath)) return;
+        int there = Services.ObstacleEditing.ObstacleAt(boundary, easting, northing, reach: 0);
+        if (there >= 0)
+        {
+            SelectedBoundaryIndex = ListRowOfInner(boundary, there);
+            return;
+        }
         if (boundary.OuterBoundary is { IsValid: true } outer && !outer.IsPointInside(easting, northing))
         {
             ReportFailure("A circle's centre must be inside the field");
@@ -86,29 +93,14 @@ public partial class MainViewModel
     }
 
     /// <summary>
-    /// Every obstacle that is not a circle yet becomes the smallest circle that holds it, the
-    /// trees drawn by hand. One that is long and thin (its circle more than
-    /// <see cref="ObstacleCircle.MaxAreaRatio"/> times its area) or bigger than a tree (its circle
-    /// over <see cref="ObstacleCircle.MaxRoundAllDiameter"/>, 10 m) keeps its shape.
+    /// Every obstacle up to a tree's size that is not a circle yet becomes the smallest circle
+    /// that holds it (<see cref="Services.ObstacleEditing.MakeObstaclesRound"/>); long, thin and
+    /// big ones keep their shape, and the operator is told how many.
     /// </summary>
     public void RemoteMakeObstaclesRound()
     {
         if (!TryLoadBoundaryForEdit(out var boundary, out var fieldPath)) return;
-        int made = 0, kept = 0;
-        foreach (var inner in boundary.InnerBoundaries)
-        {
-            if (!inner.IsValid || inner.Circle != null) continue;
-            var circle = ObstacleCircle.Covering(inner.Points);
-            double shapeArea = inner.AreaHectares * 10000.0;
-            if (!(circle.Diameter <= ObstacleCircle.MaxRoundAllDiameter) || !ObstacleCircle.IsValidDiameter(circle.Diameter)
-                || !(circle.Area <= ObstacleCircle.MaxAreaRatio * shapeArea))
-            {
-                kept++;
-                continue;
-            }
-            inner.SetCircle(circle);
-            made++;
-        }
+        var (made, kept) = Services.ObstacleEditing.MakeObstaclesRound(boundary);
         if (made == 0)
         {
             ReportFailure(kept > 0 ? $"No obstacle made round: {kept} long and thin or over {Metres(ObstacleCircle.MaxRoundAllDiameter)} across, kept as drawn" : "No obstacle to make round");

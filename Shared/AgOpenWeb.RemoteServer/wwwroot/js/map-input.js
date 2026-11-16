@@ -128,7 +128,7 @@ addEventListener('pointerup', e => {
     const w = s2w(e.clientX - mapL, e.clientY);
     if (w) mapTap.onTap(w.e, w.n);
   } else if (gestureOnMap && !moved && !editSession) {
-    // With the boundary menu open a tap on an obstacle picks its row (hud-tools.js).
+    // With the boundary menu open a tap is the menu's: the host picks the obstacle there (hud-tools.js).
     if (!boundaryMenuTap(e.clientX - mapL, e.clientY)) vehicleTap(e.clientX - mapL, e.clientY);
   }
   gestureOnMap = false;
