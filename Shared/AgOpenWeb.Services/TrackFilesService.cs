@@ -170,11 +170,13 @@ namespace AgOpenWeb.Services
                     }
                     else
                     {
-                        track.Points = new List<Vec3>
+                        // AgOpenGPS's A+ line puts B 1 m from A: moved out along the
+                        // line's heading, or AgOpenWeb has no pass on it.
+                        track.Points = TrackModel.LengthenShortABLine(new List<Vec3>
                         {
                             new Vec3(aEasting, aNorthing, headingRadians),
                             new Vec3(bEasting, bNorthing, headingRadians)
-                        };
+                        }, headingRadians);
                     }
 
                     result.Add(track);
@@ -284,9 +286,11 @@ namespace AgOpenWeb.Services
                     eastingB = eastingA + Math.Sin(headingRad) * 100.0;
                     northingB = northingA + Math.Cos(headingRad) * 100.0;
                 }
-                result.Add(TrackModel.FromABLine(parts[0],
+                var abLine = TrackModel.FromABLine(parts[0],
                     new Vec3(eastingA, northingA, headingRad),
-                    new Vec3(eastingB, northingB, headingRad)));
+                    new Vec3(eastingB, northingB, headingRad));
+                abLine.Points = TrackModel.LengthenShortABLine(abLine.Points, headingRad);
+                result.Add(abLine);
             }
             return result;
         }
