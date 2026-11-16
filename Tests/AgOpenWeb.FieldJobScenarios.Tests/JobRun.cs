@@ -56,6 +56,10 @@ public sealed record JobSpec(
     /// <summary>When an <see cref="Expected"/> code is the operator's doing only up to a size (a
     /// 50 cm nudge leaves a 50 cm strip, not a wider one): false = report it as a finding after all.</summary>
     public Func<string, JobAreas, bool>? ExpectedWhen { get; init; }
+    /// <summary>An <c>END-OF-FIELD-FIELD-LEFT</c> stop this job is expected to make (the field's shape
+    /// with the order it is worked in, not something AgOpenWeb does wrong): noted, not counted, when
+    /// the operator was told <see cref="ExpectedStop.Says"/>; another stop is still a finding.</summary>
+    public ExpectedStop? ExpectedStop { get; init; }
     /// <summary>How the operator guides the job: the AB line named in <see cref="Track"/> (the
     /// default), or a curve, a closed loop, a water pivot, contour or a recorded path
     /// (<see cref="PathOperator"/>).</summary>
@@ -1371,3 +1375,7 @@ public sealed class JobRun : IAsyncDisposable
         }
     }
 }
+
+/// <summary>A stop for want of room on the next pass that a job is expected to make
+/// (<see cref="JobSpec.ExpectedStop"/>): what AgOpenWeb says, and why the stop is right there.</summary>
+public sealed record ExpectedStop(string Says, string Why);

@@ -175,6 +175,8 @@ public static class Jobs
                 // ("... it runs 1.1 m from the boundary, 2.0 m needed"): another stop is a finding.
                 if (spec.Expected.Contains("END-OF-FIELD-FIELD-LEFT") && r.EndedBy.Contains(" m from the boundary, ", StringComparison.Ordinal))
                     sc.Note(F($"expected from the field's shape (`END-OF-FIELD-FIELD-LEFT`): the next pass runs nearer the fence than the U-turn distance, where no tractor fits; {left}"));
+                else if (spec.ExpectedStop is { } stop && r.EndedBy.Contains(stop.Says, StringComparison.Ordinal))
+                    sc.Note(F($"expected (`END-OF-FIELD-FIELD-LEFT`): {stop.Why}; {left}"));
                 else
                     flag(Severity.Improvement, "END-OF-FIELD-FIELD-LEFT", left);
             }

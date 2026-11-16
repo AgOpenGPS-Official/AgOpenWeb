@@ -23,7 +23,15 @@ public static class SkipWorkedJobs
             "button on its third mode, ignore worked tracks, 1 row: AgOpenWeb works every other pass on the way out and the rest on the way " +
             "back, choosing the next pass at every end.",
             "Baetas", "1 Principal AB 8 deg", Machines.Puma, Machines.Sprayer8, RigJobs.Puma)
-        { BeforeStart = SkipWorkedAsync, OnFix = w1.OnFixAsync, ExtraJudge = w1.Judge };
+        // A bay cuts a lobe off Baetas's south end for passes 5 and below (pieces of 50-70 m); pass 6
+        // runs on into it, so on the way back the order lands in the lobe and works it, then has no
+        // pass with room left there (2026-11-16: 47 % sprayed). The snake picks the next pass at each
+        // end, as AgOpenGPS; working a field part by part is an enhancement, not a fix.
+        {
+            BeforeStart = SkipWorkedAsync, OnFix = w1.OnFixAsync, ExtraJudge = w1.Judge,
+            ExpectedStop = new("No U-turn onto the next pass: none of it is in the field at this end",
+                "from the field's shape: the snake order worked the lobe that a bay cuts off the south end and had no pass with room left in it; the passes beyond the bay are not reached by U-turn from there"),
+        };
 
         var w2 = new SnakeWatch(careless: true);
         yield return new JobSpec("W2", "Olival with a hard boundary, skip worked passes, a careless operator",
@@ -31,7 +39,14 @@ public static class SkipWorkedJobs
             "fits) in the snake order, 1 row. The operator taps the U-turn arrow in the middle of the fourth pass (the turn goes the " +
             "other way and the order is planned again from where it lands), and after the seventh turn taps the row button (2 rows).",
             "Olival", "AB 159 deg", Machines.Puma, Machines.Sprayer8, RigJobs.Puma)
-        { HardBoundary = true, BeforeStart = SkipWorkedAsync, OnFix = w2.OnFixAsync, ExtraJudge = w2.Judge };
+        // The arrow tapped mid-pass sends the order out to the west edge (-3, -5, -7); at -7's end the
+        // next pass has 4.5 m in the field and the open passes are on the far side, more than twice
+        // the skip's step away: the operator takes over, as the snake's rules say (2026-11-16: 54 %).
+        {
+            HardBoundary = true, BeforeStart = SkipWorkedAsync, OnFix = w2.OnFixAsync, ExtraJudge = w2.Judge,
+            ExpectedStop = new("No U-turn onto the next pass: only ",
+                "from what the operator did: the U-turn arrow tapped mid-pass sent the order to the field's edge, where the next pass is too short and the passes still open are beyond the snake's reach"),
+        };
     }
 
     /// <summary>Two taps of the skip button: normal, alternative, ignore worked tracks (1 row).</summary>
