@@ -404,7 +404,8 @@ public partial class YouTurnCreationService
         // The end of the pass, found the one way (PassEnds): the turn builder starts its arc from
         // this point, and the state machine measured its distance to the turn to the same end.
         var passEnd = PassEnds.Find(currentCurvePoints, currentLocationIndex, guidance.IsHeadingSameWay,
-            p => isPointInsideTurnArea(p) == 0, turnBoundaryVec3);
+            p => isPointInsideTurnArea(p) == 0, turnBoundaryVec3,
+            p => boundary.OuterBoundary.IsPointInside(p.Easting, p.Northing));
         if (passEnd is { } end)
             _logger.LogDebug("[YouTurn] End of pass {Path} ahead at ({E:F1},{N:F1}), point {Idx} of {Count}",
                 guidance.HowManyPathsAway, end.Crossing.Easting, end.Crossing.Northing, end.OutsideIndex, currentCurvePoints.Count);
@@ -562,13 +563,14 @@ public partial class YouTurnCreationService
     /// the pass run across the turn line's extent). Null past the last crossing.
     /// </summary>
     internal static PassEnd? PassEndAhead(Models.Track.Track track, Vec3 vehiclePos, IReadOnlyList<Vec3> turnLine,
-        bool headingSameWay, double offsetDistance = 0)
+        bool headingSameWay, double offsetDistance = 0, IReadOnlyList<Vec3>? fence = null)
     {
         if (turnLine.Count < 3 || track.Points.Count < 2) return null;
-        var (_, pass) = PassForTurn(track, turnLine, offsetDistance);
+        var (_, pass) = PassForTurn(track, fence ?? turnLine, offsetDistance);
         if (pass.Count < 2) return null;
         int near = PassEnds.NearestIndex(pass, vehiclePos.Easting, vehiclePos.Northing);
-        return PassEnds.Find(pass, near, headingSameWay, p => GeometryMath.IsPointInPolygon(turnLine, p.Easting, p.Northing), turnLine);
+        return PassEnds.Find(pass, near, headingSameWay, p => GeometryMath.IsPointInPolygon(turnLine, p.Easting, p.Northing), turnLine,
+            fence == null ? null : p => GeometryMath.IsPointInPolygon(fence, p.Easting, p.Northing));
     }
 
     // ── Simple geometric fallback ───────────────────────────────────────

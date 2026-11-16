@@ -26,16 +26,33 @@ public readonly record struct PassEnd(int OutsideIndex, int InsideIndex, Vec2 Cr
 /// crossing under it is where the pass begins, not where it ends (C11, C15, J12, J20). The state
 /// machine's distance to the turn, the turn builder's arc start and the fallback turn are all
 /// measured from this end.
+/// <para>
+/// A clip of the turn line is not an end: where the pass is back inside the turn line within less
+/// than <see cref="DriveThroughLength"/> and never outside the fence, it is driven through. At a
+/// notch in the fence the turn line's notch is 2 m deeper, and a pass 1.65 m from the fence's tip
+/// ran 0.35 m outside the turn line for a few metres (field job J19 on Olival): every search took
+/// that for the end of the pass, 49 m into it, and the turn there landed on a pass that runs
+/// through the notch, so the job stopped. AgOpenGPS turns at the clip. A stretch outside the turn
+/// line that is long (the landing length), or that leaves the fence, is an end.
+/// </para>
 /// </summary>
 public static class PassEnds
 {
     /// <summary>
+    /// A stretch outside the turn line shorter than this, inside the fence, is driven through: the
+    /// landing length, what the next pass needs at an end to be turned onto at all.
+    /// </summary>
+    public const double DriveThroughLength = YouTurnPathingService.MinLandingLength;
+
+    /// <summary>
     /// The end of <paramref name="pass"/> ahead of index <paramref name="fromIndex"/>, walking the
     /// points in their order (<paramref name="forward"/>) or against it. Null when the pass does not
-    /// leave the turn area ahead (past its last crossing, or never inside).
+    /// leave the turn area ahead (past its last crossing, or never inside). With
+    /// <paramref name="insideField"/> (the fence) a clip of the turn line is driven through
+    /// (<see cref="DriveThroughLength"/>); without it every point outside the turn line is an end.
     /// </summary>
     public static PassEnd? Find(IReadOnlyList<Vec3> pass, int fromIndex, bool forward,
-        Func<Vec3, bool> insideTurnArea, IReadOnlyList<Vec3>? turnLine = null)
+        Func<Vec3, bool> insideTurnArea, IReadOnlyList<Vec3>? turnLine = null, Func<Vec3, bool>? insideField = null)
     {
         int step = forward ? 1 : -1;
         bool seenInside = false;
@@ -43,6 +60,11 @@ public static class PassEnds
         {
             if (insideTurnArea(pass[j])) { seenInside = true; continue; }
             if (!seenInside) continue;
+            if (insideField != null && IsClip(pass, j, step, insideTurnArea, insideField, out int back))
+            {
+                j = back; // back inside the turn line; the walk goes on from there
+                continue;
+            }
             int i = j - step;
             var a = pass[i];
             var b = pass[j];
@@ -54,6 +76,26 @@ public static class PassEnds
             return new PassEnd(j, i, crossing ?? new Vec2((a.Easting + b.Easting) / 2, (a.Northing + b.Northing) / 2), heading);
         }
         return null;
+    }
+
+    /// <summary>
+    /// Whether the stretch outside the turn line from <paramref name="first"/> (the first point
+    /// outside) is a clip: back inside the turn line at <paramref name="back"/> in under
+    /// <see cref="DriveThroughLength"/> along the pass, no point of it outside the field.
+    /// </summary>
+    private static bool IsClip(IReadOnlyList<Vec3> pass, int first, int step,
+        Func<Vec3, bool> insideTurnArea, Func<Vec3, bool> insideField, out int back)
+    {
+        back = first;
+        double length = 0;
+        for (int k = first; k >= 0 && k < pass.Count; k += step)
+        {
+            if (!insideField(pass[k])) return false;
+            if (k != first) length += Distance(pass[k - step], pass[k]);
+            if (length >= DriveThroughLength) return false;
+            if (insideTurnArea(pass[k])) { back = k; return true; }
+        }
+        return false;
     }
 
     /// <summary>Where the segment a–b crosses <paramref name="turnLine"/> (its closing segment included); null when it doesn't.</summary>
