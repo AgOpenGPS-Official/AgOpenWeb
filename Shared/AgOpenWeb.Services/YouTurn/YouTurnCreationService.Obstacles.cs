@@ -82,31 +82,20 @@ public partial class YouTurnCreationService
 
     /// <summary>
     /// A fingerprint of the field's obstacles as a turn sees them: how many there are, each one's
-    /// choice, Hard and outline (its point count and two of its points, so a circle that is moved
-    /// or resized counts too). A planned turn is planned again when it changes, and the obstacle
-    /// turn lines are built again. Every cycle while a turn is planned, so it reads two points of
-    /// each obstacle, not its outline.
+    /// choice, Hard and whole outline (every corner, <see cref="BoundaryPolygon.OutlineStamp"/>).
+    /// A planned turn is planned again when it changes, and the obstacle turn lines are built
+    /// again. Every cycle while a turn is planned, so it reads one number per obstacle, worked out
+    /// with the obstacle's index when its points change. Two of its points were read before: a
+    /// corner moved anywhere else kept the turn planned for the old outline.
     /// </summary>
     public static long ObstacleStamp(Boundary? boundary)
     {
         if (boundary == null) return 0;
         long h = boundary.InnerBoundaries.Count;
         foreach (var inner in boundary.InnerBoundaries)
-        {
-            var pts = inner.Points;
-            h = ((h * 31 + pts.Count) * 31 + (int)inner.AtObstacle) * 31 + (inner.IsHard ? 1 : 0);
-            if (pts.Count == 0) continue;
-            var a = pts[0];
-            var b = pts[pts.Count / 2];
-            h = h * 31 + Cm(a.Easting);
-            h = h * 31 + Cm(a.Northing);
-            h = h * 31 + Cm(b.Easting);
-            h = h * 31 + Cm(b.Northing);
-        }
+            h = ((h * 31 + inner.OutlineStamp) * 31 + (int)inner.AtObstacle) * 31 + (inner.IsHard ? 1 : 0);
         return h;
     }
-
-    private static long Cm(double metres) => (long)Math.Round(metres * 100);
 
     /// <summary>
     /// The turn area test with the obstacles, AgOpenGPS's IsPointInsideTurnArea: -1 outside the

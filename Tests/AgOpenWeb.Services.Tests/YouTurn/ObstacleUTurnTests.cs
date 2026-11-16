@@ -110,6 +110,31 @@ public class ObstacleUTurnTests
         Assert.That(result.Path!.Min(p => p.Northing), Is.GreaterThanOrEqualTo(ObstacleNorth + Distance - 0.2));
     }
 
+    [TestCase(ObstacleAction.Turn, false)]
+    [TestCase(ObstacleAction.DriveThrough, true)]
+    public void TheSimpleFallback_IsHeldToTheUTurnObstacles(ObstacleAction at, bool made)
+    {
+        // A semicircle from pass 0 over a tree beside the pass: the fallback is laid out from the
+        // tractor and checked against the outer boundary only, so it had no obstacle test.
+        var b = new Boundary { OuterBoundary = Rect(-100, -150, 100, 150) };
+        var tree = Rect(-1, 101, 1, 103);
+        tree.AtObstacle = at;
+        b.InnerBoundaries.Add(tree);
+        var path = new List<Vec3>();
+        for (int i = 0; i <= 30; i++)
+        {
+            double a = System.Math.PI * i / 30;
+            path.Add(new Vec3(3 * System.Math.Cos(a), 100 + 3 * System.Math.Sin(a), 0));
+        }
+        for (int i = 1; i <= 10; i++) path.Add(new Vec3(-3, 100 - i, System.Math.PI));
+
+        var result = _creation.FallbackResult(path, b, ConfigurationStore.Instance);
+
+        Assert.That(result.UsedFallback, Is.True);
+        Assert.That(result.Path != null, Is.EqualTo(made));
+        Assert.That(result.AtObstacle, Is.EqualTo(!made), "the operator is told: no room before the obstacle");
+    }
+
     [Test]
     public void ADriveThroughObstacle_IsPassed_AndTheTurnIsAtTheFieldsEdge()
     {
@@ -366,6 +391,59 @@ public class ObstacleUTurnDriveTests
         var ctx = Ctx(3, 0, 0);
         _machine.TriggerManual(turnLeft: true, isAutoSteerEngaged: true, in ctx, _guidance, _turn);
         Assert.That(_turn.IsExecuting, Is.True);
+    }
+
+    [Test]
+    public void AManualTurn_LandingJustBeforeAnotherObstacle_IsRefused()
+    {
+        // A tree on pass -1 a few metres past where the turn lands: driven, the turn would end in
+        // the AutoSteer-off alarm with no room left, so its exit is held to the obstacles too.
+        var tree = Rect(-6, -14, 0, -8);
+        tree.AtObstacle = ObstacleAction.Turn;
+        _boundary.InnerBoundaries.Add(tree);
+        var ctx = Ctx(3, 0, 0);
+
+        var effects = _machine.TriggerManual(turnLeft: true, isAutoSteerEngaged: true, in ctx, _guidance, _turn);
+
+        Assert.That(_turn.IsExecuting, Is.False);
+        Assert.That(effects.StatusMessage, Does.Contain("obstacle"));
+    }
+
+    [Test]
+    public void AManualTurn_WithTheNextObstacleWellPastItsEnd_IsMade()
+    {
+        var tree = Rect(-6, -60, 0, -54);
+        tree.AtObstacle = ObstacleAction.Turn;
+        _boundary.InnerBoundaries.Add(tree);
+        var ctx = Ctx(3, 0, 0);
+
+        _machine.TriggerManual(turnLeft: true, isAutoSteerEngaged: true, in ctx, _guidance, _turn);
+
+        Assert.That(_turn.IsExecuting, Is.True);
+    }
+
+    [Test]
+    public void AnObstacleChangedAtACornerNotSampledBefore_AfterTheTurnWasPlanned_IsTurnedAt()
+    {
+        // Six corners: the first and the middle one (the two the stamp read before) stay put,
+        // the others bring the obstacle onto the pass. The planned turn must see it.
+        var obstacle = _boundary.InnerBoundaries[0];
+        void Place(params (double E, double N)[] corners)
+        {
+            obstacle.Points.Clear();
+            foreach (var (e, n) in corners) obstacle.Points.Add(new BoundaryPoint(e, n, 0));
+            obstacle.UpdateBounds();
+        }
+        Place((30, 40), (40, 40), (50, 40), (50, 60), (40, 60), (30, 60)); // beside the pass
+        double n = 0;
+        while (_turn.TurnPath == null && n < 20) { Tick(3, n, 0); n += Step; }
+        Assert.That(_turn.TurnPath, Is.Not.Null);
+        Assert.That(_turn.TurnAtObstacle, Is.False);
+
+        Place((30, 40), (-10, 40), (-10, 60), (50, 60), (50, 50), (30, 50)); // across the pass
+        Tick(3, n, 0);
+
+        Assert.That(_turn.TurnAtObstacle, Is.True, "planned again for the obstacle's new outline");
     }
 
     private YouTurnStateMachine.TickContext Ctx(double e, double n, double headingRad) => new(

@@ -206,7 +206,7 @@ public partial class YouTurnCreationService
                         netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI);
                     var fallback = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
                         guidance, turn, uTurnSkipRows, headlandDistance, selectedTrack);
-                    return new TurnPathResult(fallback.Count > 10 ? fallback : null, UsedFallback: true);
+                    return FallbackResult(fallback, boundary, config);
                 }
 
                 // Implement clearance against the hard outer boundary and a hard obstacle the
@@ -280,8 +280,25 @@ public partial class YouTurnCreationService
                 output.FailureReason ?? "unknown");
             var fallbackPath = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
                 guidance, turn, uTurnSkipRows, headlandDistance, selectedTrack);
-            return new TurnPathResult(fallbackPath.Count > 10 ? fallbackPath : null, UsedFallback: true);
+            return FallbackResult(fallbackPath, boundary, config);
         }
+    }
+
+    /// <summary>
+    /// The simple fallback, held to the obstacles chosen as U-turn as the generator's path is
+    /// (<see cref="ClearsTurnObstacles"/>, with the exit): it is laid out from the tractor and
+    /// checks only the outer boundary, so where the pass itself meets no obstacle nothing else
+    /// kept it out of one beside the pass. No such turn is made; the operator is told.
+    /// </summary>
+    internal TurnPathResult FallbackResult(List<Vec3> fallback, Boundary? boundary, ConfigurationStore config)
+    {
+        if (fallback.Count <= 10) return new TurnPathResult(null, UsedFallback: true);
+        if (boundary != null && !ClearsTurnObstacles(fallback, boundary, config, out int crossed, ExitReach))
+        {
+            _logger.LogWarning("[YouTurn] The fallback turn would cross obstacle {I}, or end right before it; no turn.", crossed + 1);
+            return new TurnPathResult(null, UsedFallback: true) { AtObstacle = true };
+        }
+        return new TurnPathResult(fallback, UsedFallback: true);
     }
 
     /// <summary>
@@ -1101,8 +1118,10 @@ public partial class YouTurnCreationService
 
         // Obstacles chosen as U-turn: a manual turn is anchored at the tractor, so one that
         // crosses an obstacle's turn line, or swings the implement into a hard obstacle, is
-        // refused, as the automatic turn keeps out of them.
-        if (boundary != null && !ClearsTurnObstacles(path, boundary, config, out int inner))
+        // refused, as the automatic turn keeps out of them. Its exit too, as the automatic
+        // turn's (ExitReach): one that lands just before an obstacle ends in the AutoSteer-off
+        // alarm once the turn is driven, with no room left to stop.
+        if (boundary != null && !ClearsTurnObstacles(path, boundary, config, out int inner, ExitReach))
         {
             _logger.LogWarning("[ManualYouTurn] The turn would cross obstacle {I} - refusing", inner + 1);
             obstacleInTheWay = true;
