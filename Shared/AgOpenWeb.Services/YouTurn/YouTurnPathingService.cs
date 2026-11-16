@@ -146,6 +146,10 @@ public sealed class YouTurnPathingService
     /// (the way the last turn stepped) wins; without it, the side away from the reference line.
     /// Given the tractor's <paramref name="position"/> and its distance to the headland ahead, a
     /// side only counts when its pass can be landed on from here (<see cref="IsPathLandable"/>).
+    /// Without the position, with <paramref name="minInside"/> a side counts only when its pass has
+    /// that much inside the area in all (<see cref="InsideLength"/>): the pass along the edge the
+    /// operator started beside has a sliver inside (15 m of pass -15 on Olival, J20), which made
+    /// both sides count and the tie-break sent the first turn at the edge.
     /// </summary>
     public (bool isInside, bool positiveDirection) WouldNextLineBeInsideBoundary(
         Models.Track.Track currentTrack,
@@ -156,7 +160,8 @@ public sealed class YouTurnPathingService
         int uTurnSkipRows,
         bool? keepPositive = null,
         Position? position = null,
-        double headlandAhead = 0)
+        double headlandAhead = 0,
+        double minInside = 0)
     {
         if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
             return (true, false);
@@ -170,12 +175,15 @@ public sealed class YouTurnPathingService
 
         // With the tractor's position, a pass must also be long enough inside at this end to
         // land a turn on (IsPathLandable); without it, inside anywhere.
+        bool Inside(int pathsAway) => minInside > 0
+            ? InsideLength(currentTrack, abHeading, pathsAway, boundary, headlandLine, stopAt: minInside) >= minInside
+            : CheckOffsetLineInsideCultivated(currentTrack, abHeading, pathsAway, boundary, headlandLine, config);
         bool negInside = position is { } pn
             ? IsPathLandable(currentTrack, abHeading, nextPathsAwayNeg, boundary, headlandLine, pn, guidance.IsHeadingSameWay, headlandAhead, guidance.HowManyPathsAway)
-            : CheckOffsetLineInsideCultivated(currentTrack, abHeading, nextPathsAwayNeg, boundary, headlandLine, config);
+            : Inside(nextPathsAwayNeg);
         bool posInside = position is { } pp
             ? IsPathLandable(currentTrack, abHeading, nextPathsAwayPos, boundary, headlandLine, pp, guidance.IsHeadingSameWay, headlandAhead, guidance.HowManyPathsAway)
-            : CheckOffsetLineInsideCultivated(currentTrack, abHeading, nextPathsAwayPos, boundary, headlandLine, config);
+            : Inside(nextPathsAwayPos);
 
         if (negInside && posInside)
         {
@@ -188,6 +196,43 @@ public sealed class YouTurnPathingService
         if (negInside) return (true, false);
         if (posInside) return (true, true);
         return (false, false);
+    }
+
+    /// <summary>
+    /// How much of pass <paramref name="pathsAway"/> lies inside the cultivated area, in metres,
+    /// over its whole rendered length (a curve: its points' segments; an AB line: 5 m samples),
+    /// counted up to <paramref name="stopAt"/>. Any part of a pass counts for whether the pass is
+    /// in the field at all (<see cref="IsPathInsideCultivated"/>); this says whether there is a
+    /// pass worth driving there, the landing length (<see cref="MinLandingLength"/>) or more.
+    /// </summary>
+    public double InsideLength(Models.Track.Track track, double abHeading, int pathsAway,
+        Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, double stopAt = double.MaxValue)
+    {
+        if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid || track.Points.Count < 2) return stopAt;
+        var config = _configStore;
+        double distAway = PassGeometry.Offset(track, pathsAway, config.ActualToolWidth - config.Tool.Overlap);
+        double length = 0;
+        if (track.Points.Count > 2)
+        {
+            var curve = CurveProcessing.CreateOffsetCurve(track.Points, distAway);
+            for (int i = 1; i < curve.Count && length < stopAt; i++)
+                if (IsPointInsideCultivatedArea(curve[i].Easting, curve[i].Northing, boundary, headlandLine))
+                    length += GeometryMath.Distance(curve[i - 1].Easting, curve[i - 1].Northing, curve[i].Easting, curve[i].Northing);
+            return length;
+        }
+        var a = track.Points[0];
+        var b = track.Points[track.Points.Count - 1];
+        double dx = b.Easting - a.Easting, dy = b.Northing - a.Northing, len = Math.Sqrt(dx * dx + dy * dy);
+        if (len < 0.01) return 0;
+        double nx = dx / len, ny = dy / len, perp = abHeading + Math.PI / 2;
+        double midE = (a.Easting + b.Easting) / 2 + Math.Sin(perp) * distAway;
+        double midN = (a.Northing + b.Northing) / 2 + Math.Cos(perp) * distAway;
+        const double Spacing = 5.0, Extent = 2000.0;
+        double total = len + 2 * Extent;
+        for (double t = -total / 2; t <= total / 2 && length < stopAt; t += Spacing)
+            if (IsPointInsideCultivatedArea(midE + nx * t, midN + ny * t, boundary, headlandLine))
+                length += Spacing;
+        return length;
     }
 
     /// <summary>Would pass <paramref name="pathsAway"/> lie inside the cultivated area?
