@@ -161,6 +161,14 @@ public static class Jobs
                 && !r.Problems.Any(p => p.Contains("refused the U-turn", StringComparison.Ordinal)
                     || p.Contains("had no room for a U-turn", StringComparison.Ordinal)))
                 flag(Severity.Bug, "JOB-NEVER-TURNED", F($"the job never got past its first pass: the operator took over before any U-turn ({r.EndedBy}), with {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed."));
+            // "End of field reached - no room on the next pass at this end" with the field not done:
+            // what was said and what was left, not whether the app was right to say it. J14, J8 and
+            // J19 stopped so in the 2026-11-16 nightly with 99.5, 16 and 15 % of the field left, and
+            // nothing but the sprayed share in a note showed it. Not on a short run (TURNS,
+            // MINUTES, FROM_PASS): the field is not meant to be done.
+            if (r.EndedBy.Contains("no room on the next pass at this end", StringComparison.Ordinal)
+                && !r.ShortStopped && r.StartedAtPass == int.MinValue && a.Missed > NoRoomLeftShare * a.Work)
+                flag(Severity.Improvement, "END-OF-FIELD-FIELD-LEFT", F($"the job ended at AgOpenWeb's \"End of field reached - no room on the next pass at this end\" with {Pct(a.Missed, a.Work)} of the cultivated area unsprayed ({r.EndedBy})."));
         }
         else if (!r.FieldDone)
             flag(Severity.Bug, "FIELD-NOT-FINISHED", F($"AgOpenWeb never reported the end of the field; the job stopped after {r.Seconds / 60:0} min with {Pct(a.Missed, a.Work)} of the cultivated area unsprayed. {string.Join(" | ", r.Problems)}"));
@@ -393,6 +401,11 @@ public static class Jobs
             else if (p.Contains("ran", StringComparison.Ordinal)) flag(Severity.Safety, "RAN-OFF", p);
         }
     }
+
+    /// <summary>The share of the cultivated area left unsprayed at a "no room" end above which it is
+    /// reported (END-OF-FIELD-FIELD-LEFT): the real end of a field leaves the strips between passes
+    /// and the wedges at the pass ends, 1-2 % (J1, J13).</summary>
+    private const double NoRoomLeftShare = 0.05;
 
     private static string Pct(double part, double whole) => whole <= 0 ? "n/a" : F($"{part / whole * 100:0.0} %");
 
