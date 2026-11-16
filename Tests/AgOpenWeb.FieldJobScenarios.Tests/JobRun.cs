@@ -1301,7 +1301,10 @@ public sealed class JobRun : IAsyncDisposable
                 if (x.R - x.L < Spec.T.Width - 0.3 || x2.R - x2.L < Spec.T.Width - 0.3) continue;   // a section still off at the pass's end
                 double gap = x2.L - x.R;
                 if (gap > a.LargestMissedStripM)
-                    a.LargestStripWhere = F($"between passes {passes[k].Key} and {passes[k + 1].Key}, {bin} m along the line from A");
+                {
+                    var at = Frame.At((x.R + x2.L) / 2, bin);
+                    a.LargestStripWhere = F($"between passes {passes[k].Key} and {passes[k + 1].Key}, {bin} m along the line from A, at ({at.E:0},{at.N:0})");
+                }
                 a.LargestMissedStripM = Math.Max(a.LargestMissedStripM, gap);
                 a.LargestOverlapM = Math.Max(a.LargestOverlapM, -gap);
             }
