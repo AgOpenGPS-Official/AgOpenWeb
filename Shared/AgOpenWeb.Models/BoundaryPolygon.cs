@@ -40,6 +40,7 @@ public class BoundaryPolygon
         public required Dictionary<(int, int), List<int>> Grid { get; init; } // cell -> segment indices
         public required int GridOffsetE { get; init; } // makes grid indices non-negative
         public required int GridOffsetN { get; init; }
+        public required long Outline { get; init; } // every corner, to the centimetre (OutlineStamp)
     }
 
     private Index? _index;
@@ -63,6 +64,7 @@ public class BoundaryPolygon
     private static Index Build(List<BoundaryPoint> points)
     {
         double minE = 0, maxE = 0, minN = 0, maxN = 0;
+        long outline = points.Count;
         if (points.Count > 0)
         {
             minE = minN = double.MaxValue;
@@ -73,6 +75,7 @@ public class BoundaryPolygon
                 if (pt.Easting > maxE) maxE = pt.Easting;
                 if (pt.Northing < minN) minN = pt.Northing;
                 if (pt.Northing > maxN) maxN = pt.Northing;
+                outline = (outline * 31 + Cm(pt.Easting)) * 31 + Cm(pt.Northing);
             }
         }
 
@@ -113,8 +116,19 @@ public class BoundaryPolygon
             Slabs = PolygonSlabIndex.Build(points),
             MinEasting = minE, MaxEasting = maxE, MinNorthing = minN, MaxNorthing = maxN,
             Grid = grid, GridOffsetE = offsetE, GridOffsetN = offsetN,
+            Outline = outline,
         };
     }
+
+    private static long Cm(double metres) => (long)Math.Round(metres * 100);
+
+    /// <summary>
+    /// A fingerprint of the whole outline: every corner, to the centimetre. Worked out with the
+    /// polygon's index (when <see cref="Points"/> is replaced or changes length, or after
+    /// <see cref="UpdateBounds"/>), so reading it costs nothing: the U-turn reads it for every
+    /// obstacle on every cycle a turn is planned (YouTurnCreationService.ObstacleStamp).
+    /// </summary>
+    public long OutlineStamp => Current().Outline;
 
     /// <summary>
     /// Get segment indices near a point (from spatial index)
@@ -189,20 +203,59 @@ public class BoundaryPolygon
 
     /// <summary>
     /// The longest distance across the polygon, between its two farthest points, metres: an
-    /// obstacle's size in the boundary list. Every pair of points is measured, so it is for an
-    /// obstacle's few dozen points, not for the GPS cycle.
+    /// obstacle's size in the boundary list. The two farthest points are corners of its convex
+    /// hull, found round the hull with rotating calipers: the boundary list measures every
+    /// obstacle each time it is shown, and every pair of a recorded pond's thousands of points
+    /// held up the host.
     /// </summary>
     public double LongestSpan()
     {
+        var hull = ConvexHull(Points);
+        int h = hull.Count;
+        if (h < 2) return 0;
+        if (h == 2) return Math.Sqrt(Distance2(hull[0], hull[1]));
         double best = 0;
-        for (int i = 0; i < Points.Count; i++)
-            for (int j = i + 1; j < Points.Count; j++)
-            {
-                double de = Points[j].Easting - Points[i].Easting, dn = Points[j].Northing - Points[i].Northing;
-                double d2 = de * de + dn * dn;
-                if (d2 > best) best = d2;
-            }
+        int k = 1;
+        for (int i = 0; i < h; i++)
+        {
+            var a = hull[i];
+            var b = hull[(i + 1) % h];
+            // The corner farthest from edge a-b; it moves on round the hull as the edge does.
+            while (Area2(a, b, hull[(k + 1) % h]) > Area2(a, b, hull[k])) k = (k + 1) % h;
+            best = Math.Max(best, Math.Max(Distance2(a, hull[k]), Distance2(b, hull[k])));
+        }
         return Math.Sqrt(best);
+    }
+
+    private static double Distance2((double E, double N) a, (double E, double N) b) =>
+        (a.E - b.E) * (a.E - b.E) + (a.N - b.N) * (a.N - b.N);
+
+    private static double Area2((double E, double N) a, (double E, double N) b, (double E, double N) c) =>
+        Math.Abs((b.E - a.E) * (c.N - a.N) - (b.N - a.N) * (c.E - a.E));
+
+    // Andrew's monotone chain: the convex hull's corners counter-clockwise, none in a line.
+    private static List<(double E, double N)> ConvexHull(List<BoundaryPoint> points)
+    {
+        var p = new List<(double E, double N)>(points.Count);
+        foreach (var pt in points) p.Add((pt.Easting, pt.Northing));
+        p.Sort((x, y) => x.E != y.E ? x.E.CompareTo(y.E) : x.N.CompareTo(y.N));
+        if (p.Count < 3) return p;
+        var hull = new List<(double E, double N)>(p.Count + 1);
+        static double Cross((double E, double N) o, (double E, double N) a, (double E, double N) b) =>
+            (a.E - o.E) * (b.N - o.N) - (a.N - o.N) * (b.E - o.E);
+        foreach (var pt in p)
+        {
+            while (hull.Count >= 2 && Cross(hull[^2], hull[^1], pt) <= 0) hull.RemoveAt(hull.Count - 1);
+            hull.Add(pt);
+        }
+        int lower = hull.Count + 1;
+        for (int i = p.Count - 2; i >= 0; i--)
+        {
+            while (hull.Count >= lower && Cross(hull[^2], hull[^1], p[i]) <= 0) hull.RemoveAt(hull.Count - 1);
+            hull.Add(p[i]);
+        }
+        hull.RemoveAt(hull.Count - 1);
+        return hull;
     }
 
     /// <summary>

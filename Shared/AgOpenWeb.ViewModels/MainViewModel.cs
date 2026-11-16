@@ -4755,6 +4755,10 @@ public partial class MainViewModel : ObservableObject
         void NormalizePolygon(BoundaryPolygon? poly)
         {
             if (poly?.Points == null || poly.Points.Count < 4) return;
+            // A round obstacle's 24 corners are already few; thinned (a tree under about 6 m
+            // across loses corners at 10 cm), its polygon was no longer its circle's and the
+            // circle was not saved with the field.
+            if (poly.Circle is { } circle && circle.Matches(poly.Points)) return;
             int before = poly.Points.Count;
             poly.Points = Models.Base.BoundaryResolution.Normalize(poly.Points);
             poly.UpdateBounds();

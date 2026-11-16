@@ -232,4 +232,54 @@ public class ObstacleCircleTests
         Assert.That(inner.Circle, Is.Null, "no longer the circle's polygon");
         Assert.That(inner.Points, Has.Count.EqualTo(ObstacleCircle.Segments), "its shape is kept");
     }
+
+    [Test]
+    public async Task ATapOnTheMap_SelectsTheObstacleThere_TheHostPicksIt()
+    {
+        // Rows: 0 Outer, 1 the big patch (50..80), 2 the tree (120..124), 3 the other (150..153, 40..43).
+        var vm = await Open();
+
+        Assert.That(vm.RemoteSelectObstacleAt(60, 60, reach: 1), Is.True);
+        Assert.That(vm.SelectedBoundaryIndex, Is.EqualTo(1), "inside the big patch");
+
+        Assert.That(vm.RemoteSelectObstacleAt(122, 124.8, reach: 1), Is.True);
+        Assert.That(vm.SelectedBoundaryIndex, Is.EqualTo(2), "0.8 m off the tree, within the finger's reach");
+
+        Assert.That(vm.RemoteSelectObstacleAt(122, 126, reach: 1), Is.False, "2 m off, out of reach at this zoom");
+        Assert.That(vm.SelectedBoundaryIndex, Is.EqualTo(2), "a tap on nothing leaves the selection");
+
+        Assert.That(vm.RemoteSelectObstacleAt(122, 126, reach: 3), Is.True, "zoomed out, the finger reaches further");
+        Assert.That(vm.SelectedBoundaryIndex, Is.EqualTo(2));
+
+        Assert.That(vm.RemoteSelectObstacleAt(double.NaN, 60, reach: 1), Is.False);
+    }
+
+    [Test]
+    public async Task CirclesOn_ATapOnAnObstacle_SelectsIt_InsteadOfPuttingACircleOnIt()
+    {
+        var vm = await Open();
+
+        vm.RemoteAddObstacleCircle(122, 122, 6);
+
+        Assert.That(OnDisk(_dir).InnerBoundaries, Has.Count.EqualTo(3), "no circle added");
+        Assert.That(vm.SelectedBoundaryIndex, Is.EqualTo(2), "the tree tapped is selected");
+    }
+
+    [Test]
+    public async Task ASmallCircle_StaysACircle_WhenTheFieldIsOpenedAndSavedAgain()
+    {
+        // Opening a field thins its boundaries to 10 cm (BoundaryResolution); a 3 m tree's 24
+        // corners lost some, and the field saved on closing had no circle left.
+        var vm = await Open();
+        vm.RemoteAddObstacleCircle(80, 150, 3);
+        await vm.CloseFieldAsync();
+
+        await vm.OpenFieldAsync(_dir, "F");
+        Assert.That(vm.State.Field.CurrentBoundary!.InnerBoundaries[3].Points, Has.Count.EqualTo(ObstacleCircle.Segments), "not thinned");
+        await vm.CloseFieldAsync();
+
+        var tree = OnDisk(_dir).InnerBoundaries[3];
+        Assert.That(tree.Circle, Is.Not.Null, "still a circle in the file");
+        Assert.That(tree.Circle!.Value.Diameter, Is.EqualTo(3));
+    }
 }

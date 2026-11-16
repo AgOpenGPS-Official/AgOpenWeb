@@ -62,29 +62,59 @@ public readonly record struct ObstacleCircle(double CenterEasting, double Center
     }
 
     /// <summary>
-    /// True when <paramref name="points"/> are still this circle's polygon: as many corners,
-    /// each at the corner distance within <paramref name="tolerance"/> metres.
+    /// True when <paramref name="points"/> are still this circle's polygon: as many corners, each
+    /// within <paramref name="tolerance"/> metres of one of <see cref="ToPoints"/>'s, in turn round
+    /// the circle (either way, from any corner, as a file may store the ring). A corner moved
+    /// round the circle at the same distance from the centre is an edited polygon, not the circle.
     /// </summary>
     public bool Matches(IReadOnlyList<BoundaryPoint> points, double tolerance = 0.05)
     {
         if (points.Count != Segments) return false;
-        double r = CornerRadius;
+        double r = CornerRadius, step = 2.0 * Math.PI / Segments;
+        int first = -1, previous = -1, way = 0;
         foreach (var p in points)
         {
             double de = p.Easting - CenterEasting, dn = p.Northing - CenterNorthing;
-            if (Math.Abs(Math.Sqrt(de * de + dn * dn) - r) > tolerance) return false;
+            int k = (int)Math.Round(Math.Atan2(dn, de) / step);
+            k = ((k % Segments) + Segments) % Segments;
+            double ce = CenterEasting + r * Math.Cos(k * step), cn = CenterNorthing + r * Math.Sin(k * step);
+            if (Math.Sqrt((p.Easting - ce) * (p.Easting - ce) + (p.Northing - cn) * (p.Northing - cn)) > tolerance) return false;
+            if (previous < 0) first = k;
+            else if (!NextCorner(previous, k, ref way)) return false;
+            previous = k;
         }
+        return NextCorner(previous, first, ref way);
+    }
+
+    // Corner b follows corner a one step round the circle, the same way as the steps before.
+    private static bool NextCorner(int a, int b, ref int way)
+    {
+        int d = ((b - a) % Segments + Segments) % Segments;
+        int w = d == 1 ? 1 : d == Segments - 1 ? -1 : 0;
+        if (w == 0 || (way != 0 && w != way)) return false;
+        way = w;
         return true;
     }
 
     /// <summary>
     /// The smallest circle that holds every one of <paramref name="points"/> (an obstacle drawn
-    /// by hand), its diameter rounded up to 10 cm. Incremental, as Welzl's algorithm: an
-    /// obstacle has a few dozen points.
+    /// by hand), its diameter rounded up to 10 cm. Incremental, as Welzl's algorithm, on the points
+    /// in a shuffled order: its expected work grows with the number of points, where taken in the
+    /// order drawn (round and round a recorded pond) it could grow with their cube and hold up the
+    /// host. The shuffle has a fixed seed, so the same points give the same circle.
     /// </summary>
     public static ObstacleCircle Covering(IReadOnlyList<BoundaryPoint> points)
     {
         if (points.Count == 0) throw new ArgumentException("No points", nameof(points));
+        var shuffled = new BoundaryPoint[points.Count];
+        for (int i = 0; i < shuffled.Length; i++) shuffled[i] = points[i];
+        var random = new Random(24);
+        for (int i = shuffled.Length - 1; i > 0; i--)
+        {
+            int j = random.Next(i + 1);
+            (shuffled[i], shuffled[j]) = (shuffled[j], shuffled[i]);
+        }
+        points = shuffled;
 
         var c = (X: points[0].Easting, Y: points[0].Northing, R: 0.0);
         for (int i = 1; i < points.Count; i++)
