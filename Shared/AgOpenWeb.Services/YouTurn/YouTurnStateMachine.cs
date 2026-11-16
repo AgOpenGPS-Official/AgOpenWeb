@@ -1774,9 +1774,14 @@ public sealed class YouTurnStateMachine
 
         int near = PassEnds.NearestIndex(p.Points, passPoint.Easting, passPoint.Northing);
         int step = headingSameWay ? 1 : -1;
+        // The fence, for a stretch outside the turn line that is driven through; asked only at a point
+        // outside the turn line, and the end is kept, so not on the cycle.
+        var fence = ctx.Boundary?.OuterBoundary is { IsValid: true } f ? f : null;
+        Func<Vec3, bool>? insideField = fence == null ? null : q => fence.IsPointInside(q.Easting, q.Northing);
         void Search(int from)
         {
-            p.End = PassEnds.Find(p.Points, from, headingSameWay, q => _headlandIndex.Contains(turnLine, q.Easting, q.Northing), turnLine);
+            p.End = PassEnds.Find(p.Points, from, headingSameWay, q => _headlandIndex.Contains(turnLine, q.Easting, q.Northing), turnLine, insideField,
+                m => _logger.LogDebug("[YouTurn] Pass {Pass}: {What}", guidance.HowManyPathsAway, m));
             p.SearchedFrom = from;
             if (p.End is { } e)
                 _logger.LogDebug("[YouTurn] End of pass {Pass} ahead at ({E:F1},{N:F1}), point {Idx} of {Count}, from point {From}",

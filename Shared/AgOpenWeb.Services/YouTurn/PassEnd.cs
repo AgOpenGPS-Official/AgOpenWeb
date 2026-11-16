@@ -26,16 +26,30 @@ public readonly record struct PassEnd(int OutsideIndex, int InsideIndex, Vec2 Cr
 /// crossing under it is where the pass begins, not where it ends (C11, C15, J12, J20). The state
 /// machine's distance to the turn, the turn builder's arc start and the fallback turn are all
 /// measured from this end.
+/// <para>
+/// A stretch outside the turn line that stays inside the fence, with the pass back inside the turn
+/// line after it, is driven through, not turned at: the end of a pass is the turn line's crossing
+/// that the fence's crossing follows. The turn line is the fence moved in by the U-turn distance,
+/// a margin for turning, not for driving along an edge: on Olival (field job J19) pass -18 runs
+/// along a slanted edge 1.2–2.1 m inside the fence for 26 m, with 180 m of field beyond, and every
+/// search took the first point outside the turn line for its end, 49 m into the pass; the turn
+/// there landed on a pass 11 m short of its own end, and the job stopped. AgOpenGPS turns at the
+/// first point outside the turn line. A stretch that leaves the fence is an end, at the turn
+/// line's crossing before it, as at any ordinary end of the field.
+/// </para>
 /// </summary>
 public static class PassEnds
 {
     /// <summary>
     /// The end of <paramref name="pass"/> ahead of index <paramref name="fromIndex"/>, walking the
     /// points in their order (<paramref name="forward"/>) or against it. Null when the pass does not
-    /// leave the turn area ahead (past its last crossing, or never inside).
+    /// leave the turn area ahead (past its last crossing, or never inside). With
+    /// <paramref name="insideField"/> (the fence) a stretch outside the turn line but inside the
+    /// fence is driven through; without it every point outside the turn line is an end.
     /// </summary>
     public static PassEnd? Find(IReadOnlyList<Vec3> pass, int fromIndex, bool forward,
-        Func<Vec3, bool> insideTurnArea, IReadOnlyList<Vec3>? turnLine = null)
+        Func<Vec3, bool> insideTurnArea, IReadOnlyList<Vec3>? turnLine = null, Func<Vec3, bool>? insideField = null,
+        Action<string>? debug = null)
     {
         int step = forward ? 1 : -1;
         bool seenInside = false;
@@ -43,6 +57,16 @@ public static class PassEnds
         {
             if (insideTurnArea(pass[j])) { seenInside = true; continue; }
             if (!seenInside) continue;
+            if (insideField != null)
+            {
+                var why = IsClip(pass, j, step, insideTurnArea, insideField, out int back);
+                debug?.Invoke(FormattableString.Invariant($"point {j} ({pass[j].Easting:F1},{pass[j].Northing:F1}) is outside the turn line: {why}"));
+                if (back != j)
+                {
+                    j = back; // back inside the turn line; the walk goes on from there
+                    continue;
+                }
+            }
             int i = j - step;
             var a = pass[i];
             var b = pass[j];
@@ -54,6 +78,30 @@ public static class PassEnds
             return new PassEnd(j, i, crossing ?? new Vec2((a.Easting + b.Easting) / 2, (a.Northing + b.Northing) / 2), heading);
         }
         return null;
+    }
+
+    /// <summary>
+    /// Whether the stretch outside the turn line from <paramref name="first"/> (the first point
+    /// outside) is driven through: back inside the turn line at <paramref name="back"/> with no
+    /// point of it outside the fence. Says what it decided, for the debug log.
+    /// </summary>
+    private static string IsClip(IReadOnlyList<Vec3> pass, int first, int step,
+        Func<Vec3, bool> insideTurnArea, Func<Vec3, bool> insideField, out int back)
+    {
+        back = first;
+        double length = 0;
+        for (int k = first; k >= 0 && k < pass.Count; k += step)
+        {
+            if (!insideField(pass[k]))
+                return FormattableString.Invariant($"the end of the pass, outside the fence at point {k} ({pass[k].Easting:F1},{pass[k].Northing:F1}), {length:F1} m on");
+            if (k != first) length += Distance(pass[k - step], pass[k]);
+            if (insideTurnArea(pass[k]))
+            {
+                back = k;
+                return FormattableString.Invariant($"inside the fence, driven through: back inside the turn line at point {k} ({pass[k].Easting:F1},{pass[k].Northing:F1}), {length:F1} m on");
+            }
+        }
+        return "the end of the pass, the pass ends outside the turn line";
     }
 
     /// <summary>Where the segment a–b crosses <paramref name="turnLine"/> (its closing segment included); null when it doesn't.</summary>
