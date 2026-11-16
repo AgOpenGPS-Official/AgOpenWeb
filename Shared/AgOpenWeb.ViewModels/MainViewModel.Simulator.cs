@@ -35,6 +35,14 @@ public partial class MainViewModel
 
     #endregion
 
+    /// <summary>The simulator can't be turned on while a receiver sends fixes: it is the GPS source.</summary>
+    public const string SimulatorRefusedMessage =
+        "Simulator not turned on: a GPS receiver is sending fixes, and it is the GPS source while it does";
+
+    /// <summary>A receiver's fixes arrived while the simulator ran: the simulator stops.</summary>
+    public const string SimulatorGivesWayMessage =
+        "Simulator off: a GPS receiver started sending fixes, and it is the GPS source now";
+
     #region Simulator Event Handlers
 
     private void OnSimulatorTick(object? sender, EventArgs e)
@@ -44,6 +52,9 @@ public partial class MainViewModel
         // sim and a live source must not drive the pipeline at once (see #478).
         if (_gpsService.IsGpsLive)
         {
+            // Said, not only done: the simulator went off with no word, and the operator
+            // could not tell why (the HAT on the bench, 2026-11-15).
+            ReportFailure(SimulatorGivesWayMessage);
             IsSimulatorEnabled = false; // stops the timer + emits a final stationary frame
             return;
         }
@@ -140,6 +151,8 @@ public partial class MainViewModel
             // while real (parsed) GPS data is arriving over UDP (see #478).
             if (value && !_isSimulatorEnabled && _gpsService.IsGpsLive)
             {
+                // The button did nothing on screen: the operator is told why.
+                ReportFailure(SimulatorRefusedMessage);
                 OnPropertyChanged(); // snap the bound toggle back to off
                 return;
             }
