@@ -1378,11 +1378,17 @@ public sealed class YouTurnStateMachine
         if (keepPositive is null && ctx.WorkHeadlandLine is { Count: >= 3 } work)
         {
             // Where the work is, not whether a turn can land there from here (the turn-line check
-            // above says that): any of the pass in the work area (J8 starts outside the field, the
-            // far turn line 295 m ahead, where no pass is landable yet).
+            // above says that): the pass anywhere in the work area (J8 starts outside the field, the
+            // far turn line 295 m ahead, where no pass is landable yet), but a pass worth driving,
+            // the landing length of it or more: the edge pass the operator started beside has a
+            // sliver in the work area (15 m of pass -15 on Olival, J20; J11, J17), which made both
+            // sides count and the tie-break sent the first turn at the edge, where the end of the
+            // field would be said with the whole field undone.
             var (workInside, workPositive) = _pathing.WouldNextLineBeInsideBoundary(
-                track, abHeading, guidance, ctx.Boundary, work, ctx.UTurnSkipRows, null);
-            _logger.LogDebug("[YouTurn] First turn: the work area's side {Side} (a pass there: {Inside})", workPositive ? "+" : "-", workInside);
+                track, abHeading, guidance, ctx.Boundary, work, ctx.UTurnSkipRows, null,
+                minInside: YouTurnPathingService.MinLandingLength);
+            _logger.LogDebug("[YouTurn] First turn: the work area's side {Side} (a pass of {Min:F0} m or more there: {Inside})",
+                workPositive ? "+" : "-", YouTurnPathingService.MinLandingLength, workInside);
             if (workInside) (nextLineInside, positiveDirection) = (true, workPositive);
         }
         else if (keepPositive is null)
