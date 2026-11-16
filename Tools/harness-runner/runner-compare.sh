@@ -96,7 +96,9 @@ for item in "${runs[@]}"; do
   esac
   # The job harness's pace check: AgOpenWeb's position behind the fixes, in fixes. A run that
   # fell behind was starved of CPU (or paced too fast) and its findings are noise.
-  lag=$(grep -h "harness pace check" "$dest"/*.md 2>/dev/null | sed -E 's/.*\| *([0-9]+) \/ .*/\1/' | sort -n | tail -1)
+  # Only the job harness has the line: elsewhere grep finds nothing, which is no lag (and must not
+  # end the script under pipefail, as it did on the GPS/NTRIP harness, 2026-11-15).
+  lag=$( (grep -h "harness pace check" "$dest"/*.md 2>/dev/null || true) | sed -E 's/.*\| *([0-9]+) \/ .*/\1/' | sort -n | tail -1)
   [ -z "$lag" ] || [ "$lag" = 0 ] || { echo "!! $item: AgOpenWeb ran $lag fix(es) behind the harness (the pace check): a starved run, its findings are noise; raise AGOPENWEB_SCENARIO_PACE or lower MAX_RUNS"; problems=1; }
 done
 
