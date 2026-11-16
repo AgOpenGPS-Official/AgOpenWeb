@@ -957,10 +957,14 @@ public sealed class YouTurnStateMachine
             PlanSnake(in ctx, track, abHeading, guidance, turn, fieldStamp);
         }
 
-        // This end was tried and no turn built: not again on every cycle (see _failedEnd).
+        // This end was tried and no turn built: again every 1.5 s, silently (see _failedEnd).
         if (_failedEnd is { } failedEnd && failedEnd == EndKey(in ctx, track, guidance, turn, fieldStamp))
-            return;
+        {
+            if (++_failedEndCycles < FailedEndRetryCycles) return;
+            _logger.LogDebug("[YouTurn] Trying the end again (no turn built here {Seconds:F1} s ago)", FailedEndRetryCycles / 10.0);
+        }
         _failedEnd = null;
+        _failedEndCycles = 0;
 
         // Never onto a worked pass: the next pass of the order that is still to do.
         var isWorked = WorkedPasses(in ctx, track, guidance, turn);
@@ -1030,22 +1034,29 @@ public sealed class YouTurnStateMachine
             AimTurnAt(track, abHeading, guidance, turn, effects, target, "Snake");
             ReportNoTurn(failed, effects);
             _failedEnd = EndKey(in ctx, track, guidance, turn, fieldStamp);
+            _failedEndCycles = 0;
             return;
         }
         effects.StatusMessage = "End of field reached - no room on the next pass at this end";
         SoundCreationFailed(effects);
         _failedEnd = EndKey(in ctx, track, guidance, turn, fieldStamp);
+        _failedEndCycles = 0;
     }
 
     // An end where no turn was made onto the order's pass or the nearest open passes (a hard fence
     // the turns don't clear: each build moves the turn back 0.5 m at a time, up to 30 m). Tick
     // looks for a turn on every GPS cycle while the end is ahead, and the passes tried here
-    // tripled the builds of each look, so the end is remembered and not tried again until
+    // tripled the builds of each look, so the end is remembered and tried again every 1.5 s
+    // (FailedEndRetryCycles: AgOpenGPS waits that long, makeUTurnCounter, before it builds again
+    // after a reset), silently: the operator was told once (_creationFailSounded), and a turn
+    // that comes to fit as the tractor moves on is planned without a word. Tried at once when
     // something that can change the answer does: the pass, the direction of travel, the nudge,
     // the snake order, the field or headland (SnakeFieldStamp), the skip, the U-turn arrow or a
     // turn setting (the operator lowering the radius to make it fit). Forgotten when Tick stops
     // looking for a turn, the track changes or U-turn is switched off.
     private EndTried? _failedEnd;
+    private int _failedEndCycles;
+    private const int FailedEndRetryCycles = 15; // GPS cycles at 10 Hz
 
     private readonly record struct EndTried(Models.Track.Track Track, int Pass, bool HeadingSameWay, double Nudge,
         List<int>? Snake, long FieldStamp, int SkipRows, bool? Arrow, int Settings);
