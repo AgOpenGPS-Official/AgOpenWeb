@@ -7,6 +7,7 @@ using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Services;
 using AgOpenWeb.Services.GeoJson;
+using AgOpenWeb.Services.Interfaces;
 using NSubstitute;
 
 namespace AgOpenWeb.ViewModels.Tests;
@@ -217,5 +218,41 @@ public class ObstacleChoiceTests
         Assert.That(b.InnerBoundaries[0].IsHard, Is.True);
 
         Assert.That(OnDisk(_dir).InnerBoundaries.Select(i => i.IsHard), Is.All.False, "saved Soft, read Soft");
+    }
+
+    [Test]
+    public void HardAndSoftObstacles_AreSavedAndReadBackAsTheyWere()
+    {
+        var b = OnDisk(_dir);
+        b.InnerBoundaries[1].IsHard = true; // the first tree
+        b.AddNewObstacle(Square(160, 160, 6)); // Hard, as every obstacle added now
+        GeoJsonFieldService.Save(new Field
+        {
+            Name = "F", DirectoryPath = _dir, Origin = new Position { Latitude = 52, Longitude = 5 }, Boundary = b,
+        }, tracks: null);
+
+        Assert.That(OnDisk(_dir).InnerBoundaries.Select(i => i.IsHard),
+            Is.EqualTo(new[] { false, true, false, true }).AsCollection);
+    }
+
+    [Test]
+    public async Task AnObstacleRecordedNow_IsAHardUTurnObstacle_SavedSo()
+    {
+        // Through the app's own path (the boundary player's Stop with an inner boundary), not a
+        // polygon put in the file by the test.
+        var square = Square(160, 160, 6);
+        _b.BoundaryRecordingService.StopRecording().Returns(square);
+        _b.BoundaryRecordingService.CurrentBoundaryType.Returns(BoundaryType.Inner);
+        var vm = _b.Build();
+        await vm.OpenFieldAsync(_dir, "F");
+
+        vm.StopBoundaryRecordingCommand!.Execute(null);
+
+        var saved = OnDisk(_dir).InnerBoundaries;
+        Assert.That(saved, Has.Count.EqualTo(4));
+        Assert.That(saved[3].AtObstacle, Is.EqualTo(ObstacleAction.Turn), "as AgOpenGPS: Drive thru = No");
+        Assert.That(saved[3].IsHard, Is.True);
+        Assert.That(AtObstacleInFile(_dir).Last(), Is.EqualTo("turn"));
+        Assert.That(vm.BoundaryItems.Last().AtObstacle, Is.EqualTo(ObstacleAction.Turn), "shown in the list");
     }
 }

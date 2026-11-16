@@ -84,7 +84,7 @@ Property details:
 - **`areaHectares`:** informational, written by AgOpenWeb, ignored on read.
 - **`isHard`:** hard boundary (autosteer stops at it). **`isDriveThrough`:** an inner boundary the tractor may drive through.
 - **`atObstacle`** (inner boundaries only): `"turn"` (a U-turn before it, the default, as AgOpenGPS's Drive thru = No), or `"driveThrough"` (no turn, as `isDriveThrough: true`). Chosen in the boundary list. `isDriveThrough` is still written, true exactly for `driveThrough`; a file without `atObstacle` is read from `isDriveThrough` (true = `driveThrough`, else `turn`).
-- **`circleCenter`**, **`circleDiameter`** (inner boundaries only, together or not at all): a round obstacle, such as a tree. `circleCenter` is `[lon, lat]`, `circleDiameter` metres (0.5 to 100). The geometry is still written: a regular 24-sided polygon round the centre whose sides touch the circle, so all of the circle is inside it. A reader that does not know circles uses the polygon. On reading, the circle is kept only while the polygon is still that circle's (24 corners, each at the corner distance within 5 cm); a polygon edited in another program keeps its shape and loses the circle.
+- **`circleCenter`**, **`circleDiameter`** (inner boundaries only, together or not at all): a round obstacle, such as a tree. `circleCenter` is `[lon, lat]`, `circleDiameter` metres (0.5 to 100). The geometry is still written: a regular 24-sided polygon round the centre whose sides touch the circle, so all of the circle is inside it. A reader that does not know circles uses the polygon. On reading, the circle is kept only while the polygon is still that circle's (24 corners in turn round it, either way, each within 5 cm of where the circle puts one); a polygon edited in another program keeps its shape and loses the circle.
 - **`trackType`:** integer. `2` AB line (2 points, infinite extension), `4` curve, `8` boundary outer, `16` boundary inner, `32` boundary curve, `64` water pivot, `128` recorded path, `256` contour. Unknown values read as `2`. AgShare's AB and curve lines map to `2` and `4`.
 - **`isClosed`:** the curve is a loop. **`noPassOffset`:** don't offset this track by pass width. **`nudgeDistance`:** metres, signed. **`isVisible`:** defaults to `true` when absent.
 - **Flag `color`:** `0` red, `1` green, `2` yellow, `3` blue, `4` orange, `5` purple, `6` cyan, `7` pink, `8` white, `9` black. **`id`:** the flag's unique number.
@@ -243,7 +243,7 @@ AgOpenWeb's current AgShare client uploads this payload (`AgShareUploaderService
 | `origin.latitude`, `origin.longitude` | `metadata.originLatitude`, `originLongitude` | Keep as is; also write `field.origin` |
 | `convergence` | `metadata.convergence` | Usually 0 |
 | `boundary.outer` | `outer-boundary` ring | Close the ring; compute headings |
-| `boundary.holes[]` | `inner-boundary` rings | `isDriveThrough`, `isHard` default false |
+| `boundary.holes[]` | `inner-boundary` rings | `isDriveThrough` true; `isHard` true, as every obstacle made or imported in AgOpenWeb (AgShare carries no hardness) |
 | `abLines[]` with `type: "AB"` | `track`, `trackType: 2`, 2 points | Both points carry the line's heading |
 | `abLines[]` with `type: "Curve"` | `track`, `trackType: 4`, N points | Heading per point, to the next point |
 | Field GUID | `agshare.txt` | One line, the GUID |
