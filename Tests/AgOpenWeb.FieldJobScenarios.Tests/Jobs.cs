@@ -68,8 +68,14 @@ public static class Jobs
         Assert.That(harness, Is.Empty, "the harness itself failed: " + string.Join("; ", harness.Select(h => h.Value.First.Message)));
     }
 
+    /// <summary>
+    /// Whether AGOPENWEB_SCENARIO_ONLY names this job: its code exactly, or its letter alone for every
+    /// job of that letter (J for the careful operator's jobs). Not a substring: J1 picked J10–J19 too,
+    /// and a comparison of six jobs ran the whole rig fixture (2026-11-15).
+    /// </summary>
     public static bool Want(string? only, string code) =>
-        string.IsNullOrEmpty(only) || only.Split(',').Any(o => code.Contains(o.Trim(), StringComparison.OrdinalIgnoreCase));
+        string.IsNullOrEmpty(only) || only.Split(',').Select(o => o.Trim()).Any(o =>
+            o.Length == 1 ? code.StartsWith(o, StringComparison.OrdinalIgnoreCase) : code.Equals(o, StringComparison.OrdinalIgnoreCase));
 
     public static async Task<JobAreas?> RunAsync(Journal journal, string op, JobSpec spec)
     {
@@ -252,7 +258,9 @@ public static class Jobs
         else
             sc.Ok(F($"everything sprayed is on the map ({a.SprayedNotAppPainted:0} m² not)"));
         double truthTotal = a.Sprayed + a.OutsideBoundary + a.InObstacles + a.InDriveThrough + a.InHeadland;
-        if (truthTotal > 0 && Math.Abs(a.AppActualCovered - truthTotal) > 0.05 * truthTotal)
+        // Over 20 m² as the map checks: on a job cut at its first U-turn the areas are a few
+        // hundred m², and a second of driving at the stop is 5 % of them (J12, J19, 2026-11-15).
+        if (truthTotal > 0 && Math.Abs(a.AppActualCovered - truthTotal) > 20 && Math.Abs(a.AppActualCovered - truthTotal) > 0.05 * truthTotal)
             flag(Severity.Inconsistency, "APP-AREA-OFF", F($"AgOpenWeb's 'area covered once' is {a.AppActualCovered / 1e4:0.00} ha, the real implement sprayed {truthTotal / 1e4:0.00} ha ({(a.AppActualCovered / truthTotal - 1) * 100:+0.0;-0.0;+0.0} %)."));
         else
             sc.Ok(F($"AgOpenWeb's area covered once ({a.AppActualCovered / 1e4:0.00} ha) matches the truth ({truthTotal / 1e4:0.00} ha)"));
