@@ -84,4 +84,27 @@ public class FirstTurnSideTests
         Assert.That(turn.TurnPath, Is.Not.Null, "a turn is planned for the far end");
         Assert.That(turn.TurnPath![^1].Easting, Is.EqualTo(32).Within(1.0), "onto pass 1, the field's side, not the sliver at the edge");
     }
+
+    [Test]
+    public void Alternate_skip_starts_its_pattern_the_way_the_work_is()
+    {
+        // One row skipped: the pattern steps two passes. Pass -2 (x = 8) is in the headland band,
+        // inside the turn line and landable, with nothing of it in the work area (J11: pass -12 in
+        // the 42 m band); pass 2 (x = 40) is in the field.
+        var ctx = new YouTurnStateMachine.TickContext(
+            new Position { Easting = 24, Northing = -100, Heading = 0, Speed = 2.78 },
+            Track, Fence, TurnLine,
+            UTurnSkipRows: 1, IsSkipWorkedMode: false,
+            HeadlandCalculatedWidth: 10.0, HeadlandDistance: 10.0,
+            IsAlternateSkipMode: true,
+            WorkHeadlandLine: Work);
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = 0, IsHeadingSameWay = true };
+        var turn = new YouTurnWorkingState { IsEnabled = true };
+
+        _sm.Tick(ctx, guidance, turn);
+
+        Assert.That(turn.TurnPath, Is.Not.Null, "a turn is planned for the far end");
+        Assert.That(turn.TurnPath![^1].Easting, Is.EqualTo(40).Within(1.0), "onto pass 2, the field's side");
+        Assert.That(turn.AltSign, Is.EqualTo(1));
+    }
 }

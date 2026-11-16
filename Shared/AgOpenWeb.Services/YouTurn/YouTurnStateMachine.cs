@@ -1320,6 +1320,10 @@ public sealed class YouTurnStateMachine
             bool? keepPositive = _lastStep != 0 && _lastStepTrack == track.Name ? _lastStep > 0 : null;
             var (_, positive) = _pathing.WouldNextLineBeInsideBoundary(
                 track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, baseWidth - 1, keepPositive, ctx.CurrentPosition, turn.DistanceToHeadland);
+            // The first turn on the track: the way the work is (J11: the pattern started at the
+            // edge pass, all of it in the 42 m headland band, inside the turn line).
+            if (keepPositive is null && WorkSideForFirstTurn(in ctx, track, abHeading, guidance, baseWidth - 1) is { } workSide)
+                positive = workSide;
             turn.AltSign = positive ? 1 : -1;
             turn.AltBaseWidth = turn.AltWidth = baseWidth;
             turn.AltTurnSkips = baseWidth * 2 - 1;
@@ -1353,6 +1357,35 @@ public sealed class YouTurnStateMachine
         CreateTurnToPath(in ctx, track, abHeading, headingRadians, guidance, turn, effects, nextPath, "Alternative");
     }
 
+    /// <summary>
+    /// The side the first turn on a track goes: the way the work is. With a headland, the side
+    /// whose next pass (<paramref name="skipRows"/> over) has at least the landing length in the
+    /// area it encloses; null with no work area, or no such pass on either side. The turn line
+    /// alone counts the passes in the headland band too, and the pass along the fence the operator
+    /// started beside (Olival, T5: -7, all of it in the 16 m band) took the first turn there, then
+    /// the end of the field. Where the work is, not whether a turn can land there from here (J8
+    /// starts outside the field, the far turn line 295 m ahead, where no pass is landable yet),
+    /// but a pass worth driving: the edge pass has a sliver in the work area (15 m of pass -15 on
+    /// Olival, J20; J17), or lies in the headland band inside the turn line (J11, alternate skip),
+    /// which made both sides count and the tie-break sent the first turn at the edge, where the
+    /// end of the field would be said with the whole field undone.
+    /// </summary>
+    private bool? WorkSideForFirstTurn(in TickContext ctx, Models.Track.Track track, double abHeading,
+        GuidanceWorkingState guidance, int skipRows)
+    {
+        if (ctx.WorkHeadlandLine is not { Count: >= 3 } work)
+        {
+            _logger.LogDebug("[YouTurn] First turn: no work area given (headland off or none)");
+            return null;
+        }
+        var (workInside, workPositive) = _pathing.WouldNextLineBeInsideBoundary(
+            track, abHeading, guidance, ctx.Boundary, work, skipRows, null,
+            minInside: YouTurnPathingService.MinLandingLength);
+        _logger.LogDebug("[YouTurn] First turn: the work area's side {Side} (a pass of {Min:F0} m or more there: {Inside})",
+            workPositive ? "+" : "-", YouTurnPathingService.MinLandingLength, workInside);
+        return workInside ? workPositive : null;
+    }
+
     // After an alternative-skip turn: flip side and alternate the width, except every
     // (2W-1)th turn, which keeps the side (AgOpenGPS YouTurnTrigger).
     internal static void AdvanceAlternate(YouTurnWorkingState turn)
@@ -1381,29 +1414,10 @@ public sealed class YouTurnStateMachine
         bool? keepPositive = _lastStep != 0 && _lastStepTrack == track.Name ? _lastStep > 0 : null;
         var (nextLineInside, positiveDirection) = _pathing.WouldNextLineBeInsideBoundary(
             track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive, currentPosition, turn.DistanceToHeadland);
-        // The first turn on a track goes the way the work is: with a headland, the side whose next
-        // pass is in the area it encloses. The turn line alone counts the passes in the headland
-        // band too, and the pass along the fence the operator started beside (Olival, T5: -7, all
-        // of it in the 16 m band) took the first turn there, then the end of the field. With no pass
+        // The first turn on a track goes the way the work is (WorkSideForFirstTurn); with no pass
         // in the work area on either side (a boundary curve's outer passes), the turn line decides.
-        if (keepPositive is null && ctx.WorkHeadlandLine is { Count: >= 3 } work)
-        {
-            // Where the work is, not whether a turn can land there from here (the turn-line check
-            // above says that): the pass anywhere in the work area (J8 starts outside the field, the
-            // far turn line 295 m ahead, where no pass is landable yet), but a pass worth driving,
-            // the landing length of it or more: the edge pass the operator started beside has a
-            // sliver in the work area (15 m of pass -15 on Olival, J20; J11, J17), which made both
-            // sides count and the tie-break sent the first turn at the edge, where the end of the
-            // field would be said with the whole field undone.
-            var (workInside, workPositive) = _pathing.WouldNextLineBeInsideBoundary(
-                track, abHeading, guidance, ctx.Boundary, work, ctx.UTurnSkipRows, null,
-                minInside: YouTurnPathingService.MinLandingLength);
-            _logger.LogDebug("[YouTurn] First turn: the work area's side {Side} (a pass of {Min:F0} m or more there: {Inside})",
-                workPositive ? "+" : "-", YouTurnPathingService.MinLandingLength, workInside);
-            if (workInside) (nextLineInside, positiveDirection) = (true, workPositive);
-        }
-        else if (keepPositive is null)
-            _logger.LogDebug("[YouTurn] First turn: no work area given (headland off or none)");
+        if (keepPositive is null && WorkSideForFirstTurn(in ctx, track, abHeading, guidance, ctx.UTurnSkipRows) is { } workSide)
+            (nextLineInside, positiveDirection) = (true, workSide);
 
         _logger.LogDebug("[YouTurn] Creating turn? nextLineInside={Inside} positiveDir={Dir}", nextLineInside, positiveDirection);
         // The turns step one way across the field (#523). When that side has no pass left, the
