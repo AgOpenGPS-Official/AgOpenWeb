@@ -1,10 +1,11 @@
 # Route planning: reference papers
 
-The papers behind the pre-computed route work (#19). The files here are open-access papers
-whose licence (CC BY) allows copies to be kept with the project. Three more are listed with a
-link only: their licence does not clearly allow redistribution.
-
+The papers behind the pre-computed route work (#19), kept here so the project has them.
 What each one gives us is summarised in #19.
+
+The first six are open access under CC BY. The last three are not under an open licence
+(an author's pre-print, a conference paper that is free to read, an MSc thesis): they are
+kept for reference, each with the link to where it is published.
 
 ## In this folder (CC BY)
 
@@ -17,13 +18,13 @@ What each one gives us is summarised in #19.
 | `Hoffmann-2023-optimal-coverage-path-planning.pdf` | Höffmann, Patel, Büskens (2023). *Optimal Coverage Path Planning for Agricultural Vehicles with Curvature Constraints.* Agriculture 13, 2112. [doi:10.3390/agriculture13112112](https://doi.org/10.3390/agriculture13112112) | The whole pipeline: cells, cell order with entry corners, links along the headland tracks |
 | `Hameed-2013-fields-with-obstacle-areas.pdf` | Hameed, Bochtis, Sørensen (2013). *An Optimized Field Coverage Planning Approach for Navigation of Agricultural Robots in Fields Involving Obstacle Areas.* Int. J. Advanced Robotic Systems 10, 231. [doi:10.5772/56248](https://doi.org/10.5772/56248) | Blocks from track segments (no sweep line); headland passes first or last by operation |
 
-## Link only
+## In this folder (not CC BY)
 
-| Paper | Where | Used for |
+| File | Paper | Used for |
 |---|---|---|
-| Zhou, Jensen, Sørensen, Busato, Bochtis (2014). *Agricultural operations planning in fields with multiple obstacle areas.* Computers and Electronics in Agriculture 109. [doi:10.1016/j.compag.2014.08.013](https://doi.org/10.1016/j.compag.2014.08.013) | Author's pre-print: [hdl.handle.net/2318/1520371](http://hdl.handle.net/2318/1520371) (University of Turin) | The four obstacle types (A to D), blocks cut only at large obstacles, links between blocks along a shared headland; checked against two farmers' logged jobs |
-| Liu, Zhao, Du, Cao, Zhu, Mao (2018). *Research on static path planning method of small obstacles for automatic navigation of agricultural machinery.* IFAC-PapersOnLine 51(17), 673–677. [doi:10.1016/j.ifacol.2018.08.119](https://doi.org/10.1016/j.ifacol.2018.08.119) | Free to read at the publisher | The three-arc path round a small obstacle (simulation only) |
-| Versleijen (2019). *Path planning on agricultural fields with obstacles.* MSc thesis GIRS-2019-21, Wageningen University. | Wageningen's repository (edepot 504253) | Obstacle categories with a go-round for small ones; thresholds against slivers when a field is cut into cells |
+| `Zhou-2014-multiple-obstacle-areas-preprint.pdf` | Zhou, Jensen, Sørensen, Busato, Bochtis (2014). *Agricultural operations planning in fields with multiple obstacle areas.* Computers and Electronics in Agriculture 109. [doi:10.1016/j.compag.2014.08.013](https://doi.org/10.1016/j.compag.2014.08.013). Author's pre-print from the University of Turin's repository, [hdl.handle.net/2318/1520371](http://hdl.handle.net/2318/1520371) | The four obstacle types (A to D), blocks cut only at large obstacles, links between blocks along a shared headland; checked against two farmers' logged jobs |
+| `Liu-2018-small-obstacles.pdf` | Liu, Zhao, Du, Cao, Zhu, Mao (2018). *Research on static path planning method of small obstacles for automatic navigation of agricultural machinery.* IFAC-PapersOnLine 51(17), 673–677. [doi:10.1016/j.ifacol.2018.08.119](https://doi.org/10.1016/j.ifacol.2018.08.119). © IFAC | The three-arc path round a small obstacle (simulation only) |
+| `Versleijen-2019-fields-with-obstacles.pdf` | Versleijen (2019). *Path planning on agricultural fields with obstacles.* MSc thesis GIRS-2019-21, Wageningen University (Wageningen's repository, edepot 504253) | Obstacle categories with a go-round for small ones; thresholds against slivers when a field is cut into cells |
 
 ## Not read yet
 
