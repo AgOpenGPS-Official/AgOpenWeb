@@ -92,3 +92,46 @@ public class SimulatorAutoSteerOffTests
         Assert.That(notices, Is.Zero);
     }
 }
+
+/// <summary>
+/// The simulator gives way to a receiver that sends fixes. The operator is told so: the button
+/// snapped back with no word, and a running simulator went off without one (the HAT on the bench,
+/// 2026-11-15).
+/// </summary>
+[TestFixture]
+public class SimulatorLiveReceiverNoticeTests
+{
+    [SetUp]
+    public void SetUp() => ConfigurationStore.SetInstance(new ConfigurationStore());
+
+    [Test]
+    public void Turning_the_simulator_on_while_a_receiver_sends_fixes_says_why_it_stays_off()
+    {
+        var b = new MainViewModelBuilder();
+        var vm = b.Build();
+        vm.IsSimulatorEnabled = false; // on by default in a new install
+        b.GpsService.IsGpsLive.Returns(true);
+        string? notice = null; vm.FailureReported += m => notice = m;
+
+        vm.IsSimulatorEnabled = true;
+
+        Assert.That(vm.IsSimulatorEnabled, Is.False);
+        Assert.That(notice, Is.EqualTo(MainViewModel.SimulatorRefusedMessage));
+    }
+
+    [Test]
+    public void A_receiver_taking_over_from_the_simulator_says_so()
+    {
+        var b = new MainViewModelBuilder();
+        var vm = b.Build();
+        vm.IsSimulatorEnabled = true;
+        var notices = new List<string>(); vm.FailureReported += notices.Add;
+        b.GpsService.IsGpsLive.Returns(true);
+
+        typeof(MainViewModel).GetMethod("OnSimulatorTick", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(vm, new object?[] { null, EventArgs.Empty });
+
+        Assert.That(vm.IsSimulatorEnabled, Is.False);
+        Assert.That(notices, Is.EqualTo(new[] { MainViewModel.SimulatorGivesWayMessage }));
+    }
+}

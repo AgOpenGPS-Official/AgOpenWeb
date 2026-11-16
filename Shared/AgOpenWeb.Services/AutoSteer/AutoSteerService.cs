@@ -647,6 +647,10 @@ public class AutoSteerService : IAutoSteerService
 
     public void SetSimulatorHoldsSteering(bool hold) => _state.SimulatorHoldsSteering = hold;
 
+    private volatile bool _simulatorIsSource;
+
+    public void SetSimulatorIsSource(bool on) => _simulatorIsSource = on;
+
     // ═══════════════════════════════════════════════════════════════════════
     // Free Drive Mode
     // ═══════════════════════════════════════════════════════════════════════
@@ -831,18 +835,34 @@ public class AutoSteerService : IAutoSteerService
                 // owns timing now.
                 foreach (var line in GpsLines.Lines(datagram, source))
                 {
-                    bool parsed = NmeaParserServiceFast.TryParseIntoState(line, ref _state, _configStore, GpsEpochs, out var result);
+                    // While the simulator is the source, a receiver's sentence is parsed aside
+                    // and kept only with a fix: a receiver with none (indoors, a HAT's GPS on
+                    // the bench) sends position 0,0 at 10 Hz, which would be the tractor's
+                    // position between the simulator's.
+                    bool simulatorIsSource = _simulatorIsSource;
+                    var probe = simulatorIsSource ? _state : default;
+                    bool parsed = simulatorIsSource
+                        ? NmeaParserServiceFast.TryParseIntoState(line, ref probe, _configStore, GpsEpochs, out var result)
+                        : NmeaParserServiceFast.TryParseIntoState(line, ref _state, _configStore, GpsEpochs, out result);
                     GpsSentences.Record(line, result);
                     if (!parsed)
                     {
                         if (result != AgOpenWeb.Models.GPS.NmeaParseResult.EpochMember) _parseFailures++;
                         continue;
                     }
+                    if (simulatorIsSource)
+                    {
+                        if (probe.FixQuality <= 0) continue;
+                        _state = probe;
+                    }
 
-                    // Real GPS fix parsed from inbound NMEA — mark the live-GPS gate so the
-                    // internal simulator stays mutually exclusive with a live source. The
-                    // sim feeds via GpsService.UpdateGpsData and never reaches this path.
-                    _gpsService.MarkRealGpsParsed();
+                    // A real fix parsed from inbound NMEA: mark the live-GPS gate so the
+                    // internal simulator stays mutually exclusive with a live source (it stops,
+                    // or can't be turned on). Only with a fix: a receiver with none made the
+                    // simulator refuse to start and stop at once (the HAT on the bench,
+                    // 2026-11-15). The sim feeds via GpsService.UpdateGpsData and never reaches
+                    // this path.
+                    if (_state.FixQuality > 0) _gpsService.MarkRealGpsParsed();
 
                     // Publish the parsed fix to GpsService. This is the sole event the
                     // cycle worker listens to; everything else runs there.

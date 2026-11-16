@@ -61,9 +61,11 @@ dialogHost.querySelector('.dlg-backdrop').addEventListener('pointerdown', e => {
 dialogHost.addEventListener('pointerdown', e => e.stopPropagation()); // keep map from panning
 const dlgLat = document.getElementById('dlg-lat'), dlgLon = document.getElementById('dlg-lon');
 function openSimCoords() {
-  // Pre-fill with the current vehicle position (from the Status frame).
-  dlgLat.value = statusBar && statusBar.lat != null ? statusBar.lat.toFixed(8) : '';
-  dlgLon.value = statusBar && statusBar.lon != null ? statusBar.lon.toFixed(8) : '';
+  // Pre-fill with the current vehicle position (from the Status frame); none at 0,0, a
+  // receiver without a fix.
+  const known = statusBar && statusBar.lat != null && (statusBar.lat || statusBar.lon);
+  dlgLat.value = known ? statusBar.lat.toFixed(8) : '';
+  dlgLon.value = known ? statusBar.lon.toFixed(8) : '';
   openDialog('dlg-simcoords');
   dlgLat.focus();
 }
