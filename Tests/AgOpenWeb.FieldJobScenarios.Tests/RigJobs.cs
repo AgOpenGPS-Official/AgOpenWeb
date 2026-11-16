@@ -23,7 +23,10 @@ public static class RigJobs
         yield return new JobSpec("J9", "Olival, trailed mower 2.5 m to the left",
             "The same with a 3 m trailed mower whose cutting width sits 2.5 m left of its drawbar (one section): the offset follows the trailed mower's own heading, which lags the tractor's in the turns.",
             "Olival", "AB 159 deg", Machines.Puma, Machines.Trailing3Shift, Puma)
-        { PassCheck = true };
+        // Olival's north-west edge runs nearly along the passes: after pass 9 the next pass is inside
+        // the turn line for 15 m, then 1.1 m from the fence (no tractor fits), then on through the
+        // field. AgOpenWeb rightly refuses that turn and says why; 16 % of the field is left.
+        { PassCheck = true, Expected = new[] { "END-OF-FIELD-FIELD-LEFT" } };
         yield return new JobSpec("J10", "Quinta Torta, a curve recorded by driving it",
             "The operator drives the field's curve (a gentle S from south to north) by hand with the sprayer off: Curve > Record as the boom crosses the boundary going in, Finish as it crosses it going out. Then the 8 m sprayer works the field from that curve, AutoSteer and U-turns at the 16 m headland.",
             "Quinta Torta", "Curve", Machines.Puma, Machines.Sprayer8, Puma)
@@ -56,11 +59,15 @@ public static class RigJobs
         yield return new JobSpec("J17", "Tapada da Casa, a trailed manure spreader with a 12 m bout",
             "The Case Puma with a one-axle manure spreader (drawbar to axle 5.5 m) whose spinners throw a 12 m bout centred 4 m behind the axle, one section, AB line at 162°, the outer boundary only, headland 24 m. The spread lands far behind the tractor, so the section must open and close late enough at the headland line.",
             "Tapada da Casa", "1 Principal AB 162 deg", Machines.Puma, Machines.ManureSpreader12, Puma)
-        { HeadlandM = 24, PassCheck = true };
+        // After pass 8 the next pass is inside the turn line for 7 m, then 1.5 m from the fence (no
+        // tractor fits): AgOpenWeb rightly refuses that turn and says why; 10.5 % of the field is left.
+        { HeadlandM = 24, PassCheck = true, Expected = new[] { "END-OF-FIELD-FIELD-LEFT" } };
         yield return new JobSpec("J18", "Olival, a trailed disc harrow on wheels in the middle",
             "The Case Puma with a 5 m trailed disc harrow whose wheels sit in the middle of the frame, so the discs work around its axle 3.5 m behind the drawbar (pivot to tool 0), one section, AB line at 159°, headland 16 m.",
             "Olival", "AB 159 deg", Machines.Puma, Machines.DiscHarrow5, Puma)
-        { PassCheck = true };
+        // As J9: after pass 5 the next pass is inside the turn line for 5 m, then 0.2 m from the
+        // fence; AgOpenWeb rightly refuses that turn and says why; 16.5 % of the field is left.
+        { PassCheck = true, Expected = new[] { "END-OF-FIELD-FIELD-LEFT" } };
         yield return new JobSpec("J20", "Olival, Renato's seeding roller on a bar on the lift arms, Keyhole turns",
             "The Case Maxxum with a 3.2 m seeding roller towed from a bar across the lift arms (the pivot taken as the drill's, 1.54 m behind the rear axle; the roller 2.0 m behind it is its own axle, assumed), which swings about 60° each way before the bar stops it (120° in all), one section, AB line at 159°, J14's page settings: radius 4.3 m, Keyhole, distance from boundary 2.8 m, extension 12.5 m, headland 18 m. Does a Keyhole turn ask the roller to swing past its stop?",
             "Olival", "AB 159 deg", Machines.Maxxum, Machines.Roller32, Puma)

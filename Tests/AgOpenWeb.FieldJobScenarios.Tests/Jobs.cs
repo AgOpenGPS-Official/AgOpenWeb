@@ -168,7 +168,16 @@ public static class Jobs
             // MINUTES, FROM_PASS): the field is not meant to be done.
             if (JobRun.IsNoRoom(r.EndedBy)
                 && !r.ShortStopped && r.StartedAtPass == int.MinValue && a.Missed > NoRoomLeftShare * a.Work)
-                flag(Severity.Improvement, "END-OF-FIELD-FIELD-LEFT", F($"the job ended where AgOpenWeb had no room for a U-turn on the next pass, with {Pct(a.Missed, a.Work)} of the cultivated area unsprayed ({r.EndedBy})."));
+            {
+                string left = F($"the job ended where AgOpenWeb had no room for a U-turn on the next pass, with {Pct(a.Missed, a.Work)} of the cultivated area unsprayed ({r.EndedBy}).");
+                // A job whose field has that shape (J9, J17, J18): the next pass runs nearer the fence
+                // than a tractor fits, and refusing to drive it there is right. Only for that reason
+                // ("... it runs 1.1 m from the boundary, 2.0 m needed"): another stop is a finding.
+                if (spec.Expected.Contains("END-OF-FIELD-FIELD-LEFT") && r.EndedBy.Contains(" m from the boundary, ", StringComparison.Ordinal))
+                    sc.Note(F($"expected from the field's shape (`END-OF-FIELD-FIELD-LEFT`): the next pass runs nearer the fence than the U-turn distance, where no tractor fits; {left}"));
+                else
+                    flag(Severity.Improvement, "END-OF-FIELD-FIELD-LEFT", left);
+            }
         }
         else if (!r.FieldDone)
             flag(Severity.Bug, "FIELD-NOT-FINISHED", F($"AgOpenWeb never reported the end of the field; the job stopped after {r.Seconds / 60:0} min with {Pct(a.Missed, a.Work)} of the cultivated area unsprayed. {string.Join(" | ", r.Problems)}"));
