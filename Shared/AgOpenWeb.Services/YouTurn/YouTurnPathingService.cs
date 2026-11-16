@@ -282,7 +282,7 @@ public sealed class YouTurnPathingService
         // Only whether there is enough: stop counting there (the walk is up to 2 km of
         // point-in-polygon tests, and an end of the field asks again every cycle).
         double landing = LandingLength(track, abHeading, pathsAway, boundary, headlandLine, position, headingSameWay, headlandAhead,
-            stopAt: MinLandingLength);
+            stopAt: MinLandingLength, fromPath: fromPath);
         if (landing >= MinLandingLength) return true;
         // Widening, not narrowing: the pass driven now has no more at this end than the next.
         double current = fromPath is int from && from != pathsAway
@@ -305,8 +305,8 @@ public sealed class YouTurnPathingService
     /// </summary>
     public double LandingLength(Models.Track.Track track, double abHeading, int pathsAway,
         Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, Position position, bool headingSameWay, double headlandAhead,
-        double stopAt = double.MaxValue)
-        => Landing(track, abHeading, pathsAway, boundary, headlandLine, position, headingSameWay, headlandAhead, stopAt).Length;
+        double stopAt = double.MaxValue, int? fromPath = null)
+        => Landing(track, abHeading, pathsAway, boundary, headlandLine, position, headingSameWay, headlandAhead, stopAt, fromPath).Length;
 
     /// <summary>
     /// The landing a turn at this end has on a pass (<see cref="LandingLength"/>), and why its run
@@ -318,13 +318,27 @@ public sealed class YouTurnPathingService
     /// </summary>
     public readonly record struct LandingRun(double Length, double? FenceGap);
 
+    /// <remarks>
+    /// Measured from where the turn lands. A U-turn lands abreast of the end. A wide turn (the step
+    /// from pass <paramref name="fromPath"/>, the one the tractor is on, more than twice the turn
+    /// radius: <see cref="YouTurnCreationService"/>) runs along the turn line and comes into the
+    /// next pass where that pass first leaves the turn area going on from abreast of the tractor
+    /// (from the headland, after it comes into it), which can be short of the end: a slit in the
+    /// fence (a track or ditch drawn into the boundary) cutting across the passes at a slant put
+    /// the point of the next pass abreast of the end on its far side; measured from there, the
+    /// walk back crossed the slit (0 m), and the turn was refused with the next pass on this side
+    /// of it (field job J11 on Couto Ribeira, 2026-11-16, a 42 m step and a 10 m radius; 24 % of
+    /// the field left).
+    /// </remarks>
     public LandingRun Landing(Models.Track.Track track, double abHeading, int pathsAway,
         Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, Position position, bool headingSameWay, double headlandAhead,
-        double stopAt = double.MaxValue)
+        double stopAt = double.MaxValue, int? fromPath = null)
     {
         var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
         double distAway = PassGeometry.Offset(track, pathsAway, widthMinusOverlap);
+        bool wideTurn = fromPath is int from && from != pathsAway
+            && Math.Abs(distAway - PassGeometry.Offset(track, from, widthMinusOverlap)) > 2.0 * config.Guidance.UTurnRadius;
         const double Step = 1.0;
         const double RunBack = 2000.0;
         double runLimit = Math.Min(RunBack, stopAt);
@@ -357,6 +371,18 @@ public sealed class YouTurnPathingService
             int at = near;
             for (double walked = 0; at + fwd >= 0 && at + fwd < curve.Count && walked < ahead; at += fwd)
                 walked += Dist(at, at + fwd);
+            if (wideTurn)
+            {
+                // A wide turn lands where the pass first leaves the turn area ahead (remarks); from
+                // the headland, after it comes into it.
+                int first = near;
+                while (first != at && !InsideAt(first)) first += fwd;
+                if (first != at)
+                {
+                    while (first != at && InsideAt(first + fwd)) first += fwd;
+                    at = first;
+                }
+            }
             if (!InsideAt(at))
             {
                 // As for an AB line below: outside the fence at first, but not out of the field again.
@@ -414,6 +440,18 @@ public sealed class YouTurnPathingService
             return tIn;
         }
         double tFront = tAt;
+        if (wideTurn)
+        {
+            // A wide turn lands where the pass first leaves the turn area ahead (remarks); from
+            // the headland, after it comes into it.
+            double t = t0;
+            while (s * (tAt - t) > Step && !InsideAtT(t)) t += s * Step;
+            if (s * (tAt - t) > Step)
+            {
+                while (s * (tAt - t) > Step && InsideAtT(t + s * Step)) t += s * Step;
+                if (s * (tAt - t) > Step) { tFront = Edge(t, t + s * Step); tAt = t; }
+            }
+        }
         if (!InsideAtT(tAt))
         {
             // Back from the end to the first of the pass in the cultivated area: the turn lands in
@@ -462,7 +500,7 @@ public sealed class YouTurnPathingService
     {
         if (IsPathLandable(track, abHeading, pathsAway, boundary, headlandLine, position, headingSameWay, headlandAhead, fromPath))
             return null;
-        var run = Landing(track, abHeading, pathsAway, boundary, headlandLine, position, headingSameWay, headlandAhead, MinLandingLength);
+        var run = Landing(track, abHeading, pathsAway, boundary, headlandLine, position, headingSameWay, headlandAhead, MinLandingLength, fromPath);
         return NoLandingMessage(run, _configStore.Guidance.UTurnDistanceFromBoundary);
     }
 
