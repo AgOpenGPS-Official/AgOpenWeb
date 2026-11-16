@@ -128,10 +128,11 @@ public class TurnReferenceAheadTests
         Assert.That(r, Is.Null);
     }
 
-    // The clip of the turn line at a notch (field job J19 on Olival, 2026-11-15: pass -18 runs
-    // 1.65 m from the notch's tip, 0.35 m outside the 2 m turn line for a few metres; every search
-    // took that for the end, 49 m into the pass, and the turn there landed on the pass through the
-    // notch). The fence here: the square ±42 with the bay 2 m further out, reaching x = 3.
+    // A stretch outside the turn line but inside the fence (field job J19 on Olival, 2026-11-15:
+    // pass -18 runs along a slanted edge 1.2–2.1 m inside the fence for 26 m, with 180 m of field
+    // beyond; every search took the first point outside the turn line for its end, 49 m into the
+    // pass, and the turn there landed 11 m short of the next pass's end, so the job stopped). The
+    // fence here: the square ±42 with the bay 2 m further out, reaching x = 3.
     private static readonly List<Vec3> Fence = new()
     {
         new(-42, -42, 0), new(42, -42, 0), new(42, 42, 0), new(-42, 42, 0),
@@ -139,7 +140,7 @@ public class TurnReferenceAheadTests
     };
 
     [Test]
-    public void A_clip_of_the_turn_line_inside_the_fence_is_driven_through()
+    public void A_stretch_outside_the_turn_line_inside_the_fence_is_driven_through()
     {
         // The AB line at x = 4 is 1 m outside the turn line's bay (x < 5) for 17 m and 1 m inside
         // the fence's: the pass goes on, and ends at the north edge.
@@ -151,9 +152,10 @@ public class TurnReferenceAheadTests
     }
 
     [Test]
-    public void A_clip_that_leaves_the_fence_is_the_end_of_the_pass()
+    public void A_stretch_that_leaves_the_fence_is_the_end_of_the_pass()
     {
-        // The AB line at x = 2 is outside the fence in the bay (x < 3): the end is there.
+        // The AB line at x = 2 is outside the fence in the bay (x < 3): the end is there, at the
+        // turn line's crossing before it, as at any end of the field.
         var track = AgOpenWeb.Models.Track.Track.FromABLine("AB", new Vec3(2, -100, 0), new Vec3(2, 100, 0));
         var r = YouTurnCreationService.PassEndAhead(track, new Vec3(2, -35, 0), Headland, headingSameWay: true, fence: Fence);
         Assert.That(r, Is.Not.Null);
@@ -161,10 +163,10 @@ public class TurnReferenceAheadTests
     }
 
     [Test]
-    public void A_long_stretch_outside_the_turn_line_is_the_end_of_the_pass()
+    public void A_long_stretch_inside_the_fence_is_driven_through_too()
     {
-        // The same bay 30 m long (y = -27 to 3), inside the fence all the way: longer than the
-        // landing length, so the end of the pass, as AgOpenGPS has it.
+        // The same bay 30 m long (y = -27 to 3), inside the fence all the way (J19's 26 m along a
+        // slanted edge): the length does not make it an end.
         var headland = new List<Vec3>
         {
             new(-40, -40, 0), new(40, -40, 0), new(40, 40, 0), new(-40, 40, 0),
@@ -178,7 +180,7 @@ public class TurnReferenceAheadTests
         var track = AgOpenWeb.Models.Track.Track.FromABLine("AB", new Vec3(4, -100, 0), new Vec3(4, 100, 0));
         var r = YouTurnCreationService.PassEndAhead(track, new Vec3(4, -35, 0), headland, headingSameWay: true, fence: fence);
         Assert.That(r, Is.Not.Null);
-        Assert.That(r!.Value.Crossing.Northing, Is.EqualTo(-27).Within(1e-6));
+        Assert.That(r!.Value.Crossing.Northing, Is.EqualTo(40).Within(1e-6));
     }
 
     [Test]
@@ -190,7 +192,7 @@ public class TurnReferenceAheadTests
     }
 
     [Test]
-    public void The_turn_builder_drives_through_a_clip_and_builds_the_turn_at_the_far_end()
+    public void The_turn_builder_drives_through_a_stretch_inside_the_fence_and_builds_the_turn_at_the_far_end()
     {
         // A notch in the west fence from y = -20 to -10 reaching x = 1; the turn line's notch (2 m
         // in) reaches x = 3. The pass at x = 0 is 3 m outside the turn line for 10 m and 1 m inside

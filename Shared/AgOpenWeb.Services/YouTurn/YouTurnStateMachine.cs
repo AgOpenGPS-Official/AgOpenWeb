@@ -1774,7 +1774,7 @@ public sealed class YouTurnStateMachine
 
         int near = PassEnds.NearestIndex(p.Points, passPoint.Easting, passPoint.Northing);
         int step = headingSameWay ? 1 : -1;
-        // The fence, for a clip of the turn line that is driven through; asked only at a point
+        // The fence, for a stretch outside the turn line that is driven through; asked only at a point
         // outside the turn line, and the end is kept, so not on the cycle.
         var fence = ctx.Boundary?.OuterBoundary is { IsValid: true } f ? f : null;
         Func<Vec3, bool>? insideField = fence == null ? null : q => fence.IsPointInside(q.Easting, q.Northing);
