@@ -158,6 +158,11 @@ public interface IAutoSteerService
     /// of a module on the network. Free Drive still does.</summary>
     void SetSimulatorHoldsSteering(bool hold);
 
+    /// <summary>The internal simulator is the chosen GPS source: a receiver's sentence without a
+    /// fix is left out (it would put the tractor at 0,0 between the simulator's positions), and one
+    /// with a fix takes over as before.</summary>
+    void SetSimulatorIsSource(bool on);
+
     /// <summary>Reverse state for the deadzone, which is off in reverse (#110).</summary>
     void SetReverse(bool isReverse);
 

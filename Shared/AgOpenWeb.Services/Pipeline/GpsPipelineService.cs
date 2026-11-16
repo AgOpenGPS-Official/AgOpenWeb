@@ -451,9 +451,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// </summary>
     private void HoldSteeringOnTheSimulator()
     {
-        bool hold;
-        lock (_stateLock) hold = _simulatorEnabled && !_simulatorSteersModule;
+        bool hold, simulator;
+        lock (_stateLock) { simulator = _simulatorEnabled; hold = simulator && !_simulatorSteersModule; }
         _autoSteerService.SetSimulatorHoldsSteering(hold);
+        _autoSteerService.SetSimulatorIsSource(simulator);
     }
 
     /// <summary>The headland toggle: the distance HUD and the hydraulic lift follow it (#106).</summary>
