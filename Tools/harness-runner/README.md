@@ -35,6 +35,11 @@ harnesses on a development machine, where the app and other runs share its ports
     container at a time (two restores into one empty folder break each other). The volume is the
     harness host's to fill: `docker --context runner volume rm aow-cache` empties it.
 
+  - **Pace.** The jobs run at `AGOPENWEB_SCENARIO_PACE=2` (2 ms per fix, about 50× real time) unless
+    set; the nightly's 8 ms (12×) is for GitHub's two cores. Measured 2026-11-15 on seven jobs at
+    8, 4 and 2: every report's pace check at 0 lag, every finding the same. A shard whose report
+    shows AgOpenWeb behind the fixes fails the comparison as starved (`!!`).
+
 Each container has its own network, so runs side by side don't share UDP 9999/8888. They do share
 the CPU, and a starved run misses its watchdogs and reports it (a false `AUTOSTEER-DROPPED`,
 2026-11-10, a build beside an unlimited run). So a whole harness gets `--cpus 4` and a shard

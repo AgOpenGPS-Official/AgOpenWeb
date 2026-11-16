@@ -32,6 +32,10 @@ dk() { docker --context "$ctx" "$@"; }
 
 envs=(-e "CONFIG=${CONFIG:-Release}")
 while IFS='=' read -r k _; do [ "$k" = AGOPENWEB_SCENARIO_ONLY ] || envs+=(-e "$k"); done < <(env | grep '^AGOPENWEB_' || true)
+# The jobs run at 2 ms per fix, about 50x real time (the nightly's 8 ms is 12x, for GitHub's two
+# cores): measured 2026-11-15 on seven jobs at 8, 4 and 2, every report's pace check at 0 lag and
+# every finding the same. A shard that lags is reported below.
+[ -n "${AGOPENWEB_SCENARIO_PACE:-}" ] || envs+=(-e AGOPENWEB_SCENARIO_PACE=2)
 
 # The shards: the codes in AGOPENWEB_SCENARIO_ONLY, or "all" for one container a side.
 only="${AGOPENWEB_SCENARIO_ONLY:-}"
@@ -90,6 +94,10 @@ for item in "${runs[@]}"; do
     *Passed!*) ;;
     *) echo "!! $item did not pass: read $dest/test.log before trusting the comparison"; problems=1 ;;
   esac
+  # The job harness's pace check: AgOpenWeb's position behind the fixes, in fixes. A run that
+  # fell behind was starved of CPU (or paced too fast) and its findings are noise.
+  lag=$(grep -h "harness pace check" "$dest"/*.md 2>/dev/null | sed -E 's/.*\| *([0-9]+) \/ .*/\1/' | sort -n | tail -1)
+  [ -z "$lag" ] || [ "$lag" = 0 ] || { echo "!! $item: AgOpenWeb ran $lag fix(es) behind the harness (the pace check): a starved run, its findings are noise; raise AGOPENWEB_SCENARIO_PACE or lower MAX_RUNS"; problems=1; }
 done
 
 # The shards' reports, one per job, merged into one findings list per report name and side
