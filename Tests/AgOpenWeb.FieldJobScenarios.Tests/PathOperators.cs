@@ -252,11 +252,23 @@ public class CurveOperator : PathOperator
     // The pass whose line strays furthest from the reference offset, in the cultivated area.
     public (int Pass, double Want, double Short, (double E, double N) At, double ShortOffsetOnly, double ShortNoExtend, double Shown)? Worst;
 
+    // Where a pass line kinks further from the curve than its distance (a chord across a notch in
+    // the curve, #864) the next pass doesn't follow it: the ground there is corner ground, as on the
+    // laps (P2, 2026-11-16: 0.45 m between passes 4 and 5, 40 m in from a notch in the west edge).
+    private readonly LapCorners _corners = new();
+    private double _cum = 0;
+    private (double E, double N)? _lastAt;
+
     public override async Task OnFixAsync(JobRun r)
     {
+        var at = (r.Truth.E, r.Truth.N);
+        if (_lastAt is { } la) _cum += Math.Sqrt((at.E - la.E) * (at.E - la.E) + (at.N - la.N) * (at.N - la.N));
+        _lastAt = at;
+        _corners.Update(r, _cum, tightTurns: false);
         if (r.Pass == int.MinValue || r.Pass == _checkedPass || r.InTurn) return;
         _checkedPass = r.Pass;
         double want = Math.Abs(ExpectedU(r, r.Pass));
+        _corners.AddFurtherIn(await PassLineAsync(r, r.Pass, extend: false), p => Math.Abs(r.Frame.U(p)) - want);
         var full = Shortfall(r, await PassLineAsync(r, r.Pass), want);
         var offsetOnly = Shortfall(r, await PassLineAsync(r, r.Pass, limit: false, extend: false), want);
         var noExtend = Shortfall(r, await PassLineAsync(r, r.Pass, extend: false), want);
@@ -1381,11 +1393,13 @@ public sealed class LapCorners
         return false;
     }
 
-    public void Update(JobRun r, double cum)
+    /// <param name="tightTurns">Whether the tractor turning tight makes a corner (the laps); not
+    /// on passes with U-turns, whose tight turns are in the headland.</param>
+    public void Update(JobRun r, double cum, bool tightTurns = true)
     {
         double steer = Math.Abs(r.Truth.Steer) * Math.PI / 180;
         double radius = steer < 1e-3 ? double.PositiveInfinity : r.Truth.V.Wheelbase / Math.Tan(steer);
-        if (radius < 2 * r.Rig.Store.Guidance.UTurnRadius && !r.InChange)
+        if (tightTurns && radius < 2 * r.Rig.Store.Guidance.UTurnRadius && !r.InChange)
         {
             _cornerCum = cum;
             var t = r.Truth.ToolCentre;
