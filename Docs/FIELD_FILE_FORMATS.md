@@ -87,6 +87,7 @@ Property details:
 - **`isClosed`:** the curve is a loop. **`noPassOffset`:** don't offset this track by pass width. **`nudgeDistance`:** metres, signed. **`isVisible`:** defaults to `true` when absent.
 - **Flag `color`:** `0` red, `1` green, `2` yellow, `3` blue, `4` orange, `5` purple, `6` cyan, `7` pink, `8` white, `9` black. **`id`:** the flag's unique number.
 - **`headland-line`:** headland guidance paths built from the boundary. `moveDistance` in metres; `mode` and `aPointIndex` are AgOpenWeb builder state, preserve them as read.
+- **`headland`:** a headland polygon kept with the boundary: an import's (AgOpenWeb's ISO-XML import writes the task's headland here), or another tool's. When the operator makes or removes the headland in the Field Builder, the `headland` feature is removed and the `headland-line` features (or none) are the field's headland.
 - **Mercator bounds:** EPSG:3857 metres of the image, present only when the image was captured from a web-map tile service.
 
 A reader must ignore roles and properties it doesn't know, and a writer must keep them: AgOpenWeb saves each part on its own and leaves other features untouched, and writes a part's properties it doesn't read back as they were (a newer build's, another tool's). Members of a feature other than `type`, `geometry` and `properties` (an `id`, a `bbox`) are kept on the features AgOpenWeb doesn't rewrite; new data goes in `properties`.

@@ -168,6 +168,13 @@ public partial class GeoJsonFieldService
             .Where(p => p.TrackPoints.Count > 0)
             .Select(p => BuildHeadlandPathFeature(geo, p)));
 
+    /// <summary>
+    /// Remove the headland polygon the field's file carries with its boundary (an import, a field
+    /// from a test rig): the headland made since, or its removal, is the field's headland now.
+    /// </summary>
+    public static void RemoveHeadlandPolygon(string fieldDirectory) =>
+        ReplaceRole(fieldDirectory, FeatureRoles.Headland, _ => Array.Empty<GeoJsonFeature>());
+
     /// <summary>Set or (with null) remove the field's background image placement.</summary>
     public static void SaveBackground(string fieldDirectory, FieldBackground? background) =>
         ReplaceRole(fieldDirectory, FeatureRoles.BackgroundImage, _ => background == null

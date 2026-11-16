@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Headland;
+using Microsoft.Extensions.Logging;
 
 namespace AgOpenWeb.ViewModels;
 
@@ -245,6 +246,34 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(HeadlandStatusText));
         OnPropertyChanged(nameof(CurrentHeadlandLineForPreview));
         SaveHeadlandSegments();
+    }
+
+    /// <summary>
+    /// The operator made or removed the headland: a headland polygon the field's file carried with
+    /// its boundary (an import, a field from a test rig) is not the field's headland any more. Left
+    /// in the boundary it came back: after Delete All (the Field Builder listed nothing on such a
+    /// field) the next change of the boundary, the outer boundary made hard, put it back as the
+    /// headland (<see cref="SetCurrentBoundary"/>) and wrote it to the file again; a headland made
+    /// in the Field Builder was replaced by it the same way.
+    /// </summary>
+    private void DropHeadlandPolygon()
+    {
+        var boundary = State.Field.CurrentBoundary;
+        if (boundary?.HeadlandPolygon == null) return;
+        boundary.HeadlandPolygon = null;
+        if (ActiveField?.Boundary is { } fieldBoundary && !ReferenceEquals(fieldBoundary, boundary))
+            fieldBoundary.HeadlandPolygon = null;
+        var dir = _fieldService.ActiveField?.DirectoryPath;
+        if (string.IsNullOrEmpty(dir)) return;
+        try
+        {
+            Services.GeoJson.GeoJsonFieldService.RemoveHeadlandPolygon(dir);
+            _logger.LogInformation("[Headland] The headland polygon from the field's file was removed: the headland made in the Field Builder (or none) replaces it");
+        }
+        catch (System.Exception ex)
+        {
+            _logger.LogDebug($"[Headland] Failed to remove the headland polygon: {ex.Message}");
+        }
     }
 
     /// <summary>Rename a headland segment (geometry unchanged; persists the list).</summary>
