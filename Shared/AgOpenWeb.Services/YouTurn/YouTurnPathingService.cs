@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Globalization;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -305,6 +306,21 @@ public sealed class YouTurnPathingService
     public double LandingLength(Models.Track.Track track, double abHeading, int pathsAway,
         Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, Position position, bool headingSameWay, double headlandAhead,
         double stopAt = double.MaxValue)
+        => Landing(track, abHeading, pathsAway, boundary, headlandLine, position, headingSameWay, headlandAhead, stopAt).Length;
+
+    /// <summary>
+    /// The landing a turn at this end has on a pass (<see cref="LandingLength"/>), and why its run
+    /// ended short of <paramref name="stopAt"/>: <see cref="LandingRun.FenceGap"/> when the pass
+    /// leaves the cultivated area there but not the fence and comes back into the area further on
+    /// (it runs along the fence nearer than the U-turn distance: J9 and J18 on Olival, the next
+    /// pass 1.0 and 0.1 m from the fence 15 and 5 m after the turn), with how near it comes;
+    /// null when the pass ends there.
+    /// </summary>
+    public readonly record struct LandingRun(double Length, double? FenceGap);
+
+    public LandingRun Landing(Models.Track.Track track, double abHeading, int pathsAway,
+        Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, Position position, bool headingSameWay, double headlandAhead,
+        double stopAt = double.MaxValue)
     {
         var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
@@ -317,7 +333,7 @@ public sealed class YouTurnPathingService
         if (track.Points.Count > 2)
         {
             var curve = CurveProcessing.CreateOffsetCurve(track.Points, distAway);
-            if (curve.Count < 2) return 0;
+            if (curve.Count < 2) return default;
             int near = 0;
             double best = double.MaxValue;
             for (int i = 0; i < curve.Count; i++)
@@ -351,21 +367,31 @@ public sealed class YouTurnPathingService
                     if (InsideAt(at - fwd)) { at -= fwd; found = true; break; }
                     bool inFence = InsideFence(curve[at - fwd].Easting, curve[at - fwd].Northing, boundary);
                     if (inFence) inField = true;
-                    else if (inField) return 0;
+                    else if (inField) return default;
                 }
-                if (!found) return 0;
+                if (!found) return default;
             }
             double length = 0;
-            for (int i = at - fwd; i >= 0 && i < curve.Count && length <= runLimit && InsideAt(i); i -= fwd)
-                length += Dist(i, i + fwd);
-            return length;
+            int stop = at - fwd;
+            for (; stop >= 0 && stop < curve.Count && length <= runLimit && InsideAt(stop); stop -= fwd)
+                length += Dist(stop, stop + fwd);
+            if (length > runLimit || stop < 0 || stop >= curve.Count) return new LandingRun(length, null);
+            // Why the run ended: along the fence nearer than the area allows, or the pass's end.
+            double nearest = double.MaxValue;
+            for (int i = stop; i >= 0 && i < curve.Count; i -= fwd)
+            {
+                if (InsideAt(i)) return new LandingRun(length, nearest);
+                if (!InsideFence(curve[i].Easting, curve[i].Northing, boundary)) break;
+                nearest = Math.Min(nearest, FenceDistance(curve[i].Easting, curve[i].Northing, boundary));
+            }
+            return new LandingRun(length, null);
         }
 
         var pointA = track.Points[0];
         var pointB = track.Points[track.Points.Count - 1];
         double abDx = pointB.Easting - pointA.Easting, abDy = pointB.Northing - pointA.Northing;
         double abLen = Math.Sqrt(abDx * abDx + abDy * abDy);
-        if (abLen < 0.01) return 0;
+        if (abLen < 0.01) return default;
         double abNx = abDx / abLen, abNy = abDy / abLen;
         double perpAngle = abHeading + Math.PI / 2;
         double midE = (pointA.Easting + pointB.Easting) / 2 + Math.Sin(perpAngle) * distAway;
@@ -401,16 +427,65 @@ public sealed class YouTurnPathingService
                 if (InsideAtT(t)) { tAt = t; found = true; break; }
                 bool inFence = InsideFence(midE + abNx * t, midN + abNy * t, boundary);
                 if (inFence) inField = true;
-                else if (inField) return 0;
+                else if (inField) return default;
             }
-            if (!found) return 0;
+            if (!found) return default;
             tFront = Edge(tAt, tAt + s * Step);
         }
         // The run back from there.
         double back = 0;
         for (double d = Step; d <= runLimit + Step && InsideAtT(tAt - s * d); d += Step) back = d;
         double tBack = Edge(tAt - s * back, tAt - s * (back + Step));
-        return Math.Abs(tFront - tBack);
+        double run = Math.Abs(tFront - tBack);
+        if (back > runLimit) return new LandingRun(run, null);
+        // Why the run ended: along the fence nearer than the area allows, or the pass's end.
+        double closest = double.MaxValue;
+        for (double d = back + Step; d <= RunBack; d += Step)
+        {
+            double t = tAt - s * d, e = midE + abNx * t, n = midN + abNy * t;
+            if (InsideAtT(t)) return new LandingRun(run, closest);
+            if (!InsideFence(e, n, boundary)) break;
+            closest = Math.Min(closest, FenceDistance(e, n, boundary));
+        }
+        return new LandingRun(run, null);
+    }
+
+    /// <summary>
+    /// Why no turn can land on pass <paramref name="pathsAway"/> at this end, in the operator's
+    /// words, with what was needed and what was there, as the other refusals say it
+    /// (<see cref="YouTurnStateMachine.NoTurnFitsMessage"/>); null when it can (<see cref="IsPathLandable"/>).
+    /// The operator drives the pass to its end and takes over there.
+    /// </summary>
+    public string? NoLandingMessage(Models.Track.Track track, double abHeading, int pathsAway,
+        Boundary? boundary, IReadOnlyList<Vec3>? headlandLine, Position position, bool headingSameWay, double headlandAhead,
+        int? fromPath = null)
+    {
+        if (IsPathLandable(track, abHeading, pathsAway, boundary, headlandLine, position, headingSameWay, headlandAhead, fromPath))
+            return null;
+        var run = Landing(track, abHeading, pathsAway, boundary, headlandLine, position, headingSameWay, headlandAhead, MinLandingLength);
+        return NoLandingMessage(run, _configStore.Guidance.UTurnDistanceFromBoundary);
+    }
+
+    /// <summary>The operator's words for a landing too short (<see cref="NoLandingMessage(Models.Track.Track, double, int, Boundary?, IReadOnlyList{Vec3}?, Position, bool, double, int?)"/>).</summary>
+    /// <remarks>Along the fence only when the pass comes nearer it than the U-turn distance: a gap
+    /// in the area further in (a bay of the headland line) leaves a short piece, said as such.</remarks>
+    public static string NoLandingMessage(LandingRun run, double distanceFromBoundary) => run.FenceGap is double gap && gap < distanceFromBoundary
+        ? string.Format(CultureInfo.InvariantCulture,
+            "No U-turn onto the next pass: {0:0} m in, it runs {1:0.0} m from the boundary, {2:0.0} m needed - take over manually at the end of this pass",
+            run.Length, Math.Max(gap, 0), distanceFromBoundary)
+        : string.Format(CultureInfo.InvariantCulture,
+            "No U-turn onto the next pass: only {0:0} m of it at this end, {1:0} m needed - take over manually at the end of this pass",
+            run.Length, MinLandingLength);
+
+    /// <summary>How far a point is from the outer boundary.</summary>
+    private static double FenceDistance(double e, double n, Boundary? boundary)
+    {
+        if (boundary?.OuterBoundary is not { IsValid: true } outer) return double.MaxValue;
+        var pts = outer.Points;
+        double best = double.MaxValue;
+        for (int i = 0, j = pts.Count - 1; i < pts.Count; j = i++)
+            best = Math.Min(best, GeometryMath.PointToSegmentDistance(e, n, pts[j].Easting, pts[j].Northing, pts[i].Easting, pts[i].Northing));
+        return best;
     }
 
     /// <summary>

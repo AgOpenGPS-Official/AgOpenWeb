@@ -1037,7 +1037,8 @@ public sealed class YouTurnStateMachine
             _failedEndCycles = 0;
             return;
         }
-        effects.StatusMessage = "End of field reached - no room on the next pass at this end";
+        effects.StatusMessage = _pathing.NoLandingMessage(track, abHeading, target, ctx.Boundary, ctx.HeadlandLine,
+            currentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland, guidance.HowManyPathsAway) ?? NoLandingFallback;
         SoundCreationFailed(effects);
         _failedEnd = EndKey(in ctx, track, guidance, turn, fieldStamp);
         _failedEndCycles = 0;
@@ -1349,7 +1350,8 @@ public sealed class YouTurnStateMachine
         if (!_pathing.IsPathLandable(track, abHeading, nextPath, ctx.Boundary, ctx.HeadlandLine, ctx.CurrentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland, guidance.HowManyPathsAway))
         {
             effects.StatusMessage = _pathing.IsPathInsideCultivated(track, abHeading, nextPath, ctx.Boundary, ctx.HeadlandLine)
-                ? "End of field reached - no room on the next pass at this end"
+                ? _pathing.NoLandingMessage(track, abHeading, nextPath, ctx.Boundary, ctx.HeadlandLine, ctx.CurrentPosition,
+                    guidance.IsHeadingSameWay, turn.DistanceToHeadland, guidance.HowManyPathsAway) ?? NoLandingFallback
                 : "End of field reached";
             SoundCreationFailed(effects);
             return;
@@ -1449,7 +1451,9 @@ public sealed class YouTurnStateMachine
                     track, abHeading, guidance, ctx.Boundary, ctx.HeadlandLine, ctx.UTurnSkipRows, keepPositive).isInside;
             _logger.LogDebug("[YouTurn] Next line would be outside boundary{Room} - stopping U-turns (headland {Dist:F1}m ahead of ({E:F1},{N:F1}) heading {Hdg:F0}°, zone {Zone})",
                 roomSomewhere ? " at this end" : "", turn.DistanceToHeadland, currentPosition.Easting, currentPosition.Northing, currentPosition.Heading, turn.CurrentZone);
-            effects.StatusMessage = roomSomewhere ? "End of field reached - no room on the next pass at this end" : "End of field reached";
+            effects.StatusMessage = roomSomewhere
+                ? NoLandingMessageForNextPass(in ctx, track, abHeading, currentPosition, guidance, turn, keepPositive, steppedBack)
+                : "End of field reached";
             SoundCreationFailed(effects);
             return;
         }
@@ -1592,6 +1596,33 @@ public sealed class YouTurnStateMachine
             effects.StatusMessage = $"YouTurn path created ({result.Path.Count} points)";
         effects.SyncTurnPathToMap = true;
         return result;
+    }
+
+    /// <summary>A pass in the field but no room to land a turn on it at this end, when the reason
+    /// can't be measured (it always can where a turn is refused for room).</summary>
+    private const string NoLandingFallback = "No U-turn onto the next pass at this end - take over manually at the end of this pass";
+
+    /// <summary>
+    /// Why the turn at this end has no pass to land on, when there is a pass in the field (the
+    /// normal mode): the next pass on the side the turns go, stepped back or not, else the side
+    /// inside the field (both: the tie-break of <see cref="YouTurnPathingService.WouldNextLineBeInsideBoundary"/>),
+    /// with what it lacks (<see cref="YouTurnPathingService.NoLandingMessage(Models.Track.Track, double, int, Boundary?, IReadOnlyList{Vec3}?, Position, bool, double, int?)"/>).
+    /// </summary>
+    private string NoLandingMessageForNextPass(in TickContext ctx, Models.Track.Track track, double abHeading, Position position,
+        GuidanceWorkingState guidance, YouTurnWorkingState turn, bool? keepPositive, bool steppedBack)
+    {
+        int step = ctx.UTurnSkipRows + 1, here = guidance.HowManyPathsAway;
+        int pass;
+        if (steppedBack) pass = here + (keepPositive == true ? step : -step);
+        else
+        {
+            bool pos = _pathing.IsPathInsideCultivated(track, abHeading, here + step, ctx.Boundary, ctx.HeadlandLine);
+            bool neg = _pathing.IsPathInsideCultivated(track, abHeading, here - step, ctx.Boundary, ctx.HeadlandLine);
+            bool positive = pos && neg ? keepPositive ?? here > 0 : pos;
+            pass = here + (positive ? step : -step);
+        }
+        return _pathing.NoLandingMessage(track, abHeading, pass, ctx.Boundary, ctx.HeadlandLine, position,
+            guidance.IsHeadingSameWay, turn.DistanceToHeadland, here) ?? NoLandingFallback;
     }
 
     /// <summary>No turn built: say why, and sound once (<see cref="SoundCreationFailed"/>).</summary>
