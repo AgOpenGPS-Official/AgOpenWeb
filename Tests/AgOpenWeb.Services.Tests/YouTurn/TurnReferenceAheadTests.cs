@@ -183,6 +183,29 @@ public class TurnReferenceAheadTests
         Assert.That(r!.Value.Crossing.Northing, Is.EqualTo(40).Within(1e-6));
     }
 
+    // Field job J14 on Baetas (2026-11-16): pass -23 dips out of the turn line inside the fence and
+    // is back inside it for 4 m before it leaves for good. Driven through, its end moved 10 m on
+    // into a corner where the next pass had no room, and the job stopped at its first turn.
+    [TestCase(30.0, -27.0)] // back inside for 10 m (y = 30 to 40): the end is the first crossing
+    [TestCase(15.0, 40.0)]  // for 25 m: driven through to the north edge
+    public void A_stretch_is_driven_through_only_when_the_pass_then_goes_on_inside_the_turn_line(double bayEnd, double end)
+    {
+        var headland = new List<Vec3>
+        {
+            new(-40, -40, 0), new(40, -40, 0), new(40, 40, 0), new(-40, 40, 0),
+            new(-40, bayEnd, 0), new(5, bayEnd, 0), new(5, -27, 0), new(-40, -27, 0),
+        };
+        var fence = new List<Vec3>
+        {
+            new(-42, -42, 0), new(42, -42, 0), new(42, 42, 0), new(-42, 42, 0),
+            new(-42, bayEnd + 1, 0), new(3, bayEnd + 1, 0), new(3, -29, 0), new(-42, -29, 0),
+        };
+        var track = AgOpenWeb.Models.Track.Track.FromABLine("AB", new Vec3(4, -100, 0), new Vec3(4, 100, 0));
+        var r = YouTurnCreationService.PassEndAhead(track, new Vec3(4, -35, 0), headland, headingSameWay: true, fence: fence);
+        Assert.That(r, Is.Not.Null);
+        Assert.That(r!.Value.Crossing.Northing, Is.EqualTo(end).Within(1e-6));
+    }
+
     [Test]
     public void Without_the_fence_every_point_outside_the_turn_line_is_an_end()
     {
