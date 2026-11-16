@@ -90,6 +90,15 @@ public class NoLandingMessageTests
     }
 
     [Test]
+    public void None_of_the_next_pass_at_this_end_is_said_so_not_as_0_m()
+    {
+        // J11 on Couto Ribeira (2026-11-16): "only 0 m of it at this end".
+        var run = new YouTurnPathingService.LandingRun(0, null);
+        Assert.That(YouTurnPathingService.NoLandingMessage(run, 2.0),
+            Is.EqualTo("No U-turn onto the next pass: none of it is in the field at this end - take over manually at the end of this pass"));
+    }
+
+    [Test]
     public void A_pass_with_room_has_no_message()
     {
         var (fence, turnLine) = Field(PassX(1) + 1);

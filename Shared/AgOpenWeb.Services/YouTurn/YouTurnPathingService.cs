@@ -473,9 +473,11 @@ public sealed class YouTurnPathingService
         ? string.Format(CultureInfo.InvariantCulture,
             "No U-turn onto the next pass: {0:0} m in, it runs {1:0.0} m from the boundary, {2:0.0} m needed - take over manually at the end of this pass",
             run.Length, Math.Max(gap, 0), distanceFromBoundary)
-        : string.Format(CultureInfo.InvariantCulture,
-            "No U-turn onto the next pass: only {0:0} m of it at this end, {1:0} m needed - take over manually at the end of this pass",
-            run.Length, MinLandingLength);
+        : run.Length < 0.5
+            ? "No U-turn onto the next pass: none of it is in the field at this end - take over manually at the end of this pass"
+            : string.Format(CultureInfo.InvariantCulture,
+                "No U-turn onto the next pass: only {0:0} m of it at this end, {1:0} m needed - take over manually at the end of this pass",
+                run.Length, MinLandingLength);
 
     /// <summary>How far a point is from the outer boundary.</summary>
     private static double FenceDistance(double e, double n, Boundary? boundary)
