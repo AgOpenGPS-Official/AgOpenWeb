@@ -405,7 +405,8 @@ public partial class YouTurnCreationService
         // this point, and the state machine measured its distance to the turn to the same end.
         var passEnd = PassEnds.Find(currentCurvePoints, currentLocationIndex, guidance.IsHeadingSameWay,
             p => isPointInsideTurnArea(p) == 0, turnBoundaryVec3,
-            p => boundary.OuterBoundary.IsPointInside(p.Easting, p.Northing));
+            p => boundary.OuterBoundary.IsPointInside(p.Easting, p.Northing),
+            m => _logger.LogDebug("[YouTurn] Pass {Path}: {What}", guidance.HowManyPathsAway, m));
         if (passEnd is { } end)
             _logger.LogDebug("[YouTurn] End of pass {Path} ahead at ({E:F1},{N:F1}), point {Idx} of {Count}",
                 guidance.HowManyPathsAway, end.Crossing.Easting, end.Crossing.Northing, end.OutsideIndex, currentCurvePoints.Count);

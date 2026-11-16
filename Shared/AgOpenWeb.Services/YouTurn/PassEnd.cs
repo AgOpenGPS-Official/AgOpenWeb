@@ -52,7 +52,8 @@ public static class PassEnds
     /// (<see cref="DriveThroughLength"/>); without it every point outside the turn line is an end.
     /// </summary>
     public static PassEnd? Find(IReadOnlyList<Vec3> pass, int fromIndex, bool forward,
-        Func<Vec3, bool> insideTurnArea, IReadOnlyList<Vec3>? turnLine = null, Func<Vec3, bool>? insideField = null)
+        Func<Vec3, bool> insideTurnArea, IReadOnlyList<Vec3>? turnLine = null, Func<Vec3, bool>? insideField = null,
+        Action<string>? debug = null)
     {
         int step = forward ? 1 : -1;
         bool seenInside = false;
@@ -60,10 +61,15 @@ public static class PassEnds
         {
             if (insideTurnArea(pass[j])) { seenInside = true; continue; }
             if (!seenInside) continue;
-            if (insideField != null && IsClip(pass, j, step, insideTurnArea, insideField, out int back))
+            if (insideField != null)
             {
-                j = back; // back inside the turn line; the walk goes on from there
-                continue;
+                var why = IsClip(pass, j, step, insideTurnArea, insideField, out int back);
+                debug?.Invoke(FormattableString.Invariant($"point {j} ({pass[j].Easting:F1},{pass[j].Northing:F1}) is outside the turn line: {why}"));
+                if (back != j)
+                {
+                    j = back; // back inside the turn line; the walk goes on from there
+                    continue;
+                }
             }
             int i = j - step;
             var a = pass[i];
@@ -83,19 +89,25 @@ public static class PassEnds
     /// outside) is a clip: back inside the turn line at <paramref name="back"/> in under
     /// <see cref="DriveThroughLength"/> along the pass, no point of it outside the field.
     /// </summary>
-    private static bool IsClip(IReadOnlyList<Vec3> pass, int first, int step,
+    private static string IsClip(IReadOnlyList<Vec3> pass, int first, int step,
         Func<Vec3, bool> insideTurnArea, Func<Vec3, bool> insideField, out int back)
     {
         back = first;
         double length = 0;
         for (int k = first; k >= 0 && k < pass.Count; k += step)
         {
-            if (!insideField(pass[k])) return false;
+            if (!insideField(pass[k]))
+                return FormattableString.Invariant($"the end of the pass, outside the fence at point {k} ({pass[k].Easting:F1},{pass[k].Northing:F1}), {length:F1} m on");
             if (k != first) length += Distance(pass[k - step], pass[k]);
-            if (length >= DriveThroughLength) return false;
-            if (insideTurnArea(pass[k])) { back = k; return true; }
+            if (length >= DriveThroughLength)
+                return FormattableString.Invariant($"the end of the pass, still outside the turn line {length:F1} m on (a clip is under {DriveThroughLength:F0} m)");
+            if (insideTurnArea(pass[k]))
+            {
+                back = k;
+                return FormattableString.Invariant($"a clip, driven through: back inside at point {k} ({pass[k].Easting:F1},{pass[k].Northing:F1}), {length:F1} m on");
+            }
         }
-        return false;
+        return "the end of the pass, the pass ends outside the turn line";
     }
 
     /// <summary>Where the segment a–b crosses <paramref name="turnLine"/> (its closing segment included); null when it doesn't.</summary>

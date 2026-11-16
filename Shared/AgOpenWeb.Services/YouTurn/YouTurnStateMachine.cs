@@ -1780,7 +1780,8 @@ public sealed class YouTurnStateMachine
         Func<Vec3, bool>? insideField = fence == null ? null : q => fence.IsPointInside(q.Easting, q.Northing);
         void Search(int from)
         {
-            p.End = PassEnds.Find(p.Points, from, headingSameWay, q => _headlandIndex.Contains(turnLine, q.Easting, q.Northing), turnLine, insideField);
+            p.End = PassEnds.Find(p.Points, from, headingSameWay, q => _headlandIndex.Contains(turnLine, q.Easting, q.Northing), turnLine, insideField,
+                m => _logger.LogDebug("[YouTurn] Pass {Pass}: {What}", guidance.HowManyPathsAway, m));
             p.SearchedFrom = from;
             if (p.End is { } e)
                 _logger.LogDebug("[YouTurn] End of pass {Pass} ahead at ({E:F1},{N:F1}), point {Idx} of {Count}, from point {From}",
