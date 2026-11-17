@@ -83,6 +83,67 @@ public class ToolPositionServiceConcurrencyTests
     }
 
     [Test]
+    public void SectionPosition_UnderConcurrentWrites_TakesPositionAndHeadingFromOneUpdate()
+    {
+        // A section's position needs the tool's position and heading from the same update: the
+        // writer flips between two poses with different headings, and each section position
+        // read must be one of the two, never A's position turned by B's heading.
+        var service = new ToolPositionService(ConfigurationStore.Instance);
+        var poseA = new Vec3(100, 200, 0);
+        var poseB = new Vec3(500, 600, Math.PI / 2);
+        service.Update(poseA, poseA.Heading);
+        var expectA = service.GetSectionPosition(0, 1, 1);
+        service.Update(poseB, poseB.Heading);
+        var expectB = service.GetSectionPosition(0, 1, 1);
+
+        using var cts = new CancellationTokenSource();
+        int torn = 0;
+        var readers = new Task[4];
+        for (int i = 0; i < readers.Length; i++)
+            readers[i] = Task.Run(() =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    var p = service.GetSectionPosition(0, 1, 1);
+                    bool isA = p.Easting == expectA.Easting && p.Northing == expectA.Northing && p.Heading == expectA.Heading;
+                    bool isB = p.Easting == expectB.Easting && p.Northing == expectB.Northing && p.Heading == expectB.Heading;
+                    if (!isA && !isB) Interlocked.Increment(ref torn);
+                }
+            });
+
+        var writerEnd = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency * 0.05);
+        bool useA = false;
+        while (Stopwatch.GetTimestamp() < writerEnd)
+        {
+            var pose = useA ? poseA : poseB;
+            service.Update(pose, pose.Heading);
+            useA = !useA;
+        }
+        cts.Cancel();
+        Task.WaitAll(readers);
+
+        Assert.That(torn, Is.EqualTo(0), "a section position must come from one update's position and heading");
+    }
+
+    [Test]
+    public void Update_AllocatesNothing()
+    {
+        // The 100 Hz control tick runs Update. An allocation there sends the control thread to
+        // the runtime for fresh allocation space every few dozen ticks, where a background
+        // collection (a browser's 20 MB seed) held it 100 ms in short waits (Working Day
+        // scenarios, CONTROL-TICK-OVER-10-MS: 1.6 ms on the CPU, 59 waits). The published
+        // state is a value behind a seqlock, not a new snapshot object per update.
+        var service = new ToolPositionService(ConfigurationStore.Instance);
+        for (int i = 0; i < 100; i++) service.Update(new Vec3(i * 0.03, 0, 0), 0);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 10_000; i++) service.Update(new Vec3(i * 0.03, 0, 0), 0);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(allocated, Is.EqualTo(0), "Update allocated " + allocated + " bytes over 10,000 calls");
+    }
+
+    [Test]
     public void Update_AndResetTrailingState_AreSerialized()
     {
         // Concurrent Update + ResetTrailingState shouldn't corrupt the snapshot.
