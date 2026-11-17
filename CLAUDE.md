@@ -509,6 +509,13 @@ still or at walking pace (not above 6 km/h to start, 10 km/h stops it; wheels wi
   PWM less one is held and must leave the wheels still (a steering that answers late reads high on any rise). The
   setting is a little under the easier side.
 - **Max Limit**: the PWM that turns the wheels at the speed chosen (15, 25 or 35°/s, `wizard.set|TargetWheelSpeed`).
+  When the wheels stop getting faster before that (a valve fully open, a motor at its top speed), the lowest PWM
+  that gives 90 % of the fastest they turned (`SteerTuneMath.Knee`, `KneeShare`), and the result says above which
+  PWM they turn hardly any faster: on a tester's proportional valve (17 Nov 2026) the step took PWM 162 for 2°/s
+  more than at 103, 3.9 A on a coil rated 2.5 A.
+- **Never above the operator's Max Limit**, in any part of the run nor in the result (`PwmCap`; the app can't
+  know what a valve's coil or a motor takes): the first-movement search, the speed levels and the result stop
+  there, and a result held there says so.
 - **Proportional Gain**: 4° turns up a ladder of gains; the lowest gain that settles as fast as the best one
   without swinging, then checked with an 8° turn.
 
@@ -518,8 +525,9 @@ module and puts the operator's values back; the values found are used only after
 the profile on Finish. With no kickout sensor the step itself notices a hand on the wheel (wheels that stop
 answering; the wheel taken at every tenth of a second of a run on three simulated steerings is let go within 2.5 s). Web client: `case 'tune'` in `js/wizards.js` (buttons shown by
 `testStage`; the result's `Measurements:` tail is folded away). Tests: `SteerWizardTuneTests` on a simulated
-steering (`FakeSteering`); the tuning stories of the steer wizard harness (`TuneScenarios.cs`). Not tried on a
-tractor yet.
+steering (`FakeSteering`); the tuning stories of the steer wizard harness (`TuneScenarios.cs`). First run on a
+tractor 17 Nov 2026 (a load-sensing valve block, standing still): Minimum To Move and the gain looked right; the Max
+Limit rules above came from it.
 
 ## CI/CD
 

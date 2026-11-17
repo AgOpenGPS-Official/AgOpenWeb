@@ -96,7 +96,8 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
 
     /// <summary>The module's gain while looking for the first movement: PWM = 20 × error + 1.</summary>
     internal const int ProbeKp = 20;
-    /// <summary>The search stops here (the setting itself can't be more than 200).</summary>
+    /// <summary>The search stops here (the setting itself can't be more than 200), or at the operator's
+    /// Max Limit if that is lower: see <see cref="ProbeLimit"/>.</summary>
     internal const int ProbeLimitPwm = 200;
     internal const double CoarsePwmPerSec = 80;
     /// <summary>The setting is this share (2 PWM at least) under the PWM that moves the easier side, so
@@ -141,6 +142,12 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
     internal const double LevelRatio = 1.25;
     /// <summary>A level that turns the wheels less than this much faster than the one before adds nothing.</summary>
     internal const double WorthwhileGain = 1.05;
+    /// <summary>
+    /// When the wheels stop getting faster, Max Limit is the lowest PWM that gives this share of the
+    /// fastest they turned: past the knee more PWM only heats a valve's coil or a motor (a tester's
+    /// proportional valve: 15°/s at PWM 103, 17.6°/s at 162, which is 3.9 A on a 2.5 A coil).
+    /// </summary>
+    internal const double KneeShare = 0.9;
 
     // ------------------------------------------------------------ Proportional Gain
 
@@ -212,6 +219,15 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
     private double _anchor;
     private double _speedKmh;
     private int _origKp, _origMax, _origMin;
+
+    /// <summary>
+    /// The most PWM any part of the run drives: the operator's own Max Limit, never more. The app
+    /// can't know what a valve's coil or a motor takes, and the operator set that limit for it.
+    /// </summary>
+    private int PwmCap => Math.Clamp(_origMax, 1, 255);
+
+    /// <summary>Where the search for the first movement stops: <see cref="ProbeLimitPwm"/>, or the Max Limit.</summary>
+    private int ProbeLimit => Math.Min(ProbeLimitPwm, PwmCap);
     private readonly List<double> _reactionMs = new();
     private readonly List<string> _measured = new();
 
@@ -523,7 +539,13 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
 
             var (max, speed, maxNote) = await MeasureMaxLimitAsync(lower, token);
             if (maxNote.Length > 0) notes.Add(maxNote);
-            max = Math.Clamp(Math.Max(max, (int)Math.Ceiling(min * 1.3) + 5), 50, 255);
+            // At least 50 (the module's lowest) and well clear of Minimum To Move, but never above
+            // the operator's own Max Limit.
+            int floor = Math.Max(50, (int)Math.Ceiling(min * 1.3) + 5);
+            max = Math.Min(Math.Max(max, floor), Math.Max(max, PwmCap));
+            if (max < floor)
+                notes.Add(string.Create(Inv,
+                    $"Max Limit stays at your {max}: {floor} would keep it well clear of Minimum To Move, but the test never goes above the Max Limit you set."));
 
             var (kp, check, gainNote) = await FindGainAsync(min, max, token);
             if (gainNote.Length > 0) notes.Add(gainNote);
@@ -605,15 +627,16 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
     {
         var notes = new List<string>();
         PhaseDescription = "Minimum To Move: looking for the first movement…";
-        // Max Limit out of the way: within a few degrees of the set point the firmware limits the
-        // PWM to a share of it, and at 255 that share is always above what the ramp asks for.
-        await ApplyAsync(ProbeKp, 255, 1, token);
+        // Max Limit at the operator's own: the module never drives harder than that. Within a few
+        // degrees of the set point the firmware limits the PWM to a share of it, and at any usual
+        // Max Limit that share is above what the ramp asks for.
+        await ApplyAsync(ProbeKp, PwmCap, 1, token);
         await ArmAsync(token);
 
-        var coarse = await RampAsync(+1, 1, CoarsePwmPerSec, ProbeLimitPwm, token);
+        var coarse = await RampAsync(+1, 1, CoarsePwmPerSec, ProbeLimit, token);
         if (coarse.Pwm == null)
             throw new TuneAbort(string.Create(Inv,
-                $"The wheels did not move up to PWM {ProbeLimitPwm}. Hands on the wheel, the wheels against a stop, or the valve or motor not driving?"));
+                $"The wheels did not move up to PWM {ProbeLimit}{(ProbeLimit < ProbeLimitPwm ? " (your Max Limit)" : "")}. Hands on the wheel, the wheels against a stop, or the valve or motor not driving?"));
         int guess = coarse.Pwm.Value;
 
         // Each side: a quick rise to find about where the wheels move, a slow one to read it
@@ -629,7 +652,7 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
             double quickRate = Math.Max(QuickPwmPerSecMin, guess * QuickRateShare);
             // No further than well past where they moved before: wheels that do not move by
             // then are held, and the motor is not left pushing against a hand.
-            int quickLimit = Math.Min(ProbeLimitPwm, (int)(guess * QuickLimitShare) + 8);
+            int quickLimit = Math.Min(ProbeLimit, (int)(guess * QuickLimitShare) + 8);
             int? quick = await FindAsync(dir, (int)(guess * 0.6), quickRate, quickLimit + CreepPwm, quickLimit, token);
             if (quick == null)
                 throw new TuneAbort(string.Create(Inv,
@@ -805,11 +828,18 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
 
     // ============================================================ part 2: Max Limit
 
+    /// <summary>
+    /// Max Limit: the wheels' speed at rising PWM levels, never above the operator's Max Limit. The
+    /// PWM that gives the wanted speed; when the wheels stop getting faster before that, the lowest
+    /// PWM that gives <see cref="KneeShare"/> of the fastest they turned; at the operator's Max Limit
+    /// with the wheels still getting faster, that Max Limit.
+    /// </summary>
     private async Task<(int MaxPwm, double Speed, string Note)> MeasureMaxLimitAsync(int startsMovingPwm, CancellationToken token)
     {
         double wanted = TargetWheelSpeed;
         var levels = new List<(int Pwm, double Speed)>();
-        int pwm = Math.Clamp((int)Math.Round(startsMovingPwm * 1.6), 50, 255);
+        int cap = PwmCap;
+        int pwm = Math.Min(cap, Math.Clamp((int)Math.Round(startsMovingPwm * 1.6), 50, 255));
         while (true)
         {
             PhaseDescription = string.Create(Inv, $"Max Limit: how fast the wheels turn at PWM {pwm}…");
@@ -837,20 +867,25 @@ public class TuneSteeringStepViewModel : SwitchGatedWizardStep
                 int at = SteerTuneMath.PwmForSpeed(levels, wanted, startsMovingPwm);
                 return (at, wanted, "");
             }
-            if (levels.Count >= 2 && levels[^2].Speed > 1 && speed < levels[^2].Speed * WorthwhileGain)
+            // Judged on a whole step only: the last step up to the operator's Max Limit can be a
+            // few PWM, and a few PWM add little speed on any steering.
+            bool wholeStep = levels.Count >= 2 && pwm >= (int)Math.Ceiling(levels[^2].Pwm * LevelRatio);
+            bool flat = wholeStep && levels[^2].Speed > 1 && speed < levels[^2].Speed * WorthwhileGain;
+            if (flat)
             {
-                var (p, s) = levels[^2];
-                return (p, s, string.Create(Inv,
-                    $"More than PWM {p} does not turn the wheels faster ({s:F0}°/s, {wanted:F0}°/s was wanted): the valve is fully open or the motor at its top speed."));
+                var (knee, kneeSpeed, top) = SteerTuneMath.Knee(levels, KneeShare, startsMovingPwm);
+                return (knee, kneeSpeed, string.Create(Inv,
+                    $"Above PWM {knee} the wheels turn hardly any faster: {kneeSpeed:F0}°/s there, {top:F0}°/s at most ({wanted:F0}°/s was wanted). The valve is fully open or the motor at its top speed; more PWM only heats it."));
             }
-            if (pwm >= 255)
+            if (pwm >= cap)
             {
                 if (speed < 1)
-                    throw new TuneAbort("The wheels hardly move even at full power (PWM 255). Hands on the wheel, the wheels against a stop, low oil pressure, or the motor slipping?");
-                return (255, speed, string.Create(Inv,
-                    $"At full power the wheels turn {speed:F0}°/s, less than the {wanted:F0}°/s wanted."));
+                    throw new TuneAbort(string.Create(Inv,
+                        $"The wheels hardly move even at PWM {cap}, your Max Limit. Hands on the wheel, the wheels against a stop, low oil pressure, or the motor slipping?"));
+                return (cap, speed, string.Create(Inv,
+                    $"At your Max Limit {cap} the wheels turn {speed:F0}°/s, less than the {wanted:F0}°/s wanted. The test never goes above the Max Limit you set: raise it by hand only if the valve or motor takes more, then run the test again."));
             }
-            pwm = Math.Min(255, (int)Math.Ceiling(pwm * LevelRatio));
+            pwm = Math.Min(cap, (int)Math.Ceiling(pwm * LevelRatio));
         }
     }
 

@@ -49,7 +49,8 @@ nothing about, then checks the values against the steering itself:
 - **A PWM valve that answers late, with a pressure sensor** (settings as on a Maxxum 135), **a Keya
   on the steering wheel with a kickout sensor**, **a motor on the steering wheel with no stop at
   the wheel**: the stop check as the page asks, the run, *Use these values*, Finish. Minimum To
-  Move must not move the wheels by itself, the Max Limit must give the wheel speed asked for, a
+  Move must not move the wheels by itself, the Max Limit must give the wheel speed asked for (or
+  what the operator's own Max Limit allows: the run never drives above it, nor proposes more), a
   6° turn each way with the new values must not swing, and the profile on disk must carry them.
   The valve is then driven on an AB line with AutoSteer.
 - **Careless**: takes the wheel in the first part and in the middle (with and without a kickout

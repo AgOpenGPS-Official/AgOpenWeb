@@ -245,9 +245,79 @@ public class SteerWizardTuneTests
         await RunAsync(step);
 
         Assert.That(step.Stage, Is.EqualTo(TuneStage.Result), step.PhaseResult);
-        // 18°/s is reached at 50 + 18 / 0.3 = 110; the level above adds nothing.
-        Assert.That(step.FoundMaxPwm, Is.InRange(100, 160));
-        Assert.That(step.PhaseResult, Does.Contain("does not turn the wheels faster"));
+        // 18°/s is reached at 50 + 18 / 0.3 = 110; 90 % of it, 16.2°/s, at 104 to 110 read between the levels. The levels
+        // above only heat the valve's coil, so the knee is taken, not a PWM near the top.
+        Assert.That(step.FoundMaxPwm, Is.InRange(98, 115), step.PhaseResult);
+        Assert.That(step.FoundWheelSpeed, Is.InRange(15.0, 17.5), step.PhaseResult);
+        Assert.That(step.PhaseResult, Does.Contain("the wheels turn hardly any faster"));
+    }
+
+    [Test]
+    public async Task The_test_never_drives_above_the_operators_max_limit()
+    {
+        // The valve of the first test, which needs about 145 for 25°/s, on a tractor whose Max
+        // Limit is 110: the app can't know what the coil takes, so neither the search nor the
+        // result goes above the operator's own limit, and the result says so.
+        _fake.BreakawayRight = _fake.BreakawayLeft = 62;
+        _fake.DegPerSecPerPwm = 0.3;
+        _fake.DeadTimeMs = 120;
+        _fake.LagMs = 60;
+        _fake.LowHighDeg = 1.5;
+        _store.AutoSteer.MaxPwm = 110;
+        var step = CreateStep();
+
+        await RunAsync(step);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(step.Stage, Is.EqualTo(TuneStage.Result), step.PhaseResult);
+            Assert.That(_fake.PeakPwm, Is.LessThanOrEqualTo(110), "the module never drove harder than the Max Limit");
+            Assert.That(step.FoundMaxPwm, Is.EqualTo(110), step.PhaseResult);
+            Assert.That(step.PhaseResult, Does.Contain("At your Max Limit 110 the wheels turn"));
+            Assert.That(step.PhaseResult, Does.Contain("never goes above the Max Limit you set"));
+            Assert.That(step.FoundMinPwm, Is.InRange(55, 62), "Minimum To Move is found the same way");
+        });
+    }
+
+    [Test]
+    public async Task A_short_last_step_up_to_the_max_limit_is_not_read_as_the_wheels_at_their_top()
+    {
+        // Levels 80, 100, then 110 (the Max Limit) instead of 125: 10 PWM add little speed on any
+        // steering, so that is not the knee, and the operator's own limit is kept.
+        _fake.BreakawayRight = _fake.BreakawayLeft = 50;
+        _fake.DegPerSecPerPwm = 0.3;
+        _fake.MaxRate = 16;
+        _store.AutoSteer.MaxPwm = 110;
+        var step = CreateStep();
+
+        await RunAsync(step);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(step.Stage, Is.EqualTo(TuneStage.Result), step.PhaseResult);
+            Assert.That(step.FoundMaxPwm, Is.EqualTo(110), step.PhaseResult);
+            Assert.That(step.PhaseResult, Does.Contain("At your Max Limit 110"));
+            Assert.That(_fake.PeakPwm, Is.LessThanOrEqualTo(110));
+        });
+    }
+
+    [Test]
+    public async Task Wheels_that_do_not_move_up_to_the_max_limit_stop_the_search_there()
+    {
+        // A valve that opens only at PWM 120 on a tractor whose Max Limit is 100.
+        _fake.BreakawayRight = _fake.BreakawayLeft = 120;
+        _store.AutoSteer.MaxPwm = 100;
+        var step = CreateStep();
+
+        await RunAsync(step);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(step.Stage, Is.Not.EqualTo(TuneStage.Result), step.PhaseResult);
+            Assert.That(step.PhaseResult, Does.Contain("did not move up to PWM 100 (your Max Limit)"));
+            Assert.That(_fake.PeakPwm, Is.LessThanOrEqualTo(100));
+            Assert.That(_store.AutoSteer.MaxPwm, Is.EqualTo(100), "the operator's Max Limit back");
+        });
     }
 
     [Test]
@@ -263,6 +333,7 @@ public class SteerWizardTuneTests
         SetUp();
         _fake.BreakawayRight = _fake.BreakawayLeft = 40;
         _fake.DegPerSecPerPwm = 0.25;
+        _store.AutoSteer.MaxPwm = 255; // room above the 180 that 35°/s needs
         var fast = CreateStep();
         fast.TargetWheelSpeed = 35;
         await RunAsync(fast);
@@ -519,8 +590,9 @@ public class SteerWizardTuneTests
     {
         var step = await RunWithAsync((f, _) => f.Hands ??= f.Angle);
 
-        AssertStoppedClean(step, "did not move up to PWM 200");
-        Assert.That(_fake.PeakPwm, Is.LessThanOrEqualTo(205), "the search never drove harder than its limit");
+        // The operator's Max Limit (180) is the search's limit: the module never drives harder.
+        AssertStoppedClean(step, "did not move up to PWM 180 (your Max Limit)");
+        Assert.That(_fake.PeakPwm, Is.LessThanOrEqualTo(180), "the search never drove harder than the Max Limit");
     }
 
     [TestCase("Minimum To Move: looking", 4)]
@@ -764,5 +836,24 @@ public class SteerWizardTuneTests
         Assert.That(SteerTuneMath.PwmForSpeed(levels, 25, 60), Is.EqualTo(113));
         // First level already fast enough: on the line from the PWM that starts the wheels.
         Assert.That(SteerTuneMath.PwmForSpeed(new List<(int, double)> { (100, 40) }, 20, 60), Is.EqualTo(80));
+    }
+
+    [Test]
+    public void The_knee_is_the_lowest_pwm_with_most_of_the_top_speed()
+    {
+        // A tester's proportional valve on a load-sensing block (17 Nov 2026), standing still:
+        // first movement at 52, then 11.6, 15.0, 16.1, 17.7 and 17.7°/s. 90 % of 17.7 is 15.9,
+        // between 103 and 129; the step took 162 (3.9 A on a 2.5 A coil) for 2°/s more.
+        var levels = new List<(int Pwm, double Speed)> { (82, 11.6), (103, 14.95), (129, 16.05), (162, 17.65), (203, 17.65) };
+        var (pwm, speed, top) = SteerTuneMath.Knee(levels, 0.9, 52);
+        Assert.That(top, Is.EqualTo(17.65));
+        Assert.That(pwm, Is.EqualTo(126));
+        Assert.That(speed, Is.EqualTo(15.9).Within(0.05));
+        // A hard limit: the knee is where the speed stops rising.
+        var (hard, _, _) = SteerTuneMath.Knee(new List<(int, double)> { (80, 9), (100, 15), (125, 18), (157, 18) }, 0.9, 50);
+        Assert.That(hard, Is.EqualTo(110));
+        // Already fast at the first level: on the line from the start of movement.
+        var (first, _, _) = SteerTuneMath.Knee(new List<(int, double)> { (100, 20), (125, 20.5) }, 0.9, 60);
+        Assert.That(first, Is.EqualTo(97));
     }
 }

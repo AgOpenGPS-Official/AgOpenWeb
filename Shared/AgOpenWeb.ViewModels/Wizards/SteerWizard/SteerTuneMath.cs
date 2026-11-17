@@ -149,4 +149,50 @@ internal static class SteerTuneMath
         double between = p0 + (wantedSpeed - s0) / (s1 - s0) * (p1 - p0);
         return (int)Math.Ceiling(Math.Clamp(between, p0, p1));
     }
+
+    /// <summary>
+    /// The knee of the speed curve: the lowest PWM at which the wheels turn <paramref name="share"/>
+    /// of the fastest speed measured (levels in rising PWM, the wheels still at
+    /// <paramref name="startsMovingPwm"/>), on the line between the two points either side of it.
+    /// Returns that PWM, the speed there and the fastest speed.
+    /// </summary>
+    internal static (int Pwm, double Speed, double Top) Knee(IReadOnlyList<(int Pwm, double Speed)> levels, double share, int startsMovingPwm)
+    {
+        if (levels.Count == 0) return (255, 0, 0);
+        double top = 0;
+        foreach (var (_, sp) in levels) top = Math.Max(top, sp);
+        double target = share * top;
+        double p0 = startsMovingPwm, s0 = 0;
+        foreach (var (p1, s1) in levels)
+        {
+            if (p1 > p0 && s1 >= target)
+            {
+                double at = s1 - s0 < 1e-6 ? p1 : p0 + (target - s0) / (s1 - s0) * (p1 - p0);
+                int pwm = (int)Math.Ceiling(Math.Clamp(at, p0, p1));
+                return (pwm, SpeedAtPwm(levels, pwm, startsMovingPwm), top);
+            }
+            if (p1 > p0) { p0 = p1; s0 = s1; }
+        }
+        var (last, lastSpeed) = levels[^1];
+        return (last, lastSpeed, top);
+    }
+
+    /// <summary>
+    /// The wheel speed (degrees per second) at <paramref name="pwm"/>, from the levels measured
+    /// (rising PWM) and the PWM that starts the wheels moving (speed 0 there): on the line between
+    /// the two points either side of it; the last level's speed above the last level, 0 below the start.
+    /// </summary>
+    internal static double SpeedAtPwm(IReadOnlyList<(int Pwm, double Speed)> levels, int pwm, int startsMovingPwm)
+    {
+        double p0 = startsMovingPwm, s0 = 0;
+        if (pwm <= p0) return 0;
+        foreach (var (p1, s1) in levels)
+        {
+            if (p1 <= p0) { s0 = s1; continue; }
+            if (pwm <= p1) return s0 + (s1 - s0) * (pwm - p0) / (p1 - p0);
+            p0 = p1;
+            s0 = s1;
+        }
+        return s0;
+    }
 }

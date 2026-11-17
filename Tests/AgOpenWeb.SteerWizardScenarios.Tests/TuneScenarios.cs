@@ -274,8 +274,9 @@ public static class TuneScenarios
         return (Side(m.BreakawayPwm) + Side(m.BreakawayLeftPwm ?? m.BreakawayPwm)) / 2;
     }
 
-    /// <summary>The values on the page against what the steering really does.</summary>
-    private static void CheckAgainstSteering(WizardScenario s, Values found, double wantedSpeed)
+    /// <summary>The values on the page against what the steering really does, with the operator's
+    /// own Max Limit as the most the step may use.</summary>
+    private static void CheckAgainstSteering(WizardScenario s, Values found, double wantedSpeed, int operatorMax)
     {
         var m = s.Module;
         int lowest = m.LowestBreakawayPwm;
@@ -286,9 +287,13 @@ public static class TuneScenarios
             s.Report(new Finding(Severity.Inconsistency, "TUNE_MIN_FAR_BELOW",
                 string.Create(Inv, $"Minimum To Move {found.Min} is well under the PWM that moves the wheels ({lowest}): small corrections do nothing.")));
 
+        if (found.Max > operatorMax)
+            s.Report(new Finding(Severity.Bug, "TUNE_MAX_LIMIT_ABOVE_THE_OPERATORS",
+                string.Create(Inv, $"Max Limit {found.Max} is above the operator's own {operatorMax}: the app can't know what the valve or motor takes.")));
         double speed = TruthSpeed(m, found.Max);
-        double top = TruthSpeed(m, 255);
-        s.Rig.Note(string.Create(Inv, $"the steering really turns {speed:F0}°/s at Max Limit {found.Max} ({wantedSpeed:F0}°/s wanted, {top:F0}°/s at full power)"));
+        // The fastest the step may turn the wheels: at the operator's Max Limit, which it never passes.
+        double top = TruthSpeed(m, operatorMax);
+        s.Rig.Note(string.Create(Inv, $"the steering really turns {speed:F0}°/s at Max Limit {found.Max} ({wantedSpeed:F0}°/s wanted, {top:F0}°/s at the operator's Max Limit {operatorMax})"));
         double aim = Math.Min(wantedSpeed, top);
         if (Math.Abs(speed - aim) > 0.3 * aim)
             s.Report(new Finding(Severity.Inconsistency, "TUNE_MAX_LIMIT_OFF",
@@ -366,6 +371,9 @@ public static class TuneScenarios
                     "A careful run on a sound steering ended without values: " + text));
                 return;
             }
+            if (run.PeakPwm > before.Max)
+                s.Report(new Finding(Severity.Safety, "TUNE_DRIVES_ABOVE_THE_MAX_LIMIT",
+                    string.Create(Inv, $"The tuning drove the module at PWM {run.PeakPwm}, above the operator's Max Limit {before.Max}: a valve's coil or a motor may not take it.")));
             if (run.FarthestDeg > 25)
                 s.Report(new Finding(Severity.Safety, "TUNE_SWINGS_THE_WHEELS_TOO_FAR",
                     string.Create(Inv, $"The tuning took the wheels {run.FarthestDeg:F0}° from where they started (the page says up to 15°, the step's own limit is 22°).")));
@@ -376,7 +384,7 @@ public static class TuneScenarios
             if (now != before)
                 s.Report(new Finding(Severity.Bug, "TUNE_VALUES_IN_USE_BEFORE_THE_OPERATOR_TOOK_THEM",
                     $"The page says the values are not in use yet, but the settings already hold {now} (the operator's own: {before})."));
-            CheckAgainstSteering(s, found.Value, (await s.Rig.FrameAsync())?.TestChoice ?? 25);
+            CheckAgainstSteering(s, found.Value, (await s.Rig.FrameAsync())?.TestChoice ?? 25, before.Max);
         });
         if (found == null) return null;
 
