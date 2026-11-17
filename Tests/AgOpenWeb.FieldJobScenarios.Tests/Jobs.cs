@@ -229,6 +229,8 @@ public static class Jobs
             flag(Severity.Bug, "MISSED-STRIPS", F($"strips of ground between neighbouring passes were never sprayed: {a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}), the widest {a.LargestMissedStripM:0.00} m{(a.LargestStripWhere.Length > 0 ? " " + a.LargestStripWhere : "")}; the strips centre on ({a.MissedBetweenE / Math.Max(a.MissedBetweenPasses, 1e-9):0},{a.MissedBetweenN / Math.Max(a.MissedBetweenPasses, 1e-9):0}). AgOpenWeb's passes are {r.Spacing:0.00} m apart for a {spec.T.Width:0.00} m implement with {spec.T.Overlap:0.00} m overlap."));
         else
             sc.Ok(F($"no strip was left between passes (widest {a.LargestMissedStripM:0.00} m, {a.MissedBetweenPasses:0} m² in all)"));
+        if (a.LargestSettlingStripM > 0.15 + askedGap)
+            sc.Note(F($"where a pass starts, the implement still settling onto it after the U-turn handed back (the first {JobRun.SettlingM:0} m of its edges), the widest gap to the pass beside it was {a.LargestSettlingStripM:0.00} m ({a.LargestSettlingWhere}): a wedge at the start of the pass, closing as the implement comes onto its line, as in AgOpenGPS"));
         // ---- the edge of a field worked with no headland (laps along the boundary)
         if (r.Work == null)
         {

@@ -211,6 +211,8 @@ public sealed class JobAreas
     public double AppTotalWorked, AppActualCovered;
     public double LargestMissedStripM;  // widest strip between passes, m (from the pass edges)
     public string LargestStripWhere = "";   // which passes and where along the line
+    public double LargestSettlingStripM;    // widest gap where a pass starts, the implement still settling after the turn (JobRun.SettlingM)
+    public string LargestSettlingWhere = "";
     public double MissedBetweenE, MissedBetweenN;   // area-weighted sums, for the centre of the missed strips
     public double LargestOverlapM;      // widest overlap between neighbouring passes, m
 }
