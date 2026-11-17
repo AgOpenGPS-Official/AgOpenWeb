@@ -107,6 +107,7 @@ of any fixture here (field, path, rig, turn or imperial jobs) fails at once on a
 | `AGOPENWEB_SCENARIO_PACE=8` | real milliseconds per simulated fix (0.1 s): 8 is about 12x |
 | `AGOPENWEB_SCENARIO_TRACE=path.log` | every step and pass to this file while the run goes |
 | `AGOPENWEB_SCENARIO_VERBOSE=0` | quiet console |
+| `AGOPENWEB_SCENARIO_EVIDENCE=all` or `0` | evidence for every job, or for none (unset: for each job with a finding) |
 | `AGOPENWEB_SCENARIO_DUMP=folder` | a picture of each job (PPM: field, headland, obstacles, sprayed ground, the track) |
 | `AGOPENWEB_SCENARIO_DEBUGLOG=YouTurn` | AgOpenWeb's debug log lines of these categories in the timeline |
 
@@ -114,7 +115,23 @@ The tests fail only when the harness itself breaks. The findings are the product
 lists each kind once, most serious first, then each job with what was measured and its
 timeline.
 
-### Short runs: confirm a fix in a minute
+### Evidence: fix a finding without running the job again
+
+A job with a finding leaves `evidence/<job>.zip` beside the report (the nightly keeps them as the
+`job-scenarios-evidence-*` artifacts). It is the app's own bug report dump, as a tester sends,
+taken at the end of the job with the field and the job still open: settings, configuration,
+runtime state, the log, the field's files, the job's coverage tiles and the last 5 minutes of the
+GPS log. The harness adds, under `attachments/`, the GPS log of the whole job
+(`gps_data_log_whole_scenario.csv`) and its log (`log_whole_scenario.txt`), every U-turn's path as the app planned it with where the
+tractor was (`turns.json`) and the picture of the job (`.ppm`); `user_notes.txt` has the findings,
+what was measured and the timeline.
+
+The fix is made from that dump and proven by a unit test built from it (the field, the track, the
+turn's path, the fixes around the moment), failing on develop and passing on the fix. The harness
+is not run again as a gate: the nightly on develop is the check. A short run is for looking into
+something the dump does not show, and then the dump should be made to show it.
+
+### Short runs: look into something by hand
 
 A whole job is 5 to 80 minutes. To confirm a fix on the first passes, or on the passes where a
 finding was:
