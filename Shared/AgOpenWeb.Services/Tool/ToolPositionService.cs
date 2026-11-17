@@ -33,7 +33,9 @@ internal readonly record struct ToolPositionSnapshot(
 /// its own thread; readers (GPS pipeline, UI, renderer) pull from any
 /// thread. A write lock serializes Update / ResetTrailingState so the
 /// internal Torriem state stays consistent across frames; readers get a
-/// fully-consistent snapshot via atomic reference swap with no locking.
+/// fully-consistent snapshot with no locking: a value behind a seqlock
+/// (the writer makes the version odd, writes, makes it even; a reader
+/// copies and retries if it moved), so the 100 Hz writer allocates nothing.
 ///
 /// Tool Types:
 /// - Fixed Front: Tool rigidly attached in front of pivot
