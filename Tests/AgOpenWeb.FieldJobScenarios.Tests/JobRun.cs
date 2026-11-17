@@ -325,7 +325,10 @@ public sealed class JobRun : IAsyncDisposable
     // line; not after a lap's corner or a lap change by hand, which keep their own rules): after a U-turn hands
     // back, or AutoSteer is engaged, the implement is still settling onto its pass for a few metres
     // (a trailed or front-mounted one longer, a manual turn landing in the crop at an angle).
-    private readonly Dictionary<int, List<int>> _runStarts = new();
+    // Each bin keeps the start of the stretch that recorded it, so a pass driven again later (a
+    // U-turn backed out of, the pass reworked) is not excused near an earlier stretch's start.
+    private readonly Dictionary<int, Dictionary<int, int>> _binStart = new();
+    private int? _curStart;
     private int _recPass = int.MinValue;
     private bool _settling = true;   // the engage, or a U-turn since the last edges: the next stretch starts settling
     /// <summary>Metres from where a pass's edges begin within which the implement is still settling
@@ -1109,13 +1112,11 @@ public sealed class JobRun : IAsyncDisposable
         {
             if (!_passEdges.TryGetValue(Pass, out var d)) _passEdges[Pass] = d = new SortedDictionary<int, (double, double)>();
             int bin = (int)Math.Floor(Vv((tc.E, tc.N)));
-            if (_recPass != Pass && _settling)
-            {
-                if (!_runStarts.TryGetValue(Pass, out var starts)) _runStarts[Pass] = starts = new List<int>();
-                starts.Add(bin);
-            }
+            if (_recPass != Pass) _curStart = _settling ? bin : null;
             _recPass = Pass;
             _settling = false;
+            if (!_binStart.TryGetValue(Pass, out var starts)) _binStart[Pass] = starts = new Dictionary<int, int>();
+            if (_curStart is int s0) starts[bin] = s0; else starts.Remove(bin);
             if (d.TryGetValue(bin, out var old)) d[bin] = (Math.Min(old.L, uL), Math.Max(old.R, uR));
             else d[bin] = (uL, uR);
         }
@@ -1351,8 +1352,14 @@ public sealed class JobRun : IAsyncDisposable
 
     /// <summary>Is this bin of a pass within <see cref="SettlingM"/> of where a stretch of its
     /// edges began (the implement settling onto the pass after a turn or the engage)?</summary>
-    private bool Settling(int pass, int bin) =>
-        _runStarts.TryGetValue(pass, out var starts) && starts.Any(b => Math.Abs(bin - b) < SettlingM);
+    private bool Settling(int pass, int bin)
+    {
+        if (!_binStart.TryGetValue(pass, out var starts) || !starts.TryGetValue(bin, out int start)) return false;
+        double d = Math.Abs(bin - start);
+        // On a closed pass (a loop) the bins wrap at the seam: the short way round.
+        if (Frame.Closed && Frame.Length > 0) d = Math.Min(d, Frame.Length - d);
+        return d < SettlingM;
+    }
 
     /// <summary>Are two passes, next to each other in the order across the field, neighbours? A pass
     /// with no edges recorded (its only stretch in the cultivated area under a U-turn's start, J6's

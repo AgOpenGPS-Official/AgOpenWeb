@@ -205,7 +205,7 @@ public static class Jobs
         if (a.MissedAtLapChange > 0)
             sc.Note(F($"{a.MissedAtLapChange:0} m² ({Pct(a.MissedAtLapChange, a.Work)}) where the operator moved a width in by hand at the end of a lap were never sprayed: the implement crossing from one lap to the next"));
         if (a.MissedAtCorners > 0)
-            sc.Note(F($"{a.MissedAtCorners:0} m² ({Pct(a.MissedAtCorners, a.Work)}) at the laps' corners were never sprayed: a lap is rounded where it turns tighter than the rig can (the U-turn radius, {r.Rig.Store.Guidance.UTurnRadius:0} m), so at a corner the next lap in pulls away from it"));
+            sc.Note(F($"{a.MissedAtCorners:0} m² ({Pct(a.MissedAtCorners, a.Work)}) at corners were never sprayed: a lap is rounded where it turns tighter than the rig can (the U-turn radius, {r.Rig.Store.Guidance.UTurnRadius:0} m), and a lap or a curve's pass line cuts a chord across a notch in its reference, so there the next one in pulls away from it"));
 
         // ---- strips between passes
         if (a.MissedAtObstacles > 0)
