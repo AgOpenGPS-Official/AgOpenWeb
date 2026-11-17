@@ -59,6 +59,7 @@ public sealed class ContentionWatch : EventListener
         }
         Walk(root, 2);
         _locks = found.ToArray();
+        LiveLog.Write(string.Create(CultureInfo.InvariantCulture, $"[wait] contention watch on: {_locks.Length} lock fields of the backend's services named, waits of 1 ms or more kept"));
     }
 
     protected override void OnEventWritten(EventWrittenEventArgs e)

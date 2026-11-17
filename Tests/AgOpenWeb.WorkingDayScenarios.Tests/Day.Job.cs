@@ -207,11 +207,16 @@ public sealed partial class Day
         for (int t = 0; t < 10; t++)
         {
             gc = GcMark.Now();
+            var use = ThreadUsage.Now();
             long ts = Stopwatch.GetTimestamp();
             loop.Tick(ts);
             double tms = Stopwatch.GetElapsedTime(ts).TotalMilliseconds;
             _tickWin.Add(tms); TickDay.Add(tms); _job?.Tick.Add(tms);
-            if (tms > 10) Slow("control tick", tms, gc.Since());
+            if (tms > 10)
+            {
+                string g = gc.Since(), u = ThreadUsage.Since(use);
+                Slow("control tick", tms, g.Length == 0 ? u : u.Length == 0 ? g : g + "; " + u);
+            }
         }
 
         if (!road && _plane != null) await FollowAsync();
