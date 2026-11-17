@@ -209,15 +209,17 @@ public sealed partial class Day
             gc = GcMark.Now();
             var use = ThreadUsage.Now();
             long a0 = GC.GetAllocatedBytesForCurrentThread();
+            TickWatch.Begin();
             long ts = Stopwatch.GetTimestamp();
             loop.Tick(ts);
             double tms = Stopwatch.GetElapsedTime(ts).TotalMilliseconds;
+            string seen = TickWatch.End();
             long alloc = GC.GetAllocatedBytesForCurrentThread() - a0;
             if (alloc > 0) { TicksAllocating++; TickAllocatedBytes += alloc; }
             _tickWin.Add(tms); TickDay.Add(tms); _job?.Tick.Add(tms);
             if (tms > 10)
             {
-                string g = gc.Since(), u = ThreadUsage.Since(use) + (alloc > 0 ? F($"; the tick allocated {alloc:N0} bytes") : "");
+                string g = gc.Since(), u = ThreadUsage.Since(use) + (alloc > 0 ? F($"; the tick allocated {alloc:N0} bytes") : "") + (seen.Length > 0 ? "; " + seen : "");
                 Slow("control tick", tms, g.Length == 0 ? u : u.Length == 0 ? g : g + "; " + u);
             }
         }
