@@ -128,11 +128,8 @@ public class ToolPositionServiceConcurrencyTests
     [Test]
     public void Update_AllocatesNothing()
     {
-        // The 100 Hz control tick runs Update. An allocation there sends the control thread to
-        // the runtime for fresh allocation space every few dozen ticks, where a background
-        // collection (a browser's 20 MB seed) held it 100 ms in short waits (Working Day
-        // scenarios, CONTROL-TICK-OVER-10-MS: 1.6 ms on the CPU, 59 waits). The published
-        // state is a value behind a seqlock, not a new snapshot object per update.
+        // The 100 Hz control tick runs Update: it allocated a 128-byte snapshot object every
+        // tick. The published state is now a value behind a seqlock.
         var service = new ToolPositionService(ConfigurationStore.Instance);
         for (int i = 0; i < 100; i++) service.Update(new Vec3(i * 0.03, 0, 0), 0);
 

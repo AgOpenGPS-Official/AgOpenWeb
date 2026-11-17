@@ -335,9 +335,8 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             // 1-3 s UI thread freeze. UDP sends to a local socket are
             // microseconds; the kernel queues immediately.
             // Not SendTo(byte[], EndPoint): that serialises the endpoint on every call (64 bytes a
-            // send, six a control tick), and an allocating control tick waited up to 100 ms for
-            // allocation space while a collection ran (Working Day scenarios). The endpoint's
-            // address is serialised once and kept with it.
+            // send, six a control tick, against the comment above). The endpoint's address is
+            // serialised once and kept with it.
             _udpSocket!.SendTo(data, SocketFlags.None, Address(endpoint));
         }
         catch { }

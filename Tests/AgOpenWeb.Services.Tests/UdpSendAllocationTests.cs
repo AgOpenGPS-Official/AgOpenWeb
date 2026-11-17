@@ -11,8 +11,7 @@ namespace AgOpenWeb.Services.Tests;
 /// <summary>
 /// The control tick sends three PGNs a tick, each to the module and to localhost. Sent with
 /// <c>SendTo(byte[], EndPoint)</c> each send allocated 64 bytes (the endpoint serialised every
-/// call), and an allocating control tick waited up to 100 ms for allocation space while a
-/// collection ran (Working Day scenarios, CONTROL-TICK-OVER-10-MS). Each endpoint's address is
+/// call), garbage at 600 sends a second. Each endpoint's address is
 /// now serialised once (<see cref="UdpCommunicationService.Address"/>) and sent with the
 /// <see cref="SocketAddress"/> overload. Loopback only, on a port nothing uses.
 /// </summary>

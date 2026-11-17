@@ -68,10 +68,8 @@ public class ToolPositionService : IToolPositionService
 
     // The published state, behind a seqlock: the writer (under _writeLock) makes _version odd,
     // writes, makes it even again; a reader copies the value and retries if the version was odd
-    // or moved meanwhile. Readers never lock, and the 100 Hz writer allocates nothing: a new
-    // snapshot object every tick sent the control thread to the runtime for fresh allocation
-    // space every ~50 ticks, where a background collection (a browser's seed of 20 MB, the
-    // Working Day scenarios' CONTROL-TICK-OVER-10-MS) held it for 100 ms in short waits.
+    // or moved meanwhile. Readers never lock, and the 100 Hz writer allocates nothing (a new
+    // 128-byte snapshot object every control tick was garbage the collector had to clear).
     private ToolPositionSnapshot _snapshot;
     private int _version;
 
