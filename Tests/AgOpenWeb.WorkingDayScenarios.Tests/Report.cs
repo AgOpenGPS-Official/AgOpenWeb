@@ -161,7 +161,7 @@ public static class Report
             list.Add(new Finding("CONTROL-TICK-OVER-10-MS", Severity.Minor,
                 F($"{slowTicks} control tick(s) took longer than the 10 ms tick period (longest {d.TickDay.MaxMs:0.0} ms; {d.SlowTicksAtConnect} within 1.5 s of a browser connecting, {d.SlowTicksWithGc} with a garbage collection in it, {d.SlowTicksAfterForcedGc} within 1 s of the harness's own forced collections)"),
                 "The section and steer loop runs every 10 ms (`SteerMachineLoopService`); a longer tick delays the PGNs to the modules and the section timing. "
-                + (d.SlowTicksAtConnect > 0 ? "A browser's seed carries the coverage snapshot, which `CoverageMapService.GetPaintedDisplayCells` builds holding `_coverageLock` while it walks the worked area; the tick paints coverage under that lock. That lock is the suspected cause, not a measured one: the lock contentions shown below are a process-wide count (`Monitor.LockContentionCount`), not `_coverageLock`'s. " : "")
+                + (d.SlowTicksAtConnect > 0 ? "Each slow tick below lists the lock waits that overlapped it (the runtime's contention events, the lock named when it is a field of the backend's services): a wait for a lock is what the tick lost to another thread; none means the tick ran slow on its own (its work, or the thread not scheduled). " : "")
                 + (d.SlowTicksAfterForcedGc > 0 ? "Ticks marked as after the harness's forced collection came within 1 s of the two full compacting collections each five-minute look makes: the harness's doing, not the app's, and not counted above as at a connect or with a collection. " : "")
                 + Moments(d, "control tick", 10)));
 
@@ -263,14 +263,32 @@ public static class Report
                 + (d.FirstBackendAliveNextMorning
                     ? " AgOpenWeb was then started again in the same process (the next morning), as Android does after Exit and reopen: the first backend's `MainViewModel` was still alive with the second one running, so every start keeps the backend before it, and its handlers still react (to a setting such as NTRIP enabled, for one), not only its memory."
                     : "")));
+        // A day stopped early (AGOPENWEB_DAY_UNTIL, AGOPENWEB_DAY_STOP_ON) has too few samples
+        // for the whole-day trends: those are the full day's to judge.
+        if (d.StoppedEarly != null)
+            list.RemoveAll(f => TrendCodes.Contains(f.Code));
         return list.OrderBy(f => f.Severity).ThenBy(f => f.Code, StringComparer.Ordinal).ToList();
     }
+
+    private static readonly HashSet<string> TrendCodes = new(StringComparer.Ordinal)
+    {
+        "HEAP-GROWS-OVER-THE-DAY", "NATIVE-MEMORY-GROWS", "THREADS-GROW", "TIMERS-GROW", "HEAP-GROWS-WHILE-PARKED",
+        "FILE-GROWS-WHILE-PARKED", "GPS-CYCLE-SLOWER-LATER", "CONTROL-TICK-SLOWER-LATER",
+    };
 
     /// <summary>The slowest moments of one kind, with what had just happened before each.</summary>
     private static string Moments(Day d, string what, double over)
     {
         var m = d.SlowMoments.Where(x => x.What == what && x.Ms > over).OrderByDescending(x => x.Ms).Take(8).ToList();
-        return m.Count == 0 ? "" : "The slowest: " + string.Join("; ", m.Select(x => F($"{x.Clock:HH:mm:ss} {x.Ms:0} ms (after {x.Before}{(x.Gc.Length > 0 ? "; " + x.Gc : "")})"))) + ".";
+        return m.Count == 0 ? "" : "The slowest: " + string.Join("; ", m.Select(x => F($"{x.Clock:HH:mm:ss} {x.Ms:0} ms (after {x.Before}{(InIt(x.Gc, x.WallUtc, x.Ms) is { Length: > 0 } t ? "; " + t : "")})"))) + ".";
+    }
+
+    /// <summary>What ran in a slow moment: collections, the process's contention count, and the
+    /// lock waits that overlapped it (<see cref="ContentionWatch"/>).</summary>
+    private static string InIt(string gc, DateTime wallUtc, double ms)
+    {
+        string waits = ContentionWatch.Instance.During(wallUtc, ms);
+        return gc.Length == 0 ? waits : waits.Length == 0 ? gc : gc + "; " + waits;
     }
 
     private static string CensusLine(Day d)
@@ -331,6 +349,9 @@ public static class Report
         sb.AppendLine("# Working day scenarios");
         sb.AppendLine();
         sb.AppendLine(F($"An {Day.Hours:0.#}-hour day from {Day.DayStart:HH:mm} on the day's clock, {Day.PaceMs} ms of wall time per 0.1 s fix ({100.0 / Day.PaceMs:0.#}x), {d.WallSeconds / 60:0} minutes of wall time{(commit.Length > 0 ? ", commit " + commit[..Math.Min(7, commit.Length)] : "")}. {Day.Tractor.Name}, {Day.Sprayer.Name}, {Day.Sys.Label}."));
+        sb.AppendLine().AppendLine(F($"Control ticks that allocated: {d.TicksAllocating:N0} of {d.TickDay.Count:N0}, {d.TickAllocatedBytes / 1048576.0:0.0} MB in all."));
+        if (d.StoppedEarly != null)
+            sb.AppendLine().AppendLine(F($"_Stopped early at {d.Now:HH:mm} on the day's clock: {d.StoppedEarly}. What the day did not reach (the evening, the next morning, the whole-day trends) is not judged by its absence._"));
         if (d.MaxBehindMs > 2000)
             sb.AppendLine().AppendLine(F($"_The harness fell behind its pace by up to {d.MaxBehindMs / 1000:0.0} s of wall time (the machine could not keep up)._"));
         if (d.DeadmanPhoneAway is { } dpn && !d.DeadmanPhoneAwayLoopStuck)
@@ -440,7 +461,7 @@ public static class Report
             sb.AppendLine("GPS cycles over 20 ms and control ticks over 10 ms, slowest first, with the day's last event before each.").AppendLine();
             sb.AppendLine("| Clock | What | Took | After | In it |").AppendLine("|---|---|---|---|---|");
             foreach (var m in d.SlowMoments.OrderByDescending(x => x.Ms).Take(25))
-                sb.AppendLine(F($"| {m.Clock:HH:mm:ss.f} | {m.What} | {m.Ms:0.0} ms | {m.Before} | {m.Gc} |"));
+                sb.AppendLine(F($"| {m.Clock:HH:mm:ss.f} | {m.What} | {m.Ms:0.0} ms | {m.Before} | {InIt(m.Gc, m.WallUtc, m.Ms)} |"));
         }
 
         sb.AppendLine().AppendLine("## Browsers").AppendLine();

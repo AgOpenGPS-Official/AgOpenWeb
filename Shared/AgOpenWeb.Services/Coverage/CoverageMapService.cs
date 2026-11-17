@@ -1053,13 +1053,18 @@ public class CoverageMapService : ICoverageMapService
         // permanently dropped the pre-expansion coverage on the first cell-size-change expansion.
         // Alpha is folded in here too so it's consistent with the cells.
         //
-        // But not for the whole walk: a worked field has a million painted cells or more, each
+        // But only to copy the pixels: a worked field has a million painted cells or more, each
         // counting the detection cells under it, and the 100 Hz control tick paints coverage
         // under the same lock, so one snapshot (a browser connecting) held the tick up to 200 ms
-        // (Working Day scenarios, CONTROL-TICK-OVER-10-MS). The walk takes the lock per band of
-        // rows. Between bands the control thread paints on: a band read later may hold newer
-        // paint, which the live stream sends again anyway (idempotent, newer alpha wins). A grid
-        // change between bands (an expansion swaps the buffer) starts the walk again.
+        // (Working Day scenarios, CONTROL-TICK-OVER-10-MS). Taking the lock per band of rows
+        // was not enough: the walk let go of it between bands only for an instant, the lock is
+        // not fair, and the tick, woken each time just too late, still waited the whole walk
+        // (101 ms on a 22 MB seed, measured). Under the lock the walk now only copies a band's
+        // pixels (microseconds); the colours, the alpha (lock-free, as its own doc says) and the
+        // list are made outside it. The control thread paints on meanwhile: a band read later
+        // may hold newer paint, which the live stream sends again anyway (idempotent, newer
+        // alpha wins). A grid change (an expansion swaps the buffer) starts the walk again, also
+        // when it comes after the last band.
         for (int attempt = 0; ; attempt++)
         {
             var result = new List<(int, int, CoverageColor, int)>();
@@ -1083,37 +1088,45 @@ public class CoverageMapService : ICoverageMapService
 
             // Whole bands only after a few restarts: a field that keeps growing mid-walk must
             // still get its snapshot.
-            int band = attempt >= 3 ? int.MaxValue : Math.Max(1, PaintedCellsBandPixels / Math.Max(1, dxMax - dxMin + 1));
+            int cols = dxMax - dxMin + 1;
+            int band = attempt >= 3 ? dyMax - dyMin + 1 : Math.Max(1, PaintedCellsBandPixels / Math.Max(1, cols));
+            var copy = new ushort[(long)Math.Min(band, dyMax - dyMin + 1) * cols];
             bool changed = false;
             for (int y0 = dyMin; y0 <= dyMax && !changed; y0 += band)
             {
                 int y1 = (int)Math.Min((long)y0 + band - 1, dyMax);
                 lock (_coverageLock)
                 {
-                    if (!ReferenceEquals(buf, _displayPixels) || w != _displayWidth || h != _displayHeight
-                        || oX != _displayOriginX || oY != _displayOriginY || cell != _displayCellSize || !_fieldBoundsSet)
-                    {
-                        changed = true;
-                        break;
-                    }
+                    if (!SameGrid(buf, w, h, oX, oY, cell)) { changed = true; break; }
                     for (int dy = y0; dy <= y1; dy++)
+                        Array.Copy(buf, (long)dy * w + dxMin, copy, (long)(dy - y0) * cols, cols);
+                }
+                for (int dy = y0; dy <= y1; dy++)
+                {
+                    long row = (long)(dy - y0) * cols;
+                    for (int i = 0; i < cols; i++)
                     {
-                        long row = (long)dy * w;
-                        for (int dx = dxMin; dx <= dxMax; dx++)
-                        {
-                            ushort px = buf[row + dx];
-                            if (px == 0) continue; // unpainted display pixel
-                            result.Add((dx, dy, Rgb565ToColor(px), GetDisplayCellAlpha255(dx, dy)));
-                        }
+                        ushort px = copy[row + i];
+                        if (px == 0) continue; // unpainted display pixel
+                        int dx = dxMin + i;
+                        result.Add((dx, dy, Rgb565ToColor(px), GetDisplayCellAlpha255(dx, dy)));
                     }
                 }
             }
-            if (!changed) return result;
+            if (!changed)
+                lock (_coverageLock)
+                    if (SameGrid(buf, w, h, oX, oY, cell)) return result;
         }
     }
 
-    /// <summary>Display pixels the snapshot walks per hold of the coverage lock (a band of
-    /// whole rows of the painted window). About a millisecond of work on a CM4.</summary>
+    /// <summary>Is the display grid still the one a walk started on (the same buffer, size,
+    /// origin and cell)? Caller holds _coverageLock.</summary>
+    private bool SameGrid(ushort[] buf, int w, int h, int oX, int oY, double cell) =>
+        ReferenceEquals(buf, _displayPixels) && w == _displayWidth && h == _displayHeight
+        && oX == _displayOriginX && oY == _displayOriginY && cell == _displayCellSize && _fieldBoundsSet;
+
+    /// <summary>Display pixels the snapshot copies per hold of the coverage lock (a band of
+    /// whole rows of the painted window): a copy of 32 KB, microseconds.</summary>
     private const int PaintedCellsBandPixels = 16_384;
 
     private static int ClampIndex(int v, int size) => v < 0 ? 0 : (v >= size ? size - 1 : v);

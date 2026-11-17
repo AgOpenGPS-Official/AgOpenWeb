@@ -276,3 +276,39 @@ public static class DiskUse
         return name;
     }
 }
+
+/// <summary>
+/// The calling thread's own use (Linux, <c>getrusage(RUSAGE_THREAD)</c>): its CPU time and how
+/// often it gave up the CPU (waited: blocked on something) or had it taken (preempted: another
+/// thread ran). A slow control tick with its CPU time near its length did the work itself; with
+/// little CPU time it waited (voluntary switches) or was not scheduled (involuntary ones).
+/// </summary>
+public readonly record struct ThreadUsage(double CpuMs, long Waited, long Preempted)
+{
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct RUsage
+    {
+        public long UtimeSec, UtimeUsec, StimeSec, StimeUsec;
+        public long Maxrss, Ixrss, Idrss, Isrss, Minflt, Majflt, Nswap, Inblock, Oublock, Msgsnd, Msgrcv, Nsignals, Nvcsw, Nivcsw;
+    }
+
+    [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
+    private static extern int getrusage(int who, out RUsage usage);
+
+    private static readonly bool Supported = OperatingSystem.IsLinux();
+
+    /// <summary>Now, or null where the platform has no per-thread figures.</summary>
+    public static ThreadUsage? Now()
+    {
+        if (!Supported || getrusage(1 /* RUSAGE_THREAD */, out var u) != 0) return null;
+        return new ThreadUsage((u.UtimeSec + u.StimeSec) * 1000.0 + (u.UtimeUsec + u.StimeUsec) / 1000.0, u.Nvcsw, u.Nivcsw);
+    }
+
+    /// <summary>What the thread did since <paramref name="before"/>, as text.</summary>
+    public static string Since(ThreadUsage? before)
+    {
+        if (before is not { } b || Now() is not { } n) return "";
+        return string.Create(CultureInfo.InvariantCulture,
+            $"the tick's thread on the CPU {n.CpuMs - b.CpuMs:0.0} ms, gave it up {n.Waited - b.Waited} time(s) (waited), had it taken {n.Preempted - b.Preempted} time(s) (preempted)");
+    }
+}

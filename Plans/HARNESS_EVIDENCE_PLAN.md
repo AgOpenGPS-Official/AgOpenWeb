@@ -83,6 +83,32 @@ cleared when a job's `Evidence` is made.
 Checked: J1 on Runner, `TURNS=2`, `PACE=2`, `EVIDENCE=all`: 20 s, pace lag 0, a 300 KB zip with
 every part filled.
 
+### Built: the working day (PR #874)
+
+Timing, so the evidence is not a dump: what the slow moment waited in, captured at the moment.
+`Tests/AgOpenWeb.WorkingDayScenarios.Tests`:
+
+- **Each slow control tick** (over 10 ms) carries in the report and the live log:
+  - the lock waits that overlapped it, named when the lock is a field of the backend's services
+    (`ContentionWatch`, the runtime's contention events);
+  - the tick thread's own CPU time, the times it waited and was preempted (`ThreadUsage`,
+    `getrusage`), and the bytes it allocated;
+  - what a watchdog saw the thread wait in once the tick passed 15 ms: its system call, the futex
+    and the kernel wait (`TickWatch`), and the first time, every busy thread in the process by name.
+- **`working-day-live.log`** beside the report, flushed per line: the day's events, slow cycles
+  and ticks, lock waits of 5 ms or more.
+- **`AGOPENWEB_DAY_UNTIL=<event>`** and **`AGOPENWEB_DAY_STOP_ON=tick[:N]|cycle[:N]`** end the day
+  3 s after the event or the Nth slow moment; the report says it stopped early and leaves the
+  whole-day trends unjudged. 10–18 minutes instead of 45.
+- The report counts the control ticks that allocate.
+
+Shown on the first finding: the 100 ms ticks at a reconnect were the coverage snapshot's lock
+(`_coverageLock`, 101 ms, held by the snapshot's thread); the fix's unit test came from that.
+Getting there took five short runs, two of them lost to a theory the counters didn't support and
+one to a bug in the contention watch (a pointer payload read with `Convert`, so every wait was
+dropped). Lessons for the other harnesses' timing evidence: name the lock and the holder first,
+before counting anything else, and check a new watch reports something on the host it runs on.
+
 ### Not shown yet
 
 - **That a dump is enough to write the unit test from.** The checked run had no findings. Take the
@@ -109,16 +135,15 @@ In this order. Each harness: link `Evidence.cs`, add the two log providers to it
    module saw (its PGN log; the caster's and the receiver's for GPS and NTRIP).
 4. **Web client**: the dump plus the screenshots it already takes, and the browser's console.
 5. **Update and dump replay**: the data folder as it was read, which a dump only partly holds.
-6. **Working day**: timing, so its evidence is not a dump. The live log, the lock a slow tick
-   waited for, `AGOPENWEB_DAY_STOP_ON` and `AGOPENWEB_DAY_UNTIL` are on branch
-   `harness/tick-contention` (not merged, 2026-11-17).
+6. **Working day**: built (PR #874), see section 3.
 
 ## 5. For a run by hand: see it, stop it, keep it
 
 Less pressing now that runs are overnight, still wanted for the run by hand. From a read of all
 eleven harnesses on 2026-11-17:
 
-- **Nothing shows while a run goes.** Ten harnesses keep their findings in memory and write the
+- **Nothing shows while a run goes.** Ten harnesses (all but the working day, which has its live
+  log since #874) keep their findings in memory and write the
   report in the last lines of the test; their trace goes to `Console.WriteLine`, which NUnit holds
   until the test ends. `run-harness.sh` cuts the test output down to `Passed!|Failed!`, so
   `docker logs -f` shows nothing. *Wanted:* one live log for all (the working day's `LiveLog`

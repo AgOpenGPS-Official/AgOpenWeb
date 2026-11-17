@@ -316,6 +316,12 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         SendPacket(data, _agIoGpsLoopbackEndpoint);
     }
 
+    // Each endpoint's serialised address, made once (an endpoint dropped is dropped from here too).
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IPEndPoint, SocketAddress> Addresses = new();
+
+    internal static SocketAddress Address(IPEndPoint endpoint) =>
+        Addresses.TryGetValue(endpoint, out var a) ? a : Addresses.GetValue(endpoint, static ep => ep.Serialize());
+
     private void SendPacket(byte[] data, IPEndPoint endpoint)
     {
         try
@@ -328,7 +334,10 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             // that eventually triggers a Gen2 collection and produces a
             // 1-3 s UI thread freeze. UDP sends to a local socket are
             // microseconds; the kernel queues immediately.
-            _udpSocket!.SendTo(data, endpoint);
+            // Not SendTo(byte[], EndPoint): that serialises the endpoint on every call (64 bytes a
+            // send, six a control tick, against the comment above). The endpoint's address is
+            // serialised once and kept with it.
+            _udpSocket!.SendTo(data, SocketFlags.None, Address(endpoint));
         }
         catch { }
     }
