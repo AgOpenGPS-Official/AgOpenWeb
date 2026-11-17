@@ -131,7 +131,16 @@ public static class Jobs
         // The picture of the job (what was sprayed, the track), when the job got as far as driving.
         var files = new List<string>();
         string picture = Path.Combine(Path.GetTempPath(), "agopenweb-field-job", run.Spec.Code + "-" + Guid.NewGuid().ToString("N")[..6] + ".ppm");
-        try { if (run.Track.Count > 0) { run.DumpImage(picture); files.Add(picture); } } catch { }
+        try
+        {
+            if (run.Track.Count > 0)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(picture)!);
+                run.DumpImage(picture);
+                files.Add(picture);
+            }
+        }
+        catch (Exception ex) { sc.Note("evidence: no picture of the job (" + ex.Message + ")"); }
 
         string? zip = await ev.SaveAsync(null, notes.ToString(), run.Rig.Services, run.Rig.State, run.Rig.Store, run.Rig.RunAsync, files);
         try { File.Delete(picture); } catch { }

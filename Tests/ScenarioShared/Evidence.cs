@@ -1,5 +1,5 @@
 // AgOpenWeb
-// Copyright (C) 2026 AgOpenWeb Contributors
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
 // SPDX-License-Identifier: Apache-2.0
 // Linked into the scenario harnesses that keep evidence (<Compile Include="..\ScenarioShared\Evidence.cs" />).
 
@@ -55,8 +55,9 @@ public sealed class Evidence
     {
         _folder = folder;
         _scenario = Safe(scenario);
-        // The recorder is the process's: without this the log starts with the scenario before.
-        if (!Off) { GpsDataRecorder.Instance.Clear(); WholeLog.Clear(); }
+        // The recorder and the app's log are the process's: without this they start with the
+        // scenario before (and a short scenario's logs.txt would be mostly the last one's).
+        if (!Off) { GpsDataRecorder.Instance.Clear(); LogStore.Instance.Clear(); WholeLog.Clear(); }
     }
 
     /// <summary>
@@ -191,7 +192,7 @@ public sealed class Evidence
                 if (job is { } j)
                 {
                     try { services.GetRequiredService<ICoverageMapService>().SaveToFile(j.FieldDir, j.Task); }
-                    catch { /* the dump still carries the last autosave */ }
+                    catch (Exception ex) { lock (Errors) Errors.Add(name + ": the coverage was not saved first, the dump has the last autosave (" + ex.Message + ")"); }
                 }
                 string zip = DebugDumpService.WriteDump(snap!, additionalNotes: notes, outputDirectory: work,
                     filePrefix: name, userAttachments: files, activeJobTaskName: job?.Task);
