@@ -173,6 +173,8 @@ public static class SettingsSweep
         new("tool.lookAheadOff", "0", "1.5", Probe.Sections, Effect.Sections, "Look-ahead off, s", "tool.lookAheadOn:2"),
         new("tool.turnOffDelay", "0", "2", Probe.Sections, Effect.Sections, "Turn-off delay, s"),
         new("vehicle.threePointHitchLength", "1.5", "4", Probe.Sections, Effect.Sections, "Rear 3-point hitch (mounted)"),
+        // Asked for only with a front tool: it places a front-mounted implement (RigGeometry).
+        new("vehicle.frontHitchLength", "1.5", "4", Probe.Sections, Effect.Sections, "Front 3-point hitch (front mounted)", "tool.type:front"),
         new("tool.workingPointFromHitch", "0", "2.5", Probe.Sections, Effect.Sections, "Hitch to working point (mounted)"),
         // AgOpenGPS uses the vehicle type for the picture and, for a combine, a header in front only.
         new("vehicle.type", "0", "1", Probe.Sections, Effect.Sections, "Vehicle type (tractor → combine: header in front)"),
@@ -376,7 +378,12 @@ public static class SettingsSweep
         {
             if (k.Switch < 0)
             {
-                if (!noise.EdgeDiffs.ContainsKey(k)) count = true;
+                // A section whose switch already moved more than a metre between the base runs
+                // rides the edge of the coverage by chance (the TBT group's section 8 on the way
+                // back over its strip: off at 58-64 m on the same settings): one more flicker on
+                // it is the same chance, not a change.
+                bool onEdge = noise.EdgeDiffs.Any(x => x.Key.Section == k.Section && x.Key.Switch >= 0 && x.Value > 1.0);
+                if (!noise.EdgeDiffs.ContainsKey(k) && !onEdge) count = true;
                 continue;
             }
             if (noise.EdgeDiffs.ContainsKey((k.Section, -1))) continue;
