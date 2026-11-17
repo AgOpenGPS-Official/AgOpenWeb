@@ -55,7 +55,7 @@ public static class Jobs
                 break;
             }
             Progress($"{job.Code} ({op}): {job.Title}");
-            await RunAsync(journal, op, job);
+            await RunAsync(journal, op, job, Evidence.FolderFor(path));
             await File.WriteAllTextAsync(path, toMarkdown(journal), CancellationToken.None);
         }
         Progress("done");
@@ -77,11 +77,12 @@ public static class Jobs
         string.IsNullOrEmpty(only) || only.Split(',').Select(o => o.Trim()).Any(o =>
             o.Length == 1 ? code.StartsWith(o, StringComparison.OrdinalIgnoreCase) : code.Equals(o, StringComparison.OrdinalIgnoreCase));
 
-    public static async Task<JobAreas?> RunAsync(Journal journal, string op, JobSpec spec)
+    public static async Task<JobAreas?> RunAsync(Journal journal, string op, JobSpec spec, string? evidenceFolder = null)
     {
         var sc = new Scenario(op, spec.Code, spec.Title, spec.Story);
         JobAreas? areas = null;
         await using var run = new JobRun(spec, sc);
+        if (evidenceFolder != null && !Evidence.Off) run.Ev = new Evidence(evidenceFolder, spec.Code);
         try
         {
             if (await run.SetUpAsync(NewDataRoot(spec.Code)) && await run.DriveAsync())
@@ -102,8 +103,40 @@ public static class Jobs
         foreach (var p in run.Problems) if (!p.StartsWith("HARNESS", StringComparison.Ordinal)) sc.Note(p);
         sc.Row.Steps.AddRange(run.Said.Select(s => "  app: " + s));
         sc.ModuleSnapshot(run.Module, run.Seconds);
+        await KeepEvidenceAsync(sc, run, op);
         journal.Add(sc.Row);
         return areas;
+    }
+
+    /// <summary>
+    /// A job with a finding leaves the app's bug report dump beside the report (Evidence), taken
+    /// here, at the end of the job with the field and the job still open: the fix is made and
+    /// proven from it, as from a tester's dump, without running the job again.
+    /// </summary>
+    private static async Task KeepEvidenceAsync(Scenario sc, JobRun run, string op)
+    {
+        if (run.Ev is not { } ev || run.Rig == null) return;
+        if (sc.Row.Findings.Count == 0 && !Evidence.All) return;
+        var notes = new System.Text.StringBuilder(Evidence.NotesHeader("Field job scenarios", run.Spec.Code, run.Spec.Title));
+        notes.Append(op).Append(" operator. ").Append(run.Spec.Story).Append("\n\n## Findings\n\n");
+        foreach (var f in sc.Row.Findings) notes.Append("- ").Append(f.Severity).Append(" `").Append(f.Code).Append("`: ").Append(f.Message).Append('\n');
+        if (sc.Row.Findings.Count == 0) notes.Append("none\n");
+        notes.Append("\n## Measured\n\n");
+        foreach (var (k, v) in sc.Row.Metrics) notes.Append("- ").Append(k).Append(": ").Append(v).Append('\n');
+        notes.Append("\n## Checks\n\n");
+        foreach (var c in sc.Row.Checks) notes.Append("- ").Append(c).Append('\n');
+        notes.Append("\n## Timeline\n\n");
+        foreach (var s in sc.Row.Steps) notes.Append(s).Append('\n');
+
+        // The picture of the job (what was sprayed, the track), when the job got as far as driving.
+        var files = new List<string>();
+        string picture = Path.Combine(Path.GetTempPath(), "agopenweb-field-job", run.Spec.Code + "-" + Guid.NewGuid().ToString("N")[..6] + ".ppm");
+        try { if (run.Track.Count > 0) { run.DumpImage(picture); files.Add(picture); } } catch { }
+
+        string? zip = await ev.SaveAsync(null, notes.ToString(), run.Rig.Services, run.Rig.State, run.Rig.Store, run.Rig.RunAsync, files);
+        try { File.Delete(picture); } catch { }
+        if (zip != null) sc.Note("evidence (the app's bug report dump at the end of the job): `evidence/" + Path.GetFileName(zip) + "`");
+        foreach (var e in ev.Errors) sc.Note("evidence not kept: " + e);
     }
 
     /// <summary>The checks a job must pass. Thresholds in metres and square metres, with the

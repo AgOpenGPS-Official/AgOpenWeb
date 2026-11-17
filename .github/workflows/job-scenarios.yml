@@ -188,6 +188,17 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+      # Each job with a finding leaves the app's bug report dump (Tests/ScenarioShared/Evidence.cs):
+      # the fix is made and proven from it, without running the job again.
+      - name: Keep the evidence
+        if: always() && steps.picked.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: job-scenarios-evidence-${{ matrix.key }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: ignore
+          retention-days: 30
+
   combined:
     name: Combined findings
     needs: [fresh, scenarios]
