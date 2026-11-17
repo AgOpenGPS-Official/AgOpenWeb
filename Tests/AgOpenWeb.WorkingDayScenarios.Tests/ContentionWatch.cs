@@ -71,9 +71,9 @@ public sealed class ContentionWatch : EventListener
             if (e.PayloadNames is { } names)
             {
                 int i = names.IndexOf("AssociatedObjectID");
-                if (i >= 0) obj = (nint)Convert.ToInt64(e.Payload[i], CultureInfo.InvariantCulture);
+                if (i >= 0) obj = (nint)Number(e.Payload[i]);
                 i = names.IndexOf("LockOwnerThreadID");
-                if (i >= 0) owner = Convert.ToUInt64(e.Payload[i], CultureInfo.InvariantCulture);
+                if (i >= 0) owner = Number(e.Payload[i]);
             }
             _open[e.OSThreadId] = (e.TimeStamp, obj, owner);
         }
@@ -82,7 +82,7 @@ public sealed class ContentionWatch : EventListener
             if (!_open.TryRemove(e.OSThreadId, out var s)) return;
             double ms = (e.TimeStamp - s.Start).TotalMilliseconds;
             if (e.PayloadNames is { } names && names.IndexOf("DurationNs") is var i and >= 0)
-                ms = Convert.ToDouble(e.Payload[i], CultureInfo.InvariantCulture) / 1e6;
+                ms = Number(e.Payload[i]) / 1e6;
             if (ms < 1) return;
             string name = Name(s.Obj);
             if (ms >= 5)
@@ -94,6 +94,19 @@ public sealed class ContentionWatch : EventListener
             }
         }
     }
+
+    // A payload number: the object's address comes as a pointer (IntPtr), which Convert can't
+    // read (it threw on every wait, and no wait was ever kept).
+    private static ulong Number(object? v) => v switch
+    {
+        IntPtr p => (ulong)(long)p,
+        UIntPtr u => (ulong)u,
+        ulong l => l,
+        long l => (ulong)l,
+        uint n => n,
+        int n => (ulong)n,
+        _ => Convert.ToUInt64(v, CultureInfo.InvariantCulture),
+    };
 
     // The lock's name by its address now: a lock object of a long-lived service sits in the
     // oldest generation and rarely moves, so the address the event gave still matches.
