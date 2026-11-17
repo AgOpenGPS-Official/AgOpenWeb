@@ -44,7 +44,7 @@ These need no code. They cut the most time.
    its base side by side on Runner, from the same image.
 5. **Don't build next to a running harness.** A starved process misses its watchdogs. It gave a
    false `AUTOSTEER-DROPPED` on Runner.
-6. **The merge gate is a short run** (Chris, 2026-11-11): the unit test, the unit suites, and a short
+6. *Replaced 2026-11-17 by [HARNESS_EVIDENCE_PLAN.md](HARNESS_EVIDENCE_PLAN.md): no harness run as a merge gate; a fix is proven by a unit test built from the finding's saved dump.* **The merge gate is a short run** (Chris, 2026-11-11): the unit test, the unit suites, and a short
    fix-vs-base run of the jobs the fix touches on Runner, then merge. The nightly on develop is the
    full check the next morning; a regression it shows gets its own fix PR. Whole nightlies on a
    branch before merging held every fix for up to 80 minutes.
