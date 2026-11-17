@@ -1122,6 +1122,10 @@ public class CoverageMapService : ICoverageMapService
                     }
                 }
             }
+            // One band (the whole window in one hold): pixels and detection view were copied
+            // together, so the snapshot is coherent as of that copy whatever changed since;
+            // checked again, a field regridded faster than the alpha is counted never got one.
+            if (!changed && band >= dyMax - dyMin + 1) return result;
             if (!changed)
                 lock (_coverageLock)
                     if (SameGrid(buf, w, h, oX, oY, cell, gen)) return result;
@@ -2062,6 +2066,9 @@ public class CoverageMapService : ICoverageMapService
 
         lock (_coverageLock)
         {
+            // Every load path ends here: a snapshot walk that overlapped the reload (the
+            // pre-tile and Sections.txt imports write without the lock) starts again.
+            _coverageGeneration++;
             // Without display tiles (lost, or never written) draw the worked area from detection.
             if (hasDetectionBits && !hasSectionDisplay)
             {
@@ -2142,7 +2149,6 @@ public class CoverageMapService : ICoverageMapService
     /// <summary>Read every tile into the (cleared) grids. Returns which layers had coverage.</summary>
     private (bool Detection, bool Display) LoadTiles(CoverageTileStore store, CoverageTileStore.Manifest manifest)
     {
-        _coverageGeneration++;
         var detectKeys = CoverageTileStore.ListTiles(store.DetectionDir);
         double savedCell = manifest.DisplayCellSize;
         var displayKeys = CoverageTileStore.ListTiles(store.DisplayDir(savedCell));
@@ -2155,6 +2161,7 @@ public class CoverageMapService : ICoverageMapService
         {
             if (!_fieldBoundsSet || _detectionBits == null || _displayPixels == null)
                 return (false, false);
+            _coverageGeneration++;   // under the lock, in the block that replaces the coverage
             Array.Clear(_detectionBits);
             Array.Clear(_displayPixels);
 

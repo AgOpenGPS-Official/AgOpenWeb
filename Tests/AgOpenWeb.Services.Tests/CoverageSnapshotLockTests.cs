@@ -40,7 +40,7 @@ public class CoverageSnapshotLockTests
         svc.GetPaintedDisplayCells();   // warm up
 
         svc.StartMapping(1, new Vec2(100, -100), new Vec2(106, -100));
-        double longest = 0;
+        var during = new List<double>();
         int paints = 0;
         // The painter starts first and the snapshot only once it paints, so every paint measured
         // overlaps the walk. A paint that a garbage collection ran in is not measured: its time
@@ -63,20 +63,25 @@ public class CoverageSnapshotLockTests
             long t0 = Stopwatch.GetTimestamp();
             svc.AddCoveragePoint(1, new Vec2(100, n), new Vec2(106, n));
             double ms = Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
-            if (GC.CollectionCount(0) == gc) longest = Math.Max(longest, ms);
             if (!painting.IsSet) painting.Set();
-            else if (walk.IsRunning) paints++;
+            else if (walk.IsRunning) { paints++; if (GC.CollectionCount(0) == gc) during.Add(ms); }
             Thread.Sleep(1);
         }
         double walkMs = walk.Elapsed.TotalMilliseconds;
         svc.StopMapping(1);
 
-        TestContext.Out.WriteLine($"snapshot {walkMs:0} ms, {snapshot.Result:N0} cells, {paints} paints, longest paint {longest:0.0} ms");
+        during.Sort();
+        double p90 = during.Count == 0 ? double.NaN : during[(int)(during.Count * 0.9)];
+        double longest = during.Count == 0 ? double.NaN : during[^1];
+        TestContext.Out.WriteLine($"snapshot {walkMs:0} ms, {snapshot.Result:N0} cells, {paints} paints, 90 % under {p90:0.0} ms, longest {longest:0.0} ms");
         Assume.That(walkMs, Is.GreaterThan(30), "the snapshot must take long enough to show the wait");
         Assert.That(snapshot.Result, Is.GreaterThan(1_000_000));
         Assert.That(paints, Is.GreaterThan(10), "the painter must paint while the snapshot walks");
-        Assert.That(longest, Is.LessThan(10),
-            $"a paint waited {longest:0.0} ms during a {walkMs:0} ms snapshot ({paints} paints)");
+        // Judged on the many, not the one: a single paint can be stretched by the scheduler on a
+        // shared CI machine (245 ms once). Before the fix the painter got in 3 times in 120 ms,
+        // each a whole stretch of the walk.
+        Assert.That(p90, Is.LessThan(5),
+            $"paints waited during a {walkMs:0} ms snapshot: 90 % under {p90:0.0} ms, longest {longest:0.0} ms ({paints} paints)");
     }
 
     [Test]
@@ -84,7 +89,9 @@ public class CoverageSnapshotLockTests
     {
         // The alpha is counted outside the lock: read field by field there, a regrid could pair
         // the new detection width with the old array and index past it, and the browser's seed
-        // failed. It is counted from the detection grid as read together under the lock.
+        // failed. It is counted from the detection grid as read together under the lock. And a
+        // field regridded faster than a walk finishes still gets its snapshot (the whole window
+        // in one hold after three restarts, returned as copied).
         var store = new ConfigurationStore();
         ConfigurationStore.SetInstance(store);
         store.Display.DisplayResolutionMultiplier = 1.0;
@@ -106,15 +113,24 @@ public class CoverageSnapshotLockTests
         {
             try
             {
-                while (!cts.IsCancellationRequested) { svc.GetPaintedDisplayCells(); snapshots++; }
+                while (!cts.IsCancellationRequested)
+                {
+                    // Every snapshot holds the painted passes, whichever grid it was taken on.
+                    int cells = svc.GetPaintedDisplayCells().Count;
+                    if (cells < 100_000) throw new InvalidOperationException($"a snapshot held {cells:N0} cells: the passes paint about 700,000 at 0.1 m, 175,000 at 0.2 m");
+                    snapshots++;
+                }
             }
             catch (Exception ex) { failure = ex; }
         });
+        // Regrids that keep the coverage (a plain SetFieldBounds starts a new field): the
+        // display resolution switched back and forth, repainted from the detection bits.
         int k2 = 0;
         while (!cts.IsCancellationRequested && failure == null)
         {
-            double grow = 20 * (k2++ % 4);
-            svc.SetFieldBounds(-60 - grow, 60 + grow, -60 - grow / 2, 60 + grow);
+            store.Display.DisplayResolutionMultiplier = k2++ % 2 == 0 ? 2.0 : 1.0;
+            svc.RebuildDisplayForResolutionChange();
+            Thread.Sleep(2);   // hundreds a second; a real field regrids a few times a job
         }
         reader.Wait();
 
