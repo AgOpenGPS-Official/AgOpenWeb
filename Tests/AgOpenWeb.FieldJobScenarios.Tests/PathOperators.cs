@@ -1387,9 +1387,9 @@ public sealed class LapCorners
     private readonly Dictionary<(int, int), List<(double E, double N)>> _furtherIn = new();
     private bool NearFurtherIn((double E, double N) p, double within)
     {
-        int bx = (int)Math.Floor(p.E / 5), by = (int)Math.Floor(p.N / 5);
-        for (int x = bx - 1; x <= bx + 1; x++)
-            for (int y = by - 1; y <= by + 1; y++)
+        int bx = (int)Math.Floor(p.E / 5), by = (int)Math.Floor(p.N / 5), n = (int)Math.Ceiling(within / 5);
+        for (int x = bx - n; x <= bx + n; x++)
+            for (int y = by - n; y <= by + n; y++)
                 if (_furtherIn.TryGetValue((x, y), out var l))
                     foreach (var q in l)
                         if ((q.E - p.E) * (q.E - p.E) + (q.N - p.N) * (q.N - p.N) < within * within) return true;
