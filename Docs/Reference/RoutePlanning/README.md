@@ -24,7 +24,7 @@ kept for reference, each with the link to where it is published.
 |---|---|---|
 | `Zhou-2014-multiple-obstacle-areas-preprint.pdf` | Zhou, Jensen, Sørensen, Busato, Bochtis (2014). *Agricultural operations planning in fields with multiple obstacle areas.* Computers and Electronics in Agriculture 109. [doi:10.1016/j.compag.2014.08.013](https://doi.org/10.1016/j.compag.2014.08.013). Author's pre-print from the University of Turin's repository, [hdl.handle.net/2318/1520371](http://hdl.handle.net/2318/1520371) | The four obstacle types (A to D), blocks cut only at large obstacles, links between blocks along a shared headland; checked against two farmers' logged jobs |
 | `Liu-2018-small-obstacles.pdf` | Liu, Zhao, Du, Cao, Zhu, Mao (2018). *Research on static path planning method of small obstacles for automatic navigation of agricultural machinery.* IFAC-PapersOnLine 51(17), 673–677. [doi:10.1016/j.ifacol.2018.08.119](https://doi.org/10.1016/j.ifacol.2018.08.119). © IFAC | The three-arc path round a small obstacle (simulation only) |
-| `Versleijen-2019-fields-with-obstacles.pdf` | Versleijen (2019). *Path planning on agricultural fields with obstacles.* MSc thesis GIRS-2019-21, Wageningen University (Wageningen's repository, edepot 504253) | Obstacle categories with a go-round for small ones; thresholds against slivers when a field is cut into cells |
+| `Versleijen-2019-fields-with-obstacles.pdf` | Versleijen (2019). *Path planning on agricultural fields with obstacles.* MSc thesis GIRS-2019-21, Wageningen University ([edepot.wur.nl/504253](https://edepot.wur.nl/504253)) | Obstacle categories with a go-round for small ones; thresholds against slivers when a field is cut into cells |
 
 ## Not read yet
 
