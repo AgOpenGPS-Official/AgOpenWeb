@@ -235,7 +235,7 @@ public sealed partial class Day
     public double ParkedSeconds;
 
     /// <summary>The slowest GPS cycles and control ticks of the day, with what had just happened.</summary>
-    public readonly List<(DateTime Clock, string What, double Ms, string Before, string Gc)> SlowMoments = new();
+    public readonly List<(DateTime Clock, string What, double Ms, string Before, string Gc, DateTime WallUtc)> SlowMoments = new();
     /// <summary>Control ticks over 10 ms and GPS cycles over 100 ms that a garbage collection ran in.</summary>
     public long SlowTicksWithGc, SlowCyclesWithGc;
     /// <summary>Control ticks over 10 ms within 1.5 s of a browser connecting.</summary>
@@ -276,7 +276,7 @@ public sealed partial class Day
 
     private void AddSlowMoment(string what, double ms, string before, string gc)
     {
-        SlowMoments.Add((Now, what, ms, before, gc));
+        SlowMoments.Add((Now, what, ms, before, gc, DateTime.UtcNow.AddMilliseconds(-ms)));
         if (SlowMoments.Count > 200)
         {
             // Keep the slowest 100.

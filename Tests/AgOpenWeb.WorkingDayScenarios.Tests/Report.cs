@@ -161,7 +161,7 @@ public static class Report
             list.Add(new Finding("CONTROL-TICK-OVER-10-MS", Severity.Minor,
                 F($"{slowTicks} control tick(s) took longer than the 10 ms tick period (longest {d.TickDay.MaxMs:0.0} ms; {d.SlowTicksAtConnect} within 1.5 s of a browser connecting, {d.SlowTicksWithGc} with a garbage collection in it, {d.SlowTicksAfterForcedGc} within 1 s of the harness's own forced collections)"),
                 "The section and steer loop runs every 10 ms (`SteerMachineLoopService`); a longer tick delays the PGNs to the modules and the section timing. "
-                + (d.SlowTicksAtConnect > 0 ? "A browser's seed carries the coverage snapshot, which `CoverageMapService.GetPaintedDisplayCells` builds holding `_coverageLock` while it walks the worked area; the tick paints coverage under that lock. That lock is the suspected cause, not a measured one: the lock contentions shown below are a process-wide count (`Monitor.LockContentionCount`), not `_coverageLock`'s. " : "")
+                + (d.SlowTicksAtConnect > 0 ? "Each slow tick below lists the lock waits that overlapped it (the runtime's contention events, the lock named when it is a field of the backend's services): a wait for a lock is what the tick lost to another thread; none means the tick ran slow on its own (its work, or the thread not scheduled). " : "")
                 + (d.SlowTicksAfterForcedGc > 0 ? "Ticks marked as after the harness's forced collection came within 1 s of the two full compacting collections each five-minute look makes: the harness's doing, not the app's, and not counted above as at a connect or with a collection. " : "")
                 + Moments(d, "control tick", 10)));
 
@@ -270,7 +270,15 @@ public static class Report
     private static string Moments(Day d, string what, double over)
     {
         var m = d.SlowMoments.Where(x => x.What == what && x.Ms > over).OrderByDescending(x => x.Ms).Take(8).ToList();
-        return m.Count == 0 ? "" : "The slowest: " + string.Join("; ", m.Select(x => F($"{x.Clock:HH:mm:ss} {x.Ms:0} ms (after {x.Before}{(x.Gc.Length > 0 ? "; " + x.Gc : "")})"))) + ".";
+        return m.Count == 0 ? "" : "The slowest: " + string.Join("; ", m.Select(x => F($"{x.Clock:HH:mm:ss} {x.Ms:0} ms (after {x.Before}{(InIt(x.Gc, x.WallUtc, x.Ms) is { Length: > 0 } t ? "; " + t : "")})"))) + ".";
+    }
+
+    /// <summary>What ran in a slow moment: collections, the process's contention count, and the
+    /// lock waits that overlapped it (<see cref="ContentionWatch"/>).</summary>
+    private static string InIt(string gc, DateTime wallUtc, double ms)
+    {
+        string waits = ContentionWatch.Instance.During(wallUtc, ms);
+        return gc.Length == 0 ? waits : waits.Length == 0 ? gc : gc + "; " + waits;
     }
 
     private static string CensusLine(Day d)
@@ -440,7 +448,7 @@ public static class Report
             sb.AppendLine("GPS cycles over 20 ms and control ticks over 10 ms, slowest first, with the day's last event before each.").AppendLine();
             sb.AppendLine("| Clock | What | Took | After | In it |").AppendLine("|---|---|---|---|---|");
             foreach (var m in d.SlowMoments.OrderByDescending(x => x.Ms).Take(25))
-                sb.AppendLine(F($"| {m.Clock:HH:mm:ss.f} | {m.What} | {m.Ms:0.0} ms | {m.Before} | {m.Gc} |"));
+                sb.AppendLine(F($"| {m.Clock:HH:mm:ss.f} | {m.What} | {m.Ms:0.0} ms | {m.Before} | {InIt(m.Gc, m.WallUtc, m.Ms)} |"));
         }
 
         sb.AppendLine().AppendLine("## Browsers").AppendLine();

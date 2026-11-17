@@ -189,6 +189,7 @@ public sealed partial class Day : IAsyncDisposable
 
         var sw = Stopwatch.StartNew();
         Rig = await DayRig.StartAsync(Path.Combine(DataRoot, "app"));
+        ContentionWatch.Instance.Register(Rig.Vm);
         double bootS = sw.Elapsed.TotalSeconds;
         Event("BOOT", F($"AgOpenWeb started on a fresh data folder in {bootS:0.00} s"));
         Measures.Add(F($"First start (fresh data folder): {bootS:0.00} s"));
@@ -267,6 +268,7 @@ public sealed partial class Day : IAsyncDisposable
         // The next morning: AgOpenWeb starts on what the day left, and the last job is resumed.
         sw.Restart();
         Rig = await DayRig.StartAsync(Path.Combine(DataRoot, "app"), freshStore: false);
+        ContentionWatch.Instance.Register(Rig.Vm);
         NextBootSeconds = sw.Elapsed.TotalSeconds;
         Event("NEXT-MORNING", F($"AgOpenWeb started again on the day's data in {NextBootSeconds:0.00} s"));
         Measures.Add(F($"Start the next morning on the day's data: {NextBootSeconds:0.00} s"));
