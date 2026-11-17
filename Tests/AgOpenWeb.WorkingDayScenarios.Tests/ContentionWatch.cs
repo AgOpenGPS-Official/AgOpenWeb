@@ -27,6 +27,7 @@ public sealed class ContentionWatch : EventListener
     private readonly List<(DateTime Start, double Ms, string Lock, ulong Owner, long Waiter)> _waits = new();
     private readonly object _gate = new();
     private volatile (string Name, object Obj)[] _locks = Array.Empty<(string, object)>();
+    private readonly List<System.Runtime.InteropServices.GCHandle> _pins = new();
 
     private ContentionWatch() { }
 
@@ -58,6 +59,14 @@ public sealed class ContentionWatch : EventListener
                 }
         }
         Walk(root, 2);
+        // Pinned while named: a compacting collection would move a lock object, and its address
+        // would no longer match the one a contention event gives. An object that can't be pinned
+        // (one with references) is named while it stays where it is.
+        foreach (var h in _pins) h.Free();
+        _pins.Clear();
+        foreach (var (_, o) in found)
+            try { _pins.Add(System.Runtime.InteropServices.GCHandle.Alloc(o, System.Runtime.InteropServices.GCHandleType.Pinned)); }
+            catch (ArgumentException) { }
         _locks = found.ToArray();
         LiveLog.Write(string.Create(CultureInfo.InvariantCulture, $"[wait] contention watch on: {_locks.Length} lock fields of the backend's services named, waits of 1 ms or more kept"));
     }
@@ -123,12 +132,12 @@ public sealed class ContentionWatch : EventListener
 
     /// <summary>The waits that overlapped [<paramref name="startUtc"/>, + <paramref name="ms"/>],
     /// longest first, as text ("" when none).</summary>
-    public string During(DateTime startUtc, double ms)
+    public string During(DateTime startUtc, double ms, long waiter = 0)
     {
         var end = startUtc.AddMilliseconds(ms);
         List<(DateTime Start, double Ms, string Lock, ulong Owner, long Waiter)> hit;
         lock (_gate)
-            hit = _waits.Where(w => w.Start < end && w.Start.AddMilliseconds(w.Ms) > startUtc).OrderByDescending(w => w.Ms).Take(3).ToList();
+            hit = _waits.Where(w => (waiter == 0 || w.Waiter == waiter) && w.Start < end && w.Start.AddMilliseconds(w.Ms) > startUtc).OrderByDescending(w => w.Ms).Take(3).ToList();
         return string.Join("; ", hit.Select(w => string.Create(CultureInfo.InvariantCulture,
             $"a thread waited {w.Ms:0.0} ms for {w.Lock} (held by OS thread {w.Owner})")));
     }

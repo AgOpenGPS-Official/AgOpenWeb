@@ -869,10 +869,12 @@ public class CoverageMapService : ICoverageMapService
     }
 
     /// <summary>Detection cells [first, end) whose centre falls in absolute display cell <paramref name="displayAbs"/>.</summary>
-    private (int First, int End) DetectionRange(int displayAbs)
+    private (int First, int End) DetectionRange(int displayAbs) => DetectionRange(displayAbs, _displayCellSize);
+
+    private static (int First, int End) DetectionRange(int displayAbs, double displayCellSize)
     {
-        int DisplayOf(int c) => (int)Math.Floor((c + 0.5) * BITMAP_CELL_SIZE / _displayCellSize);
-        int first = (int)Math.Floor(displayAbs * _displayCellSize / BITMAP_CELL_SIZE) - 1;
+        int DisplayOf(int c) => (int)Math.Floor((c + 0.5) * BITMAP_CELL_SIZE / displayCellSize);
+        int first = (int)Math.Floor(displayAbs * displayCellSize / BITMAP_CELL_SIZE) - 1;
         while (DisplayOf(first) < displayAbs) first++;
         int end = first;
         while (DisplayOf(end) == displayAbs) end++;
@@ -1069,10 +1071,11 @@ public class CoverageMapService : ICoverageMapService
         {
             var result = new List<(int, int, CoverageColor, int)>();
             ushort[]? buf;
-            int w, h, oX, oY, dxMin, dxMax, dyMin, dyMax;
+            int w, h, oX, oY, dxMin, dxMax, dyMin, dyMax, gen;
             double cell;
             lock (_coverageLock)
             {
+                gen = _coverageGeneration;
                 buf = _displayPixels;
                 w = _displayWidth; h = _displayHeight;
                 if (buf == null || !_fieldBoundsSet || !_boundsValid || w <= 0 || h <= 0)
@@ -1086,20 +1089,26 @@ public class CoverageMapService : ICoverageMapService
                 dyMax = ClampIndex((int)Math.Floor(((_maxCellN + 1) * BITMAP_CELL_SIZE - fMinN) / cell), h);
             }
 
-            // Whole bands only after a few restarts: a field that keeps growing mid-walk must
-            // still get its snapshot.
+            // Short bands, microseconds each under the lock. After three restarts (the grid kept
+            // changing under the walk) the whole window in one hold: a single copy, a few ms at
+            // the largest texture, so a field that keeps changing still gets its snapshot.
             int cols = dxMax - dxMin + 1;
             int band = attempt >= 3 ? dyMax - dyMin + 1 : Math.Max(1, PaintedCellsBandPixels / Math.Max(1, cols));
             var copy = new ushort[(long)Math.Min(band, dyMax - dyMin + 1) * cols];
             bool changed = false;
+            DetectionView view = default;
             for (int y0 = dyMin; y0 <= dyMax && !changed; y0 += band)
             {
                 int y1 = (int)Math.Min((long)y0 + band - 1, dyMax);
                 lock (_coverageLock)
                 {
-                    if (!SameGrid(buf, w, h, oX, oY, cell)) { changed = true; break; }
+                    if (!SameGrid(buf, w, h, oX, oY, cell, gen)) { changed = true; break; }
                     for (int dy = y0; dy <= y1; dy++)
                         Array.Copy(buf, (long)dy * w + dxMin, copy, (long)(dy - y0) * cols, cols);
+                    // The detection grid as one consistent view (array, origin, size): the alpha
+                    // is counted from it outside the lock. Read field by field there, an
+                    // expansion could pair the new width with the old array and index past it.
+                    view = new DetectionView(_detectionBits, _bitmapOriginE, _bitmapOriginN, _bitmapWidth, _bitmapHeight);
                 }
                 for (int dy = y0; dy <= y1; dy++)
                 {
@@ -1109,21 +1118,56 @@ public class CoverageMapService : ICoverageMapService
                         ushort px = copy[row + i];
                         if (px == 0) continue; // unpainted display pixel
                         int dx = dxMin + i;
-                        result.Add((dx, dy, Rgb565ToColor(px), GetDisplayCellAlpha255(dx, dy)));
+                        result.Add((dx, dy, Rgb565ToColor(px), Alpha255(view, oX + dx, oY + dy, cell)));
                     }
                 }
             }
             if (!changed)
                 lock (_coverageLock)
-                    if (SameGrid(buf, w, h, oX, oY, cell)) return result;
+                    if (SameGrid(buf, w, h, oX, oY, cell, gen)) return result;
         }
     }
 
     /// <summary>Is the display grid still the one a walk started on (the same buffer, size,
-    /// origin and cell)? Caller holds _coverageLock.</summary>
-    private bool SameGrid(ushort[] buf, int w, int h, int oX, int oY, double cell) =>
+    /// origin and cell, and no clear, reset or reload since: <see cref="_coverageGeneration"/>)?
+    /// Caller holds _coverageLock.</summary>
+    private bool SameGrid(ushort[] buf, int w, int h, int oX, int oY, double cell, int gen) =>
         ReferenceEquals(buf, _displayPixels) && w == _displayWidth && h == _displayHeight
-        && oX == _displayOriginX && oY == _displayOriginY && cell == _displayCellSize && _fieldBoundsSet;
+        && oX == _displayOriginX && oY == _displayOriginY && cell == _displayCellSize && _fieldBoundsSet
+        && gen == _coverageGeneration;
+
+    /// <summary>Bumped (under _coverageLock) whenever coverage is cleared, reset or reloaded
+    /// wholesale, also on a grid of the same size: a snapshot walk across one starts again.</summary>
+    private int _coverageGeneration;
+
+    /// <summary>The detection grid as read together under the lock.</summary>
+    private readonly record struct DetectionView(byte[]? Bits, int OriginE, int OriginN, int Width, int Height);
+
+    /// <summary><see cref="GetDisplayCellAlpha255"/> on a <see cref="DetectionView"/> and a display
+    /// cell given absolutely: the same count, from values that belong together.</summary>
+    private static int Alpha255(in DetectionView v, int displayAbsX, int displayAbsY, double displayCell)
+    {
+        if (v.Bits == null) return 255;
+        var (ce0, ce1) = DetectionRange(displayAbsX, displayCell);
+        var (cn0, cn1) = DetectionRange(displayAbsY, displayCell);
+        int covered = 0, total = (ce1 - ce0) * (cn1 - cn0);
+        if (total <= 0) return 255;
+        for (int cn = cn0; cn < cn1; cn++)
+        {
+            int ln = cn - v.OriginN;
+            if (ln < 0 || ln >= v.Height) continue;
+            for (int ce = ce0; ce < ce1; ce++)
+            {
+                int le = ce - v.OriginE;
+                if (le < 0 || le >= v.Width) continue;
+                long bit = (long)ln * v.Width + le;
+                if ((v.Bits[(int)(bit / 8)] & (1 << (int)(bit % 8))) != 0) covered++;
+            }
+        }
+        const double FULL = 0.75;
+        double frac = (double)covered / total;
+        return frac >= FULL ? 255 : (int)(frac / FULL * 255.0);
+    }
 
     /// <summary>Display pixels the snapshot copies per hold of the coverage lock (a band of
     /// whole rows of the painted window): a copy of 32 KB, microseconds.</summary>
@@ -1205,6 +1249,7 @@ public class CoverageMapService : ICoverageMapService
     {
         lock (_coverageLock) // the cycle thread paints concurrently
         {
+            _coverageGeneration++;
             RequireFullSave(detection: true, display: true);
             // Clear display pixel buffer and detection bits in lockstep
             if (_displayPixels != null)
@@ -1283,6 +1328,7 @@ public class CoverageMapService : ICoverageMapService
             return;
         }
 
+        _coverageGeneration++;
         _fieldMinE = minE;
         _fieldMaxE = maxE;
         _fieldMinN = minN;
@@ -1435,6 +1481,7 @@ public class CoverageMapService : ICoverageMapService
         lock (_coverageLock)
         {
             if (!_fieldBoundsSet) return;
+            _coverageGeneration++;
             double worldW = _fieldMaxE - _fieldMinE, worldH = _fieldMaxN - _fieldMinN;
             if (worldW <= 0 || worldH <= 0) return;
 
@@ -1686,6 +1733,7 @@ public class CoverageMapService : ICoverageMapService
 
     private void ClearFieldBoundsCore()
     {
+        _coverageGeneration++;
         _fieldBoundsSet = false;
         RequireFullSave(detection: true, display: true);
         _savedDirectory = null;
@@ -2094,6 +2142,7 @@ public class CoverageMapService : ICoverageMapService
     /// <summary>Read every tile into the (cleared) grids. Returns which layers had coverage.</summary>
     private (bool Detection, bool Display) LoadTiles(CoverageTileStore store, CoverageTileStore.Manifest manifest)
     {
+        _coverageGeneration++;
         var detectKeys = CoverageTileStore.ListTiles(store.DetectionDir);
         double savedCell = manifest.DisplayCellSize;
         var displayKeys = CoverageTileStore.ListTiles(store.DisplayDir(savedCell));

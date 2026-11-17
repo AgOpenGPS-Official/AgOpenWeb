@@ -280,14 +280,14 @@ public static class Report
     private static string Moments(Day d, string what, double over)
     {
         var m = d.SlowMoments.Where(x => x.What == what && x.Ms > over).OrderByDescending(x => x.Ms).Take(8).ToList();
-        return m.Count == 0 ? "" : "The slowest: " + string.Join("; ", m.Select(x => F($"{x.Clock:HH:mm:ss} {x.Ms:0} ms (after {x.Before}{(InIt(x.Gc, x.WallUtc, x.Ms) is { Length: > 0 } t ? "; " + t : "")})"))) + ".";
+        return m.Count == 0 ? "" : "The slowest: " + string.Join("; ", m.Select(x => F($"{x.Clock:HH:mm:ss} {x.Ms:0} ms (after {x.Before}{(InIt(x.Gc, x.WallUtc, x.Ms, x.Tid) is { Length: > 0 } t ? "; " + t : "")})"))) + ".";
     }
 
     /// <summary>What ran in a slow moment: collections, the process's contention count, and the
     /// lock waits that overlapped it (<see cref="ContentionWatch"/>).</summary>
-    private static string InIt(string gc, DateTime wallUtc, double ms)
+    private static string InIt(string gc, DateTime wallUtc, double ms, long tid = 0)
     {
-        string waits = ContentionWatch.Instance.During(wallUtc, ms);
+        string waits = ContentionWatch.Instance.During(wallUtc, ms, tid);
         return gc.Length == 0 ? waits : waits.Length == 0 ? gc : gc + "; " + waits;
     }
 
@@ -461,7 +461,7 @@ public static class Report
             sb.AppendLine("GPS cycles over 20 ms and control ticks over 10 ms, slowest first, with the day's last event before each.").AppendLine();
             sb.AppendLine("| Clock | What | Took | After | In it |").AppendLine("|---|---|---|---|---|");
             foreach (var m in d.SlowMoments.OrderByDescending(x => x.Ms).Take(25))
-                sb.AppendLine(F($"| {m.Clock:HH:mm:ss.f} | {m.What} | {m.Ms:0.0} ms | {m.Before} | {InIt(m.Gc, m.WallUtc, m.Ms)} |"));
+                sb.AppendLine(F($"| {m.Clock:HH:mm:ss.f} | {m.What} | {m.Ms:0.0} ms | {m.Before} | {InIt(m.Gc, m.WallUtc, m.Ms, m.Tid)} |"));
         }
 
         sb.AppendLine().AppendLine("## Browsers").AppendLine();

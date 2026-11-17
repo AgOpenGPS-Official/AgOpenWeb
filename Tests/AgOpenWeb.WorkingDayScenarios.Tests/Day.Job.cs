@@ -208,13 +208,13 @@ public sealed partial class Day
         {
             gc = GcMark.Now();
             var use = ThreadUsage.Now();
-            long a0 = GC.GetAllocatedBytesForCurrentThread();
             TickWatch.Begin();
+            long a0 = GC.GetAllocatedBytesForCurrentThread();
             long ts = Stopwatch.GetTimestamp();
             loop.Tick(ts);
             double tms = Stopwatch.GetElapsedTime(ts).TotalMilliseconds;
+            long alloc = GC.GetAllocatedBytesForCurrentThread() - a0;   // the tick's own, not the watch's
             string seen = TickWatch.End();
-            long alloc = GC.GetAllocatedBytesForCurrentThread() - a0;
             if (alloc > 0) { TicksAllocating++; TickAllocatedBytes += alloc; }
             _tickWin.Add(tms); TickDay.Add(tms); _job?.Tick.Add(tms);
             if (tms > 10)
@@ -249,7 +249,7 @@ public sealed partial class Day
     public long TicksAllocating, TickAllocatedBytes;
 
     /// <summary>The slowest GPS cycles and control ticks of the day, with what had just happened.</summary>
-    public readonly List<(DateTime Clock, string What, double Ms, string Before, string Gc, DateTime WallUtc)> SlowMoments = new();
+    public readonly List<(DateTime Clock, string What, double Ms, string Before, string Gc, DateTime WallUtc, long Tid)> SlowMoments = new();
     /// <summary>Control ticks over 10 ms and GPS cycles over 100 ms that a garbage collection ran in.</summary>
     public long SlowTicksWithGc, SlowCyclesWithGc;
     /// <summary>Control ticks over 10 ms within 1.5 s of a browser connecting.</summary>
@@ -292,7 +292,9 @@ public sealed partial class Day
 
     private void AddSlowMoment(string what, double ms, string before, string gc)
     {
-        SlowMoments.Add((Now, what, ms, before, gc, DateTime.UtcNow.AddMilliseconds(-ms)));
+        // A control tick's lock waits are its own thread's (the OS thread it ran on); a GPS
+        // cycle's are every thread's.
+        SlowMoments.Add((Now, what, ms, before, gc, DateTime.UtcNow.AddMilliseconds(-ms), what == "control tick" ? TickWatch.LastTid : 0));
         LiveLog.Write(F($"[slow] {Now:HH:mm:ss.f} {what} {ms:0.0} ms, after {before}{(gc.Length > 0 ? "; " + gc : "")}"));
         if (SlowMoments.Count > 200)
         {

@@ -21,6 +21,8 @@ public static class TickWatch
 
     private static readonly bool Supported = OperatingSystem.IsLinux();
     private static volatile int _tid;
+    /// <summary>The OS thread the last tick ran on (0 where unknown).</summary>
+    public static int LastTid { get; private set; }
     private static long _startTs;
     private static readonly Dictionary<string, int> Samples = new();
     private static readonly object Gate = new();
@@ -39,6 +41,7 @@ public static class TickWatch
         lock (Gate) Samples.Clear();
         Volatile.Write(ref _startTs, System.Diagnostics.Stopwatch.GetTimestamp());
         _tid = gettid();
+        LastTid = _tid;
     }
 
     /// <summary>The tick ended: what the watchdog saw, most frequent first ("" when nothing).</summary>
