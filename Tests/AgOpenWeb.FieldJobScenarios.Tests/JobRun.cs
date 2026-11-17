@@ -284,6 +284,10 @@ public sealed class JobRun : IAsyncDisposable
     public static bool IsTurnWarning(string text) =>
         text.Contains("U-turn missed", StringComparison.Ordinal) || text.Contains("No U-turn can be made", StringComparison.Ordinal);
     public readonly List<string> Problems = new();
+    /// <summary>The job's evidence (the whole GPS log, every U-turn's path), for the dump a job
+    /// with a finding leaves beside the report; null when none is kept.</summary>
+    public Evidence? Ev;
+    private int _fixesSent;
     public readonly List<string> Notes = new();
     /// <summary>"End of field reached" said by AgOpenWeb, then a U-turn it made after all: when and where.</summary>
     public readonly List<string> EarlyEnds = new();
@@ -519,6 +523,8 @@ public sealed class JobRun : IAsyncDisposable
 
     public void SendFix()
     {
+        // Before the app's recorder (3000 fixes) has gone round.
+        if (++_fixesSent % 2000 == 0) Ev?.PullGpsLog();
         var (ae, an) = Truth.Antenna;
         var w = Wgs(ae, an);
         var sys = Spec.Sys;
@@ -743,6 +749,13 @@ public sealed class JobRun : IAsyncDisposable
                     turn = new TurnRecord { Index = ++TurnsStarted, PassBefore = lastPassSeen, StartSeconds = Seconds, Left = yt!.IsTurnLeft, HeadingAtStart = Truth.Heading, UAtStart = U((Truth.E, Truth.N)), TangentAtStart = Frame.TangentHeading((Truth.E, Truth.N)), TruthPassBefore = TruthPass() };
                     saidAtTurnStart = Math.Max(0, Said.Count - 6);
                     Turns.Add(turn);
+                    Ev?.Add("turns", new
+                    {
+                        turn = turn.Index, passBefore = turn.PassBefore, seconds = Math.Round(Seconds, 1), left = turn.Left,
+                        tractor = new { e = Math.Round(Truth.E, 3), n = Math.Round(Truth.N, 3), heading = Math.Round(Truth.Heading, 4) },
+                        path = AgOpenWeb.Services.Logging.GpsDataRecorder.Instance.GetLastTurnPath()?
+                            .Select(p => new[] { Math.Round(p.Easting, 3), Math.Round(p.Northing, 3), Math.Round(p.Heading, 4) }).ToArray(),
+                    });
                     InTurn = true;
                 }
                 if (executing && turn != null)
