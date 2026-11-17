@@ -17,6 +17,7 @@ using AgOpenWeb.Services;
 using AgOpenWeb.Services.Interfaces;
 using AgOpenWeb.Services.Logging;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// What a finding is fixed from, kept beside the report: the app's own bug report dump
@@ -55,7 +56,49 @@ public sealed class Evidence
         _folder = folder;
         _scenario = Safe(scenario);
         // The recorder is the process's: without this the log starts with the scenario before.
-        if (!Off) GpsDataRecorder.Instance.Clear();
+        if (!Off) { GpsDataRecorder.Instance.Clear(); WholeLog.Clear(); }
+    }
+
+    /// <summary>
+    /// For the rig's logging, beside the app's own <see cref="InMemoryLoggerProvider"/> (which
+    /// fills the dump's <c>logs.txt</c>, the last 2000 lines, as on a tester's device): keeps the
+    /// log of the whole scenario (the last <see cref="WholeLogLines.Max"/> lines of it) for
+    /// <c>attachments/log_whole_scenario.txt</c>.
+    /// </summary>
+    public static ILoggerProvider LogProvider { get; } = new WholeLogProvider();
+    private static readonly WholeLogLines WholeLog = new();
+
+    private sealed class WholeLogLines
+    {
+        public const int Max = 400_000;
+        private readonly Queue<string> _lines = new();
+        private long _dropped;
+        public void Add(string line) { lock (_lines) { if (_lines.Count >= Max) { _lines.Dequeue(); _dropped++; } _lines.Enqueue(line); } }
+        public void Clear() { lock (_lines) { _lines.Clear(); _dropped = 0; } }
+        public string Text()
+        {
+            lock (_lines)
+                return (_dropped > 0 ? "# " + _dropped.ToString(CultureInfo.InvariantCulture) + " earlier lines not kept\n" : "") + string.Join("\n", _lines) + "\n";
+        }
+        public int Count { get { lock (_lines) return _lines.Count; } }
+    }
+
+    private sealed class WholeLogProvider : ILoggerProvider
+    {
+        public ILogger CreateLogger(string categoryName) => new L(categoryName.Contains('.') ? categoryName[(categoryName.LastIndexOf('.') + 1)..] : categoryName);
+        public void Dispose() { }
+        private sealed class L(string category) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => !Off && logLevel != LogLevel.None;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (!IsEnabled(logLevel)) return;
+                // UTC, as the GPS log's timestamps, so a line is found beside its fix.
+                WholeLog.Add(string.Create(CultureInfo.InvariantCulture,
+                    $"[{DateTime.UtcNow:HH:mm:ss.fff}] [{logLevel}] {category}: {formatter(state, exception)}{(exception != null ? " " + exception : "")}"));
+            }
+        }
     }
 
     /// <summary>
@@ -120,6 +163,12 @@ public sealed class Evidence
                 File.WriteAllText(gps, _gpsHeader + "\n" + string.Join("\n", _gpsRows) + "\n");
                 files.Add(gps);
             }
+            if (WholeLog.Count > 0)
+            {
+                string log = Path.Combine(work, "log_whole_scenario.txt");
+                File.WriteAllText(log, WholeLog.Text());
+                files.Add(log);
+            }
             foreach (var (list, entries) in _lists)
             {
                 string f = Path.Combine(work, Safe(list) + ".json");
@@ -176,7 +225,7 @@ public sealed class Evidence
             .Select(k => k + "=" + Environment.GetEnvironmentVariable(k)).ToList();
         if (env.Count > 0) sb.Append("Run with ").Append(string.Join(" ", env)).Append(".\n");
         sb.Append("\nA bug report dump as the app writes it, taken by the harness at the end of the scenario. ")
-          .Append("`gps_data_log.csv` is the last 5 minutes; `attachments/gps_data_log_whole_scenario.csv` the whole scenario; ")
+          .Append("`gps_data_log.csv` is the last 5 minutes; `attachments/gps_data_log_whole_scenario.csv` the whole scenario, as `attachments/log_whole_scenario.txt` is for `logs.txt`; ")
           .Append("`attachments/turns.json` every U-turn's path as planned, with where the tractor was. ")
           .Append("Build the unit test for the fix from this dump; the harness is not run again to look.\n\n");
         return sb.ToString();

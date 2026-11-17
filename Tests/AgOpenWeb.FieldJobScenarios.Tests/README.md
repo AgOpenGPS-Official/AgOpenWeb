@@ -122,7 +122,7 @@ A job with a finding leaves `evidence/<job>.zip` beside the report (the nightly 
 taken at the end of the job with the field and the job still open: settings, configuration,
 runtime state, the log, the field's files, the job's coverage tiles and the last 5 minutes of the
 GPS log. The harness adds, under `attachments/`, the GPS log of the whole job
-(`gps_data_log_whole_scenario.csv`), every U-turn's path as the app planned it with where the
+(`gps_data_log_whole_scenario.csv`) and its log (`log_whole_scenario.txt`), every U-turn's path as the app planned it with where the
 tractor was (`turns.json`) and the picture of the job (`.ppm`); `user_notes.txt` has the findings,
 what was measured and the timeline.
 

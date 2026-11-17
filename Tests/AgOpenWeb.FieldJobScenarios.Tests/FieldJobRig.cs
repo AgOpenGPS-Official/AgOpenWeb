@@ -110,6 +110,9 @@ public sealed class FieldJobRig : IAsyncDisposable
         services.AddLogging(b =>
         {
             b.AddProvider(new CapturingLoggerProvider(e => events.Enqueue(e)));
+            // As the heads: the app's log for a bug report dump, which the evidence is; and the whole job's.
+            b.AddProvider(new AgOpenWeb.Services.Logging.InMemoryLoggerProvider());
+            b.AddProvider(Evidence.LogProvider);
             b.SetMinimumLevel(LogLevel.Debug);
         });
         AddBackendServices(services);
