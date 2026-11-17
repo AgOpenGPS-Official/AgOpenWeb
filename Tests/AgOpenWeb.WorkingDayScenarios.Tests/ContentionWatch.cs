@@ -83,10 +83,13 @@ public sealed class ContentionWatch : EventListener
             if (e.PayloadNames is { } names && names.IndexOf("DurationNs") is var i and >= 0)
                 ms = Convert.ToDouble(e.Payload[i], CultureInfo.InvariantCulture) / 1e6;
             if (ms < 1) return;
+            string name = Name(s.Obj);
+            if (ms >= 5)
+                LiveLog.Write(string.Create(CultureInfo.InvariantCulture, $"[wait] {ms:0.0} ms for {name} (OS thread {e.OSThreadId} waited; OS thread {s.Owner} held it)"));
             lock (_gate)
             {
                 if (_waits.Count >= 20_000) _waits.RemoveRange(0, 10_000);
-                _waits.Add((s.Start.ToUniversalTime(), ms, Name(s.Obj), s.Owner, e.OSThreadId));
+                _waits.Add((s.Start.ToUniversalTime(), ms, name, s.Owner, e.OSThreadId));
             }
         }
     }

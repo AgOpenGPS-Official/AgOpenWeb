@@ -21,8 +21,10 @@ public class WorkingDayScenarioTests
     {
         string root = Path.Combine(Path.GetTempPath(), "aow-working-day-" + Guid.NewGuid().ToString("N")[..8]);
         var day = new Day(root);
+        LiveLog.Open(ReportPath.For("working-day-live.log", Environment.GetEnvironmentVariable("AGOPENWEB_DAY_LIVE") is { Length: > 0 } ? "AGOPENWEB_DAY_LIVE" : "AGOPENWEB_DAY_REPORT") is var lp && lp.EndsWith(".md", StringComparison.Ordinal) ? Path.ChangeExtension(lp, ".live.log") : lp);
         Exception? crash = null;
         try { await day.RunAsync().WaitAsync(ct); }
+        catch (DayStoppedException stop) { day.Event("STOPPED", "the day was stopped: " + stop.Message); }
         catch (Exception ex) { crash = ex; day.Harness("the day stopped: " + ex.GetType().Name + ": " + ex.Message); TestContext.Out.WriteLine(ex.ToString()); }
         finally { await day.DisposeAsync(); }
         day.CountCensuses();
@@ -34,6 +36,7 @@ public class WorkingDayScenarioTests
             await File.WriteAllTextAsync(csv, Report.Csv(day), CancellationToken.None);
         TestContext.Out.WriteLine(report);
         TestContext.Out.WriteLine("Report: " + path);
+        LiveLog.Close();
         if (Environment.GetEnvironmentVariable("AGOPENWEB_DAY_KEEP") != "1")
             try { Directory.Delete(root, true); } catch { }
 

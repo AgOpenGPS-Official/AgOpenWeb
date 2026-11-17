@@ -263,8 +263,18 @@ public static class Report
                 + (d.FirstBackendAliveNextMorning
                     ? " AgOpenWeb was then started again in the same process (the next morning), as Android does after Exit and reopen: the first backend's `MainViewModel` was still alive with the second one running, so every start keeps the backend before it, and its handlers still react (to a setting such as NTRIP enabled, for one), not only its memory."
                     : "")));
+        // A day stopped early (AGOPENWEB_DAY_UNTIL, AGOPENWEB_DAY_STOP_ON) has too few samples
+        // for the whole-day trends: those are the full day's to judge.
+        if (d.StoppedEarly != null)
+            list.RemoveAll(f => TrendCodes.Contains(f.Code));
         return list.OrderBy(f => f.Severity).ThenBy(f => f.Code, StringComparer.Ordinal).ToList();
     }
+
+    private static readonly HashSet<string> TrendCodes = new(StringComparer.Ordinal)
+    {
+        "HEAP-GROWS-OVER-THE-DAY", "NATIVE-MEMORY-GROWS", "THREADS-GROW", "TIMERS-GROW", "HEAP-GROWS-WHILE-PARKED",
+        "FILE-GROWS-WHILE-PARKED", "GPS-CYCLE-SLOWER-LATER", "CONTROL-TICK-SLOWER-LATER",
+    };
 
     /// <summary>The slowest moments of one kind, with what had just happened before each.</summary>
     private static string Moments(Day d, string what, double over)
@@ -339,6 +349,8 @@ public static class Report
         sb.AppendLine("# Working day scenarios");
         sb.AppendLine();
         sb.AppendLine(F($"An {Day.Hours:0.#}-hour day from {Day.DayStart:HH:mm} on the day's clock, {Day.PaceMs} ms of wall time per 0.1 s fix ({100.0 / Day.PaceMs:0.#}x), {d.WallSeconds / 60:0} minutes of wall time{(commit.Length > 0 ? ", commit " + commit[..Math.Min(7, commit.Length)] : "")}. {Day.Tractor.Name}, {Day.Sprayer.Name}, {Day.Sys.Label}."));
+        if (d.StoppedEarly != null)
+            sb.AppendLine().AppendLine(F($"_Stopped early at {d.Now:HH:mm} on the day's clock: {d.StoppedEarly}. What the day did not reach (the evening, the next morning, the whole-day trends) is not judged by its absence._"));
         if (d.MaxBehindMs > 2000)
             sb.AppendLine().AppendLine(F($"_The harness fell behind its pace by up to {d.MaxBehindMs / 1000:0.0} s of wall time (the machine could not keep up)._"));
         if (d.DeadmanPhoneAway is { } dpn && !d.DeadmanPhoneAwayLoopStuck)

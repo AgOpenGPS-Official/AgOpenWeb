@@ -175,6 +175,7 @@ public sealed partial class Day
     /// operator does what the day's clock says, the process is looked at every five minutes.</summary>
     public async Task StepAsync(bool events, bool road = false)
     {
+        StopIfDue();
         Fixes++;
         Module.TickNow(); Module.TickNow();
         double lat, lon, hdg, kmh;
@@ -260,6 +261,8 @@ public sealed partial class Day
             AddSlowMoment(what, ms, before, (gc.Length > 0 ? gc + "; " : "") + F($"{sinceForced:0} ms after the harness's forced collection"));
             return;
         }
+        if (what == "control tick" && ms > 10) Found("tick");
+        if (what == "GPS cycle" && ms > 100) Found("cycle");
 
         // A browser that has just connected: its seed (the coverage snapshot) is being built.
         foreach (var b in new[] { Tablet, Phone })
@@ -277,6 +280,7 @@ public sealed partial class Day
     private void AddSlowMoment(string what, double ms, string before, string gc)
     {
         SlowMoments.Add((Now, what, ms, before, gc, DateTime.UtcNow.AddMilliseconds(-ms)));
+        LiveLog.Write(F($"[slow] {Now:HH:mm:ss.f} {what} {ms:0.0} ms, after {before}{(gc.Length > 0 ? "; " + gc : "")}"));
         if (SlowMoments.Count > 200)
         {
             // Keep the slowest 100.

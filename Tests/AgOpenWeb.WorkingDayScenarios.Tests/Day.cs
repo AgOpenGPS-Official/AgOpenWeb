@@ -67,6 +67,43 @@ public sealed partial class Day : IAsyncDisposable
     /// <summary>How long the day is, hours (07:00 to 15:00 by default).</summary>
     public static readonly double Hours = double.TryParse(Environment.GetEnvironmentVariable("AGOPENWEB_DAY_HOURS"), NumberStyles.Float, CultureInfo.InvariantCulture, out var h) && h > 0 ? h : 8;
     public static readonly bool Verbose = Environment.GetEnvironmentVariable("AGOPENWEB_DAY_VERBOSE") != "0";
+    /// <summary>A short day: stop a few seconds (wall) after the event with this code (the day's
+    /// events are in the report, e.g. TABLET-BACK-2), the report written on what ran.</summary>
+    public static readonly string? Until = Environment.GetEnvironmentVariable("AGOPENWEB_DAY_UNTIL") is { Length: > 0 } u ? u : null;
+    /// <summary>Stop once what is looked for has happened: "tick" (a control tick over 10 ms, not
+    /// in the harness's own forced collections) or "cycle" (a GPS cycle over 100 ms), with ":N"
+    /// for the Nth (tick:3); a few seconds later (wall), so its lock waits reach the log.</summary>
+    public static readonly (string What, int Count)? StopOn = Environment.GetEnvironmentVariable("AGOPENWEB_DAY_STOP_ON") is { Length: > 0 } so
+        ? (so.Split(':')[0], so.Contains(':') && int.TryParse(so.Split(':')[1], out var n) && n > 0 ? n : 1) : null;
+    /// <summary>Why the day stopped before its end, or null.</summary>
+    public string? StoppedEarly { get; private set; }
+    private double _stopAtWall = double.PositiveInfinity;
+    private string? _stopWhy;
+    private int _stopSeen;
+
+    /// <summary>End the day <paramref name="afterS"/> seconds of wall time from now (the first
+    /// request wins).</summary>
+    public void RequestStop(string why, double afterS)
+    {
+        if (_stopWhy != null) return;
+        _stopWhy = why;
+        _stopAtWall = WallSeconds + afterS;
+        LiveLog.Write(F($"stopping in {afterS:0} s: {why}"));
+    }
+
+    /// <summary>A slow moment that a stop condition counts.</summary>
+    public void Found(string what)
+    {
+        if (StopOn is not { } s || s.What != what) return;
+        if (++_stopSeen >= s.Count) RequestStop(F($"{(what == "tick" ? "a control tick over 10 ms" : "a GPS cycle over 100 ms")} ({_stopSeen} of {s.Count} looked for)"), 3);
+    }
+
+    private void StopIfDue()
+    {
+        if (WallSeconds < _stopAtWall) return;
+        StoppedEarly = _stopWhy;
+        throw new DayStoppedException(_stopWhy!);
+    }
     /// <summary>The day's clock at the first fix: a summer day.</summary>
     public static readonly DateTime DayStart = new(2026, 6, 16, 7, 0, 0, DateTimeKind.Utc);
     public DateTime DayEnd => DayStart.AddHours(Hours);
@@ -131,7 +168,8 @@ public sealed partial class Day : IAsyncDisposable
     public void Event(string code, string text)
     {
         Events.Add(new DayEvent(code, Now, WallSeconds, text));
-        if (Verbose) TestContext.Progress.WriteLine(F($"[day] {Now:HH:mm:ss} (wall {WallSeconds,6:0} s) {code}: {text}"));
+        LiveLog.Write(F($"[day] {Now:HH:mm:ss} {code}: {text}"));
+        if (Until != null && code == Until) RequestStop("the event " + code + " happened (AGOPENWEB_DAY_UNTIL)", 3);
     }
 
     public void Harness(string text)

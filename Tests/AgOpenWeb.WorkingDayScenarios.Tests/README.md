@@ -126,6 +126,9 @@ AGOPENWEB_DAY_HOURS=1.5 AGOPENWEB_DAY_PACE=4 dotnet test Tests/AgOpenWeb.Working
 | `AGOPENWEB_DAY_CENSUS=0` | no heap census (it writes a dump of the process, a few hundred MB, for a few seconds) |
 | `AGOPENWEB_DAY_VERBOSE=0` | quiet console |
 | `AGOPENWEB_DAY_KEEP=1` | keep the data folder |
+| `AGOPENWEB_DAY_UNTIL=TABLET-BACK-2` | a short day: stop 3 s (wall) after the event with that code; the whole-day trends are not judged |
+| `AGOPENWEB_DAY_STOP_ON=tick:3` | stop once what is looked for has happened: `tick` (a control tick over 10 ms, outside the harness's forced collections) or `cycle` (a GPS cycle over 100 ms), the Nth with `:N` |
+| `AGOPENWEB_DAY_LIVE=path.log` | the live log (default `working-day-live.log` beside the report): events, slow moments and lock waits of 5 ms or more as they happen; on the harness host `docker exec <container> tail -f /out/working-day-live.log` |
 
 Release builds: a Debug build's GPS cycle is several times slower and its numbers are not the
 app's. CI only builds the project; `working-day-scenarios.yml` runs it (by hand, or nightly:
