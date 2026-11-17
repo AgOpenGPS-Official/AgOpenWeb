@@ -349,6 +349,7 @@ public static class Report
         sb.AppendLine("# Working day scenarios");
         sb.AppendLine();
         sb.AppendLine(F($"An {Day.Hours:0.#}-hour day from {Day.DayStart:HH:mm} on the day's clock, {Day.PaceMs} ms of wall time per 0.1 s fix ({100.0 / Day.PaceMs:0.#}x), {d.WallSeconds / 60:0} minutes of wall time{(commit.Length > 0 ? ", commit " + commit[..Math.Min(7, commit.Length)] : "")}. {Day.Tractor.Name}, {Day.Sprayer.Name}, {Day.Sys.Label}."));
+        sb.AppendLine().AppendLine(F($"Control ticks that allocated: {d.TicksAllocating:N0} of {d.TickDay.Count:N0}, {d.TickAllocatedBytes / 1048576.0:0.0} MB in all."));
         if (d.StoppedEarly != null)
             sb.AppendLine().AppendLine(F($"_Stopped early at {d.Now:HH:mm} on the day's clock: {d.StoppedEarly}. What the day did not reach (the evening, the next morning, the whole-day trends) is not judged by its absence._"));
         if (d.MaxBehindMs > 2000)

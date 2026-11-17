@@ -208,13 +208,16 @@ public sealed partial class Day
         {
             gc = GcMark.Now();
             var use = ThreadUsage.Now();
+            long a0 = GC.GetAllocatedBytesForCurrentThread();
             long ts = Stopwatch.GetTimestamp();
             loop.Tick(ts);
             double tms = Stopwatch.GetElapsedTime(ts).TotalMilliseconds;
+            long alloc = GC.GetAllocatedBytesForCurrentThread() - a0;
+            if (alloc > 0) { TicksAllocating++; TickAllocatedBytes += alloc; }
             _tickWin.Add(tms); TickDay.Add(tms); _job?.Tick.Add(tms);
             if (tms > 10)
             {
-                string g = gc.Since(), u = ThreadUsage.Since(use);
+                string g = gc.Since(), u = ThreadUsage.Since(use) + (alloc > 0 ? F($"; the tick allocated {alloc:N0} bytes") : "");
                 Slow("control tick", tms, g.Length == 0 ? u : u.Length == 0 ? g : g + "; " + u);
             }
         }
@@ -239,6 +242,9 @@ public sealed partial class Day
     }
 
     public double ParkedSeconds;
+    /// <summary>Control ticks that allocated, and how much in all: an allocating tick goes to
+    /// the runtime for allocation space every so often, where a background collection can hold it.</summary>
+    public long TicksAllocating, TickAllocatedBytes;
 
     /// <summary>The slowest GPS cycles and control ticks of the day, with what had just happened.</summary>
     public readonly List<(DateTime Clock, string What, double Ms, string Before, string Gc, DateTime WallUtc)> SlowMoments = new();
