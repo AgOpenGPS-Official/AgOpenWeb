@@ -1146,8 +1146,10 @@ namespace AgOpenWeb.Services.YouTurn
 
             bool loop = input.TrackMode == 32 || input.TrackMode == 64; // bndCurve or waterPivot
 
-            // Tried again with the turn lines moved in: seated back from the end the first try found,
-            // at the moved line's crossing nearest to it (see TurnLineEndIndex).
+            // The end of the pass as the input found it (PassEnds.Find, the same end the state
+            // machine measured its distance to); tried again with the turn lines moved in, seated
+            // back from the end the first try found, at the moved line's crossing nearest to it
+            // (see TurnLineEndIndex). The walk below is for an input without it.
             if (TurnLineEndOnRetry(input, count) is int end)
             {
                 closestTurnPt.CurveIndex = end - count;
@@ -1272,10 +1274,11 @@ namespace AgOpenWeb.Services.YouTurn
         }
 
         /// <summary>
-        /// On a try with the turn lines moved in (<see cref="YouTurnCreationInput.TurnLineEndIndex"/>):
-        /// walking back from the end the first try found towards the tractor, the first point of the
-        /// run of points outside the moved turn area that reaches that end. Null on a first try, or
-        /// when that end is not ahead on this pass or not outside the moved turn area.
+        /// The end of the pass from <see cref="YouTurnCreationInput.TurnLineEndIndex"/>: on a first
+        /// try the end itself (its point outside, the one before it inside); on a try with the turn
+        /// lines moved in, walking back from the end the first try found towards the tractor, the
+        /// first point of the run of points outside the moved turn area that reaches that end. Null
+        /// without the index, or when that end is not ahead on this pass or not outside the turn area.
         /// The moved line only seats the turn further back. Where the fence comes in beside the pass
         /// (a narrowing of the field the pass runs past, inside the turn line all the way), the line
         /// moved in crosses the pass there, and the first crossing ahead was that one: a field with an

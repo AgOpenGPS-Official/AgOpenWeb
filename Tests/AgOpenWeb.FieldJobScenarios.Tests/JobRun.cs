@@ -56,6 +56,10 @@ public sealed record JobSpec(
     /// <summary>When an <see cref="Expected"/> code is the operator's doing only up to a size (a
     /// 50 cm nudge leaves a 50 cm strip, not a wider one): false = report it as a finding after all.</summary>
     public Func<string, JobAreas, bool>? ExpectedWhen { get; init; }
+    /// <summary>An <c>END-OF-FIELD-FIELD-LEFT</c> stop this job is expected to make (the field's shape
+    /// with the order it is worked in, not something AgOpenWeb does wrong): noted, not counted, when
+    /// the operator was told <see cref="ExpectedStop.Says"/>; another stop is still a finding.</summary>
+    public ExpectedStop? ExpectedStop { get; init; }
     /// <summary>How the operator guides the job: the AB line named in <see cref="Track"/> (the
     /// default), or a curve, a closed loop, a water pivot, contour or a recorded path
     /// (<see cref="PathOperator"/>).</summary>
@@ -178,6 +182,8 @@ public sealed class JobRun : IAsyncDisposable
     public Func<(double E, double N), bool>? LeftOnPurpose;
     /// <summary>Unsprayed ground at a lap's corner, where the passes pull apart.</summary>
     public Func<(double E, double N), bool>? AtCorner;
+    /// <summary>Ground where the operator moved a width in by hand to the next lap (the contour laps).</summary>
+    public Func<(double E, double N), bool>? AtLapChange;
     private bool _passJoined;
     private int _passStartFix;
     private int _passErrorTraced = -1000;
@@ -251,7 +257,7 @@ public sealed class JobRun : IAsyncDisposable
     /// <summary>AgOpenWeb's warning to take over "at the end of the field" (when it was said, its text,
     /// the pass): the operator drives the pass to its end first and takes over there.</summary>
     private (double At, string Text, int Pass)? _takeOverAtEnd;
-    // After "no room on the next pass at this end": the implement left the cultivated area, then
+    // After "no room on the next pass" (IsNoRoom): the implement left the cultivated area, then
     // came back into it on the same pass (a headland gap the pass crosses; field job J10).
     private bool _noRoomLeftWork, _noRoomCrossedGap;
     bool _arrowChecked;
@@ -267,6 +273,14 @@ public sealed class JobRun : IAsyncDisposable
     /// <summary>AgOpenWeb's warnings that a U-turn can't be made from here ("U-turn missed",
     /// "No U-turn can be made"), each with <see cref="LegM"/> when it was heard.</summary>
     public readonly List<(string Text, double LegM)> TurnWarnings = new();
+    /// <summary>AgOpenWeb's "no room on the next pass at this end": the field goes on, but no turn
+    /// can land on the next pass here; the operator drives this pass to its end and takes over.
+    /// Said with the reason since 2026-11-16 ("No U-turn onto the next pass: ..."), before that as
+    /// "End of field reached - no room on the next pass at this end" (an older build, the update harness).</summary>
+    public static bool IsNoRoom(string text) =>
+        text.Contains("No U-turn onto the next pass", StringComparison.Ordinal)
+        || text.Contains("no room on the next pass at this end", StringComparison.Ordinal);
+
     public static bool IsTurnWarning(string text) =>
         text.Contains("U-turn missed", StringComparison.Ordinal) || text.Contains("No U-turn can be made", StringComparison.Ordinal);
     public readonly List<string> Problems = new();
@@ -698,7 +712,7 @@ public sealed class JobRun : IAsyncDisposable
                     // turn and goes on; the message was early all the same.
                     // When the pass crossed a headland gap since, the message was for the end at the
                     // gap and this turn is at the next one: not early.
-                    if (_takeOverAtEnd is { } nr && TookOverAt < 0 && nr.Text.Contains("no room on the next pass at this end", StringComparison.Ordinal))
+                    if (_takeOverAtEnd is { } nr && TookOverAt < 0 && IsNoRoom(nr.Text))
                     {
                         if (_noRoomCrossedGap)
                             Did(F($"AgOpenWeb's \"no room at this end\" at {nr.At:0} s was for a headland gap on pass {nr.Pass}: the operator drove across it and AgOpenWeb made U-turn {TurnsStarted + 1} at the next end"));
@@ -869,11 +883,11 @@ public sealed class JobRun : IAsyncDisposable
                     Said.Add(F($"{Seconds:0.0} s: {e}"));
                     // AgOpenWeb says it only while it plans a turn, never during one: read once a second,
                     // a message from just before a turn started is stale and is not the end.
-                    // "End of field reached - no room on the next pass at this end": the field goes on
+                    // "No U-turn onto the next pass: ... - take over manually at the end of this pass" (IsNoRoom): the field goes on
                     // beyond, but no turn can reach it from here (a narrowing lobe, a corner pass). Not
                     // the end of the field: the operator drives the pass to its end and takes over,
                     // as for the warning below (field job J3).
-                    bool noRoomHere = e.Contains("no room on the next pass at this end", StringComparison.Ordinal);
+                    bool noRoomHere = IsNoRoom(e);
                     if (noRoomHere && !wasExecuting && TookOverAt < 0 && _takeOverAtEnd == null)
                     {
                         _takeOverAtEnd = (Seconds, e, Pass);
@@ -894,7 +908,7 @@ public sealed class JobRun : IAsyncDisposable
                     // warning is AgOpenGPS behaviour too (leaving the field does not switch AutoSteer
                     // off, #494); RAN-OFF is for a run-off with no such warning. The ground left from
                     // there is the consequence (EndedEarly), reported once through the warning's own finding.
-                    if (TookOverAt < 0 && _takeOverAtEnd == null && e.Contains("take over manually", StringComparison.OrdinalIgnoreCase))
+                    if (TookOverAt < 0 && _takeOverAtEnd == null && !noRoomHere && e.Contains("take over manually", StringComparison.OrdinalIgnoreCase))
                     {
                         if (e.Contains("at the end of the field", StringComparison.OrdinalIgnoreCase))
                         {
@@ -907,7 +921,7 @@ public sealed class JobRun : IAsyncDisposable
             }
             var tc = ToolCentre();
             bool inWork = Ring.Inside((tc.E, tc.N), Work ?? Outer);
-            if (_takeOverAtEnd is { } nrg && nrg.Text.Contains("no room on the next pass at this end", StringComparison.Ordinal) && !InTurn)
+            if (_takeOverAtEnd is { } nrg && IsNoRoom(nrg.Text) && !InTurn)
             {
                 if (!inWork) _noRoomLeftWork = true;
                 else if (_noRoomLeftWork) _noRoomCrossedGap = true;
@@ -966,7 +980,7 @@ public sealed class JobRun : IAsyncDisposable
         TookOverAt = Seconds;
         bool missed = e.Contains("U-turn missed", StringComparison.Ordinal) || e.Contains("No U-turn can be made", StringComparison.Ordinal);
         bool blocked = e.Contains("U-turn blocked", StringComparison.Ordinal);
-        bool noRoom = e.Contains("no room on the next pass at this end", StringComparison.Ordinal);
+        bool noRoom = IsNoRoom(e);
         string what = missed ? "missed" : blocked ? "blocked" : "refused";
         Problems.Add(noRoom
             ? F($"{warnedAt:0.0} s: AgOpenWeb had no room for a U-turn at the end of pass {pass}, with the field going on beyond (\"{e}\")")
@@ -1230,6 +1244,9 @@ public sealed class JobRun : IAsyncDisposable
                     // The laps' corners first: a lap rounds a corner of the boundary and cannot reach
                     // into it, whatever the sections do (near the fence too).
                     else if (AtCorner?.Invoke(c) == true) a.MissedAtCorners += cell;
+                    // Where the operator moved a width in by hand between laps: the implement crosses
+                    // from one lap to the next, and what it leaves is the operator's lap change.
+                    else if (AtLapChange?.Invoke(c) == true) a.MissedAtLapChange += cell;
                     // No headland (the lap jobs): the edge of the field along the boundary.
                     else if (Work == null && Ring.DistToRing(c, Outer) < 1.5) a.MissedAlongBoundary += cell;
                     else if (LeftOnPurpose?.Invoke(c) == true) a.MissedLeftInMiddle += cell;
@@ -1289,7 +1306,10 @@ public sealed class JobRun : IAsyncDisposable
                 if (x.R - x.L < Spec.T.Width - 0.3 || x2.R - x2.L < Spec.T.Width - 0.3) continue;   // a section still off at the pass's end
                 double gap = x2.L - x.R;
                 if (gap > a.LargestMissedStripM)
-                    a.LargestStripWhere = F($"between passes {passes[k].Key} and {passes[k + 1].Key}, {bin} m along the line from A");
+                {
+                    var at = Frame.At((x.R + x2.L) / 2, bin);
+                    a.LargestStripWhere = F($"between passes {passes[k].Key} and {passes[k + 1].Key}, {bin} m along the line from A, at ({at.E:0},{at.N:0})");
+                }
                 a.LargestMissedStripM = Math.Max(a.LargestMissedStripM, gap);
                 a.LargestOverlapM = Math.Max(a.LargestOverlapM, -gap);
             }
@@ -1363,3 +1383,7 @@ public sealed class JobRun : IAsyncDisposable
         }
     }
 }
+
+/// <summary>A stop for want of room on the next pass that a job is expected to make
+/// (<see cref="JobSpec.ExpectedStop"/>): what AgOpenWeb says, and why the stop is right there.</summary>
+public sealed record ExpectedStop(string Says, string Why);

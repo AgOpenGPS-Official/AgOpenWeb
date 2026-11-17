@@ -6,6 +6,9 @@
 
     combine-job-reports.py OUT.md LABEL=REPORT.md [LABEL=REPORT.md ...]
 
+With empty labels (=REPORT.md) it merges the reports of one harness run in parts (the runner's
+shards, one job each: Tools/harness-runner/runner-compare.sh) into that harness's findings list.
+
 Each report starts with "## Findings (each kind once, most serious first)": numbered entries
 "N. **Severity** `CODE` ×k: text" with "   Seen in: J1, J2" under them (or a table, "| Code |
 Severity | ...", in the web client and working day reports). The jobs share one
@@ -89,7 +92,7 @@ def main(argv):
         for sev, code, n, text, seen in f:
             c = codes.setdefault(code, {"sev": sev, "text": text, "where": [], "n": 0})
             c["n"] += n
-            c["where"].append(f"{label}: {seen}" if seen else label)
+            c["where"].append(f"{label}: {seen}" if label and seen else (seen or label))
             if sev in ORDER and c["sev"] in ORDER and ORDER.index(sev) < ORDER.index(c["sev"]):
                 c["sev"] = sev  # the most serious any harness gave it
 
@@ -97,11 +100,16 @@ def main(argv):
         sev = item[1]["sev"]
         return (ORDER.index(sev) if sev in ORDER else len(ORDER), -len(item[1]["where"]), item[0])
 
-    lines = ["# Job scenarios: the combined findings", "",
-             "The field, path, rig, turn intervention and imperial job harnesses run on one engine, so a cause "
-             "shows up in several of them under the same code. Each code once, most serious first, with every "
-             "harness and job it was seen in; the text is the first harness's. The full reports are the "
-             "`job-scenarios-report-*` artifacts.", ""]
+    if all(label == "" for label, _ in pairs):
+        lines = ["# Findings of a run in parts", "",
+                 "The jobs ran one per container; each code once over all of them, most serious first. "
+                 "The parts: " + ", ".join(f"`{path}`" for _, path in pairs) + ".", ""]
+    else:
+        lines = ["# Job scenarios: the combined findings", "",
+                 "The field, path, rig, turn intervention and imperial job harnesses run on one engine, so a cause "
+                 "shows up in several of them under the same code. Each code once, most serious first, with every "
+                 "harness and job it was seen in; the text is the first harness's. The full reports are the "
+                 "`job-scenarios-report-*` artifacts.", ""]
     if missing:
         lines += [f"No report from: {', '.join(missing)} (the run failed or was cut short; see its job).", ""]
     if not codes:

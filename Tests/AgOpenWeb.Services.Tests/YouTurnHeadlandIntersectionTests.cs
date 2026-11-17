@@ -10,11 +10,10 @@ namespace AgOpenWeb.Services.Tests;
 
 /// <summary>
 /// Repro for issue #354. The U-turn arc lands on cyan NextTrack only if the
-/// arc start is on the current pass. The arc start comes from
-/// FindABTurnPoint, which extends a ray from ABReferencePoint, which comes
-/// from FindTrackHeadlandIntersectionAhead. So the latter must always
-/// return a point on the AB line — independent of the vehicle's
-/// perpendicular distance from it.
+/// arc start is on the current pass. The arc start is the end of the pass
+/// (PassEnds.Find on the pass itself, PassEndAhead here), which must always
+/// be a point on the AB line — independent of the vehicle's perpendicular
+/// distance from it.
 ///
 /// Before the fix: the AB-line branch built a vehicle-anchored line and
 /// intersected it with the headland, so a vehicle perpendicular-offset from
@@ -37,8 +36,7 @@ public class YouTurnHeadlandIntersectionTests
         var headland = MakeRectangularHeadland(southN: 50, northN: 100);
         var vehicle = new Vec3(0, 0, 0);
 
-        var result = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(
-            track, vehicle, headland, headingSameWay: true);
+        var result = YouTurnCreationService.PassEndAhead(track, vehicle, headland, headingSameWay: true)?.Crossing;
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.Value.Easting, Is.EqualTo(0).Within(0.001));
@@ -56,8 +54,7 @@ public class YouTurnHeadlandIntersectionTests
         var headland = MakeRectangularHeadland(southN: 50, northN: 100);
         var vehicle = new Vec3(10, 0, 0); // 10 m east of AB
 
-        var result = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(
-            track, vehicle, headland, headingSameWay: true);
+        var result = YouTurnCreationService.PassEndAhead(track, vehicle, headland, headingSameWay: true)?.Crossing;
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.Value.Easting, Is.EqualTo(0).Within(0.001),
@@ -74,8 +71,7 @@ public class YouTurnHeadlandIntersectionTests
         var headland = MakeRectangularHeadland(southN: 0, northN: 50);
         var vehicle = new Vec3(20, -50, 0);
 
-        var result = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(
-            track, vehicle, headland, headingSameWay: true);
+        var result = YouTurnCreationService.PassEndAhead(track, vehicle, headland, headingSameWay: true)?.Crossing;
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.Value.Easting, Is.EqualTo(25).Within(0.001),
@@ -92,8 +88,7 @@ public class YouTurnHeadlandIntersectionTests
         var headland = MakeRectangularHeadland(southN: -100, northN: -50);
         var vehicle = new Vec3(10, 0, 0);
 
-        var result = YouTurnCreationService.FindTrackHeadlandIntersectionAhead(
-            track, vehicle, headland, headingSameWay: false);
+        var result = YouTurnCreationService.PassEndAhead(track, vehicle, headland, headingSameWay: false)?.Crossing;
 
         Assert.That(result, Is.Not.Null);
         Assert.That(result!.Value.Easting, Is.EqualTo(0).Within(0.001));

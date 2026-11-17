@@ -15,8 +15,14 @@
 # on the Docker context RUNNER_CONTEXT (default "runner"); their /out folders are copied to
 # OUT_DIR (default ./harness-out/<name>), and Tools/compare-reports.py writes compare-<report>.md there
 # for each report. It exits 1 when a side did not pass, a report is on one side only, or there is none.
+#
+# The jobs AGOPENWEB_SCENARIO_ONLY names run one per container (a shard), on each side, as many at
+# once as the host's cores allow: a job runs on one core, so the wait is the longest job, not the
+# sum of them (SHARDS=0 runs the list in one container, as a run without ONLY does). The base side
+# is cached on the host by commit and settings (RESULT_CACHE in run-harness.sh; BASE_CACHE=0 to
+# run it again): a second fix against the same base runs the fix side only.
 set -euo pipefail
-[ $# -ge 3 ] || { sed -n 5,16p "$0"; exit 2; }
+[ $# -ge 3 ] || { sed -n 5,23p "$0"; exit 2; }
 fix="$1"; base="$2"; proj="$3"; shift 3
 ctx="${RUNNER_CONTEXT:-runner}"
 name="cmp-$(basename "$proj" .Tests | sed 's/^AgOpenWeb\.//')-$(date +%m%d-%H%M%S)"
@@ -25,35 +31,93 @@ here="$(cd "$(dirname "$0")" && pwd)"
 dk() { docker --context "$ctx" "$@"; }
 
 envs=(-e "CONFIG=${CONFIG:-Release}")
-while IFS='=' read -r k _; do envs+=(-e "$k"); done < <(env | grep '^AGOPENWEB_' || true)
+while IFS='=' read -r k _; do [ "$k" = AGOPENWEB_SCENARIO_ONLY ] || envs+=(-e "$k"); done < <(env | grep '^AGOPENWEB_' || true)
+# The jobs run at 2 ms per fix, about 50x real time (the nightly's 8 ms is 12x, for GitHub's two
+# cores): measured 2026-11-15 on seven jobs at 8, 4 and 2, every report's pace check at 0 lag and
+# every finding the same. A shard that lags is reported below.
+[ -n "${AGOPENWEB_SCENARIO_PACE:-}" ] || envs+=(-e AGOPENWEB_SCENARIO_PACE=2)
 
-# Each run is held to CPUS cores (default 4), so up to MAX_RUNS (default 3) share the host's 12
-# threads without starving one another: a starved run misses its watchdogs and reports false
-# findings (a false AUTOSTEER-DROPPED, 2026-11-10, a build beside an unlimited run). This
-# comparison starts two.
-cpus="${CPUS:-4}"; max="${MAX_RUNS:-3}"
-busy=$(dk ps --filter ancestor=aow-harness:latest -q | wc -l | tr -d ' ')
-[ $((busy + 2)) -le "$max" ] || { echo "The host already runs $busy harness container(s) of $max; wait for one to finish."; exit 1; }
+# The shards: the codes in AGOPENWEB_SCENARIO_ONLY, or "all" for one container a side.
+only="${AGOPENWEB_SCENARIO_ONLY:-}"
+shards=()
+if [ -n "$only" ] && [ "${SHARDS:-1}" != 0 ]; then
+  for c in $(echo "$only" | tr ',' ' '); do shards+=("$c"); done
+else
+  shards=(all)
+fi
 
-for side in fix base; do
-  ref=$fix; [ $side = base ] && ref=$base
-  dk run -d --cpus "$cpus" --name "$name-$side" -v aow-cache:/cache "${envs[@]}" aow-harness:latest "$ref" "$proj" "$@" >/dev/null
-  echo "== $side ($ref): $name-$side"
+# Each run is held to CPUS cores, so runs share the host's threads without starving one another:
+# a starved run misses its watchdogs and reports false findings (a false AUTOSTEER-DROPPED,
+# 2026-11-10, a build beside an unlimited run). A whole harness gets 4, a shard (one job, about
+# one core) 2; at most MAX_RUNS (default the host's threads over CPUS) run at once, the rest wait.
+ncpu=$(dk info --format '{{.NCPU}}')
+if [ "${shards[0]}" = all ]; then cpus="${CPUS:-4}"; else cpus="${CPUS:-2}"; fi
+max="${MAX_RUNS:-$(( ncpu / cpus ))}"; [ "$max" -ge 1 ] || max=1
+
+start() { # side code
+  local side=$1 code=$2; shift 2
+  local ref=$fix; [ "$side" = base ] && ref=$base
+  local args=(run -d --cpus "$cpus" --name "$name-$side-$code" -v aow-cache:/cache "${envs[@]}")
+  if [ "$code" != all ]; then args+=(-e "AGOPENWEB_SCENARIO_ONLY=$code"); elif [ -n "$only" ]; then args+=(-e AGOPENWEB_SCENARIO_ONLY); fi
+  [ "$side" = base ] && [ "${BASE_CACHE:-1}" != 0 ] && args+=(-e RESULT_CACHE=1)
+  dk "${args[@]}" aow-harness:latest "$ref" "$proj" "$@" >/dev/null
+}
+
+runs=()
+for code in "${shards[@]}"; do runs+=("fix/$code" "base/$code"); done
+for item in "${runs[@]}"; do
+  waited=0
+  while :; do
+    busy=$(dk ps --filter ancestor=aow-harness:latest -q | wc -l | tr -d ' ')
+    [ "$busy" -lt "$max" ] && break
+    [ $waited = 1 ] || { echo "-- the host runs $busy of $max harness containers; $item waits for a slot"; waited=1; }
+    sleep 15
+  done
+  start "${item%/*}" "${item#*/}" "$@"
+  echo "== $item started: $name-${item%/*}-${item#*/}"
 done
+
 problems=0
-for side in fix base; do
-  code=$(dk wait "$name-$side")
-  mkdir -p "$out/$side"
-  dk cp "$name-$side:/out/." "$out/$side" >/dev/null
-  dk rm "$name-$side" >/dev/null
-  result=$(grep -hE 'Passed!|Failed!' "$out/$side/test.log" 2>/dev/null | head -1 || true)
-  echo "== $side finished (exit $code): $result"
+for item in "${runs[@]}"; do
+  side=${item%/*}; code=${item#*/}; cname="$name-$side-$code"
+  exit_code=$(dk wait "$cname")
+  dest="$out/$side"; [ "$code" = all ] || dest="$out/$side/$code"
+  mkdir -p "$dest"
+  dk cp "$cname:/out/." "$dest" >/dev/null
+  dk logs "$cname" 2>&1 | grep -E '^== ' > "$dest/run.log" || true
+  dk rm "$cname" >/dev/null
+  result=$(grep -hE 'Passed!|Failed!' "$dest/test.log" 2>/dev/null | head -1 || true)
+  note=""; grep -q '^== cached' "$dest/run.log" && note=" (cached)"
+  echo "== $item finished (exit $exit_code)$note: $result"
   # A side whose tests failed may have stopped before its jobs ran: its report is no comparison.
   case "$result" in
     *Passed!*) ;;
-    *) echo "!! $side did not pass: read $out/$side/test.log before trusting the comparison"; problems=1 ;;
+    *) echo "!! $item did not pass: read $dest/test.log before trusting the comparison"; problems=1 ;;
   esac
+  # The job harness's pace check: AgOpenWeb's position behind the fixes, in fixes. A run that
+  # fell behind was starved of CPU (or paced too fast) and its findings are noise.
+  # Only the job harness has the line: elsewhere grep finds nothing, which is no lag (and must not
+  # end the script under pipefail, as it did on the GPS/NTRIP harness, 2026-11-15).
+  lag=$( (grep -h "harness pace check" "$dest"/*.md 2>/dev/null || true) | sed -E 's/.*\| *([0-9]+) \/ .*/\1/' | sort -n | tail -1)
+  [ -z "$lag" ] || [ "$lag" = 0 ] || { echo "!! $item: AgOpenWeb ran $lag fix(es) behind the harness (the pace check): a starved run, its findings are noise; raise AGOPENWEB_SCENARIO_PACE or lower MAX_RUNS"; problems=1; }
 done
+
+# The shards' reports, one per job, merged into one findings list per report name and side
+# (Tools/combine-job-reports.py), so the comparison reads as a whole run's; each job's full report
+# stays in its shard's folder. A code that wrote no report on either side is not a job of this
+# project (or the ref is from before it): a problem, not a quiet run.
+if [ "${shards[0]}" != all ]; then
+  for code in "${shards[@]}"; do
+    [ -n "$(ls "$out"/fix/"$code"/*.md "$out"/base/"$code"/*.md 2>/dev/null)" ] || { echo "!! $code: no report on either side (not a job of this project?)"; problems=1; }
+  done
+  for side in fix base; do
+    for r in $( (cd "$out/$side" && ls */*.md 2>/dev/null | xargs -n1 basename | sort -u) || true); do
+      parts=()
+      for code in "${shards[@]}"; do [ -f "$out/$side/$code/$r" ] && parts+=("=$out/$side/$code/$r"); done
+      python3 "$here/../combine-job-reports.py" "$out/$side/$r" "${parts[@]}"
+    done
+  done
+fi
 
 # Every report on either side, compared by name: a project with several fixtures writes one each
 # (Tests/ScenarioShared/ReportPath.cs). A report on one side only is a problem, not a quiet run.

@@ -123,7 +123,7 @@ public class SnakeOpenPassTests
         Assert.Multiple(() =>
         {
             Assert.That(turn.TurnPath, Is.Null);
-            Assert.That(effects.StatusMessage, Is.EqualTo("End of field reached - no room on the next pass at this end"));
+            Assert.That(effects.StatusMessage, Is.EqualTo("No U-turn onto the next pass: only 15 m of it at this end, 20 m needed - take over manually at the end of this pass"));
             Assert.That(effects.TurnCreationFailedSound, Is.True);
         });
     }
@@ -144,7 +144,7 @@ public class SnakeOpenPassTests
         Assert.Multiple(() =>
         {
             Assert.That(turn.TurnPath, Is.Null, $"no turn ten passes over (aimed at {turn.ReturnPassTargetPath})");
-            Assert.That(effects.StatusMessage, Is.EqualTo("End of field reached - no room on the next pass at this end"));
+            Assert.That(effects.StatusMessage, Is.EqualTo("No U-turn onto the next pass: only 15 m of it at this end, 20 m needed - take over manually at the end of this pass"));
         });
     }
 
@@ -233,11 +233,13 @@ public class SnakeOpenPassTests
     }
 
     [Test]
-    public void An_end_where_no_turn_builds_is_not_tried_again_on_every_cycle()
+    public void An_end_where_no_turn_builds_is_tried_again_every_second_and_a_half_silently_not_on_every_cycle()
     {
         // Tick looks for a turn on every GPS cycle while the end is ahead (10 m to 2 km). Each look
         // built the order's turn and one onto the nearest open pass on each side, each moving the
         // turn back from the fence 0.5 m at a time up to 30 m: three builds a cycle, for nothing.
+        // Tried again every 1.5 s (AgOpenGPS's wait before it builds again), without a word: the
+        // operator was told once.
         var (guidance, turn, cultivated) = FailingEnd();
 
         var first = _sm.Tick(Ctx(cultivated, PassX(0), -18, 180), guidance, turn);
@@ -248,11 +250,22 @@ public class SnakeOpenPassTests
             Assert.That(first.TurnCreationFailedSound, Is.True);
         });
 
-        // Thirty more cycles towards the end, 0.3 m apart.
-        for (int i = 1; i <= 30; i++)
+        // Fourteen more cycles towards the end, 0.3 m apart: nothing built.
+        for (int i = 1; i <= 14; i++)
             _sm.Tick(Ctx(cultivated, PassX(0), -18 - 0.3 * i, 180), guidance, turn);
-
         Assert.That(_creation.TurnPathBuilds, Is.EqualTo(3), "not built again on every cycle");
+
+        // The fifteenth, 1.5 s on: tried again, the same three builds, no sound and nothing said.
+        var retry = _sm.Tick(Ctx(cultivated, PassX(0), -18 - 0.3 * 15, 180), guidance, turn);
+        Assert.Multiple(() =>
+        {
+            Assert.That(_creation.TurnPathBuilds, Is.EqualTo(6), "tried again after 1.5 s");
+            Assert.That(retry.TurnCreationFailedSound, Is.False, "silently");
+            Assert.That(retry.TellOperator, Is.False, "the operator was told once");
+        });
+        for (int i = 16; i <= 29; i++)
+            _sm.Tick(Ctx(cultivated, PassX(0), -18 - 0.3 * i, 180), guidance, turn);
+        Assert.That(_creation.TurnPathBuilds, Is.EqualTo(6), "and not before the next 1.5 s");
     }
 
     [Test]

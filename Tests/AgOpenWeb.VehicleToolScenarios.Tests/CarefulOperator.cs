@@ -77,6 +77,9 @@ public static class CarefulOperator
     /// measurements, Save Profile. Then AgOpenWeb restarts on the same data and each
     /// vehicle is loaded with one of its implements: every value must come back.
     /// </summary>
+    /// <summary>The tractor's hitch points a fixed tool's settings type (<see cref="ToolSpec.Settings"/>).</summary>
+    private static readonly string[] TractorHitchKeys = { "vehicle.threePointHitchLength", "vehicle.frontHitchLength" };
+
     private static async Task ProfilesAsync(Journal journal)
     {
         var row = new DriveRow { Operator = Name, Code = "PROFILES", Mistake = "Every machine saved as a profile, AgOpenWeb restarted, each loaded back", Vehicle = "all", Implement = "all", System = "–" };
@@ -90,6 +93,7 @@ public static class CarefulOperator
             [Machines.Articulated] = Machines.ArticulatedSys, [Machines.Combine] = Machines.CombineSys,
         };
         var tools = Machines.CarefulMatrix.Select(m => m.T).Distinct().ToList();
+        var savedHitch = new Dictionary<(string Vehicle, string Key), string>();
         foreach (var t in new[] { Machines.Rear3Shift, Machines.Trailing3Shift, Machines.Rake1, Machines.Rake2, Machines.Rake4, Machines.Front6, Machines.Tbt6 })
             if (!tools.Contains(t)) tools.Add(t);
         try
@@ -110,6 +114,11 @@ public static class CarefulOperator
                     await rig.SendAsync("profile.load", v.Name + "\t" + rig.Store.ActiveToolProfileName);
                     foreach (var kv in v.Settings(systems[v])) await rig.SendAsync("config.set", kv);
                     await rig.SendAsync("profile.save");
+                    // The tractor's 3-point and front hitch are the vehicle's (#547): a tool's settings
+                    // type them for its drive, but one vehicle profile holds one of each. What this
+                    // vehicle was saved with is what must come back.
+                    foreach (var key in TractorHitchKeys)
+                        savedHitch[(v.Name, key)] = await rig.ReadAsync(() => Readback.Get(rig.Store, key));
                 }
                 var veh = await rig.ReadAsync(() => rig.Config.GetAvailableProfiles().ToList());
                 var tls = await rig.ReadAsync(() => rig.Config.GetAvailableToolProfiles().ToList());
@@ -136,6 +145,7 @@ public static class CarefulOperator
                         string key = Readback.KeyOf(kv), want = Readback.ValueOf(kv);
                         // A harvester takes only front tools (#111): its header is front by design.
                         if (key == "tool.type" && v.Type == 1) want = "front";
+                        if (savedHitch.TryGetValue((v.Name, key), out var saved)) want = saved;
                         string got = await rig.ReadAsync(() => Readback.Get(rig.Store, key));
                         compared++;
                         if (!Readback.Same(want, got))

@@ -107,7 +107,7 @@ public class EndOfFieldMessageTests
         Assert.Multiple(() =>
         {
             Assert.That(turn.TurnPath, Is.Null, "no turn back onto the pass just worked");
-            Assert.That(effects.StatusMessage, Is.EqualTo("End of field reached - no room on the next pass at this end"));
+            Assert.That(effects.StatusMessage, Is.EqualTo("No U-turn onto the next pass: only 19 m of it at this end, 20 m needed - take over manually at the end of this pass"));
         });
     }
 

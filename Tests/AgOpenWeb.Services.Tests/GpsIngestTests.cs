@@ -177,4 +177,40 @@ public class GpsIngestTests
         Assert.That(cut, Is.EqualTo(onePer));
         Assert.That(_steer.GpsEpochs.FamilyText, Is.EqualTo("GGA+VTG+HPR"));
     }
+
+    // A receiver with no fix (indoors; the HAT's GPS on the bench, 2026-11-15) still sends its
+    // sentence at 10 Hz, quality 0 and position 0,0.
+    private static string NoFix() =>
+        WithChecksum("PANDA,123456.00,0000.0000,N,00000.0000,E,0,0,99.9,0.0,0.0,0.0,0,0,0,0.00");
+
+    [Test]
+    public void A_receiver_without_a_fix_does_not_count_as_a_live_source()
+    {
+        // The live gate keeps the simulator off while a receiver drives the pipeline: with a
+        // no-fix sentence counted, the simulator refused to start, and stopped at once.
+        Feed(NoFix());
+        _gps.DidNotReceive().MarkRealGpsParsed();
+        Feed(Panda(48.1));
+        _gps.Received(1).MarkRealGpsParsed();
+    }
+
+    [Test]
+    public void While_the_simulator_is_the_source_a_receiver_without_a_fix_is_left_out_and_one_with_a_fix_takes_over()
+    {
+        _steer.SetSimulatorIsSource(true);
+        Feed(NoFix());
+        Assert.That(_published, Is.Empty, "no 0,0 between the simulator's positions");
+        _gps.DidNotReceive().MarkRealGpsParsed();
+
+        Feed(Panda(48.1));
+        Assert.That(_published, Is.EqualTo(new[] { 48.1 }).Within(1e-6), "a fix takes over, as before");
+        _gps.Received(1).MarkRealGpsParsed();
+    }
+
+    [Test]
+    public void Without_the_simulator_a_receiver_without_a_fix_is_published_as_before()
+    {
+        Feed(NoFix());
+        Assert.That(_published, Has.Count.EqualTo(1), "the status shows the receiver has no fix");
+    }
 }

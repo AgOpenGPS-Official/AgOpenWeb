@@ -92,16 +92,13 @@ public class CurveEndOfFieldTests
 
         var effects = _sm.Tick(ctx, guidance, turn);
 
-        Assert.That(turn.DistanceToHeadland, Is.LessThan(80), "the scenario: the straight line leaves the strip early");
+        // The end is found along the pass (PassEnds), not by a straight line: some 210 m on.
+        Assert.That(turn.DistanceToHeadland, Is.InRange(180, 240), "the distance to the end is measured along the pass");
         Assert.That(effects.StatusMessage ?? "", Does.Not.Contain("End of field"),
             "the pass runs on for some 220 m: not the end of the field");
-        Assert.That(turn.TurnPath, Is.Null, "no turn judged at the false end either");
-
-        // Some 36 m before the real end (80°): the straight line finds it, and the turn is made.
-        double t1 = 1.15;
-        var near = P(r0, t1);
-        effects = _sm.Tick(ctx with { CurrentPosition = new Position { Easting = near.Easting, Northing = near.Northing, Heading = t1 * 180 / System.Math.PI, Speed = 2.78 } },
-            guidance, turn);
-        Assert.That(turn.TurnPath, Is.Not.Null, $"a turn at the real end ({effects.StatusMessage})");
+        Assert.That(turn.TurnPath, Is.Not.Null, $"the turn is planned for the real end from here ({effects.StatusMessage})");
+        var end = P(r0, 80 * System.Math.PI / 180);
+        Assert.That(turn.TurnPath!.Min(p => GeometryMath.Distance(p.Easting, p.Northing, end.Easting, end.Northing)), Is.LessThan(12),
+            "the turn passes the real end of the pass");
     }
 }

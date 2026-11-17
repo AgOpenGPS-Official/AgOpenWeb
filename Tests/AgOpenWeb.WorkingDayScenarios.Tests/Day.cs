@@ -430,10 +430,11 @@ public sealed partial class Day : IAsyncDisposable
             if (Environment.GetEnvironmentVariable("AGOPENWEB_DAY_VERBOSE") == "2" && e.Kind != RigEventKind.Warning)
                 TestContext.Progress.WriteLine(F($"[aow] {Now:HH:mm:ss} {e}"));
             // The end of the field, as AgOpenWeb says it. Before the first U-turn the tractor is
-            // still entering through the headland on the first pass and AgOpenWeb can say "End of
-            // field reached - no room on the next pass at this end" about the end it came from: the
+            // still entering through the headland on the first pass and AgOpenWeb can say "No
+            // U-turn onto the next pass: ..." (no room on it at this end) about the end it came from: the
             // operator drives on (the field job harness judges that message; this one needs the day).
-            if (e.Kind == RigEventKind.Status && (e.Text.Contains("End of field reached", StringComparison.Ordinal) || e.Text.Contains("Field complete", StringComparison.Ordinal))
+            if (e.Kind == RigEventKind.Status && (e.Text.Contains("End of field reached", StringComparison.Ordinal) || e.Text.Contains("Field complete", StringComparison.Ordinal)
+                    || e.Text.Contains("No U-turn onto the next pass", StringComparison.Ordinal))
                 && _job is { Turns: > 0 })
                 FieldDone = true;
             if (e.Kind is RigEventKind.Exception or RigEventKind.Error or RigEventKind.Hang) _errors++;

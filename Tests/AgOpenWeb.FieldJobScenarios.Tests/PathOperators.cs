@@ -252,11 +252,23 @@ public class CurveOperator : PathOperator
     // The pass whose line strays furthest from the reference offset, in the cultivated area.
     public (int Pass, double Want, double Short, (double E, double N) At, double ShortOffsetOnly, double ShortNoExtend, double Shown)? Worst;
 
+    // Where a pass line kinks further from the curve than its distance (a chord across a notch in
+    // the curve, #864) the next pass doesn't follow it: the ground there is corner ground, as on the
+    // laps (P2, 2026-11-16: 0.45 m between passes 4 and 5, 40 m in from a notch in the west edge).
+    private readonly LapCorners _corners = new();
+    private double _cum = 0;
+    private (double E, double N)? _lastAt;
+
     public override async Task OnFixAsync(JobRun r)
     {
+        var at = (r.Truth.E, r.Truth.N);
+        if (_lastAt is { } la) _cum += Math.Sqrt((at.E - la.E) * (at.E - la.E) + (at.N - la.N) * (at.N - la.N));
+        _lastAt = at;
+        _corners.Update(r, _cum, tightTurns: false);
         if (r.Pass == int.MinValue || r.Pass == _checkedPass || r.InTurn) return;
         _checkedPass = r.Pass;
         double want = Math.Abs(ExpectedU(r, r.Pass));
+        _corners.AddFurtherIn(await PassLineAsync(r, r.Pass, extend: false), p => Math.Abs(r.Frame.U(p)) - want);
         var full = Shortfall(r, await PassLineAsync(r, r.Pass), want);
         var offsetOnly = Shortfall(r, await PassLineAsync(r, r.Pass, limit: false, extend: false), want);
         var noExtend = Shortfall(r, await PassLineAsync(r, r.Pass, extend: false), want);
@@ -405,6 +417,7 @@ public sealed class LapOperator : PathOperator
     // and AgOpenWeb's line for the next lap when it runs out of the field.
     private DepthGrid? _depth;
     private readonly LapCorners _corners = new();
+    private readonly LapReach _reach = new();
     // AgOpenWeb's lap lines that run out of the field (with and without the turn-radius limit),
     // and how far AutoSteer took the tractor past the boundary on the laps.
     private readonly List<(int Lap, int Pass, double OutM, double LenM, (double E, double N) At, double OutNoLimitM)> _lineOut = new();
@@ -602,9 +615,17 @@ public sealed class LapOperator : PathOperator
     {
         // What no lap reached is the operator's to finish (an AB line, or by hand), not a strip
         // between passes.
+        // Where the field narrows the inner laps stop short (a lap's points nearer the other side
+        // than its distance are left out), so the middle also lies between the inner laps, not
+        // only past the last lap driven (P1: 563 m² of the spine between the inner laps' two sides
+        // was counted as strips between passes): ground further than half a width and 0.3 m from
+        // every lap line driven. A strip between two laps is still found by its width
+        // (LargestMissedStripM, from the implement's ends), which this does not touch.
         double depthDone = Math.Abs((r.Pass + 0.5) * r.Spacing) + r.Spec.T.Width / 2;
+        double clear = r.Spec.T.Width / 2 + 0.3;
         int sign = _sign;
-        r.LeftOnPurpose = p => sign * r.Frame.U(p) > depthDone - 0.2;
+        var reach = _reach;
+        r.LeftOnPurpose = p => sign * r.Frame.U(p) > depthDone - 0.2 || (reach.Any && !reach.AnyWithin(p, clear));
         Stop = why;
         r.EndedBy = why;
         r.FieldDone = true;
@@ -660,6 +681,10 @@ public sealed class LapOperator : PathOperator
         var offsetOnly = Shortfall(r, await PassLineAsync(r, pass, limit: false), want, nearOut);
         Journal.Trace(F($"[fj] {r.Seconds,7:0.0} s   pass {pass}: AgOpenWeb's line ({shown.Count} points) against the harness's copy ({mine.Count}): {worst:0.00} m apart at most; it comes {full.Short:0.0} m nearer the boundary than its {want:0} m at ({full.At.E:0},{full.At.N:0}), offset alone {offsetOnly.Short:0.0} m"));
         if (worst > 0.5) LineCopyOff = Math.Max(LineCopyOff, worst);
+        // Where the lap line runs further in than its distance, the corner reaches as far as that,
+        // not only where the tractor turned tight.
+        _corners.AddFurtherIn(mine, p => Math.Abs(r.Frame.U(p)) - want);
+        _reach.Add(mine, want);
         if (WorstShort == null || full.Short > WorstShort.Value.Short) WorstShort = (pass, want, full.Short, full.At, offsetOnly.Short);
     }
     public double LineCopyOff;
@@ -748,6 +773,7 @@ public sealed class ContourOperator : PathOperator
     private int _noLineRun;
     private DepthGrid? _depth;
     private readonly LapCorners _corners = new();
+    private readonly LapReach _driven = new(), _change = new();
     // AutoSteer on the contour leaving the lap it should follow (onto another lap, out of the field, or back the way it came).
     private int _offLapFixes;
     private double _cumWindowStart; private int _windowFix;
@@ -809,7 +835,13 @@ public sealed class ContourOperator : PathOperator
         _cum += r.Frame.DeltaV(_prev, v);
         _prev = v;
         var c = r.Rig.LastCycle;
-        if (r.Frame is PolylineFrame && r.HandSteer == null) _corners.Update(r, _cum);
+        // The laps' corners whoever steers: the first lap is driven by hand along the boundary, and
+        // where it turns tight (a notch in the fence) the next lap, following it, pulls away (P6).
+        if (r.Frame is PolylineFrame) _corners.Update(r, _cum);
+        // Where the tool went: on the laps (the middle is what none of them reaches) and while the
+        // operator moves a width in by hand (the lap change).
+        var tool = r.Truth.ToolCentre;
+        if (r.InChange) _change.Add((tool.E, tool.N)); else _driven.Add((tool.E, tool.N));
         // Near the lap's end the contour follows the strip where the operator moved in, and so
         // turns in towards the next lap before the operator takes over: that is the spiral a
         // contour makes, not the tractor leaving its pass.
@@ -993,9 +1025,15 @@ public sealed class ContourOperator : PathOperator
 
     private void Finish(JobRun r, string why)
     {
+        // The middle no lap reaches: further in than the last lap, or (where the field narrows and
+        // the inner laps stop short) further than half a width and 0.3 m from where the tool went
+        // on every lap (P6: the spine between the inner laps' two sides was counted as strips).
         double depthDone = Math.Abs(ExpectedU(r, _k)) + r.Spec.T.Width / 2;
+        double clear = r.Spec.T.Width / 2 + 0.3, reachChange = r.Spec.T.Width / 2 + 1;
         int sign = _sign;
-        r.LeftOnPurpose = p => sign * r.Frame.U(p) > depthDone - 0.2;
+        var driven = _driven; var change = _change;
+        r.LeftOnPurpose = p => sign * r.Frame.U(p) > depthDone - 0.2 || (driven.Any && !driven.AnyWithin(p, clear));
+        r.AtLapChange = p => change.Any && change.AnyWithin(p, reachChange);
         r.EndedBy = why;
         r.FieldDone = true;
         r.Stopped = true;
@@ -1245,10 +1283,66 @@ public sealed class DepthGrid
 }
 
 /// <summary>
+/// AgOpenWeb's lap lines as the laps were driven, each point with its lap's distance from the
+/// boundary: is a place within reach of a lap (<see cref="AnyWithin"/>).
+/// </summary>
+public sealed class LapReach
+{
+    private readonly Dictionary<(int, int), List<(double E, double N, double Depth)>> _points = new();
+    public bool Any => _points.Count > 0;
+
+    /// <summary>One point (a lap's depth not needed).</summary>
+    public void Add((double E, double N) p)
+    {
+        var key = ((int)Math.Floor(p.E / 5), (int)Math.Floor(p.N / 5));
+        if (!_points.TryGetValue(key, out var l)) _points[key] = l = new();
+        if (l.Count > 0 && Math.Abs(l[^1].E - p.E) < 0.5 && Math.Abs(l[^1].N - p.N) < 0.5) return;
+        l.Add((p.E, p.N, 0));
+    }
+
+    public void Add(IReadOnlyList<(double E, double N)>? line, double depth)
+    {
+        if (line == null) return;
+        for (int i = 0; i + 1 < line.Count; i++)
+        {
+            var a = line[i]; var b = line[i + 1];
+            int n = Math.Max(1, (int)Math.Ceiling(Math.Sqrt((b.E - a.E) * (b.E - a.E) + (b.N - a.N) * (b.N - a.N))));
+            for (int k = 0; k < n; k++)
+            {
+                double e = a.E + (b.E - a.E) * k / n, no = a.N + (b.N - a.N) * k / n;
+                var key = ((int)Math.Floor(e / 5), (int)Math.Floor(no / 5));
+                if (!_points.TryGetValue(key, out var l)) _points[key] = l = new();
+                l.Add((e, no, depth));
+            }
+        }
+    }
+
+    /// <summary>Does a lap line driven come within <paramref name="radius"/> of <paramref name="p"/>
+    /// (its points every metre)?</summary>
+    public bool AnyWithin((double E, double N) p, double radius)
+    {
+        int bx = (int)Math.Floor(p.E / 5), by = (int)Math.Floor(p.N / 5), n = (int)Math.Ceiling(radius / 5);
+        for (int x = bx - n; x <= bx + n; x++)
+            for (int y = by - n; y <= by + n; y++)
+                if (_points.TryGetValue((x, y), out var l))
+                    foreach (var q in l)
+                        if ((q.E - p.E) * (q.E - p.E) + (q.N - p.N) * (q.N - p.N) < radius * radius) return true;
+        return false;
+    }
+}
+
+/// <summary>
 /// A lap's corners: where the tractor turns tighter than twice the U-turn radius, and the 10 m
 /// after. Laps' corners are rounded, so an inner lap's corner pulls away from the outer lap's:
 /// the pass edges and the pass error leave the corners out (<see cref="JobRun.InCorner"/>), and
-/// the unsprayed ground there is counted apart (<see cref="JobRun.AtCorner"/>).
+/// the unsprayed ground there is counted apart (<see cref="JobRun.AtCorner"/>). The ground counts
+/// as a corner also wherever AgOpenWeb's lap line runs further in than its distance from the
+/// boundary (<see cref="AddFurtherIn"/>): each lap is the boundary offset point by point, the points
+/// that come too close to it left out and the rest joined straight, so where the boundary bends
+/// in (a notch, a kink) the lap cuts a chord where its distance makes an arc, and each lap is held
+/// to the U-turn radius on its own; the next lap in doesn't follow, and a crescent opens between
+/// them, also where the tractor never turns tight (P1, 2026-11-16: 612 m² of "strips between
+/// passes", the widest 0.43 m by a notch in the west edge, where lap 3 runs 28.47 m in for 28 m).
 /// </summary>
 public sealed class LapCorners
 {
@@ -1256,26 +1350,74 @@ public sealed class LapCorners
     private readonly Dictionary<(int, int), List<(double E, double N)>> _points = new();
     private (double E, double N) _last = (double.NaN, double.NaN);
 
-    public void Update(JobRun r, double cum)
+    /// <summary>The points of a lap line (<paramref name="line"/>, every metre) more than 5 cm further
+    /// in than its distance from the boundary (<paramref name="furtherIn"/>: how much further).</summary>
+    public void AddFurtherIn(IReadOnlyList<(double E, double N)>? line, Func<(double E, double N), double> furtherIn)
+    {
+        if (line == null) return;
+        for (int i = 0; i + 1 < line.Count; i++)
+        {
+            var a = line[i]; var b = line[i + 1];
+            int n = Math.Max(1, (int)Math.Ceiling(Math.Sqrt((b.E - a.E) * (b.E - a.E) + (b.N - a.N) * (b.N - a.N))));
+            for (int k = 0; k < n; k++)
+            {
+                var p = (a.E + (b.E - a.E) * k / n, a.N + (b.N - a.N) * k / n);
+                if (furtherIn(p) > 0.05) Add(p, furtherIn: true);
+            }
+        }
+    }
+
+    private void Add((double E, double N) p, bool furtherIn = false)
+    {
+        var key = ((int)Math.Floor(p.E / 5), (int)Math.Floor(p.N / 5));
+        if (!_points.TryGetValue(key, out var l)) _points[key] = l = new();
+        l.Add(p);
+        if (furtherIn)
+        {
+            if (!_furtherIn.TryGetValue(key, out var f)) _furtherIn[key] = f = new();
+            f.Add(p);
+        }
+    }
+
+    // The lap line's points further in than its distance: the pass edges and the pass error
+    // leave out the tool passing within 3 m of them (InCorner), as at a tight turn.
+    private readonly Dictionary<(int, int), List<(double E, double N)>> _furtherIn = new();
+    private bool NearFurtherIn((double E, double N) p, double within)
+    {
+        int bx = (int)Math.Floor(p.E / 5), by = (int)Math.Floor(p.N / 5);
+        for (int x = bx - 1; x <= bx + 1; x++)
+            for (int y = by - 1; y <= by + 1; y++)
+                if (_furtherIn.TryGetValue((x, y), out var l))
+                    foreach (var q in l)
+                        if ((q.E - p.E) * (q.E - p.E) + (q.N - p.N) * (q.N - p.N) < within * within) return true;
+        return false;
+    }
+
+    /// <param name="tightTurns">Whether the tractor turning tight makes a corner (the laps); not
+    /// on passes with U-turns, whose tight turns are in the headland.</param>
+    public void Update(JobRun r, double cum, bool tightTurns = true)
     {
         double steer = Math.Abs(r.Truth.Steer) * Math.PI / 180;
         double radius = steer < 1e-3 ? double.PositiveInfinity : r.Truth.V.Wheelbase / Math.Tan(steer);
-        if (radius < 2 * r.Rig.Store.Guidance.UTurnRadius && !r.InChange)
+        if (tightTurns && radius < 2 * r.Rig.Store.Guidance.UTurnRadius && !r.InChange)
         {
             _cornerCum = cum;
             var t = r.Truth.ToolCentre;
             if (!(Math.Abs(t.E - _last.E) < 1 && Math.Abs(t.N - _last.N) < 1))
             {
                 _last = (t.E, t.N);
-                var key = ((int)Math.Floor(t.E / 5), (int)Math.Floor(t.N / 5));
-                if (!_points.TryGetValue(key, out var l)) _points[key] = l = new();
-                l.Add((t.E, t.N));
+                Add((t.E, t.N));
             }
         }
+        // The tool passing a kink of the lap line (a point further in than its distance) is at a
+        // corner as at a tight turn, and the 10 m after, while it settles on the line again.
+        if (!r.InChange && NearFurtherIn((r.Truth.ToolCentre.E, r.Truth.ToolCentre.N), 3)) _cornerCum = cum;
         r.InCorner = cum - _cornerCum < 10;
         if (r.AtCorner == null)
         {
-            double reach = r.Spec.T.Width / 2 + 3;
+            // Half a width and 3 m, or the turning circle: inside a hairpin of the innermost laps
+            // the ground left is round the turn's centre, the radius from the tractor's path.
+            double reach = Math.Max(r.Spec.T.Width / 2 + 3, r.Rig.Store.Guidance.UTurnRadius + 1);
             r.AtCorner = p =>
             {
                 int bx = (int)Math.Floor(p.E / 5), by = (int)Math.Floor(p.N / 5), n = (int)Math.Ceiling(reach / 5);

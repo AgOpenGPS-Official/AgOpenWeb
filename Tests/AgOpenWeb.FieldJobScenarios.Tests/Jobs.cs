@@ -68,8 +68,14 @@ public static class Jobs
         Assert.That(harness, Is.Empty, "the harness itself failed: " + string.Join("; ", harness.Select(h => h.Value.First.Message)));
     }
 
+    /// <summary>
+    /// Whether AGOPENWEB_SCENARIO_ONLY names this job: its code exactly, or its letter alone for every
+    /// job of that letter (J for the careful operator's jobs). Not a substring: J1 picked J10–J19 too,
+    /// and a comparison of six jobs ran the whole rig fixture (2026-11-15).
+    /// </summary>
     public static bool Want(string? only, string code) =>
-        string.IsNullOrEmpty(only) || only.Split(',').Any(o => code.Contains(o.Trim(), StringComparison.OrdinalIgnoreCase));
+        string.IsNullOrEmpty(only) || only.Split(',').Select(o => o.Trim()).Any(o =>
+            o.Length == 1 ? code.StartsWith(o, StringComparison.OrdinalIgnoreCase) : code.Equals(o, StringComparison.OrdinalIgnoreCase));
 
     public static async Task<JobAreas?> RunAsync(Journal journal, string op, JobSpec spec)
     {
@@ -155,15 +161,34 @@ public static class Jobs
                 && !r.Problems.Any(p => p.Contains("refused the U-turn", StringComparison.Ordinal)
                     || p.Contains("had no room for a U-turn", StringComparison.Ordinal)))
                 flag(Severity.Bug, "JOB-NEVER-TURNED", F($"the job never got past its first pass: the operator took over before any U-turn ({r.EndedBy}), with {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed."));
+            // "No U-turn onto the next pass: ..." (JobRun.IsNoRoom) with the field not done:
+            // what was said and what was left, not whether the app was right to say it. J14, J8 and
+            // J19 stopped so in the 2026-11-16 nightly with 99.5, 16 and 15 % of the field left, and
+            // nothing but the sprayed share in a note showed it. Not on a short run (TURNS,
+            // MINUTES, FROM_PASS): the field is not meant to be done.
+            if (JobRun.IsNoRoom(r.EndedBy)
+                && !r.ShortStopped && r.StartedAtPass == int.MinValue && a.Missed > NoRoomLeftShare * a.Work)
+            {
+                string left = F($"the job ended where AgOpenWeb had no room for a U-turn on the next pass, with {Pct(a.Missed, a.Work)} of the cultivated area unsprayed ({r.EndedBy}).");
+                // A job whose field has that shape (J9, J17, J18): the next pass runs nearer the fence
+                // than a tractor fits, and refusing to drive it there is right. Only for that reason
+                // ("... it runs 1.1 m from the boundary, 2.0 m needed"): another stop is a finding.
+                if (spec.Expected.Contains("END-OF-FIELD-FIELD-LEFT") && r.EndedBy.Contains(" m from the boundary, ", StringComparison.Ordinal))
+                    sc.Note(F($"expected from the field's shape (`END-OF-FIELD-FIELD-LEFT`): the next pass runs nearer the fence than the U-turn distance, where no tractor fits; {left}"));
+                else if (spec.ExpectedStop is { } stop && r.EndedBy.Contains(stop.Says, StringComparison.Ordinal))
+                    sc.Note(F($"expected (`END-OF-FIELD-FIELD-LEFT`): {stop.Why}; {left}"));
+                else
+                    flag(Severity.Improvement, "END-OF-FIELD-FIELD-LEFT", left);
+            }
         }
         else if (!r.FieldDone)
             flag(Severity.Bug, "FIELD-NOT-FINISHED", F($"AgOpenWeb never reported the end of the field; the job stopped after {r.Seconds / 60:0} min with {Pct(a.Missed, a.Work)} of the cultivated area unsprayed. {string.Join(" | ", r.Problems)}"));
-        else if (a.Missed - a.MissedBetweenPasses - a.MissedLeftInMiddle - a.MissedAtCorners > 0.05 * a.Work)
+        else if (a.Missed - a.MissedBetweenPasses - a.MissedLeftInMiddle - a.MissedAtCorners - a.MissedAtLapChange > 0.05 * a.Work)
         {
             // Where the ground left lies: in passes that were driven but not along their whole
             // length (a U-turn cut a corner off them), or in no driven pass (a side of the field,
             // passes skipped). Said apart, since the two have different causes.
-            double left = a.Missed - a.MissedBetweenPasses - a.MissedAtEnds - a.MissedAtObstacles - a.MissedAlongBoundary - a.MissedLeftInMiddle - a.MissedAtCorners;
+            double left = a.Missed - a.MissedBetweenPasses - a.MissedAtEnds - a.MissedAtObstacles - a.MissedAlongBoundary - a.MissedLeftInMiddle - a.MissedAtCorners - a.MissedAtLapChange;
             string where = a.MissedInWorkedPasses >= 0.9 * left ? "unsprayed inside the worked passes (passes it drove, but not along their whole length)"
                 : a.MissedInWorkedPasses <= 0.1 * left ? "a side of the field, or passes it skipped"
                 : F($"{a.MissedInWorkedPasses:0} m² unsprayed inside the worked passes, {left - a.MissedInWorkedPasses:0} m² on a side of the field or in passes it skipped");
@@ -177,6 +202,8 @@ public static class Jobs
             sc.Ok(F($"the whole field was worked: {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed, {(r.EndedBy.Length > 0 ? r.EndedBy : F($"AgOpenWeb reported the end of the field after {r.Turns.Count} U-turns"))}"));
         if (r.EarlyEnds.Count > 0)
             flag(Severity.Bug, "END-OF-FIELD-TOO-EARLY", F($"AgOpenWeb said \"End of field reached\" (or that there was no room at this end) and then made a U-turn onto another pass after all ({string.Join("; ", r.EarlyEnds)}): an operator who stops at the message leaves the rest of the field undone. The operator here drove on."));
+        if (a.MissedAtLapChange > 0)
+            sc.Note(F($"{a.MissedAtLapChange:0} m² ({Pct(a.MissedAtLapChange, a.Work)}) where the operator moved a width in by hand at the end of a lap were never sprayed: the implement crossing from one lap to the next"));
         if (a.MissedAtCorners > 0)
             sc.Note(F($"{a.MissedAtCorners:0} m² ({Pct(a.MissedAtCorners, a.Work)}) at the laps' corners were never sprayed: a lap is rounded where it turns tighter than the rig can (the U-turn radius, {r.Rig.Store.Guidance.UTurnRadius:0} m), so at a corner the next lap in pulls away from it"));
 
@@ -252,7 +279,9 @@ public static class Jobs
         else
             sc.Ok(F($"everything sprayed is on the map ({a.SprayedNotAppPainted:0} m² not)"));
         double truthTotal = a.Sprayed + a.OutsideBoundary + a.InObstacles + a.InDriveThrough + a.InHeadland;
-        if (truthTotal > 0 && Math.Abs(a.AppActualCovered - truthTotal) > 0.05 * truthTotal)
+        // Over 20 m² as the map checks: on a job cut at its first U-turn the areas are a few
+        // hundred m², and a second of driving at the stop is 5 % of them (J12, J19, 2026-11-15).
+        if (truthTotal > 0 && Math.Abs(a.AppActualCovered - truthTotal) > 20 && Math.Abs(a.AppActualCovered - truthTotal) > 0.05 * truthTotal)
             flag(Severity.Inconsistency, "APP-AREA-OFF", F($"AgOpenWeb's 'area covered once' is {a.AppActualCovered / 1e4:0.00} ha, the real implement sprayed {truthTotal / 1e4:0.00} ha ({(a.AppActualCovered / truthTotal - 1) * 100:+0.0;-0.0;+0.0} %)."));
         else
             sc.Ok(F($"AgOpenWeb's area covered once ({a.AppActualCovered / 1e4:0.00} ha) matches the truth ({truthTotal / 1e4:0.00} ha)"));
@@ -363,7 +392,7 @@ public static class Jobs
             // cultivated ground, no loop at 8 m radius fits): the refusal is right, and noted.
             if (p.Contains("refused the U-turn", StringComparison.Ordinal))
             {
-                double left = a.Missed - a.MissedBetweenPasses - a.MissedAtEnds - a.MissedAtObstacles - a.MissedAlongBoundary - a.MissedLeftInMiddle - a.MissedAtCorners;
+                double left = a.Missed - a.MissedBetweenPasses - a.MissedAtEnds - a.MissedAtObstacles - a.MissedAlongBoundary - a.MissedLeftInMiddle - a.MissedAtCorners - a.MissedAtLapChange;
                 if (!r.ShortStopped && left <= RefusedWithNothingLeft * a.Work)
                     sc.Note(F($"AgOpenWeb refused a U-turn with the field done ({Pct(left, a.Work)} of the cultivated area left outside the strips between passes, the pass ends and the boundary); the operator took over and the job stopped there: ") + p);
                 // The geometry refused it: the planner tried every start along the pass with both
@@ -385,6 +414,11 @@ public static class Jobs
             else if (p.Contains("ran", StringComparison.Ordinal)) flag(Severity.Safety, "RAN-OFF", p);
         }
     }
+
+    /// <summary>The share of the cultivated area left unsprayed at a "no room" end above which it is
+    /// reported (END-OF-FIELD-FIELD-LEFT): the real end of a field leaves the strips between passes
+    /// and the wedges at the pass ends, 1-2 % (J1, J13).</summary>
+    private const double NoRoomLeftShare = 0.05;
 
     private static string Pct(double part, double whole) => whole <= 0 ? "n/a" : F($"{part / whole * 100:0.0} %");
 
