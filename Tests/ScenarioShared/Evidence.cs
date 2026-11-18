@@ -262,6 +262,9 @@ public sealed class Evidence
         }
     }
 
+    /// <summary>Whether a row of <paramref name="table"/> was written.</summary>
+    public bool HasTable(string table) => _tables.ContainsKey(table);
+
     /// <summary>The tables' files go when the scenario is done with its evidence.</summary>
     public void Close()
     {

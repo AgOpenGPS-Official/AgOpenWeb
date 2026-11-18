@@ -79,10 +79,13 @@ public static class Jobs
 
     public static async Task<JobAreas?> RunAsync(Journal journal, string op, JobSpec spec, string? evidenceFolder = null)
     {
+        // The evidence first: it clears the process's logs and the harness trace, and the
+        // scenario's banner is the trace's first line.
+        var ev = evidenceFolder != null && !Evidence.Off ? new Evidence(evidenceFolder, spec.Code) : null;
         var sc = new Scenario(op, spec.Code, spec.Title, spec.Story);
         JobAreas? areas = null;
         await using var run = new JobRun(spec, sc);
-        if (evidenceFolder != null && !Evidence.Off) run.Ev = new Evidence(evidenceFolder, spec.Code);
+        run.Ev = ev;
         try
         {
             if (await run.SetUpAsync(NewDataRoot(spec.Code)) && await run.DriveAsync())
@@ -129,13 +132,6 @@ public static class Jobs
         notes.Append("\n## Timeline\n\n");
         foreach (var s in sc.Row.Steps) notes.Append(s).Append('\n');
 
-        notes.Append("\n## The harness's own data (attachments/)\n\n")
-             .Append("To check a finding against what the harness measured, the app's dump aside:\n\n")
-             .Append("- `truth_track.csv`: what the harness's machine really did, fix by fix: the real pivot and implement, the module's relays and nozzles, the screen's sections, and AgOpenWeb's tool position and sections for the same cycle (").Append(JobRun.TruthTrackHeader).Append(").\n")
-             .Append("- `truth_grid.bin` with `truth_grid.json`: the harness's 0.2 m grid over the field: where the real implement sprayed, the zones, the cells each area check counted (bit 32 is SPRAYED-IN-HEADLAND, 2 MISSED-STRIPS, ...: see the json), and what AgOpenWeb's screen and mapping swept.\n")
-             .Append("- `harness_trace.txt`: the harness's own trace lines.\n")
-             .Append("- the picture (`.ppm`): green sprayed once, yellow twice, blue/cyan/magenta AgOpenWeb's map where nothing was sprayed, red the cells a Bug check counted; white the path, orange in the U-turns.\n");
-
         // The picture of the job (what was sprayed, the track) and the harness's grids, when the
         // job got as far as driving.
         var files = new List<string>();
@@ -154,6 +150,18 @@ public static class Jobs
             }
         }
         catch (Exception ex) { sc.Note("evidence: no picture or grids of the job (" + ex.Message + ")"); }
+
+        // What the harness itself measured, listed only where the job got far enough to have it.
+        bool drove = files.Count > 0, tracked = ev.HasTable("truth_track");
+        notes.Append("\n## The harness's own data (attachments/)\n\n")
+             .Append("To check a finding against what the harness measured, the app's dump aside:\n\n");
+        if (tracked)
+            notes.Append("- `truth_track.csv`: what the harness's machine really did, fix by fix: the real pivot and implement, the module's relays and nozzles, the screen's sections, and AgOpenWeb's tool position and sections for the same cycle (").Append(JobRun.TruthTrackHeader).Append(").\n");
+        if (drove)
+            notes.Append("- `truth_grid.bin` with `truth_grid.json`: the harness's 0.2 m grid over the field: where the real implement sprayed, the zones, the cells each area check counted (bit 32 is SPRAYED-IN-HEADLAND, 2 MISSED-STRIPS, ...: see the json), and what AgOpenWeb's screen and mapping swept.\n")
+                 .Append("- the picture (`.ppm`): green sprayed once, yellow twice, blue/cyan/magenta AgOpenWeb's map where nothing was sprayed, red the cells a Bug check counted; white the path, orange in the U-turns.\n");
+        notes.Append("- `harness_trace.txt`: the harness's own trace lines.\n");
+        if (!tracked && !drove) notes.Append("- the job stopped before it drove: no track, grid or picture.\n");
 
         string? zip = await ev.SaveAsync(null, notes.ToString(), run.Rig.Services, run.Rig.State, run.Rig.Store, run.Rig.RunAsync, files);
         try { Directory.Delete(tmp, true); } catch { }
