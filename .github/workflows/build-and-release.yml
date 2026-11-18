@@ -62,6 +62,32 @@ jobs:
           echo "ui=$ui" >> "$GITHUB_OUTPUT"
           echo "web client touched: $ui"
 
+  # CLAUDE.md is the maintainers' working context for their Claude Code sessions, loaded into
+  # every one of them: only the maintainers named here change it. A contributor keeps their own
+  # notes in CLAUDE.local.md (ignored by git). See CONTRIBUTING.md.
+  claude-md:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: CLAUDE.md is changed by the maintainers only
+        shell: bash
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          ALLOWED: chriskinal
+        run: |
+          if ! git diff --quiet "$BASE...$HEAD" -- CLAUDE.md; then
+            for a in $ALLOWED; do [ "$AUTHOR" = "$a" ] && { echo "CLAUDE.md changed by $AUTHOR: allowed"; exit 0; }; done
+            echo "::error file=CLAUDE.md::CLAUDE.md is kept by the maintainers. Take its change out of this PR (git checkout $BASE -- CLAUDE.md); keep your own notes in CLAUDE.local.md, which git ignores. See CONTRIBUTING.md."
+            exit 1
+          fi
+          echo "CLAUDE.md not changed"
+
   test:
     runs-on: ubuntu-latest
     steps:
