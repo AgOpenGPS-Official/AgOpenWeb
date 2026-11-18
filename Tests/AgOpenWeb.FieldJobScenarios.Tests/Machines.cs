@@ -77,6 +77,11 @@ public sealed record ToolSpec(
     public double SectionWidthCm => Width * 100.0 / Sections;
     /// <summary>Section <paramref name="s"/>'s width, cm.</summary>
     public double SectionCm(int s) => SectionsCm is { } w && s < w.Length ? w[s] : SectionWidthCm;
+    /// <summary>How far past the headland line spray is not a fault, m: the widest section (a
+    /// section is in the headland only with both ends in it, AgOpenGPS) plus, for an implement
+    /// that works to one side of where AgOpenWeb shows it (<see cref="FieldOffset"/>), that
+    /// distance: AgOpenWeb closes the section it shows, and the real one is that far out.</summary>
+    public double HeadlandAllowance => Enumerable.Range(0, Sections).Max(SectionCm) / 100.0 + Math.Abs(FieldOffset);
     /// <summary>Where section <paramref name="s"/>'s left end is (m from the implement's centre,
     /// + right); <c>Edge(Sections)</c> is the right end of the last.</summary>
     public double Edge(int s)

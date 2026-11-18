@@ -1237,7 +1237,7 @@ public sealed class JobRun : IAsyncDisposable
         double cell = TruthGrid.Cell * TruthGrid.Cell;
         var g = Grid;
         int reach = (int)Math.Ceiling(1.5 * Spacing / TruthGrid.Cell);
-        double widestSection = Enumerable.Range(0, Spec.T.Sections).Max(k => Spec.T.SectionCm(k)) / 100.0;
+        double headlandAllowance = Spec.T.HeadlandAllowance;
         // The seams between neighbouring passes where both ran at full width, by 1 m bin along
         // the line: where the gap between them lies across the passes, and how wide it is.
         var seams = new Dictionary<int, List<(double Mid, double Gap)>>();
@@ -1313,8 +1313,9 @@ public sealed class JobRun : IAsyncDisposable
                 {
                     a.InHeadland += cell;
                     // A section is in the headland only with both ends in it (AgOpenGPS), so where
-                    // a pass meets the line at an angle up to a section's width goes past the line.
-                    if (Work != null && Ring.DistToRing(c, Work) > widestSection + TruthGrid.Cell) a.InHeadlandPastSection += cell;
+                    // a pass meets the line at an angle up to a section's width goes past the line
+                    // (and a reversible plough's offset further: ToolSpec.HeadlandAllowance).
+                    if (Work != null && Ring.DistToRing(c, Work) > headlandAllowance + TruthGrid.Cell) a.InHeadlandPastSection += cell;
                 }
                 if (!app && !g.Near(i, j => Coverage.IsPointCovered(g.Centre(j).E, g.Centre(j).N), 2)) a.SprayedNotAppPainted += cell;
             }
