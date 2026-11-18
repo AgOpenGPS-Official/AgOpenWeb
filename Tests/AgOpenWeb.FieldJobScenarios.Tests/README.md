@@ -47,7 +47,7 @@ its neighbours':
 | The field reported done with ground left (inside the worked passes, or on a side of the field / in passes skipped), or never reported done | `FIELD-LEFT-UNDONE`, `FIELD-NOT-FINISHED` |
 | The operator took over before any U-turn (a turn blocked or missed at the first end): the job never got past its first pass, whatever the coverage checks say about nothing sprayed | `JOB-NEVER-TURNED` |
 | "End of field reached" said, then a U-turn onto another pass after all (the operator drives on) | `END-OF-FIELD-TOO-EARLY` |
-| Sprayed outside the boundary, inside an obstacle, inside the headland further past its line than a section's width (a section is in the headland only with both ends in it, as AgOpenGPS, so where a pass meets the line at an angle up to a section's width lands past it; a reversible plough's offset is added, as AgOpenWeb shows the plough that far from where it works) | `SPRAYED-OUTSIDE-BOUNDARY`, `SPRAYED-IN-OBSTACLE`, `SPRAYED-IN-HEADLAND` |
+| Sprayed outside the boundary, inside an obstacle, inside the headland further past its line than a section's width (a section is in the headland only with both ends in it, as AgOpenGPS, so where a pass meets the line at an angle up to a section's width lands past it; a reversible plough's spray is measured where AgOpenWeb shows the plough, 0.9 m from where it works) | `SPRAYED-OUTSIDE-BOUNDARY`, `SPRAYED-IN-OBSTACLE`, `SPRAYED-IN-HEADLAND` |
 | AgOpenWeb's map painted where no valve was open, or blank where one was | `MAP-SHOWS-UNSPRAYED`, `SPRAYED-NOT-ON-MAP` |
 | AgOpenWeb's area covered once against the truth | `APP-AREA-OFF` |
 | Sprayed twice beyond the overlap asked for | `DOUBLE-SPRAYED` |

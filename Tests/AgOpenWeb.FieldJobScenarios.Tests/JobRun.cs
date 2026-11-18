@@ -1313,9 +1313,12 @@ public sealed class JobRun : IAsyncDisposable
                 {
                     a.InHeadland += cell;
                     // A section is in the headland only with both ends in it (AgOpenGPS), so where
-                    // a pass meets the line at an angle up to a section's width goes past the line
-                    // (and a reversible plough's offset further: ToolSpec.HeadlandAllowance).
-                    if (Work != null && Ring.DistToRing(c, Work) > headlandAllowance + TruthGrid.Cell) a.InHeadlandPastSection += cell;
+                    // a pass meets the line at an angle up to a section's width goes past the line.
+                    // A reversible plough works FieldOffset right of A->B from where AgOpenWeb shows
+                    // it (J19): its spray is judged where AgOpenWeb's plough was, which AgOpenWeb
+                    // closed, so the offset counts on the side it points to only.
+                    var shown = (c.E - Spec.T.FieldOffset * Across.E, c.N - Spec.T.FieldOffset * Across.N);
+                    if (Work != null && !Ring.Inside(shown, Work) && Ring.DistToRing(shown, Work) > headlandAllowance + TruthGrid.Cell) a.InHeadlandPastSection += cell;
                 }
                 if (!app && !g.Near(i, j => Coverage.IsPointCovered(g.Centre(j).E, g.Centre(j).N), 2)) a.SprayedNotAppPainted += cell;
             }

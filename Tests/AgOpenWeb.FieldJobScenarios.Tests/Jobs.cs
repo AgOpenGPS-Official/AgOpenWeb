@@ -306,11 +306,11 @@ public static class Jobs
             // A section is in the headland only with both its ends in it (AgOpenGPS): where a pass
             // meets the headland line at an angle, up to a section's width lands past the line so
             // that nothing inside it is left unsprayed. Only spray further in is a fault. A
-            // reversible plough works FieldOffset to one side of where AgOpenWeb shows it (J19), so
-            // on a pass along the headland line it reaches that much further in.
+            // reversible plough works FieldOffset to one side of where AgOpenWeb shows it (J19): its
+            // spray is measured where AgOpenWeb's plough was (JobRun.Measure).
             double widest = spec.T.HeadlandAllowance;
             string allowed = spec.T.FieldOffset == 0 ? F($"a section's width ({widest:0.00} m)")
-                : F($"a section's width plus the {Math.Abs(spec.T.FieldOffset):0.0} m the implement works to one side of where AgOpenWeb shows it ({widest:0.00} m)");
+                : F($"a section's width ({widest:0.00} m), measured where AgOpenWeb shows the implement ({Math.Abs(spec.T.FieldOffset):0.0} m to one side of where it works)");
             if (a.InHeadlandPastSection > 20)
                 flag(Severity.Bug, "SPRAYED-IN-HEADLAND", F($"{a.InHeadlandPastSection:0} m² of the headland were sprayed further past the headland line than {allowed}, with section control in the headland on (the sections should be off there); {a.InHeadland:0} m² in all."));
             else
