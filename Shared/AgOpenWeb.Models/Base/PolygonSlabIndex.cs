@@ -64,6 +64,10 @@ public sealed class PolygonSlabIndex
     private static int Slab(double easting, double minE, int slabCount) =>
         Math.Clamp((int)((easting - minE) / SlabWidth), 0, slabCount - 1);
 
+    /// <summary>The polygon's edges, for another index of the same polygon (<see cref="PolygonClearGrid"/>).</summary>
+    internal int EdgeCount => _e1.Length;
+    internal (double E1, double N1, double E2, double N2) Edge(int k) => (_e1[k], _n1[k], _e2[k], _n2[k]);
+
     public double MinEasting => _minE;
     public double MaxEasting => _maxE;
     public double MinNorthing => _minN;
