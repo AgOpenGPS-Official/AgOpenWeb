@@ -120,6 +120,17 @@ before counting anything else, and check a new watch reports something on the ho
 - **That a dump is enough to write the unit test from.** The checked run had no findings. Take the
   first nightly finding with a dump, write its test from the dump alone, and note here what was
   missing.
+
+  *First try, 2026-11-18: J19 `SPRAYED-IN-HEADLAND`.* The dump was enough to find the cause
+  without a rerun, and the cause was the harness: AgOpenWeb's own coverage tiles have nothing
+  further than a section's width past the headland line, while the same coverage moved by the
+  plough's 0.9 m (the side it works on, which AgOpenWeb has no setting for) gives 26 m² past it
+  along the west edge pass, against the 22 m² reported. So no unit test: the check now allows for
+  the offset. Missing from the zip: **where the harness's own finding lies.** The real implement's
+  spray (the truth grid) is not saved, so the cells counted had to be worked out again from the app's
+  coverage, the headland line in `field.geojson` and the offset in `user_notes.txt`. Wanted: for a
+  finding about where spray went, the cells it counted (a small picture or a list of cells) in
+  `attachments/`.
 - **Dump replay.** `AgOpenWeb.DumpReplayScenarios.Tests` reads zips from `AGOPENWEB_DUMP_DIR`
   (as private dumps: `AGOPENWEB_REPLAY_PRIVATE=1`, a local run). It should take these; not tried.
 - **Moments in the middle of a job.** The runtime state is the end of the job. Earlier moments are
