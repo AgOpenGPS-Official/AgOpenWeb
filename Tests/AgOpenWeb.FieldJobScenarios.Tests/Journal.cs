@@ -99,6 +99,7 @@ public sealed class Journal
     public static void Trace(string line)
     {
         if (Verbose) Console.WriteLine(line);
+        Evidence.Trace(line);
         if (TracePath == null) return;
         lock (TraceLock) { try { File.AppendAllText(TracePath, line + "\n"); } catch { } }
     }

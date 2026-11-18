@@ -212,6 +212,10 @@ public sealed class JobRun : IAsyncDisposable
     /// <summary>What AgOpenWeb's mapping swept, read after every 100 Hz tick: the sections whose
     /// IsMappingOn is set, at the tool position service's position. The map's painting input.</summary>
     public TruthGrid MapGrid { get; private set; } = null!;
+    /// <summary>Which cells the measure counted in which of its findings' areas (<see cref="Marks"/>
+    /// bits), one byte a cell of <see cref="Grid"/>; set by <see cref="Measure"/>, for the evidence:
+    /// where a finding lies, as the harness counted it.</summary>
+    public byte[]? MeasureMarks { get; private set; }
     private readonly (double E, double N)?[] _prevMapEdge = new (double E, double N)?[65];
     private ISectionControlService? _scs; private IToolPositionService? _tps;
 
@@ -1065,6 +1069,13 @@ public sealed class JobRun : IAsyncDisposable
         return got;
     }
 
+    /// <summary>The columns of <c>attachments/truth_track.csv</c>: per fix, the time (UTC, as the
+    /// GPS log), the job's seconds, the pass and whether in a U-turn as the harness counts them,
+    /// the real pivot, heading and speed, the real implement's centre and heading, the module's
+    /// relays and nozzles (bit s = section s, hex), the screen's sections, then AgOpenWeb's tool
+    /// position, heading and section states for the cycle, and whether the module's link was up.</summary>
+    public const string TruthTrackHeader = "utc,seconds,pass,in_turn,pivot_e,pivot_n,heading_deg,speed_kmh,tool_e,tool_n,tool_heading_deg,relays_hex,nozzles_hex,screen_hex,app_tool_e,app_tool_n,app_tool_heading_deg,app_sections_hex,module_link";
+
     private void Sweep(GpsCycleResult c, ulong prevOpen)
     {
         var tc = Truth.ToolCentre;
@@ -1110,6 +1121,16 @@ public sealed class JobRun : IAsyncDisposable
             }
         }
         for (int s = 0; s <= n; s++) _prevEdge[s] = cur[s];
+        if (Ev != null)
+        {
+            ulong screenBits = 0, appBits = 0;
+            for (int s = 0; s < n && s < 64; s++)
+            {
+                if (s < live.Count && live[s].IsOn) screenBits |= 1UL << s;
+                if (ss != null && s < ss.Length && ss[s]) appBits |= 1UL << s;
+            }
+            Ev.Row("truth_track", TruthTrackHeader, F($"{DateTime.UtcNow:HH:mm:ss.fff},{Seconds:0.0},{(Pass == int.MinValue ? "" : Pass.ToString(System.Globalization.CultureInfo.InvariantCulture))},{(InTurn ? 1 : 0)},{Truth.E:0.000},{Truth.N:0.000},{Truth.Heading * 180 / Math.PI:0.00},{Truth.SpeedKmh:0.00},{tc.E:0.000},{tc.N:0.000},{tc.Heading * 180 / Math.PI:0.00},{open:X},{spray:X},{screenBits:X},{c.ToolEasting:0.000},{c.ToolNorthing:0.000},{c.ToolHeadingRadians * 180 / Math.PI:0.00},{appBits:X},{(link ? 1 : 0)}"));
+        }
         // The same sweep as AgOpenWeb sees it: its tool position and heading, its section states.
         if (ss != null && (c.ToolEasting != 0 || c.ToolNorthing != 0))
         {
@@ -1175,8 +1196,40 @@ public sealed class JobRun : IAsyncDisposable
 
     /// <summary>A picture of the job for a person: the field (dark), the headland (grey), the
     /// cultivated area (lighter), obstacles (red tint); sprayed once (green), twice or more
-    /// (yellow); AgOpenWeb's map where nothing was sprayed (blue: its sections were on there on the screen; cyan: only its 100 Hz mapping was; magenta: neither, the map painted on its own); the pivot's path (white, orange
+    /// (yellow); AgOpenWeb's map where nothing was sprayed (blue: its sections were on there on the screen; cyan: only its 100 Hz mapping was; magenta: neither, the map painted on its own); red: the cells a Bug check counted (a strip between passes, outside the boundary, in an obstacle, past the headland allowance); the pivot's path (white, orange
     /// in the turns). Binary PPM, 1 pixel = 1 cell (0.2 m).</summary>
+    /// <summary>
+    /// The harness's grids for the evidence (<c>attachments/truth_grid.bin</c>, described by
+    /// <c>truth_grid.json</c>): over the same cells (0.2 m, row 0 = south, field plane metres from
+    /// <see cref="TruthGrid.MinE"/>, <see cref="TruthGrid.MinN"/>), one byte a cell, layer after
+    /// layer: how often the real implement sprayed the cell, where the cell lies (zone bits), what
+    /// the measure counted it as (<see cref="Marks"/>), and how often AgOpenWeb's screen sections
+    /// and its 100 Hz mapping swept it at AgOpenWeb's own tool position.
+    /// </summary>
+    public void DumpGrids(string binPath, string jsonPath)
+    {
+        var g = Grid;
+        using (var f = File.Create(binPath))
+        {
+            f.Write(g.Count); f.Write(g.Zone); f.Write(MeasureMarks ?? new byte[g.Count.Length]);
+            f.Write(ScreenGrid.Count); f.Write(MapGrid.Count);
+        }
+        var i = System.Globalization.CultureInfo.InvariantCulture;
+        File.WriteAllText(jsonPath, string.Create(i, $$"""
+            {
+              "cellM": {{TruthGrid.Cell}},
+              "width": {{g.W}},
+              "height": {{g.H}},
+              "minE": {{g.MinE:0.###}},
+              "minN": {{g.MinN:0.###}},
+              "rowOrder": "row 0 is the south edge; cell (x, y) is byte y * width + x of a layer; its centre is minE + (x + 0.5) * cellM, minN + (y + 0.5) * cellM, in the field's plane (metres from field.origin, as the coverage tiles)",
+              "layers": ["truthSprayCount", "zone", "measured", "appScreenSweptCount", "appMappingSweptCount"],
+              "zoneBits": { "1": "inside the outer boundary", "2": "inside the headland line (cultivated)", "4": "in an obstacle", "8": "in a drive-through inner boundary" },
+              "measuredBits": { "1": "never sprayed, in the cultivated area", "2": "of which a strip between passes (MISSED-STRIPS)", "4": "sprayed twice or more (DOUBLE-SPRAYED)", "8": "sprayed outside the boundary", "16": "sprayed in an obstacle", "32": "sprayed in the headland further past its line than allowed (SPRAYED-IN-HEADLAND)", "64": "AgOpenWeb's map painted, nothing sprayed within 0.4 m (MAP-SHOWS-UNSPRAYED)", "128": "sprayed, AgOpenWeb's map blank within 0.4 m (SPRAYED-NOT-ON-MAP)" }
+            }
+            """));
+    }
+
     public void DumpImage(string path)
     {
         var g = Grid;
@@ -1202,6 +1255,7 @@ public sealed class JobRun : IAsyncDisposable
             else if (app && MapGrid.Count[i] == 0) { r = 200; gg = 60; b = 200; }
             else if (app && ScreenGrid.Count[i] == 0) { r = 60; gg = 200; b = 200; }
             else if (app) { r = 60; gg = 90; b = 200; }
+            if (MeasureMarks is { } mk && (mk[i] & (Marks.Strip | Marks.OutsideBoundary | Marks.InObstacle | Marks.HeadlandPast)) != 0) { r = 255; gg = 30; b = 30; }
             Put(x, y, r, gg, b);
         }
         foreach (var t in Track)
@@ -1236,6 +1290,8 @@ public sealed class JobRun : IAsyncDisposable
         var a = new JobAreas();
         double cell = TruthGrid.Cell * TruthGrid.Cell;
         var g = Grid;
+        var marks = new byte[g.Count.Length];
+        MeasureMarks = marks;
         int reach = (int)Math.Ceiling(1.5 * Spacing / TruthGrid.Cell);
         double widestSection = Enumerable.Range(0, Spec.T.Sections).Max(k => Spec.T.SectionCm(k)) / 100.0;
         // The seams between neighbouring passes where both ran at full width, by 1 m bin along
@@ -1280,6 +1336,7 @@ public sealed class JobRun : IAsyncDisposable
                 else
                 {
                     a.Missed += cell;
+                    marks[i] |= Marks.Missed;
                     if (Work != null && Ring.DistToRing(c, Work) < 3) a.MissedAtEnds += cell;
                     // Within 2 m of an obstacle: the sections closing over it and opening again.
                     else if (g.Near(i, j => (g.Zone[j] & (TruthGrid.InObstacle | TruthGrid.InDriveThrough)) != 0, 10)) a.MissedAtObstacles += cell;
@@ -1295,32 +1352,33 @@ public sealed class JobRun : IAsyncDisposable
                     // Between passes only where the pass is one that was driven: with skip rows a pass
                     // left for the way back (or never reached) lies between sprayed passes too, and is
                     // a pass not worked, not a strip or a wedge (W1: 22 % "between passes" in a short run).
-                    else if (PassDriven(c) && SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; if (OnSeam(c)) a.MissedAtSeams += cell; }
+                    else if (PassDriven(c) && SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; if (OnSeam(c)) a.MissedAtSeams += cell; marks[i] |= Marks.Strip; }
                     // The rest: in a pass that was driven (worked along part of its length, as the
                     // first passes of a field whose corner a U-turn cut off), or in no driven pass
                     // (a side of the field, passes skipped).
                     else if (PassDriven(c)) a.MissedInWorkedPasses += cell;
                 }
-                if (t >= 2) a.Twice += cell;
+                if (t >= 2) { a.Twice += cell; marks[i] |= Marks.Twice; }
                 if (app) a.AppPainted += cell;
             }
             if (truth)
             {
-                if ((z & TruthGrid.InOuter) == 0) a.OutsideBoundary += cell;
-                else if ((z & TruthGrid.InObstacle) != 0) a.InObstacles += cell;
+                if ((z & TruthGrid.InOuter) == 0) { a.OutsideBoundary += cell; marks[i] |= Marks.OutsideBoundary; }
+                else if ((z & TruthGrid.InObstacle) != 0) { a.InObstacles += cell; marks[i] |= Marks.InObstacle; }
                 else if ((z & TruthGrid.InDriveThrough) != 0) a.InDriveThrough += cell;
                 else if ((z & TruthGrid.InWork) == 0)
                 {
                     a.InHeadland += cell;
                     // A section is in the headland only with both ends in it (AgOpenGPS), so where
                     // a pass meets the line at an angle up to a section's width goes past the line.
-                    if (Work != null && Ring.DistToRing(c, Work) > widestSection + TruthGrid.Cell) a.InHeadlandPastSection += cell;
+                    if (Work != null && Ring.DistToRing(c, Work) > widestSection + TruthGrid.Cell) { a.InHeadlandPastSection += cell; marks[i] |= Marks.HeadlandPast; }
                 }
-                if (!app && !g.Near(i, j => Coverage.IsPointCovered(g.Centre(j).E, g.Centre(j).N), 2)) a.SprayedNotAppPainted += cell;
+                if (!app && !g.Near(i, j => Coverage.IsPointCovered(g.Centre(j).E, g.Centre(j).N), 2)) { a.SprayedNotAppPainted += cell; marks[i] |= Marks.SprayedNotMap; }
             }
             if (app && !truth && !g.Near(i, j => g.Count[j] > 0, 2))
             {
                 a.AppPaintedNotSprayed += cell;
+                marks[i] |= Marks.MapNotSprayed;
                 if (ScreenGrid.Count[i] > 0 || ScreenGrid.Near(i, j => ScreenGrid.Count[j] > 0, 2)) a.AppPaintedScreenSweptNotSprayed += cell;
             }
             if ((z & TruthGrid.InOuter) != 0)
@@ -1447,3 +1505,10 @@ public sealed class JobRun : IAsyncDisposable
 /// <summary>A stop for want of room on the next pass that a job is expected to make
 /// (<see cref="JobSpec.ExpectedStop"/>): what AgOpenWeb says, and why the stop is right there.</summary>
 public sealed record ExpectedStop(string Says, string Why);
+
+/// <summary>What <see cref="JobRun.Measure"/> counted a cell as (bits of
+/// <see cref="JobRun.MeasureMarks"/>): where each area finding lies, for the evidence.</summary>
+public static class Marks
+{
+    public const byte Missed = 1, Strip = 2, Twice = 4, OutsideBoundary = 8, InObstacle = 16, HeadlandPast = 32, MapNotSprayed = 64, SprayedNotMap = 128;
+}

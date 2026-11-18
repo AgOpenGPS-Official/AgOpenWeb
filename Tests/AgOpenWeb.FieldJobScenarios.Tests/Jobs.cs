@@ -103,7 +103,8 @@ public static class Jobs
         foreach (var p in run.Problems) if (!p.StartsWith("HARNESS", StringComparison.Ordinal)) sc.Note(p);
         sc.Row.Steps.AddRange(run.Said.Select(s => "  app: " + s));
         sc.ModuleSnapshot(run.Module, run.Seconds);
-        await KeepEvidenceAsync(sc, run, op);
+        try { await KeepEvidenceAsync(sc, run, op); }
+        finally { run.Ev?.Close(); }
         journal.Add(sc.Row);
         return areas;
     }
@@ -128,22 +129,34 @@ public static class Jobs
         notes.Append("\n## Timeline\n\n");
         foreach (var s in sc.Row.Steps) notes.Append(s).Append('\n');
 
-        // The picture of the job (what was sprayed, the track), when the job got as far as driving.
+        notes.Append("\n## The harness's own data (attachments/)\n\n")
+             .Append("To check a finding against what the harness measured, the app's dump aside:\n\n")
+             .Append("- `truth_track.csv`: what the harness's machine really did, fix by fix: the real pivot and implement, the module's relays and nozzles, the screen's sections, and AgOpenWeb's tool position and sections for the same cycle (").Append(JobRun.TruthTrackHeader).Append(").\n")
+             .Append("- `truth_grid.bin` with `truth_grid.json`: the harness's 0.2 m grid over the field: where the real implement sprayed, the zones, the cells each area check counted (bit 32 is SPRAYED-IN-HEADLAND, 2 MISSED-STRIPS, ...: see the json), and what AgOpenWeb's screen and mapping swept.\n")
+             .Append("- `harness_trace.txt`: the harness's own trace lines.\n")
+             .Append("- the picture (`.ppm`): green sprayed once, yellow twice, blue/cyan/magenta AgOpenWeb's map where nothing was sprayed, red the cells a Bug check counted; white the path, orange in the U-turns.\n");
+
+        // The picture of the job (what was sprayed, the track) and the harness's grids, when the
+        // job got as far as driving.
         var files = new List<string>();
-        string picture = Path.Combine(Path.GetTempPath(), "agopenweb-field-job", run.Spec.Code + "-" + Guid.NewGuid().ToString("N")[..6] + ".ppm");
+        string tmp = Path.Combine(Path.GetTempPath(), "agopenweb-field-job", run.Spec.Code + "-" + Guid.NewGuid().ToString("N")[..6]);
+        string picture = Path.Combine(tmp, run.Spec.Code + ".ppm");
         try
         {
             if (run.Track.Count > 0)
             {
-                Directory.CreateDirectory(Path.GetDirectoryName(picture)!);
+                Directory.CreateDirectory(tmp);
                 run.DumpImage(picture);
                 files.Add(picture);
+                string bin = Path.Combine(tmp, "truth_grid.bin"), json = Path.Combine(tmp, "truth_grid.json");
+                run.DumpGrids(bin, json);
+                files.Add(bin); files.Add(json);
             }
         }
-        catch (Exception ex) { sc.Note("evidence: no picture of the job (" + ex.Message + ")"); }
+        catch (Exception ex) { sc.Note("evidence: no picture or grids of the job (" + ex.Message + ")"); }
 
         string? zip = await ev.SaveAsync(null, notes.ToString(), run.Rig.Services, run.Rig.State, run.Rig.Store, run.Rig.RunAsync, files);
-        try { File.Delete(picture); } catch { }
+        try { Directory.Delete(tmp, true); } catch { }
         if (zip != null) sc.Note("evidence (the app's bug report dump at the end of the job): `evidence/" + Path.GetFileName(zip) + "`");
         foreach (var e in ev.Errors) sc.Note("evidence not kept: " + e);
     }

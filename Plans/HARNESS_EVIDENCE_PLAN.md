@@ -71,7 +71,13 @@ field and the job still open (`Jobs.KeepEvidenceAsync`):
     the harness takes the new rows every 2000 fixes (`Evidence.PullGpsLog`, from `JobRun.SendFix`).
   - `log_whole_scenario.txt`: the whole job's log (`Evidence.LogProvider`, UTC as the GPS log).
   - `turns.json`: every U-turn as planned (the path, the pass before, where the tractor was).
-  - the picture of the job (`.ppm`).
+  - the picture of the job (`.ppm`); red marks the cells a Bug check counted.
+  - **The harness's own data**, for a finding that proves to be the harness's doing (added after
+    J19 on 2026-11-18, whose finding could only be placed by working it out again):
+    `truth_track.csv` (the real machine, the module's relays and nozzles, the screen's and
+    AgOpenWeb's sections and tool, fix by fix; `Evidence.Row`), `truth_grid.bin` + `.json` (the
+    harness's 0.2 m grid: real spray, zones, the cells each area check counted, AgOpenWeb's screen
+    and mapping sweeps) and `harness_trace.txt` (`Evidence.Trace`, from `Journal.Trace`).
 - **`user_notes.txt`**: the findings, what was measured, the checks and the timeline.
 
 `AGOPENWEB_SCENARIO_EVIDENCE=all` keeps evidence for every job, `0` for none. The nightly keeps

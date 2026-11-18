@@ -123,8 +123,19 @@ taken at the end of the job with the field and the job still open: settings, con
 runtime state, the log, the field's files, the job's coverage tiles and the last 5 minutes of the
 GPS log. The harness adds, under `attachments/`, the GPS log of the whole job
 (`gps_data_log_whole_scenario.csv`) and its log (`log_whole_scenario.txt`), every U-turn's path as the app planned it with where the
-tractor was (`turns.json`) and the picture of the job (`.ppm`); `user_notes.txt` has the findings,
+tractor was (`turns.json`) and the picture of the job (`.ppm`, the cells a Bug check counted in red); `user_notes.txt` has the findings,
 what was measured and the timeline.
+
+It also holds what the harness itself measured, so that a finding which turns out to be the
+harness's doing can be checked from the zip as well, without a rerun:
+- `truth_track.csv`: the harness's machine fix by fix: the real pivot and implement, the module's
+  relays and nozzles, the screen's sections, and AgOpenWeb's tool position and sections for the
+  same cycle (`JobRun.TruthTrackHeader`).
+- `truth_grid.bin` and `truth_grid.json`: the 0.2 m grid the findings are measured on, one byte a
+  cell per layer: where the real implement sprayed, the zones, the cells each area check counted
+  (`Marks`: `SPRAYED-IN-HEADLAND`, `MISSED-STRIPS`, ...), and what AgOpenWeb's screen and mapping
+  swept. The json says the layout and the bits.
+- `harness_trace.txt`: the harness's own trace lines (`Journal.Trace`).
 
 The fix is made from that dump and proven by a unit test built from it (the field, the track, the
 turn's path, the fixes around the moment), failing on develop and passing on the fix. The harness
