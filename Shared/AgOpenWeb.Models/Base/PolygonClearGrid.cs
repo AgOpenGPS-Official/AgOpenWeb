@@ -3,7 +3,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
-using System.Collections.Generic;
 
 namespace AgOpenWeb.Models.Base;
 
@@ -32,11 +31,12 @@ public sealed class PolygonClearGrid
         _minE = minE; _minN = minN; _cols = cols; _rows = rows; _clear = clear;
     }
 
-    /// <summary>The grid of a polygon, or null when it has fewer than three points or is too large.</summary>
-    public static PolygonClearGrid? Build<T>(IReadOnlyList<T> polygon, PolygonSlabIndex? slabs) where T : IPlanarPoint
+    /// <summary>The grid of the polygon <paramref name="slabs"/> was built from (its edges and its
+    /// point-in-polygon test, so the two are always one polygon's), or null when there is no index
+    /// (fewer than three points) or the polygon is too large.</summary>
+    public static PolygonClearGrid? Build(PolygonSlabIndex? slabs)
     {
-        int n = polygon.Count;
-        if (n < 3 || slabs == null) return null;
+        if (slabs == null) return null;
 
         double minE = slabs.MinEasting, minN = slabs.MinNorthing;
         double spanE = slabs.MaxEasting - minE, spanN = slabs.MaxNorthing - minN;
@@ -45,10 +45,11 @@ public sealed class PolygonClearGrid
 
         // The cells each edge runs through.
         var edge = new bool[cols * rows];
-        for (int i = 0, j = n - 1; i < n; j = i++)
+        for (int k = 0; k < slabs.EdgeCount; k++)
         {
-            double x0 = (polygon[j].Easting - minE) / CellSize, y0 = (polygon[j].Northing - minN) / CellSize;
-            double x1 = (polygon[i].Easting - minE) / CellSize, y1 = (polygon[i].Northing - minN) / CellSize;
+            var (e1, n1, e2, n2) = slabs.Edge(k);
+            double x0 = (e1 - minE) / CellSize, y0 = (n1 - minN) / CellSize;
+            double x1 = (e2 - minE) / CellSize, y1 = (n2 - minN) / CellSize;
             if (x0 > x1) (x0, y0, x1, y1) = (x1, y1, x0, y0);
             int c0 = Math.Clamp((int)x0, 0, cols - 1), c1 = Math.Clamp((int)x1, 0, cols - 1);
             for (int c = c0; c <= c1; c++)

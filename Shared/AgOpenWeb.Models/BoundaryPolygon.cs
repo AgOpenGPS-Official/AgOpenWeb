@@ -117,7 +117,7 @@ public class BoundaryPolygon
             Source = points,
             Count = points.Count,
             Slabs = slabs,
-            Clear = PolygonClearGrid.Build(points, slabs),
+            Clear = PolygonClearGrid.Build(slabs),
             MinEasting = minE, MaxEasting = maxE, MinNorthing = minN, MaxNorthing = maxN,
             Grid = grid, GridOffsetE = offsetE, GridOffsetN = offsetN,
         };

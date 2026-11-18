@@ -47,11 +47,7 @@ public class PolygonClearGridTests
     {
         double best = double.MaxValue;
         for (int i = 0, j = poly.Count - 1; i < poly.Count; j = i++)
-        {
-            double ax = poly[j].Easting, ay = poly[j].Northing, bx = poly[i].Easting - ax, by = poly[i].Northing - ay;
-            double t = Math.Clamp(((e - ax) * bx + (n - ay) * by) / (bx * bx + by * by), 0, 1);
-            best = Math.Min(best, Math.Sqrt(Math.Pow(e - ax - t * bx, 2) + Math.Pow(n - ay - t * by, 2)));
-        }
+            best = Math.Min(best, GeometryMath.PointToSegmentDistance(e, n, poly[j].Easting, poly[j].Northing, poly[i].Easting, poly[i].Northing));
         return best;
     }
 
@@ -59,7 +55,7 @@ public class PolygonClearGridTests
     public void Clear_inside_only_where_the_outline_is_further_than_the_reach(List<Vec2> poly)
     {
         var slabs = PolygonSlabIndex.Build(poly)!;
-        var grid = PolygonClearGrid.Build(poly, slabs)!;
+        var grid = PolygonClearGrid.Build(slabs)!;
         var rng = new Random(20261118);
         int clear = 0, deepInside = 0, deepInsideClear = 0;
         for (int k = 0; k < 40000; k++)
@@ -98,8 +94,8 @@ public class PolygonClearGridTests
         var huge = Points((0, 0), (50_000, 0), (50_000, 50_000), (0, 50_000));
         Assert.Multiple(() =>
         {
-            Assert.That(PolygonClearGrid.Build(two, PolygonSlabIndex.Build(two)), Is.Null);
-            Assert.That(PolygonClearGrid.Build(huge, PolygonSlabIndex.Build(huge)), Is.Null);
+            Assert.That(PolygonClearGrid.Build(PolygonSlabIndex.Build(two)), Is.Null);
+            Assert.That(PolygonClearGrid.Build(PolygonSlabIndex.Build(huge)), Is.Null);
         });
     }
 
