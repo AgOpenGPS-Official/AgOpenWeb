@@ -90,7 +90,8 @@ public partial class MainViewModel
     /// The browser that held control is gone (released, disconnected, or the deadman ran
     /// out). Nothing may keep actuating with no screen and no Stop button: AutoSteer off,
     /// Free Drive off (it steers to its angle at a made-up speed), sections off (a section
-    /// switched On by hand too: the master does not reach it), and the steer wizard closed.
+    /// switched On or Auto by its own button too: the master does not reach it), and the steer
+    /// wizard closed.
     /// Closing the wizard stops a motor test that would otherwise go on turning the wheels lock
     /// to lock; a wizard left open
     /// would also keep AutoSteer locked out (#154) with nothing on the reloaded page to
@@ -109,8 +110,14 @@ public partial class MainViewModel
             ToggleManualModeCommand.Execute(null);
         if (IsSectionMasterOn && ToggleSectionMasterCommand?.CanExecute(null) == true)
             ToggleSectionMasterCommand.Execute(null);
-        for (int i = 0; i < _sectionControlService.NumSections; i++)
-            if (_sectionControlService.SectionStates[i].ButtonState == Services.Interfaces.SectionButtonState.On)
+        // Every section whose own button is not Off, whatever the masters say: one section put in
+        // Auto by its own button with neither master on works by itself (SectionControlService runs
+        // each section by its button), and went on working with nobody at the screen. Every state
+        // the service holds, not only the count configured now: one beyond it keeps its button and
+        // comes back with it when the count goes up again.
+        var sectionStates = _sectionControlService.SectionStates;
+        for (int i = 0; i < sectionStates.Count; i++)
+            if (sectionStates[i].ButtonState != Services.Interfaces.SectionButtonState.Off)
             {
                 _sectionControlService.SetSectionState(i, Services.Interfaces.SectionButtonState.Off);
                 sections = true;
