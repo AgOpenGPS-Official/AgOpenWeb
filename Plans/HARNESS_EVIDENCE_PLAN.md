@@ -77,7 +77,10 @@ field and the job still open (`Jobs.KeepEvidenceAsync`):
     `truth_track.csv` (the real machine, the module's relays and nozzles, the screen's and
     AgOpenWeb's sections and tool, fix by fix; `Evidence.Row`), `truth_grid.bin` + `.json` (the
     harness's 0.2 m grid: real spray, zones, the cells each area check counted, AgOpenWeb's screen
-    and mapping sweeps) and `harness_trace.txt` (`Evidence.Trace`, from `Journal.Trace`).
+    and mapping sweeps), `pass_bins.csv` + `pass_gaps.csv` (each pass's 1 m bins as the strip
+    check sees them, and every gap it read between neighbouring passes; added after P6 on
+    2026-11-19, whose bins had to be built again from the truth track) and `harness_trace.txt`
+    (`Evidence.Trace`, from `Journal.Trace`).
 - **`user_notes.txt`**: the findings, what was measured, the checks and the timeline.
 
 `AGOPENWEB_SCENARIO_EVIDENCE=all` keeps evidence for every job, `0` for none. The nightly keeps

@@ -135,6 +135,11 @@ harness's doing can be checked from the zip as well, without a rerun:
   cell per layer: where the real implement sprayed, the zones, the cells each area check counted
   (`Marks`: `SPRAYED-IN-HEADLAND`, `MISSED-STRIPS`, ...), and what AgOpenWeb's screen and mapping
   swept. The json says the layout and the bits.
+- `pass_bins.csv`: each pass as the strip check sees it, in 1 m bins along the job's frame: the
+  sprayed width's edges across it, where the tool was on average and its way, the fixes, and
+  whether the bin counts as settling or bending (`JobRun.PassBinsHeader`).
+- `pass_gaps.csv`: every gap the strip check read between neighbouring passes, + a gap and - an
+  overlap, and what it counted as (`settling`, `bend`, `along`; `JobRun.PassGapsHeader`).
 - `harness_trace.txt`: the harness's own trace lines (`Journal.Trace`).
 
 The fix is made from that dump and proven by a unit test built from it (the field, the track, the

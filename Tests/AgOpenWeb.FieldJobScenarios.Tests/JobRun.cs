@@ -1253,6 +1253,53 @@ public sealed class JobRun : IAsyncDisposable
             """));
     }
 
+    /// <summary>Every gap the last <see cref="Measure"/> read between neighbouring passes (+ a gap,
+    /// - an overlap), and what it counted as: <c>settling</c> (where a pass starts after a turn),
+    /// <c>bend</c> (where a pass bends sharply) or <c>along</c> (the widest is MISSED-STRIPS').</summary>
+    public readonly List<(int P1, int P2, int Bin1, int Bin2, double Gap, double E, double N, string Kind)> MeasuredGaps = new();
+
+    /// <summary>The harness's passes for the evidence: <c>pass_bins.csv</c>, each pass's 1 m bins
+    /// along the frame (v) with the implement's sprayed edges across it (u), where the tool was
+    /// on average and its way, the fixes counted and whether the bin is settling or bending; and
+    /// <c>pass_gaps.csv</c>, the gaps <see cref="Measure"/> read between neighbouring passes from
+    /// them (<see cref="MeasuredGaps"/>). A finding on strips or overlaps is checked against these
+    /// without rebuilding the bins from the truth track.</summary>
+    public void DumpPassBins(string binsPath, string gapsPath)
+    {
+        var i = System.Globalization.CultureInfo.InvariantCulture;
+        var sb = new System.Text.StringBuilder(PassBinsHeader).Append('\n');
+        foreach (var (pass, bins) in _passEdges.OrderBy(p => p.Key))
+        {
+            _passBinAt.TryGetValue(pass, out var at);
+            foreach (var (bin, x) in bins)
+            {
+                var w = at != null && at.TryGetValue(bin, out var o) ? o : default;
+                string place = w.K > 0
+                    ? string.Create(i, $"{w.E / w.K:0.000},{w.N / w.K:0.000},{Math.Atan2(w.He, w.Hn) * 180 / Math.PI:0.00}")
+                    : ",,";
+                sb.Append(string.Create(i, $"{pass},{bin},{x.L:0.000},{x.R:0.000},{place},{w.K},{(Settling(pass, bin) ? 1 : 0)},{(Bending(pass, bin) ? 1 : 0)}")).Append('\n');
+            }
+        }
+        File.WriteAllText(binsPath, sb.ToString());
+        sb.Clear().Append(PassGapsHeader).Append('\n');
+        foreach (var g in MeasuredGaps)
+            sb.Append(string.Create(i, $"{g.P1},{g.P2},{g.Bin1},{g.Bin2},{g.Gap:0.000},{g.E:0.000},{g.N:0.000},{g.Kind}")).Append('\n');
+        File.WriteAllText(gapsPath, sb.ToString());
+    }
+
+    /// <summary>The columns of <c>pass_bins.csv</c> (<see cref="DumpPassBins"/>).</summary>
+    public const string PassBinsHeader = "pass,bin,u_left,u_right,tool_e,tool_n,tool_heading_deg,fixes,settling,bending";
+    /// <summary>The columns of <c>pass_gaps.csv</c> (<see cref="DumpPassBins"/>).</summary>
+    public const string PassGapsHeader = "pass,next_pass,bin,next_bin,gap_m,e,n,counted_as";
+
+    /// <summary>What u and v are on this job's frame, for the evidence's notes.</summary>
+    public string FrameWords => Frame switch
+    {
+        StraightFrame => "the AB line: u across it from A (+ right of A→B), v along it from A",
+        CircleFrame => "the pivot's circle: u in from the reference circle towards the centre, v the arc from north, clockwise",
+        _ => "the reference curve (a lap's is the boundary): u the distance across from its nearest point (+ right of its direction), v the arc length there",
+    };
+
     public void DumpImage(string path)
     {
         var g = Grid;
@@ -1464,23 +1511,29 @@ public sealed class JobRun : IAsyncDisposable
         // Strips between neighbouring passes, from the real implement's ends (gap +, overlap -):
         // a gap where a pass starts (the implement settling after the turn) or where a pass bends
         // sharply is noted apart; the rest is the widest strip along the passes.
+        MeasuredGaps.Clear();
         void Gap(double gap, int p1, int p2, int bin, int bin2, (double E, double N) at)
         {
             string where = F($"between passes {p1} and {p2}, {bin} m along the line from A, at ({at.E:0},{at.N:0})");
             a.LargestOverlapM = Math.Max(a.LargestOverlapM, -gap);
+            string kind;
             if (Settling(p1, bin) || Settling(p2, bin2))
             {
+                kind = "settling";
                 if (gap > a.LargestSettlingStripM) { a.LargestSettlingStripM = gap; a.LargestSettlingWhere = where; }
             }
             else if (Bending(p1, bin) || Bending(p2, bin2))
             {
+                kind = "bend";
                 if (gap > a.LargestBendStripM) { a.LargestBendStripM = gap; a.LargestBendWhere = where; }
             }
             else
             {
+                kind = "along";
                 if (gap > a.LargestMissedStripM) a.LargestStripWhere = where;
                 a.LargestMissedStripM = Math.Max(a.LargestMissedStripM, gap);
             }
+            MeasuredGaps.Add((p1, p2, bin, bin2, gap, at.E, at.N, kind));
         }
         var passes = _passEdges.OrderBy(p => p.Value.Values.Average(x => (x.L + x.R) / 2)).ToList();
         if (Frame is not StraightFrame)

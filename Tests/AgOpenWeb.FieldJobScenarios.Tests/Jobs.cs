@@ -147,6 +147,9 @@ public static class Jobs
                 string bin = Path.Combine(tmp, "truth_grid.bin"), json = Path.Combine(tmp, "truth_grid.json");
                 run.DumpGrids(bin, json);
                 files.Add(bin); files.Add(json);
+                string bins = Path.Combine(tmp, "pass_bins.csv"), gaps = Path.Combine(tmp, "pass_gaps.csv");
+                run.DumpPassBins(bins, gaps);
+                files.Add(bins); files.Add(gaps);
             }
         }
         catch (Exception ex) { sc.Note("evidence: no picture or grids of the job (" + ex.Message + ")"); }
@@ -159,6 +162,8 @@ public static class Jobs
             notes.Append("- `truth_track.csv`: what the harness's machine really did, fix by fix: the real pivot and implement, the module's relays and nozzles, the screen's sections, and AgOpenWeb's tool position and sections for the same cycle (").Append(JobRun.TruthTrackHeader).Append(").\n");
         if (drove)
             notes.Append("- `truth_grid.bin` with `truth_grid.json`: the harness's 0.2 m grid over the field: where the real implement sprayed, the zones, the cells each area check counted (bit 32 is SPRAYED-IN-HEADLAND, 2 MISSED-STRIPS, ...: see the json), and what AgOpenWeb's screen and mapping swept.\n")
+                 .Append("- `pass_bins.csv`: each pass as the harness recorded it, in 1 m bins along its frame (").Append(run.FrameWords).Append("): the sprayed width's edges in u, where the tool was on average and its way, the fixes, and whether the bin counts as settling after a turn or bending (").Append(JobRun.PassBinsHeader).Append(").\n")
+                 .Append("- `pass_gaps.csv`: every gap the strip check read between neighbouring passes (+ a gap, - an overlap), where, and what it counted as: `settling`, `bend`, or `along` (the widest of these is MISSED-STRIPS'; the widest overlap of all, DOUBLE-SPRAYED's) (").Append(JobRun.PassGapsHeader).Append(").\n")
                  .Append("- the picture (`.ppm`): green sprayed once, yellow twice, blue/cyan/magenta AgOpenWeb's map where nothing was sprayed, red the cells a Bug check counted; white the path, orange in the U-turns.\n");
         notes.Append("- `harness_trace.txt`: the harness's own trace lines.\n");
         if (!tracked && !drove) notes.Append("- the job stopped before it drove: no track, grid or picture.\n");
