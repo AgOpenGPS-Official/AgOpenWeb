@@ -1428,7 +1428,8 @@ public sealed class JobRun : IAsyncDisposable
         // spray ends at the half width, so the band between is neither sprayed nor left, and
         // where sprayed ground lies across from it, it was counted as a strip between passes: the
         // edge of the left ground, not a strip (P6: 38 of 57 m² "strips" were that edge, one cell
-        // wide). A strip cell within 0.4 m (two cells) of left ground is that ground's.
+        // wide). A strip cell within two cells of left ground (0.4 m, 0.57 m on the diagonal) is
+        // that ground's.
         {
             var queue = new Queue<(int I, int D)>();
             for (int i = 0; i < left.Length; i++)
