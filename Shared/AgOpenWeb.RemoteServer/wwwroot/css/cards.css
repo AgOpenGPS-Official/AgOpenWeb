@@ -100,14 +100,33 @@
 .web-card .web-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .web-pick { max-width: 220px; height: 22px; font-size: 12px; background: var(--bg-sunken); color: var(--text-2);
   border: 1px solid var(--border); border-radius: 4px; }
+/* VT and web card headers: buttons a finger hits in a moving cab. Each button is 48 px wide and
+   as tall as the header (40 px, from about 30); its icon sits on a chip inside it, and the whole
+   cell, corners too, takes the tap, so there is no dead gap between buttons. ✕ stands a little
+   apart. The page picker is as tall as the chips. The header (and the web card's hint line) is as
+   wide as the card's page and never widens the card; on a card too narrow for both (a phone) the
+   buttons go to a second row. */
+.vt-card .chart-hdr, .web-card .chart-hdr { width: 0; min-width: 100%; min-height: 40px; box-sizing: border-box;
+  padding: 0 0 0 8px; flex-wrap: wrap; column-gap: 8px; }
+.vt-card .vt-title, .web-card .web-title { flex: 1 1 96px; min-height: 40px; }
+.vt-card .vt-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chart-hdr .card-btns { display: flex; flex: none; height: 40px; margin-left: auto; }
+.chart-hdr .card-btns button { position: relative; isolation: isolate; width: 48px; height: 40px; padding: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 20px; line-height: 1; color: var(--text-2); }
+.chart-hdr .card-btns button::before { content: ''; position: absolute; inset: 4px; z-index: -1; border-radius: 6px;
+  background: rgba(var(--ov),0.07); }
+.chart-hdr .card-btns button:active { color: var(--text); }
+.chart-hdr .card-btns button:active::before { background: rgba(var(--ov),0.22); }
+.chart-hdr .card-btns .chart-x { margin-left: 8px; }
+.chart-hdr .vt-ws, .chart-hdr .web-pick { flex: 0 1 auto; min-width: 64px; height: 32px; font-size: 14px; border-radius: 6px; }
 .web-body { position: relative; width: min(var(--ww), calc(100 * var(--vw) - 120px));
   height: min(var(--wh), calc(100 * var(--vh) - 140px)); background: var(--bg-sunken); }
 .web-body iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
 .web-cover { position: absolute; inset: 0; display: none; cursor: not-allowed; }
 /* Sites that refuse to be framed (X-Frame-Options, frame-ancestors) leave the frame blank and
    no browser says so to the page holding it, so a chosen page always carries this line. */
-.web-hint { padding: 3px 8px; font: 500 11px system-ui, sans-serif; color: var(--text-dim); background: var(--bg-raised);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.web-hint { width: 0; min-width: 100%; box-sizing: border-box; padding: 3px 8px; font: 500 11px system-ui, sans-serif;
+  color: var(--text-dim); background: var(--bg-raised); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .web-hint[hidden] { display: none; }
 .web-cover.show { display: block; }
 .web-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
