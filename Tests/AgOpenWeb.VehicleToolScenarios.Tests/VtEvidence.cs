@@ -25,7 +25,6 @@ public sealed class VtEvidence
     private readonly Journal _journal;
     private readonly string _scenario, _title;
     private readonly List<string> _actions = new();
-    private bool _kept;
 
     /// <summary>Made before the backend starts: the app's log and the GPS recorder are the
     /// process's, and are cleared here for this scenario.</summary>
@@ -39,6 +38,15 @@ public sealed class VtEvidence
 
     /// <summary>Every command the rig is sent from now on goes into <c>commands.txt</c>.</summary>
     public void Attach(VehicleToolRig rig) => rig.OnAction = Log;
+
+    /// <summary>Before the backend is started again on the same data folder: the app's own log
+    /// (the dump's <c>logs.txt</c>) starts empty, as after a real restart; the whole scenario's
+    /// log goes on.</summary>
+    public void Restarting()
+    {
+        if (!Evidence.Off) AgOpenWeb.Services.Logging.LogStore.Instance.Clear();
+        Log("# AgOpenWeb restarted on the same data folder");
+    }
 
     public void Log(string line)
     {
@@ -61,7 +69,7 @@ public sealed class VtEvidence
     {
         if (Evidence.Off) return;
         var wanted = _journal.Findings.Where(kv => !_journal.EvidenceFor.ContainsKey(kv.Key)).ToList();
-        if (wanted.Count == 0 && !(end && Evidence.All && !_kept)) return;
+        if (wanted.Count == 0 && !(end && Evidence.All)) return;
         if (rig == null)
         {
             foreach (var (key, _) in wanted) _journal.EvidenceFor[key] = "not kept (the backend was not running)";
@@ -102,7 +110,6 @@ public sealed class VtEvidence
         catch (Exception ex) { notes.Append("- (commands.txt not written: ").Append(ex.Message).Append(")\n"); }
         string? zip = await Ev.SaveAsync(moment, notes.ToString(), rig.Services, rig.State, rig.Store, rig.RunAsync, files);
         try { Directory.Delete(tmp, true); } catch { }
-        _kept = true;
         string shown = zip != null ? "`evidence/" + Path.GetFileName(zip) + "`"
             : "not kept (" + (Ev.Errors.Count > 0 ? Ev.Errors[^1] : "no reason given") + ")";
         foreach (var (key, _) in wanted) _journal.EvidenceFor[key] = shown;

@@ -1,8 +1,8 @@
 # Scenario harnesses: fix from evidence, not from reruns
 
 **Status:** in progress, 2026-11-19. The rule is in force. Evidence capture is built for the job
-harnesses (PR #873) and shown on real findings (J19, P6); field scenarios are wired next
-(section 3); the other harnesses are not wired yet.
+harnesses (PR #873) and shown on real findings (J19, P6), and for field scenarios (#893) and
+Vehicle & Tool (section 3); the other harnesses are not wired yet.
 
 ## 1. Why this plan
 
@@ -173,8 +173,7 @@ In this order. Each harness: link `Evidence.cs`, add the two log providers to it
 
 1. **Prove the format on a real finding**: done (J19 on 2026-11-18 and P6 on 2026-11-19 were
    settled from their zips; P6 added the passes' bins, #892).
-2. **Field scenarios** (built, see section 3), then **Vehicle & Tool** (operators and sweep):
-   guidance and U-turns, the same kind of finding as the jobs.
+2. **Field scenarios** and **Vehicle & Tool** (operators and sweep): built, see section 3.
 3. **Steer wizard, machine module, ISOBUS, GPS and NTRIP**: real time, short scenarios, so one
    dump at the end of a scenario with a finding is close to the moment. Add what each emulated
    module saw (its PGN log; the caster's and the receiver's for GPS and NTRIP).

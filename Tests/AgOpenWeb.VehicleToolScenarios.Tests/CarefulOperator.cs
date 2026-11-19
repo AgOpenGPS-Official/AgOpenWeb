@@ -100,68 +100,90 @@ public static class CarefulOperator
         {
             await using (var rig = await VehicleToolRig.StartAsync(dir))
             {
-                ev.Attach(rig);
-                ev.Log("# every tool, then every vehicle: New, Load, type its measurements, Save Profile");
-                // Tools first, on the default vehicle (a tractor: a harvester would force every tool to front).
-                foreach (var t in tools)
+                try
                 {
-                    await rig.SendAsync("profile.new", "tool\t" + t.Name);
-                    await rig.SendAsync("profile.load", rig.Store.ActiveVehicleProfileName + "\t" + t.Name);
-                    foreach (var kv in t.Settings()) await rig.SendAsync("config.set", kv);
-                    await rig.SendAsync("profile.save");
+                    ev.Attach(rig);
+                    ev.Log("# every tool, then every vehicle: New, Load, type its measurements, Save Profile");
+                    // Tools first, on the default vehicle (a tractor: a harvester would force every tool to front).
+                    foreach (var t in tools)
+                    {
+                        await rig.SendAsync("profile.new", "tool\t" + t.Name);
+                        await rig.SendAsync("profile.load", rig.Store.ActiveVehicleProfileName + "\t" + t.Name);
+                        foreach (var kv in t.Settings()) await rig.SendAsync("config.set", kv);
+                        await rig.SendAsync("profile.save");
+                    }
+                    foreach (var v in vehicles)
+                    {
+                        await rig.SendAsync("profile.new", "vehicle\t" + v.Name);
+                        await rig.SendAsync("profile.load", v.Name + "\t" + rig.Store.ActiveToolProfileName);
+                        foreach (var kv in v.Settings(systems[v])) await rig.SendAsync("config.set", kv);
+                        await rig.SendAsync("profile.save");
+                        // The tractor's 3-point and front hitch are the vehicle's (#547): a tool's settings
+                        // type them for its drive, but one vehicle profile holds one of each. What this
+                        // vehicle was saved with is what must come back.
+                        foreach (var key in TractorHitchKeys)
+                            savedHitch[(v.Name, key)] = await rig.ReadAsync(() => Readback.Get(rig.Store, key));
+                    }
+                    var veh = await rig.ReadAsync(() => rig.Config.GetAvailableProfiles().ToList());
+                    var tls = await rig.ReadAsync(() => rig.Config.GetAvailableToolProfiles().ToList());
+                    foreach (var v in vehicles)
+                        if (!veh.Contains(v.Name)) Drive.Add(row, journal, new Finding("PROFILE-MISSING", Severity.Bug, "vehicle profile '" + v.Name + "' is not in the list after New and Save"));
+                    foreach (var t in tools)
+                        if (!tls.Contains(t.Name)) Drive.Add(row, journal, new Finding("PROFILE-MISSING", Severity.Bug, "tool profile '" + t.Name + "' is not in the list after New and Save"));
+                    row.Said.Add(Drive.F($"{veh.Count} vehicle and {tls.Count} tool profiles listed"));
+                    await ev.KeepIfNewAsync(rig, "saved", "after every profile was saved, before the restart");
                 }
-                foreach (var v in vehicles)
+                catch (Exception ex)
                 {
-                    await rig.SendAsync("profile.new", "vehicle\t" + v.Name);
-                    await rig.SendAsync("profile.load", v.Name + "\t" + rig.Store.ActiveToolProfileName);
-                    foreach (var kv in v.Settings(systems[v])) await rig.SendAsync("config.set", kv);
-                    await rig.SendAsync("profile.save");
-                    // The tractor's 3-point and front hitch are the vehicle's (#547): a tool's settings
-                    // type them for its drive, but one vehicle profile holds one of each. What this
-                    // vehicle was saved with is what must come back.
-                    foreach (var key in TractorHitchKeys)
-                        savedHitch[(v.Name, key)] = await rig.ReadAsync(() => Readback.Get(rig.Store, key));
+                    Drive.Add(row, journal, new Finding("HARNESS", Severity.Bug, "the profile round trip threw " + ex.GetType().Name + ": " + ex.Message));
+                    // While its backend still runs: the dump is the state it threw in.
+                    await ev.KeepIfNewAsync(rig, "threw", "right after the checks threw, the backend still running");
+                    return;   // the checks after it build on what threw
                 }
-                var veh = await rig.ReadAsync(() => rig.Config.GetAvailableProfiles().ToList());
-                var tls = await rig.ReadAsync(() => rig.Config.GetAvailableToolProfiles().ToList());
-                foreach (var v in vehicles)
-                    if (!veh.Contains(v.Name)) Drive.Add(row, journal, new Finding("PROFILE-MISSING", Severity.Bug, "vehicle profile '" + v.Name + "' is not in the list after New and Save"));
-                foreach (var t in tools)
-                    if (!tls.Contains(t.Name)) Drive.Add(row, journal, new Finding("PROFILE-MISSING", Severity.Bug, "tool profile '" + t.Name + "' is not in the list after New and Save"));
-                row.Said.Add(Drive.F($"{veh.Count} vehicle and {tls.Count} tool profiles listed"));
-                await ev.KeepIfNewAsync(rig, "saved", "after every profile was saved, before the restart");
             }
 
+            ev.Restarting();
             await using (var rig = await VehicleToolRig.StartAsync(dir))
             {
-                ev.Attach(rig);
-                ev.Log("# AgOpenWeb restarted on the same data folder; each vehicle loaded with its implement");
-                string active = rig.Store.ActiveVehicleProfileName + " / " + rig.Store.ActiveToolProfileName;
-                string wantActive = Machines.Combine.Name + " / " + tools[^1].Name;
-                if (!string.Equals(active, wantActive, StringComparison.Ordinal))
-                    Drive.Add(row, journal, new Finding("PROFILE-ACTIVE-AFTER-RESTART", Severity.Bug, "after a restart the active pair is " + active + ", not the last one saved, " + wantActive));
-                int compared = 0;
-                foreach (var (v, t, _, _) in Machines.CarefulMatrix.DistinctBy(m => (m.V, m.T)))
+                try
                 {
-                    await rig.SendAsync("profile.load", v.Name + "\t" + t.Name);
-                    await rig.WaitForVmAsync();
-                    foreach (var kv in v.Settings(systems[v]).Concat(t.Settings()))
+                    ev.Attach(rig);
+                    ev.Log("# each vehicle loaded with its implement");
+                    string active = rig.Store.ActiveVehicleProfileName + " / " + rig.Store.ActiveToolProfileName;
+                    string wantActive = Machines.Combine.Name + " / " + tools[^1].Name;
+                    if (!string.Equals(active, wantActive, StringComparison.Ordinal))
+                        Drive.Add(row, journal, new Finding("PROFILE-ACTIVE-AFTER-RESTART", Severity.Bug, "after a restart the active pair is " + active + ", not the last one saved, " + wantActive));
+                    await ev.KeepIfNewAsync(rig, "restarted", "right after the restart, before any profile was loaded");
+                    int compared = 0;
+                    foreach (var (v, t, _, _) in Machines.CarefulMatrix.DistinctBy(m => (m.V, m.T)))
                     {
-                        string key = Readback.KeyOf(kv), want = Readback.ValueOf(kv);
-                        // A harvester takes only front tools (#111): its header is front by design.
-                        if (key == "tool.type" && v.Type == 1) want = "front";
-                        if (savedHitch.TryGetValue((v.Name, key), out var saved)) want = saved;
-                        string got = await rig.ReadAsync(() => Readback.Get(rig.Store, key));
-                        compared++;
-                        if (!Readback.Same(want, got))
-                            Drive.Add(row, journal, new Finding("PROFILE-ROUNDTRIP-" + key.Split(':')[0], Severity.Bug,
-                                $"{key} saved as {want} came back as {got} after a restart ({v.Name} + {t.Name})"));
+                        await rig.SendAsync("profile.load", v.Name + "\t" + t.Name);
+                        await rig.WaitForVmAsync();
+                        foreach (var kv in v.Settings(systems[v]).Concat(t.Settings()))
+                        {
+                            string key = Readback.KeyOf(kv), want = Readback.ValueOf(kv);
+                            // A harvester takes only front tools (#111): its header is front by design.
+                            if (key == "tool.type" && v.Type == 1) want = "front";
+                            if (savedHitch.TryGetValue((v.Name, key), out var saved)) want = saved;
+                            string got = await rig.ReadAsync(() => Readback.Get(rig.Store, key));
+                            compared++;
+                            if (!Readback.Same(want, got))
+                                Drive.Add(row, journal, new Finding("PROFILE-ROUNDTRIP-" + key.Split(':')[0], Severity.Bug,
+                                    $"{key} saved as {want} came back as {got} after a restart ({v.Name} + {t.Name})"));
+                        }
+                        await ev.KeepIfNewAsync(rig, "loaded-" + v.Name + "-" + t.Name, "right after the pair was loaded after the restart");
                     }
-                    await ev.KeepIfNewAsync(rig, "loaded-" + v.Name + "-" + t.Name, "right after the pair was loaded after the restart");
+                    row.Said.Add(Drive.F($"{compared} values compared after the restart"));
+                    row.Said.AddRange(rig.TakeEvents().Where(e => e.Kind is RigEventKind.Error or RigEventKind.Exception or RigEventKind.Failure).Select(e => e.ToString()));
+                    await ev.KeepIfNewAsync(rig, "end", "at the end of the profile checks", end: true);
                 }
-                row.Said.Add(Drive.F($"{compared} values compared after the restart"));
-                row.Said.AddRange(rig.TakeEvents().Where(e => e.Kind is RigEventKind.Error or RigEventKind.Exception or RigEventKind.Failure).Select(e => e.ToString()));
-                await ev.KeepIfNewAsync(rig, "end", "at the end of the profile checks", end: true);
+                catch (Exception ex)
+                {
+                    Drive.Add(row, journal, new Finding("HARNESS", Severity.Bug, "the profile round trip threw " + ex.GetType().Name + ": " + ex.Message));
+                    // While its backend still runs: the dump is the state it threw in.
+                    await ev.KeepIfNewAsync(rig, "threw", "right after the checks threw, the backend still running");
+                    return;   // the checks after it build on what threw
+                }
             }
         }
         catch (Exception ex)

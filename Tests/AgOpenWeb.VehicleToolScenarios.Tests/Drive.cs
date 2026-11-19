@@ -67,6 +67,7 @@ public static class Drive
         var truth = new TruthMachine(d.V, d.T, d.Slope, d.Sys);
         var ev = new VtEvidence(journal, op.Split(' ')[0] + "-" + d.Code, d.Mistake);
         FieldRun? run = null;
+        bool noField = false;
         try
         {
             try
@@ -79,32 +80,35 @@ public static class Drive
                 {
                     row.Problems.AddRange(run.Problems);
                     Add(row, journal, new Finding("HARNESS", Severity.Bug, "the harness could not make its field: " + string.Join("; ", run.Problems)));
-                    return row;
+                    noField = true;
                 }
-                run.CollectMessages();
-                run.Messages.Clear();
-                ev.Log("# the operator's settings");
-                await run.ApplyAsync(d.AppSettings);
-                await run.Rig.WaitForVmAsync();
-                if (d.Prepare != null) { ev.Log("# prepare"); await d.Prepare(run); }
-                // The harness sends no fixes while it types the settings: the GPS timeout that
-                // gives is its own doing.
-                row.Said.AddRange(run.CollectMessages().Select(Clean).Where(m => !IsNoise(m) && !m.Contains("GPS data lost", StringComparison.Ordinal)));
-                run.Messages.Clear();
-                await run.DrivePassesAsync(d.Passes, d.MidPass == null ? null : k => { ev.Log(F($"# in the middle of pass {k + 1}")); return d.MidPass(run, k); });
-                row.Passes.AddRange(run.Passes);
-                row.Joins = run.GapsAndOverlaps();
-                foreach (var m in run.Messages.Select(Clean))
-                    if (!row.Said.Contains(m) && !IsNoise(m)) row.Said.Add(m);
-                row.Problems.AddRange(run.Problems);
+                else
+                {
+                    run.CollectMessages();
+                    run.Messages.Clear();
+                    ev.Log("# the operator's settings");
+                    await run.ApplyAsync(d.AppSettings);
+                    await run.Rig.WaitForVmAsync();
+                    if (d.Prepare != null) { ev.Log("# prepare"); await d.Prepare(run); }
+                    // The harness sends no fixes while it types the settings: the GPS timeout that
+                    // gives is its own doing.
+                    row.Said.AddRange(run.CollectMessages().Select(Clean).Where(m => !IsNoise(m) && !m.Contains("GPS data lost", StringComparison.Ordinal)));
+                    run.Messages.Clear();
+                    await run.DrivePassesAsync(d.Passes, d.MidPass == null ? null : k => { ev.Log(F($"# in the middle of pass {k + 1}")); return d.MidPass(run, k); });
+                    row.Passes.AddRange(run.Passes);
+                    row.Joins = run.GapsAndOverlaps();
+                    foreach (var m in run.Messages.Select(Clean))
+                        if (!row.Said.Contains(m) && !IsNoise(m)) row.Said.Add(m);
+                    row.Problems.AddRange(run.Problems);
+                }
             }
             catch (Exception ex)
             {
                 Add(row, journal, new Finding("HARNESS", Severity.Bug, "the drive threw " + ex.GetType().Name + ": " + ex.Message));
             }
 
-            // What any drive must not do, careful settings or not.
-            foreach (var p in row.Problems)
+            // What any drive must not do, careful settings or not (nothing was driven without a field).
+            foreach (var p in noField ? new List<string>() : row.Problems)
             {
                 if (p.Contains("steer angle", StringComparison.Ordinal))
                     Add(row, journal, new Finding("STEER-NAN", Severity.Safety, "AgOpenWeb computed a steer angle that is not a number"));
@@ -115,7 +119,7 @@ public static class Drive
             foreach (var m in row.Said)
                 if (m.StartsWith("Exception", StringComparison.Ordinal) || m.StartsWith("Error", StringComparison.Ordinal))
                     Add(row, journal, new Finding("LOG-" + d.Code, Severity.Bug, d.Mistake + ": " + m));
-            judge?.Invoke(row);
+            if (!noField) judge?.Invoke(row);
             await ev.KeepIfNewAsync(run?.Rig, null, "at the end of the drive, the field and the job still open",
                 () => DriveNotes(d, row), end: true);
         }
