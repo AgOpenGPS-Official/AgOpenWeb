@@ -120,6 +120,9 @@ public sealed class MapBroadcaster : IAsyncDisposable
             frames.AddRange(vt);
         if (ViewPrefsProvider?.Invoke() is { } vp)
             frames.Add(WireCodec.EncodeViewPrefs(vp.Pitch, vp.Zoom, vp.CameraMode));
+        // A screen that comes back (its link dropped) with the wizard on it: the host closed it.
+        if (WizardProvider?.Invoke() is { Closed: true } closed)
+            frames.Add(WireCodec.EncodeWizard(closed));
         if (_coverageProjector.BuildInit() is { } init)
         {
             frames.Add(WireCodec.EncodeCoverageInit(init, reset: true)); // fresh client → rebuild from the seed snapshot
@@ -455,8 +458,22 @@ public sealed class MapBroadcaster : IAsyncDisposable
 
         // Steer Wizard (host-driven): while the remote wizard is open, project
         // the live VM state every tick so calibration phases/angles stay live.
-        if (WizardProvider?.Invoke() is { } wiz)
+        if (WizardToSend(WizardProvider?.Invoke(), ref _wizardClosedSent) is { } wiz)
             await _ws.BroadcastAsync(WireCodec.EncodeWizard(wiz), ct).ConfigureAwait(false);
+    }
+
+    private bool _wizardClosedSent;
+
+    /// <summary>
+    /// The Wizard frame to broadcast this tick: the live wizard on every tick; the wizard the host
+    /// closed (the screen in control went) once, not on every tick: a screen that connects again
+    /// later gets it in its seed (<see cref="BuildSeed"/>).
+    /// </summary>
+    internal static WizardDto? WizardToSend(WizardDto? wizard, ref bool closedSent)
+    {
+        var send = wizard is { Closed: true } && closedSent ? null : wizard;
+        closedSent = wizard?.Closed == true;
+        return send;
     }
 
     // Remember the coverage grid we last announced, so the next tick can tell a bounds-expansion

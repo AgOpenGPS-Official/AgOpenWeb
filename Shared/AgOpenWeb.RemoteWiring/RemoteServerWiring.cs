@@ -890,12 +890,14 @@ public static partial class RemoteServerWiring
                     };
 
                     // Steer Wizard projector: while the remote wizard is open, project the
-                    // live SteerWizardViewModel to a WizardDto each broadcast tick. Read off
+                    // live SteerWizardViewModel to a WizardDto each broadcast tick; once the host
+                    // has closed it under the screens (control lost), the closed frame. Read off
                     // the broadcaster thread (read-only; tolerates the same transient races
                     // as the other projectors).
                     server.WizardProvider = () =>
-                        wizardActive && vm.SteerWizardViewModel is { } w
-                            ? BuildWizardDto(w) : null;
+                        wizardActive && vm.SteerWizardViewModel is { } w ? BuildWizardDto(w)
+                        : vm.SteerWizardClosedByHost ? AgOpenWeb.RemoteServer.WizardDto.ClosedByHost
+                        : null;
 
                     // Pending confirm/error projector (#109): the host's ShowConfirmationDialog /
                     // ShowErrorDialog used to open a native overlay the web never saw, so the
