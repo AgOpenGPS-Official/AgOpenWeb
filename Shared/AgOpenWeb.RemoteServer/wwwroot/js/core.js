@@ -368,6 +368,7 @@ const transport = RemoteTransport.create({
   },
   onTick(t) {
     tick = t;
+    wzHostTick(); // a wizard the host has closed (js/wizards.js)
     reverseBadge.classList.toggle('show', !!(t.op && t.op.reverse)); // #125
     if (t.pose) {
       lastTick = {
@@ -461,7 +462,7 @@ const transport = RemoteTransport.create({
     if (document.getElementById('boundarymenu').classList.contains('open')) renderBoundaryMenu();
     if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
   },
-  onWizard(w) { wizard = w; wizardDirty = true; },
+  onWizard(w) { wizard = w; wizardDirty = true; wzHeard(); },
   onHello(id, features) {
     // The switchable features this host runs (SwitchedFeature bits): the rest stay
     // hidden (the fs-no-* classes on the body, css/base.css).

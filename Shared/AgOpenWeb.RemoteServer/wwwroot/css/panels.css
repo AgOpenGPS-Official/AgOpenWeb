@@ -468,6 +468,8 @@ input.as-valbox { width: 80px; box-sizing: content-box; }
 .wz-testbtn.disabled { opacity: 0.4; pointer-events: none; }
 .wz-circle { min-height: 0; margin: 4px 0 16px; gap: 10px; }
 .wz-btnrow { display: flex; gap: 12px; }
+/* The host closed the wizard under this page (js/wizards.js, wzShowGone): the message and Close only. */
+.wz-overlay.gone #wz-skip, .wz-overlay.gone #wz-back, .wz-overlay.gone #wz-next, .wz-overlay.gone .wz-statusbar { display: none !important; }
 .wz-validation { color: #f87171; font: 600 14px system-ui, sans-serif; text-align: center; padding: 6px 26px; }
 .wz-validation:empty { display: none; }
 .wz-hint { color: #f59e0b; font: 600 13px system-ui, sans-serif; text-align: center; min-height: 18px; }
