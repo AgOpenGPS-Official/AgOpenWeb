@@ -141,14 +141,14 @@ function renderNewField() {
     : tr('No GPS fix — a default origin will be used.');
 }
 document.getElementById('nf-back').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
-document.getElementById('nf-create').addEventListener('pointerdown', e => {
-  e.stopPropagation();
+function createNewField() {
   const name = document.getElementById('nf-name').value.trim();
   if (!name) return;
   transport.send('field.new|' + name);
   fjSelField = name;
   openFieldsAndJobs(); // back to the list; the new field appears once the frame updates
-});
+}
+document.getElementById('nf-create').addEventListener('pointerdown', e => { e.stopPropagation(); createNewField(); });
 
 // Helper: fill a <select> with options from a string array (preserving the choice).
 function fillSelect(sel, items) {
@@ -169,15 +169,15 @@ function openFromExisting() {
     for (const b of document.querySelectorAll('#fromexisting .cfg-tgl')) b.classList.add('active'); // all copy on by default
   });
 }
-document.getElementById('fe-create').addEventListener('pointerdown', e => {
-  e.stopPropagation();
+function createFromExisting() {
   const src = document.getElementById('fe-source').value;
   const name = document.getElementById('fe-name').value.trim();
   if (!src || !name) return;
   const on = id => document.getElementById(id).classList.contains('active') ? '1' : '0';
   transport.send('field.fromExisting|' + [src, name, on('fe-flags'), on('fe-mapping'), on('fe-headland'), on('fe-lines')].join('\t'));
   fjSelField = name; openFieldsAndJobs();
-});
+}
+document.getElementById('fe-create').addEventListener('pointerdown', e => { e.stopPropagation(); createFromExisting(); });
 
 // From ISO-XML / From KML — import a field from a file in the Import folder.
 function openImport(panelId, selId, fileArr) {
@@ -189,18 +189,26 @@ function openImport(panelId, selId, fileArr) {
 }
 document.getElementById('iso-back').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
 document.getElementById('kml-back').addEventListener('pointerdown', e => { e.stopPropagation(); openFieldsAndJobs(); });
-document.getElementById('iso-create').addEventListener('pointerdown', e => {
-  e.stopPropagation();
+function createFromIsoXml() {
   const file = document.getElementById('iso-file').value, name = document.getElementById('iso-name').value.trim();
   if (!file || !name) return;
   transport.send('field.fromIsoXml|' + file + '\t' + name); fjSelField = name; openFieldsAndJobs();
-});
-document.getElementById('kml-create').addEventListener('pointerdown', e => {
-  e.stopPropagation();
+}
+function createFromKml() {
   const file = document.getElementById('kml-file').value, name = document.getElementById('kml-name').value.trim();
   if (!file || !name) return;
   transport.send('field.fromKml|' + file + '\t' + name); fjSelField = name; openFieldsAndJobs();
-});
+}
+document.getElementById('iso-create').addEventListener('pointerdown', e => { e.stopPropagation(); createFromIsoXml(); });
+document.getElementById('kml-create').addEventListener('pointerdown', e => { e.stopPropagation(); createFromKml(); });
+// Enter in a new field's name box does what its Create Field button does (the on-screen
+// keyboard's OK sends Enter too). A held key creates once.
+for (const [box, create] of [['nf-name', createNewField], ['fe-name', createFromExisting], ['iso-name', createFromIsoXml], ['kml-name', createFromKml]])
+  document.getElementById(box).addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    if (!e.repeat) create();
+  });
 
 // Cross-field Resume Job picker (all jobs, recency order from the host).
 function openResumeJob() { lnOpen('resumejob', 'ln-fieldops', renderResumeJob); }
