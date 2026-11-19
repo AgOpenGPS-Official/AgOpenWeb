@@ -1067,8 +1067,11 @@ public sealed class YouTurnStateMachine
     {
         var c = _configStore;
         var g = c.Guidance;
+        // The operator's headland with the sections off in it decides which passes the snake may land
+        // on (SnakeLandable), so a change of either tries the end at once.
         int settings = HashCode.Combine(
-            HashCode.Combine(g.UTurnRadius, g.UTurnDistanceFromBoundary, g.UTurnExtension, g.UTurnSmoothing, g.UTurnStyle),
+            HashCode.Combine(g.UTurnRadius, g.UTurnDistanceFromBoundary, g.UTurnExtension, g.UTurnSmoothing, g.UTurnStyle,
+                c.Tool.IsHeadlandSectionControl, SnakeFieldStamp(null, ctx.WorkHeadlandLine)),
             HashCode.Combine(c.ActualToolWidth, c.Tool.Width, c.Tool.Overlap,
                 AgOpenWeb.Models.Tool.RigGeometry.Stamp(c.Vehicle, c.Tool)),
             HashCode.Combine(ctx.HeadlandCalculatedWidth, ctx.HeadlandDistance));
