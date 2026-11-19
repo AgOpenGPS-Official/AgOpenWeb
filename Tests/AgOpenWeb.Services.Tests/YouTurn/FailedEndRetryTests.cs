@@ -117,6 +117,40 @@ public class FailedEndRetryTests
         });
     }
 
+    [TestCase(false, TestName = "Normal mode: the end tried again 1.5 s later turns the way the U-turn arrow points")]
+    [TestCase(true, TestName = "Alternative mode: the end tried again 1.5 s later turns the way the U-turn arrow points")]
+    public void The_retry_keeps_the_arrow_s_side(bool alternate)
+    {
+        // The side the turn goes with no arrow.
+        var (probeGuidance, probeTurn) = OnPass0();
+        _sm.Tick(Ctx(PassX(0), -18, 180, alternate), probeGuidance, probeTurn);
+        bool plannedLeft = probeTurn.IsTurnLeft;
+        _sm.OnYouTurnSwitchedOff();
+
+        // The operator points the arrow the other way; no turn fits on that side either.
+        var (guidance, turn) = OnPass0();
+        turn.NextUTurnDirectionLeftOverride = !plannedLeft;
+        _sm.Tick(Ctx(PassX(0), -18, 180, alternate), guidance, turn);
+        int builds = _creation.TurnPathBuilds;
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.TurnPath, Is.Null, "the scenario: no turn fits");
+            Assert.That(turn.IsTurnLeft, Is.EqualTo(!plannedLeft), "the first try turns the arrow's way");
+        });
+
+        for (int i = 1; i <= 14; i++)
+            _sm.Tick(Ctx(PassX(0), -18 - 0.01 * i, 180, alternate), guidance, turn);
+        Assert.That(_creation.TurnPathBuilds, Is.EqualTo(builds), "the scenario: waiting 1.5 s");
+
+        // Tried again: the try that made no turn took the arrow, and the retry turned the other way.
+        _sm.Tick(Ctx(PassX(0), -18.15, 180, alternate), guidance, turn);
+        Assert.Multiple(() =>
+        {
+            Assert.That(_creation.TurnPathBuilds, Is.GreaterThan(builds), "the scenario: tried again after 1.5 s");
+            Assert.That(turn.IsTurnLeft, Is.EqualTo(!plannedLeft), "the retry turns the arrow's way too");
+        });
+    }
+
     [Test]
     public void Normal_mode_an_end_where_no_turn_built_is_tried_again_at_once_when_something_changes()
     {
