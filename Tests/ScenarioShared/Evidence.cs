@@ -275,7 +275,11 @@ public sealed class Evidence
 
     /// <summary>The head of a dump's notes: which harness and scenario, the commit, the settings
     /// of the run, and how the dump is used.</summary>
-    public static string NotesHeader(string harness, string scenario, string title)
+    /// <remarks><paramref name="taken"/> says when the dump was taken (a harness whose findings come at
+    /// a step takes it there); <paramref name="turns"/>, whether the harness keeps the U-turns'
+    /// paths and its own machine (the job harnesses).</remarks>
+    public static string NotesHeader(string harness, string scenario, string title,
+        string taken = "at the end of the scenario", bool turns = true)
     {
         var sb = new StringBuilder();
         sb.Append("# ").Append(harness).Append(": ").Append(scenario).Append(" — ").Append(title).Append("\n\n");
@@ -286,10 +290,12 @@ public sealed class Evidence
             .OrderBy(k => k, StringComparer.Ordinal)
             .Select(k => k + "=" + Environment.GetEnvironmentVariable(k)).ToList();
         if (env.Count > 0) sb.Append("Run with ").Append(string.Join(" ", env)).Append(".\n");
-        sb.Append("\nA bug report dump as the app writes it, taken by the harness at the end of the scenario. ")
-          .Append("`gps_data_log.csv` is the last 5 minutes; `attachments/gps_data_log_whole_scenario.csv` the whole scenario, as `attachments/log_whole_scenario.txt` is for `logs.txt`; ")
-          .Append("`attachments/turns.json` every U-turn's path as planned, with where the tractor was. ")
-          .Append("What the harness itself measured is in `attachments/` too (its trace, and what its own machine really did; listed at the end of these notes), so a finding that is the harness's doing can be checked from the zip as well. ")
+        sb.Append("\nA bug report dump as the app writes it, taken by the harness ").Append(taken).Append(". ")
+          .Append("`gps_data_log.csv` is the last 5 minutes; `attachments/gps_data_log_whole_scenario.csv` the whole scenario, as `attachments/log_whole_scenario.txt` is for `logs.txt`")
+          .Append(turns ? "; `attachments/turns.json` every U-turn's path as planned, with where the tractor was. " : ". ")
+          .Append(turns
+              ? "What the harness itself measured is in `attachments/` too (its trace, and what its own machine really did; listed at the end of these notes), so a finding that is the harness's doing can be checked from the zip as well. "
+              : "What the harness itself kept is in `attachments/` too (listed at the end of these notes). ")
           .Append("Build the unit test for the fix from this dump; the harness is not run again to look.\n\n");
         return sb.ToString();
     }

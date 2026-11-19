@@ -193,8 +193,9 @@ public sealed class Scenario
         var st = wanted.Count > 0 ? wanted[0].Step : LastStep;
         string moment = st == null ? "end" : "step" + st.Index.ToString(CultureInfo.InvariantCulture);
         var inv = CultureInfo.InvariantCulture;
-        var notes = new StringBuilder(Evidence.NotesHeader("Field scenarios", _record.Name, st == null ? "the end" : "step " + st.Index.ToString(inv) + ": " + st.What));
-        notes.Append(_record.Operator).Append(" operator. Taken right after the step, before the next one.\n\n## Findings first seen at this step\n\n");
+        var notes = new StringBuilder(Evidence.NotesHeader("Field scenarios", _record.Name, st == null ? "the end" : "step " + st.Index.ToString(inv) + ": " + st.What,
+            taken: wanted.Count > 0 ? "right after the step, before the next one" : "at the end of the scenario", turns: false));
+        notes.Append(_record.Operator).Append(" operator.\n\n## Findings first seen at this step\n\n");
         foreach (var (key, _) in wanted)
             if (_journal.Findings.TryGetValue(key, out var g))
                 notes.Append("- ").Append(g.First.Severity.ToString()).Append(" `").Append(g.First.Code).Append("`: ").Append(g.First.Message).Append('\n');
