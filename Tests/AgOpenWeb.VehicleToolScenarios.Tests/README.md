@@ -124,10 +124,27 @@ folder, or to `AGOPENWEB_SCENARIO_REPORT`. Other switches:
 | `AGOPENWEB_SCENARIO_OPERATOR=careful` | only one operator (`careful` or `careless`), or only the settings sweep (`sweep`); a comma-separated list for several (the nightly runs `careful,careless` and `sweep` as two jobs side by side) |
 | `AGOPENWEB_SCENARIO_ONLY=V-WB` | only drives whose code or name contains this (`settings`, `profiles` for those checks); in the sweep, only settings or probes containing it (`Slope\|Deadzone`: either) |
 | `AGOPENWEB_SCENARIO_VERBOSE=1` | the machine and AgOpenWeb side by side every 4 s, and every finding |
+| `AGOPENWEB_SCENARIO_EVIDENCE=all` / `0` | evidence also at the end of every drive, sweep group and check / none |
 
 The test fails only when the harness itself breaks. The findings are the product: the
 report lists each kind once, most serious first, then a table of every drive, the settings
 and what the app kept of them, and every pass.
+
+**Evidence.** Each kind of finding leaves the app's bug report dump, taken where it was first
+seen in the run, while that backend still runs and before the harness puts anything back: at
+the end of a drive (the field and the job still open), right after a sweep row's run (the
+setting still flipped), right after a wrong setting or profile action.
+`evidence/<scenario>[-<moment>].zip` beside the report (named in the report under the finding;
+the nightly keeps the folder as the `vehicle-tool-scenarios-evidence-<part>` artifacts). It
+holds what a tester's dump holds (settings, state, the field, the app's log and GPS log), the
+whole scenario's log and GPS log, and under `attachments/`: `commands.txt` (every command the
+backend was sent, as the web client sends it, and the harness's steps), for a drive
+`truth_track.csv` (fix by fix, the real machine and what AgOpenWeb's cycle said: pivot,
+heading, implement, steer angle, distance from the line, pass, sections), for the sweep
+`sweep_trace.csv` and `sweep_runs.json` (every probe run of the group, fix by fix, by name).
+The fix is made from it and proven by a unit test built from it (failing on develop, passing
+on the fix); the harness is not run again to look (`VtEvidence.cs`,
+`Tests/ScenarioShared/Evidence.cs`, `Plans/HARNESS_EVIDENCE_PLAN.md`).
 
 `SmokeTests.cs` holds an explicit single drive (the Puma with its sprayer) for working on
 the harness; `VT_SLOPE`, `VT_GPS` and `VT_IMU` pick the slope and the receiver.

@@ -58,6 +58,31 @@ public sealed class FieldRun : IAsyncDisposable
     public readonly List<string> Problems = new();
     public string DataRoot { get; private set; } = "";
 
+    /// <summary>The scenario's evidence, when it is kept: the real machine fix by fix
+    /// (<c>truth_track</c>) and the whole GPS log go into it as the run goes.</summary>
+    public VtEvidence? Ev { get; set; }
+    private int _fixes;
+    private string _phase = "";
+
+    /// <summary>Every fix sent: the app's GPS recorder keeps 3000, so the whole run's log is
+    /// taken every 2000.</summary>
+    public void NoteFix()
+    {
+        if (++_fixes % 2000 == 0) Ev?.Ev.PullGpsLog();
+    }
+
+    private const string TruthHeader = "fix,phase,cmd,e,n,heading_deg,steer_deg,speed_kmh,tool_e,tool_n,app_e,app_n,app_heading_deg,app_tool_e,app_tool_n,app_engaged,app_steer_deg,app_xte,app_pass,app_sections";
+
+    private void TruthRow()
+    {
+        if (Ev == null) return;
+        var c = Rig.LastCycle;
+        var tc = Truth.ToolCentre;
+        string sect = c?.SectionStates is { Length: > 0 } ss ? new string(ss.Select(b => b ? '1' : '0').ToArray()) : "";
+        Ev.Ev.Row("truth_track", TruthHeader, F($"{_fixes},{_phase},{_cmd:0.###},{Truth.E:0.###},{Truth.N:0.###},{Truth.Heading * 180 / Math.PI:0.###},{Truth.Steer:0.###},{Truth.SpeedKmh:0.##},{tc.E:0.###},{tc.N:0.###},")
+            + (c == null ? ",,,,,,,,," : F($"{c.Easting:0.###},{c.Northing:0.###},{c.Heading:0.###},{c.ToolEasting:0.###},{c.ToolNorthing:0.###},{(c.IsAutoSteerEngaged ? 1 : 0)},{c.Guidance?.SteerAngle:0.###},{c.Guidance?.CrossTrackError:0.###},{c.Guidance?.HowManyPathsAway},") + sect));
+    }
+
     /// <summary>Real seconds to wait per simulated fix (0.1 s): ~12x real time.</summary>
     public int PaceMs = 8;
     public static readonly bool Verbose = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_VERBOSE") == "1";
@@ -120,6 +145,8 @@ public sealed class FieldRun : IAsyncDisposable
         double roll = Truth.RollDeg * (sys.RollInverted ? -1 : 1) + sys.RollBiasDeg;
         double hdg = Truth.Heading * 180 / Math.PI + sys.HeadingErrorDeg + (sys.Dual ? 0 : sys.ImuHeadingOffsetDeg);
         Rig.SendSentence(VehicleToolRig.Sentence(sys.Dual, sys.HasImu, w.Latitude, w.Longitude, hdg, roll, Truth.SpeedKmh));
+        NoteFix();
+        TruthRow();
     }
 
     /// <summary>Drive four passes; returns false when the harness itself failed.</summary>
@@ -151,8 +178,11 @@ public sealed class FieldRun : IAsyncDisposable
         double toolSide = Truth.T.Offset * sgn;       // right of the tractor = +E northbound
         _cmd = 0;
         if (await Rig.ReadAsync(() => Rig.Vm.IsAutoSteerEngaged)) await Rig.SendAsync("autosteer.toggle");
+        Ev?.Log(F($"# pass {k + 1} {(north ? "north" : "south")}: the implement lined up {startError:+0.0;-0.0} m off E={targetX:0.00}, the tractor at E={targetX - toolSide + startError:0.00} N={startN:0}{(k == 0 ? "" : ", turned into by hand")}"));
+        _phase = k == 0 ? "p1" : F($"turn into p{k + 1}");
         if (k == 0) Truth.Place(targetX - toolSide + startError, startN, hdg);
         else await UTurnIntoAsync(targetX - toolSide + startError, startN, hdg);
+        _phase = F($"p{k + 1}");
 
         // Disengaged pre-roll: the receiver's heading, reverse detection and the pass AgOpenWeb
         // picks settle on the new pass first.

@@ -254,9 +254,17 @@ public static class SettingsSweep
             string dir = Path.Combine(Drive.DataRootBase, "s-" + probe + "-" + Guid.NewGuid().ToString("N")[..6]);
             Directory.CreateDirectory(dir);
             FieldRun? run = null;
+            var ev = new VtEvidence(journal, "sweep-" + group.Key, "settings sweep, group " + group.Key + " (probe " + probe + ")");
+            string Notes(string what) => "## The sweep group\n\n" + group.Key + ", probe " + probe + ", on the Puma + 8 m boom set up by the careful operator"
+                + (list[0].Setup.Length > 0 ? ", then `" + string.Join("`, `", list[0].Setup) + "`" : "") + ". Its rows: "
+                + string.Join(", ", list.Select(c => "`" + c.Key + "` " + (c.Base.Length > 0 ? c.Base + " → " + c.Flip : "(pressed)"))) + ".\n\n"
+                + what + "\n\nEach probe run is in `sweep_trace.csv` by name: `base 1-3` on the base settings, then each row's flip, then the base again.\n";
             try
             {
                 run = await FieldRun.StartAsync(dir, new TruthMachine(v, truthTool, 0, sys));
+                run.Ev = ev;
+                ev.Attach(run.Rig);
+                ev.Log("# sweep group " + group.Key + ", probe " + probe + ": the careful settings, the group's setup and base values");
                 if (!await run.MakeFieldAsync())
                 {
                     journal.Add(new Finding("HARNESS", Severity.Bug, "the sweep could not make its field: " + string.Join("; ", run.Problems)), group.Key);
@@ -269,9 +277,9 @@ public static class SettingsSweep
                 await run.Rig.WaitForVmAsync();
                 run.CollectMessages();
 
-                var b1 = await driver.RunAsync(probe);
-                var b2 = await driver.RunAsync(probe);
-                var b3 = await driver.RunAsync(probe);
+                var b1 = await driver.RunAsync(probe, "base 1");
+                var b2 = await driver.RunAsync(probe, "base 2");
+                var b3 = await driver.RunAsync(probe, "base 3");
                 var noise = TraceDiff.Max(TraceDiff.Of(b1, b2), TraceDiff.Of(b1, b3), TraceDiff.Of(b2, b3));
                 // The module probe compares what was sent just before and just after a change.
                 var latest = b3;
@@ -283,6 +291,7 @@ public static class SettingsSweep
                 if (b1.Problem.Length > 0)
                     journal.Add(new Finding("SWEEP-PROBE-" + probe.ToString().ToUpperInvariant(), Severity.Improvement,
                         $"the {probe} probe on the base settings: {b1.Problem} (harness artifact until shown otherwise)"), group.Key);
+                await ev.KeepIfNewAsync(run.Rig, "base", "after the three runs on the base settings", () => Notes("Taken after the three base runs."));
 
                 foreach (var c in list)
                 {
@@ -301,19 +310,25 @@ public static class SettingsSweep
                             Case = c, Changed = "–", Kind = "harness artifact",
                             Verdict = F($"not tried: the store kept {kept.Stored:0.###}") + (reply.Length > 0 ? " (" + reply + ")" : ""),
                         });
+                        await ev.KeepIfNewAsync(run.Rig, c.Key, "right after the setting was refused, before the harness put it back",
+                            () => Notes("Taken right after `" + c.Key + ":" + c.Flip + "` was sent and not kept."));
                         await driver.SetAsync(before);
                         continue;
                     }
-                    var t = await driver.RunAsync(probe);
-                    if (before.Length > 0) await driver.SetAsync(before);
-                    else foreach (var s in c.Setup) await driver.SetAsync(s);
+                    var t = await driver.RunAsync(probe, "flip " + c.Key + " " + (c.Base.Length > 0 ? c.Base + "->" + c.Flip : "(pressed)"));
                     var d = TraceDiff.Of(probe == Probe.Module ? latest : b1, t);
                     var row = Judge(journal, c, d, noise, t);
                     journal.Sweep.Add(row);
-                    if (probe == Probe.Module) latest = await driver.RunAsync(probe);
+                    // The row's dump with the setting still flipped, as the run that found it.
+                    await ev.KeepIfNewAsync(run.Rig, c.Key, "right after the row's run, the setting still flipped, before the harness put it back",
+                        () => Notes(F($"Taken right after the run of `{c.Key}` ") + (c.Base.Length > 0 ? c.Base + " → " + c.Flip : "(pressed)") + ", compared with "
+                            + (probe == Probe.Module ? "the base run just before it" : "`base 1`") + ". Changed: " + row.Changed + "; verdict: " + row.Verdict + "."));
+                    if (before.Length > 0) await driver.SetAsync(before);
+                    else foreach (var s in c.Setup) await driver.SetAsync(s);
+                    if (probe == Probe.Module) latest = await driver.RunAsync(probe, "base after " + c.Key);
                 }
 
-                var after = await driver.RunAsync(probe);
+                var after = await driver.RunAsync(probe, "base after the rows");
                 var drift = TraceDiff.Of(b1, after);
                 var (moved, _, _) = Changes(drift, noise);
                 // State the app kept shows again on the next run; a switch that happened by chance
@@ -323,7 +338,7 @@ public static class SettingsSweep
                 // on the base settings drifts too.
                 if (moved != Effect.None && probe != Probe.Module)
                 {
-                    var again = TraceDiff.Of(b1, await driver.RunAsync(probe));
+                    var again = TraceDiff.Of(b1, await driver.RunAsync(probe, "base again"));
                     var (movedAgain, _, _) = Changes(again, noise);
                     if (movedAgain == Effect.None) moved = Effect.None;
                     else drift = again;
@@ -339,6 +354,8 @@ public static class SettingsSweep
             }
             finally
             {
+                await ev.KeepIfNewAsync(run?.Rig, "end", "at the end of the group, the base settings back", () => Notes("Taken at the end of the group."), end: true);
+                ev.Close();
                 if (run != null) await run.DisposeAsync();
                 try { Directory.Delete(dir, true); } catch { /* temp */ }
             }
