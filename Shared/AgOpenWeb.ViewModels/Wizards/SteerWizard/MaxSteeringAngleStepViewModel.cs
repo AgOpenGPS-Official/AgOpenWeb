@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -71,8 +72,9 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
     internal const double WrongWayLimitDeg = 3.0;
 
     /// <summary>
-    /// A push that ran out of time with the wheels this much further on than a second before
-    /// was cut off on the way, not stopped: its last reading is no lock.
+    /// A push that ran out of time with the wheels still moving at its last reading, and this
+    /// much further on than a second before, was cut off on the way, not stopped: its last
+    /// reading is no lock.
     /// </summary>
     internal const double StillTurningDeg = 1.0;
 
@@ -282,8 +284,7 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
                 Phase = MaxSteeringAnglePhase.WaitingToStart;
                 Progress = 0;
                 PhaseResult =
-                    $"Right max: {Math.Abs(right):F1}\n" +
-                    $"Left max: {Math.Abs(left):F1}\n" +
+                    string.Create(CultureInfo.InvariantCulture, $"Right max: {Math.Abs(right):F1}\nLeft max: {Math.Abs(left):F1}\n") +
                     "The wheels did not reach the lock in the test's time." + cutOff +
                     " Max steer angle not changed.\n" +
                     "The angle can be typed in AutoSteer, Steering Sensor, Max Steer Angle.";
@@ -321,9 +322,9 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
     /// successive samples stays below <see cref="PlateauThresholdDeg"/>
     /// for <see cref="PlateauStableSamples"/> consecutive samples. If
     /// no plateau materialises within <see cref="PlateauTimeoutMs"/>
-    /// the last sample is returned, marked as still turning when the wheels moved on
-    /// <see cref="StillTurningDeg"/> or more in the last second. Returns null, at once, when the
-    /// wheels move <see cref="WrongWayLimitDeg"/> the other way.
+    /// the last sample is returned, marked as still turning when the wheels were still moving
+    /// at it and moved on <see cref="StillTurningDeg"/> or more in the last second. Returns
+    /// null, at once, when the wheels move <see cref="WrongWayLimitDeg"/> the other way.
     /// </summary>
     private async Task<Push?> DriveToPlateauAsync(double commandedAngleDeg, CancellationToken token)
     {
@@ -363,7 +364,10 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
                 lastSecond.Dequeue();
         }
 
-        bool stillTurning = lastSecond.Count > 0
+        // Wheels that stopped just before the time ran out (their last readings already under
+        // the plateau threshold, too few to make a plateau) read their lock: the approach is
+        // still in the last second, so that alone is no sign of wheels on their way.
+        bool stillTurning = stableCount == 0 && lastSecond.Count > 0
             && Math.Sign(commandedAngleDeg) * (previous - lastSecond.Peek()) >= StillTurningDeg;
         return new Push(previous, stillTurning);
     }
@@ -378,8 +382,8 @@ public class MaxSteeringAngleStepViewModel : SwitchGatedWizardStep
             return "";
         int seconds = PlateauTimeoutMs / 1000;
         return right && left
-            ? $" They were still turning when the {seconds} s for each side ran out."
-            : $" They were still turning {(right ? "right" : "left")} when the {seconds} s for that side ran out.";
+            ? string.Create(CultureInfo.InvariantCulture, $" They were still turning when the {seconds} s for each side ran out.")
+            : string.Create(CultureInfo.InvariantCulture, $" They were still turning {(right ? "right" : "left")} when the {seconds} s for that side ran out.");
     }
 
     /// <summary>
