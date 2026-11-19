@@ -361,7 +361,9 @@ public class ToolConfig : ObservableObject
     /// </summary>
     public void SetSectionWidth(int index, double value)
     {
-        if (index < 0 || index >= MaxSections) return;
+        // A width that is no number is not taken, wherever it comes from (a screen, a profile):
+        // the implement's width, the pass spacing and every section's place are sums of these.
+        if (index < 0 || index >= MaxSections || !double.IsFinite(value)) return;
         _sectionWidths[index] = value;
         OnPropertyChanged(nameof(SectionWidths));
         OnPropertyChanged(nameof(TotalSectionWidth));

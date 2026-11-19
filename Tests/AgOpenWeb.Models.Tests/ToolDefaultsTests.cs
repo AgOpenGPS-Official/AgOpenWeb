@@ -35,4 +35,19 @@ public class ToolDefaultsTests
             Assert.That(tool.TurnOffDelay, Is.EqualTo(0.0));
         }
     }
+
+    [Test]
+    public void A_section_width_that_is_no_number_is_not_taken()
+    {
+        // The implement's width, the pass spacing and each section's place are sums of these.
+        var tool = new ToolConfig();
+        tool.SetSectionWidth(0, 300);
+        double second = tool.GetSectionWidth(1);
+
+        tool.SetSectionWidth(0, double.NaN);
+        tool.SetSectionWidth(1, double.PositiveInfinity);
+
+        Assert.That(tool.GetSectionWidth(0), Is.EqualTo(300));
+        Assert.That(tool.GetSectionWidth(1), Is.EqualTo(second));
+    }
 }
