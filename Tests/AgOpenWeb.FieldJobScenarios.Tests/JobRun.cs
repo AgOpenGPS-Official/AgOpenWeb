@@ -329,6 +329,9 @@ public sealed class JobRun : IAsyncDisposable
         }
     }
     private readonly Dictionary<int, SortedDictionary<int, (double L, double R)>> _passEdges = new();
+    // Where the implement was in each bin of each pass, and its way (summed, for the mean): two
+    // passes' edges in one bin compare only where the bin lies across both at one place.
+    private readonly Dictionary<int, Dictionary<int, (double E, double N, double He, double Hn, int K)>> _passBinAt = new();
     // Where each stretch of a pass's edges began after a U-turn or the engage (the bin along the
     // line; not after a lap's corner or a lap change by hand, which keep their own rules): after a U-turn hands
     // back, or AutoSteer is engaged, the implement is still settling onto its pass for a few metres
@@ -1160,6 +1163,9 @@ public sealed class JobRun : IAsyncDisposable
             set.Add(bin);
             if (d.TryGetValue(bin, out var old)) d[bin] = (Math.Min(old.L, uL), Math.Max(old.R, uR));
             else d[bin] = (uL, uR);
+            if (!_passBinAt.TryGetValue(Pass, out var at)) _passBinAt[Pass] = at = new();
+            var w = at.TryGetValue(bin, out var o) ? o : default;
+            at[bin] = (w.E + tc.E, w.N + tc.N, w.He + Math.Sin(tc.Heading), w.Hn + Math.Cos(tc.Heading), w.K + 1);
         }
         else _recPass = int.MinValue;
         if (InTurn) _settling = true;
@@ -1292,6 +1298,9 @@ public sealed class JobRun : IAsyncDisposable
         var g = Grid;
         var marks = new byte[g.Count.Length];
         MeasureMarks = marks;
+        // What each missed cell was counted as, for the strips' edge pass after the loop.
+        const byte LeftMiddle = 1, LeftCorner = 2, LeftLapChange = 3, StripCell = 4;
+        var left = new byte[g.Count.Length];
         int reach = (int)Math.Ceiling(1.5 * Spacing / TruthGrid.Cell);
         double headlandAllowance = Spec.T.HeadlandAllowance;
         // The seams between neighbouring passes where both ran at full width, by 1 m bin along
@@ -1306,6 +1315,7 @@ public sealed class JobRun : IAsyncDisposable
                 {
                     if (!ordered[k + 1].Value.TryGetValue(bin, out var x2)) continue;
                     if (x.R - x.L < Spec.T.Width - 0.3 || x2.R - x2.L < Spec.T.Width - 0.3) continue;
+                    if (!BinAcrossBoth(ordered[k].Key, ordered[k + 1].Key, bin)) continue;
                     if (!seams.TryGetValue(bin, out var l)) seams[bin] = l = new();
                     l.Add(((x.R + x2.L) / 2, x2.L - x.R));
                 }
@@ -1342,17 +1352,17 @@ public sealed class JobRun : IAsyncDisposable
                     else if (g.Near(i, j => (g.Zone[j] & (TruthGrid.InObstacle | TruthGrid.InDriveThrough)) != 0, 10)) a.MissedAtObstacles += cell;
                     // The laps' corners first: a lap rounds a corner of the boundary and cannot reach
                     // into it, whatever the sections do (near the fence too).
-                    else if (AtCorner?.Invoke(c) == true) a.MissedAtCorners += cell;
+                    else if (AtCorner?.Invoke(c) == true) { a.MissedAtCorners += cell; left[i] = LeftCorner; }
                     // Where the operator moved a width in by hand between laps: the implement crosses
                     // from one lap to the next, and what it leaves is the operator's lap change.
-                    else if (AtLapChange?.Invoke(c) == true) a.MissedAtLapChange += cell;
+                    else if (AtLapChange?.Invoke(c) == true) { a.MissedAtLapChange += cell; left[i] = LeftLapChange; }
                     // No headland (the lap jobs): the edge of the field along the boundary.
                     else if (Work == null && Ring.DistToRing(c, Outer) < 1.5) a.MissedAlongBoundary += cell;
-                    else if (LeftOnPurpose?.Invoke(c) == true) a.MissedLeftInMiddle += cell;
+                    else if (LeftOnPurpose?.Invoke(c) == true) { a.MissedLeftInMiddle += cell; left[i] = LeftMiddle; }
                     // Between passes only where the pass is one that was driven: with skip rows a pass
                     // left for the way back (or never reached) lies between sprayed passes too, and is
                     // a pass not worked, not a strip or a wedge (W1: 22 % "between passes" in a short run).
-                    else if (PassDriven(c) && SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; if (OnSeam(c)) a.MissedAtSeams += cell; marks[i] |= Marks.Strip; }
+                    else if (PassDriven(c) && SprayedAcross(i, +1, reach) && SprayedAcross(i, -1, reach)) { a.MissedBetweenPasses += cell; a.MissedBetweenE += c.E * cell; a.MissedBetweenN += c.N * cell; if (OnSeam(c)) a.MissedAtSeams += cell; marks[i] |= Marks.Strip; left[i] = StripCell; }
                     // The rest: in a pass that was driven (worked along part of its length, as the
                     // first passes of a field whose corner a U-turn cut off), or in no driven pass
                     // (a side of the field, passes skipped).
@@ -1396,6 +1406,40 @@ public sealed class JobRun : IAsyncDisposable
                 if (screen) a.ScreenSwept += cell;
             }
         }
+        // Ground counted as left (the middle no lap reaches, a corner, a lap change) is told by how
+        // far it lies from where the tool went, with a margin: the half width plus 0.3 m. The
+        // spray ends at the half width, so the band between is neither sprayed nor left, and
+        // where sprayed ground lies across from it, it was counted as a strip between passes: the
+        // edge of the left ground, not a strip (P6: 38 of 57 m² "strips" were that edge, one cell
+        // wide). A strip cell within 0.4 m (two cells) of left ground is that ground's.
+        {
+            var queue = new Queue<(int I, int D)>();
+            for (int i = 0; i < left.Length; i++)
+                if (left[i] is LeftMiddle or LeftCorner or LeftLapChange) queue.Enqueue((i, 0));
+            while (queue.Count > 0)
+            {
+                var (i, depth) = queue.Dequeue();
+                if (depth >= 2) continue;
+                int x = i % g.W, y = i / g.W;
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        int nx = x + dx, ny = y + dy;
+                        if ((dx == 0 && dy == 0) || nx < 0 || ny < 0 || nx >= g.W || ny >= g.H) continue;
+                        int j = ny * g.W + nx;
+                        if (left[j] != StripCell) continue;
+                        var c = g.Centre(j);
+                        a.MissedBetweenPasses -= cell; a.MissedBetweenE -= c.E * cell; a.MissedBetweenN -= c.N * cell;
+                        if (OnSeam(c)) a.MissedAtSeams -= cell;
+                        marks[j] = (byte)(marks[j] & ~Marks.Strip);
+                        left[j] = left[i];
+                        if (left[i] == LeftMiddle) a.MissedLeftInMiddle += cell;
+                        else if (left[i] == LeftCorner) a.MissedAtCorners += cell;
+                        else a.MissedAtLapChange += cell;
+                        queue.Enqueue((j, depth + 1));
+                    }
+            }
+        }
         a.AppTotalWorked = Coverage.TotalWorkedArea;
         a.AppActualCovered = Coverage.ActualAreaCovered;
 
@@ -1408,6 +1452,7 @@ public sealed class JobRun : IAsyncDisposable
             {
                 if (!passes[k + 1].Value.TryGetValue(bin, out var x2)) continue;
                 if (x.R - x.L < Spec.T.Width - 0.3 || x2.R - x2.L < Spec.T.Width - 0.3) continue;   // a section still off at the pass's end
+                if (!BinAcrossBoth(passes[k].Key, passes[k + 1].Key, bin)) continue;
                 double gap = x2.L - x.R;
                 if (Settling(passes[k].Key, bin) || Settling(passes[k + 1].Key, bin))
                 {
@@ -1431,6 +1476,28 @@ public sealed class JobRun : IAsyncDisposable
         }
         return a;
     }
+
+    /// <summary>Does a bin lie across both passes at one place? Where the frame's reference turns
+    /// sharply (a lap's frame is the boundary: at a corner of it, the bins of a lap a width further
+    /// in fan out or bunch up), one bin holds the two passes' edges from points metres apart along
+    /// them, and the gap between those edges is no gap (P6: 0.46 m read at a bend of the first lap,
+    /// the two passes' points 3 m apart along it; the grid there showed a sliver of one cell).
+    /// More than <see cref="BinAlongSlackM"/> apart along the passes, the bin is not compared.</summary>
+    private bool BinAcrossBoth(int p1, int p2, int bin)
+    {
+        if (!_passBinAt.TryGetValue(p1, out var a1) || !a1.TryGetValue(bin, out var b1)) return true;
+        if (!_passBinAt.TryGetValue(p2, out var a2) || !a2.TryGetValue(bin, out var b2)) return true;
+        // The passes' way, the second turned to match the first (neighbouring passes are often
+        // driven in opposite directions).
+        double sign = b1.He * b2.He + b1.Hn * b2.Hn < 0 ? -1 : 1;
+        double he = b1.He / b1.K + sign * b2.He / b2.K, hn = b1.Hn / b1.K + sign * b2.Hn / b2.K, hl = Math.Sqrt(he * he + hn * hn);
+        if (hl < 1e-9) return true;
+        double de = b2.E / b2.K - b1.E / b1.K, dn = b2.N / b2.K - b1.N / b1.K;
+        return Math.Abs((de * he + dn * hn) / hl) <= BinAlongSlackM;
+    }
+
+    /// <summary>How far apart along the passes two passes' points in one 1 m bin may be.</summary>
+    private const double BinAlongSlackM = 1.5;
 
     /// <summary>Was this bin of a pass recorded only within <see cref="SettlingM"/> of where a stretch
     /// of its edges began, by the tool's travel (the implement settling onto the pass after a turn
