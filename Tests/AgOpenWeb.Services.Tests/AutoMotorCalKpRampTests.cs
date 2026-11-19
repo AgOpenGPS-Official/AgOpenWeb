@@ -312,6 +312,37 @@ public class AutoMotorCalKpRampTests
     }
 
     [Test]
+    public async Task MotorCal_LeftMidRamp_PutsTheOperatorsValuesBackAtOnce()
+    {
+        // Cancel, or the screen in control gone: the host leaves the step and saves the profile
+        // straight away (MainViewModel.EndRemoteSteerWizard), while the ramp's finally waits for
+        // the host loop's next turn. Leaving must put the operator's gain and minimum PWM back
+        // itself, or the ramp's own (gain 5, minimum PWM 5) were the ones saved.
+        _store.AutoSteer.ProportionalGain = 17;
+        _store.AutoSteer.MinPwm = 40;
+        var step = new AutoMotorCalibrationStepViewModel(_configService, new AgOpenWeb.Services.Threading.InlineUiDispatcher(), _autoSteer);
+        step.ReadModuleData = () => ModuleAt(0.0, 0);
+        var waiting = new TaskCompletionSource();
+        int delayCalls = 0;
+        step.DelayFunc = (_, _) => ++delayCalls >= 3 ? waiting.Task : Task.CompletedTask;
+        SetActive(step, true);
+
+        var ramp = step.RunKpRampAsync();
+        Assert.That(ramp.IsCompleted, Is.False, "the ramp waits on the host loop");
+        Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(AutoMotorCalibrationStepViewModel.RampMinPwm));
+
+        SetActive(step, false); // the wizard closed: the profile is saved right after this
+
+        Assert.That(_store.AutoSteer.ProportionalGain, Is.EqualTo(17), "the operator's gain, before the save");
+        Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(40), "the operator's minimum PWM, before the save");
+
+        waiting.SetResult(); // the ramp's turn comes: it stops and changes nothing more
+        await ramp;
+        Assert.That(_store.AutoSteer.ProportionalGain, Is.EqualTo(17));
+        Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(40));
+    }
+
+    [Test]
     public async Task MotorCal_DetectsRunaway_AbortsBeforeRampCompletes()
     {
         // Defensive: if the wheel races more than 15° from the start

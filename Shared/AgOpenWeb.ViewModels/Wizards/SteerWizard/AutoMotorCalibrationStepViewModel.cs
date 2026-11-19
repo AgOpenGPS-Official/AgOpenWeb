@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -79,6 +80,15 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
 
     /// <summary>The operator's minimum PWM while the ramp runs on <see cref="RampMinPwm"/>.</summary>
     private int _operatorMinPwm;
+
+    /// <summary>The operator's gain while the ramp runs on its own.</summary>
+    private int _operatorKp;
+
+    /// <summary>The ramp's own gain and minimum PWM are in the settings (see <see cref="RestoreOperatorSettings"/>).</summary>
+    private bool _rampHoldsSettings;
+
+    /// <summary>The ramp read a minimum PWM and kept it: it is not put back.</summary>
+    private bool _rampMinPwmSaved;
 
     private readonly IConfigurationService _configService;
     private readonly IAutoSteerService? _autoSteerService;
@@ -282,9 +292,10 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         var token = NewTestToken();
 
         var autoSteerConfig = _configService.Store.AutoSteer;
-        int originalKp = autoSteerConfig.ProportionalGain;
+        _operatorKp = autoSteerConfig.ProportionalGain;
         int originalMinPwm = _operatorMinPwm = autoSteerConfig.MinPwm;
-        bool minPwmSaved = false;
+        _rampMinPwmSaved = false;
+        _rampHoldsSettings = true;
         // Until the wheels have moved toward the target the motor direction is unknown:
         // nothing may hold or centre them at a real gain (a backwards motor runs away).
         bool directionConfirmed = false;
@@ -399,7 +410,7 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                         if (!minPwmStalled)
                         {
                             autoSteerConfig.MinPwm = DetectedMinPwm;
-                            minPwmSaved = true;
+                            _rampMinPwmSaved = true;
                         }
                         DetectedInvertMotor = autoSteerConfig.InvertMotor;
                         detected = true;
@@ -418,7 +429,7 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                         $"Motor direction: {(DetectedInvertMotor ? "Inverted" : "Normal")}\n" +
                         $"Minimum PWM: {DetectedMinPwm}" +
                         (minPwmStalled
-                            ? $"\nNot saved: two thirds of the maximum PWM or more means the wheels stalled. Minimum PWM stays {originalMinPwm}. Free the wheels and run the test again." +
+                            ? string.Create(CultureInfo.InvariantCulture, $"\nNot saved: two thirds of the maximum PWM or more means the wheels stalled. Minimum PWM stays {originalMinPwm}. Free the wheels and run the test again.") +
                               " Standing still the tyres hold the wheels: run it at walking pace."
                             : "");
                     TestDone = true; // the ramp ran to its end: the Finish page won't list it
@@ -479,14 +490,30 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         }
         finally
         {
-            // Operator's Kp back first, so the return to centre isn't at the ramped gain.
-            autoSteerConfig.ProportionalGain = originalKp;
-            // And the operator's minimum PWM, unless the ramp found one to keep.
-            if (!minPwmSaved)
-                autoSteerConfig.MinPwm = originalMinPwm;
+            // Operator's Kp and minimum PWM back first, so the return to centre isn't at the
+            // ramped gain.
+            RestoreOperatorSettings();
             // Centre only a motor seen turning the right way; otherwise release in place.
             await EndFreeDriveAsync(centre: directionConfirmed);
         }
+    }
+
+    /// <summary>
+    /// Put the operator's gain and minimum PWM back in the settings (the minimum unless the
+    /// ramp read one and kept it). The ramp's finally does it, and leaving the step does it at
+    /// once: a wizard closed mid-ramp (Cancel, the screen in control gone) leaves the step and
+    /// saves the profile straight away (MainViewModel.EndRemoteSteerWizard), while the ramp's
+    /// finally only runs on the host loop's next turn, so the ramp's own values were saved.
+    /// </summary>
+    private void RestoreOperatorSettings()
+    {
+        if (!_rampHoldsSettings)
+            return;
+        _rampHoldsSettings = false;
+        var autoSteerConfig = _configService.Store.AutoSteer;
+        autoSteerConfig.ProportionalGain = _operatorKp;
+        if (!_rampMinPwmSaved)
+            autoSteerConfig.MinPwm = _operatorMinPwm;
     }
 
     // =========================================================================
@@ -576,6 +603,8 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
     {
         // Cancel any running calibration and make sure free drive is off
         StopFreeDriveTest();
+        // A ramp cut off here gives back the operator's values now, not on its way out.
+        RestoreOperatorSettings();
 
         UnsubscribeFromSwitchGate();
         if (_autoSteerService != null)
