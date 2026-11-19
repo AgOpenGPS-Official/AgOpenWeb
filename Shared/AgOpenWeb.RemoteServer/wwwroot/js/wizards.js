@@ -13,6 +13,7 @@ const wzContent = document.getElementById('wz-content');
 // stepKind|index of the currently-built content (rebuild on change — and on a unit
 // flip, which onUnitsChanged forces by clearing this).
 let _wzKey = '';
+let _wzStage = '', _wzStageAt = 0;   // the stage of a step with stages, and when it changed
 function openSteerWizard() { _wzKey = ''; wizard = null; transport.send('wizard.open'); wzOverlay.classList.add('open'); }
 function wzClose(send) { if (send) transport.send('wizard.cancel'); wzOverlay.classList.remove('open'); wizard = null; _wzKey = ''; }
 document.getElementById('wz-cancel').addEventListener('pointerdown', e => { e.stopPropagation(); wzClose(true); });
@@ -24,14 +25,20 @@ document.getElementById('wz-next').addEventListener('pointerdown', e => {
   else transport.send('wizard.next');
 });
 // Delegated content events: data-cfg="key:val" (config.set), data-hw="n" (hardware
-// level), data-act="Cmd" (gated wizard.action), data-tgl="key" (toggle), data-cfgnum
-// (number input) on change.
+// level), data-act="Cmd" (gated wizard.action), data-wzset="Property:val" (gated
+// wizard.set on the step), data-tgl="key" (toggle), data-cfgnum (number input) on change.
 wzContent.addEventListener('pointerdown', e => {
-  const el = e.target.closest('[data-cfg],[data-hw],[data-act],[data-tgl]'); if (!el) return;
+  const el = e.target.closest('[data-cfg],[data-hw],[data-act],[data-wzset],[data-tgl]'); if (!el) return;
   e.stopPropagation();
   if (el.dataset.cfg) { const i = el.dataset.cfg.indexOf(':'); cfgSend(el.dataset.cfg.slice(0, i), el.dataset.cfg.slice(i + 1)); }
   else if (el.dataset.hw != null) transport.send('wizard.hw|' + el.dataset.hw);
-  else if (el.dataset.act) rnSend('wizard.action|' + el.dataset.act);
+  else if (el.dataset.act) {
+    // A button that appeared a moment ago where another was (Stop, then Continue or Use these
+    // values) gets the tap meant for the old one: not taken. Stop is always taken.
+    if (el.dataset.stage && el.dataset.act !== 'StopTest' && performance.now() - _wzStageAt < 700) return;
+    rnSend('wizard.action|' + el.dataset.act);
+  }
+  else if (el.dataset.wzset) rnSend('wizard.set|' + el.dataset.wzset);
   else if (el.dataset.tgl) cfgSend(el.dataset.tgl, cfgGet(el.dataset.tgl) ? '0' : '1');
 });
 wzContent.addEventListener('change', e => {
@@ -130,6 +137,29 @@ function buildWizardContent(w) {
       return head + '<div class="wz-testtop"><div class="wz-prereq"><div class="ttl">Prerequisites</div><div class="it">GPS: <b data-live="fix">—</b> (RTK Fixed recommended)</div><div class="it">Speed: <b data-live="speed">—</b> ' + esc(tr('(aim for ~{speed})', { speed: fmtUnit(5, 'kmh', 0) })) + '</div></div>' +
         wzLive(tr('Live Steer Angle'), 'angle') + '</div>' + wzCircleTest() +
         '<div class="wz-rows">' + wzNum(tr('Ackermann'), tr('100 = neutral'), 'autosteer.ackermann', '1', '') + '</div>';
+    case 'tune': {
+      // The host's step says where it is (testStage: 0 idle, 1 running, 2 stop check passed,
+      // 3 values found, 4 values in use); each button names the stages it shows in.
+      const sp = (v, t) => '<button data-wzset="TargetWheelSpeed:' + v + '" data-choice="' + v + '">' + esc(t) + '</button>';
+      // (The speed choice and the live angle make room for the values found: a 5" screen shows them without scrolling.)
+      return head + '<div class="wz-testtop" data-stage="0 1 2 4"><div class="wz-prereq"><div class="ttl">Wheel speed wanted</div>' +
+        '<div class="it">' + esc(tr('How fast the wheels turn at the Max Limit: 15, 25 or 35°/s')) + '</div>' +
+        '<div class="wz-seg wz-tunespeed">' + sp(15, tr('Gentle')) + sp(25, tr('Normal')) + sp(35, tr('Fast')) + '</div></div>' +
+        wzLive(tr('Live Steer Angle'), 'angle') + '</div>' +
+        '<div class="wz-center wz-circle"><div class="wz-btnrow">' +
+        '<button class="wz-testbtn" data-act="StartTest" data-stage="0">Start</button>' +
+        '<button class="wz-testbtn" data-act="StartTest" data-stage="4">Run again</button>' +
+        '<button class="wz-testbtn" data-act="Continue" data-stage="2">Continue</button>' +
+        '<button class="wz-testbtn" data-act="Accept" data-stage="3">Use these values</button>' +
+        '<button class="wz-testbtn alt" data-act="Discard" data-stage="3">Keep the old values</button>' +
+        '<button class="wz-testbtn stop" data-act="StopTest" data-stage="1 2">Stop</button>' +
+        '</div><div class="wz-hint" data-live="hint"></div><div class="wz-desc wz-phase" data-live="phase"></div><div class="wz-desc wz-tuneresult" data-live="result"></div>' +
+        '<details class="wz-tunemore" data-more><summary>Measurements</summary><div class="wz-desc" data-live="measured"></div></details></div>' +
+        '<div class="wz-rows" data-stage="0 2 3 4">' +
+        wzNum(tr('Minimum To Move'), null, 'autosteer.minPwm', '1', '') +
+        wzNum(tr('Max Limit'), null, 'autosteer.maxPwm', '1', '') +
+        wzNum(tr('Proportional Gain'), null, 'autosteer.proportionalGain', '1', '') + '</div>';
+    }
     case 'gains':
       return head + '<div class="wz-rows">' + wzTgl(tr('Guidance algorithm (Stanley)'), tr('Pure Pursuit default; Stanley more responsive at low speed'), 'autosteer.isStanleyMode') +
         wzNum(tr('Proportional gain (Kp)'), tr('Start at 10, increase for faster correction'), 'autosteer.proportionalGain', '1', '') +
@@ -177,10 +207,21 @@ function renderWizard() {
   for (const el of wzContent.querySelectorAll('[data-tglkey]')) {
     const on = !!cfgGet(el.dataset.tglkey); el.classList.toggle('on', on); el.textContent = on ? tr('On') : tr('Off');
   }
-  for (const el of wzContent.querySelectorAll('[data-act]')) el.classList.toggle('disabled', !iHoldControl);
+  for (const el of wzContent.querySelectorAll('[data-act],[data-wzset]')) el.classList.toggle('disabled', !iHoldControl);
+  // A step with stages (the wheel tuning): its buttons and fields show in the stages they name.
+  const stage = String(w.testStage | 0);
+  if (stage !== _wzStage) { _wzStage = stage; _wzStageAt = performance.now(); }
+  for (const el of wzContent.querySelectorAll('[data-stage]'))
+    el.style.display = el.dataset.stage.split(' ').includes(stage) ? '' : 'none';
+  for (const el of wzContent.querySelectorAll('[data-choice]'))
+    el.classList.toggle('active', Math.round(w.testChoice || 0) === +el.dataset.choice);
   const live = (k, v) => { for (const el of wzContent.querySelectorAll('[data-live="' + k + '"]')) el.textContent = v; };
   live('angle', (w.liveAngle || 0).toFixed(1) + '°'); live('roll', (w.liveRoll || 0).toFixed(2) + '°');
-  live('error', (w.liveError || 0).toFixed(1)); live('phase', w.testPhase || ''); live('result', w.testResult || '');
+  live('error', (w.liveError || 0).toFixed(1)); live('phase', w.testPhase || '');
+  // A result may end with its measurements, after a line of their own: the page folds them away.
+  const res = w.testResult || '', more = '\nMeasurements:\n', cut = res.indexOf(more);
+  live('result', cut < 0 ? res : res.slice(0, cut)); live('measured', cut < 0 ? '' : res.slice(cut + more.length));
+  for (const el of wzContent.querySelectorAll('[data-more]')) el.style.display = cut < 0 ? 'none' : '';
   live('fix', w.fixLabel || (w.statusGps || '—')); live('speed', fmtUnit(w.statusSpeed || 0, 'kmh', 1));
   live('rollzero', wzVal('roll.rollZero').toFixed(2)); live('wasoffset', wzVal('autosteer.wasOffset') | 0);
   // Roll gauge (roll-calibration step): rotate the bar by the live roll, like the map.

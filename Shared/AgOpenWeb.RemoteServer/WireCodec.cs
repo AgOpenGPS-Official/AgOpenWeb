@@ -511,6 +511,8 @@ public static class WireCodec
         bw.Write((float)w.Diameter);
         WriteStr(bw, w.RecordHint);
         B(w.CanRecord);
+        bw.Write(w.TestStage);          // i32
+        bw.Write((float)w.TestChoice);
         return ms.ToArray();
     }
 

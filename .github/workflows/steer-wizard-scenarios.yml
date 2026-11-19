@@ -2,7 +2,7 @@ name: Steer Wizard Scenarios
 
 # The steer wizard scenario harness (Tests/AgOpenWeb.SteerWizardScenarios.Tests): the whole
 # backend in process, an emulated AiO steer module and a moving tractor behind it, the steer
-# wizard driven by a careful and a careless operator. It takes about ten minutes, so it runs
+# wizard driven by a careful and a careless operator. It takes about 20 minutes, so it runs
 # nightly on develop, not on every PR (CI only builds it). The run fails when the harness
 # breaks or the safety watch saw the wheels move when they shouldn't; the other findings are
 # in the report, kept as an artifact and shown in the run's summary.
@@ -37,7 +37,7 @@ concurrency:
 jobs:
   scenarios:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 

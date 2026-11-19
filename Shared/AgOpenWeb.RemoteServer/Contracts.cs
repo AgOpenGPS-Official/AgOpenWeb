@@ -509,7 +509,10 @@ public record WizardDto(
     string TestPhase, string TestResult, double TestProgress, bool TestActive,
     bool RtkFixed, string FixLabel, double Diameter,
     // Circle-test feedback (#154): why Record can't start / a fix warning, and whether it can.
-    string RecordHint, bool CanRecord);
+    string RecordHint, bool CanRecord,
+    // A step with more than Start: where it is (the wheel tuning's TuneStage picks the page's
+    // buttons) and the choice it runs with (the wanted wheel speed).
+    int TestStage = 0, double TestChoice = 0);
 
 /// <summary>Vehicle tab: type / hitch / dimensions / antenna (ConfigStore.Vehicle).</summary>
 public record VehicleConfigDto(
