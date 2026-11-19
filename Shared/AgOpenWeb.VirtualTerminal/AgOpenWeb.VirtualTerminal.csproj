@@ -36,8 +36,8 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <SharpIsoTermVersion>0.1.3</SharpIsoTermVersion>
-    <SharpIsoTermSha256>29b07ebde90d23fa10a67d25d351ef2c6c78c257e82f5a66a0cda913b1b2dd95</SharpIsoTermSha256>
+    <SharpIsoTermVersion>0.1.4</SharpIsoTermVersion>
+    <SharpIsoTermSha256>e6eaaf3cb3a44bc26e47483994e7fd4ace2a7d7a9927ee7b1bf000c3f751e614</SharpIsoTermSha256>
     <SharpIsoTermFeed>$(MSBuildThisFileDirectory)../../nuget-local/</SharpIsoTermFeed>
     <SharpIsoTermPackage>$(SharpIsoTermFeed)SharpIsoTerm.$(SharpIsoTermVersion).nupkg</SharpIsoTermPackage>
   </PropertyGroup>
