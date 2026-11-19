@@ -242,6 +242,7 @@ public partial class MainViewModel
             }
 
             SetProperty(ref _isSimulatorDrivingSteering, value);
+            State.Simulator.SteersModule = value; // mirror for the web-UI projector (the steer bar)
             _gpsPipelineService.SetSimulatorSteersModule(value);
             _logger.LogInformation("[Simulator] The steer module is {What}",
                 value ? "driven by the simulator (bench test)" : "not driven by the simulator");
