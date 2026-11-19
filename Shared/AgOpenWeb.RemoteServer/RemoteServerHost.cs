@@ -391,6 +391,8 @@ public sealed class RemoteServerHost
         // served as application/wasm so the browser can streaming-compile it.
         server.MapGet("/vendor/canvaskit.js", () => SimpleWebServer.Response.Text(ReadAsset("vendor.canvaskit.js"), "text/javascript"));
         server.MapGet("/vendor/canvaskit.wasm", () => SimpleWebServer.Response.Bytes(ReadAssetBytes("vendor.canvaskit.wasm"), "application/wasm"));
+        // html-to-image: draws the page into a picture for the Bug Report's Take Screenshot.
+        server.MapGet("/vendor/html-to-image.js", () => SimpleWebServer.Response.Text(ReadAsset("vendor.html-to-image.js"), "text/javascript"));
 
         // Right-nav toolbar icons (PNG/GIF), embedded from wwwroot/icons. Filename-only
         // (no path traversal); unknown names 404.

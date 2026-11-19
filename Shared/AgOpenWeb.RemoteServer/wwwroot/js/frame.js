@@ -80,6 +80,34 @@ function noteInput(e) {
 for (const t of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown'])
   addEventListener(t, noteInput, { capture: true, passive: true });
 let _overlayError = '';
+// The map as this frame drew it, for the Bug Report's Take Screenshot: read from the GL surface
+// right after the draw (a WebGL canvas is cleared once shown, so it can't be read later), as a 2D
+// canvas. Nothing runs per frame unless a picture was asked for.
+let _mapPictureWaiters = [];
+function mapPictureCanvas() {
+  return new Promise((resolve, reject) => {
+    if (!skSurface || CardPane.coversMap) { reject(new Error('map not drawn')); return; }
+    const w = { resolve, reject };
+    _mapPictureWaiters.push(w);
+    setTimeout(() => { const i = _mapPictureWaiters.indexOf(w); if (i >= 0) { _mapPictureWaiters.splice(i, 1); reject(new Error('map not drawn')); } }, 2000);
+  });
+}
+function giveMapPictures() {
+  const waiters = _mapPictureWaiters; _mapPictureWaiters = [];
+  let img = null, cv = null;
+  try {
+    img = skSurface.makeImageSnapshot();
+    const width = img.width(), height = img.height();
+    const px = img.readPixels(0, 0, { width, height, colorType: CK.ColorType.RGBA_8888,
+      alphaType: CK.AlphaType.Unpremul, colorSpace: CK.ColorSpace.SRGB });
+    if (px) {
+      cv = document.createElement('canvas'); cv.width = width; cv.height = height;
+      cv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(px.buffer, px.byteOffset, px.length), width, height), 0, 0);
+    }
+  } catch (_) { cv = null; }
+  finally { if (img) img.delete(); }
+  for (const w of waiters) cv ? w.resolve(cv) : w.reject(new Error('no picture'));
+}
 function skFrame(ts) {
   // rAF runs at the display's rate; a frame that comes too soon is skipped whole (map and DOM
   // overlays). _frameLast advances by the interval, so the average holds on any refresh rate
@@ -105,6 +133,7 @@ function skFrame(ts) {
     const _t0 = performance.now();
     try { renderSkia(skSurface.getCanvas(), rp); skSurface.flush(); noteDrawMs(performance.now() - _t0); }
     catch (e) { ckStatus = 'render err: ' + (e && e.message || e); }
+    if (_mapPictureWaiters.length) giveMapPictures();
   }
   // DOM overlays (independent of the GL surface). One that throws must not end the frame
   // loop (a page loaded with a field and a line open could do that before CanvasKit was up):
