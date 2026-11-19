@@ -55,6 +55,18 @@ public class SteerBarErrorTests
     }
 
     [Test]
+    public void OnTheSimulator_TheBarIsTheSimulatedWheelsMinusTheCommand()
+    {
+        // The simulated wheels not yet on the commanded angle: their difference, not the module's.
+        var (projector, state, _) = Make(moduleWas: 15);
+        state.Simulator.IsEnabled = true;
+        state.Guidance.SteerAngle = 1.0;
+        state.Simulator.SteerAngle = 3.0;
+
+        Assert.That(projector.BuildTick(1).SteerAngleError, Is.EqualTo(2.0).Within(1e-9));
+    }
+
+    [Test]
     public void WithoutTheSimulator_TheBarIsTheModulesSensor()
     {
         var (projector, state, _) = Make(moduleWas: 2.5);

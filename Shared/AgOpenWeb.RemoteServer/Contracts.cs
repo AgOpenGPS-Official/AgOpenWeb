@@ -135,7 +135,8 @@ public record TickDto(
     // FieldState.HeadlandProximityDistance/…Warning.
     double HeadlandProximityDistance,
     bool HeadlandProximityWarning,
-    // Steer-bar value: steer-angle error (actual WAS − commanded guidance angle, deg).
+    // Steer-bar value: steer-angle error (the wheels' angle − commanded guidance angle, deg): the
+    // module's WAS, or the simulator's angle while it drives and doesn't move the real steering.
     // The web top bar shows this in steer-bar mode (light-bar mode uses CrossTrackError).
     double SteerAngleError,
     // Diagnostic-chart scalars (Tools panel: Steer / Heading / XTE charts). Streamed
