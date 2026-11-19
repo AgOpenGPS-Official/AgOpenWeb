@@ -45,8 +45,8 @@ public sealed class ScenarioJournal
     /// <summary>Every finding with where it was first seen and how often.</summary>
     public Dictionary<string, (Finding First, string Where, int Count, List<string> Places)> Findings { get; } = new();
 
-    /// <summary>The evidence zip kept for a finding, by its key: the dump taken at the step where
-    /// the kind was first seen (Scenario.KeepEvidenceAsync).</summary>
+    /// <summary>The evidence kept for a finding, by its key, as the report shows it: the dump taken
+    /// at the step where the kind was first seen (Scenario.KeepEvidenceAsync), or why there is none.</summary>
     public Dictionary<string, string> EvidenceFor { get; } = new();
 
     /// <summary>Adds a finding; returns its key when this is the first of its kind in the run, else null.</summary>
@@ -105,7 +105,7 @@ public sealed class ScenarioJournal
             if (g.Places.Count > 1)
                 sb.Append("   Also: ").Append(string.Join("; ", g.Places.Skip(1))).Append('\n');
             if (EvidenceFor.TryGetValue(key, out var zip))
-                sb.Append("   Evidence: `evidence/").Append(zip).Append("`\n");
+                sb.Append("   Evidence: ").Append(zip).Append('\n');
         }
 
         sb.Append("\n## Step logs\n");
@@ -151,7 +151,7 @@ public sealed class Scenario
     // The first of a kind of finding in the run, seen at a step whose dump is not yet taken:
     // the key, and the step. Taken before the next step changes anything (KeepEvidenceAsync).
     private readonly List<(string Key, StepRecord Step)> _evidenceWanted = new();
-    private bool _evidenceTaken;
+    private int _dumpedAtStep = -1;   // the step the last dump was taken after
 
     public FieldScenarioRig Rig => _rig;
     public FieldSnapshot Last { get; private set; } = new();
@@ -165,6 +165,7 @@ public sealed class Scenario
         _record = new ScenarioRecord { Name = name, Operator = op };
         journal.Scenarios.Add(_record);
         _ev = new Evidence(Evidence.FolderFor(ReportPath.For(ReportName)), name);
+        rig.BeforeAction = () => KeepEvidenceAsync();
         rig.LogAction("# scenario: " + name + " (" + op + " operator)");
     }
 
@@ -181,13 +182,15 @@ public sealed class Scenario
     /// as it stands now, before the next step changes it, with what the operator did up to here
     /// (<c>attachments/commands.txt</c>) and the scenario's steps in the notes. A finding is fixed
     /// from it with a unit test, as from a tester's dump. One dump per kind of finding in the run:
-    /// the step where it was first seen. With <c>AGOPENWEB_SCENARIO_EVIDENCE=all</c>, every
-    /// scenario also keeps one at its end.
+    /// the step where it was first seen. Taken at the start of the next step, and before any
+    /// command, placing, drive or import file in between (the rig's BeforeAction). With
+    /// <c>AGOPENWEB_SCENARIO_EVIDENCE=all</c>, every scenario also keeps one at its end. A dump
+    /// that fails is not taken again later (the state would be a later one): the report says why.
     /// </summary>
     public async Task KeepEvidenceAsync(bool end = false)
     {
         if (Evidence.Off) return;
-        if (_evidenceWanted.Count == 0 && !(end && Evidence.All && !_evidenceTaken)) return;
+        if (_evidenceWanted.Count == 0 && !(end && Evidence.All && _dumpedAtStep != _index)) return;
         var wanted = _evidenceWanted.ToList();
         _evidenceWanted.Clear();
         var st = wanted.Count > 0 ? wanted[0].Step : LastStep;
@@ -226,9 +229,10 @@ public sealed class Scenario
         string? zip = await _ev.SaveAsync(moment, notes.ToString(), _rig.Services, _rig.State,
             AgOpenWeb.Models.Configuration.ConfigurationStore.Instance, _rig.RunAsync, files);
         try { Directory.Delete(tmp, true); } catch { }
-        _evidenceTaken = true;
-        if (zip != null)
-            foreach (var (key, _) in wanted) _journal.EvidenceFor[key] = Path.GetFileName(zip);
+        _dumpedAtStep = _index;
+        string shown = zip != null ? "`evidence/" + Path.GetFileName(zip) + "`"
+            : "not kept (" + (_ev.Errors.Count > 0 ? _ev.Errors[^1] : "no reason given") + ")";
+        foreach (var (key, _) in wanted) _journal.EvidenceFor[key] = shown;
         foreach (var e in _ev.Errors) TestContext.Out.WriteLine("evidence not kept: " + e);
         _ev.Errors.Clear();
     }
