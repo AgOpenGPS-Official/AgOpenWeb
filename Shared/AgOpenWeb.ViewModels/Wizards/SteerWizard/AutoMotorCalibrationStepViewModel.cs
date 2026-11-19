@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -57,6 +58,37 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
     /// used to go on to Kp 200 (8 s at full power against the operator's hands).
     /// </summary>
     internal const int HeldAtFullPowerSteps = 5;
+
+    /// <summary>
+    /// The minimum PWM the ramp runs on (or the operator's own, if lower). The module's PWM is
+    /// the gain times the error plus its minimum PWM, so on the operator's value nothing under
+    /// it can be read: with 64 set, a valve that moves from 48 read 64 on every run and was
+    /// refused as stalled (a tester's proportional valve, 18 Nov 2026).
+    /// </summary>
+    internal const int RampMinPwm = 5;
+
+    /// <summary>
+    /// A reading of this share of the maximum PWM or more is a stall, not the minimum. It was
+    /// half: a proportional valve held to its coil's current has its whole range between about
+    /// 45 and 90 to 105, so its true minimum read as stalled (42 to 47 of Max Limit 89 on one
+    /// tractor, 48 of 105 on another).
+    /// </summary>
+    internal const double StalledShare = 2.0 / 3.0;
+
+    /// <summary>True when a minimum PWM read is too near the maximum to be the minimum.</summary>
+    internal static bool IsStalledReading(int pwm, int maxPwm) => pwm >= maxPwm * StalledShare;
+
+    /// <summary>The operator's minimum PWM while the ramp runs on <see cref="RampMinPwm"/>.</summary>
+    private int _operatorMinPwm;
+
+    /// <summary>The operator's gain while the ramp runs on its own.</summary>
+    private int _operatorKp;
+
+    /// <summary>The ramp's own gain and minimum PWM are in the settings (see <see cref="RestoreOperatorSettings"/>).</summary>
+    private bool _rampHoldsSettings;
+
+    /// <summary>The ramp read a minimum PWM and kept it: it is not put back.</summary>
+    private bool _rampMinPwmSaved;
 
     private readonly IConfigurationService _configService;
     private readonly IAutoSteerService? _autoSteerService;
@@ -260,7 +292,10 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         var token = NewTestToken();
 
         var autoSteerConfig = _configService.Store.AutoSteer;
-        int originalKp = autoSteerConfig.ProportionalGain;
+        _operatorKp = autoSteerConfig.ProportionalGain;
+        int originalMinPwm = _operatorMinPwm = autoSteerConfig.MinPwm;
+        _rampMinPwmSaved = false;
+        _rampHoldsSettings = true;
         // Until the wheels have moved toward the target the motor direction is unknown:
         // nothing may hold or centre them at a real gain (a backwards motor runs away).
         bool directionConfirmed = false;
@@ -271,6 +306,9 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
             // wheels where they are while the module arms, and with the motor wired the
             // other way any hold drives them off.
             autoSteerConfig.ProportionalGain = KpRampStartInclusive;
+            // And on a minimum PWM under any steering's own, so the PWM at rest is the
+            // steering's minimum and not the value already set (see RampMinPwm).
+            autoSteerConfig.MinPwm = Math.Min(originalMinPwm, RampMinPwm);
             if (!await BeginFreeDriveAsync(token))
             {
                 Phase = CalibrationPhase.WaitingToStart;
@@ -364,13 +402,16 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                         // keeps it. (The step once saved it only after a max angle part of
                         // its own, which the web wizard never ran; the max steer angle step
                         // does that now, and that part is gone.)
-                        // Not a reading of half the maximum PWM or more: wheels that move a
-                        // little and then stall against a stop or a heavy load read near the
-                        // maximum, and as the minimum that would kick every small correction
-                        // at nearly full power.
-                        minPwmStalled = DetectedMinPwm >= autoSteerConfig.MaxPwm / 2;
+                        // Not a reading near the maximum PWM: wheels that move a little and
+                        // then stall against a stop or a heavy load read near the maximum,
+                        // and as the minimum that would kick every small correction at
+                        // nearly full power.
+                        minPwmStalled = IsStalledReading(DetectedMinPwm, autoSteerConfig.MaxPwm);
                         if (!minPwmStalled)
+                        {
                             autoSteerConfig.MinPwm = DetectedMinPwm;
+                            _rampMinPwmSaved = true;
+                        }
                         DetectedInvertMotor = autoSteerConfig.InvertMotor;
                         detected = true;
                         directionConfirmed = true;
@@ -388,7 +429,8 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
                         $"Motor direction: {(DetectedInvertMotor ? "Inverted" : "Normal")}\n" +
                         $"Minimum PWM: {DetectedMinPwm}" +
                         (minPwmStalled
-                            ? $"\nNot saved: half the maximum PWM or more means the wheels stalled. Minimum PWM stays {autoSteerConfig.MinPwm}. Free the wheels and run the test again."
+                            ? string.Create(CultureInfo.InvariantCulture, $"\nNot saved: two thirds of the maximum PWM or more means the wheels stalled. Minimum PWM stays {originalMinPwm}. Free the wheels and run the test again.") +
+                              " Standing still the tyres hold the wheels: run it at walking pace."
                             : "");
                     TestDone = true; // the ramp ran to its end: the Finish page won't list it
                     Phase = CalibrationPhase.RampResult;
@@ -448,11 +490,30 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         }
         finally
         {
-            // Operator's Kp back first, so the return to centre isn't at the ramped gain.
-            autoSteerConfig.ProportionalGain = originalKp;
+            // Operator's Kp and minimum PWM back first, so the return to centre isn't at the
+            // ramped gain.
+            RestoreOperatorSettings();
             // Centre only a motor seen turning the right way; otherwise release in place.
             await EndFreeDriveAsync(centre: directionConfirmed);
         }
+    }
+
+    /// <summary>
+    /// Put the operator's gain and minimum PWM back in the settings (the minimum unless the
+    /// ramp read one and kept it). The ramp's finally does it, and leaving the step does it at
+    /// once: a wizard closed mid-ramp (Cancel, the screen in control gone) leaves the step and
+    /// saves the profile straight away (MainViewModel.EndRemoteSteerWizard), while the ramp's
+    /// finally only runs on the host loop's next turn, so the ramp's own values were saved.
+    /// </summary>
+    private void RestoreOperatorSettings()
+    {
+        if (!_rampHoldsSettings)
+            return;
+        _rampHoldsSettings = false;
+        var autoSteerConfig = _configService.Store.AutoSteer;
+        autoSteerConfig.ProportionalGain = _operatorKp;
+        if (!_rampMinPwmSaved)
+            autoSteerConfig.MinPwm = _operatorMinPwm;
     }
 
     // =========================================================================
@@ -495,8 +556,8 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
     /// not what the motor needs: armed at the bottom of the ramp they move at its first
     /// step, and that read 44 for a motor that moves from 28. They stop where the PWM
     /// falls below what moves them, so the PWM at rest is the minimum. At rest on the
-    /// target itself (PWM 0: the minimum PWM set is already more than enough) the
-    /// setting is kept.
+    /// target itself (PWM 0: the ramp's own minimum PWM is already more than enough, so
+    /// there is nothing to read) the operator's setting is kept.
     /// </summary>
     private async Task<SteerModuleData> AtRestAsync(SteerModuleData moving, CancellationToken token)
     {
@@ -513,7 +574,7 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         }
         return last.PwmDisplay > 0
             ? last
-            : last with { PwmDisplay = (byte)Math.Clamp(_configService.Store.AutoSteer.MinPwm, 0, 255) };
+            : last with { PwmDisplay = (byte)Math.Clamp(_operatorMinPwm, 0, 255) };
     }
 
     protected override SteerModuleData CurrentModuleData => GetCurrentModuleData();
@@ -542,6 +603,8 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
     {
         // Cancel any running calibration and make sure free drive is off
         StopFreeDriveTest();
+        // A ramp cut off here gives back the operator's values now, not on its way out.
+        RestoreOperatorSettings();
 
         UnsubscribeFromSwitchGate();
         if (_autoSteerService != null)
@@ -552,7 +615,7 @@ public class AutoMotorCalibrationStepViewModel : SwitchGatedWizardStep
         {
             var autoSteer = _configService.Store.AutoSteer;
             autoSteer.InvertMotor = DetectedInvertMotor;
-            if (DetectedMinPwm < autoSteer.MaxPwm / 2) // not a stalled reading (see the ramp)
+            if (!IsStalledReading(DetectedMinPwm, autoSteer.MaxPwm)) // see the ramp
                 autoSteer.MinPwm = DetectedMinPwm;
         }
     }

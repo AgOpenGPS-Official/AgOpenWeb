@@ -164,8 +164,52 @@ public class SteerWizardSafetyTests
         vm.OnBrowserControlEnded("browser control ended: presence lost (deadman)", involuntary: true);
 
         b.SectionControlService.Received().SetSectionState(1, SectionButtonState.Off);
-        b.SectionControlService.DidNotReceive().SetSectionState(0, Arg.Any<SectionButtonState>());
+        b.SectionControlService.DidNotReceive().SetSectionState(2, Arg.Any<SectionButtonState>());
         Assert.That(vm.ControlLostNotice, Does.Contain("the sections").And.Contain("stopped answering"));
+    }
+
+    [Test]
+    public void Browser_lost_switches_a_section_left_in_Auto_by_its_own_button_off()
+    {
+        // Master off, manual off, section 0 put in Auto by its own button: SectionControlService
+        // runs it by that button, so it opened and closed by itself over the field with nobody at
+        // the screen.
+        var b = new MainViewModelBuilder();
+        var states = new[]
+        {
+            new SectionControlState { Index = 0, ButtonState = SectionButtonState.Auto },
+            new SectionControlState { Index = 1, ButtonState = SectionButtonState.Off },
+        };
+        b.SectionControlService.NumSections.Returns(2);
+        b.SectionControlService.SectionStates.Returns(states);
+        var vm = b.Build();
+
+        vm.OnBrowserControlEnded("browser control ended: presence lost (deadman)", involuntary: true);
+
+        b.SectionControlService.Received().SetSectionState(0, SectionButtonState.Off);
+        b.SectionControlService.DidNotReceive().SetSectionState(1, Arg.Any<SectionButtonState>());
+        Assert.That(vm.ControlLostNotice, Does.Contain("the sections"));
+    }
+
+    [Test]
+    public void Browser_lost_switches_a_section_beyond_the_count_off_too()
+    {
+        // The implement set to fewer sections with one of the others still On: its button is
+        // kept, and it would be On again when the count goes back up.
+        var b = new MainViewModelBuilder();
+        var states = new[]
+        {
+            new SectionControlState { Index = 0, ButtonState = SectionButtonState.Off },
+            new SectionControlState { Index = 1, ButtonState = SectionButtonState.Off },
+            new SectionControlState { Index = 2, ButtonState = SectionButtonState.On },
+        };
+        b.SectionControlService.NumSections.Returns(2);
+        b.SectionControlService.SectionStates.Returns(states);
+        var vm = b.Build();
+
+        vm.OnBrowserControlEnded("browser control ended: client disconnected", involuntary: true);
+
+        b.SectionControlService.Received().SetSectionState(2, SectionButtonState.Off);
     }
 
     [Test]

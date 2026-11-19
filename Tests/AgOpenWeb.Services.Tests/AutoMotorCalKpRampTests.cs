@@ -158,6 +158,108 @@ public class AutoMotorCalKpRampTests
         Assert.That(step.DetectedMinPwm, Is.EqualTo(170));
         Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(25), "a stalled reading is not the setting");
         Assert.That(step.PhaseResult, Does.Contain("Not saved"));
+        Assert.That(step.PhaseResult, Does.Contain("Minimum PWM stays 25."), "the operator's own value, not the one the ramp ran on");
+        Assert.That(step.PhaseResult, Does.Contain("run it at walking pace"));
+    }
+
+    // ── The ramp runs on a minimum PWM of its own (a tester's proportional valve, 18 Nov 2026) ──
+
+    [Test]
+    public async Task MotorCal_WithAHighMinimumSet_ReadsTheSteeringsOwnMinimum()
+    {
+        // Minimum To Move 64 was set (saved the day before, with the block's relief valve too
+        // low) and the valve moves the wheels from PWM 48. The module's PWM is never under its
+        // minimum PWM, so on the operator's value every run read 64, and 64 of Max Limit 105
+        // was refused as stalled.
+        _store.AutoSteer.ProportionalGain = 12;
+        _store.AutoSteer.MaxPwm = 105;
+        _store.AutoSteer.MinPwm = 64;
+        var step = StepOnSteering(breakawayPwm: 48, out var lowestMinPwmSeen);
+        SetActive(step, true);
+
+        await step.RunKpRampAsync();
+        SetActive(step, false); // Next
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(step.DetectedMinPwm, Is.InRange(45, 48), "what the wheels stop at, just under what moves them");
+            Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(step.DetectedMinPwm));
+            Assert.That(step.PhaseResult, Does.Not.Contain("Not saved"));
+            Assert.That(lowestMinPwmSeen(), Is.EqualTo(AutoMotorCalibrationStepViewModel.RampMinPwm), "the ramp ran on its own minimum PWM");
+            Assert.That(_store.AutoSteer.ProportionalGain, Is.EqualTo(12));
+        });
+    }
+
+    [Test]
+    public async Task MotorCal_AValvesMinimumNearHalfItsCoilLimit_IsSaved()
+    {
+        // The same valve on another tractor, Max Limit 89 (its coil's current): first movement
+        // at 44 to 47. Half the maximum is 44, so its true minimum read as stalled.
+        _store.AutoSteer.MaxPwm = 89;
+        _store.AutoSteer.MinPwm = 30;
+        var step = StepOnSteering(breakawayPwm: 46, out _);
+        SetActive(step, true);
+
+        await step.RunKpRampAsync();
+        SetActive(step, false);
+
+        Assert.That(step.DetectedMinPwm, Is.InRange(44, 46));
+        Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(step.DetectedMinPwm));
+        Assert.That(step.PhaseResult, Does.Not.Contain("Not saved"));
+    }
+
+    [Test]
+    public async Task MotorCal_AnOperatorsLowerMinimum_IsWhatTheRampRunsOn()
+    {
+        _store.AutoSteer.MaxPwm = 200;
+        _store.AutoSteer.MinPwm = 2;
+        var step = StepOnSteering(breakawayPwm: 30, out var lowestMinPwmSeen);
+
+        await step.RunKpRampAsync();
+
+        Assert.That(lowestMinPwmSeen(), Is.EqualTo(2));
+        Assert.That(step.DetectedMinPwm, Is.InRange(26, 30));
+    }
+
+    [TestCase(57, 105, false)]
+    [TestCase(69, 105, false)]
+    [TestCase(70, 105, true)]
+    [TestCase(47, 89, false)]
+    [TestCase(170, 180, true)]
+    [TestCase(169, 255, false)]
+    [TestCase(170, 255, true)]
+    public void IsStalledReading_cases(int pwm, int maxPwm, bool stalled) =>
+        Assert.That(AutoMotorCalibrationStepViewModel.IsStalledReading(pwm, maxPwm), Is.EqualTo(stalled));
+
+    /// <summary>
+    /// A steering as the module drives it: its PWM is the gain times the error plus the minimum
+    /// PWM (0 when the gain times the error is under 1), never over the maximum PWM, and the
+    /// wheels turn while it is at least <paramref name="breakawayPwm"/>.
+    /// </summary>
+    private AutoMotorCalibrationStepViewModel StepOnSteering(int breakawayPwm, out System.Func<int> lowestMinPwmSeen)
+    {
+        var step = new AutoMotorCalibrationStepViewModel(_configService, new AgOpenWeb.Services.Threading.InlineUiDispatcher(), _autoSteer);
+        step.DelayFunc = (_, _) => Task.CompletedTask;
+        double angle = 0, target = 0;
+        int lowest = int.MaxValue;
+        _autoSteer.When(a => a.SetFreeDriveAngle(Arg.Any<double>())).Do(c => target = c.Arg<double>());
+        step.ReadModuleData = () =>
+        {
+            var cfg = _store.AutoSteer;
+            lowest = System.Math.Min(lowest, cfg.MinPwm);
+            int pwm = 0;
+            for (int loop = 0; loop < 400; loop++) // the module's loops between two readings
+            {
+                double err = target - angle;
+                int p = (int)(cfg.ProportionalGain * System.Math.Abs(err));
+                pwm = p == 0 ? 0 : System.Math.Min(p + cfg.MinPwm, cfg.MaxPwm);
+                if (pwm < breakawayPwm) break;
+                angle += 0.01 * System.Math.Sign(err);
+            }
+            return ModuleAt(angle, (byte)pwm);
+        };
+        lowestMinPwmSeen = () => lowest;
+        return step;
     }
 
     private static void SetActive(AgOpenWeb.ViewModels.Wizards.WizardStepViewModel step, bool active) =>
@@ -189,6 +291,7 @@ public class AutoMotorCalKpRampTests
         // cancel by overriding DelayFunc to throw OperationCanceled on
         // the second delay invocation.
         _store.AutoSteer.ProportionalGain = 17;
+        _store.AutoSteer.MinPwm = 40;
         var step = new AutoMotorCalibrationStepViewModel(_configService, new AgOpenWeb.Services.Threading.InlineUiDispatcher(), _autoSteer);
         step.ReadModuleData = () => ModuleAt(0.0, 0);
 
@@ -205,6 +308,38 @@ public class AutoMotorCalKpRampTests
 
         Assert.That(_store.AutoSteer.ProportionalGain, Is.EqualTo(17),
             "Cancellation must restore the operator's originalKp via the finally block");
+        Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(40), "and the operator's minimum PWM, which the ramp runs under");
+    }
+
+    [Test]
+    public async Task MotorCal_LeftMidRamp_PutsTheOperatorsValuesBackAtOnce()
+    {
+        // Cancel, or the screen in control gone: the host leaves the step and saves the profile
+        // straight away (MainViewModel.EndRemoteSteerWizard), while the ramp's finally waits for
+        // the host loop's next turn. Leaving must put the operator's gain and minimum PWM back
+        // itself, or the ramp's own (gain 5, minimum PWM 5) were the ones saved.
+        _store.AutoSteer.ProportionalGain = 17;
+        _store.AutoSteer.MinPwm = 40;
+        var step = new AutoMotorCalibrationStepViewModel(_configService, new AgOpenWeb.Services.Threading.InlineUiDispatcher(), _autoSteer);
+        step.ReadModuleData = () => ModuleAt(0.0, 0);
+        var waiting = new TaskCompletionSource();
+        int delayCalls = 0;
+        step.DelayFunc = (_, _) => ++delayCalls >= 3 ? waiting.Task : Task.CompletedTask;
+        SetActive(step, true);
+
+        var ramp = step.RunKpRampAsync();
+        Assert.That(ramp.IsCompleted, Is.False, "the ramp waits on the host loop");
+        Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(AutoMotorCalibrationStepViewModel.RampMinPwm));
+
+        SetActive(step, false); // the wizard closed: the profile is saved right after this
+
+        Assert.That(_store.AutoSteer.ProportionalGain, Is.EqualTo(17), "the operator's gain, before the save");
+        Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(40), "the operator's minimum PWM, before the save");
+
+        waiting.SetResult(); // the ramp's turn comes: it stops and changes nothing more
+        await ramp;
+        Assert.That(_store.AutoSteer.ProportionalGain, Is.EqualTo(17));
+        Assert.That(_store.AutoSteer.MinPwm, Is.EqualTo(40));
     }
 
     [Test]

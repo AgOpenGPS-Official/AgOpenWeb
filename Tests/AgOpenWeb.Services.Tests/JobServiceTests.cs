@@ -49,6 +49,64 @@ public class JobServiceTests
         Assert.That(job.EndedAt, Is.Null);
     }
 
+    // A typed name is the job's folder: one a folder can't have on Windows was never saved there.
+    [TestCase("Spraying 15:51", "Spraying 15-51")]
+    [TestCase("north/south", "north-south")]
+    [TestCase("a\\b*c?d\"e<f>g|h", "a-b-c-d-e-f-g-h")]
+    [TestCase("  trailing dots... ", "trailing dots")]
+    [TestCase("con", "_con")]
+    [TestCase("LPT1.job", "_LPT1.job")]
+    [TestCase("console", "console")]
+    [TestCase("COM\u00B9", "_COM\u00B9")]
+    [TestCase("conout$.log", "_conout$.log")]
+    [TestCase("COM0", "_COM0")]
+    public void CreateJob_TypedNameIsASafeFolderName(string typed, string expected)
+    {
+        var fieldDir = SeedField("north40");
+
+        var job = _svc.CreateJob("north40", "spraying", notes: "", taskName: typed);
+
+        Assert.That(job.TaskName, Is.EqualTo(expected));
+        Assert.That(JobJsonService.Exists(fieldDir, expected), Is.True);
+        Assert.That(Directory.GetDirectories(JobJsonService.JobsRoot(fieldDir)), Has.Length.EqualTo(1),
+            "one folder, not a folder inside a folder");
+    }
+
+    [Test]
+    public void CreateJob_TypedNameOfOnlyUnsafeCharacters_TakesTheDefaultName()
+    {
+        SeedField("north40");
+
+        var before = DateTime.Now;
+        var job = _svc.CreateJob("north40", "spraying", notes: "", taskName: "...");
+        var after = DateTime.Now; // the default name takes the date of the moment it is made: midnight may pass
+
+        Assert.That(job.TaskName, Does.StartWith($"{before:yyyy-MM-dd}_spraying").Or.StartWith($"{after:yyyy-MM-dd}_spraying"));
+    }
+
+    [Test]
+    public void CreateJob_TypedNameTooLongForAFolder_IsCut()
+    {
+        var fieldDir = SeedField("north40");
+
+        var job = _svc.CreateJob("north40", "spraying", notes: "", taskName: new string('a', 99) + "  b" + new string('c', 300));
+
+        Assert.That(job.TaskName, Is.EqualTo(new string('a', 99)), "cut at 100, then the space at the end dropped");
+        Assert.That(JobJsonService.Exists(fieldDir, job.TaskName), Is.True);
+    }
+
+    [Test]
+    public void CreateJob_TypedNameCleaned_StillUnique()
+    {
+        SeedField("north40");
+
+        var first = _svc.CreateJob("north40", "spraying", notes: "", taskName: "Spraying 15:51");
+        var second = _svc.CreateJob("north40", "spraying", notes: "", taskName: "Spraying 15:51");
+
+        Assert.That(first.TaskName, Is.EqualTo("Spraying 15-51"));
+        Assert.That(second.TaskName, Is.EqualTo("Spraying 15-51_2"));
+    }
+
     [Test]
     public void CreateJob_DefaultNameUsesDateAndWorkType()
     {
