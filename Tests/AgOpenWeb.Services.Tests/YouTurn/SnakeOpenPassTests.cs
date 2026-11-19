@@ -80,12 +80,16 @@ public class SnakeOpenPassTests
     // 8 15.3 m, 9 11.8 m; the passes west of the notch run 25.9 m (pass 5) and more.
     private List<Vec3> Hourglass() => Ring((-40, -40), (40, -40), (40, -30), (6, 0), (40, 30), (40, 40), (-40, 40));
 
-    private YouTurnStateMachine.TickContext Ctx(List<Vec3> cultivated, double e, double n, double headingDeg) => new(
+    // cultivated is the turn line (HeadlandLine); crop, when given, the operator's headland line on
+    // (WorkHeadlandLine).
+    private YouTurnStateMachine.TickContext Ctx(List<Vec3> cultivated, double e, double n, double headingDeg,
+        List<Vec3>? crop = null) => new(
         new Position { Easting = e, Northing = n, Heading = headingDeg, Speed = 2.78 },
         _track, _boundary, cultivated,
         UTurnSkipRows: 1, IsSkipWorkedMode: true,
         HeadlandCalculatedWidth: 10.0, HeadlandDistance: 10.0,
-        IsAlternateSkipMode: false);
+        IsAlternateSkipMode: false,
+        WorkHeadlandLine: crop);
 
     [Test]
     public void The_order_s_next_pass_with_no_room_here_turns_onto_the_nearest_pass_still_to_do()
@@ -146,6 +150,57 @@ public class SnakeOpenPassTests
             Assert.That(turn.TurnPath, Is.Null, $"no turn ten passes over (aimed at {turn.ReturnPassTargetPath})");
             Assert.That(effects.StatusMessage, Is.EqualTo("No U-turn onto the next pass: only 15 m of it at this end, 20 m needed - take over manually at the end of this pass"));
         });
+    }
+
+    // The turn line 2 m inside the fence (-48..48), and the operator's headland 34 m wide on the east
+    // side: the crop runs from x = -38 to 14. Passes 4 to 11 (x = 18 to 46) lie wholly in the headland
+    // band, inside the turn line. Everything is worked but those and pass 0 (x = 2): the tractor on
+    // pass 2 heading south, the order (east first) has pass 4 next, in the band.
+    private (GuidanceWorkingState Guidance, YouTurnWorkingState Turn, List<Vec3> TurnLine, List<Vec3> Crop) HeadlandBand()
+    {
+        for (int k = -10; k <= 3; k++)
+            if (k != 0) _track.MarkPathWorked(k);
+        return (new GuidanceWorkingState { HowManyPathsAway = 2, IsHeadingSameWay = false },
+            new YouTurnWorkingState { IsEnabled = true },
+            Ring((-48, -48), (48, -48), (48, 48), (-48, 48)),
+            Ring((-38, -38), (14, -38), (14, 38), (-38, 38)));
+    }
+
+    [Test]
+    public void A_pass_lying_in_the_headland_band_is_not_turned_onto_with_the_headland_on()
+    {
+        // As on a tester's field (simulator): with the turn line 2 m from the fence, the snake went
+        // onto 13L and 15L in a corner of the headland, nothing to paint on either, and only then
+        // back into the crop.
+        var (guidance, turn, turnLine, crop) = HeadlandBand();
+
+        var effects = _sm.Tick(Ctx(turnLine, PassX(2), -25, 180, crop), guidance, turn);
+
+        Assert.That(turn.SnakeSequence!.Take(2), Is.EqualTo(new[] { 2, 4 }), "the scenario: the order goes on to pass 4");
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.TurnPath, Is.Not.Null, $"a turn, not \"{effects.StatusMessage}\"");
+            Assert.That(turn.ReturnPassTargetPath, Is.EqualTo(0), "the nearest pass still to do in the crop, not one in the band");
+            Assert.That(turn.NextTrack!.Points[0].Easting, Is.EqualTo(PassX(0)).Within(0.01));
+        });
+    }
+
+    [Test]
+    public void Without_the_headland_or_with_the_sections_on_in_it_a_pass_in_the_band_is_turned_onto()
+    {
+        // The sections paint in the band when the headland is off or does not switch them off: a pass
+        // there is work like any other (a boundary curve's outer passes, #694).
+        foreach (bool headlandOn in new[] { false, true })
+        {
+            SetUp();
+            var (guidance, turn, turnLine, crop) = HeadlandBand();
+            ConfigurationStore.Instance.Tool.IsHeadlandSectionControl = !headlandOn;
+
+            _sm.Tick(Ctx(turnLine, PassX(2), -25, 180, headlandOn ? crop : null), guidance, turn);
+
+            Assert.That(turn.TurnPath, Is.Not.Null, $"headland on {headlandOn}");
+            Assert.That(turn.ReturnPassTargetPath, Is.EqualTo(4), $"headland on {headlandOn}: the order's pass, in the band");
+        }
     }
 
     [Test]

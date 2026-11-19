@@ -1005,7 +1005,7 @@ public sealed class YouTurnStateMachine
 
         // The order's next pass may be inside only at the far end (an hourglass field's other
         // lobe): a turn onto it here lands in the headland and drives out of the field.
-        bool landable = _pathing.IsPathLandable(track, abHeading, target, ctx.Boundary, ctx.HeadlandLine, currentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland, guidance.HowManyPathsAway);
+        bool landable = SnakeLandable(in ctx, track, abHeading, target, guidance, turn);
         YouTurnCreationService.TurnPathResult? refused = null;
         if (landable)
         {
@@ -1127,8 +1127,7 @@ public sealed class YouTurnStateMachine
             {
                 if (isWorked(pass)) continue;
                 if (++looked > MaxOpenPassesLookedAt) break;
-                if (!_pathing.IsPathLandable(track, abHeading, pass, ctx.Boundary, ctx.HeadlandLine, ctx.CurrentPosition,
-                        guidance.IsHeadingSameWay, turn.DistanceToHeadland, current))
+                if (!SnakeLandable(in ctx, track, abHeading, pass, guidance, turn))
                     continue;
                 AimTurnAt(track, abHeading, guidance, turn, effects, pass, "Snake (nearest open pass)");
                 if (BuildTurnPath(in ctx, track, headingRadians, abHeading, guidance, turn, effects).Path != null)
@@ -1140,6 +1139,32 @@ public sealed class YouTurnStateMachine
                 break;
             }
         }
+        return false;
+    }
+
+    /// <summary>
+    /// Can the snake land a turn made at this end on <paramref name="pass"/>: room on it inside the
+    /// turn line (<see cref="YouTurnPathingService.IsPathLandable"/>) and, with the operator's
+    /// headland on and the sections off in it, as much room in the crop, inside the headland line.
+    /// The turn line is the fence moved in by the U-turn distance, so a pass lying in the headland
+    /// band has room there and nothing to work: unpainted, it stays still to do. On a tester's field
+    /// (simulator) the snake drove 13L, with 12 m of crop at its far end, and 15L, with none, in a
+    /// corner of the headland, and only then went back to 12L. AgOpenGPS's GetNextNotWorkedTrack
+    /// checks no room at all; this check, like the turn line's, is ours.
+    /// </summary>
+    private bool SnakeLandable(in TickContext ctx, Models.Track.Track track, double abHeading, int pass,
+        GuidanceWorkingState guidance, YouTurnWorkingState turn)
+    {
+        int current = guidance.HowManyPathsAway;
+        if (!_pathing.IsPathLandable(track, abHeading, pass, ctx.Boundary, ctx.HeadlandLine, ctx.CurrentPosition,
+                guidance.IsHeadingSameWay, turn.DistanceToHeadland, current))
+            return false;
+        if (ctx.WorkHeadlandLine is not { Count: >= 3 } crop || !_configStore.Tool.IsHeadlandSectionControl)
+            return true;
+        if (_pathing.IsPathLandable(track, abHeading, pass, ctx.Boundary, crop, ctx.CurrentPosition,
+                guidance.IsHeadingSameWay, turn.DistanceToHeadland, current))
+            return true;
+        _logger.LogDebug("[YouTurn] Snake pass {Pass} has too little crop inside the headland line at this end", pass);
         return false;
     }
 
