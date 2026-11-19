@@ -74,6 +74,7 @@ public partial class MainViewModel
     /// CANCEL_KEEPS_LIVE_NOT_SAVED).</summary>
     public void EndRemoteSteerWizard()
     {
+        SteerWizardClosedByHost = false; // ended from a screen (or opened again): nothing left to tell
         var wizard = SteerWizardViewModel;
         if (wizard == null) return;
         // Cancel cannot leave a motor test running with the AutoSteer lockout lifted.
@@ -132,6 +133,7 @@ public partial class MainViewModel
         if (IsSteerWizardOpen)
         {
             EndRemoteSteerWizard();
+            SteerWizardClosedByHost = true;
             StatusMessage = "Steer wizard closed: " + offReason;
             off.Add("the steer wizard");
         }
@@ -141,6 +143,16 @@ public partial class MainViewModel
             ControlLostNotice = FormattableString.Invariant(
                 $"{JoinAnd(off)} turned off at {DateTime.Now:HH:mm:ss}: the screen in control {ScreenLostWords(offReason)}");
     }
+
+    /// <summary>
+    /// The host closed the steer wizard because the screen in control went
+    /// (<see cref="OnBrowserControlEnded"/>), not a screen: a screen still showing it is told so
+    /// (the Wizard frame's <c>Closed</c>), and its buttons go. Before, the wizard only went quiet
+    /// under the page, and Next, Back and Skip reached a host with no wizard (a tester's tractor,
+    /// 18 Nov 2026: the window had been behind another for a moment). Cleared when the wizard is
+    /// closed from a screen or opened again (<see cref="EndRemoteSteerWizard"/>).
+    /// </summary>
+    public bool SteerWizardClosedByHost { get; private set; }
 
     /// <summary>Why the last involuntary loss of control switched things off, for the next
     /// screen to take control (<see cref="TakeControlLostNotice"/>); null when there is none.</summary>

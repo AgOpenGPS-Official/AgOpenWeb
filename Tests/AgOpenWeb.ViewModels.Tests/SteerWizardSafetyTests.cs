@@ -229,6 +229,48 @@ public class SteerWizardSafetyTests
     }
 
     [Test]
+    public void Browser_lost_with_the_wizard_open_tells_the_screens_the_host_closed_it()
+    {
+        // A tester's tractor (18 Nov 2026): the window was behind another for a moment, the host
+        // closed the wizard, and the page came back with it still on the screen: Next, Back and
+        // Skip reached a host with no wizard, and nothing said why.
+        var b = new MainViewModelBuilder { ConfigurationService = Config() };
+        var vm = b.Build();
+        vm.StartRemoteSteerWizard();
+
+        vm.OnBrowserControlEnded("browser control ended: presence lost (deadman)", involuntary: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(vm.IsSteerWizardOpen, Is.False);
+            Assert.That(vm.SteerWizardClosedByHost, Is.True, "the screens still showing it are told");
+        });
+
+        // Close on that message, from the screen in control: nothing left to tell.
+        vm.EndRemoteSteerWizard();
+        Assert.That(vm.SteerWizardClosedByHost, Is.False, "closed from the screen");
+
+        // Opened again: a live wizard, not a closed one.
+        vm.StartRemoteSteerWizard();
+        vm.OnBrowserControlEnded("browser control ended: client disconnected", involuntary: true);
+        vm.StartRemoteSteerWizard();
+        Assert.That(vm.SteerWizardClosedByHost, Is.False, "opened again");
+    }
+
+    [Test]
+    public void The_wizard_closed_from_the_screen_or_control_lost_with_no_wizard_is_not_said_closed_by_the_host()
+    {
+        var b = new MainViewModelBuilder { ConfigurationService = Config() };
+        var vm = b.Build();
+        vm.StartRemoteSteerWizard();
+        vm.EndRemoteSteerWizard(); // Cancel or Finish on the screen
+        Assert.That(vm.SteerWizardClosedByHost, Is.False, "Cancel on the screen");
+
+        vm.OnBrowserControlEnded("browser control ended: presence lost (deadman)", involuntary: true);
+        Assert.That(vm.SteerWizardClosedByHost, Is.False, "no wizard was open");
+    }
+
+    [Test]
     public void A_release_with_nothing_on_leaves_no_notice()
     {
         var b = new MainViewModelBuilder();
