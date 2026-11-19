@@ -73,10 +73,50 @@ function wireCfgControls(panel) {
   // data-fmt — e.g. the Vehicle heading-fusion slider — are wired by hand.)
   for (const s of panel.querySelectorAll('.cfg-slider[data-fmt]')) {
     const ro = panel.querySelector('.cfg-ro[data-for="' + s.dataset.key + '"]');
+    guardSliderTap(s, ro); // first: its listeners run before the two below
     s.addEventListener('input', () => { if (ro) ro.textContent = fmtRo(s.value, s.dataset.fmt); });
     s.addEventListener('change', () => cfgSend(s.dataset.key, s.value));
     wireSliderNudge(s, ro);
   }
+}
+// A press on a slider's bar away from its thumb jumped the value to that spot and sent it: one
+// stray tap set Ackermann 0 and Max Steer Angle 61 on a tester's tractor (13 Nov 2026: the
+// tablet's keyboard had covered the boxes; a tap on the bar at 64 % gives 61-62, at its left
+// end 0). Now only the thumb moves a slider: a press on the bar leaves the value as it was.
+// Dragging the thumb, − / + and typing the value work as before.
+const SLIDER_THUMB_REACH_PX = 22; // half the thumb (8 px) and a finger's slack
+function sliderThumbX(s) {
+  const r = s.getBoundingClientRect(), min = Number(s.min), max = Number(s.max), thumb = 16;
+  const f = max > min ? (Number(s.value) - min) / (max - min) : 0;
+  return r.left + thumb / 2 + f * (r.width - thumb);
+}
+function guardSliderTap(s, ro) {
+  let held = null; // the value when a press began on the bar, not on the thumb
+  const keep = e => {
+    if (held === null) return;
+    e.stopImmediatePropagation();         // neither the readout nor cfgSend sees it
+    s.value = held;                        // the browser moved it to the finger: put it back
+    if (ro) ro.textContent = fmtRo(s.value, s.dataset.fmt);
+  };
+  let press = null; // the release listeners of the press under way
+  s.addEventListener('pointerdown', e => {
+    held = Math.abs(e.clientX - sliderThumbX(s)) <= SLIDER_THUMB_REACH_PX ? null : s.value;
+    // The release is heard on the window: a mouse let go off the slider left it held, and the
+    // arrow keys did nothing until the next press. After the release's own 'change', so the
+    // arrow keys on a focused slider work as before.
+    // Only the pointer that began the press ends it: a second finger lifted from the screen
+    // (a palm, the other hand on another slider) let the guard go while the first still dragged.
+    if (press) press.abort();
+    const c = press = new AbortController();
+    const end = up => {
+      if (up.pointerId !== e.pointerId) return;
+      c.abort(); setTimeout(() => { if (press === c) held = null; }, 0);
+    };
+    for (const ev of ['pointerup', 'pointercancel'])
+      window.addEventListener(ev, end, { capture: true, signal: c.signal });
+  });
+  s.addEventListener('input', keep);
+  s.addEventListener('change', keep);
 }
 // A slider is hard to set to one exact value with a finger, so each gets − / + buttons (one
 // step a tap, repeating while held; sent once on release) and its value box can be tapped to
