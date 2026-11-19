@@ -72,6 +72,7 @@ namespace AgOpenWeb.Services
                     Copy(sourceDirectory, newDirectory, Path.GetFileName(rec));
                 Copy(sourceDirectory, newDirectory, "TramConfig.json");
                 Copy(sourceDirectory, newDirectory, "TramSystems.json");
+                Copy(sourceDirectory, newDirectory, YouTurn.UTurnSkipFileService.FileName);
             }
 
             if (copyMapping)
