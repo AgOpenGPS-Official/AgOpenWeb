@@ -85,8 +85,10 @@ function wireCfgControls(panel) {
 // end 0). Now only the thumb moves a slider: a press on the bar leaves the value as it was.
 // Dragging the thumb, − / + and typing the value work as before.
 const SLIDER_THUMB_REACH_PX = 22; // half the thumb (8 px) and a finger's slack
+// In screen pixels, as clientX: the panels grow with the UI size (uiZoom), and some engines
+// report a zoomed element's rect unzoomed (zoomRect).
 function sliderThumbX(s) {
-  const r = s.getBoundingClientRect(), min = Number(s.min), max = Number(s.max), thumb = 16;
+  const r = zoomRect(s), min = Number(s.min), max = Number(s.max), thumb = 16 * uiZoom;
   const f = max > min ? (Number(s.value) - min) / (max - min) : 0;
   return r.left + thumb / 2 + f * (r.width - thumb);
 }
@@ -100,7 +102,7 @@ function guardSliderTap(s, ro) {
   };
   let press = null; // the release listeners of the press under way
   s.addEventListener('pointerdown', e => {
-    held = Math.abs(e.clientX - sliderThumbX(s)) <= SLIDER_THUMB_REACH_PX ? null : s.value;
+    held = Math.abs(e.clientX - sliderThumbX(s)) <= SLIDER_THUMB_REACH_PX * uiZoom ? null : s.value;
     // The release is heard on the window: a mouse let go off the slider left it held, and the
     // arrow keys did nothing until the next press. After the release's own 'change', so the
     // arrow keys on a focused slider work as before.

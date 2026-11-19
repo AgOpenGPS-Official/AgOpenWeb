@@ -92,6 +92,8 @@ for (const k of ['vehicle.threePointHitchLength', 'vehicle.hitchLength', 'vehicl
 }
 // Heading fusion = GPS share (0–1), shown like AgOpenGPS: "GPS 30% · IMU 70%" (#112).
 const fusionLabel = w => tr('GPS {gps}% · IMU {imu}%', { gps: Math.round(w * 100), imu: 100 - Math.round(w * 100) });
+// It sends on every 'input', so it is guarded first: a tap on its bar changes nothing (cfg-controls.js).
+guardSliderTap(vcFw, null);
 vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = fusionLabel(+vcFw.value); cfgSend('gps.headingFusionWeight', vcFw.value); });
 document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); saveProfile(); });
 // Zero Now captures the current roll as the offset, like AgOpenGPS Zero Roll and
