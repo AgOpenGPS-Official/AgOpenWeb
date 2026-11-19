@@ -118,3 +118,15 @@ jobs:
           path: ${{ runner.temp }}/vehicle-tool-scenarios-report.md
           if-no-files-found: ignore
           retention-days: 30
+
+      # Each kind of finding leaves the app's bug report dump taken where it was first seen
+      # (Tests/AgOpenWeb.VehicleToolScenarios.Tests/VtEvidence.cs): the fix is made and proven from
+      # it, without a rerun.
+      - name: Keep the evidence
+        if: always() && steps.fresh.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vehicle-tool-scenarios-evidence-${{ matrix.part.name }}
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: ignore
+          retention-days: 30

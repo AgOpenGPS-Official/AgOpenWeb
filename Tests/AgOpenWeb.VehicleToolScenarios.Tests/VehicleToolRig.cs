@@ -112,6 +112,9 @@ public sealed class VehicleToolRig : IAsyncDisposable
         services.AddLogging(b =>
         {
             b.AddProvider(new CapturingLoggerProvider(e => events.Enqueue(e)));
+            // As the heads: the app's log for a bug report dump, which the evidence is; and the whole scenario's.
+            b.AddProvider(new AgOpenWeb.Services.Logging.InMemoryLoggerProvider());
+            b.AddProvider(Evidence.LogProvider);
             b.SetMinimumLevel(LogLevel.Debug);
         });
         AddBackendServices(services);
@@ -309,11 +312,15 @@ public sealed class VehicleToolRig : IAsyncDisposable
 
     // ------------------------------------------------------------------ commands
 
+    /// <summary>Told every command before it is sent (<see cref="VtEvidence"/>: <c>commands.txt</c>).</summary>
+    public Action<string>? OnAction { get; set; }
+
     /// <summary>Send one web-client command, exactly as a browser holding control does, and
     /// wait until the host loop has run it (and whatever it posted behind it).</summary>
     public async Task SendAsync(string cmd, string arg = "")
     {
         var handler = Server.CommandHandler ?? throw new InvalidOperationException("command handler not wired");
+        OnAction?.Invoke(cmd + "|" + arg);
         handler(cmd, arg);
         await DrainAsync();
         await SettleAsync();

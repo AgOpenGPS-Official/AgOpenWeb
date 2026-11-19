@@ -27,8 +27,7 @@ public static class CarefulOperator
             string label = $"{v.Name} + {t.Name}, {sys.Label}, {slope:0}°";
             if (only != null && !label.Contains(only, StringComparison.OrdinalIgnoreCase)) continue;
             var d = new DriveSpec("C" + journal.Drives.Count, label, v, t, sys, slope, Drive.Careful(v, t, sys), Passes: 4);
-            var row = await Drive.RunAsync(journal, Name, d);
-            Judge(journal, row, d);
+            await Drive.RunAsync(journal, Name, d, row => Judge(journal, row, d));
         }
         if (only == null || "profiles".Contains(only, StringComparison.OrdinalIgnoreCase))
             await ProfilesAsync(journal);
@@ -96,10 +95,13 @@ public static class CarefulOperator
         var savedHitch = new Dictionary<(string Vehicle, string Key), string>();
         foreach (var t in new[] { Machines.Rear3Shift, Machines.Trailing3Shift, Machines.Rake1, Machines.Rake2, Machines.Rake4, Machines.Front6, Machines.Tbt6 })
             if (!tools.Contains(t)) tools.Add(t);
+        var ev = new VtEvidence(journal, "careful-profiles", "Every machine saved as a profile, AgOpenWeb restarted, each loaded back");
         try
         {
             await using (var rig = await VehicleToolRig.StartAsync(dir))
             {
+                ev.Attach(rig);
+                ev.Log("# every tool, then every vehicle: New, Load, type its measurements, Save Profile");
                 // Tools first, on the default vehicle (a tractor: a harvester would force every tool to front).
                 foreach (var t in tools)
                 {
@@ -127,10 +129,13 @@ public static class CarefulOperator
                 foreach (var t in tools)
                     if (!tls.Contains(t.Name)) Drive.Add(row, journal, new Finding("PROFILE-MISSING", Severity.Bug, "tool profile '" + t.Name + "' is not in the list after New and Save"));
                 row.Said.Add(Drive.F($"{veh.Count} vehicle and {tls.Count} tool profiles listed"));
+                await ev.KeepIfNewAsync(rig, "saved", "after every profile was saved, before the restart");
             }
 
             await using (var rig = await VehicleToolRig.StartAsync(dir))
             {
+                ev.Attach(rig);
+                ev.Log("# AgOpenWeb restarted on the same data folder; each vehicle loaded with its implement");
                 string active = rig.Store.ActiveVehicleProfileName + " / " + rig.Store.ActiveToolProfileName;
                 string wantActive = Machines.Combine.Name + " / " + tools[^1].Name;
                 if (!string.Equals(active, wantActive, StringComparison.Ordinal))
@@ -152,9 +157,11 @@ public static class CarefulOperator
                             Drive.Add(row, journal, new Finding("PROFILE-ROUNDTRIP-" + key.Split(':')[0], Severity.Bug,
                                 $"{key} saved as {want} came back as {got} after a restart ({v.Name} + {t.Name})"));
                     }
+                    await ev.KeepIfNewAsync(rig, "loaded-" + v.Name + "-" + t.Name, "right after the pair was loaded after the restart");
                 }
                 row.Said.Add(Drive.F($"{compared} values compared after the restart"));
                 row.Said.AddRange(rig.TakeEvents().Where(e => e.Kind is RigEventKind.Error or RigEventKind.Exception or RigEventKind.Failure).Select(e => e.ToString()));
+                await ev.KeepIfNewAsync(rig, "end", "at the end of the profile checks", end: true);
             }
         }
         catch (Exception ex)
@@ -163,6 +170,7 @@ public static class CarefulOperator
         }
         finally
         {
+            ev.Close();
             try { Directory.Delete(dir, true); } catch { }
         }
     }

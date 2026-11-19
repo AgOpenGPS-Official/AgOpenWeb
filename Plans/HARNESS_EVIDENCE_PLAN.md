@@ -129,6 +129,19 @@ the whole run up to that step (every `id|arg` command, every placing and drive o
 every import file): one backend works field after field, so a scenario's field may have been built
 by an earlier one. A unit test is built from the field's files and the commands.
 
+### Built: Vehicle & Tool
+
+Each drive, sweep group, the settings typed wrong and each profile check has a backend of its
+own (`VtEvidence`, one `Evidence` each). A kind of finding gets its dump where it was first seen,
+while that backend runs and before the harness puts anything back: at the end of a drive (judged
+before the backend stops), right after a sweep row's run with the setting still flipped, right
+after the wrong setting or profile action. `evidence/<scenario>[-<moment>].zip`, named in the
+report under the finding. Beside the app's dump: `commands.txt` (every command the backend was
+sent, and the harness's steps), `truth_track.csv` for a drive (the real machine and AgOpenWeb's
+cycle, fix by fix) and, for the sweep, every probe run of the group fix by fix
+(`sweep_trace.csv`, `sweep_runs.json`), as the base and flipped runs are what a sweep finding
+compares.
+
 ### Not shown yet
 
 - **That a dump is enough to write the unit test from.** The checked run had no findings. Take the

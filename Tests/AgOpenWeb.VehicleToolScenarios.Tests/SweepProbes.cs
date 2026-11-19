@@ -91,6 +91,29 @@ public sealed class Trace
         return $", s1 at {One(0)}, s8 at {One(7)}";
     }
 
+    /// <summary>Into the evidence: the run fix by fix (<c>sweep_trace.csv</c>) and its summary
+    /// (<c>sweep_runs.json</c>).</summary>
+    public void Keep(Evidence ev, string run, Probe probe)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        const string Header = "run,fix,steer_deg,pgn254_angle_deg,pgn254_status,engaged,pass,pgn239_sections,pgn239_machine,tool_n";
+        string R(double x) => double.IsFinite(x) ? x.ToString("0.###", inv) : "";
+        for (int i = 0; i < Steer.Count; i++)
+            ev.Row("sweep_trace", Header, string.Join(",",
+                run.Replace(',', ';'), i.ToString(inv), R(Steer[i]),
+                i < SentAngle.Count ? R(SentAngle[i]) : "", i < Status.Count ? Status[i].ToString(inv) : "",
+                i < Engaged.Count ? (Engaged[i] ? "1" : "0") : "", i < Pass.Count ? Pass[i].ToString(inv) : "",
+                i < Sections.Count ? "0x" + Sections[i].ToString("X4", inv) : "", i < Machine.Count ? "0x" + Machine[i].ToString("X8", inv) : "",
+                i < ToolN.Count ? R(ToolN[i]) : ""));
+        double? N(double x) => double.IsFinite(x) ? x : null;   // JSON has no NaN
+        ev.Add("sweep_runs", new
+        {
+            run, probe = probe.ToString(), fixes = Steer.Count, summary = Summary(), said = Said, disengaged = Disengaged, held = Held,
+            stripArea = N(StripArea), stripExpected = N(StripExpected), problem = Problem,
+            configPgns = ConfigPgns.ToDictionary(kv => kv.Key.ToString(inv), kv => Convert.ToHexString(kv.Value)),
+        });
+    }
+
     /// <summary>One line for the verbose log.</summary>
     public string Summary()
     {
@@ -285,8 +308,10 @@ public sealed class SweepDriver
         return (kept, stored);
     }
 
-    public async Task<Trace> RunAsync(Probe probe)
+    /// <param name="label">The run's name in the evidence (<c>sweep_trace.csv</c>).</param>
+    public async Task<Trace> RunAsync(Probe probe, string label = "")
     {
+        Run.Ev?.Log("# probe " + probe + (label.Length > 0 ? ": " + label : ""));
         if (await Rig.ReadAsync(() => Rig.Vm.IsAutoSteerEngaged)) await Rig.SendAsync("autosteer.toggle");
         Rig.TakeEvents();
         var t = probe switch
@@ -303,6 +328,7 @@ public sealed class SweepDriver
         if (await Rig.ReadAsync(() => Rig.Vm.IsAutoSteerEngaged)) await Rig.SendAsync("autosteer.toggle");
         foreach (var cmd in ProbeUndo(probe)) await Rig.SendAsync(cmd);
         if (FieldRun.Verbose) Console.WriteLine("[sweep] " + probe + ": " + t.Summary());
+        if (Run.Ev != null) t.Keep(Run.Ev.Ev, label.Length > 0 ? label : probe.ToString(), probe);
         return t;
     }
 
@@ -437,6 +463,7 @@ public sealed class SweepDriver
         var w = Run.Wgs(ae, an);
         double hdg = p.Heading * 180 / Math.PI + (dual ? 0 : Truth.Sys.ImuHeadingOffsetDeg + imuDriftDeg);
         Rig.SendSentence(VehicleToolRig.Sentence(dual, imu, w.Latitude, w.Longitude, hdg, roll, Math.Abs(p.SpeedKmh), fix));
+        Run.NoteFix();
         _sentAtFix = Rig.Pgns.Count(254);
     }
 

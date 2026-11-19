@@ -120,8 +120,7 @@ public static class CarelessOperator
         foreach (var d in Drives())
         {
             if (only != null && !(d.Code + " " + d.Mistake).Contains(only, StringComparison.OrdinalIgnoreCase)) continue;
-            var row = await Drive.RunAsync(journal, Name, d);
-            Judge(journal, row, d);
+            await Drive.RunAsync(journal, Name, d, row => Judge(journal, row, d));
         }
         if (only == null || "settings".Contains(only, StringComparison.OrdinalIgnoreCase))
             await SettingsAsync(journal);
@@ -271,9 +270,13 @@ public static class CarelessOperator
     {
         string dir = Path.Combine(Drive.DataRootBase, "settings-" + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(dir);
+        var ev = new VtEvidence(journal, "careless-settings", "Settings typed wrong: what the app kept");
+        const string Taken = "right after the wrong setting was typed, before the harness put the careful settings back";
         try
         {
             await using var rig = await VehicleToolRig.StartAsync(dir);
+            ev.Attach(rig);
+            ev.Log("# the careful operator's settings (Puma + 8 m boom), then each wrong setting in turn, the careful ones put back after each");
             var careful = Drive.Careful(Puma, Boom, Um);
             async Task Restore()
             {
@@ -284,8 +287,11 @@ public static class CarelessOperator
             }
             await Restore();
             rig.TakeEvents();
+            int step = 0;
             foreach (var b in BadSettings())
             {
+                step++;
+                ev.Log("# " + b.Group + ": " + b.What);
                 var before = await rig.ReadAsync(() => Derived(rig.Store));
                 string key = Readback.KeyOf(b.Setting);
                 await rig.SendAsync("config.set", b.Setting);
@@ -305,11 +311,13 @@ public static class CarelessOperator
                 if (b.Impossible && accepted && row.Said.Count == 0)
                     Add(journal, row, new Finding("ACCEPT-" + key.Split(':')[0], Severity.Robustness,
                         $"{key.Split(':')[0]} takes impossible values with no word (e.g. {Readback.ValueOf(b.Setting)}){(row.Effect.Length > 0 ? ": " + row.Effect : "")}"), where);
+                await ev.KeepIfNewAsync(rig, Drive.F($"step{step:00}-{key.Split(':')[0]}"), Taken, () => SettingNotes(row));
                 await Restore();
                 rig.TakeEvents();
             }
 
             // A harvester takes only front tools (#111): asking for another type is silently ignored.
+            ev.Log("# a trailed implement behind a combine");
             await rig.SendAsync("config.set", "vehicle.type:1");
             await rig.SendAsync("config.set", "tool.type:trailing");
             string t1 = await rig.ReadAsync(() => Readback.Get(rig.Store, "tool.type"));
@@ -319,10 +327,12 @@ public static class CarelessOperator
             if (t1 == "front" && hrow.Said.Count == 0)
                 Add(journal, hrow, new Finding("HARVESTER-TYPE-SILENT", Severity.Improvement,
                     "on a combine the implement type stays front whatever the operator picks (#111), and nothing says why"), "settings: trailed implement behind a combine");
+            await ev.KeepIfNewAsync(rig, "harvester-type", "right after the step", () => SettingNotes(hrow));
             await rig.SendAsync("config.set", "vehicle.type:0");
             await Restore();
 
             // A negative drawbar typed live is used as typed; a profile load turns it positive.
+            ev.Log("# a negative drawbar, saved and loaded again");
             await rig.SendAsync("config.set", "tool.type:trailing");
             await rig.SendAsync("config.set", "tool.trailingHitchLength:-4");
             await rig.SendAsync("profile.save");
@@ -334,6 +344,7 @@ public static class CarelessOperator
             if (live != loaded)
                 Add(journal, trow, new Finding("DRAWBAR-SIGN-ON-LOAD", Severity.Inconsistency,
                     $"a negative drawbar is used as typed ({live} m) until the profile is loaded again, then it is {loaded} m: the implement moves after a restart"), "settings: negative drawbar");
+            await ev.KeepIfNewAsync(rig, "drawbar", "right after the step", () => SettingNotes(trow), end: true);
         }
         catch (Exception ex)
         {
@@ -341,9 +352,16 @@ public static class CarelessOperator
         }
         finally
         {
+            ev.Close();
             try { Directory.Delete(dir, true); } catch { }
         }
     }
+
+    /// <summary>A settings or profile step in the dump's notes.</summary>
+    private static string SettingNotes(SettingRow r) =>
+        "## The step\n\n" + r.Group + ": " + r.What + "\n\n- sent: `" + r.Sent + "`\n- kept: " + r.Stored
+        + (r.Effect.Length > 0 ? "\n- effect: " + r.Effect : "")
+        + (r.Said.Count > 0 ? "\n- said: " + string.Join(" / ", r.Said) : "\n- said: nothing") + "\n";
 
     private static void Add(Journal journal, SettingRow row, Finding f, string where)
     {
@@ -357,14 +375,20 @@ public static class CarelessOperator
     {
         string dir = Path.Combine(Drive.DataRootBase, "names-" + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(dir);
+        var ev = new VtEvidence(journal, "careless-profiles", "Profiles: odd names and the picker's buttons used the wrong way");
         try
         {
             await using (var rig = await VehicleToolRig.StartAsync(dir))
             {
+                ev.Attach(rig);
+                int n = 0;
+                // After each step's checks, before the next action: a finding's dump shows the step's state.
+                Task Keep(SettingRow r) => ev.KeepIfNewAsync(rig, Drive.F($"step{++n:00}"), "right after the step, before the next action", () => SettingNotes(r));
                 string vehDir = await rig.ReadAsync(() => rig.Config.ProfilesDirectory);
                 async Task<List<string>> Vehicles() => await rig.ReadAsync(() => rig.Config.GetAvailableProfiles().ToList());
                 async Task<SettingRow> Step(string what, string sent, Func<Task> act)
                 {
+                    ev.Log("# " + what);
                     rig.TakeEvents();
                     var row = new SettingRow { Group = "Profiles", What = what, Sent = sent };
                     try { await act(); }
@@ -394,6 +418,8 @@ public static class CarelessOperator
                     Add(journal, r, new Finding("PROFILE-NAME-SLASH", Severity.Bug,
                         "a vehicle named with a slash ('Puma 180/CVX') is not saved as a profile" + (sub ? " (it goes into a sub-folder)" : "") + (r.Said.Count == 0 ? ", and nothing says so" : ": " + r.Said[0])), "profiles: name with a slash");
 
+                await Keep(r);
+
                 // A name that climbs out of the Vehicles folder.
                 r = await Step("Name that climbs out of the folder", "profile.new vehicle\\t../escaped", () => rig.SendAsync("profile.new", "vehicle\t../escaped"));
                 string outside = Path.GetFullPath(Path.Combine(vehDir, "..", "escaped.json"));
@@ -401,6 +427,8 @@ public static class CarelessOperator
                 if (File.Exists(outside))
                     Add(journal, r, new Finding("PROFILE-NAME-PATH", Severity.Robustness,
                         "a profile name with '../' is written outside the Vehicles folder (any browser on the LAN can send one)"), "profiles: name with ../");
+
+                await Keep(r);
 
                 // Names that differ only in capitals.
                 r = await Step("Same name in capitals", "profile.new vehicle\\tPUMA", () => rig.SendAsync("profile.new", "vehicle\tPUMA"));
@@ -410,6 +438,8 @@ public static class CarelessOperator
                 if (files > 1 && list.Count(n => string.Equals(n, "puma", StringComparison.OrdinalIgnoreCase)) == 1)
                     Add(journal, r, new Finding("PROFILE-NAME-CASE", Severity.Inconsistency,
                         "'Puma' and 'PUMA' are two files on Linux and Android but the picker lists one of them; on Windows and macOS they are the same file"), "profiles: names in capitals");
+
+                await Keep(r);
 
                 // New over an existing name.
                 await rig.SendAsync("profile.load", "Puma\tSprayer");
@@ -422,6 +452,7 @@ public static class CarelessOperator
                 if (wb == "2.1" && r.Said.Count == 0)
                     Add(journal, r, new Finding("PROFILE-NEW-OVERWRITES", Severity.Improvement,
                         "New with the name of an existing profile overwrites it with no question"), "profiles: New over an existing name");
+                await Keep(r);
                 foreach (var kv in Drive.Careful(Puma, Boom, Um)) await rig.SendAsync("config.set", kv);
                 await rig.SendAsync("profile.save");
 
@@ -440,6 +471,7 @@ public static class CarelessOperator
                 if (pumaWb == "2.1")
                     Add(journal, r, new Finding("PROFILE-NEW-NOT-ACTIVE", Severity.Bug,
                         "New saves a copy under the new name but keeps the old profile loaded: the next measurements and Save Profile overwrite the old one (the Puma got the vineyard tractor's 2.10 m wheelbase, the 'Vineyard' profile kept the Puma's). The picker's status says 'Creating Vineyard…' and nothing more."), "profiles: New, then edit without Load");
+                await Keep(r);
                 await rig.SendAsync("profile.load", "Puma\tSprayer");
                 foreach (var kv in Drive.Careful(Puma, Boom, Um)) await rig.SendAsync("config.set", kv);
                 await rig.SendAsync("profile.save");
@@ -452,6 +484,8 @@ public static class CarelessOperator
                     Add(journal, r, new Finding("PROFILE-REFUSED-SILENT", Severity.Improvement,
                         "the picker refuses some actions with no word: deleting the profile in use, a rename onto an existing name, loading a profile that is not there"), "profiles: delete the profile in use");
 
+                await Keep(r);
+
                 // Rename onto an existing name.
                 r = await Step("Rename onto an existing name", "profile.rename vehicle\\tVineyard\\tPuma", () => rig.SendAsync("profile.rename", "vehicle\tVineyard\tPuma"));
                 list = await Vehicles();
@@ -459,12 +493,16 @@ public static class CarelessOperator
                 if (list.Contains("Vineyard") && r.Said.Count == 0)
                     Add(journal, r, new Finding("PROFILE-REFUSED-SILENT", Severity.Improvement, "the picker refuses some actions with no word"), "profiles: rename onto an existing name");
 
+                await Keep(r);
+
                 // Load a profile that is not there.
                 string before = Active();
                 r = await Step("Load a profile that is not there", "profile.load Nope\\tNope", () => rig.SendAsync("profile.load", "Nope\tNope"));
                 r.Stored = "active " + Active() + " (was " + before + ")";
                 if (r.Said.Count == 0)
                     Add(journal, r, new Finding("PROFILE-REFUSED-SILENT", Severity.Improvement, "the picker refuses some actions with no word"), "profiles: load a profile that is not there");
+
+                await Keep(r);
 
                 // Reset the Default vehicle while working with the Puma.
                 await rig.SendAsync("profile.load", "Puma\tSprayer");
@@ -476,6 +514,8 @@ public static class CarelessOperator
                 if (act.StartsWith("Default", StringComparison.Ordinal) && liveWb == "2.88")
                     Add(journal, r, new Finding("PROFILE-RESET-HALF", Severity.Bug,
                         "Reset of the Default vehicle while another profile is loaded switches to Default and saves a mix: the type, antenna height and pivot go back to defaults, the Puma's wheelbase, track, antenna offset and hitch stay, so 'Default' is not a default any more"), "profiles: reset Default");
+
+                await Keep(r);
 
                 // A combine with a trailed implement, by loading two profiles.
                 await rig.SendAsync("profile.new", "tool\tTrailed disc");
@@ -493,6 +533,8 @@ public static class CarelessOperator
                     Add(journal, r, new Finding("HARVESTER-TRAILING-BY-LOAD", Severity.Inconsistency,
                         "a combine takes only a front implement when the type is picked (#111), but loading a combine with a trailed implement's profile gives a combine pulling a trailed implement"), "profiles: combine + trailed disc");
 
+                await Keep(r);
+
                 // Typed, not saved, restart.
                 await rig.SendAsync("profile.load", "Puma\tSprayer");
                 await rig.SendAsync("config.set", "vehicle.antennaHeight:2.5");
@@ -502,11 +544,14 @@ public static class CarelessOperator
             }
             await using (var rig = await VehicleToolRig.StartAsync(dir))
             {
+                ev.Attach(rig);
+                ev.Log("# AgOpenWeb restarted on the same data folder");
                 var ur = journal.Settings[^1];
                 string ah = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.antennaHeight"));
                 ur.Stored += ", after the restart " + ah + " m";
                 if (ah == "3.1")
                     ur.Effect = "the change is lost (expected: Save Profile keeps it)";
+                await ev.KeepIfNewAsync(rig, "after-restart", "after the restart", () => SettingNotes(ur), end: true);
             }
         }
         catch (Exception ex)
@@ -515,6 +560,7 @@ public static class CarelessOperator
         }
         finally
         {
+            ev.Close();
             try { Directory.Delete(dir, true); } catch { }
         }
     }
