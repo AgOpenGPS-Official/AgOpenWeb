@@ -1465,6 +1465,17 @@ public sealed class JobRun : IAsyncDisposable
                     a.LargestOverlapM = Math.Max(a.LargestOverlapM, -gap);
                     continue;
                 }
+                if (Bending(passes[k].Key, bin) || Bending(passes[k + 1].Key, bin))
+                {
+                    if (gap > a.LargestBendStripM)
+                    {
+                        var at = Frame.At((x.R + x2.L) / 2, bin);
+                        a.LargestBendStripM = gap;
+                        a.LargestBendWhere = F($"between passes {passes[k].Key} and {passes[k + 1].Key}, {bin} m along the line from A, at ({at.E:0},{at.N:0})");
+                    }
+                    a.LargestOverlapM = Math.Max(a.LargestOverlapM, -gap);
+                    continue;
+                }
                 if (gap > a.LargestMissedStripM)
                 {
                     var at = Frame.At((x.R + x2.L) / 2, bin);
@@ -1495,6 +1506,30 @@ public sealed class JobRun : IAsyncDisposable
         double de = b2.E / b2.K - b1.E / b1.K, dn = b2.N / b2.K - b1.N / b1.K;
         return Math.Abs((de * he + dn * hn) / hl) <= BinAlongSlackM;
     }
+
+    /// <summary>Does the pass bend sharply at this bin: its way turning faster than
+    /// <see cref="BendDegPerM"/> across <see cref="BendSpanM"/> m of bins either side? There AutoSteer
+    /// cuts the inside of the bend or runs wide of it for a few metres, as any line following does
+    /// (P6: the first lap, driven by hand, kinks 20° in 8 m; the contour lap a width in ran 0.2 m
+    /// further in for 5 m, then 0.2 m over): a gap there is the steering round the bend, not a
+    /// strip along the passes.</summary>
+    private bool Bending(int pass, int bin)
+    {
+        if (!_passBinAt.TryGetValue(pass, out var at)) return false;
+        double? Way(int b) => at.TryGetValue(b, out var w) ? Math.Atan2(w.He, w.Hn) : null;
+        for (int d = 1; d <= BendSpanM; d++)
+        {
+            if (Way(bin - d) is not { } h0 || Way(bin + d) is not { } h1) continue;
+            double turn = Math.Abs(Math.IEEERemainder(h1 - h0, 2 * Math.PI)) * 180 / Math.PI;
+            if (turn > BendDegPerM * 2 * d) return true;
+        }
+        return false;
+    }
+
+    /// <summary>A pass bending faster than this (degrees per metre; 2°/m is a radius of about 29 m)
+    /// is bending sharply (<see cref="Bending"/>).</summary>
+    public const double BendDegPerM = 2.0;
+    private const int BendSpanM = 4;
 
     /// <summary>How far apart along the passes two passes' points in one 1 m bin may be.</summary>
     private const double BinAlongSlackM = 1.5;
