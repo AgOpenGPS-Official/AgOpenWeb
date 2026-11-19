@@ -445,10 +445,10 @@ public sealed class BadOperator : Operator
         await BadSilentCheck("edit track 99 on the map", () => Cmd("track.editSave", "99;0,0;10,10"));
         await S.Step("(set-up) show track 0 again and select it", async () => { await Cmd("track.setVisible", "0,1"); await Cmd("track.select", "0"); }, Expect.Any);
         S.Check(S.Last.SelectedTrack != null, Severity.Improvement, "(harness) no track selected for the nudge / extend tests");
-        await Bad("nudge right 300 times", async () => { for (int i = 0; i < 300; i++) R.Server.CommandHandler!("track.nudgeRight", ""); await R.SettleAsync(); });
+        await Bad("nudge right 300 times", async () => { for (int i = 0; i < 300; i++) R.Dispatch("track.nudgeRight", ""); await R.SettleAsync(); });
         await Cmd("track.resetNudge");
         var len0 = (await Snap()).Tracks[0].Points is var p0 && p0.Count == 2 ? Math.Sqrt(Math.Pow(p0[1].E - p0[0].E, 2) + Math.Pow(p0[1].N - p0[0].N, 2)) : 0;
-        await Bad("shrink B 200 times (5 m each)", async () => { for (int i = 0; i < 200; i++) R.Server.CommandHandler!("track.shrinkB", ""); await R.SettleAsync(); });
+        await Bad("shrink B 200 times (5 m each)", async () => { for (int i = 0; i < 200; i++) R.Dispatch("track.shrinkB", ""); await R.SettleAsync(); });
         if (S.Last.Tracks.Count > 0 && S.Last.Tracks[0].Points is { Count: 2 } p1)
         {
             double h0 = Math.Atan2(p0[1].E - p0[0].E, p0[1].N - p0[0].N);
@@ -457,7 +457,7 @@ public sealed class BadOperator : Operator
             S.Check(Math.Abs(Math.IEEERemainder(h1 - h0, 2 * Math.PI)) < 0.01, Severity.Bug,
                 F($"shrinking B past A turned the line round: heading {h0 * 180 / Math.PI:F1}° -> {h1 * 180 / Math.PI:F1}°, length {len0:F0} -> {len1:F0} m"));
         }
-        await Bad("extend A 400 times (5 m each)", async () => { for (int i = 0; i < 400; i++) R.Server.CommandHandler!("track.extendA", ""); await R.SettleAsync(); });
+        await Bad("extend A 400 times (5 m each)", async () => { for (int i = 0; i < 400; i++) R.Dispatch("track.extendA", ""); await R.SettleAsync(); });
         await Bad("smooth the AB line 5 times", async () => { for (int i = 0; i < 5; i++) await Cmd("track.smooth"); });
         await Bad("A+ right after creating a field (tractor exactly at the field's origin)", async () =>
         {
@@ -565,8 +565,8 @@ public sealed class BadOperator : Operator
         await Bad("open two fields at once (second before the first has loaded)", async () =>
         {
             await CloseField();
-            R.Server.CommandHandler!("field.openOnly", "Vinha");
-            R.Server.CommandHandler!("field.openOnly", name);
+            R.Dispatch("field.openOnly", "Vinha");
+            R.Dispatch("field.openOnly", name);
             await R.SettleAsync();
             await Task.Delay(500);
             await R.SettleAsync();

@@ -1,8 +1,8 @@
 # Scenario harnesses: fix from evidence, not from reruns
 
-**Status:** in progress, 2026-11-17. The rule is in force. Evidence capture is built for the job
-harnesses (PR #873); the first nightly with findings has to show that a dump is enough to fix
-from. The other harnesses are not wired yet.
+**Status:** in progress, 2026-11-19. The rule is in force. Evidence capture is built for the job
+harnesses (PR #873) and shown on real findings (J19, P6); field scenarios are wired next
+(section 3); the other harnesses are not wired yet.
 
 ## 1. Why this plan
 
@@ -118,6 +118,17 @@ one to a bug in the contention watch (a pointer payload read with `Convert`, so 
 dropped). Lessons for the other harnesses' timing evidence: name the lock and the holder first,
 before counting anything else, and check a new watch reports something on the host it runs on.
 
+### Built: field scenarios
+
+Findings come after a step (the app took wrong input, a boundary crosses itself), so the dump is
+taken at the step, not at the end: right after the step where a kind of finding is first seen in
+the run, before the next step changes anything (`Scenario.KeepEvidenceAsync`), one per kind,
+`evidence/<scenario>-step<N>.zip`, named in the report under the finding. Beside the app's dump:
+the scenario's steps in `user_notes.txt` and `attachments/commands.txt`, what the operator did in
+the whole run up to that step (every `id|arg` command, every placing and drive of the tractor,
+every import file): one backend works field after field, so a scenario's field may have been built
+by an earlier one. A unit test is built from the field's files and the commands.
+
 ### Not shown yet
 
 - **That a dump is enough to write the unit test from.** The checked run had no findings. Take the
@@ -147,9 +158,10 @@ In this order. Each harness: link `Evidence.cs`, add the two log providers to it
 `Evidence` per scenario, save when the scenario has a finding, name the zip in the report, keep
 `evidence/` as an artifact in its workflow.
 
-1. **Prove the format on a real finding** (above) before copying it.
-2. **Vehicle & Tool** (operators and sweep) and **field scenarios**: guidance and U-turns, the
-   same kind of finding as the jobs.
+1. **Prove the format on a real finding**: done (J19 on 2026-11-18 and P6 on 2026-11-19 were
+   settled from their zips; P6 added the passes' bins, #892).
+2. **Field scenarios** (built, see section 3), then **Vehicle & Tool** (operators and sweep):
+   guidance and U-turns, the same kind of finding as the jobs.
 3. **Steer wizard, machine module, ISOBUS, GPS and NTRIP**: real time, short scenarios, so one
    dump at the end of a scenario with a finding is close to the moment. Add what each emulated
    module saw (its PGN log; the caster's and the receiver's for GPS and NTRIP).

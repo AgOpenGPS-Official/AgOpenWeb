@@ -122,8 +122,10 @@ public abstract class Operator
 
     protected async Task WriteImportFile(string fileName, string content)
     {
+        await R.BeforeActionAsync();
         Directory.CreateDirectory(R.ImportDir);
         await File.WriteAllTextAsync(Path.Combine(R.ImportDir, fileName), content);
+        R.LogAction("# file Import/" + fileName + " written:\n" + content);
         await Cmd("import.scan");
     }
 
