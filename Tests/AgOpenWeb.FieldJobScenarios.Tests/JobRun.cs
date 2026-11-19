@@ -329,10 +329,9 @@ public sealed class JobRun : IAsyncDisposable
         }
     }
     private readonly Dictionary<int, SortedDictionary<int, (double L, double R)>> _passEdges = new();
-    // Where the sprayed width's middle was in each bin of each pass, its way and the width (summed,
-    // for the mean): two passes' edges in one bin compare only where the bin lies across both at
-    // one place, and on a frame that is not a straight line the gap is measured square to them.
-    private readonly Dictionary<int, Dictionary<int, (double E, double N, double He, double Hn, double W, int K)>> _passBinAt = new();
+    // Where the implement was in each bin of each pass, and its way (summed, for the mean): two
+    // passes' edges in one bin compare only where the bin lies across both at one place.
+    private readonly Dictionary<int, Dictionary<int, (double E, double N, double He, double Hn, int K)>> _passBinAt = new();
     // Where each stretch of a pass's edges began after a U-turn or the engage (the bin along the
     // line; not after a lap's corner or a lap change by hand, which keep their own rules): after a U-turn hands
     // back, or AutoSteer is engaged, the implement is still settling onto its pass for a few metres
@@ -1094,7 +1093,6 @@ public sealed class JobRun : IAsyncDisposable
         Grid.BeginFix();
         double uL = double.MaxValue, uR = double.MinValue;
         bool any = false;
-        int sFirst = -1, sLast = -1;   // the outermost section ends spraying
         // The section ends now; the previous fix's ends stay in _prevEdge until every section
         // has swept (neighbouring sections share an end).
         var cur = new (double E, double N)[n + 1];
@@ -1121,8 +1119,6 @@ public sealed class JobRun : IAsyncDisposable
             if (flowing)
             {
                 any = true;
-                if (sFirst < 0) sFirst = s;
-                sLast = s + 1;
                 uL = Math.Min(uL, Math.Min(U(cur[s]), U(cur[s + 1])));
                 uR = Math.Max(uR, Math.Max(U(cur[s]), U(cur[s + 1])));
             }
@@ -1169,9 +1165,7 @@ public sealed class JobRun : IAsyncDisposable
             else d[bin] = (uL, uR);
             if (!_passBinAt.TryGetValue(Pass, out var at)) _passBinAt[Pass] = at = new();
             var w = at.TryGetValue(bin, out var o) ? o : default;
-            var (m0, m1) = (cur[sFirst], cur[sLast]);
-            double width = Math.Sqrt((m1.E - m0.E) * (m1.E - m0.E) + (m1.N - m0.N) * (m1.N - m0.N));
-            at[bin] = (w.E + (m0.E + m1.E) / 2, w.N + (m0.N + m1.N) / 2, w.He + Math.Sin(tc.Heading), w.Hn + Math.Cos(tc.Heading), w.W + width, w.K + 1);
+            at[bin] = (w.E + tc.E, w.N + tc.N, w.He + Math.Sin(tc.Heading), w.Hn + Math.Cos(tc.Heading), w.K + 1);
         }
         else _recPass = int.MinValue;
         if (InTurn) _settling = true;
@@ -1459,7 +1453,7 @@ public sealed class JobRun : IAsyncDisposable
                 if (!passes[k + 1].Value.TryGetValue(bin, out var x2)) continue;
                 if (x.R - x.L < Spec.T.Width - 0.3 || x2.R - x2.L < Spec.T.Width - 0.3) continue;   // a section still off at the pass's end
                 if (!BinAcrossBoth(passes[k].Key, passes[k + 1].Key, bin)) continue;
-                double gap = Frame is StraightFrame ? x2.L - x.R : SquareGap(passes[k].Key, passes[k + 1].Key, bin) ?? x2.L - x.R;
+                double gap = x2.L - x.R;
                 if (Settling(passes[k].Key, bin) || Settling(passes[k + 1].Key, bin))
                 {
                     if (gap > a.LargestSettlingStripM)
@@ -1536,23 +1530,6 @@ public sealed class JobRun : IAsyncDisposable
     /// is bending sharply (<see cref="Bending"/>).</summary>
     public const double BendDegPerM = 2.0;
     private const int BendSpanM = 4;
-
-    /// <summary>The gap between two passes in a bin, square to them: the distance between their
-    /// sprayed widths' middles across their way, less half of each width. On a frame that is not a
-    /// straight line the frame's u is not square to the passes (a lap's u is the distance in from
-    /// the boundary, and the laps run at an angle to it), and its change along the bin between the
-    /// two passes' points read as a gap (P6: 0.20 m read between laps 1 and 2, 0.09 m in fact).</summary>
-    private double? SquareGap(int p1, int p2, int bin)
-    {
-        if (!_passBinAt.TryGetValue(p1, out var a1) || !a1.TryGetValue(bin, out var b1)) return null;
-        if (!_passBinAt.TryGetValue(p2, out var a2) || !a2.TryGetValue(bin, out var b2)) return null;
-        double sign = b1.He * b2.He + b1.Hn * b2.Hn < 0 ? -1 : 1;
-        double he = b1.He / b1.K + sign * b2.He / b2.K, hn = b1.Hn / b1.K + sign * b2.Hn / b2.K, hl = Math.Sqrt(he * he + hn * hn);
-        if (hl < 1e-9) return null;
-        double de = b2.E / b2.K - b1.E / b1.K, dn = b2.N / b2.K - b1.N / b1.K;
-        double across = Math.Abs(de * hn - dn * he) / hl;
-        return across - (b1.W / b1.K + b2.W / b2.K) / 2;
-    }
 
     /// <summary>How far apart along the passes two passes' points in one 1 m bin may be.</summary>
     private const double BinAlongSlackM = 1.5;
