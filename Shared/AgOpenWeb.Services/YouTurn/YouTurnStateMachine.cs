@@ -967,7 +967,7 @@ public sealed class YouTurnStateMachine
         // headland built again with another width): the passes in it and their order are not this
         // field's. The old order sent the turn the wrong way, onto a pass by the fence where it would
         // not build.
-        long fieldStamp = SnakeFieldStamp(ctx.Boundary, ctx.HeadlandLine);
+        long fieldStamp = SnakeFieldStamp(ctx.Boundary, SnakeArea(in ctx));
         if (!YouTurnPathingService.IsSnakeOnPass(turn, guidance.HowManyPathsAway)
             || !ReferenceEquals(turn.SnakeSequence, _snakePlan) || fieldStamp != _snakePlanFieldStamp)
         {
@@ -988,7 +988,7 @@ public sealed class YouTurnStateMachine
         int? nextPath = _pathing.GetNextSnakePath(turn, isWorked);
         // An order planned before the headland or boundary changed can go on to a pass that is
         // no longer in the field: plan it again for the field as it is.
-        if (nextPath is { } stale && !_pathing.IsPathInsideCultivated(track, abHeading, stale, ctx.Boundary, ctx.HeadlandLine))
+        if (nextPath is { } stale && !_pathing.IsPathInsideCultivated(track, abHeading, stale, ctx.Boundary, SnakeArea(in ctx)))
         {
             _logger.LogDebug("[YouTurn] Snake pass {Pass} is outside the field - planning the snake again", stale);
             PlanSnake(in ctx, track, abHeading, guidance, turn, fieldStamp);
@@ -1014,7 +1014,7 @@ public sealed class YouTurnStateMachine
             operatorSide = positive ? 1 : -1;
             int skip = _pathing.GetNextUnworkedPathSkip(track, guidance.HowManyPathsAway, positive, ctx.UTurnSkipRows + 1, isWorked);
             int swapped = guidance.HowManyPathsAway + (positive ? skip : -skip);
-            if (_pathing.IsPathLandable(track, abHeading, swapped, ctx.Boundary, ctx.HeadlandLine, currentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland, guidance.HowManyPathsAway))
+            if (SnakeLandable(in ctx, track, abHeading, swapped, guidance, turn))
                 target = swapped;
             else
                 RefuseDirectionSwap(swapped, effects);
@@ -1054,7 +1054,7 @@ public sealed class YouTurnStateMachine
             _failedEndCycles = 0;
             return;
         }
-        effects.StatusMessage = _pathing.NoLandingMessage(track, abHeading, target, ctx.Boundary, ctx.HeadlandLine,
+        effects.StatusMessage = _pathing.NoLandingMessage(track, abHeading, target, ctx.Boundary, SnakeArea(in ctx),
             currentPosition, guidance.IsHeadingSameWay, turn.DistanceToHeadland, guidance.HowManyPathsAway) ?? NoLandingFallback;
         SoundCreationFailed(effects);
         _failedEnd = EndKey(in ctx, track, guidance, turn, fieldStamp);
@@ -1112,11 +1112,8 @@ public sealed class YouTurnStateMachine
     {
         var c = _configStore;
         var g = c.Guidance;
-        // The operator's headland with the sections off in it decides which passes the snake may land
-        // on (SnakeLandable), so a change of either tries the end at once.
         int settings = HashCode.Combine(
-            HashCode.Combine(g.UTurnRadius, g.UTurnDistanceFromBoundary, g.UTurnExtension, g.UTurnSmoothing, g.UTurnStyle,
-                c.Tool.IsHeadlandSectionControl, SnakeFieldStamp(null, ctx.WorkHeadlandLine)),
+            HashCode.Combine(g.UTurnRadius, g.UTurnDistanceFromBoundary, g.UTurnExtension, g.UTurnSmoothing, g.UTurnStyle),
             HashCode.Combine(c.ActualToolWidth, c.Tool.Width, c.Tool.Overlap,
                 AgOpenWeb.Models.Tool.RigGeometry.Stamp(c.Vehicle, c.Tool)),
             HashCode.Combine(ctx.HeadlandCalculatedWidth, ctx.HeadlandDistance, ctx.IsAlternateSkipMode));
@@ -1191,14 +1188,24 @@ public sealed class YouTurnStateMachine
     }
 
     /// <summary>
+    /// The area the snake order is made for: with the operator's headland on and the sections off
+    /// in it (<c>Tool.IsHeadlandSectionControl</c>), the crop inside the headland line; else the turn
+    /// line, as the turn itself. With the sections off in the headland, the band between the turn
+    /// line and the headland line is not painted until the headland is worked, by its own laps: a
+    /// pass lying in it stayed still to do, so the snake turned onto it (a tester's field, simulator:
+    /// 13L, with 12 m of crop at its far end, and 15L, with none, in a corner of the headland, before
+    /// going back to 12L), and with every pass in the crop worked it said "No U-turn onto the next
+    /// pass" instead of the field done. The order, its worked-pass test and its landing check
+    /// (<see cref="SnakeLandable"/>) use this area. AgOpenGPS's GetNextNotWorkedTrack checks no room
+    /// at all, so this, like the turn line's check, is ours.
+    /// </summary>
+    private IReadOnlyList<Vec3>? SnakeArea(in TickContext ctx) =>
+        ctx.WorkHeadlandLine is { Count: >= 3 } crop && _configStore.Tool.IsHeadlandSectionControl ? crop : ctx.HeadlandLine;
+
+    /// <summary>
     /// Can the snake land a turn made at this end on <paramref name="pass"/>: room on it inside the
-    /// turn line (<see cref="YouTurnPathingService.IsPathLandable"/>) and, with the operator's
-    /// headland on and the sections off in it, as much room in the crop, inside the headland line.
-    /// The turn line is the fence moved in by the U-turn distance, so a pass lying in the headland
-    /// band has room there and nothing to work: unpainted, it stays still to do. On a tester's field
-    /// (simulator) the snake drove 13L, with 12 m of crop at its far end, and 15L, with none, in a
-    /// corner of the headland, and only then went back to 12L. AgOpenGPS's GetNextNotWorkedTrack
-    /// checks no room at all; this check, like the turn line's, is ours.
+    /// turn line (<see cref="YouTurnPathingService.IsPathLandable"/>) and, when the order is made for
+    /// the crop (<see cref="SnakeArea"/>), as much room inside the headland line.
     /// </summary>
     private bool SnakeLandable(in TickContext ctx, Models.Track.Track track, double abHeading, int pass,
         GuidanceWorkingState guidance, YouTurnWorkingState turn)
@@ -1207,7 +1214,8 @@ public sealed class YouTurnStateMachine
         if (!_pathing.IsPathLandable(track, abHeading, pass, ctx.Boundary, ctx.HeadlandLine, ctx.CurrentPosition,
                 guidance.IsHeadingSameWay, turn.DistanceToHeadland, current))
             return false;
-        if (ctx.WorkHeadlandLine is not { Count: >= 3 } crop || !_configStore.Tool.IsHeadlandSectionControl)
+        var crop = SnakeArea(in ctx);
+        if (ReferenceEquals(crop, ctx.HeadlandLine))
             return true;
         if (_pathing.IsPathLandable(track, abHeading, pass, ctx.Boundary, crop, ctx.CurrentPosition,
                 guidance.IsHeadingSameWay, turn.DistanceToHeadland, current))
@@ -1223,7 +1231,7 @@ public sealed class YouTurnStateMachine
     private void PlanSnake(in TickContext ctx, Models.Track.Track track, double abHeading,
         GuidanceWorkingState guidance, YouTurnWorkingState turn, long fieldStamp)
     {
-        _pathing.BuildSnakeSequence(track, abHeading, guidance, turn, ctx.Boundary, ctx.HeadlandLine);
+        _pathing.BuildSnakeSequence(track, abHeading, guidance, turn, ctx.Boundary, SnakeArea(in ctx));
         _snakePlan = turn.SnakeSequence;
         _snakePlanFieldStamp = fieldStamp;
     }
@@ -1271,7 +1279,7 @@ public sealed class YouTurnStateMachine
         YouTurnWorkingState turn)
     {
         var boundary = ctx.Boundary;
-        var headlandLine = ctx.HeadlandLine;
+        var headlandLine = SnakeArea(in ctx); // the area the order is made for: the crop, with the sections off in the headland
         var isPointCovered = ctx.IsPointCovered;
         double nudge = guidance.NudgeOffset;
         var plan = turn.SnakeSequence;

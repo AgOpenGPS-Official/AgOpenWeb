@@ -176,12 +176,50 @@ public class SnakeOpenPassTests
 
         var effects = _sm.Tick(Ctx(turnLine, PassX(2), -25, 180, crop), guidance, turn);
 
-        Assert.That(turn.SnakeSequence!.Take(2), Is.EqualTo(new[] { 2, 4 }), "the scenario: the order goes on to pass 4");
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.SnakeSequence, Has.None.InRange(4, 11), "the order is made for the crop: no pass of the band in it");
+            Assert.That(turn.TurnPath, Is.Not.Null, $"a turn, not \"{effects.StatusMessage}\"");
+            Assert.That(turn.ReturnPassTargetPath, Is.EqualTo(0), "the pass still to do in the crop, not one in the band");
+            Assert.That(turn.NextTrack!.Points[0].Easting, Is.EqualTo(PassX(0)).Within(0.01));
+        });
+    }
+
+    [Test]
+    public void With_every_pass_in_the_crop_worked_the_field_is_done_whatever_is_left_in_the_band()
+    {
+        // The passes in the headland band are worked by the headland's own laps, not by the snake:
+        // left out of the order, they never kept it going. Counted as still to do, the end of the
+        // field was "No U-turn onto the next pass" (no room in the crop on the band's passes).
+        var (guidance, turn, turnLine, crop) = HeadlandBand();
+        _track.MarkPathWorked(0);
+
+        var effects = _sm.Tick(Ctx(turnLine, PassX(2), -25, 180, crop), guidance, turn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.TurnPath, Is.Null, $"no turn (onto {turn.ReturnPassTargetPath})");
+            Assert.That(effects.StatusMessage, Is.EqualTo("Field complete — all tracks worked"));
+            Assert.That(effects.TurnCreationFailedSound, Is.True, "said, as the end of the field always is");
+        });
+    }
+
+    [Test]
+    public void The_U_turn_arrow_does_not_swap_onto_a_pass_in_the_headland_band()
+    {
+        // The arrow asks for the east side, where the nearest pass still to do (4) lies in the band:
+        // the swap is refused, as onto a pass outside the field, and the turn goes onto the order's
+        // pass in the crop. The swap checked the turn line alone and turned onto pass 4.
+        var (guidance, turn, turnLine, crop) = HeadlandBand();
+        turn.NextUTurnDirectionLeftOverride = true; // left heading south: east, the higher passes
+
+        var effects = _sm.Tick(Ctx(turnLine, PassX(2), -25, 180, crop), guidance, turn);
+
         Assert.Multiple(() =>
         {
             Assert.That(turn.TurnPath, Is.Not.Null, $"a turn, not \"{effects.StatusMessage}\"");
-            Assert.That(turn.ReturnPassTargetPath, Is.EqualTo(0), "the nearest pass still to do in the crop, not one in the band");
-            Assert.That(turn.NextTrack!.Points[0].Easting, Is.EqualTo(PassX(0)).Within(0.01));
+            Assert.That(turn.ReturnPassTargetPath, Is.EqualTo(0), "the order's pass in the crop, not pass 4 in the band");
+            Assert.That(effects.StatusMessage, Does.StartWith("U-turn direction not changed"));
         });
     }
 
