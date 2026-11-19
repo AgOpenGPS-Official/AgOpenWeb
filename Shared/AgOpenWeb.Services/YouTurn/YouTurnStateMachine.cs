@@ -258,19 +258,36 @@ public sealed class YouTurnStateMachine
 
         if (turn.TurnPath == null && !turn.IsExecuting && canCreateTurn && isAlignedWithABLine)
         {
+            _failedEndIdle = 0;
             if (ctx.IsSkipWorkedMode)
                 HandleSnakeCreation(in ctx, track, abHeading, currentPosition, headingRadians, guidance, turn, effects);
-            else if (ctx.IsAlternateSkipMode)
-                HandleAlternateCreation(in ctx, track, abHeading, headingRadians, guidance, turn, effects);
-            else
-                HandleNormalCreation(in ctx, track, abHeading, currentPosition, headingRadians, guidance, turn, effects);
+            else if (!TriedJustNow(in ctx, track, guidance, turn))
+            {
+                if (ctx.IsAlternateSkipMode)
+                    HandleAlternateCreation(in ctx, track, abHeading, headingRadians, guidance, turn, effects);
+                else
+                    HandleNormalCreation(in ctx, track, abHeading, currentPosition, headingRadians, guidance, turn, effects);
+                // No turn here: tried again in 1.5 s, or at once when something that can change the
+                // answer does (see _failedEnd). Built again on every cycle, a turn that can't be made
+                // (a tractor parked with AutoSteer on, a turn that fits nowhere) filled the 2000 lines
+                // of a bug report's log in 13 s (95 builds).
+                if (turn.TurnPath == null)
+                {
+                    _failedEnd = EndKey(in ctx, track, guidance, turn, EndFieldStamp(in ctx));
+                    _failedEndCycles = 0;
+                }
+            }
         }
-        else
+        else if (turn.TurnPath != null || turn.IsExecuting
+                 || (_failedEnd != null && ++_failedEndIdle >= FailedEndRetryCycles))
         {
-            // Not looking for a turn (a turn planned or driven, off the line, out of the creation
-            // window): an end where none built is tried again next time. A pass that crosses a
-            // headland strip has another end past it.
+            // A turn planned or driven, or not looking for one for 1.5 s (off the line, out of the
+            // creation window): an end where none built is tried again next time. A pass that crosses
+            // a headland strip has another end past it. A shorter spell keeps it: the heading or the
+            // distance to the end flickering at the edge of the gate (a tractor parked with AutoSteer
+            // on, a single antenna's heading) built the turn again every other cycle.
             _failedEnd = null;
+            _failedEndIdle = 0;
         }
         // ── NO TURN, HEADING OUT ────────────────────────────────────────
         // In the headland on the line, heading out of the field, with no turn planned or under
@@ -1045,7 +1062,8 @@ public sealed class YouTurnStateMachine
     }
 
     // An end where no turn was made onto the order's pass or the nearest open passes (a hard fence
-    // the turns don't clear: each build moves the turn back 0.5 m at a time, up to 30 m). Tick
+    // the turns don't clear: each build moves the turn back 0.5 m at a time, up to 30 m), and in the
+    // normal and alternative modes an end where no turn was made (TriedJustNow). Tick
     // looks for a turn on every GPS cycle while the end is ahead, and the passes tried here
     // tripled the builds of each look, so the end is remembered and tried again every 1.5 s
     // (FailedEndRetryCycles: AgOpenGPS waits that long, makeUTurnCounter, before it builds again
@@ -1053,14 +1071,41 @@ public sealed class YouTurnStateMachine
     // that comes to fit as the tractor moves on is planned without a word. Tried at once when
     // something that can change the answer does: the pass, the direction of travel, the nudge,
     // the snake order, the field or headland (SnakeFieldStamp), the skip, the U-turn arrow or a
-    // turn setting (the operator lowering the radius to make it fit). Forgotten when Tick stops
-    // looking for a turn, the track changes or U-turn is switched off.
+    // turn setting (the operator lowering the radius to make it fit). Forgotten when a turn is
+    // planned or driven, when Tick has not looked for a turn for 1.5 s, the track changes or U-turn
+    // is switched off.
     private EndTried? _failedEnd;
     private int _failedEndCycles;
+    private int _failedEndIdle; // cycles in a row not looking for a turn since one did not build
     private const int FailedEndRetryCycles = 15; // GPS cycles at 10 Hz
 
     private readonly record struct EndTried(Models.Track.Track Track, int Pass, bool HeadingSameWay, double Nudge,
         List<int>? Snake, long FieldStamp, int SkipRows, bool? Arrow, int Settings);
+
+    /// <summary>
+    /// The normal and alternative modes: this end was tried a moment ago and no turn was made, so it
+    /// is not tried again this cycle (<see cref="_failedEnd"/>, as the snake order's ends).
+    /// </summary>
+    private bool TriedJustNow(in TickContext ctx, Models.Track.Track track, GuidanceWorkingState guidance, YouTurnWorkingState turn)
+    {
+        if (_failedEnd is { } failedEnd && failedEnd == EndKey(in ctx, track, guidance, turn, EndFieldStamp(in ctx)))
+        {
+            if (++_failedEndCycles < FailedEndRetryCycles) return true;
+            _logger.LogDebug("[YouTurn] Trying the end again (no turn built here {Seconds:F1} s ago)", FailedEndRetryCycles / 10.0);
+        }
+        _failedEnd = null;
+        _failedEndCycles = 0;
+        return false;
+    }
+
+    /// <summary>
+    /// The field an end was tried on, for the normal and alternative modes: the turn line, the
+    /// operator's headland (the side of the first turn) and the fence made hard or soft, so an edit
+    /// of any of them tries the end again at once.
+    /// </summary>
+    private static long EndFieldStamp(in TickContext ctx) =>
+        (SnakeFieldStamp(ctx.Boundary, ctx.HeadlandLine) * 31 + SnakeFieldStamp(null, ctx.WorkHeadlandLine)) * 31
+            + (ctx.Boundary?.OuterBoundary?.IsHard == true ? 1 : 0);
 
     private EndTried EndKey(in TickContext ctx, Models.Track.Track track, GuidanceWorkingState guidance,
         YouTurnWorkingState turn, long fieldStamp)
@@ -1074,7 +1119,7 @@ public sealed class YouTurnStateMachine
                 c.Tool.IsHeadlandSectionControl, SnakeFieldStamp(null, ctx.WorkHeadlandLine)),
             HashCode.Combine(c.ActualToolWidth, c.Tool.Width, c.Tool.Overlap,
                 AgOpenWeb.Models.Tool.RigGeometry.Stamp(c.Vehicle, c.Tool)),
-            HashCode.Combine(ctx.HeadlandCalculatedWidth, ctx.HeadlandDistance));
+            HashCode.Combine(ctx.HeadlandCalculatedWidth, ctx.HeadlandDistance, ctx.IsAlternateSkipMode));
         return new EndTried(track, guidance.HowManyPathsAway, guidance.IsHeadingSameWay, guidance.NudgeOffset,
             turn.SnakeSequence, fieldStamp, ctx.UTurnSkipRows, turn.NextUTurnDirectionLeftOverride, settings);
     }
