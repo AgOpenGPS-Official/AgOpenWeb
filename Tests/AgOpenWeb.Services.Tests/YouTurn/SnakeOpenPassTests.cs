@@ -296,9 +296,16 @@ public class SnakeOpenPassTests
         // The other way along the pass: the north end.
         TriedAgain("the other direction", Ctx(cultivated, PassX(1), 18, 0));
 
-        // Closer than 10 m to the end, Tick stops looking for a turn. Looking again after 1.5 s of
-        // that (a pass that crosses a headland strip has another end past it) tries again; a shorter
-        // spell is a heading or a distance flickering at the edge of the gate (FailedEndRetryTests).
+        // Closer than 10 m to the end, Tick stops looking for a turn. A short spell of that is a
+        // heading or a distance flickering at the edge of the gate (FailedEndRetryTests): the end
+        // is kept.
+        for (int i = 0; i < 3; i++)
+            _sm.Tick(Ctx(cultivated, PassX(1), 39, 0), guidance, turn);
+        _sm.Tick(Ctx(cultivated, PassX(1), 18, 0), guidance, turn);
+        Assert.That(_creation.TurnPathBuilds, Is.EqualTo(builds), "a short spell out of the gate keeps the end");
+
+        // Looking again after 1.5 s of that (a pass that crosses a headland strip has another end
+        // past it) tries again.
         for (int i = 0; i < 15; i++)
             _sm.Tick(Ctx(cultivated, PassX(1), 39, 0), guidance, turn);
         TriedAgain("after Tick stopped looking for a turn", Ctx(cultivated, PassX(1), 18, 0));

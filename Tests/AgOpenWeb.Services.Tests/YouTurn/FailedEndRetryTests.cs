@@ -1,5 +1,5 @@
 // AgOpenWeb
-// Copyright (C) 2026 AgOpenWeb Contributors
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
@@ -142,9 +142,9 @@ public class FailedEndRetryTests
         // The alternative mode chosen.
         TriedAgain("the alternative mode", Ctx(PassX(1), -18, 180, true));
 
-        // The fence made soft: the turn may now swing over it.
+        // The fence made soft, still in the alternative mode: the turn may now swing over it.
         _boundary.OuterBoundary!.IsHard = false;
-        TriedAgain("the fence made soft", Ctx(PassX(1), -18, 180, false));
+        TriedAgain("the fence made soft", Ctx(PassX(1), -18, 180, true));
     }
 
     [Test]
