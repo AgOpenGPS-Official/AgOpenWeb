@@ -174,7 +174,7 @@ A job's worked area is stored as square binary tiles on the field's plane grid: 
 
 ### job.json
 
-CamelCase JSON: `schemaVersion` (1), `id` (GUID), `fieldName`, `taskName` (same as the folder name; this build writes it without `< > : " / \ | ? *` or control characters, which become `-`, without a dot or space at the end, and with a `_` in front of a Windows device name such as `CON`, so the folder is the same on every system), `workType`, `notes`, `startedAt`, `endedAt`, `lastOpenedAt` (ISO 8601), `status` (`"InProgress"`, `"Done"` or `"Abandoned"`), `distanceTraveledMeters`, `areaWorkedHectares`, `uTurnCount`. A `jobs/<task>/` folder without `job.json` is not listed as a job.
+CamelCase JSON: `schemaVersion` (1), `id` (GUID), `fieldName`, `taskName` (same as the folder name; this build writes it without `< > : " / \ | ? *` or control characters, which become `-`, at most 100 characters long, without a dot or space at the end, and with a `_` in front of a Windows device name such as `CON` or `COM1`, so the folder is the same on every system), `workType`, `notes`, `startedAt`, `endedAt`, `lastOpenedAt` (ISO 8601), `status` (`"InProgress"`, `"Done"` or `"Abandoned"`), `distanceTraveledMeters`, `areaWorkedHectares`, `uTurnCount`. A `jobs/<task>/` folder without `job.json` is not listed as a job.
 
 `rig` (optional; absent in jobs saved before it was kept): the machine the job was worked with, a copy of the profiles, not their names only, kept up to date while the job is open. As ISO 11783-10, each part is measured from the connector it hangs on, in metres, distances positive in their own direction:
 

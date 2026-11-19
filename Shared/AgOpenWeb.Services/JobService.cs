@@ -248,7 +248,8 @@ public class JobService : IJobService
     /// A job's name is its folder's name (<c>jobs/&lt;name&gt;/</c>), so the name typed for a new job is
     /// made one a folder can have on every computer: each character Windows refuses in a folder name
     /// (<c>&lt; &gt; : " / \ | ? *</c> and control characters) becomes '-', a dot or space at the end
-    /// is dropped, and a name Windows keeps for a device (CON, NUL, COM1...) gets a '_' in front. Empty after
+    /// is dropped, a name longer than <see cref="MaxTaskNameLength"/> is cut there, and a name Windows
+    /// keeps for a device (CON, NUL, COM1...) gets a '_' in front. Empty after
     /// that: the default name is used. A job typed "Spraying 15:51" could not be saved on Windows:
     /// the field opened with no job, said only in the log, and the coverage driven was never saved
     /// (a test run on Windows, 2026-11-15). On Linux a '/' made a folder inside the jobs folder.
@@ -259,18 +260,30 @@ public class JobService : IJobService
         for (int i = 0; i < chars.Length; i++)
             if (char.IsControl(chars[i]) || "<>:\"/\\|?*".IndexOf(chars[i]) >= 0)
                 chars[i] = '-';
-        var safe = new string(chars).TrimEnd('.', ' ');
+        var safe = new string(chars);
+        if (safe.Length > MaxTaskNameLength)
+            safe = safe[..(char.IsHighSurrogate(safe[MaxTaskNameLength - 1]) ? MaxTaskNameLength - 1 : MaxTaskNameLength)];
+        safe = safe.TrimEnd('.', ' ');
         if (safe.Length == 0) return safe;
         var stem = safe.Split('.')[0].TrimEnd(' ');
         if (WindowsDeviceNames.Contains(stem)) safe = "_" + safe; // "LPT1.job" is the device too
         return safe;
     }
 
+    /// <summary>
+    /// The longest typed job name kept. A folder name may have 255 characters, but the job's folder
+    /// sits under the data folder, the field and <c>jobs/</c>, with <c>coverage/</c> and its tiles
+    /// inside: 100 keeps the whole path under Windows' 260 with a long field name.
+    /// </summary>
+    internal const int MaxTaskNameLength = 100;
+
+    // The names Windows keeps for devices (Naming Files, Paths, and Namespaces), with or without an
+    // extension: COM and LPT with 0-9 and the superscripts 1-3, and the console's CONIN$ / CONOUT$.
     private static readonly HashSet<string> WindowsDeviceNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+        "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "COM\u00B9", "COM\u00B2", "COM\u00B3",
+        "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT\u00B9", "LPT\u00B2", "LPT\u00B3",
     };
 
     private static string EnsureUnique(string fieldDir, string requestedName)
