@@ -85,3 +85,14 @@ jobs:
           path: ${{ runner.temp }}/field-scenarios-report.md
           if-no-files-found: ignore
           retention-days: 30
+
+      # Each kind of finding leaves the app's bug report dump taken at the step it was first seen
+      # (Tests/ScenarioShared/Evidence.cs): the fix is made and proven from it, without a rerun.
+      - name: Keep the evidence
+        if: always() && steps.fresh.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: field-scenarios-evidence
+          path: ${{ runner.temp }}/evidence/
+          if-no-files-found: ignore
+          retention-days: 30

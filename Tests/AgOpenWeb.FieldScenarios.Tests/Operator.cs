@@ -124,6 +124,7 @@ public abstract class Operator
     {
         Directory.CreateDirectory(R.ImportDir);
         await File.WriteAllTextAsync(Path.Combine(R.ImportDir, fileName), content);
+        R.LogAction("# file Import/" + fileName + " written:\n" + content);
         await Cmd("import.scan");
     }
 

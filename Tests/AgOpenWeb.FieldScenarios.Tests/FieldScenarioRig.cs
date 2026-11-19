@@ -61,6 +61,20 @@ public sealed class FieldScenarioRig : IAsyncDisposable
     private readonly CapturingDispatcher _dispatcher;
     private readonly HostLoopDispatcher _hostLoop;
 
+    /// <summary>What the operator did, in order, for the evidence (<c>attachments/commands.txt</c>):
+    /// every command as the web client sends it (<c>id|arg</c>), every placing and drive of the
+    /// tractor, every file put in the import folder. The whole run's: one backend works field after
+    /// field, so a scenario's state can come from the ones before it.</summary>
+    private readonly List<string> _actions = new();
+    public void LogAction(string line)
+    {
+        lock (_actions) _actions.Add(DateTime.UtcNow.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture) + " " + line);
+    }
+    public string ActionsText()
+    {
+        lock (_actions) return string.Join("\n", _actions) + "\n";
+    }
+
     private FieldScenarioRig(string dataRoot, IServiceProvider sp, MainViewModel vm,
         AgOpenWeb.RemoteServer.RemoteServerHost server, CapturingDispatcher dispatcher, HostLoopDispatcher hostLoop)
     {
@@ -89,6 +103,9 @@ public sealed class FieldScenarioRig : IAsyncDisposable
         services.AddLogging(b =>
         {
             b.AddProvider(new CapturingLoggerProvider(e => events.Enqueue(e)));
+            // As the heads: the app's log for a bug report dump, which the evidence is; and the whole scenario's.
+            b.AddProvider(new AgOpenWeb.Services.Logging.InMemoryLoggerProvider());
+            b.AddProvider(Evidence.LogProvider);
             b.SetMinimumLevel(LogLevel.Debug);
         });
         AddBackendServices(services);
@@ -283,6 +300,7 @@ public sealed class FieldScenarioRig : IAsyncDisposable
     public async Task SendAsync(string cmd, string arg = "")
     {
         var handler = Server.CommandHandler ?? throw new InvalidOperationException("command handler not wired");
+        LogAction(cmd + "|" + arg);
         handler(cmd, arg);
         await DrainAsync();
         await SettleAsync();
@@ -393,6 +411,7 @@ public sealed class FieldScenarioRig : IAsyncDisposable
     /// fusion and the pose estimator settle there.</summary>
     public async Task PlaceAsync(double lat, double lon, double headingDeg)
     {
+        LogAction(string.Create(CultureInfo.InvariantCulture, $"# place the tractor at {lat:F9},{lon:F9} heading {headingDeg:F1}°"));
         // Roll the last 15 m in, so a heading taken from fix-to-fix travel is right too;
         // then stand still for a moment.
         double r = headingDeg * Math.PI / 180;
@@ -417,6 +436,8 @@ public sealed class FieldScenarioRig : IAsyncDisposable
         double speedKmh = 8.0, int fixesPerSecond = 50)
     {
         if (path.Count == 0) return;
+        LogAction(string.Create(CultureInfo.InvariantCulture,
+            $"# drive {path.Count} points at {speedKmh:F1} km/h, a fix every {stepM:F1} m: ") + string.Join(";", path.Select(p => string.Create(CultureInfo.InvariantCulture, $"{p.Lat:F9},{p.Lon:F9}"))));
         int delay = Math.Max(1, 1000 / fixesPerSecond);
         for (int i = 0; i + 1 < path.Count; i++)
         {
