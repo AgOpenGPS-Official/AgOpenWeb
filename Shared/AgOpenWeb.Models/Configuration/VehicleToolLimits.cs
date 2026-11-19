@@ -70,6 +70,14 @@ public static class VehicleToolLimits
         // The tram editor's own width and passes use the same rules (MainViewModel.Tram.Remote).
         ["tram.width"] = new(0.01, 100, Unit.Metre, "Tram width"),
         ["tram.passes"] = new(1, 999, Unit.None, "Tram passes"),
+        // U-turn, AgOpenGPS's U-turn settings (ConfigModule): the radius box starts at 2 m
+        // (nudYouTurnRadius), the distance from the boundary at 0 (nudTurnDistanceFromBoundary sets no
+        // Minimum), both up to the NumericUpDown's 100; the extension steps from 3 to 50
+        // (btnDistanceDn/Up). A negative distance put the turn line outside the fence
+        // (GetOrComputeSyntheticHeadland uses it as it is), and every turn with it.
+        ["uturn.radius"] = new(2, 100, Unit.Metre, "U-turn radius"),
+        ["uturn.extension"] = new(3, 50, Unit.Metre, "U-turn extension"),
+        ["uturn.distanceFromBoundary"] = new(0, 100, Unit.Metre, "Distance from boundary"),
         // AutoSteer: the panel's and the wizard's boxes (config.set|autosteer.*).
         ["autosteer.wasOffset"] = new(-4000, 4000, Unit.None, "WAS offset"),
         ["autosteer.countsPerDegree"] = new(1, 255, Unit.None, "Counts per degree"),

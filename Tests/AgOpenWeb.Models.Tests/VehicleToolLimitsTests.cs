@@ -83,6 +83,14 @@ public class VehicleToolLimitsTests
     [TestCase("autosteer.sideHillCompensation", "2")]
     [TestCase("autosteer.uTurnCompensation", "-100")]
     [TestCase("autosteer.lineWidth", "0")]
+    [TestCase("uturn.distanceFromBoundary", "-2")]
+    [TestCase("uturn.distanceFromBoundary", "NaN")]
+    [TestCase("uturn.distanceFromBoundary", "150")]
+    [TestCase("uturn.radius", "0")]
+    [TestCase("uturn.radius", "-8")]
+    [TestCase("uturn.radius", "Infinity")]
+    [TestCase("uturn.extension", "1")]
+    [TestCase("uturn.extension", "200")]
     public void An_impossible_value_is_refused_with_the_reason(string key, string value)
     {
         string? why = VehicleToolLimits.Check(key, value, Sprayer());
@@ -117,6 +125,10 @@ public class VehicleToolLimitsTests
     [TestCase("autosteer.minSteerSpeed", "0.5")]
     [TestCase("autosteer.maxSteerSpeed", "15")]
     [TestCase("autosteer.uTurnCompensation", "-80")]
+    [TestCase("uturn.distanceFromBoundary", "0")]
+    [TestCase("uturn.distanceFromBoundary", "2.8")]
+    [TestCase("uturn.radius", "4.3")]
+    [TestCase("uturn.extension", "12.5")]
     [TestCase("autosteer.invertWas", "1")]        // toggles have no range
     [TestCase("conn.ntripEnabled", "1")]          // keys with no range are not checked
     [TestCase("vehicle.wheelbase", "abc")]        // not a number: ignored by the setter, as before
@@ -131,6 +143,7 @@ public class VehicleToolLimitsTests
         var s = Sprayer();
         Assert.That(VehicleToolLimits.Check("vehicle.wheelbase", "288", s), Is.EqualTo("Wheelbase must be 0.5 to 20 m (not 288 m)"));
         Assert.That(VehicleToolLimits.Check("tool.overlap", "8", s), Is.EqualTo("Overlap must be less than the implement width (8 m)"));
+        Assert.That(VehicleToolLimits.Check("uturn.distanceFromBoundary", "-2", s), Is.EqualTo("Distance from boundary must be 0 to 100 m (not -2 m)"));
         s.IsMetric = false;
         Assert.That(VehicleToolLimits.Check("vehicle.wheelbase", "-2.88", s), Is.EqualTo("Wheelbase must be 1.64 to 65.62 ft (not -9.45 ft)"));
     }

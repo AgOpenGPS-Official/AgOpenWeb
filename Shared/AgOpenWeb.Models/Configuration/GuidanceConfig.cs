@@ -134,11 +134,15 @@ public class GuidanceConfig : ObservableObject
         set => SetProperty(ref _uTurnExtension, value);
     }
 
-    private double _uTurnDistanceFromBoundary = 2.0;
+    // A distance in from the fence, never out: a negative one (the settings box takes it) put the
+    // turn line outside the field, and every turn with it. No number at all is the default.
+    public const double DefaultUTurnDistanceFromBoundary = 2.0;
+    private double _uTurnDistanceFromBoundary = DefaultUTurnDistanceFromBoundary;
     public double UTurnDistanceFromBoundary
     {
         get => _uTurnDistanceFromBoundary;
-        set => SetProperty(ref _uTurnDistanceFromBoundary, value);
+        set => SetProperty(ref _uTurnDistanceFromBoundary,
+            double.IsFinite(value) ? Math.Max(0.0, value) : DefaultUTurnDistanceFromBoundary);
     }
 
     // Sagitta (offset-semicircle) by default — matches Twol, which dropped Dubins
