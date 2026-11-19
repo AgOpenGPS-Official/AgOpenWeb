@@ -49,6 +49,48 @@ public class JobServiceTests
         Assert.That(job.EndedAt, Is.Null);
     }
 
+    // A typed name is the job's folder: one a folder can't have on Windows was never saved there.
+    [TestCase("Spraying 15:51", "Spraying 15-51")]
+    [TestCase("north/south", "north-south")]
+    [TestCase("a\\b*c?d\"e<f>g|h", "a-b-c-d-e-f-g-h")]
+    [TestCase("  trailing dots... ", "trailing dots")]
+    [TestCase("con", "_con")]
+    [TestCase("LPT1.job", "_LPT1.job")]
+    [TestCase("console", "console")]
+    public void CreateJob_TypedNameIsASafeFolderName(string typed, string expected)
+    {
+        var fieldDir = SeedField("north40");
+
+        var job = _svc.CreateJob("north40", "spraying", notes: "", taskName: typed);
+
+        Assert.That(job.TaskName, Is.EqualTo(expected));
+        Assert.That(JobJsonService.Exists(fieldDir, expected), Is.True);
+        Assert.That(Directory.GetDirectories(JobJsonService.JobsRoot(fieldDir)), Has.Length.EqualTo(1),
+            "one folder, not a folder inside a folder");
+    }
+
+    [Test]
+    public void CreateJob_TypedNameOfOnlyUnsafeCharacters_TakesTheDefaultName()
+    {
+        SeedField("north40");
+
+        var job = _svc.CreateJob("north40", "spraying", notes: "", taskName: "...");
+
+        Assert.That(job.TaskName, Does.StartWith($"{DateTime.Now:yyyy-MM-dd}_spraying"));
+    }
+
+    [Test]
+    public void CreateJob_TypedNameCleaned_StillUnique()
+    {
+        SeedField("north40");
+
+        var first = _svc.CreateJob("north40", "spraying", notes: "", taskName: "Spraying 15:51");
+        var second = _svc.CreateJob("north40", "spraying", notes: "", taskName: "Spraying 15:51");
+
+        Assert.That(first.TaskName, Is.EqualTo("Spraying 15-51"));
+        Assert.That(second.TaskName, Is.EqualTo("Spraying 15-51_2"));
+    }
+
     [Test]
     public void CreateJob_DefaultNameUsesDateAndWorkType()
     {

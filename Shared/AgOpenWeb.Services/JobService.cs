@@ -70,9 +70,10 @@ public class JobService : IJobService
                        ?? throw new InvalidOperationException(
                            $"Field directory for '{fieldName}' not found under {_fieldsRootProvider()}");
 
-        var resolvedName = string.IsNullOrWhiteSpace(taskName)
+        var safeName = string.IsNullOrWhiteSpace(taskName) ? string.Empty : SafeTaskName(taskName!);
+        var resolvedName = safeName.Length == 0
             ? BuildUniqueDefaultTaskName(fieldDir, workType, DateTime.Now)
-            : EnsureUnique(fieldDir, taskName!);
+            : EnsureUnique(fieldDir, safeName);
 
         var now = DateTime.Now;
         var job = new Job
@@ -242,6 +243,35 @@ public class JobService : IJobService
     private static JobSummary ToSummary(Job j) => new(
         j.Id, j.FieldName, j.TaskName, j.WorkType, j.Notes,
         j.StartedAt, j.EndedAt, j.LastOpenedAt, j.Status);
+
+    /// <summary>
+    /// A job's name is its folder's name (<c>jobs/&lt;name&gt;/</c>), so the name typed for a new job is
+    /// made one a folder can have on every computer: each character Windows refuses in a folder name
+    /// (<c>&lt; &gt; : " / \ | ? *</c> and control characters) becomes '-', a dot or space at the end
+    /// is dropped, and a name Windows keeps for a device (CON, NUL, COM1...) gets a '_' in front. Empty after
+    /// that: the default name is used. A job typed "Spraying 15:51" could not be saved on Windows:
+    /// the field opened with no job, said only in the log, and the coverage driven was never saved
+    /// (a test run on Windows, 2026-11-15). On Linux a '/' made a folder inside the jobs folder.
+    /// </summary>
+    internal static string SafeTaskName(string name)
+    {
+        var chars = name.Trim().ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+            if (char.IsControl(chars[i]) || "<>:\"/\\|?*".IndexOf(chars[i]) >= 0)
+                chars[i] = '-';
+        var safe = new string(chars).TrimEnd('.', ' ');
+        if (safe.Length == 0) return safe;
+        var stem = safe.Split('.')[0].TrimEnd(' ');
+        if (WindowsDeviceNames.Contains(stem)) safe = "_" + safe; // "LPT1.job" is the device too
+        return safe;
+    }
+
+    private static readonly HashSet<string> WindowsDeviceNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    };
 
     private static string EnsureUnique(string fieldDir, string requestedName)
     {
