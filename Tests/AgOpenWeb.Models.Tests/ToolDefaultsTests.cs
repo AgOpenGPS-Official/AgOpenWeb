@@ -40,14 +40,29 @@ public class ToolDefaultsTests
     public void A_section_width_that_is_no_number_is_not_taken()
     {
         // The implement's width, the pass spacing and each section's place are sums of these.
-        var tool = new ToolConfig();
+        // The default width takes its place: a profile loaded with "NaN" for a section does not
+        // keep the last tool's width there.
+        var tool = new ToolConfig { DefaultSectionWidth = 250 };
         tool.SetSectionWidth(0, 300);
-        double second = tool.GetSectionWidth(1);
+        tool.SetSectionWidth(1, 300);
 
         tool.SetSectionWidth(0, double.NaN);
         tool.SetSectionWidth(1, double.PositiveInfinity);
 
-        Assert.That(tool.GetSectionWidth(0), Is.EqualTo(300));
-        Assert.That(tool.GetSectionWidth(1), Is.EqualTo(second));
+        Assert.That(tool.GetSectionWidth(0), Is.EqualTo(250));
+        Assert.That(tool.GetSectionWidth(1), Is.EqualTo(250));
+    }
+
+    [Test]
+    public void A_default_section_width_that_is_no_number_is_the_initial_one()
+    {
+        var tool = new ToolConfig { DefaultSectionWidth = 250 };
+
+        tool.DefaultSectionWidth = double.NaN;
+        Assert.That(tool.DefaultSectionWidth, Is.EqualTo(ToolConfig.InitialSectionWidthCm), "not the last tool's 250");
+
+        tool.SetAllSectionWidths(double.NaN);
+        Assert.That(tool.GetSectionWidth(0), Is.EqualTo(ToolConfig.InitialSectionWidthCm));
+        Assert.That(tool.GetSectionWidth(ToolConfig.MaxSections - 1), Is.EqualTo(ToolConfig.InitialSectionWidthCm));
     }
 }

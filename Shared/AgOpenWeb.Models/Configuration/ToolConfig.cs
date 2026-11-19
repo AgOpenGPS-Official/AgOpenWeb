@@ -281,11 +281,15 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _isSectionsNotZones, value);
     }
 
-    private double _defaultSectionWidth = 100; // cm
+    /// <summary>The default section width a new tool starts with, in cm.</summary>
+    public const double InitialSectionWidthCm = 100;
+
+    private double _defaultSectionWidth = InitialSectionWidthCm; // cm
     public double DefaultSectionWidth
     {
         get => _defaultSectionWidth;
-        set => SetProperty(ref _defaultSectionWidth, value);
+        // No number (a profile may hold "NaN"): the initial 100 cm, not the last tool's width.
+        set => SetProperty(ref _defaultSectionWidth, double.IsFinite(value) ? value : InitialSectionWidthCm);
     }
 
     // Cutoff is stored and edited in km/h to match the UI label and user
@@ -350,6 +354,7 @@ public class ToolConfig : ObservableObject
     /// </summary>
     public void SetAllSectionWidths(double cm)
     {
+        if (!double.IsFinite(cm)) cm = DefaultSectionWidth; // as SetSectionWidth
         var widths = new double[MaxSections];
         Array.Fill(widths, cm);
         SectionWidths = widths;
@@ -363,8 +368,10 @@ public class ToolConfig : ObservableObject
     {
         // A width that is no number is not taken, wherever it comes from (a screen, a profile):
         // the implement's width, the pass spacing and every section's place are sums of these.
-        if (index < 0 || index >= MaxSections || !double.IsFinite(value)) return;
-        _sectionWidths[index] = value;
+        // The default width takes its place, so a profile loaded with one does not keep the
+        // last tool's width for that section.
+        if (index < 0 || index >= MaxSections) return;
+        _sectionWidths[index] = double.IsFinite(value) ? value : DefaultSectionWidth;
         OnPropertyChanged(nameof(SectionWidths));
         OnPropertyChanged(nameof(TotalSectionWidth));
     }
