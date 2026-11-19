@@ -36,6 +36,7 @@ function wzGoneReset() {
   _wzGone = false;
   wzOverlay.classList.remove('gone');
   asSetText('wz-cancel', tr('Cancel'));
+  wzContent.replaceChildren(); // not the old message on a wizard opened again: empty until its first frame
 }
 function wzShowGone() {
   const w = wizard; // the last frame: what is on the screen
