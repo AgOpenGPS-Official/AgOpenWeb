@@ -93,7 +93,11 @@ doesn't exist.
 
 1. **Markup** in `index.html`, beside the panels it belongs with: a `<div class="ln-panel">` for
    a menu panel (`ln-hdr` header with title and ✕), written in English.
-2. **Style** in the `css/` file for that area (`panels.css` for a menu panel).
+2. **Style** in the `css/` file for that area (`panels.css` for a menu panel). The page has one
+   typeface, `system-ui` (the body sets it, buttons and boxes inherit it): give a rule a size and a
+   weight, not a font of its own (numbers may use `ui-monospace`, as `.cfg-num`). Text with no font
+   of its own was in the browser's serif (Times New Roman) and buttons in its Arial before the body
+   set one (Roll Correction, GPS Offset Fix, Recorded Path, the chart titles). Test: `PageFontTests`.
 3. **Code** in the `js/` file for that feature, or a new one: open it with
    `lnOpen('<id>', '<nav button id>', populate)`, fill it from `config` / `statusBar` / `scene`,
    send changes with `cfgSend('<section>.<key>', value)` (a `config.set`) or

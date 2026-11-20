@@ -19,7 +19,8 @@
 #of-n { grid-area: 1 / 2; } #of-w { grid-area: 2 / 1; } #of-z { grid-area: 2 / 2; }
 #of-e { grid-area: 2 / 3; } #of-s { grid-area: 3 / 2; }
 .of-manual { display: flex; gap: 10px; margin-top: 6px; }
-.of-fld { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.of-fld { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.of-fld .of-input { width: 100%; box-sizing: border-box; } /* a number box's own width ran past the panel */
 .of-fld label { font-size: 11px; color: var(--text-muted); text-align: center; }
 .of-input { height: 34px; border: 1px solid var(--border); border-radius: 6px; background: rgba(var(--ov),0.06);
   color: var(--text); font-size: 15px; font-weight: 700; text-align: center; }
