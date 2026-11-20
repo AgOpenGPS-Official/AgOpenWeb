@@ -1027,6 +1027,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // (5b') An obstacle chosen as U-turn ahead and no turn to take before it (lost, missed,
         // aborted, no room, or U-turn switched off): AutoSteer off with the alarm while there is
         // room to stop or steer round it by hand, 10 m plus 2 s of travel ahead of the pivot.
+        // A turn planned counts as before it only with the tractor outside the obstacle's turn line.
         if (autoSteerEngaged && hasTickableTrack && boundary != null && boundary.InnerBoundaries.Count > 0)
         {
             int inner = _youTurnStateMachine.ObstacleAheadWithoutTurn(in tickCtx, _youTurn,

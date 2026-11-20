@@ -418,6 +418,34 @@ public class ObstacleClosedLoopTests
         Assert.That(_last!.YouTurn!.TurnAtObstacle, Is.False);
     }
 
+    [TestCase(5.6)]
+    [TestCase(6.4)]
+    public void EngagedOffThePass_InsideATreesTurnLine_NeverDrivesIntoIt(double east)
+    {
+        // A 2 m tree between pass 0 (E 3) and pass 1 (E 9) instead of the ditch: neither pass runs
+        // into its turn line, so the turn planned is at the field's edge. Engaged off the pass
+        // 0.5 m short of the tree, heading at it: that turn is not before the tree (it was taken
+        // to be, and AutoSteer drove the tractor 1 m into the tree).
+        _ditch.Points.Clear();
+        foreach (var (e, n) in new[] { (5.0, 40.0), (7.0, 40.0), (7.0, 42.0), (5.0, 42.0) })
+            _ditch.Points.Add(new BoundaryPoint(e, n, 0));
+        _ditch.UpdateBounds();
+        _pipeline.SetBoundary(_boundary);
+        _e = east;
+        DriveUntil(() => _n >= 39.5);
+
+        Engage();
+        bool intoTheTree = false;
+        for (int i = 0; i < 30 && _engaged; i++)
+        {
+            Fix();
+            if (_engaged && _e > 5 && _e < 7 && _n > 40 && _n < 42) intoTheTree = true;
+        }
+
+        Assert.That(intoTheTree, Is.False, "AutoSteer drove the tractor into the tree");
+        Assert.That(_kickoutReason, Does.Contain("Inner 1 ahead"));
+    }
+
     [Test]
     public void WithUTurnOff_AutoSteerGoesOffBeforeTheDitch_WithRoomToStop()
     {

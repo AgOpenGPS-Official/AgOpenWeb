@@ -218,6 +218,26 @@ public class ObstacleUTurnTests
 
         Assert.That(Turn(boundary).AtObstacle, Is.False, "the cached turn lines follow the choice");
     }
+
+    [Test]
+    public void InsideOnly_AnObstacleCountsOnlyFromInsideItsTurnLineAndStraightAhead()
+    {
+        // With a turn planned the pipeline asks only this: a turn keeps the tractor outside every
+        // turn line, so inside one and heading at the obstacle, the turn planned is not before it.
+        var field = Field(ObstacleAction.Turn);
+        double inside = ObstacleSouth - Distance / 2; // between the turn line and the obstacle
+        Assert.Multiple(() =>
+        {
+            Assert.That(_creation.TurnObstacleAhead(field, 3, 0, heading: 0, distance: 45, insideOnly: true), Is.EqualTo(-1),
+                "outside its turn line: the turn planned is taken to be before it");
+            Assert.That(_creation.TurnObstacleAhead(field, 3, inside, heading: 0, distance: 10, insideOnly: true), Is.EqualTo(0),
+                "inside it, the obstacle ahead");
+            Assert.That(_creation.TurnObstacleAhead(field, 3, inside, heading: System.Math.PI, distance: 10, insideOnly: true),
+                Is.EqualTo(-1), "inside it, driving away");
+            Assert.That(_creation.TurnObstacleAhead(field, 10.5, 50, heading: 0, distance: 10, insideOnly: true), Is.EqualTo(-1),
+                "inside it, going by beside the obstacle");
+        });
+    }
 }
 
 /// <summary>
@@ -372,6 +392,31 @@ public class ObstacleUTurnDriveTests
         while (_turn.TurnPath == null && n < 30) { Tick(3, n, 0); n += Step; }
         var ctx = Ctx(3, 25, 0);
         Assert.That(_machine.ObstacleAheadWithoutTurn(in ctx, _turn, 16), Is.EqualTo(-1));
+    }
+
+    [Test]
+    public void InsideATurnLine_ATurnPlannedElsewhere_DoesNotHideTheObstacleAhead()
+    {
+        // A 2 m tree between pass 0 (E 3) and pass 1 (E 9): neither pass runs into its turn line
+        // (E 4 to 8), so the turn planned is the one at the field's edge. The tractor 2.6 m off
+        // pass 0, inside the tree's turn line and heading at the tree: that turn is not before it.
+        var tree = _boundary.InnerBoundaries[0];
+        tree.Points.Clear();
+        foreach (var (e, n) in new[] { (5.0, 40.0), (7.0, 40.0), (7.0, 42.0), (5.0, 42.0) })
+            tree.Points.Add(new BoundaryPoint(e, n, 0));
+        tree.UpdateBounds();
+
+        Tick(5.6, 39.5, 0);
+        Assert.That(_turn.TurnPath, Is.Not.Null, "a turn is planned");
+        Assert.That(_turn.TurnAtObstacle, Is.False, "at the field's edge");
+
+        var atTheTree = Ctx(5.6, 39.5, 0);
+        Assert.That(_machine.ObstacleAheadWithoutTurn(in atTheTree, _turn, 16), Is.EqualTo(0), "the tree 0.5 m ahead");
+        var besideIt = Ctx(4.5, 39.5, 0);
+        Assert.That(_machine.ObstacleAheadWithoutTurn(in besideIt, _turn, 16), Is.EqualTo(-1), "going by beside it");
+        var outside = Ctx(5.6, 30, 0);
+        Assert.That(_machine.ObstacleAheadWithoutTurn(in outside, _turn, 16), Is.EqualTo(-1),
+            "outside its turn line the turn planned is taken to be before it, as before");
     }
 
     [TestCase(30.0)]
