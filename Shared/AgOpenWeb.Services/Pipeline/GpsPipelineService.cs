@@ -440,6 +440,19 @@ public sealed class GpsPipelineService : IGpsPipelineService
         HoldSteeringOnTheSimulator();
     }
 
+    // A tuning run's gains (Steer Response, Stanley); null = the settings'. One reference,
+    // swapped whole, read once per use: no lock on the cycle.
+    private volatile Models.Pipeline.GuidanceGainsOverride? _gainsOverride;
+
+    /// <inheritdoc />
+    public void SetGuidanceGainsOverride(Models.Pipeline.GuidanceGainsOverride? gains) => _gainsOverride = gains;
+
+    // Read by the line's guidance only. A turn and contour steer with the operator's own values:
+    // the run ends when one starts, but it hears of it a cycle later.
+    private double LookAheadHold => _gainsOverride?.LookAheadHold ?? _configStore.Guidance.GoalPointLookAheadHold;
+    private double StanleyDistanceGain => _gainsOverride?.StanleyDistanceGain ?? _configStore.Guidance.StanleyDistanceErrorGain;
+    private double StanleyHeadingGain => _gainsOverride?.StanleyHeadingGain ?? _configStore.Guidance.StanleyHeadingErrorGain;
+
     /// <summary>
     /// The simulator does not steer the real module. The steer module stays on the network
     /// while the simulator runs; PGN 254 status 1 with the simulator's speed made it open the
@@ -1895,8 +1908,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             PivotPosition = new Vec3(driftedEasting, driftedNorthing, headingRad),
             SteerPosition = new Vec3(steerE, steerN, headingRad),
             UseStanley = config.Guidance.IsStanley,
-            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
-            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
+            StanleyHeadingErrorGain = StanleyHeadingGain,
+            StanleyDistanceErrorGain = StanleyDistanceGain,
             StanleyIntegralGain = config.Guidance.StanleyIntegralGainAB,
             IsHeadingSameWay = isHeadingSameWay,
             Wheelbase = config.Vehicle.Wheelbase,
@@ -2037,7 +2050,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             c.ActualToolWidth, c.Tool.Overlap, c.Tool.Offset,
             c.Guidance.IsStanley, c.Guidance.StanleyHeadingErrorGain, c.Guidance.StanleyDistanceErrorGain,
             c.Vehicle.Wheelbase, c.Vehicle.MaxSteerAngle, c.Guidance.PurePursuitIntegralGain,
-            c.AutoSteer.SideHillCompensation, GoalLookAheadFor(speedKmh, _contour.LastCrossTrackError));
+            c.AutoSteer.SideHillCompensation, GoalLookAheadFor(speedKmh, _contour.LastCrossTrackError, tuned: false));
     }
 
     /// <summary>
@@ -2048,10 +2061,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// </summary>
     private double GoalLookAhead(double speedKmh) => GoalLookAheadFor(speedKmh, _lastCrossTrackError);
 
-    private double GoalLookAheadFor(double speedKmh, double lastXte)
+    private double GoalLookAheadFor(double speedKmh, double lastXte, bool tuned = true)
     {
         var g = _configStore.Guidance;
-        double hold = g.GoalPointLookAheadHold;
+        double hold = tuned ? LookAheadHold : g.GoalPointLookAheadHold;
         double acquire = hold * g.GoalPointAcquireFactor;
         double xte = Math.Abs(lastXte);
         double h = xte <= 0.1 ? hold
@@ -2085,8 +2098,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 pivotNorthing + Math.Cos(headingRad) * config.Vehicle.Wheelbase,
                 headingRad),
             UseStanley = stanley,
-            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
-            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
+            StanleyHeadingErrorGain = StanleyHeadingGain,
+            StanleyDistanceErrorGain = StanleyDistanceGain,
             Wheelbase = config.Vehicle.Wheelbase,
             MaxSteerAngle = config.Vehicle.MaxSteerAngle,
             GoalPointDistance = GoalLookAhead(speedKmh),
@@ -2307,7 +2320,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // while moving, so the goal point jumped CLOSER at the track→turn handoff — a sudden
         // sharper steer that made the tractor hunt for ~½ s on entry (exit was gentler
         // because the goal jumped farther). Matching them makes the handoff seamless.
-        double lookAhead = GoalLookAhead(speedKmh); // same as track guidance (AgOpenGPS UpdateGoalPointDistance)
+        // The operator's own values, never a tuning run's (LookAheadHold).
+        double lookAhead = GoalLookAheadFor(speedKmh, _lastCrossTrackError, tuned: false); // same as track guidance (AgOpenGPS UpdateGoalPointDistance)
 
         var input = new YouTurnGuidanceInput
         {

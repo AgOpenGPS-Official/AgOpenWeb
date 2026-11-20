@@ -139,6 +139,7 @@ document.getElementById('as-modeswitch').addEventListener('pointerdown', e => {
 });
 // Satellite-dialog launchers — defined by their own sub-phases (Smart-WAS / Wizard).
 document.getElementById('as-smartwas').addEventListener('pointerdown', e => { e.stopPropagation(); if (typeof openSmartWas === 'function') openSmartWas(); });
+document.getElementById('as-linetune').addEventListener('pointerdown', e => { e.stopPropagation(); if (typeof openLineTune === 'function') openLineTune(); });
 document.getElementById('as-wizard').addEventListener('pointerdown', e => { e.stopPropagation(); if (typeof openSteerWizard === 'function') openSteerWizard(); });
 
 function asSetText(id, t) { const el = document.getElementById(id); if (el) el.textContent = t; }
@@ -213,4 +214,38 @@ function populateSmartWas() {
   gate('sw-start', !collecting);
   gate('sw-stop', collecting);
   gate('sw-apply', !!statusBar.swValid);
+}
+
+// ---- Tune on the line — chain sub-panel of AutoSteer, watch-the-tractor like Smart WAS
+// (no scrim). The host's LineTuneViewModel runs it; its state rides the Status frame
+// (statusBar.lineTune, null until first used). Buttons keep their places (no button appears
+// where another was), so a double tap never presses the next one.
+const ltPanel = document.getElementById('linetune');
+function openLineTune() { lnOpen('linetune', 'ln-autosteer', populateLineTune); }
+document.getElementById('lt-back').addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  lnOpen('autosteercfg', 'ln-autosteer', () => populateAutoSteer(true));
+});
+for (const b of ltPanel.querySelectorAll('.rn-gated[data-cmd]'))
+  b.addEventListener('pointerdown', e => { e.stopPropagation(); if (!b.classList.contains('disabled')) rnSend(b.dataset.cmd); });
+function populateLineTune() {
+  const lt = statusBar && statusBar.lineTune;
+  const stage = lt ? lt.stage : 0;
+  const names = [tr('Ready'), tr('Waiting'), tr('Measuring'), tr('Done'), tr('In use'), tr('Stopped'), tr('No value found')];
+  asSetText('lt-status', names[stage] || '');
+  const stanley = lt ? lt.stanley : !!(config && config.autosteer && config.autosteer.isStanleyMode);
+  asSetText('lt-mode', stanley ? tr('(Stanley)') : tr('(Pure Pursuit)'));
+  const active = stage === 1 || stage === 2;
+  asSetText('lt-desc', active ? (lt.description || '')
+    : stage === 0 ? tr('Press Start with AutoSteer on.')
+    : stage === 3 ? tr('Look at the result below, then choose.')
+    : tr('Press Start to measure again.'));
+  asSetText('lt-result', lt ? (lt.result || '') : '');
+  asSetText('lt-meas', lt ? (lt.measurements || '') : '');
+  document.getElementById('lt-resultcard').style.display = lt && (lt.result || lt.measurements) ? '' : 'none';
+  const gate = (id, ok) => { const el = document.getElementById(id); if (el) el.classList.toggle('disabled', !(iHoldControl && ok)); };
+  gate('lt-start', !active && stage !== 3);
+  gate('lt-stop', active);
+  gate('lt-accept', stage === 3);
+  gate('lt-discard', stage === 3);
 }
