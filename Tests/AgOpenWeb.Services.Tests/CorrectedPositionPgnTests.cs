@@ -136,6 +136,8 @@ public class CorrectedPositionPgnPipelineTests
     private readonly List<byte[]> _toModules = new();
     private readonly List<byte[]> _toLoopback = new();
     private readonly List<byte[]> _toGpsLoopback = new();
+    private readonly List<byte[]> _toTaskController = new();
+    private IUdpCommunicationService _udp = null!;
 
     [SetUp]
     public void SetUp()
@@ -150,7 +152,10 @@ public class CorrectedPositionPgnPipelineTests
         _toModules.Clear();
         _toLoopback.Clear();
         _toGpsLoopback.Clear();
-        var udp = Substitute.For<IUdpCommunicationService>();
+        _toTaskController.Clear();
+        var udp = _udp = Substitute.For<IUdpCommunicationService>();
+        udp.When(u => u.SendToTaskController(Arg.Any<byte[]>()))
+            .Do(c => _toTaskController.Add((byte[])c.Arg<byte[]>().Clone()));
         udp.When(u => u.SendToModules(Arg.Any<byte[]>()))
             .Do(c => { var d = c.Arg<byte[]>(); if (d[3] == 0x64) _toModules.Add((byte[])d.Clone()); });
         udp.When(u => u.SendToLoopback(Arg.Any<byte[]>()))
@@ -271,6 +276,38 @@ public class CorrectedPositionPgnPipelineTests
         Assert.That(_toModules, Is.Empty);
         Assert.That(_toLoopback, Is.Empty);
         Assert.That(_toGpsLoopback, Is.Empty);
+        Assert.That(_toTaskController, Is.Empty, "no task controller heard");
+    }
+
+    [Test]
+    public void TaskControllerHeard_GetsGpsData_WithTheOptionOff()
+    {
+        // ISOBUS nightly (20 Nov 2026, C2, ISOBUS-NO-GNSS-QUALITY): the task controller got no
+        // PGN 214 in 14 s, so it told every implement DDI 514 = 1 (plain GPS) with RTK fixed.
+        // It reads the fix quality from PGN 214 only, on 8888 at its own address.
+        _config.Connections.SendCorrectedPosition = false;
+        _udp.IsTaskControllerHeard.Returns(true);
+
+        _gps.UpdateGpsData(Fix(heading: 90, roll: 0, fixQuality: 4));
+        _gps.UpdateGpsData(Fix(heading: 90, roll: 0, fixQuality: 5));
+
+        Assert.That(_toTaskController, Has.Count.EqualTo(2), "once per fix");
+        Assert.That(_toTaskController[0][..4], Is.EqualTo(new byte[] { 0x80, 0x81, 0x7C, 0xD6 }), "AgIO's GPS data, source 0x7C");
+        Assert.That(_toTaskController[0][43], Is.EqualTo(4), "RTK fixed");
+        Assert.That(_toTaskController[1][43], Is.EqualTo(5), "RTK float");
+        Assert.That(_toGpsLoopback, Is.Empty, "the loopback copy is still the Network IO tick's");
+    }
+
+    [Test]
+    public void TaskControllerHeard_AndTheOptionOn_BothGetGpsData()
+    {
+        _udp.IsTaskControllerHeard.Returns(true);
+
+        _gps.UpdateGpsData(Fix(heading: 90, roll: 0));
+
+        Assert.That(_toTaskController, Has.Count.EqualTo(1));
+        Assert.That(_toGpsLoopback, Has.Count.EqualTo(1));
+        Assert.That(_toTaskController[0], Is.EqualTo(_toGpsLoopback[0]));
     }
 
     [Test]
