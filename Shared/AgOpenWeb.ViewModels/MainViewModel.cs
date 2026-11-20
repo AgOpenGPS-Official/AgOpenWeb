@@ -5352,7 +5352,7 @@ public partial class MainViewModel : ObservableObject
                 // First polygon: respects PendingBoundaryType
                 // Subsequent polygons: always inner
                 if (polyIdx == 0 && PendingBoundaryType == BoundaryType.Outer)
-                    boundary.OuterBoundary = polygon;
+                    SetOuterBoundary(boundary, polygon, "a KML file");
                 else
                     boundary.InnerBoundaries.Add(polygon);
             }
