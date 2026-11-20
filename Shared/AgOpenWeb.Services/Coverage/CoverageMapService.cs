@@ -1316,7 +1316,47 @@ public class CoverageMapService : ICoverageMapService
         // Under the lock so a coverage save never snapshots half-updated geometry.
         // Re-entrant from CheckAndExpandBounds, which already holds it.
         lock (_coverageLock)
+        {
+            // The field's box moved while the grid holds worked area: its boundary was edited
+            // with a job open (an obstacle's choice, one added or deleted, another outer
+            // boundary; MainViewModel.SetCurrentBoundary gives the outer boundary's box each
+            // time). A new grid here is an empty one, and the next save deletes every tile of
+            // the job: a tester lost a day's spraying map to one obstacle deleted (the grid had
+            // grown while painting, so the box was no longer the grid's). The grid grows to hold
+            // the box as well and keeps what is painted. A field closing clears the bounds
+            // first (ClearFieldBounds), so another field still starts empty.
+            if (_fieldBoundsSet && !_inExpansion && GetTotalCellCount() > 0)
+            {
+                GrowBoundsToHold(minE, maxE, minN, maxN);
+                return;
+            }
             SetFieldBoundsCore(minE, maxE, minN, maxN);
+        }
+    }
+
+    /// <summary>
+    /// Grow the grid so it holds this box too, keeping the worked area (as painting near the
+    /// grid's edge does). A box the grid already holds changes nothing; the grid never shrinks
+    /// while it has worked area. Caller holds _coverageLock.
+    /// </summary>
+    private void GrowBoundsToHold(double minE, double maxE, double minN, double maxN)
+    {
+        double newMinE = Math.Min(minE, _fieldMinE), newMaxE = Math.Max(maxE, _fieldMaxE);
+        double newMinN = Math.Min(minN, _fieldMinN), newMaxN = Math.Max(maxN, _fieldMaxN);
+        const double tol = 0.01;
+        if (newMinE >= _fieldMinE - tol && newMaxE <= _fieldMaxE + tol &&
+            newMinN >= _fieldMinN - tol && newMaxN <= _fieldMaxN + tol)
+            return;
+
+        double cells = Math.Ceiling((newMaxE - newMinE) / BITMAP_CELL_SIZE) * Math.Ceiling((newMaxN - newMinN) / BITMAP_CELL_SIZE);
+        if (cells > MAX_LOAD_GRID_CELLS)
+        {
+            // A boundary drawn far from the worked area: the grid stays, and grows by itself
+            // where painting gets near its edge.
+            Console.WriteLine($"[Coverage] Field box too far from the worked area to hold both ({cells:E1} cells); keeping the grid");
+            return;
+        }
+        ResizeKeepingCoverage(newMinE, newMaxE, newMinN, newMaxN);
     }
 
     private void SetFieldBoundsCore(double minE, double maxE, double minN, double maxN)
@@ -1356,7 +1396,10 @@ public class CoverageMapService : ICoverageMapService
         // eventually fires for 1-3 s when ~3 close/open cycles accumulate.
         // User repro: close + reopen field 3x → beach ball.
         long totalBytes = (totalDetectionCells + 7) / 8;
-        if (_detectionBits != null && _detectionBits.LongLength == totalBytes)
+        // Never while the grid is resized with its worked area kept: the caller copies the old
+        // arrays into the new ones, and a resize that leaves the size as it was (the box moved
+        // by less than a cell) would clear the very array it copies from.
+        if (!_inExpansion && _detectionBits != null && _detectionBits.LongLength == totalBytes)
             Array.Clear(_detectionBits, 0, _detectionBits.Length);
         else
             _detectionBits = new byte[totalBytes];
@@ -1370,7 +1413,7 @@ public class CoverageMapService : ICoverageMapService
         _displayCellSize = ComputeDisplayCellSize(maxE - minE, maxN - minN);
         SetDisplayGrid(_displayCellSize);
         long totalDisplayPixels = (long)_displayWidth * _displayHeight;
-        if (_displayPixels != null && _displayPixels.LongLength == totalDisplayPixels)
+        if (!_inExpansion && _displayPixels != null && _displayPixels.LongLength == totalDisplayPixels)
             Array.Clear(_displayPixels, 0, _displayPixels.Length);
         else
             _displayPixels = new ushort[totalDisplayPixels];
@@ -1625,7 +1668,16 @@ public class CoverageMapService : ICoverageMapService
         if (maxN > _fieldMaxN - EXPAND_MARGIN) { newMaxN = _fieldMaxN + EXPAND_AMOUNT; needsExpand = true; }
 
         if (!needsExpand) return;
+        ResizeKeepingCoverage(newMinE, newMaxE, newMinN, newMaxN);
+    }
 
+    /// <summary>
+    /// A grid for new bounds with the worked area of the old one copied in: detection bits and
+    /// display pixels (resampled when the display cell size changes with the bounds). Listeners
+    /// are told through <see cref="BoundsExpanded"/>. Caller holds _coverageLock.
+    /// </summary>
+    private void ResizeKeepingCoverage(double newMinE, double newMaxE, double newMinN, double newMaxN)
+    {
         // Save old state — both detection (always at 0.1m) and display (at
         // _displayCellSize). Detection origin is in 0.1m cells; display origin
         // derives from world bounds since the policy could change cell size.
