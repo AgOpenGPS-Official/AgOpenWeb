@@ -28,6 +28,11 @@ internal sealed class LineTuneSim : ILineTuneActions
     public double SpeedKmh = 8;
     /// <summary>Position noise on the cross-track error (m, uniform ±).</summary>
     public double NoiseM;
+    /// <summary>Noise on the speed the receiver reports (km/h, uniform ±); the tractor drives at <see cref="SpeedKmh"/>.</summary>
+    public double SpeedNoiseKmh;
+    /// <summary>Slack in the steering (degrees): the wheels stay where they are while the angle
+    /// asked is closer than this to theirs (a valve's dead band, play in the linkage).</summary>
+    public double SlackDeg;
 
     // Operator's settings
     public bool Stanley;
@@ -132,7 +137,7 @@ internal sealed class LineTuneSim : ILineTuneActions
             while (_cmds.Count > 0 && _cmds.Peek().T <= t - DeadS)
                 target = _cmds.Dequeue().Cmd;
             double rate = (target - Wheel) / Math.Max(LagS, dt);
-            rate = Math.Clamp(rate, -RateDegS, RateDegS);
+            rate = Math.Abs(target - Wheel) <= SlackDeg ? 0 : Math.Clamp(rate, -RateDegS, RateDegS);
             Wheel += rate * dt;
             Heading += v / Wheelbase * Math.Tan(Wheel * Math.PI / 180) * dt;
             E += v * Math.Sin(Heading) * dt;
@@ -140,7 +145,8 @@ internal sealed class LineTuneSim : ILineTuneActions
         }
         Time += CycleS;
         double noise = NoiseM > 0 ? (_rng.NextDouble() * 2 - 1) * NoiseM : 0;
-        return new LineTuneSample(Time, Engaged, SpeedKmh, _lastXte + noise, NudgeOffset, HeadingSameWay,
+        double speed = SpeedKmh + (SpeedNoiseKmh > 0 ? (_rng.NextDouble() * 2 - 1) * SpeedNoiseKmh : 0);
+        return new LineTuneSample(Time, Engaged, speed, _lastXte + noise, NudgeOffset, HeadingSameWay,
             Track, Pass, Turning, RoomAheadM, FixOk, false, false);
     }
 

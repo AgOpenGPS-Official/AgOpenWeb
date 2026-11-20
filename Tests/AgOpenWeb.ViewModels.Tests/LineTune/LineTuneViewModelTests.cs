@@ -90,11 +90,32 @@ public class LineTuneViewModelTests
         Assert.That(_sim.Override, Is.Null);
         Assert.That(_vm.Measurements, Does.Contain("Steer Response 4.0"));
 
+        // The value found is the one named in the result, and the one that goes into the settings.
+        var found = System.Text.RegularExpressions.Regex.Match(_vm.ResultText, @"Steer Response (\d+(?:\.\d+)?)");
+        Assert.That(found.Success, Is.True, _vm.ResultText);
+        double proposed = double.Parse(found.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.That(proposed, Is.Not.EqualTo(4.0), "the scenario: the run found another value");
+
         _vm.AcceptCommand.Execute(null);
         Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Accepted));
-        Assert.That(_store.Guidance.GoalPointLookAheadHold, Is.Not.EqualTo(4.0));
+        Assert.That(_store.Guidance.GoalPointLookAheadHold, Is.EqualTo(proposed).Within(0.006));
         _config.Received(1).SaveProfiles("Maxxum", Arg.Any<string>());
         Assert.That(_vm.ResultText, Does.Contain("saved with the vehicle Maxxum"));
+    }
+
+    [Test]
+    public void What_the_run_did_goes_to_the_log()
+    {
+        // Nothing of a run was in a bug report: what it did had to be read from the positions.
+        var log = new List<string>();
+        _vm.Log = log.Add;
+        _vm.StartCommand.Execute(null);
+        Run(900);
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Result));
+        Assert.That(log[0], Does.StartWith("Started: Pure Pursuit, Steer Response 4.0"));
+        Assert.That(log.Any(l => l.StartsWith("Ended (Result):")), Is.True);
+        _vm.AcceptCommand.Execute(null);
+        Assert.That(log[^1], Does.StartWith("In use now"));
     }
 
     [Test]
@@ -102,9 +123,71 @@ public class LineTuneViewModelTests
     {
         _vm.StartCommand.Execute(null);
         Run(900);
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Result), _vm.ResultText);
         _vm.DiscardCommand.Execute(null);
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Accepted), "the result is closed");
+        Assert.That(_vm.ResultText, Does.Contain("old values stay"));
         Assert.That(_store.Guidance.GoalPointLookAheadHold, Is.EqualTo(4.0));
         _config.DidNotReceive().SaveProfiles(Arg.Any<string>(), Arg.Any<string>());
+        // And it can't be taken afterwards.
+        _vm.AcceptCommand.Execute(null);
+        Assert.That(_store.Guidance.GoalPointLookAheadHold, Is.EqualTo(4.0));
+    }
+
+    [Test]
+    public void The_integral_changed_during_the_run_stops_it()
+    {
+        _vm.StartCommand.Execute(null);
+        Run(5);
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Measuring));
+        _store.Guidance.PurePursuitIntegralGain += 0.1;
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Stopped));
+        Assert.That(_sim.Override, Is.Null);
+    }
+
+    [Test]
+    public void Another_vehicle_loaded_stops_the_run_whatever_its_values()
+    {
+        _store.ActiveVehicleProfileName = "Maxxum";
+        _vm.StartCommand.Execute(null);
+        Run(5);
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Measuring));
+        _store.ActiveVehicleProfileName = "Puma"; // the same guidance values: no setting changes
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Stopped));
+        Assert.That(_sim.Override, Is.Null);
+        Assert.That(_vm.ResultText, Does.Contain("vehicle profile"));
+    }
+
+    [Test]
+    public void A_value_found_is_not_taken_after_another_vehicle_was_loaded_or_a_setting_changed([Values] bool vehicle)
+    {
+        _store.ActiveVehicleProfileName = "Maxxum";
+        _vm.StartCommand.Execute(null);
+        Run(900);
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Result), _vm.ResultText);
+        if (vehicle) _store.ActiveVehicleProfileName = "Puma";
+        else _store.Guidance.GoalPointLookAheadMult = 1.6;
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Stopped));
+
+        _vm.AcceptCommand.Execute(null);
+        Assert.That(_store.Guidance.GoalPointLookAheadHold, Is.EqualTo(4.0), "the value found is not written");
+        _config.DidNotReceive().SaveProfiles(Arg.Any<string>(), Arg.Any<string>());
+    }
+
+    [Test]
+    public void A_save_that_fails_still_says_the_values_are_in_use()
+    {
+        _store.ActiveVehicleProfileName = "Maxxum";
+        _config.When(c => c.SaveProfiles(Arg.Any<string>(), Arg.Any<string>()))
+            .Do(_ => throw new System.IO.IOException("disk full"));
+        _vm.StartCommand.Execute(null);
+        Run(900);
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Result), _vm.ResultText);
+
+        Assert.DoesNotThrow(() => _vm.AcceptCommand.Execute(null));
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Accepted));
+        Assert.That(_store.Guidance.GoalPointLookAheadHold, Is.Not.EqualTo(4.0));
+        Assert.That(_vm.ResultText, Does.Contain("In use now").And.Contain("not saved"));
     }
 
     [Test]
@@ -117,6 +200,46 @@ public class LineTuneViewModelTests
         Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Stopped));
         Assert.That(_sim.Override, Is.Null);
         Assert.That(_vm.ResultText, Does.Contain("setting was changed"));
+    }
+
+    [Test]
+    public void A_module_or_vehicle_steering_setting_changed_during_the_run_stops_it([Values] bool module)
+    {
+        // The sliders beside the panel: the module's gain, the largest steer angle. The wheels
+        // answer another way after the change, so the values tried before and after don't compare.
+        _vm.StartCommand.Execute(null);
+        Run(5);
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Measuring));
+        if (module) _store.AutoSteer.ProportionalGain += 10;
+        else _store.Vehicle.MaxSteerAngle -= 5;
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Stopped));
+        Assert.That(_sim.Override, Is.Null);
+        Assert.That(_vm.ResultText, Does.Contain("setting was changed"));
+    }
+
+    [Test]
+    public void A_value_found_is_not_taken_after_a_module_or_vehicle_steering_setting_changed([Values] bool module)
+    {
+        _store.ActiveVehicleProfileName = "Maxxum";
+        _vm.StartCommand.Execute(null);
+        Run(900);
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Result), _vm.ResultText);
+        if (module) _store.AutoSteer.MinPwm += 5;
+        else _store.Vehicle.Wheelbase += 0.3;
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Stopped));
+
+        _vm.AcceptCommand.Execute(null);
+        Assert.That(_store.Guidance.GoalPointLookAheadHold, Is.EqualTo(4.0), "the value found is not written");
+    }
+
+    [Test]
+    public void A_setting_that_is_not_steering_leaves_the_run_alone()
+    {
+        _vm.StartCommand.Execute(null);
+        Run(5);
+        _store.AutoSteer.LightbarEnabled = !_store.AutoSteer.LightbarEnabled;
+        _store.Vehicle.AntennaHeight += 0.1;
+        Assert.That(_vm.Stage, Is.EqualTo(LineTuneStage.Measuring));
     }
 
     [Test]

@@ -5,6 +5,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.Pipeline;
@@ -35,6 +36,9 @@ public sealed partial class LineTuneViewModel : ObservableObject, ILineTuneActio
     /// <summary>Injectable clock (seconds) for tests.</summary>
     internal Func<double> NowS { get; set; }
 
+    /// <summary>What each run does, one line each (<see cref="LineTuneRun.Log"/>): the app's log.</summary>
+    public Action<string>? Log { get; set; }
+
     public LineTuneViewModel(IGpsPipelineService pipeline, IPipelineIntents intents, IConfigurationService configService)
     {
         _pipeline = pipeline;
@@ -46,6 +50,9 @@ public sealed partial class LineTuneViewModel : ObservableObject, ILineTuneActio
         AcceptCommand = new RelayCommand(Accept);
         DiscardCommand = new RelayCommand(Discard);
         Guidance.PropertyChanged += OnGuidanceSettingChanged;
+        _configService.Store.AutoSteer.PropertyChanged += OnSteeringSettingChanged;
+        _configService.Store.Vehicle.PropertyChanged += OnSteeringSettingChanged;
+        _configService.Store.PropertyChanged += OnStoreChanged;
     }
 
     private GuidanceConfig Guidance => _configService.Store.Guidance;
@@ -72,7 +79,10 @@ public sealed partial class LineTuneViewModel : ObservableObject, ILineTuneActio
         var g = Guidance;
         _run = new LineTuneRun(this,
             new GuidanceGainsOverride(g.GoalPointLookAheadHold, g.StanleyDistanceErrorGain, g.StanleyHeadingErrorGain),
-            g.IsStanley, g.GoalPointLookAheadMult, g.GoalPointAcquireFactor, g.MinLookAheadDistance);
+            g.IsStanley, g.GoalPointLookAheadMult, g.GoalPointAcquireFactor, g.MinLookAheadDistance)
+        {
+            Log = Log,
+        };
         _run.Start();
     }
 
@@ -101,8 +111,17 @@ public sealed partial class LineTuneViewModel : ObservableObject, ILineTuneActio
         string saved = "";
         if (!string.IsNullOrEmpty(vehicle))
         {
-            _configService.SaveProfiles(vehicle, store.ActiveToolProfileName);
-            saved = " and saved with the vehicle " + vehicle;
+            // The values are in use whatever the disk says: a save that fails is told, not thrown
+            // past the page with the result still asking to be taken.
+            try
+            {
+                _configService.SaveProfiles(vehicle, store.ActiveToolProfileName);
+                saved = " and saved with the vehicle " + vehicle;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                saved = ", but not saved with the vehicle " + vehicle + " (" + ex.Message + "): save the profile again";
+            }
         }
         string values = _run.Stanley
             ? string.Create(Inv, $"Aggressiveness {f.StanleyDistanceGain:0.0#}, Overshoot Reduction {f.StanleyHeadingGain:0.0#}")
@@ -121,10 +140,10 @@ public sealed partial class LineTuneViewModel : ObservableObject, ILineTuneActio
     public void OnControlEnded() => _run?.Stop("The browser in control went away.");
 
     // A steering setting changed by hand while the run measures: what it measures is not
-    // what the operator set any more.
+    // what the operator set any more. After the run, the value found was measured with the old ones.
     private void OnGuidanceSettingChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (_settingByUs || !Active)
+        if (_settingByUs || _run == null)
             return;
         switch (e.PropertyName)
         {
@@ -135,9 +154,50 @@ public sealed partial class LineTuneViewModel : ObservableObject, ILineTuneActio
             case nameof(GuidanceConfig.MinLookAheadDistance):
             case nameof(GuidanceConfig.StanleyDistanceErrorGain):
             case nameof(GuidanceConfig.StanleyHeadingErrorGain):
-                _run!.Stop("A steering setting was changed.");
+            case nameof(GuidanceConfig.PurePursuitIntegralGain):
+            case nameof(GuidanceConfig.StanleyIntegralGainAB):
+                _run.Stop("A steering setting was changed.");
+                _run.DropResult("A steering setting was changed.");
                 break;
         }
+    }
+
+    // The same for what the steer module and the guidance take from the AutoSteer and vehicle
+    // settings (the sliders beside this panel): the wheels answer another way after a change.
+    private void OnSteeringSettingChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_run == null)
+            return;
+        switch (e.PropertyName)
+        {
+            case nameof(AutoSteerConfig.WasOffset):
+            case nameof(AutoSteerConfig.CountsPerDegree):
+            case nameof(AutoSteerConfig.Ackermann):
+            case nameof(AutoSteerConfig.ProportionalGain):
+            case nameof(AutoSteerConfig.MaxPwm):
+            case nameof(AutoSteerConfig.MinPwm):
+            case nameof(AutoSteerConfig.InvertWas):
+            case nameof(AutoSteerConfig.InvertMotor):
+            case nameof(AutoSteerConfig.SideHillCompensation):
+            case nameof(VehicleConfig.Wheelbase):
+            case nameof(VehicleConfig.MaxSteerAngle):
+            case nameof(VehicleConfig.MaxAngularVelocity):
+            case nameof(VehicleConfig.AntennaPivot):
+            case nameof(VehicleConfig.AntennaOffset):
+                _run.Stop("A steering setting was changed.");
+                _run.DropResult("A steering setting was changed.");
+                break;
+        }
+    }
+
+    // Another vehicle profile loaded (or the profile saved under another name): the run and a
+    // value found belong to the vehicle they were measured on, whatever its guidance values are.
+    private void OnStoreChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ConfigurationStore.ActiveVehicleProfileName) || _run == null)
+            return;
+        _run.Stop("Another vehicle profile was loaded.");
+        _run.DropResult("Another vehicle profile was loaded.");
     }
 
     /// <summary>One GPS cycle, on the host loop (MainViewModel.ApplyGpsCycleResult).</summary>

@@ -83,6 +83,11 @@ public sealed class LineTuneLevel
         Failure == null && Out is { Settled: true, Cut: false } && Back is { Settled: true, Cut: false }
         && OvershootM <= LineTuneRun.GoodOvershootShare * stepM && Swings <= 1;
 
+    /// <summary>Back on the line both ways without swinging on, however far past it: when no
+    /// value is <see cref="Good"/>, the best of these is still an answer.</summary>
+    public bool CameBack =>
+        Failure == null && Out is { Settled: true, Cut: false } && Back is { Settled: true, Cut: false } && Swings <= 1;
+
     /// <summary>Not good only for being slow: it crept towards the new line and never got
     /// there in time, without swinging or going past it. A quicker value is the cure.</summary>
     public bool Sluggish(double stepM) =>
@@ -106,6 +111,17 @@ public sealed class LineTuneLevel
 /// away (the tractor further from the new line than it started, or three swings), when
 /// AutoSteer goes off, the speed changes, a turn comes, the line is changed or moved by hand,
 /// or the fix is lost; a move it started is moved back at once. It never engages AutoSteer.</para>
+/// <para>On a tractor (17 and 18 Nov 2026, 3 to 6 km/h): no value starts while the tractor is
+/// still on its way to the line, however early Start was pressed (<see cref="JoinNearM"/>,
+/// <see cref="JoinHoldS"/>; a value put in while AutoSteer was still joining the line was blamed
+/// for it), every wait is as long in metres at any speed (<see cref="TimeFactor"/>; in seconds,
+/// nothing came back in time at walking pace), the speed is a mean of <see cref="SpeedMeanS"/>
+/// (one reading dropped a value), and the calm value after a cut has only to stop the swing,
+/// not reach the line. A tractor with slack in its steering rests a few centimetres from where
+/// it was before a move: when the time is up and it rests steady near the line, the move
+/// counts, measured against where it rests. When no value comes back cleanly, the one that
+/// went past the line the least is proposed, and the result says so. The run measures at the
+/// speed driven and says which; <see cref="Log"/> says what it did, for the app's log.</para>
 /// <para>Driven by <see cref="OnSample"/> once per GPS cycle; no timers, so tests feed a
 /// simulated tractor.</para>
 /// </summary>
@@ -118,6 +134,34 @@ public sealed class LineTuneRun
     /// <summary>Speed to start: walking pace is too slow to steer by look-ahead, above this the field is too short.</summary>
     public const double MinSpeedKmh = 3.0;
     public const double MaxSpeedKmh = 20.0;
+    /// <summary>The speed the waits below were made at (km/h). Slower, each of them is stretched to the
+    /// same metres driven (<see cref="TimeFactor"/>): the guidance takes about as far, not as
+    /// long, to come onto a line, so at walking pace no value came back in time.</summary>
+    public const double FullSpeedKmh = 8.0;
+    /// <summary>The speed looked at is the mean of this many seconds: a receiver's speed jumps
+    /// from one reading to the next (a tractor at a steady 6 km/h: 5.0 to 7.3 km/h, 5.7 to 6.5 as
+    /// the mean of a second), and one reading out of the band dropped a value.</summary>
+    public const double SpeedMeanS = 1.0;
+    /// <summary>Within this of the line (m) the tractor has reached it. Further off it is still on
+    /// its way there, and no value starts, however long that takes and whenever Start was pressed.</summary>
+    public const double JoinNearM = 0.5;
+    /// <summary>Seconds the operator's own values hold the line before a value starts: twice a
+    /// value's own hold (<see cref="PreHoldS"/>). A tractor still creeping onto the line passed
+    /// the short one, and where it was then was taken for where it rests: the first value, back
+    /// on the line in 3 s, was cut for going 15 cm past a line it was 10 cm short of.</summary>
+    public const double JoinHoldS = 4.0;
+    /// <summary>Seconds the operator's own values have to hold the line once the tractor has
+    /// reached it (<see cref="JoinNearM"/>), before a value starts: the first one, and after
+    /// every interruption. Longer, the value starts all the same and is judged for it: values
+    /// that swing about a line are what the run is for.</summary>
+    public const double JoinTimeoutS = 30.0;
+    /// <summary>The operator's own values took the tractor this far (m) out on one side of the line,
+    /// then on the other, <see cref="JoinSwingTurns"/> times running: they swing it, and waiting
+    /// longer lets the swing grow. The calm value steers first. Once is not a swing: a tractor
+    /// that joins the line at an angle goes past it once (one went 1.95 m past, engaged in a
+    /// turn), and nothing is tried on a tractor still on its way to the line.</summary>
+    public const double JoinSwingM = SteadyMaxM + RunawayM;
+    public const int JoinSwingTurns = 2;
     /// <summary>Speed may differ from the run's by this much (km/h, or 15 % if more).</summary>
     public const double SpeedBandKmh = 1.0;
     /// <summary>Seconds on the line, within <see cref="SteadyBandM"/>, before a move.</summary>
@@ -149,11 +193,14 @@ public sealed class LineTuneRun
     /// <summary>A value must be this much quicker than the best so far for the run to go on to a quicker one.</summary>
     public const double QuickerShare = 0.95;
     /// <summary>After a value that swung or ran away, the tractor is brought back to the line with a
-    /// calm value: with Stanley the distance gain divided by this (never quicker than the
-    /// operator's own, nor under <see cref="RescueMinStanley"/>); with Pure Pursuit the calmest
-    /// Steer Response of the ladder.</summary>
+    /// calm value: with Stanley the distance gain divided by this (not under
+    /// <see cref="RescueMinStanley"/>, and never quicker than the operator's own, one under that
+    /// floor too); with Pure Pursuit the calmest Steer Response of the ladder.</summary>
     public const double RescueShare = 2.5;
     public const double RescueMinStanley = 0.3;
+    /// <summary>When no value is good, values that went this much (m) further past the line than
+    /// the one that went past it the least count as the same: the quickest of them is taken.</summary>
+    public const double LeastPastSlackM = 0.02;
     public const double MaxHold = 10.0;
     /// <summary>Seconds the calm value has to bring the tractor back onto the line; longer stops the run.</summary>
     public const double RecoverTimeoutS = 30.0;
@@ -214,6 +261,16 @@ public sealed class LineTuneRun
     public GuidanceGainsOverride? Found { get; private set; }
     /// <summary>The speed the run measures at (km/h; 0 until it starts measuring).</summary>
     public double RunSpeedKmh { get; private set; }
+    /// <summary>What the run does, one line each (a value started, how a move went, why it waits
+    /// or ended): the app writes them to its log, so a bug report shows the run.</summary>
+    public Action<string>? Log { get; set; }
+
+    /// <summary>How much longer every wait is than at <see cref="FullSpeedKmh"/>: 1 from there up.</summary>
+    public double TimeFactor => Stretch(RunSpeedKmh > 0 ? RunSpeedKmh : _speedMean);
+
+    internal static double Stretch(double kmh) => kmh > 0 ? Math.Max(1.0, FullSpeedKmh / kmh) : 1.0;
+
+    private void Note(string what) => Log?.Invoke(what);
 
     /// <param name="operatorGains">The operator's Steer Response and Stanley gains.</param>
     /// <param name="stanley">Stanley steers; else Pure Pursuit.</param>
@@ -253,6 +310,7 @@ public sealed class LineTuneRun
     private double _outstanding;      // this run's moves not moved back (cycle frame)
     private double _requestAt;
     private double _movingBackUntil;  // a move back asked: the cycle shows it by then
+    private double _pendingShift;     // the move asked last (cycle frame): the line shows it or not yet
     private object? _track;
     private int _pass;
     private double _phaseStart;
@@ -275,7 +333,15 @@ public sealed class LineTuneRun
     private int _swings, _lastSide;
     private bool _risen;
     private readonly List<(double T, double E)> _hold = new();
+    private readonly List<(double T, double E)> _move = new();   // a move, from the cycle the line jumped
     private string _interrupt = "";
+    private readonly List<(double T, double Kmh)> _speeds = new();
+    private double _speedMean;
+    private double _joinStart = double.NaN;   // since when the run waits for the operator's values to hold the line
+    private double _nearSince = double.NaN;   // since when, in that wait, the tractor has been at the line
+    private int _joinSide;                    // the side of the line it was last well out on, in that wait (0: none yet)
+    private int _joinTurns;                   // how often it then went well out on the other side
+    private bool _again;                      // a value was dropped and starts again once the line is held
 
     /// <summary>Start (again): waits for AutoSteer on a line, then tries the operator's value first.</summary>
     public void Start()
@@ -291,11 +357,19 @@ public sealed class LineTuneRun
         _outstanding = 0;
         _expectNudge = double.NaN;
         _movingBackUntil = 0;
+        _pendingShift = 0;
         _concludePending = false;
         _lastTurningAt = double.NegativeInfinity;
         _interrupt = "";
+        _again = false;
+        _joinStart = double.NaN;
+        _speeds.Clear();
+        _speedMean = 0;
         Stage = LineTuneStage.Waiting;
-        Description = "Drive on a long straight line with AutoSteer on, at working speed.";
+        Description = "Drive on a long straight line with AutoSteer on, at the speed you work at.";
+        Note(Stanley
+            ? string.Create(Inv, $"Started: Stanley, Aggressiveness {_operator.StanleyDistanceGain:0.0#}, Overshoot Reduction {_operator.StanleyHeadingGain:0.0#}.")
+            : string.Create(Inv, $"Started: Pure Pursuit, Steer Response {_operator.LookAheadHold:0.0#}."));
     }
 
     /// <summary>Stop: the operator's values steer again, a move started is moved back.</summary>
@@ -308,6 +382,15 @@ public sealed class LineTuneRun
         Stage = LineTuneStage.Stopped;
         Description = "";
         ResultText = why + " Nothing was changed: your own values steer.";
+        NoteEnd();
+    }
+
+    private void NoteEnd()
+    {
+        Note("Ended (" + Stage + "): " + ResultText);
+        string m = Measurements;
+        if (m.Length > 0)
+            Note("Values tried: " + m.Replace("\n", "; "));
     }
 
     private bool _lastSameWay = true;
@@ -319,6 +402,20 @@ public sealed class LineTuneRun
     {
         Stage = LineTuneStage.Accepted;
         ResultText = text;
+        Note(text);
+    }
+
+    /// <summary>The value found no longer fits what it was measured with (a steering setting
+    /// changed, another vehicle loaded): it can't be taken any more.</summary>
+    public void DropResult(string why)
+    {
+        if (Stage != LineTuneStage.Result)
+            return;
+        Found = null;
+        Stage = LineTuneStage.Stopped;
+        Description = "";
+        ResultText = why + " The value found was not used: run it again.";
+        Note(ResultText);
     }
 
     public bool Active => Stage is LineTuneStage.Waiting or LineTuneStage.Measuring;
@@ -334,13 +431,23 @@ public sealed class LineTuneRun
             _recent.RemoveAt(0);
         _lastSameWay = s.HeadingSameWay;
         _lastTime = s.TimeS;
+        _speeds.Add((s.TimeS, s.SpeedKmh));
+        while (_speeds.Count > 1 && _speeds[0].T <= s.TimeS - SpeedMeanS)
+            _speeds.RemoveAt(0);
+        double sum = 0;
+        foreach (var v in _speeds) sum += v.Kmh;
+        _speedMean = sum / _speeds.Count;
 
         // The line moved by someone else (the nudge buttons, a snap, the nudge reset), or another
         // line chosen: the operator has taken the line over, and the run ends.
         if (!double.IsNaN(_expectNudge))
         {
-            bool ours = Stage == LineTuneStage.Measuring && _phase == Phase.AwaitNudge || s.TimeS < _movingBackUntil;
+            // A move of this run on its way shows as the line where it was before the move, then
+            // where the run expects it. Anywhere else, the operator moved the line in that moment
+            // too (a nudge button, the reset): taken as the run's own, the move back shifted his line.
+            bool pending = Stage == LineTuneStage.Measuring && _phase == Phase.AwaitNudge || s.TimeS < _movingBackUntil;
             bool there = Math.Abs(s.NudgeOffset - _expectNudge) <= 0.005;
+            bool ours = pending && Math.Abs(s.NudgeOffset - (_expectNudge - _pendingShift)) <= 0.005;
             if (there)
                 _movingBackUntil = 0;
             else if (!ours)
@@ -363,6 +470,10 @@ public sealed class LineTuneRun
         string? why = WhyNot(s);
         if (Stage == LineTuneStage.Waiting)
         {
+            // Another pass or line: the distance from it jumps, and the wait for it starts anew
+            // (a tractor that went 2 m past the line it was joining is steered onto the next pass).
+            if (!ReferenceEquals(s.Track, _track) || s.Pass != _pass)
+                _joinStart = double.NaN;
             _track = s.Track;
             _pass = s.Pass;
             if (s.TimeS < _movingBackUntil)
@@ -375,12 +486,14 @@ public sealed class LineTuneRun
                 why = "Waiting for the turn to end.";
             if (why != null)
             {
-                Description = (_interrupt.Length > 0 ? _interrupt + " " : "") + why;
+                _joinStart = double.NaN;
+                Description = WaitText(why);
                 return;
             }
-            if (s.RoomAheadM < RoomNeeded(s.SpeedKmh))
+            if (s.RoomAheadM < RoomNeeded(_speedMean))
             {
-                Description = (_interrupt.Length > 0 ? _interrupt + " " : "") + "Not enough line before the headland: go on, on the next pass.";
+                _joinStart = double.NaN;
+                Description = WaitText("Not enough line before the headland: go on, on the next pass.");
                 return;
             }
             if (_concludePending)
@@ -388,22 +501,40 @@ public sealed class LineTuneRun
                 Conclude(s);
                 return;
             }
+            // The operator's own values bring the tractor onto the line first. AutoSteer just
+            // turned on, or a pass just joined, is still on its way to the line: a value put in
+            // then was judged by that ("could not hold the line", on a tractor).
+            var join = JoinCheck(s);
+            if (join == Join.Wait)
+            {
+                Description = (_interrupt.Length > 0 ? _interrupt + " " : "")
+                    + string.Create(Inv, $"Waiting for AutoSteer to hold the line (now {Math.Abs(s.Xte):0.00} m from it).")
+                    + (RunSpeedKmh == 0
+                        ? string.Create(Inv, $" It measures at the speed you drive now, {_speedMean:0.0} km/h: drive at the speed you work at.")
+                        : _again ? " Then the value starts again." : "");
+                return;
+            }
             if (RunSpeedKmh == 0)
-                RunSpeedKmh = Math.Round(s.SpeedKmh, 1);
+                RunSpeedKmh = Math.Round(_speedMean, 1);
             _interrupt = "";
-            BeginLevel(s);
+            _again = false;
+            _joinStart = double.NaN;
+            if (join == Join.Swings)
+                StartRecover(s, null);
+            else
+                BeginLevel(s, joined: true);
             return;
         }
 
         // Measuring
         if (why != null)
         {
-            Interrupt(why, s);
+            Interrupt(why, s, lasting: true);
             return;
         }
         if (s.RoomAheadM < RoomStopM)
         {
-            Interrupt("The headland is near.", s);
+            Interrupt("The headland is near.", s, lasting: true);
             return;
         }
 
@@ -417,19 +548,21 @@ public sealed class LineTuneRun
     }
 
     /// <summary>The operator moved the line or chose another: the run ends. Its own move is moved
-    /// back only while the line still carries it (a snap or the nudge reset already took it away).</summary>
+    /// back only while the line still carries it (a snap or the nudge reset already took it away),
+    /// and never on another track: a track has its own nudge, and the run's move is not in it.</summary>
     private void HandTookTheLine(in LineTuneSample s, string why)
     {
         _act.SetGains(null);
-        bool sameLine = ReferenceEquals(s.Track, _track) && s.Pass == _pass;
-        bool stillCarried = Math.Abs(_outstanding) > 1e-9 && Math.Abs(s.NudgeOffset) > 0.005
-            && (!sameLine || Math.Abs(s.NudgeOffset - _expectNudge) > 0.005);
+        bool sameTrack = ReferenceEquals(s.Track, _track);
+        bool stillCarried = Math.Abs(_outstanding) > 1e-9 && sameTrack && Math.Abs(s.NudgeOffset) > 0.005
+            && (s.Pass != _pass || Math.Abs(s.NudgeOffset - _expectNudge) > 0.005);
         if (stillCarried)
             MoveBack(s.HeadingSameWay, s.TimeS);
         _outstanding = 0;
         Stage = LineTuneStage.Stopped;
         Description = "";
         ResultText = why + " The run stopped; nothing was changed: your own values steer.";
+        NoteEnd();
     }
 
     /// <summary>Why a value can't be tried now, or null.</summary>
@@ -442,21 +575,76 @@ public sealed class LineTuneRun
         if (s.Turning) return "Waiting for the turn to end.";
         if (RunSpeedKmh == 0)
         {
-            if (s.SpeedKmh < MinSpeedKmh || s.SpeedKmh > MaxSpeedKmh)
-                return string.Create(Inv, $"Drive at working speed, {MinSpeedKmh:0} to {MaxSpeedKmh:0} km/h (now {s.SpeedKmh:0.0}).");
+            if (_speedMean < MinSpeedKmh || _speedMean > MaxSpeedKmh)
+                return string.Create(Inv, $"Drive at the speed you work at, {MinSpeedKmh:0} to {MaxSpeedKmh:0} km/h (now {_speedMean:0.0}).");
         }
-        else if (Math.Abs(s.SpeedKmh - RunSpeedKmh) > SpeedBand)
-            return string.Create(Inv, $"Drive at about {RunSpeedKmh:0.0} km/h, as at the start (now {s.SpeedKmh:0.0}).");
+        else if (Math.Abs(_speedMean - RunSpeedKmh) > SpeedBand)
+            return string.Create(Inv, $"Drive at about {RunSpeedKmh:0.0} km/h, as at the start (now {_speedMean:0.0}).");
         return null;
     }
 
     private double SpeedBand => Math.Max(SpeedBandKmh, 0.15 * RunSpeedKmh);
 
-    private static double RoomNeeded(double speedKmh) => speedKmh / 3.6 * RoomSeconds + RoomMarginM;
+    /// <summary>Line needed ahead to start a value: <see cref="RoomSeconds"/> of driving, as far at
+    /// any speed below <see cref="FullSpeedKmh"/> as at it, plus <see cref="RoomMarginM"/>.</summary>
+    internal static double RoomNeeded(double speedKmh) => speedKmh / 3.6 * RoomSeconds * Stretch(speedKmh) + RoomMarginM;
+
+    private enum Join { Wait, Held, Swings }
+
+    /// <summary>Whether a value can start: the operator's own values hold the line. Never while
+    /// the tractor is still on its way to the line, whenever Start was pressed; at the line they
+    /// have <see cref="JoinTimeoutS"/> to hold it; and when they keep swinging the tractor across
+    /// it (<see cref="JoinSwingM"/>, <see cref="JoinSwingTurns"/>) the calm value steers first.</summary>
+    private Join JoinCheck(in LineTuneSample s)
+    {
+        if (double.IsNaN(_joinStart))
+        {
+            _joinStart = s.TimeS;
+            _nearSince = double.NaN;
+            _joinSide = 0;
+            _joinTurns = 0;
+            _phaseStart = s.TimeS;
+            _window.Clear();
+            Note(string.Create(Inv, $"Waiting for AutoSteer to hold the line: {s.Xte:+0.00;-0.00;0.00} m from it, {_speedMean:0.0} km/h."));
+        }
+        if (Steady(s, JoinHoldS, SteadyMaxM, out _))
+        {
+            // The operator's own value, tried next, has held the line already: its move starts
+            // at once, and one reading out of the band does not fail it for the whole wait.
+            _phaseStart = s.TimeS - PreHoldS * TimeFactor;
+            return Join.Held;
+        }
+        // Well out on one side, then the other, and back again: the operator's values swing it.
+        int side = Math.Abs(s.Xte) > JoinSwingM ? Math.Sign(s.Xte) : 0;
+        if (side != 0 && side != _joinSide)
+        {
+            if (_joinSide != 0)
+                _joinTurns++;
+            _joinSide = side;
+            if (_joinTurns >= JoinSwingTurns)
+                return Join.Swings;
+        }
+        if (double.IsNaN(_nearSince))
+        {
+            if (Math.Abs(s.Xte) > JoinNearM)
+                return Join.Wait;
+            _nearSince = s.TimeS;
+        }
+        if (s.TimeS - _nearSince <= JoinTimeoutS * TimeFactor)
+            return Join.Wait;
+        if (Math.Abs(s.Xte) > JoinNearM)
+        {
+            // Away again, without a swing: it has to reach the line anew.
+            _nearSince = double.NaN;
+            return Join.Wait;
+        }
+        Note(string.Create(Inv, $"Your own values did not hold the line in {JoinTimeoutS * TimeFactor:0} s at it ({Math.Abs(s.Xte):0.00} m from it now): the value starts all the same."));
+        return Join.Held;
+    }
 
     // ------------------------------------------------------------ a value
 
-    private void BeginLevel(in LineTuneSample s)
+    private void BeginLevel(in LineTuneSample s, bool joined = false)
     {
         if (_level == null || _level.Done)
         {
@@ -477,12 +665,18 @@ public sealed class LineTuneRun
         _act.SetGains(_level.Gains);
         Stage = LineTuneStage.Measuring;
         _phase = Phase.Settle;
-        _phaseStart = s.TimeS;
+        // The operator's own value straight after it held the line: that hold is this value's
+        // (and a line it did not hold in time is its failure, at once).
+        if (!(joined && _level.Gains == _operator))
+        {
+            _phaseStart = s.TimeS;
+            _window.Clear();
+        }
         // Where it is now, or swinging to, after a value that was cut.
         _entryOff = RecentMaxOff(s);
         _stepNo = 0;
-        _window.Clear();
         Describe("holding the line");
+        Note(string.Create(Inv, $"{Description} {_speedMean:0.0} km/h, {s.Xte:+0.00;-0.00;0.00} m from the line."));
     }
 
     private GuidanceGainsOverride GainsFor(int index, int headingTrial)
@@ -513,7 +707,7 @@ public sealed class LineTuneRun
             RequestMove(s, +StepM);
             return;
         }
-        if (s.TimeS - _phaseStart > SteadyTimeoutS)
+        if (s.TimeS - _phaseStart > SteadyTimeoutS * TimeFactor)
         {
             _level!.Failure = "could not hold the line";
             // The operator's values steer the tractor back to the line before the next value.
@@ -523,27 +717,39 @@ public sealed class LineTuneRun
     }
 
     /// <summary>The tractor has held the line for <see cref="PreHoldS"/>: near it, not swinging, not drifting.</summary>
-    private bool Held(in LineTuneSample s, out double mean)
+    private bool Held(in LineTuneSample s, out double mean) => Steady(s, PreHoldS, SteadyMaxM, out mean);
+
+    /// <summary>The tractor has run steady for <paramref name="holdS"/> (stretched as every wait:
+    /// not swinging, not drifting), no further than <paramref name="maxFromLine"/> from the line.</summary>
+    private bool Steady(in LineTuneSample s, double holdS, double maxFromLine, out double mean)
+    {
+        double hold = holdS * TimeFactor;
+        _window.Add((s.TimeS, s.Xte));
+        while (_window.Count > 0 && _window[0].T < s.TimeS - hold)
+            _window.RemoveAt(0);
+        mean = 0;
+        bool full = _window.Count > 0 && s.TimeS - _window[0].T >= hold - 0.15 && s.TimeS - _phaseStart >= hold;
+        return full && IsSteady(_window, 0, SteadyBandM, out mean) && Math.Abs(mean) <= maxFromLine;
+    }
+
+    /// <summary>Every reading from <paramref name="from"/> on within <paramref name="band"/> of
+    /// their mean, and the two halves' means within <see cref="SteadyDriftM"/> of each other.</summary>
+    private static bool IsSteady(List<(double T, double E)> w, int from, double band, out double mean)
     {
         mean = 0;
-        _window.Add((s.TimeS, s.Xte));
-        while (_window.Count > 0 && _window[0].T < s.TimeS - PreHoldS)
-            _window.RemoveAt(0);
-        bool full = _window.Count > 0 && s.TimeS - _window[0].T >= PreHoldS - 0.15 && s.TimeS - _phaseStart >= PreHoldS;
-        if (!full)
+        int n = w.Count - from;
+        if (n <= 0)
             return false;
-        foreach (var w in _window) mean += w.E;
-        mean /= _window.Count;
-        if (Math.Abs(mean) > SteadyMaxM)
-            return false;
+        for (int i = from; i < w.Count; i++) mean += w[i].E;
+        mean /= n;
         double first = 0, second = 0;
-        int half = _window.Count / 2;
-        for (int i = 0; i < _window.Count; i++)
+        int half = n / 2;
+        for (int i = from; i < w.Count; i++)
         {
-            if (Math.Abs(_window[i].E - mean) > SteadyBandM) return false;
-            if (i < half) first += _window[i].E; else second += _window[i].E;
+            if (Math.Abs(w[i].E - mean) > band) return false;
+            if (i - from < half) first += w[i].E; else second += w[i].E;
         }
-        return half == 0 || Math.Abs(first / half - second / (_window.Count - half)) <= SteadyDriftM;
+        return half == 0 || Math.Abs(first / half - second / (n - half)) <= SteadyDriftM;
     }
 
     private void RequestMove(in LineTuneSample s, double meters)
@@ -552,6 +758,7 @@ public sealed class LineTuneRun
         _requestAt = s.TimeS;
         _outstanding += shift;
         _expectNudge += shift;
+        _pendingShift = shift;
         _act.Nudge(meters);
         _phase = Phase.AwaitNudge;
         Describe(_stepNo == 0 ? "line moved 30 cm to the right" : "line moved back");
@@ -571,6 +778,7 @@ public sealed class LineTuneRun
             _lastSide = 1;
             _lastOut = s.TimeS;
             _hold.Clear();
+            _move.Clear();
             if (Math.Abs(_e1 - _baseline) < 0.5 * StepM)
             {
                 // The distance from the line did not jump with the line: not a line this run can measure.
@@ -579,7 +787,14 @@ public sealed class LineTuneRun
             return;
         }
         if (s.TimeS - _requestAt > NudgeTimeoutS)
+        {
+            // The move never showed (the nudge reset in the same cycle took it away): it is not on
+            // the line, so there is nothing to move back. Moved back, it shifted the operator's line.
+            _expectNudge -= _pendingShift;
+            _outstanding -= _pendingShift;
+            _pendingShift = 0;
             Interrupt("The line did not move as asked.", s);
+        }
     }
 
     private void TrackMove(in LineTuneSample s)
@@ -622,19 +837,71 @@ public sealed class LineTuneRun
             Finish(s, settled: false, cut: true);
             return;
         }
-        if (_risen && s.TimeS - _lastOut >= HoldS)
+        double hold = HoldS * TimeFactor;
+        _move.Add((s.TimeS, s.Xte));
+        if (_risen && s.TimeS - _lastOut >= hold)
         {
             Finish(s, settled: true, cut: false);
             return;
         }
-        if (t >= MaxStepS)
+        if (t < MaxStepS * TimeFactor)
+            return;
+        // Time is up. A tractor running steady near the new line, though not within the band of
+        // where it was before the move, has settled too: a steering with some slack near the
+        // middle rests a few centimetres to one side or the other (one tractor at 6 km/h: 4 to
+        // 7 cm on one side after a move one way, 3 to 9 on the other after the move back), so
+        // where it was is not where it will be. The move is then measured against where it
+        // rests. Only when the time is up: sooner, the turning point of a slow swing looks like
+        // a rest; by now a swing has crossed that rest and is counted.
+        double since = s.TimeS - hold;
+        int from = _move.FindIndex(m => m.T >= since);
+        if (_move[0].T <= since && IsSteady(_move, from, band, out double rest)
+            && Math.Abs(rest - _baseline) <= SteadyMaxM)
+            Finish(s, settled: true, cut: false, rest);
+        else
             Finish(s, settled: false, cut: false);
     }
 
-    private void Finish(in LineTuneSample s, bool settled, bool cut)
+    /// <summary>The move so far (<see cref="_move"/>) measured against a line at
+    /// <paramref name="line"/>, as <see cref="TrackMove"/> measures it against where the tractor
+    /// was before the move.</summary>
+    private void MeasureAgainst(double line)
     {
-        double offset = 0;
-        if (_hold.Count > 0)
+        double d = _e1 - line;
+        double band = Math.Max(BandM, 0.1 * Math.Abs(d));
+        _risen = false;
+        _risenAt = 0;
+        _overshoot = 0;
+        _swings = 0;
+        _lastSide = 1;
+        _lastOut = _t0;
+        foreach (var (time, e) in _move)
+        {
+            double dev = e - line, r = dev / d;
+            if (!_risen && r <= 0.1)
+            {
+                _risen = true;
+                _risenAt = time - _t0;
+            }
+            if (_risen && r < 0)
+                _overshoot = Math.Max(_overshoot, -r * Math.Abs(d));
+            if (Math.Abs(dev) > band)
+            {
+                int side = Math.Sign(r);
+                if (_risen && side != _lastSide)
+                    _swings++;
+                _lastSide = side;
+                _lastOut = time;
+            }
+        }
+    }
+
+    private void Finish(in LineTuneSample s, bool settled, bool cut, double? rest = null)
+    {
+        double offset = rest ?? 0;
+        if (rest != null)
+            MeasureAgainst(rest.Value);
+        else if (_hold.Count > 0)
         {
             foreach (var h in _hold) offset += h.E;
             offset /= _hold.Count;
@@ -649,6 +916,11 @@ public sealed class LineTuneRun
             Settled: settled,
             Cut: cut);
         if (_stepNo == 0) _level!.Out = step; else _level!.Back = step;
+        Note(string.Create(Inv, $"{NameOf(_level)} {_level.Value:0.0#}, line {(_stepNo == 0 ? "out" : "back")}: moved {step.SizeM * 100:0} cm, ")
+            + (_risen ? string.Create(Inv, $"there in {_risenAt:0.0} s, ") : "never got there, ")
+            + string.Create(Inv, $"{step.OvershootM * 100:0} cm past, {step.Swings} swing(s), ")
+            + (settled ? string.Create(Inv, $"settled in {step.SettleS:0.0} s {offset * 100:+0;-0;0} cm from the line{(rest != null ? string.Create(Inv, $" (where it rests; {(rest.Value - _baseline) * 100:+0;-0;0} cm from where it was before the move)") : "")}.")
+                : cut ? "cut." : string.Create(Inv, $"not settled in {MaxStepS * TimeFactor:0} s ({s.Xte * 100:+0;-0;0} cm from the line).")));
 
         if (_stepNo == 0 && settled && !cut)
         {
@@ -663,7 +935,7 @@ public sealed class LineTuneRun
             _level.Failure = cut
                 ? (_swings >= CutSwings ? "swung across the line" : RanAway)
                 : _swings == 0 && _overshoot <= GoodOvershootShare * StepM ? SlowFailure
-                : "did not settle in " + MaxStepS.ToString("0", Inv) + " s";
+                : "did not settle in " + (MaxStepS * TimeFactor).ToString("0", Inv) + " s";
             _act.SetGains(null);
             // A slow value: the line goes back now. One that swung keeps the moved line until a
             // calm value has brought the tractor onto it (StartRecover): moving it under a
@@ -683,6 +955,7 @@ public sealed class LineTuneRun
         _act.Nudge(headingSameWay ? -_outstanding : _outstanding);
         if (!double.IsNaN(_expectNudge))
             _expectNudge -= _outstanding;
+        _pendingShift = -_outstanding;
         _outstanding = 0;
         _movingBackUntil = now + NudgeTimeoutS;
     }
@@ -691,6 +964,8 @@ public sealed class LineTuneRun
     {
         var level = _level!;
         Levels.Add(level);
+        if (level.Failure != null)
+            Note(string.Create(Inv, $"{NameOf(level)} {level.Value:0.0#}: {level.Failure}."));
         if (!level.HeadingTrial)
             _byIndex[_index] = level;
         _level = null;
@@ -714,11 +989,13 @@ public sealed class LineTuneRun
     {
         // The next value starts at once (the tractor is on the line), unless something waits.
         string? why = WhyNot(s);
-        if (why != null || s.RoomAheadM < RoomNeeded(s.SpeedKmh))
+        if (why != null || s.RoomAheadM < RoomNeeded(_speedMean))
         {
             _act.SetGains(null);
             Stage = LineTuneStage.Waiting;
+            _joinStart = double.NaN;
             Description = why ?? "Not enough line before the headland: go on, on the next pass.";
+            Note("Waiting: " + Description);
             return;
         }
         if (s.TimeS < _movingBackUntil)
@@ -726,15 +1003,17 @@ public sealed class LineTuneRun
             // A move back is on its way: Waiting sees it arrive, then starts the value.
             _act.SetGains(null);
             Stage = LineTuneStage.Waiting;
+            _joinStart = double.NaN;
             Description = "Moving the line back.";
             return;
         }
         BeginLevel(s);
     }
 
-    private GuidanceGainsOverride RescueFor(LineTuneLevel cut)
+    /// <summary>The calm value after <paramref name="cut"/> (null: after the operator's own values swung).</summary>
+    internal GuidanceGainsOverride RescueFor(LineTuneLevel? cut)
     {
-        if (cut.HeadingTrial && Found != null)
+        if (cut is { HeadingTrial: true } && Found != null)
             return Found;
         // Pure Pursuit: the calmest Steer Response there is. A swinging tractor on a steering that
         // answers late is brought back only by a long look-ahead; a short one, even one twice
@@ -743,12 +1022,13 @@ public sealed class LineTuneRun
         if (Stanley)
             return _operator with
             {
-                StanleyDistanceGain = Math.Max(RescueMinStanley, Math.Min(cut.Gains.StanleyDistanceGain / RescueShare, _operator.StanleyDistanceGain)),
+                StanleyDistanceGain = Math.Min(_operator.StanleyDistanceGain,
+                    Math.Max(RescueMinStanley, (cut?.Gains ?? _operator).StanleyDistanceGain / RescueShare)),
             };
         return _operator with { LookAheadHold = Math.Max(HoldLadder[0], _operator.LookAheadHold) };
     }
 
-    private void StartRecover(in LineTuneSample s, LineTuneLevel cut)
+    private void StartRecover(in LineTuneSample s, LineTuneLevel? cut)
     {
         var rescue = RescueFor(cut);
         _act.SetGains(rescue);
@@ -760,8 +1040,10 @@ public sealed class LineTuneRun
         _recLastPeak = 0;
         _window.Clear();
         _entryOff = RecentMaxOff(s);
-        Description = string.Create(Inv,
-            $"{NameOf(cut)} {cut.Value:0.0#} {cut.Failure}: back to the line with {NameOf(cut, rescue)} first.");
+        Description = cut == null
+            ? string.Create(Inv, $"Your own values swing the tractor across the line ({Math.Abs(s.Xte):0.00} m past it): back to the line with {NameOf(cut, rescue)} first.")
+            : string.Create(Inv, $"{NameOf(cut)} {cut.Value:0.0#} {cut.Failure}: back to the line with {NameOf(cut, rescue)} first.");
+        Note(Description);
     }
 
     private void Recover(in LineTuneSample s)
@@ -781,17 +1063,22 @@ public sealed class LineTuneRun
         }
         _recPeak = Math.Max(_recPeak, Math.Abs(s.Xte));
         if (growing || Math.Abs(s.Xte) > Math.Max(_entryOff, SteadyMaxM) + RecoverRunawayM
-            || s.TimeS - _phaseStart > RecoverTimeoutS)
+            || s.TimeS - _phaseStart > RecoverTimeoutS * TimeFactor)
         {
             _act.SetGains(null);
             MoveBack(s.HeadingSameWay, s.TimeS);
             Stage = LineTuneStage.Stopped;
             Description = "";
-            ResultText = "AutoSteer did not come back calmly to the line: the run stopped. Your own values steer; take over if it swings. "
-                + "Check the module's steering settings in the Steer Wizard first (Proportional Gain, Max Limit, Minimum To Move).";
+            ResultText = "AutoSteer did not calm down beside the line: the run stopped. Your own values steer; take over if it swings. "
+                + WheelsAdvice;
+            NoteEnd();
             return;
         }
-        if (!Held(s, out _))
+        // Calm is enough, on the line or beside it: the calm value asks for small steering
+        // angles, and a steering with some slack near the middle then runs a hand's width or two
+        // beside the line and stays there (a tractor: 0.3 m, until the wait ran out). The next
+        // value, or the operator's own, brings it onto the line.
+        if (!Steady(s, PreHoldS, double.PositiveInfinity, out _))
             return;
         if (Math.Abs(_outstanding) > 1e-9)
         {
@@ -814,8 +1101,8 @@ public sealed class LineTuneRun
 
     private string NameOf(LineTuneLevel l) => l.HeadingTrial ? "Overshoot Reduction" : Stanley ? "Aggressiveness" : "Steer Response";
 
-    private string NameOf(LineTuneLevel cut, GuidanceGainsOverride g) => Stanley
-        ? (cut.HeadingTrial
+    private string NameOf(LineTuneLevel? cut, GuidanceGainsOverride g) => Stanley
+        ? (cut is { HeadingTrial: true }
             ? string.Create(Inv, $"Overshoot Reduction {g.StanleyHeadingGain:0.0#}")
             : string.Create(Inv, $"Aggressiveness {g.StanleyDistanceGain:0.0#}"))
         : string.Create(Inv, $"Steer Response {g.LookAheadHold:0.0#}");
@@ -926,13 +1213,28 @@ public sealed class LineTuneRun
         }
 
         var goods = _byIndex.Where(kv => kv.Value.Good(StepM)).OrderBy(kv => kv.Key).ToList();
+        // No value came back well, but some came back, both ways, without swinging on: the one
+        // that went past the line the least is the answer, and the result says what it is. On
+        // a steering with slack every value goes some way past the line (the wheels are not where
+        // the sensor says), a calm one as far as a quick one: "no value found" told that
+        // operator nothing, and left him on a value the run had measured as worse.
+        var cameBack = _byIndex.Values.Where(l => l.CameBack).ToList();
+        if (goods.Count == 0 && cameBack.Count > 0)
+        {
+            double least = cameBack.Min(l => l.OvershootM);
+            Found = cameBack.Where(l => l.OvershootM <= least + LeastPastSlackM).OrderBy(l => l.SettleS).First().Gains;
+            Done();
+            return;
+        }
         if (goods.Count == 0)
         {
             Stage = LineTuneStage.Failed;
             Description = "";
-            ResultText = Stanley
-                ? "No Stanley gain tried brought the tractor back to the line well. Check the module's steering settings in the Steer Wizard first (Proportional Gain, Max Limit, Minimum To Move), then try again. Your own values steer."
-                : "No Steer Response tried brought the tractor back to the line well. Check the module's steering settings in the Steer Wizard first (Proportional Gain, Max Limit, Minimum To Move), then try again. Your own values steer.";
+            ResultText = (Stanley
+                    ? "No Stanley gain tried brought the tractor back to the line well"
+                    : "No Steer Response tried brought the tractor back to the line well")
+                + "; what each one did is below. Your own values steer. " + WheelsAdvice;
+            NoteEnd();
             return;
         }
         double quickest = goods.Min(kv => kv.Value.SettleS);
@@ -944,6 +1246,7 @@ public sealed class LineTuneRun
         {
             _headingTrial = 0;
             Stage = LineTuneStage.Waiting;
+            _joinStart = double.NaN;
             Description = "Now the overshoot reduction.";
             return;
         }
@@ -969,11 +1272,23 @@ public sealed class LineTuneRun
         }
         sb.Append(string.Create(Inv,
             $": back on a line moved 30 cm in {level.SettleS:0.0} s, {level.OvershootM * 100:0} cm past it, at {RunSpeedKmh:0.0} km/h."));
+        if (!level.Good(StepM))
+            sb.Append(string.Create(Inv,
+                $" No value tried came back without going more than {GoodOvershootShare * StepM * 100:0} cm past the line; this one went past it the least. ")
+                + "A calmer value does not cure that: look for slack in the steering (play at the wheels or at the wheel angle sensor, a Minimum To Move that is too low).");
+        // The speed is part of the answer: the look-ahead grows little with it, the steering's
+        // delay does not shrink at all, so a value found slow goes past the line when driven fast.
+        sb.Append(" If you work faster than that, measure again at that speed: a value found slower can swing there.");
         string? advice = OffsetAdvice();
         if (advice != null)
             sb.Append(' ').Append(advice);
         ResultText = sb.ToString();
+        NoteEnd();
     }
+
+    /// <summary>What to do when no value holds the line: the wheels' own loop is the wizard's job,
+    /// and only if it is the wheels (the run can't tell; it said "first" to an operator who had just done it).</summary>
+    private const string WheelsAdvice = "If the wheels themselves swing or answer late, check the module's steering settings in the Steer Wizard (Proportional Gain, Max Limit, Minimum To Move).";
 
     /// <summary>A steady offset from the line in every settled stretch: not the gains' job.</summary>
     private string? OffsetAdvice()
@@ -993,7 +1308,9 @@ public sealed class LineTuneRun
     // ------------------------------------------------------------ interruptions
 
     /// <summary>The value tried is dropped: the operator's values steer, a move is moved back, and the run waits.</summary>
-    private void Interrupt(string why, in LineTuneSample s)
+    /// <param name="lasting">The reason is a state the wait itself goes on telling (the speed, a
+    /// turn, the headland), not something that happened once (another line, a move that did not show).</param>
+    private void Interrupt(string why, in LineTuneSample s, bool lasting = false)
     {
         if (Stage == LineTuneStage.Measuring)
         {
@@ -1004,17 +1321,24 @@ public sealed class LineTuneRun
                 _level.Out = null;
                 _level.Back = null;
             }
-            _interrupt = why + " This value starts again when AutoSteer holds the line.";
+            _again = true;
         }
-        else
-        {
-            _interrupt = why;
-        }
+        // What happened stays on the panel while the run waits; a state that still holds (too
+        // fast, a turn, no fix) is said by the wait itself, once.
+        _interrupt = lasting ? "" : why;
+        Description = lasting ? WaitText(why) : why + (_again ? Again : "");
+        Note("Waiting: " + Description);
+        _joinStart = double.NaN;
         Stage = LineTuneStage.Waiting;
-        Description = _interrupt;
         _track = s.Track;
         _pass = s.Pass;
     }
+
+    private const string Again = " This value starts again when AutoSteer holds the line.";
+
+    /// <summary>The panel's text while the run waits for <paramref name="why"/> to pass.</summary>
+    private string WaitText(string why) =>
+        (_interrupt.Length > 0 ? _interrupt + " " : "") + why + (_again ? Again : "");
 
     private void Describe(string what)
     {
