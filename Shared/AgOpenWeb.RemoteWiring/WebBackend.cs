@@ -59,6 +59,9 @@ public sealed class WebBackend
 
         // Start the embedded browser server, then wire its command handler + projectors.
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
+        // Browsers arriving and leaving, and why, in the app's log (the bug report dump's logs.txt).
+        if (sp.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()?.CreateLogger("AgOpenWeb.RemoteServer.Browsers") is { } browserLog)
+            server.BrowserLog = line => Microsoft.Extensions.Logging.LoggerExtensions.LogInformation(browserLog, "{Line}", line);
         await server.StartAsync(
             sp.GetRequiredService<ApplicationState>(),
             sp.GetRequiredService<ICoverageMapService>(),

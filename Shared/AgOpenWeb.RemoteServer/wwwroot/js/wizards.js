@@ -13,8 +13,38 @@ const wzContent = document.getElementById('wz-content');
 // stepKind|index of the currently-built content (rebuild on change — and on a unit
 // flip, which onUnitsChanged forces by clearing this).
 let _wzKey = '';
-function openSteerWizard() { _wzKey = ''; wizard = null; transport.send('wizard.open'); wzOverlay.classList.add('open'); }
-function wzClose(send) { if (send) transport.send('wizard.cancel'); wzOverlay.classList.remove('open'); wizard = null; _wzKey = ''; }
+function openSteerWizard() { _wzKey = ''; wizard = null; wzGoneReset(); transport.send('wizard.open'); wzOverlay.classList.add('open'); }
+// Close on the closed message tells the host too (it stops saying so), from the screen in control.
+function wzClose(send) { if (send && (!_wzGone || iHoldControl)) transport.send('wizard.cancel'); wzOverlay.classList.remove('open'); wizard = null; _wzKey = ''; wzGoneReset(); }
+// The host closes the wizard when the screen in control goes away (its link quiet for 1.5 s, its
+// socket dropped), as it takes AutoSteer off (MainViewModel.OnBrowserControlEnded). This page can
+// come back from that with the wizard still on it (the window covered by another, a tablet that
+// slept), and then every button did nothing: the host had no wizard left to take them (a tester's
+// tractor, 18 Nov 2026). The host says it closed it (the Wizard frame's `closed`, once, and in the
+// seed of a screen that connects again): the page says so and leaves Close as the only button.
+let _wzGone = false;
+function wzHostClosed() {                                    // a closed Wizard frame (js/core.js)
+  if (!_wzGone && wzOverlay.classList.contains('open')) wzShowGone();
+}
+function wzGoneReset() {
+  if (!_wzGone) return;
+  _wzGone = false;
+  wzOverlay.classList.remove('gone');
+  asSetText('wz-cancel', tr('Cancel'));
+  wzContent.replaceChildren(); // not the old message on a wizard opened again: empty until its first frame
+}
+function wzShowGone() {
+  const w = wizard; // the last live frame: what is on the screen
+  _wzGone = true; _wzKey = '';
+  wzOverlay.classList.add('gone');
+  asSetText('wz-cancel', tr('Close'));
+  asSetText('wz-validation', '');
+  const el = (cls, text) => { const d = document.createElement('div'); d.className = cls; d.textContent = text; return d; };
+  wzContent.replaceChildren(el('wz-h1', tr('The steer wizard was closed')),
+    el('wz-desc', tr('The program closed the steer wizard: the screen in control stopped answering it for a moment (another window in front of it, the tablet asleep, the link lost).') +
+      (w && w.testActive ? ' ' + tr('The test that was running was stopped.') : '')),
+    el('wz-desc', tr('What the finished steps set is saved. Close this and open the wizard again to go on.')));
+}
 document.getElementById('wz-cancel').addEventListener('pointerdown', e => { e.stopPropagation(); wzClose(true); });
 document.getElementById('wz-skip').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('wizard.skip'); });
 document.getElementById('wz-back').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('wizard.back'); });
@@ -153,7 +183,7 @@ function buildWizardContent(w) {
 }
 function renderWizard() {
   const w = wizard;
-  if (!w) return;
+  if (!w || _wzGone) return;
   // Chrome (every frame).
   asSetText('wz-step', tr('Step {n} of {total}', { n: w.stepIndex + 1, total: w.totalSteps }));
   document.getElementById('wz-progressbar').style.width = (w.totalSteps ? (w.stepIndex + 1) / w.totalSteps * 100 : 0) + '%';

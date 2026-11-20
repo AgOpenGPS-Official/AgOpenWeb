@@ -45,15 +45,22 @@ public sealed class ScenarioJournal
     /// <summary>Every finding with where it was first seen and how often.</summary>
     public Dictionary<string, (Finding First, string Where, int Count, List<string> Places)> Findings { get; } = new();
 
-    public void Add(Finding f, string where)
+    /// <summary>The evidence kept for a finding, by its key, as the report shows it: the dump taken
+    /// at the step where the kind was first seen (Scenario.KeepEvidenceAsync), or why there is none.</summary>
+    public Dictionary<string, string> EvidenceFor { get; } = new();
+
+    /// <summary>Adds a finding; returns its key when this is the first of its kind in the run, else null.</summary>
+    public string? Add(Finding f, string where)
     {
         string key = f.Code + "|" + Normalize(f.Message);
         if (Findings.TryGetValue(key, out var e))
         {
             if (e.Places.Count < 6 && !e.Places.Contains(where)) e.Places.Add(where);
             Findings[key] = (e.First, e.Where, e.Count + 1, e.Places);
+            return null;
         }
-        else Findings[key] = (f, where, 1, new List<string> { where });
+        Findings[key] = (f, where, 1, new List<string> { where });
+        return key;
     }
 
     /// <summary>Numbers (their sign included) and quoted names vary from field to field; the rest
@@ -91,12 +98,14 @@ public sealed class ScenarioJournal
 
         sb.Append("\n## Findings (each kind once, most serious first)\n\n");
         int n = 1;
-        foreach (var g in Findings.Values.OrderBy(v => v.First.Severity).ThenBy(v => v.First.Code).ThenByDescending(v => v.Count))
+        foreach (var (key, g) in Findings.OrderBy(v => v.Value.First.Severity).ThenBy(v => v.Value.First.Code).ThenByDescending(v => v.Value.Count))
         {
             sb.Append(string.Create(inv, $"{n++}. **{g.First.Severity}** `{g.First.Code}` ×{g.Count}: {g.First.Message}\n"));
             sb.Append("   First seen: ").Append(g.Where).Append('\n');
             if (g.Places.Count > 1)
                 sb.Append("   Also: ").Append(string.Join("; ", g.Places.Skip(1))).Append('\n');
+            if (EvidenceFor.TryGetValue(key, out var zip))
+                sb.Append("   Evidence: ").Append(zip).Append('\n');
         }
 
         sb.Append("\n## Step logs\n");
@@ -138,6 +147,11 @@ public sealed class Scenario
     private readonly ScenarioRecord _record;
     private HashSet<string> _active = new();
     private int _index;
+    private readonly Evidence _ev;
+    // The first of a kind of finding in the run, seen at a step whose dump is not yet taken:
+    // the key, and the step. Taken before the next step changes anything (KeepEvidenceAsync).
+    private readonly List<(string Key, StepRecord Step)> _evidenceWanted = new();
+    private int _dumpedAtStep = -1;   // the step the last dump was taken after
 
     public FieldScenarioRig Rig => _rig;
     public FieldSnapshot Last { get; private set; } = new();
@@ -150,12 +164,84 @@ public sealed class Scenario
         _journal = journal;
         _record = new ScenarioRecord { Name = name, Operator = op };
         journal.Scenarios.Add(_record);
+        _ev = new Evidence(Evidence.FolderFor(ReportPath.For(ReportName)), name);
+        rig.BeforeAction = () => KeepEvidenceAsync();
+        rig.LogAction("# scenario: " + name + " (" + op + " operator)");
+    }
+
+    public const string ReportName = "field-scenarios-report.md";
+
+    private void Found(Finding f, StepRecord st)
+    {
+        if (_journal.Add(f, _record.Name + " #" + st.Index.ToString(CultureInfo.InvariantCulture) + " (" + st.What + ")") is { } key)
+            _evidenceWanted.Add((key, st));
+    }
+
+    /// <summary>
+    /// Keeps the evidence of the findings first seen at the last step: the app's bug report dump
+    /// as it stands now, before the next step changes it, with what the operator did up to here
+    /// (<c>attachments/commands.txt</c>) and the scenario's steps in the notes. A finding is fixed
+    /// from it with a unit test, as from a tester's dump. One dump per kind of finding in the run:
+    /// the step where it was first seen. Taken at the start of the next step, and before any
+    /// command, placing, drive or import file in between (the rig's BeforeAction). With
+    /// <c>AGOPENWEB_SCENARIO_EVIDENCE=all</c>, every scenario also keeps one at its end. A dump
+    /// that fails is not taken again later (the state would be a later one): the report says why.
+    /// </summary>
+    public async Task KeepEvidenceAsync(bool end = false)
+    {
+        if (Evidence.Off) return;
+        if (_evidenceWanted.Count == 0 && !(end && Evidence.All && _dumpedAtStep != _index)) return;
+        var wanted = _evidenceWanted.ToList();
+        _evidenceWanted.Clear();
+        var st = wanted.Count > 0 ? wanted[0].Step : LastStep;
+        string moment = st == null ? "end" : "step" + st.Index.ToString(CultureInfo.InvariantCulture);
+        var inv = CultureInfo.InvariantCulture;
+        var notes = new StringBuilder(Evidence.NotesHeader("Field scenarios", _record.Name, st == null ? "the end" : "step " + st.Index.ToString(inv) + ": " + st.What,
+            taken: wanted.Count > 0 ? "right after the step, before the next one" : "at the end of the scenario", turns: false));
+        notes.Append(_record.Operator).Append(" operator.\n\n## Findings first seen at this step\n\n");
+        foreach (var (key, _) in wanted)
+            if (_journal.Findings.TryGetValue(key, out var g))
+                notes.Append("- ").Append(g.First.Severity.ToString()).Append(" `").Append(g.First.Code).Append("`: ").Append(g.First.Message).Append('\n');
+        if (wanted.Count == 0) notes.Append("none (kept for every scenario: AGOPENWEB_SCENARIO_EVIDENCE=all)\n");
+        notes.Append("\n## The scenario's steps up to here\n\n");
+        foreach (var s in _record.Steps)
+        {
+            notes.Append(s.Index.ToString(inv)).Append(". ").Append(s.What);
+            if (s.Expect == Expect.Refused) notes.Append(" *(should be refused)*");
+            if (s.Messages.Count > 0) notes.Append(" — says: ").Append(string.Join(" / ", s.Messages.Distinct(StringComparer.Ordinal).Select(m => "\"" + m + "\"")));
+            notes.Append('\n');
+            foreach (var f in s.NewFindings) notes.Append("   - ").Append(f.Severity.ToString()).Append(" `").Append(f.Code).Append("` ").Append(f.Message).Append('\n');
+        }
+        if (st != null) notes.Append("\nState after step ").Append(st.Index.ToString(inv)).Append(": ").Append(st.After).Append('\n');
+        notes.Append("\n## The harness's own data (attachments/)\n\n")
+             .Append("- `commands.txt`: what the operator did in the whole run up to here, in order: every command as the web client sends it (`id|arg`), every placing and drive of the tractor and every file put in the import folder (`#` lines). One backend works field after field, so this scenario's field may have been built by an earlier one.\n");
+
+        string tmp = Path.Combine(Path.GetTempPath(), "aow-field-evidence-" + Guid.NewGuid().ToString("N")[..8]);
+        var files = new List<string>();
+        try
+        {
+            Directory.CreateDirectory(tmp);
+            string cmds = Path.Combine(tmp, "commands.txt");
+            await File.WriteAllTextAsync(cmds, _rig.ActionsText());
+            files.Add(cmds);
+        }
+        catch (Exception ex) { notes.Append("- (commands.txt not written: ").Append(ex.Message).Append(")\n"); }
+        string? zip = await _ev.SaveAsync(moment, notes.ToString(), _rig.Services, _rig.State,
+            AgOpenWeb.Models.Configuration.ConfigurationStore.Instance, _rig.RunAsync, files);
+        try { Directory.Delete(tmp, true); } catch { }
+        _dumpedAtStep = _index;
+        string shown = zip != null ? "`evidence/" + Path.GetFileName(zip) + "`"
+            : "not kept (" + (_ev.Errors.Count > 0 ? _ev.Errors[^1] : "no reason given") + ")";
+        foreach (var (key, _) in wanted) _journal.EvidenceFor[key] = shown;
+        foreach (var e in _ev.Errors) TestContext.Out.WriteLine("evidence not kept: " + e);
+        _ev.Errors.Clear();
     }
 
     public string Name => _record.Name;
 
     public async Task<FieldSnapshot> Step(string what, Func<Task> act, Expect expect = Expect.Works)
     {
+        await KeepEvidenceAsync();
         var rec = new StepRecord { Index = ++_index, What = what, Expect = expect };
         var sw = Stopwatch.StartNew();
         try { await act(); }
@@ -235,8 +321,8 @@ public sealed class Scenario
         rec.After = snap.Summary();
         Last = snap;
         _record.Steps.Add(rec);
-        foreach (var f in rec.NewFindings)
-            _journal.Add(f, _record.Name + " #" + rec.Index.ToString(CultureInfo.InvariantCulture) + " (" + what + ")");
+        foreach (var f in rec.NewFindings) Found(f, rec);
+        _ev.PullGpsLog();
         if (Verbose)
         {
             TestContext.Out.WriteLine($"[{_record.Name}] {rec.Index}. {what} ({rec.Ms} ms) {string.Join(" / ", rec.Messages)}");
@@ -251,7 +337,7 @@ public sealed class Scenario
         if (ok || LastStep is not { } st) return;
         var f = new Finding("CHECK", sev, message);
         st.NewFindings.Add(f);
-        _journal.Add(f, _record.Name + " #" + st.Index.ToString(CultureInfo.InvariantCulture) + " (" + st.What + ")");
+        Found(f, st);
         if (Verbose) TestContext.Out.WriteLine($"      {f.Severity} CHECK: {f.Message}");
     }
 
@@ -261,7 +347,7 @@ public sealed class Scenario
         if (LastStep is not { } st || st.Messages.Count > 0) return;
         var f = new Finding(code, Severity.Improvement, "wrong input ignored without any message: " + st.What);
         st.NewFindings.Add(f);
-        _journal.Add(f, _record.Name + " #" + st.Index.ToString(CultureInfo.InvariantCulture) + " (" + st.What + ")");
+        Found(f, st);
     }
 
     private static bool IsNoise(string s) =>

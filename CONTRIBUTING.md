@@ -21,6 +21,8 @@ Thank you for your interest in contributing to AgOpenWeb! This document lists fe
 
 - **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)** - Full architecture documentation: service communication, state management, domain models, data flow diagrams
 - **[CLAUDE.md](CLAUDE.md)** - Build commands, key files reference, common development tasks
+
+**CLAUDE.md is kept by the maintainers.** It is the working context of their Claude Code sessions, so a PR from anyone else must not change it (CI fails one that does). Put what a reader needs in the code's comments, the docs or the PR description; keep notes for your own sessions in `CLAUDE.local.md`, which git ignores.
 - **[PGN.md](PGN.md)** - UDP packet protocol for hardware communication
 
 ## Architecture Overview

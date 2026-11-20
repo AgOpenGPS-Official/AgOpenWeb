@@ -12,11 +12,11 @@ using AgOpenWeb.Services.Interfaces;
 namespace AgOpenWeb.Services.Tool;
 
 /// <summary>
-/// Immutable snapshot of tool position state, swapped atomically by
-/// <see cref="ToolPositionService"/> at the end of each Update so readers
-/// see a fully-consistent view across multiple fields.
+/// Tool position state as published by <see cref="ToolPositionService"/> at the end of each
+/// Update: a value, copied whole by readers (a seqlock, <see cref="ToolPositionService"/>), so
+/// they see a fully-consistent view across its fields and the 100 Hz writer allocates nothing.
 /// </summary>
-internal sealed record ToolPositionSnapshot(
+internal readonly record struct ToolPositionSnapshot(
     Vec3 ToolPosition,
     Vec3 ToolPivotPosition,
     double ToolHeading,
@@ -33,7 +33,9 @@ internal sealed record ToolPositionSnapshot(
 /// its own thread; readers (GPS pipeline, UI, renderer) pull from any
 /// thread. A write lock serializes Update / ResetTrailingState so the
 /// internal Torriem state stays consistent across frames; readers get a
-/// fully-consistent snapshot via atomic reference swap with no locking.
+/// fully-consistent snapshot with no locking: a value behind a seqlock
+/// (the writer makes the version odd, writes, makes it even; a reader
+/// copies and retries if it moved), so the 100 Hz writer allocates nothing.
 ///
 /// Tool Types:
 /// - Fixed Front: Tool rigidly attached in front of pivot
@@ -66,10 +68,28 @@ public class ToolPositionService : IToolPositionService
 
     private static double AngleBetween(double a, double b) => Math.Abs(Math.PI - Math.Abs(Math.Abs(a - b) - Math.PI));
 
-    // Read snapshot — atomically swapped after each writer completes.
-    // Readers never lock; they observe a fully-consistent record.
-    private ToolPositionSnapshot _snapshot = new(
-        default, default, 0, default, default, false, false);
+    // The published state, behind a seqlock: the writer (under _writeLock) makes _version odd,
+    // writes, makes it even again; a reader copies the value and retries if the version was odd
+    // or moved meanwhile. Readers never lock, and the 100 Hz writer allocates nothing (a new
+    // 128-byte snapshot object every control tick was garbage the collector had to clear).
+    private ToolPositionSnapshot _snapshot;
+    private int _version;
+
+    private ToolPositionSnapshot Read()
+    {
+        var spin = new SpinWait();
+        while (true)
+        {
+            int v1 = Volatile.Read(ref _version);
+            if ((v1 & 1) == 0)
+            {
+                var s = _snapshot;
+                Interlocked.MemoryBarrier();
+                if (Volatile.Read(ref _version) == v1) return s;
+            }
+            spin.SpinOnce(sleep1Threshold: -1);
+        }
+    }
 
     // Serializes the two writers (Update from control loop, ResetTrailingState
     // from UI/MainViewModel). Brief — contains only field updates and snapshot
@@ -83,32 +103,35 @@ public class ToolPositionService : IToolPositionService
         _configStore = configStore;
     }
 
-    public Vec3 ToolPosition => Volatile.Read(ref _snapshot).ToolPosition;
-    public Vec3 ToolPivotPosition => Volatile.Read(ref _snapshot).ToolPivotPosition;
-    public double ToolHeading => Volatile.Read(ref _snapshot).ToolHeading;
-    public Vec3 TankPosition => Volatile.Read(ref _snapshot).TankPosition;
-    public Vec3 HitchPosition => Volatile.Read(ref _snapshot).HitchPosition;
+    public Vec3 ToolPosition => Read().ToolPosition;
+    public Vec3 ToolPivotPosition => Read().ToolPivotPosition;
+    public double ToolHeading => Read().ToolHeading;
+    public Vec3 TankPosition => Read().TankPosition;
+    public Vec3 HitchPosition => Read().HitchPosition;
 
     /// <summary>
     /// True when tool position is based on actual movement, not startup snap.
     /// During startup, the tool heading may be unreliable (GPS heading = 0 when stationary).
     /// </summary>
-    public bool IsToolPositionReady => Volatile.Read(ref _snapshot).IsToolPositionReady;
+    public bool IsToolPositionReady => Read().IsToolPositionReady;
 
     /// <summary>
     /// True once <see cref="Update"/> has run: the tool has a position. A fixed tool's position
     /// is right from the first update; <see cref="IsToolPositionReady"/> waits for a trailing
     /// tool's heading to settle and never turns true for a fixed one.
     /// </summary>
-    public bool HasPosition => Volatile.Read(ref _snapshot).HasPosition;
+    public bool HasPosition => Read().HasPosition;
 
+    /// <summary>Caller holds _writeLock (the one writer at a time the seqlock needs).</summary>
     private void PublishSnapshot()
     {
-        Interlocked.Exchange(ref _snapshot, new ToolPositionSnapshot(
+        Interlocked.Increment(ref _version);   // odd: being written
+        _snapshot = new ToolPositionSnapshot(
             _toolPosition, _toolPivotPosition, _toolHeading,
             _tankPosition, _hitchPosition,
             _startCounter >= STARTUP_FRAMES,
-            HasPosition: true));
+            HasPosition: true);
+        Interlocked.Increment(ref _version);   // even: done
     }
 
     public void Update(Vec3 vehiclePivot, double vehicleHeading)
@@ -376,7 +399,7 @@ public class ToolPositionService : IToolPositionService
         double sectionCenter = (sectionLeft + sectionRight) / 2.0;
 
         // Read consistent pose from snapshot.
-        var snap = Volatile.Read(ref _snapshot);
+        var snap = Read();
         double perpHeading = snap.ToolHeading + Math.PI / 2.0;
 
         return new Vec3(
@@ -388,7 +411,7 @@ public class ToolPositionService : IToolPositionService
 
     public (Vec3 left, Vec3 right) GetSectionEdgePositions(double sectionLeft, double sectionRight)
     {
-        var snap = Volatile.Read(ref _snapshot);
+        var snap = Read();
         double perpHeading = snap.ToolHeading + Math.PI / 2.0;
 
         var left = new Vec3(

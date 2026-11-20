@@ -37,6 +37,7 @@ public class BoundaryPolygon
         public required List<BoundaryPoint> Source { get; init; }
         public required int Count { get; init; }
         public required PolygonSlabIndex? Slabs { get; init; }
+        public required PolygonClearGrid? Clear { get; init; } // where the inside is clear of the outline
         public required double MinEasting { get; init; }
         public required double MaxEasting { get; init; }
         public required double MinNorthing { get; init; }
@@ -110,11 +111,13 @@ public class BoundaryPolygon
             }
         }
 
+        var slabs = PolygonSlabIndex.Build(points);
         return new Index
         {
             Source = points,
             Count = points.Count,
-            Slabs = PolygonSlabIndex.Build(points),
+            Slabs = slabs,
+            Clear = PolygonClearGrid.Build(slabs),
             MinEasting = minE, MaxEasting = maxE, MinNorthing = minN, MaxNorthing = maxN,
             Grid = grid, GridOffsetE = offsetE, GridOffsetN = offsetN,
         };
@@ -147,13 +150,6 @@ public class BoundaryPolygon
             }
         }
     }
-
-    /// <summary>
-    /// Check if point is definitely inside the bounding box with margin (potential fast accept)
-    /// </summary>
-    private static bool IsDeepInsideBounds(Index index, double easting, double northing, double margin) =>
-        easting > index.MinEasting + margin && easting < index.MaxEasting - margin &&
-        northing > index.MinNorthing + margin && northing < index.MaxNorthing - margin;
 
     /// <summary>
     /// Whether this is a drive-through boundary (true) or avoid boundary (false)
@@ -230,11 +226,12 @@ public class BoundaryPolygon
         if (Points.Count < 3)
             return BoundaryResult.FullyInside; // No boundary = always inside
 
-        // FAST PATH: If section center is deep inside bounding box (50m+ from any edge),
-        // skip expensive polygon intersection tests - we're definitely fully inside
-        const double DEEP_INSIDE_MARGIN = 50.0; // meters from bounding box edge
+        // FAST PATH: nothing of the outline is within the section's half width of its centre and
+        // the centre is inside, so the whole section is: skip the intersection tests. The
+        // bounding box moved in 50 m was used here, and a section in a notch of the fence (deep
+        // inside the box, outside the field) was answered "inside": the sections stayed on there.
         var index = Current();
-        if (IsDeepInsideBounds(index, sectionCenter.Easting, sectionCenter.Northing, DEEP_INSIDE_MARGIN + halfWidth))
+        if (index.Clear != null && index.Clear.IsClearInside(sectionCenter.Easting, sectionCenter.Northing, halfWidth))
         {
             return BoundaryResult.FullyInside;
         }

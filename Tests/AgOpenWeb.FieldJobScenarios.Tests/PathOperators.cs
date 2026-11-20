@@ -841,7 +841,11 @@ public sealed class ContourOperator : PathOperator
         // Where the tool went: on the laps (the middle is what none of them reaches) and while the
         // operator moves a width in by hand (the lap change).
         var tool = r.Truth.ToolCentre;
-        if (r.InChange) _change.Add((tool.E, tool.N)); else _driven.Add((tool.E, tool.N));
+        // Driving back onto the lap after the contour left it is not a lap change: ground missed
+        // beside it is judged (CONTOUR-LEFT-THE-LAP says why). The move a width in and the
+        // operator's stretch where AgOpenWeb warned the lap can't be driven (the field narrows,
+        // the lap folds) are.
+        if (r.InChange && !_recovering) _change.Add((tool.E, tool.N)); else _driven.Add((tool.E, tool.N));
         // Near the lap's end the contour follows the strip where the operator moved in, and so
         // turns in towards the next lap before the operator takes over: that is the spiral a
         // contour makes, not the tractor leaving its pass.
@@ -1365,18 +1369,17 @@ public sealed class LapCorners
                 if (furtherIn(p) > 0.05) Add(p, furtherIn: true);
             }
         }
+        if (line.Count > 0 && furtherIn(line[^1]) > 0.05) Add(line[^1], furtherIn: true);
     }
 
     private void Add((double E, double N) p, bool furtherIn = false)
     {
+        // Tight turns and kinks apart: the ground a tight turn leaves is round its centre (the
+        // turning circle), a kink's crescent lies beside the line (half a width and 3 m).
         var key = ((int)Math.Floor(p.E / 5), (int)Math.Floor(p.N / 5));
-        if (!_points.TryGetValue(key, out var l)) _points[key] = l = new();
+        var into = furtherIn ? _furtherIn : _points;
+        if (!into.TryGetValue(key, out var l)) into[key] = l = new();
         l.Add(p);
-        if (furtherIn)
-        {
-            if (!_furtherIn.TryGetValue(key, out var f)) _furtherIn[key] = f = new();
-            f.Add(p);
-        }
     }
 
     // The lap line's points further in than its distance: the pass edges and the pass error
@@ -1384,9 +1387,9 @@ public sealed class LapCorners
     private readonly Dictionary<(int, int), List<(double E, double N)>> _furtherIn = new();
     private bool NearFurtherIn((double E, double N) p, double within)
     {
-        int bx = (int)Math.Floor(p.E / 5), by = (int)Math.Floor(p.N / 5);
-        for (int x = bx - 1; x <= bx + 1; x++)
-            for (int y = by - 1; y <= by + 1; y++)
+        int bx = (int)Math.Floor(p.E / 5), by = (int)Math.Floor(p.N / 5), n = (int)Math.Ceiling(within / 5);
+        for (int x = bx - n; x <= bx + n; x++)
+            for (int y = by - n; y <= by + n; y++)
                 if (_furtherIn.TryGetValue((x, y), out var l))
                     foreach (var q in l)
                         if ((q.E - p.E) * (q.E - p.E) + (q.N - p.N) * (q.N - p.N) < within * within) return true;
@@ -1418,6 +1421,7 @@ public sealed class LapCorners
             // Half a width and 3 m, or the turning circle: inside a hairpin of the innermost laps
             // the ground left is round the turn's centre, the radius from the tractor's path.
             double reach = Math.Max(r.Spec.T.Width / 2 + 3, r.Rig.Store.Guidance.UTurnRadius + 1);
+            double kinkReach = r.Spec.T.Width / 2 + 3;
             r.AtCorner = p =>
             {
                 int bx = (int)Math.Floor(p.E / 5), by = (int)Math.Floor(p.N / 5), n = (int)Math.Ceiling(reach / 5);
@@ -1426,7 +1430,7 @@ public sealed class LapCorners
                         if (_points.TryGetValue((x, y), out var l))
                             foreach (var q in l)
                                 if ((q.E - p.E) * (q.E - p.E) + (q.N - p.N) * (q.N - p.N) < reach * reach) return true;
-                return false;
+                return NearFurtherIn(p, kinkReach);
             };
         }
     }

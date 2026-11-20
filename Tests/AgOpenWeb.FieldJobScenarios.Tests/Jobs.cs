@@ -55,7 +55,7 @@ public static class Jobs
                 break;
             }
             Progress($"{job.Code} ({op}): {job.Title}");
-            await RunAsync(journal, op, job);
+            await RunAsync(journal, op, job, Evidence.FolderFor(path));
             await File.WriteAllTextAsync(path, toMarkdown(journal), CancellationToken.None);
         }
         Progress("done");
@@ -77,11 +77,15 @@ public static class Jobs
         string.IsNullOrEmpty(only) || only.Split(',').Select(o => o.Trim()).Any(o =>
             o.Length == 1 ? code.StartsWith(o, StringComparison.OrdinalIgnoreCase) : code.Equals(o, StringComparison.OrdinalIgnoreCase));
 
-    public static async Task<JobAreas?> RunAsync(Journal journal, string op, JobSpec spec)
+    public static async Task<JobAreas?> RunAsync(Journal journal, string op, JobSpec spec, string? evidenceFolder = null)
     {
+        // The evidence first: it clears the process's logs and the harness trace, and the
+        // scenario's banner is the trace's first line.
+        var ev = evidenceFolder != null && !Evidence.Off ? new Evidence(evidenceFolder, spec.Code) : null;
         var sc = new Scenario(op, spec.Code, spec.Title, spec.Story);
         JobAreas? areas = null;
         await using var run = new JobRun(spec, sc);
+        run.Ev = ev;
         try
         {
             if (await run.SetUpAsync(NewDataRoot(spec.Code)) && await run.DriveAsync())
@@ -102,8 +106,73 @@ public static class Jobs
         foreach (var p in run.Problems) if (!p.StartsWith("HARNESS", StringComparison.Ordinal)) sc.Note(p);
         sc.Row.Steps.AddRange(run.Said.Select(s => "  app: " + s));
         sc.ModuleSnapshot(run.Module, run.Seconds);
+        try { await KeepEvidenceAsync(sc, run, op); }
+        finally { run.Ev?.Close(); }
         journal.Add(sc.Row);
         return areas;
+    }
+
+    /// <summary>
+    /// A job with a finding leaves the app's bug report dump beside the report (Evidence), taken
+    /// here, at the end of the job with the field and the job still open: the fix is made and
+    /// proven from it, as from a tester's dump, without running the job again.
+    /// </summary>
+    private static async Task KeepEvidenceAsync(Scenario sc, JobRun run, string op)
+    {
+        if (run.Ev is not { } ev || run.Rig == null) return;
+        if (sc.Row.Findings.Count == 0 && !Evidence.All) return;
+        var notes = new System.Text.StringBuilder(Evidence.NotesHeader("Field job scenarios", run.Spec.Code, run.Spec.Title));
+        notes.Append(op).Append(" operator. ").Append(run.Spec.Story).Append("\n\n## Findings\n\n");
+        foreach (var f in sc.Row.Findings) notes.Append("- ").Append(f.Severity).Append(" `").Append(f.Code).Append("`: ").Append(f.Message).Append('\n');
+        if (sc.Row.Findings.Count == 0) notes.Append("none\n");
+        notes.Append("\n## Measured\n\n");
+        foreach (var (k, v) in sc.Row.Metrics) notes.Append("- ").Append(k).Append(": ").Append(v).Append('\n');
+        notes.Append("\n## Checks\n\n");
+        foreach (var c in sc.Row.Checks) notes.Append("- ").Append(c).Append('\n');
+        notes.Append("\n## Timeline\n\n");
+        foreach (var s in sc.Row.Steps) notes.Append(s).Append('\n');
+
+        // The picture of the job (what was sprayed, the track) and the harness's grids, when the
+        // job got as far as driving.
+        var files = new List<string>();
+        string tmp = Path.Combine(Path.GetTempPath(), "agopenweb-field-job", run.Spec.Code + "-" + Guid.NewGuid().ToString("N")[..6]);
+        string picture = Path.Combine(tmp, run.Spec.Code + ".ppm");
+        string bin = Path.Combine(tmp, "truth_grid.bin"), json = Path.Combine(tmp, "truth_grid.json");
+        string bins = Path.Combine(tmp, "pass_bins.csv"), gaps = Path.Combine(tmp, "pass_gaps.csv");
+        if (run.Track.Count > 0)
+        {
+            // Each kept on its own: one that fails leaves the others, and the notes list only those kept.
+            void Keep(string what, Action write, params string[] paths)
+            {
+                try { write(); files.AddRange(paths); }
+                catch (Exception ex) { sc.Note("evidence: no " + what + " of the job (" + ex.Message + ")"); }
+            }
+            try { Directory.CreateDirectory(tmp); } catch { }
+            Keep("picture", () => run.DumpImage(picture), picture);
+            Keep("grids", () => run.DumpGrids(bin, json), bin, json);
+            Keep("pass bins", () => run.DumpPassBins(bins, gaps), bins, gaps);
+        }
+
+        // What the harness itself measured, listed only where the job got far enough to have it.
+        bool drove = files.Count > 0, tracked = ev.HasTable("truth_track");
+        notes.Append("\n## The harness's own data (attachments/)\n\n")
+             .Append("To check a finding against what the harness measured, the app's dump aside:\n\n");
+        if (tracked)
+            notes.Append("- `truth_track.csv`: what the harness's machine really did, fix by fix: the real pivot and implement, the module's relays and nozzles, the screen's sections, and AgOpenWeb's tool position and sections for the same cycle (").Append(JobRun.TruthTrackHeader).Append(").\n");
+        if (files.Contains(bin))
+            notes.Append("- `truth_grid.bin` with `truth_grid.json`: the harness's 0.2 m grid over the field: where the real implement sprayed, the zones, the cells each area check counted (bit 32 is SPRAYED-IN-HEADLAND, 2 MISSED-STRIPS, ...: see the json), and what AgOpenWeb's screen and mapping swept.\n");
+        if (files.Contains(bins))
+            notes.Append("- `pass_bins.csv`: each pass as the harness recorded it, in 1 m bins along its frame (").Append(run.FrameWords).Append("): the sprayed width's edges in u, where the tool was on average and its way, the fixes, and whether the bin counts as settling after a turn or bending (").Append(JobRun.PassBinsHeader).Append(").\n")
+                 .Append("- `pass_gaps.csv`: every gap the strip check read between neighbouring passes (+ a gap, - an overlap), where, and what it counted as: `settling`, `bend`, or `along` (the widest of these is MISSED-STRIPS'; the widest overlap of all, DOUBLE-SPRAYED's) (").Append(JobRun.PassGapsHeader).Append(").\n");
+        if (files.Contains(picture))
+            notes.Append("- the picture (`.ppm`): green sprayed once, yellow twice, blue/cyan/magenta AgOpenWeb's map where nothing was sprayed, red the cells a Bug check counted; white the path, orange in the U-turns.\n");
+        notes.Append("- `harness_trace.txt`: the harness's own trace lines.\n");
+        if (!tracked && !drove) notes.Append("- the job stopped before it drove: no track, grid or picture.\n");
+
+        string? zip = await ev.SaveAsync(null, notes.ToString(), run.Rig.Services, run.Rig.State, run.Rig.Store, run.Rig.RunAsync, files);
+        try { Directory.Delete(tmp, true); } catch { }
+        if (zip != null) sc.Note("evidence (the app's bug report dump at the end of the job): `evidence/" + Path.GetFileName(zip) + "`");
+        foreach (var e in ev.Errors) sc.Note("evidence not kept: " + e);
     }
 
     /// <summary>The checks a job must pass. Thresholds in metres and square metres, with the
@@ -205,7 +274,7 @@ public static class Jobs
         if (a.MissedAtLapChange > 0)
             sc.Note(F($"{a.MissedAtLapChange:0} m² ({Pct(a.MissedAtLapChange, a.Work)}) where the operator moved a width in by hand at the end of a lap were never sprayed: the implement crossing from one lap to the next"));
         if (a.MissedAtCorners > 0)
-            sc.Note(F($"{a.MissedAtCorners:0} m² ({Pct(a.MissedAtCorners, a.Work)}) at the laps' corners were never sprayed: a lap is rounded where it turns tighter than the rig can (the U-turn radius, {r.Rig.Store.Guidance.UTurnRadius:0} m), so at a corner the next lap in pulls away from it"));
+            sc.Note(F($"{a.MissedAtCorners:0} m² ({Pct(a.MissedAtCorners, a.Work)}) at corners were never sprayed: a lap is rounded where it turns tighter than the rig can (the U-turn radius, {r.Rig.Store.Guidance.UTurnRadius:0} m), and a lap or a curve's pass line cuts a chord across a notch in its reference, so there the next one in pulls away from it"));
 
         // ---- strips between passes
         if (a.MissedAtObstacles > 0)
@@ -229,6 +298,10 @@ public static class Jobs
             flag(Severity.Bug, "MISSED-STRIPS", F($"strips of ground between neighbouring passes were never sprayed: {a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}), the widest {a.LargestMissedStripM:0.00} m{(a.LargestStripWhere.Length > 0 ? " " + a.LargestStripWhere : "")}; the strips centre on ({a.MissedBetweenE / Math.Max(a.MissedBetweenPasses, 1e-9):0},{a.MissedBetweenN / Math.Max(a.MissedBetweenPasses, 1e-9):0}). AgOpenWeb's passes are {r.Spacing:0.00} m apart for a {spec.T.Width:0.00} m implement with {spec.T.Overlap:0.00} m overlap."));
         else
             sc.Ok(F($"no strip was left between passes (widest {a.LargestMissedStripM:0.00} m, {a.MissedBetweenPasses:0} m² in all)"));
+        if (a.LargestBendStripM > 0.15 + askedGap)
+            sc.Note(F($"where a pass bends sharply (faster than {JobRun.BendDegPerM:0} ° per metre), the widest gap to the pass beside it was {a.LargestBendStripM:0.00} m ({a.LargestBendWhere}): AutoSteer cutting the inside of the bend, or running wide of it, for a few metres, as any line following does"));
+        if (a.LargestSettlingStripM > 0.15 + askedGap)
+            sc.Note(F($"where a pass starts, the implement still settling onto it after the U-turn handed back (the first {JobRun.SettlingM:0} m of its edges), the widest gap to the pass beside it was {a.LargestSettlingStripM:0.00} m ({a.LargestSettlingWhere}): a wedge at the start of the pass, closing as the implement comes onto its line, as in AgOpenGPS"));
         // ---- the edge of a field worked with no headland (laps along the boundary)
         if (r.Work == null)
         {
@@ -261,12 +334,16 @@ public static class Jobs
         {
             // A section is in the headland only with both its ends in it (AgOpenGPS): where a pass
             // meets the headland line at an angle, up to a section's width lands past the line so
-            // that nothing inside it is left unsprayed. Only spray further in is a fault.
-            double widest = Enumerable.Range(0, spec.T.Sections).Max(k => spec.T.SectionCm(k)) / 100.0;
+            // that nothing inside it is left unsprayed. Only spray further in is a fault. A
+            // reversible plough works FieldOffset to one side of where AgOpenWeb shows it (J19): its
+            // spray is measured where AgOpenWeb's plough was (JobRun.Measure).
+            double widest = spec.T.HeadlandAllowance;
+            string where = spec.T.FieldOffset == 0 ? ""
+                : F($" (measured where AgOpenWeb shows the implement, {Math.Abs(spec.T.FieldOffset):0.0} m to one side of where it works)");
             if (a.InHeadlandPastSection > 20)
-                flag(Severity.Bug, "SPRAYED-IN-HEADLAND", F($"{a.InHeadlandPastSection:0} m² of the headland were sprayed further past the headland line than a section's width ({widest:0.00} m), with section control in the headland on (the sections should be off there); {a.InHeadland:0} m² in all."));
+                flag(Severity.Bug, "SPRAYED-IN-HEADLAND", F($"{a.InHeadlandPastSection:0} m² of the headland were sprayed further past the headland line than a section's width ({widest:0.00} m){where}, with section control in the headland on (the sections should be off there); {a.InHeadland:0} m² in all."));
             else
-                sc.Ok(F($"the headland was left alone: {a.InHeadland:0} m² sprayed in it, all within a section's width ({widest:0.00} m) of the line, where a section crosses it at an angle and stays on until both its ends are in (AgOpenGPS)"));
+                sc.Ok(F($"the headland was left alone: {a.InHeadland:0} m² sprayed in it, all within a section's width ({widest:0.00} m) of the line{where}, where a section crosses it at an angle and stays on until both its ends are in (AgOpenGPS)"));
         }
 
         // ---- the map against the valves

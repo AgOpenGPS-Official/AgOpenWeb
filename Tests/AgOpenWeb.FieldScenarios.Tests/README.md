@@ -42,10 +42,23 @@ output folder, or to `AGOPENWEB_SCENARIO_REPORT`. Other switches:
 | `AGOPENWEB_SCENARIO_REPORT=path.md` | where to write the report |
 | `AGOPENWEB_SCENARIO_ONLY=Olival` | only fields whose name contains this (the careless operator uses the first) |
 | `AGOPENWEB_SCENARIO_VERBOSE=1` | every step and finding to the test output |
+| `AGOPENWEB_SCENARIO_EVIDENCE=all` / `0` | evidence also at the end of every scenario / none |
 
 The tests fail only when the harness itself breaks, a step throws out of the harness, or the
 host loop hangs. The findings are the product: the report lists each kind once, most serious
 first, with the step that caused it, followed by every step's log.
+
+**Evidence.** Each kind of finding leaves the app's bug report dump, taken right after the step
+where it was first seen in the run, before the next step changes anything:
+`evidence/<scenario>-step<N>.zip` beside the report (named in the report under the finding; the
+nightly keeps the folder as the `field-scenarios-evidence` artifact). It holds what a tester's
+dump holds (settings, state, the field's files, the app's log and GPS log), the whole scenario's
+log and GPS log, the scenario's steps in `user_notes.txt`, and `attachments/commands.txt`: what
+the operator did in the run up to that step, every command as the web client sends it
+(`id|arg`), every placing and drive of the tractor and every import file. The fix is made from
+it and proven by a unit test built from it (failing on develop, passing on the fix); the
+harness is not run again to look (`Tests/ScenarioShared/Evidence.cs`,
+`Plans/HARNESS_EVIDENCE_PLAN.md`).
 
 `DiagTests.cs` holds explicit experiments used to confirm findings (headland on a field with
 obstacles, heading after placing the tractor).

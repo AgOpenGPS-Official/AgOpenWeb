@@ -47,7 +47,7 @@ public sealed class SimpleWebServer
     private readonly List<(string Prefix, Func<string, Task<Response>> Handler)> _prefix = new();
     private readonly Dictionary<string, (Func<PostRequest, Task<Response>> Handler, int MaxBody)> _post = new(StringComparer.Ordinal);
     private string? _wsPath;
-    private Func<WebSocket, CancellationToken, Task>? _wsHandler;
+    private Func<WebSocket, string, CancellationToken, Task>? _wsHandler;
 
     private TcpListener? _listener;
     private CancellationTokenSource? _cts;
@@ -73,7 +73,7 @@ public sealed class SimpleWebServer
     /// a larger one is answered 413 without being read.</summary>
     public void MapPost(string path, int maxBodyBytes, Func<PostRequest, Task<Response>> handler) =>
         _post[path] = (handler, maxBodyBytes);
-    public void MapWebSocket(string path, Func<WebSocket, CancellationToken, Task> handler)
+    public void MapWebSocket(string path, Func<WebSocket, string, CancellationToken, Task> handler)
     {
         _wsPath = path;
         _wsHandler = handler;
@@ -153,7 +153,8 @@ public sealed class SimpleWebServer
                     && req.Headers.TryGetValue("upgrade", out var up)
                     && up.Contains("websocket", StringComparison.OrdinalIgnoreCase))
                 {
-                    await UpgradeWebSocketAsync(stream, req, ct).ConfigureAwait(false);
+                    await UpgradeWebSocketAsync(stream, req,
+                        (client.Client.RemoteEndPoint as IPEndPoint)?.Address.ToString() ?? "?", ct).ConfigureAwait(false);
                     return; // socket is now owned by the WebSocket handler
                 }
 
@@ -292,7 +293,7 @@ public sealed class SimpleWebServer
 
     // ---- WebSocket upgrade (RFC 6455) ----
 
-    private async Task UpgradeWebSocketAsync(NetworkStream stream, Request req, CancellationToken ct)
+    private async Task UpgradeWebSocketAsync(NetworkStream stream, Request req, string from, CancellationToken ct)
     {
         if (_wsHandler is null) return;
         if (!req.Headers.TryGetValue("sec-websocket-key", out var key))
@@ -319,7 +320,7 @@ public sealed class SimpleWebServer
         // WebSocketHub.HandleAsync already owns (seed, drain, close).
         var socket = WebSocket.CreateFromStream(stream, new WebSocketCreationOptions { IsServer = true });
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct); // server shutdown cancels clients
-        try { await _wsHandler(socket, linked.Token).ConfigureAwait(false); }
+        try { await _wsHandler(socket, from, linked.Token).ConfigureAwait(false); }
         catch { /* the hub owns the socket lifetime; a fault just ends this client */ }
         finally { try { socket.Dispose(); } catch { } }
     }

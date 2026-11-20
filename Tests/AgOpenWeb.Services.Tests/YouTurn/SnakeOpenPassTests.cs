@@ -110,6 +110,37 @@ public class SnakeOpenPassTests
     }
 
     [Test]
+    public void The_arrow_pointing_the_order_s_way_keeps_the_nearest_pass_on_that_side()
+    {
+        // As above, and the operator's arrow says east (left, heading south): the way the order
+        // goes. East has no pass with room at this end, so there is no turn; the arrow was taken
+        // only when it asked for the other side, and the turn went west onto pass 4.
+        var cultivated = Hourglass();
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = 6, IsHeadingSameWay = false };
+        var turn = new YouTurnWorkingState { IsEnabled = true, NextUTurnDirectionLeftOverride = true };
+
+        var effects = _sm.Tick(Ctx(cultivated, PassX(6), -25, 180), guidance, turn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.TurnPath, Is.Null, $"no turn against the arrow (aimed at {turn.ReturnPassTargetPath})");
+            Assert.That(effects.StatusMessage, Does.StartWith("No U-turn onto the next pass"));
+            Assert.That(effects.TurnCreationFailedSound, Is.True);
+        });
+
+        // Tried again 1.5 s later: still on the arrow's side.
+        for (int i = 1; i <= 16; i++)
+            _sm.Tick(Ctx(cultivated, PassX(6), -25 - 0.2 * i, 180), guidance, turn);
+        Assert.That(turn.TurnPath, Is.Null, $"the retry turned against the arrow (onto {turn.ReturnPassTargetPath})");
+
+        // The arrow the other way: west, onto pass 4.
+        turn.NextUTurnDirectionLeftOverride = false;
+        _sm.Tick(Ctx(cultivated, PassX(6), -28.4, 180), guidance, turn);
+        Assert.That(turn.ReturnPassTargetPath, Is.EqualTo(4));
+        Assert.That(turn.TurnPath, Is.Not.Null);
+    }
+
+    [Test]
     public void No_pass_still_to_do_with_room_here_is_still_no_room_at_this_end()
     {
         // As above with every pass west of the notch worked: only the short passes east are left.
@@ -296,9 +327,18 @@ public class SnakeOpenPassTests
         // The other way along the pass: the north end.
         TriedAgain("the other direction", Ctx(cultivated, PassX(1), 18, 0));
 
-        // Closer than 10 m to the end, Tick stops looking for a turn. Looking again (a pass that
-        // crosses a headland strip has another end past it) tries again.
-        _sm.Tick(Ctx(cultivated, PassX(1), 39, 0), guidance, turn);
+        // Closer than 10 m to the end, Tick stops looking for a turn. A short spell of that is a
+        // heading or a distance flickering at the edge of the gate (FailedEndRetryTests): the end
+        // is kept.
+        for (int i = 0; i < 3; i++)
+            _sm.Tick(Ctx(cultivated, PassX(1), 39, 0), guidance, turn);
+        _sm.Tick(Ctx(cultivated, PassX(1), 18, 0), guidance, turn);
+        Assert.That(_creation.TurnPathBuilds, Is.EqualTo(builds), "a short spell out of the gate keeps the end");
+
+        // Looking again after 1.5 s of that (a pass that crosses a headland strip has another end
+        // past it) tries again.
+        for (int i = 0; i < 15; i++)
+            _sm.Tick(Ctx(cultivated, PassX(1), 39, 0), guidance, turn);
         TriedAgain("after Tick stopped looking for a turn", Ctx(cultivated, PassX(1), 18, 0));
 
         // A smaller turn radius: the operator makes it fit.

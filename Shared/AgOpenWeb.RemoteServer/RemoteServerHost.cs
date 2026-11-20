@@ -274,6 +274,11 @@ public sealed class RemoteServerHost
     }
     private Action<string, string>? _commandHandler;
 
+    /// <summary>Lines for the app's log about the browsers: arriving, leaving and why, a deadman
+    /// with the state of the link, what each page saw of itself (<see cref="WebSocketHub.Log"/>).
+    /// Set before <see cref="StartAsync"/>, so the first browser is logged too.</summary>
+    public Action<string>? BrowserLog { get; set; }
+
     /// <summary>True for a command id that needs control — honored only while the
     /// sending client holds fresh control authority.</summary>
     public Func<string, bool>? IsRestrictedCommand
@@ -312,7 +317,7 @@ public sealed class RemoteServerHost
             configService, autoSteer, smartWas, udp, ntripProfiles, fields, settings,
             vehicleProfiles, persist, ntrip);
         var coverageProjector = new CoverageProjector(coverage);
-        _ws = new WebSocketHub(authority);
+        _ws = new WebSocketHub(authority) { Log = BrowserLog };
         _broadcaster = new MapBroadcaster(_ws, sceneProjector, coverage, coverageProjector, authority);
 
         // Hook the WS hub for inbound commands + apply any providers/handlers set
@@ -360,7 +365,7 @@ public sealed class RemoteServerHost
 
         // The /ws receive loop's token is linked to the server's shutdown inside
         // SimpleWebServer, so StopAsync cancels connected browsers promptly.
-        server.MapWebSocket("/ws", (socket, ct) => _ws.HandleAsync(socket, ct));
+        server.MapWebSocket("/ws", (socket, from, ct) => _ws.HandleAsync(socket, ct, from));
 
         // The UI bundle (HTML + JS) ships inside the app and changes with every build, and
         // the server is in-process on localhost — so there's no value in caching it, and a

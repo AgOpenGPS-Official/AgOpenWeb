@@ -461,7 +461,10 @@ const transport = RemoteTransport.create({
     if (document.getElementById('boundarymenu').classList.contains('open')) renderBoundaryMenu();
     if (document.getElementById('boundaryplayer').classList.contains('open')) renderBoundaryPlayer();
   },
-  onWizard(w) { wizard = w; wizardDirty = true; },
+  onWizard(w) {
+    if (w.closed) { wzHostClosed(); return; } // the host closed it (js/wizards.js); the last live frame stays
+    wizard = w; wizardDirty = true;
+  },
   onHello(id, features) {
     // The switchable features this host runs (SwitchedFeature bits): the rest stay
     // hidden (the fs-no-* classes on the body, css/base.css).

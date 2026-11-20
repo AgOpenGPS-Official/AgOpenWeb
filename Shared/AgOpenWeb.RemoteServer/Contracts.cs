@@ -135,7 +135,8 @@ public record TickDto(
     // FieldState.HeadlandProximityDistance/…Warning.
     double HeadlandProximityDistance,
     bool HeadlandProximityWarning,
-    // Steer-bar value: steer-angle error (actual WAS − commanded guidance angle, deg).
+    // Steer-bar value: steer-angle error (the wheels' angle − commanded guidance angle, deg): the
+    // module's WAS, or the simulator's angle while it drives and doesn't move the real steering.
     // The web top bar shows this in steer-bar mode (light-bar mode uses CrossTrackError).
     double SteerAngleError,
     // Diagnostic-chart scalars (Tools panel: Steer / Heading / XTE charts). Streamed
@@ -509,7 +510,15 @@ public record WizardDto(
     string TestPhase, string TestResult, double TestProgress, bool TestActive,
     bool RtkFixed, string FixLabel, double Diameter,
     // Circle-test feedback (#154): why Record can't start / a fix warning, and whether it can.
-    string RecordHint, bool CanRecord);
+    string RecordHint, bool CanRecord,
+    // The host closed the wizard (the screen in control went): no live state, only this.
+    bool Closed = false)
+{
+    /// <summary>The wizard the host closed (MainViewModel.SteerWizardClosedByHost).</summary>
+    public static readonly WizardDto ClosedByHost = new(
+        0, 0, "", "", "", false, false, false, false, "",
+        0, 0, "", 0, 0, false, 0, 0, 0, 0, "", "", 0, false, false, "", 0, "", false, Closed: true);
+}
 
 /// <summary>Vehicle tab: type / hitch / dimensions / antenna (ConfigStore.Vehicle).</summary>
 public record VehicleConfigDto(

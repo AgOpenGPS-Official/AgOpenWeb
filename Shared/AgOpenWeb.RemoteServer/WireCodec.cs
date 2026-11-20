@@ -511,6 +511,7 @@ public static class WireCodec
         bw.Write((float)w.Diameter);
         WriteStr(bw, w.RecordHint);
         B(w.CanRecord);
+        B(w.Closed);
         return ms.ToArray();
     }
 

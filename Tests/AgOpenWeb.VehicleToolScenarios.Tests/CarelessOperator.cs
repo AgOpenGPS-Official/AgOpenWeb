@@ -120,8 +120,7 @@ public static class CarelessOperator
         foreach (var d in Drives())
         {
             if (only != null && !(d.Code + " " + d.Mistake).Contains(only, StringComparison.OrdinalIgnoreCase)) continue;
-            var row = await Drive.RunAsync(journal, Name, d);
-            Judge(journal, row, d);
+            await Drive.RunAsync(journal, Name, d, row => Judge(journal, row, d));
         }
         if (only == null || "settings".Contains(only, StringComparison.OrdinalIgnoreCase))
             await SettingsAsync(journal);
@@ -271,69 +270,91 @@ public static class CarelessOperator
     {
         string dir = Path.Combine(Drive.DataRootBase, "settings-" + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(dir);
+        var ev = new VtEvidence(journal, "careless-settings", "Settings typed wrong: what the app kept");
+        const string Taken = "right after the wrong setting was typed, before the harness put the careful settings back";
         try
         {
             await using var rig = await VehicleToolRig.StartAsync(dir);
-            var careful = Drive.Careful(Puma, Boom, Um);
-            async Task Restore()
+            try
             {
-                await rig.SendAsync("config.set", "tool.type:rear");
-                foreach (var kv in careful) await rig.SendAsync("config.set", kv);
-                foreach (var kv in new[] { "tool.lookAheadOn:1", "tool.lookAheadOff:0.5", "tool.turnOffDelay:0", "tool.slowSpeedCutoff:0.5", "tool.minCoverage:100", "tool.coverageMargin:0", "tool.zones:2", "gps.minGpsStep:0.05", "gps.fixToFixDistance:1", "roll.rollFilter:0" })
-                    await rig.SendAsync("config.set", kv);
-            }
-            await Restore();
-            rig.TakeEvents();
-            foreach (var b in BadSettings())
-            {
-                var before = await rig.ReadAsync(() => Derived(rig.Store));
-                string key = Readback.KeyOf(b.Setting);
-                await rig.SendAsync("config.set", b.Setting);
-                await rig.WaitForVmAsync();
-                string kept = await rig.ReadAsync(() => Readback.Get(rig.Store, key));
-                var after = await rig.ReadAsync(() => Derived(rig.Store));
-                var row = new SettingRow { Group = b.Group, What = b.What, Sent = b.Setting, Stored = kept };
-                row.Effect = string.Join("; ", after.Where(kv => before[kv.Key] != kv.Value).Select(kv => kv.Key + " " + before[kv.Key] + " → " + kv.Value));
-                row.Said.AddRange(rig.TakeEvents().Where(Drive.Spoken).Select(e => e.ToString()));
-                journal.Settings.Add(row);
-
-                string where = "settings: " + b.What;
-                if (row.Said.Any(m => m.StartsWith("Exception", StringComparison.Ordinal) || m.StartsWith("Error", StringComparison.Ordinal)))
-                    Add(journal, row, new Finding("SET-THROWS-" + key, Severity.Bug, b.Setting + " threw on the host: " + row.Said[0]), where);
-                bool accepted = Readback.Same(Readback.ValueOf(b.Setting), kept)
-                    || (key == "tool.type" && kept == "none");
-                if (b.Impossible && accepted && row.Said.Count == 0)
-                    Add(journal, row, new Finding("ACCEPT-" + key.Split(':')[0], Severity.Robustness,
-                        $"{key.Split(':')[0]} takes impossible values with no word (e.g. {Readback.ValueOf(b.Setting)}){(row.Effect.Length > 0 ? ": " + row.Effect : "")}"), where);
+                ev.Attach(rig);
+                ev.Log("# the careful operator's settings (Puma + 8 m boom), then each wrong setting in turn, the careful ones put back after each");
+                var careful = Drive.Careful(Puma, Boom, Um);
+                async Task Restore()
+                {
+                    await rig.SendAsync("config.set", "tool.type:rear");
+                    foreach (var kv in careful) await rig.SendAsync("config.set", kv);
+                    foreach (var kv in new[] { "tool.lookAheadOn:1", "tool.lookAheadOff:0.5", "tool.turnOffDelay:0", "tool.slowSpeedCutoff:0.5", "tool.minCoverage:100", "tool.coverageMargin:0", "tool.zones:2", "gps.minGpsStep:0.05", "gps.fixToFixDistance:1", "roll.rollFilter:0" })
+                        await rig.SendAsync("config.set", kv);
+                }
                 await Restore();
                 rig.TakeEvents();
+                int step = 0;
+                foreach (var b in BadSettings())
+                {
+                    step++;
+                    ev.Log("# " + b.Group + ": " + b.What);
+                    var before = await rig.ReadAsync(() => Derived(rig.Store));
+                    string key = Readback.KeyOf(b.Setting);
+                    await rig.SendAsync("config.set", b.Setting);
+                    await rig.WaitForVmAsync();
+                    string kept = await rig.ReadAsync(() => Readback.Get(rig.Store, key));
+                    var after = await rig.ReadAsync(() => Derived(rig.Store));
+                    var row = new SettingRow { Group = b.Group, What = b.What, Sent = b.Setting, Stored = kept };
+                    row.Effect = string.Join("; ", after.Where(kv => before[kv.Key] != kv.Value).Select(kv => kv.Key + " " + before[kv.Key] + " → " + kv.Value));
+                    row.Said.AddRange(rig.TakeEvents().Where(Drive.Spoken).Select(e => e.ToString()));
+                    journal.Settings.Add(row);
+
+                    string where = "settings: " + b.What;
+                    if (row.Said.Any(m => m.StartsWith("Exception", StringComparison.Ordinal) || m.StartsWith("Error", StringComparison.Ordinal)))
+                        Add(journal, row, new Finding("SET-THROWS-" + key, Severity.Bug, b.Setting + " threw on the host: " + row.Said[0]), where);
+                    bool accepted = Readback.Same(Readback.ValueOf(b.Setting), kept)
+                        || (key == "tool.type" && kept == "none");
+                    if (b.Impossible && accepted && row.Said.Count == 0)
+                        Add(journal, row, new Finding("ACCEPT-" + key.Split(':')[0], Severity.Robustness,
+                            $"{key.Split(':')[0]} takes impossible values with no word (e.g. {Readback.ValueOf(b.Setting)}){(row.Effect.Length > 0 ? ": " + row.Effect : "")}"), where);
+                    await ev.KeepIfNewAsync(rig, Drive.F($"step{step:00}-{key.Split(':')[0]}"), Taken, () => SettingNotes(row));
+                    await Restore();
+                    rig.TakeEvents();
+                }
+
+                // A harvester takes only front tools (#111): asking for another type is silently ignored.
+                ev.Log("# a trailed implement behind a combine");
+                await rig.SendAsync("config.set", "vehicle.type:1");
+                await rig.SendAsync("config.set", "tool.type:trailing");
+                string t1 = await rig.ReadAsync(() => Readback.Get(rig.Store, "tool.type"));
+                var hrow = new SettingRow { Group = "Implement", What = "Trailed implement behind a combine", Sent = "vehicle.type:1, tool.type:trailing", Stored = t1, Effect = t1 == "front" ? "kept as front (#111)" : "" };
+                hrow.Said.AddRange(rig.TakeEvents().Where(Drive.Spoken).Select(e => e.ToString()));
+                journal.Settings.Add(hrow);
+                if (t1 == "front" && hrow.Said.Count == 0)
+                    Add(journal, hrow, new Finding("HARVESTER-TYPE-SILENT", Severity.Improvement,
+                        "on a combine the implement type stays front whatever the operator picks (#111), and nothing says why"), "settings: trailed implement behind a combine");
+                await ev.KeepIfNewAsync(rig, "harvester-type", "right after the step", () => SettingNotes(hrow));
+                await rig.SendAsync("config.set", "vehicle.type:0");
+                await Restore();
+
+                // A negative drawbar typed live is used as typed; a profile load turns it positive.
+                ev.Log("# a negative drawbar, saved and loaded again");
+                await rig.SendAsync("config.set", "tool.type:trailing");
+                await rig.SendAsync("config.set", "tool.trailingHitchLength:-4");
+                await rig.SendAsync("profile.save");
+                string live = await rig.ReadAsync(() => Readback.Get(rig.Store, "tool.trailingHitchLength"));
+                await rig.SendAsync("profile.load", rig.Store.ActiveVehicleProfileName + "\t" + rig.Store.ActiveToolProfileName);
+                string loaded = await rig.ReadAsync(() => Readback.Get(rig.Store, "tool.trailingHitchLength"));
+                var trow = new SettingRow { Group = "Implement", What = "Negative drawbar, saved and loaded again", Sent = "tool.trailingHitchLength:-4, profile.save, profile.load", Stored = live + " live, " + loaded + " after a load" };
+                journal.Settings.Add(trow);
+                if (live != loaded)
+                    Add(journal, trow, new Finding("DRAWBAR-SIGN-ON-LOAD", Severity.Inconsistency,
+                        $"a negative drawbar is used as typed ({live} m) until the profile is loaded again, then it is {loaded} m: the implement moves after a restart"), "settings: negative drawbar");
+                await ev.KeepIfNewAsync(rig, "drawbar", "right after the step", () => SettingNotes(trow), end: true);
             }
-
-            // A harvester takes only front tools (#111): asking for another type is silently ignored.
-            await rig.SendAsync("config.set", "vehicle.type:1");
-            await rig.SendAsync("config.set", "tool.type:trailing");
-            string t1 = await rig.ReadAsync(() => Readback.Get(rig.Store, "tool.type"));
-            var hrow = new SettingRow { Group = "Implement", What = "Trailed implement behind a combine", Sent = "vehicle.type:1, tool.type:trailing", Stored = t1, Effect = t1 == "front" ? "kept as front (#111)" : "" };
-            hrow.Said.AddRange(rig.TakeEvents().Where(Drive.Spoken).Select(e => e.ToString()));
-            journal.Settings.Add(hrow);
-            if (t1 == "front" && hrow.Said.Count == 0)
-                Add(journal, hrow, new Finding("HARVESTER-TYPE-SILENT", Severity.Improvement,
-                    "on a combine the implement type stays front whatever the operator picks (#111), and nothing says why"), "settings: trailed implement behind a combine");
-            await rig.SendAsync("config.set", "vehicle.type:0");
-            await Restore();
-
-            // A negative drawbar typed live is used as typed; a profile load turns it positive.
-            await rig.SendAsync("config.set", "tool.type:trailing");
-            await rig.SendAsync("config.set", "tool.trailingHitchLength:-4");
-            await rig.SendAsync("profile.save");
-            string live = await rig.ReadAsync(() => Readback.Get(rig.Store, "tool.trailingHitchLength"));
-            await rig.SendAsync("profile.load", rig.Store.ActiveVehicleProfileName + "\t" + rig.Store.ActiveToolProfileName);
-            string loaded = await rig.ReadAsync(() => Readback.Get(rig.Store, "tool.trailingHitchLength"));
-            var trow = new SettingRow { Group = "Implement", What = "Negative drawbar, saved and loaded again", Sent = "tool.trailingHitchLength:-4, profile.save, profile.load", Stored = live + " live, " + loaded + " after a load" };
-            journal.Settings.Add(trow);
-            if (live != loaded)
-                Add(journal, trow, new Finding("DRAWBAR-SIGN-ON-LOAD", Severity.Inconsistency,
-                    $"a negative drawbar is used as typed ({live} m) until the profile is loaded again, then it is {loaded} m: the implement moves after a restart"), "settings: negative drawbar");
+            catch (Exception ex)
+            {
+                journal.Add(new Finding("HARNESS", Severity.Bug, "the settings checks threw " + ex.GetType().Name + ": " + ex.Message), "settings");
+                // While its backend still runs: the dump is the state it threw in.
+                await ev.KeepIfNewAsync(rig, "threw", "right after the checks threw, the backend still running");
+                return;   // the checks after it build on what threw
+            }
         }
         catch (Exception ex)
         {
@@ -341,9 +362,16 @@ public static class CarelessOperator
         }
         finally
         {
+            ev.Close();
             try { Directory.Delete(dir, true); } catch { }
         }
     }
+
+    /// <summary>A settings or profile step in the dump's notes.</summary>
+    private static string SettingNotes(SettingRow r) =>
+        "## The step\n\n" + r.Group + ": " + r.What + "\n\n- sent: `" + r.Sent + "`\n- kept: " + r.Stored
+        + (r.Effect.Length > 0 ? "\n- effect: " + r.Effect : "")
+        + (r.Said.Count > 0 ? "\n- said: " + string.Join(" / ", r.Said) : "\n- said: nothing") + "\n";
 
     private static void Add(Journal journal, SettingRow row, Finding f, string where)
     {
@@ -357,156 +385,203 @@ public static class CarelessOperator
     {
         string dir = Path.Combine(Drive.DataRootBase, "names-" + Guid.NewGuid().ToString("N")[..6]);
         Directory.CreateDirectory(dir);
+        var ev = new VtEvidence(journal, "careless-profiles", "Profiles: odd names and the picker's buttons used the wrong way");
         try
         {
             await using (var rig = await VehicleToolRig.StartAsync(dir))
             {
-                string vehDir = await rig.ReadAsync(() => rig.Config.ProfilesDirectory);
-                async Task<List<string>> Vehicles() => await rig.ReadAsync(() => rig.Config.GetAvailableProfiles().ToList());
-                async Task<SettingRow> Step(string what, string sent, Func<Task> act)
+                try
                 {
-                    rig.TakeEvents();
-                    var row = new SettingRow { Group = "Profiles", What = what, Sent = sent };
-                    try { await act(); }
-                    catch (Exception ex) { row.Said.Add("threw " + ex.GetType().Name + ": " + ex.Message); }
-                    await rig.WaitForVmAsync();
-                    row.Said.AddRange(rig.TakeEvents().Where(Drive.Spoken).Select(e => e.ToString()));
-                    journal.Settings.Add(row);
-                    return row;
-                }
-                string Active() => rig.Store.ActiveVehicleProfileName + " / " + rig.Store.ActiveToolProfileName;
+                    ev.Attach(rig);
+                    int n = 0;
+                    // After each step's checks, before the next action: a finding's dump shows the step's state.
+                    Task Keep(SettingRow r) => ev.KeepIfNewAsync(rig, Drive.F($"step{++n:00}"), "right after the step, before the next action", () => SettingNotes(r));
+                    string vehDir = await rig.ReadAsync(() => rig.Config.ProfilesDirectory);
+                    async Task<List<string>> Vehicles() => await rig.ReadAsync(() => rig.Config.GetAvailableProfiles().ToList());
+                    async Task<SettingRow> Step(string what, string sent, Func<Task> act)
+                    {
+                        ev.Log("# " + what);
+                        rig.TakeEvents();
+                        var row = new SettingRow { Group = "Profiles", What = what, Sent = sent };
+                        try { await act(); }
+                        catch (Exception ex) { row.Said.Add("threw " + ex.GetType().Name + ": " + ex.Message); }
+                        await rig.WaitForVmAsync();
+                        row.Said.AddRange(rig.TakeEvents().Where(Drive.Spoken).Select(e => e.ToString()));
+                        journal.Settings.Add(row);
+                        return row;
+                    }
+                    string Active() => rig.Store.ActiveVehicleProfileName + " / " + rig.Store.ActiveToolProfileName;
 
-                // The Puma, done right, as the starting point.
-                await rig.SendAsync("profile.new", "vehicle\tPuma");
-                await rig.SendAsync("profile.new", "tool\tSprayer");
-                await rig.SendAsync("profile.load", "Puma\tSprayer");
-                foreach (var kv in Drive.Careful(Puma, Boom, Um)) await rig.SendAsync("config.set", kv);
-                await rig.SendAsync("profile.save");
-
-                // A slash in the name.
-                var r = await Step("Name with a slash", "profile.new vehicle\\tPuma 180/CVX", () => rig.SendAsync("profile.new", "vehicle\tPuma 180/CVX"));
-                var list = await Vehicles();
-                r.Stored = list.Contains("Puma 180/CVX") ? "listed" : "not listed";
-                bool sub = Directory.Exists(Path.Combine(vehDir, "Puma 180"));
-                r.Effect = sub ? "a folder 'Puma 180' made in Vehicles, the profile inside it" : "";
-                // Refused with the reason is right: a slash is a folder on every head.
-                if (!list.Contains("Puma 180/CVX") && (sub || r.Said.Count == 0))
-                    Add(journal, r, new Finding("PROFILE-NAME-SLASH", Severity.Bug,
-                        "a vehicle named with a slash ('Puma 180/CVX') is not saved as a profile" + (sub ? " (it goes into a sub-folder)" : "") + (r.Said.Count == 0 ? ", and nothing says so" : ": " + r.Said[0])), "profiles: name with a slash");
-
-                // A name that climbs out of the Vehicles folder.
-                r = await Step("Name that climbs out of the folder", "profile.new vehicle\\t../escaped", () => rig.SendAsync("profile.new", "vehicle\t../escaped"));
-                string outside = Path.GetFullPath(Path.Combine(vehDir, "..", "escaped.json"));
-                r.Stored = File.Exists(outside) ? "written to " + Path.GetFileName(Path.GetDirectoryName(outside)) + "/escaped.json" : "not written outside";
-                if (File.Exists(outside))
-                    Add(journal, r, new Finding("PROFILE-NAME-PATH", Severity.Robustness,
-                        "a profile name with '../' is written outside the Vehicles folder (any browser on the LAN can send one)"), "profiles: name with ../");
-
-                // Names that differ only in capitals.
-                r = await Step("Same name in capitals", "profile.new vehicle\\tPUMA", () => rig.SendAsync("profile.new", "vehicle\tPUMA"));
-                list = await Vehicles();
-                int files = Directory.GetFiles(vehDir, "*.json").Count(f => string.Equals(Path.GetFileNameWithoutExtension(f), "puma", StringComparison.OrdinalIgnoreCase));
-                r.Stored = files + " file(s), " + list.Count(n => string.Equals(n, "puma", StringComparison.OrdinalIgnoreCase)) + " listed";
-                if (files > 1 && list.Count(n => string.Equals(n, "puma", StringComparison.OrdinalIgnoreCase)) == 1)
-                    Add(journal, r, new Finding("PROFILE-NAME-CASE", Severity.Inconsistency,
-                        "'Puma' and 'PUMA' are two files on Linux and Android but the picker lists one of them; on Windows and macOS they are the same file"), "profiles: names in capitals");
-
-                // New over an existing name.
-                await rig.SendAsync("profile.load", "Puma\tSprayer");
-                await rig.SendAsync("config.set", "vehicle.wheelbase:2.10");   // the vineyard tractor's, typed over the live Puma
-                r = await Step("New with the name of an existing profile", "profile.new vehicle\\tPuma", () => rig.SendAsync("profile.new", "vehicle\tPuma"));
-                await rig.SendAsync("profile.load", "Default\tSprayer");
-                await rig.SendAsync("profile.load", "Puma\tSprayer");
-                string wb = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.wheelbase"));
-                r.Stored = "Puma wheelbase now " + wb + " m";
-                if (wb == "2.1" && r.Said.Count == 0)
-                    Add(journal, r, new Finding("PROFILE-NEW-OVERWRITES", Severity.Improvement,
-                        "New with the name of an existing profile overwrites it with no question"), "profiles: New over an existing name");
-                foreach (var kv in Drive.Careful(Puma, Boom, Um)) await rig.SendAsync("config.set", kv);
-                await rig.SendAsync("profile.save");
-
-                // New, then type the new tractor's measurements without loading it.
-                r = await Step("New 'Vineyard', then type its measurements and Save without loading it", "profile.new vehicle\\tVineyard; config.set …; profile.save", async () =>
-                {
-                    await rig.SendAsync("profile.new", "vehicle\tVineyard");
-                    foreach (var kv in Machines.Vineyard.Settings(Machines.VineyardSys)) await rig.SendAsync("config.set", kv);
+                    // The Puma, done right, as the starting point.
+                    await rig.SendAsync("profile.new", "vehicle\tPuma");
+                    await rig.SendAsync("profile.new", "tool\tSprayer");
+                    await rig.SendAsync("profile.load", "Puma\tSprayer");
+                    foreach (var kv in Drive.Careful(Puma, Boom, Um)) await rig.SendAsync("config.set", kv);
                     await rig.SendAsync("profile.save");
-                });
-                await rig.SendAsync("profile.load", "Puma\tSprayer");
-                string pumaWb = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.wheelbase"));
-                await rig.SendAsync("profile.load", "Vineyard\tSprayer");
-                string vinWb = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.wheelbase"));
-                r.Stored = "Puma wheelbase " + pumaWb + " m, Vineyard wheelbase " + vinWb + " m";
-                if (pumaWb == "2.1")
-                    Add(journal, r, new Finding("PROFILE-NEW-NOT-ACTIVE", Severity.Bug,
-                        "New saves a copy under the new name but keeps the old profile loaded: the next measurements and Save Profile overwrite the old one (the Puma got the vineyard tractor's 2.10 m wheelbase, the 'Vineyard' profile kept the Puma's). The picker's status says 'Creating Vineyard…' and nothing more."), "profiles: New, then edit without Load");
-                await rig.SendAsync("profile.load", "Puma\tSprayer");
-                foreach (var kv in Drive.Careful(Puma, Boom, Um)) await rig.SendAsync("config.set", kv);
-                await rig.SendAsync("profile.save");
 
-                // Delete the profile in use.
-                r = await Step("Delete the profile in use", "profile.delete vehicle\\tPuma", () => rig.SendAsync("profile.delete", "vehicle\tPuma"));
-                list = await Vehicles();
-                r.Stored = list.Contains("Puma") ? "kept" : "deleted";
-                if (list.Contains("Puma") && r.Said.Count == 0)
-                    Add(journal, r, new Finding("PROFILE-REFUSED-SILENT", Severity.Improvement,
-                        "the picker refuses some actions with no word: deleting the profile in use, a rename onto an existing name, loading a profile that is not there"), "profiles: delete the profile in use");
+                    // A slash in the name.
+                    var r = await Step("Name with a slash", "profile.new vehicle\\tPuma 180/CVX", () => rig.SendAsync("profile.new", "vehicle\tPuma 180/CVX"));
+                    var list = await Vehicles();
+                    r.Stored = list.Contains("Puma 180/CVX") ? "listed" : "not listed";
+                    bool sub = Directory.Exists(Path.Combine(vehDir, "Puma 180"));
+                    r.Effect = sub ? "a folder 'Puma 180' made in Vehicles, the profile inside it" : "";
+                    // Refused with the reason is right: a slash is a folder on every head.
+                    if (!list.Contains("Puma 180/CVX") && (sub || r.Said.Count == 0))
+                        Add(journal, r, new Finding("PROFILE-NAME-SLASH", Severity.Bug,
+                            "a vehicle named with a slash ('Puma 180/CVX') is not saved as a profile" + (sub ? " (it goes into a sub-folder)" : "") + (r.Said.Count == 0 ? ", and nothing says so" : ": " + r.Said[0])), "profiles: name with a slash");
 
-                // Rename onto an existing name.
-                r = await Step("Rename onto an existing name", "profile.rename vehicle\\tVineyard\\tPuma", () => rig.SendAsync("profile.rename", "vehicle\tVineyard\tPuma"));
-                list = await Vehicles();
-                r.Stored = list.Contains("Vineyard") ? "not renamed" : "renamed";
-                if (list.Contains("Vineyard") && r.Said.Count == 0)
-                    Add(journal, r, new Finding("PROFILE-REFUSED-SILENT", Severity.Improvement, "the picker refuses some actions with no word"), "profiles: rename onto an existing name");
+                    await Keep(r);
 
-                // Load a profile that is not there.
-                string before = Active();
-                r = await Step("Load a profile that is not there", "profile.load Nope\\tNope", () => rig.SendAsync("profile.load", "Nope\tNope"));
-                r.Stored = "active " + Active() + " (was " + before + ")";
-                if (r.Said.Count == 0)
-                    Add(journal, r, new Finding("PROFILE-REFUSED-SILENT", Severity.Improvement, "the picker refuses some actions with no word"), "profiles: load a profile that is not there");
+                    // A name that climbs out of the Vehicles folder.
+                    r = await Step("Name that climbs out of the folder", "profile.new vehicle\\t../escaped", () => rig.SendAsync("profile.new", "vehicle\t../escaped"));
+                    string outside = Path.GetFullPath(Path.Combine(vehDir, "..", "escaped.json"));
+                    r.Stored = File.Exists(outside) ? "written to " + Path.GetFileName(Path.GetDirectoryName(outside)) + "/escaped.json" : "not written outside";
+                    if (File.Exists(outside))
+                        Add(journal, r, new Finding("PROFILE-NAME-PATH", Severity.Robustness,
+                            "a profile name with '../' is written outside the Vehicles folder (any browser on the LAN can send one)"), "profiles: name with ../");
 
-                // Reset the Default vehicle while working with the Puma.
-                await rig.SendAsync("profile.load", "Puma\tSprayer");
-                r = await Step("Reset the Default vehicle while the Puma is loaded", "profile.reset vehicle", () => rig.SendAsync("profile.reset", "vehicle"));
-                string act = Active();
-                string liveWb = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.wheelbase"));
-                string liveAh = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.antennaHeight"));
-                r.Stored = "active " + act + ", wheelbase " + liveWb + " m, antenna height " + liveAh + " m";
-                if (act.StartsWith("Default", StringComparison.Ordinal) && liveWb == "2.88")
-                    Add(journal, r, new Finding("PROFILE-RESET-HALF", Severity.Bug,
-                        "Reset of the Default vehicle while another profile is loaded switches to Default and saves a mix: the type, antenna height and pivot go back to defaults, the Puma's wheelbase, track, antenna offset and hitch stay, so 'Default' is not a default any more"), "profiles: reset Default");
+                    await Keep(r);
 
-                // A combine with a trailed implement, by loading two profiles.
-                await rig.SendAsync("profile.new", "tool\tTrailed disc");
-                await rig.SendAsync("profile.load", "Puma\tTrailed disc");
-                foreach (var kv in Machines.Trailing6.Settings()) await rig.SendAsync("config.set", kv);
-                await rig.SendAsync("profile.save");
-                await rig.SendAsync("profile.new", "vehicle\tCombine");
-                await rig.SendAsync("profile.load", "Combine\tSprayer");
-                foreach (var kv in Machines.Combine.Settings(Machines.CombineSys)) await rig.SendAsync("config.set", kv);
-                await rig.SendAsync("profile.save");
-                r = await Step("Load the combine with the trailed disc", "profile.load Combine\\tTrailed disc", () => rig.SendAsync("profile.load", "Combine\tTrailed disc"));
-                string ty = await rig.ReadAsync(() => Readback.Get(rig.Store, "tool.type"));
-                r.Stored = "implement type " + ty;
-                if (ty != "front")
-                    Add(journal, r, new Finding("HARVESTER-TRAILING-BY-LOAD", Severity.Inconsistency,
-                        "a combine takes only a front implement when the type is picked (#111), but loading a combine with a trailed implement's profile gives a combine pulling a trailed implement"), "profiles: combine + trailed disc");
+                    // Names that differ only in capitals.
+                    r = await Step("Same name in capitals", "profile.new vehicle\\tPUMA", () => rig.SendAsync("profile.new", "vehicle\tPUMA"));
+                    list = await Vehicles();
+                    int files = Directory.GetFiles(vehDir, "*.json").Count(f => string.Equals(Path.GetFileNameWithoutExtension(f), "puma", StringComparison.OrdinalIgnoreCase));
+                    r.Stored = files + " file(s), " + list.Count(n => string.Equals(n, "puma", StringComparison.OrdinalIgnoreCase)) + " listed";
+                    if (files > 1 && list.Count(n => string.Equals(n, "puma", StringComparison.OrdinalIgnoreCase)) == 1)
+                        Add(journal, r, new Finding("PROFILE-NAME-CASE", Severity.Inconsistency,
+                            "'Puma' and 'PUMA' are two files on Linux and Android but the picker lists one of them; on Windows and macOS they are the same file"), "profiles: names in capitals");
 
-                // Typed, not saved, restart.
-                await rig.SendAsync("profile.load", "Puma\tSprayer");
-                await rig.SendAsync("config.set", "vehicle.antennaHeight:2.5");
-                bool unsaved = await rig.ReadAsync(() => rig.Store.HasUnsavedChanges);
-                var ur = new SettingRow { Group = "Profiles", What = "Antenna height typed, AgOpenWeb closed without Save Profile", Sent = "config.set vehicle.antennaHeight:2.5, restart", Stored = "unsaved flag " + unsaved };
-                journal.Settings.Add(ur);
+                    await Keep(r);
+
+                    // New over an existing name.
+                    await rig.SendAsync("profile.load", "Puma\tSprayer");
+                    await rig.SendAsync("config.set", "vehicle.wheelbase:2.10");   // the vineyard tractor's, typed over the live Puma
+                    r = await Step("New with the name of an existing profile", "profile.new vehicle\\tPuma", () => rig.SendAsync("profile.new", "vehicle\tPuma"));
+                    await rig.SendAsync("profile.load", "Default\tSprayer");
+                    await rig.SendAsync("profile.load", "Puma\tSprayer");
+                    string wb = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.wheelbase"));
+                    r.Stored = "Puma wheelbase now " + wb + " m";
+                    if (wb == "2.1" && r.Said.Count == 0)
+                        Add(journal, r, new Finding("PROFILE-NEW-OVERWRITES", Severity.Improvement,
+                            "New with the name of an existing profile overwrites it with no question"), "profiles: New over an existing name");
+                    await Keep(r);
+                    foreach (var kv in Drive.Careful(Puma, Boom, Um)) await rig.SendAsync("config.set", kv);
+                    await rig.SendAsync("profile.save");
+
+                    // New, then type the new tractor's measurements without loading it.
+                    r = await Step("New 'Vineyard', then type its measurements and Save without loading it", "profile.new vehicle\\tVineyard; config.set …; profile.save", async () =>
+                    {
+                        await rig.SendAsync("profile.new", "vehicle\tVineyard");
+                        foreach (var kv in Machines.Vineyard.Settings(Machines.VineyardSys)) await rig.SendAsync("config.set", kv);
+                        await rig.SendAsync("profile.save");
+                    });
+                    await rig.SendAsync("profile.load", "Puma\tSprayer");
+                    string pumaWb = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.wheelbase"));
+                    await rig.SendAsync("profile.load", "Vineyard\tSprayer");
+                    string vinWb = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.wheelbase"));
+                    r.Stored = "Puma wheelbase " + pumaWb + " m, Vineyard wheelbase " + vinWb + " m";
+                    if (pumaWb == "2.1")
+                        Add(journal, r, new Finding("PROFILE-NEW-NOT-ACTIVE", Severity.Bug,
+                            "New saves a copy under the new name but keeps the old profile loaded: the next measurements and Save Profile overwrite the old one (the Puma got the vineyard tractor's 2.10 m wheelbase, the 'Vineyard' profile kept the Puma's). The picker's status says 'Creating Vineyard…' and nothing more."), "profiles: New, then edit without Load");
+                    await Keep(r);
+                    await rig.SendAsync("profile.load", "Puma\tSprayer");
+                    foreach (var kv in Drive.Careful(Puma, Boom, Um)) await rig.SendAsync("config.set", kv);
+                    await rig.SendAsync("profile.save");
+
+                    // Delete the profile in use.
+                    r = await Step("Delete the profile in use", "profile.delete vehicle\\tPuma", () => rig.SendAsync("profile.delete", "vehicle\tPuma"));
+                    list = await Vehicles();
+                    r.Stored = list.Contains("Puma") ? "kept" : "deleted";
+                    if (list.Contains("Puma") && r.Said.Count == 0)
+                        Add(journal, r, new Finding("PROFILE-REFUSED-SILENT", Severity.Improvement,
+                            "the picker refuses some actions with no word: deleting the profile in use, a rename onto an existing name, loading a profile that is not there"), "profiles: delete the profile in use");
+
+                    await Keep(r);
+
+                    // Rename onto an existing name.
+                    r = await Step("Rename onto an existing name", "profile.rename vehicle\\tVineyard\\tPuma", () => rig.SendAsync("profile.rename", "vehicle\tVineyard\tPuma"));
+                    list = await Vehicles();
+                    r.Stored = list.Contains("Vineyard") ? "not renamed" : "renamed";
+                    if (list.Contains("Vineyard") && r.Said.Count == 0)
+                        Add(journal, r, new Finding("PROFILE-REFUSED-SILENT", Severity.Improvement, "the picker refuses some actions with no word"), "profiles: rename onto an existing name");
+
+                    await Keep(r);
+
+                    // Load a profile that is not there.
+                    string before = Active();
+                    r = await Step("Load a profile that is not there", "profile.load Nope\\tNope", () => rig.SendAsync("profile.load", "Nope\tNope"));
+                    r.Stored = "active " + Active() + " (was " + before + ")";
+                    if (r.Said.Count == 0)
+                        Add(journal, r, new Finding("PROFILE-REFUSED-SILENT", Severity.Improvement, "the picker refuses some actions with no word"), "profiles: load a profile that is not there");
+
+                    await Keep(r);
+
+                    // Reset the Default vehicle while working with the Puma.
+                    await rig.SendAsync("profile.load", "Puma\tSprayer");
+                    r = await Step("Reset the Default vehicle while the Puma is loaded", "profile.reset vehicle", () => rig.SendAsync("profile.reset", "vehicle"));
+                    string act = Active();
+                    string liveWb = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.wheelbase"));
+                    string liveAh = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.antennaHeight"));
+                    r.Stored = "active " + act + ", wheelbase " + liveWb + " m, antenna height " + liveAh + " m";
+                    if (act.StartsWith("Default", StringComparison.Ordinal) && liveWb == "2.88")
+                        Add(journal, r, new Finding("PROFILE-RESET-HALF", Severity.Bug,
+                            "Reset of the Default vehicle while another profile is loaded switches to Default and saves a mix: the type, antenna height and pivot go back to defaults, the Puma's wheelbase, track, antenna offset and hitch stay, so 'Default' is not a default any more"), "profiles: reset Default");
+
+                    await Keep(r);
+
+                    // A combine with a trailed implement, by loading two profiles.
+                    await rig.SendAsync("profile.new", "tool\tTrailed disc");
+                    await rig.SendAsync("profile.load", "Puma\tTrailed disc");
+                    foreach (var kv in Machines.Trailing6.Settings()) await rig.SendAsync("config.set", kv);
+                    await rig.SendAsync("profile.save");
+                    await rig.SendAsync("profile.new", "vehicle\tCombine");
+                    await rig.SendAsync("profile.load", "Combine\tSprayer");
+                    foreach (var kv in Machines.Combine.Settings(Machines.CombineSys)) await rig.SendAsync("config.set", kv);
+                    await rig.SendAsync("profile.save");
+                    r = await Step("Load the combine with the trailed disc", "profile.load Combine\\tTrailed disc", () => rig.SendAsync("profile.load", "Combine\tTrailed disc"));
+                    string ty = await rig.ReadAsync(() => Readback.Get(rig.Store, "tool.type"));
+                    r.Stored = "implement type " + ty;
+                    if (ty != "front")
+                        Add(journal, r, new Finding("HARVESTER-TRAILING-BY-LOAD", Severity.Inconsistency,
+                            "a combine takes only a front implement when the type is picked (#111), but loading a combine with a trailed implement's profile gives a combine pulling a trailed implement"), "profiles: combine + trailed disc");
+
+                    await Keep(r);
+
+                    // Typed, not saved, restart.
+                    await rig.SendAsync("profile.load", "Puma\tSprayer");
+                    await rig.SendAsync("config.set", "vehicle.antennaHeight:2.5");
+                    bool unsaved = await rig.ReadAsync(() => rig.Store.HasUnsavedChanges);
+                    var ur = new SettingRow { Group = "Profiles", What = "Antenna height typed, AgOpenWeb closed without Save Profile", Sent = "config.set vehicle.antennaHeight:2.5, restart", Stored = "unsaved flag " + unsaved };
+                    journal.Settings.Add(ur);
+                }
+                catch (Exception ex)
+                {
+                    journal.Add(new Finding("HARNESS", Severity.Bug, "the profile checks threw " + ex.GetType().Name + ": " + ex.Message), "profiles");
+                    // While its backend still runs: the dump is the state it threw in.
+                    await ev.KeepIfNewAsync(rig, "threw", "right after the checks threw, the backend still running");
+                    return;   // the checks after it build on what threw
+                }
             }
+            ev.Restarting();
             await using (var rig = await VehicleToolRig.StartAsync(dir))
             {
-                var ur = journal.Settings[^1];
-                string ah = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.antennaHeight"));
-                ur.Stored += ", after the restart " + ah + " m";
-                if (ah == "3.1")
-                    ur.Effect = "the change is lost (expected: Save Profile keeps it)";
+                try
+                {
+                    ev.Attach(rig);
+                        var ur = journal.Settings[^1];
+                    string ah = await rig.ReadAsync(() => Readback.Get(rig.Store, "vehicle.antennaHeight"));
+                    ur.Stored += ", after the restart " + ah + " m";
+                    if (ah == "3.1")
+                        ur.Effect = "the change is lost (expected: Save Profile keeps it)";
+                    await ev.KeepIfNewAsync(rig, "after-restart", "after the restart", () => SettingNotes(ur), end: true);
+                }
+                catch (Exception ex)
+                {
+                    journal.Add(new Finding("HARNESS", Severity.Bug, "the profile checks threw " + ex.GetType().Name + ": " + ex.Message), "profiles");
+                    // While its backend still runs: the dump is the state it threw in.
+                    await ev.KeepIfNewAsync(rig, "threw", "right after the checks threw, the backend still running");
+                    return;   // the checks after it build on what threw
+                }
             }
         }
         catch (Exception ex)
@@ -515,6 +590,7 @@ public static class CarelessOperator
         }
         finally
         {
+            ev.Close();
             try { Directory.Delete(dir, true); } catch { }
         }
     }

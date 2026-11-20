@@ -62,6 +62,9 @@ public sealed class Journal
     public List<SweepRow> Sweep { get; } = new();
     public List<string> SweepNotes { get; } = new();
     public Dictionary<string, (Finding First, int Count, List<string> Places)> Findings { get; } = new();
+    /// <summary>By finding code: the dump kept where it was first seen (<see cref="VtEvidence"/>),
+    /// as the report shows it, or why there is none.</summary>
+    public Dictionary<string, string> EvidenceFor { get; } = new();
 
     public void Add(Finding f, string where)
     {
@@ -98,6 +101,7 @@ public sealed class Journal
         {
             sb.Append(string.Create(inv, $"{n++}. **{g.First.Severity}** `{g.First.Code}` ×{g.Count}: {g.First.Message}\n"));
             sb.Append("   Seen in: ").Append(string.Join("; ", g.Places)).Append('\n');
+            if (EvidenceFor.TryGetValue(g.First.Code, out var ev)) sb.Append("   Evidence: ").Append(ev).Append('\n');
         }
 
         foreach (var op in Drives.Select(d => d.Operator).Distinct())

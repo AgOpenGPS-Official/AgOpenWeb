@@ -358,8 +358,13 @@ public sealed class SceneProjector : System.IDisposable
             // Headland-distance HUD (-1 = no headland / not driving → hidden client-side).
             _state.Field.HeadlandProximityDistance ?? -1.0,
             _state.Field.HeadlandProximityWarning,
-            // Steer-bar error: actual WAS angle − commanded guidance steer angle.
-            _autoSteer.LastSteerData.ActualSteerAngle - _state.Guidance.SteerAngle,
+            // Steer-bar error: the wheels' angle − the commanded guidance steer angle. While the
+            // simulator drives and holds the steering, the wheels following AutoSteer are the
+            // simulator's (AgOpenGPS's CSim writes its angle as the actual one): the module is sent
+            // status 0 and its WAS reads a wheel nobody steers. The bench test keeps the WAS.
+            (_state.Simulator.IsEnabled && !_state.Simulator.SteersModule
+                ? _state.Simulator.SteerAngle
+                : _autoSteer.LastSteerData.ActualSteerAngle) - _state.Guidance.SteerAngle,
             // Diagnostic-chart scalars (mirrors IChartDataService's series sources).
             _state.Guidance.SteerAngle,                  // ChartSetSteer (commanded)
             _autoSteer.LastSteerData.ActualSteerAngle,   // ChartActualSteer (WAS)

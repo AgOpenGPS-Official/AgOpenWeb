@@ -19,6 +19,9 @@ public class VehicleToolScenarioTests
     public async Task Careful_and_careless_operator()
     {
         var journal = new Journal();
+        string report = ReportPath.For("vehicle-tool-scenarios-report.md");
+        VtEvidence.Folder = Evidence.FolderFor(report);
+        if (!Evidence.Off) Directory.CreateDirectory(VtEvidence.Folder);
         string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
         if (string.IsNullOrWhiteSpace(only)) only = null;
         string? who = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_OPERATOR");
@@ -33,7 +36,6 @@ public class VehicleToolScenarioTests
         if (Wants("sweep")) { Progress("settings sweep"); await SettingsSweep.RunAsync(journal, only, Progress); }
         Progress("done");
 
-        string report = ReportPath.For("vehicle-tool-scenarios-report.md");
         File.WriteAllText(report, journal.ToMarkdown());
         TestContext.Out.WriteLine("Report: " + report);
         foreach (var g in journal.Findings.Values.OrderBy(v => v.First.Severity))

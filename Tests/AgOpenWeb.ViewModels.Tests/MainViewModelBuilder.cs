@@ -46,6 +46,7 @@ public class MainViewModelBuilder
     public AgOpenWeb.Services.Pipeline.PipelineIntents Intents { get; } = new();
     public AgOpenWeb.Services.Geometry.IPolygonOffsetService PolygonOffsetService { get; set; } = Substitute.For<AgOpenWeb.Services.Geometry.IPolygonOffsetService>();
     /// <summary>Wires the map's 30 Hz render pull (none without one, as before).</summary>
+    public IAudioService AudioService { get; } = Substitute.For<IAudioService>();
     public IPositionEstimator? PositionEstimator { get; set; }
     /// <summary>Every timer the view model makes; none fires until a test calls <c>Fire</c>.</summary>
     public List<AgOpenWeb.Services.Threading.ManualUiTimer> Timers { get; } = new();
@@ -98,7 +99,7 @@ public class MainViewModelBuilder
             sectionControlService: SectionControlService,
             ntripProfileService: NtripProfileService,
             chartDataService: Substitute.For<IChartDataService>(),
-            audioService: Substitute.For<IAudioService>(),
+            audioService: AudioService,
             elevationLogService: Substitute.For<IElevationLogService>(),
             jobService: JobService,
             tramLineService: TramLineService,

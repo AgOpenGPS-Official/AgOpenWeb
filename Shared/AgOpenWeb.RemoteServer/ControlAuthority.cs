@@ -31,6 +31,16 @@ public sealed class ControlAuthority
     /// its failsafe. Not raised on a voluntary Release.</summary>
     public event Action<string>? Revoked;
 
+    /// <summary>The deadman revoked this connection's hold: no presence for this many ms.
+    /// Raised before <see cref="Revoked"/>, for the log (the hub adds the link's state).</summary>
+    public event Action<Guid, long>? DeadmanTripped;
+
+    /// <summary>True when <paramref name="conn"/> holds control, fresh or not.</summary>
+    public bool IsHolder(Guid conn)
+    {
+        lock (_lock) return _holder == conn;
+    }
+
     public ControlStateDto Snapshot()
     {
         lock (_lock)
@@ -89,13 +99,17 @@ public sealed class ControlAuthority
     public bool SweepStale()
     {
         bool revoked;
+        Guid holder = default;
+        long silent = 0;
         lock (_lock)
         {
-            revoked = _holder.HasValue && (Environment.TickCount64 - _lastPresenceTicks) > DeadmanMs;
-            if (revoked) { _holder = null; _holderName = ""; }
+            silent = Environment.TickCount64 - _lastPresenceTicks;
+            revoked = _holder.HasValue && silent > DeadmanMs;
+            if (revoked) { holder = _holder!.Value; _holder = null; _holderName = ""; }
         }
         if (revoked)
         {
+            DeadmanTripped?.Invoke(holder, silent);
             Revoked?.Invoke("presence lost (deadman)");
             Changed?.Invoke(Snapshot());
         }

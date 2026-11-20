@@ -175,6 +175,7 @@ public sealed partial class Day
     /// operator does what the day's clock says, the process is looked at every five minutes.</summary>
     public async Task StepAsync(bool events, bool road = false)
     {
+        StopIfDue();
         Fixes++;
         Module.TickNow(); Module.TickNow();
         double lat, lon, hdg, kmh;
@@ -206,11 +207,21 @@ public sealed partial class Day
         for (int t = 0; t < 10; t++)
         {
             gc = GcMark.Now();
+            var use = ThreadUsage.Now();
+            TickWatch.Begin();
+            long a0 = GC.GetAllocatedBytesForCurrentThread();
             long ts = Stopwatch.GetTimestamp();
             loop.Tick(ts);
             double tms = Stopwatch.GetElapsedTime(ts).TotalMilliseconds;
+            long alloc = GC.GetAllocatedBytesForCurrentThread() - a0;   // the tick's own, not the watch's
+            string seen = TickWatch.End();
+            if (alloc > 0) { TicksAllocating++; TickAllocatedBytes += alloc; }
             _tickWin.Add(tms); TickDay.Add(tms); _job?.Tick.Add(tms);
-            if (tms > 10) Slow("control tick", tms, gc.Since());
+            if (tms > 10)
+            {
+                string g = gc.Since(), u = ThreadUsage.Since(use) + (alloc > 0 ? F($"; the tick allocated {alloc:N0} bytes") : "") + (seen.Length > 0 ? "; " + seen : "");
+                Slow("control tick", tms, g.Length == 0 ? u : u.Length == 0 ? g : g + "; " + u);
+            }
         }
 
         if (!road && _plane != null) await FollowAsync();
@@ -233,9 +244,12 @@ public sealed partial class Day
     }
 
     public double ParkedSeconds;
+    /// <summary>Control ticks that allocated, and how much in all: an allocating tick goes to
+    /// the runtime for allocation space every so often, where a background collection can hold it.</summary>
+    public long TicksAllocating, TickAllocatedBytes;
 
     /// <summary>The slowest GPS cycles and control ticks of the day, with what had just happened.</summary>
-    public readonly List<(DateTime Clock, string What, double Ms, string Before, string Gc)> SlowMoments = new();
+    public readonly List<(DateTime Clock, string What, double Ms, string Before, string Gc, DateTime WallUtc, long Tid)> SlowMoments = new();
     /// <summary>Control ticks over 10 ms and GPS cycles over 100 ms that a garbage collection ran in.</summary>
     public long SlowTicksWithGc, SlowCyclesWithGc;
     /// <summary>Control ticks over 10 ms within 1.5 s of a browser connecting.</summary>
@@ -260,6 +274,8 @@ public sealed partial class Day
             AddSlowMoment(what, ms, before, (gc.Length > 0 ? gc + "; " : "") + F($"{sinceForced:0} ms after the harness's forced collection"));
             return;
         }
+        if (what == "control tick" && ms > 10) Found("tick");
+        if (what == "GPS cycle" && ms > 100) Found("cycle");
 
         // A browser that has just connected: its seed (the coverage snapshot) is being built.
         foreach (var b in new[] { Tablet, Phone })
@@ -276,7 +292,10 @@ public sealed partial class Day
 
     private void AddSlowMoment(string what, double ms, string before, string gc)
     {
-        SlowMoments.Add((Now, what, ms, before, gc));
+        // A control tick's lock waits are its own thread's (the OS thread it ran on); a GPS
+        // cycle's are every thread's.
+        SlowMoments.Add((Now, what, ms, before, gc, DateTime.UtcNow.AddMilliseconds(-ms), what == "control tick" ? TickWatch.LastTid : 0));
+        LiveLog.Write(F($"[slow] {Now:HH:mm:ss.f} {what} {ms:0.0} ms, after {before}{(gc.Length > 0 ? "; " + gc : "")}"));
         if (SlowMoments.Count > 200)
         {
             // Keep the slowest 100.

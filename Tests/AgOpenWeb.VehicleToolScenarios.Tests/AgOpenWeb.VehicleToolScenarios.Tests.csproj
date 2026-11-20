@@ -47,6 +47,8 @@
     <!-- Stops the run when another process holds the module ports (Tests/ScenarioShared). -->
     <Compile Include="..\ScenarioShared\PortGuard.cs" Link="PortGuard.cs" />
     <Compile Include="..\ScenarioShared\ReportPath.cs" Link="ReportPath.cs" />
+    <!-- A finding's evidence: the app's bug report dump, kept beside the report. -->
+    <Compile Include="..\ScenarioShared\Evidence.cs" Link="Evidence.cs" />
   </ItemGroup>
 
 </Project>
