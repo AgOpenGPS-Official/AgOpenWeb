@@ -145,6 +145,9 @@ section On by hand too) and the steer wizard, and the next screen to take contro
 `WebSocketHub` gives each browser its own outgoing queue: a broadcast never waits on a socket,
 and a browser that stops reading for 15 s is cut off (it reconnects and gets a fresh seed).
 The page drops a link that has carried no frame for 2.5 s and reconnects (`transport.js`).
+The app's log (a dump's `logs.txt`) says why a screen went: each browser arriving and leaving with the reason
+(closed by the page, cut off, link failed), a deadman with the state of its link, and what the page saw of itself
+(`diag.page`: hidden, frozen, its timers stopped by the system, offline, a link given up), sent on its next link.
 
 ### Section control timing
 `SectionControlService` runs every section by its own button state (Off / Auto / On); the master

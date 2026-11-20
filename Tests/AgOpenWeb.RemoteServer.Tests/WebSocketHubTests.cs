@@ -164,6 +164,77 @@ public class WebSocketHubTests
         await tabletTask;
     }
 
+    // A tester's run on the simulator (bug report 19 Nov 2026, "tractor left field mostly
+    // undone"): the log said only "[AutoSteer] Off: browser control ended: presence lost
+    // (deadman)". Nothing said whether the browser's link was still open, whether the host had
+    // cut it off, or what the page went through; the dump could not tell a frozen tab from a
+    // network gap. The hub now logs each browser's arrival, its leaving and why, and a deadman
+    // with the state of the link.
+
+    [Test]
+    public async Task A_deadman_is_logged_with_the_state_of_the_link()
+    {
+        var authority = new ControlAuthority();
+        var log = new ConcurrentQueue<string>();
+        var hub = new WebSocketHub(authority) { Log = log.Enqueue };
+        var mac = new FakeSocket();
+        var task = hub.HandleAsync(mac, CancellationToken.None, "192.168.4.20");
+        await Until(() => hub.ClientCount == 1);
+        mac.StopReading(); // a frozen tab: nothing read, no presence
+        await hub.BroadcastAsync(Frame(1));
+        await hub.BroadcastAsync(Frame(2));
+
+        await Task.Delay(1700); // past the deadman's 1.5 s
+        Assert.That(authority.SweepStale(), Is.True);
+        mac.Read();
+        mac.Leave();
+        await task;
+
+        var lines = log.ToArray();
+        Assert.That(lines[0], Does.Match(@"^\[Browser\] \w{6} connected from 192\.168\.4\.20, has control; 1 connected$"));
+        var deadman = lines.Single(l => l.Contains("deadman"));
+        Assert.That(deadman, Does.Match(@"deadman, no presence from it for 1\.\d s; its socket is Open, last heard from it 1\.\d s ago, "));
+        Assert.That(deadman, Does.Match(@"[1-9]\d* frames \(0 KB\) waiting to go to it$"), "the frames it did not take");
+        Assert.That(lines.Last(), Does.Match(@"left after 1\.\d s: the page closed the link; last heard from it 0\.0 s ago$"),
+            "its close is the last it said; control had already gone to the deadman");
+    }
+
+    [Test]
+    public async Task A_browser_cut_off_for_not_reading_is_logged_as_cut_off_with_its_control()
+    {
+        var log = new ConcurrentQueue<string>();
+        var hub = new WebSocketHub(new ControlAuthority()) { StallLimitMs = 300, Log = log.Enqueue };
+        var phone = new FakeSocket();
+        var task = hub.HandleAsync(phone, CancellationToken.None);
+        await Until(() => hub.ClientCount == 1);
+        phone.StopReading();
+
+        for (int i = 0; i < 20; i++) { await hub.BroadcastAsync(Frame(1)); await Task.Delay(50); }
+        await task.WaitAsync(TimeSpan.FromSeconds(3));
+
+        Assert.That(log.Last(), Does.Match(@"left after \d\.\d s: cut off: it took nothing it was sent for 0\.\d s, 0 KB waiting; last heard from it \d\.\d s ago; it had control$"));
+    }
+
+    [Test]
+    public async Task What_the_page_saw_of_itself_is_logged_and_an_observer_is_named()
+    {
+        var log = new ConcurrentQueue<string>();
+        var hub = new WebSocketHub(new ControlAuthority()) { Log = log.Enqueue };
+        var tablet = new FakeSocket();
+        var tabletTask = hub.HandleAsync(tablet, CancellationToken.None);
+        await Until(() => hub.ClientCount == 1);
+        var mac = new ScriptedSocket("diag.page|its timers stopped for 85.2 s (hidden): the system paused the page");
+        await hub.HandleAsync(mac, CancellationToken.None, "192.168.4.21").WaitAsync(TimeSpan.FromSeconds(3));
+        tablet.Leave();
+        await tabletTask;
+
+        var lines = log.ToArray();
+        Assert.That(lines, Has.Some.Match(@"^\[Browser\] \w{6} connected from 192\.168\.4\.21, observer; 2 connected$"));
+        Assert.That(lines, Has.Some.Match(@"^\[Browser\] \w{6} page: its timers stopped for 85\.2 s \(hidden\): the system paused the page$"));
+        Assert.That(lines, Has.Some.Match(@"^\[Browser\] \w{6} left after .*: the page closed the link; last heard from it 0\.0 s ago$"));
+        Assert.That(lines.Last(), Does.EndWith("; it had control"), "the tablet that had control");
+    }
+
     /// <summary>A socket that sends the given text commands, then closes.</summary>
     private sealed class ScriptedSocket(params string[] commands) : WebSocket
     {

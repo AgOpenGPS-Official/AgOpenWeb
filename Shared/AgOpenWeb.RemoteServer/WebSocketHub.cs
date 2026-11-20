@@ -13,9 +13,12 @@
 // DEADMAN-BLOCKED-BY-A-PHONE). A client whose queue makes no progress for
 // StalledMs, or grows past MaxQueuedBytes, is cut off; the page reconnects and gets a
 // fresh seed. The receive loop carries client→host commands.
+// Each browser's arrival, its leaving and why, a deadman with the state of its link, and
+// what the page saw of itself (diag.page: hidden, frozen, its timers paused, the network
+// gone) go to the app's log (Log), so a bug report dump says why a screen went quiet.
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
+using System.Globalization;
 using System.Net.WebSockets;
 using System.Threading.Channels;
 
@@ -37,6 +40,14 @@ public sealed class WebSocketHub
     private sealed class Client
     {
         public required WebSocket Socket { get; init; }
+        /// <summary>A short name for the log: the start of its connection id.</summary>
+        public required string Name { get; init; }
+        public long ConnectedTicks = Environment.TickCount64;
+        /// <summary>When a message last came from it.</summary>
+        public long HeardTicks = Environment.TickCount64;
+        /// <summary>When a frame to it last finished sending (0: none yet).</summary>
+        public long SentTicks;
+        public int PageNotes;
         public Channel<byte[]> Out { get; } = Channel.CreateUnbounded<byte[]>(
             new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
         public long QueuedBytes;
@@ -44,7 +55,8 @@ public sealed class WebSocketHub
         /// <summary>When the queue last moved (a send finished, or it went from empty to not).</summary>
         public long ProgressTicks = Environment.TickCount64;
         public Task? Sender;
-        public int CutOff;
+        /// <summary>Why it was cut off; null while it is not.</summary>
+        public string? CutOff;
         /// <summary>Frames broadcast while this client's seed is being built: they go out
         /// after the seed, in order (null once the seed is queued). Otherwise a coverage
         /// delta drained during the build arrives before the seed's snapshot and its reset,
@@ -65,7 +77,18 @@ public sealed class WebSocketHub
     private readonly ConcurrentDictionary<Guid, Client> _clients = new();
     private readonly ControlAuthority _authority;
 
-    public WebSocketHub(ControlAuthority authority) => _authority = authority;
+    public WebSocketHub(ControlAuthority authority)
+    {
+        _authority = authority;
+        authority.DeadmanTripped += (conn, ms) => Log?.Invoke(
+            $"[Browser] {NameOf(conn)}: deadman, no presence from it for {Secs(ms)}; {LinkState(conn)}");
+    }
+
+    /// <summary>Lines for the app's log: browsers arriving and leaving, and why (set by the host).</summary>
+    public Action<string>? Log { get; set; }
+
+    /// <summary>At most this many page notes (diag.page) are logged per connection.</summary>
+    private const int MaxPageNotes = 200;
 
     /// <summary>How each browser draws the map (<c>diag.client</c>), for the bug report dump.</summary>
     public ClientDiagnostics Diagnostics { get; } = new();
@@ -111,12 +134,14 @@ public sealed class WebSocketHub
     public int ClientCount => _clients.Count;
 
     /// <summary>Owns the socket for its lifetime: seed, then drain until close.</summary>
-    public async Task HandleAsync(WebSocket socket, CancellationToken ct)
+    /// <param name="from">The browser's address, for the log.</param>
+    public async Task HandleAsync(WebSocket socket, CancellationToken ct, string? from = null)
     {
         var id = Guid.NewGuid();
-        var client = new Client { Socket = socket };
+        var client = new Client { Socket = socket, Name = id.ToString("N")[..6] };
         client.Sender = Task.Run(() => SendLoopAsync(client, ct));
         _clients[id] = client;
+        string? ending = null;
         try
         {
             // Tell the client its id first (so it can recognise itself as the
@@ -124,7 +149,9 @@ public sealed class WebSocketHub
             // order: the first client to connect becomes the controller; Acquire is
             // denied for later clients (they observe). No take-over.
             Write(client, WireCodec.EncodeHello(id.ToString(), AgOpenWeb.Models.FeatureSwitches.Enabled));
-            _authority.Acquire(id, "Browser");
+            bool control = _authority.Acquire(id, "Browser");
+            Log?.Invoke($"[Browser] {client.Name} connected{(from is null ? "" : " from " + from)}, "
+                + (control ? "has control" : "observer") + $"; {_clients.Count} connected");
             try
             {
                 foreach (var frame in SeedProvider?.Invoke() ?? Array.Empty<byte[]>())
@@ -144,7 +171,14 @@ public sealed class WebSocketHub
             while (socket.State == WebSocketState.Open && !ct.IsCancellationRequested)
             {
                 var res = await socket.ReceiveAsync(buf, ct).ConfigureAwait(false);
-                if (res.MessageType == WebSocketMessageType.Close) break;
+                Volatile.Write(ref client.HeardTicks, Environment.TickCount64);
+                if (res.MessageType == WebSocketMessageType.Close)
+                {
+                    ending = "the page closed the link" + (res.CloseStatus is { } code
+                        ? $" ({(int)code} {code}{(string.IsNullOrEmpty(res.CloseStatusDescription) ? "" : ": " + res.CloseStatusDescription)})"
+                        : "");
+                    break;
+                }
                 // Commands are short single-frame text messages: "id" or "id|arg".
                 if (res.MessageType == WebSocketMessageType.Text && res.Count > 0)
                 {
@@ -153,9 +187,24 @@ public sealed class WebSocketHub
                 }
             }
         }
-        catch { /* client dropped — fall through to cleanup */ }
+        catch (Exception ex)
+        {
+            // Client dropped — fall through to cleanup.
+            ending = ex is OperationCanceledException && ct.IsCancellationRequested
+                ? "the host is stopping"
+                : $"the link failed ({ex.GetType().Name}: {ex.Message})";
+        }
         finally
         {
+            // A cut-off aborts the socket, which ends the receive loop with an error: the
+            // cut-off is the reason.
+            ending = Volatile.Read(ref client.CutOff) is { } cut ? "cut off: " + cut
+                : ending ?? (ct.IsCancellationRequested ? "the host is stopping" : $"its socket is {socket.State}");
+            bool held = _authority.IsHolder(id);
+            long now = Environment.TickCount64;
+            Log?.Invoke($"[Browser] {client.Name} left after {Span(now - client.ConnectedTicks)}: {ending}; "
+                + $"last heard from it {Secs(now - Volatile.Read(ref client.HeardTicks))} ago"
+                + (held ? "; it had control" : ""));
             _authority.Drop(id); // revoke + failsafe if this connection held control
             _clients.TryRemove(id, out _);
             Diagnostics.Left(id);
@@ -188,12 +237,13 @@ public sealed class WebSocketHub
                     Interlocked.Add(ref c.QueuedBytes, -frame.Length);
                     Interlocked.Decrement(ref c.Pending);
                     Volatile.Write(ref c.ProgressTicks, Environment.TickCount64);
+                    Volatile.Write(ref c.SentTicks, Environment.TickCount64);
                 }
         }
-        catch
+        catch (Exception ex)
         {
             // The socket failed or was aborted: the receive loop ends and cleans up.
-            CutOff(c);
+            CutOff(c, $"sending to it failed ({ex.GetType().Name}: {ex.Message})");
         }
     }
 
@@ -209,23 +259,21 @@ public sealed class WebSocketHub
     /// <summary>Queue a frame for one client now; cut it off when it has stopped reading.</summary>
     private void Write(Client c, byte[] frame)
     {
-        if (Volatile.Read(ref c.CutOff) != 0) return;
+        if (Volatile.Read(ref c.CutOff) != null) return;
         long now = Environment.TickCount64;
         if (Interlocked.Increment(ref c.Pending) == 1) Volatile.Write(ref c.ProgressTicks, now);
         long queued = Interlocked.Add(ref c.QueuedBytes, frame.Length);
         if (!c.Out.Writer.TryWrite(frame)) return; // completed: the client is leaving
-        if (queued > MaxQueuedBytes || now - Volatile.Read(ref c.ProgressTicks) > StallLimitMs)
-        {
-            Debug.WriteLine($"[ws] client cut off: {queued / 1024} KB queued, no progress for {now - Volatile.Read(ref c.ProgressTicks)} ms");
-            CutOff(c);
-        }
+        long stalled = now - Volatile.Read(ref c.ProgressTicks);
+        if (queued > MaxQueuedBytes || stalled > StallLimitMs)
+            CutOff(c, $"it took nothing it was sent for {Secs(stalled)}, {queued / 1024} KB waiting");
     }
 
     /// <summary>Stop a client that does not read: the socket is aborted, its receive loop
     /// ends, and the usual clean-up runs (the failsafe too if it held control).</summary>
-    private static void CutOff(Client c)
+    private static void CutOff(Client c, string why)
     {
-        if (Interlocked.Exchange(ref c.CutOff, 1) != 0) return;
+        if (Interlocked.CompareExchange(ref c.CutOff, why, null) != null) return;
         c.Out.Writer.TryComplete();
         try { c.Socket.Abort(); } catch { /* already gone */ }
     }
@@ -241,7 +289,12 @@ public sealed class WebSocketHub
 
         switch (id)
         {
-            case "control.acquire": _authority.Acquire(conn, arg); return;
+            case "control.acquire":
+            {
+                bool had = _authority.IsHolder(conn);
+                if (_authority.Acquire(conn, arg) && !had) Log?.Invoke($"[Browser] {NameOf(conn)} took control");
+                return;
+            }
             case "control.release": _authority.Release(conn); return;
             case "control.presence": _authority.Refresh(conn); return;
             // Link-latency probe: reply on this connection (queued here, on the
@@ -256,6 +309,12 @@ public sealed class WebSocketHub
             case "diag.client":
                 Diagnostics.Report(conn, arg);
                 return;
+            // What the page saw of itself and its link (transport.js): hidden, frozen, its
+            // timers paused, the device offline, a link it gave up. From observers too.
+            case "diag.page":
+                if (_clients.TryGetValue(conn, out var page) && Interlocked.Increment(ref page.PageNotes) <= MaxPageNotes)
+                    Log?.Invoke($"[Browser] {page.Name} page: {(arg.Length > 300 ? arg[..300] : arg)}");
+                return;
         }
 
         if (IsRestrictedCommand is { } restricted && restricted(id) && !_authority.HoldsFresh(conn))
@@ -269,6 +328,30 @@ public sealed class WebSocketHub
 
         CommandAccepted?.Invoke(id);
         CommandHandler?.Invoke(id, arg);
+    }
+
+    private string NameOf(Guid conn) =>
+        _clients.TryGetValue(conn, out var c) ? c.Name : conn.ToString("N")[..6];
+
+    /// <summary>The state of a browser's link, for the deadman's line in the log.</summary>
+    private string LinkState(Guid conn)
+    {
+        if (!_clients.TryGetValue(conn, out var c)) return "its link is already gone";
+        long now = Environment.TickCount64;
+        long sent = Volatile.Read(ref c.SentTicks);
+        return $"its socket is {c.Socket.State}, last heard from it {Secs(now - Volatile.Read(ref c.HeardTicks))} ago, "
+            + (sent == 0 ? "nothing sent to it yet" : $"last frame to it sent {Secs(now - sent)} ago") + ", "
+            + $"{Volatile.Read(ref c.Pending)} frames ({Interlocked.Read(ref c.QueuedBytes) / 1024} KB) waiting to go to it";
+    }
+
+    private static string Secs(long ms) => (ms / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " s";
+
+    private static string Span(long ms)
+    {
+        var t = TimeSpan.FromMilliseconds(ms);
+        return t.TotalHours >= 1 ? $"{(int)t.TotalHours} h {t.Minutes} min"
+            : t.TotalMinutes >= 1 ? $"{t.Minutes} min {t.Seconds} s"
+            : Secs(ms);
     }
 
     /// <summary>Queue one frame for every connected client. Returns at once: each client's

@@ -41,6 +41,34 @@ window.RemoteTransport = {
     const QUIET_WARN_MS = 800, QUIET_MS = 2500, CONNECT_MS = 30000;
     let lastFrameAt = 0, sawTick = false, quietSaid = false;
 
+    // What the page saw of itself and its link, for the host's log: a bug report dump then
+    // says why a screen went quiet (the tab hidden or frozen, its timers stopped by the
+    // system: App Nap, sleep; the device offline; a link the page gave up or saw closed).
+    // Kept until a link is open, so what ended one link reaches the host on the next. Each
+    // says how long ago it happened: the page's clock need not agree with the host's.
+    const pageId = Math.random().toString(36).slice(2, 8), loadedAt = Date.now();
+    const notes = [];
+    let links = 0, watchAt = Date.now(), frozenAt = 0;
+    function note(what) {
+      notes.push({ at: Date.now(), what });
+      if (notes.length > 30) notes.shift();
+      flushNotes();
+    }
+    function flushNotes() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const now = Date.now();
+      while (notes.length) {
+        const n = notes.shift(), ago = now - n.at;
+        ws.send('diag.page|' + n.what + (ago >= 1000 ? ` (${secs(ago)} ago)` : ''));
+      }
+    }
+    const secs = ms => (ms / 1000).toFixed(1) + ' s';
+    document.addEventListener('visibilitychange', () => note(document.hidden ? 'hidden' : 'shown'));
+    document.addEventListener('freeze', () => { frozenAt = Date.now(); note('frozen by the browser'); });
+    document.addEventListener('resume', () => note('resumed' + (frozenAt ? ` after ${secs(Date.now() - frozenAt)} frozen` : '')));
+    window.addEventListener('offline', () => note('the device is offline'));
+    window.addEventListener('online', () => note('the device is online'));
+
     const TYPE = { SCENE: 1, TICK: 2, COVERAGE_INIT: 3, COVERAGE_CELLS: 4, STATUS: 5, CONTROL_STATE: 6, HELLO: 7, CONFIG: 8, PROFILES: 9, WIZARD: 10, NTRIP_PROFILES: 11, FIELD_OPS: 12, AGSHARE: 13, APP_INFO: 14, FIELD_TOOLS: 15, RECORDED_PATH: 16, BOUNDARY: 17, SOUND: 18, PONG: 19, COVERAGE_EDGE: 20, VIEW_PREFS: 21, PROMPT: 22, TOAST: 23, DRIVE_PICK: 24, HW_MSG: 25, VT: 26, VT_IMAGE: 27, NTRIP_MOUNTPOINTS: 28, WEB_CARDS: 29 };
     const td = new TextDecoder();
 
@@ -524,9 +552,19 @@ window.RemoteTransport = {
       ws = sock;
       lastFrameAt = Date.now(); sawTick = false; quietSaid = false;
       sock.binaryType = 'arraybuffer';
-      sock.onopen = () => { if (ws === sock) status('connected'); };
+      sock.onopen = () => {
+        if (ws !== sock) return;
+        status('connected');
+        links++;
+        sock.send(`diag.page|page ${pageId} loaded ${secs(Date.now() - loadedAt)} ago, link ${links}, ${document.hidden ? 'hidden' : 'shown'}`);
+        flushNotes();
+      };
       sock.onmessage = e => {
         if (ws !== sock) return;
+        const gap = Date.now() - lastFrameAt;
+        // Over the host's deadman (1.5 s), short of giving the link up: the host may have taken
+        // control away though the page never lost the link.
+        if (sawTick && gap > 1500) note(`no frame from the host for ${secs(gap)}`);
         lastFrameAt = Date.now();
         if (quietSaid) { quietSaid = false; status('connected'); }
         try {
@@ -538,24 +576,38 @@ window.RemoteTransport = {
         handlers.onFrame && handlers.onFrame();
       };
       sock.onerror = () => { if (ws === sock) status('error'); };
-      sock.onclose = () => { if (ws !== sock) return; status('disconnected'); if (!stopped) setTimeout(connect, 1000); };
+      sock.onclose = e => {
+        if (ws !== sock) return;
+        note(`the link closed (code ${e.code}${e.reason ? ', ' + e.reason : ''}${e.wasClean ? '' : ', not cleanly'})`);
+        status('disconnected');
+        if (!stopped) setTimeout(connect, 1000);
+      };
     }
 
     // Give up on a socket that has gone quiet: forget it (a late close or frame from it is
     // ignored), say so, and connect again.
-    function abandon(why) {
+    function abandon(why, what) {
       const sock = ws;
       ws = null;
+      note(what);
       status(why);
       try { sock && sock.close(); } catch (err) { /* already closing */ }
       if (!stopped) setTimeout(connect, 1000);
     }
     setInterval(() => {
+      // A timer that ran far later than asked: the system stopped the page. A hidden tab's
+      // timers run once a minute at worst (the browser's own throttling), so only longer counts there.
+      const now = Date.now(), late = now - watchAt;
+      watchAt = now;
+      if (late > (document.hidden ? 65000 : 5000))
+        note(`its timers stopped for ${secs(late)} (${document.hidden ? 'hidden' : 'shown'}): the system paused the page`);
       if (stopped || !ws) return;
-      const quiet = Date.now() - lastFrameAt;
+      const quiet = now - lastFrameAt;
       if (ws.readyState === WebSocket.OPEN ? quiet > (sawTick ? QUIET_MS : CONNECT_MS)
           : ws.readyState === WebSocket.CONNECTING && quiet > CONNECT_MS)
-        abandon('disconnected');
+        abandon('disconnected', ws.readyState === WebSocket.OPEN
+          ? `gave the link up: nothing from the host for ${secs(quiet)}`
+          : `gave the link up: not connected after ${secs(quiet)}`);
       else if (ws.readyState === WebSocket.OPEN && sawTick && !quietSaid && quiet > QUIET_WARN_MS) {
         quietSaid = true;
         status('quiet');
