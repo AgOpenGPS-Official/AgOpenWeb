@@ -523,7 +523,7 @@ public sealed class MapBroadcaster : IAsyncDisposable
         h = h * 31 + b.PointCount;
         h = h * 31 + b.AreaHa.GetHashCode();
         h = h * 31 + b.OffsetCm.GetHashCode();
-        h = h * 31 + (b.DrawRightSide ? 1 : 0) + (b.DrawAtPivot ? 2 : 0) + (b.SectionControlOn ? 4 : 0);
+        h = h * 31 + (b.DrawRightSide ? 1 : 0) + (b.DrawAtPivot ? 2 : 0) + (b.SectionControlOn ? 4 : 0) + (b.RecordingObstacle ? 8 : 0);
         h = h * 31 + b.RecordingPoints.Count;
         return h;
     }

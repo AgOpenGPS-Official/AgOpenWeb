@@ -25,6 +25,14 @@ landscape ones; smaller screens, portrait and phones are out of scope. A handhel
 want a layout of its own with fewer, larger controls, not this one made smaller. The web client
 harness checks the target screen (`Tests/AgOpenWeb.WebClientScenarios.Tests`, S1).
 
+It is used with a finger. A `title` (a tooltip) shows only under a mouse, never on a tablet, so
+the words of a button go on the button (an icon with its words under it), and its title only
+says more. The boundary menu and its recorder had icons with titles only, and the recorder had
+one title for the field's boundary and an obstacle: on a tester's field (20 Nov 2026) obstacles
+driven round with the field's button replaced its boundary. They have their words now, and the
+recorder's title says which it records, from the host (`MainViewModel.IsRecordingObstacle`, the
+Boundary frame's last byte). Test: `BoundaryRecorderPageTests`.
+
 ## Where things are
 
 | File | Holds |
