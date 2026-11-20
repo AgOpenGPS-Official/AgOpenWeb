@@ -75,6 +75,7 @@ public partial class MainViewModel : ObservableObject
     private readonly Dictionary<string, (int start, int count, bool isBoundary)> _tramSystemLineRanges = new();
     private readonly IGpsPipelineService _gpsPipelineService;
     private readonly ISteerMachineLoopService? _controlLoop;
+    private readonly IIsobusTaskControllerService? _isobus;
     private readonly IPositionEstimator? _positionEstimator;
     private readonly IPipelineIntents _intents;
     private readonly ILogger<MainViewModel> _logger;
@@ -206,8 +207,10 @@ public partial class MainViewModel : ObservableObject
         IUiDispatcher uiDispatcher,
         IUiTimerFactory uiTimerFactory,
         ISteerMachineLoopService? controlLoop = null,
-        IPositionEstimator? positionEstimator = null)
+        IPositionEstimator? positionEstimator = null,
+        IIsobusTaskControllerService? isobus = null)
     {
+        _isobus = isobus;
         _logger = logger;
         _configStore = configStore;
         _persistentStateService = persistentStateService;
@@ -996,6 +999,8 @@ public partial class MainViewModel : ObservableObject
                 var gpsOk = _gpsService.IsGpsDataOk();
 
                 DropBenchChoiceWhenSteerModuleGoesSilent(steerOk);
+                UpdateMachineModuleLost(machineOk);
+                if (_isobus != null) UpdateIsobusLost(_isobus.Status);
 
                 // Update centralized state (single source of truth)
                 State.Connections.IsAutoSteerDataOk = steerOk;

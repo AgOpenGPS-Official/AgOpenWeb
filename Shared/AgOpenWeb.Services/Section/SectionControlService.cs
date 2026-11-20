@@ -199,6 +199,10 @@ public class SectionControlService : ISectionControlService
     private volatile bool _isReversing;
     public bool IsReversing { get => _isReversing; set => _isReversing = value; }
 
+    private volatile bool _holdPainting;
+    /// <inheritdoc/>
+    public bool HoldPainting { get => _holdPainting; set => _holdPainting = value; }
+
     public void SetFieldContext(AgOpenWeb.Models.Sections.SectionFieldContext context) => Volatile.Write(ref _field, context);
 
     // The headland line's strip index for the per-tick headland test.
@@ -638,6 +642,13 @@ public class SectionControlService : ISectionControlService
     private void StartMapping(int index, Vec2 leftEdge, Vec2 rightEdge, double toolHeading)
     {
         var section = _sectionStates[index];
+        if (_holdPainting)
+        {
+            // The module is not answering: no strip starts. Its start-up wait begins again
+            // when it answers, as for a section just switched on.
+            section.MappingOnTimer = 0;
+            return;
+        }
         section.MappingOnTimer++;
 
         if (section.MappingOnTimer > MappingOnDelayTicks && !section.IsMappingOn)
@@ -677,6 +688,14 @@ public class SectionControlService : ISectionControlService
         {
             // Mapping hasn't started yet - continue the startup timer
             StartMapping(index, leftEdge, rightEdge, toolHeading);
+            return;
+        }
+
+        if (_holdPainting)
+        {
+            // The module is not answering: the strip ends here (after StopMapping's own
+            // debounce, painting nothing meanwhile) and starts again when it answers.
+            StopMapping(index);
             return;
         }
 
