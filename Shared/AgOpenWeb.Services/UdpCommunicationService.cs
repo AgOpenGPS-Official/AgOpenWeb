@@ -57,9 +57,14 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         public readonly bool SwitchControlOnly;
         public readonly byte[] Buffer = new byte[1024];
         public EndPoint Remote = new IPEndPoint(IPAddress.Any, 0);
-        public Listener(Socket socket, GpsSource source, bool switchControlOnly = false)
+        /// <summary>The socket tells which network link each datagram came in on, and the copies
+        /// from a second link are dropped (null: it can't, everything is taken). Set to null
+        /// if the system turns out not to give the link after all.</summary>
+        public LinkCopyFilter? Copies;
+        public Listener(Socket socket, GpsSource source, bool switchControlOnly = false, bool linkInfo = false)
         {
             Socket = socket; Source = source; SwitchControlOnly = switchControlOnly;
+            if (linkInfo) Copies = new LinkCopyFilter();
         }
     }
     private readonly List<Listener> _listeners = new();
@@ -177,7 +182,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
             _udpSocket.Bind(new IPEndPoint(IPAddress.Any, ModulePort));
             _listeners.Clear();
-            _listeners.Add(new Listener(_udpSocket, GpsSource.ModulePort));
+            _listeners.Add(new Listener(_udpSocket, GpsSource.ModulePort, linkInfo: TryAskLinkInfo(_udpSocket)));
 
             // Ace's GPS ports: a bridge that keeps two receivers apart sends GPS1 to 2211 and
             // GPS2 to 2222. Text only; a port another program holds is logged and skipped.
@@ -189,7 +194,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                     s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
                     s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, 65536);
                     s.Bind(new IPEndPoint(IPAddress.Any, port));
-                    _listeners.Add(new Listener(s, source));
+                    _listeners.Add(new Listener(s, source, linkInfo: TryAskLinkInfo(s)));
                 }
                 catch (Exception ex)
                 {
@@ -396,10 +401,101 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     {
         try
         {
+            if (l.Copies != null)
+            {
+                try
+                {
+                    l.Socket.BeginReceiveMessageFrom(l.Buffer, 0, l.Buffer.Length, SocketFlags.None,
+                        ref l.Remote, ReceiveCallback, l);
+                    return;
+                }
+                catch (Exception ex) when (ex is not ObjectDisposedException)
+                {
+                    // Never lose the modules over it: receive as before, every datagram taken.
+                    NoLinkInfo(l, ex);
+                }
+            }
             l.Socket.BeginReceiveFrom(l.Buffer, 0, l.Buffer.Length, SocketFlags.None,
                 ref l.Remote, ReceiveCallback, l);
         }
         catch { }
+    }
+
+    private void NoLinkInfo(Listener l, Exception ex)
+    {
+        l.Copies = null;
+        _logger.LogWarning("[UDP] port {Port}: the system does not say which network link a datagram came in on "
+            + "({Message}); copies from a second link are taken too", (l.Socket.LocalEndPoint as IPEndPoint)?.Port, ex.Message);
+    }
+
+    /// <summary>
+    /// Ask the socket to say which network link each datagram came in on (IP_PKTINFO). A socket
+    /// bound to every address gets a broadcast once per link on the modules' subnet: a tablet on
+    /// cable and on Wi-Fi to the same router got each fix and each PGN 253 twice, the Wi-Fi copy
+    /// up to half a second late, and AutoSteer went off over and over (a tester's Puma,
+    /// 20 Nov 2026). False where the system can't: everything is then taken, as before.
+    /// </summary>
+    private static bool TryAskLinkInfo(Socket s)
+    {
+        try
+        {
+            s.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.PacketInformation, true);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The datagram in <paramref name="l"/>'s buffer is a copy, from a second network link, of one
+    /// already taken (<see cref="LinkCopyFilter"/>). The first copy from a module in a while is
+    /// logged with both links.
+    /// </summary>
+    private bool IsCopyFromSecondLink(Listener l, int length, int link)
+    {
+        if (l.Copies == null || link <= 0 || l.Remote is not IPEndPoint remote) return false;
+        Span<byte> addr = stackalloc byte[16];
+        if (!remote.Address.TryWriteBytes(addr, out int n) || n != 4) return false;
+        uint sender = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(addr);
+
+        if (!l.Copies.IsCopy(sender, link, l.Buffer.AsSpan(0, length), Environment.TickCount64,
+                out int firstLink, out bool copiesStart))
+            return false;
+
+        if (copiesStart)
+        {
+            // Off the receive path: listing the system's links can take a while.
+            var from = remote.Address;
+            long copies = l.Copies.CopiesFrom(sender);
+            _ = Task.Run(() => _logger.LogWarning(
+                "[UDP] {Sender} is heard on two network links, {First} and {Second}: each datagram is taken "
+                + "from the link it comes in on first and its copy from the other is dropped ({Copies} so far). "
+                + "One link to the modules is better: on cable and Wi-Fi to the same router everything comes twice, "
+                + "the Wi-Fi copy up to half a second late",
+                from, LinkName(firstLink), LinkName(link), copies));
+        }
+        return true;
+    }
+
+    /// <summary>A network link's name for the log ("Wi-Fi (Wireless80211)"), or its index.</summary>
+    internal static string LinkName(int index)
+    {
+        try
+        {
+            foreach (var nic in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+            {
+                try
+                {
+                    if (nic.GetIPProperties().GetIPv4Properties()?.Index == index)
+                        return $"{nic.Name} ({nic.NetworkInterfaceType})";
+                }
+                catch (Exception) { /* no IPv4 on it */ }
+            }
+        }
+        catch (Exception) { /* the system won't list them (Android) */ }
+        return $"link {index}";
     }
 
     private void ReceiveCallback(IAsyncResult ar)
@@ -409,9 +505,20 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
         try
         {
-            int bytesReceived = l.Socket.EndReceiveFrom(ar, ref l.Remote);
+            int bytesReceived;
+            int link = 0;
+            if (l.Copies != null)
+            {
+                SocketFlags flags = SocketFlags.None;
+                bytesReceived = l.Socket.EndReceiveMessageFrom(ar, ref flags, ref l.Remote, out IPPacketInformation info);
+                link = info.Interface;
+            }
+            else
+            {
+                bytesReceived = l.Socket.EndReceiveFrom(ar, ref l.Remote);
+            }
 
-            if (bytesReceived > 0)
+            if (bytesReceived > 0 && !IsCopyFromSecondLink(l, bytesReceived, link))
             {
                 // ZERO-COPY PATH: GPS text (a line, or the rest of a line a bridge cut)
                 // goes to the line splitter + parser straight from the receive buffer
@@ -448,6 +555,10 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         {
             // Socket closed during shutdown — stop the receive loop. From PR #278.
             return;
+        }
+        catch (NotSupportedException ex) when (l.Copies != null)
+        {
+            NoLinkInfo(l, ex);
         }
         catch (Exception ex)
         {
