@@ -79,7 +79,8 @@ public partial class YouTurnCreationService
 
     /// <summary>
     /// Build a complete U-turn path for the current vehicle state.
-    /// The returned path is smoothed per <see cref="GuidanceConfig.UTurnSmoothing"/>.
+    /// The turn is smoothed as AgOpenGPS (<see cref="TurnPathSmoothing.SmoothYouTurn"/>, 6 points,
+    /// not a K-turn); <see cref="GuidanceConfig.UTurnSmoothing"/> smooths only the simple fallback.
     /// </summary>
     public TurnPathResult CreateTurnPath(
         Position currentPosition,
