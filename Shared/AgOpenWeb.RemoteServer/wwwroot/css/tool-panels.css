@@ -19,7 +19,8 @@
 #of-n { grid-area: 1 / 2; } #of-w { grid-area: 2 / 1; } #of-z { grid-area: 2 / 2; }
 #of-e { grid-area: 2 / 3; } #of-s { grid-area: 3 / 2; }
 .of-manual { display: flex; gap: 10px; margin-top: 6px; }
-.of-fld { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.of-fld { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.of-fld .of-input { width: 100%; box-sizing: border-box; } /* a number box's own width ran past the panel */
 .of-fld label { font-size: 11px; color: var(--text-muted); text-align: center; }
 .of-input { height: 34px; border: 1px solid var(--border); border-radius: 6px; background: rgba(var(--ov),0.06);
   color: var(--text); font-size: 15px; font-weight: 700; text-align: center; }
@@ -50,13 +51,18 @@
 .rp-del:hover { background: rgba(220,60,60,0.25); color: var(--text); }
 /* Boundary recording menu. */
 .bm-panel { width: 470px; }
-.bm-toolbar { display: flex; gap: 6px; justify-content: space-between; margin-bottom: 10px; }
-.bm-tbtn { position: relative; width: 56px; height: 48px; border: 1px solid var(--border); border-radius: 8px;
-  background: rgba(var(--ov),0.06); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.bm-toolbar { display: flex; gap: 4px; justify-content: space-between; margin-bottom: 10px; }
+/* Icon over its words: a tablet shows no title (tooltip), so the words are always there. */
+.bm-tbtn { position: relative; flex: 1 1 0; min-width: 0; min-height: 70px; padding: 5px 2px 4px;
+  border: 1px solid var(--border); border-radius: 8px; background: rgba(var(--ov),0.06); color: var(--text-2);
+  cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 3px;
+  font: inherit; }
 .bm-tbtn:hover { background: rgba(var(--ov),0.12); }
-.bm-tbtn img { width: 32px; height: 32px; }
+.bm-tbtn img { width: 32px; height: 32px; flex: none; }
 .bm-tbtn:disabled { opacity: 0.35; cursor: default; }
-.bm-plus { position: absolute; right: 4px; bottom: 2px; color: #F5F54D; font-weight: 700; font-size: 15px; }
+.bm-tlbl { font-size: 11px; line-height: 1.15; text-align: center; overflow-wrap: anywhere; }
+.bm-plus { position: absolute; left: calc(50% + 9px); top: 22px; color: #F5F54D; font-weight: 700; font-size: 15px;
+  line-height: 1; text-shadow: 0 0 2px #000; }
 .bm-lhdr { display: grid; grid-template-columns: 1.2fr 1fr 1fr 0.8fr; background: #1565C0; color: #fff;
   font-weight: 700; font-size: 12px; padding: 6px 8px; border-radius: 6px 6px 0 0; }
 .bm-lhdr span { text-align: center; }
@@ -77,12 +83,15 @@
   color: #111; font-size: 20px; font-weight: 700; text-align: center; }
 .bp-offunit { font-size: 13px; color: var(--text-muted); }
 .bp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.bp-btn { height: 60px; border: 1px solid var(--border); border-radius: 8px; background: rgba(var(--ov),0.06);
-  cursor: pointer; display: flex; align-items: center; justify-content: center; }
+/* Icon over its words: a tablet shows no title (tooltip). */
+.bp-btn { min-height: 72px; padding: 4px; border: 1px solid var(--border); border-radius: 8px; background: rgba(var(--ov),0.06);
+  color: var(--text-2); font: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 2px; }
 .bp-btn:hover { background: rgba(var(--ov),0.12); }
 .bp-btn img { width: 40px; height: 40px; }
 .bp-btn.on { background: rgba(80,160,255,0.3); border-color: #4a90d9; }
-.bp-okbtn img { width: 46px; height: 46px; }
+.bp-okbtn img { width: 40px; height: 40px; }
+.bp-lbl { font-size: 12px; line-height: 1.15; text-align: center; }
 .bp-stat { display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .bp-statlbl { font-size: 12px; color: var(--text-dim); }
 .bp-statval { font-size: 18px; font-weight: 700; }

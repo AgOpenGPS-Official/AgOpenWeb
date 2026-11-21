@@ -3694,6 +3694,15 @@ public partial class MainViewModel : ObservableObject
 
     public bool IsInnerBoundaryMode => PendingBoundaryType == BoundaryType.Inner;
 
+    /// <summary>The drive-around recording under way (recording or paused) is an obstacle, an inner
+    /// boundary, not the field's outer boundary. The recorder window's title says which from this
+    /// (the Boundary frame): both opened as "Stop Record Pause Boundary", and on a tester's field
+    /// (Couto da Ribeira, 20 Nov 2026) three obstacles driven round with the field's button were
+    /// each saved as the outer boundary.</summary>
+    public bool IsRecordingObstacle =>
+        _boundaryRecordingService.State != BoundaryRecordingState.Idle
+        && _boundaryRecordingService.CurrentBoundaryType == BoundaryType.Inner;
+
     public string BoundaryRecordingHeaderText
     {
         get

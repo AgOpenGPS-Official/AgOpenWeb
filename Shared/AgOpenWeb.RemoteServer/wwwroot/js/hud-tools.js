@@ -361,16 +361,24 @@ function renderBoundaryMenu() {
 }
 
 // Boundary player: live drive-around recording controls + point count / area.
+// The title says what Stop and save makes: the field's outer boundary or an obstacle. The host
+// says which once its recording has started (recordingObstacle); until then, the button that
+// opened the window (bpOpening, field-builder.js).
 function renderBoundaryPlayer() {
   const b = boundary; if (!b) return;
+  const obstacle = b.isRecording || b.isPaused ? b.recordingObstacle : bpOpening === 'obstacle';
+  document.getElementById('bp-title').textContent = obstacle ? tr('Record Obstacle') : tr('Record Field Boundary');
   const off = document.getElementById('bp-offset');
   if (document.activeElement !== off) writeUnitInput(off, b.offsetCm || 0);
   document.getElementById('bp-section').classList.toggle('on', b.sectionControlOn);
   document.getElementById('bp-lrimg').src = b.drawRightSide ? '/icons/BoundaryRight.png' : '/icons/BoundaryLeft.png';
+  document.getElementById('bp-lrlbl').textContent = b.drawRightSide ? tr('Right side') : tr('Left side');
   document.getElementById('bp-atimg').src = b.drawAtPivot ? '/icons/BoundaryRecordPivot.png' : '/icons/BoundaryRecordTool.png';
+  document.getElementById('bp-atlbl').textContent = b.drawAtPivot ? tr('At the antenna') : tr('At the tool');
   document.getElementById('bp-points').textContent = b.pointCount;
   document.getElementById('bp-area').textContent = fmtUnit(b.areaHa || 0, 'ha');
   document.getElementById('bp-recimg').src = b.isRecording ? '/icons/boundaryPause.png' : '/icons/BoundaryRecord.png';
+  document.getElementById('bp-reclbl').textContent = b.isRecording ? tr('Pause') : tr('Record');
 }
 
 // Drag chart cards by the header (menu panels are docked, but charts are free overlays
