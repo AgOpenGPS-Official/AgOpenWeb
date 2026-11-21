@@ -92,6 +92,10 @@ public sealed class WebClientRig : IAsyncDisposable
         services.AddLogging(b =>
         {
             b.AddProvider(new CapturingLoggerProvider(e => events.Enqueue(e)));
+            // As the heads: the app's log for a bug report dump, which a finding's evidence is;
+            // and the whole scenario's (Tests/ScenarioShared/Evidence.cs).
+            b.AddProvider(new AgOpenWeb.Services.Logging.InMemoryLoggerProvider());
+            b.AddProvider(Evidence.LogProvider);
             b.SetMinimumLevel(LogLevel.Debug);
         });
         AddBackendServices(services);
@@ -143,6 +147,7 @@ public sealed class WebClientRig : IAsyncDisposable
             throw new InvalidOperationException("The rig's simulator may not drive the steer module: "
                 + "PGN 254 would say 'don't steer' whatever a scenario does (is the simulator off?).");
 
+        StallWatch.Start(hostLoop);
         var rig = new WebClientRig(dataRoot, sp, vm, server, hostLoop, module);
         while (events.TryDequeue(out var e)) rig._events.Enqueue(e);
         dispatcher.OnException = ex => rig._events.Enqueue(new RigEvent(RigEventKind.Exception, ex.ToString()));

@@ -77,6 +77,7 @@ public sealed class Screen : IAsyncDisposable
         // its address instead (Response below).
         page.Console += (_, m) =>
         {
+            if (StallWatch.FromPage(Name, m.Text)) return;
             if (m.Type != "error" || m.Text.StartsWith("Failed to load resource", StringComparison.Ordinal)
                 || (m.Text.StartsWith("WebSocket connection to", StringComparison.Ordinal) && m.Text.Contains("failed", StringComparison.Ordinal))) return;
             lock (Errors) Errors.Add("console: " + m.Text);
@@ -95,6 +96,8 @@ public sealed class Screen : IAsyncDisposable
             DeviceScaleFactor = device.Scale,
             Locale = locale,
         });
+        // Every page of the context (a new tab too) gets the stall watch (StallWatch).
+        await ctx.AddInitScriptAsync(StallWatch.PageScript);
         var page = await ctx.NewPageAsync();
         LinkRelay? wifi = ownWifi ? new LinkRelay(rig.Port) : null;
         string url = "http://127.0.0.1:" + (wifi?.Port ?? rig.Port).ToString(CultureInfo.InvariantCulture) + "/";
