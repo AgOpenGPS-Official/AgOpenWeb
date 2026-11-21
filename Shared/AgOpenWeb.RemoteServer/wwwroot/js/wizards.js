@@ -104,11 +104,11 @@ function buildWizardContent(w) {
   switch (w.stepKind) {
     case 'welcome': return head + '<div class="wz-center"><div class="wz-okcard"><div class="t">AutoSteer</div><div class="s">Configuration Wizard</div></div></div>';
     case 'vehicleType': {
-      const c = (i, ic, t) => '<div class="wz-card" data-cfg="vehicle.type:' + i + '" data-activekey="vehicle.type" data-activeval="' + i + '"><img src="/icons/' + ic + '.png"><div class="t">' + t + '</div></div>';
+      const c = (i, ic, t) => '<div class="wz-card" data-cfg="vehicle.type:' + i + '" data-activekey="vehicle.type" data-activeval="' + i + '"><img src="/icons/' + ic + '.png"><div class="t">' + esc(t) + '</div></div>';
       return head + '<div class="wz-cards">' + c(0, 'WheelbaseTractor', tr('Tractor')) + c(1, 'WheelbaseHarvester', tr('Harvester')) + c(2, 'WheelbaseArticulated', tr('4WD / Articulated')) + '</div>';
     }
     case 'hardware': {
-      const c = (i, ic, t, s) => '<div class="wz-card" data-hw="' + i + '" data-activehw="' + i + '"><img src="/icons/' + ic + '.png"><div class="t">' + t + '</div><div class="s">' + s + '</div></div>';
+      const c = (i, ic, t, s) => '<div class="wz-card" data-hw="' + i + '" data-activehw="' + i + '"><img src="/icons/' + ic + '.png"><div class="t">' + esc(t) + '</div><div class="s">' + esc(s) + '</div></div>';
       return head + '<div class="wz-cards">' + c(0, 'NavigationSettings', tr('GPS Only'), tr('Light bar guidance only')) + c(1, 'AutoSteerConf', tr('AutoSteer'), tr('Motor/valve, WAS, IMU')) + c(2, 'Settings48', tr('Full Setup'), tr('Steering + section control')) + '</div>';
     }
     case 'dimensions':
@@ -196,7 +196,8 @@ function renderWizard() {
   document.getElementById('wz-skip').style.display = w.canSkip ? '' : 'none';
   // Why Next / Finish did nothing (the host's check of the step), until it passes.
   asSetText('wz-validation', w.validation || '');
-  // Rebuild content only on step change.
+  // Rebuild content only on step change. The step's markup is fixed; every text in it (the host's
+  // title and description, the labels) goes through esc() in buildWizardContent and its helpers.
   const key = w.stepKind + '|' + w.stepIndex;
   if (key !== _wzKey) { _wzKey = key; wzContent.innerHTML = buildWizardContent(w); }
   // Active states (selection cards / segments / toggles) + live values, every frame.
