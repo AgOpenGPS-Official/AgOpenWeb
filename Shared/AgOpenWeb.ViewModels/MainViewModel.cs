@@ -5029,11 +5029,14 @@ public partial class MainViewModel : ObservableObject
             // Background will be composited into it when SetBackgroundImage is called
             _mapService.InitializeCoverageBitmapWithBounds(boundsMinE, boundsMaxE, boundsMinN, boundsMaxN);
         }
-        else
+        else if (boundary == null || _coverageMapService.PatchCount == 0)
         {
             _coverageMapService.ClearFieldBounds();
             _autoCoverageBoundsInitialized = false; // Allow auto-init from GPS position
         }
+        // else: the field stays open with worked area on the map and no outer boundary (its
+        // last boundary deleted with a job open). The grid stays as it is: clearing its bounds
+        // empties it, and the next save would delete the job's tiles.
 
         // Sync to FieldState for section control boundary/headland detection
         State.Field.CurrentBoundary = boundary;
