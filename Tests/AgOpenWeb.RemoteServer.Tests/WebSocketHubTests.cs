@@ -235,9 +235,30 @@ public class WebSocketHubTests
         Assert.That(lines.Last(), Does.EndWith("; it had control"), "the tablet that had control");
     }
 
+    [Test]
+    public async Task Text_from_a_page_stays_on_one_line_in_the_log()
+    {
+        // Any browser on the network may send these, an observer too: a line break in them
+        // would write a line of its own in the log, one that looks like the app's.
+        var log = new ConcurrentQueue<string>();
+        var hub = new WebSocketHub(new ControlAuthority()) { Log = log.Enqueue };
+        var page = new ScriptedSocket("diag.page|hidden\r\n[Steer settings] Ackermann 90 -> 0")
+        {
+            CloseText = "bye\n[Control] made up",
+        };
+        await hub.HandleAsync(page, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(3));
+
+        var lines = log.ToArray();
+        Assert.That(lines.Where(l => l.Contains('\n') || l.Contains('\r')), Is.Empty);
+        Assert.That(lines, Has.Some.Match(@"^\[Browser\] \w{6} page: hidden\\r\\n\[Steer settings\] Ackermann 90 -> 0$"));
+        Assert.That(lines, Has.Some.Contain(": bye\\n[Control] made up)"));
+    }
+
     /// <summary>A socket that sends the given text commands, then closes.</summary>
     private sealed class ScriptedSocket(params string[] commands) : WebSocket
     {
+        /// <summary>The reason given with the close, if any.</summary>
+        public string? CloseText { get; init; }
         private int _next;
         private WebSocketState _state = WebSocketState.Open;
         public override WebSocketCloseStatus? CloseStatus => null;
@@ -253,7 +274,9 @@ public class WebSocketHubTests
         public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken ct)
         {
             if (_next >= commands.Length)
-                return Task.FromResult(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
+                return Task.FromResult(CloseText is null
+                    ? new WebSocketReceiveResult(0, WebSocketMessageType.Close, true)
+                    : new WebSocketReceiveResult(0, WebSocketMessageType.Close, true, WebSocketCloseStatus.NormalClosure, CloseText));
             var bytes = System.Text.Encoding.UTF8.GetBytes(commands[_next++]);
             bytes.CopyTo(buffer.Array!, buffer.Offset);
             return Task.FromResult(new WebSocketReceiveResult(bytes.Length, WebSocketMessageType.Text, true));
