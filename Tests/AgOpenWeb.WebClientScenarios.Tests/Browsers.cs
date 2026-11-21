@@ -106,18 +106,37 @@ public sealed class Screen : IAsyncDisposable
         return s;
     }
 
-    /// <summary>Wait until the page is connected and has its first frames (id, control state, a tick).</summary>
+    /// <summary>
+    /// Wait until the page is connected and has its first frames (id, control state, a tick), and
+    /// has loaded its map engine and settled. The page connects before CanvasKit loads
+    /// (js/frame.js), and on the harness host the load holds the page 2-5 s (its timers, its
+    /// presence): a scenario that started the work at the first tick lost control to the deadman
+    /// 2.7 s in (C12, 21 Nov 2026; the evidence run had the cab tablet 2.1 s late and the second
+    /// tablet 5.1 s, each just after it loaded). An operator taps AutoSteer on a map that is drawn.
+    /// Settled: no timer of the page's stall watch 500 ms late for the last second, given up
+    /// after <see cref="SettleMs"/> (the page is ready then, settled or not).
+    /// </summary>
     public async Task<bool> WaitReadyAsync(int timeoutMs = 20000)
     {
         try
         {
             await Page.WaitForFunctionAsync(
-                "() => typeof connState !== 'undefined' && connState === 'connected' && typeof myClientId !== 'undefined' && !!myClientId && typeof tick !== 'undefined' && !!tick && typeof lastControl !== 'undefined'",
+                "() => typeof connState !== 'undefined' && connState === 'connected' && typeof myClientId !== 'undefined' && !!myClientId && typeof tick !== 'undefined' && !!tick && typeof lastControl !== 'undefined'"
+                + " && typeof ckStatus !== 'undefined' && ckStatus !== 'loading…'",
                 null, new PageWaitForFunctionOptions { Timeout = timeoutMs, PollingInterval = 50 });
-            return true;
         }
         catch (TimeoutException) { return false; }
+        try
+        {
+            await Page.WaitForFunctionAsync("() => Date.now() - (window.__aowLateAt || 0) > 1000",
+                null, new PageWaitForFunctionOptions { Timeout = SettleMs, PollingInterval = 100 });
+        }
+        catch (TimeoutException) { }
+        return true;
     }
+
+    /// <summary>The longest wait for a ready page to settle (<see cref="WaitReadyAsync"/>).</summary>
+    public const int SettleMs = 8000;
 
     /// <summary>Wait for a condition in the page (a JS expression), polling.</summary>
     public async Task<bool> WaitForAsync(string jsCondition, int timeoutMs)

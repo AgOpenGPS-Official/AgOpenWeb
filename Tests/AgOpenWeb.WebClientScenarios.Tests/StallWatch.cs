@@ -34,6 +34,7 @@ public static class StallWatch
   setInterval(() => {{
     const now = Date.now(), gap = now - at - {TickMs};
     at = now;
+    if (gap > {GapMs}) window.__aowLateAt = now;
     if (gap > {GapMs}) console.debug('[aow-stall] ' + gap + ' ' + now + ' ' + (document.hidden ? 'hidden' : 'shown'));
   }}, {TickMs});
 }})();";
