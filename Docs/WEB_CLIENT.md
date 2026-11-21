@@ -112,6 +112,9 @@ doesn't exist.
    `transport.send('<command>|<arg>')`.
 4. **Host:** a new command is routed in `RemoteServerWiring` (see `CLAUDE.md`, "Adding a web
    command"); new state comes in a frame (`Contracts.cs`, `WireCodec.cs` / `transport.js`).
+   A command is one text message, of any length up to 1 MB (`WebSocketHub.MaxCommandBytes`:
+   a boundary drawn on the map or a curve's points are tens of kB); a longer one is dropped
+   whole and logged.
 5. **Text:** `tr('…')` for strings the script builds; then `Tools/i18n-extract.py` and commit
    `en.json` (`Docs/TRANSLATIONS.md`).
 
