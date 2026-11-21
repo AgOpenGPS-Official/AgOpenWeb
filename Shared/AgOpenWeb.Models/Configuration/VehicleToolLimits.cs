@@ -213,6 +213,18 @@ public static class VehicleToolLimits
     }
 
     /// <summary>
+    /// A value read from a profile file, held to the range the settings page gives
+    /// <paramref name="key"/> (<see cref="Check"/>): a file edited by hand, or written by a build
+    /// with other limits, never went through that check. One that is no number (the files may hold
+    /// NaN and the infinities, and a clamp lets NaN through) is <paramref name="fallback"/>.
+    /// </summary>
+    public static double Hold(string key, double value, double fallback)
+    {
+        if (!double.IsFinite(value)) return fallback;
+        return Ranges.TryGetValue(key, out var r) ? Math.Clamp(value, r.Min, r.Max) : value;
+    }
+
+    /// <summary>
     /// Null when the guidance can steer this machine; otherwise why not. AutoSteer checks
     /// it before it engages, whatever brought the values (a profile saved before the ranges
     /// above, a hand-edited file).

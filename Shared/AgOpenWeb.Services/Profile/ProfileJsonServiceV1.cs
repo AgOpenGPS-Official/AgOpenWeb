@@ -236,8 +236,8 @@ public static class ProfileJsonServiceV1
         store.Guidance.TramLine = dto.Guidance?.TramLine ?? 1;
 
         // U-Turn settings
-        store.Guidance.UTurnRadius = dto.YouTurn?.TurnRadius ?? 8.0;
-        store.Guidance.UTurnExtension = dto.YouTurn?.ExtensionLength ?? 20.0;
+        store.Guidance.UTurnRadius = VehicleToolLimits.Hold("uturn.radius", dto.YouTurn?.TurnRadius ?? 8.0, 8.0);
+        store.Guidance.UTurnExtension = VehicleToolLimits.Hold("uturn.extension", dto.YouTurn?.ExtensionLength ?? 20.0, 20.0);
         store.Guidance.UTurnDistanceFromBoundary = dto.YouTurn?.DistanceFromBoundary ?? 2.0;
         store.Guidance.UTurnStyle = dto.YouTurn?.Style ?? (int)Models.YouTurn.YouTurnType.SagittaStyle;
         store.Guidance.UTurnSmoothing = dto.YouTurn?.Smoothing ?? 14;

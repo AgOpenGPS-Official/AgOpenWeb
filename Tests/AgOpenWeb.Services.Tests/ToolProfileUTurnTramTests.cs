@@ -156,4 +156,35 @@ public class ToolProfileUTurnTramTests
             Assert.That(tram.IsOuterInverted, Is.True);
         });
     }
+
+    [Test]
+    public void UTurnRadiusAndExtension_OutOfRangeOrNoNumberInAFile_AreReadInsideTheirLimits()
+    {
+        // The settings page holds the radius to 2-100 m and the extension to 3-50 m (AgOpenGPS's
+        // boxes, VehicleToolLimits); a profile edited by hand, or written by a build with other
+        // limits, was read as it was. The files may hold NaN and the infinities too.
+        var odd = new ConfigurationStore();
+        odd.Guidance.UTurnRadius = 0.5;
+        odd.Guidance.UTurnExtension = 900;
+        ToolProfileJsonService.Save(_tools, "Odd", odd);
+
+        var d = new ConfigurationStore();
+        Assert.That(ToolProfileJsonService.Load(_tools, "Odd", d), Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(d.Guidance.UTurnRadius, Is.EqualTo(2.0));
+            Assert.That(d.Guidance.UTurnExtension, Is.EqualTo(50.0));
+        });
+
+        odd.Guidance.UTurnRadius = double.PositiveInfinity;
+        odd.Guidance.UTurnExtension = double.NaN;
+        ToolProfileJsonService.Save(_tools, "Odd", odd);
+        var defaults = new GuidanceConfig();
+        Assert.That(ToolProfileJsonService.Load(_tools, "Odd", d), Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(d.Guidance.UTurnRadius, Is.EqualTo(defaults.UTurnRadius));
+            Assert.That(d.Guidance.UTurnExtension, Is.EqualTo(defaults.UTurnExtension));
+        });
+    }
 }
