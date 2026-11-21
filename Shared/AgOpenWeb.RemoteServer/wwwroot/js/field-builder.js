@@ -293,8 +293,13 @@ document.getElementById('bm-delete').addEventListener('pointerdown', e => {
 // The field's outer boundary is replaced only after the operator agrees, as the KML import
 // asks: before a recording or a drawing starts, not after it. Two obstacles driven round with
 // the field's button (beside the obstacle's) each took the outer boundary's place without a
-// word. AgOpenGPS never replaces one: a boundary recorded in a field that has one is added
-// after it, an inner boundary (FormBoundaryPlayer.cs:140).
+// word. AgOpenGPS asks before its one deliberate replacement, Build from tracks ("A boundary
+// already exists. Do you want to remove it?", FormBoundary.cs:438-443), then clears every
+// boundary, the inner ones too (FormBuildBoundaryFromTracks.cs:711); its boundary tool clears
+// them all without asking (FormBndTool.cs:585). Its drive around, draw on map and KML add to
+// the list, the first entry the outer boundary and any later one an inner
+// (FormBoundaryPlayer.cs:140, FormMap.cs:193, FormBoundary.cs:372). Asking before a drive
+// around or a drawing, and keeping the obstacles when the outer boundary is replaced, are ours.
 function askReplaceOuter(go) {
   const hasOuter = !!(boundary && boundary.items.some(it => it.boundaryType === 'Outer'));
   if (!hasOuter) { go(); return; }
