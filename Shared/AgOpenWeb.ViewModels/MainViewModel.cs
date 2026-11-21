@@ -1000,7 +1000,13 @@ public partial class MainViewModel : ObservableObject
 
                 DropBenchChoiceWhenSteerModuleGoesSilent(steerOk);
                 UpdateMachineModuleLost(machineOk);
-                if (_isobus != null) UpdateIsobusLost(_isobus.Status);
+                if (_isobus != null)
+                {
+                    var isobus = _isobus.Status;
+                    UpdateIsobusLost(isobus);
+                    UpdateIsobusSectionCount(isobus);
+                }
+                UpdateCorrectionsUnused();
 
                 // Update centralized state (single source of truth)
                 State.Connections.IsAutoSteerDataOk = steerOk;

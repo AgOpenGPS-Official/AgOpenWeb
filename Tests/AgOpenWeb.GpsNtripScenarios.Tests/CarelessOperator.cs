@@ -237,7 +237,9 @@ public static class CarelessOperator
             sc.Step(F($"45 s: NTRIP {s.NtripStatus.State} (\"{s.NtripStatus.Message}\"), corrections sent to {dest.Address} ({(dest.Unicast ? "the GPS module" : "broadcast")}); the receiver got {s.Rx.Datagrams} datagram(s) and stayed {string.Join(" → ", Compress(w.Select(x => EmulatedReceiver.Name(x.RxQuality))))}; the screen showed fix {string.Join(" → ", Compress(w.Select(x => x.AowFix.ToString(CultureInfo.InvariantCulture))))}, correction age {(w.All(x => double.IsNaN(x.AowAge) || x.AowAge <= 0) ? "none" : "some")}"));
             if (s.Rx.Datagrams > 0) { sc.Harness("the receiver got corrections; the scenario needs them to go elsewhere"); return; }
             bool saysArriving = w.Count(x => x.Ntrip == NtripState.Streaming) > w.Count / 2;
-            sc.Problem(Severity.Improvement, "CORRECTIONS-UNUSED-SILENT",
+            var toldUnused = s.Told(t0, s.Now).Where(t => t.Contains("not using", StringComparison.OrdinalIgnoreCase)).ToList();
+            if (toldUnused.Count > 0) sc.Ok(F($"the operator was told the receiver is not using the corrections: {toldUnused[0]}"));
+            else sc.Problem(Severity.Improvement, "CORRECTIONS-UNUSED-SILENT",
                 F($"for 45 s the NTRIP status said \"{s.NtripStatus.Message}\" while the receiver reported no correction age and stayed {EmulatedReceiver.Name(s.Rx.Quality)}: the corrections were not reaching it. AgOpenWeb knows both facts (it forwards {s.Caster.BytesSent / 45 / 1024.0:0.0} KB/s and the receiver's GGA has an empty age) but nothing says \"the receiver is not using the corrections\"; the Network IO line shows \"correction age {(double.IsNaN(w[^1].AowAge) ? "—" : w[^1].AowAge.ToString("0", CultureInfo.InvariantCulture))} s\" without the red mark it gets past 5 s. AgIO does not warn either")
                 + (saysArriving ? "" : " (the headline did not even say corrections were arriving)"));
             CheckAgeShown(sc, s, t0, s.Now, "corrections to the wrong box");

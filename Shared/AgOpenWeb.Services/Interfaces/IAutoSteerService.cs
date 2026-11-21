@@ -120,10 +120,12 @@ public interface IAutoSteerService
     void SendLoopbackPgns(bool hasActiveField);
 
     /// <summary>
-    /// Send PGN 214, the fix as the receiver (or the simulator) gave it, to AgIO's GPS
-    /// loopback port, as AgIO does after parsing each sentence. GPS_Out needs it (#364).
+    /// Send PGN 214, the fix as the receiver (or the simulator) gave it: to AgIO's GPS
+    /// loopback port when <paramref name="toLoopback"/>, as AgIO does after parsing each
+    /// sentence (GPS_Out needs it, #364), and to the ISOBUS task controller while one is heard,
+    /// which tells the implements the fix quality from it.
     /// </summary>
-    void SendGpsData(GpsData data);
+    void SendGpsData(GpsData data, bool toLoopback);
 
     /// <summary>
     /// Update guidance results from external calculation (e.g. ViewModel guidance).

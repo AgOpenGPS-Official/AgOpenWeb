@@ -942,10 +942,14 @@ public class AutoSteerService : IAutoSteerService
         _udpService.SendToLoopback(pgn);
     }
 
-    public void SendGpsData(GpsData data)
+    public void SendGpsData(GpsData data, bool toLoopback)
     {
         if (!_isEnabled) return;
-        _udpService.SendGpsDataToLoopback(PgnBuilder.BuildGpsDataPgn(data));
+        bool toTaskController = _udpService.IsTaskControllerHeard;
+        if (!toLoopback && !toTaskController) return;
+        var pgn = PgnBuilder.BuildGpsDataPgn(data);
+        if (toLoopback) _udpService.SendGpsDataToLoopback(pgn);
+        if (toTaskController) _udpService.SendToTaskController(pgn);
     }
 
     /// <summary>
