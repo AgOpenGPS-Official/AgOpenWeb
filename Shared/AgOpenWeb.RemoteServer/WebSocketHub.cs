@@ -175,7 +175,7 @@ public sealed class WebSocketHub
                 if (res.MessageType == WebSocketMessageType.Close)
                 {
                     ending = "the page closed the link" + (res.CloseStatus is { } code
-                        ? $" ({(int)code} {code}{(string.IsNullOrEmpty(res.CloseStatusDescription) ? "" : ": " + OneLine(res.CloseStatusDescription))})"
+                        ? $" ({(int)code} {code}{(string.IsNullOrEmpty(res.CloseStatusDescription) ? "" : ": " + res.CloseStatusDescription)})"
                         : "");
                     break;
                 }
@@ -310,11 +310,10 @@ public sealed class WebSocketHub
                 Diagnostics.Report(conn, arg);
                 return;
             // What the page saw of itself and its link (transport.js): hidden, frozen, its
-            // timers paused, the device offline, a link it gave up. From observers too, so on
-            // one line: a line break in it would write lines of its own in the log.
+            // timers paused, the device offline, a link it gave up. From observers too.
             case "diag.page":
                 if (_clients.TryGetValue(conn, out var page) && Interlocked.Increment(ref page.PageNotes) <= MaxPageNotes)
-                    Log?.Invoke($"[Browser] {page.Name} page: {OneLine(arg.Length > 300 ? arg[..300] : arg)}");
+                    Log?.Invoke($"[Browser] {page.Name} page: {(arg.Length > 300 ? arg[..300] : arg)}");
                 return;
         }
 
@@ -330,10 +329,6 @@ public sealed class WebSocketHub
         CommandAccepted?.Invoke(id);
         CommandHandler?.Invoke(id, arg);
     }
-
-    /// <summary>Text from a browser, on one line in the log (CR and LF written as \r and \n).</summary>
-    private static string OneLine(string text) =>
-        text.IndexOfAny(new[] { '\r', '\n' }) < 0 ? text : text.Replace("\r", "\\r").Replace("\n", "\\n");
 
     private string NameOf(Guid conn) =>
         _clients.TryGetValue(conn, out var c) ? c.Name : conn.ToString("N")[..6];
