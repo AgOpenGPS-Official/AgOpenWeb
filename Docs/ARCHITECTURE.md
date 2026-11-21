@@ -697,6 +697,28 @@ steerAngle = atan(2 * wheelbase * sin(α) / lookAheadDistance)
 | 9999 | Receive | GPS/PANDA sentences from AiO board |
 | 8888 | Send | PGN messages to modules (broadcast 192.168.5.255) |
 
+### A module heard on two network links
+
+The module sockets are bound to every address, so a host with two links to the modules' subnet (a tablet on
+cable and on Wi-Fi to the same router) gets every broadcast once per link. The Wi-Fi copy comes up to half a
+second late, because the router holds broadcasts for the Wi-Fi beacon. Taken as news, a late copy of a fix put
+the tractor 0.3-0.5 m back (the dual reverse test read a reverse and paused the steering), and a late PGN 253
+looked like the steer switch going off. AgIO binds the same way (`UDP.designer.cs`, `Bind(IPAddress.Any, 9999)`)
+and takes every copy; dropping them is ours.
+
+`UdpCommunicationService` asks each socket except the loopback one for the link a datagram came in on
+(IP_PKTINFO, `BeginReceiveMessageFrom`), and `LinkCopyFilter` (`Services/Network`) drops the copy:
+- Each datagram is taken from the link it comes in on first. The same bytes from the same sender on another
+  link within 2 s are its copy.
+- Each datagram taken cancels one copy at most, so a module repeating the same bytes (PGN 253 with nothing
+  changed) is not taken for its own copy.
+- No link is preferred: when the first link goes quiet, the other's datagrams match nothing and are taken at once.
+- Copies are dropped before the GPS text reaches the parser and the line splitter.
+- The first copy from a module in 30 s is logged with both links (`[UDP] ... is heard on two network links`).
+- Where the system does not give the link, everything is taken, as before.
+
+Tests: `LinkCopyFilterTests`.
+
 ### PGN Message Format
 
 All messages follow AgOpenGPS standard:
