@@ -119,6 +119,12 @@ public sealed class WebClientRig : IAsyncDisposable
         await hostLoop.InvokeAsync(() => vm = sp.GetRequiredService<MainViewModel>());
 
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
+        // As WebBackend.StartAsync: browsers arriving and leaving, and why (a deadman says when
+        // the host last heard the page), and slow work on the host loop, in the app's log.
+        var loggers = sp.GetRequiredService<ILoggerFactory>();
+        var browserLog = loggers.CreateLogger("AgOpenWeb.RemoteServer.Browsers");
+        server.BrowserLog = line => browserLog.LogInformation("{Line}", line);
+        hostLoop.Logger = loggers.CreateLogger("HostLoop");
         await server.StartAsync(
             sp.GetRequiredService<ApplicationState>(),
             sp.GetRequiredService<ICoverageMapService>(),

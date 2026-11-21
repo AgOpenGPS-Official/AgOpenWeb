@@ -190,7 +190,7 @@ A scenario with a finding leaves the app's bug report dump at its end, `evidence
 the report (`Tests/ScenarioShared/Evidence.cs`): the app's log of the whole scenario (the browsers'
 lines: a deadman says when the host last heard the page and last sent it a frame), and in
 `attachments/` the control changes, every change of the module's PGN 254, and the timers that ran
-more than 250 ms late in each page, the test process and the host loop (`StallWatch.cs`), so a lost
+more than 500 ms late in each page, the test process and the host loop (`StallWatch.cs`), so a lost
 control says whether the page, the runner or the app stood still. Fix from the dump; the harness is
 not run again to look.
 

@@ -24,7 +24,9 @@ namespace AgOpenWeb.WebClientScenarios.Tests;
 /// </summary>
 public static class StallWatch
 {
-    public const int TickMs = 100, GapMs = 250;
+    // 500 ms: a page on the harness host's shared cores runs its timers 300-400 ms late as a
+    // rule (C12 on the Runner, two tablets drawing: hundreds of such lines), which says nothing.
+    public const int TickMs = 100, GapMs = 500;
 
     /// <summary>The page's watch, run before the page's own scripts.</summary>
     public static readonly string PageScript = $@"(() => {{
