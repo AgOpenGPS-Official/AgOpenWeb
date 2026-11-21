@@ -88,7 +88,14 @@ internal sealed class InMemoryLogger : ILogger
     {
         if (!IsEnabled(logLevel)) return;
 
+        // One entry is one line of a bug report's logs.txt. A message can hold text from outside
+        // the app (what a page says of itself and why it closed, a name typed on a screen, a
+        // device's name on the network), and a line break in it started lines of its own that
+        // read as the app's: CR and LF in it are written as \r and \n. An exception keeps its
+        // own lines below.
         var message = formatter(state, exception);
+        if (message.AsSpan().IndexOfAny('\r', '\n') >= 0)
+            message = message.Replace("\r", "\\r").Replace("\n", "\\n");
         if (exception != null)
             message += Environment.NewLine + exception;
 

@@ -468,6 +468,8 @@ public partial class MainViewModel
     /// </summary>
     public void OffsetFixSet(double easting, double northing)
     {
+        // An offset that is no number would put every position the GPS gives at NaN.
+        if (!double.IsFinite(easting) || !double.IsFinite(northing)) return;
         ApplyDrift(easting - State.Field.DriftEasting, northing - State.Field.DriftNorthing);
     }
 

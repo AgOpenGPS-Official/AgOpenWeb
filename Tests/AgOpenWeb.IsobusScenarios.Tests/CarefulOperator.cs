@@ -19,7 +19,7 @@ public static class CarefulOperator
 
     public static async Task RunAsync(Journal journal, string? only)
     {
-        if (!Want(only, "C")) return;
+        if (!WantGroup(only, "C")) return; // C1-C6 run only together (Kit.WantGroup)
         using var tc = new EmulatedTaskController();
         using var steer = new SteerModuleStub { On = true };
         var sprayer = new Implement("Sprayer", 8, 12);

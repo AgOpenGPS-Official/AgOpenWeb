@@ -203,6 +203,7 @@
 .fb-hlrow .fb-hlmeta { color: var(--text-muted); font: 500 12px system-ui, sans-serif; white-space: nowrap; }
 .fb-offrow { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font: 600 13px system-ui, sans-serif; }
 .fb-offrow input { width: 96px; }
+.fb-offrow[hidden], .fb-addrow[hidden] { display: none; } /* display: flex would show them while hidden */
 /* AB flyout group separator (between groups). */
 .bn-flysep { height: 1px; background: rgba(var(--ov),0.14); margin: 4px 6px; }
 /* Control role (#397) — Operator / Observer / Disconnected.

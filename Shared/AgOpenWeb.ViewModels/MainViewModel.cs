@@ -1000,7 +1000,13 @@ public partial class MainViewModel : ObservableObject
 
                 DropBenchChoiceWhenSteerModuleGoesSilent(steerOk);
                 UpdateMachineModuleLost(machineOk);
-                if (_isobus != null) UpdateIsobusLost(_isobus.Status);
+                if (_isobus != null)
+                {
+                    var isobus = _isobus.Status;
+                    UpdateIsobusLost(isobus);
+                    UpdateIsobusSectionCount(isobus);
+                }
+                UpdateCorrectionsUnused();
 
                 // Update centralized state (single source of truth)
                 State.Connections.IsAutoSteerDataOk = steerOk;
@@ -3694,6 +3700,15 @@ public partial class MainViewModel : ObservableObject
 
     public bool IsInnerBoundaryMode => PendingBoundaryType == BoundaryType.Inner;
 
+    /// <summary>The drive-around recording under way (recording or paused) is an obstacle, an inner
+    /// boundary, not the field's outer boundary. The recorder window's title says which from this
+    /// (the Boundary frame): both opened as "Stop Record Pause Boundary", and on a tester's field
+    /// (Couto da Ribeira, 20 Nov 2026) three obstacles driven round with the field's button were
+    /// each saved as the outer boundary.</summary>
+    public bool IsRecordingObstacle =>
+        _boundaryRecordingService.State != BoundaryRecordingState.Idle
+        && _boundaryRecordingService.CurrentBoundaryType == BoundaryType.Inner;
+
     public string BoundaryRecordingHeaderText
     {
         get
@@ -5020,11 +5035,14 @@ public partial class MainViewModel : ObservableObject
             // Background will be composited into it when SetBackgroundImage is called
             _mapService.InitializeCoverageBitmapWithBounds(boundsMinE, boundsMaxE, boundsMinN, boundsMaxN);
         }
-        else
+        else if (boundary == null || _coverageMapService.PatchCount == 0)
         {
             _coverageMapService.ClearFieldBounds();
             _autoCoverageBoundsInitialized = false; // Allow auto-init from GPS position
         }
+        // else: the field stays open with worked area on the map and no outer boundary (its
+        // last boundary deleted with a job open). The grid stays as it is: clearing its bounds
+        // empties it, and the next save would delete the job's tiles.
 
         // Sync to FieldState for section control boundary/headland detection
         State.Field.CurrentBoundary = boundary;
@@ -5352,7 +5370,7 @@ public partial class MainViewModel : ObservableObject
                 // First polygon: respects PendingBoundaryType
                 // Subsequent polygons: always inner
                 if (polyIdx == 0 && PendingBoundaryType == BoundaryType.Outer)
-                    boundary.OuterBoundary = polygon;
+                    SetOuterBoundary(boundary, polygon, "a KML file");
                 else
                     boundary.InnerBoundaries.Add(polygon);
             }

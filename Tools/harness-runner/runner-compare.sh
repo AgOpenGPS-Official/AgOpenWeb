@@ -21,6 +21,10 @@
 # sum of them (SHARDS=0 runs the list in one container, as a run without ONLY does). The base side
 # is cached on the host by commit and settings (RESULT_CACHE in run-harness.sh; BASE_CACHE=0 to
 # run it again): a second fix against the same base runs the fix side only.
+#
+# Each container is copied to OUT_DIR and removed as soon as it ends, so the host keeps only the
+# runs in progress. RUN_TIMEOUT (minutes, default 90) stops a run that hangs; MIN_FREE_GB (default
+# 10) holds the next run back while the host's disk is that full.
 set -euo pipefail
 [ $# -ge 3 ] || { sed -n 5,23p "$0"; exit 2; }
 fix="$1"; base="$2"; proj="$3"; shift 3
@@ -63,31 +67,42 @@ start() { # side code
   dk "${args[@]}" aow-harness:latest "$ref" "$proj" "$@" >/dev/null
 }
 
-runs=()
-for code in "${shards[@]}"; do runs+=("fix/$code" "base/$code"); done
-for item in "${runs[@]}"; do
-  waited=0
-  while :; do
-    busy=$(dk ps --filter ancestor=aow-harness:latest -q | wc -l | tr -d ' ')
-    [ "$busy" -lt "$max" ] && break
-    [ $waited = 1 ] || { echo "-- the host runs $busy of $max harness containers; $item waits for a slot"; waited=1; }
-    sleep 15
-  done
-  start "${item%/*}" "${item#*/}" "$@"
-  echo "== $item started: $name-${item%/*}-${item#*/}"
-done
+# A container is copied and removed the moment it ends, not when the comparison ends: each one
+# leaves its clone and build in the host's disk (0.8 GB, a web client one 2.8 GB), and a comparison
+# of 72 shards that kept them all filled the host's 80 GB at 15:17 on 20 Nov 2026; every shard
+# started after that hung, held the slots, and the comparison waited 21 hours. So the host holds
+# only the runs in progress. A run past RUN_TIMEOUT minutes (default 90) is stopped and reported,
+# and no run starts while the host has less than MIN_FREE_GB (default 10) free. The comparison's
+# containers go with it when it is stopped (Ctrl-C, a killed script).
+timeout_s=$(( ${RUN_TIMEOUT:-90} * 60 ))
+min_free_kb=$(( ${MIN_FREE_GB:-10} * 1024 * 1024 ))
+# The runs in progress: a file each (side.code) holding when it started (macOS's bash 3.2 has no
+# associative arrays).
+running=$(mktemp -d)
+cleanup() {
+  local left; left=$(dk ps -aq --filter "name=^$name-" 2>/dev/null || true)
+  [ -z "$left" ] || dk rm -f $left >/dev/null 2>&1 || true
+  rm -rf "$running"
+}
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 problems=0
-for item in "${runs[@]}"; do
-  side=${item%/*}; code=${item#*/}; cname="$name-$side-$code"
-  exit_code=$(dk wait "$cname")
-  dest="$out/$side"; [ "$code" = all ] || dest="$out/$side/$code"
+collect() { # side/code [stopped]
+  local item=$1 why=${2:-} side=${1%/*} code=${1#*/}
+  local cname="$name-$side-$code" dest="$out/$side"
+  [ "$code" = all ] || dest="$out/$side/$code"
   mkdir -p "$dest"
-  dk cp "$cname:/out/." "$dest" >/dev/null
+  local exit_code
+  exit_code=$(dk inspect -f '{{.State.ExitCode}}' "$cname" 2>/dev/null || echo "?")
+  dk cp "$cname:/out/." "$dest" >/dev/null 2>&1 || true
   dk logs "$cname" 2>&1 | grep -E '^== ' > "$dest/run.log" || true
-  dk rm "$cname" >/dev/null
+  dk rm -f "$cname" >/dev/null 2>&1 || true
+  rm -f "$running/${side}.${code}"
+  local result note=""
   result=$(grep -hE 'Passed!|Failed!' "$dest/test.log" 2>/dev/null | head -1 || true)
-  note=""; grep -q '^== cached' "$dest/run.log" && note=" (cached)"
+  grep -q '^== cached' "$dest/run.log" && note=" (cached)"
+  if [ -n "$why" ]; then echo "!! $item $why"; problems=1; return; fi
   echo "== $item finished (exit $exit_code)$note: $result"
   # A side whose tests failed may have stopped before its jobs ran: its report is no comparison.
   case "$result" in
@@ -98,9 +113,51 @@ for item in "${runs[@]}"; do
   # fell behind was starved of CPU (or paced too fast) and its findings are noise.
   # Only the job harness has the line: elsewhere grep finds nothing, which is no lag (and must not
   # end the script under pipefail, as it did on the GPS/NTRIP harness, 2026-11-15).
+  local lag
   lag=$( (grep -h "harness pace check" "$dest"/*.md 2>/dev/null || true) | sed -E 's/.*\| *([0-9]+) \/ .*/\1/' | sort -n | tail -1)
   [ -z "$lag" ] || [ "$lag" = 0 ] || { echo "!! $item: AgOpenWeb ran $lag fix(es) behind the harness (the pace check): a starved run, its findings are noise; raise AGOPENWEB_SCENARIO_PACE or lower MAX_RUNS"; problems=1; }
+}
+# The runs of this comparison that have ended are collected; one past its time is stopped first.
+reap() {
+  local f item cname state now
+  now=$(date +%s)
+  for f in "$running"/*; do
+    [ -e "$f" ] || continue
+    item=$(basename "$f"); item="${item%%.*}/${item#*.}"
+    cname="$name-${item%/*}-${item#*/}"
+    state=$(dk inspect -f '{{.State.Status}}' "$cname" 2>/dev/null || echo gone)
+    if [ "$state" = exited ] || [ "$state" = dead ]; then collect "$item"
+    elif [ "$state" = gone ]; then echo "!! $item: its container is gone"; rm -f "$f"; problems=1
+    elif [ $(( now - $(cat "$f") )) -gt "$timeout_s" ]; then
+      dk stop -t 10 "$cname" >/dev/null 2>&1 || true
+      collect "$item" "ran over ${RUN_TIMEOUT:-90} min and was stopped: read its test.log"
+    fi
+  done
+}
+free_kb() { dk run --rm --entrypoint df aow-harness:latest -Pk / 2>/dev/null | awk 'NR==2 {print $4}'; }
+
+runs=()
+for code in "${shards[@]}"; do runs+=("fix/$code" "base/$code"); done
+for item in "${runs[@]}"; do
+  waited=0
+  while :; do
+    reap
+    busy=$(dk ps --filter ancestor=aow-harness:latest -q | wc -l | tr -d ' ')
+    if [ "$busy" -lt "$max" ]; then
+      free=$(free_kb); free=${free:-0}
+      [ "$free" -ge "$min_free_kb" ] && break
+      [ $waited = 2 ] || { echo "-- the host has $(( free / 1024 / 1024 )) GB free, under ${MIN_FREE_GB:-10}; $item waits"; waited=2; }
+    else
+      [ $waited = 1 ] || { echo "-- the host runs $busy of $max harness containers; $item waits for a slot"; waited=1; }
+    fi
+    sleep 15
+  done
+  start "${item%/*}" "${item#*/}" "$@"
+  date +%s > "$running/${item%/*}.${item#*/}"
+  echo "== $item started: $name-${item%/*}-${item#*/}"
 done
+left() { ls "$running" | wc -l | tr -d ' '; }
+while [ "$(left)" -gt 0 ]; do reap; [ "$(left)" -eq 0 ] || sleep 10; done
 
 # The shards' reports, one per job, merged into one findings list per report name and side
 # (Tools/combine-job-reports.py), so the comparison reads as a whole run's; each job's full report

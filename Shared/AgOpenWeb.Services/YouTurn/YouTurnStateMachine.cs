@@ -1209,34 +1209,35 @@ public sealed class YouTurnStateMachine
     }
 
     /// <summary>
-    /// A fingerprint of the field a snake order is planned for: the headland line's and the outer
-    /// boundary's point counts and four points of each, so a headland built again (another width,
-    /// edited) or a boundary changed counts. Read every cycle a turn can be made, so it reads a few
-    /// points, not the outlines.
+    /// A fingerprint of the field a snake order is planned for: every point of the headland line and
+    /// every corner of the outer boundary, to the centimetre, so a headland built again (another width,
+    /// edited) or a boundary changed counts. Four points of each were read before: a corner moved
+    /// anywhere else, the count the same, kept the order planned for the old field. Read every cycle a
+    /// turn can be made: a few thousand points, with no allocation.
     /// </summary>
     internal static long SnakeFieldStamp(Boundary? boundary, IReadOnlyList<Vec3>? headlandLine)
     {
-        long h = 17;
+        var h = new HashCode();
         if (headlandLine != null)
         {
-            h = h * 31 + headlandLine.Count;
-            for (int k = 0; k < 4 && headlandLine.Count > 0; k++)
+            h.Add(headlandLine.Count);
+            for (int k = 0; k < headlandLine.Count; k++)
             {
-                var p = headlandLine[headlandLine.Count * k / 4];
-                h = (h * 31 + Cm(p.Easting)) * 31 + Cm(p.Northing);
+                h.Add(Cm(headlandLine[k].Easting));
+                h.Add(Cm(headlandLine[k].Northing));
             }
         }
         var outer = boundary?.OuterBoundary?.Points;
         if (outer != null)
         {
-            h = h * 31 + outer.Count;
-            for (int k = 0; k < 4 && outer.Count > 0; k++)
+            h.Add(outer.Count);
+            for (int k = 0; k < outer.Count; k++)
             {
-                var p = outer[outer.Count * k / 4];
-                h = (h * 31 + Cm(p.Easting)) * 31 + Cm(p.Northing);
+                h.Add(Cm(outer[k].Easting));
+                h.Add(Cm(outer[k].Northing));
             }
         }
-        return h;
+        return h.ToHashCode();
     }
 
     private static long Cm(double metres) => (long)Math.Round(metres * 100);

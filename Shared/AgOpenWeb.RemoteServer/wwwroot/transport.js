@@ -361,7 +361,9 @@ window.RemoteTransport = {
           const drawRightSide = !!u8(), drawAtPivot = !!u8(), sectionControlOn = !!u8();
           const pc = i32(); const recordingPoints = new Array(pc);
           for (let k = 0; k < pc; k++) recordingPoints[k] = f32();
-          handlers.onBoundary && handlers.onBoundary({ items, selectedIndex, playerVisible, isRecording, isPaused, pointCount, areaHa, offsetCm, drawRightSide, drawAtPivot, sectionControlOn, recordingPoints });
+          // The recording under way is an obstacle, not the field's boundary (the recorder's title).
+          const recordingObstacle = o < dv.byteLength && !!u8();
+          handlers.onBoundary && handlers.onBoundary({ items, selectedIndex, playerVisible, isRecording, isPaused, pointCount, areaHa, offsetCm, drawRightSide, drawAtPivot, sectionControlOn, recordingPoints, recordingObstacle });
           break;
         }
         case TYPE.HELLO: {
