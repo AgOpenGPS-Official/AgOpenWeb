@@ -608,11 +608,12 @@ public static partial class RemoteServerWiring
                 store.Hotkeys.ResetToDefaults();
                 configService.SaveAppSettings();
                 return;
-            case "app.bugReport": // arg = title \t description
+            case "app.bugReport": // arg = title \t description \t 1 to include the field's background image
             {
                 var t = arg.Split('\t');
                 var title = t.ElementAtOrDefault(0) ?? "";
                 var desc = t.ElementAtOrDefault(1) ?? "";
+                var withBackground = t.ElementAtOrDefault(2) == "1";
                 var state = services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>();
                 state.BugReportStatus = "Creating bug report…";
                 BugReportRemote.NewReport(null);
@@ -654,7 +655,7 @@ public static partial class RemoteServerWiring
                         }
                         zip = AgOpenWeb.Services.DebugDumpService.WriteDump(snap,
                             additionalNotes: notes, outputDirectory: dir, filePrefix: "bugreport_" + slug,
-                            activeJobTaskName: job?.Task);
+                            activeJobTaskName: job?.Task, includeBackgroundImage: withBackground);
                         status = "Saved: " + zip;
                     }
                     catch (Exception ex) { status = "Error: " + ex.Message; }
