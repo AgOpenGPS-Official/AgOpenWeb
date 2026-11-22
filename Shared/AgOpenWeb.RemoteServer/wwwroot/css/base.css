@@ -77,6 +77,11 @@ body > :not(#ck, #maptap-ab, #ab-dot-labels, script) { zoom: var(--ui-zoom); }
   --flyout-bg: rgba(245,248,252,0.98);
 }
 html, body { margin: 0; height: 100%; background: var(--bg-input); overflow: hidden; touch-action: manipulation; }
+/* One typeface for every panel, card and dialog. Text with no font of its own was in the
+   browser's default serif (Times New Roman: Roll Correction, GPS Offset Fix, Recorded Path, the
+   chart and VT card titles), and buttons, boxes and lists in the browser's own Arial 13.3 px. */
+body { font-family: system-ui, sans-serif; }
+button, input, select, textarea { font-family: inherit; }
 #ck { position: fixed; top: 0; bottom: 0; left: 0; display: block; touch-action: none; } /* CanvasKit (Skia) — the only renderer */
 
 /* Features switched off (FeatureSwitches on the host): the body starts with every fs-no-*

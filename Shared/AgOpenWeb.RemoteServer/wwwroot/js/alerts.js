@@ -237,6 +237,54 @@ function reportMaxTexture() {
 // and just before a bug report is made.
 let _drawMsSum = 0, _drawMsN = 0, _drawMsMax = 0;
 function noteDrawMs(ms) { _drawMsSum += ms; _drawMsN++; if (ms > _drawMsMax) _drawMsMax = ms; }
+// Where the rest of a frame's time goes (#922: a tablet at 1-2 frames a second whose map took
+// 14 ms to draw). Counted since the last report: the frames drawn and the time from one to the
+// next, how often the browser offered a frame at all (rAF), the time in the camera and in the
+// DOM overlays, the time taken over the host's frames and between its ticks, and the browser's
+// own count of tasks that held the page for over 50 ms. A slow page with a fast draw shows here
+// whether the browser stopped offering frames (the GPU or the WebView), the page's own code
+// held it, or the host's ticks came late.
+const mkStat = () => ({ n: 0, sum: 0, max: 0 });
+function addStat(s, v) { s.n++; s.sum += v; if (v > s.max) s.max = v; }
+const statText = s => (s.sum / s.n).toFixed(1) + ' / ' + s.max.toFixed(1);
+let _ft = null;
+function newFrameTimes() {
+  return { t0: performance.now(), raf: 0, gap: mkStat(), over100: 0, over500: 0, cam: mkStat(),
+           overlay: mkStat(), host: mkStat(), tickGap: mkStat(), longTask: mkStat(),
+           hid: document.hidden };
+}
+let _ftLastFrame = 0, _ftLastTick = 0;
+function frameTimes() { return _ft || (_ft = newFrameTimes()); }
+function noteRaf() { frameTimes().raf++; }
+function noteFrameStart(now) {
+  const f = frameTimes();
+  if (_ftLastFrame) {
+    const gap = now - _ftLastFrame;
+    addStat(f.gap, gap);
+    if (gap > 100) f.over100++;
+    if (gap > 500) f.over500++;
+  }
+  _ftLastFrame = now;
+}
+function noteCameraMs(ms) { addStat(frameTimes().cam, ms); }
+function noteOverlayMs(ms) { addStat(frameTimes().overlay, ms); }
+function noteHostFrame(ms, isTick) {
+  const f = frameTimes();
+  addStat(f.host, ms);
+  if (!isTick) return;
+  const now = performance.now();
+  if (_ftLastTick) addStat(f.tickGap, now - _ftLastTick);
+  _ftLastTick = now;
+}
+// A hidden page gets no frames and its timers are slowed: the wait is not a slow frame.
+document.addEventListener('visibilitychange', () => { frameTimes().hid = true; _ftLastFrame = 0; _ftLastTick = 0; });
+// The slowest stretch since the page loaded, kept beside the newest: a report is written a
+// minute or two after the map was slow, with the report's own dialog open.
+let _ftSlowest = null;
+try {
+  new PerformanceObserver(list => { for (const e of list.getEntries()) addStat(frameTimes().longTask, e.duration); })
+    .observe({ type: 'longtask', buffered: true });
+} catch (e) { /* this browser doesn't report long tasks */ }
 function glInfo() {
   // CanvasKit's own context when it has one (asking for the same type returns it); otherwise
   // a throwaway canvas, so a probe never takes the map canvas before CanvasKit does.
@@ -273,13 +321,36 @@ function clientDiagReport() {
   put('maxTexture', g.maxTexture);
   put('fps', fps.toFixed(1));
   if (_drawMsN > 0) put('drawMs', (_drawMsSum / _drawMsN).toFixed(1) + ' / ' + _drawMsMax.toFixed(1));
+  const ft = frameTimes(), secs = (performance.now() - ft.t0) / 1000;
+  if (secs > 0.5) {
+    const rate = ft.gap.n / secs, s = statText;
+    put('frames', rate.toFixed(1) + '/s over ' + secs.toFixed(0) + ' s' + (ft.hid ? ', page hidden in it' : ''));
+    put('raf', (ft.raf / secs).toFixed(1) + '/s');
+    if (ft.gap.n) put('frameGapMs', s(ft.gap) + ', ' + ft.over100 + ' over 100, ' + ft.over500 + ' over 500');
+    if (ft.cam.n) put('cameraMs', s(ft.cam));
+    if (ft.overlay.n) put('overlayMs', s(ft.overlay));
+    if (ft.host.n) put('hostFrameMs', s(ft.host) + ', ' + (ft.host.n / secs).toFixed(0) + '/s');
+    if (ft.tickGap.n) put('tickGapMs', s(ft.tickGap));
+    put('longTasks', ft.longTask.n ? ft.longTask.n + ', ' + s(ft.longTask) + ' ms' : '0');
+    // Twenty seconds at least, the page shown throughout: a short or hidden stretch says nothing.
+    if (secs >= 20 && !ft.hid && ft.gap.n && (!_ftSlowest || rate < _ftSlowest.rate)) {
+      _ftSlowest = { rate, at: Date.now(), text: rate.toFixed(1) + '/s over ' + secs.toFixed(0) + ' s; offered '
+        + (ft.raf / secs).toFixed(1) + '/s; frame to frame ' + s(ft.gap) + ', ' + ft.over500 + ' over 500'
+        + (_drawMsN ? '; draw ' + (_drawMsSum / _drawMsN).toFixed(1) + ' / ' + _drawMsMax.toFixed(1) : '')
+        + (ft.cam.n ? '; camera ' + s(ft.cam) : '') + (ft.overlay.n ? '; overlays ' + s(ft.overlay) : '')
+        + (ft.host.n ? '; host frames ' + s(ft.host) : '') + (ft.tickGap.n ? '; ticks ' + s(ft.tickGap) : '')
+        + '; held ' + (ft.longTask.n ? ft.longTask.n + ', ' + s(ft.longTask) : '0') };
+    }
+  }
+  if (_ftSlowest) put('slowest', _ftSlowest.text + '; ' + Math.round((Date.now() - _ftSlowest.at) / 60000) + ' min ago');
   put('canvas', ckcv.width + 'x' + ckcv.height);
   put('dpr', (window.devicePixelRatio || 1).toFixed(2) + (dpr !== (window.devicePixelRatio || 1) ? ' (drawn at ' + dpr + ')' : ''));
   put('screen', screen.width + 'x' + screen.height);
   put('skia', ckStatus);
   put('ua', navigator.userAgent);
   _drawMsSum = 0; _drawMsN = 0; _drawMsMax = 0; // the next report covers the frames since this one
-  return f.join('\t').slice(0, 900); // one WebSocket frame on the host (1 KiB)
+  _ft = null;
+  return f.join('\t').slice(0, 1900); // the host keeps 2000 (ClientDiagnostics)
 }
 function sendClientDiag() { try { transport.send('diag.client|' + clientDiagReport()); } catch (e) { /* diagnostics only */ } }
 

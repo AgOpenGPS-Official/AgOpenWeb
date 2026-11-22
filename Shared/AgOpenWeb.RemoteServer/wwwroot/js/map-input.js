@@ -51,12 +51,22 @@ addEventListener('touchend', e => {
 // just opened (a stylus sends one press, and a second finger cancels the emulation). Drop it,
 // before any other handler sees it: a mouse press right after a touch ended near the same
 // spot, and a second press from a pointer that is already down (a real one never does that).
+// Only when the finger's own press reached the page during that touch, though: on some boards
+// WebKitGTK (the Linux launcher) sends a finger as touch events alone and its tap as a mouse
+// press when the finger lifts, the only press the tap makes. Dropping that one left every
+// button dead to a finger, the on-screen keyboard too, with only the mouse working.
 const GHOST_PRESS_MS = 800, GHOST_PRESS_PX = 30;
+// A browser that sends pointer events for a finger sends its pointerdown just before the
+// touchstart, so a press this long before the touch began still counts as the finger's own.
+const TOUCH_OWN_PRESS_EARLY_MS = 100;
 const GHOST_PRESS_KEEPS_DEFAULT = 'textarea, select, input:not([type=checkbox]):not([type=radio])'
   + ':not([type=button]):not([type=submit]):not([type=reset]):not([type=range]):not([type=file])';
-let _touchEnd = null;
+let _touchEnd = null, _touchStartT = -Infinity, _lastPressT = -Infinity;
 const _pointersDown = new Set();
-function noteTouchEnd(t, x, y) { _touchEnd = { t, x, y }; }
+function noteTouchEnd(t, x, y) {
+  _touchEnd = { t, x, y, ownPress: _lastPressT >= _touchStartT - TOUCH_OWN_PRESS_EARLY_MS };
+}
+addEventListener('touchstart', e => { _touchStartT = e.timeStamp; }, true);
 addEventListener('pointerup', e => {
   _pointersDown.delete(e.pointerId);
   if (e.pointerType === 'touch') noteTouchEnd(e.timeStamp, e.clientX, e.clientY);
@@ -70,7 +80,7 @@ addEventListener('touchend', e => {
 addEventListener('pointerdown', e => {
   // Forget a pointer once it is caught pressing twice, so a lost release costs one press at most.
   const ghost = _pointersDown.delete(e.pointerId) || (e.pointerType === 'mouse' && _touchEnd
-    && e.timeStamp - _touchEnd.t < GHOST_PRESS_MS
+    && _touchEnd.ownPress && e.timeStamp - _touchEnd.t < GHOST_PRESS_MS
     && Math.hypot(e.clientX - _touchEnd.x, e.clientY - _touchEnd.y) < GHOST_PRESS_PX);
   if (ghost) {
     // In WebKitGTK (the Linux launcher) that emulated press is also what focuses a text field
@@ -81,6 +91,7 @@ addEventListener('pointerdown', e => {
     return;
   }
   _pointersDown.add(e.pointerId);
+  _lastPressT = e.timeStamp;
 }, true);
 
 // A tap on the vehicle resets its direction, as in AgOpenGPS: the heading is learned again

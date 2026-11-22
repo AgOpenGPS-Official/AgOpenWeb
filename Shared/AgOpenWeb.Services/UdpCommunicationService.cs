@@ -321,6 +321,30 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         SendPacket(data, _agIoGpsLoopbackEndpoint);
     }
 
+    // The task controller's own address, from its heartbeat (it binds <LAN-IP>:8888 only, so
+    // the localhost copy of the module PGNs never reaches it), and when it was last heard.
+    private IPEndPoint? _taskControllerEndpoint;
+    private long _taskControllerHeardAt;   // Environment.TickCount64
+    private const int TaskControllerTimeoutMs = 3000;
+
+    public bool IsTaskControllerHeard =>
+        Volatile.Read(ref _taskControllerEndpoint) != null
+        && Environment.TickCount64 - Volatile.Read(ref _taskControllerHeardAt) < TaskControllerTimeoutMs;
+
+    public void SendToTaskController(byte[] data)
+    {
+        if (!IsConnected || _udpSocket == null || Volatile.Read(ref _taskControllerEndpoint) is not { } endpoint) return;
+        SendPacket(data, endpoint);
+    }
+
+    private void NoteTaskController(IPAddress address)
+    {
+        var known = _taskControllerEndpoint;
+        if (known == null || !known.Address.Equals(address))
+            Volatile.Write(ref _taskControllerEndpoint, new IPEndPoint(address, 8888));
+        Volatile.Write(ref _taskControllerHeardAt, Environment.TickCount64);
+    }
+
     // Each endpoint's serialised address, made once (an endpoint dropped is dropped from here too).
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IPEndPoint, SocketAddress> Addresses = new();
 
@@ -759,6 +783,8 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 break;
 
             case PgnNumbers.ISOBUS_HEARTBEAT: // 240 - task controller; IsobusTaskControllerService reads it
+                if (data.Length > 2 && data[2] == Isobus.IsobusTaskControllerService.TaskControllerSource)
+                    NoteTaskController(remoteEndPoint.Address);
                 break;
 
             case PgnNumbers.SWITCH_CONTROL: // 234 - remote section switches; AutoSteerService reads it

@@ -16,6 +16,18 @@ public static class Kit
         only == null || only.Split(',').Select(o => o.Trim()).Any(o =>
             o.Length == 1 ? code.StartsWith(o, StringComparison.OrdinalIgnoreCase) : code.Equals(o, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// A group whose scenarios run only together, each on the state the one before left (the
+    /// careful day, C1-C6: one task controller, the sprayer registered, then the field): any of its
+    /// codes, or its letter, runs the whole group. With <see cref="Want"/> only the letter did, so
+    /// a run asked for C3 ran nothing, and the harness runner's shards C1…C6 each failed with
+    /// "AGOPENWEB_SCENARIO_ONLY matched nothing" (20 Nov 2026).
+    /// </summary>
+    public static bool WantGroup(string? only, string letter) =>
+        only == null || only.Split(',').Select(o => o.Trim()).Any(o =>
+            o.StartsWith(letter, StringComparison.OrdinalIgnoreCase)
+            && (o.Length == letter.Length || o[letter.Length..].All(char.IsAsciiDigit)));
+
     public static string NewDataRoot(string code) =>
         Path.Combine(Path.GetTempPath(), "aow-isobus-" + code + "-" + Guid.NewGuid().ToString("N")[..8]);
 

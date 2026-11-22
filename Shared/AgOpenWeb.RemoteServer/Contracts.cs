@@ -701,7 +701,10 @@ public record BoundaryDto(
     bool DrawAtPivot,
     bool SectionControlOn,
     // Live drive-around markers (field-local m, flat [E,N,…]); empty when idle.
-    IReadOnlyList<double> RecordingPoints);
+    IReadOnlyList<double> RecordingPoints,
+    // The recording under way is an obstacle (an inner boundary), not the field's outer
+    // boundary: the recorder's title says which (MainViewModel.IsRecordingObstacle).
+    bool RecordingObstacle = false);
 
 public record AppLangDto(string Code, string Name);
 public record AppDirDto(string Name, string Path, bool Exists);

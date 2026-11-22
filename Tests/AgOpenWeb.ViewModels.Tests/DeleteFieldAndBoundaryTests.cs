@@ -199,6 +199,33 @@ public class DeleteFieldAndBoundaryTests
     }
 
     [Test]
+    public void DeleteBoundary_TheLastOne_WithWorkedArea_KeepsTheCoverageGrid()
+    {
+        // Clearing the grid's bounds empties it, and the next save deletes the job's tiles.
+        var (vm, b, _) = FieldWithIslands();
+        vm.State.Field.CurrentBoundary!.InnerBoundaries.RemoveAll(i => i.IsValid);
+        b.CoverageMapService.PatchCount.Returns(1200);
+        vm.SelectedBoundaryIndex = 0;
+
+        vm.DeleteBoundaryCommand!.Execute(null);
+
+        b.CoverageMapService.DidNotReceive().ClearFieldBounds();
+    }
+
+    [Test]
+    public void DeleteBoundary_TheLastOne_WithNothingWorked_ClearsTheCoverageGrid()
+    {
+        // As before: the grid is then made round the tractor at the first fix.
+        var (vm, b, _) = FieldWithIslands();
+        vm.State.Field.CurrentBoundary!.InnerBoundaries.RemoveAll(i => i.IsValid);
+        vm.SelectedBoundaryIndex = 0;
+
+        vm.DeleteBoundaryCommand!.Execute(null);
+
+        b.CoverageMapService.Received().ClearFieldBounds();
+    }
+
+    [Test]
     public void DeleteBoundary_NothingPicked_DeletesNothing()
     {
         var (vm, b, _) = FieldWithIslands();

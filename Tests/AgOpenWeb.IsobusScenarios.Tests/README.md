@@ -66,7 +66,7 @@ About 6 minutes (careful about 1.5, careless about 4). Environment variables:
 |---|---|
 | `AGOPENWEB_SCENARIO_REPORT` | where the Markdown report goes (default: the test's work folder) |
 | `AGOPENWEB_SCENARIO_OPERATOR` | `careful` or `careless` (default: both) |
-| `AGOPENWEB_SCENARIO_ONLY` | scenario codes, comma-separated (`K2,K8`; `C` = the careful day) |
+| `AGOPENWEB_SCENARIO_ONLY` | scenario codes, comma-separated (`K2,K8`; `C`, or any of C1-C6, = the whole careful day: its scenarios run only together) |
 | `AGOPENWEB_SCENARIO_VERBOSE` | `0` to keep the console quiet |
 
 The test fails only when the harness itself breaks (a `HARNESS` finding, or nothing run).

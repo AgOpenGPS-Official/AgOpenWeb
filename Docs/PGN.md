@@ -424,6 +424,12 @@ Hello = na<br>
 Port = 5124<br>
 00 00 56 00 00 7C<br>
 
+PGN 214 below is AgIO's parsed GPS data. AgOpenWeb sends it, once per fix, to AgOpenGPS's
+loopback port 15555 when Network IO's "Send corrected position" is ticked (GPS_Out reads it),
+and to an ISOBUS task controller (AOG-TaskController) at its own address, port 8888, while
+its heartbeat (PGN 240) is heard, ticked or not: the task controller reads the fix quality
+(byte 43) from it and passes it to the implements as DDI 514.
+
 
 <table>
     <thead>

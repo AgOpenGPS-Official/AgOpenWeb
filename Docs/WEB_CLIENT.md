@@ -25,6 +25,14 @@ landscape ones; smaller screens, portrait and phones are out of scope. A handhel
 want a layout of its own with fewer, larger controls, not this one made smaller. The web client
 harness checks the target screen (`Tests/AgOpenWeb.WebClientScenarios.Tests`, S1).
 
+It is used with a finger. A `title` (a tooltip) shows only under a mouse, never on a tablet, so
+the words of a button go on the button (an icon with its words under it), and its title only
+says more. The boundary menu and its recorder had icons with titles only, and the recorder had
+one title for the field's boundary and an obstacle: on a tester's field (20 Nov 2026) obstacles
+driven round with the field's button replaced its boundary. They have their words now, and the
+recorder's title says which it records, from the host (`MainViewModel.IsRecordingObstacle`, the
+Boundary frame's last byte). Test: `BoundaryRecorderPageTests`.
+
 ## Where things are
 
 | File | Holds |
@@ -93,13 +101,20 @@ doesn't exist.
 
 1. **Markup** in `index.html`, beside the panels it belongs with: a `<div class="ln-panel">` for
    a menu panel (`ln-hdr` header with title and ✕), written in English.
-2. **Style** in the `css/` file for that area (`panels.css` for a menu panel).
+2. **Style** in the `css/` file for that area (`panels.css` for a menu panel). The page has one
+   typeface, `system-ui` (the body sets it, buttons and boxes inherit it): give a rule a size and a
+   weight, not a font of its own (numbers may use `ui-monospace`, as `.cfg-num`). Text with no font
+   of its own was in the browser's serif (Times New Roman) and buttons in its Arial before the body
+   set one (Roll Correction, GPS Offset Fix, Recorded Path, the chart titles). Test: `PageFontTests`.
 3. **Code** in the `js/` file for that feature, or a new one: open it with
    `lnOpen('<id>', '<nav button id>', populate)`, fill it from `config` / `statusBar` / `scene`,
    send changes with `cfgSend('<section>.<key>', value)` (a `config.set`) or
    `transport.send('<command>|<arg>')`.
 4. **Host:** a new command is routed in `RemoteServerWiring` (see `CLAUDE.md`, "Adding a web
    command"); new state comes in a frame (`Contracts.cs`, `WireCodec.cs` / `transport.js`).
+   A command is one text message, of any length up to 1 MB (`WebSocketHub.MaxCommandBytes`:
+   a boundary drawn on the map or a curve's points are tens of kB); a longer one is dropped
+   whole and logged.
 5. **Text:** `tr('…')` for strings the script builds; then `Tools/i18n-extract.py` and commit
    `en.json` (`Docs/TRANSLATIONS.md`).
 

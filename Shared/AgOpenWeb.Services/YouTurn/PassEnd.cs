@@ -87,6 +87,25 @@ public static class PassEnds
     }
 
     /// <summary>
+    /// Whether the stretch of <paramref name="pass"/> outside the turn line that starts at
+    /// <paramref name="first"/> (its first point outside, walking by <paramref name="step"/>) is
+    /// driven through, as <see cref="Find"/> decides it: no point of it outside
+    /// <paramref name="insideField"/>, and the pass back inside the turn line at
+    /// <paramref name="back"/> for at least <see cref="DriveOnLength"/>. The next pass of a turn is
+    /// asked the same question as the tractor's own (<c>FindCurveOutTurnPoint</c>), so both ends of
+    /// a turn are ends the pass is turned at when it is driven.
+    /// </summary>
+    public static bool IsDrivenThrough(IReadOnlyList<Vec3> pass, int first, int step,
+        Func<Vec3, bool> insideTurnArea, Func<Vec3, bool> insideField, out int back)
+    {
+        IsClip(pass, first, step, insideTurnArea, insideField, out back);
+        if (back == first) return false;
+        if (RunInside(pass, back, step, insideTurnArea) >= DriveOnLength) return true;
+        back = first;
+        return false;
+    }
+
+    /// <summary>
     /// How much of the pass must lie inside the turn line after a stretch outside it for the stretch
     /// to be driven through: the landing length (<see cref="YouTurnPathingService.MinLandingLength"/>),
     /// room to work. A pass that dips out over a wiggle of the edge and is back inside for a few

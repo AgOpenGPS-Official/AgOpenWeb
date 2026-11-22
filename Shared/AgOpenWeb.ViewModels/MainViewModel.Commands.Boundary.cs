@@ -84,7 +84,7 @@ public partial class MainViewModel
                     if (PendingBoundaryType == BoundaryType.Inner)
                         boundary.InnerBoundaries.Add(outerPolygon);
                     else
-                        boundary.OuterBoundary = outerPolygon;
+                        SetOuterBoundary(boundary, outerPolygon, "a drawing on the map");
 
                     SaveFieldBoundary(boundary, fieldPath);
 
@@ -450,7 +450,7 @@ public partial class MainViewModel
                     if (_boundaryRecordingService.CurrentBoundaryType == BoundaryType.Inner)
                         boundary.InnerBoundaries.Add(polygon);
                     else
-                        boundary.OuterBoundary = polygon;
+                        SetOuterBoundary(boundary, polygon, "a drive-around recording");
 
                     SaveFieldBoundary(boundary, fieldPath);
                     SetCurrentBoundary(boundary);
@@ -658,7 +658,7 @@ public partial class MainViewModel
             if (PendingBoundaryType == BoundaryType.Inner)
                 boundary.InnerBoundaries.Add(polygon);
             else
-                boundary.OuterBoundary = polygon;
+                SetOuterBoundary(boundary, polygon, "the tracks");
 
             SaveFieldBoundary(boundary, fieldPath);
             SetCurrentBoundary(boundary);
@@ -830,6 +830,28 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Gives the field this outer boundary and says so in the log, with what it had before. A
+    /// drive-around recording, a drawing on the map, the tracks and a KML file each take the
+    /// place of the outer boundary the field has (the page asks first): on a tester's field
+    /// two obstacles driven round with the field's button each became the outer boundary, an
+    /// 11.6 ha field 0.09 ha on the screen, and the log had no line to say so.
+    /// </summary>
+    private void SetOuterBoundary(Boundary boundary, BoundaryPolygon polygon, string by)
+    {
+        var was = boundary.OuterBoundary;
+        if (was?.IsValid == true)
+            _logger.LogInformation("[Boundary] Outer boundary replaced by {By}: was {OldPoints} points, {OldHa} ha; now {Points} points, {Ha} ha",
+                by, was.Points.Count, Ha(was), polygon.Points.Count, Ha(polygon));
+        else
+            _logger.LogInformation("[Boundary] Outer boundary made by {By}: {Points} points, {Ha} ha",
+                by, polygon.Points.Count, Ha(polygon));
+        boundary.OuterBoundary = polygon;
+
+        static string Ha(BoundaryPolygon p) =>
+            p.AreaHectares.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
     /// Create an outer boundary from points drawn on the satellite imagery (remote/web
     /// "Draw on map"). Points are field-local E/N (already unprojected by the client via
     /// s2w), so no WGS84 conversion is needed here — unlike the native BoundaryMapDialog,
@@ -847,7 +869,7 @@ public partial class MainViewModel
             var outer = new BoundaryPolygon();
             foreach (var (e, n) in points)
                 outer.Points.Add(new BoundaryPoint(e, n, 0));
-            boundary.OuterBoundary = outer;
+            SetOuterBoundary(boundary, outer, "a drawing on the map");
 
             SaveFieldBoundary(boundary, fieldPath);
             SetCurrentBoundary(boundary);

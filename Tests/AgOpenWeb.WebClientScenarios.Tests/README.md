@@ -177,6 +177,7 @@ About 25 minutes (the screens, the second screen and the link scenarios about 7,
 |---|---|
 | `AGOPENWEB_SCENARIO_REPORT` | where the Markdown report goes (default: the test's work folder); the screenshots go to `web-client-shots/` beside it |
 | `AGOPENWEB_SCENARIO_ONLY` | scenario codes, comma-separated (`S4,C9`), or a group letter (`C`) |
+| `AGOPENWEB_SCENARIO_EVIDENCE` | unset: a scenario with a finding keeps its evidence; `all`: every scenario; `0`: none |
 | `AGOPENWEB_SCENARIO_VERBOSE` | `1` prints every step |
 | `AGOPENWEB_CHROMIUM` | a Chromium or Chrome executable to use instead of Playwright's |
 
@@ -184,6 +185,14 @@ The test fails only when the harness itself breaks (a `HARNESS` finding). The fi
 product: each code once in the table, most serious first, with the scenarios it came up in, then
 each scenario's checks, screenshots and steps. Scenario and finding codes are fixed, and
 `KnownFindings.txt` lists the codes already reported, so each night's table says which are new.
+
+A scenario with a finding leaves the app's bug report dump at its end, `evidence/<code>.zip` beside
+the report (`Tests/ScenarioShared/Evidence.cs`): the app's log of the whole scenario (the browsers'
+lines: a deadman says when the host last heard the page and last sent it a frame), and in
+`attachments/` the control changes, every change of the module's PGN 254, and the timers that ran
+more than 500 ms late in each page, the test process and the host loop (`StallWatch.cs`), so a lost
+control says whether the page, the runner or the app stood still. Fix from the dump; the harness is
+not run again to look.
 
 It needs UDP ports 9999 and 8888 free (stop a running AgOpenWeb, a module simulator and the
 other scenario harnesses first: they share the ports).

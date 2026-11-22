@@ -148,6 +148,7 @@ public static class WireCodec
         w.Write((byte)(b.SectionControlOn ? 1 : 0));
         w.Write(b.RecordingPoints.Count);
         foreach (var v in b.RecordingPoints) w.Write((float)v);
+        w.Write((byte)(b.RecordingObstacle ? 1 : 0)); // last: an obstacle, not the field's boundary
         return ms.ToArray();
     }
 

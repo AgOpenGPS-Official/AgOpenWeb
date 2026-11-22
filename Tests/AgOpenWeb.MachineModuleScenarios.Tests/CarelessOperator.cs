@@ -174,7 +174,7 @@ public static class CarelessOperator
         if (await s.StartJobAsync("K4") is { } why) sc.Harness(why);
         await DriveAsync(sc, s, 5, "Spraying 5 s");
         s.Rig.TakeEvents();
-        double worst = 0, worstArea = 0;
+        double worst = 0, worstArea = 0, worstPainting = 0;
         var noticed = new List<string>();
         foreach (double d in new[] { 1.0, 5.0, 30.0 })
         {
@@ -189,6 +189,7 @@ public static class CarelessOperator
             double area = w.AreaPaintedLinkDown + r.AreaPaintedLinkDown;
             noticed.Add(double.IsNaN(w.FirstModuleLostAt) ? F($"{d:0} s drop: module status never changed") : F($"{d:0} s drop: module status 'not seen' after {w.FirstModuleLostAt:0.0} s"));
             if (painted > worst) { worst = painted; worstArea = area; }
+            worstPainting = Math.Max(worstPainting, w.PaintingLinkDownSeconds + r.PaintingLinkDownSeconds);
             bool back = r.ModuleOkSeconds > 0 && Enumerable.Range(0, n).All(i => r.OnButClosed[i] < 1.5);
             if (!back) sc.Problem(Severity.Bug, "WIFI-NO-RECOVERY", F($"after a {d:0} s drop the valves did not follow the screen again within 6 s"));
         }
@@ -198,9 +199,18 @@ public static class CarelessOperator
         sc.Step("Failures and warnings from AgOpenWeb meanwhile: " + (said.Count == 0 ? "none" : string.Join(" | ", said))
             + "; its status text (not shown by the web client) went " + (status.Count == 0 ? "unchanged" : string.Join(" → ", status.Select(t => t[8..]))));
         foreach (var t in noticed) sc.Note(t);
-        if (worst > 1)
+        var aboutModule = said.Where(t => t.Contains("odule", StringComparison.Ordinal)).ToList();
+        if (worst > 1 && aboutModule.Count == 0)
             sc.Problem(Severity.Improvement, "MODULE-LOST-SILENT",
                 F($"while the module's link was down, AgOpenWeb kept the sections on and painted coverage for {worst:0.0} s ({worstArea:0} m²) with the valves shut. The operator sees the field as sprayed; the only sign is the module dot in the status bar (no alarm, sections not turned off, no message)."));
+        // The module shuts its valves 2 s after its last PGN 239 and AgOpenWeb counts it lost
+        // after 3 s of silence: about a second of painting with the valves shut is the gap
+        // between the two, not something AgOpenWeb can see sooner.
+        else if (worstPainting > 2.5)
+            sc.Problem(Severity.Improvement, "MODULE-LOST-PAINTS-ON",
+                F($"AgOpenWeb said the module was lost (\"{aboutModule[0]}\") but the map went on growing for {worstPainting:0.0} s of a drop ({worstArea:0} m²) with the valves shut: more than the second between the module's valve timeout (2 s) and AgOpenWeb's (3 s)."));
+        else if (worstArea > 0)
+            sc.Note(F($"the map grew {worstPainting:0.0} s of a drop ({worstArea:0} m²) with the valves shut, before AgOpenWeb noticed: the module shuts its valves 2 s after its last PGN 239, AgOpenWeb counts it lost after 3 s; the sections stayed on meanwhile ({worst:0.0} s), so the valves opened again when the link came back; it said: {string.Join(" | ", aboutModule)}"));
         CheckWire(sc, module);
         sc.ModuleSnapshot(module, sc.Seconds);
         try { Directory.Delete(root, true); } catch { }

@@ -58,6 +58,17 @@ public interface ISectionControlService
     bool IsReversing { get; set; }
 
     /// <summary>
+    /// True while the machine module that works the valves has stopped answering (set by the
+    /// module check). The sections keep their state and their bits still go out, so the
+    /// valves work again as soon as the module hears them, but nothing is painted: the module
+    /// shuts its valves by itself when the app goes quiet (Sprayer_ESP32: 2 s after its last
+    /// PGN 239), and a map that went on painting showed ground as sprayed that the valves
+    /// never reached (Machine Module harness, MODULE-LOST-SILENT: 495 m² in a 30 s Wi-Fi drop).
+    /// Ground left unpainted is sprayed by an Auto section on a later pass.
+    /// </summary>
+    bool HoldPainting { get; set; }
+
+    /// <summary>
     /// Get section edge positions in world coordinates
     /// </summary>
     /// <param name="sectionIndex">Section index (0-based)</param>

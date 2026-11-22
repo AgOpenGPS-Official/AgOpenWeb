@@ -165,6 +165,9 @@ public sealed class MachineSession : IAsyncDisposable
         public double ScreenOnSeconds, ModuleOkSeconds, ModuleLostSeconds, LinkDownSeconds;
         public double ScreenOnWhileModuleLost;
         public double PaintWhileValvesClosed;   // screen on, module link down
+        /// <summary>Seconds the coverage grew while the module's link was down (the map painting
+        /// with the valves shut); the sections may stay on meanwhile, the map must not.</summary>
+        public double PaintingLinkDownSeconds;
         public double ScreenOnWhileGpsOff;
         public double ValvesOpenWhileGpsOff;
         public double FirstModuleOkAt = double.NaN, FirstModuleLostAt = double.NaN, FirstAllClosedAt = double.NaN;
@@ -202,7 +205,7 @@ public sealed class MachineSession : IAsyncDisposable
             double a = Coverage.TotalWorkedArea, da = Math.Max(0, a - area);
             area = a;
             w.AreaPainted += da;
-            if (!Module.LinkOk) w.AreaPaintedLinkDown += da;
+            if (!Module.LinkOk) { w.AreaPaintedLinkDown += da; if (da > 0) w.PaintingLinkDownSeconds += 0.1; }
             if (!GpsOn) w.AreaPaintedGpsOff += da;
             ulong screen = Sections.GetSectionBits64() & mask;
             ulong open = Module.SectionsOpen & mask;

@@ -71,6 +71,16 @@ public interface IUdpCommunicationService
     void SendGpsDataToLoopback(byte[] data);
 
     /// <summary>
+    /// An ISOBUS task controller (AOG-TaskController, source 0x80) sent its heartbeat in the
+    /// last few seconds. It listens on 8888 at its own address and reads the fix quality only
+    /// from PGN 214 (its DDI 514 to the implements); without it every implement is told plain GPS.
+    /// </summary>
+    bool IsTaskControllerHeard => false;
+
+    /// <summary>Send to the task controller's own address, port 8888, while it is heard.</summary>
+    void SendToTaskController(byte[] data) { }
+
+    /// <summary>
     /// Send hello/ping packet to check module connections
     /// PGN 200 (0xC8) - communication check
     /// </summary>

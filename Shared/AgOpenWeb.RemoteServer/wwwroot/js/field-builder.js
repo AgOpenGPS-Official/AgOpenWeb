@@ -290,7 +290,26 @@ document.getElementById('bm-delete').addEventListener('pointerdown', e => {
   showConfirm(tr('Delete Boundary'), tr('Delete the {type} boundary? This cannot be undone.', { type: it ? it.boundaryType : tr('selected', {}) }),
     () => transport.send('boundary.delete'));
 });
-document.getElementById('bm-buildtracks').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('boundary.buildFromTracks'); });
+// The field's outer boundary is replaced only after the operator agrees, as the KML import
+// asks: before a recording or a drawing starts, not after it. Two obstacles driven round with
+// the field's button (beside the obstacle's) each took the outer boundary's place without a
+// word. AgOpenGPS asks before its one deliberate replacement, Build from tracks ("A boundary
+// already exists. Do you want to remove it?", FormBoundary.cs:438-443), then clears every
+// boundary, the inner ones too (FormBuildBoundaryFromTracks.cs:711); its boundary tool clears
+// them all without asking (FormBndTool.cs:585). Its drive around, draw on map and KML add to
+// the list, the first entry the outer boundary and any later one an inner
+// (FormBoundaryPlayer.cs:140, FormMap.cs:193, FormBoundary.cs:372). Asking before a drive
+// around or a drawing, and keeping the obstacles when the outer boundary is replaced, are ours.
+function askReplaceOuter(go) {
+  const hasOuter = !!(boundary && boundary.items.some(it => it.boundaryType === 'Outer'));
+  if (!hasOuter) { go(); return; }
+  showConfirm(tr('Replace the outer boundary?'),
+    tr('This field already has an outer boundary, and the new one takes its place. For an obstacle inside the field use the button with the +.'),
+    go);
+}
+document.getElementById('bm-buildtracks').addEventListener('pointerdown', e => {
+  e.stopPropagation(); askReplaceOuter(() => transport.send('boundary.buildFromTracks'));
+});
 // The aerial covering the field's boundary, however it was made (driven, KML, AgShare), into
 // the field background; replaces any it has. Needs the internet (#500).
 document.getElementById('bm-imagery').addEventListener('pointerdown', e => {
@@ -299,7 +318,7 @@ document.getElementById('bm-imagery').addEventListener('pointerdown', e => {
   showConfirm(tr('Get Aerial Imagery'), tr('Replace the field\'s aerial imagery with a new one for its boundary?'),
     () => transport.send('boundary.captureImagery'));
 });
-document.getElementById('bm-drawmap').addEventListener('pointerdown', e => { e.stopPropagation(); startSatBoundary(); });
+document.getElementById('bm-drawmap').addEventListener('pointerdown', e => { e.stopPropagation(); askReplaceOuter(startSatBoundary); });
 // The Import folder's pickers (From KML, From ISO-XML, Import KML Boundary) get their lists in
 // the FieldOps frame. The host lists the folder only when asked: when a picker opens, and every
 // 3 s while one stays open, so a file copied in meanwhile shows up. Nothing is listed while
@@ -337,15 +356,18 @@ function renderKmlBoundary() {
     list.appendChild(row);
   }
 }
+// Which recorder the menu opened, 'field' or 'obstacle': its title until the host's recording says.
+let bpOpening = 'field';
 document.getElementById('bm-drivearound').addEventListener('pointerdown', e => {
-  e.stopPropagation(); transport.send('boundary.driveAround'); lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer);
+  e.stopPropagation();
+  askReplaceOuter(() => { transport.send('boundary.driveAround'); bpOpening = 'field'; lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer); });
 });
 // An obstacle goes inside the field's boundary: with no outer boundary yet the host refuses
 // and says so (#621), and the recorder stays closed.
 document.getElementById('bm-driveinner').addEventListener('pointerdown', e => {
   e.stopPropagation(); transport.send('boundary.driveAroundInner');
   const hasOuter = !!(boundary && boundary.items.some(it => it.boundaryType === 'Outer'));
-  if (hasOuter) lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer);
+  if (hasOuter) { bpOpening = 'obstacle'; lnOpen('boundaryplayer', 'ln-fieldtools', renderBoundaryPlayer); }
 });
 document.getElementById('bm-accept').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); }); // edits are already saved
 // Boundary player.

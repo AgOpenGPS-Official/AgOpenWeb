@@ -10,6 +10,15 @@
 // editing buffer client-side; Save sends every field at once. ----
 const nioPanel = document.getElementById('networkio');
 nioPanel.addEventListener('pointerdown', e => e.stopPropagation());
+// A new element with its class and text. The text goes in as text, never as markup: what
+// the host, a receiver or a caster sends can't add elements or scripts to the page.
+function netEl(tag, cls, text, noTranslate) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  if (noTranslate) e.setAttribute('translate', 'no');
+  return e;
+}
 for (const cb of nioPanel.querySelectorAll('.nio-chk'))
   cb.addEventListener('change', () => cfgSend(cb.dataset.key, cb.checked ? '1' : '0'));
 document.getElementById('nio-scan').addEventListener('pointerdown', e => { e.stopPropagation(); transport.send('net.scan'); });
@@ -182,8 +191,11 @@ function renderNtripSession(s) {
   if (showChecks) {
     const rows = ntripChecks(s);
     document.getElementById('nio-checks-sum').textContent = tr('Checks: {ok} of {n} fine', { ok: rows.filter(x => x.cls === 'ok').length, n: rows.length });
-    if (box.open) document.getElementById('nio-checks-rows').innerHTML = rows.map(x =>
-      '<div class="nio-chk-row ' + x.cls + '"><span class="mark">' + (x.cls === 'ok' ? '✓' : x.cls === 'bad' ? '✕' : '…') + '</span><span>' + esc(x.text) + '</span></div>').join('');
+    if (box.open) document.getElementById('nio-checks-rows').replaceChildren(...rows.map(x => {
+      const row = netEl('div', 'nio-chk-row ' + x.cls);
+      row.append(netEl('span', 'mark', x.cls === 'ok' ? '✓' : x.cls === 'bad' ? '✕' : '…'), netEl('span', '', x.text));
+      return row;
+    }));
   }
 
   const mode = ns && ns.profilePerField ? 1 : 0;
@@ -302,9 +314,12 @@ function renderNtripRtcm(s) {
   // late only where lateness matters: observations and the base position.
   const bursty = t => t === 1019 || t === 1020 || (t >= 1041 && t <= 1046);
   const late = x => rtcmIsObs(x.type) ? x.last > 5 : (x.type === 1005 || x.type === 1006) && x.last > 60;
-  document.getElementById('nio-rtcm-rows').innerHTML = r.types.map(x =>
-    '<tr' + (late(x) ? ' class="stale"' : '') + '><td class="num" translate="no">' + x.type + '</td><td>' + esc(rtcmDescribe(x.type)) +
-    '</td><td class="num" translate="no">' + (bursty(x.type) ? '—' : secs(x.every)) + '</td><td class="num" translate="no">' + secs(x.last) + '</td></tr>').join('');
+  document.getElementById('nio-rtcm-rows').replaceChildren(...r.types.map(x => {
+    const row = netEl('tr', late(x) ? 'stale' : '');
+    row.append(netEl('td', 'num', x.type, true), netEl('td', '', rtcmDescribe(x.type)),
+      netEl('td', 'num', bursty(x.type) ? '—' : secs(x.every), true), netEl('td', 'num', secs(x.last), true));
+    return row;
+  }));
 }
 document.getElementById('nio-rtcm').addEventListener('toggle', () => { if (statusBar) renderNtripRtcm(statusBar); });
 
@@ -359,15 +374,19 @@ function renderSystemData() {
   set(SD.hf2f, d ? deg(d.fixToFixHeading) : '—');
   SD.hdual.classList.toggle('sd-bad', !!s.dualHeadingMissing);
   const ago = v => tr('{n} s ago', { n: v < 10 ? v.toFixed(1) : Math.round(v) });
-  const rows = (d ? d.sentences : []).map(x =>
-    '<div class="sd-sent' + (x.age > 2 ? ' stale' : '') + '"><div class="sd-senthead"><span' + (x.type === 'REJECTED' ? '>' + esc(tr('Not accepted', {})) : ' translate="no">' + (x.type === 'INSPVAX' ? '#' : '$') + esc(x.type)) +
-    '</span><span>' + esc(ago(x.age)) + '</span></div><div class="sd-senttext" translate="no">' + esc(x.text) + '</div></div>');
-  const html = rows.length ? rows.join('')
-    : '<div class="sa-hint">' + esc(s.gpsSentence === 'SIM' ? tr('The simulator is supplying the position; no sentence is being received.', {})
-      : tr('No sentence has been received from the GPS module.', {})) + '</div>';
+  const rows = (d ? d.sentences : []).map(x => {
+    const head = netEl('div', 'sd-senthead');
+    head.append(x.type === 'REJECTED' ? netEl('span', '', tr('Not accepted', {}))
+      : netEl('span', '', (x.type === 'INSPVAX' ? '#' : '$') + (x.type == null ? '' : x.type), true), netEl('span', '', ago(x.age)));
+    const sent = netEl('div', 'sd-sent' + (x.age > 2 ? ' stale' : ''));
+    sent.append(head, netEl('div', 'sd-senttext', x.text, true));
+    return sent;
+  });
+  if (!rows.length) rows.push(netEl('div', 'sa-hint', s.gpsSentence === 'SIM' ? tr('The simulator is supplying the position; no sentence is being received.', {})
+    : tr('No sentence has been received from the GPS module.', {})));
   // Leave the block alone while text in it is selected, so a sentence can be copied.
   const sel = window.getSelection && window.getSelection();
-  if (!(sel && !sel.isCollapsed && SD.sentences.contains(sel.anchorNode))) SD.sentences.innerHTML = html;
+  if (!(sel && !sel.isCollapsed && SD.sentences.contains(sel.anchorNode))) SD.sentences.replaceChildren(...rows);
 }
 
 // NTRIP Profiles — chain sub-panel of Network IO.

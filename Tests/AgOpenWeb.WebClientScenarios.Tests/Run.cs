@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 using System.Globalization;
+using System.Text;
 
 namespace AgOpenWeb.WebClientScenarios.Tests;
 
@@ -37,6 +38,9 @@ public sealed class Run
     {
         if (!Wanted(code)) return;
         var s = new Scenario(group, code, title, story);
+        // Before anything of the scenario: the app's log and GPS log are cleared for it.
+        var evidence = new Evidence(EvidenceFolder, code);
+        long startMs = ModuleListener.NowMs;
         try
         {
             // Each scenario on ground not yet worked, so a section in Auto is open because the
@@ -57,7 +61,60 @@ public sealed class Run
         }
         foreach (var e in Rig.TakeEvents().Where(e => e.Kind is RigEventKind.Exception or RigEventKind.Hang).Take(3))
             s.Problem(Severity.Bug, "HOST-EXCEPTION", e.Text.Split('\n')[0]);
+        await KeepEvidenceAsync(s, evidence, startMs);
         Rows.Add(s.Row);
+    }
+
+    /// <summary>The evidence folder beside the report.</summary>
+    public static string EvidenceFolder => Evidence.FolderFor(ReportPath.For("web-client-scenarios-report.md"));
+
+    /// <summary>
+    /// A scenario with a finding (every scenario with AGOPENWEB_SCENARIO_EVIDENCE=all) leaves the
+    /// app's bug report dump at its end, as a tester's report does (Tests/ScenarioShared/Evidence.cs):
+    /// the app's log with the browsers' lines (a deadman says when it last heard the page and last
+    /// sent it a frame), plus what only the harness saw: the control changes, every change of the
+    /// module's PGN 254, and the timers that ran late in the pages, the test process and the host
+    /// loop (<see cref="StallWatch"/>). C12's lost control (21 Nov 2026) left nothing to tell the
+    /// page from the runner.
+    /// </summary>
+    private async Task KeepEvidenceAsync(Scenario s, Evidence evidence, long startMs)
+    {
+        try
+        {
+            if (Evidence.Off || (s.Row.Findings.Count == 0 && !Evidence.All)) return;
+            var inv = CultureInfo.InvariantCulture;
+            string work = Path.Combine(Path.GetTempPath(), "aow-web-evidence-" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(work);
+            try
+            {
+                string control = Path.Combine(work, "control_changes.txt");
+                File.WriteAllLines(control, new[] { "# Control changes seen by the host, from the scenario's start (harness ms): held or ended, and by whom or why." }
+                    .Concat(Rig.ControlLog.Where(c => c.Ms >= startMs)
+                        .Select(c => string.Create(inv, $"{c.Ms - startMs,8} ms  {(c.Held ? "taken" : "ended")}  {c.Reason}"))));
+                string module = Path.Combine(work, "module_pgn254.txt");
+                File.WriteAllLines(module, new[] { "# Every change of what the steer module got in PGN 254, from the scenario's start (harness ms)." }
+                    .Concat(Rig.Module.Since(startMs).Select(m => string.Create(inv, $"{m.Ms - startMs,8} ms  {m}"))));
+                string stalls = Path.Combine(work, "timers_late.txt");
+                File.WriteAllText(stalls, StallWatch.Text(startMs));
+
+                var notes = new StringBuilder(Evidence.NotesHeader("Web client scenarios", s.Row.Code, s.Row.Title, turns: false));
+                notes.Append("## Findings\n\n");
+                foreach (var f in s.Row.Findings) notes.Append("- ").Append(f.Severity).Append(" `").Append(f.Code).Append("`: ").Append(f.Message).Append('\n');
+                if (s.Row.Findings.Count == 0) notes.Append("None (kept for every scenario).\n");
+                notes.Append("\n## Steps\n\n```\n");
+                foreach (var st in s.Row.Steps) notes.Append(st).Append('\n');
+                notes.Append("```\n\nThe harness's own files in `attachments/`: `control_changes.txt`, `module_pgn254.txt`, `timers_late.txt` (")
+                     .Append(StallWatch.GapMs.ToString(inv)).Append(" ms or more: the pages, the test process, the host loop).\n");
+
+                string? zip = await evidence.SaveAsync(null, notes.ToString(), Rig.Services, Rig.State, Rig.Store,
+                    a => Rig.RunAsync(a), new[] { control, module, stalls });
+                if (zip != null) s.Note("evidence: `evidence/" + Path.GetFileName(zip) + "`");
+                foreach (var e in evidence.Errors) s.Note("evidence not kept: " + e);
+            }
+            finally { try { Directory.Delete(work, true); } catch { } }
+        }
+        catch (Exception ex) { s.Note("evidence not kept: " + ex.Message); }
+        finally { evidence.Close(); }
     }
 
     public Task<Screen> OpenAsync(Device d, string name, bool ownWifi = false, string locale = "en-US")

@@ -25,6 +25,13 @@ public static partial class RemoteServerWiring
         "import.scan",      // lists the Import folder for a picker that opened
     };
 
+    /// <summary>A number a command carries, finite only. "NaN" and "Infinity" parse as numbers and
+    /// pass every "more than" test and <c>Math.Clamp</c>: <c>offset.set|NaN,0</c> put every GPS
+    /// position at NaN. The page checks its numbers first; this is for any other sender.</summary>
+    internal static bool FiniteNumber(string text, out double d) =>
+        double.TryParse(text, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out d) && double.IsFinite(d);
+
     /// <summary>Parse a whole-number setting, rounding a decimal ("12.5" → 13) rather than
     /// rejecting it (#112).</summary>
     internal static bool TryParseRoundedInt(string val, out int i)
@@ -645,9 +652,12 @@ public static partial class RemoteServerWiring
                             try { coverage.SaveToFile(j.FieldDir, j.Task); }
                             catch { /* the dump still carries the last autosave */ }
                         }
+                        string? device = null;
+                        try { device = AgOpenWeb.Services.DeviceReport.Build(services.GetService<IDeviceInfoProvider>()); }
+                        catch { /* the dump is written without it */ }
                         zip = AgOpenWeb.Services.DebugDumpService.WriteDump(snap,
                             additionalNotes: notes, outputDirectory: dir, filePrefix: "bugreport_" + slug,
-                            activeJobTaskName: job?.Task);
+                            activeJobTaskName: job?.Task, deviceInfo: device);
                         status = "Saved: " + zip;
                     }
                     catch (Exception ex) { status = "Error: " + ex.Message; }

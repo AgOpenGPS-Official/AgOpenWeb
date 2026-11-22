@@ -47,6 +47,14 @@ the CPU, and a starved run misses its watchdogs and reports it (a false `AUTOSTE
 the 6-core Mac mini: three whole runs or six shards), the rest waiting for a slot (`CPUS`, `MAX_RUNS`
 to change them); a run started by hand needs `--cpus 4` too.
 
+They share the disk as well: a container keeps its clone and build (about 0.8 GB, a web client one
+2.8 GB) until it is removed. `runner-compare.sh` copies each one's `/out` and removes it as soon as
+it ends, so the host holds only the runs in progress; a comparison that kept them all to the end
+filled the 80 GB disk on 20 Nov 2026, and every run started after that hung for 21 hours. A run
+past `RUN_TIMEOUT` minutes (default 90) is stopped and reported, no run starts while the host has
+under `MIN_FREE_GB` (default 10) free, and a comparison that is stopped (Ctrl-C) takes its
+containers with it. Remove a container started by hand when its run is done (below).
+
 ## Set up
 
 ```bash
