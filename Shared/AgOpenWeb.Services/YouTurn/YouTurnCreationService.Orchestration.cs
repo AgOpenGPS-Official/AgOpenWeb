@@ -404,9 +404,12 @@ public partial class YouTurnCreationService
         int currentLocationIndex = PassEnds.NearestIndex(currentCurvePoints, pivotPosition.Easting, pivotPosition.Northing);
         // The end of the pass, found the one way (PassEnds): the turn builder starts its arc from
         // this point, and the state machine measured its distance to the turn to the same end.
+        // A stretch outside the turn line that stays inside the fence is driven through, on this
+        // pass and on the next (FindCurveOutTurnPoint): the one test for both.
+        Func<Vec3, bool> isPointDrivenThrough = p => boundary.OuterBoundary.IsPointInside(p.Easting, p.Northing);
         var passEnd = PassEnds.Find(currentCurvePoints, currentLocationIndex, guidance.IsHeadingSameWay,
             p => isPointInsideTurnArea(p) == 0, turnBoundaryVec3,
-            p => boundary.OuterBoundary.IsPointInside(p.Easting, p.Northing),
+            isPointDrivenThrough,
             m => _logger.LogDebug("[YouTurn] Pass {Path}: {What}", guidance.HowManyPathsAway, m));
         if (passEnd is { } end)
             _logger.LogDebug("[YouTurn] End of pass {Path} ahead at ({E:F1},{N:F1}), point {Idx} of {Count}",
@@ -422,6 +425,7 @@ public partial class YouTurnCreationService
             GuidanceType = GuidanceLineType.Curve,
             BoundaryTurnLines = boundaryTurnLines,
             IsPointInsideTurnArea = isPointInsideTurnArea,
+            IsPointDrivenThrough = isPointDrivenThrough,
 
             // The single generator walks these points (the current offset pass).
             GuidancePoints = currentCurvePoints,
