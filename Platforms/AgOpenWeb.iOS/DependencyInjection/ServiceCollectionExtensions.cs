@@ -132,6 +132,8 @@ public static class ServiceCollectionExtensions
         // Battery service — UIDevice.BatteryLevel / BatteryState via
         // NSNotificationCenter (no polling needed).
         services.AddSingleton<IBatteryService, AgOpenWeb.iOS.Services.IOSBatteryService>();
+        // The device for the bug report dump (device_info.txt).
+        services.AddSingleton<IDeviceInfoProvider, AgOpenWeb.iOS.Services.IOSDeviceInfoProvider>();
 
         // Module communication service (work switch, steer switch logic)
         services.AddSingleton<IModuleCommunicationService, ModuleCommunicationService>();
