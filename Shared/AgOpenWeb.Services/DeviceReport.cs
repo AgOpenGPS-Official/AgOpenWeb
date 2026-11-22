@@ -74,9 +74,13 @@ public static class DeviceReport
 
     private static string Mb(long bytes) => (bytes / 1024 / 1024).ToString(Inv) + " MB";
 
-    private static string Memory(bool deviceTotal) => deviceTotal
-        ? string.Create(Inv, $"{Mb(GC.GetGCMemoryInfo().TotalAvailableMemoryBytes)}, this process {Mb(Environment.WorkingSet)}")
-        : string.Create(Inv, $"this process {Mb(Environment.WorkingSet)}");
+    private static string Memory(bool deviceTotal)
+    {
+        // iOS gives no working set (0): the managed heap is what can be said there.
+        long ws = Environment.WorkingSet;
+        string mine = ws > 0 ? "this process " + Mb(ws) : "this process's managed heap " + Mb(GC.GetTotalMemory(false));
+        return deviceTotal ? Mb(GC.GetGCMemoryInfo().TotalAvailableMemoryBytes) + ", " + mine : mine;
+    }
 
     private static string Disk(string folder)
     {
