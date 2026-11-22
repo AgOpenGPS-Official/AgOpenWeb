@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -15,7 +16,7 @@ namespace AgOpenWeb.Services.Tests;
 
 /// <summary>
 /// A tablet on cable and on Wi-Fi to the modules' router gets every broadcast twice, the Wi-Fi
-/// copy up to half a second late. On a tester's Puma (20 Nov 2026) the late copies of the
+/// copy late (0.3 s the day it was found, 1.5 to 1.7 s measured since). On a tester's Puma (20 Nov 2026) the late copies of the
 /// position read as the tractor going back (a false reverse paused the steering and the
 /// module in Button mode let go) and AutoSteer went off over and over. Each datagram is taken
 /// from the link it comes in on first; its copy from the other link is dropped.
@@ -106,6 +107,140 @@ public class LinkCopyFilterTests
             if (!f.IsCopy(Teensy, WiFi, Fix(n), n * 100 + 300, out _, out _)) takenOnWiFi++;
 
         Assert.That(takenOnWiFi, Is.EqualTo(10), "no fix lost to the switch");
+    }
+
+    // The fix sent `tenths` tenths of a second into the run, and the three sentences that go with it.
+    private static byte[] FixAt(int tenths) => Encoding.ASCII.GetBytes(
+        $"$GNGGA,13{31 + tenths / 600:00}{tenths / 10 % 60:00}.{tenths % 10}0,3924.90,N,00731.80,W,4,12,0.7,341.9,M,48.0,M,2.8,0000*00\r\n");
+
+    private static byte[] WithFix(string name, int tenths) => Encoding.ASCII.GetBytes($"${name},{tenths}*00\r\n");
+
+    /// <summary>
+    /// What a module sends through a router whose Wi-Fi holds broadcasts, as measured on a
+    /// tester's (22 Nov 2026, 10 minutes, a listener on port 9999 asking for each datagram's link):
+    /// the cable has every datagram as sent; the Wi-Fi gets <paramref name="perBeacon"/> of them
+    /// every <paramref name="everyMs"/>, at most <paramref name="waiting"/> wait and the rest are
+    /// dropped. With 80 datagrams a second, 8 every 205 ms and 60 waiting, the copies are 1.5 s
+    /// late and half of them never come. The cable is pulled out at <paramref name="cableUntilMs"/>.
+    /// </summary>
+    private static List<(byte[] Data, int Link, long T, long SentT)> ThroughHeldBroadcasts(
+        int seconds, int everyMs, long cableUntilMs = long.MaxValue, int perBeacon = 8, int waiting = 60)
+    {
+        var arrivals = new List<(byte[] Data, int Link, long T, long SentT)>();
+        var queue = new Queue<(byte[] Data, long SentT)>();
+        long nextBeacon = everyMs;
+        void Beacons(long until)
+        {
+            for (; nextBeacon <= until; nextBeacon += everyMs)
+                for (int i = 0; i < perBeacon && queue.Count > 0; i++)
+                {
+                    var (data, sentT) = queue.Dequeue();
+                    arrivals.Add((data, WiFi, nextBeacon, sentT));
+                }
+        }
+        void Send(byte[] data, long t)
+        {
+            Beacons(t);
+            if (t < cableUntilMs) arrivals.Add((data, Cable, t, t));
+            if (queue.Count < waiting) queue.Enqueue((data, t));
+        }
+        for (int tenths = 0; tenths < seconds * 10; tenths++)
+        {
+            // Each tenth of a second: the position's four sentences, and the same PGN four times
+            // (a module answering 20 hellos a second with two PGNs, nothing in them changing).
+            long t = tenths * 100L;
+            Send(FixAt(tenths), t);
+            Send(WithFix("GNVTG", tenths), t + 1);
+            Send(WithFix("GNTHS", tenths), t + 2);
+            Send(WithFix("INHPR", tenths), t + 3);
+            for (int k = 0; k < 4; k++) Send(Pgn253(true), t + 20 + k * 20);
+        }
+        Beacons(seconds * 1000L + 5000);
+        // In the order they come in; those of one beacon keep the order they were sent in.
+        return arrivals.OrderBy(a => a.T).ToList();
+    }
+
+    private static bool IsFix(byte[] d) => d.Length > 6 && d[3] == (byte)'G' && d[4] == (byte)'G' && d[5] == (byte)'A';
+
+    [Test]
+    public void Copies_a_second_and_a_half_late_with_half_of_them_lost_are_all_dropped()
+    {
+        var arrivals = ThroughHeldBroadcasts(seconds: 30, everyMs: 205);
+        int onCable = arrivals.FindAll(a => a.Link == Cable).Count, onWiFi = arrivals.Count - onCable;
+        long latest = 0;
+        foreach (var a in arrivals) if (a.Link == WiFi) latest = Math.Max(latest, a.T - a.SentT);
+        Assert.That(onWiFi / (double)onCable, Is.InRange(0.45, 0.55), "the router as measured: half the copies");
+        Assert.That(latest, Is.InRange(1400, 1800), "the router as measured: the latest copy, ms");
+
+        var f = new LinkCopyFilter();
+        int takenOnWiFi = 0;
+        var fixes = new List<long>();
+        foreach (var a in arrivals)
+        {
+            if (f.IsCopy(Teensy, a.Link, a.Data, a.T, out _, out _)) continue;
+            if (a.Link == WiFi) takenOnWiFi++;
+            if (IsFix(a.Data)) fixes.Add(a.SentT);
+        }
+
+        Assert.That(takenOnWiFi, Is.Zero, "everything on Wi-Fi was a copy");
+        Assert.That(fixes, Has.Count.EqualTo(300), "every fix once");
+        Assert.That(fixes, Is.Ordered.Ascending, "none late");
+    }
+
+    [Test]
+    public void A_router_with_more_time_between_its_beacons_is_later_still()
+    {
+        // 8 every third beacon: the same 60 waiting take 2.3 s. Past a 2 s window those copies
+        // were taken as news, each a position 2 s old among the cable's.
+        var arrivals = ThroughHeldBroadcasts(seconds: 30, everyMs: 307);
+        long latest = 0;
+        foreach (var a in arrivals) if (a.Link == WiFi) latest = Math.Max(latest, a.T - a.SentT);
+        Assert.That(latest, Is.InRange(2100, 2600), "the latest copy, ms");
+
+        var f = new LinkCopyFilter();
+        int takenOnWiFi = 0;
+        var fixes = new List<long>();
+        foreach (var a in arrivals)
+        {
+            if (f.IsCopy(Teensy, a.Link, a.Data, a.T, out _, out _)) continue;
+            if (a.Link == WiFi) takenOnWiFi++;
+            if (IsFix(a.Data)) fixes.Add(a.SentT);
+        }
+
+        Assert.That(takenOnWiFi, Is.Zero, "everything on Wi-Fi was a copy");
+        Assert.That(fixes, Is.Ordered.Ascending, "none late");
+    }
+
+    [Test]
+    public void The_cable_pulled_with_copies_lost_on_the_way_no_fix_is_taken_twice_or_late()
+    {
+        const long pulledAt = 20_000;
+        var arrivals = ThroughHeldBroadcasts(seconds: 40, everyMs: 205, cableUntilMs: pulledAt);
+
+        var f = new LinkCopyFilter();
+        var fixes = new List<long>();
+        int wiFiFixesAfter = 0, takenAfter = 0;
+        long repeatsTakenAgainAt = -1;
+        foreach (var a in arrivals)
+        {
+            bool copy = f.IsCopy(Teensy, a.Link, a.Data, a.T, out _, out _);
+            if (IsFix(a.Data))
+            {
+                if (a.Link == WiFi && a.SentT >= pulledAt) { wiFiFixesAfter++; if (!copy) takenAfter++; }
+                if (!copy) fixes.Add(a.SentT);
+            }
+            else if (!copy && a.Link == WiFi && a.Data[0] == 0x80 && repeatsTakenAgainAt < 0)
+                repeatsTakenAgainAt = a.T;
+        }
+
+        Assert.That(fixes, Is.Ordered.Ascending, "no fix late");
+        Assert.That(fixes, Is.Unique, "no fix twice");
+        Assert.That(takenAfter, Is.EqualTo(wiFiFixesAfter), "every fix the Wi-Fi brings after the cable went is taken");
+        Assert.That(wiFiFixesAfter, Is.GreaterThan(50));
+        // The module's unchanged PGN: the Wi-Fi's are taken for the lost copies of the cable's
+        // until those are forgotten, never longer.
+        Assert.That(repeatsTakenAgainAt, Is.InRange(pulledAt, pulledAt + LinkCopyFilter.WindowMs + 500),
+            "the module's repeated PGN is taken from Wi-Fi again within the window");
     }
 
     [Test]

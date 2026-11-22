@@ -432,7 +432,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     /// Ask the socket to say which network link each datagram came in on (IP_PKTINFO). A socket
     /// bound to every address gets a broadcast once per link on the modules' subnet: a tablet on
     /// cable and on Wi-Fi to the same router got each fix and each PGN 253 twice, the Wi-Fi copy
-    /// up to half a second late, and AutoSteer went off over and over (a tester's Puma,
+    /// late (0.3 to 1.7 s), and AutoSteer went off over and over (a tester's Puma,
     /// 20 Nov 2026). False where the system can't: everything is then taken, as before.
     /// </summary>
     private static bool TryAskLinkInfo(Socket s)
@@ -473,7 +473,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 "[UDP] {Sender} is heard on two network links, {First} and {Second}: each datagram is taken "
                 + "from the link it comes in on first and its copy from the other is dropped ({Copies} so far). "
                 + "One link to the modules is better: on cable and Wi-Fi to the same router everything comes twice, "
-                + "the Wi-Fi copy up to half a second late",
+                + "the Wi-Fi copy late (up to 1.7 s measured)",
                 from, LinkName(firstLink), LinkName(link), copies));
         }
         return true;

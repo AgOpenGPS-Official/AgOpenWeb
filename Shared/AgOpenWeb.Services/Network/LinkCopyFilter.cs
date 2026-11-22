@@ -10,10 +10,12 @@ namespace AgOpenWeb.Services.Network;
 /// <summary>
 /// Finds the copies of a module's datagrams that arrive on a second network link. A tablet
 /// joined to the modules' router by cable and by Wi-Fi gets every broadcast once per link, and
-/// the Wi-Fi copy comes up to half a second late (the router holds broadcasts for the Wi-Fi's
-/// beacon): taken as news, a late position read as the tractor going back (a false reverse that
-/// paused the steering) and a late PGN 253 as the module's steer switch going off (a tester's
-/// Puma, 20 Nov 2026).
+/// the Wi-Fi copy comes late (the router holds broadcasts for the Wi-Fi's beacon and sends a
+/// few at each): taken as news, a late position read as the tractor going back (a false reverse
+/// that paused the steering) and a late PGN 253 as the module's steer switch going off (a
+/// tester's Puma, 20 Nov 2026, the copies about 0.3 s late). Measured there two days later with
+/// more broadcasts on the network: 8 datagrams every second beacon (205 ms), each 1.5 to 1.7 s
+/// late, and only half of what the module sent.
 ///
 /// <para>Each datagram is taken from the link it arrives on first; the same bytes from the same
 /// sender arriving on another link within <see cref="WindowMs"/> are its copy. Each datagram
@@ -27,11 +29,19 @@ namespace AgOpenWeb.Services.Network;
 /// </summary>
 internal sealed class LinkCopyFilter
 {
-    /// <summary>How late a copy may come: well past a Wi-Fi's broadcast delay (0.3 s seen).</summary>
-    public const long WindowMs = 2000;
+    /// <summary>
+    /// How late a copy may come. A router that sends its held broadcasts a few per beacon keeps
+    /// the rest waiting: 1.49 to 1.73 s measured (8 every second beacon, about 60 waiting), which
+    /// 2 s covered by a quarter of a second. Linux keeps up to 128 waiting (AP_MAX_BC_BUFFER):
+    /// 3.3 s at that pace.
+    /// </summary>
+    public const long WindowMs = 5000;
 
-    /// <summary>Datagrams kept per sender: two seconds of a busy module, several times over.</summary>
-    public const int Capacity = 512;
+    /// <summary>
+    /// Datagrams kept per sender: <see cref="WindowMs"/> of a steer module answering 100 PGN 254
+    /// a second and sending its position (about 170 a second), twice over.
+    /// </summary>
+    public const int Capacity = 2048;
 
     /// <summary>A copy after this long without one starts a new stream of copies (logged again).</summary>
     public const long QuietMs = 30_000;

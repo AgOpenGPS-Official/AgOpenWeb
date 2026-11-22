@@ -700,19 +700,40 @@ steerAngle = atan(2 * wheelbase * sin(α) / lookAheadDistance)
 ### A module heard on two network links
 
 The module sockets are bound to every address, so a host with two links to the modules' subnet (a tablet on
-cable and on Wi-Fi to the same router) gets every broadcast once per link. The Wi-Fi copy comes up to half a
-second late, because the router holds broadcasts for the Wi-Fi beacon. Taken as news, a late copy of a fix put
+cable and on Wi-Fi to the same router) gets every broadcast once per link. The Wi-Fi copy comes late, because
+the router holds broadcasts for the Wi-Fi beacon and sends a few at each. Taken as news, a late copy of a fix put
 the tractor 0.3-0.5 m back (the dual reverse test read a reverse and paused the steering), and a late PGN 253
 looked like the steer switch going off. AgIO binds the same way (`UDP.designer.cs`, `Bind(IPAddress.Any, 9999)`)
 and takes every copy; dropping them is ours.
 
+How late: about 0.3 s in the app's GPS log the day it was found (a tester's tractor, 20 Nov 2026). Measured on
+the same router two days later, 10 minutes with the app closed and a listener on port 9999 that asks for each
+datagram's link, the module answering a hello 20 times a second on top of its position:
+
+| | Cable | Wi-Fi |
+|---|---|---|
+| Datagrams a second | 79 | 39 |
+| How they arrive | as sent | 8 every 205 ms (every second beacon) |
+| Behind the cable | | 1.49 to 1.73 s, median 1.56 s |
+
+The router sent 8 held broadcasts at every second beacon and no more, so about 60 stayed waiting and the rest
+were dropped. Linux's driver for MediaTek MT7603/MT7628 Wi-Fi does exactly that (`mt7603/beacon.c`, at most 8
+after a beacon) and Linux keeps up to 128 waiting (`AP_MAX_BC_BUFFER`): 128 at that pace is 3.3 s. A router holds
+broadcasts only while a device on its Wi-Fi is in power save, so the delay comes and goes; why it was shorter on
+the 20th is not known. With the app running the module broadcasts more than in this measurement (a PGN 253 for
+each PGN 254, 100 a second), not less.
+
 `UdpCommunicationService` asks each socket except the loopback one for the link a datagram came in on
 (IP_PKTINFO, `BeginReceiveMessageFrom`), and `LinkCopyFilter` (`Services/Network`) drops the copy:
 - Each datagram is taken from the link it comes in on first. The same bytes from the same sender on another
-  link within 2 s are its copy.
+  link within 5 s are its copy (`LinkCopyFilter.WindowMs`; it was 2 s, 0.27 s more than the latest copy
+  measured and less than the 3.3 s above).
 - Each datagram taken cancels one copy at most, so a module repeating the same bytes (PGN 253 with nothing
   changed) is not taken for its own copy.
 - No link is preferred: when the first link goes quiet, the other's datagrams match nothing and are taken at once.
+  A position is never the same bytes twice, so this holds for every fix. Bytes a module repeats (PGN 253 with
+  nothing changed) can still be taken for the lost copies of the first link's for up to those 5 s when the
+  second link was dropping copies.
 - Copies are dropped before the GPS text reaches the parser and the line splitter.
 - The first copy from a module in 30 s is logged with both links (`[UDP] ... is heard on two network links`).
 - Where the system does not give the link, everything is taken, as before.
