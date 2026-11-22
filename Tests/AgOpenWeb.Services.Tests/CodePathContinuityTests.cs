@@ -213,7 +213,7 @@ public class CodePathContinuityTests
         var textUses = lines.Select((l, i) => (l, i)).Where(x => x.l.Contains("WebSocketMessageType.Text")).ToList();
         Assert.That(textUses.Select(x => x.l.Trim()), Is.EqualTo(new[]
         {
-            "if (res.MessageType == WebSocketMessageType.Text && res.Count > 0)",
+            "if (res.MessageType != WebSocketMessageType.Text) continue;",
         }), "WebSocketHub uses WebSocketMessageType.Text somewhere new. Host → client goes out " +
             "as binary frames encoded by WireCodec (add a DTO in Contracts.cs, encode it in " +
             "WireCodec.cs, decode it in transport.js); client → host is the one id|arg text frame.");
