@@ -79,7 +79,13 @@ function syncDualHeadingWarning(s) {
 // GPS data lost: the host's debounced flag (it has already switched autosteer and the
 // sections off); the panel clears as soon as data flows again, module or simulator.
 function syncGpsLost(s) {
-  document.getElementById('gpslost').classList.toggle('show', !!s.gpsLost);
+  // A module on two network links: the host uses nothing from it and holds AutoSteer and the
+  // sections off until one link is disconnected; this explains the GPS lost, so it takes its place.
+  const two = !!s.onTwoLinks;
+  document.getElementById('twolinks').classList.toggle('show', two);
+  if (two) document.getElementById('twolinks-who').textContent = (s.secondLinks || []).filter(l => l.now)
+    .map(l => tr('{ip} is heard on {a} and on {b}.', { ip: l.module, a: l.linkA, b: l.linkB })).join(' ');
+  document.getElementById('gpslost').classList.toggle('show', !!s.gpsLost && !two);
 }
 let toastMsg = '';
 function showToast(msg, ms = 4000) {

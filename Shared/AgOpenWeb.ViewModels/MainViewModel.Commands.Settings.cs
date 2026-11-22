@@ -202,7 +202,7 @@ public partial class MainViewModel
                     _settingsService, AgOpenWeb.Models.State.RuntimeStateCapture.From(_appState), _configStore, screenshotPng: screenshot,
                     activeJobTaskName: SaveCoverageForDump(),
                     ntripRtcmReport: NtripRtcmReport(),
-                    ntripSessionReport: NtripSessionReport(), ntripSummary: NtripSummary());
+                    ntripSessionReport: NtripSessionReport(), ntripSummary: NtripSummary(), secondLinks: _udpService.GetSecondLinks());
                 StatusMessage = $"Debug dump saved: {zipPath}";
                 _logger.LogInformation($"Debug dump created: {zipPath}");
             }
@@ -236,7 +236,7 @@ public partial class MainViewModel
                     _settingsService, AgOpenWeb.Models.State.RuntimeStateCapture.From(_appState), _configStore, screenshotPng: _bugReportScreenshot,
                     activeJobTaskName: SaveCoverageForDump(),
                     ntripRtcmReport: NtripRtcmReport(),
-                    ntripSessionReport: NtripSessionReport(), ntripSummary: NtripSummary());
+                    ntripSessionReport: NtripSessionReport(), ntripSummary: NtripSummary(), secondLinks: _udpService.GetSecondLinks());
             }
             catch (Exception ex)
             {
@@ -345,7 +345,7 @@ public partial class MainViewModel
                         screenshotPng: _bugReportScreenshot,
                         activeJobTaskName: SaveCoverageForDump(),
                         ntripRtcmReport: NtripRtcmReport(),
-                        ntripSessionReport: NtripSessionReport(), ntripSummary: NtripSummary(),
+                        ntripSessionReport: NtripSessionReport(), ntripSummary: NtripSummary(), secondLinks: _udpService.GetSecondLinks(),
                         outputDirectory: bugReportsDir,
                         filePrefix: $"bugreport_{titleSlug}",
                         userAttachments: attachmentPaths);

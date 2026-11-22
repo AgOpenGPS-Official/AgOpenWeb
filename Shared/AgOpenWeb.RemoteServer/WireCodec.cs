@@ -866,6 +866,21 @@ public static class WireCodec
             WriteStr(w, ns.Profile);
             WriteStr(w, ns.Service);
         }
+        // Modules found on two network links (append-only): u8 on two links now, u8 count, then
+        // each str module, str link, str other link, i32 datagrams not used, u8 on both now.
+        w.Write((byte)(s.OnTwoLinks ? 1 : 0));
+        var sl = s.SecondLinks;
+        int slCount = Math.Min(sl?.Count ?? 0, 255);
+        w.Write((byte)slCount);
+        for (int i = 0; i < slCount; i++)
+        {
+            var l = sl![i];
+            WriteStr(w, l.Module);
+            WriteStr(w, l.LinkA);
+            WriteStr(w, l.LinkB);
+            w.Write((int)Math.Min(l.NotUsed, int.MaxValue));
+            w.Write((byte)(l.Now ? 1 : 0));
+        }
         return ms.ToArray();
     }
 

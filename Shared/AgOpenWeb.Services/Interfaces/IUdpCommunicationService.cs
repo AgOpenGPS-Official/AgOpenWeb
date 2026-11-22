@@ -116,6 +116,13 @@ public interface IUdpCommunicationService
     string? GetScanReplySubnet();
 
     /// <summary>
+    /// Each module found on two network links since the start (a tablet on cable and Wi-Fi to the
+    /// same router): both links, how many of its datagrams were not used, and whether it is on
+    /// both now (nothing from it is used then). Empty (no allocation) when there is none.
+    /// </summary>
+    IReadOnlyList<AgOpenWeb.Models.State.SecondLink> GetSecondLinks();
+
+    /// <summary>
     /// The /24 the modules are on right now: the subnet outgoing PGNs are locked to
     /// (from module hellos), else the last scan reply's, else null (nothing heard yet).
     /// </summary>

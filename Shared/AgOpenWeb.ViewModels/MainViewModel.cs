@@ -1022,6 +1022,7 @@ public partial class MainViewModel : ObservableObject
                 State.Connections.GpsIpAddress = _udpService.GetModuleIpAddress(ModuleType.GPS);
                 State.Connections.ModuleSubnet = _udpService.GetModuleSubnet();
                 State.Connections.ScanReplySubnet = _udpService.GetScanReplySubnet();
+                UpdateSecondLinks(_udpService.GetSecondLinks());
 
                 // Legacy property updates (for existing bindings - will be removed in Phase 5)
                 IsAutoSteerDataOk = steerOk;

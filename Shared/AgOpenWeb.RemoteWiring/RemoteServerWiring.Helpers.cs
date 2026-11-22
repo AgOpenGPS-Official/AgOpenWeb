@@ -635,7 +635,8 @@ public static partial class RemoteServerWiring
                         ntripSessionReport: AgOpenWeb.Services.NtripSupportReport.Build(
                             services.GetService<INtripClientService>(), services.GetService<IGpsService>()),
                         ntripSummary: AgOpenWeb.Services.NtripSupportReport.Summary(services.GetService<INtripClientService>()),
-                        browsersSummary: browsersSummary?.Invoke());
+                        browsersSummary: browsersSummary?.Invoke(),
+                        secondLinks: services.GetService<IUdpCommunicationService>()?.GetSecondLinks());
                 }
                 catch (Exception ex) { state.BugReportStatus = "Error: " + ex.Message; return; }
                 var job = ActiveJobForDump(services, state);

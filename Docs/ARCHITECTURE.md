@@ -699,12 +699,12 @@ steerAngle = atan(2 * wheelbase * sin(α) / lookAheadDistance)
 
 ### A module heard on two network links
 
-The module sockets are bound to every address, so a host with two links to the modules' subnet (a tablet on
-cable and on Wi-Fi to the same router) gets every broadcast once per link. The Wi-Fi copy comes late, because
-the router holds broadcasts for the Wi-Fi beacon and sends a few at each. Taken as news, a late copy of a fix put
-the tractor 0.3-0.5 m back (the dual reverse test read a reverse and paused the steering), and a late PGN 253
-looked like the steer switch going off. AgIO binds the same way (`UDP.designer.cs`, `Bind(IPAddress.Any, 9999)`)
-and takes every copy; dropping them is ours.
+The module sockets are bound to every address, so a host with two links to the modules' subnet (a tablet cabled
+to the router that has also joined the router's Wi-Fi) gets every broadcast once per link. The Wi-Fi copy comes
+late, because the router holds broadcasts for the Wi-Fi beacon and sends a few at each. Taken as news, a late copy
+of a fix put the tractor 0.3-0.5 m back (the dual reverse test read a reverse and paused the steering), and a late
+PGN 253 looked like the steer switch going off. AgIO binds the same way (`UDP.designer.cs`, `Bind(IPAddress.Any, 9999)`)
+and takes every copy; refusing to work is ours.
 
 How late: about 0.3 s in the app's GPS log the day it was found (a tester's tractor, 20 Nov 2026). Measured on
 the same router two days later, 10 minutes with the app closed and a listener on port 9999 that asks for each
@@ -720,25 +720,36 @@ The router sent 8 held broadcasts at every second beacon and no more, so about 6
 were dropped. Linux's driver for MediaTek MT7603/MT7628 Wi-Fi does exactly that (`mt7603/beacon.c`, at most 8
 after a beacon) and Linux keeps up to 128 waiting (`AP_MAX_BC_BUFFER`): 128 at that pace is 3.3 s. A router holds
 broadcasts only while a device on its Wi-Fi is in power save, so the delay comes and goes; why it was shorter on
-the 20th is not known. With the app running the module broadcasts more than in this measurement (a PGN 253 for
-each PGN 254, 100 a second), not less.
+the 20th is not known.
 
-`UdpCommunicationService` asks each socket except the loopback one for the link a datagram came in on
-(IP_PKTINFO, `BeginReceiveMessageFrom`), and `LinkCopyFilter` (`Services/Network`) drops the copy:
-- Each datagram is taken from the link it comes in on first. The same bytes from the same sender on another
-  link within 5 s are its copy (`LinkCopyFilter.WindowMs`; it was 2 s, 0.27 s more than the latest copy
-  measured and less than the 3.3 s above).
-- Each datagram taken cancels one copy at most, so a module repeating the same bytes (PGN 253 with nothing
-  changed) is not taken for its own copy.
-- No link is preferred: when the first link goes quiet, the other's datagrams match nothing and are taken at once.
-  A position is never the same bytes twice, so this holds for every fix. Bytes a module repeats (PGN 253 with
-  nothing changed) can still be taken for the lost copies of the first link's for up to those 5 s when the
-  second link was dropping copies.
-- Copies are dropped before the GPS text reaches the parser and the line splitter.
-- The first copy from a module in 30 s is logged with both links (`[UDP] ... is heard on two network links`).
-- Where the system does not give the link, everything is taken, as before.
+**The rule: two links to the modules are an installation fault, and the app does not work with it.** Nothing
+is compared, dropped selectively or chosen between the links:
+- `UdpCommunicationService` asks each socket except the loopback one for the link a datagram came in on
+  (IP_PKTINFO, `BeginReceiveMessageFrom`), and `TwoLinkDetector` (`Services/Network`) watches each sender's
+  address. A module is on two links when it is heard on both, on each at least 10 datagrams in a row with no
+  gap over 1 s (`Repeats`, `GapMs`). One stray datagram, or a few, never is: a detection stops the app.
+- While it is, nothing from that module is used, from either link: no position, no guidance, no steering.
+  `MainViewModel.UpdateSecondLinks` holds the state the app goes to when control ends (`OnBrowserControlEnded`:
+  AutoSteer, Free Drive, the sections, a section On by hand too, and the steer wizard off), again at the next
+  status tick if anything is turned on.
+- The operator is told over the map, in place of GPS lost, until it clears (`#twolinks`, `IsOnTwoLinks` in the
+  status frame): the module, both links by name, and to disconnect one. Network IO names both links; the bug
+  report's `system_info.txt` has a `Two network links:` line with how often it was found and how many datagrams
+  were not used. The log has `[UDP] ... is heard on two network links` with both links, and its end.
+- It clears by itself when one link has been quiet for 1 s, and the module is used again. Nothing comes back
+  on by itself.
+- On the tester's router it is found within half a second of both links carrying the module (10 in a row on
+  the Wi-Fi by its second beacon); up to then the second link's first datagrams are used, as before.
+- Checked on Linux setups where a datagram might come twice for an innocent reason (network namespaces, the
+  module's broadcast to 192.168.5.255 and to 255.255.255.255): a bridge `br0` with the cable and a VM's tap,
+  `docker0` and `virbr0` beside the cable, two addresses on one interface: one link. A macvlan interface on the
+  cable with its own address on the modules' subnet is two links: every datagram really comes twice there.
+  macOS and Windows virtual adapters are not checked here.
+- **Where the system does not give the link, nothing can be detected and every datagram is used, as before**
+  (the socket is asked once; if it can't, a warning is logged and receiving goes on without it).
 
-Tests: `LinkCopyFilterTests`.
+Tests: `TwoLinkDetectorTests` (the tester's router replayed: found, nothing used, cleared when the cable is
+pulled, found when it is plugged in; stray datagrams never found), `TwoLinksTests` (the stop and its hold).
 
 ### PGN Message Format
 

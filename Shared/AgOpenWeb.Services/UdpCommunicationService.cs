@@ -57,14 +57,14 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         public readonly bool SwitchControlOnly;
         public readonly byte[] Buffer = new byte[1024];
         public EndPoint Remote = new IPEndPoint(IPAddress.Any, 0);
-        /// <summary>The socket tells which network link each datagram came in on, and the copies
-        /// from a second link are dropped (null: it can't, everything is taken). Set to null
-        /// if the system turns out not to give the link after all.</summary>
-        public LinkCopyFilter? Copies;
+        /// <summary>The socket tells which network link each datagram came in on, and nothing is
+        /// used from a module heard on two (null: it can't tell, everything is used, as before).
+        /// Set to null if the system turns out not to give the link after all.</summary>
+        public TwoLinkDetector? Links;
         public Listener(Socket socket, GpsSource source, bool switchControlOnly = false, bool linkInfo = false)
         {
             Socket = socket; Source = source; SwitchControlOnly = switchControlOnly;
-            if (linkInfo) Copies = new LinkCopyFilter();
+            if (linkInfo) Links = new TwoLinkDetector();
         }
     }
     private readonly List<Listener> _listeners = new();
@@ -425,7 +425,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     {
         try
         {
-            if (l.Copies != null)
+            if (l.Links != null)
             {
                 try
                 {
@@ -447,9 +447,9 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
     private void NoLinkInfo(Listener l, Exception ex)
     {
-        l.Copies = null;
+        l.Links = null;
         _logger.LogWarning("[UDP] port {Port}: the system does not say which network link a datagram came in on "
-            + "({Message}); copies from a second link are taken too", (l.Socket.LocalEndPoint as IPEndPoint)?.Port, ex.Message);
+            + "({Message}); a module heard on two links can't be detected, everything is used", (l.Socket.LocalEndPoint as IPEndPoint)?.Port, ex.Message);
     }
 
     /// <summary>
@@ -473,38 +473,72 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     }
 
     /// <summary>
-    /// The datagram in <paramref name="l"/>'s buffer is a copy, from a second network link, of one
-    /// already taken (<see cref="LinkCopyFilter"/>). The first copy from a module in a while is
-    /// logged with both links.
+    /// The datagram in <paramref name="l"/>'s buffer comes from a module heard on two network links
+    /// (<see cref="TwoLinkDetector"/>): not used. Each detection and its end is logged with both links.
     /// </summary>
-    private bool IsCopyFromSecondLink(Listener l, int length, int link)
+    private bool IsFromModuleOnTwoLinks(Listener l, int link)
     {
-        if (l.Copies == null || link <= 0 || l.Remote is not IPEndPoint remote) return false;
+        if (l.Links == null || link <= 0 || l.Remote is not IPEndPoint remote) return false;
         Span<byte> addr = stackalloc byte[16];
         if (!remote.Address.TryWriteBytes(addr, out int n) || n != 4) return false;
         uint sender = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(addr);
 
-        if (!l.Copies.IsCopy(sender, link, l.Buffer.AsSpan(0, length), Environment.TickCount64,
-                out int firstLink, out bool copiesStart))
-            return false;
-
-        if (copiesStart)
+        bool take = l.Links.Take(sender, link, Environment.TickCount64, out var change);
+        if (change != TwoLinkDetector.Change.None)
         {
-            // Off the receive path: listing the system's links can take a while.
+            var (a, b) = l.Links.Links(sender);
             var from = remote.Address;
-            long copies = l.Copies.CopiesFrom(sender);
-            _ = Task.Run(() => _logger.LogWarning(
-                "[UDP] {Sender} is heard on two network links, {First} and {Second}: each datagram is taken "
-                + "from the link it comes in on first and its copy from the other is dropped ({Copies} so far). "
-                + "One link to the modules is better: on cable and Wi-Fi to the same router everything comes twice, "
-                + "the Wi-Fi copy late (up to 1.7 s measured)",
-                from, LinkName(firstLink), LinkName(link), copies));
+            // Off the receive path: listing the system's links can take a while.
+            _ = Task.Run(() =>
+            {
+                if (change == TwoLinkDetector.Change.Detected)
+                    _logger.LogWarning("[UDP] {Module} is heard on two network links, {A} and {B}: nothing from it is used "
+                        + "until one is disconnected (on cable and Wi-Fi to the same router everything comes twice, "
+                        + "the Wi-Fi copy late)", from, LinkName(a), LinkName(b));
+                else
+                    _logger.LogWarning("[UDP] {Module} is heard on one network link again: used", from);
+            });
         }
-        return true;
+        return !take;
+    }
+
+    private readonly List<TwoLinkDetector.ModuleOnTwoLinks> _twoLinks = new();
+
+    /// <inheritdoc />
+    public IReadOnlyList<AgOpenWeb.Models.State.SecondLink> GetSecondLinks()
+    {
+        lock (_twoLinks)
+        {
+            _twoLinks.Clear();
+            long now = Environment.TickCount64;
+            foreach (var l in _listeners.ToArray())
+                if (l.Links is { } links && links.Any()) links.AddTo(_twoLinks, now);
+            if (_twoLinks.Count == 0) return Array.Empty<AgOpenWeb.Models.State.SecondLink>();
+            var list = new AgOpenWeb.Models.State.SecondLink[_twoLinks.Count];
+            for (int i = 0; i < list.Length; i++)
+            {
+                var m = _twoLinks[i];
+                string ip = string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                    $"{m.Sender >> 24}.{(m.Sender >> 16) & 255}.{(m.Sender >> 8) & 255}.{m.Sender & 255}");
+                list[i] = new AgOpenWeb.Models.State.SecondLink(ip, CachedLinkName(m.LinkA), CachedLinkName(m.LinkB), m.NotUsed, m.Times, m.Now);
+            }
+            return list;
+        }
+    }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, string> _linkNames = new();
+
+    // A link's name without waiting: the first time, its index while the name is looked up.
+    private string CachedLinkName(int index)
+    {
+        if (_linkNames.TryGetValue(index, out var name)) return name;
+        _linkNames[index] = $"link {index}";
+        _ = Task.Run(() => LinkName(index));
+        return _linkNames[index];
     }
 
     /// <summary>A network link's name for the log ("Wi-Fi (Wireless80211)"), or its index.</summary>
-    internal static string LinkName(int index)
+    private string LinkName(int index)
     {
         try
         {
@@ -513,7 +547,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 try
                 {
                     if (nic.GetIPProperties().GetIPv4Properties()?.Index == index)
-                        return $"{nic.Name} ({nic.NetworkInterfaceType})";
+                        return _linkNames[index] = $"{nic.Name} ({nic.NetworkInterfaceType})";
                 }
                 catch (Exception) { /* no IPv4 on it */ }
             }
@@ -531,7 +565,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         {
             int bytesReceived;
             int link = 0;
-            if (l.Copies != null)
+            if (l.Links != null)
             {
                 SocketFlags flags = SocketFlags.None;
                 bytesReceived = l.Socket.EndReceiveMessageFrom(ar, ref flags, ref l.Remote, out IPPacketInformation info);
@@ -542,7 +576,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 bytesReceived = l.Socket.EndReceiveFrom(ar, ref l.Remote);
             }
 
-            if (bytesReceived > 0 && !IsCopyFromSecondLink(l, bytesReceived, link))
+            if (bytesReceived > 0 && !IsFromModuleOnTwoLinks(l, link))
             {
                 // ZERO-COPY PATH: GPS text (a line, or the rest of a line a bridge cut)
                 // goes to the line splitter + parser straight from the receive buffer
@@ -580,7 +614,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             // Socket closed during shutdown — stop the receive loop. From PR #278.
             return;
         }
-        catch (NotSupportedException ex) when (l.Copies != null)
+        catch (NotSupportedException ex) when (l.Links != null)
         {
             NoLinkInfo(l, ex);
         }

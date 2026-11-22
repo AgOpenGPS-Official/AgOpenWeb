@@ -862,6 +862,7 @@
     <button id="nio-subnet" class="cfg-act cfg-actwide rn-gated">Send Subnet to Modules</button>
     <div class="sa-hint">Changes ALL modules at once, then restarts them.</div>
     <div class="nio-warn" id="nio-subnet-mismatch" hidden></div>
+    <div class="nio-warn" id="nio-second-links" style="white-space:pre-line" hidden></div>
     <div class="cfg-label" style="margin-top:14px">Host IPs</div>
     <div class="nio-hostips" id="nio-hostips">—</div>
     <label class="nio-bcrow" title="Send the position on every fix (PGN 100, and PGN 214 with speed, heading and fix quality), for seed monitors, rate controllers and GPS_Out">
@@ -1819,6 +1820,7 @@
        watchdog in transport.js, or the socket closed). -->
   <div id="linklost"><div class="gl-title">No connection to AgOpenWeb</div><div class="gl-body">This screen is out of date. Reconnecting…<br>If it had control, AutoSteer and the sections were turned off.</div></div>
   <div id="gpslost"><div class="gl-title">GPS data lost</div><div class="gl-body">Reconnect the GPS module, or start the simulator.<br>Autosteer and sections are off.</div></div>
+  <div id="twolinks"><div class="gl-title">Modules on two networks</div><div class="gl-body"><span id="twolinks-who"></span><br>Disconnect one of them: the cable or the Wi-Fi.<br>Autosteer and sections are off until then.</div></div>
   <div id="hwmsg"></div>
   <div id="osk" hidden></div>
   <div id="dialoghost">

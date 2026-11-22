@@ -81,6 +81,12 @@ function renderNetworkIo() {
   if (!nioO1.value && document.activeElement !== nioO1) nioO1.value = 192;
   if (!nioO2.value && document.activeElement !== nioO2) nioO2.value = 168;
   if (!nioO3.value && document.activeElement !== nioO3) nioO3.value = 5;
+  // A module heard on two network links (cable and Wi-Fi to the same router): nothing from it is used.
+  const two = document.getElementById('nio-second-links');
+  const onTwo = (s.secondLinks || []).filter(l => l.now);
+  two.hidden = onTwo.length === 0;
+  two.textContent = onTwo.map(l => tr('{ip} is heard on {a} and on {b}: not used until one is disconnected',
+    { ip: l.module, a: l.linkA, b: l.linkB })).join('\n');
   document.getElementById('nio-hostips').textContent = s.hostIps || '—';
   document.getElementById('nio-ntrip-dot').style.background = s.ntripConnected ? '#22c55e' : '#6b7280';
   document.getElementById('nio-ntrip-status').textContent = ntripHeadline(s);

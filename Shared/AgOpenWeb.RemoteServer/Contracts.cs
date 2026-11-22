@@ -328,7 +328,11 @@ public record StatusDto(
     // Bytes 9–11 of the last scan reply: the subnet the scan came from (#334); "" = none.
     string ScanReplySubnet = "",
     // The NTRIP session: which service is in use, the failover state, the last failure (NTRIP plan).
-    NtripSessionDto? NtripSession = null);
+    NtripSessionDto? NtripSession = null,
+    // Modules found on two network links (cable and Wi-Fi to the same router), for Network IO;
+    // OnTwoLinks: one is now, nothing from it is used and the client shows why over the map.
+    IReadOnlyList<AgOpenWeb.Models.State.SecondLink>? SecondLinks = null,
+    bool OnTwoLinks = false);
 
 /// <summary>What the field data card shows beyond the worked area the status frame already
 /// carries: the boundary area less inner boundaries (0 = no boundary), the ground covered

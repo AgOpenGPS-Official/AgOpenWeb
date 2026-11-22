@@ -260,6 +260,24 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _scanReplySubnet, value);
     }
 
+    // Modules found on two network links (cable and Wi-Fi to the same router), for Network IO
+    // and the warning. Empty when there is none.
+    private IReadOnlyList<SecondLink> _secondLinks = Array.Empty<SecondLink>();
+    public IReadOnlyList<SecondLink> SecondLinks
+    {
+        get => _secondLinks;
+        set => SetProperty(ref _secondLinks, value);
+    }
+
+    // A module is on two network links now: nothing from it is used, AutoSteer, Free Drive and
+    // the sections are held off, and the client shows why until one link is disconnected.
+    private bool _isOnTwoLinks;
+    public bool IsOnTwoLinks
+    {
+        get => _isOnTwoLinks;
+        set => SetProperty(ref _isOnTwoLinks, value);
+    }
+
     // Overall status
     public bool IsFullyConnected =>
         IsGpsConnected && IsAutoSteerConnected && IsMachineConnected;
@@ -294,4 +312,16 @@ public class ConnectionState : ObservableObject
         IsImuConnected = IsImuDataOk = false;
         AutoSteerIpAddress = MachineIpAddress = ImuIpAddress = null;
     }
+}
+
+/// <summary>
+/// A module found on two network links (an installation fault: a tablet on cable and Wi-Fi to the
+/// same router): its address, both links, how many of its datagrams were not used, how many times
+/// it was found, and whether it is on both now (<paramref name="Now"/>: nothing from it is used).
+/// </summary>
+public sealed record SecondLink(string Module, string LinkA, string LinkB, long NotUsed, long Times, bool Now)
+{
+    /// <summary>One line for the bug report's <c>system_info.txt</c>.</summary>
+    public override string ToString() => string.Create(System.Globalization.CultureInfo.InvariantCulture,
+        $"{Module} on {LinkA} and {LinkB}{(Now ? ", now" : "")}: found {Times} times, {NotUsed} datagrams not used");
 }
