@@ -13,15 +13,15 @@ namespace AgOpenWeb.RemoteServer;
 
 /// <summary>
 /// What each browser says about how it draws the map (<c>diag.client</c>): its WebGL renderer,
-/// the largest texture, pixel ratio, canvas size and the frame rate it reaches. The bug report
-/// dump prints it in <c>system_info.txt</c>, so a report of a slow map says straight away whether
+/// the largest texture, pixel ratio, canvas size, the frame rate it reaches and where a frame's
+/// time goes. The bug report dump prints it in <c>system_info.txt</c>, so a report of a slow map says straight away whether
 /// the device draws with its GPU or in software (a tablet without a working GPU driver).
 /// Kept for the browsers connected now and the last few that left, newest first.
 /// </summary>
 public sealed class ClientDiagnostics
 {
     private const int Keep = 6;
-    private const int MaxReportLength = 1000;
+    private const int MaxReportLength = 2000;
 
     private sealed class Entry
     {
@@ -98,7 +98,8 @@ public sealed class ClientDiagnostics
     }
 
     private static readonly string[] Order =
-        { "renderer", "vendor", "gl", "glVersion", "maxTexture", "fps", "drawMs", "canvas", "dpr", "screen", "skia", "ua" };
+        { "renderer", "vendor", "gl", "glVersion", "maxTexture", "fps", "drawMs", "frames", "raf", "frameGapMs",
+          "cameraMs", "overlayMs", "hostFrameMs", "tickGapMs", "longTasks", "slowest", "canvas", "dpr", "screen", "skia", "ua" };
 
     private static string Label(string key) => key switch
     {
@@ -109,6 +110,16 @@ public sealed class ClientDiagnostics
         "maxTexture" => "Max texture",
         "fps" => "Map frame rate",
         "drawMs" => "Map draw time (ms, avg / max)",
+        // Where the rest of a frame's time goes, since the report before (js/alerts.js).
+        "frames" => "Frames drawn",
+        "raf" => "Frames offered by the browser",
+        "frameGapMs" => "Frame to frame (ms, avg / max, slow ones)",
+        "cameraMs" => "Camera (ms, avg / max)",
+        "overlayMs" => "Overlays (ms, avg / max)",
+        "hostFrameMs" => "Host frames handled (ms, avg / max, rate)",
+        "tickGapMs" => "Tick to tick (ms, avg / max)",
+        "longTasks" => "Page held over 50 ms (count, avg / max)",
+        "slowest" => "Slowest stretch since the page loaded",
         "canvas" => "Canvas (device px)",
         "dpr" => "Pixel ratio",
         "screen" => "Screen (CSS px)",

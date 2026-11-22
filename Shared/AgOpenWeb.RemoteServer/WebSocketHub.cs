@@ -34,6 +34,10 @@ public sealed class WebSocketHub
     /// <summary>A client with more than this waiting is cut off whatever its progress.</summary>
     public const long MaxQueuedBytes = 64L * 1024 * 1024;
 
+    /// <summary>The longest command taken from a page. A boundary of 2000 points is about
+    /// 40 kB; anything longer than this is dropped whole.</summary>
+    public const int MaxCommandBytes = 1024 * 1024;
+
     /// <summary>The stall limit in use (<see cref="StalledMs"/>; shorter in tests).</summary>
     public int StallLimitMs { get; set; } = StalledMs;
 
@@ -168,6 +172,11 @@ public sealed class WebSocketHub
             }
 
             var buf = new byte[1024];
+            // A command longer than the buffer comes in pieces (a boundary drawn on the map with
+            // more than about 60 points): the pieces are joined here. Each piece used to be taken
+            // as a command of its own, so the first 1024 bytes were the whole boundary.
+            System.IO.MemoryStream? pieces = null;
+            bool tooLong = false;
             while (socket.State == WebSocketState.Open && !ct.IsCancellationRequested)
             {
                 var res = await socket.ReceiveAsync(buf, ct).ConfigureAwait(false);
@@ -179,12 +188,40 @@ public sealed class WebSocketHub
                         : "");
                     break;
                 }
-                // Commands are short single-frame text messages: "id" or "id|arg".
-                if (res.MessageType == WebSocketMessageType.Text && res.Count > 0)
+                // Commands are text messages: "id" or "id|arg".
+                if (res.MessageType != WebSocketMessageType.Text) continue;
+                string msg;
+                if (res.EndOfMessage && pieces == null)
                 {
-                    var msg = System.Text.Encoding.UTF8.GetString(buf, 0, res.Count);
-                    try { Dispatch(id, msg); } catch { /* a bad command must not drop the client */ }
+                    if (res.Count == 0) continue;
+                    msg = System.Text.Encoding.UTF8.GetString(buf, 0, res.Count);
                 }
+                else
+                {
+                    pieces ??= new System.IO.MemoryStream();
+                    if (tooLong || pieces.Length + res.Count > MaxCommandBytes) tooLong = true;
+                    else pieces.Write(buf, 0, res.Count);
+                    if (!res.EndOfMessage) continue;
+                    var whole = pieces;
+                    bool dropped = tooLong;
+                    pieces = null;
+                    tooLong = false;
+                    if (dropped)
+                    {
+                        // Never a part of it: half a boundary is worse than none. Any browser
+                        // may send one, so these lines are counted with the page's own notes
+                        // (the logger writes the id on one line).
+                        if (Interlocked.Increment(ref client.PageNotes) <= MaxPageNotes)
+                        {
+                            var start = System.Text.Encoding.UTF8.GetString(whole.GetBuffer(), 0, Math.Min(40, (int)whole.Length));
+                            int bar = start.IndexOf('|');
+                            Log?.Invoke($"[Browser] {client.Name}: a command over {MaxCommandBytes / 1024} KB was dropped ({(bar < 0 ? start : start[..bar])})");
+                        }
+                        continue;
+                    }
+                    msg = System.Text.Encoding.UTF8.GetString(whole.GetBuffer(), 0, (int)whole.Length);
+                }
+                try { Dispatch(id, msg); } catch { /* a bad command must not drop the client */ }
             }
         }
         catch (Exception ex)

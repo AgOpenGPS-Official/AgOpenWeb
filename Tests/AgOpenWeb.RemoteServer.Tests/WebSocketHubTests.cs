@@ -235,10 +235,72 @@ public class WebSocketHubTests
         Assert.That(lines.Last(), Does.EndWith("; it had control"), "the tablet that had control");
     }
 
-    /// <summary>A socket that sends the given text commands, then closes.</summary>
+    // A tester's field, 21 Nov 2026: an outer boundary of 325 points, sent as the page's
+    // "draw on map" sends it, became a field of 68 points and 1.36 ha (it was 13.24 ha). The hub
+    // read into 1024 bytes and took each piece of a longer command as a command of its own, so
+    // the first 1024 bytes were the whole boundary and the other pieces unknown commands.
+    [Test]
+    public async Task A_command_longer_than_the_read_buffer_arrives_whole()
+    {
+        var hub = new WebSocketHub(new ControlAuthority());
+        var ran = new List<(string Id, string Arg)>();
+        hub.CommandHandler = (id, arg) => ran.Add((id, arg));
+        var points = string.Join(';', Enumerable.Range(0, 325).Select(i =>
+            FormattableString.Invariant($"{-676.4 + i * 2.2:0.000},{481.2 - i * 1.6:0.000}")));
+
+        var page = new ScriptedSocket("boundary.fromMapPoints|" + points, "boundary.hard");
+        await hub.HandleAsync(page, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(3));
+
+        Assert.That(points.Length, Is.GreaterThan(4 * 1024), "the command is several buffers long");
+        Assert.That(ran.Select(c => c.Id), Is.EqualTo(new[] { "boundary.fromMapPoints", "boundary.hard" }),
+            "one command, and no piece of it taken for another");
+        Assert.That(ran[0].Arg, Is.EqualTo(points));
+        Assert.That(ran[0].Arg.Split(';'), Has.Length.EqualTo(325));
+    }
+
+    [Test]
+    public async Task A_letter_cut_by_the_read_buffer_is_read_as_one_letter()
+    {
+        // A bug report's description in Portuguese: the two bytes of "ã" fall either side of
+        // the buffer's end.
+        var hub = new WebSocketHub(new ControlAuthority());
+        var ran = new List<(string Id, string Arg)>();
+        hub.CommandHandler = (id, arg) => ran.Add((id, arg));
+        string text = new string('a', 1023 - "app.bugReport.send|".Length) + "ção, não virou" + new string('b', 1500);
+
+        var page = new ScriptedSocket("app.bugReport.send|" + text);
+        await hub.HandleAsync(page, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(3));
+
+        Assert.That(ran, Is.EqualTo(new[] { ("app.bugReport.send", text) }));
+    }
+
+    [Test]
+    public async Task A_command_over_the_limit_is_dropped_whole_and_the_next_one_runs()
+    {
+        var log = new ConcurrentQueue<string>();
+        var hub = new WebSocketHub(new ControlAuthority()) { Log = log.Enqueue };
+        var ran = new List<string>();
+        hub.CommandHandler = (id, _) => ran.Add(id);
+
+        var page = new ScriptedSocket(
+            "boundary.fromMapPoints|" + new string('1', WebSocketHub.MaxCommandBytes),
+            "boundary.fromMapPoints|" + new string('1', WebSocketHub.MaxCommandBytes - "boundary.fromMapPoints|".Length),
+            "boundary.hard");
+        await hub.HandleAsync(page, CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(ran, Is.EqualTo(new[] { "boundary.fromMapPoints", "boundary.hard" }),
+            "the one over the limit ran in no part; the one at the limit and the next one ran");
+        Assert.That(log.Where(l => l.Contains("was dropped")).ToArray(),
+            Has.Length.EqualTo(1).And.Some.Match(@"^\[Browser\] \w{6}: a command over 1024 KB was dropped \(boundary\.fromMapPoints\)$"));
+    }
+
+    /// <summary>A socket that sends the given text commands, then closes. A command longer
+    /// than the reader's buffer comes in pieces, as from a real socket.</summary>
     private sealed class ScriptedSocket(params string[] commands) : WebSocket
     {
         private int _next;
+        private byte[]? _sending;
+        private int _sent;
         private WebSocketState _state = WebSocketState.Open;
         public override WebSocketCloseStatus? CloseStatus => null;
         public override string? CloseStatusDescription => null;
@@ -252,11 +314,15 @@ public class WebSocketHubTests
 
         public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken ct)
         {
-            if (_next >= commands.Length)
+            if (_sending == null && _next >= commands.Length)
                 return Task.FromResult(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
-            var bytes = System.Text.Encoding.UTF8.GetBytes(commands[_next++]);
-            bytes.CopyTo(buffer.Array!, buffer.Offset);
-            return Task.FromResult(new WebSocketReceiveResult(bytes.Length, WebSocketMessageType.Text, true));
+            _sending ??= System.Text.Encoding.UTF8.GetBytes(commands[_next++]);
+            int n = Math.Min(buffer.Count, _sending.Length - _sent);
+            Array.Copy(_sending, _sent, buffer.Array!, buffer.Offset, n);
+            _sent += n;
+            bool end = _sent == _sending.Length;
+            if (end) { _sending = null; _sent = 0; }
+            return Task.FromResult(new WebSocketReceiveResult(n, WebSocketMessageType.Text, end));
         }
     }
 }

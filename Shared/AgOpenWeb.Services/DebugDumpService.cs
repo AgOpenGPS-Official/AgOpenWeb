@@ -185,7 +185,8 @@ public class DebugDumpService
         string? outputDirectory = null,
         string filePrefix = "debug_dump",
         IReadOnlyList<string>? userAttachments = null,
-        string? activeJobTaskName = null)
+        string? activeJobTaskName = null,
+        string? deviceInfo = null)
     {
         var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
         var dumpDir = outputDirectory
@@ -199,6 +200,11 @@ public class DebugDumpService
         // 1-5c. The live parts, as captured.
         foreach (var (name, text) in snapshot.Entries)
             AddTextEntry(archive, name, text);
+
+        // The device and what is connected to it (DeviceReport), read by the caller off the
+        // host loop: it starts the system's tools on a desktop.
+        if (!string.IsNullOrEmpty(deviceInfo))
+            AddTextEntry(archive, "device_info.txt", deviceInfo);
 
         // 6. Current field files (if a field is open)
         try

@@ -84,6 +84,7 @@ function skFrame(ts) {
   // rAF runs at the display's rate; a frame that comes too soon is skipped whole (map and DOM
   // overlays). _frameLast advances by the interval, so the average holds on any refresh rate
   // (30 on a 144 Hz screen); the 2 ms tolerance absorbs rAF jitter.
+  noteRaf();
   if (typeof ts === 'number') {
     if (ts < _fullRateUntil) _frameLast = ts;
     else {
@@ -96,9 +97,11 @@ function skFrame(ts) {
   const _now = performance.now();
   if (_fpsT0 === 0) _fpsT0 = _now;
   else { _fpsFrames++; const dt = _now - _fpsT0; if (dt >= 500) { fps = _fpsFrames * 1000 / dt; _fpsFrames = 0; _fpsT0 = _now; } }
+  noteFrameStart(_now);      // where the frame's time goes, for the bug report dump (alerts.js)
   const rp = updateCamera(); // follow mode + rotation + perspM, once per frame
   maybeSaveView();           // persist tilt/zoom changes (debounced) — issue #35
   sampleCurveMark();         // drop record-curve path dots as the vehicle drives
+  noteCameraMs(performance.now() - _now);
   // Under a full card drawer the map isn't seen, so it isn't drawn (a tablet's battery); the
   // first frame after it opens draws from the latest state.
   if (skSurface && !CardPane.coversMap) {
@@ -109,6 +112,7 @@ function skFrame(ts) {
   // DOM overlays (independent of the GL surface). One that throws must not end the frame
   // loop (a page loaded with a field and a line open could do that before CanvasKit was up):
   // the next frame is always asked for, and an error is reported once per message.
+  const _o0 = performance.now();
   try {
     CardPane.render();
     updateLightbarText();
@@ -133,6 +137,7 @@ function skFrame(ts) {
     const msg = String(e && e.message || e);
     if (msg !== _overlayError) { _overlayError = msg; console.error('[frame] overlay error', e); }
   }
+  noteOverlayMs(performance.now() - _o0);
   requestAnimationFrame(skFrame);
 }
 // Start the connection and CanvasKit only now, with every script loaded: their callbacks reach into all of them.

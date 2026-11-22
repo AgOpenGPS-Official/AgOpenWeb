@@ -180,6 +180,52 @@ public class DebugDumpJobContentTests
         Assert.That(cfg.RootElement.GetProperty("AutoSteer").GetProperty("CountsPerDegree").GetDouble(), Is.EqualTo(100));
     }
 
+    // #922: the dump said "Unix 36.0.0.0, localhost, 8 processors" of an Android tablet, and
+    // nothing of how the modules were connected (a USB Ethernet adapter, taken for Wi-Fi).
+    [Test]
+    public void Dump_carries_the_device_and_what_is_connected_to_it()
+    {
+        var head = Substitute.For<IDeviceInfoProvider>();
+        head.Describe().Returns("Model: Xiaomi 25040RP0AE\nUSB devices:\n  0bda:8153 Realtek USB 10/100/1000 LAN\n");
+        string report = DeviceReport.Build(head, _dir);
+        var snap = DebugDumpService.Capture(Settings(), RuntimeStateCapture.From(new ApplicationState()), new ConfigurationStore());
+
+        using var a = ZipFile.OpenRead(DebugDumpService.WriteDump(snap, outputDirectory: _dir, deviceInfo: report));
+        string text = new StreamReader(a.GetEntry("device_info.txt")!.Open()).ReadToEnd();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Match(@"Memory: this process \d+ MB"));
+            Assert.That(text, Does.Match(@"Data folder: \d+ MB free of \d+ MB"));
+            Assert.That(text, Does.Contain("Device:\n  Model: Xiaomi 25040RP0AE\n  USB devices:\n    0bda:8153 Realtek USB 10/100/1000 LAN"),
+                "the head's lines, under their heading");
+            Assert.That(text, Does.Contain("Network interfaces (.NET):"));
+            Assert.That(text, Does.Not.Match("(?i)([0-9a-f]{2}[:-]){5}[0-9a-f]{2}"), "no hardware address");
+        });
+    }
+
+    [Test]
+    public void A_head_that_cannot_describe_its_device_leaves_the_rest_of_the_report()
+    {
+        var head = Substitute.For<IDeviceInfoProvider>();
+        head.Describe().Returns(_ => throw new InvalidOperationException("no such service"));
+
+        string text = DeviceReport.Build(head, _dir);
+
+        Assert.That(text, Does.Contain("Device: not read (InvalidOperationException: no such service)"));
+        Assert.That(text, Does.Contain("Network interfaces (.NET):"));
+    }
+
+    // With no head to ask (the desktop), the make, model and USB devices are read in shared code.
+    [Test]
+    public void A_desktop_names_its_model_itself()
+    {
+        if (!OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS() && !OperatingSystem.IsWindows()) Assert.Ignore("not a desktop");
+        string text = DeviceReport.Build(null, _dir);
+        Assert.That(text, Does.Match(@"Memory: \d+ MB, this process \d+ MB"));
+        Assert.That(text, Does.Match(@"Device:\n  Model: \S"));
+    }
+
     // How each browser draws the map ends system_info.txt, so a slow map on a tablet without a
     // GPU driver is seen at once.
     [Test]

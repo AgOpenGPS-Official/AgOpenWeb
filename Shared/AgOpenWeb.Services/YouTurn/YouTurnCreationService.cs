@@ -1579,6 +1579,24 @@ namespace AgOpenWeb.Services.YouTurn
                 int turnIndex = _currentInput.IsPointInsideTurnArea(nextCurve[j]);
                 if (turnIndex != 0)
                 {
+                    // A stretch outside the turn line that stays inside the fence, the pass back
+                    // inside the turn line after it, is not where the next pass ends: the pass is
+                    // driven through it when it is the tractor's own (PassEnds.Find), so its end at
+                    // this end is beyond. Taken as the end, the next pass "ended" where it runs past
+                    // a bulge of the fence nearer than the U-turn distance, and the wide turn
+                    // followed the turn line there: 300 m round a corner of a tester's field,
+                    // refused as malformed, with the next pass's real end 16 m from the turn's start.
+                    // AgOpenGPS walks the turn line from the tractor's crossing instead, in the
+                    // turn's direction (CYouTurn.FindCurveOutTurnPoint), and finds that end too.
+                    if (_currentInput.IsPointDrivenThrough is { } drivenThrough
+                        && PassEnds.IsDrivenThrough(nextCurve, j, count, p => _currentInput.IsPointInsideTurnArea(p) == 0, drivenThrough, out int on))
+                    {
+                        _logger.LogDebug("[YouTurn] The next pass runs outside the turn line from point {J} to {On}, inside the fence: driven through, its end is beyond",
+                            j, on);
+                        j = on;
+                        continue;
+                    }
+
                     // The flag (1 = outside), not a boundary index, as in FindCurveTurnPoint:
                     // AgOpenWeb has one turn line, so clamp into BoundaryTurnLines.
                     int boundaryIndex = Math.Min(turnIndex, _currentInput.BoundaryTurnLines.Count - 1);

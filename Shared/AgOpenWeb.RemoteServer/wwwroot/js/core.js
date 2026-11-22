@@ -329,6 +329,7 @@ const PERSP_FOV = 0.7;                     // rad
 // ---- transport wiring (the only coupling point) ----
 const transport = RemoteTransport.create({
   onFrame() { sendPresence(); },   // js/control.js; the deadman heartbeat (#766)
+  onHandled(ms, isTick) { noteHostFrame(ms, isTick); }, // js/alerts.js; where the page's time goes
   onScene(s) {
     scene = s;
     originLat = s.originLat; originLon = s.originLon; // for the satellite underlay geo math

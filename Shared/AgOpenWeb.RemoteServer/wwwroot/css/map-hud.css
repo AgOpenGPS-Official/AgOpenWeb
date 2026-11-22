@@ -256,10 +256,14 @@ body.maptap #ck { cursor: crosshair; }
 /* Auto-U-turn approach indicator — upper-right, symmetric to #onscreenbtns. Click-through
    except the direction arrow (with its distance), which a tap swaps, as in AgOpenGPS.
    Direction arrow flips for a left turn; distance below it; the turn-type glyph
-   (Sagitta/K-turn/Keyhole) to the right. */
+   (Sagitta/K-turn/Keyhole) to the right.
+   The shadow goes on the arrow, the distance and the turn picture, as on the on-screen
+   buttons, not on this box: the box sits over the map on a layer of its own, where the
+   browser's GPU draws a filter, and some ARM boards' drivers drew that one as a black
+   rectangle over the map. */
 #uturn-indicator { position: fixed; top: calc(var(--bar-bottom) + 50px); right: calc(126px + var(--sar));
-  display: flex; align-items: center; gap: 14px; z-index: 20; pointer-events: none;
-  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.85)); }
+  display: flex; align-items: center; gap: 14px; z-index: 20; pointer-events: none; }
+.uti-arrow, #uti-distval, .uti-type { filter: drop-shadow(0 1px 3px rgba(0,0,0,0.85)); }
 #uturn-indicator[hidden] { display: none; }
 /* Padding widens the tap target towards AgOpenGPS's 160x60 zone; the negative margin
    keeps the layout as it was. */
