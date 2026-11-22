@@ -42,6 +42,36 @@ public class ClientDiagnosticsTests
         });
     }
 
+    // #922: a tablet at 1-2 frames a second whose map took 14 ms to draw. The dump now says where
+    // the rest of the frame went, and keeps the slowest stretch (the report is written later).
+    [Test]
+    public void Where_a_frames_time_goes_is_listed_with_the_slowest_stretch()
+    {
+        var d = new ClientDiagnostics();
+        var conn = Guid.NewGuid();
+        string report = "gl=webgl2\trenderer=Mali-G57 MC2\tfps=1.0\tdrawMs=13.8 / 27.4\t" +
+            "frames=2.1/s over 48 s\traf=2.3/s\tframeGapMs=470.0 / 912.5, 610 over 100, 31 over 500\t" +
+            "cameraMs=0.4 / 2.0\toverlayMs=3.1 / 9.9\thostFrameMs=1.2 / 6.0, 14/s\ttickGapMs=101.0 / 412.0\t" +
+            "longTasks=12, 210.0 / 480.0 ms\tslowest=1.8/s over 60 s; offered 2.0/s; 3 min ago\t" +
+            "ua=" + new string('x', 400);
+        Assert.That(report.Length, Is.GreaterThan(600).And.LessThan(2000));
+        d.Report(conn, report, T0);
+
+        var text = d.Summary(c => c == conn, T0);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("Frames drawn: 2.1/s over 48 s"));
+            Assert.That(text, Does.Contain("Frames offered by the browser: 2.3/s"));
+            Assert.That(text, Does.Contain("Frame to frame (ms, avg / max, slow ones): 470.0 / 912.5, 610 over 100, 31 over 500"));
+            Assert.That(text, Does.Contain("Overlays (ms, avg / max): 3.1 / 9.9"));
+            Assert.That(text, Does.Contain("Tick to tick (ms, avg / max): 101.0 / 412.0"));
+            Assert.That(text, Does.Contain("Page held over 50 ms (count, avg / max): 12, 210.0 / 480.0 ms"));
+            Assert.That(text, Does.Contain("Slowest stretch since the page loaded: 1.8/s over 60 s; offered 2.0/s; 3 min ago"));
+            Assert.That(text, Does.Contain("User agent: " + new string('x', 400)), "a longer report is kept whole");
+        });
+    }
+
     [TestCase("Mali-G52 (Panfrost)", false)]
     [TestCase("ANGLE (ARM, Mali-G52, OpenGL ES 3.2)", false)]
     [TestCase("Apple GPU", false)]
