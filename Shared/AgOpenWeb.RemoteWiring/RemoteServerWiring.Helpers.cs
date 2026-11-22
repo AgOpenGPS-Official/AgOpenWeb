@@ -652,9 +652,12 @@ public static partial class RemoteServerWiring
                             try { coverage.SaveToFile(j.FieldDir, j.Task); }
                             catch { /* the dump still carries the last autosave */ }
                         }
+                        string? device = null;
+                        try { device = AgOpenWeb.Services.DeviceReport.Build(services.GetService<IDeviceInfoProvider>()); }
+                        catch { /* the dump is written without it */ }
                         zip = AgOpenWeb.Services.DebugDumpService.WriteDump(snap,
                             additionalNotes: notes, outputDirectory: dir, filePrefix: "bugreport_" + slug,
-                            activeJobTaskName: job?.Task);
+                            activeJobTaskName: job?.Task, deviceInfo: device);
                         status = "Saved: " + zip;
                     }
                     catch (Exception ex) { status = "Error: " + ex.Message; }
