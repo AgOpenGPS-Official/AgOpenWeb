@@ -21,6 +21,7 @@ window.RemoteTransport = {
    *           onControlState?:(state:object)=>void,
    *           onSound?:(effectId:number)=>void,
    *           onFrame?:()=>void,
+   *           onHandled?:(ms:number, isTick:boolean)=>void,
    *           onStatus?:(state:string)=>void }} handlers
    */
   create(handlers) {
@@ -569,10 +570,15 @@ window.RemoteTransport = {
         if (sawTick && gap > 1500) note(`no frame from the host for ${secs(gap)}`);
         lastFrameAt = Date.now();
         if (quietSaid) { quietSaid = false; status('connected'); }
+        const t0 = performance.now();
+        let isTick = false;
         try {
-          if (!sawTick && new DataView(e.data).getUint8(0) === TYPE.TICK) sawTick = true;
+          isTick = new DataView(e.data).getUint8(0) === TYPE.TICK;
+          if (isTick) sawTick = true;
           decode(e.data);
         } catch (err) { /* drop a malformed frame */ }
+        // How long the page took over this frame, for the bug report dump (js/alerts.js).
+        handlers.onHandled && handlers.onHandled(performance.now() - t0, isTick);
         // Every frame, after it is handled: the page is alive and hearing the host. Unlike a
         // timer, this still runs when the window is minimized or the tab is in the background.
         handlers.onFrame && handlers.onFrame();
