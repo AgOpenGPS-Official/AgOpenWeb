@@ -782,13 +782,16 @@ public partial class MainViewModel
                 return;
             }
 
-            int beforeCount = SelectedTrack.Points.Count;
-            var smoothed = Models.Guidance.CurveProcessing.SmoothWithCatmullRom(SelectedTrack.Points, 4);
-            smoothed = Models.Guidance.CurveProcessing.CalculateHeadings(smoothed);
-            SelectedTrack.Points = smoothed;
+            // As AgOpenGPS's SmoothAB: a moving average, which evens the line out and keeps its
+            // number of points, so the button can be pressed again for more. The spline that was
+            // here went through every point (no smoothing) and left four points for each one: two
+            // presses on a boundary curve made 17,377 points 7 cm apart, and the GPS cycle took
+            // over half a second with it selected (#929).
+            SelectedTrack.Points = Models.Guidance.CurveProcessing.SmoothMovingAverage(
+                SelectedTrack.Points, 2, SelectedTrack.IsClosed);
             OnSelectedTrackGeometryChanged();
 
-            StatusMessage = $"Smoothed '{SelectedTrack.Name}': {beforeCount} -> {smoothed.Count} points";
+            StatusMessage = $"Smoothed '{SelectedTrack.Name}'";
         });
 
         // Nudge commands
