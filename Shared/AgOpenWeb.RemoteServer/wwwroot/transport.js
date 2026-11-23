@@ -260,10 +260,10 @@ window.RemoteTransport = {
               state: u8(), lastError: i32(), attempts: i32(), retrySeconds: f32(), notice: str(), profile: str(), service: str() };
           }
           // Modules found on two network links (append-only): one is now (nothing from it is
-          // used), and each found since the start.
+          // used), and each found since the start. kind: 0 unknown, 1 cable, 2 Wi-Fi.
           const onTwoLinks = !!u8();
           const secondLinks = [];
-          for (let k = u8(); k > 0; k--) secondLinks.push({ module: str(), linkA: str(), linkB: str(), notUsed: i32(), now: !!u8() });
+          for (let k = u8(); k > 0; k--) secondLinks.push({ module: str(), linkA: str(), kindA: u8(), linkB: str(), kindB: u8(), notUsed: i32(), now: !!u8() });
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,

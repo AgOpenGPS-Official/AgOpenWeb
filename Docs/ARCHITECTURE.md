@@ -733,7 +733,8 @@ is compared, dropped selectively or chosen between the links:
   AutoSteer, Free Drive, the sections, a section On by hand too, and the steer wizard off), again at the next
   status tick if anything is turned on.
 - The operator is told over the map, in place of GPS lost, until it clears (`#twolinks`, `IsOnTwoLinks` in the
-  status frame): the module, both links by name, and to disconnect one. Network IO names both links; the bug
+  status frame): the module, both links by name and as cable or Wi-Fi (`LinkKind`), and "unplug the cable or turn
+  the Wi-Fi off" (two cables: "disconnect one of the two"). Network IO names both links; the bug
   report's `system_info.txt` has a `Two network links:` line with how often it was found and how many datagrams
   were not used. The log has `[UDP] ... is heard on two network links` with both links, and its end.
 - It clears by itself when one link has been quiet for 1 s, and the module is used again. Nothing comes back

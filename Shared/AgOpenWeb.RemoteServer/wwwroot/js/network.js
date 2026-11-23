@@ -85,8 +85,7 @@ function renderNetworkIo() {
   const two = document.getElementById('nio-second-links');
   const onTwo = (s.secondLinks || []).filter(l => l.now);
   two.hidden = onTwo.length === 0;
-  two.textContent = onTwo.map(l => tr('{ip} is heard on {a} and on {b}: not used until one is disconnected',
-    { ip: l.module, a: l.linkA, b: l.linkB })).join('\n');
+  two.textContent = onTwo.map(l => twoLinksWho(l) + ' ' + tr('Not used until one is disconnected.')).join('\n');
   document.getElementById('nio-hostips').textContent = s.hostIps || '—';
   document.getElementById('nio-ntrip-dot').style.background = s.ntripConnected ? '#22c55e' : '#6b7280';
   document.getElementById('nio-ntrip-status').textContent = ntripHeadline(s);

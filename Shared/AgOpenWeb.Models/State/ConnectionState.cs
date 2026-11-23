@@ -314,14 +314,19 @@ public class ConnectionState : ObservableObject
     }
 }
 
+/// <summary>How a network link reaches the modules, as the operator would say it.</summary>
+public enum LinkKind : byte { Unknown = 0, Cable = 1, WiFi = 2 }
+
 /// <summary>
 /// A module found on two network links (an installation fault: a tablet on cable and Wi-Fi to the
-/// same router): its address, both links, how many of its datagrams were not used, how many times
-/// it was found, and whether it is on both now (<paramref name="Now"/>: nothing from it is used).
+/// same router): its address, both links (the system's name and whether it is a cable or Wi-Fi),
+/// how many of its datagrams were not used, how many times it was found, and whether it is on both
+/// now (<paramref name="Now"/>: nothing from it is used).
 /// </summary>
-public sealed record SecondLink(string Module, string LinkA, string LinkB, long NotUsed, long Times, bool Now)
+public sealed record SecondLink(string Module, string LinkA, LinkKind KindA, string LinkB, LinkKind KindB,
+    long NotUsed, long Times, bool Now)
 {
     /// <summary>One line for the bug report's <c>system_info.txt</c>.</summary>
     public override string ToString() => string.Create(System.Globalization.CultureInfo.InvariantCulture,
-        $"{Module} on {LinkA} and {LinkB}{(Now ? ", now" : "")}: found {Times} times, {NotUsed} datagrams not used");
+        $"{Module} on {LinkA} ({KindA}) and {LinkB} ({KindB}){(Now ? ", now" : "")}: found {Times} times, {NotUsed} datagrams not used");
 }

@@ -15,6 +15,7 @@ using AgOpenWeb.Models;
 using AgOpenWeb.Models.GPS;
 using AgOpenWeb.Services.AutoSteer;
 using AgOpenWeb.Services.Interfaces;
+using AgOpenWeb.Models.State;
 using AgOpenWeb.Services.Network;
 
 namespace AgOpenWeb.Services;
@@ -494,7 +495,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 if (change == TwoLinkDetector.Change.Detected)
                     _logger.LogWarning("[UDP] {Module} is heard on two network links, {A} and {B}: nothing from it is used "
                         + "until one is disconnected (on cable and Wi-Fi to the same router everything comes twice, "
-                        + "the Wi-Fi copy late)", from, LinkName(a), LinkName(b));
+                        + "the Wi-Fi copy late)", from, LinkWords(a), LinkWords(b));
                 else
                     _logger.LogWarning("[UDP] {Module} is heard on one network link again: used", from);
             });
@@ -520,25 +521,27 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 var m = _twoLinks[i];
                 string ip = string.Create(System.Globalization.CultureInfo.InvariantCulture,
                     $"{m.Sender >> 24}.{(m.Sender >> 16) & 255}.{(m.Sender >> 8) & 255}.{m.Sender & 255}");
-                list[i] = new AgOpenWeb.Models.State.SecondLink(ip, CachedLinkName(m.LinkA), CachedLinkName(m.LinkB), m.NotUsed, m.Times, m.Now);
+                var (nameA, kindA) = CachedLink(m.LinkA);
+                var (nameB, kindB) = CachedLink(m.LinkB);
+                list[i] = new AgOpenWeb.Models.State.SecondLink(ip, nameA, kindA, nameB, kindB, m.NotUsed, m.Times, m.Now);
             }
             return list;
         }
     }
 
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, string> _linkNames = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, (string Name, LinkKind Kind)> _links = new();
 
-    // A link's name without waiting: the first time, its index while the name is looked up.
-    private string CachedLinkName(int index)
+    // A link's name and kind without waiting: the first time, its index while it is looked up.
+    private (string Name, LinkKind Kind) CachedLink(int index)
     {
-        if (_linkNames.TryGetValue(index, out var name)) return name;
-        _linkNames[index] = $"link {index}";
-        _ = Task.Run(() => LinkName(index));
-        return _linkNames[index];
+        if (_links.TryGetValue(index, out var link)) return link;
+        _links[index] = ($"link {index}", LinkKind.Unknown);
+        _ = Task.Run(() => Link(index));
+        return _links[index];
     }
 
-    /// <summary>A network link's name for the log ("Wi-Fi (Wireless80211)"), or its index.</summary>
-    private string LinkName(int index)
+    /// <summary>A network link's name and kind ("Wi-Fi", Wi-Fi), or its index.</summary>
+    private (string Name, LinkKind Kind) Link(int index)
     {
         try
         {
@@ -547,13 +550,32 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 try
                 {
                     if (nic.GetIPProperties().GetIPv4Properties()?.Index == index)
-                        return _linkNames[index] = $"{nic.Name} ({nic.NetworkInterfaceType})";
+                        return _links[index] = (nic.Name, KindOf(nic.NetworkInterfaceType));
                 }
                 catch (Exception) { /* no IPv4 on it */ }
             }
         }
-        catch (Exception) { /* the system won't list them (Android) */ }
-        return $"link {index}";
+        catch (Exception) { /* the system won't list them */ }
+        return ($"link {index}", LinkKind.Unknown);
+    }
+
+    /// <summary>Cable or Wi-Fi, as the operator would say it.</summary>
+    internal static LinkKind KindOf(System.Net.NetworkInformation.NetworkInterfaceType type) => type switch
+    {
+        System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211 => LinkKind.WiFi,
+        System.Net.NetworkInformation.NetworkInterfaceType.Ethernet
+            or System.Net.NetworkInformation.NetworkInterfaceType.Ethernet3Megabit
+            or System.Net.NetworkInformation.NetworkInterfaceType.FastEthernetT
+            or System.Net.NetworkInformation.NetworkInterfaceType.FastEthernetFx
+            or System.Net.NetworkInformation.NetworkInterfaceType.GigabitEthernet => LinkKind.Cable,
+        _ => LinkKind.Unknown,
+    };
+
+    // For the log: "Ethernet 2 (cable)".
+    private string LinkWords(int index)
+    {
+        var (name, kind) = Link(index);
+        return kind switch { LinkKind.Cable => $"{name} (cable)", LinkKind.WiFi => $"{name} (Wi-Fi)", _ => name };
     }
 
     private void ReceiveCallback(IAsyncResult ar)

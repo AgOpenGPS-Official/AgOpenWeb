@@ -271,6 +271,16 @@ public class TwoLinkDetectorTests
         Assert.That(d.Links(Teensy), Is.EqualTo((Cable, WiFi2)));
     }
 
+    [TestCase(System.Net.NetworkInformation.NetworkInterfaceType.Ethernet, AgOpenWeb.Models.State.LinkKind.Cable)]
+    [TestCase(System.Net.NetworkInformation.NetworkInterfaceType.GigabitEthernet, AgOpenWeb.Models.State.LinkKind.Cable)]
+    [TestCase(System.Net.NetworkInformation.NetworkInterfaceType.Wireless80211, AgOpenWeb.Models.State.LinkKind.WiFi)]
+    [TestCase(System.Net.NetworkInformation.NetworkInterfaceType.Ppp, AgOpenWeb.Models.State.LinkKind.Unknown)]
+    public void The_operator_is_told_cable_or_wifi(System.Net.NetworkInformation.NetworkInterfaceType type,
+        AgOpenWeb.Models.State.LinkKind kind)
+    {
+        Assert.That(UdpCommunicationService.KindOf(type), Is.EqualTo(kind));
+    }
+
     [Test]
     public void The_app_reports_no_module_on_two_links_without_allocating()
     {

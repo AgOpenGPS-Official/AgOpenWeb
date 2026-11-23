@@ -15,8 +15,8 @@ namespace AgOpenWeb.ViewModels.Tests;
 [TestFixture]
 public class TwoLinksTests
 {
-    private static readonly SecondLink[] OnBoth = { new("192.168.5.126", "Ethernet (Ethernet)", "Wi-Fi (Wireless80211)", 12, 1, true) };
-    private static readonly SecondLink[] OnOneAgain = { new("192.168.5.126", "Ethernet (Ethernet)", "Wi-Fi (Wireless80211)", 400, 1, false) };
+    private static readonly SecondLink[] OnBoth = { new("192.168.5.126", "Ethernet 2", LinkKind.Cable, "Wi-Fi", LinkKind.WiFi, 12, 1, true) };
+    private static readonly SecondLink[] OnOneAgain = { new("192.168.5.126", "Ethernet 2", LinkKind.Cable, "Wi-Fi", LinkKind.WiFi, 400, 1, false) };
 
     [Test]
     public void A_module_on_two_links_stops_AutoSteer_and_the_sections_and_raises_the_flag()
