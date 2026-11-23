@@ -166,6 +166,8 @@ window.RemoteTransport = {
           op.nudgeOffset = f32(); // driver-relative line nudge (m, +right) — AB flyout readout (#93)
           op.refNudgeMoved = f32(); // Ref Nudge panel: track moved since it opened (m, +right) — #489
           op.refNudgePending = !!u8(); // ... and it is not saved yet
+          op.smoothOpen = !!u8(); // Smooth Curve panel open on the selected curve (#929)
+          op.smoothCount = u8();  // ... and its amount (0 = the curve as saved)
           const hasGoal = !!u8(); const goalE = f64(), goalN = f64();
           const goal = hasGoal ? { e: goalE, n: goalN } : null; // Pure Pursuit target (#95)
           op.reverse = !!u8(); // #125 — vehicle reversing

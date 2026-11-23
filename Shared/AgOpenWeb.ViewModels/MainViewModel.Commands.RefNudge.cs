@@ -71,7 +71,7 @@ public partial class MainViewModel
     /// <summary>The tracks as they are written to field.geojson: a track with an unsaved
     /// reference move as it was saved.</summary>
     private List<Track> TracksForSave() =>
-        SavedTracks.Select(t => _refNudgeSaved.TryGetValue(t, out var saved) ? t.WithPoints(saved) : t).ToList();
+        SavedTracks.Select(t => _refNudgeSaved.TryGetValue(t, out var saved) || TryGetSmoothSaved(t, out saved) ? t.WithPoints(saved) : t).ToList();
 
     /// <summary>
     /// Move the selected track sideways by <paramref name="meters"/> (+ = the driver's right,
@@ -89,6 +89,11 @@ public partial class MainViewModel
         if (track.IsClosed || track.IsContour || track.IsRecordedPath)
         {
             ReportFailure("This track can't be moved");
+            return;
+        }
+        if (ReferenceEquals(track, _smoothTrack))
+        {
+            ReportFailure("Save or cancel the smoothing first");
             return;
         }
 

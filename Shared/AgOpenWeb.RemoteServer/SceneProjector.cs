@@ -389,6 +389,8 @@ public sealed class SceneProjector : System.IDisposable
             g.IsHeadingSameWay ? g.NudgeOffset : -g.NudgeOffset,
             _state.Operation.RefNudgeMoved, // Ref Nudge panel total (#489)
             _state.Operation.RefNudgePending,
+            _state.Operation.SmoothOpen, // Smooth Curve panel (#929)
+            _state.Operation.SmoothCount,
             // Pure Pursuit goal (#95) — only with an active track (the flag can lag a
             // track deselect by one cycle).
             g.HasGoalPoint && _state.Field.ActiveTrack != null,

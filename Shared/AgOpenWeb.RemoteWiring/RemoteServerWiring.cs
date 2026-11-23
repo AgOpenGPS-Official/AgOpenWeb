@@ -781,7 +781,11 @@ public static partial class RemoteServerWiring
                                 "track.shrinkB" => vm.ShrinkTrackBCommand,
                                 "track.cycle" => vm.CycleABLinesCommand,
                                 "track.cycleBack" => vm.CycleABLinesBackCommand,
-                                "track.smooth" => vm.SmoothABLineCommand,
+                                "track.smoothBegin" => vm.SmoothBeginCommand,   // Smooth Curve panel (#929)
+                                "track.smoothMore" => vm.SmoothMoreCommand,
+                                "track.smoothLess" => vm.SmoothLessCommand,
+                                "track.smoothSave" => vm.SmoothSaveCommand,
+                                "track.smoothCancel" => vm.SmoothCancelCommand,
                                 "track.deleteContours" => vm.DeleteContoursCommand,
                                 "track.autoTrack" => vm.ToggleAutoTrackCommand,
                                 "track.createFromBoundary" => vm.CreateTrackFromBoundaryCommand,

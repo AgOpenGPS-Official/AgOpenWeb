@@ -183,6 +183,7 @@ public partial class MainViewModel
     private void InitializeTrackCommands()
     {
         InitializeRefNudgeCommands();
+        InitializeSmoothCommands();
 
         // AB Line Guidance Commands - Bottom Bar
         SnapLeftCommand = new RelayCommand(() =>
@@ -763,36 +764,6 @@ public partial class MainViewModel
 
         CycleABLinesCommand = new RelayCommand(() => CycleTrack(+1));
         CycleABLinesBackCommand = new RelayCommand(() => CycleTrack(-1));
-
-        SmoothABLineCommand = new RelayCommand(() =>
-        {
-            if (SelectedTrack == null)
-            {
-                ReportFailure("No track selected");
-                return;
-            }
-            if (SelectedTrack.IsABLine)
-            {
-                ReportFailure("Cannot smooth AB lines (only 2 points)");
-                return;
-            }
-            if (SelectedTrack.Points.Count < 5)
-            {
-                ReportFailure("Too few points to smooth (need at least 5)");
-                return;
-            }
-
-            // As AgOpenGPS's SmoothAB: a moving average, which evens the line out and keeps its
-            // number of points, so the button can be pressed again for more. The spline that was
-            // here went through every point (no smoothing) and left four points for each one: two
-            // presses on a boundary curve made 17,377 points 7 cm apart, and the GPS cycle took
-            // over half a second with it selected (#929).
-            SelectedTrack.Points = Models.Guidance.CurveProcessing.SmoothMovingAverage(
-                SelectedTrack.Points, 2, SelectedTrack.IsClosed);
-            OnSelectedTrackGeometryChanged();
-
-            StatusMessage = $"Smoothed '{SelectedTrack.Name}'";
-        });
 
         // Nudge commands
         NudgeLeftCommand = new RelayCommand(() =>

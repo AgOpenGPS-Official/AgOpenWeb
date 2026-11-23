@@ -34,6 +34,8 @@ public class StateShadowGuardTests
         // --- Genuine VM-local: no central-store home (editor / preview / in-flight / cache) ---
         ["_refNudgeSaved"] = "VM-LOCAL: the saved line of each track with an unsaved Ref Nudge move (Undo, and what other saves write)",
         ["_refNudgeOffset"] = "VM-LOCAL: how far each of those tracks is moved from its saved line (each move is one offset of it)",
+        ["_smoothSaved"] = "VM-LOCAL: the points as saved of the curve the Smooth Curve panel is open on (Cancel, and what other saves write)",
+        ["_smoothTrack"] = "VM-LOCAL: the curve the Smooth Curve panel is open on (a reference into SavedTracks)",
         ["_refNudgeTrack"] = "VM-LOCAL: the track the Ref Nudge panel's moved total belongs to (a reference into SavedTracks)",
         ["_cachedClipPath"] = "VM-LOCAL: boundary-clip render cache",
         ["_drawnCurvePoints"] = "VM-LOCAL: in-progress AB-curve drawing buffer",

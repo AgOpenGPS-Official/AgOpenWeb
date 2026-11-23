@@ -2499,6 +2499,7 @@ public partial class MainViewModel : ObservableObject
                 if (oldValue != null)
                 {
                     DiscardPendingRefNudge(oldValue); // an unsaved Ref Nudge move doesn't follow to the next line (#489)
+                    DiscardPendingSmooth(oldValue);   // nor a curve's unsaved smoothing (#929)
                     oldValue.IsActive = false;
                 }
                 if (value != null)
@@ -4505,7 +4506,6 @@ public partial class MainViewModel : ObservableObject
     public ICommand? FinishCurveRecordingCommand { get; private set; }
     public ICommand? CycleABLinesCommand { get; private set; }
     public ICommand? CycleABLinesBackCommand { get; private set; }
-    public ICommand? SmoothABLineCommand { get; private set; }
     public ICommand? NudgeLeftCommand { get; private set; }
     public ICommand? NudgeRightCommand { get; private set; }
     public ICommand? FineNudgeLeftCommand { get; private set; }

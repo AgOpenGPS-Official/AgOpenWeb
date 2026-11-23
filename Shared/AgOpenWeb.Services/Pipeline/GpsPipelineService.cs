@@ -2108,7 +2108,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     /// Returns the detected nearest pass number, the offset display track and the pivot's
     /// cross-track error to it (m, the engaged guidance's sign) for the light bar.
     /// </summary>
-    private (Models.Track.Track Track, int Pass, double Width, double Nudge, bool Extend, double Radius) _toolPassKey;
+    // The track's points are part of the key: a reference nudge or a smoothing gives the same track a new list.
+    private (Models.Track.Track Track, List<Vec3> Points, int Pass, double Width, double Nudge, bool Extend, double Radius) _toolPassKey;
     private IReadOnlyList<Vec3>? _toolPass;
 
     /// <summary>
@@ -2121,7 +2122,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private IReadOnlyList<Vec3> ToolPass(Models.Track.Track track, int pass, double widthMinusOverlap, double nudge, bool extend)
     {
         double radius = _configStore.Guidance.UTurnRadius;
-        var key = (track, pass, widthMinusOverlap, nudge, extend, radius);
+        var key = (track, track.Points, pass, widthMinusOverlap, nudge, extend, radius);
         if (_toolPass != null && _toolPassKey.Equals(key)) return _toolPass;
         double dist = Models.Track.PassGeometry.Offset(track, pass, widthMinusOverlap, nudge);
         IReadOnlyList<Vec3> line;
@@ -2146,7 +2147,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private int? TurnTargetPass() =>
         _youTurn.TurnPath is { Count: > 0 } ? _youTurn.ReturnPassTargetPath ?? _youTurn.PlannedNextPath : null;
 
-    private (Models.Track.Track Track, int Pass, double Width, double Nudge, double Shift, bool Extend, int Count, int? Target) _guideKey;
+    private (Models.Track.Track Track, List<Vec3> Points, int Pass, double Width, double Nudge, double Shift, bool Extend, int Count, int? Target) _guideKey;
     private IReadOnlyList<IReadOnlyList<Vec3>>? _guideLines;
 
     /// <summary>
@@ -2165,7 +2166,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         double nudge, double toolShift, bool extend, int count, int? turnTarget)
     {
         if (track.IsPivot) return Array.Empty<IReadOnlyList<Vec3>>();
-        var key = (track, pass, widthMinusOverlap, nudge, toolShift, extend, count, turnTarget);
+        var key = (track, track.Points, pass, widthMinusOverlap, nudge, toolShift, extend, count, turnTarget);
         if (_guideLines != null && _guideKey.Equals(key)) return _guideLines;
 
         var lines = new List<IReadOnlyList<Vec3>>(2 * count);

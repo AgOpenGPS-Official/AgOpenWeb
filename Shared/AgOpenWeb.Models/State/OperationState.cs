@@ -42,4 +42,10 @@ public sealed class OperationState
 
     /// <summary>The selected track has a reference move that is not saved yet.</summary>
     public bool RefNudgePending { get; set; }
+
+    /// <summary>The Smooth Curve panel is open on the selected curve (#929).</summary>
+    public bool SmoothOpen { get; set; }
+
+    /// <summary>... and how many points either side the curve shown is averaged over (0 = as saved).</summary>
+    public int SmoothCount { get; set; }
 }
