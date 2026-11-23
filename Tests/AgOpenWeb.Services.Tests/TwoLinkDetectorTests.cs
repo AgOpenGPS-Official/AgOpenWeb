@@ -281,6 +281,19 @@ public class TwoLinkDetectorTests
         Assert.That(UdpCommunicationService.KindOf(type), Is.EqualTo(kind));
     }
 
+    // Cable and Wi-Fi: the fix named is the Wi-Fi only (module data needs the cable); anything else, either one.
+    [TestCase(AgOpenWeb.Models.State.LinkKind.Cable, AgOpenWeb.Models.State.LinkKind.WiFi, true)]
+    [TestCase(AgOpenWeb.Models.State.LinkKind.WiFi, AgOpenWeb.Models.State.LinkKind.Cable, true)]
+    [TestCase(AgOpenWeb.Models.State.LinkKind.Cable, AgOpenWeb.Models.State.LinkKind.Cable, false)]
+    [TestCase(AgOpenWeb.Models.State.LinkKind.WiFi, AgOpenWeb.Models.State.LinkKind.WiFi, false)]
+    [TestCase(AgOpenWeb.Models.State.LinkKind.Cable, AgOpenWeb.Models.State.LinkKind.Unknown, false)]
+    public void On_cable_and_wifi_the_operator_is_told_to_turn_the_wifi_off(AgOpenWeb.Models.State.LinkKind a,
+        AgOpenWeb.Models.State.LinkKind b, bool wifiOff)
+    {
+        var link = new AgOpenWeb.Models.State.SecondLink("192.168.5.126", "Ethernet 2", a, "Wi-Fi", b, 12, 1, true);
+        Assert.That(link.CableAndWiFi, Is.EqualTo(wifiOff));
+    }
+
     [Test]
     public void The_app_reports_no_module_on_two_links_without_allocating()
     {

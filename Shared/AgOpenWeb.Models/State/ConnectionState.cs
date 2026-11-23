@@ -326,6 +326,16 @@ public enum LinkKind : byte { Unknown = 0, Cable = 1, WiFi = 2 }
 public sealed record SecondLink(string Module, string LinkA, LinkKind KindA, string LinkB, LinkKind KindB,
     long NotUsed, long Times, bool Now)
 {
+    /// <summary>
+    /// Cable and Wi-Fi: the operator is told to turn the Wi-Fi off and keep the cable, never to unplug it.
+    /// Module data needs the cable (on the Wi-Fi it comes late and in bursts), and with one link left there
+    /// is nothing to detect. The page reads the same from the kinds (<c>twoLinksCableAndWiFi</c>, alerts.js).
+    /// </summary>
+    public bool CableAndWiFi => IsCableAndWiFi(KindA, KindB);
+
+    public static bool IsCableAndWiFi(LinkKind a, LinkKind b) =>
+        (a == LinkKind.Cable && b == LinkKind.WiFi) || (a == LinkKind.WiFi && b == LinkKind.Cable);
+
     /// <summary>One line for the bug report's <c>system_info.txt</c>.</summary>
     public override string ToString() => string.Create(System.Globalization.CultureInfo.InvariantCulture,
         $"{Module} on {LinkA} ({KindA}) and {LinkB} ({KindB}){(Now ? ", now" : "")}: found {Times} times, {NotUsed} datagrams not used");

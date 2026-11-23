@@ -494,8 +494,9 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             {
                 if (change == TwoLinkDetector.Change.Detected)
                     _logger.LogWarning("[UDP] {Module} is heard on two network links, {A} and {B}: nothing from it is used "
-                        + "until one is disconnected (on cable and Wi-Fi to the same router everything comes twice, "
-                        + "the Wi-Fi copy late)", from, LinkWords(a), LinkWords(b));
+                        + "until {Fix} (on cable and Wi-Fi to the same router everything comes twice, the Wi-Fi copy "
+                        + "late; module data needs the cable)", from, LinkWords(a), LinkWords(b),
+                        IsCableAndWiFi(a, b) ? "the Wi-Fi is off" : "one is disconnected");
                 else
                     _logger.LogWarning("[UDP] {Module} is heard on one network link again: used", from);
             });
@@ -572,6 +573,8 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     };
 
     // For the log: "Ethernet 2 (cable)".
+    private bool IsCableAndWiFi(int a, int b) => SecondLink.IsCableAndWiFi(Link(a).Kind, Link(b).Kind);
+
     private string LinkWords(int index)
     {
         var (name, kind) = Link(index);

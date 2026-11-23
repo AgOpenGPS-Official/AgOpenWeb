@@ -733,8 +733,11 @@ is compared, dropped selectively or chosen between the links:
   AutoSteer, Free Drive, the sections, a section On by hand too, and the steer wizard off), again at the next
   status tick if anything is turned on.
 - The operator is told over the map, in place of GPS lost, until it clears (`#twolinks`, `IsOnTwoLinks` in the
-  status frame): the module, both links by name and as cable or Wi-Fi (`LinkKind`), and "unplug the cable or turn
-  the Wi-Fi off" (two cables: "disconnect one of the two"). Network IO names both links; the bug
+  status frame): the module, both links by name and as cable or Wi-Fi (`LinkKind`), and the fix. On cable and
+  Wi-Fi that is only "turn the Wi-Fi off (or take the tablet off that network) and keep the cable", never the
+  cable: module data needs a cable (on the Wi-Fi it comes 1.5 s late, in bursts, half lost, a transport fault
+  the app cannot fix), and with one link left there is nothing to detect, so the app would guide on the Wi-Fi
+  unwarned. Two cables, or links of a kind not known: "disconnect one of the two". Network IO names both links; the bug
   report's `system_info.txt` has a `Two network links:` line with how often it was found and how many datagrams
   were not used. The log has `[UDP] ... is heard on two network links` with both links, and its end.
 - It clears by itself when one link has been quiet for 1 s, and the module is used again. Nothing comes back

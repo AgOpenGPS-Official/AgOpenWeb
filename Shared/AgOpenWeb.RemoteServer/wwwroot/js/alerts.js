@@ -83,6 +83,12 @@ const LINK_CABLE = 1, LINK_WIFI = 2;
 function linkWords(name, kind) {
   return kind === LINK_CABLE ? tr('cable ({name})', { name }) : kind === LINK_WIFI ? tr('Wi-Fi ({name})', { name }) : name;
 }
+// Cable and Wi-Fi: the fix is the Wi-Fi, never the cable. Module data needs the cable: on the Wi-Fi alone
+// it comes late and in bursts (1.5 s, 8 at a time, half lost on the tester's router), and with one link
+// left there is nothing to detect, so unplugging the cable would leave the app guiding on it unwarned.
+function twoLinksCableAndWiFi(l) {
+  return (l.kindA | l.kindB) === (LINK_CABLE | LINK_WIFI);
+}
 function twoLinksWho(l) {
   return tr('{ip} is heard by {a} and by {b}.', { ip: l.module, a: linkWords(l.linkA, l.kindA), b: linkWords(l.linkB, l.kindB) });
 }
@@ -94,9 +100,10 @@ function syncGpsLost(s) {
   if (two) {
     const now = (s.secondLinks || []).filter(l => l.now);
     document.getElementById('twolinks-who').textContent = now.map(twoLinksWho).join(' ');
-    const cableAndWiFi = now.length > 0 && now.every(l => (l.kindA | l.kindB) === (LINK_CABLE | LINK_WIFI));
+    const cableAndWiFi = now.length > 0 && now.every(twoLinksCableAndWiFi);
     document.getElementById('twolinks-fix').textContent = cableAndWiFi
-      ? tr('Unplug the cable or turn the Wi-Fi off.') : tr('Disconnect one of the two.');
+      ? tr('Turn the Wi-Fi off (or take the tablet off that network) and keep the cable.')
+      : tr('Disconnect one of the two.');
   }
   document.getElementById('gpslost').classList.toggle('show', !!s.gpsLost && !two);
 }
