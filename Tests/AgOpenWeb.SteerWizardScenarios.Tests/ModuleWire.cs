@@ -77,6 +77,7 @@ public sealed class ModuleWire : IUdpCommunicationService, IDisposable
     public string? GetModuleSubnet() => "192.168.5";
     public string? GetScanReplySubnet() => null;
     public string? GetActiveModuleSubnet() => "192.168.5";
+    public IReadOnlyList<AgOpenWeb.Models.State.SecondLink> GetSecondLinks() => Array.Empty<AgOpenWeb.Models.State.SecondLink>();
     public IPAddress? GetGpsSourceAddress(double maxAgeSeconds = 10) => null;
     public void ScanModules() { }
     public void SetModuleSubnet(byte octet1, byte octet2, byte octet3) { }

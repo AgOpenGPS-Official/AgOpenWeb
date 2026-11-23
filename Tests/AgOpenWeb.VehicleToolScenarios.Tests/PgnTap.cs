@@ -151,6 +151,7 @@ public sealed class PgnTap : IUdpCommunicationService, IDisposable
     public string? GetModuleSubnet() => _inner.GetModuleSubnet();
     public string? GetScanReplySubnet() => _inner.GetScanReplySubnet();
     public string? GetActiveModuleSubnet() => _inner.GetActiveModuleSubnet();
+    public IReadOnlyList<AgOpenWeb.Models.State.SecondLink> GetSecondLinks() => _inner.GetSecondLinks();
     public IPAddress? GetGpsSourceAddress(double maxAgeSeconds = 10) => _inner.GetGpsSourceAddress(maxAgeSeconds);
     public void ScanModules() => _inner.ScanModules();
     public void SetModuleSubnet(byte octet1, byte octet2, byte octet3) => _inner.SetModuleSubnet(octet1, octet2, octet3);
