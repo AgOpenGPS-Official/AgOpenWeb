@@ -185,23 +185,24 @@ body.fs-on #sb-role { margin-left: 75px; }
 @media (pointer: fine) { #maptap-hint::after { content: '  ·  Esc to cancel'; opacity: 0.6; font-weight: 400; } }
 /* Touch cancel for bare map-tap flows (flag placement) that have no draw toolbar. Shown
    by startMapTap only when the toolbar isn't up, so it never doubles the toolbar Cancel. */
-/* Ref Nudge panel (#489): beside the right nav, under the status bar. */
-#refnudge { position: fixed; top: calc(var(--bar-bottom) + 10px); right: calc(var(--sar) + 96px); z-index: 33;
+/* Ref Nudge panel (#489) and Smooth Curve panel (#929): beside the right nav, under the status bar. */
+.rf-panel { position: fixed; top: calc(var(--bar-bottom) + 10px); right: calc(var(--sar) + 96px); z-index: 33;
   display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px;
   background: var(--float-bg); border: 1px solid var(--border-2); color: var(--text); font-family: system-ui, sans-serif; }
-#refnudge[hidden] { display: none; }
-#refnudge .rf-name { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 16px; }
-#refnudge .rf-name span { font-size: 15px; font-weight: 600; color: var(--text-2); max-width: 270px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#refnudge .rf-row { display: flex; gap: 10px; align-items: center; justify-content: center; }
-#refnudge .rf-btn { width: 84px; height: 84px; border: 0; border-radius: 10px; padding: 8px; cursor: pointer; box-sizing: border-box;
+.rf-panel[hidden] { display: none; }
+.rf-panel .rf-name { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 16px; }
+.rf-panel .rf-name span { font-size: 15px; font-weight: 600; color: var(--text-2); max-width: 270px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rf-panel .rf-row { display: flex; gap: 10px; align-items: center; justify-content: center; }
+.rf-panel .rf-btn { width: 84px; height: 84px; border: 0; border-radius: 10px; padding: 8px; cursor: pointer; box-sizing: border-box;
   background: rgba(var(--ov),0.08); display: flex; align-items: center; justify-content: center; }
-#refnudge .rf-btn img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
-#refnudge .rf-btn:hover { background: rgba(var(--ov),0.16); }
-#refnudge .rf-btn:active { background: rgba(70,160,255,0.5); }
-#refnudge .rf-btn:disabled { opacity: 0.35; cursor: default; }
-#refnudge .rf-moved { width: 96px; text-align: center; font: 700 20px system-ui, sans-serif; font-variant-numeric: tabular-nums; }
-#refnudge .rf-step { width: 96px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 14px; }
-#refnudge .rf-step input { width: 58px; font-size: 18px; }
+.rf-panel .rf-btn img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.rf-panel .rf-btn:hover { background: rgba(var(--ov),0.16); }
+.rf-panel .rf-btn:active { background: rgba(70,160,255,0.5); }
+.rf-panel .rf-btn:disabled { opacity: 0.35; cursor: default; }
+.rf-panel .rf-moved { width: 96px; text-align: center; font: 700 20px system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+.rf-panel .rf-step { width: 96px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 14px; }
+.rf-panel .rf-step input { width: 58px; font-size: 18px; }
+.rf-panel .rf-glyph { font: 700 44px system-ui, sans-serif; color: var(--text); }
 #maptap-cancel { position: fixed; top: calc(var(--bar-bottom) + 56px); left: calc(50% + var(--map-dx)); transform: translateX(-50%);
   display: none; z-index: 41; padding: 8px 22px; border-radius: 999px; cursor: pointer;
   border: 1px solid rgba(230,120,110,0.7); background: rgba(52,22,20,0.94); color: #f3c4bd;

@@ -857,11 +857,29 @@ namespace AgOpenWeb.Models.Guidance
         /// <summary>
         /// Each point averaged with the <paramref name="half"/> points either side (fewer at the ends,
         /// whose first and last points stay put), with headings: takes the wobble out of a driven line.
+        /// The line keeps its number of points. On a <paramref name="closed"/> loop (its last point
+        /// repeats the first) the window runs on round the seam, so the seam is smoothed as the rest.
         /// </summary>
-        public static List<Vec3> SmoothMovingAverage(IReadOnlyList<Vec3> points, int half)
+        public static List<Vec3> SmoothMovingAverage(IReadOnlyList<Vec3> points, int half, bool closed = false)
         {
             int n = points.Count;
             var result = new List<Vec3>(n);
+            int ring = n - 1; // a loop's points without the one that repeats the first
+            if (closed && ring > 2 * half)
+            {
+                for (int i = 0; i < ring; i++)
+                {
+                    double e = 0, no = 0;
+                    for (int j = i - half; j <= i + half; j++)
+                    {
+                        var p = points[((j % ring) + ring) % ring];
+                        e += p.Easting; no += p.Northing;
+                    }
+                    result.Add(new Vec3(e / (2 * half + 1), no / (2 * half + 1), 0));
+                }
+                result.Add(result[0]);
+                return CalculateHeadings(result);
+            }
             for (int i = 0; i < n; i++)
             {
                 int k = Math.Min(half, Math.Min(i, n - 1 - i)); // a symmetric window that fits

@@ -183,6 +183,7 @@ public partial class MainViewModel
     private void InitializeTrackCommands()
     {
         InitializeRefNudgeCommands();
+        InitializeSmoothCommands();
 
         // AB Line Guidance Commands - Bottom Bar
         SnapLeftCommand = new RelayCommand(() =>
@@ -763,33 +764,6 @@ public partial class MainViewModel
 
         CycleABLinesCommand = new RelayCommand(() => CycleTrack(+1));
         CycleABLinesBackCommand = new RelayCommand(() => CycleTrack(-1));
-
-        SmoothABLineCommand = new RelayCommand(() =>
-        {
-            if (SelectedTrack == null)
-            {
-                ReportFailure("No track selected");
-                return;
-            }
-            if (SelectedTrack.IsABLine)
-            {
-                ReportFailure("Cannot smooth AB lines (only 2 points)");
-                return;
-            }
-            if (SelectedTrack.Points.Count < 5)
-            {
-                ReportFailure("Too few points to smooth (need at least 5)");
-                return;
-            }
-
-            int beforeCount = SelectedTrack.Points.Count;
-            var smoothed = Models.Guidance.CurveProcessing.SmoothWithCatmullRom(SelectedTrack.Points, 4);
-            smoothed = Models.Guidance.CurveProcessing.CalculateHeadings(smoothed);
-            SelectedTrack.Points = smoothed;
-            OnSelectedTrackGeometryChanged();
-
-            StatusMessage = $"Smoothed '{SelectedTrack.Name}': {beforeCount} -> {smoothed.Count} points";
-        });
 
         // Nudge commands
         NudgeLeftCommand = new RelayCommand(() =>

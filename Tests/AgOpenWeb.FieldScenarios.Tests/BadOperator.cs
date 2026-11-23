@@ -458,7 +458,7 @@ public sealed class BadOperator : Operator
                 F($"shrinking B past A turned the line round: heading {h0 * 180 / Math.PI:F1}° -> {h1 * 180 / Math.PI:F1}°, length {len0:F0} -> {len1:F0} m"));
         }
         await Bad("extend A 400 times (5 m each)", async () => { for (int i = 0; i < 400; i++) R.Dispatch("track.extendA", ""); await R.SettleAsync(); });
-        await Bad("smooth the AB line 5 times", async () => { for (int i = 0; i < 5; i++) await Cmd("track.smooth"); });
+        await Bad("smooth the AB line 5 times", async () => { await Cmd("track.smoothBegin"); for (int i = 0; i < 5; i++) await Cmd("track.smoothMore"); await Cmd("track.smoothSave"); });
         await Bad("A+ right after creating a field (tractor exactly at the field's origin)", async () =>
         {
             await CloseField();

@@ -91,6 +91,36 @@ document.getElementById('bn-abmenu').addEventListener('pointerdown', e => {
 });
 wireCfgControls(bnAb);
 
+// ---- Smooth Curve panel (#929, AgOpenGPS FormSmoothAB) ----
+// − and + ask the host for less or more smoothing of the selected curve; the host shows the result
+// on the map at once and keeps the curve as saved until Save (Cancel puts it back). The host
+// opens and closes the panel (tick.op.smoothOpen): nothing is computed or remembered here, so a
+// screen that reconnects finds the panel as it was.
+const smoothPanel = document.getElementById('smoothpanel');
+const smoothCount = document.getElementById('sm-count');
+const smoothName = document.getElementById('sm-name');
+const smoothLess = document.getElementById('sm-less');
+const smoothMore = document.getElementById('sm-more');
+const smoothSave = document.getElementById('sm-save');
+for (const b of smoothPanel.querySelectorAll('button[data-cmd]'))
+  b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (!b.disabled) transport.send(b.dataset.cmd); });
+function renderSmoothPanel(hasTrack) {
+  const op = (tick && tick.op) || {};
+  const show = hasTrack && !!op.smoothOpen && iHoldControl;
+  if (smoothPanel.hidden === show) {
+    smoothPanel.hidden = !show;
+    if (show) abFlyoutClose();
+  }
+  if (!show) return;
+  const n = op.smoothCount || 0;
+  if (smoothCount.textContent !== String(n)) smoothCount.textContent = String(n);
+  const name = tick.activeTrackName || '';
+  if (smoothName.textContent !== name) smoothName.textContent = name;
+  smoothLess.disabled = n <= 0;
+  smoothMore.disabled = n >= 100;
+  smoothSave.disabled = n <= 0;
+}
+
 // ---- Ref Nudge panel (#489, AgOpenGPS FormRefNudge) ----
 // Moves the saved line itself (the AB flyout's nudge only offsets the guidance line). The panel
 // stays open: the right nav's track buttons pick the next line, each move is saved by the host
@@ -121,7 +151,9 @@ for (const b of refPanel.querySelectorAll('button[data-cmd]'))
   b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send(b.dataset.cmd); });
 wireCfgControls(refPanel);
 function renderRefNudge(hasTrack) {
-  const show = refNudgeOpen && hasTrack;
+  renderSmoothPanel(hasTrack);
+  const show = refNudgeOpen && hasTrack && smoothPanel.hidden; // the two share a place
+
   if (refPanel.hidden === show) refPanel.hidden = !show;
   if (!show) return;
   const m = (tick && tick.op && tick.op.refNudgeMoved) || 0;
