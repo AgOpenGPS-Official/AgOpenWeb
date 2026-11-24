@@ -519,6 +519,8 @@ input.as-valbox { width: 80px; box-sizing: content-box; }
 }
 /* Vehicle config diagrams (type cards + per-field measurement diagrams). */
 .vc-typecards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+/* The tool has four types: one row, not three and a straggler. */
+#tcs-type .vc-typecards { grid-template-columns: repeat(4, 1fr); }
 .vc-typecard { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px;
   border: 1px solid var(--border); border-radius: 8px; background: rgba(var(--ov),0.04);
   color: var(--text-2); cursor: pointer; font: 600 12px system-ui, sans-serif; }
@@ -531,6 +533,8 @@ input.as-valbox { width: 80px; box-sizing: content-box; }
 /* Segmented controls (3 buttons) don't fit the 110px value column — let them
    span the full field width on their own row instead of overflowing the dialog. */
 .vc-fieldcol .ln-seg { grid-column: 1 / -1; width: 100%; }
+/* A hint is a row of its own: in one cell it puts every label after it beside the wrong box. */
+.vc-fieldcol .sa-hint { grid-column: 1 / -1; }
 .vc-diag-wide { width: 100%; max-height: 120px; object-fit: contain; background: #fff; border-radius: 6px; margin: 6px 0; }
 /* Two-column section layout (Antenna beside Hitch/Wheelbase/Track) to save height. */
 .vc-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
@@ -548,8 +552,9 @@ input.as-valbox { width: 80px; box-sizing: content-box; }
 .tc-dyngrid input[type=color] { padding: 1px; height: 30px; }
 /* Section-width / zone-end boxes hold a ~4-digit cm value — size to that (#41). Fixed rows
    of 8 so 16 sections = two even rows (no stragglers); only a non-multiple-of-8 count
-   leaves a short last row. */
-#tc-sectionwidths, #tc-zoneends, #tc-sectioncolors { grid-template-columns: repeat(8, 58px); justify-content: start; }
+   leaves a short last row. The columns give way when eight of them are wider than the pane's
+   half: the eighth box lay over the labels of the column beside it. */
+#tc-sectionwidths, #tc-zoneends, #tc-sectioncolors { grid-template-columns: repeat(8, minmax(0, 58px)); justify-content: start; }
 #tc-sectionwidths input, #tc-zoneends input { width: 52px; }
 .cfg-color { width: 60px; height: 32px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg-input); padding: 1px; }
 .tc-pingrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }

@@ -130,7 +130,22 @@
   <!-- Ref Nudge panel (#489, AgOpenGPS FormRefNudge): stays open while the operator moves a line,
        selects the next with the track buttons of the right nav, and moves that. A move is live but
        only written by Save; Undo puts the line back. Opened from the Tracks flyout. -->
-  <div id="refnudge" hidden>
+  <!-- Smooth Curve panel (#929, AgOpenGPS FormSmoothAB): − and + set how much the selected curve is
+       smoothed and the map shows it; Save keeps it, Cancel puts the curve back. The host opens and
+       closes it (tick.op.smoothOpen). Opened from the Tracks flyout. -->
+  <div id="smoothpanel" class="rf-panel" hidden>
+    <div class="rf-name"><b>Smooth Curve</b><span id="sm-name"></span></div>
+    <div class="rf-row">
+      <button class="rf-btn rf-glyph" id="sm-less" data-cmd="track.smoothLess" title="Smooth less">−</button>
+      <div id="sm-count" class="rf-moved">0</div>
+      <button class="rf-btn rf-glyph" id="sm-more" data-cmd="track.smoothMore" title="Smooth more">+</button>
+    </div>
+    <div class="rf-row">
+      <button class="rf-btn" data-cmd="track.smoothCancel" title="Put the curve back as it was"><img src="/icons/Cancel64.png" alt="Cancel"></button>
+      <button class="rf-btn" id="sm-save" data-cmd="track.smoothSave" title="Save the smoothed curve"><img src="/icons/FileSave.png" alt="Save"></button>
+    </div>
+  </div>
+  <div id="refnudge" class="rf-panel" hidden>
     <div class="rf-name"><b>Reference Line Nudge</b><span id="rf-name"></span></div>
     <div class="rf-row">
       <button class="rf-btn" data-cmd="track.refNudgeLeft" title="Move the line left by the step"><img src="/icons/SnapLeft.png" alt="Left"></button>
@@ -1748,7 +1763,7 @@
         </div>
         <div class="bn-flysep bn-abdep"></div>
         <div class="bn-flyrow bn-abdep">
-          <button class="bn-btn" data-cmd="track.smooth" data-t2 title="Smooth AB curve"><img class="bn-ic" src="/icons/ABSmooth.png" alt="Smooth"></button>
+          <button class="bn-btn" data-cmd="track.smoothBegin" data-t2 title="Smooth AB curve"><img class="bn-ic" src="/icons/ABSmooth.png" alt="Smooth"></button>
           <button class="bn-btn" id="bn-delcontours" data-t2 title="Delete contour paths"><img class="bn-ic" src="/icons/TrashContourRef.png" alt="Delete contours"></button>
         </div>
         <div class="bn-flysep bn-abdep"></div>

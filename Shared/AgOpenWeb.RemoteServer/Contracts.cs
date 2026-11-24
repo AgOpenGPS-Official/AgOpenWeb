@@ -181,6 +181,9 @@ public record TickDto(
     double RefNudgeMoved,
     // ... and whether that move still waits for Save (Undo / Save enable on it).
     bool RefNudgePending,
+    // Smooth Curve panel (#929): open on the selected curve, and the amount shown (0 = as saved).
+    bool SmoothOpen,
+    int SmoothCount,
     // Pure Pursuit goal point (field-local m) — the steering target while engaged, or in
     // free-drive the target it would chase if engaged now. HasGoal gates the map marker (#95).
     bool HasGoal,
