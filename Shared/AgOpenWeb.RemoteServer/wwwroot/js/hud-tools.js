@@ -458,7 +458,7 @@ function startPolyDraw() {
   polyDraw = true; polyPts = [];
   lnCloseAll();                           // close the boundary menu
   showAbBar(false, true, true);           // Undo + Finish + Cancel
-  startMapTap({ hint: tr('Tap the corners of the obstacle — Finish when done'), onTap: polyTap });
+  startMapTap({ hint: tr('Tap the corners of the obstacle, past the fence where it reaches it — Finish when done'), onTap: polyTap });
 }
 function polyTap(e, n) { polyPts.push({ e, n }); setPolyHint(); }
 function setPolyHint() { hintEl.textContent = polyPts.length === 1 ? tr('Obstacle: 1 corner — Finish when done') : tr('Obstacle: {n} corners — Finish when done', { n: polyPts.length }); }

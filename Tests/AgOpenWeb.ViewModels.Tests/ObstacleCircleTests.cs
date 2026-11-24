@@ -231,12 +231,60 @@ public class ObstacleCircleTests
     }
 
     [Test]
+    public async Task AnObstacle_DrawnPastTheFence_IsItsPartInTheField()
+    {
+        // Wet ground at the end of the passes, drawn round from 20 m beyond the south fence.
+        var vm = await Open();
+
+        vm.RemoteAddObstacleFromMapPoints(new[] { (150.0, -20.0), (180.0, -20.0), (180.0, 30.0), (150.0, 30.0) });
+
+        var inner = OnDisk(_dir).InnerBoundaries;
+        Assert.That(inner, Has.Count.EqualTo(4));
+        Assert.That(inner[3].AreaSquareMeters, Is.EqualTo(900).Within(0.5), "30 m along the fence by 30 m in");
+        Assert.That(inner[3].Points.Min(p => p.Northing), Is.EqualTo(0).Within(0.01), "up to the fence, not past it");
+        Assert.That(inner[3].IsPointInside(165, 15), Is.True);
+        Assert.That(inner[3].AtObstacle, Is.EqualTo(ObstacleAction.Turn));
+        Assert.That(inner[3].IsHard, Is.True);
+        Assert.That(vm.SelectedBoundaryIndex, Is.EqualTo(4), "its row is selected");
+        Assert.That(vm.StatusMessage, Does.Contain("kept to the field"));
+    }
+
+    [Test]
+    public async Task AnObstacle_DrawnOutAndBackIn_IsOneObstaclePerPartInTheField()
+    {
+        // A U from the field out past the south fence and back: its two legs are in the field.
+        var vm = await Open();
+
+        vm.RemoteAddObstacleFromMapPoints(new[]
+        {
+            (150.0, 10.0), (150.0, -20.0), (190.0, -20.0), (190.0, 20.0),
+            (180.0, 20.0), (180.0, -10.0), (160.0, -10.0), (160.0, 10.0),
+        });
+
+        var inner = OnDisk(_dir).InnerBoundaries;
+        Assert.That(inner.Skip(3).Select(i => Math.Round(i.AreaSquareMeters)), Is.EqualTo(new[] { 200.0, 100.0 }).AsCollection,
+            "the larger leg first");
+        Assert.That(inner.Skip(3).Select(i => i.AtObstacle), Is.All.EqualTo(ObstacleAction.Turn));
+        Assert.That(vm.SelectedBoundaryIndex, Is.EqualTo(4), "the larger one's row is selected");
+        Assert.That(vm.StatusMessage, Does.Contain("Inner 4 to 5").And.Contain("2 pieces"));
+
+        // Its west leg only 1.5 m into the field: a sliver beside the fence, not an obstacle.
+        vm.RemoteAddObstacleFromMapPoints(new[]
+        {
+            (150.0, 1.5), (150.0, -20.0), (190.0, -20.0), (190.0, 20.0),
+            (180.0, 20.0), (180.0, -10.0), (160.0, -10.0), (160.0, 1.5),
+        });
+        Assert.That(OnDisk(_dir).InnerBoundaries, Has.Count.EqualTo(6), "one more: the 200 m² leg");
+        Assert.That(vm.StatusMessage, Does.Contain("Inner 6:").And.Contain("a sliver along the fence left out"));
+    }
+
+    [Test]
     public async Task AnObstacle_DrawnOutsideTheField_OrTooSmall_IsRefused()
     {
         var vm = await Open();
 
-        vm.RemoteAddObstacleFromMapPoints(new[] { (190.0, 100.0), (210.0, 100.0), (200.0, 120.0) });
-        Assert.That(vm.StatusMessage, Does.Contain("inside the field"));
+        vm.RemoteAddObstacleFromMapPoints(new[] { (210.0, 100.0), (230.0, 100.0), (220.0, 120.0) });
+        Assert.That(vm.StatusMessage, Does.Contain("outside the field"));
         vm.RemoteAddObstacleFromMapPoints(new[] { (100.0, 100.0), (100.05, 100.05), (100.1, 100.0) });
         Assert.That(vm.StatusMessage, Does.Contain("three corners"));
         vm.RemoteAddObstacleFromMapPoints(new[] { (100.0, 100.0), (100.5, 100.0), (101.0, 100.0) });

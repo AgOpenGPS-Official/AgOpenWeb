@@ -17,6 +17,6 @@
 | 5.10 | Section control at the headland line | | | |
 | 5.11 | **Boundary imagery**: capture, the on/off toggle, a fallback zoom where tiles are missing | | | |
 | 5.12 | A boundary from an AgOpenGPS field comes across with its inner boundaries and headland | | | |
-| 5.13 | **+ Polygon**: an obstacle drawn by tapping its corners on the map (Undo, Finish, Cancel on the toolbar) is a Hard U-turn obstacle, saved and selected in the list; a corner outside the field is refused | | | |
+| 5.13 | **+ Polygon**: an obstacle drawn by tapping its corners on the map (Undo, Finish, Cancel on the toolbar) is a Hard U-turn obstacle, saved and selected in the list; drawn past the fence, only its part inside the field is kept (a part that comes back in is an obstacle of its own, a sliver along the fence is left out); one wholly outside is refused | | | |
 
 **Signed off:** _ (name, date)
