@@ -55,6 +55,8 @@ public sealed class SceneProjector : System.IDisposable
     // System Data card (Network IO → GPS): attitude, heading sources, sentence rate and the
     // latest raw sentences. Host-supplied; null before any GPS data.
     public System.Func<SystemDataDto?>? SystemDataProvider { get; set; }
+    // How each stream from the modules arrives (System Data card, the status bar's rate).
+    public System.Func<IReadOnlyList<DataStreamDto>?>? DataQualityProvider { get; set; }
 
     /// <summary>Host-supplied projector for the generated tram lines (ITramLineService's
     /// ParallelTramLines — pipeline state, but the service isn't injected here). Set by the
@@ -486,7 +488,8 @@ public sealed class SceneProjector : System.IDisposable
             FieldDataProvider?.Invoke(),
             cfg.SendCorrectedPosition,
             c.ScanReplySubnet ?? "",
-            BuildNtripSession(cfg.NtripProfilePerField, c));
+            BuildNtripSession(cfg.NtripProfilePerField, c),
+            DataQualityProvider?.Invoke());
     }
 
     // The NTRIP session for the Network IO card, read live for every status frame.

@@ -1007,6 +1007,7 @@ public partial class MainViewModel : ObservableObject
                     UpdateIsobusSectionCount(isobus);
                 }
                 UpdateCorrectionsUnused();
+                UpdateDataQuality();
 
                 // Update centralized state (single source of truth)
                 State.Connections.IsAutoSteerDataOk = steerOk;

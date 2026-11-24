@@ -868,6 +868,21 @@ public static class WireCodec
             WriteStr(w, ns.Profile);
             WriteStr(w, ns.Service);
         }
+        // How each stream from the modules arrives (append-only, #922): [u8 n][ per stream: str
+        // name, u8 verdict (0 no data, 1 even, 2 gaps, 3 bursts), u8 faulty, f32 rate Hz,
+        // f32 nominal Hz (0 = not known), f32 missed % ].
+        var dq = s.DataQuality;
+        int dqCount = Math.Min(dq?.Count ?? 0, 255);
+        w.Write((byte)dqCount);
+        for (int i = 0; i < dqCount; i++)
+        {
+            WriteStr(w, dq![i].Name);
+            w.Write((byte)dq[i].Verdict);
+            w.Write((byte)(dq[i].Faulty ? 1 : 0));
+            w.Write((float)dq[i].RateHz);
+            w.Write((float)dq[i].NominalHz);
+            w.Write((float)dq[i].MissedPercent);
+        }
         return ms.ToArray();
     }
 

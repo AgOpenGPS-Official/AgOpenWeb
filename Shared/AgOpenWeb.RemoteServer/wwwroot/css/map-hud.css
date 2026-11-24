@@ -48,6 +48,8 @@
 body.fs-on #sb-role { margin-left: 75px; }
 .sb-row1 { display: flex; align-items: center; gap: 8px; flex: none; }
 .sb-sec { color: var(--text-muted); font-weight: 500; }
+/* The rate the fixes arrive at; red while they come with gaps or in bursts (#922). */
+#sb-hz.bad { color: #ef4444; font-weight: 700; }
 .sb-rot { color: #3498DB; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   flex: 1 1 auto; min-width: 0; line-height: 40px; cursor: pointer; }
 .sb-spacer { flex: 1; }

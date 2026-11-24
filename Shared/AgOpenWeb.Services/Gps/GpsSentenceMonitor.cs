@@ -47,6 +47,10 @@ public sealed class GpsSentenceMonitor
         public Slot(string type) => Type = type;
     }
 
+    /// <summary>Whether the fixes arrive as the receiver sends them (gaps, bursts); see
+    /// <see cref="Network.StreamQualityMonitor"/>. Fed with every accepted fix.</summary>
+    public Network.StreamQualityMonitor Fixes { get; } = new("GPS positions");
+
     private readonly object _lock = new();
     private readonly Slot _panda = new("PANDA");
     private readonly Slot _paogi = new("PAOGI");
@@ -104,6 +108,8 @@ public sealed class GpsSentenceMonitor
                 else if (result == NmeaParseResult.UnknownSentence) _unknownSentence++;
                 return;
             }
+
+            Fixes.Record(timestamp);
 
             if (_arrivalCount > 0)
             {

@@ -331,7 +331,20 @@ public record StatusDto(
     // Bytes 9–11 of the last scan reply: the subnet the scan came from (#334); "" = none.
     string ScanReplySubnet = "",
     // The NTRIP session: which service is in use, the failover state, the last failure (NTRIP plan).
-    NtripSessionDto? NtripSession = null);
+    NtripSessionDto? NtripSession = null,
+    // How each stream from the modules arrives (gaps, bursts): the GPS fixes first. null before
+    // the first judgement.
+    IReadOnlyList<DataStreamDto>? DataQuality = null);
+
+/// <summary>One stream from the modules as it arrived over the last 10 s
+/// (<c>StreamQualityMonitor</c>).</summary>
+/// <param name="Name">"GPS positions", "Steer module data (PGN 253)", ...</param>
+/// <param name="Verdict">0 no data (silent, or too little to judge), 1 even, 2 gaps, 3 bursts.</param>
+/// <param name="Faulty">Out of bounds long enough that the operator was told.</param>
+/// <param name="RateHz">Arrivals a second.</param>
+/// <param name="NominalHz">The rate the sender sends at; 0 when not known.</param>
+/// <param name="MissedPercent">The share that did not arrive when it should have.</param>
+public record DataStreamDto(string Name, int Verdict, bool Faulty, double RateHz, double NominalHz, double MissedPercent);
 
 /// <summary>What the field data card shows beyond the worked area the status frame already
 /// carries: the boundary area less inner boundaries (0 = no boundary), the ground covered

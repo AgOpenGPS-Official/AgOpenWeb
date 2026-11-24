@@ -245,6 +245,14 @@ public sealed class RemoteServerHost
     }
     private Func<SystemDataDto?>? _systemDataProvider;
 
+    /// <summary>How each stream from the modules arrives (gaps, bursts).</summary>
+    public Func<IReadOnlyList<DataStreamDto>?>? DataQualityProvider
+    {
+        get => _broadcaster?.Projector.DataQualityProvider;
+        set { _dataQualityProvider = value; if (_broadcaster is not null) _broadcaster.Projector.DataQualityProvider = value; }
+    }
+    private Func<IReadOnlyList<DataStreamDto>?>? _dataQualityProvider;
+
     public Func<IReadOnlyList<HeadlandSegInfoDto>>? HeadlandSegsProvider
     {
         get => _broadcaster?.Projector.HeadlandSegsProvider;
@@ -338,6 +346,7 @@ public sealed class RemoteServerHost
         _broadcaster.Projector.IsobusProvider = _isobusProvider;
         _broadcaster.Projector.FieldDataProvider = _fieldDataProvider;
         _broadcaster.Projector.SystemDataProvider = _systemDataProvider;
+        _broadcaster.Projector.DataQualityProvider = _dataQualityProvider;
         _broadcaster.Projector.TramLinesProvider = _tramLinesProvider;
 
         // Control authority → broadcast state to clients + drive the native banner;
