@@ -96,7 +96,7 @@ vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textCon
 document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); saveProfile(); });
 // Machine brand (vehicle.color, 0xRRGGBB hex): the makers' own colours for the vehicle
 // type chosen (a user asked for the main makers), or any colour from the picker beside
-// the list. Each is the colour the map shows (vehicleTintPaint in map-draw.js). Where the maker
+// the list. Each is the colour the map shows (vehicleTinted in map-draw.js). Where the maker
 // publishes no code the value is the nearest published one, and says so.
 const VEHICLE_COLOURS = [
   // types: 0 tractor, 1 harvester, 2 articulated

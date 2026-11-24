@@ -45,8 +45,8 @@ public class VehicleConfig : ObservableObject
     /// The vehicle's colour on the map (0xRRGGBB), saved with the vehicle profile; drawing only.
     /// AgOpenGPS has the same setting (setDisplay_colorVehicle, white by default) and multiplies its
     /// body texture by it (CVehicle.DrawVehicle). The web client scales each body picture by its own
-    /// paint grey instead, so the colour picked is the colour the map shows (vehicleTintPaint in
-    /// map-draw.js). White, the default, leaves the picture as it is.
+    /// paint grey instead, so the colour picked is the colour the map shows, and keeps the tyres and
+    /// lights as drawn (vehicleTinted in map-draw.js). White, the default, leaves the picture as it is.
     /// </summary>
     public uint Color
     {
