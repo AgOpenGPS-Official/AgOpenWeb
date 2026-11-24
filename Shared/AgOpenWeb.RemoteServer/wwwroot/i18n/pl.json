@@ -807,7 +807,6 @@
   "4WD / Articulated": "4WD / Przegubowy",
   "A switch or button wired to the steer module. When set, it engages and disengages AutoSteer (and a module kickout disengages it).": "Przełącznik lub przycisk podłączony do modułu. Pozwala na włączanie i wyłączanie autoprowadzenia (rozłączenie przez sterownik również go wyłącza).",
   "A+ Line": "Linia A+",
-  "A+ needs a GPS position — start the simulator or GPS": "A+ wymaga sygnału GPS — włącz symulator lub GPS",
   "A/D converter": "Przetwornik A/D",
   "AB": "AB",
   "AB line along the longest boundary edge": "Linia AB wzdłuż najdłuższego boku pola",

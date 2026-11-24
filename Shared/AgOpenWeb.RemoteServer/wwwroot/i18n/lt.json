@@ -100,7 +100,6 @@
   "4WD / Articulated": "4WD / Šarnyrinis",
   "A switch or button wired to the steer module. When set, it engages and disengages AutoSteer (and a module kickout disengages it).": "Jungiklis arba mygtukas, prijungtas prie vairavimo modulio. Jį suaktyvinus, įjungiama arba išjungiama „AutoSteer“ sistema (be to, sistema išjungiama suveikus modulio atjungimo funkcijai).",
   "A+ Line": "A+ Linija",
-  "A+ needs a GPS position — start the simulator or GPS": "A+ reikalings GPS signalas- įjungti simuliatorių arba GPS",
   "A/D converter": "Analoginis/Skaitmeninis konverteris",
   "AB": "AB",
   "AB line along the longest boundary edge": "AB linija pagal ilgiausią ribos kraštinę",

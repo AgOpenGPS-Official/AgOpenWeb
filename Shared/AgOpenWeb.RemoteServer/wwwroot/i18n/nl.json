@@ -277,7 +277,6 @@
   "A switch or button wired to the steer module. When set, it engages and disengages AutoSteer (and a module kickout disengages it).": "Een schakelaar of knop die is gekoppeld aan de stuurkolom. Als dit is ingesteld schakelt dit AutoSteer in of uit (en een module kickout schakelt het uit).",
   "A+ heading": "A+ kop",
   "A+ Line": "A+ lijn",
-  "A+ needs a GPS position — start the simulator or GPS": "A+ heeft een GPS-positie nodig — start de simulator of GPS",
   "A/D converter": "Analoog-Digitaalomzetter",
   "AB": "AB",
   "AB Line": "AB-Lijn",
