@@ -68,15 +68,24 @@ public static class BoundaryEdgeTracks
             turns[i] = Math.Abs(turn);
         }
         // Points next to a corner see it in their span too: one corner per run, at its sharpest.
+        // A run ends at a point that is no corner, and at a step longer than the span: the
+        // point after it does not see the corner before it, so it is a corner of its own. A
+        // boundary drawn on the map has a point at each corner and none between (#933: such a
+        // field was all one run with no end, and got no edges at all).
         var corners = new List<int>();
-        int start = Array.FindIndex(turns, t => t <= CornerTurnThreshold);
+        int start = -1;
+        for (int i = 0; i < n && start < 0; i++)
+            if (turns[i] <= CornerTurnThreshold || StepTo(pts, i) > CornerSpan) start = i;
         if (start < 0) return sides;
-        for (int k = 1, best = -1; k <= n; k++)
+        int best = -1;
+        for (int k = 0; k < n; k++)
         {
             int i = (start + k) % n;
-            if (turns[i] > CornerTurnThreshold) { if (best < 0 || turns[i] > turns[best]) best = i; }
-            else if (best >= 0) { corners.Add(best); best = -1; }
+            bool corner = turns[i] > CornerTurnThreshold;
+            if (best >= 0 && (!corner || StepTo(pts, i) > CornerSpan)) { corners.Add(best); best = -1; }
+            if (corner && (best < 0 || turns[i] > turns[best])) best = i;
         }
+        if (best >= 0) corners.Add(best);
         corners.Sort();
         if (corners.Count < 2) return sides;
 
@@ -159,6 +168,13 @@ public static class BoundaryEdgeTracks
             }
         }
         return sides;
+    }
+
+    // The length of the step from the point before point i to point i.
+    private static double StepTo(IReadOnlyList<BoundaryPoint> pts, int i)
+    {
+        var prev = pts[(i - 1 + pts.Count) % pts.Count];
+        return GeometryMath.Distance(prev.Easting, prev.Northing, pts[i].Easting, pts[i].Northing);
     }
 
     // The boundary point CornerSpan along the ring from point i (dir ±1), or the furthest

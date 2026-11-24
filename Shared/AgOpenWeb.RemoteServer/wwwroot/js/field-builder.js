@@ -213,7 +213,15 @@ function renderFbTram() {
   const ts = (scene && scene.tramSystems) || [];
   if (fbTramPendingEdit && ts.length) { fbTramPendingEdit = false; fbTramSel = ts.length - 1; openTramEditor(); return; }
   if (fbTramSel >= ts.length) fbTramSel = -1;
-  if (!ts.length) { list.innerHTML = '<div class="trk-empty">No tram systems. Add one referencing a track or the boundary.</div>'; return; }
+  if (!ts.length) {
+    // Lines on the map with no system here are the automatic ones (the host makes them while
+    // the tram display is on): say so, or the list contradicts the map (#933).
+    const auto = !!(scene && scene.tramLines && scene.tramLines.length);
+    list.innerHTML = auto
+      ? '<div class="trk-empty">No tram systems. The tram lines on the map are automatic: along the active AB line, or round the boundary without one. Add a system to set your own, or hide them with the Tram button.</div>'
+      : '<div class="trk-empty">No tram systems. Add one referencing a track or the boundary.</div>';
+    return;
+  }
   list.innerHTML = '';
   ts.forEach((s, i) => {
     const row = document.createElement('div');

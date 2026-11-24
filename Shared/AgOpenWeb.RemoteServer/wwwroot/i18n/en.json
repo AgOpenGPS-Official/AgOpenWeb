@@ -646,6 +646,7 @@
   "No tracks": "No tracks",
   "No tracks in this field": "No tracks in this field",
   "No tram systems. Add one referencing a track or the boundary.": "No tram systems. Add one referencing a track or the boundary.",
+  "No tram systems. The tram lines on the map are automatic: along the active AB line, or round the boundary without one. Add a system to set your own, or hide them with the Tram button.": "No tram systems. The tram lines on the map are automatic: along the active AB line, or round the boundary without one. Add a system to set your own, or hide them with the Tram button.",
   "None": "None",
   "Northing": "Northing",
   "Not a GitHub username": "Not a GitHub username",

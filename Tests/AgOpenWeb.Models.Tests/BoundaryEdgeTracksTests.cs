@@ -148,4 +148,60 @@ public class BoundaryEdgeTracksTests
             .ToList();
         Assert.That(BoundaryEdgeTracks.Build(pts), Is.Empty);
     }
+
+    // The outer boundary in the bug report dump of #933 (23 Nov 2026), in metres from the field's
+    // origin: four points tapped on the map, 4.27 ha. All Edges made no track and said nothing,
+    // and Longest Edge fell back to "Boundary Edge 1", its round-field answer.
+    private static List<BoundaryPoint> Issue933DrawnField() => new()
+    {
+        new BoundaryPoint(-69.5, -151.7, 0),
+        new BoundaryPoint(100.9, -33.1, 0),
+        new BoundaryPoint(212.7, -208.4, 0),
+        new BoundaryPoint(39.1, -322.3, 0),
+    };
+
+    [Test]
+    public void A_field_drawn_with_four_points_gives_four_AB_lines()
+    {
+        var pts = Issue933DrawnField();
+
+        var sides = BoundaryEdgeTracks.BuildSides(pts);
+
+        Assert.That(sides, Has.Count.EqualTo(4), "A boundary with a point at each corner and none between has four sides");
+        Assert.That(sides.All(s => s.Track.Type == TrackType.ABLine && s.Track.Points.Count == 2), Is.True);
+        // Each line lies on its side: both corners are on it.
+        for (int k = 0; k < 4; k++)
+        {
+            var line = sides[k].Track.Points;
+            double h = line[0].Heading, ue = Math.Sin(h), un = Math.Cos(h);
+            foreach (var corner in new[] { pts[k], pts[(k + 1) % 4] })
+            {
+                double off = (corner.Easting - line[0].Easting) * un - (corner.Northing - line[0].Northing) * ue;
+                Assert.That(Math.Abs(off), Is.LessThan(0.01), $"side {k + 1}");
+            }
+        }
+        Assert.That(sides.Select(s => s.Length).Max(), Is.EqualTo(207.9).Within(0.5), "the longest side, corner to corner");
+    }
+
+    [Test]
+    public void A_drawn_field_with_a_point_on_one_side_still_gives_four_lines()
+    {
+        // One more tap half way along the first side: it is not a corner, the four others are,
+        // each a run of its own though they follow one another round the ring.
+        var pts = Issue933DrawnField();
+        pts.Insert(1, new BoundaryPoint((pts[0].Easting + pts[1].Easting) / 2, (pts[0].Northing + pts[1].Northing) / 2, 0));
+
+        var tracks = BoundaryEdgeTracks.Build(pts);
+
+        Assert.That(tracks, Has.Count.EqualTo(4));
+        Assert.That(tracks.All(t => t.Type == TrackType.ABLine), Is.True);
+    }
+
+    [Test]
+    public void A_drawn_triangle_gives_three_lines()
+    {
+        var pts = new List<BoundaryPoint> { new(0, 0, 0), new(0, 150, 0), new(120, 0, 0) };
+
+        Assert.That(BoundaryEdgeTracks.Build(pts), Has.Count.EqualTo(3));
+    }
 }
