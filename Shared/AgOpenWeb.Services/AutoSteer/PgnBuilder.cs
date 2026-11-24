@@ -36,6 +36,12 @@ public static class PgnBuilder
     public const byte PGN_CORRECTED_POSITION = 0x64; // 100 - Corrected position (seed monitors, rate control)
     public const byte PGN_GPS_DATA = 0xD6;       // 214 - AgIO's GPS data (GPS_Out)
     public const byte SOURCE_GPS = 0x7C;         // AgIO sends PGN 214 as the GPS module
+    public const byte PGN_ISOBUS_PROCESS_DATA = 0xF2; // 242 - Speed, distance, deviation to the ISOBUS task controller (#921)
+    public const int ISOBUS_PROCESS_DATA_PGN_SIZE = 12;
+    /// <summary>ISO 11783-11 data dictionary identifiers AgOpenGPS sends in PGN 242 (CISOBUS.cs).</summary>
+    public const ushort DDI_ACTUAL_SPEED = 397;
+    public const ushort DDI_GUIDANCE_LINE_DEVIATION = 513;
+    public const ushort DDI_TOTAL_DISTANCE = 597;
     public const byte PGN_VEHICLE_GEOMETRY = 0xF7; // 247 - Vehicle geometry (AgOpenWeb, #387)
     public const byte PGN_SECTION_DIMENSIONS = 0xEB; // 235 - Section widths (rate controllers)
 
@@ -307,6 +313,31 @@ public static class PgnBuilder
         System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(buf.AsSpan(21, 8), headingDegrees);
 
         return WithCrc(buf);
+    }
+
+    /// <summary>
+    /// Write PGN 242 (0xF2), one process data value for the ISOBUS task controller, as
+    /// AgOpenGPS sends it (CISOBUS.SendProcessData): [0x80, 0x81, 0x7F, 0xF2, 6, DDI lo,
+    /// DDI hi, value (int32, little-endian), CRC]. AOG-TaskController reads DDI 397 (speed,
+    /// mm/s, negative in reverse) and 597 (distance, mm) into its tractor ECU's speed
+    /// messages, and 513 (guidance line deviation) into an NMEA 2000 cross-track message.
+    /// </summary>
+    /// <param name="buffer">At least <see cref="ISOBUS_PROCESS_DATA_PGN_SIZE"/> bytes; the caller may reuse it.</param>
+    public static byte[] WriteIsobusProcessDataPgn(byte[] buffer, ushort ddi, int value)
+    {
+        buffer[0] = HEADER1;
+        buffer[1] = HEADER2;
+        buffer[2] = SOURCE;
+        buffer[3] = PGN_ISOBUS_PROCESS_DATA;
+        buffer[4] = 6;
+        buffer[5] = (byte)(ddi & 0xFF);
+        buffer[6] = (byte)(ddi >> 8);
+        buffer[7] = (byte)value;
+        buffer[8] = (byte)(value >> 8);
+        buffer[9] = (byte)(value >> 16);
+        buffer[10] = (byte)(value >> 24);
+        buffer[11] = CalculateCrc(buffer, 2, ISOBUS_PROCESS_DATA_PGN_SIZE - 3);
+        return buffer;
     }
 
     /// <summary>

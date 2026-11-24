@@ -1081,11 +1081,27 @@ whatever the section count; it does not read them from PGN 254 or 239.
 |---|---|---|---|---|---|---|---|---|
 | Section heartbeat, from the task controller every 100 ms | 80 | F0 | 240 | 2 + ceil(n / 8) | bit 0: section control enabled; bits 1-3: implements connected | n = the implement's section count (0 = alive, no implement) | the implement's reported section states, section 1 in bit 0 of byte 7 | CRC |
 | Section control mode, to the task controller | 7F | F1 | 241 | 1 | 1 = automatic, 0 = manual | | | CRC |
+| Process data, to the task controller | 7F | F2 | 242 | 6 | DDI, low byte | DDI, high byte | the value, int32 little-endian (bytes 7-10) | CRC |
 
 AgOpenWeb shows the ISOBUS button while a heartbeat arrived in the last second. Tapping it
 sends PGN 241 with the opposite of the reported mode, repeated every 0.5 s until the
 heartbeat shows it (3 s at most), and once more when a restarted task controller comes
 back with the other setting.
+
+PGN 242 carries what AgOpenGPS sends (`CISOBUS.cs`), one value a datagram, to the task
+controller's own address while it is heard:
+
+| DDI | Value | When |
+|---|---|---|
+| 397 Actual speed | mm/s, negative in reverse | every fix, at most every 100 ms |
+| 597 Total distance | the trip distance, mm | every fix, at most every 100 ms |
+| 513 Guidance line deviation | the distance off the line in mm × 100 (the task controller divides by 1000 into NMEA 2000's 0.01 m) | with them, while a line is guided on |
+
+The task controller's tractor ECU puts the speed and distance on the bus for implements that take
+their speed from the tractor; PGN 242 is its only source. AgOpenGPS sends a value only when it
+changes, so a task controller started while the speed is steady reads 0 until it moves; AgOpenWeb
+sends speed and distance with every fix (#921). AgOpenGPS sends 32000 as the deviation with no
+line; AgOpenWeb sends none.
 
 <br>
 <br>

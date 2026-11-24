@@ -57,6 +57,9 @@ public partial class MainViewModel
         // Field data card: trip distance (#321).
         if (result.GpsValid) AccumulateTripDistance(result.Easting, result.Northing);
 
+        // Speed, distance and distance off the line to the ISOBUS task controller (PGN 242, #921).
+        if (result.GpsValid) SendIsobusProcessData(result);
+
         // Sole writer to State.Vehicle — Phase B completion. Was previously
         // also written from MainViewModel.HandleGpsUiUpdates on the
         // _gpsService.GpsDataUpdated callback path (Rule 2 violation).
