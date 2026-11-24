@@ -104,6 +104,7 @@ const VEHICLE_COLOURS = [
   { name: 'Claas', color: '57a639', types: [0, 1] },                // its green: RAL 6018 (paint listing)
   { name: 'Deutz-Fahr', color: '76b824', types: [0, 1] },            // its green (brandcolorcode.com)
   { name: 'Fendt', color: '35682d', types: [0, 1] },                // its green: RAL 6010 (paint listing)
+  { name: 'JCB', color: 'fcb026', types: [0, 2] },                // its yellow (brandcolorcode.com)
   { name: 'John Deere', color: '367c2b', types: [0, 1, 2] },       // PMS 364 C, its logo green
   { name: 'Kubota', color: 'e35205', types: [0] },                  // nearest published: no official code
   { name: 'Massey Ferguson', color: 'c71121', types: [0, 1] },       // its red (brandcolorcode.com)
