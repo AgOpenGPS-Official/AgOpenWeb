@@ -49,55 +49,63 @@ public static class ObstacleDrawing
 
     /// <summary>
     /// The part of a drawn outline that lies inside the field: the outline cut by the field's
-    /// boundary, each piece of at least <see cref="MinArea"/> on its own, the largest first. An
-    /// outline wholly inside comes back as it was drawn. Drawn round a patch at the field's edge
-    /// (wet ground at the end of the passes), the corners can be tapped beyond the fence instead
-    /// of along it inside, and only the field's part becomes the obstacle; drawn across a neck of
-    /// the field, each side is a piece. A piece under <see cref="MinShareOfLargest"/> of the
-    /// largest is left out and counted in <paramref name="leftOut"/>. An outline that crosses
-    /// itself counts each loop it encloses (non-zero). Empty when nothing of it is in the field.
+    /// boundary (a Clipper2 intersection), each piece of at least <see cref="MinArea"/> on its own,
+    /// the largest first. An outline wholly inside that does not cross itself comes back as it was
+    /// drawn. Drawn round a patch at the field's edge (wet ground at the end of the passes), the
+    /// corners can be tapped beyond the fence instead of along it inside, and only the field's part
+    /// becomes the obstacle; drawn across a neck of the field, each side is a piece. A piece under
+    /// <see cref="MinShareOfLargest"/> of the largest is left out and counted. An outline that
+    /// crosses itself is each loop it encloses (non-zero): a figure of eight is two pieces, not one
+    /// outline whose two halves cancel out. No pieces when nothing of it is in the field.
     /// </summary>
-    public static List<List<(double E, double N)>> InField(
-        IReadOnlyList<(double E, double N)> corners, IReadOnlyList<(double E, double N)> field, out int leftOut)
+    public static FieldPart InField(IReadOnlyList<(double E, double N)> corners, IReadOnlyList<(double E, double N)> field)
     {
-        leftOut = 0;
         var pieces = new List<List<(double E, double N)>>();
-        if (corners.Count < 3 || field.Count < 3) return pieces;
+        if (corners.Count < 3 || field.Count < 3) return new FieldPart(pieces, 0, 0, 0, false);
 
         var drawn = ToPath(corners);
-        var fence = ToPath(field);
-        if (AllInside(drawn, fence) && !EdgesCross(corners, field))
-        {
-            if (Math.Abs(Clipper.Area(drawn)) / (Scale * Scale) >= MinArea) pieces.Add(new List<(double E, double N)>(corners));
-            return pieces;
-        }
+        double drawnArea = AreaOf(Clipper.Union(new Paths64 { drawn }, FillRule.NonZero));
 
         var tree = new PolyTree64();
         var clipper = new Clipper64();
         clipper.AddSubject(new Paths64 { drawn });
-        clipper.AddClip(new Paths64 { fence });
+        clipper.AddClip(new Paths64 { ToPath(field) });
         clipper.Execute(ClipType.Intersection, FillRule.NonZero, tree);
 
         // Top-level polygons only: an obstacle has no hole (a loop drawn inside another is in it).
-        var found = new List<(double Area, List<(double E, double N)> Ring)>();
+        var found = new List<(double Area, Path64 Ring)>();
+        double inField = 0;
         for (int i = 0; i < tree.Count; i++)
         {
             var poly = tree[i].Polygon;
             if (poly == null || poly.Count < 3) continue;
             double area = Math.Abs(Clipper.Area(poly)) / (Scale * Scale);
-            if (area < MinArea) continue;
-            var ring = new List<(double E, double N)>(poly.Count);
-            foreach (var p in poly) ring.Add((p.X / Scale, p.Y / Scale));
-            found.Add((area, ring));
+            inField += area;
+            if (area >= MinArea) found.Add((area, poly));
         }
+
+        // Nothing cut off and no loops: the corners as tapped, not Clipper's copy of them.
+        bool simple = Math.Abs(Math.Abs(Clipper.Area(drawn)) / (Scale * Scale) - drawnArea) <= AreaTolerance;
+        if (simple && found.Count == 1 && Math.Abs(found[0].Area - drawnArea) <= AreaTolerance)
+        {
+            pieces.Add(new List<(double E, double N)>(corners));
+            return new FieldPart(pieces, 0, drawnArea, inField, true);
+        }
+
         found.Sort((a, b) => b.Area.CompareTo(a.Area));
+        int leftOut = 0;
         foreach (var f in found)
         {
-            if (f.Area < MinShareOfLargest * found[0].Area) leftOut++;
-            else pieces.Add(f.Ring);
+            if (f.Area < MinShareOfLargest * found[0].Area) { leftOut++; continue; }
+            var ring = new List<(double E, double N)>(f.Ring.Count);
+            foreach (var p in f.Ring) ring.Add((p.X / Scale, p.Y / Scale));
+            pieces.Add(ring);
         }
-        return pieces;
+        return new FieldPart(pieces, leftOut, drawnArea, inField, false);
     }
+
+    // m²: what a millimetre's rounding can change.
+    private const double AreaTolerance = 0.01;
 
     private static Path64 ToPath(IReadOnlyList<(double E, double N)> ring)
     {
@@ -106,31 +114,23 @@ public static class ObstacleDrawing
         return path;
     }
 
-    private static bool AllInside(Path64 drawn, Path64 fence)
+    private static double AreaOf(Paths64 paths)
     {
-        foreach (var p in drawn)
-            if (Clipper.PointInPolygon(p, fence) != PointInPolygonResult.IsInside) return false;
-        return true;
+        double a = 0;
+        foreach (var p in paths) a += Clipper.Area(p);
+        return Math.Abs(a) / (Scale * Scale);
     }
+}
 
-    // A concave fence can cross an outline whose corners are all inside (a corner of the field
-    // reaching into the drawing): then it is cut too.
-    private static bool EdgesCross(IReadOnlyList<(double E, double N)> a, IReadOnlyList<(double E, double N)> b)
-    {
-        for (int i = 0; i < a.Count; i++)
-        {
-            var (a0, a1) = (a[i], a[(i + 1) % a.Count]);
-            for (int j = 0; j < b.Count; j++)
-                if (SegmentsCross(a0, a1, b[j], b[(j + 1) % b.Count])) return true;
-        }
-        return false;
-    }
-
-    private static bool SegmentsCross((double E, double N) p, (double E, double N) p2, (double E, double N) q, (double E, double N) q2)
-    {
-        static double Cross((double E, double N) o, (double E, double N) a, (double E, double N) b) =>
-            (a.E - o.E) * (b.N - o.N) - (a.N - o.N) * (b.E - o.E);
-        double d1 = Cross(q, q2, p), d2 = Cross(q, q2, p2), d3 = Cross(p, p2, q), d4 = Cross(p, p2, q2);
-        return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
-    }
+/// <summary>What <see cref="ObstacleDrawing.InField"/> made of a drawn outline.</summary>
+/// <param name="Pieces">The obstacles: each piece in the field, the largest first.</param>
+/// <param name="LeftOut">Slivers left out (under <see cref="ObstacleDrawing.MinShareOfLargest"/> of the largest).</param>
+/// <param name="DrawnArea">The outline's own area, m², each loop once.</param>
+/// <param name="AreaInField">Its area inside the field, m², every bit counted.</param>
+/// <param name="AsDrawn">The one piece is the outline as tapped: wholly inside, not crossing itself.</param>
+public readonly record struct FieldPart(
+    List<List<(double E, double N)>> Pieces, int LeftOut, double DrawnArea, double AreaInField, bool AsDrawn)
+{
+    /// <summary>Some of the outline was outside the field and is not in <see cref="Pieces"/>.</summary>
+    public bool Cut => AreaInField < DrawnArea - 0.01;
 }

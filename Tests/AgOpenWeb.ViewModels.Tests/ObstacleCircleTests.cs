@@ -279,12 +279,43 @@ public class ObstacleCircleTests
     }
 
     [Test]
+    public async Task AnObstacle_DrawnAsAFigureOfEight_IsItsTwoLoops()
+    {
+        // Its two halves have opposite windings: the outline's signed area is 0, not "no area".
+        var vm = await Open();
+
+        vm.RemoteAddObstacleFromMapPoints(new[] { (110.0, 160.0), (130.0, 180.0), (130.0, 160.0), (110.0, 180.0) });
+
+        var inner = OnDisk(_dir).InnerBoundaries;
+        Assert.That(inner.Skip(3).Select(i => Math.Round(i.AreaSquareMeters)), Is.EqualTo(new[] { 100.0, 100.0 }).AsCollection);
+        Assert.That(vm.StatusMessage, Does.Contain("in 2 pieces").And.Not.Contain("kept to the field"));
+    }
+
+    [Test]
+    public async Task AnObstacle_DrawnInAFieldWithNoOuterBoundary_IsRefused()
+    {
+        var fs = new FieldService();
+        var field = fs.LoadField(_dir);
+        field.Boundary!.OuterBoundary = new BoundaryPolygon();
+        fs.SaveField(field);
+        var vm = await Open();
+        int before = vm.State.Field.CurrentBoundary?.InnerBoundaries.Count ?? 0;
+
+        vm.RemoteAddObstacleFromMapPoints(new[] { (20.0, 160.0), (40.0, 160.0), (40.0, 180.0), (20.0, 180.0) });
+
+        Assert.That(vm.StatusMessage, Does.Contain("field boundary first"));
+        Assert.That(vm.State.Field.CurrentBoundary?.InnerBoundaries.Count ?? 0, Is.EqualTo(before));
+    }
+
+    [Test]
     public async Task AnObstacle_DrawnOutsideTheField_OrTooSmall_IsRefused()
     {
         var vm = await Open();
 
         vm.RemoteAddObstacleFromMapPoints(new[] { (210.0, 100.0), (230.0, 100.0), (220.0, 120.0) });
         Assert.That(vm.StatusMessage, Does.Contain("outside the field"));
+        vm.RemoteAddObstacleFromMapPoints(new[] { (10.0, -20.0), (20.0, -20.0), (20.0, 0.05), (10.0, 0.05) });
+        Assert.That(vm.StatusMessage, Does.Contain("Only a sliver"), "0.5 m² inside: not outside, but too small");
         vm.RemoteAddObstacleFromMapPoints(new[] { (100.0, 100.0), (100.05, 100.05), (100.1, 100.0) });
         Assert.That(vm.StatusMessage, Does.Contain("three corners"));
         vm.RemoteAddObstacleFromMapPoints(new[] { (100.0, 100.0), (100.5, 100.0), (101.0, 100.0) });
