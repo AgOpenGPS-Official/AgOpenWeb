@@ -94,6 +94,37 @@ for (const k of ['vehicle.threePointHitchLength', 'vehicle.hitchLength', 'vehicl
 const fusionLabel = w => tr('GPS {gps}% · IMU {imu}%', { gps: Math.round(w * 100), imu: 100 - Math.round(w * 100) });
 vcFw.addEventListener('input', () => { document.getElementById('vc-hfw').textContent = fusionLabel(+vcFw.value); cfgSend('gps.headingFusionWeight', vcFw.value); });
 document.getElementById('vc-save').addEventListener('pointerdown', e => { e.stopPropagation(); saveProfile(); });
+// Machine brand (vehicle.color, 0xRRGGBB hex): the makers' own colours for the vehicle
+// type chosen (a user asked for the main makers), or any colour from the picker beside
+// the list. Each is the colour the map shows (vehicleTintPaint in map-draw.js). Where the maker
+// publishes no code the value is the nearest published one, and says so.
+const VEHICLE_COLOURS = [
+  // types: 0 tractor, 1 harvester, 2 articulated
+  { name: 'Case IH', color: 'a6192e', types: [0, 1, 2] },          // PMS 187 C (Case IH logo rules, dealer brand manual)
+  { name: 'Claas', color: '57a639', types: [0, 1] },                // its green: RAL 6018 (paint listing)
+  { name: 'Deutz-Fahr', color: '76b824', types: [0, 1] },            // its green (brandcolorcode.com)
+  { name: 'Fendt', color: '35682d', types: [0, 1] },                // its green: RAL 6010 (paint listing)
+  { name: 'John Deere', color: '367c2b', types: [0, 1, 2] },       // PMS 364 C, its logo green
+  { name: 'Kubota', color: 'e35205', types: [0] },                  // nearest published: no official code
+  { name: 'Massey Ferguson', color: 'c71121', types: [0, 1] },       // its red (brandcolorcode.com)
+  { name: 'New Holland', color: '1b4f9c', types: [0, 2] },           // nearest published: no official code
+];
+const vcColor = document.getElementById('vc-color'), vcColorSel = document.getElementById('vc-colorsel');
+let vcColorType = -1;
+function vcColorOptions(type) {
+  if (type === vcColorType) return;
+  vcColorType = type; vcColorSel.textContent = '';
+  const add = (v, label) => { const o = document.createElement('option'); o.value = v; o.textContent = label; vcColorSel.appendChild(o); };
+  add('ffffff', tr('No brand (grey)'));
+  for (const m of VEHICLE_COLOURS) if (m.types.includes(type)) add(m.color, m.name);
+  add('', tr('Another brand: pick its colour'));
+}
+vcColorSel.addEventListener('change', () => {
+  if (vcColorSel.value) cfgSend('vehicle.color', vcColorSel.value);
+  else try { vcColor.showPicker(); } catch (_) { /* the picker beside the list */ }
+  vcColorSel.blur();
+});
+vcColor.addEventListener('change', () => { cfgSend('vehicle.color', vcColor.value.slice(1)); vcColor.blur(); });
 // Zero Now captures the current roll as the offset, like AgOpenGPS Zero Roll and
 // Tools › Roll Correction; it used to clear the offset (that's Remove Offset, #111).
 document.getElementById('vc-rollzero').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); transport.send('roll.zeroCalibrate'); });
@@ -121,6 +152,11 @@ function populateVehicleCfg(force) {
   setImg('vc-img-antside', ['AntennaTractorTop', 'AntennaHarvesterTop', 'AntennaArticulatedTop']);
   setImg('vc-img-antoffset', ['AntennaTractorOffset', 'AntennaHarvesterOffset', 'AntennaArticulatedOffset']);
   vcHitchSel.value = cfgGet('vehicle.hitchType');
+  const col = typeof cfgGet('vehicle.color') === 'number' ? cfgGet('vehicle.color') & 0xFFFFFF : 0xFFFFFF;
+  vcColorOptions(ty);
+  if (document.activeElement !== vcColorSel)
+    vcColorSel.value = [...vcColorSel.options].some(o => o.value && parseInt(o.value, 16) === col) ? hex6(col).slice(1) : '';
+  if (document.activeElement !== vcColor) vcColor.value = hex6(col);
   // The front 3-point hitch is asked for only with a front-mounted tool (type 0).
   const front = cfgGet('tool.type') === 0;
   for (const el of vcPanel.querySelectorAll('[data-vshow="front"]')) el.hidden = !front;

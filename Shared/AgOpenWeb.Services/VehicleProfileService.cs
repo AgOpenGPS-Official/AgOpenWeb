@@ -196,6 +196,7 @@ public class VehicleProfileService : IVehicleProfileService
         // Reset store to defaults for vehicle-profile-related fields
         store.Vehicle.Name = profileName;
         store.Vehicle.Type = VehicleType.Tractor;
+        store.Vehicle.Color = Models.Configuration.VehicleConfig.DefaultColor;
         store.Vehicle.AntennaHeight = 3.0;
         store.Vehicle.AntennaPivot = 0.0;
         store.Vehicle.AntennaOffset = 0.0;

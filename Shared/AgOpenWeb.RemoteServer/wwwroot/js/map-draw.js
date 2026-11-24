@@ -599,6 +599,27 @@ function drawVehSprite(canvas, sk, cx, cy, hx, hy, rotDeg, paint) {
     CK.LTRBRect(-hx, -hy, hx, hy), CK.FilterMode.Linear, CK.MipmapMode.None, paint || null);
   canvas.restore();
 }
+// Vehicle › Machine brand (VehicleConfig.Color, 0xRRGGBB): the body picture's paint is
+// drawn in that colour. AgOpenGPS multiplies its body texture by setDisplay_colorVehicle, which darkens
+// it by the picture's grey; here each picture is scaled by its own paint grey (VEH_PAINT_GREY: the
+// tractor's bonnet and roof 209-219, the harvester's body 140, the articulated halves 182), so a
+// maker's colour picked from the list is the colour the map shows. Black stays black. White (the
+// default) draws the picture as it is: null, no paint.
+const VEH_PAINT_GREY = { tractor: 214, harvester: 140, articulated: 182 };
+const vehTint = {};
+function vehicleTintPaint(kind) {
+  const c = config && config.vehicle && typeof config.vehicle.color === 'number' ? config.vehicle.color & 0xFFFFFF : 0xFFFFFF;
+  if (c === 0xFFFFFF) return null;
+  const t = vehTint[kind] || (vehTint[kind] = { paint: new CK.Paint(), rgb: -1 });
+  if (t.rgb !== c) {
+    const g = VEH_PAINT_GREY[kind], r = ((c >> 16) & 255) / g, gr = ((c >> 8) & 255) / g, b = (c & 255) / g;
+    const f = CK.ColorFilter.MakeMatrix([r, 0, 0, 0, 0, 0, gr, 0, 0, 0, 0, 0, b, 0, 0, 0, 0, 0, 1, 0]);
+    t.paint.setColorFilter(f);
+    f.delete(); // the paint keeps its own reference
+    t.rgb = c;
+  }
+  return t.paint;
+}
 // Harvester / articulated bodies (issue #88), laid out as AgOpenGPS CVehicle.DrawVehicle:
 //  harvester  — body 2·tw × 3·wb centred on the pivot; steerable wheels at the REAR axle
 //               (−wb), turned the opposite way to a tractor, tinted HarvesterWheelColor.
@@ -620,13 +641,14 @@ function vehicleBodySk(canvas, p, veh, type) {
       }
       for (const sx of [1, -1]) drawVehSprite(canvas, wheel, sx * tw / 2, -wb, 0.25 * tw, 0.5 * wb, steer, SKP.harvesterWheel);
     }
-    drawVehSprite(canvas, body, 0, 0, tw, 1.5 * wb, 0);
+    drawVehSprite(canvas, body, 0, 0, tw, 1.5 * wb, 0, vehicleTintPaint('harvester'));
   } else {
     const front = skSprite(artFrontSpr), rear = skSprite(artRearSpr);
     if (!front || !rear) return false;
     beginVehicleFrame(canvas, p);
-    drawVehSprite(canvas, rear, 0, -wb / 2, tw, 0.65 * wb, steer / 2);
-    drawVehSprite(canvas, front, 0, wb / 2, tw, 0.65 * wb, -steer / 2);
+    const tint = vehicleTintPaint('articulated');
+    drawVehSprite(canvas, rear, 0, -wb / 2, tw, 0.65 * wb, steer / 2, tint);
+    drawVehSprite(canvas, front, 0, wb / 2, tw, 0.65 * wb, -steer / 2, tint);
   }
   canvas.restore();
   return true;
@@ -675,7 +697,7 @@ function vehicleSk(canvas, p) {
       canvas.drawImageRectOptions(skTractor,
         CK.LTRBRect(0, 0, skTractor.width(), skTractor.height()),
         CK.LTRBRect(-half, -top, half, -bot),
-        CK.FilterMode.Linear, CK.MipmapMode.None, null);
+        CK.FilterMode.Linear, CK.MipmapMode.None, vehicleTintPaint('tractor'));
       canvas.restore();
       // Steerable front wheels: one sprite drawn at both front-axle ends, rotated by the
       // live wheel angle (translate ±trackWidth/2, wheelbase −0.05; rotate −steer;
