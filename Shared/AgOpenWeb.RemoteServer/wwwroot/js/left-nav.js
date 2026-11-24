@@ -11,13 +11,13 @@
 // to ConfigurationStore). Grows one entry per sub-phase.
 // Navigation: top-level buttons open a panel; sub-panels (vehicle/tool config) are
 // reached from the hub and carry a Back button. One panel open at a time.
-const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'fieldbuilder', 'offsetfix', 'importtracks', 'recpath', 'boundarymenu', 'boundaryplayer', 'kmlboundary', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripsettings', 'systemdata', 'ntripprofiles', 'ntripeditor', 'smartwas', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
+const LN_NAV_PANELS = ['screenalerts', 'tools', 'rollcorr', 'fieldtools', 'fieldbuilder', 'offsetfix', 'importtracks', 'recpath', 'boundarymenu', 'boundaryplayer', 'kmlboundary', 'vehtoolhub', 'vehiclecfg', 'toolcfg', 'autosteercfg', 'networkio', 'ntripsettings', 'systemdata', 'ntripprofiles', 'ntripeditor', 'smartwas', 'linetune', 'fieldops', 'fieldsandjobs', 'newfield', 'fromexisting', 'isoimport', 'kmlimport', 'resumejob', 'agsettings', 'agupload', 'agdownload', 'filemenu', 'appsettings', 'language', 'viewsettings', 'logviewer', 'hotkeys', 'help', 'about', 'bugreport'];
 // Watch-the-tractor panels opt OUT of the light-dismiss scrim — the map must stay
 // interactive (pan/zoom to follow the tractor while capturing). They close only via
 // the header (Back / ✕).
 // The bug report panel too: leave it open while driving and press the button the
 // moment a problem shows, since the dump holds only the last 60 s of GPS data.
-const NO_SCRIM = new Set(['smartwas', 'recpath', 'boundaryplayer', 'fieldbuilder', 'bugreport', 'ntripsettings', 'ntripprofiles', 'ntripeditor']);
+const NO_SCRIM = new Set(['smartwas', 'linetune', 'recpath', 'boundaryplayer', 'fieldbuilder', 'bugreport', 'ntripsettings', 'ntripprofiles', 'ntripeditor']);
 const lnScrim = document.getElementById('ln-scrim');
 // The panels whose settings belong to the vehicle and implement profiles.
 const PROFILE_PANELS = ['vehiclecfg', 'toolcfg', 'autosteercfg'];

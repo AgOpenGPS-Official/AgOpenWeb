@@ -3859,6 +3859,17 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _smartWasViewModel, value);
     }
 
+    // Tuning on the line (the AutoSteer page's Tune on the line panel), made on first use.
+    private LineTune.LineTuneViewModel? _lineTuneViewModel;
+    public LineTune.LineTuneViewModel? LineTuneViewModel => _lineTuneViewModel;
+
+    public LineTune.LineTuneViewModel EnsureLineTuneViewModel() =>
+        _lineTuneViewModel ??= new LineTune.LineTuneViewModel(_gpsPipelineService, _intents, _configurationService)
+        {
+            // What the run did, in the log: a bug report otherwise shows only the line jumping 0.30 m.
+            Log = line => _logger.LogInformation("[Line tune] {Line}", line),
+        };
+
     // Load Vehicle/Tool picker dialog (#346)
     private LoadVehicleToolDialogViewModel? _loadVehicleToolDialogVm;
     public LoadVehicleToolDialogViewModel? LoadVehicleToolDialogVm

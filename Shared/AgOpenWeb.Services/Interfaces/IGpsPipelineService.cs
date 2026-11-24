@@ -129,6 +129,10 @@ public interface IGpsPipelineService
     /// <summary>The headland toggle: the headland distance HUD and the hydraulic lift follow it.</summary>
     void SetHeadlandOn(bool on);
 
+    /// <summary>Gains a tuning run on the line tries in place of the operator's (Steer Response,
+    /// the Stanley gains), from the next cycle; <c>null</c> steers by the settings again.</summary>
+    void SetGuidanceGainsOverride(Models.Pipeline.GuidanceGainsOverride? gains);
+
     // ── Read-back state the ViewModel needs for commands ─────────────────
 
     /// <summary>Whether autosteer is currently engaged.</summary>
