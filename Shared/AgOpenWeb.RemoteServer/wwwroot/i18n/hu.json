@@ -102,7 +102,6 @@
   "4WD / Articulated": "4WD / Csuklós",
   "A switch or button wired to the steer module. When set, it engages and disengages AutoSteer (and a module kickout disengages it).": "A kormánymodulra kötött kapcsoló vagy gomb. Ha be van állítva, ezzel kapcsolható be és ki az automata kormányzás (a modul általi lekapcsolás is kikapcsolja).",
   "A+ Line": "A+ vonal",
-  "A+ needs a GPS position — start the simulator or GPS": "Az A+ vonalhoz GPS pozíció kell — indítsd el a szimulátort vagy a GPS-t",
   "A/D converter": "A/D konverter",
   "AB line along the longest boundary edge": "AB vonal a leghosszabb határél mentén",
   "AB line for every boundary edge": "AB vonal minden határélhez",
