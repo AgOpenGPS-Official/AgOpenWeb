@@ -300,19 +300,6 @@ function fmtArea(m2) { return fmtUnit(m2 * 0.0001, 'ha'); }
 function fmtRate(haPerHr) { return haPerHr == null ? '—' : fmtUnit(haPerHr, 'ha', 1) + '/hr'; }
 // Work rate from speed (m/s) × tool width; null without a tool width (#398).
 function workRateHa(speedMs) { const tw = toolWidthM(); return tw > 0 ? speedMs * 3600 * tw / 10000 : null; }
-// Workable area (m²) from the Scene the client already has: headland polygon if
-// present, else the outer boundary (shoelace) — matches WorkableAreaSqM.
-function shoelace(pts) {
-  let a = 0;
-  for (let i = 0; i < pts.length; i++) { const j = (i + 1) % pts.length; a += pts[i].e * pts[j].n - pts[j].e * pts[i].n; }
-  return Math.abs(a / 2);
-}
-function workableAreaSqM() {
-  if (scene && scene.headland && scene.headland.length >= 3) return shoelace(scene.headland);
-  if (scene && scene.boundaries && scene.boundaries.length && scene.boundaries[0].length >= 3)
-    return shoelace(scene.boundaries[0]);
-  return 0;
-}
 // Active track heading (deg, 0 = north) from its first two Scene points.
 function activeTrackHeadingDeg() {
   if (!scene || !tick || !tick.activeTrackName) return null;
@@ -331,8 +318,12 @@ function rotatingLineText() {
   }
   if (sbPage === 1) { // Stats
     if (!scene || !scene.hasField) return '—';
-    const workable = workableAreaSqM(), worked = s.workedAreaSqM || 0;
-    const leftPct = workable > 0 ? ((workable - worked) * 100 / workable) : 100;
+    // Left: the field data card's Remaining, the field less its inner boundaries (AgOpenGPS
+    // CFieldData.WorkedAreaRemainPercentage; MainViewModel.RemainingPercent), never under 0. The
+    // headland's area was taken, while the worked area counts the headland passes too, so a
+    // tester's field read "Left -14%".
+    const fd = s.fieldData, total = fd ? fd.boundaryAreaSqM : 0, worked = s.workedAreaSqM || 0;
+    const leftPct = total > 0 ? Math.max(0, total - worked) * 100 / total : 100;
     const haPerHr = workRateHa(lastTick ? lastTick.speed : 0);
     return tr('Done {area}  Left {pct}%  Rate {rate}', { area: fmtArea(worked), pct: leftPct.toFixed(0), rate: fmtRate(haPerHr) });
   }
