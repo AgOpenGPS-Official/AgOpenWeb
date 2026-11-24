@@ -335,6 +335,42 @@ for (const id of ['lat', 'lon', 'e', 'n', 'alt', 'fix', 'sats', 'hdop', 'age', '
 document.getElementById('nio-gps-more').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('systemdata', 'ln-network', renderSystemData); });
 document.getElementById('sd-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('networkio', 'ln-network', renderNetworkIo); });
 document.getElementById('sd-x').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
+// How each stream from the modules arrived over the last 10 s, as the host judged it: its
+// rate, and what is wrong with it (gaps: some never came; bursts: held back and delivered
+// together, as a Wi-Fi link does). Red while the host calls it faulty.
+function dataStreamName(name) {
+  switch (name) {
+    case 'GPS positions': return tr('GPS positions');
+    case 'Steer module data (PGN 253)': return tr('Steer module (PGN 253)');
+    case 'Machine module data (PGN 237)': return tr('Machine module (PGN 237)');
+    case 'IMU data (PGN 211)': return tr('IMU (PGN 211)');
+    case 'ISOBUS task controller data (PGN 240)': return tr('Task controller (PGN 240)');
+    default: return name;
+  }
+}
+function dataStreamText(q) {
+  const hz = v => v.toFixed(1);
+  if (q.verdict === 3) return tr('{rate} Hz, in bursts', { rate: hz(q.rateHz) });
+  if (q.verdict === 2) return tr('{rate} of {nominal} Hz, {n}% missing', { rate: hz(q.rateHz), nominal: hz(q.nominalHz), n: Math.round(q.missedPercent) });
+  if (q.verdict === 1) return hz(q.rateHz) + ' Hz';
+  return '—';
+}
+let dataStreamsShown = '';
+function renderDataStreams(streams) {
+  const rows = streams.map(q => [dataStreamName(q.name), dataStreamText(q), q.faulty]);
+  const key = JSON.stringify(rows);
+  if (key === dataStreamsShown) return;
+  dataStreamsShown = key;
+  const grid = document.getElementById('sd-streams');
+  grid.textContent = '';
+  for (const [name, text, faulty] of rows) {
+    const row = document.createElement('div'); row.className = 'sd-row';
+    const k = document.createElement('span'); k.className = 'sd-k'; k.textContent = name;
+    const v = document.createElement('span'); v.className = 'sd-v' + (faulty ? ' sd-bad' : ''); v.textContent = text;
+    v.setAttribute('translate', 'no');
+    row.append(k, v); grid.append(row);
+  }
+}
 function renderSystemData() {
   const s = statusBar; if (!s) return;
   const d = s.systemData, t = lastTick;
@@ -367,6 +403,7 @@ function renderSystemData() {
   set(SD.dropped, d ? String(d.droppedBytes) : '—');
   set(SD.incomplete, d ? String(d.incompleteEpochs) : '—');
   set(SD.src, d && d.source ? d.source : '—');
+  renderDataStreams(s.dataQuality || []);
   set(SD.pitch, d ? num(d.pitch, 1, '°') : '—');
   set(SD.yaw, d ? num(d.yawRate, 1, ' °/s') : '—');
   set(SD.hdual, d ? deg(d.dualHeading) : '—');

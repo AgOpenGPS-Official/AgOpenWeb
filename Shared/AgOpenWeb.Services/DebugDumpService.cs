@@ -53,7 +53,8 @@ public class DebugDumpService
         string? ntripRtcmReport = null,
         string? ntripSessionReport = null,
         string? ntripSummary = null,
-        string? browsersSummary = null)
+        string? browsersSummary = null,
+        string? dataQualityReport = null)
     {
         string? profileName = null;
         try { profileName = configStore.ActiveVehicleProfileName; } catch { }
@@ -63,7 +64,7 @@ public class DebugDumpService
         // 1. System info
         double? quality = null;
         try { quality = configStore.Display.DisplayResolutionMultiplier; } catch { }
-        entries.Add(("system_info.txt", BuildSystemInfo(ntripSummary, browsersSummary, quality)));
+        entries.Add(("system_info.txt", BuildSystemInfo(ntripSummary, browsersSummary, quality, dataQualityReport)));
 
         // 2. App settings
         try
@@ -169,8 +170,10 @@ public class DebugDumpService
         string? activeJobTaskName = null,
         string? ntripRtcmReport = null,
         string? ntripSessionReport = null,
-        string? ntripSummary = null) =>
-        WriteDump(Capture(settingsService, runtime, configStore, ntripRtcmReport, ntripSessionReport, ntripSummary),
+        string? ntripSummary = null,
+        string? dataQualityReport = null) =>
+        WriteDump(Capture(settingsService, runtime, configStore, ntripRtcmReport, ntripSessionReport, ntripSummary,
+                dataQualityReport: dataQualityReport),
             additionalNotes, screenshotPng, outputDirectory, filePrefix, userAttachments, activeJobTaskName);
 
     /// <summary>
@@ -359,7 +362,8 @@ public class DebugDumpService
         return finalPath;
     }
 
-    private static string BuildSystemInfo(string? ntripSummary, string? browsersSummary = null, double? displayQuality = null)
+    private static string BuildSystemInfo(string? ntripSummary, string? browsersSummary = null, double? displayQuality = null,
+        string? dataQualityReport = null)
     {
         var sb = new StringBuilder();
 
@@ -387,6 +391,13 @@ public class DebugDumpService
         sb.AppendLine(inv, $"Processors: {Environment.ProcessorCount}");
         sb.AppendLine(inv, $"Working Set: {Environment.WorkingSet / 1024 / 1024}MB");
         if (!string.IsNullOrEmpty(ntripSummary)) sb.AppendLine(inv, $"NTRIP: {ntripSummary}");
+        // How the modules' data arrived (gaps, bursts): a faulty link is told apart from a slow
+        // app at a glance.
+        if (!string.IsNullOrEmpty(dataQualityReport))
+        {
+            sb.AppendLine();
+            sb.Append(dataQualityReport);
+        }
         // How each browser draws the map (GPU or software, frame rate): a slow map on a weak
         // tablet is told apart from a slow app at a glance.
         sb.AppendLine();

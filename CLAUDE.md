@@ -160,6 +160,21 @@ assumes a sprayer's valves take; saved profiles keep their own.
 The control loop sends the PGNs at 100 Hz, PGN 229 every tick whatever the section count (the
 ISOBUS task controller reads sections from 229 only).
 
+### Data quality: how the modules' data arrives
+AgOpenWeb runs on many set-ups (a tablet on a cable, a board with the app on it, a phone as a second
+screen), so it judges the data it is given instead of trusting the link. `StreamQualityMonitor`
+(`Services/Network`) judges each periodic stream by its arrival times over the last 10 s: the GPS fixes
+(`GpsSentenceMonitor.Fixes`), PGN 253, 211 and 240 (`UdpCommunicationService.ModuleStreams`; PGN 237 is
+measured only). The usual wait between arrivals is the median and the mean is the window over the count:
+equal when nothing is lost, the median staying at the sender's interval when packets are lost (the share
+missing is `1 - median / mean`), and falling to nothing when they come in bursts (Wi-Fi). 10 % missing for
+15 s is a fault, under 5 % for 15 s ends it. `MainViewModel.DataQuality.cs` tells the operator once (a toast,
+and once more when it is good again), logs `[Data] ...`, and the status frame carries every stream: the
+status bar shows the fix rate (red while faulty) and System Data lists them. The bug report's
+`system_info.txt` has a `Data quality` block with each stream's rate, share missing, longest wait and worst
+window. **A warning only for now** (#922): nothing is switched off, and nothing is repaired: a stream that
+arrives like this is fixed at the link (the cable), never filtered or smoothed in the app.
+
 ### The simulator never steers the module
 The steer module stays on the network while the simulator runs. While the simulator is the chosen GPS
 source (`GpsPipelineService.SetSimulatorEnabled`, from the moment it is chosen) `VehicleState.SimulatorHoldsSteering`

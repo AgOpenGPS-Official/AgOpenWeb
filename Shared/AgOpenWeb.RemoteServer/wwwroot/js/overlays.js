@@ -253,7 +253,7 @@ const SB = {
   bar: document.getElementById('statusbar'),
   pause: document.getElementById('sb-pause'),
   fixDot: document.getElementById('sb-fixdot'), fix: document.getElementById('sb-fix'),
-  age: document.getElementById('sb-age'), rot: document.getElementById('sb-rot'),
+  age: document.getElementById('sb-age'), hz: document.getElementById('sb-hz'), rot: document.getElementById('sb-rot'),
   speed: document.getElementById('sb-speed'), unit: document.getElementById('sb-unit'),
   hdg: document.getElementById('sb-hdg'),
   modAgg: document.getElementById('sb-modagg'), modBtn: document.getElementById('sb-modbtn'),
@@ -482,6 +482,13 @@ function renderStatusBar() {
   SB.fixDot.style.background = s.gpsLost ? '#6b7280' : fixColor(s.fixQuality);
   SB.fix.textContent = s.fixText || '—';
   SB.age.textContent = tr('Age {age}', { age: Number.isFinite(s.age) ? s.age.toFixed(1) : '—' }); // NaN: the sentence has no age ($KSXT)
+  // The rate the fixes arrive at, as AgOpenGPS shows it; red while the host judges them
+  // faulty (gaps or bursts: a link fault, #922). Nothing with the simulator or no GPS.
+  const fixes = (s.dataQuality || []).find(q => q.name === 'GPS positions');
+  const hz = fixes && !s.simEnabled && !s.gpsLost && fixes.rateHz > 0 ? fixes.rateHz : 0;
+  const hzText = hz ? (Math.abs(hz - Math.round(hz)) < 0.05 ? hz.toFixed(0) : hz.toFixed(1)) + ' Hz' : '';
+  if (SB.hz.textContent !== hzText) SB.hz.textContent = hzText;
+  SB.hz.classList.toggle('bad', !!hz && fixes.faulty);
   SB.rot.textContent = rotatingLineText();
   renderFieldCard();
   // Speed from the live tick (m/s), formatted per the host's unit preference.

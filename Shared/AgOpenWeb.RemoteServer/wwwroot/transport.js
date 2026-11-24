@@ -261,6 +261,11 @@ window.RemoteTransport = {
             ntripSession = { usingFallback: !!u8(), mainIsBack: !!u8(), hasFallback: !!u8(), profilePerField: !!u8(),
               state: u8(), lastError: i32(), attempts: i32(), retrySeconds: f32(), notice: str(), profile: str(), service: str() };
           }
+          // How each stream from the modules arrives (append-only, #922). verdict: 0 no data,
+          // 1 even, 2 gaps, 3 bursts; nominalHz 0 = not known.
+          const dataQuality = [];
+          for (let k = u8(); k > 0; k--)
+            dataQuality.push({ name: str(), verdict: u8(), faulty: !!u8(), rateHz: f32(), nominalHz: f32(), missedPercent: f32() });
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -272,7 +277,7 @@ window.RemoteTransport = {
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripEnabled, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
-            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet, ntripSession,
+            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet, ntripSession, dataQuality,
           });
           break;
         }

@@ -228,6 +228,8 @@ input.as-valbox { width: 80px; box-sizing: content-box; }
 .sd-k { color: var(--text-muted); font: 400 12px system-ui, sans-serif; }
 .sd-v { color: var(--text-2); font: 700 13px system-ui, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sd-v.sd-bad { color: #ef4444; }
+/* How each stream arrives: one to a line, its text being as long as "7.9 of 10.0 Hz, 21% missing". */
+#sd-streams { grid-template-columns: 1fr; }
 .sd-sent { margin-bottom: 8px; }
 .sd-senthead { display: flex; justify-content: space-between; color: var(--text-muted); font: 600 11px system-ui, sans-serif; }
 .sd-senttext { color: var(--text); font: 400 11px ui-monospace, monospace; word-break: break-all; -webkit-user-select: text; user-select: text;
