@@ -599,6 +599,56 @@ function drawVehSprite(canvas, sk, cx, cy, hx, hy, rotDeg, paint) {
     CK.LTRBRect(-hx, -hy, hx, hy), CK.FilterMode.Linear, CK.MipmapMode.None, paint || null);
   canvas.restore();
 }
+// Vehicle › Machine brand (VehicleConfig.Color, 0xRRGGBB): the body picture's paint is drawn in that
+// colour. AgOpenGPS multiplies its whole body texture by setDisplay_colorVehicle, which darkens it by
+// the picture's grey and paints the tyres too. Here each picture is scaled by its own paint grey (the
+// tractor's bonnet and roof 209-219, the harvester's body 140, the articulated halves 182), so a
+// maker's colour picked from the list is the colour the map shows, and the tyres, the lights and the
+// reflectors keep the picture's own colours: a pixel darker than VEH_TYRE_MAX inside one of the
+// picture's tyre boxes (x0, y0, x1, y1 in a 256 px picture's pixels), and any coloured pixel, is left
+// as drawn. Black stays black. White (the default) draws the picture as it is.
+const VEH_TYRE_MAX = 90;
+const VEH_TINT = {
+  tractor: { grey: 214, tyres: [[36, 136, 96, 244], [160, 136, 220, 244]] },
+  harvester: { grey: 140, tyres: [[40, 100, 66, 160], [186, 100, 212, 160]] },
+  articulatedFront: { grey: 182, tyres: [[0, 74, 74, 126], [0, 126, 30, 182], [182, 74, 256, 126], [226, 126, 256, 182]] },
+  articulatedRear: { grey: 182, tyres: [[0, 74, 90, 182], [166, 74, 256, 182]] },
+};
+const vehTinted = {};
+function vehInTyreBox(boxes, x, y) {
+  for (const b of boxes) if (x >= b[0] && x < b[2] && y >= b[1] && y < b[3]) return true;
+  return false;
+}
+// The loaded picture `img` in the vehicle's colour, made once per colour; null for white.
+function vehicleTinted(img, kind) {
+  const c = config && config.vehicle && typeof config.vehicle.color === 'number' ? config.vehicle.color & 0xFFFFFF : 0xFFFFFF;
+  if (c === 0xFFFFFF || !img || !img.naturalWidth) return null;
+  const t = vehTinted[kind];
+  if (t && t.rgb === c) return t.sk;
+  const spec = VEH_TINT[kind], w = img.naturalWidth, h = img.naturalHeight;
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  const g2 = cv.getContext('2d');
+  g2.drawImage(img, 0, 0);
+  const data = g2.getImageData(0, 0, w, h), px = data.data;
+  const kr = ((c >> 16) & 255) / spec.grey, kg = ((c >> 8) & 255) / spec.grey, kb = (c & 255) / spec.grey;
+  const sx = 256 / w, sy = 256 / h;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (!px[i + 3]) continue;
+      const r = px[i], g = px[i + 1], b = px[i + 2], hi = Math.max(r, g, b);
+      if (hi - Math.min(r, g, b) > 16) continue; // a light or a reflector
+      if (hi < VEH_TYRE_MAX && vehInTyreBox(spec.tyres, x * sx, y * sy)) continue; // a tyre
+      px[i] = r * kr; px[i + 1] = g * kg; px[i + 2] = b * kb; // clamped to 255 by the array
+    }
+  }
+  g2.putImageData(data, 0, 0);
+  if (t && t.sk) t.sk.delete();
+  const sk = CK.MakeImageFromCanvasImageSource(cv);
+  vehTinted[kind] = { rgb: c, sk };
+  return sk;
+}
 // Harvester / articulated bodies (issue #88), laid out as AgOpenGPS CVehicle.DrawVehicle:
 //  harvester  — body 2·tw × 3·wb centred on the pivot; steerable wheels at the REAR axle
 //               (−wb), turned the opposite way to a tractor, tinted HarvesterWheelColor.
@@ -620,13 +670,13 @@ function vehicleBodySk(canvas, p, veh, type) {
       }
       for (const sx of [1, -1]) drawVehSprite(canvas, wheel, sx * tw / 2, -wb, 0.25 * tw, 0.5 * wb, steer, SKP.harvesterWheel);
     }
-    drawVehSprite(canvas, body, 0, 0, tw, 1.5 * wb, 0);
+    drawVehSprite(canvas, vehicleTinted(harvesterSpr.img, 'harvester') || body, 0, 0, tw, 1.5 * wb, 0);
   } else {
     const front = skSprite(artFrontSpr), rear = skSprite(artRearSpr);
     if (!front || !rear) return false;
     beginVehicleFrame(canvas, p);
-    drawVehSprite(canvas, rear, 0, -wb / 2, tw, 0.65 * wb, steer / 2);
-    drawVehSprite(canvas, front, 0, wb / 2, tw, 0.65 * wb, -steer / 2);
+    drawVehSprite(canvas, vehicleTinted(artRearSpr.img, 'articulatedRear') || rear, 0, -wb / 2, tw, 0.65 * wb, steer / 2);
+    drawVehSprite(canvas, vehicleTinted(artFrontSpr.img, 'articulatedFront') || front, 0, wb / 2, tw, 0.65 * wb, -steer / 2);
   }
   canvas.restore();
   return true;
@@ -672,8 +722,9 @@ function vehicleSk(canvas, p) {
       // Body sprite (scale 1,-1 = bitmap rows top-down → world N up).
       canvas.save();
       canvas.scale(1, -1);
-      canvas.drawImageRectOptions(skTractor,
-        CK.LTRBRect(0, 0, skTractor.width(), skTractor.height()),
+      const body = vehicleTinted(tractorImg, 'tractor') || skTractor;
+      canvas.drawImageRectOptions(body,
+        CK.LTRBRect(0, 0, body.width(), body.height()),
         CK.LTRBRect(-half, -top, half, -bot),
         CK.FilterMode.Linear, CK.MipmapMode.None, null);
       canvas.restore();

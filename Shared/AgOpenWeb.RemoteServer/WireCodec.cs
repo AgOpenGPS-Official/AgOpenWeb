@@ -358,6 +358,7 @@ public static class WireCodec
         w.Write(v.ImuPivot);
         w.Write(v.ImuHeight);
         w.Write(v.ImuOffset);
+        w.Write(v.Color);              // i32, 0xRRGGBB
         var g = c.Gps;
         w.Write((byte)(g.IsDualGps ? 1 : 0));
         w.Write(g.DualHeadingOffset);  // f64

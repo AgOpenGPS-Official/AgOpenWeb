@@ -121,6 +121,7 @@ public static class VehicleProfileJsonService
             ThreePointHitchLength = store.Vehicle.ThreePointHitchLength,
             FrontHitchLength = store.Vehicle.FrontHitchLength,
             HitchType = store.Vehicle.HitchType,
+            Color = store.Vehicle.Color,
         },
         Guidance = new GuidanceDto
         {
@@ -190,6 +191,7 @@ public static class VehicleProfileJsonService
         store.Vehicle.ThreePointHitchLength = dto.Vehicle?.ThreePointHitchLength ?? store.Vehicle.HitchLength;
         store.Vehicle.FrontHitchLength = dto.Vehicle?.FrontHitchLength ?? 0.0;
         store.Vehicle.HitchType = dto.Vehicle?.HitchType ?? 0;
+        store.Vehicle.Color = dto.Vehicle?.Color ?? VehicleConfig.DefaultColor;
 
         // Guidance
         store.Guidance.IsPurePursuit = dto.Guidance?.IsPurePursuit ?? true;
@@ -273,6 +275,8 @@ public static class VehicleProfileJsonService
         /// <summary>Format 3: the front 3-point hitch ahead of the axle; 0 = none.</summary>
         public double? FrontHitchLength { get; set; }
         public int HitchType { get; set; }
+        /// <summary>The vehicle's colour on the map, 0xRRGGBB; missing = white (the picture as drawn).</summary>
+        public uint? Color { get; set; }
     }
 
     internal class GuidanceDto

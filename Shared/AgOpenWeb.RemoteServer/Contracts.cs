@@ -538,7 +538,8 @@ public record VehicleConfigDto(
     double AntennaOffset,
     double ImuPivot,
     double ImuHeight,
-    double ImuOffset);
+    double ImuOffset,
+    int Color = 0xFFFFFF);         // the vehicle's colour on the map, 0xRRGGBB
 
 /// <summary>Data Sources → GPS tab (ConfigStore.Connections).</summary>
 public record GpsConfigDto(

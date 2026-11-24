@@ -224,6 +224,7 @@ public static class SettingsSweep
         new("tram.outerInverted", "", "", Probe.None, Effect.Pgn, "needs tram lines"),
         new("tool.hitchType", "", "", Probe.None, Effect.None, "ISOBUS connector type (the ISOBUS harness)"),
         new("vehicle.hitchType", "", "", Probe.None, Effect.None, "ISOBUS connector type (the ISOBUS harness)"),
+        new("vehicle.color", "", "", Probe.None, Effect.None, "the vehicle's colour on the map: drawing only"),
     };
 
     /// <summary>Settings of the device, the screen, the network and the units: not guidance or
