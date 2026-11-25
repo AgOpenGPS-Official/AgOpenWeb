@@ -335,12 +335,16 @@ for (const id of ['lat', 'lon', 'e', 'n', 'alt', 'fix', 'sats', 'hdop', 'age', '
 document.getElementById('nio-gps-more').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('systemdata', 'ln-network', renderSystemData); });
 document.getElementById('sd-back').addEventListener('pointerdown', e => { e.stopPropagation(); lnOpen('networkio', 'ln-network', renderNetworkIo); });
 document.getElementById('sd-x').addEventListener('pointerdown', e => { e.stopPropagation(); lnCloseAll(); });
-// How each stream from the modules arrived over the last 10 s, as the host judged it: its
-// rate, and what is wrong with it (gaps: some never came; bursts: held back and delivered
-// together, as a Wi-Fi link does). Red while the host calls it faulty.
+// The data quality sensors, as the host judged them in the last second: how each stream
+// arrives (its rate; gaps: some never came; bursts: held back and delivered together) and
+// whether the positions come in order. Red while the host calls it faulty. A new sensor
+// gets its name and its finding's text here.
 function dataStreamName(name) {
   switch (name) {
     case 'GPS positions': return tr('GPS positions');
+    case 'GPS position times': return tr('GPS position times');
+    case 'GPS position rate': return tr('GPS position rate');
+    case 'GPS sentences': return tr('GPS sentences');
     case 'Steer module data (PGN 253)': return tr('Steer module (PGN 253)');
     case 'Machine module data (PGN 237)': return tr('Machine module (PGN 237)');
     case 'IMU data (PGN 211)': return tr('IMU (PGN 211)');
@@ -350,9 +354,15 @@ function dataStreamName(name) {
 }
 function dataStreamText(q) {
   const hz = v => v.toFixed(1);
-  if (q.verdict === 3) return tr('{rate} Hz, in bursts', { rate: hz(q.rateHz) });
-  if (q.verdict === 2) return tr('{rate} of {nominal} Hz, {n}% missing', { rate: hz(q.rateHz), nominal: hz(q.nominalHz), n: Math.round(q.missedPercent) });
-  if (q.verdict === 1) return hz(q.rateHz) + ' Hz';
+  if (q.finding === 9) return tr('{n} damaged in the last minute', { n: Math.round(q.amount) });
+  if (q.finding === 8) return tr('Whole');
+  if (q.finding === 7) return tr('{rate} Hz, {nominal} Hz expected', { rate: hz(q.rateHz), nominal: hz(q.nominalHz) });
+  if (q.finding === 6) return hz(q.rateHz) + ' Hz';
+  if (q.finding === 5) return tr('{n} out of order or repeated in the last minute', { n: Math.round(q.amount) });
+  if (q.finding === 4) return tr('In order');
+  if (q.finding === 3) return tr('{rate} Hz, in bursts', { rate: hz(q.rateHz) });
+  if (q.finding === 2) return tr('{rate} of {nominal} Hz, {n}% missing', { rate: hz(q.rateHz), nominal: hz(q.nominalHz), n: Math.round(q.amount) });
+  if (q.finding === 1) return hz(q.rateHz) + ' Hz';
   return '—';
 }
 let dataStreamsShown = '';

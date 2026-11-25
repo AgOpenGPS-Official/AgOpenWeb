@@ -1062,7 +1062,7 @@ public static partial class RemoteServerWiring
                     // "System Data" forms — attitude, each heading source before fusion,
                     // the sentence rate and the module's latest raw sentences.
                     var steerSvc = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IAutoSteerService>();
-                    // How each stream from the modules arrives, as judged in the last second.
+                    // The data quality sensors, as judged in the last second.
                     server.DataQualityProvider = () =>
                     {
                         var streams = vm.DataQuality;
@@ -1071,7 +1071,7 @@ public static partial class RemoteServerWiring
                         for (int i = 0; i < list.Length; i++)
                         {
                             var q = streams[i];
-                            list[i] = new AgOpenWeb.RemoteServer.DataStreamDto(q.Name, (int)q.Verdict, q.Faulty, q.RateHz, q.NominalHz, q.MissedPercent);
+                            list[i] = new AgOpenWeb.RemoteServer.DataStreamDto(q.Name, (int)q.Finding, q.Faulty, q.RateHz, q.NominalHz, q.Amount);
                         }
                         return list;
                     };

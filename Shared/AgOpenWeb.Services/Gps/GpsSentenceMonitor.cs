@@ -44,21 +44,41 @@ public sealed class GpsSentenceMonitor
         public int Length;
         public long Stamp;
         public bool Seen;
-        public Slot(string type) => Type = type;
+        // Its place in the position-times sensor; -1 for a sentence with no time on it.
+        public readonly int Timed;
+        public Slot(string type, int timed = -1) { Type = type; Timed = timed; }
     }
 
     /// <summary>Whether the fixes arrive as the receiver sends them (gaps, bursts); see
-    /// <see cref="Network.StreamQualityMonitor"/>. Fed with every accepted fix.</summary>
-    public Network.StreamQualityMonitor Fixes { get; } = new("GPS positions");
+    /// <see cref="DataQuality.StreamQualityMonitor"/>. Fed with every accepted fix.</summary>
+    public DataQuality.StreamQualityMonitor Fixes { get; } = new("GPS positions");
+
+    /// <summary>Whether the positions arrive in the order the receiver made them; see
+    /// <see cref="DataQuality.FixTimeSensor"/>. Fed with the time on every position sentence
+    /// that passed its checksum.</summary>
+    public DataQuality.FixTimeSensor Times { get; } = new("GPS position times");
+
+    /// <summary>Whether the receiver sends as often as the app is set up for
+    /// (<c>Connections.GpsUpdateRate</c>); see <see cref="DataQuality.FixRateSensor"/>.</summary>
+    public DataQuality.FixRateSensor Rate { get; }
+
+    /// <summary>Whether the sentences arrive whole; see <see cref="DataQuality.RefusedSentenceSensor"/>.
+    /// Fed with every line.</summary>
+    public DataQuality.RefusedSentenceSensor Whole { get; } = new("GPS sentences");
+
+    private DataQuality.IDataSensor[]? _dataSensors;
+
+    /// <summary>The sensors on the receiver's data, for the data quality monitor.</summary>
+    public IReadOnlyList<DataQuality.IDataSensor> DataSensors => _dataSensors ??= new DataQuality.IDataSensor[] { Fixes, Times, Rate, Whole };
 
     private readonly object _lock = new();
-    private readonly Slot _panda = new("PANDA");
-    private readonly Slot _paogi = new("PAOGI");
-    private readonly Slot _ksxt = new("KSXT");
-    private readonly Slot _gga = new("GGA");
-    private readonly Slot _gns = new("GNS");
+    private readonly Slot _panda = new("PANDA", 0);
+    private readonly Slot _paogi = new("PAOGI", 1);
+    private readonly Slot _ksxt = new("KSXT", 2);
+    private readonly Slot _gga = new("GGA", 3);
+    private readonly Slot _gns = new("GNS", 4);
     private readonly Slot _vtg = new("VTG");
-    private readonly Slot _hpr = new("HPR");
+    private readonly Slot _hpr = new("HPR", 5);
     private readonly Slot _hdt = new("HDT");
     private readonly Slot _ths = new("THS");
     private readonly Slot _inspvax = new("INSPVAX");
@@ -73,9 +93,17 @@ public sealed class GpsSentenceMonitor
     private double _slowInterval; // the first of those gaps
     private long _missed;
 
-    public GpsSentenceMonitor()
+    /// <summary>The positions a second a receiver sends when nothing says otherwise.</summary>
+    public const double DefaultExpectedHz = 10;
+
+    /// <param name="expectedHz">The positions a second the app is set up for
+    /// (<c>Connections.GpsUpdateRate</c>); <see cref="DefaultExpectedHz"/> when not given.</param>
+    public GpsSentenceMonitor(Func<double>? expectedHz = null)
     {
         _slots = new[] { _panda, _paogi, _ksxt, _gga, _gns, _vtg, _hpr, _hdt, _ths, _inspvax, _rejected };
+        Rate = new DataQuality.FixRateSensor("GPS position rate", Fixes, expectedHz ?? (() => DefaultExpectedHz));
+        // A damaged sentence is a position that did not arrive: one message, from the sensor that knows why.
+        Fixes.ExplainedBy = Whole;
     }
     private long _rejectedCount;
     private long _badChecksum;
@@ -97,6 +125,10 @@ public sealed class GpsSentenceMonitor
             slot.Length = n;
             slot.Stamp = timestamp;
             slot.Seen = true;
+            Whole.Record(result is NmeaParseResult.BadChecksum or NmeaParseResult.BadFields,
+                result == NmeaParseResult.BadChecksum, timestamp);
+            if (slot.Timed >= 0 && (accepted || member))
+                Times.Record(slot.Timed, DataQuality.FixTimeSensor.TimeOfDay(data), timestamp);
 
             // A member of an open epoch is kept for the card but is not a fix: the rate and
             // the missed count follow emitted fixes.

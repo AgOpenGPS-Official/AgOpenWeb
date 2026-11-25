@@ -127,15 +127,15 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     // link that loses or holds back datagrams shows here before anything goes silent. The
     // steer module, an IMU and the task controller send on a timer; the machine module's
     // PGN 237 is measured and reported only, its firmwares not being known to.
-    private readonly Network.StreamQualityMonitor _steerStream = new("Steer module data (PGN 253)");
-    private readonly Network.StreamQualityMonitor _machineStream = new("Machine module data (PGN 237)", warns: false);
-    private readonly Network.StreamQualityMonitor _imuStream = new("IMU data (PGN 211)");
-    private readonly Network.StreamQualityMonitor _isobusStream = new("ISOBUS task controller data (PGN 240)");
-    private Network.StreamQualityMonitor[]? _moduleStreams;
+    private readonly DataQuality.StreamQualityMonitor _steerStream = new("Steer module data (PGN 253)");
+    private readonly DataQuality.StreamQualityMonitor _machineStream = new("Machine module data (PGN 237)", warns: false);
+    private readonly DataQuality.StreamQualityMonitor _imuStream = new("IMU data (PGN 211)");
+    private readonly DataQuality.StreamQualityMonitor _isobusStream = new("ISOBUS task controller data (PGN 240)");
+    private DataQuality.IDataSensor[]? _dataSensors;
 
     /// <inheritdoc />
-    public IReadOnlyList<Network.StreamQualityMonitor> ModuleStreams
-        => _moduleStreams ??= new[] { _steerStream, _machineStream, _imuStream, _isobusStream };
+    public IReadOnlyList<DataQuality.IDataSensor> DataSensors
+        => _dataSensors ??= new DataQuality.IDataSensor[] { _steerStream, _machineStream, _imuStream, _isobusStream };
     private readonly ILogger<UdpCommunicationService> _logger;
 
     public bool IsConnected { get; private set; }
@@ -259,7 +259,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         _udpSocket = null;
         IsConnected = false;
         _silence.Reset();
-        foreach (var stream in ModuleStreams) stream.Reset();
+        foreach (var sensor in DataSensors) sensor.Reset();
 
         await Task.CompletedTask;
     }

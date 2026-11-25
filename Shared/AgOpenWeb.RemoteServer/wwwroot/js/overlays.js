@@ -479,7 +479,8 @@ function renderStatusBar() {
   const hz = fixes && !s.simEnabled && !s.gpsLost && fixes.rateHz > 0 ? fixes.rateHz : 0;
   const hzText = hz ? (Math.abs(hz - Math.round(hz)) < 0.05 ? hz.toFixed(0) : hz.toFixed(1)) + ' Hz' : '';
   if (SB.hz.textContent !== hzText) SB.hz.textContent = hzText;
-  SB.hz.classList.toggle('bad', !!hz && fixes.faulty);
+  // Red while any sensor on the receiver's data calls it faulty.
+  SB.hz.classList.toggle('bad', !!hz && s.dataQuality.some(q => q.faulty && q.name.startsWith('GPS ')));
   SB.rot.textContent = rotatingLineText();
   renderFieldCard();
   // Speed from the live tick (m/s), formatted per the host's unit preference.

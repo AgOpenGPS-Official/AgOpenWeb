@@ -97,10 +97,11 @@ public interface IUdpCommunicationService
     bool IsModuleDataOk(ModuleType moduleType);
 
     /// <summary>
-    /// The modules' own periodic streams (PGN 253, 237, 211, 240), each judged on whether it
-    /// arrives as it is sent. Empty for a transport that has none.
+    /// The sensors on the modules' data, for the data quality monitor: their own periodic
+    /// streams (PGN 253, 237, 211, 240), each judged on whether it arrives as it is sent.
+    /// Empty for a transport that has none.
     /// </summary>
-    IReadOnlyList<Network.StreamQualityMonitor> ModuleStreams => Array.Empty<Network.StreamQualityMonitor>();
+    IReadOnlyList<DataQuality.IDataSensor> DataSensors => Array.Empty<DataQuality.IDataSensor>();
 
     /// <summary>
     /// Most-recently-observed remote IP for the given module, or null if no packet

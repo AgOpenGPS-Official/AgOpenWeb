@@ -390,6 +390,16 @@ public sealed class FieldJobRig : IAsyncDisposable
         AutoSteer.ProcessGpsDatagram(bytes, AgOpenWeb.Models.GPS.GpsSource.ModulePort);
     }
 
+    // The receiver's time on a sentence: 0.1 s on from the last one built. A position that is
+    // not newer than the one before is faulty data, and the app says so (FixTimeSensor).
+    private static int _sentenceTime = 12 * 360000;
+    private static string NextSentenceTime()
+    {
+        int cs = System.Threading.Interlocked.Add(ref _sentenceTime, 10) % (24 * 360000);
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            $"{cs / 360000:00}{cs / 6000 % 60:00}{cs / 100 % 60:00}.{cs % 100:00}");
+    }
+
     /// <summary>A $PAOGI (dual antenna) or $PANDA (single antenna + IMU) sentence for a fix.</summary>
     public static string Sentence(bool dual, bool imu, double lat, double lon, double headingDeg, double rollDeg,
         double speedKmh, int fix = 4, double altitude = 300)
@@ -403,13 +413,14 @@ public sealed class FieldJobRig : IAsyncDisposable
             return isLat ? deg.ToString("00", inv) + min.ToString("00.0000000", inv)
                          : deg.ToString("000", inv) + min.ToString("00.0000000", inv);
         }
+        string time = NextSentenceTime();
         double knots = speedKmh / 1.852;
         double h = ((headingDeg % 360) + 360) % 360;
         string body = dual
-            ? string.Join(",", "PAOGI", "120000.00", Ll(lat, true), lat >= 0 ? "N" : "S", Ll(lon, false), lon >= 0 ? "E" : "W",
+            ? string.Join(",", "PAOGI", time, Ll(lat, true), lat >= 0 ? "N" : "S", Ll(lon, false), lon >= 0 ? "E" : "W",
                 fix.ToString(inv), "20", "0.7", altitude.ToString("F2", inv), "1.0", knots.ToString("F3", inv),
                 h.ToString("F3", inv), rollDeg.ToString("F3", inv), "0.00", "0.00")
-            : string.Join(",", "PANDA", "120000.00", Ll(lat, true), lat >= 0 ? "N" : "S", Ll(lon, false), lon >= 0 ? "E" : "W",
+            : string.Join(",", "PANDA", time, Ll(lat, true), lat >= 0 ? "N" : "S", Ll(lon, false), lon >= 0 ? "E" : "W",
                 fix.ToString(inv), "20", "0.7", altitude.ToString("F2", inv), "1.0", knots.ToString("F3", inv),
                 imu ? ((int)Math.Round(h * 10)).ToString(inv) : "65535", imu ? ((int)Math.Round(rollDeg * 10)).ToString(inv) : "0", "0", "0");
         byte cs = 0;
