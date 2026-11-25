@@ -210,10 +210,10 @@ function buildSkPaints() {
   SKP.sectionOutline = mk('#000000', 1.2);
   SKP.sectionOutline.setStrokeCap(CK.StrokeCap.Butt);
   SKP.sectionOutline.setStrokeJoin(CK.StrokeJoin.Miter);
-  // Lightbar LED fill — one reusable paint, recoloured per cell (crisp rects, no AA).
+  // Lightbar arrow fill — one reusable paint, recoloured per facet.
   SKP.lbFill = new CK.Paint();
   SKP.lbFill.setStyle(CK.PaintStyle.Fill);
-  SKP.lbFill.setAntiAlias(false);
+  SKP.lbFill.setAntiAlias(true);
   // Steer bar (steerBarSk): its bar and arrows, outlined in black.
   SKP.sbFill = new CK.Paint();
   SKP.sbFill.setStyle(CK.PaintStyle.Fill);
