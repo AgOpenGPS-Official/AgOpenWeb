@@ -48,7 +48,7 @@ public record SceneDto(
     IReadOnlyList<Vec2Dto>? Headland, // inner headland ring (green line), if any
     IReadOnlyList<Vec2Dto>? GuidanceLine, // the followed offset line (magenta), if guiding
     IReadOnlyList<SectionSpanDto> ToolSections, // section spans (static layout); pose is per-Tick
-    IReadOnlyList<Vec2Dto>? UTurnPath, // the planned U-turn arc through the headland (green), if active
+    IReadOnlyList<Vec2Dto>? UTurnPath, // the planned U-turn arc through the headland (green), if active; or the way to a recorded path being played
     IReadOnlyList<Vec2Dto>? NextTrack, // the next pass to pick up after the turn (cyan), if any
     IReadOnlyList<FlagDto> Flags, // field marker flags (Phase 8 follow-up)
     ImageryDto? Imagery, // background field image world-rect + version (PNG served over HTTP)
@@ -56,7 +56,7 @@ public record SceneDto(
     IReadOnlyList<HeadlandSegInfoDto> HeadlandSegs, // Field Builder Headland-tab segment list
     IReadOnlyList<TramSystemDto> TramSystems, // Field Builder Tram-tab system list
     IReadOnlyList<IReadOnlyList<Vec2Dto>> TramLines, // generated tram lines, for the map
-    IReadOnlyList<IReadOnlyList<Vec2Dto>> RecordedPaths, // saved recorded paths, when "Rec paths" is on (#110)
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> RecordedPaths, // saved recorded paths, when "Rec paths" is on (#110); last, the recorded path in use
     IReadOnlyList<IReadOnlyList<Vec2Dto>> ContourStrips, // saved contour strips (#110)
     IReadOnlyList<Vec2Dto>? ContourRef, // contour mode: the strip being followed (points) (#110)
     bool ContourLocked, // contour lock on
