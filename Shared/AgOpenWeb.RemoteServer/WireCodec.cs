@@ -411,6 +411,7 @@ public static class WireCodec
         w.Write((byte)(t.IsSteerSwitchEnabled ? 1 : 0));
         w.Write((byte)(t.IsSteerSwitchManualSections ? 1 : 0));
         w.Write(t.TotalWidth);         // f64
+        w.Write(t.Picture);            // i32, the implement's picture on the map
         // U-Turn tab.
         var u = c.Uturn;
         w.Write(u.Style);              // i32

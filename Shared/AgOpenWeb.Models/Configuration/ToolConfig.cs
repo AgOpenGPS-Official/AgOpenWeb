@@ -468,6 +468,16 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _isSteerSwitchManualSections, value);
     }
 
+    // The implement's picture on the map, drawn at the tool's real hitch points. None draws the
+    // section bars and the hitch line, as before; a picture is drawn only with the tool type and the
+    // vehicle types it is made for (ToolPicture). Drawing only: nothing else reads it.
+    private ToolPicture _picture = ToolPicture.None;
+    public ToolPicture Picture
+    {
+        get => _picture;
+        set => SetProperty(ref _picture, Enum.IsDefined(value) ? value : ToolPicture.None);
+    }
+
     /// <summary>
     /// Gets the current tool type as a string for display
     /// </summary>
@@ -511,4 +521,78 @@ public class ToolConfig : ObservableObject
 
         OnPropertyChanged(nameof(CurrentToolType));
     }
+}
+
+/// <summary>The implement's picture on the map. Each one is drawn at the tool's real hitch points, to
+/// scale, and only with the tool type and the vehicle types it is made for. Ours: AgOpenGPS draws the
+/// hitch, a TBT tank's axle, two tyres for a trailing tool and the section rectangles (CTool.DrawTool).</summary>
+public enum ToolPicture
+{
+    /// <summary>The section bars and the hitch line only.</summary>
+    None = 0,
+    /// <summary>A semi-mounted seed drill (trailing tool): the headstock on the tractor's lower links,
+    /// the drill swinging about its drawbar pin (Vehicle hitch), its wheels Trailing hitch behind it.</summary>
+    SeedDrill = 1,
+    /// <summary>A front sprayer boom (front-fixed tool) at the working point, with its tank on the
+    /// rear lower links (Vehicle rear 3-point hitch).</summary>
+    FrontSprayer = 2,
+    /// <summary>A combine's grain header with its reel (front-fixed tool on a harvester), as wide as the tool.</summary>
+    GrainHeader = 3,
+    /// <summary>A combine's maize header, a row unit every 75 cm (front-fixed tool on a harvester), as wide as the tool.</summary>
+    MaizeHeader = 4,
+    /// <summary>A one-axle manure spreader on the drawbar pin (trailing tool), its beaters at the working
+    /// line, spreading as wide as the tool.</summary>
+    ManureSpreader = 5,
+    /// <summary>A centre-pivot mower conditioner (trailing tool): the swivel on the lower links (Vehicle
+    /// hitch), the machine swung to the side still standing, the other side every pass.</summary>
+    MowerConditioner = 6,
+    /// <summary>A quick disc harrow on the rear 3-point hitch: two rows of discs, spring tines and a
+    /// packer roller, as wide as the tool.</summary>
+    QuickDiscHarrow = 7,
+    /// <summary>A semi-mounted roller (trailing tool): its pivot on a bar on the lower links (Vehicle
+    /// hitch), a row of spring tines ahead of the roller, as wide as the tool.</summary>
+    Roller = 8,
+    /// <summary>A mounted reversible plough on the rear 3-point hitch, 2 to 7 bodies (one every 40 cm or so of
+    /// the tool's width), turned over at every U-turn: the bodies throw the soil towards the land ploughed
+    /// before; on a tractor or an articulated tractor.</summary>
+    ReversiblePlough = 9,
+    /// <summary>A trailed disc harrow on the drawbar pin (trailing tool), four gangs in an X and its
+    /// wheels between them, as wide as the tool; on a tractor or an articulated tractor.</summary>
+    DiscHarrowTrailed = 10,
+    /// <summary>A disc mower on the rear 3-point hitch, its cutter bar where the tool offset puts it
+    /// (beside the tractor), as wide as the tool.</summary>
+    RearSideMower = 11,
+    /// <summary>A disc harrow on the rear 3-point hitch, four gangs in an X, as wide as the tool.</summary>
+    DiscHarrowMounted = 12,
+    /// <summary>A twin-disc fertiliser spreader on the rear 3-point hitch, its spread as wide as the tool.</summary>
+    FertiliserSpreader = 13,
+    /// <summary>A semi-mounted reversible plough (trailing tool): its swivel behind the lower links (Vehicle
+    /// hitch), 5 to 12 bodies on a long beam, turned over at every U-turn; on a tractor or an articulated
+    /// tractor.</summary>
+    SemiMountedPlough = 14,
+    /// <summary>A reversible disc plough on the rear 3-point hitch, 2 to 6 discs (one every 30 cm or so of the
+    /// tool's width), its beam swung across at every U-turn; on a tractor or an articulated tractor.</summary>
+    DiscPlough = 15,
+    /// <summary>A rotary rake with one rotor on the rear 3-point hitch, as wide as the tool, the swath on its left.</summary>
+    RakeOneRotor = 16,
+    /// <summary>A trailed rotary rake with two rotors side by side (trailing tool), the swath between them.</summary>
+    RakeTwinCentre = 17,
+    /// <summary>A trailed rotary rake with two rotors one behind the other (trailing tool), the swath on the right.</summary>
+    RakeTwinSide = 18,
+    /// <summary>A trailed rotary rake with four rotors (trailing tool), the swath in the middle; on a tractor or an
+    /// articulated tractor.</summary>
+    RakeFour = 19,
+    /// <summary>A trailed finger-wheel rake in a V (trailing tool), the swath at its point.</summary>
+    WheelRake = 20,
+    /// <summary>An air seeder with its cart between the tractor and the tine bar (TBT tool); on a tractor or an
+    /// articulated tractor.</summary>
+    AirSeederCartBetween = 21,
+    /// <summary>An air seeder with its cart pulled behind the tine bar (trailing tool); on a tractor or an articulated
+    /// tractor.</summary>
+    AirSeederCartBehind = 22,
+    /// <summary>A precision planter on the rear 3-point hitch, its hopper on the tractor's front linkage.</summary>
+    PlanterFrontHopper = 23,
+    /// <summary>A wide trailed precision planter (trailing tool), its tanks on the centre frame; on a tractor or an
+    /// articulated tractor.</summary>
+    PlanterTrailed = 24,
 }

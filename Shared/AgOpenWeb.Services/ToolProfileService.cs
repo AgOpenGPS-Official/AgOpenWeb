@@ -109,6 +109,7 @@ public class ToolProfileService : IToolProfileService
         store.Tool.Width = 6.0;
         store.Tool.Overlap = 0.0;
         store.Tool.Offset = 0.0;
+        store.Tool.Picture = Models.Configuration.ToolPicture.None;
         store.Tool.WorkingPointFromHitch = 0.0;
         store.Tool.TrailingHitchLength = 2.5;
         store.Tool.TankTrailingHitchLength = 3.0;

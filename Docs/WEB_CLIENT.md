@@ -125,6 +125,49 @@ doesn't exist.
 Every command needs control: an observer (a browser without control) sees everything and
 changes nothing (#397).
 
+## The implement's picture on the map
+
+Tool › Type › *Picture on the map* (`ToolConfig.Picture`, the `ToolPicture` enum, `tool.picture`,
+saved with the tool profile, the Config frame's i32 after `totalWidth`) draws a top view of the
+implement instead of the 2 m section bars and the hitch line. It is drawn to scale at the tool's
+real hitch points: the tool position the host sends (`renderTool`) and the vehicle's hitches. With
+*Sections only* (the default) the map is as before. Nothing but the drawing reads the setting.
+
+The setting is a list (`tc-picsel`, filled in `populateToolCfg`) of the pictures made for the tool
+type and the vehicle type chosen. Each picture is a row of `IMPLEMENT_PICTURES` in
+`js/map-draw.js`: its `ToolPicture` value, the tool type and the vehicle types it is made for, its
+draw function, its name and its note. A picture chosen for another type is not drawn, and the
+list says so. A combine carries only a header; an articulated tractor pulls the big implements.
+A new picture is a `ToolPicture` value, its draw function (and icons, if any) and a row;
+`ImplementPictureListTests` checks there is one row per value.
+
+- **From pictures**: the semi-mounted seed drill (`DrillBody.png`, `DrillHeadstock.png`) and the
+  front sprayer boom with its rear tank (`SprayerBoom.png`, `SprayerTank.png`), 200 px per metre,
+  each one's extent in metres in its draw call. They are a tester's own machines, drawn from their
+  measures and photos.
+- **From shapes**, sized from the tool's width and hitch lengths: the grain and maize headers, a
+  manure spreader, a centre-pivot mower conditioner, disc harrows, a roller, ploughs (mounted,
+  semi-mounted, disc), a fertiliser spreader, a rear side mower, five rakes, two air seeders and
+  two precision planters. They are drawn in metres with y backwards: `implTractorFrame` from the
+  rear axle for what rides on the tractor, `implTrailFrame` from the pin for a trailing tool.
+
+The part that works (bodies, discs, cutter bar, beaters, openers) is always drawn on the line the
+map paints, and the frame, arms and wheels fit round it. Over a picture the section bars become a
+thin strip where it works (`implementStrip`, used by `toolFootprintSk` in `js/map-layers.js`).
+A draw function that throws is caught: the section bars are drawn instead, never a blank map.
+
+A plough has as many bodies as its width takes, about 40 cm each (a disc plough a disc every
+30 cm), within what is made: 2 to 7 mounted, 5 to 12 semi-mounted, 2 to 6 discs. The ploughs
+and the mower conditioner change side by themselves (`implWorkLeft`): they work towards the
+ground still to do, read from the pass label (↑ A to B, ↓ B to A) and the way the passes last
+changed. A pass counts after 10 m on it within a quarter of the tool's width of its line, or at
+once when a U-turn lands on it. As a U-turn starts the plough turns over (`implSideNow`, eased
+over about 3 s). Only the picture changes side: the painted strip stays where the tool settings
+put it.
+
+Colours are from the tester's machines where there were photos, else generic. A picture never
+carries a maker's name.
+
 ## Checking a change
 
 - `node --check` on the files you changed (CI runs it on all of them).

@@ -798,3 +798,1194 @@ function drawImageWorldSk(canvas, img, minE, minN, maxE, maxN, filter, mipMode) 
   canvas.drawImageOptions(img, 0, 0, filter, mip, null);
   canvas.restore();
 }
+
+// ---- The implement's picture on the map (Tool > Type > Picture on the map) ----
+// A top view drawn to scale at the tool's real hitch points: the tool position the host sends and the
+// vehicle's hitches, so the picture sits where AgOpenWeb puts the tool, never on the tractor's wheels.
+// Each picture is drawn only with the tool type it is made for; otherwise the section bars and the
+// hitch line, as before. Over a picture the section bars shrink to a strip where it works.
+const implPics = {}; // loaded the first time a picture is drawn
+function implSprite(src) { return skSprite(implPics[src] || (implPics[src] = loadSprite(src))); }
+let implementPictureOn = false, implPicFailed = false;
+let implementStrip = { half: 1.0, ahead: 0 }; // the strip's half depth and its move ahead of the tool point (m)
+function implementPictureSk(canvas) {
+  implementPictureOn = false;
+  try { implWorkLeft(); } catch (e) { } // the way the work goes, followed with no picture shown too; never the map
+  const tl = config && config.tool, veh = config && config.vehicle;
+  if (!tl || !veh) return false;
+  const pic = IMPLEMENT_PICTURES.find(q => q.id === (tl.picture | 0));
+  if (!pic || pic.type !== (tl.type | 0) || !pic.vehicles.includes(veh.type | 0)) return false;
+  // A picture that fails is left out (the section bars instead), never the whole map: a throw in the frame's
+  // draw leaves the map blank.
+  const saves = canvas.getSaveCount();
+  let drawn = null;
+  try { drawn = pic.draw(canvas, tl, veh); }
+  catch (e) { if (!implPicFailed) { implPicFailed = true; console.warn('implement picture:', e); } }
+  finally { canvas.restoreToCount(saves); }
+  if (!drawn) return false;
+  implementStrip = drawn;
+  implementPictureOn = true;
+  return true;
+}
+// A picture into the rectangle l..r across, t..b along (m, in the frame set up before; y backwards).
+function drawImplPic(canvas, sk, l, t, r, b) {
+  canvas.drawImageRectOptions(sk, CK.LTRBRect(0, 0, sk.width(), sk.height()), CK.LTRBRect(l, t, r, b),
+    CK.FilterMode.Linear, CK.MipmapMode.Linear, null);
+}
+// A semi-mounted seed drill. The headstock rides on the tractor (its heading), from the lower links to
+// the drawbar pin (Vehicle > Hitch); the drill swings about that pin with the tool's heading (the
+// host's, from the hitch's movement), so the working line (between the coulter banks) is where the
+// map paints. Pictures (DrillBody, DrillHeadstock): metres from the pin, +y backwards.
+function seedDrillPictureSk(canvas, tl, veh) {
+  const t = renderTool(), p = renderPose();
+  if (!t || !p || (!t.e && !t.n)) return null;
+  const body = implSprite('/icons/DrillBody.png'), head = implSprite('/icons/DrillHeadstock.png');
+  if (!body || !head) return null;
+  const back = tl.trailingHitchLength + tl.trailingToolToPivotLength; // the pin to the working line
+  const pe = t.e + Math.sin(t.heading) * back, pn = t.n + Math.cos(t.heading) * back;
+  canvas.save();
+  canvas.concat(perspM);
+  canvas.translate(pe - camE, pn - camN);
+  canvas.rotate(-t.heading * 180 / Math.PI, 0, 0); // the tool's frame: +Y forward
+  canvas.scale(1, -1);
+  drawImplPic(canvas, body, -1.75, -0.25, 1.75, 5.0);
+  canvas.restore();
+  beginVehicleFrame(canvas, p);
+  canvas.translate(0, -Math.abs(veh.hitchLength));
+  canvas.scale(1, -1);
+  drawImplPic(canvas, head, -0.70, -0.60, 0.70, 0.15);
+  canvas.restore();
+  return { half: 0.09, ahead: 0 };
+}
+// A front sprayer boom at the working point (Vehicle > Front hitch + Tool > Hitch to working point,
+// ahead of the rear axle) and its tank on the rear lower links (Vehicle > Rear 3-point hitch). Both
+// ride on the tractor. Pictures: SprayerBoom from the nozzle line, SprayerTank from the lower-link
+// pins, metres, +y backwards. The strip is the ground just behind the nozzles.
+function frontSprayerPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p) return null;
+  const boom = implSprite('/icons/SprayerBoom.png'), tank = implSprite('/icons/SprayerTank.png');
+  if (!boom || !tank) return null;
+  beginVehicleFrame(canvas, p);
+  canvas.save();
+  canvas.translate(0, -Math.abs(veh.threePointHitchLength));
+  canvas.scale(1, -1);
+  drawImplPic(canvas, tank, -0.80, -0.12, 0.80, 1.10);
+  canvas.restore();
+  canvas.translate(0, Math.abs(veh.frontHitchLength) + tl.workingPointFromHitch);
+  canvas.scale(1, -1);
+  drawImplPic(canvas, boom, -4.10, -0.40, 4.10, 1.10);
+  canvas.restore();
+  return { half: 0.035, ahead: -0.095 };
+}
+// A combine's header at the working point (Vehicle > Front hitch + Tool > Hitch to working point), as wide
+// as the tool, drawn here rather than from a picture: headers come in every width and the dividers and
+// snouts keep their size. Its frame is grey, or the vehicle's colour on the map once one is set (#936),
+// and a feeder house joins it to the combine's body (the harvester picture's front, 1.5 wheelbases ahead
+// of the pivot). Metres, the cutter bar (grain) or the stalk rolls (maize) on y = 0, +y forward.
+const hdrPaints = {};
+function hdrPaint(key, rgb, stroke) {
+  let h = hdrPaints[key];
+  if (!h) {
+    const p = new CK.Paint(); p.setAntiAlias(true);
+    p.setStyle(stroke ? CK.PaintStyle.Stroke : CK.PaintStyle.Fill);
+    if (stroke) { p.setStrokeWidth(stroke); p.setStrokeCap(CK.StrokeCap.Round); }
+    h = hdrPaints[key] = { p, rgb: -1 };
+  }
+  if (h.rgb !== rgb) { h.p.setColor(CK.Color((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, 1)); h.rgb = rgb; }
+  return h.p;
+}
+function hdrShade(rgb, k) {
+  const c = (v) => Math.max(0, Math.min(255, Math.round(v * k)));
+  return (c((rgb >> 16) & 255) << 16) | (c((rgb >> 8) & 255) << 8) | c(rgb & 255);
+}
+function hdrRect(canvas, l, b, r, t, paint) { canvas.drawRect(CK.LTRBRect(l, b, r, t), paint); }
+// Paths from verbs (CanvasKit 0.41 paths are immutable): segs is a list of [x0, y0, x1, y1, ...] runs.
+function hdrStroke(canvas, segs, paint) {
+  const cmds = [];
+  for (const g of segs) { cmds.push(CK.MOVE_VERB, g[0], g[1]); for (let i = 2; i < g.length; i += 2) cmds.push(CK.LINE_VERB, g[i], g[i + 1]); }
+  const path = cmds.length ? CK.Path.MakeFromCmds(cmds) : null;
+  if (path) { canvas.drawPath(path, paint); path.delete(); }
+}
+function hdrPoly(canvas, pts, fill, line) {
+  const cmds = [CK.MOVE_VERB, pts[0], pts[1]];
+  for (let i = 2; i < pts.length; i += 2) cmds.push(CK.LINE_VERB, pts[i], pts[i + 1]);
+  cmds.push(CK.CLOSE_VERB);
+  const path = CK.Path.MakeFromCmds(cmds);
+  if (!path) return;
+  canvas.drawPath(path, fill);
+  if (line) canvas.drawPath(path, line);
+  path.delete();
+}
+// The header's frame, its auger and the feeder house: shared by both headers. Returns the paints.
+function headerFrameSk(canvas, tl, veh, w, back) {
+  const vc = veh && typeof veh.color === 'number' ? veh.color & 0xFFFFFF : 0xFFFFFF;
+  const frame = vc === 0xFFFFFF ? 0x8C8C8C : vc;
+  const P = {
+    frame: hdrPaint('frame', frame), dark: hdrPaint('dark', hdrShade(frame, 0.55)),
+    lightRgb: hdrShade(frame, 1.3), steel: hdrPaint('steel', 0x4A4A4A),
+    edge: hdrPaint('edge', 0x1E1E1E, 0.03), flight: hdrPaint('flight', 0x9A9A9A, 0.05),
+  };
+  // Feeder house to the combine's body.
+  const bodyFront = 1.5 * (veh.wheelbase || 3) - (Math.abs(veh.frontHitchLength) + tl.workingPointFromHitch);
+  if (bodyFront < back - 0.2) { hdrRect(canvas, -0.7, bodyFront, 0.7, back - 0.2, P.dark); hdrRect(canvas, -0.7, bodyFront, 0.7, back - 0.2, P.edge); }
+  // Back wall and auger trough.
+  hdrRect(canvas, -w / 2, back - 0.25, w / 2, back, P.frame); hdrRect(canvas, -w / 2, back - 0.25, w / 2, back, P.edge);
+  hdrRect(canvas, -w / 2, back, w / 2, back + 0.5, P.steel);
+  const fl = [];
+  for (let x = -w / 2 + 0.15; x < w / 2 - 0.1; x += 0.3) fl.push([x, back + 0.05, x + 0.18, back + 0.45]);
+  hdrStroke(canvas, fl, P.flight);
+  return P;
+}
+function grainHeaderPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p) return null;
+  const w = Math.max(2, tl.totalWidth || 6), back = -1.75;
+  beginVehicleFrame(canvas, p);
+  canvas.translate(0, Math.abs(veh.frontHitchLength) + tl.workingPointFromHitch);
+  const P = headerFrameSk(canvas, tl, veh, w, back);
+  hdrRect(canvas, -w / 2, back + 0.5, w / 2, 0, P.dark);                       // the floor
+  for (const s of [-1, 1]) {                                                    // end plates and dividers
+    hdrRect(canvas, s * w / 2, back - 0.25, s * (w / 2 + 0.1), 0.05, P.frame);
+    hdrPoly(canvas, [s * (w / 2 + 0.1), 0.05, s * (w / 2 + 0.06), 0.85, s * (w / 2 - 0.12), 0.05], P.frame, P.edge);
+  }
+  const guards = [];                                                            // the knife's guards
+  for (let x = -w / 2; x < w / 2 - 0.01; x += 0.15) guards.push([x, 0, x + 0.075, 0.12, x + 0.15, 0]);
+  hdrStroke(canvas, guards, P.edge);
+  hdrRect(canvas, -w / 2, -0.04, w / 2, 0.02, P.steel);
+  // The reel seen from above: its bats across, its arms along.
+  const bats = hdrPaint('bat', P.lightRgb, 0.07);
+  const reel = [], arms = [], n = Math.max(2, Math.round(w / 3));
+  for (let y = 0.1; y > -1.0; y -= 0.22) reel.push([-w / 2 + 0.15, y, w / 2 - 0.15, y]);
+  hdrStroke(canvas, reel, bats);
+  for (let k = 0; k <= n; k++) { const x = -w / 2 + 0.15 + k * (w - 0.3) / n; arms.push([x, 0.15, x, -0.95]); }
+  hdrStroke(canvas, arms, P.edge);
+  canvas.restore();
+  return { half: 0.05, ahead: -0.12 };
+}
+function maizeHeaderPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p) return null;
+  const w = Math.max(1.5, tl.totalWidth || 6), back = -1.5;
+  const rows = Math.max(2, Math.round(w / 0.75)), s = w / rows, hw = Math.max(0.08, Math.min(0.3, s / 2 - 0.08));
+  beginVehicleFrame(canvas, p);
+  canvas.translate(0, Math.abs(veh.frontHitchLength) + tl.workingPointFromHitch);
+  const P = headerFrameSk(canvas, tl, veh, w, back);
+  hdrRect(canvas, -w / 2, back + 0.5, w / 2, 0.3, P.steel);                    // the row units under the snouts
+  for (let i = 0; i < rows; i++) { const c = -w / 2 + (i + 0.5) * s; hdrRect(canvas, c - 0.05, back + 0.5, c + 0.05, 0.3, P.edge); }
+  for (let i = 0; i <= rows; i++) {                                             // a snout between each two rows
+    const x = -w / 2 + i * s;
+    hdrPoly(canvas, [x - hw, back + 0.5, x - hw, 0.2, x, 1.3, x + hw, 0.2, x + hw, back + 0.5], P.frame, P.edge);
+  }
+  canvas.restore();
+  return { half: 0.05, ahead: -0.1 };
+}
+
+// ---- Implements drawn from shapes ----
+// Drawn in metres like the headers, but with y BACKWARDS (x right): from the rear axle for what rides on the
+// tractor (implTractorFrame), from the drawbar pin or the swivel for a trailing tool (implTrailFrame). Sizes
+// come from the tool's own width and hitch lengths, so the picture fits the settings. The part that works (the
+// bodies, the discs, the cutter bar, the beaters) is drawn on the line the map paints, whatever the settings say:
+// with the working point set too near, the picture is too near as well, and shows it; frames, arms and wheels fit
+// round it. Colours from a tester's own machines where there were photos, else generic; never a maker's name.
+const IC = {
+  red: 0xC8322B, redD: 0x7D1712, steel: 0xAEB4BA, steelD: 0x5D636A, dark: 0x3D4044, grey: 0x4A4D52,
+  tyre: 0x1A1B1D, tread: 0x3A3C40, rim: 0x9AA0A6, white: 0xF4F6F7, edge: 0x1E1E1E, yellow: 0xD4A62A, yellowD: 0x8A6A14,
+  green: 0x3B8A3A, greenD: 0x1D4D1C, soil: 0x6A4A2C, soilD: 0x3F2A16, disc: 0xC9CED3,
+};
+const implPaints = {};
+// A fill (no stroke width) or a stroke paint, made once per colour, alpha and width (all constants here).
+function ip(rgb, alpha = 1, stroke = 0) {
+  const key = rgb + '|' + alpha + '|' + stroke;
+  let p = implPaints[key];
+  if (!p) {
+    p = implPaints[key] = new CK.Paint();
+    p.setAntiAlias(true);
+    p.setStyle(stroke ? CK.PaintStyle.Stroke : CK.PaintStyle.Fill);
+    if (stroke) { p.setStrokeWidth(stroke); p.setStrokeCap(CK.StrokeCap.Round); p.setStrokeJoin(CK.StrokeJoin.Round); }
+    p.setColor(CK.Color((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255, alpha));
+  }
+  return p;
+}
+const iEdge = () => ip(IC.edge, 1, 0.025);
+function iRect(c, l, t, r, b, fill, line = iEdge()) {
+  const R = CK.LTRBRect(l, t, r, b);
+  c.drawRect(R, fill);
+  if (line) c.drawRect(R, line);
+}
+function iRRect(c, l, t, r, b, rad, fill, line = iEdge()) {
+  const R = CK.RRectXY(CK.LTRBRect(l, t, r, b), rad, rad);
+  c.drawRRect(R, fill);
+  if (line) c.drawRRect(R, line);
+}
+// A tube from one point to another, w thick, with a dark rim.
+function iBar(c, x1, y1, x2, y2, rgb, w, rim = true) {
+  if (rim) hdrStroke(c, [[x1, y1, x2, y2]], ip(0x1D1D1D, 1, w + 0.035));
+  hdrStroke(c, [[x1, y1, x2, y2]], ip(rgb, 1, w));
+}
+function iCircle(c, x, y, r, fill, line = iEdge()) {
+  c.drawCircle(x, y, r, fill);
+  if (line) c.drawCircle(x, y, r, line);
+}
+// A tyre seen from above: w across, d along, its tread across it.
+function iTyre(c, x, y, w, d, rim) {
+  iRRect(c, x - w / 2, y - d / 2, x + w / 2, y + d / 2, Math.min(w, d) * 0.22, ip(IC.tyre), ip(0x000000, 1, 0.015));
+  const n = Math.max(4, Math.floor(d / 0.09)), segs = [];
+  for (let k = 1; k < n; k++) { const yy = y - d / 2 + k * d / n; segs.push([x - w / 2 + w * 0.12, yy, x + w / 2 - w * 0.12, yy]); }
+  hdrStroke(c, segs, ip(IC.tread, 1, 0.025));
+  if (rim) iRRect(c, x - w * 0.18, y - d * 0.22, x + w * 0.18, y + d * 0.22, 0.02, ip(rim), ip(0x555555, 1, 0.01));
+}
+// A disc seen from above: a thin oval along the travel, turned deg from it (a gang's angle, its dish).
+function iDisc(c, x, y, r, deg, fill = ip(IC.disc), line = ip(0x3C4146, 1, 0.015)) {
+  c.save();
+  c.translate(x, y);
+  c.rotate(deg, 0, 0);
+  const R = CK.LTRBRect(-r * 0.2, -r, r * 0.2, r);
+  c.drawOval(R, fill);
+  c.drawOval(R, line);
+  c.restore();
+}
+// The tractor's lower links from under the rear axle to the pins L behind it, and the top link.
+function iLowerLinks(c, L) {
+  for (const s of [-1, 1]) iBar(c, s * 0.42, 0.25, s * 0.43, L, IC.dark, 0.08);
+  iBar(c, 0, 0.35, 0, L - 0.05, 0x55595E, 0.07);
+}
+// A 3-point headstock (an A-frame) from the lower-link pins at y = L back to the frame at L + depth.
+function iHeadstock(c, L, depth, rgb, rgbD) {
+  for (const s of [-1, 1]) {
+    iBar(c, s * 0.45, L, s * 0.55, L + depth, rgb, 0.09);
+    iCircle(c, s * 0.45, L, 0.05, ip(0xD0D4D8));
+  }
+  iBar(c, 0, L - 0.05, 0, L + depth, rgb, 0.09);
+  iBar(c, -0.45, L + 0.02, 0.45, L + 0.02, rgbD, 0.05, false);
+}
+// The tractor's frame, y backwards from the rear axle: for what rides on the tractor.
+function implTractorFrame(canvas, p) {
+  beginVehicleFrame(canvas, p);
+  canvas.scale(1, -1);
+}
+// The tool's position, or null before there is one (a trailing picture asks first, so it draws neither half).
+function implToolPose() {
+  const t = renderTool();
+  return t && (t.e || t.n) ? t : null;
+}
+// A trailing tool's frame at its pin (the drawbar pin, the swivel or the pivot), y backwards along the tool's
+// heading: its wheels at y = Trailing hitch, its working line at Trailing hitch + Pivot distance. False
+// without a tool position.
+function implTrailFrame(canvas, tl) {
+  const t = implToolPose();
+  if (!t) return false;
+  const back = tl.trailingHitchLength + tl.trailingToolToPivotLength; // the pin to the working line
+  const pe = t.e + Math.sin(t.heading) * back, pn = t.n + Math.cos(t.heading) * back;
+  canvas.save();
+  canvas.concat(perspM);
+  canvas.translate(pe - camE, pn - camN);
+  canvas.rotate(-t.heading * 180 / Math.PI, 0, 0);
+  canvas.scale(1, -1);
+  return true;
+}
+// The middle of the sections across the tool (m, + right): where the tool offset puts the implement.
+function implSectionsMiddle(tl) {
+  const s = scene && scene.toolSections;
+  return s && s.length ? (s[0].left + s[s.length - 1].right) / 2 : (tl.offset || 0);
+}
+
+// Which side of the tractor the ground still to work is on, for the implements that change side every pass
+// (the reversible plough turns over, the centre-pivot mower swings across). Nothing to set: the pass label
+// says which way the tractor drives on the line (↑ A to B, ↓ B to A) and, as the passes change, which way the
+// work goes across the field (19R after 18R: to the right of A to B). Until the pass has changed on this track,
+// the U-turn arrow's side (the next turn goes towards the ground still to work). During a U-turn the label
+// names the pass it lands on, driven the other way, so the implement changes side as the turn starts. A pass
+// counts once the tractor has gone 10 m on it without leaving its line (or a U-turn lands on it): crossing passes
+// in a turn by hand does not. Followed on every Tick, a picture shown or not (implementPictureSk), so one chosen in the
+// middle of a job knows the way the work goes; a page loaded then has the U-turn arrow until the pass changes.
+// Started again on another track (another index or name) or another field.
+const implSide = { tick: null, track: null, pass: null, cand: null, candM: 0, step: 0, same: true, e: 0, n: 0, f: null, t: 0 };
+function implWorkLeft() {
+  const k = tick;
+  if (k && k !== implSide.tick) {
+    implSide.tick = k;
+    const act = ((scene && scene.trackList) || []).find(t => t.active);
+    const track = ((scene && scene.fieldName) || '') + '\n' + (act ? act.index : '') + '\n' + (k.activeTrackName || '');
+    if (track !== implSide.track) { implSide.track = track; implSide.pass = implSide.cand = null; implSide.step = 0; }
+    const m = /^([↑↓])?(\d+)([RL])/.exec(k.lineLabel || '');
+    const moved = Math.min(5, Math.hypot(k.pose.e - implSide.e, k.pose.n - implSide.n));
+    implSide.e = k.pose.e; implSide.n = k.pose.n;
+    if (m && k.guidanceActive) {
+      implSide.same = m[1] !== '↓';
+      const pass = m[3] === 'R' ? +m[2] - 1 : -m[2];
+      const near = Math.max(0.5, ((config && config.tool && config.tool.totalWidth) || 2) / 4);
+      if (pass !== implSide.cand || Math.abs(k.crossTrackError || 0) > near) { implSide.cand = pass; implSide.candM = 0; }
+      else implSide.candM += moved;
+      if ((k.op.executing || implSide.candM >= 10) && pass !== implSide.pass) {
+        if (implSide.pass !== null) implSide.step = Math.sign(pass - implSide.pass);
+        implSide.pass = pass;
+      }
+    }
+  }
+  const same = implSide.same;
+  // positive: the work goes towards the passes right of A to B. Before a pass change, from the U-turn arrow
+  // (its side is that, seen from the tractor: turnLeft = positive XOR same).
+  const positive = implSide.step ? implSide.step > 0 : (!!(k && k.op.turnLeft)) !== same;
+  return positive !== same;
+}
+// The side drawn, -1 (right) to +1 (left), moving towards the side of the ground still to work at `rate`
+// a second: the plough turns over, the mower swings across. 0 is half way (the plough on edge).
+function implSideNow(rate) {
+  const target = implWorkLeft() ? 1 : -1, now = performance.now();
+  const dt = (now - implSide.t) / 1000;
+  implSide.t = now;
+  if (implSide.f === null || dt > 2) implSide.f = target; // the first picture, or after a long gap: no swing
+  else {
+    const d = target - implSide.f, s = rate * dt;
+    implSide.f = Math.abs(d) <= s ? target : implSide.f + Math.sign(d) * s;
+  }
+  return implSide.f;
+}
+
+// A one-axle manure spreader on the drawbar pin: an A-frame drawbar, the body with its load, two vertical
+// beaters at the back on the working line (Trailing hitch + Pivot distance behind the pin), and the spread
+// as wide as the tool, faint, behind them.
+function manureSpreaderPictureSk(canvas, tl, veh) {
+  if (!implTrailFrame(canvas, tl)) return null;
+  const ax = tl.trailingHitchLength, beat = ax + tl.trailingToolToPivotLength;
+  const back = beat + 0.2, front = Math.min(Math.max(0.9, ax - 2.85), back - 1), half = 1.0, W = Math.max(2, tl.totalWidth || 10);
+  hdrPoly(canvas, [-0.9, back, -W / 2, back + 2.6, 0, back + 3.4, W / 2, back + 2.6, 0.9, back], ip(0x7A5532, 0.16), null);
+  for (const s of [-1, 1]) iBar(canvas, 0, 0, s * 0.55, front + 0.05, IC.red, 0.12);
+  iRRect(canvas, -0.08, -0.12, 0.08, 0.12, 0.03, ip(0x2A2C2F));
+  for (const s of [-1, 1]) iTyre(canvas, s * 1.17, ax, 0.42, 1.15, IC.rim);
+  iRRect(canvas, -half, front, half, back, 0.06, ip(IC.red), ip(IC.redD, 1, 0.03));
+  iRRect(canvas, -half + 0.1, front + 0.1, half - 0.1, back - 0.35, 0.03, ip(IC.soil), ip(IC.soilD, 1, 0.015));
+  const bars = [];
+  for (let k = -3; k <= 3; k++) bars.push([k * 0.26, front + 0.12, k * 0.26, back - 0.4]);
+  hdrStroke(canvas, bars, ip(0x4A3320, 1, 0.025));
+  const lumps = [];
+  for (let y = front + 0.35; y < back - 0.5; y += 0.45) lumps.push([-0.7, y, -0.35, y - 0.1, 0, y, 0.35, y + 0.1, 0.7, y]);
+  hdrStroke(canvas, lumps, ip(0x83623F, 1, 0.05));
+  iRRect(canvas, -half - 0.06, beat - 0.25, half + 0.06, beat + 0.25, 0.05, ip(IC.steel));
+  for (const s of [-1, 1]) {
+    iCircle(canvas, s * 0.5, beat, 0.36, ip(0x5F6469));
+    hdrStroke(canvas, [[s * 0.5, beat - 0.3, s * 0.5 + 0.21, beat - 0.21, s * 0.5 + 0.3, beat, s * 0.5 + 0.16, beat + 0.16, s * 0.5, beat + 0.2, s * 0.5 - 0.12, beat + 0.08, s * 0.5 - 0.12, beat]], ip(0xE8EAEC, 1, 0.05));
+  }
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+
+// A centre-pivot mower conditioner: on the tractor the bar from the lower links to the swivel (Vehicle hitch);
+// from the swivel the tongue to the machine, swung 25° to the side still standing (implWorkLeft), the other side
+// every pass, across as the U-turn starts. Its wheels Trailing hitch behind the swivel, the cutter bar Pivot
+// distance from the wheels (ahead: negative), on the line the map paints. Only across does it follow the side: the
+// map paints behind the tractor, where the tool settings put it.
+function mowerConditionerPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p || !implToolPose()) return null;
+  const L = Math.abs(veh.threePointHitchLength), H = Math.max(L, Math.abs(veh.hitchLength));
+  implTractorFrame(canvas, p);
+  iLowerLinks(canvas, L);
+  iRect(canvas, -0.5, L - 0.08, 0.5, L + 0.08, ip(IC.redD));
+  iBar(canvas, 0, L, 0, H, IC.red, 0.14);
+  iCircle(canvas, 0, H, 0.1, ip(0xE0E3E6));
+  canvas.restore();
+  if (!implTrailFrame(canvas, tl)) return null;
+  const side = implSideNow(0.6);           // +1: the grass standing on the left
+  const a = -side * 25 * Math.PI / 180;
+  const W = Math.max(1.5, tl.totalWidth || 3.2), half = W / 2;
+  const wy = tl.trailingHitchLength, wx = Math.tan(a) * wy, cut = wy + tl.trailingToolToPivotLength;
+  iRect(canvas, wx - half - 0.15, cut - 0.35, wx + half + 0.15, cut + 0.3, ip(IC.dark));            // the cutter bar
+  for (let x = wx - half + 0.2; x < wx + half - 0.05; x += 0.4) iCircle(canvas, x, cut - 0.1, 0.17, ip(IC.disc), ip(0x333333, 1, 0.015));
+  iRect(canvas, wx - half - 0.1, cut - 0.5, wx + half + 0.1, cut - 0.3, ip(IC.white), ip(IC.red, 1, 0.04)); // the front cover
+  iRRect(canvas, wx - half, cut + 0.25, wx + half, cut + 1.4, 0.12, ip(IC.red), ip(IC.redD, 1, 0.03)); // the conditioner's hood
+  for (const s of [-1, 1]) iRect(canvas, wx + s * half - 0.35, cut + 0.2, wx + s * half + 0.05 * s, cut + 1.45, ip(IC.grey));
+  const ribs = [];
+  for (let k = 0; k < 6; k++) ribs.push([wx - half + 0.4, cut + 0.42 + k * 0.17, wx + half - 0.4, cut + 0.42 + k * 0.17]);
+  hdrStroke(canvas, ribs, ip(IC.redD, 1, 0.025));
+  iRect(canvas, wx - half + 0.1, cut + 1.4, wx + half - 0.1, cut + 1.65, ip(IC.grey));              // the swath boards
+  iBar(canvas, wx - half + 0.1, wy, wx + half - 0.1, wy, IC.dark, 0.1);
+  for (const s of [-1, 1]) iTyre(canvas, wx + s * (half + 0.02), wy, 0.32, 0.72, IC.rim);
+  const px = wx, py = cut + 0.55;                                                                    // the centre pivot
+  iBar(canvas, 0.1, 0.3, px * 0.95 + 0.1, py - 0.3, 0x2B2D30, 0.06);                                 // the drive shaft
+  iBar(canvas, 0, 0, px, py, IC.red, 0.16);                                                          // the tongue
+  iCircle(canvas, px, py, 0.13, ip(IC.redD));
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+
+// A quick disc harrow on the rear 3-point hitch: two rows of notched discs either side of the working point,
+// a row of spring tines and a packer roller behind them, as wide as the tool.
+function quickDiscHarrowPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p) return null;
+  const L = Math.abs(veh.threePointHitchLength), W = Math.max(1, tl.totalWidth || 2.7);
+  const wc = L + (tl.workingPointFromHitch || 0), f1 = wc - 0.275, f2 = wc + 0.275, ry = wc + 1.1;
+  implTractorFrame(canvas, p);
+  iLowerLinks(canvas, L);
+  iHeadstock(canvas, L, Math.max(0.1, wc - 0.6 - L), IC.red, IC.redD);
+  const fr = ip(IC.red), frD = ip(IC.redD, 1, 0.025);
+  iRect(canvas, -W / 2 - 0.1, wc - 0.62, W / 2 + 0.1, wc - 0.45, fr, frD);                       // main beam
+  for (const s of [-1, 1]) iRect(canvas, s * (W / 2 + 0.02) - 0.05 + 0.05 * s, wc - 0.62, s * (W / 2 + 0.02) + 0.05 + 0.05 * s, ry + 0.2, fr, frD);
+  const n = Math.max(3, Math.round(W / 0.25)), legs = [];
+  for (let k = 0; k < n; k++) {
+    const x = -W / 2 + (k + 0.5) * W / n;
+    legs.push([x, wc - 0.45, x - 0.05, f1]);
+    iDisc(canvas, x - 0.06, f1, 0.25, x < 0 ? -18 : 18);
+    const x2 = x + W / n / 2;
+    if (Math.abs(x2) < W / 2) { legs.push([x2, wc - 0.45, x2 + 0.05, f2]); iDisc(canvas, x2 + 0.06, f2, 0.25, x2 < 0 ? 18 : -18); }
+  }
+  hdrStroke(canvas, legs, ip(0x5D636A, 1, 0.035));
+  iRect(canvas, -W / 2 - 0.1, wc + 0.45, W / 2 + 0.1, wc + 0.58, fr, frD);                        // the tines' beam
+  const tines = [];
+  for (let x = -W / 2 + 0.1; x < W / 2; x += 0.2) tines.push([x, wc + 0.5, x + 0.03, wc + 0.72, x - 0.02, wc + 0.8]);
+  hdrStroke(canvas, tines, ip(IC.redD, 1, 0.03));
+  iRRect(canvas, -W / 2, ry - 0.28, W / 2, ry + 0.28, 0.1, ip(0x6D747B));                       // the cage roller
+  const bars = [];
+  for (let y = ry - 0.2; y < ry + 0.25; y += 0.13) bars.push([-W / 2 + 0.05, y, W / 2 - 0.05, y]);
+  hdrStroke(canvas, bars, ip(0xC7CCD1, 1, 0.04));
+  for (const s of [-1, 1]) iRect(canvas, s * W / 2 - 0.04, ry - 0.3, s * W / 2 + 0.04, ry + 0.3, fr, frD);
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+
+// A semi-mounted roller: on the tractor a bar on the lower links to its pivot (Vehicle hitch); from the pivot
+// an A-frame to a row of spring tines and the roller on the working line, as wide as the tool.
+function rollerPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p || !implToolPose()) return null;
+  const L = Math.abs(veh.threePointHitchLength), H = Math.max(L, Math.abs(veh.hitchLength));
+  implTractorFrame(canvas, p);
+  iLowerLinks(canvas, L);
+  iRect(canvas, -0.55, L - 0.07, 0.55, L + 0.07, ip(IC.dark));
+  iBar(canvas, 0, L, 0, H, IC.dark, 0.12);
+  canvas.restore();
+  if (!implTrailFrame(canvas, tl)) return null;
+  const W = Math.max(1, tl.totalWidth || 3.2), ry = tl.trailingHitchLength + tl.trailingToolToPivotLength;
+  const fr = ip(IC.yellow), frD = ip(IC.yellowD, 1, 0.025), tb = ry - 0.75;
+  for (const s of [-1, 1]) iBar(canvas, 0, 0, s * (W / 2 - 0.05), ry - 0.35, IC.yellow, 0.12);  // the A-frame
+  iBar(canvas, -W / 4, ry / 2, W / 4, ry / 2, IC.yellow, 0.1);
+  iRect(canvas, -W / 2 - 0.05, tb - 0.07, W / 2 + 0.05, tb + 0.07, ip(0x5B4A2A), frD);          // the tines' bar
+  const tines = [];
+  for (let x = -W / 2 + 0.15; x < W / 2 - 0.05; x += 0.3) { iCircle(canvas, x, tb, 0.06, ip(0x2B2D30), null); tines.push([x, tb, x + 0.02, tb + 0.3]); }
+  hdrStroke(canvas, tines, ip(0x2B2D30, 1, 0.025));
+  for (const s of [-1, 1]) iRect(canvas, s * (W / 2 + 0.06) - 0.07, ry - 0.45, s * (W / 2 + 0.06) + 0.07, ry + 0.35, fr, frD);
+  iRRect(canvas, -W / 2, ry - 0.28, W / 2, ry + 0.28, 0.12, ip(0x8B9198));                      // the roller's rings
+  const rings = [], spikes = [];
+  for (let k = 1, n = Math.round(W / 0.13); k < n; k++) {
+    const x = -W / 2 + k * W / n;
+    rings.push([x, ry - 0.27, x, ry + 0.27]);
+    spikes.push([x - 0.05, ry - 0.2 + (k % 2) * 0.2, x + 0.05, ry - 0.1 + (k % 2) * 0.2]);
+  }
+  hdrStroke(canvas, rings, ip(0x5A6067, 1, 0.04));
+  hdrStroke(canvas, spikes, ip(0xD3D7DB, 1, 0.03));
+  iCircle(canvas, 0, 0, 0.1, ip(0xE0E3E6));
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+
+// Where the bodies of a reversible plough go across (m, + right of the tractor's middle): the front body behind
+// the rear tyre in the open furrow, its land side at that tyre's inner edge, the others stepping back towards
+// the ground still to plough, w apart. th: the side the soil is thrown to (the land ploughed before, where that
+// tyre is). Each body's y along the beam, the bodies' middle at yc, sp apart.
+function iPloughBodyPlaces(veh, n, w, th, yc, sp) {
+  const edge = (veh.trackWidth || 1.8) / 2 - 0.3, y0 = yc - (n - 1) * sp / 2, xs = [];
+  for (let b = 0; b < n; b++) xs.push([th * (edge - w * (b + 0.5)), y0 + b * sp]);
+  return xs;
+}
+// A reversible plough's bodies at xs: each one at work (white, throwing to th) and the one above it, up (grey);
+// k their size (1 for 40 cm), X the squeeze across as the plough turns over.
+function iPloughBodies(canvas, xs, th, k, X) {
+  const body = (x, y, t) => [X(x - t * 0.06 * k), y - 0.5 * k, X(x + t * 0.4 * k), y - 0.08 * k, X(x + t * 0.6 * k), y + 0.4 * k,
+    X(x + t * 0.3 * k), y + 0.34 * k, X(x - t * 0.03 * k), y + 0.22 * k];
+  for (const [x, y] of xs) {
+    hdrPoly(canvas, body(x, y, -th), ip(0xCFD4D8, 0.9), ip(0x6B7177, 1, 0.015));                 // the body up, not working
+    hdrPoly(canvas, body(x, y, th), ip(IC.white), ip(0x24282C, 1, 0.025));                        // the body at work
+    hdrStroke(canvas, [[X(x + th * 0.02 * k), y - 0.4 * k, X(x + th * 0.3 * k), y - 0.05 * k, X(x + th * 0.52 * k), y + 0.36 * k]], ip(0x9AA1A7, 1, 0.035));
+    iRect(canvas, X(x) - 0.07, y - 0.62 * k, X(x) + 0.07, y - 0.28 * k, ip(IC.red), ip(IC.redD, 1, 0.015)); // its leg
+    hdrPoly(canvas, [X(x + th * 0.02), y - 0.98 * k, X(x + th * 0.26), y - 0.84 * k, X(x + th * 0.05), y - 0.74 * k], ip(0xF1F3F4), iEdge()); // the skimmer
+  }
+}
+// A reversible plough on the rear 3-point hitch. The bodies at work throw the soil away from the ground still
+// to plough, towards the land ploughed before: the front body runs behind the rear tyre that is in the open
+// furrow, the others step back towards the ground still to plough. It turns over as each U-turn starts (drawn
+// on edge half way: x squeezed by |f|). 2 to 7 bodies (mounted ploughs are made so), about 40 cm each, as many as
+// the tool's width takes; the bodies' middle at the working point. On a tractor or an articulated one.
+function reversiblePloughPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p) return null;
+  const L = Math.abs(veh.threePointHitchLength), W = Math.max(0.6, tl.totalWidth || 1.6);
+  const n = Math.max(2, Math.min(7, Math.round(W / 0.4))), w = W / n, k = w / 0.4, sp = 0.95 * k;
+  const f = implSideNow(0.6), th = f >= 0 ? 1 : -1, sq = Math.max(0.04, Math.abs(f));
+  const X = (x) => x * sq;
+  const xs = iPloughBodyPlaces(veh, n, w, th, L + (tl.workingPointFromHitch || 0), sp);
+  implTractorFrame(canvas, p);
+  iLowerLinks(canvas, L);
+  iRRect(canvas, -0.5, L - 0.08, 0.5, L + 0.12, 0.04, ip(IC.redD));                              // the headstock
+  iCircle(canvas, 0, L + 0.38, 0.2, ip(IC.grey));                                                  // the turnover head
+  iBar(canvas, 0, L + 0.1, 0, L + 0.55, IC.redD, 0.12);
+  const fx = xs[0][0] + th * 0.1, fy = Math.max(L + 0.7, xs[0][1] - 0.8), rx = xs[n - 1][0] - th * 0.1, ry = xs[n - 1][1] + 0.25;
+  iBar(canvas, 0, L + 0.55, X(fx), fy, IC.red, 0.18);                                              // the arm and the beam
+  iBar(canvas, X(fx), fy, X(rx), ry, IC.red, 0.22);
+  iCircle(canvas, X(fx), fy, 0.08, ip(IC.redD));
+  iPloughBodies(canvas, xs, th, k, X);
+  const [lx, ly] = xs[n - 1];
+  iBar(canvas, X(rx), ry - 0.05, X(lx - th * 0.55), ly + 0.15, IC.red, 0.07);
+  iTyre(canvas, X(lx - th * 0.55), ly + 0.15, 0.28, 0.62, IC.rim);                                 // the depth wheel
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+// A semi-mounted reversible plough: a headstock on the lower links with the plough's swivel behind it (Vehicle
+// hitch), the turnover head and a long beam to 5 to 12 bodies (about 40 cm each, as many as the tool's width
+// takes) turning about that swivel, the bodies' middle on the working line (Trailing hitch plus Pivot distance),
+// the combined depth and transport wheel behind the last body (or at Trailing hitch, if further back). It turns
+// over as each U-turn starts, as the mounted one. On a tractor or an articulated one.
+function semiMountedPloughPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p || !implToolPose()) return null;
+  const L = Math.abs(veh.threePointHitchLength), H = Math.max(L + 0.25, Math.abs(veh.hitchLength));
+  implTractorFrame(canvas, p);
+  iLowerLinks(canvas, L);
+  iHeadstock(canvas, L, H - L, IC.red, IC.redD);
+  iCircle(canvas, 0, H, 0.12, ip(0xE0E3E6));                                                       // the swivel
+  canvas.restore();
+  if (!implTrailFrame(canvas, tl)) return null;
+  const W = Math.max(2, tl.totalWidth || 4);
+  const n = Math.max(5, Math.min(12, Math.round(W / 0.4))), w = W / n, k = w / 0.4, sp = 0.95 * k;
+  const f = implSideNow(0.6), th = f >= 0 ? 1 : -1, sq = Math.max(0.04, Math.abs(f));
+  const X = (x) => x * sq;
+  const xs = iPloughBodyPlaces(veh, n, w, th, tl.trailingHitchLength + tl.trailingToolToPivotLength, sp);
+  iBar(canvas, 0, 0, 0, 0.6, IC.redD, 0.16);                                                       // the frame from the swivel
+  iCircle(canvas, 0, 0.55, 0.22, ip(IC.grey));                                                     // the turnover head
+  const fx = xs[0][0] + th * 0.1, fy = Math.max(1.0, xs[0][1] - 0.8);
+  const [lx, ly] = xs[n - 1], wy = Math.max(ly + 0.55, tl.trailingHitchLength), wx = lx - th * 0.7;
+  iBar(canvas, 0, 0.6, X(fx), fy, IC.red, 0.22);                                                   // the beam
+  iBar(canvas, X(fx), fy, X(lx - th * 0.1), ly + 0.25, IC.red, 0.26);
+  iBar(canvas, X(lx - th * 0.1), ly + 0.25, X(wx), wy, IC.red, 0.14);
+  iCircle(canvas, X(fx), fy, 0.09, ip(IC.redD));
+  hdrStroke(canvas, [[0.12 * th, 0.75, X(fx * 0.6), fy * 0.6 + 0.3]], ip(0x2B2D30, 1, 0.06));          // the turnover ram
+  iPloughBodies(canvas, xs, th, k, X);
+  iTyre(canvas, X(wx), wy, 0.42, 1.0, IC.rim);                                                     // the depth and transport wheel
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+// A disc seen from above, its plane along (ux, uy): an oval r long and r·m across, with its hub.
+function iDiscAlong(c, x, y, ux, uy, r, m, fill = ip(IC.disc), line = ip(0x3C4146, 1, 0.015)) {
+  const pts = [];
+  for (let a = 0; a < 24; a++) {
+    const t = a * Math.PI / 12, cs = Math.cos(t) * r, sn = Math.sin(t) * r * m;
+    pts.push(x + ux * cs - uy * sn, y + uy * cs + ux * sn);
+  }
+  hdrPoly(c, pts, fill, line);
+  iCircle(c, x, y, r * 0.16, ip(0x5D636A), null);
+}
+// A reversible disc plough on the rear 3-point hitch: a headstock with the turntable that swings the beam across,
+// the beam back towards the ground still to plough, 2 to 6 discs of 70 cm (one for every 30 cm or so of the
+// tool's width) on their standards, each at 45° to the travel and throwing the soil towards the land ploughed
+// before, the discs' middle at the working point, and the furrow wheel behind the last one. It swings across as
+// each U-turn starts (x squeezed by |f|). On a tractor or an articulated one.
+function discPloughPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p) return null;
+  const L = Math.abs(veh.threePointHitchLength), W = Math.max(0.5, tl.totalWidth || 1.2);
+  const n = Math.max(2, Math.min(6, Math.round(W / 0.3))), w = W / n, sp = 0.8, r = 0.35;
+  const f = implSideNow(0.6), th = f >= 0 ? 1 : -1, sq = Math.max(0.04, Math.abs(f));
+  const X = (x) => x * sq;
+  const xs = iPloughBodyPlaces(veh, n, w, th, L + (tl.workingPointFromHitch || 0), sp);
+  implTractorFrame(canvas, p);
+  iLowerLinks(canvas, L);
+  iHeadstock(canvas, L, 0.35, IC.red, IC.redD);
+  iCircle(canvas, 0, L + 0.45, 0.2, ip(IC.grey));                                                  // the turntable
+  const bx = -th * 0.3, [lx, ly] = xs[n - 1];                                                     // the beam beside the discs, over the land side
+  const fx = xs[0][0] + bx, fy = Math.max(L + 0.6, xs[0][1] - 0.45);
+  const u = 1 / Math.SQRT2, ux = th * u * sq, uy = u, m = Math.hypot(ux, uy) || 1;
+  for (const [x, y] of xs) iDiscAlong(canvas, X(x), y, ux / m, uy / m, r, 0.32);                   // the discs at work
+  const wx = lx - th * 0.2, wy = ly + 0.75;                                                        // in the last furrow, against its wall
+  iDiscAlong(canvas, X(wx), wy, th * 0.26 * sq, 0.97, 0.3, 0.55, ip(IC.tyre), ip(0x000000, 1, 0.015)); // the furrow wheel
+  iBar(canvas, 0, L + 0.45, X(fx), fy, IC.red, 0.2);                                               // the beam, over them
+  iBar(canvas, X(fx), fy, X(lx + bx), ly + 0.1, IC.red, 0.22);
+  for (const [x, y] of xs) iBar(canvas, X(x + bx), y - 0.25, X(x), y - 0.02, IC.redD, 0.1);       // each disc's standard
+  iBar(canvas, X(lx + bx), ly + 0.1, X(wx), wy - 0.2, IC.red, 0.1);
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+
+// Four gangs of discs in an X about the working line y = yc (the front gangs' inner ends further back, the rear
+// gangs' further on, 16° from square), their outer ends g either side of it, under a frame d either side of it, W
+// across: a tandem disc harrow seen from above. Each disc square to its gang's axle.
+function iDiscGangsX(c, W, yc, d, g = d * 0.62) {
+  const fr = ip(IC.red), frD = ip(IC.redD, 1, 0.025), dark = ip(0x8A9096), rim = ip(0x2B2D30, 1, 0.02);
+  iRect(c, -W / 2 - 0.1, yc - d, W / 2 + 0.1, yc - d + 0.14, fr, frD);                              // front and rear beams
+  iRect(c, -W / 2 - 0.1, yc + d - 0.12, W / 2 + 0.1, yc + d, fr, frD);
+  for (const s of [-1, 1]) iRect(c, s * (W / 2 + 0.05) - 0.06, yc - d, s * (W / 2 + 0.05) + 0.06, yc + d, fr, frD);
+  const gang = (x0, x1, y, ang) => {
+    const tn = Math.tan(ang * Math.PI / 180), m = Math.max(1, Math.floor(Math.abs(x1 - x0) / 0.23));
+    hdrStroke(c, [[x0, y, x1, y + (x1 - x0) * tn]], ip(0x202225, 1, 0.07));
+    for (let j = 0; j <= m; j++) { const x = x0 + (x1 - x0) * j / m; iDisc(c, x, y + (x - x0) * tn, 0.28, ang, dark, rim); }
+  };
+  gang(-W / 2 + 0.1, -0.05, yc - g, 16); gang(W / 2 - 0.1, 0.05, yc - g, -16);
+  gang(-W / 2 + 0.25, 0.1, yc + g, -16); gang(W / 2 - 0.25, -0.1, yc + g, 16);
+  for (const s of [-1, 1]) iRect(c, s * W / 4 - 0.06, yc - d, s * W / 4 + 0.06, yc + d, fr, frD);  // the beams the gangs hang from
+}
+// A trailed disc harrow on the drawbar pin: an A-frame tongue to a frame over four gangs in an X, its wheels in
+// pairs in the gap between the front and the rear gangs (Trailing hitch behind the pin, kept in the gap), the gangs
+// about the working line, as wide as the tool; a pair of wheels more every 4 m past 5 m. The gangs' inner ends keep
+// clear of the wheels, so the frame is longer the wider the harrow (3.7 m for 4 m).
+function discHarrowTrailedPictureSk(canvas, tl, veh) {
+  if (!implTrailFrame(canvas, tl)) return null;
+  const W = Math.max(2, tl.totalWidth || 4), slant = (W / 2 - 0.15) * Math.tan(16 * Math.PI / 180);
+  const clear = 0.28 + 0.36 + 0.2, g = slant + clear, d = g + 0.45;  // a disc's radius, a wheel's, room between
+  const yc = tl.trailingHitchLength + tl.trailingToolToPivotLength, room = clear - 0.28 - 0.36;
+  const wy = Math.max(yc - room, Math.min(yc + room, tl.trailingHitchLength));
+  for (const s of [-1, 1]) iBar(canvas, 0.05 * s, 0.35, s * W / 4, yc - d + 0.07, IC.red, 0.13);  // the A-frame tongue
+  iBar(canvas, 0, 0, 0, 0.6, IC.red, 0.15);
+  iBar(canvas, -W / 8, (yc - d) * 0.7, W / 8, (yc - d) * 0.7, IC.red, 0.08);
+  iRRect(canvas, -0.08, -0.12, 0.08, 0.12, 0.03, ip(0x2A2C2F));                                     // the hitch eye
+  iDiscGangsX(canvas, W, yc, d, g);
+  const pairs = [0.55];
+  for (let x = 2.0; x < W / 2 - 0.4; x += 2.0) pairs.push(x);
+  iBar(canvas, -pairs[pairs.length - 1] - 0.2, wy, pairs[pairs.length - 1] + 0.2, wy, IC.dark, 0.08);
+  for (const x of pairs) for (const s of [-1, 1]) { iTyre(canvas, s * (x - 0.2), wy, 0.26, 0.72, IC.rim); iTyre(canvas, s * (x + 0.2), wy, 0.26, 0.72, IC.rim); }
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+// A disc harrow on the rear 3-point hitch: a headstock tower braced to the frame over four gangs in an X about the
+// working point, as wide as the tool, no wheels.
+function discHarrowMountedPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p) return null;
+  const L = Math.abs(veh.threePointHitchLength), W = Math.max(1, tl.totalWidth || 2.4), d = 0.9;
+  const yc = L + (tl.workingPointFromHitch || 0);
+  implTractorFrame(canvas, p);
+  iLowerLinks(canvas, L);
+  iHeadstock(canvas, L, Math.max(0.1, yc - d - L), IC.red, IC.redD);
+  for (const s of [-1, 1]) iBar(canvas, 0, L + 0.05, s * W / 4, yc + d - 0.06, IC.red, 0.08);    // the braces
+  iDiscGangsX(canvas, W, yc, d);
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+
+// A twin-disc fertiliser spreader on the rear 3-point hitch: the hopper (red, its grey extension and the dark
+// cover seen from above) just behind the lower links, its two discs behind it and the spread, faint, as wide as the
+// tool. It rides on the tractor wherever the working point (where the product lands) is set; the spread lands there
+// when that is behind the discs.
+function fertiliserSpreaderPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p) return null;
+  const L = Math.abs(veh.threePointHitchLength), W = Math.max(3, tl.totalWidth || 18), hw = 1.2;
+  const y0 = L + 0.1, y1 = L + 1.4, dy = y1 + 0.08, land = L + (tl.workingPointFromHitch || 0);
+  const r = land > dy + 1 ? land - dy : W * 0.2, b = W * 0.12;                                     // to where it lands
+  implTractorFrame(canvas, p);
+  hdrPoly(canvas, [-0.7, dy, -W / 2, dy + r, -W / 4, dy + r + b * 0.8, 0, dy + r + b, W / 4, dy + r + b * 0.8, W / 2, dy + r, 0.7, dy],
+    ip(0xD9D2C3, 0.12), null);                                                                      // the spread
+  iLowerLinks(canvas, L);
+  iRect(canvas, -0.55, L - 0.06, 0.55, L + 0.2, ip(0x2B2D30));                                     // its frame
+  for (const s of [-1, 1]) {                                                                        // the two discs and their vanes
+    const x = s * 0.42;
+    iCircle(canvas, x, dy, 0.32, ip(0x8A9096), ip(0x2B2D30, 1, 0.02));
+    hdrStroke(canvas, [[x - 0.28, dy, x + 0.28, dy], [x, dy - 0.28, x, dy + 0.28]], ip(0x3A3D41, 1, 0.035));
+  }
+  iRRect(canvas, -hw, y0, hw, y1, 0.08, ip(IC.red), ip(IC.redD, 1, 0.025));                        // the hopper
+  iRRect(canvas, -hw + 0.05, y0 + 0.05, hw - 0.05, y1 - 0.05, 0.06, ip(0xB9BEC3), null);          // its extension
+  iRRect(canvas, -hw + 0.14, y0 + 0.13, hw - 0.14, y1 - 0.13, 0.05, ip(0x3A3D41), null);          // the cover
+  hdrStroke(canvas, [[-hw + 0.2, (y0 + y1) / 2, hw - 0.2, (y0 + y1) / 2]], ip(0x5D636A, 1, 0.03));
+  iBar(canvas, -0.95, dy + 0.42, 0.95, dy + 0.42, 0x2B2D30, 0.05);                                 // the guard behind the discs
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+
+// A disc mower on the rear 3-point hitch, working beside the tractor: its cutter bar where the tool offset puts
+// it (the sections' middle), at the working point, as wide as the tool; an arm with its breakaway spring from the
+// headstock to the bar's inner end. With no offset it is drawn behind the tractor, where AgOpenWeb paints.
+function rearSideMowerPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p) return null;
+  const L = Math.abs(veh.threePointHitchLength), W = Math.max(1, tl.totalWidth || 2.4);
+  const cx = implSectionsMiddle(tl), wc = L + (tl.workingPointFromHitch || 0);
+  const s = cx >= 0 ? 1 : -1, inner = Math.abs(cx) > 0.5 ? cx - s * W / 2 : 0;
+  implTractorFrame(canvas, p);
+  iLowerLinks(canvas, L);
+  iHeadstock(canvas, L, 0.35, IC.red, IC.redD);
+  const ay = Math.max(L + 0.4, wc - 0.1), sy = Math.max(L + 0.2, wc - 0.35);
+  iBar(canvas, s * 0.3, L + 0.35, inner, ay, IC.red, 0.16);                                         // the arm
+  iBar(canvas, s * 0.1, L + 0.1, inner * 0.7, sy, 0xC0392B, 0.08);                                 // its spring
+  hdrStroke(canvas, [[s * 0.1, L + 0.1, inner * 0.7, sy]], ip(0x7D1712, 1, 0.03));
+  iRect(canvas, cx - W / 2 - 0.05, wc - 0.25, cx + W / 2 + 0.05, wc + 0.8, ip(IC.green), ip(IC.greenD, 1, 0.03)); // the cover
+  iRect(canvas, cx - W / 2 + 0.1, wc + 0.08, cx + W / 2 - 0.1, wc + 0.38, ip(IC.red), ip(IC.redD, 1, 0.02));     // its top
+  const folds = [];
+  for (let k = 1; k < 4; k++) folds.push([cx - W / 2 + 0.05, wc - 0.25 + k * 0.26, cx + W / 2 - 0.05, wc - 0.25 + k * 0.26]);
+  hdrStroke(canvas, folds, ip(IC.greenD, 0.5, 0.02));
+  iRRect(canvas, inner - 0.22, wc - 0.3, inner + 0.22, wc + 0.3, 0.05, ip(IC.red));                // the drive
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+
+// A rotary rake's rotor from above at (x, y), r to the tips of its tines: four small carrier wheels under the
+// gearbox, a tine arm every 30° or so with its four tines at the end, bent back against the turn (spin +1:
+// clockwise from above, the swath to the left; -1 the other way), and the gearbox.
+function iRakeRotor(c, x, y, r, spin) {
+  const n = Math.max(8, Math.min(16, Math.round(r * 4.5))), arms = [], tines = [];
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) iTyre(c, x + sx * 0.3, y + sy * 0.3, 0.12, 0.3, null);
+  for (let k = 0; k < n; k++) {
+    const a = (k + 0.5) * 2 * Math.PI / n, ca = Math.cos(a), sa = Math.sin(a), e = Math.max(0.5, r - 0.38);
+    const ex = x + ca * e, ey = y + sa * e, tx = -sa * spin, ty = ca * spin;    // the arm's end, the way it turns
+    arms.push([x + ca * 0.25, y + sa * 0.25, ex, ey]);
+    for (let j = 0; j < 4; j++) {
+      const bx = ex - tx * j * 0.09, by = ey - ty * j * 0.09;
+      tines.push([bx, by, bx + ca * 0.36 - tx * 0.06, by + sa * 0.36 - ty * 0.06]);
+    }
+  }
+  hdrStroke(c, arms, ip(IC.dark, 1, 0.05));
+  hdrStroke(c, tines, ip(0x2F5E2F, 1, 0.025));
+  iCircle(c, x, y, 0.3, ip(IC.red));
+  iCircle(c, x, y, 0.12, ip(IC.grey), null);
+}
+// A guard of tube round a rotor, r + 0.15 out, from angle a0 to a1 (radians from the right, + towards the back).
+function iRakeGuard(c, x, y, r, a0, a1) {
+  const segs = [], n = 12, R = r + 0.15;
+  for (let k = 0; k < n; k++) {
+    const t0 = a0 + (a1 - a0) * k / n, t1 = a0 + (a1 - a0) * (k + 1) / n;
+    segs.push([x + Math.cos(t0) * R, y + Math.sin(t0) * R, x + Math.cos(t1) * R, y + Math.sin(t1) * R]);
+  }
+  hdrStroke(c, segs, ip(0x1D1D1D, 1, 0.09));
+  hdrStroke(c, segs, ip(IC.red, 1, 0.055));
+}
+// A swath curtain: a white cloth on a frame, from (x, y0) to (x, y1).
+function iSwathCurtain(c, x, y0, y1) {
+  iRect(c, x - 0.05, y0, x + 0.05, y1, ip(0xEDEFF0), ip(IC.red, 1, 0.04));
+}
+// The tractor's half of a trailed rake: the lower links and a headstock to the rake's pin (Vehicle hitch, at
+// least 25 cm behind the lower-link pins).
+function iRakeHitch(canvas, p, veh) {
+  const L = Math.abs(veh.threePointHitchLength), H = Math.max(L + 0.25, Math.abs(veh.hitchLength));
+  implTractorFrame(canvas, p);
+  iLowerLinks(canvas, L);
+  iHeadstock(canvas, L, H - L, IC.red, IC.redD);
+  iCircle(canvas, 0, H, 0.1, ip(0xE0E3E6));
+  canvas.restore();
+}
+// A rotary rake with one rotor on the rear 3-point hitch: the headstock, a frame to the gearbox at the working
+// point (where the sections are across), the rotor as wide as the tool turning clockwise, a guard round its front
+// and right, and the swath curtain on its left, where it lays the swath.
+function rakeOneRotorPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p) return null;
+  const L = Math.abs(veh.threePointHitchLength), r = Math.max(1, (tl.totalWidth || 3.5) / 2);
+  const cx = implSectionsMiddle(tl), yc = L + (tl.workingPointFromHitch || 0);
+  implTractorFrame(canvas, p);
+  iLowerLinks(canvas, L);
+  iRakeRotor(canvas, cx, yc, r, 1);
+  iRakeGuard(canvas, cx, yc, r, -0.85 * Math.PI, 0.3 * Math.PI);
+  iHeadstock(canvas, L, 0.3, IC.red, IC.redD);
+  iBar(canvas, 0, L + 0.3, cx, yc, IC.red, 0.16);                                                  // the frame to the gearbox
+  iBar(canvas, cx - 0.2, yc - 0.3, cx - r - 0.3, yc - 0.5, IC.red, 0.06);
+  iSwathCurtain(canvas, cx - r - 0.3, yc - 0.55, yc + 0.95);
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+// A trailed rotary rake with two rotors side by side, centre delivery: a beam from the pin (Vehicle hitch) to the
+// chassis wheels (Trailing hitch), the rotors on the working line (Trailing hitch plus Pivot distance) turning in
+// towards the middle, where the swath is laid, each half the tool's width, with a guard round its front and side.
+function rakeTwinCentrePictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p || !implToolPose()) return null;
+  iRakeHitch(canvas, p, veh);
+  if (!implTrailFrame(canvas, tl)) return null;
+  const W = Math.max(3, tl.totalWidth || 6.5), r = W / 4 + 0.05, cx = implSectionsMiddle(tl);
+  const yc = tl.trailingHitchLength + tl.trailingToolToPivotLength, wy = Math.max(yc + 0.6, tl.trailingHitchLength);
+  for (const s of [-1, 1]) iTyre(canvas, cx + s * 0.55, wy, 0.3, 0.75, IC.rim);                   // the chassis wheels
+  iBar(canvas, cx - 0.55, wy, cx + 0.55, wy, IC.dark, 0.08);
+  for (const s of [-1, 1]) {
+    const x = cx + s * (W / 2 - r);
+    iRakeRotor(canvas, x, yc, r, -s);
+    iRakeGuard(canvas, x, yc, r, s < 0 ? 0.7 * Math.PI : 0.3 * Math.PI, s < 0 ? 1.6 * Math.PI : -0.6 * Math.PI);
+  }
+  iBar(canvas, 0, 0, cx, yc - 0.9, IC.red, 0.18);                                                  // the drawbar beam
+  iBar(canvas, cx, yc - 0.9, cx, wy, IC.red, 0.2);
+  for (const s of [-1, 1]) iBar(canvas, cx, yc - 0.6, cx + s * (W / 2 - r), yc, IC.red, 0.12);     // the arms to the rotors
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+// A trailed rotary rake with two rotors one behind the other, side delivery: from the pin (Vehicle hitch) a beam
+// back and out to the right, the front rotor on the left of the tool's width and the rear one on the right, each
+// half of it, both turning anticlockwise: the front one hands its hay to the rear one, which lays the swath on its
+// right behind the curtain. The two rotors' middle on the working line, the wheels on the beam at Trailing hitch,
+// held between the rotors.
+function rakeTwinSidePictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p || !implToolPose()) return null;
+  iRakeHitch(canvas, p, veh);
+  if (!implTrailFrame(canvas, tl)) return null;
+  const W = Math.max(3, tl.totalWidth || 6.5), r = W / 4 + 0.15, cx = implSectionsMiddle(tl), d = r * 0.85;
+  const yc = tl.trailingHitchLength + tl.trailingToolToPivotLength;
+  const f = [cx - W / 2 + r, yc - d], b = [cx + W / 2 - r, yc + d];
+  const my = Math.max(f[1] + 0.4, Math.min(b[1] - 0.4, tl.trailingHitchLength)), m = [f[0] + (b[0] - f[0]) * (my - f[1]) / (b[1] - f[1]), my];
+  for (const s of [-1, 1]) iTyre(canvas, m[0] + s * 0.45, m[1], 0.26, 0.66, IC.rim);              // the wheels
+  iRakeRotor(canvas, f[0], f[1], r, -1);
+  iRakeRotor(canvas, b[0], b[1], r, -1);
+  iRakeGuard(canvas, f[0], f[1], r, 0.6 * Math.PI, 1.45 * Math.PI);
+  iRakeGuard(canvas, b[0], b[1], r, -0.8 * Math.PI, -0.15 * Math.PI);
+  iBar(canvas, 0, 0, f[0], f[1], IC.red, 0.18);                                                    // the beam
+  iBar(canvas, f[0], f[1], b[0], b[1], IC.red, 0.2);
+  iBar(canvas, m[0] - 0.45, m[1], m[0] + 0.45, m[1], IC.dark, 0.08);
+  iBar(canvas, b[0] + 0.2, b[1] - 0.3, b[0] + r + 0.3, b[1] - 0.5, IC.red, 0.06);
+  iSwathCurtain(canvas, b[0] + r + 0.3, b[1] - 0.55, b[1] + 0.95);
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+// A trailed rotary rake with four rotors, centre delivery: a beam from the pin (Vehicle hitch) to the chassis
+// wheels (Trailing hitch), two rotors in front on arms out to the tool's edges and two behind, closer in, all
+// turning in towards the middle, where the swath is laid, each with a guard on its outer side; the rotors' middle
+// on the working line.
+function rakeFourPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p || !implToolPose()) return null;
+  iRakeHitch(canvas, p, veh);
+  if (!implTrailFrame(canvas, tl)) return null;
+  const W = Math.max(6, tl.totalWidth || 12.5), r = Math.max(1.2, Math.min(2.0, W * 0.14)), cx = implSectionsMiddle(tl);
+  const yc = tl.trailingHitchLength + tl.trailingToolToPivotLength, d = r + 0.1;
+  const fx = W / 2 - r, rx = Math.min(fx - r * 0.6, 0.7 + r), wy = Math.max(yc - d + 0.8, Math.min(yc + d - 0.6, tl.trailingHitchLength));
+  for (const s of [-1, 1]) iTyre(canvas, cx + s * 0.75, wy, 0.42, 1.0, IC.rim);                    // the chassis wheels
+  for (const s of [-1, 1]) {
+    iRakeRotor(canvas, cx + s * fx, yc - d, r, -s);
+    iRakeRotor(canvas, cx + s * rx, yc + d, r, -s);
+    iRakeGuard(canvas, cx + s * fx, yc - d, r, s < 0 ? 0.75 * Math.PI : 0.25 * Math.PI, s < 0 ? 1.55 * Math.PI : -0.55 * Math.PI);
+    iRakeGuard(canvas, cx + s * rx, yc + d, r, s < 0 ? 0.7 * Math.PI : 0.3 * Math.PI, s < 0 ? 1.3 * Math.PI : -0.3 * Math.PI);
+  }
+  iBar(canvas, 0, 0, cx, yc - d - 1.2, IC.red, 0.2);                                               // the main beam
+  iBar(canvas, cx, yc - d - 1.2, cx, wy + 0.6, IC.red, 0.24);
+  iBar(canvas, cx - 0.75, wy, cx + 0.75, wy, IC.dark, 0.1);
+  for (const s of [-1, 1]) {
+    iBar(canvas, cx + s * 0.1, yc - d - 1.0, cx + s * fx, yc - d, IC.red, 0.14);                   // the front arms
+    iBar(canvas, cx + s * 0.1, yc + 0.2, cx + s * rx, yc + d, IC.red, 0.12);                       // the rear arms
+  }
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+// A finger wheel from above at (x, y), its plane along (ux, uy), r to the fingers' tips, a little tilted (m): the
+// rim and its spokes, the fingers round it.
+function iFingerWheel(c, x, y, ux, uy, r, m) {
+  const rim = [], spokes = [], fingers = [], R = r - 0.15;
+  for (let k = 0; k < 24; k++) {
+    const t = k * Math.PI / 12, cs = Math.cos(t), sn = Math.sin(t);
+    const px = x + (ux * cs - uy * sn * m) * R, py = y + (uy * cs + ux * sn * m) * R;
+    const qx = x + (ux * cs - uy * sn * m) * r, qy = y + (uy * cs + ux * sn * m) * r;
+    rim.push(px, py);
+    fingers.push([px, py, qx, qy]);
+    if (k % 4 === 0) spokes.push([x, y, px, py]);
+  }
+  hdrPoly(c, rim, ip(0xD8C27A, 0.35), ip(0x6E5B22, 1, 0.05));
+  hdrStroke(c, spokes, ip(0x6E5B22, 1, 0.025));
+  hdrStroke(c, fingers, ip(0xB59A45, 1, 0.03));
+  iCircle(c, x, y, 0.07, ip(IC.dark), null);
+}
+// A trailed finger-wheel rake in a V: from the pin (Vehicle hitch) a tongue to the point of the V at the back,
+// two arms out to the tool's edges at the front, each with its finger wheels (1.4 m, at most 10) overlapping along it, set
+// in towards the middle, where the swath is laid; the carrier wheels at the arms' front ends, the V's middle on
+// the working line.
+function wheelRakePictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p || !implToolPose()) return null;
+  iRakeHitch(canvas, p, veh);
+  if (!implTrailFrame(canvas, tl)) return null;
+  const W = Math.max(3, tl.totalWidth || 7), cx = implSectionsMiddle(tl), yc = tl.trailingHitchLength + tl.trailingToolToPivotLength;
+  const gap = 0.55, h = (W / 2 - gap) / Math.tan(38 * Math.PI / 180), yf = yc - h / 2, yb = yc + h / 2;
+  const m = Math.max(2, Math.min(10, Math.round((W / 2 - gap) / 0.6)));               // wheels a side
+  const armX = (t) => W / 2 + 0.35 - (W / 2 - gap) * t;                                          // the arm, outside the wheels
+  for (const s of [-1, 1]) iTyre(canvas, cx + s * armX(0), yf - 0.6, 0.22, 0.55, IC.rim);          // the carrier wheels
+  iBar(canvas, 0, 0, cx, yb + 0.4, IC.red, 0.16);                                                  // the tongue
+  iBar(canvas, cx - armX(0.3), yf + h * 0.3, cx + armX(0.3), yf + h * 0.3, IC.red, 0.08);         // the width bar
+  for (const s of [-1, 1]) {
+    iBar(canvas, cx + s * armX(0), yf - 0.35, cx + s * armX(1), yb - 0.05, IC.red, 0.13);
+    iBar(canvas, cx + s * armX(1), yb - 0.05, cx, yb + 0.4, IC.red, 0.13);
+    for (let k = 0; k < m; k++) {
+      const t = (k + 0.5) / m, x = cx + s * (W / 2 - (W / 2 - gap) * t), y = yf + h * t;
+      const a = 22 * Math.PI / 180;                                                                  // set in towards the middle
+      hdrStroke(canvas, [[x, y, x + s * 0.35, y - 0.12]], ip(IC.dark, 1, 0.05));                    // its spring arm to the frame
+      iFingerWheel(canvas, x, y, -s * Math.sin(a), Math.cos(a), 0.72, 0.3);
+    }
+  }
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+
+// Seeders. A frame at a world point (e, n), y backwards along heading (radians), for what is not on the tractor or
+// on the tool: an air seeder's cart.
+function implFrameAt(canvas, e, n, heading) {
+  canvas.save();
+  canvas.concat(perspM);
+  canvas.translate(e - camE, n - camN);
+  canvas.rotate(-heading * 180 / Math.PI, 0, 0);
+  canvas.scale(1, -1);
+}
+// Many rectangles [l, t, r, b] in one path: the row units' parts, a few dozen of each.
+function iRects(c, rects, fill, line = iEdge()) {
+  if (!rects.length) return;
+  const cmds = [];
+  for (const q of rects) cmds.push(CK.MOVE_VERB, q[0], q[1], CK.LINE_VERB, q[2], q[1], CK.LINE_VERB, q[2], q[3], CK.LINE_VERB, q[0], q[3], CK.CLOSE_VERB);
+  const path = CK.Path.MakeFromCmds(cmds);
+  if (!path) return;
+  c.drawPath(path, fill);
+  if (line) c.drawPath(path, line);
+  path.delete();
+}
+// The tractor's hitch on the ground (Vehicle hitch behind the rear axle) at the pose drawn.
+function implVehicleHitch(p, veh) {
+  const h = Math.abs(veh.hitchLength);
+  return { e: p.e - Math.sin(p.heading) * h, n: p.n - Math.cos(p.heading) * h };
+}
+// An air seeder's tine bar from its pin (y = 0), the openers' middle on the working line yc: an A-frame to the
+// front beam, the castor wheels ahead of it, four ranks of tines a row apart (25 cm) staggered across the tool's
+// width, a packer wheel behind each tine, the transport wheels at Trailing hitch held within the ranks and the
+// distribution towers with the hose from the cart. Returns how far back its rear hitch is.
+function iAirDrill(c, tl, W, cx, yc) {
+  const n = Math.max(8, Math.min(96, Math.round(W / 0.25))), s = W / n, rank = 0.65, yF = yc - 1.6;
+  const ry = (r) => yc + (r - 1.5) * rank;
+  for (const sx of [-1, 1]) iBar(c, 0, 0, cx + sx * 1.1, yF, IC.red, 0.14);                       // the A-frame
+  iBar(c, 0, 0, cx, yF, IC.red, 0.16);
+  const casters = Math.max(2, Math.round(W / 4) + 1);
+  for (let k = 0; k < casters; k++) {
+    const x = cx - W / 2 + 0.4 + (W - 0.8) * k / (casters - 1);
+    iBar(c, x, yF, x, yF - 0.35, IC.redD, 0.06);
+    iTyre(c, x, yF - 0.5, 0.26, 0.58, IC.rim);                                                       // the castor wheels
+  }
+  const fore = [cx - W / 2, cx + W / 2, cx - 1.1, cx + 1.1];
+  if (W > 8) fore.push(cx - W / 4, cx + W / 4);
+  for (const x of fore) iBar(c, x, yF, x, ry(3) - 0.3, IC.red, 0.12);                                // the frame along
+  iBar(c, cx - W / 2, yF, cx + W / 2, yF, IC.red, 0.16);                                             // the front beam
+  for (let r = 0; r < 4; r++) iBar(c, cx - W / 2, ry(r) - 0.3, cx + W / 2, ry(r) - 0.3, IC.red, 0.1); // a tube each rank
+  const tines = [], tips = [], packers = [], arms = [];
+  for (let k = 0; k < n; k++) {
+    const x = cx - W / 2 + (k + 0.5) * s, y = ry(k % 4);
+    tines.push([x, y - 0.3, x, y - 0.02]);
+    tips.push([x, y - 0.04, x, y + 0.04]);
+    arms.push([x, y - 0.25, x + 0.07, y + 0.3]);
+    packers.push([x + 0.07, y + 0.18, x + 0.07, y + 0.56]);
+  }
+  hdrStroke(c, arms, ip(IC.dark, 1, 0.035));
+  hdrStroke(c, tines, ip(0x2A2C2F, 1, 0.05));
+  hdrStroke(c, tips, ip(IC.disc, 1, 0.06));
+  hdrStroke(c, packers, ip(IC.tyre, 1, 0.13));
+  const wy = Math.max(ry(0), Math.min(ry(3), tl.trailingHitchLength));
+  for (const sx of [-1, 1]) iTyre(c, cx + sx * 0.75, wy, 0.4, 1.0, IC.rim);                         // the transport wheels
+  const towers = W > 8 ? [cx - W / 4, cx, cx + W / 4] : [cx - W / 6, cx + W / 6];
+  for (const x of towers) hdrStroke(c, [[0, 0.3, 0, yF - 0.2, x, yc - 0.2]], ip(0x2E3033, 1, 0.08)); // the hoses
+  for (const x of towers) { iCircle(c, x, yc - 0.2, 0.2, ip(0x5A5E63)); iCircle(c, x, yc - 0.2, 0.09, ip(IC.dark), null); }
+  return ry(3) + 0.75;
+}
+// An air seeder's cart from its tongue's tip (y0, at the hitch it is pulled by) to its axles (y1, behind): the
+// tongue, two axles of big tyres, the tank in two or three compartments with their lids, the fan and the meter.
+function iAirCart(c, y0, y1) {
+  const t0 = Math.min(y1 - 1.5, Math.max(y0 + 1.5, y1 - 4.6)), t1 = y1 + 0.9;
+  for (const sx of [-1, 1]) iBar(c, 0, y0, sx * 0.8, t0 + 0.1, 0x2E3033, 0.12);                    // the tongue
+  iBar(c, 0, y0, 0, t0 + 0.1, 0x2E3033, 0.14);
+  for (const sx of [-1, 1]) for (const dy of [-0.65, 0.65]) iTyre(c, sx * 1.27, y1 + dy, 0.55, 1.2, IC.rim);
+  iRRect(c, -1.1, t0 + 0.15, 1.1, t1 - 0.1, 0.08, ip(0x3A3D41));                                    // the chassis
+  const m = t1 - t0 > 3.6 ? 3 : 2, len = (t1 - t0) / m;
+  for (let k = 0; k < m; k++) {
+    const a = t0 + k * len;
+    iRRect(c, -1.2, a + 0.04, 1.2, a + len - 0.04, 0.35, ip(0xDCDFE2), ip(0x7E8489, 1, 0.03));      // a compartment
+    iCircle(c, 0, a + len / 2, 0.28, ip(0x2E3033));                                                  // its lid
+  }
+  iRect(c, 1.22, t0 + 0.1, 1.42, t0 + 1.3, ip(0x8C9196), ip(0x2E3033, 1, 0.02));                     // the steps
+  iCircle(c, -0.85, t0 - 0.1, 0.3, ip(0x5A5E63)); iCircle(c, -0.85, t0 - 0.1, 0.14, ip(IC.dark), null); // the fan
+  iRect(c, -0.9, t1 - 0.15, 0.9, t1 + 0.12, ip(0x2E3033));                                           // the meter
+}
+// An air seeder with its cart between the tractor and the tine bar (a TBT tool): the cart from the tractor's hitch
+// to the tank's axle (Tank hitch), the bar turning about that axle (Trailing hitch to its wheels), the openers on
+// the working line. The bar is drawn first: its pin is under the cart.
+function airSeederCartBetweenPictureSk(canvas, tl, veh) {
+  const p = renderPose(), t = implToolPose();
+  if (!p || !t) return null;
+  const back = tl.trailingHitchLength + tl.trailingToolToPivotLength;
+  const pe = t.e + Math.sin(t.heading) * back, pn = t.n + Math.cos(t.heading) * back;          // the tank's axle
+  const h = implVehicleHitch(p, veh), L = Math.hypot(h.e - pe, h.n - pn);
+  const W = Math.max(4, tl.totalWidth || 12), cx = implSectionsMiddle(tl);
+  if (!implTrailFrame(canvas, tl)) return null;
+  iAirDrill(canvas, tl, W, cx, back);
+  canvas.restore();
+  implFrameAt(canvas, pe, pn, L > 0.5 ? Math.atan2(h.e - pe, h.n - pn) : t.heading);
+  iAirCart(canvas, -Math.max(L, 2), 0);
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+// The cart pulled behind an air seeder's bar, its axles 4.6 m behind the bar's rear hitch, following it as a
+// trailer does (the page's own: the host knows the bar only). Put straight behind the bar again when it was not
+// drawn in the last half second (another picture, the page hidden) or the bar jumped.
+const implCart = { e: 0, n: 0, t: -1e9 };
+function airSeederCartBehindPictureSk(canvas, tl, veh) {
+  const p = renderPose(), t = implToolPose();
+  if (!p || !t) return null;
+  const W = Math.max(4, tl.totalWidth || 12), cx = implSectionsMiddle(tl);
+  const back = tl.trailingHitchLength + tl.trailingToolToPivotLength;
+  if (!implTrailFrame(canvas, tl)) return null;
+  const rear = iAirDrill(canvas, tl, W, cx, back);
+  iBar(canvas, 0, back + 1.2, 0, rear, IC.red, 0.12);                                               // the rear hitch
+  canvas.restore();
+  const Lc = 4.6, behind = rear - back;                                                              // the rear hitch, behind the working point
+  const re = t.e - Math.sin(t.heading) * behind, rn = t.n - Math.cos(t.heading) * behind;
+  let dx = implCart.e - re, dy = implCart.n - rn, d = Math.hypot(dx, dy);
+  const now = performance.now();
+  if (now - implCart.t > 500 || Math.abs(d - Lc) > 3) { dx = -Math.sin(t.heading); dy = -Math.cos(t.heading); d = 1; }
+  implCart.e = re + dx / d * Lc; implCart.n = rn + dy / d * Lc; implCart.t = now;
+  implFrameAt(canvas, re, rn, Math.atan2(re - implCart.e, rn - implCart.n));
+  iAirCart(canvas, 0, Lc);
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+// Where a planter's row units are across (m, + right): one on each section when the sections are a row each
+// (30 cm to 1 m), else a row every `pitch` across the tool's width.
+function iPlanterRows(tl, W, cx, pitch) {
+  const s = scene && scene.toolSections;
+  if (s && s.length >= 2 && s.length <= 64 && s.every(q => q.right - q.left >= 0.3 && q.right - q.left <= 1.0))
+    return s.map(q => (q.left + q.right) / 2);
+  const n = Math.max(1, Math.min(48, Math.round(W / pitch)));
+  return Array.from({ length: n }, (_, k) => cx - W / 2 + (k + 0.5) * W / n);
+}
+// A planter's row units on a toolbar at ytb, each seed tube (between its gauge wheels) on the working line yc: the
+// parallel arms, the meter with its small hopper, the gauge wheels and the opener discs between them, the closing
+// wheels in a V behind.
+function iRowUnits(c, xs, ytb, yc, rgb) {
+  const arms = [], meters = [], lids = [], gauges = [], discs = [], closers = [];
+  const a1 = Math.max(ytb + 0.1, yc - 0.6);
+  for (const x of xs) {
+    arms.push([x - 0.07, ytb, x - 0.07, a1], [x + 0.07, ytb, x + 0.07, a1]);
+    meters.push([x - 0.14, a1 - 0.05, x + 0.14, a1 + 0.33]);
+    lids.push([x - 0.1, a1, x + 0.1, a1 + 0.16]);
+    gauges.push([x - 0.16, yc - 0.24, x - 0.16, yc + 0.24], [x + 0.16, yc - 0.24, x + 0.16, yc + 0.24]);
+    discs.push([x - 0.03, yc - 0.28, x, yc + 0.2], [x + 0.03, yc - 0.28, x, yc + 0.2]);
+    closers.push([x - 0.13, yc + 0.42, x - 0.05, yc + 0.72], [x + 0.13, yc + 0.42, x + 0.05, yc + 0.72]);
+  }
+  hdrStroke(c, arms, ip(IC.dark, 1, 0.05));
+  hdrStroke(c, discs, ip(IC.disc, 1, 0.03));
+  hdrStroke(c, gauges, ip(IC.tyre, 1, 0.09));
+  hdrStroke(c, closers, ip(IC.tyre, 1, 0.07));
+  iRects(c, meters, ip(rgb));
+  iRects(c, lids, ip(0x2A2C2F), null);
+}
+// A precision planter on the rear 3-point hitch, its hopper on the tractor's front linkage (Vehicle front hitch):
+// the hopper with its fan, the hose along the tractor's right to the distributor on the toolbar, the headstock,
+// the toolbar and a row unit on each section (or every 75 cm), the seed on the working line.
+function planterFrontHopperPictureSk(canvas, tl, veh) {
+  const p = renderPose();
+  if (!p) return null;
+  const L = Math.abs(veh.threePointHitchLength), W = Math.max(1.5, tl.totalWidth || 4.5), cx = implSectionsMiddle(tl);
+  const yc = L + (tl.workingPointFromHitch || 0), ytb = Math.max(L + 0.25, yc - 0.9);
+  const F = Math.max(Math.abs(veh.frontHitchLength || 0), (veh.wheelbase || 2.5) + 0.9), side = (veh.trackWidth || 1.8) / 2 + 0.4;
+  implTractorFrame(canvas, p);
+  hdrStroke(canvas, [[0.7, -F - 0.2, side, -F + 0.5, side, ytb - 0.5, cx + 0.3, ytb]], ip(0x2E3033, 1, 0.1)); // the hose
+  iLowerLinks(canvas, L);
+  iHeadstock(canvas, L, ytb - L, IC.green, IC.greenD);
+  iRect(canvas, cx - W / 2, ytb - 0.08, cx + W / 2, ytb + 0.08, ip(IC.green), ip(IC.greenD, 1, 0.025)); // the toolbar
+  iRowUnits(canvas, iPlanterRows(tl, W, cx, 0.75), ytb, yc, IC.green);
+  iCircle(canvas, cx + 0.3, ytb - 0.02, 0.16, ip(0x5A5E63));                                         // the distributor
+  iBar(canvas, -0.45, -F, 0.45, -F, IC.dark, 0.08);                                                  // the front linkage
+  iRRect(canvas, -0.95, -F - 1.3, 0.95, -F - 0.08, 0.12, ip(0xDCDFE2), ip(0x7E8489, 1, 0.03));       // the hopper
+  iRect(canvas, -0.95, -F - 0.3, 0.95, -F - 0.08, ip(IC.green), ip(IC.greenD, 1, 0.02));
+  iRRect(canvas, -0.6, -F - 1.15, 0.6, -F - 0.5, 0.1, ip(0x2E3033));                                 // its lid
+  iCircle(canvas, 0.62, -F - 0.25, 0.2, ip(0x5A5E63)); iCircle(canvas, 0.62, -F - 0.25, 0.09, ip(IC.dark), null); // the fan
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+// A trailed precision planter (a wide one): a tongue from the drawbar pin (Vehicle hitch) to the centre frame, draft
+// bars from the tongue to the wings, two seed tanks on the centre frame, the toolbar with a row unit on each section
+// (or every 75 cm), the transport wheels at Trailing hitch held by the toolbar and a gauge wheel at each wing's end.
+function planterTrailedPictureSk(canvas, tl, veh) {
+  if (!implTrailFrame(canvas, tl)) return null;
+  const W = Math.max(3, tl.totalWidth || 9), cx = implSectionsMiddle(tl);
+  const yc = tl.trailingHitchLength + tl.trailingToolToPivotLength, ytb = yc - 0.9;
+  const f = Math.max(0.6, ytb - 2.4);
+  for (const sx of [-1, 1]) iBar(canvas, 0, 0, cx + sx * 0.9, f, IC.green, 0.14);                   // the tongue
+  iBar(canvas, 0, 0, cx, ytb, IC.green, 0.18);
+  if (W > 5) for (const sx of [-1, 1]) iBar(canvas, cx, Math.max(0.3, f * 0.45), cx + sx * (W / 2 - 0.3), ytb, IC.green, 0.1); // the draft bars
+  const wy = Math.max(ytb - 1.8, Math.min(ytb - 0.3, tl.trailingHitchLength));
+  for (const sx of [-1, 1]) iTyre(canvas, cx + sx * 1.45, wy, 0.4, 0.95, IC.rim);                   // the transport wheels
+  for (const sx of [-1, 1]) iBar(canvas, cx + sx * 1.45, wy, cx + sx * 1.45, ytb, IC.green, 0.1);
+  for (const sx of [-1, 1]) { const x = cx + sx * (W / 2 + 0.15); iBar(canvas, x, ytb, x, ytb - 0.3, IC.greenD, 0.06); iTyre(canvas, x, ytb - 0.45, 0.2, 0.45, IC.rim); }
+  iRect(canvas, cx - W / 2, ytb - 0.09, cx + W / 2, ytb + 0.09, ip(IC.green), ip(IC.greenD, 1, 0.025)); // the toolbar
+  iRowUnits(canvas, iPlanterRows(tl, W, cx, 0.75), ytb, yc, IC.green);
+  for (const sx of [-1, 1]) {
+    const a = cx + sx * 0.05, b = cx + sx * 1.2;
+    iRRect(canvas, Math.min(a, b), f, Math.max(a, b), ytb - 0.12, 0.3, ip(0xDCDFE2), ip(0x7E8489, 1, 0.03)); // the tanks
+    iCircle(canvas, cx + sx * 0.62, (f + ytb) / 2, 0.24, ip(0x2E3033));
+  }
+  canvas.restore();
+  return { half: 0.05, ahead: 0 };
+}
+
+// The implement pictures, one row each (ToolPicture in ToolConfig.cs): the tool type it is made for (0 front,
+// 1 rear, 2 TBT, 3 trailing), the vehicle types it goes on (0 tractor, 1 harvester, 2 articulated), how it is
+// drawn, and its name and note in Tool > Type > Picture on the map, whose list shows the pictures of the tool
+// and vehicle type chosen. A combine carries only its header; an articulated tractor pulls big implements: the
+// trailed disc harrow, the ploughs, the four-rotor rake, the air seeders and the trailed planter only so far. A new
+// picture: a ToolPicture value, its icons or draw function (returning the section strip) and a row here.
+const IMPLEMENT_PICTURES = [
+  { id: 1, type: 3, vehicles: [0], draw: seedDrillPictureSk,
+    name: () => tr('Seed drill, semi-mounted (3 m, 19 rows)'),
+    hint: () => tr('The headstock on the lower links, the drill turning about the drawbar pin (Vehicle hitch), drawn to scale.') },
+  { id: 2, type: 0, vehicles: [0], draw: frontSprayerPictureSk,
+    name: () => tr('Front sprayer boom (8 m) + rear tank (600 L)'),
+    hint: () => tr('The boom at the working point, its tank on the rear lower links (Vehicle rear 3-point hitch), drawn to scale.') },
+  { id: 3, type: 0, vehicles: [1], draw: grainHeaderPictureSk,
+    name: () => tr('Grain header (reel)'),
+    hint: () => tr('The cutter bar at the working point, as wide as the tool.') },
+  { id: 4, type: 0, vehicles: [1], draw: maizeHeaderPictureSk,
+    name: () => tr('Maize header (a row unit every 75 cm)'),
+    hint: () => tr('The stalk rolls at the working point, as wide as the tool.') },
+  { id: 5, type: 3, vehicles: [0], draw: manureSpreaderPictureSk,
+    name: () => tr('Manure spreader, one axle'),
+    hint: () => tr('On the drawbar pin (Vehicle hitch), its axle Trailing hitch behind it, the beaters on the working line; spreads as wide as the tool.') },
+  { id: 6, type: 3, vehicles: [0], draw: mowerConditionerPictureSk,
+    name: () => tr('Mower conditioner, centre pivot'),
+    hint: () => tr('The swivel on the lower links (Vehicle hitch), the mower swung to the side still standing, the other side every pass. The painted strip stays where the tool settings put it.') },
+  { id: 7, type: 1, vehicles: [0], draw: quickDiscHarrowPictureSk,
+    name: () => tr('Quick disc harrow with roller'),
+    hint: () => tr('On the rear 3-point hitch: two rows of discs at the working point, spring tines and a packer roller, as wide as the tool.') },
+  { id: 8, type: 3, vehicles: [0], draw: rollerPictureSk,
+    name: () => tr('Roller, semi-mounted'),
+    hint: () => tr('Its pivot on a bar on the lower links (Vehicle hitch), a row of spring tines and the roller on the working line, as wide as the tool.') },
+  { id: 9, type: 1, vehicles: [0, 2], draw: reversiblePloughPictureSk,
+    name: () => tr('Reversible plough, mounted (2 to 7 bodies)'),
+    hint: () => tr('On the rear 3-point hitch, a body every 40 cm or so of the tool width. It turns over as each U-turn starts: the bodies throw the soil towards the land ploughed before.') },
+  { id: 10, type: 3, vehicles: [0, 2], draw: discHarrowTrailedPictureSk,
+    name: () => tr('Disc harrow, trailed'),
+    hint: () => tr('On the drawbar pin (Vehicle hitch): four gangs of discs in an X, its wheels between them (Trailing hitch), as wide as the tool.') },
+  { id: 11, type: 1, vehicles: [0], draw: rearSideMowerPictureSk,
+    name: () => tr('Disc mower, rear side-mounted'),
+    hint: () => tr('On the rear 3-point hitch, the cutter bar where the tool offset puts it: set the offset to the side it mows.') },
+  { id: 12, type: 1, vehicles: [0], draw: discHarrowMountedPictureSk,
+    name: () => tr('Disc harrow, 3-point'),
+    hint: () => tr('On the rear 3-point hitch: four gangs of discs in an X about the working point, as wide as the tool.') },
+  { id: 13, type: 1, vehicles: [0], draw: fertiliserSpreaderPictureSk,
+    name: () => tr('Fertiliser spreader, two discs'),
+    hint: () => tr('On the rear 3-point hitch: the hopper and its two discs, the spread drawn as wide as the tool.') },
+  { id: 14, type: 3, vehicles: [0, 2], draw: semiMountedPloughPictureSk,
+    name: () => tr('Reversible plough, semi-mounted (5 to 12 bodies)'),
+    hint: () => tr('Its swivel behind the lower links (Vehicle hitch), a body every 40 cm or so of the tool width, the bodies\' middle on the working line (Trailing hitch plus Pivot distance). It turns over as each U-turn starts.') },
+  { id: 15, type: 1, vehicles: [0, 2], draw: discPloughPictureSk,
+    name: () => tr('Reversible disc plough (2 to 6 discs)'),
+    hint: () => tr('On the rear 3-point hitch, a disc every 30 cm or so of the tool width. It swings across as each U-turn starts: the discs throw the soil towards the land ploughed before.') },
+  { id: 16, type: 1, vehicles: [0], draw: rakeOneRotorPictureSk,
+    name: () => tr('Rotary rake, one rotor'),
+    hint: () => tr('On the rear 3-point hitch: the rotor at the working point, as wide as the tool, the swath laid on its left behind the curtain.') },
+  { id: 17, type: 3, vehicles: [0], draw: rakeTwinCentrePictureSk,
+    name: () => tr('Rotary rake, two rotors, centre delivery'),
+    hint: () => tr('Its pin behind the lower links (Vehicle hitch): two rotors side by side on the working line, the swath between them, the chassis wheels Trailing hitch behind the pin.') },
+  { id: 18, type: 3, vehicles: [0], draw: rakeTwinSidePictureSk,
+    name: () => tr('Rotary rake, two rotors, side delivery'),
+    hint: () => tr('Its pin behind the lower links (Vehicle hitch): two rotors one behind the other, stepping out to the right, the swath laid on the right of the rear one; their middle on the working line.') },
+  { id: 19, type: 3, vehicles: [0, 2], draw: rakeFourPictureSk,
+    name: () => tr('Rotary rake, four rotors'),
+    hint: () => tr('Its pin behind the lower links (Vehicle hitch): two rotors in front out to the edges, two behind closer in, the swath in the middle; the chassis wheels Trailing hitch behind the pin.') },
+  { id: 20, type: 3, vehicles: [0], draw: wheelRakePictureSk,
+    name: () => tr('Finger-wheel rake (V)'),
+    hint: () => tr('On the drawbar pin (Vehicle hitch): finger wheels in a V open at the front, as wide as the tool, the swath at its point; the V\'s middle on the working line.') },
+  { id: 21, type: 2, vehicles: [0, 2], draw: airSeederCartBetweenPictureSk,
+    name: () => tr('Air seeder, cart between'),
+    hint: () => tr('The cart from the tractor\'s hitch to its axle (Tank hitch), the tine bar turning about the axle: a tine every 25 cm with its packer, the openers on the working line.') },
+  { id: 22, type: 3, vehicles: [0, 2], draw: airSeederCartBehindPictureSk,
+    name: () => tr('Air seeder, cart behind'),
+    hint: () => tr('The tine bar on the drawbar pin (Vehicle hitch), its transport wheels at Trailing hitch, the openers on the working line; the cart follows behind the bar.') },
+  { id: 23, type: 1, vehicles: [0], draw: planterFrontHopperPictureSk,
+    name: () => tr('Precision planter + front hopper'),
+    hint: () => tr('The toolbar on the lower links, a row unit on each section (or every 75 cm), the seed on the working line; the hopper on the front linkage (Vehicle front hitch).') },
+  { id: 24, type: 3, vehicles: [0, 2], draw: planterTrailedPictureSk,
+    name: () => tr('Precision planter, trailed'),
+    hint: () => tr('On the drawbar pin (Vehicle hitch): the tanks on the centre frame, a row unit on each section (or every 75 cm), the seed on the working line.') },
+];

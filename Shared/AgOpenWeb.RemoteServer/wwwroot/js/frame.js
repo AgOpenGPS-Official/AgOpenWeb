@@ -56,7 +56,7 @@ function renderSkia(canvas, rp) {
   drawHeadlandSegEditLinesSk(canvas); // headland-editor offset lines (yellow/red) while editing
   drawTramLinesSk(canvas); // generated tram lines (orange) when tram display on / editing
   drawEditHandlesSk(canvas); // stage-4 on-map edit handles (drag points to reshape)
-  drawHitchSk(canvas); // implement hitch line (under the tool footprint)
+  if (!implementPictureSk(canvas)) drawHitchSk(canvas); // the implement's picture, else its hitch line (under the tool footprint)
   toolFootprintSk(canvas);
   if (rp) { vehicleSk(canvas, rp); svennArrowSk(canvas, rp); }
   drawGoalSk(canvas); // #95 — Pure Pursuit target (over the vehicle)

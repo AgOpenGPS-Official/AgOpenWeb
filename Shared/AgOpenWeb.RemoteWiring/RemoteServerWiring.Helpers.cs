@@ -161,6 +161,9 @@ public static partial class RemoteServerWiring
             case "tool.type": // front/rear/tbt/trailing; a harvester only takes front (#111)
                 tool.SetToolType(veh.Type == AgOpenWeb.Models.VehicleType.Harvester ? "front" : val); return;
             case "tool.hitchType": if (I(out var th)) tool.HitchType = th; return;
+            // The implement's picture on the map: 0 none, then one value per picture (ToolPicture).
+            case "tool.picture": if (I(out var pic) && System.Enum.IsDefined(typeof(AgOpenWeb.Models.Configuration.ToolPicture), pic))
+                    tool.Picture = (AgOpenWeb.Models.Configuration.ToolPicture)pic; return;
             case "tool.workingPointFromHitch": if (D(out var t1)) tool.WorkingPointFromHitch = t1; return;
             case "tool.trailingHitchLength": if (D(out var t2)) tool.TrailingHitchLength = t2; return;
             case "tool.tankTrailingHitchLength": if (D(out var t3)) tool.TankTrailingHitchLength = t3; return;

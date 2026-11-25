@@ -344,14 +344,16 @@ function toolFootprintSk(canvas) {
   const perp = t.heading + Math.PI / 2;
   const ps = Math.sin(perp), pc = Math.cos(perp);        // perpendicular (right) dir
   const hs = Math.sin(t.heading), hc = Math.cos(t.heading); // forward (depth) dir
-  const depth = 1.0, halfGap = 0.025;                    // toolDepth 2 m; 0.05 m gap
+  // toolDepth 2 m, 0.05 m gap; over an implement's picture a thin strip where it works (implementStrip).
+  const depth = implementPictureOn ? implementStrip.half : 1.0, halfGap = 0.025;
+  const along = implementPictureOn ? implementStrip.ahead : 0;
   const secs = (tick && tick.sections) || [];
   const quad = (L, R) => {
     const cmds = [];
     const corners = [[L, -depth], [R, -depth], [R, depth], [L, depth]];
     for (let k = 0; k < 4; k++) {
       const off = corners[k][0], d = corners[k][1];
-      const xy = w2s(t.e + ps * off + hs * d, t.n + pc * off + hc * d);
+      const xy = w2s(t.e + ps * off + hs * (d + along), t.n + pc * off + hc * (d + along));
       cmds.push(k === 0 ? CK.MOVE_VERB : CK.LINE_VERB, xy[0], xy[1]);
     }
     cmds.push(CK.CLOSE_VERB);

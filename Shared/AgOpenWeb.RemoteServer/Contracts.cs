@@ -487,7 +487,9 @@ public record ToolConfigDto(
     double SlowSpeedCutoff, double CoverageMargin,
     bool IsWorkSwitchEnabled, bool IsWorkSwitchActiveLow, bool IsWorkSwitchManualSections,
     bool IsSteerSwitchEnabled, bool IsSteerSwitchManualSections,
-    double TotalWidth);
+    double TotalWidth,
+    // The implement's picture on the map (ToolPicture: 0 none, then one value per picture).
+    int Picture = 0);
 
 /// <summary>U-Turn tab (ConfigStore.Guidance). Style: 0 Omega, 1 Sagitta.</summary>
 public record UturnConfigDto(int Style, double Extension, int Smoothing, double Radius, double DistanceFromBoundary);
