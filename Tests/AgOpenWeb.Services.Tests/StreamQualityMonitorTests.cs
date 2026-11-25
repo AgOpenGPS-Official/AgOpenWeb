@@ -4,7 +4,7 @@
 
 using System;
 using System.Diagnostics;
-using AgOpenWeb.Services.Network;
+using AgOpenWeb.Services.DataQuality;
 using NUnit.Framework;
 
 namespace AgOpenWeb.Services.Tests;

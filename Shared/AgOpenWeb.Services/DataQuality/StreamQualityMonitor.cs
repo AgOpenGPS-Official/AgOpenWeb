@@ -4,10 +4,12 @@
 
 using System;
 using System.Diagnostics;
+using System.Globalization;
 
-namespace AgOpenWeb.Services.Network;
+namespace AgOpenWeb.Services.DataQuality;
 
-/// <summary>What a stream's arrivals looked like over the last window.</summary>
+/// <summary>What a stream's arrivals looked like over the last window. The first four of
+/// <see cref="DataFinding"/>, with the same numbers.</summary>
 public enum StreamVerdict : byte
 {
     /// <summary>Silent, or too few arrivals to judge.</summary>
@@ -52,7 +54,7 @@ public readonly record struct StreamQuality(
 /// <see cref="Record()"/> is called from the receive thread and allocates nothing;
 /// <see cref="Evaluate()"/> about once a second from the host loop.
 /// </summary>
-public sealed class StreamQualityMonitor
+public sealed class StreamQualityMonitor : IDataSensor
 {
     /// <summary>The stretch that is judged.</summary>
     public const double WindowSeconds = 10.0;
@@ -98,6 +100,52 @@ public sealed class StreamQualityMonitor
 
     public string Name { get; }
     public bool Warns { get; }
+
+    public string Advice => "Check the network cable to the modules (Wi-Fi is not a link for module data)";
+
+    public string Recovered => "arriving evenly again";
+
+    /// <inheritdoc />
+    public IDataSensor? ExplainedBy { get; set; }
+
+    public int Faults { get { lock (_lock) return _faults; } }
+
+    private StreamQuality _read;
+
+    /// <summary>The last <see cref="Read"/>, for a sensor that builds on this one.</summary>
+    public StreamQuality Last { get { lock (_lock) return _read; } }
+
+    /// <summary><see cref="Evaluate(long)"/> as the data quality monitor reads it.</summary>
+    public DataReading Read(long now)
+    {
+        var q = Evaluate(now);
+        lock (_lock) _read = q;
+        return new DataReading(Name, (DataFinding)(byte)q.Verdict, q.Faulty, q.RateHz, q.NominalHz, q.MissedPercent);
+    }
+
+    public string Describe()
+    {
+        StreamQuality q;
+        lock (_lock) q = _read;
+        var inv = CultureInfo.InvariantCulture;
+        return q.Verdict == StreamVerdict.Bursts
+            ? string.Create(inv, $"arriving in bursts, not evenly ({q.RateHz:0.#} a second)")
+            : string.Create(inv, $"arriving with gaps, about {q.MissedPercent:0}% missing ({q.RateHz:0.#} of {q.NominalHz:0.#} a second)");
+    }
+
+    public string Figures()
+    {
+        StreamQuality q;
+        lock (_lock) q = _read;
+        var inv = CultureInfo.InvariantCulture;
+        string now = q.Verdict switch
+        {
+            StreamVerdict.NoData => "no data",
+            StreamVerdict.Bursts => string.Create(inv, $"in bursts, {q.RateHz:0.#} a second, longest wait {q.LongestGapMs:0} ms"),
+            _ => string.Create(inv, $"{(q.Verdict == StreamVerdict.Gaps ? "gaps" : "even")}, {q.RateHz:0.#} of {q.NominalHz:0.#} a second, {q.MissedPercent:0.#}% missing, longest wait {q.LongestGapMs:0} ms"),
+        };
+        return string.Create(inv, $"{now}; worst {q.WorstMissedPercent:0.#}% missing");
+    }
 
     /// <summary>One arrival, now.</summary>
     public void Record() => Record(Stopwatch.GetTimestamp());

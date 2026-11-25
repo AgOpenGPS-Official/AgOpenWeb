@@ -160,20 +160,44 @@ assumes a sprayer's valves take; saved profiles keep their own.
 The control loop sends the PGNs at 100 Hz, PGN 229 every tick whatever the section count (the
 ISOBUS task controller reads sections from 229 only).
 
-### Data quality: how the modules' data arrives
+### Data quality: one monitor, many sensors
 AgOpenWeb runs on many set-ups (a tablet on a cable, a board with the app on it, a phone as a second
-screen), so it judges the data it is given instead of trusting the link. `StreamQualityMonitor`
-(`Services/Network`) judges each periodic stream by its arrival times over the last 10 s: the GPS fixes
-(`GpsSentenceMonitor.Fixes`), PGN 253, 211 and 240 (`UdpCommunicationService.ModuleStreams`; PGN 237 is
-measured only). The usual wait between arrivals is the median and the mean is the window over the count:
-equal when nothing is lost, the median staying at the sender's interval when packets are lost (the share
-missing is `1 - median / mean`), and falling to nothing when they come in bursts (Wi-Fi). 10 % missing for
-15 s is a fault, under 5 % for 15 s ends it. `MainViewModel.DataQuality.cs` tells the operator once (a toast,
-and once more when it is good again), logs `[Data] ...`, and the status frame carries every stream: the
-status bar shows the fix rate (red while faulty) and System Data lists them. The bug report's
-`system_info.txt` has a `Data quality` block with each stream's rate, share missing, longest wait and worst
-window. **A warning only for now** (#922): nothing is switched off, and nothing is repaired: a stream that
-arrives like this is fixed at the link (the cable), never filtered or smoothed in the app.
+screen), so it judges the data it is given instead of trusting the set-up: the data is fit to use or it is
+not, whatever the cause. Everything is in `Services/DataQuality`. A **sensor** (`IDataSensor`) watches one
+thing and says what it found (`DataReading`, `DataFinding`); it never repairs, drops or smooths data. The
+**monitor** (`DataQualityMonitor`, built in `MainViewModel.DataQuality.cs`) reads every sensor once a second
+and does the rest the same for all of them: the operator is told once when a sensor goes faulty (a toast,
+and once more when it is good again), the log says `[Data] ...`, the status frame carries every sensor (the
+status bar's fix rate goes red, System Data lists them under Data quality) and the bug report's
+`system_info.txt` has a `Data quality` block. **A new check is a new sensor**: implement `IDataSensor`, add
+it where its data passes (`GpsSentenceMonitor.DataSensors`, `IUdpCommunicationService.DataSensors`), and give
+its name and finding a text in `js/network.js`; no new alarm, frame or dump code.
+
+The sensors:
+- `StreamQualityMonitor`: does a periodic stream arrive as it is sent? The GPS fixes, PGN 253, 211 and 240
+  (PGN 237 is measured only). Over 10 s the usual wait is the median and the mean is the window over the
+  count: equal when nothing is lost, the median staying at the sender's interval when packets are lost (the
+  share missing is `1 - median / mean`), and falling to nothing when they come in bursts (Wi-Fi). 10 %
+  missing for 15 s is a fault, under 5 % for 15 s ends it (#922).
+- `FixTimeSensor`: is every position newer than the one before? It reads the receiver's own time on each
+  position sentence (PANDA, PAOGI, KSXT, GGA, GNS, HPR; each kind against its own last one). A position
+  that comes a second time or late reads as a reverse and takes AutoSteer off; it is what a module heard on
+  two links looks like (cable and Wi-Fi, #900), and it does not show in how the fixes arrive. A good link
+  gives none, so 5 in a minute is a fault and a minute without any ends it. A sender that emulates a
+  receiver must put an advancing time on its sentences (the scenario rigs do).
+- `FixRateSensor`: does the receiver send as often as the app is set up for (`Connections.GpsUpdateRate`,
+  10 Hz)? It takes the sender's own rate from the arrival sensor (the usual wait, so not what a link
+  loses): a stream at half the rate arrives "evenly". Under 80 % of the expected rate for 15 s is a fault.
+- `RefusedSentenceSensor`: do the sentences arrive whole? A sentence the app decodes that fails its checksum
+  or whose fields do not read was damaged between receiver and module. 5 in a minute is a fault (the rule
+  the counting sensors share, `RecentEvents`). A kind the app does not decode is not counted.
+
+One message per cause: a sensor may name another that sees the cause of what it sees (`ExplainedBy`), and
+is not reported while that one is faulty. A damaged sentence is also a position that did not arrive, so the
+GPS arrival sensor yields to `RefusedSentenceSensor`.
+
+**A warning only for now**: nothing is switched off, and nothing is repaired. Faulty data is put right where
+it comes from (the cable, the set-up), never filtered or smoothed in the app.
 
 ### The simulator never steers the module
 The steer module stays on the network while the simulator runs. While the simulator is the chosen GPS

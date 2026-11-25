@@ -336,15 +336,16 @@ public record StatusDto(
     // the first judgement.
     IReadOnlyList<DataStreamDto>? DataQuality = null);
 
-/// <summary>One stream from the modules as it arrived over the last 10 s
-/// (<c>StreamQualityMonitor</c>).</summary>
-/// <param name="Name">"GPS positions", "Steer module data (PGN 253)", ...</param>
-/// <param name="Verdict">0 no data (silent, or too little to judge), 1 even, 2 gaps, 3 bursts.</param>
-/// <param name="Faulty">Out of bounds long enough that the operator was told.</param>
-/// <param name="RateHz">Arrivals a second.</param>
+/// <summary>One data quality sensor's judgement (<c>DataReading</c>, <c>DataQualityMonitor</c>).</summary>
+/// <param name="Name">"GPS positions", "GPS position times", "Steer module data (PGN 253)", ...</param>
+/// <param name="Finding"><c>DataFinding</c>: 0 no data (silent, too little to judge, not looked at), 1 even,
+/// 2 gaps, 3 bursts, 4 in order, 5 out of order, 6 at rate, 7 slow, 8 whole, 9 damaged.</param>
+/// <param name="Faulty">Not fit to use: the operator was told.</param>
+/// <param name="RateHz">Arrivals a second, where the sensor counts them; else 0.</param>
 /// <param name="NominalHz">The rate the sender sends at; 0 when not known.</param>
-/// <param name="MissedPercent">The share that did not arrive when it should have.</param>
-public record DataStreamDto(string Name, int Verdict, bool Faulty, double RateHz, double NominalHz, double MissedPercent);
+/// <param name="Amount">How much is wrong, in the sensor's measure: per cent missing (gaps), the number in the
+/// last minute (out of order).</param>
+public record DataStreamDto(string Name, int Finding, bool Faulty, double RateHz, double NominalHz, double Amount);
 
 /// <summary>What the field data card shows beyond the worked area the status frame already
 /// carries: the boundary area less inner boundaries (0 = no boundary), the ground covered
