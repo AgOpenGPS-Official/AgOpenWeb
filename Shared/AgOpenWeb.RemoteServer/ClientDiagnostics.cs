@@ -99,7 +99,7 @@ public sealed class ClientDiagnostics
 
     private static readonly string[] Order =
         { "renderer", "vendor", "gl", "glVersion", "maxTexture", "fps", "drawMs", "frames", "raf", "frameGapMs",
-          "cameraMs", "overlayMs", "hostFrameMs", "tickGapMs", "longTasks", "slowest", "canvas", "dpr", "screen", "skia", "ua" };
+          "cameraMs", "overlayMs", "hostFrameMs", "tickGapMs", "longTasks", "slowest", "canvas", "dpr", "screen", "window", "skia", "ua" };
 
     private static string Label(string key) => key switch
     {
@@ -123,6 +123,7 @@ public sealed class ClientDiagnostics
         "canvas" => "Canvas (device px)",
         "dpr" => "Pixel ratio",
         "screen" => "Screen (CSS px)",
+        "window" => "Window (CSS px)",
         "skia" => "CanvasKit",
         "ua" => "User agent",
         _ => key,

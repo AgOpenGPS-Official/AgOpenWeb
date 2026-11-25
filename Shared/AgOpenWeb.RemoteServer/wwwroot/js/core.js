@@ -31,8 +31,18 @@ function resize() {
   ckcv.style.width = vw + 'px';
   ckcv.style.height = vh + 'px';
   recreateSkSurface(); // the GL surface is tied to the canvas size
+  sizedW = innerWidth; sizedH = innerHeight;
 }
+let sizedW = 0, sizedH = 0; // the window resize() last laid out for
 addEventListener('resize', resize); resize();
+// A Home Screen web app on iOS 26 gets a window short by the status bar's height, a band under
+// the page (#943). A document taller than that window makes iOS give it the whole screen
+// (html.home-app in css/base.css), and it does so with no resize event, only the visual
+// viewport's: a size that changed unannounced is announced here.
+if (navigator.standalone === true) document.documentElement.classList.add('home-app');
+function resizeIfMissed() { if (innerWidth !== sizedW || innerHeight !== sizedH) dispatchEvent(new Event('resize')); }
+if (window.visualViewport) visualViewport.addEventListener('resize', resizeIfMissed);
+addEventListener('pageshow', resizeIfMissed);
 // Give the map the window less the card pane (screen pixels each side). The overlays follow
 // through --map-l / --map-r, in their zoomed pixels.
 function setMapArea(l, r) {
