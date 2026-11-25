@@ -810,17 +810,19 @@ namespace AgOpenWeb.Services.YouTurn
                     {
                         Vec3 tPoint = new Vec3();
                         int turnCount = input.BoundaryTurnLines[startClosestTurnPt.TurnLineNum].Points.Count;
-                        int loops = Math.Abs(startClosestTurnPt.TurnLineIndex - goalClosestTurnPt.TurnLineIndex);
 
-                        if (loops > (input.BoundaryTurnLines[startClosestTurnPt.TurnLineNum].Points.Count / 2))
-                        {
-                            if (startClosestTurnPt.TurnLineIndex < goalClosestTurnPt.TurnLineIndex)
-                                loops = (turnCount - goalClosestTurnPt.TurnLineIndex) + startClosestTurnPt.TurnLineIndex;
-                            else
-                                loops = (turnCount - startClosestTurnPt.TurnLineIndex) + goalClosestTurnPt.TurnLineIndex;
-                        }
+                        // The turn line is walked the shorter way from the first arc to the second
+                        // (ours). AgOpenGPS takes the way from the turn line's heading where the PASS
+                        // crosses it, against the first arc's end (CYouTurn.cs:703-705), and the count
+                        // of points the shorter way (CYouTurn.cs:737-749).
+                        // Where the field ends in an acute corner the first arc, seated back from
+                        // the end of the pass, meets the side's turn line, not the end's: the way
+                        // read at the end's led into the corner, and the path came straight back
+                        // out of it (a tester's field, 25 Nov 2026: 27 m into the tip and back).
+                        bool walkForward = WalkTurnLineForward(input.BoundaryTurnLines[startClosestTurnPt.TurnLineNum].Points,
+                            startClosestTurnPt, goalClosestTurnPt, out int loops);
 
-                        if (isFirstTurnLineSameWay)
+                        if (walkForward)
                         {
                             for (int i = 0; i < loops; i++)
                             {
@@ -1544,6 +1546,42 @@ namespace AgOpenWeb.Services.YouTurn
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Which way to walk a closed turn line from <paramref name="from"/> to <paramref name="to"/>
+        /// (each on the segment that starts at its <see cref="TurnClosePoint.TurnLineIndex"/>): the
+        /// way that is shorter along the line. <paramref name="points"/> is how many of the line's
+        /// points the walk passes: forward from <c>from</c>'s index + 1 to <c>to</c>'s index, back
+        /// from <c>from</c>'s index to <c>to</c>'s index + 1.
+        /// </summary>
+        private static bool WalkTurnLineForward(IReadOnlyList<Vec3> line, TurnClosePoint from, TurnClosePoint to, out int points)
+        {
+            int n = line.Count, a = from.TurnLineIndex, b = to.TurnLineIndex;
+            int forwardPoints = ((b - a) % n + n) % n;
+            int backPoints = ((a - b) % n + n) % n;
+
+            double forward = 0, back = 0;
+            Vec3 at = from.ClosePt;
+            for (int k = 1; k <= forwardPoints; k++)
+            {
+                var p = line[(a + k) % n];
+                forward += GeometryMath.Distance(at, p);
+                at = p;
+            }
+            forward += GeometryMath.Distance(at, to.ClosePt);
+            at = from.ClosePt;
+            for (int k = 0; k < backPoints; k++)
+            {
+                var p = line[((a - k) % n + n) % n];
+                back += GeometryMath.Distance(at, p);
+                at = p;
+            }
+            back += GeometryMath.Distance(at, to.ClosePt);
+
+            bool walkForward = forward <= back;
+            points = walkForward ? forwardPoints : backPoints;
+            return walkForward;
         }
 
         private bool FindCurveOutTurnPoint(List<Vec3> nextCurve, TurnClosePoint startPt, bool isTurnLineSameWay)
