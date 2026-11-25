@@ -101,7 +101,7 @@ public class ToolPictureProfileTests
     [TestCase(null, Description = "saved before the setting")]
     [TestCase(0x1000000, Description = "not a colour")]
     [TestCase(-7)]
-    public void A_profile_without_a_colour_draws_the_pictures_own(int? stored)
+    public void A_profile_without_a_colour_is_red(int? stored)
     {
         ToolProfileJsonService.Save(_dir, "Old", new ConfigurationStore());
         var path = Path.Combine(_dir, "Old.json");
@@ -119,10 +119,10 @@ public class ToolPictureProfileTests
     }
 
     [Test]
-    public void A_new_tool_profile_draws_the_pictures_own_colours()
+    public void A_new_tool_profile_is_red()
     {
         var store = new ConfigurationStore();
-        store.Tool.PictureColor = 0xC8322B;
+        store.Tool.PictureColor = 0x3B8A3A; // the tool that was active before
         new TestToolProfileService(_dir).CreateDefaultProfile("New", store);
         Assert.That(store.Tool.PictureColor, Is.EqualTo(ToolConfig.DefaultPictureColor));
     }
