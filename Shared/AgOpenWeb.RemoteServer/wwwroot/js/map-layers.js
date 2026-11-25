@@ -301,6 +301,10 @@ function drawCoverageSk(canvas) {
 // tool, and the caps are butt so it doesn't run past the ends of a pass either (#325). Polylines
 // are broken at the near plane per vertex (see below). Reloaded fields have no perimeter
 // (graceful fall back to feather).
+// Tilted, the 0.6 m are on the ground: drawn in screen pixels, 0.6 m times pxPerM, the stroke
+// was 0.6 m only where pxPerM holds; in 3D the ground further away is smaller on the screen,
+// and there it reached metres past the worked area and the field's edge (a tester's tablet,
+// 25 Nov 2026).
 function drawCoverageEdgeSk(canvas) {
   if (EDGE_OFF || !coverageEdges || !coverageEdges.length) return;
   const p = SKP.covEdge || (SKP.covEdge = (() => {
@@ -309,12 +313,21 @@ function drawCoverageEdgeSk(canvas) {
   })());
   const c = covEdgeRgb;
   p.setColor(CK.Color((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, 1));
-  p.setStrokeWidth(Math.max(1, 0.6 * pxPerM));
+  // Seen from straight above (pitch 0) the ground's scale is the same all over the screen, so the
+  // stroke is drawn in screen pixels, 0.6 m times pxPerM (at least a pixel). Tilted, it is drawn
+  // in camera-relative metres under the ground's projection (perspM), so it is 0.6 m wide on the
+  // ground everywhere. From above the pixel path is kept: through the perspective matrix the
+  // zoomed-out top view drew slower on a software renderer; tilted, both ways cost the same.
+  const M = perspM, flat = Math.abs(M[12]) + Math.abs(M[13]) <= 1e-9 * Math.abs(M[15]);
+  p.setStrokeWidth(flat ? Math.max(1, 0.6 * pxPerM) : 0.6);
   // Per-vertex near-plane gate: a vertex at/behind the near plane (homogeneous w ≤ NEAR)
-  // projects through w2s to a huge/flipped coord, so a polyline crossing behind the camera
+  // projects to a huge/flipped coord, so a polyline crossing behind the camera
   // would shoot a stroke to infinity (seen on zoom/tilt). Break the polyline at those
   // vertices and draw each in-front run separately — no clipping math, no infinity lines.
-  const NEAR = 0.02;
+  // Tilted, NEAR is the near plane (w = 1): the stroke's sides, 0.3 m off its line, change w by
+  // under 0.3, so they stay in front too.
+  const NEAR = flat ? 0.02 : 1;
+  if (!flat) { canvas.save(); canvas.concat(M); }
   const flush = (cmds) => {
     if (cmds && cmds.length >= 6) { const path = CK.Path.MakeFromCmds(cmds); if (path) { canvas.drawPath(path, p); path.delete(); } }
   };
@@ -323,12 +336,14 @@ function drawCoverageEdgeSk(canvas) {
     let cmds = null;
     for (let i = 0; i < pl.length; i++) {
       if (pw(pl[i].e, pl[i].n) < NEAR) { flush(cmds); cmds = null; continue; } // behind near plane → break
-      const xy = w2s(pl[i].e, pl[i].n);
+      // From above: screen pixels. Tilted: metres from the camera, subtracted here in f64 (see buildScreenMatrix).
+      const xy = flat ? w2s(pl[i].e, pl[i].n) : [pl[i].e - camE, pl[i].n - camN];
       if (!cmds) cmds = [CK.MOVE_VERB, xy[0], xy[1]];
       else cmds.push(CK.LINE_VERB, xy[0], xy[1]);
     }
     flush(cmds);
   }
+  if (!flat) canvas.restore();
 }
 // Tool/section footprint — section bars perpendicular to the (dead-reckoned) tool
 // heading, coloured by ColorCode. Same geometry as the 2D toolFootprint().
