@@ -241,7 +241,6 @@ thread" stand-in, `IUiDispatcher`), coordinates services, and is driven only thr
 | `MainViewModel.Commands.Simulator.cs` | Simulator controls |
 | `MainViewModel.Commands.Configuration.cs` | Vehicle/tool configuration |
 | `MainViewModel.Commands.Wizards.cs` | Setup wizards |
-| `MainViewModel.Flags.cs` | Marker flags (the list is `FieldFlags`) |
 | `MainViewModel.YouTurn.cs` | U-turn path generation and following |
 | `MainViewModel.Guidance.cs` | Guidance algorithm orchestration |
 | `MainViewModel.GpsHandling.cs` | GPS data processing |
