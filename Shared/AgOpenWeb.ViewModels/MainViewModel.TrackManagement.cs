@@ -68,6 +68,7 @@ public partial class MainViewModel
                 ReportFailure("Open a field first");
                 return;
             }
+            if (RefusedWhilePlaying()) return;
             _recPathRecordingPoints.Clear();
             _lastRecPathPoint = null;
             IsRecordingPath = true;

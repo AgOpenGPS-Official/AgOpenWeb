@@ -50,6 +50,11 @@ public class RecordedPathOnMapTests
         return pts;
     }
 
+    private static IEnumerable<(double, double)> Points(IEnumerable<RecPathPoint> route) =>
+        route.Select(p => (p.Easting, p.Northing));
+
+    private static IEnumerable<(double, double)> Drawn(IReadOnlyList<Vec2Dto> line) => line.Select(p => (p.E, p.N));
+
     /// <summary>What MainViewModel.StartDrivingRecordedPath leaves in the state.</summary>
     private static List<Vec3> StartPlayback(ApplicationState state)
     {
@@ -75,7 +80,7 @@ public class RecordedPathOnMapTests
         Assert.That(scene.UTurnPath, Is.Not.Null, "the way to the path is drawn");
         Assert.That(scene.UTurnPath!.Select(p => (p.E, p.N)), Is.EqualTo(approach.Select(p => (p.Easting, p.Northing))));
         Assert.That(scene.RecordedPaths, Has.Count.EqualTo(1), "the path itself is drawn");
-        Assert.That(scene.RecordedPaths[0], Has.Count.EqualTo(200));
+        Assert.That(Drawn(scene.RecordedPaths[0]), Is.EqualTo(Points(Route())));
     }
 
     [Test]
@@ -96,6 +101,7 @@ public class RecordedPathOnMapTests
         var scene = projector.BuildScene(2);
         Assert.That(scene.UTurnPath, Is.Null);
         Assert.That(scene.RecordedPaths, Has.Count.EqualTo(1));
+        Assert.That(Drawn(scene.RecordedPaths[0]), Is.EqualTo(Points(Route())));
     }
 
     [Test]
@@ -111,7 +117,7 @@ public class RecordedPathOnMapTests
         Assert.That(picked, Is.Not.EqualTo(none));
         var scene = projector.BuildScene(1);
         Assert.That(scene.RecordedPaths, Has.Count.EqualTo(1));
-        Assert.That(scene.RecordedPaths[0][0].N, Is.EqualTo(20).Within(1e-9));
+        Assert.That(Drawn(scene.RecordedPaths[0]), Is.EqualTo(Points(Route())));
         Assert.That(scene.UTurnPath, Is.Null, "no way to it before playback, as AgOpenGPS");
 
         // Turn off (TurnOffRecordedPathCommand): the list cleared in place.
@@ -133,7 +139,32 @@ public class RecordedPathOnMapTests
         state.RecordedPath.RecordedPoints = reversed;
 
         Assert.That(projector.SceneFingerprint(), Is.Not.EqualTo(before));
-        Assert.That(projector.BuildScene(1).RecordedPaths[0][0].N, Is.EqualTo(20 + 199 * 0.5).Within(1e-9));
+        Assert.That(Drawn(projector.BuildScene(1).RecordedPaths[0]), Is.EqualTo(Points(reversed)));
+    }
+
+    [Test]
+    public void A_U_turn_path_left_from_before_Play_is_not_drawn_while_a_path_plays()
+    {
+        var (projector, state) = Make();
+        var turn = Enumerable.Range(0, 10).Select(i => new Vec3(5, i, 0)).ToList();
+        state.YouTurn.TurnPath = turn;
+        state.RecordedPath.RecordedPoints = Route();
+        var approach = StartPlayback(state);
+
+        Assert.That(Drawn(projector.BuildScene(1).UTurnPath!), Is.EqualTo(approach.Select(p => (p.Easting, p.Northing))));
+
+        // On the route: neither.
+        state.RecordedPath.IsFollowingDubinsToPath = false;
+        state.RecordedPath.IsFollowingRecPath = true;
+        state.RecordedPath.DubinsApproachPath.Clear();
+        Assert.That(projector.BuildScene(2).UTurnPath, Is.Null);
+
+        // Stopped: the U-turn layer is the U-turn's again, and the Scene is sent again for it.
+        long playing = projector.SceneFingerprint();
+        state.RecordedPath.IsFollowingRecPath = false;
+        state.RecordedPath.IsDrivingRecordedPath = false;
+        Assert.That(projector.SceneFingerprint(), Is.Not.EqualTo(playing));
+        Assert.That(projector.BuildScene(3).UTurnPath, Has.Count.EqualTo(10));
     }
 
     [Test]

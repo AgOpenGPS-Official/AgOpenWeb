@@ -163,12 +163,12 @@ public sealed class SceneProjector : System.IDisposable
             toolSections.Add(new SectionSpanDto(states[i].PositionLeft, states[i].PositionRight));
 
         // Planned U-turn path through the headland (when a turn is active). While a recorded path
-        // plays, the way from the tractor to it in its place, until the route starts (the Dubins
-        // approach the VM puts in State.RecordedPath; AgOpenGPS CRecordedPath.DrawDubins, the same
-        // green). The two never meet: no U-turn is planned while a recorded path plays.
+        // plays, no U-turn is planned or driven, and this is the way from the tractor to the path
+        // until the route starts (the Dubins approach the VM puts in State.RecordedPath; AgOpenGPS
+        // CRecordedPath.DrawDubins, the same green), never a turn left from before Play.
         IReadOnlyList<Vec2Dto>? uTurnPath = null;
-        var tp = _state.YouTurn.TurnPath?.ToArray();
-        if (tp is not { Length: >= 2 }) tp = RecordedPathApproach()?.ToArray();
+        var tp = _state.RecordedPath.IsDrivingRecordedPath
+            ? RecordedPathApproach()?.ToArray() : _state.YouTurn.TurnPath?.ToArray();
         if (tp is { Length: >= 2 })
             uTurnPath = tp.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
 
@@ -1127,9 +1127,10 @@ public sealed class SceneProjector : System.IDisposable
             h = h * 31 + (long)System.Math.Round(p0.Northing * 10);
         }
 
-        // Recorded path: the route in use (a new list per pick, reverse or recording; cleared in
-        // place when turned off) and the way to it (a new list per start, cleared in place when
-        // the route starts and at stop).
+        // Recorded path: playing or not (it takes the U-turn path's place), the route in use (a
+        // new list per pick, reverse or recording; cleared in place when turned off) and the way
+        // to it (a new list per start, cleared in place when the route starts and at stop).
+        h = h * 31 + (_state.RecordedPath.IsDrivingRecordedPath ? 1 : 0);
         var route = _state.RecordedPath.RecordedPoints;
         h = h * 31 + (route is null ? -1 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(route) * 31L + route.Count);
         var approach = RecordedPathApproach();
