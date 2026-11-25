@@ -110,7 +110,7 @@ public class ToolProfileService : IToolProfileService
         store.Tool.Overlap = 0.0;
         store.Tool.Offset = 0.0;
         store.Tool.Picture = Models.Configuration.ToolPicture.None;
-        store.Tool.PictureColor = Models.Configuration.ToolConfig.OwnColors;
+        store.Tool.PictureColor = Models.Configuration.ToolConfig.DefaultPictureColor;
         store.Tool.WorkingPointFromHitch = 0.0;
         store.Tool.TrailingHitchLength = 2.5;
         store.Tool.TankTrailingHitchLength = 3.0;

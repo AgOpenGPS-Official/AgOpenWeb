@@ -165,19 +165,19 @@ once when a U-turn lands on it. As a U-turn starts the plough turns over (`implS
 over about 3 s). Only the picture changes side: the painted strip stays where the tool settings
 put it.
 
-Colours are from the tester's machines where there were photos, else generic. A picture never
-carries a maker's name.
+Colours are from the tester's machines where there were photos, else the implement's colour
+(below). A picture never carries a maker's name.
 
-Tool › Type › *Colour on the map* (`ToolConfig.PictureColor`, 0xRRGGBB, or `ToolConfig.OwnColors`
--1 for the picture's own colours; `tool.pictureColor` as hex or `own`, saved with the tool
-profile, the Config frame's i32 after the picture) is shown once a picture is chosen. While a
-picture drawn from shapes is drawn, its paint (`IC.red`, `IC.green`, `IC.yellow`) is drawn in that
-colour and its darker parts (`IC.redD`, ...) in a shade of it (`implRecolour`, applied in `ip`);
-tyres, discs, tines and the grey frames and tanks keep theirs. A combine's header takes it in
-place of its own colour. The seed drill and the front sprayer are drawn from photos and keep
-theirs, and the panel says so. The list is plain colours by name (`IMPLEMENT_COLOURS` in
-`js/config-panels.js`), no maker's name, and a picker beside it for any other. A new tool profile
-has the pictures' own colours. Tests: `ToolPictureProfileTests`.
+Tool › Type › *Colour on the map* (`ToolConfig.PictureColor`, 0xRRGGBB, red by default:
+`ToolConfig.DefaultPictureColor`; `tool.pictureColor` as hex, saved with the tool profile, the
+Config frame's i32 after the picture) is shown once a picture is chosen. Every picture drawn from
+shapes is drawn in it: its paint (`IC.red`, `IC.green`, `IC.yellow`) in that colour and its darker
+parts (`IC.redD`, ...) in a shade of it (`implRecolour`, applied in `ip`); tyres, discs, tines and
+the grey frames and tanks keep theirs. A combine's header takes it too. The seed drill and the
+front sprayer are drawn from photos and keep their colours, and the panel says so. The list is
+plain colours by name (`IMPLEMENT_COLOURS` in `js/config-panels.js`), no maker's name, and a
+picker beside it for any other. A new tool profile, and one saved without a colour, has red.
+Tests: `ToolPictureProfileTests`.
 
 ## Checking a change
 

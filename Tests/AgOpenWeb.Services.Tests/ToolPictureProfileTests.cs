@@ -13,7 +13,7 @@ namespace AgOpenWeb.Services.Tests;
 /// <summary>The implement's picture on the map (Tool > Type > Picture on the map) is the
 /// tool profile's: the seed drill's profile shows the drill, the sprayer's the boom and its tank.
 /// A profile saved before it, or with a value this build does not know, shows the section bars. Its
-/// colour (Colour on the map) is the profile's too; without one the picture has its own colours.</summary>
+/// colour (Colour on the map) is the profile's too; without one it is red, the default.</summary>
 [TestFixture]
 public class ToolPictureProfileTests
 {
@@ -81,10 +81,10 @@ public class ToolPictureProfileTests
         Assert.That(store.Tool.Picture, Is.EqualTo(ToolPicture.None));
     }
 
-    [TestCase(0xC8322B)]
+    [TestCase(0x1B4F9C)]
     [TestCase(0x000000, Description = "black is a colour")]
     [TestCase(0xFFFFFF)]
-    [TestCase(ToolConfig.OwnColors)]
+    [TestCase(ToolConfig.DefaultPictureColor)]
     public void The_colour_is_saved_with_the_tool_profile(int colour)
     {
         var src = new ConfigurationStore();
@@ -115,7 +115,7 @@ public class ToolPictureProfileTests
         var dst = new ConfigurationStore();
         dst.Tool.PictureColor = 0x3B8A3A; // the tool that was active before
         Assert.That(ToolProfileJsonService.Load(_dir, "Old", dst), Is.True);
-        Assert.That(dst.Tool.PictureColor, Is.EqualTo(ToolConfig.OwnColors));
+        Assert.That(dst.Tool.PictureColor, Is.EqualTo(ToolConfig.DefaultPictureColor));
     }
 
     [Test]
@@ -124,7 +124,7 @@ public class ToolPictureProfileTests
         var store = new ConfigurationStore();
         store.Tool.PictureColor = 0xC8322B;
         new TestToolProfileService(_dir).CreateDefaultProfile("New", store);
-        Assert.That(store.Tool.PictureColor, Is.EqualTo(ToolConfig.OwnColors));
+        Assert.That(store.Tool.PictureColor, Is.EqualTo(ToolConfig.DefaultPictureColor));
     }
 
     private sealed class TestToolProfileService : ToolProfileService

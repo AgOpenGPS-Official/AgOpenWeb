@@ -489,8 +489,8 @@ public record ToolConfigDto(
     bool IsSteerSwitchEnabled, bool IsSteerSwitchManualSections,
     double TotalWidth,
     // The implement's picture on the map (ToolPicture: 0 none, then one value per picture) and its colour (0xRRGGBB,
-    // -1 the picture's own colours).
-    int Picture = 0, int PictureColor = -1);
+    // red by default: ToolConfig.DefaultPictureColor).
+    int Picture = 0, int PictureColor = 0xC8322B);
 
 /// <summary>U-Turn tab (ConfigStore.Guidance). Style: 0 Omega, 1 Sagitta.</summary>
 public record UturnConfigDto(int Style, double Extension, int Smoothing, double Radius, double DistanceFromBoundary);

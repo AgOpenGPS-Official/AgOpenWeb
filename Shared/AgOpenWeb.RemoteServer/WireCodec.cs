@@ -412,7 +412,7 @@ public static class WireCodec
         w.Write((byte)(t.IsSteerSwitchManualSections ? 1 : 0));
         w.Write(t.TotalWidth);         // f64
         w.Write(t.Picture);            // i32, the implement's picture on the map
-        w.Write(t.PictureColor);       // i32, its colour 0xRRGGBB, -1 its own colours
+        w.Write(t.PictureColor);       // i32, its colour 0xRRGGBB
         // U-Turn tab.
         var u = c.Uturn;
         w.Write(u.Style);              // i32

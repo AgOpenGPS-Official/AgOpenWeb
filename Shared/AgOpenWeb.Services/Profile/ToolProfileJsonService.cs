@@ -251,8 +251,8 @@ public static class ToolProfileJsonService
         // The picture on the map; missing or unknown = none.
         store.Tool.Picture = dto.Tool?.Picture is int pic && Enum.IsDefined(typeof(ToolPicture), pic)
             ? (ToolPicture)pic : ToolPicture.None;
-        // Its colour; missing or not a colour = the picture's own colours.
-        store.Tool.PictureColor = dto.Tool?.PictureColor ?? ToolConfig.OwnColors;
+        // Its colour; missing or not a colour = the default, red.
+        store.Tool.PictureColor = dto.Tool?.PictureColor ?? ToolConfig.DefaultPictureColor;
         // Overlay saved colors onto the full MaxSections-length array so older
         // 16-color profiles keep palette defaults for sections 17–64.
         if (dto.Tool?.SectionColors != null && dto.Tool.SectionColors.Length > 0)
@@ -382,7 +382,7 @@ public static class ToolProfileJsonService
         public uint[]? SectionColors { get; set; }
         /// <summary>The implement's picture on the map (<see cref="ToolPicture"/>).</summary>
         public int? Picture { get; set; }
-        /// <summary>The implement's colour on the map, 0xRRGGBB, or <see cref="ToolConfig.OwnColors"/>.</summary>
+        /// <summary>The implement's colour on the map, 0xRRGGBB.</summary>
         public int? PictureColor { get; set; }
     }
 

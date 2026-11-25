@@ -808,14 +808,15 @@ const implPics = {}; // loaded the first time a picture is drawn
 function implSprite(src) { return skSprite(implPics[src] || (implPics[src] = loadSprite(src))); }
 let implementPictureOn = false, implPicFailed = false;
 let implementStrip = { half: 1.0, ahead: 0 }; // the strip's half depth and its move ahead of the tool point (m)
-// The implement's colour (Tool > Type > Colour, tool.pictureColor 0xRRGGBB, -1 its own colours): while a
+// The implement's colour (Tool > Type > Colour on the map, tool.pictureColor 0xRRGGBB, red by default): while a
 // picture drawn from shapes is drawn, its paint (the reds, greens and yellows of IC) is drawn in that colour and its
 // darker parts in a darker shade of it (ip). Tyres, discs, tines, tanks and frames in grey keep theirs. The pictures
-// from photos (the seed drill, the front sprayer) are not recoloured; a combine's header takes it (headerFrameSk).
+// from photos (the seed drill, the front sprayer) keep their colours; a combine's header takes it (headerFrameSk).
+const IMPL_DEFAULT_COLOUR = 0xC8322B; // ToolConfig.DefaultPictureColor
 let implRecolour = null;
-function implColourChosen(tl) {
+function implColour(tl) {
   const c = tl && typeof tl.pictureColor === 'number' ? tl.pictureColor : -1;
-  return c >= 0 && c <= 0xFFFFFF ? c : null;
+  return c >= 0 && c <= 0xFFFFFF ? c : IMPL_DEFAULT_COLOUR;
 }
 function implementPictureSk(canvas) {
   implementPictureOn = false;
@@ -826,9 +827,9 @@ function implementPictureSk(canvas) {
   if (!pic || pic.type !== (tl.type | 0) || !pic.vehicles.includes(veh.type | 0)) return false;
   // A picture that fails is left out (the section bars instead), never the whole map: a throw in the frame's
   // draw leaves the map blank.
-  const saves = canvas.getSaveCount(), col = implColourChosen(tl);
+  const saves = canvas.getSaveCount(), col = implColour(tl);
   let drawn = null;
-  implRecolour = col === null ? null : { main: col, dark: hdrShade(col, 0.55) };
+  implRecolour = pic.photo ? null : { main: col, dark: hdrShade(col, 0.55) };
   try { drawn = pic.draw(canvas, tl, veh); }
   catch (e) { if (!implPicFailed) { implPicFailed = true; console.warn('implement picture:', e); } }
   finally { canvas.restoreToCount(saves); implRecolour = null; }
@@ -929,8 +930,7 @@ function hdrPoly(canvas, pts, fill, line) {
 }
 // The header's frame, its auger and the feeder house: shared by both headers. Returns the paints.
 function headerFrameSk(canvas, tl, veh, w, back) {
-  const vc = veh && typeof veh.color === 'number' ? veh.color & 0xFFFFFF : 0xFFFFFF, own = implColourChosen(tl);
-  const frame = own !== null ? own : vc === 0xFFFFFF ? 0x8C8C8C : vc;
+  const frame = implColour(tl);
   const P = {
     frame: hdrPaint('frame', frame), dark: hdrPaint('dark', hdrShade(frame, 0.55)),
     lightRgb: hdrShade(frame, 1.3), steel: hdrPaint('steel', 0x4A4A4A),
@@ -1005,7 +1005,9 @@ const IC = {
 };
 const implPaints = {};
 // The paint of the pictures drawn from shapes, and its darker parts: what the implement's colour replaces.
-const IMPL_PAINT = new Set([IC.red, IC.green, IC.yellow, 0xC0392B]), IMPL_PAINT_DARK = new Set([IC.redD, IC.greenD, IC.yellowD]);
+// The rake's tines (0x2F5E2F), the finger wheels (0xD8C27A, 0xB59A45, 0x6E5B22) and the roller's tine bar (0x5B4A2A) too.
+const IMPL_PAINT = new Set([IC.red, IC.green, IC.yellow, 0xC0392B, 0xD8C27A, 0xB59A45]),
+  IMPL_PAINT_DARK = new Set([IC.redD, IC.greenD, IC.yellowD, 0x2F5E2F, 0x6E5B22, 0x5B4A2A]);
 // A fill (no stroke width) or a stroke paint, made once per colour, alpha and width (all constants here).
 function ip(rgb, alpha = 1, stroke = 0) {
   if (implRecolour) rgb = IMPL_PAINT.has(rgb) ? implRecolour.main : IMPL_PAINT_DARK.has(rgb) ? implRecolour.dark : rgb;

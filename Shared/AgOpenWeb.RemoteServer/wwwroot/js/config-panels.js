@@ -16,8 +16,8 @@ wireTabStrip(tcPanel, 'tc-mac');
 tcHitchSel.addEventListener('change', () => cfgSend('tool.hitchType', tcHitchSel.value));
 // The picture list is rebuilt for the tool type unless it has the focus (open): give it back once picked.
 document.getElementById('tc-picsel').addEventListener('change', e => e.target.blur());
-// The implement's colour on the map (tool.pictureColor, 0xRRGGBB hex, or "own"): its own colours, a few
-// plain colours by name (no maker's name), or any colour from the picker beside the list.
+// The implement's colour on the map (tool.pictureColor, 0xRRGGBB hex; red by default): a few plain colours by
+// name (no maker's name), or any colour from the picker beside the list.
 const IMPLEMENT_COLOURS = [
   ['c8322b', () => tr('Red')], ['9b1b1e', () => tr('Dark red')], ['e0661b', () => tr('Orange')], ['e3b505', () => tr('Yellow')],
   ['7ab800', () => tr('Light green')], ['3b8a3a', () => tr('Green')], ['1f5a2a', () => tr('Dark green')],
@@ -27,8 +27,7 @@ const IMPLEMENT_COLOURS = [
 const tcPicCol = document.getElementById('tc-piccol'), tcPicColSel = document.getElementById('tc-piccolsel');
 function tcPicColOptions() {
   const add = (v, label) => { const o = document.createElement('option'); o.value = v; o.textContent = label; return o; };
-  tcPicColSel.replaceChildren(add('own', tr('Its own colours')), ...IMPLEMENT_COLOURS.map(([v, n]) => add(v, n())),
-    add('', tr('Another colour: pick it')));
+  tcPicColSel.replaceChildren(...IMPLEMENT_COLOURS.map(([v, n]) => add(v, n())), add('', tr('Another colour: pick it')));
 }
 tcPicColSel.addEventListener('change', () => {
   if (tcPicColSel.value) cfgSend('tool.pictureColor', tcPicColSel.value);
@@ -101,13 +100,16 @@ function populateToolCfg(force) {
   // follow the language).
   document.getElementById('tc-piccolrow').hidden = !(t.picture | 0);
   const picRow = IMPLEMENT_PICTURES.find(q => q.id === (t.picture | 0));
-  document.getElementById('tc-piccolhint').hidden = !(picRow && picRow.photo);
-  const pcol = typeof t.pictureColor === 'number' && t.pictureColor >= 0 ? t.pictureColor & 0xFFFFFF : -1;
+  // A picture from photos keeps its colours: the note instead of the list.
+  const photo = !!(picRow && picRow.photo);
+  document.getElementById('tc-piccolhint').hidden = !photo;
+  document.querySelector('#tc-piccolrow .vc-colourrow').style.display = photo ? 'none' : '';
+  const pcol = typeof t.pictureColor === 'number' && t.pictureColor >= 0 ? t.pictureColor & 0xFFFFFF : 0xC8322B;
   if (document.activeElement !== tcPicColSel) {
     tcPicColOptions();
-    tcPicColSel.value = pcol < 0 ? 'own' : IMPLEMENT_COLOURS.some(([v]) => parseInt(v, 16) === pcol) ? hex6(pcol).slice(1) : '';
+    tcPicColSel.value = IMPLEMENT_COLOURS.some(([v]) => parseInt(v, 16) === pcol) ? hex6(pcol).slice(1) : '';
   }
-  if (document.activeElement !== tcPicCol) tcPicCol.value = pcol < 0 ? '#c8322b' : hex6(pcol);
+  if (document.activeElement !== tcPicCol) tcPicCol.value = hex6(pcol);
   // A fixed tool hangs on the tractor's 3-point hitch (the vehicle's): the sum says where its
   // working point is from the rear axle (#547).
   if (!trailtbt) {

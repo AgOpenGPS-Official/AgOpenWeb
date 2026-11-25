@@ -164,10 +164,9 @@ public static partial class RemoteServerWiring
             // The implement's picture on the map: 0 none, then one value per picture (ToolPicture).
             case "tool.picture": if (I(out var pic) && System.Enum.IsDefined(typeof(AgOpenWeb.Models.Configuration.ToolPicture), pic))
                     tool.Picture = (AgOpenWeb.Models.Configuration.ToolPicture)pic; return;
-            // Its colour on the map: 0xRRGGBB as hex, or "own" for the picture's own colours.
+            // Its colour on the map: 0xRRGGBB as hex.
             case "tool.pictureColor":
-                if (string.Equals(val, "own", System.StringComparison.OrdinalIgnoreCase)) tool.PictureColor = AgOpenWeb.Models.Configuration.ToolConfig.OwnColors;
-                else if (int.TryParse(val, System.Globalization.NumberStyles.HexNumber, inv, out var pcol) && val.Length <= 6) tool.PictureColor = pcol;
+                if (int.TryParse(val, System.Globalization.NumberStyles.HexNumber, inv, out var pcol) && val.Length <= 6) tool.PictureColor = pcol;
                 return;
             case "tool.workingPointFromHitch": if (D(out var t1)) tool.WorkingPointFromHitch = t1; return;
             case "tool.trailingHitchLength": if (D(out var t2)) tool.TrailingHitchLength = t2; return;
