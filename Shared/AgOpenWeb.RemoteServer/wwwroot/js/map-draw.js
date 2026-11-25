@@ -808,6 +808,15 @@ const implPics = {}; // loaded the first time a picture is drawn
 function implSprite(src) { return skSprite(implPics[src] || (implPics[src] = loadSprite(src))); }
 let implementPictureOn = false, implPicFailed = false;
 let implementStrip = { half: 1.0, ahead: 0 }; // the strip's half depth and its move ahead of the tool point (m)
+// The implement's colour (Tool > Type > Colour, tool.pictureColor 0xRRGGBB, -1 its own colours): while a
+// picture drawn from shapes is drawn, its paint (the reds, greens and yellows of IC) is drawn in that colour and its
+// darker parts in a darker shade of it (ip). Tyres, discs, tines, tanks and frames in grey keep theirs. The pictures
+// from photos (the seed drill, the front sprayer) are not recoloured; a combine's header takes it (headerFrameSk).
+let implRecolour = null;
+function implColourChosen(tl) {
+  const c = tl && typeof tl.pictureColor === 'number' ? tl.pictureColor : -1;
+  return c >= 0 && c <= 0xFFFFFF ? c : null;
+}
 function implementPictureSk(canvas) {
   implementPictureOn = false;
   try { implWorkLeft(); } catch (e) { } // the way the work goes, followed with no picture shown too; never the map
@@ -817,11 +826,12 @@ function implementPictureSk(canvas) {
   if (!pic || pic.type !== (tl.type | 0) || !pic.vehicles.includes(veh.type | 0)) return false;
   // A picture that fails is left out (the section bars instead), never the whole map: a throw in the frame's
   // draw leaves the map blank.
-  const saves = canvas.getSaveCount();
+  const saves = canvas.getSaveCount(), col = implColourChosen(tl);
   let drawn = null;
+  implRecolour = col === null ? null : { main: col, dark: hdrShade(col, 0.55) };
   try { drawn = pic.draw(canvas, tl, veh); }
   catch (e) { if (!implPicFailed) { implPicFailed = true; console.warn('implement picture:', e); } }
-  finally { canvas.restoreToCount(saves); }
+  finally { canvas.restoreToCount(saves); implRecolour = null; }
   if (!drawn) return false;
   implementStrip = drawn;
   implementPictureOn = true;
@@ -919,8 +929,8 @@ function hdrPoly(canvas, pts, fill, line) {
 }
 // The header's frame, its auger and the feeder house: shared by both headers. Returns the paints.
 function headerFrameSk(canvas, tl, veh, w, back) {
-  const vc = veh && typeof veh.color === 'number' ? veh.color & 0xFFFFFF : 0xFFFFFF;
-  const frame = vc === 0xFFFFFF ? 0x8C8C8C : vc;
+  const vc = veh && typeof veh.color === 'number' ? veh.color & 0xFFFFFF : 0xFFFFFF, own = implColourChosen(tl);
+  const frame = own !== null ? own : vc === 0xFFFFFF ? 0x8C8C8C : vc;
   const P = {
     frame: hdrPaint('frame', frame), dark: hdrPaint('dark', hdrShade(frame, 0.55)),
     lightRgb: hdrShade(frame, 1.3), steel: hdrPaint('steel', 0x4A4A4A),
@@ -994,8 +1004,11 @@ const IC = {
   green: 0x3B8A3A, greenD: 0x1D4D1C, soil: 0x6A4A2C, soilD: 0x3F2A16, disc: 0xC9CED3,
 };
 const implPaints = {};
+// The paint of the pictures drawn from shapes, and its darker parts: what the implement's colour replaces.
+const IMPL_PAINT = new Set([IC.red, IC.green, IC.yellow, 0xC0392B]), IMPL_PAINT_DARK = new Set([IC.redD, IC.greenD, IC.yellowD]);
 // A fill (no stroke width) or a stroke paint, made once per colour, alpha and width (all constants here).
 function ip(rgb, alpha = 1, stroke = 0) {
+  if (implRecolour) rgb = IMPL_PAINT.has(rgb) ? implRecolour.main : IMPL_PAINT_DARK.has(rgb) ? implRecolour.dark : rgb;
   const key = rgb + '|' + alpha + '|' + stroke;
   let p = implPaints[key];
   if (!p) {
@@ -1912,14 +1925,15 @@ function planterTrailedPictureSk(canvas, tl, veh) {
 // The implement pictures, one row each (ToolPicture in ToolConfig.cs): the tool type it is made for (0 front,
 // 1 rear, 2 TBT, 3 trailing), the vehicle types it goes on (0 tractor, 1 harvester, 2 articulated), how it is
 // drawn, and its name and note in Tool > Type > Picture on the map, whose list shows the pictures of the tool
-// and vehicle type chosen. A combine carries only its header; an articulated tractor pulls big implements: the
-// trailed disc harrow, the ploughs, the four-rotor rake, the air seeders and the trailed planter only so far. A new
-// picture: a ToolPicture value, its icons or draw function (returning the section strip) and a row here.
+// and vehicle type chosen (photo: drawn from photos, it keeps its colours). A combine carries only its header; an
+// articulated tractor pulls big implements: the trailed disc harrow, the ploughs, the four-rotor rake, the air seeders
+// and the trailed planter only so far. A new picture: a ToolPicture value, its icons or draw function (returning the
+// section strip) and a row here.
 const IMPLEMENT_PICTURES = [
-  { id: 1, type: 3, vehicles: [0], draw: seedDrillPictureSk,
+  { id: 1, type: 3, vehicles: [0], draw: seedDrillPictureSk, photo: true,
     name: () => tr('Seed drill, semi-mounted (3 m, 19 rows)'),
     hint: () => tr('The headstock on the lower links, the drill turning about the drawbar pin (Vehicle hitch), drawn to scale.') },
-  { id: 2, type: 0, vehicles: [0], draw: frontSprayerPictureSk,
+  { id: 2, type: 0, vehicles: [0], draw: frontSprayerPictureSk, photo: true,
     name: () => tr('Front sprayer boom (8 m) + rear tank (600 L)'),
     hint: () => tr('The boom at the working point, its tank on the rear lower links (Vehicle rear 3-point hitch), drawn to scale.') },
   { id: 3, type: 0, vehicles: [1], draw: grainHeaderPictureSk,

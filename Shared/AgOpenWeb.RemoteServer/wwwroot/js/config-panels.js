@@ -16,6 +16,26 @@ wireTabStrip(tcPanel, 'tc-mac');
 tcHitchSel.addEventListener('change', () => cfgSend('tool.hitchType', tcHitchSel.value));
 // The picture list is rebuilt for the tool type unless it has the focus (open): give it back once picked.
 document.getElementById('tc-picsel').addEventListener('change', e => e.target.blur());
+// The implement's colour on the map (tool.pictureColor, 0xRRGGBB hex, or "own"): its own colours, a few
+// plain colours by name (no maker's name), or any colour from the picker beside the list.
+const IMPLEMENT_COLOURS = [
+  ['c8322b', () => tr('Red')], ['9b1b1e', () => tr('Dark red')], ['e0661b', () => tr('Orange')], ['e3b505', () => tr('Yellow')],
+  ['7ab800', () => tr('Light green')], ['3b8a3a', () => tr('Green')], ['1f5a2a', () => tr('Dark green')],
+  ['3a8dde', () => tr('Light blue')], ['1b4f9c', () => tr('Blue')], ['c7ccd1', () => tr('Silver')], ['8a9096', () => tr('Grey')],
+  ['2a2c2f', () => tr('Black')], ['f4f6f7', () => tr('White')],
+];
+const tcPicCol = document.getElementById('tc-piccol'), tcPicColSel = document.getElementById('tc-piccolsel');
+function tcPicColOptions() {
+  const add = (v, label) => { const o = document.createElement('option'); o.value = v; o.textContent = label; return o; };
+  tcPicColSel.replaceChildren(add('own', tr('Its own colours')), ...IMPLEMENT_COLOURS.map(([v, n]) => add(v, n())),
+    add('', tr('Another colour: pick it')));
+}
+tcPicColSel.addEventListener('change', () => {
+  if (tcPicColSel.value) cfgSend('tool.pictureColor', tcPicColSel.value);
+  else try { tcPicCol.showPicker(); } catch (_) { /* the picker beside the list */ }
+  tcPicColSel.blur();
+});
+tcPicCol.addEventListener('change', () => { cfgSend('tool.pictureColor', tcPicCol.value.slice(1)); tcPicCol.blur(); });
 tcSingleColor.addEventListener('change', () => cfgSend('tool.singleCoverageColor', tcSingleColor.value.slice(1)));
 document.getElementById('tc-resetpins').addEventListener('pointerdown', e => { e.stopPropagation(); cfgSend('machine.resetPins', '1'); });
 document.getElementById('tc-save').addEventListener('pointerdown', e => { e.stopPropagation(); saveProfile(); });
@@ -77,6 +97,17 @@ function populateToolCfg(force) {
       : cur ? cur.hint()
       : tr('Pick the implement to see it on the map, drawn to scale at its hitch points.');
   }
+  // Its colour: shown with a picture chosen; the list is made again unless it is open, as the picture list (its names
+  // follow the language).
+  document.getElementById('tc-piccolrow').hidden = !(t.picture | 0);
+  const picRow = IMPLEMENT_PICTURES.find(q => q.id === (t.picture | 0));
+  document.getElementById('tc-piccolhint').hidden = !(picRow && picRow.photo);
+  const pcol = typeof t.pictureColor === 'number' && t.pictureColor >= 0 ? t.pictureColor & 0xFFFFFF : -1;
+  if (document.activeElement !== tcPicColSel) {
+    tcPicColOptions();
+    tcPicColSel.value = pcol < 0 ? 'own' : IMPLEMENT_COLOURS.some(([v]) => parseInt(v, 16) === pcol) ? hex6(pcol).slice(1) : '';
+  }
+  if (document.activeElement !== tcPicCol) tcPicCol.value = pcol < 0 ? '#c8322b' : hex6(pcol);
   // A fixed tool hangs on the tractor's 3-point hitch (the vehicle's): the sum says where its
   // working point is from the rear axle (#547).
   if (!trailtbt) {

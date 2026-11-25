@@ -478,6 +478,20 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _picture, Enum.IsDefined(value) ? value : ToolPicture.None);
     }
 
+    /// <summary><see cref="PictureColor"/>: the picture drawn in its own colours.</summary>
+    public const int OwnColors = -1;
+    private int _pictureColor = OwnColors;
+    /// <summary>
+    /// The implement's colour on the map (0xRRGGBB), saved with the tool profile: the paint of a picture drawn from
+    /// shapes is drawn in it, and a combine's header takes it in place of its own. <see cref="OwnColors"/>
+    /// (the default, and anything that is not a colour) leaves each picture in its own colours. Drawing only.
+    /// </summary>
+    public int PictureColor
+    {
+        get => _pictureColor;
+        set => SetProperty(ref _pictureColor, value is >= 0 and <= 0xFFFFFF ? value : OwnColors);
+    }
+
     /// <summary>
     /// Gets the current tool type as a string for display
     /// </summary>

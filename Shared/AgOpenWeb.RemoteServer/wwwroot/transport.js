@@ -408,6 +408,7 @@ window.RemoteTransport = {
             isWorkSwitchEnabled: !!u8(), isWorkSwitchActiveLow: !!u8(), isWorkSwitchManualSections: !!u8(),
             isSteerSwitchEnabled: !!u8(), isSteerSwitchManualSections: !!u8(), totalWidth: f64(),
             picture: i32(), // the implement's picture on the map: 0 none, then one per picture (ToolPicture)
+            pictureColor: i32(), // its colour 0xRRGGBB, -1 the picture's own colours
           };
           const uturn = { style: i32(), extension: f64(), smoothing: i32(), radius: f64(), distanceFromBoundary: f64() };
           const tram = { passes: i32(), display: !!u8(), line: i32(), width: f64(), outerInverted: !!u8() };

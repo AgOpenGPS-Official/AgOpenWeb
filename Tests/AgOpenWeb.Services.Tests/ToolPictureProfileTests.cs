@@ -12,7 +12,8 @@ namespace AgOpenWeb.Services.Tests;
 
 /// <summary>The implement's picture on the map (Tool > Type > Picture on the map) is the
 /// tool profile's: the seed drill's profile shows the drill, the sprayer's the boom and its tank.
-/// A profile saved before it, or with a value this build does not know, shows the section bars.</summary>
+/// A profile saved before it, or with a value this build does not know, shows the section bars. Its
+/// colour (Colour on the map) is the profile's too; without one the picture has its own colours.</summary>
 [TestFixture]
 public class ToolPictureProfileTests
 {
@@ -78,6 +79,52 @@ public class ToolPictureProfileTests
         store.Tool.Picture = ToolPicture.SeedDrill;
         new TestToolProfileService(_dir).CreateDefaultProfile("New", store);
         Assert.That(store.Tool.Picture, Is.EqualTo(ToolPicture.None));
+    }
+
+    [TestCase(0xC8322B)]
+    [TestCase(0x000000, Description = "black is a colour")]
+    [TestCase(0xFFFFFF)]
+    [TestCase(ToolConfig.OwnColors)]
+    public void The_colour_is_saved_with_the_tool_profile(int colour)
+    {
+        var src = new ConfigurationStore();
+        src.Tool.Picture = ToolPicture.RakeFour;
+        src.Tool.PictureColor = colour;
+        ToolProfileJsonService.Save(_dir, "Implement", src);
+
+        var dst = new ConfigurationStore();
+        dst.Tool.PictureColor = 0x123456; // the tool before
+        Assert.That(ToolProfileJsonService.Load(_dir, "Implement", dst), Is.True);
+        Assert.That(dst.Tool.PictureColor, Is.EqualTo(colour));
+    }
+
+    [TestCase(null, Description = "saved before the setting")]
+    [TestCase(0x1000000, Description = "not a colour")]
+    [TestCase(-7)]
+    public void A_profile_without_a_colour_draws_the_pictures_own(int? stored)
+    {
+        ToolProfileJsonService.Save(_dir, "Old", new ConfigurationStore());
+        var path = Path.Combine(_dir, "Old.json");
+        var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        var tool = node["tool"]!.AsObject();
+        Assert.That(tool.ContainsKey("pictureColor"), Is.True, "the setting is written");
+        tool.Remove("pictureColor");
+        if (stored is int v) tool["pictureColor"] = v;
+        File.WriteAllText(path, node.ToJsonString());
+
+        var dst = new ConfigurationStore();
+        dst.Tool.PictureColor = 0x3B8A3A; // the tool that was active before
+        Assert.That(ToolProfileJsonService.Load(_dir, "Old", dst), Is.True);
+        Assert.That(dst.Tool.PictureColor, Is.EqualTo(ToolConfig.OwnColors));
+    }
+
+    [Test]
+    public void A_new_tool_profile_draws_the_pictures_own_colours()
+    {
+        var store = new ConfigurationStore();
+        store.Tool.PictureColor = 0xC8322B;
+        new TestToolProfileService(_dir).CreateDefaultProfile("New", store);
+        Assert.That(store.Tool.PictureColor, Is.EqualTo(ToolConfig.OwnColors));
     }
 
     private sealed class TestToolProfileService : ToolProfileService
