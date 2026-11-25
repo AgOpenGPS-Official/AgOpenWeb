@@ -897,63 +897,7 @@ public partial class MainViewModel
             StatusMessage = $"Skip rows: {UTurnSkipRows}";
         });
 
-        // Flags Commands
-        PlaceRedFlagCommand = new RelayCommand(() => PlaceFlag(FlagColor.Red));
-        PlaceGreenFlagCommand = new RelayCommand(() => PlaceFlag(FlagColor.Green));
-        PlaceYellowFlagCommand = new RelayCommand(() => PlaceFlag(FlagColor.Yellow));
-
-        PlaceFlagHereCommand = new RelayCommand(() => PlaceFlag(NextAutoColor()));
-
-        DeleteAllFlagsCommand = new RelayCommand(() =>
-        {
-            if (Flags.Count == 0)
-            {
-                ReportFailure("No flags to delete");
-                return;
-            }
-            ShowConfirmationDialog(
-                "Delete All Flags",
-                $"Delete all {Flags.Count} flags? This cannot be undone.",
-                () =>
-                {
-                    int count = Flags.Count;
-                    Flags.Clear();
-                    _nextFlagId = 1;
-                    UpdateFlagsOnMap();
-                    StatusMessage = $"Deleted {count} flags";
-                });
-        });
-
-        DeleteFlagCommand = new RelayCommand<object>(param =>
-        {
-            if (param is Flag flag)
-            {
-                Flags.Remove(flag);
-                UpdateFlagsOnMap();
-                StatusMessage = $"Deleted flag '{flag.Name}'";
-            }
-        });
-
-        ShowFlagListCommand = new RelayCommand(() =>
-        {
-            State.UI.ShowDialog(Models.State.DialogType.FlagList);
-        });
-
-        CloseFlagListCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
-        PlaceFlagOnClickCommand = new RelayCommand(() =>
-        {
-            IsPlaceFlagOnClickMode = !IsPlaceFlagOnClickMode;
-            StatusMessage = IsPlaceFlagOnClickMode
-                ? "Tap on map to place a flag (tap again to cancel)"
-                : "Flag placement cancelled";
-            // Close any open dialog so the map is visible for tapping
-            if (IsPlaceFlagOnClickMode)
-                State.UI.CloseDialog();
-        });
+        InitializeFlagCommands();
 
         // Section control commands
         ToggleManualModeCommand = new RelayCommand(() =>

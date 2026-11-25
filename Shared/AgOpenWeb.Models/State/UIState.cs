@@ -58,8 +58,6 @@ public class UIState : ObservableObject
                 OnPropertyChanged(nameof(IsHotkeyConfigDialogVisible));
                 OnPropertyChanged(nameof(IsAboutDialogVisible));
                 OnPropertyChanged(nameof(IsLogViewerDialogVisible));
-                OnPropertyChanged(nameof(IsFlagByLatLonDialogVisible));
-                OnPropertyChanged(nameof(IsFlagListDialogVisible));
                 OnPropertyChanged(nameof(IsViewSettingsDialogVisible));
                 OnPropertyChanged(nameof(IsImportTracksDialogVisible));
                 OnPropertyChanged(nameof(IsHelpDialogVisible));
@@ -106,8 +104,6 @@ public class UIState : ObservableObject
     public bool IsHotkeyConfigDialogVisible => ActiveDialog == DialogType.HotkeyConfig;
     public bool IsAboutDialogVisible => ActiveDialog == DialogType.About;
     public bool IsLogViewerDialogVisible => ActiveDialog == DialogType.LogViewer;
-    public bool IsFlagByLatLonDialogVisible => ActiveDialog == DialogType.FlagByLatLon;
-    public bool IsFlagListDialogVisible => ActiveDialog == DialogType.FlagList;
     public bool IsViewSettingsDialogVisible => ActiveDialog == DialogType.ViewSettings;
     public bool IsImportTracksDialogVisible => ActiveDialog == DialogType.ImportTracks;
     public bool IsHelpDialogVisible => ActiveDialog == DialogType.Help;
@@ -270,8 +266,6 @@ public enum DialogType
     HotkeyConfig,
     About,
     LogViewer,
-    FlagByLatLon,
-    FlagList,
     ViewSettings,
     ImportTracks,
     Help,

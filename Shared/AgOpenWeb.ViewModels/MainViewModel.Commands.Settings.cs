@@ -113,25 +113,6 @@ public partial class MainViewModel
             RefreshLogEntries();
         });
 
-        // Flag By Lat/Lon (#23)
-        ShowFlagByLatLonDialogCommand = new RelayCommand(() =>
-        {
-            FlagLatitudeInput = "";
-            FlagLongitudeInput = "";
-            FlagByLatLonError = "";
-            State.UI.ShowDialog(Models.State.DialogType.FlagByLatLon);
-        });
-
-        CloseFlagByLatLonDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
-        PlaceFlagByLatLonCommand = new RelayCommand(() =>
-        {
-            PlaceFlagAtLatLon();
-        });
-
         // View All Settings (#29)
         ShowViewSettingsDialogCommand = new RelayCommand(() =>
         {
@@ -551,77 +532,6 @@ public partial class MainViewModel
     public ICommand? OffsetFixEastCommand { get; private set; }
     public ICommand? OffsetFixWestCommand { get; private set; }
     public ICommand? OffsetFixZeroCommand { get; private set; }
-}
-
-// --- Flag By Lat/Lon (#23) ---
-public partial class MainViewModel
-{
-    private string _flagLatitudeInput = "";
-    public string FlagLatitudeInput
-    {
-        get => _flagLatitudeInput;
-        set => SetProperty(ref _flagLatitudeInput, value);
-    }
-
-    private string _flagLongitudeInput = "";
-    public string FlagLongitudeInput
-    {
-        get => _flagLongitudeInput;
-        set => SetProperty(ref _flagLongitudeInput, value);
-    }
-
-    private string _flagByLatLonError = "";
-    public string FlagByLatLonError
-    {
-        get => _flagByLatLonError;
-        set => SetProperty(ref _flagByLatLonError, value);
-    }
-
-    private void PlaceFlagAtLatLon()
-    {
-        if (!double.TryParse(FlagLatitudeInput, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double lat) ||
-            lat < -90 || lat > 90)
-        {
-            FlagByLatLonError = "Invalid latitude (must be -90 to 90)";
-            return;
-        }
-
-        if (!double.TryParse(FlagLongitudeInput, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double lon) ||
-            lon < -180 || lon > 180)
-        {
-            FlagByLatLonError = "Invalid longitude (must be -180 to 180)";
-            return;
-        }
-
-        if (State.Field.OriginLatitude == 0 && State.Field.OriginLongitude == 0 &&
-            Latitude == 0 && Longitude == 0)
-        {
-            FlagByLatLonError = "No field or GPS origin available";
-            return;
-        }
-
-        // Use field origin if available, else current GPS position as origin
-        double originLat = State.Field.OriginLatitude != 0 ? State.Field.OriginLatitude : Latitude;
-        double originLon = State.Field.OriginLongitude != 0 ? State.Field.OriginLongitude : Longitude;
-
-        var converter = new Models.Base.GeoConversion(originLat, originLon);
-        var local = converter.ToLocal(lat, lon);
-
-        var id = _nextFlagId++;
-        var flag = new Flag(local.Easting, local.Northing, FlagColor.Red, id, $"Flag {id}");
-        Flags.Add(flag);
-        UpdateFlagsOnMap();
-        StatusMessage = $"Flag '{flag.Name}' placed at {lat:F6}, {lon:F6}";
-        FlagByLatLonError = "";
-
-        State.UI.CloseDialog();
-    }
-
-    public ICommand? ShowFlagByLatLonDialogCommand { get; private set; }
-    public ICommand? CloseFlagByLatLonDialogCommand { get; private set; }
-    public ICommand? PlaceFlagByLatLonCommand { get; private set; }
 }
 
 // --- View All Settings (#29) ---

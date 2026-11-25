@@ -2404,36 +2404,7 @@ public partial class MainViewModel : ObservableObject
     public bool EnableABClickSelection => CurrentABCreationMode == ABCreationMode.DrawAB ||
                                           CurrentABCreationMode == ABCreationMode.DriveAB ||
                                           CurrentABCreationMode == ABCreationMode.Curve ||
-                                          CurrentABCreationMode == ABCreationMode.DrawCurve ||
-                                          _isPlaceFlagOnClickMode;
-
-    private bool _isPlaceFlagOnClickMode;
-    public bool IsPlaceFlagOnClickMode
-    {
-        get => _isPlaceFlagOnClickMode;
-        set
-        {
-            SetProperty(ref _isPlaceFlagOnClickMode, value);
-            OnPropertyChanged(nameof(EnableABClickSelection));
-        }
-    }
-
-    /// <summary>
-    /// Place a flag at the given world coordinates (from map click).
-    /// </summary>
-    public void PlaceFlagAtWorldPosition(double easting, double northing, FlagColor? color = null)
-    {
-        if (!FieldIsOpen()) return;
-        var actualColor = color ?? NextAutoColor();
-        var id = _nextFlagId++;
-        var flag = new Flag(easting, northing, actualColor, id, $"Flag {id}");
-        Flags.Add(flag);
-        UpdateFlagsOnMap();
-        StatusMessage = $"{actualColor} flag '{flag.Name}' at E:{easting:F1} N:{northing:F1}";
-
-        // Exit flag click mode after placing
-        IsPlaceFlagOnClickMode = false;
-    }
+                                          CurrentABCreationMode == ABCreationMode.DrawCurve;
 
     public string ABCreationInstructions
     {
@@ -2661,19 +2632,6 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(TramLineCountDisplay));
     }
 
-    // Flag markers
-    private int _nextFlagId = 1;
-    public ObservableCollection<Flag> Flags { get; } = new();
-
-    private FlagColor NextAutoColor()
-    {
-        var allColors = Enum.GetValues<FlagColor>();
-        var usedColors = Flags.Select(f => f.FlagColor).ToHashSet();
-        foreach (var c in allColors)
-            if (!usedColors.Contains(c)) return c;
-        return allColors[Flags.Count % allColors.Length];
-    }
-
     /// <summary>
     /// Tracks, flags and tram systems belong to a field: made with none open they stayed in
     /// the lists and were saved into the next field opened (AgOpenGPS shows these buttons only
@@ -2693,57 +2651,6 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private bool HasGpsPosition(double easting, double northing) =>
         easting != 0 || northing != 0 || _gpsService.IsGpsDataOk();
-
-    private void PlaceFlag(FlagColor color)
-    {
-        if (!FieldIsOpen()) return;
-        if (!HasGpsPosition(Easting, Northing))
-        {
-            ReportFailure("No GPS position - cannot place flag");
-            return;
-        }
-
-        var id = _nextFlagId++;
-        var flag = new Flag(Easting, Northing, color, id, $"Flag {id}");
-        Flags.Add(flag);
-        UpdateFlagsOnMap();
-        StatusMessage = $"{color} flag '{flag.Name}' at E:{Easting:F1} N:{Northing:F1}";
-    }
-
-    public void UpdateFlagsOnMap()
-    {
-        var flags = Flags.Select(f =>
-            (f.Easting, f.Northing, f.FlagColor.ToString(), f.Name)).ToList();
-        _mapService.SetFlags(flags);
-        // Mirror a render snapshot into FieldState (the SoT the web-UI projector reads).
-        State.Field.Flags = Flags
-            .Select(f => new Models.State.FlagMarker(f.Easting, f.Northing, Flag.ColorToHex(f.FlagColor), f.Name))
-            .ToList();
-        SaveFlagsToField();
-    }
-
-    // Set while flags are being (re)loaded or cleared with the field, so UpdateFlagsOnMap
-    // doesn't write a half-loaded list — or an empty one over the file on close.
-    private bool _suppressFlagSave;
-
-    /// <summary>
-    /// Persist the open field's flags to Flags.txt (#107: flags were never saved, so they
-    /// vanished on restart). Every flag change goes through UpdateFlagsOnMap, which calls this.
-    /// </summary>
-    private void SaveFlagsToField()
-    {
-        if (_suppressFlagSave || !IsFieldOpen) return;
-        var dir = _fieldService.ActiveField?.DirectoryPath;
-        if (string.IsNullOrEmpty(dir)) return;
-        try
-        {
-            Services.GeoJson.GeoJsonFieldService.SaveFlags(dir, Flags.ToList());
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "[Flags] Failed to save flags");
-        }
-    }
 
     /// <summary>
     /// Export the open field as ISOXML v4 to &lt;field&gt;/zISOXML/v4, like AgOpenGPS does on field
@@ -2884,63 +2791,6 @@ public partial class MainViewModel : ObservableObject
         if (strips is not { Count: > 0 } || !IsFieldOpen || string.IsNullOrEmpty(dir)) return;
         try { Services.GeoJson.GeoJsonFieldService.AppendContours(dir, strips); }
         catch (Exception ex) { _logger.LogWarning(ex, "[Contour] Failed to save contours"); }
-    }
-
-    /// <summary>Replace the flags with the field's (empty when <paramref name="fieldPath"/> is null).</summary>
-    private void LoadFlagsFromField(string? fieldPath)
-    {
-        _suppressFlagSave = true;
-        try
-        {
-            Flags.Clear();
-            if (!string.IsNullOrEmpty(fieldPath))
-            {
-                try
-                {
-                    foreach (var f in Services.GeoJson.GeoJsonFieldService.LoadFlags(fieldPath)) Flags.Add(f);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "[Flags] Failed to load flags");
-                }
-            }
-            _nextFlagId = Flags.Count == 0 ? 1 : Flags.Max(f => f.UniqueNumber) + 1;
-            UpdateFlagsOnMap();
-        }
-        finally { _suppressFlagSave = false; }
-    }
-
-    // ---- Remote/web flag-list operations (index into Flags, matching the projected list) ----
-    public void RenameFlagAt(int index, string name)
-    {
-        if (index < 0 || index >= Flags.Count || string.IsNullOrWhiteSpace(name)) return;
-        Flags[index].Name = name.Trim();
-        UpdateFlagsOnMap();
-    }
-
-    public void SetFlagColorAt(int index, FlagColor color)
-    {
-        if (index < 0 || index >= Flags.Count) return;
-        Flags[index].FlagColor = color;
-        UpdateFlagsOnMap();
-    }
-
-    public void DeleteFlagAt(int index)
-    {
-        if (index < 0 || index >= Flags.Count) return;
-        var f = Flags[index];
-        Flags.Remove(f);
-        UpdateFlagsOnMap();
-        StatusMessage = $"Deleted flag '{f.Name}'";
-    }
-
-    public void DeleteAllFlagsRemote()
-    {
-        int count = Flags.Count;
-        Flags.Clear();
-        _nextFlagId = 1;
-        UpdateFlagsOnMap();
-        StatusMessage = $"Deleted {count} flags";
     }
 
     /// <summary>Delete every saved track without asking (the web client has already
@@ -4500,17 +4350,6 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ToggleYouSkipCommand { get; private set; }
     public ICommand? ToggleUTurnSkipRowsCommand { get; private set; }
     public ICommand? CycleUTurnSkipRowsCommand { get; private set; }
-
-    // Flags Commands
-    public ICommand? PlaceRedFlagCommand { get; private set; }
-    public ICommand? PlaceGreenFlagCommand { get; private set; }
-    public ICommand? PlaceYellowFlagCommand { get; private set; }
-    public ICommand? DeleteAllFlagsCommand { get; private set; }
-    public ICommand? DeleteFlagCommand { get; private set; }
-    public ICommand? PlaceFlagOnClickCommand { get; private set; }
-    public ICommand? PlaceFlagHereCommand { get; private set; }
-    public ICommand? ShowFlagListCommand { get; private set; }
-    public ICommand? CloseFlagListCommand { get; private set; }
 
     // Right Navigation Panel Commands
     public ICommand? ToggleContourModeCommand { get; private set; }
