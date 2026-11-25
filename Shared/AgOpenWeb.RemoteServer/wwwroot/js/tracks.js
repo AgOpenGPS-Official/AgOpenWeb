@@ -678,15 +678,13 @@ document.getElementById('dlg-quickab').querySelectorAll('[data-qab]').forEach(b 
   const m = b.dataset.qab;
   if (m === 'aPlus' || m === 'driveAB' || m === 'recordCurve') transport.send('track.refSide|' + qabSide);
   if (m === 'aPlus') {
-    // A+ builds an AB line from the vehicle's current position + heading. It needs a GPS
-    // fix; the host bails silently without one, so give feedback here (StatusMessage isn't
-    // on the wire). flashHint after a tick so it isn't cleared by the dialog close.
-    const p = tick && tick.pose;
-    if (!p || (!p.e && !p.n)) setTimeout(() => flashHint(tr('A+ needs a GPS position — start the simulator or GPS')), 0);
-    else {
-      const v = qabHeading.value.trim();
-      transport.send('track.aPlus' + (v !== '' && isFinite(+v) ? '|' + (+v) : ''));
-    }
+    // A+ builds an AB line from the vehicle's position and heading. Whether there is a
+    // position is the host's to say (MainViewModel.HasGpsPosition), and it tells the operator
+    // when there is none. The page used to judge it from the pose, and took east 0, north 0
+    // for "no GPS": that is the field's origin, where the tractor stands when the field was
+    // just created, so A+ made no line until it had moved (#931).
+    const v = qabHeading.value.trim();
+    transport.send('track.aPlus' + (v !== '' && isFinite(+v) ? '|' + (+v) : ''));
   }
   else if (m === 'latLonHeading' || m === 'latLonAB' || m === 'latLonPivot') openLatLonLine(m);
   else if (m === 'recordPivot') startRecordCurve(true);

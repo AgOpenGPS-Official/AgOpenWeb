@@ -47,6 +47,27 @@ public partial class MainViewModel
     }
 
     /// <summary>The trip distance starts again; the next fix is its first point.</summary>
+    private Services.Isobus.IsobusProcessDataSender? _isobusProcessData;
+
+    /// <summary>
+    /// PGN 242 to the ISOBUS task controller with each fix while one is heard, as AgOpenGPS
+    /// (#921): the speed (negative in reverse), the trip distance above, and the distance off
+    /// the line while one is guided on. Its tractor ECU has the speed from nowhere else.
+    /// </summary>
+    internal void SendIsobusProcessData(AgOpenWeb.Models.State.GpsCycleResult result)
+    {
+        _isobusProcessData ??= new Services.Isobus.IsobusProcessDataSender(_udpService);
+        // AgOpenGPS's guidanceLineDistanceOff: the distance off the line in mm, rounded away
+        // from zero. 32000 is its "no line" number (the guidance service gives it too): not sent.
+        int? offLine = null;
+        if (result.Guidance is { IsGuidanceActive: true } g && !double.IsNaN(g.CrossTrackError))
+        {
+            double mm = Math.Round(g.CrossTrackError * 1000.0, MidpointRounding.AwayFromZero);
+            if (Math.Abs(mm) < 32000) offLine = (int)mm;
+        }
+        _isobusProcessData.Send(result.Speed, result.IsReverse, TripDistanceMeters, offLine);
+    }
+
     internal void RestartTripDistance()
     {
         TripDistanceMeters = 0;

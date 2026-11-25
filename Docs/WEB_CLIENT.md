@@ -106,6 +106,10 @@ doesn't exist.
    weight, not a font of its own (numbers may use `ui-monospace`, as `.cfg-num`). Text with no font
    of its own was in the browser's serif (Times New Roman) and buttons in its Arial before the body
    set one (Roll Correction, GPS Offset Fix, Recorded Path, the chart titles). Test: `PageFontTests`.
+   `.ln-panel`'s max-width and max-height keep a panel on the screen at a bigger UI size, and it
+   scrolls: give it no `overflow: hidden` and no max-height of its own. A panel with bars that
+   must stay (AutoSteer's title and Set/Act/Err bars) scrolls the part between them (`.as-body`).
+   Test: `PanelFitTests`.
 3. **Code** in the `js/` file for that feature, or a new one: open it with
    `lnOpen('<id>', '<nav button id>', populate)`, fill it from `config` / `statusBar` / `scene`,
    send changes with `cfgSend('<section>.<key>', value)` (a `config.set`) or

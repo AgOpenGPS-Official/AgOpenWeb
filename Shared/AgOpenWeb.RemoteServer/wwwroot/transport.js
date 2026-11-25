@@ -261,6 +261,13 @@ window.RemoteTransport = {
             ntripSession = { usingFallback: !!u8(), mainIsBack: !!u8(), hasFallback: !!u8(), profilePerField: !!u8(),
               state: u8(), lastError: i32(), attempts: i32(), retrySeconds: f32(), notice: str(), profile: str(), service: str() };
           }
+          // The data quality sensors (append-only, #922). finding: 0 no data, 1 even, 2 gaps,
+          // 3 bursts, 4 in order, 5 out of order, 6 at rate, 7 slow, 8 whole, 9 damaged; nominalHz
+          // 0 = not known (7: the rate expected); amount: per cent missing (gaps), the number
+          // in the last minute (out of order, damaged).
+          const dataQuality = [];
+          for (let k = u8(); k > 0; k--)
+            dataQuality.push({ name: str(), finding: u8(), faulty: !!u8(), rateHz: f32(), nominalHz: f32(), amount: f32() });
           handlers.onStatusBar && handlers.onStatusBar({
             fixQuality, fixText, age, sats, isMetric,
             gpsOk, imuOk, autoSteerOk, machineOk, imuIp, autoSteerIp, machineIp,
@@ -272,7 +279,7 @@ window.RemoteTransport = {
             gpsIp, moduleSubnet, hostIps, ntripConnected, ntripStatus, ntripBytes, ntripDestination, ntripUnicast, rtcmBroadcast, ntripEnabled, ntripTestStatus,
             simPanelVisible, driftEasting, driftNorthing, unsavedCoveragePrompt,
             devOverlay, gpsToPgnLatencyMs, gpsSentence, dualHeadingMissing, ntripRtcm, systemData,
-            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet, ntripSession,
+            gpsLost, isobus, fieldData, sendCorrectedPosition, scanReplySubnet, ntripSession, dataQuality,
           });
           break;
         }

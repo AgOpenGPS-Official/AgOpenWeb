@@ -1007,6 +1007,7 @@ public partial class MainViewModel : ObservableObject
                     UpdateIsobusSectionCount(isobus);
                 }
                 UpdateCorrectionsUnused();
+                UpdateDataQuality();
 
                 // Update centralized state (single source of truth)
                 State.Connections.IsAutoSteerDataOk = steerOk;
@@ -1483,45 +1484,11 @@ public partial class MainViewModel : ObservableObject
     // Field statistics properties for UI binding
     public string WorkedAreaDisplay => FormatArea(_coverageMapService.TotalWorkedArea);
 
-    /// <summary>
-    /// Workable area in m²: boundary area minus headland area.
-    /// </summary>
-    private double WorkableAreaSqM
-    {
-        get
-        {
-            var boundary = State.Field.CurrentBoundary;
-            double totalSqM = (boundary?.AreaHectares ?? 0) * 10000;
-            if (totalSqM <= 0) return 0;
-
-            // Subtract headland area if headland exists
-            var headland = State.Field.HeadlandLine;
-            if (headland != null && headland.Count >= 3)
-            {
-                double headlandArea = Math.Abs(PolygonArea(headland));
-                return headlandArea; // Headland polygon IS the cultivated area
-            }
-            return totalSqM;
-        }
-    }
-
-    private static double PolygonArea(System.Collections.Generic.List<Models.Base.Vec3> polygon)
-    {
-        double area = 0;
-        for (int i = 0; i < polygon.Count; i++)
-        {
-            int j = (i + 1) % polygon.Count;
-            area += polygon[i].Easting * polygon[j].Northing;
-            area -= polygon[j].Easting * polygon[i].Northing;
-        }
-        return area / 2.0;
-    }
-
     public string BoundaryAreaDisplay
     {
         get
         {
-            double areaSqM = WorkableAreaSqM;
+            double areaSqM = FieldBoundaryAreaSqM;
             if (areaSqM > 0)
             {
                 return FormatArea(areaSqM);
@@ -1534,11 +1501,14 @@ public partial class MainViewModel : ObservableObject
     {
         get
         {
-            double workableArea = WorkableAreaSqM;
-            if (workableArea > 0)
+            double fieldArea = FieldBoundaryAreaSqM;
+            if (fieldArea > 0)
             {
+                // AgOpenGPS CFieldData.WorkedAreaRemainPercentage: the field less its inner boundaries,
+                // not the headland (the worked area counts the headland passes too). Never under 0, as
+                // the field data card's Remaining (ours: AgOpenGPS goes below 0 with overlap).
                 double workedArea = _coverageMapService.TotalWorkedArea;
-                return ((workableArea - workedArea) * 100 / workableArea);
+                return Math.Max(0, (fieldArea - workedArea) * 100 / fieldArea);
             }
             return 100;
         }
@@ -1569,7 +1539,7 @@ public partial class MainViewModel : ObservableObject
     {
         get
         {
-            double remaining = WorkableAreaSqM - _coverageMapService.TotalWorkedArea;
+            double remaining = FieldBoundaryAreaSqM - _coverageMapService.TotalWorkedArea;
             return FormatArea(Math.Max(0, remaining));
         }
     }
@@ -1579,9 +1549,9 @@ public partial class MainViewModel : ObservableObject
     {
         get
         {
-            double workable = WorkableAreaSqM;
-            if (workable <= 0) return 0;
-            return Math.Clamp((_coverageMapService.TotalWorkedArea / workable) * 100.0, 0, 100);
+            double fieldArea = FieldBoundaryAreaSqM;
+            if (fieldArea <= 0) return 0;
+            return Math.Clamp((_coverageMapService.TotalWorkedArea / fieldArea) * 100.0, 0, 100);
         }
     }
 
@@ -1599,7 +1569,7 @@ public partial class MainViewModel : ObservableObject
         {
             double rateSqMPerHour = Speed * 3600 * ToolWidth;
             if (rateSqMPerHour <= 0) return "∞";
-            double remainingSqM = Math.Max(0, WorkableAreaSqM - _coverageMapService.TotalWorkedArea);
+            double remainingSqM = Math.Max(0, FieldBoundaryAreaSqM - _coverageMapService.TotalWorkedArea);
             double hours = remainingSqM / rateSqMPerHour;
             return $"{hours:F1}";
         }

@@ -105,7 +105,6 @@
   "4WD / Articulated": "4WD / Articulado",
   "A switch or button wired to the steer module. When set, it engages and disengages AutoSteer (and a module kickout disengages it).": "Interruptor ou botão ligado ao steer module. Quando definido, ativa e desativa AutoSteer (e um solavanco desativa o módulo).",
   "A+ Line": "Linha A+",
-  "A+ needs a GPS position — start the simulator or GPS": "A+ necessita de posição GPS - inicie o simulador ou GPS",
   "A/D converter": "Conversor A/D",
   "AB": "AB",
   "AB line along the longest boundary edge": "Linha AB ao longo da maior linha de limite",

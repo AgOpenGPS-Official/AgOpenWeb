@@ -54,7 +54,7 @@ public class AutoSteerService : IAutoSteerService
     private long _parseFailures;
 
     /// <inheritdoc />
-    public AgOpenWeb.Services.Gps.GpsSentenceMonitor GpsSentences { get; } = new();
+    public AgOpenWeb.Services.Gps.GpsSentenceMonitor GpsSentences { get; }
 
     /// <inheritdoc />
     public AgOpenWeb.Services.Gps.NmeaLineSplitter GpsLines { get; } = new();
@@ -161,6 +161,7 @@ public class AutoSteerService : IAutoSteerService
         _udpService = udpService;
         _gpsService = gpsService;
         _configStore = configStore;
+        GpsSentences = new AgOpenWeb.Services.Gps.GpsSentenceMonitor(() => _configStore.Connections.GpsUpdateRate);
 
         // Initialize state
         _state = new VehicleState();

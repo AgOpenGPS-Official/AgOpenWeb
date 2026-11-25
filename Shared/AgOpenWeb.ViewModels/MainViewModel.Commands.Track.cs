@@ -1521,11 +1521,14 @@ public partial class MainViewModel
                 SaveTracksToFile(); // persist now (#107), before selecting — see A+ above
                 SelectedTrack = SavedTracks[SavedTracks.Count - 1];
             }
-            StatusMessage = created > 0
-                ? (curves > 0
+            if (created > 0)
+                StatusMessage = curves > 0
                     ? $"Created {created - curves} AB lines and {curves} curves from boundary edges"
-                    : $"Created {created} AB lines from boundary edges")
-                : "Could not detect distinct boundary edges";
+                    : $"Created {created} AB lines from boundary edges";
+            else
+                // Said to the operator: the status message is not shown, and the tap looked
+                // as if it had done nothing (#933).
+                ReportFailure("No edges found: this boundary has no corners. Use Boundary Curve for a field without them");
         });
 
         // Map zoom commands

@@ -868,6 +868,22 @@ public static class WireCodec
             WriteStr(w, ns.Profile);
             WriteStr(w, ns.Service);
         }
+        // The data quality sensors (append-only, #922): [u8 n][ per sensor: str name, u8 finding
+        // (DataFinding: 0 no data, 1 even, 2 gaps, 3 bursts, 4 in order, 5 out of order, 6 at rate,
+        // 7 slow, 8 whole, 9 damaged), u8 faulty, f32 rate Hz, f32 nominal Hz (0 = not known; 7: the
+        // rate expected), f32 amount (per cent missing, or a count) ].
+        var dq = s.DataQuality;
+        int dqCount = Math.Min(dq?.Count ?? 0, 255);
+        w.Write((byte)dqCount);
+        for (int i = 0; i < dqCount; i++)
+        {
+            WriteStr(w, dq![i].Name);
+            w.Write((byte)dq[i].Finding);
+            w.Write((byte)(dq[i].Faulty ? 1 : 0));
+            w.Write((float)dq[i].RateHz);
+            w.Write((float)dq[i].NominalHz);
+            w.Write((float)dq[i].Amount);
+        }
         return ms.ToArray();
     }
 

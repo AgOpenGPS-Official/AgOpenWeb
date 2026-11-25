@@ -253,7 +253,7 @@ const SB = {
   bar: document.getElementById('statusbar'),
   pause: document.getElementById('sb-pause'),
   fixDot: document.getElementById('sb-fixdot'), fix: document.getElementById('sb-fix'),
-  age: document.getElementById('sb-age'), rot: document.getElementById('sb-rot'),
+  age: document.getElementById('sb-age'), hz: document.getElementById('sb-hz'), rot: document.getElementById('sb-rot'),
   speed: document.getElementById('sb-speed'), unit: document.getElementById('sb-unit'),
   hdg: document.getElementById('sb-hdg'),
   modAgg: document.getElementById('sb-modagg'), modBtn: document.getElementById('sb-modbtn'),
@@ -300,19 +300,6 @@ function fmtArea(m2) { return fmtUnit(m2 * 0.0001, 'ha'); }
 function fmtRate(haPerHr) { return haPerHr == null ? '—' : fmtUnit(haPerHr, 'ha', 1) + '/hr'; }
 // Work rate from speed (m/s) × tool width; null without a tool width (#398).
 function workRateHa(speedMs) { const tw = toolWidthM(); return tw > 0 ? speedMs * 3600 * tw / 10000 : null; }
-// Workable area (m²) from the Scene the client already has: headland polygon if
-// present, else the outer boundary (shoelace) — matches WorkableAreaSqM.
-function shoelace(pts) {
-  let a = 0;
-  for (let i = 0; i < pts.length; i++) { const j = (i + 1) % pts.length; a += pts[i].e * pts[j].n - pts[j].e * pts[i].n; }
-  return Math.abs(a / 2);
-}
-function workableAreaSqM() {
-  if (scene && scene.headland && scene.headland.length >= 3) return shoelace(scene.headland);
-  if (scene && scene.boundaries && scene.boundaries.length && scene.boundaries[0].length >= 3)
-    return shoelace(scene.boundaries[0]);
-  return 0;
-}
 // Active track heading (deg, 0 = north) from its first two Scene points.
 function activeTrackHeadingDeg() {
   if (!scene || !tick || !tick.activeTrackName) return null;
@@ -331,8 +318,12 @@ function rotatingLineText() {
   }
   if (sbPage === 1) { // Stats
     if (!scene || !scene.hasField) return '—';
-    const workable = workableAreaSqM(), worked = s.workedAreaSqM || 0;
-    const leftPct = workable > 0 ? ((workable - worked) * 100 / workable) : 100;
+    // Left: the field data card's Remaining, the field less its inner boundaries (AgOpenGPS
+    // CFieldData.WorkedAreaRemainPercentage; MainViewModel.RemainingPercent), never under 0. The
+    // headland's area was taken, while the worked area counts the headland passes too, so a
+    // tester's field read "Left -14%".
+    const fd = s.fieldData, total = fd ? fd.boundaryAreaSqM : 0, worked = s.workedAreaSqM || 0;
+    const leftPct = total > 0 ? Math.max(0, total - worked) * 100 / total : 100;
     const haPerHr = workRateHa(lastTick ? lastTick.speed : 0);
     return tr('Done {area}  Left {pct}%  Rate {rate}', { area: fmtArea(worked), pct: leftPct.toFixed(0), rate: fmtRate(haPerHr) });
   }
@@ -482,6 +473,14 @@ function renderStatusBar() {
   SB.fixDot.style.background = s.gpsLost ? '#6b7280' : fixColor(s.fixQuality);
   SB.fix.textContent = s.fixText || '—';
   SB.age.textContent = tr('Age {age}', { age: Number.isFinite(s.age) ? s.age.toFixed(1) : '—' }); // NaN: the sentence has no age ($KSXT)
+  // The rate the fixes arrive at, as AgOpenGPS shows it; red while the host judges them
+  // faulty (gaps or bursts: a link fault, #922). Nothing with the simulator or no GPS.
+  const fixes = (s.dataQuality || []).find(q => q.name === 'GPS positions');
+  const hz = fixes && !s.simEnabled && !s.gpsLost && fixes.rateHz > 0 ? fixes.rateHz : 0;
+  const hzText = hz ? (Math.abs(hz - Math.round(hz)) < 0.05 ? hz.toFixed(0) : hz.toFixed(1)) + ' Hz' : '';
+  if (SB.hz.textContent !== hzText) SB.hz.textContent = hzText;
+  // Red while any sensor on the receiver's data calls it faulty.
+  SB.hz.classList.toggle('bad', !!hz && s.dataQuality.some(q => q.faulty && q.name.startsWith('GPS ')));
   SB.rot.textContent = rotatingLineText();
   renderFieldCard();
   // Speed from the live tick (m/s), formatted per the host's unit preference.

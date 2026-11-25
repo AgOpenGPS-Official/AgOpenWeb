@@ -122,6 +122,20 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     private const string SourceGpsNmea = "GPS NMEA";
     private const string SourceSteerPgn253 = "steer PGN 253";
     private readonly SourceSilenceMonitor _silence = new();
+
+    // Whether each module's own periodic stream arrives as it is sent (gaps, bursts): a
+    // link that loses or holds back datagrams shows here before anything goes silent. The
+    // steer module, an IMU and the task controller send on a timer; the machine module's
+    // PGN 237 is measured and reported only, its firmwares not being known to.
+    private readonly DataQuality.StreamQualityMonitor _steerStream = new("Steer module data (PGN 253)");
+    private readonly DataQuality.StreamQualityMonitor _machineStream = new("Machine module data (PGN 237)", warns: false);
+    private readonly DataQuality.StreamQualityMonitor _imuStream = new("IMU data (PGN 211)");
+    private readonly DataQuality.StreamQualityMonitor _isobusStream = new("ISOBUS task controller data (PGN 240)");
+    private DataQuality.IDataSensor[]? _dataSensors;
+
+    /// <inheritdoc />
+    public IReadOnlyList<DataQuality.IDataSensor> DataSensors
+        => _dataSensors ??= new DataQuality.IDataSensor[] { _steerStream, _machineStream, _imuStream, _isobusStream };
     private readonly ILogger<UdpCommunicationService> _logger;
 
     public bool IsConnected { get; private set; }
@@ -245,6 +259,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         _udpSocket = null;
         IsConnected = false;
         _silence.Reset();
+        foreach (var sensor in DataSensors) sensor.Reset();
 
         await Task.CompletedTask;
     }
@@ -644,7 +659,10 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             case PgnNumbers.STEER_SETTINGS:       // 252
             case PgnNumbers.STEER_CONFIG:         // 251
                 if (pgn == PgnNumbers.AUTOSTEER_DATA)
+                {
                     MarkSourceSeen(SourceSteerPgn253, remoteEndPoint);
+                    _steerStream.Record();
+                }
                 _lastDataFromAutoSteer = now;
                 _autoSteerIp = remoteIp;
                 _lastModuleResponse = DateTime.UtcNow;
@@ -669,11 +687,15 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             case PgnNumbers.IMU_DATA: // 211 - external IMU roll/heading (#353)
                 _lastDataFromIMU = now;
                 _imuIp = remoteIp;
+                _imuStream.Record();
                 break;
 
             case PgnNumbers.ISOBUS_HEARTBEAT: // 240 - task controller; IsobusTaskControllerService reads it
                 if (data.Length > 2 && data[2] == Isobus.IsobusTaskControllerService.TaskControllerSource)
+                {
                     NoteTaskController(remoteEndPoint.Address);
+                    _isobusStream.Record();
+                }
                 break;
 
             case PgnNumbers.SWITCH_CONTROL: // 234 - remote section switches; AutoSteerService reads it
@@ -687,6 +709,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 _lastDataFromMachine = now;
                 _machineIp = remoteIp;
                 _lastModuleResponse = DateTime.UtcNow;
+                _machineStream.Record();
                 break;
 
             default:

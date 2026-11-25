@@ -113,12 +113,17 @@
    bar with the expand/collapse toggle. Collapsed = left pane only. ===== */
 .as-shell { width: 452px; padding: 0; overflow: hidden; }
 .as-shell.expanded { width: 852px; }
+/* Held to the screen by .ln-panel's max-width and max-height (a bigger UI size, a short
+   screen): the title bar and the status bar stay, the panes between them scroll. The
+   panes give up some width (a scroll bar, Full at 150 %) before the body scrolls sideways. */
+.as-shell.open { display: flex; flex-direction: column; }
+.as-titlebar, .as-statusbar { flex: none; }
 .as-titlebar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; }
 .as-titlebar .as-title2 { color: var(--text); font: 700 16px system-ui, sans-serif; }
 .as-x { background: none; border: 0; color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 2px 8px; }
-.as-body { display: flex; align-items: stretch; }
-.as-left { width: 452px; box-sizing: border-box; padding: 6px 16px 14px; flex: none; }
-.as-right { width: 400px; box-sizing: border-box; padding: 6px 16px 14px; border-left: 1px solid var(--border); flex: none; }
+.as-body { display: flex; align-items: stretch; flex: 1 1 auto; min-height: 0; overflow: auto; }
+.as-left { width: 452px; min-width: 360px; box-sizing: border-box; padding: 6px 16px 14px; flex: 0 1 auto; }
+.as-right { width: 400px; min-width: 350px; box-sizing: border-box; padding: 6px 16px 14px; border-left: 1px solid var(--border); flex: 0 1 auto; }
 .as-shell:not(.expanded) .as-right, .as-shell:not(.expanded) .as-testmode { display: none; }
 .as-tabrow { display: flex; gap: 6px; margin-bottom: 12px; }
 .as-tabrow .cfg-tab { width: 58px; height: 52px; margin: 0; padding: 0; border: 1px solid var(--border);
@@ -228,6 +233,8 @@ input.as-valbox { width: 80px; box-sizing: content-box; }
 .sd-k { color: var(--text-muted); font: 400 12px system-ui, sans-serif; }
 .sd-v { color: var(--text-2); font: 700 13px system-ui, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sd-v.sd-bad { color: #ef4444; }
+/* How each stream arrives: one to a line, its text being as long as "7.9 of 10.0 Hz, 21% missing". */
+#sd-streams { grid-template-columns: 1fr; }
 .sd-sent { margin-bottom: 8px; }
 .sd-senthead { display: flex; justify-content: space-between; color: var(--text-muted); font: 600 11px system-ui, sans-serif; }
 .sd-senttext { color: var(--text); font: 400 11px ui-monospace, monospace; word-break: break-all; -webkit-user-select: text; user-select: text;
@@ -275,8 +282,9 @@ input.as-valbox { width: 80px; box-sizing: content-box; }
 .nio-ntstatus { color: var(--text-2); font: 500 13px system-ui, sans-serif; }
 /* NTRIP chain sub-panels (ln-panels that replace their parent). */
 .nio-ntmodal { width: 520px; }
-.nio-ntset { width: 460px; max-height: calc(100 * var(--vh) - 72px); overflow: auto; }
-.nio-ntedit { width: 480px; max-height: calc(100 * var(--vh) - 72px); overflow: auto; }
+/* .ln-panel's max-height keeps them on the screen; 100vh - 72px left out the bar and the padding. */
+.nio-ntset { width: 460px; overflow: auto; }
+.nio-ntedit { width: 480px; overflow: auto; }
 .nio-nttoolbar { display: flex; align-items: center; gap: 6px; background: rgba(var(--ov),0.05);
   border-radius: 8px; padding: 6px; margin-bottom: 12px; }
 .nio-tbtn { width: 40px; height: 40px; border: 0; border-radius: 6px; background: rgba(var(--ov),0.10);

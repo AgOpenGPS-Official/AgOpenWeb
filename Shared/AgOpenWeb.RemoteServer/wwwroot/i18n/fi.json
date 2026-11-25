@@ -104,7 +104,6 @@
   "10× speed multiplier": "10x nopeutus",
   "4WD / Articulated": "4WD / runko-ohjattu",
   "A switch or button wired to the steer module. When set, it engages and disengages AutoSteer (and a module kickout disengages it).": "Kytkin tai painonappi kytketty ohjausmoduuliin. Kun se on asetettu, se kytkee päälle ja pois automaattiohjauksen (ja moduuli voi myös kytkeä sen pois).",
-  "A+ needs a GPS position — start the simulator or GPS": "A+ tarvitsee GPS-sijainnin – aloita simulaattori tai GPS",
   "A/D converter": "A/D konvertteri",
   "AB line for every boundary edge": "AB-linja jokaisen rajalinjan mukaan",
   "AB line from current position & heading": "AB-linja nykyisen sijainnin ja suunnan mukaan",
