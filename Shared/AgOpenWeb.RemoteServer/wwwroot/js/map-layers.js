@@ -428,15 +428,32 @@ function lightbarSk(canvas) {
   let k = hudK;
   while (k > 0.5 && inner0(k) + SIDE * (W + GAP) * k > 0.47 * vw) k -= 0.05;
   const inner = inner0(k), w = W * k, h = H * k, g = GAP * k, top = lbCy - h / 2;
-  const p = SKP.lbFill;
   for (let i = 1; i <= SIDE; i++) {
     const off = inner + (i - 1) * (w + g);
     for (const left of [true, false]) {
       const on = left === steerLeft && i <= lit;
-      p.setColor(ckColor(on ? litCol : '#1c2230'));
-      canvas.drawRect(CK.XYWHRect(left ? vw / 2 - off - w : vw / 2 + off, top, w, h), p);
+      const dir = left ? -1 : 1; // arrows point outwards, the way to steer
+      lbArrowSk(canvas, vw / 2 + dir * off, top, dir * w, h, k, on ? litCol : '#1c2230');
     }
   }
+}
+// One light bar cell: a notched arrow from its tail at x (w < 0 points left), faceted to look
+// 3D (upper half lighter, lower half darker) over a small shadow.
+function lbArrowSk(canvas, x, y, w, h, k, col) {
+  const tail = [x, y], tip = [x + w, y + h / 2], foot = [x, y + h], notch = [x + w * 0.3, y + h / 2];
+  const poly = (pts, color, dy = 0) => {
+    const cmds = pts.flatMap(([px, py], i) => [i ? CK.LINE_VERB : CK.MOVE_VERB, px, py + dy]);
+    const path = CK.Path.MakeFromCmds([...cmds, CK.CLOSE_VERB]);
+    if (!path) return;
+    SKP.lbFill.setColor(ckColor(color));
+    canvas.drawPath(path, SKP.lbFill);
+    path.delete();
+  };
+  const all = [tail, tip, foot, notch];
+  poly(all, 'rgba(0,0,0,0.45)', 2 * k);
+  poly(all, col);
+  poly([tail, tip, notch], 'rgba(255,255,255,0.28)');
+  poly([notch, tip, foot], 'rgba(0,0,0,0.22)');
 }
 // Steer bar (AgOpenGPS DrawSteerBarText): the steer angle error (actual − commanded) as a
 // yellow bar from the centre, its length the error (up to 12°), lying on the side away from
