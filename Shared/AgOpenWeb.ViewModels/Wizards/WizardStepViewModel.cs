@@ -90,7 +90,7 @@ public abstract class WizardStepViewModel : ObservableObject
                 if (value)
                 {
                     // Values loaded from the store on entry aren't the step's own changes.
-                    _touched.Clear();
+                    lock (_touchedLock) _touched.Clear();
                     _loading = true;
                     try { OnEntering(); }
                     finally { _loading = false; }
@@ -110,6 +110,12 @@ public abstract class WizardStepViewModel : ObservableObject
     // The same, for the whole wizard: not cleared when the step is entered again, so a zero
     // done on an earlier visit still counts as done (the Finish page's tests not run).
     private readonly HashSet<string> _touchedInWizard = new();
+    // Both sets are guarded by this lock. A step's live readings (roll, WAS, wheel angle) are set
+    // from the module's data thread (IAutoSteerService.StateUpdated), while the host loop clears
+    // the sets on entry and reads them on leaving: a HashSet changed from two threads at once
+    // threw "Operations that change non-concurrent collections must have exclusive access" and
+    // stopped the steer wizard scenarios in the Roll step (a run on 25 Nov 2026).
+    private readonly object _touchedLock = new();
     private bool _loading;
 
     protected override void OnPropertyChanged(PropertyChangedEventArgs e)
@@ -117,16 +123,25 @@ public abstract class WizardStepViewModel : ObservableObject
         base.OnPropertyChanged(e);
         if (!_loading && e.PropertyName != null)
         {
-            _touched.Add(e.PropertyName);
-            _touchedInWizard.Add(e.PropertyName);
+            lock (_touchedLock)
+            {
+                _touched.Add(e.PropertyName);
+                _touchedInWizard.Add(e.PropertyName);
+            }
         }
     }
 
     /// <summary>Whether this step changed <paramref name="propertyName"/> since it was entered.</summary>
-    protected bool Touched(string propertyName) => _touched.Contains(propertyName);
+    protected bool Touched(string propertyName)
+    {
+        lock (_touchedLock) return _touched.Contains(propertyName);
+    }
 
     /// <summary>Whether this step changed <paramref name="propertyName"/> on any visit in this wizard.</summary>
-    protected bool TouchedInWizard(string propertyName) => _touchedInWizard.Contains(propertyName);
+    protected bool TouchedInWizard(string propertyName)
+    {
+        lock (_touchedLock) return _touchedInWizard.Contains(propertyName);
+    }
 
     /// <summary>
     /// Set properties that mirror a value the step already wrote to the store, without
