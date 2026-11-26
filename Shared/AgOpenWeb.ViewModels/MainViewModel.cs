@@ -2152,6 +2152,10 @@ public partial class MainViewModel : ObservableObject
             LogAutoSteerOff("field closed");
         }
 
+        // The recorded path ends with the field: a replay left driving would put the Auto
+        // master back on at the next fix, right after the sections go off below.
+        EndRecordedPathWithField();
+
         // The sections too, switched on by hand included: with no field the section bar is
         // gone, so the operator could not switch them off, and the module went on getting
         // the on bits every tick (PGN 239, 229). Opening another field closes this one here

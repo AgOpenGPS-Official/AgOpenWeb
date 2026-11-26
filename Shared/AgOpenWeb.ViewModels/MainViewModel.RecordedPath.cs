@@ -364,6 +364,32 @@ public partial class MainViewModel
     }
 
     /// <summary>
+    /// Field close: the loaded path, a replay being driven and a recording in progress belong to
+    /// the field. AgOpenGPS JobClose (FormGPS.cs) clears recList and stops driving it. Left
+    /// loaded, the path was drawn, and would have been driven, in the next field's coordinates
+    /// until another was picked; left driving, the replay put the Auto master back on at the
+    /// next fix, right after the close had switched the sections off. A recording ends unsaved,
+    /// as a boundary or line being recorded does (ClearFieldState); a stopped recording is
+    /// already the field's current path on disk, loaded again when the field opens.
+    /// </summary>
+    private void EndRecordedPathWithField()
+    {
+        if (State.RecordedPath.IsDrivingRecordedPath)
+            StopDrivingRecordedPath();
+        if (IsRecordingPath)
+        {
+            IsRecordingPath = false;
+            _recPathRecordingPoints.Clear();
+            _lastRecPathPoint = null;
+        }
+        State.RecordedPath.RecordedPoints.Clear();
+        State.RecordedPath.CurrentPositionIndex = 0;
+        HasUnsavedRecordedPath = false;
+        RecordedPathInfo = "No path loaded";
+        _mapService.SetYouTurnPath(null);
+    }
+
+    /// <summary>
     /// Stop playback and clear all playback state.
     /// </summary>
     private void StopDrivingRecordedPath()
