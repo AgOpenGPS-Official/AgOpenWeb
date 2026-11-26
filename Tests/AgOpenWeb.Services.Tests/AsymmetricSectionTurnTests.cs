@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -51,7 +50,6 @@ public class AsymmetricSectionTurnTests
     private GpsPipelineService _pipeline = null!;
     private SectionControlService _sectionControl = null!;
     private CoverageMapService _coverage = null!;
-    private ApplicationState _appState = null!;
     private List<GpsCycleResult> _results = null!;
     private PositionEstimator _estimator = null!;
     private ToolPositionService _toolPosition = null!;
@@ -72,7 +70,9 @@ public class AsymmetricSectionTurnTests
         config.Tool.SetSectionWidth(1, 500); // 5m right (outer during left turn)
 
         // Fixed rear at rear axle (worst case for inner edge reversal)
-        config.Tool.HitchLength = 0;
+        // A fixed tool's working point 0 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        config.Vehicle.ThreePointHitchLength = config.Vehicle.FrontHitchLength = System.Math.Abs(0);
+        config.Tool.WorkingPointFromHitch = 0;
         config.Tool.TrailingHitchLength = 0;
         config.Tool.IsToolRearFixed = true;
         config.Tool.IsToolTrailing = false;
@@ -82,26 +82,25 @@ public class AsymmetricSectionTurnTests
         config.Guidance.MinLookAheadDistance = 2.0;
 
         SensorState.Instance.ImuRoll = 0;
-        _appState = new ApplicationState();
 
         _gpsService = new GpsService();
         _gpsService.Start();
 
         _toolPosition = new ToolPositionService(config);
         _coverage = new CoverageMapService(config);
-        _sectionControl = new SectionControlService(_toolPosition, _coverage, _appState, config);
+        _sectionControl = new SectionControlService(_toolPosition, _coverage, config);
         _sectionControl.MasterState = SectionMasterState.Auto;
         _sectionControl.SetAllAuto();
         _coverage.SetFieldBounds(-10, FIELD_SIZE + 10, -10, FIELD_SIZE + 10);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
-                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>())
+                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>())
             .Returns(ci => ci.ArgAt<double>(0));
 
         _autoSteer = new AutoSteerService(new TrackGuidanceService(),
             Substitute.For<IUdpCommunicationService>(),
-            _gpsService, _appState, config);
+            _gpsService, config);
 
         _estimator = new PositionEstimator();
 
@@ -119,7 +118,7 @@ public class AsymmetricSectionTurnTests
             Substitute.For<IAudioService>(),
             new PipelineIntents(),
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, _appState,
+            NullLogger<GpsPipelineService>.Instance,
             config,
             _estimator);
 
@@ -179,8 +178,7 @@ public class AsymmetricSectionTurnTests
     public void InnerSection_SharpTurn_CoveragePaints()
     {
         // Set up field with boundary
-        _appState.Field.LocalPlane = new LocalPlane(
-            new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties());
+        _pipeline.SetLocalPlane(new LocalPlane( new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties()));
 
         var outerPoly = new BoundaryPolygon();
         outerPoly.Points.Add(new BoundaryPoint { Easting = 0, Northing = 0 });
@@ -202,7 +200,7 @@ public class AsymmetricSectionTurnTests
             },
             Type = AgOpenWeb.Models.Track.TrackType.ABLine
         };
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
 
         // Set inner section (0) to manual ON, outer section (1) to OFF

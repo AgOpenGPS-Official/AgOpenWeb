@@ -1,23 +1,10 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using Microsoft.Extensions.Logging;
 using AgOpenWeb.Models.Base;
@@ -36,16 +23,14 @@ public class TramLineService(
     ILogger<TramLineService> logger,
     ConfigurationStore configStore) : ITramLineService
 {
-    // Decimation tolerance for tram lines on save/load. Tram lines built from a dense
-    // boundary inherit ~1 m point spacing; simplifying to this deviation collapses the
-    // file (and per-frame render cost) with no visible change. See
-    // Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
-    private const double TramSimplifyToleranceMeters = 0.1;
-
-    private readonly List<Vec2> _outerBoundaryTrack = new();
-    private readonly List<Vec2> _innerBoundaryTrack = new();
-    private readonly List<List<Vec2>> _parallelTramLines = new();
-    private readonly List<List<Vec2>> _boundaryExtraLines = new();
+    // The lines are read on the GPS thread (DetectTramWheels, for AutoSteer's tram byte)
+    // while the host loop rebuilds them, so a published list is never changed: a rebuild
+    // makes new lists and swaps the references, and a reader walks the list it took. A list
+    // changed under a reader throws "Collection was modified" or reads past its end.
+    private volatile List<Vec2> _outerBoundaryTrack = new();
+    private volatile List<Vec2> _innerBoundaryTrack = new();
+    private volatile List<List<Vec2>> _parallelTramLines = new();
+    private volatile List<List<Vec2>> _boundaryExtraLines = new();
     private List<Vec3>? _boundaryFence;
 
     private bool _isLeftManualOn;
@@ -109,6 +94,7 @@ public class TramLineService(
             fenceLineList.Add(fenceLineList[0]);
 
         if (passCount < 1) passCount = 1;
+        var extraLines = new List<List<Vec2>>(_boundaryExtraLines);
 
         for (int pass = 0; pass < passCount; pass++)
         {
@@ -134,18 +120,17 @@ public class TramLineService(
 
             if (pass == 0)
             {
-                _outerBoundaryTrack.Clear();
-                _outerBoundaryTrack.AddRange(outerPoints);
-                _innerBoundaryTrack.Clear();
-                _innerBoundaryTrack.AddRange(innerPoints);
+                _outerBoundaryTrack = outerPoints;
+                _innerBoundaryTrack = innerPoints;
             }
             else
             {
                 // Extra boundary passes separate from track parallel lines
-                if (outerPoints.Count > 1) _boundaryExtraLines.Add(outerPoints);
-                if (innerPoints.Count > 1) _boundaryExtraLines.Add(innerPoints);
+                if (outerPoints.Count > 1) extraLines.Add(outerPoints);
+                if (innerPoints.Count > 1) extraLines.Add(innerPoints);
             }
         }
+        _boundaryExtraLines = extraLines;
 
         TramLinesUpdated?.Invoke(this, EventArgs.Empty);
     }
@@ -221,7 +206,7 @@ public class TramLineService(
     /// wheel tracks. Uses Clipper inward offsetting, which is concave-safe and removes
     /// the self-intersections that the per-point lateral offset produced on curved
     /// fields (the "web"). Offsets march inward until the field is consumed.
-    /// See Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md (Phase 2).
+    /// See Plans/Completed/BOUNDARY_RESOLUTION_NORMALIZATION.md (Phase 2).
     /// </summary>
     public void GenerateConcentricTramLanes(double tramWidthOverride = 0)
     {
@@ -234,7 +219,7 @@ public class TramLineService(
         if (tramWidth <= 0.1) return;
         double halfWheelTrack = config.Vehicle.TrackWidth / 2.0;
 
-        _parallelTramLines.Clear();
+        var lines = new List<List<Vec2>>();
 
         // Cap iterations so a misconfigured tiny tram width can't spin; inward
         // offsetting converges to the field's medial axis well before this.
@@ -247,13 +232,14 @@ public class TramLineService(
             var inner = offsetService.GenerateClipperOffsetPublic(fence, laneCenter + halfWheelTrack);
 
             bool anyThisPass = false;
-            if (outer.Count > 2) { outer.Add(outer[0]); _parallelTramLines.Add(outer); anyThisPass = true; }
-            if (inner.Count > 2) { inner.Add(inner[0]); _parallelTramLines.Add(inner); anyThisPass = true; }
+            if (outer.Count > 2) { outer.Add(outer[0]); lines.Add(outer); anyThisPass = true; }
+            if (inner.Count > 2) { inner.Add(inner[0]); lines.Add(inner); anyThisPass = true; }
 
             // Once an inward pass yields nothing the field interior is consumed.
             if (!anyThisPass)
                 break;
         }
+        _parallelTramLines = lines;
 
         TramLinesUpdated?.Invoke(this, EventArgs.Empty);
     }
@@ -273,7 +259,7 @@ public class TramLineService(
         int passes = config.Tram.Passes;
         double halfWheelTrack = config.Vehicle.TrackWidth / 2.0;
 
-        _parallelTramLines.Clear();
+        var lines = new List<List<Vec2>>();
 
         // Tram line pairs spaced by tramWidth (sprayer boom width)
         // Each pair offset: (tramWidth * 0.5) +/- halfWheelTrack + (tramWidth * i)
@@ -288,16 +274,17 @@ public class TramLineService(
 
             // Positive side: outer and inner wheel tracks (split at boundary crossings)
             foreach (var seg in OffsetTrackLaterallySegmented(referenceTrack, baseOffset - halfWheelTrack, fenceLine))
-                if (seg.Count > 1) _parallelTramLines.Add(seg);
+                if (seg.Count > 1) lines.Add(seg);
             foreach (var seg in OffsetTrackLaterallySegmented(referenceTrack, baseOffset + halfWheelTrack, fenceLine))
-                if (seg.Count > 1) _parallelTramLines.Add(seg);
+                if (seg.Count > 1) lines.Add(seg);
 
             // Negative side (mirror)
             foreach (var seg in OffsetTrackLaterallySegmented(referenceTrack, -(baseOffset - halfWheelTrack), fenceLine))
-                if (seg.Count > 1) _parallelTramLines.Add(seg);
+                if (seg.Count > 1) lines.Add(seg);
             foreach (var seg in OffsetTrackLaterallySegmented(referenceTrack, -(baseOffset + halfWheelTrack), fenceLine))
-                if (seg.Count > 1) _parallelTramLines.Add(seg);
+                if (seg.Count > 1) lines.Add(seg);
         }
+        _parallelTramLines = lines;
 
         TramLinesUpdated?.Invoke(this, EventArgs.Empty);
     }
@@ -307,7 +294,84 @@ public class TramLineService(
     /// AB lines (2 points) are densified to 2m spacing before offsetting.
     /// Returns multiple segments when the line exits and re-enters the boundary.
     /// </summary>
-    private List<List<Vec2>> OffsetTrackLaterallySegmented(Models.Track.Track track, double offset, List<Vec3>? fence)
+    internal static List<List<Vec2>> OffsetTrackLaterallySegmented(Models.Track.Track track, double offset, List<Vec3>? fence)
+    {
+        // An AB line's offset is straight: clip it against the fence where it crosses the
+        // edges. Testing each of its 2 m points against the fence instead cost a field's
+        // worth of polygon tests per line, and seconds per track select on a slow tablet.
+        if (track.Points.Count == 2 && fence is { Count: >= 3 })
+        {
+            var clipped = ClipOffsetABLine(track.Points[0], track.Points[1], offset, fence, 2.0);
+            if (clipped != null) return clipped;
+        }
+        return OffsetPointsSegmented(track, offset, fence);
+    }
+
+    /// <summary>
+    /// The parts of an AB line's lateral offset inside the fence, as <see cref="OffsetPointsSegmented"/>
+    /// gives them (points every <paramref name="spacing"/> m on the line densified 500 m past A and B,
+    /// plus the fence crossings), from the line's crossings with the fence edges. Null for a line too
+    /// short to have a heading.
+    /// </summary>
+    private static List<List<Vec2>>? ClipOffsetABLine(Vec3 a, Vec3 b, double offset, List<Vec3> fence, double spacing)
+    {
+        double dx = b.Easting - a.Easting, dy = b.Northing - a.Northing;
+        double len = Math.Sqrt(dx * dx + dy * dy);
+        if (len < 0.01) return null;
+
+        // Same frame as DensifyLine: along u from 500 m before A; the offset goes to the right of u.
+        double heading = Math.Atan2(dx, dy);
+        double ux = Math.Sin(heading), uy = Math.Cos(heading);
+        double rx = Math.Sin(heading + Math.PI / 2.0), ry = Math.Cos(heading + Math.PI / 2.0);
+        const double ext = 500;
+        int numPts = (int)((len + 2 * ext) / spacing) + 1;
+        double startE = a.Easting - ux * ext, startN = a.Northing - uy * ext;
+        double oE = startE + rx * offset, oN = startN + ry * offset; // the offset line's first point
+        double tLast = (numPts - 1) * spacing;
+
+        // Where the line crosses each fence edge, as distances along it. An edge counts when its
+        // ends lie on opposite sides (half-open, so a line through a vertex crosses once).
+        var crossings = new List<double>();
+        for (int i = 0, j = fence.Count - 1; i < fence.Count; j = i++)
+        {
+            double si = (fence[i].Easting - oE) * rx + (fence[i].Northing - oN) * ry;
+            double sj = (fence[j].Easting - oE) * rx + (fence[j].Northing - oN) * ry;
+            if ((si > 0) == (sj > 0)) continue;
+            double f = sj / (sj - si);
+            double xE = fence[j].Easting + (fence[i].Easting - fence[j].Easting) * f;
+            double xN = fence[j].Northing + (fence[i].Northing - fence[j].Northing) * f;
+            crossings.Add((xE - oE) * ux + (xN - oN) * uy);
+        }
+        crossings.Sort();
+
+        Vec2 At(double t) => new(oE + ux * t, oN + uy * t);
+        var segments = new List<List<Vec2>>();
+        // Inside between each pair of crossings, kept to the densified line's extent.
+        for (int c = 0; c + 1 < crossings.Count; c += 2)
+        {
+            double t0 = crossings[c], t1 = crossings[c + 1];
+            if (t1 < 0 || t0 > tLast) continue;
+            var seg = new List<Vec2>();
+            if (t0 >= 0) seg.Add(At(t0));
+            int inside = 0;
+            for (int k = Math.Max(0, (int)Math.Floor(t0 / spacing)); k < numPts; k++)
+            {
+                double t = k * spacing;
+                if (t <= t0) continue;
+                if (t >= t1) break;
+                seg.Add(At(t));
+                inside++;
+            }
+            if (t1 <= tLast) seg.Add(At(t1));
+            // A piece with none of the 2 m points inside (a corner cut short of one step) is left
+            // out, as the point test leaves it out.
+            if (inside > 0 && seg.Count > 1) segments.Add(seg);
+        }
+        return segments;
+    }
+
+    /// <summary>Offset each of the track's points (an AB line densified first) and keep the runs inside the fence.</summary>
+    internal static List<List<Vec2>> OffsetPointsSegmented(Models.Track.Track track, double offset, List<Vec3>? fence)
     {
         var segments = new List<List<Vec2>>();
 
@@ -328,7 +392,7 @@ public class TramLineService(
                 point.Easting + Math.Sin(perpHeading) * offset,
                 point.Northing + Math.Cos(perpHeading) * offset
             );
-            bool isInside = fence == null || IsPointInFence(offsetPoint, fence);
+            bool isInside = fence == null || GeometryMath.IsPointInPolygon(fence, offsetPoint);
             allPoints.Add((offsetPoint, isInside));
         }
 
@@ -372,7 +436,7 @@ public class TramLineService(
     /// <summary>
     /// Legacy single-segment version for backward compatibility.
     /// </summary>
-    private List<Vec2> OffsetTrackLaterally(Models.Track.Track track, double offset, List<Vec3>? fence = null)
+    private static List<Vec2> OffsetTrackLaterally(Models.Track.Track track, double offset, List<Vec3>? fence = null)
     {
         if (fence == null)
         {
@@ -468,24 +532,6 @@ public class TramLineService(
     }
 
     /// <summary>
-    /// Ray casting point-in-polygon test for boundary clipping.
-    /// </summary>
-    private static bool IsPointInFence(Vec2 point, List<Vec3> fence)
-    {
-        bool inside = false;
-        int count = fence.Count;
-        for (int i = 0, j = count - 1; i < count; j = i++)
-        {
-            double yi = fence[i].Northing, yj = fence[j].Northing;
-            double xi = fence[i].Easting, xj = fence[j].Easting;
-            if (((yi > point.Northing) != (yj > point.Northing)) &&
-                (point.Easting < (xj - xi) * (point.Northing - yi) / (yj - yi) + xi))
-                inside = !inside;
-        }
-        return inside;
-    }
-
-    /// <summary>
     /// Add a tram line at the current position (for manual recording)
     /// </summary>
     public void AddTramLine(IReadOnlyList<Vec2> points)
@@ -493,36 +539,62 @@ public class TramLineService(
         if (points == null || points.Count < 2)
             return;
 
-        _parallelTramLines.Add(points.ToList());
+        _parallelTramLines = Appended(_parallelTramLines, points.ToList());
         TramLinesUpdated?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>A copy of <paramref name="lines"/> with <paramref name="line"/> at the end;
+    /// the published list itself is never changed (see the fields).</summary>
+    private static List<List<Vec2>> Appended(List<List<Vec2>> lines, List<Vec2> line)
+    {
+        var next = new List<List<Vec2>>(lines.Count + 1);
+        next.AddRange(lines);
+        next.Add(line);
+        return next;
     }
 
     /// <summary>
     /// Check if a position is on or near a tram line
     /// </summary>
     public bool IsOnTramLine(Vec3 position, double tolerance)
+        => IsOnTramLine(position, tolerance, TramDisplayMode.All);
+
+    /// <summary>
+    /// As <see cref="IsOnTramLine(Vec3, double)"/>, counting only the lines the display mode
+    /// shows: Lines only has no boundary tracks, Outer only no parallel lines (AgOpenGPS reads
+    /// its tram control byte off the drawn lines, so a hidden line never lights a wheel; #541).
+    /// Off counts nothing.
+    /// </summary>
+    public bool IsOnTramLine(Vec3 position, double tolerance, TramDisplayMode mode)
     {
+        if (mode == TramDisplayMode.Off) return false;
         double distSq = tolerance * tolerance;
 
-        // Check boundary tracks
-        if (IsOnPolyline(_outerBoundaryTrack, position, distSq))
-            return true;
-
-        if (IsOnPolyline(_innerBoundaryTrack, position, distSq))
-            return true;
-
-        // Check parallel tram lines
-        foreach (var tramLine in _parallelTramLines)
+        // Take each list once: the host loop may swap in new ones meanwhile.
+        if (mode != TramDisplayMode.LinesOnly)
         {
-            if (IsOnPolyline(tramLine, position, distSq))
+            if (IsOnPolyline(_outerBoundaryTrack, position, distSq))
                 return true;
+
+            if (IsOnPolyline(_innerBoundaryTrack, position, distSq))
+                return true;
+
+            var extraLines = _boundaryExtraLines;
+            foreach (var tramLine in extraLines)
+            {
+                if (IsOnPolyline(tramLine, position, distSq))
+                    return true;
+            }
         }
 
-        // Check boundary extra passes
-        foreach (var tramLine in _boundaryExtraLines)
+        if (mode != TramDisplayMode.OuterOnly)
         {
-            if (IsOnPolyline(tramLine, position, distSq))
-                return true;
+            var parallelLines = _parallelTramLines;
+            foreach (var tramLine in parallelLines)
+            {
+                if (IsOnPolyline(tramLine, position, distSq))
+                    return true;
+            }
         }
 
         return false;
@@ -564,15 +636,17 @@ public class TramLineService(
         distSq = DistanceToPolylineSquared(_innerBoundaryTrack, position);
         if (distSq < minDistSq) minDistSq = distSq;
 
-        // Check parallel tram lines
-        foreach (var tramLine in _parallelTramLines)
+        // Check parallel tram lines (each list taken once, see the fields)
+        var parallelLines = _parallelTramLines;
+        foreach (var tramLine in parallelLines)
         {
             distSq = DistanceToPolylineSquared(tramLine, position);
             if (distSq < minDistSq) minDistSq = distSq;
         }
 
         // Check boundary extra passes
-        foreach (var tramLine in _boundaryExtraLines)
+        var extraLines = _boundaryExtraLines;
+        foreach (var tramLine in extraLines)
         {
             distSq = DistanceToPolylineSquared(tramLine, position);
             if (distSq < minDistSq) minDistSq = distSq;
@@ -582,32 +656,55 @@ public class TramLineService(
     }
 
     /// <summary>
-    /// Detect which wheels are on tram lines.
-    /// Returns a byte: bit 0 = right wheel, bit 1 = left wheel.
+    /// Whether the tram wheel tracks are at the tool's edges (outer) or about its centre
+    /// (inner), as AgOpenGPS decides it (CTram.IsTramOuterOrInner): outer when the tram
+    /// width is an even number of tool widths, swapped by <see cref="TramConfig.IsOuterInverted"/>.
     /// </summary>
-    public byte DetectTramWheels(Vec3 vehiclePosition, double vehicleHeading, double tolerance)
+    public static bool IsOuter(double tramWidth, double toolWidth, bool inverted)
+    {
+        bool outer = toolWidth > 0 && ((int)(tramWidth / toolWidth + 0.5)) % 2 == 0;
+        return inverted ? !outer : outer;
+    }
+
+    /// <summary>
+    /// Detect which wheels are on tram lines, checked where the tram wheel tracks run under
+    /// the tool (AgOpenGPS): ± half the wheel track about the tool's centre, or that far in
+    /// from its edges when the trams are outer (<see cref="IsOuter"/>). Only a tool wider
+    /// than the wheel track has tram control, and only the lines the display mode shows count
+    /// (<see cref="IsOnTramLine(Vec3, double, TramDisplayMode)"/>). Returns a byte: bit 0 =
+    /// right, bit 1 = left.
+    /// </summary>
+    public byte DetectTramWheels(Vec3 toolPosition, double toolHeading, double tolerance)
     {
         var config = configStore;
+        var mode = config.Tram.DisplayMode;
         double halfTrack = config.Vehicle.TrackWidth / 2.0;
+        double toolWidth = config.ActualToolWidth;
+        if (toolWidth <= config.Vehicle.TrackWidth) return 0;
+
+        double fromCentre = IsOuter(config.Tram.TramWidth, toolWidth, config.Tram.IsOuterInverted)
+            ? toolWidth / 2.0 - halfTrack
+            : halfTrack;
+        double centre = config.Tool.Offset; // + = right of the tractor
 
         // Calculate left and right wheel positions
-        double perpHeading = vehicleHeading + Math.PI / 2.0;
+        double perpHeading = toolHeading + Math.PI / 2.0;
         double sinPerp = Math.Sin(perpHeading);
         double cosPerp = Math.Cos(perpHeading);
 
         var rightWheel = new Vec3(
-            vehiclePosition.Easting + sinPerp * halfTrack,
-            vehiclePosition.Northing + cosPerp * halfTrack,
-            vehicleHeading);
+            toolPosition.Easting + sinPerp * (centre + fromCentre),
+            toolPosition.Northing + cosPerp * (centre + fromCentre),
+            toolHeading);
         var leftWheel = new Vec3(
-            vehiclePosition.Easting - sinPerp * halfTrack,
-            vehiclePosition.Northing - cosPerp * halfTrack,
-            vehicleHeading);
+            toolPosition.Easting + sinPerp * (centre - fromCentre),
+            toolPosition.Northing + cosPerp * (centre - fromCentre),
+            toolHeading);
 
         byte result = 0;
 
-        bool rightOn = IsOnTramLine(rightWheel, tolerance) || _isRightManualOn;
-        bool leftOn = IsOnTramLine(leftWheel, tolerance) || _isLeftManualOn;
+        bool rightOn = IsOnTramLine(rightWheel, tolerance, mode) || _isRightManualOn;
+        bool leftOn = IsOnTramLine(leftWheel, tolerance, mode) || _isLeftManualOn;
 
         if (rightOn) result |= 1;
         if (leftOn) result |= 2;
@@ -670,7 +767,7 @@ public class TramLineService(
     public void AddTramLine(List<Vec2> points)
     {
         if (points != null && points.Count > 1)
-            _parallelTramLines.Add(points);
+            _parallelTramLines = Appended(_parallelTramLines, points);
     }
 
     /// <summary>
@@ -678,156 +775,14 @@ public class TramLineService(
     /// </summary>
     public void Clear()
     {
-        _outerBoundaryTrack.Clear();
-        _innerBoundaryTrack.Clear();
-        _parallelTramLines.Clear();
-        _boundaryExtraLines.Clear();
+        _outerBoundaryTrack = new List<Vec2>();
+        _innerBoundaryTrack = new List<Vec2>();
+        _parallelTramLines = new List<List<Vec2>>();
+        _boundaryExtraLines = new List<List<Vec2>>();
         _isLeftManualOn = false;
         _isRightManualOn = false;
 
         TramLinesUpdated?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>
-    /// Save tram lines to field directory
-    /// </summary>
-    public void SaveToFile(string fieldDirectory)
-    {
-        if (string.IsNullOrEmpty(fieldDirectory))
-            return;
-
-        string filePath = Path.Combine(fieldDirectory, "TramLines.txt");
-
-        try
-        {
-            using var writer = new StreamWriter(filePath);
-
-            // Write outer boundary track (decimated)
-            var outer = GeometryMath.SimplifyPolyline(_outerBoundaryTrack, TramSimplifyToleranceMeters);
-            writer.WriteLine($"$OuterTrack,{outer.Count}");
-            foreach (var point in outer)
-            {
-                writer.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                    "{0:F4},{1:F4}", point.Easting, point.Northing));
-            }
-
-            // Write inner boundary track (decimated)
-            var inner = GeometryMath.SimplifyPolyline(_innerBoundaryTrack, TramSimplifyToleranceMeters);
-            writer.WriteLine($"$InnerTrack,{inner.Count}");
-            foreach (var point in inner)
-            {
-                writer.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                    "{0:F4},{1:F4}", point.Easting, point.Northing));
-            }
-
-            // Write parallel tram lines (each decimated)
-            writer.WriteLine($"$TramLines,{_parallelTramLines.Count}");
-            foreach (var tramLine in _parallelTramLines)
-            {
-                var line = GeometryMath.SimplifyPolyline(tramLine, TramSimplifyToleranceMeters);
-                writer.WriteLine($"$Line,{line.Count}");
-                foreach (var point in line)
-                {
-                    writer.WriteLine(string.Format(CultureInfo.InvariantCulture,
-                        "{0:F4},{1:F4}", point.Easting, point.Northing));
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to save tram lines");
-        }
-    }
-
-    /// <summary>
-    /// Load tram lines from field directory
-    /// </summary>
-    public void LoadFromFile(string fieldDirectory)
-    {
-        if (string.IsNullOrEmpty(fieldDirectory))
-            return;
-
-        string filePath = Path.Combine(fieldDirectory, "TramLines.txt");
-
-        if (!File.Exists(filePath))
-            return;
-
-        try
-        {
-            Clear();
-
-            using var reader = new StreamReader(filePath);
-            string? line;
-
-            while ((line = reader.ReadLine()) != null)
-            {
-                if (line.StartsWith("$OuterTrack,"))
-                {
-                    int count = int.Parse(line.Split(',')[1], CultureInfo.InvariantCulture);
-                    var pts = new List<Vec2>(count);
-                    ReadPoints(reader, pts, count);
-                    _outerBoundaryTrack.AddRange(GeometryMath.SimplifyPolyline(pts, TramSimplifyToleranceMeters));
-                }
-                else if (line.StartsWith("$InnerTrack,"))
-                {
-                    int count = int.Parse(line.Split(',')[1], CultureInfo.InvariantCulture);
-                    var pts = new List<Vec2>(count);
-                    ReadPoints(reader, pts, count);
-                    _innerBoundaryTrack.AddRange(GeometryMath.SimplifyPolyline(pts, TramSimplifyToleranceMeters));
-                }
-                else if (line.StartsWith("$TramLines,"))
-                {
-                    int lineCount = int.Parse(line.Split(',')[1], CultureInfo.InvariantCulture);
-                    for (int i = 0; i < lineCount; i++)
-                    {
-                        line = reader.ReadLine();
-                        if (line != null && line.StartsWith("$Line,"))
-                        {
-                            int pointCount = int.Parse(line.Split(',')[1], CultureInfo.InvariantCulture);
-                            var tramLine = new List<Vec2>(pointCount);
-                            ReadPoints(reader, tramLine, pointCount);
-                            // Decimate on load so legacy dense files (the 14 MB case)
-                            // render fast without regeneration.
-                            var simplified = GeometryMath.SimplifyPolyline(tramLine, TramSimplifyToleranceMeters);
-                            if (simplified.Count > 0)
-                            {
-                                _parallelTramLines.Add(simplified);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (HasTramLines)
-            {
-                TramLinesUpdated?.Invoke(this, EventArgs.Empty);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to load tram lines");
-        }
-    }
-
-    /// <summary>
-    /// Read points from file into a list
-    /// </summary>
-    private void ReadPoints(StreamReader reader, List<Vec2> points, int count)
-    {
-        for (int i = 0; i < count; i++)
-        {
-            string? line = reader.ReadLine();
-            if (line == null) break;
-
-            var parts = line.Split(',');
-            if (parts.Length >= 2)
-            {
-                if (double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double easting) &&
-                    double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double northing))
-                {
-                    points.Add(new Vec2(easting, northing));
-                }
-            }
-        }
-    }
 }

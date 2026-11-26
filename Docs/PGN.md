@@ -1,21 +1,3 @@
-<!--
-AgOpenWeb
-Copyright (C) 2024-2025 AgOpenWeb Contributors
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
--->
-
 # AOG message format
 
 An AOG message of length `n` has the following general format:
@@ -441,6 +423,12 @@ IP = 192.168.5.124<br>
 Hello = na<br>
 Port = 5124<br>
 00 00 56 00 00 7C<br>
+
+PGN 214 below is AgIO's parsed GPS data. AgOpenWeb sends it, once per fix, to AgOpenGPS's
+loopback port 15555 when Network IO's "Send corrected position" is ticked (GPS_Out reads it),
+and to an ISOBUS task controller (AOG-TaskController) at its own address, port 8888, while
+its heartbeat (PGN 240) is heard, ticked or not: the task controller reads the fix quality
+(byte 43) from it and passes it to the implements as DDI 514.
 
 
 <table>
@@ -1078,6 +1066,146 @@ Port = 5122<br>
     </tbody>
 </table>
 
+
+<br>
+<br>
+
+## ISOBUS task controller
+
+Spoken with [AOG-TaskController](https://github.com/AgOpenGPS-Official/AOG-TaskController)
+(standalone, or built into the AOW HAT daemon); its `docs/PROTOCOL.md` is the reference.
+The sections themselves reach it in PGN 229 (64 sections), which AgOpenWeb sends with every PGN 239
+whatever the section count; it does not read them from PGN 254 or 239.
+
+| PGN Name | Src | PGN | Dec | Len | Byte 5 | Byte 6 | Byte 7.. | Last |
+|---|---|---|---|---|---|---|---|---|
+| Section heartbeat, from the task controller every 100 ms | 80 | F0 | 240 | 2 + ceil(n / 8) | bit 0: section control enabled; bits 1-3: implements connected | n = the implement's section count (0 = alive, no implement) | the implement's reported section states, section 1 in bit 0 of byte 7 | CRC |
+| Section control mode, to the task controller | 7F | F1 | 241 | 1 | 1 = automatic, 0 = manual | | | CRC |
+| Process data, to the task controller | 7F | F2 | 242 | 6 | DDI, low byte | DDI, high byte | the value, int32 little-endian (bytes 7-10) | CRC |
+
+AgOpenWeb shows the ISOBUS button while a heartbeat arrived in the last second. Tapping it
+sends PGN 241 with the opposite of the reported mode, repeated every 0.5 s until the
+heartbeat shows it (3 s at most), and once more when a restarted task controller comes
+back with the other setting.
+
+PGN 242 carries what AgOpenGPS sends (`CISOBUS.cs`), one value a datagram, to the task
+controller's own address while it is heard:
+
+| DDI | Value | When |
+|---|---|---|
+| 397 Actual speed | mm/s, negative in reverse | every fix, at most every 100 ms |
+| 597 Total distance | the trip distance, mm | every fix, at most every 100 ms |
+| 513 Guidance line deviation | the distance off the line in mm × 100 (the task controller divides by 1000 into NMEA 2000's 0.01 m) | with them, while a line is guided on |
+
+The task controller's tractor ECU puts the speed and distance on the bus for implements that take
+their speed from the tractor; PGN 242 is its only source. AgOpenGPS sends a value only when it
+changes, so a task controller started while the speed is steady reads 0 until it moves; AgOpenWeb
+sends speed and distance with every fix (#921). AgOpenGPS sends 32000 as the deviation with no
+line; AgOpenWeb sends none.
+
+<br>
+<br>
+
+## Corrected position
+
+For seed monitors, rate controllers and GPS_Out. Off by default: tick "Send corrected
+position" on the Network IO card. Then it is sent on every fix to the module subnet
+broadcast (port 8888) and to AgIO's loopback port, 127.255.255.255:17777 (127.0.0.1 on
+macOS and iOS, which don't deliver a loopback broadcast), the same as AgOpenGPS with AgIO.
+The position is the antenna with antenna offset, roll and drift applied, not moved back
+to the pivot (AgOpenGPS `pn.fix`); the heading is the fused vehicle heading.
+
+| PGN Name | Src | PGN | Dec | Len | Bytes 5-12 | Bytes 13-20 | Bytes 21-28 | Byte 29 |
+|---|---|---|---|---|---|---|---|---|
+| Corrected position | 7F | 64 | 100 | 24 | Longitude, double | Latitude, double | Heading, degrees, double | CRC |
+
+Doubles are little-endian. Older AgOpenGPS sent a 16-byte version without the heading.
+
+<br>
+<br>
+
+## Rate controllers
+
+Programs running beside the app, such as [Rate Control](https://github.com/SK21/AOG_RC),
+work with it as with AgOpenGPS and AgIO, on the same computer. Close AgOpenGPS and AgIO
+first: they use the same ports.
+
+To them, on AgIO's loopback port 127.255.255.255:17777 (127.0.0.1 on macOS and iOS), as
+AgOpenGPS sends every module PGN there:
+
+| PGN | Dec | When |
+|---|---|---|
+| AutoSteer data (speed, sections 1-16) | 254 | Every fix |
+| Machine data, 64 sections | 239, 229 | Every fix with a field open (AgOpenGPS: with a job started); 229 whatever the section count |
+| Machine config (hydraulic lift times) | 238 | At start and when the machine settings change, with the module copy |
+| Section dimensions | 235 | At start, when a profile is saved or loaded, and 10 s after the last edit of an unsaved layout; only if the section count or widths changed (to the module subnet too) |
+| Corrected position | 100 | When ticked, see above |
+
+The modules keep their own 100 Hz stream of 254 and 239; the loopback copy goes at the fix
+rate, as AgOpenGPS's does. PGN 235 waits for the layout to be finished because a rate
+controller asks the operator to accept each section layout it sees; each edit on the way
+to a new layout, or a save of other settings, would ask again. The edits apply at once,
+so a layout left unsaved (the panel or the page closed) is in use too: it goes out once the
+section count and widths have stayed unchanged for 10 s.
+
+| PGN Name | Src | PGN | Dec | Len | Bytes 5-36 | Byte 37 | Byte 38 |
+|---|---|---|---|---|---|---|---|
+| Section dimensions | 7F | EB | 235 | 33 | Widths of sections 1-16, cm, uint16 little-endian (0 past the last section) | Number of sections (as AgOpenGPS, the count even above 16) | CRC |
+
+From them: PGN 234, Switch Control (layout in the Machine Module table above), on
+AgOpenGPS's loopback port 127.0.0.1:15555, where a rate controller sends its switch box.
+GPS_Out listens there too and the app's own PGN 214 goes there, so only PGN 234 is taken
+from that port. Section control switch boxes on the module subnet send it to port 9999,
+which works too. With a field open, it acts as AgOpenGPS's button hardware
+(`DoRemoteSwitches`):
+
+- Main bit 0, on a change: the master Auto button on, every section on Auto. Main bit 1:
+  the master off, every section Off.
+- An On group bit turns its section On.
+- An Off group bit holds its section Off. Released with the master on Auto, an Off section
+  goes back to Auto.
+- With zones, the group 0 bits are zones 1-8.
+- Main bit 2 marks switch hardware (level-driven switches); it isn't handled yet, and such
+  a packet changes nothing.
+
+Only the 14-byte packet is taken. Its CRC isn't checked, as in AgOpenGPS.
+
+<br>
+<br>
+
+## Vehicle geometry
+
+An AgOpenWeb PGN (#387): what a module may need to know about the vehicle. A steer module
+estimating the wheel angle from the heading rate needs the wheelbase; a receiver with an
+INS (UM981) needs the lever arm from its IMU to the antenna. Sent to the module subnet
+with PGN 251/252: at start, when the vehicle settings or profile change, and when the
+steer module's PGN 253 is heard again after 3 s of silence (a module that started or
+restarted after the app). Modules that don't know it ignore it.
+
+| PGN Name | Src | PGN | Dec | Len |
+|---|---|---|---|---|
+| Vehicle geometry | 7F | F7 | 247 | 19 |
+
+Lengths are in cm, little-endian. Positions are measured from the pivot (the rear axle
+centre): pivot = ahead of it (+) or behind it (−), offset = right of the centerline (+) or
+left of it (−), height = above the ground.
+
+| Byte | Content | Type |
+|---|---|---|
+| 5 | Layout version, 1. Later versions only add fields, at the end | uint8 |
+| 6 | Flags. Bit 0: IMU position entered (else bytes 17-22 are 0, not a position) | uint8 |
+| 7-8 | Wheelbase | uint16 |
+| 9-10 | Track width | uint16 |
+| 11-12 | Antenna height | uint16 |
+| 13-14 | Antenna pivot | int16 |
+| 15-16 | Antenna offset | int16 |
+| 17-18 | IMU pivot | int16 |
+| 19-20 | IMU height | uint16 |
+| 21-22 | IMU offset | int16 |
+| 23 | Max steer angle, degrees | uint8 |
+| 24 | CRC | |
+
+The antenna position is set in Vehicle Configuration → Vehicle, the IMU position in Vehicle Configuration → Roll.
 
 <br>
 <br>

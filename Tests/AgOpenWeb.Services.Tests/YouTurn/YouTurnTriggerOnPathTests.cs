@@ -1,0 +1,364 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+using AgOpenWeb.Models;
+using AgOpenWeb.Models.Base;
+using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Models.Pipeline;
+using AgOpenWeb.Models.State;
+using AgOpenWeb.Services.Geometry;
+using AgOpenWeb.Services.YouTurn;
+
+using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
+
+namespace AgOpenWeb.Services.Tests.YouTurn;
+
+/// <summary>
+/// #306: an automatic turn starts when the tractor is ON the planned path, heading along
+/// it, wherever it joins. The planned path's entry leg is the current pass itself, so a turn
+/// armed late (its first point already behind the tractor) is taken all the same. A path the
+/// tractor cannot join any more is replanned from where it is, or dropped with a warning;
+/// it never stays on screen while the tractor drives into the headland.
+/// </summary>
+[TestFixture]
+public class YouTurnTriggerOnPathTests
+{
+    // ── The rule, on hand-built paths ────────────────────────────────────
+
+    [Test]
+    public void OnTheEntryLeg_HeadingAlongIt_TheTurnStarts()
+    {
+        var sm = BuildStateMachine();
+        var turn = new YouTurnWorkingState { TurnPath = LegThenArc(), ArcStart = new Vec3(0, 20, 0) };
+
+        // 8 m along a leg that began at (0,0): the old 2 m rendezvous with the first point is long gone.
+        var effects = sm.Tick(Ctx(0, 8, headingDeg: 0), new GuidanceWorkingState(), turn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.IsTriggered, Is.True);
+            Assert.That(turn.IsExecuting, Is.True);
+            Assert.That(effects.StatusMessage, Is.EqualTo("YouTurn triggered!"));
+        });
+    }
+
+    [Test]
+    public void BesideThePath_NoTrigger()
+    {
+        var sm = BuildStateMachine();
+        var turn = new YouTurnWorkingState { TurnPath = LegThenArc(), ArcStart = new Vec3(0, 20, 0) };
+
+        sm.Tick(Ctx(3, 8, headingDeg: 0), new GuidanceWorkingState(), turn);
+
+        Assert.That(turn.IsTriggered, Is.False, "3 m off the line is not on the path");
+        Assert.That(turn.TurnPath, Is.Not.Null, "still armed: the tractor may come back onto the line");
+    }
+
+    [Test]
+    public void OnTheLineButHeadingTheOtherWay_NoTrigger()
+    {
+        var sm = BuildStateMachine();
+        var turn = new YouTurnWorkingState { TurnPath = LegThenArc(), ArcStart = new Vec3(0, 20, 0) };
+
+        sm.Tick(Ctx(0, 8, headingDeg: 180), new GuidanceWorkingState(), turn);
+
+        Assert.That(turn.IsTriggered, Is.False, "the exit leg of a turn runs the other way; heading must match");
+    }
+
+    [Test]
+    public void ShortOfThePath_NoTriggerYet_AndTheCountdownIsPublished()
+    {
+        var sm = BuildStateMachine();
+        var turn = new YouTurnWorkingState { TurnPath = LegThenArc(), ArcStart = new Vec3(0, 20, 0) };
+
+        sm.Tick(Ctx(0, -12, headingDeg: 0), new GuidanceWorkingState(), turn);
+
+        Assert.That(turn.IsTriggered, Is.False);
+        Assert.That(turn.DistanceToTrigger, Is.EqualTo(12.0).Within(0.01));
+    }
+
+    [Test]
+    public void TheApproachAlarm_MeasuresToTheArc_NotToTheLegStart()
+    {
+        var sm = BuildStateMachine();
+        // Leg from (0,0), arc at (0,20). 18 m before the LEG start is 38 m from the arc: no alarm.
+        var turn = new YouTurnWorkingState { TurnPath = LegThenArc(), ArcStart = new Vec3(0, 20, 0) };
+
+        var far = sm.Tick(Ctx(0, -18, headingDeg: 0), new GuidanceWorkingState(), turn);
+        Assert.That(far.ApproachAlarmSound, Is.False, "38 m from the arc");
+
+        var near = sm.Tick(Ctx(0, 2, headingDeg: 0), new GuidanceWorkingState(), turn);
+        Assert.That(near.ApproachAlarmSound, Is.True, "18 m from the arc");
+    }
+
+    [Test]
+    public void InTheHeadlandOffThePath_TheTurnIsDroppedWithAWarning()
+    {
+        var sm = BuildStateMachine();
+        // A path on another line entirely; the tractor is in the headland (between the ±45
+        // turn line and the ±60 fence) and never joined it.
+        var turn = new YouTurnWorkingState { TurnPath = LegThenArc(easting: 20), ArcStart = new Vec3(20, 20, 0) };
+
+        var effects = sm.Tick(Ctx(0, 47, headingDeg: 0), new GuidanceWorkingState(), turn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.TurnPath, Is.Null, "a missed turn must not stay on screen");
+            Assert.That(turn.IsTriggered, Is.False);
+            Assert.That(effects.TurnCreationFailedSound, Is.True, "the operator must hear that the turn is missed");
+            Assert.That(effects.StatusMessage, Does.Contain("missed"));
+            Assert.That(effects.SyncTurnPathToMap, Is.True);
+        });
+    }
+
+    [Test]
+    public void ArcAlreadyBehindTheTractor_TurnsFromHereInstead()
+    {
+        var sm = BuildStateMachine();
+        // The planned arc left the line at (0,20) and the tractor, 2 m off that line, is at
+        // y = 30: it cannot join the path any more, but there is room to turn from here.
+        var turn = new YouTurnWorkingState
+        {
+            TurnPath = LegThenArc(), ArcStart = new Vec3(0, 20, 0), IsTurnLeft = false,
+        };
+        var planned = turn.TurnPath;
+
+        var effects = sm.Tick(Ctx(2, 30, headingDeg: 0), new GuidanceWorkingState(), turn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.IsExecuting, Is.True, "replanned from the tractor and started");
+            Assert.That(turn.TurnPath, Is.Not.SameAs(planned));
+            Assert.That(turn.TurnPath!.Count, Is.GreaterThan(2));
+            Assert.That(effects.StatusMessage, Does.Contain("from here"));
+        });
+    }
+
+    // ── Through the real planner: renatorgr's turn (#306) ────────────────
+
+    /// <summary>
+    /// The turn is armed 15 m before the turn line, which puts the planned path's first
+    /// point behind the tractor (16 m entry leg plus the arc's own setback). The tractor
+    /// is on the entry leg, so the turn must start before it reaches the headland.
+    /// </summary>
+    [Test]
+    public void ArmedLate_OnTheLeg_TheTurnStartsBeforeTheHeadland()
+    {
+        var (sm, ctxAt) = BuildPlannerBench();
+        var guidance = new GuidanceWorkingState();
+        var turn = new YouTurnWorkingState { IsEnabled = true };
+
+        double y = 30; // turn line at y = 45
+        bool pathWasBehind = false;
+        for (int i = 0; i < 40 && !turn.IsExecuting; i++, y += 0.5)
+        {
+            turn.YouTurnCounter++;
+            sm.Tick(ctxAt(PassZeroX, y, 0), guidance, turn);
+            if (turn.TurnPath != null && turn.TurnPath[0].Northing < y) pathWasBehind = true;
+            Assert.That(turn.CurrentZone, Is.EqualTo(TractorZone.InCultivatedArea),
+                $"reached the headland at y={y:F1} without the turn starting");
+        }
+
+        Assert.That(turn.IsExecuting, Is.True, "the turn must start while the tractor is still on the pass");
+        Assert.That(pathWasBehind, Is.True, "the scenario: the path's first point was behind the tractor when armed");
+    }
+
+    /// <summary>
+    /// Bug report 2026-10-11 ("ran off end of pass"): the planned path's first point lay
+    /// 4.6 m inside the headland, so the tractor, dead on its line with autosteer on, entered
+    /// the headland before it reached the path. The missed-turn check fired there, dropped
+    /// the turn, and the tractor drove on down the line.
+    /// </summary>
+    [Test]
+    public void PathStartsInsideTheHeadland_TheTurnIsKeptUntilTheTractorReachesIt()
+    {
+        var sm = BuildStateMachine();
+        // Turn line at y = 45, fence at 50; the leg starts at y = 48.
+        var turn = new YouTurnWorkingState { TurnPath = LegThenArc(northing: 48), ArcStart = new Vec3(0, 68, 0) };
+        var planned = turn.TurnPath;
+
+        var entering = sm.Tick(Ctx(0, 45.5, headingDeg: 0), new GuidanceWorkingState(), turn);
+        Assert.Multiple(() =>
+        {
+            Assert.That(turn.CurrentZone, Is.EqualTo(TractorZone.InHeadland), "the scenario: already in the headland");
+            Assert.That(turn.TurnPath, Is.SameAs(planned), "the path is still ahead: nothing is missed yet");
+            Assert.That(entering.TurnCreationFailedSound, Is.False);
+            Assert.That(turn.IsTriggered, Is.False);
+        });
+
+        sm.Tick(Ctx(0, 48.5, headingDeg: 0), new GuidanceWorkingState(), turn);
+        Assert.That(turn.IsExecuting, Is.True, "and it starts once the tractor is on it");
+    }
+
+    [Test]
+    public void PathStartsInsideTheHeadland_PassedBesideIt_IsStillAMiss()
+    {
+        var sm = BuildStateMachine();
+        var turn = new YouTurnWorkingState { TurnPath = LegThenArc(easting: 20, northing: 47), ArcStart = new Vec3(20, 67, 0) };
+
+        var before = sm.Tick(Ctx(0, 46, headingDeg: 0), new GuidanceWorkingState(), turn);
+        Assert.That(before.TurnCreationFailedSound, Is.False, "not yet level with the path's start");
+
+        var past = sm.Tick(Ctx(0, 48, headingDeg: 0), new GuidanceWorkingState(), turn);
+        Assert.That(turn.TurnPath, Is.Null, "past the start, 20 m beside it, in the headland: missed");
+        Assert.That(past.TurnCreationFailedSound, Is.True);
+    }
+
+    /// <summary>
+    /// The same with the real planner. It lays the turn out from its own 15 m headland; the
+    /// field's headland line is drawn 20 m inside the fence, so the planned path begins
+    /// inside the headland the tractor's zone is judged by.
+    /// </summary>
+    [Test]
+    public void PlannerPathBeginningInsideTheHeadland_IsDrivenNotDropped()
+    {
+        var (sm, ctxAt) = BuildPlannerBench(turnLineInset: 30.0, legLength: 2.0);
+        var guidance = new GuidanceWorkingState();
+        var turn = new YouTurnWorkingState { IsEnabled = true };
+
+        bool startWasInHeadland = false, failed = false;
+        for (double y = -20; y < 58 && !turn.IsExecuting; y += 0.2)
+        {
+            turn.YouTurnCounter++;
+            var effects = sm.Tick(ctxAt(PassZeroX, y, 0), guidance, turn);
+            failed |= effects.TurnCreationFailedSound;
+            if (turn.TurnPath != null && turn.TurnPath[0].Northing > 30) startWasInHeadland = true;
+        }
+
+        Assert.That(startWasInHeadland, Is.True, "the scenario: the path's first point is beyond the headland line at y = 40");
+        Assert.That(failed, Is.False, "the turn must not be reported missed");
+        Assert.That(turn.IsExecuting, Is.True, "the turn starts when the tractor reaches the path");
+    }
+
+    /// <summary>
+    /// #570: the missed-turn sound sounded over and over until U-turn was switched off. A
+    /// missed turn sounds once, as AgOpenGPS's turnTooCloseTrigger; the next turn that starts,
+    /// or switching U-turn off, lets the next miss sound again.
+    /// </summary>
+    [Test]
+    public void AMissedTurn_SoundsOnce_UntilATurnStartsOrUTurnIsSwitchedOff()
+    {
+        var sm = BuildStateMachine();
+        int Miss()
+        {
+            // The same miss as InTheHeadlandOffThePath: a path on another line, the tractor past
+            // its start in the headland.
+            var turn = new YouTurnWorkingState { TurnPath = LegThenArc(easting: 20), ArcStart = new Vec3(20, 20, 0) };
+            var fx = sm.Tick(Ctx(0, 47, headingDeg: 0), new GuidanceWorkingState(), turn);
+            Assert.That(turn.TurnPath, Is.Null, "missed");
+            return fx.TurnCreationFailedSound ? 1 : 0;
+        }
+
+        Assert.That(Miss() + Miss() + Miss() + Miss(), Is.EqualTo(1), "four misses in a row, one sound");
+
+        // A turn starts: the next miss is news.
+        var driven = new YouTurnWorkingState { TurnPath = LegThenArc(), ArcStart = new Vec3(0, 20, 0) };
+        sm.Tick(Ctx(0, 8, headingDeg: 0), new GuidanceWorkingState(), driven);
+        Assert.That(driven.IsExecuting, Is.True);
+        Assert.That(Miss(), Is.EqualTo(1), "after a turn started");
+        Assert.That(Miss(), Is.EqualTo(0));
+
+        sm.OnYouTurnSwitchedOff();
+        Assert.That(Miss(), Is.EqualTo(1), "after U-turn was switched off and on");
+    }
+
+    // ── Fixtures ─────────────────────────────────────────────────────────
+
+    /// <summary>A 20 m leg north from (easting, northing), then a quarter arc of 8 m radius to the east.</summary>
+    private static List<Vec3> LegThenArc(double easting = 0, double northing = 0)
+    {
+        var path = new List<Vec3>();
+        for (double n = 0; n <= 20; n += 1) path.Add(new Vec3(easting, northing + n, 0));
+        for (int k = 1; k <= 9; k++)
+        {
+            double a = k * Math.PI / 18; // 10° steps
+            path.Add(new Vec3(easting + 8 - 8 * Math.Cos(a), northing + 20 + 8 * Math.Sin(a), a));
+        }
+        return path;
+    }
+
+    private static YouTurnStateMachine BuildStateMachine()
+    {
+        ConfigurationStore.SetInstance(new ConfigurationStore());
+        var c = ConfigurationStore.Instance;
+        c.Vehicle.Wheelbase = 2.5;
+        c.Vehicle.MaxSteerAngle = 35;
+        c.NumSections = 1;
+        c.Tool.SetSectionWidth(0, 600);
+        c.Guidance.UTurnRadius = 8.0;
+        var polygonOffset = Substitute.For<IPolygonOffsetService>();
+        var creation = new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, polygonOffset, c);
+        var pathing = new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, c);
+        return new YouTurnStateMachine(creation, pathing, NullLogger<YouTurnStateMachine>.Instance, c);
+    }
+
+    /// <summary>Fence at ±60, turn line at ±45, AB line north along x = 0. A turn started from
+    /// the tractor must stay inside the fence, so the headland is wide enough for one.</summary>
+    private static YouTurnStateMachine.TickContext Ctx(double e, double n, double headingDeg)
+    {
+        var outer = new BoundaryPolygon
+        {
+            Points = new List<Vec2> { new(-60, -60), new(60, -60), new(60, 60), new(-60, 60) }
+                .Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList(),
+        };
+        return new YouTurnStateMachine.TickContext(
+            new Position { Easting = e, Northing = n, Heading = headingDeg, Speed = 2.5 },
+            Models.Track.Track.FromABLine("AB-test", new Vec3(0, -100, 0), new Vec3(0, 100, 0)),
+            new Boundary { OuterBoundary = outer },
+            new List<Vec3> { new(-45, -45, 0), new(45, -45, 0), new(45, 45, 0), new(-45, 45, 0) },
+            UTurnSkipRows: 0, IsSkipWorkedMode: false,
+            HeadlandCalculatedWidth: 5.0, HeadlandDistance: 5.0);
+    }
+
+    /// <summary>Pass 0's centre on the planner bench: half the 6 m tool east of the AB line,
+    /// where the planned turn's entry leg runs (the tractor steers there).</summary>
+    private const double PassZeroX = 3.0;
+
+    /// <summary>
+    /// The real planner on a 120 m square field: fence at ±60, turn line 15 m inside it,
+    /// 6 m tool, 8 m radius, 16 m legs; an AB line north through the middle.
+    /// </summary>
+    private static (YouTurnStateMachine, Func<double, double, double, YouTurnStateMachine.TickContext>) BuildPlannerBench(double turnLineInset = 15.0, double legLength = 16.0)
+    {
+        ConfigurationStore.SetInstance(new ConfigurationStore());
+        var c = ConfigurationStore.Instance;
+        c.Vehicle.Wheelbase = 2.5;
+        c.Vehicle.MaxSteerAngle = 35;
+        c.Tool.Overlap = 0;
+        c.NumSections = 1;
+        c.Tool.SetSectionWidth(0, 600);
+        c.Guidance.UTurnRadius = 8.0;
+        c.Guidance.UTurnExtension = legLength;
+        c.Guidance.UTurnDistanceFromBoundary = 2.0;
+        c.Guidance.UTurnStyle = 0;
+
+        var offset = new PolygonOffsetService();
+        var creation = new YouTurnCreationService(NullLogger<YouTurnCreationService>.Instance, offset, c);
+        var pathing = new YouTurnPathingService(NullLogger<YouTurnPathingService>.Instance, c);
+        var sm = new YouTurnStateMachine(creation, pathing, NullLogger<YouTurnStateMachine>.Instance, c);
+
+        var outer = new List<Vec2> { new(-60, -60), new(60, -60), new(60, 60), new(-60, 60) };
+        var boundary = new Boundary
+        {
+            OuterBoundary = new BoundaryPolygon
+            {
+                Points = outer.Select(p => new BoundaryPoint(p.Easting, p.Northing, 0)).ToList(),
+            },
+        };
+        var turnLine = offset.CalculatePointHeadings(offset.CreateInwardOffset(outer, turnLineInset)!);
+        var track = Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0));
+
+        YouTurnStateMachine.TickContext CtxAt(double e, double n, double headingDeg) => new(
+            new Position { Easting = e, Northing = n, Heading = headingDeg, Speed = 2.78 },
+            track, boundary, turnLine,
+            UTurnSkipRows: 0, IsSkipWorkedMode: false,
+            HeadlandCalculatedWidth: 15.0, HeadlandDistance: 15.0);
+        return (sm, CtxAt);
+    }
+}

@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -152,6 +151,178 @@ public class ContourGuidanceTests
         c.BuildContourGuidanceLine(new Vec3(9, 60, North), North, P(), 3);
         Assert.That(c.StripNum, Is.EqualTo(0));
         Assert.That(c.IsLocked, Is.True);
+    }
+
+    // Two passes, 12 m apart.
+    private static ContourGuidance WithTwoPasses()
+    {
+        var c = WithNorthPass(0);
+        for (int n = 0; n <= 200; n++) c.Record(true, new Vec3(12, n, North), 0);
+        c.Record(false, new Vec3(12, 200, North), 0);
+        return c;
+    }
+
+    [Test]
+    public void AutoSteerOn_KeepsTheStrip_EvenUnlocked()
+    {
+        // Upstream #1171: while steering, don't jump to a nearer strip.
+        var c = WithTwoPasses();
+        c.BuildContourGuidanceLine(new Vec3(0.5, 50, North), North, P(), 0, isAutoSteerOn: true);
+        Assert.That(c.StripNum, Is.EqualTo(0));
+        Assert.That(c.IsLocked, Is.False);
+
+        c.BuildContourGuidanceLine(new Vec3(9, 60, North), North, P(), 3, isAutoSteerOn: true);
+        Assert.That(c.StripNum, Is.EqualTo(0));
+
+        c.BuildContourGuidanceLine(new Vec3(9, 60, North), North, P(), 6, isAutoSteerOn: false);
+        Assert.That(c.StripNum, Is.EqualTo(1), "AutoSteer off → free to pick the nearest again");
+    }
+
+    [Test]
+    public void AutoSteerOn_WithNoStripYet_Searches()
+    {
+        // Nothing chosen yet (StripNum -1): must search, not index Strips[-1].
+        var c = WithTwoPasses();
+        c.BuildContourGuidanceLine(new Vec3(40, 50, North), North, P(), 0, isAutoSteerOn: true); // too far
+        Assert.That(c.StripNum, Is.EqualTo(-1));
+        Assert.That(c.Line, Is.Empty);
+
+        c.BuildContourGuidanceLine(new Vec3(11.5, 50, North), North, P(), 3, isAutoSteerOn: true);
+        Assert.That(c.StripNum, Is.EqualTo(1));
+        Assert.That(c.Line.Count, Is.GreaterThanOrEqualTo(5));
+    }
+
+    [Test]
+    public void EngagingAutoSteer_Locks_AndDisengagingUnlocks()
+    {
+        // Upstream #1170.
+        var c = WithNorthPass(0);
+        c.FollowAutoSteer(false);
+        c.BuildContourGuidanceLine(new Vec3(0.5, 50, North), North, P(), 0);
+
+        c.FollowAutoSteer(true);
+        Assert.That(c.IsLocked, Is.True);
+        c.FollowAutoSteer(true);
+        Assert.That(c.IsLocked, Is.True, "only the engage edge toggles");
+
+        c.FollowAutoSteer(false);
+        Assert.That(c.IsLocked, Is.False);
+    }
+
+    [Test]
+    public void EngagingAutoSteer_AlreadyLocked_StaysLocked()
+    {
+        var c = WithNorthPass(0);
+        c.BuildContourGuidanceLine(new Vec3(0.5, 50, North), North, P(), 0);
+        c.SetLockToLine();
+        c.FollowAutoSteer(true);
+        Assert.That(c.IsLocked, Is.True);
+    }
+
+    [Test]
+    public void AfterUnlockAtTheLinesEnd_TheStripIsFoundAgain()
+    {
+        var c = WithNorthPass(0);
+        c.BuildContourGuidanceLine(new Vec3(0.5, 50, North), North, P(), 0);
+        c.SetLockToLine();
+        double end = c.Line[^1].Northing;
+
+        // At the line's end Pure Pursuit unlocks (and forgets the lock point).
+        var s = c.DistanceFromContourLine(new Vec3(0.5, end, North), new Vec3(0.5, end + 3, North),
+            new Vec2(0.5, end), North, P(), 10, false, true, 0);
+        Assert.That(s, Is.Null);
+        Assert.That(c.IsLocked, Is.False);
+
+        // Still steering: the same strip is kept and the line rebuilt around the tractor.
+        c.BuildContourGuidanceLine(new Vec3(0.5, end, North), North, P(), 3, isAutoSteerOn: true);
+        Assert.That(c.StripNum, Is.EqualTo(0));
+        Assert.That(c.Line.Count, Is.GreaterThanOrEqualTo(5));
+        Assert.That(c.Line[^1].Northing, Is.GreaterThan(end));
+    }
+
+    [Test]
+    public void NearTheLinesEnd_TheGoalIsTheEnd_NeverTheFieldOrigin()
+    {
+        // The line runs out less than the look-ahead (4 m) ahead. AgOpenGPS keeps its last goal
+        // point there; the port started each cycle at (0,0) and steered at the field's origin.
+        var c = WithNorthPass(0);
+        c.BuildContourGuidanceLine(new Vec3(0.3, 197.5, North), North, P(), 0, isAutoSteerOn: true);
+        var s = c.DistanceFromContourLine(new Vec3(0.3, 197.5, North), new Vec3(0.3, 200.5, North),
+            new Vec2(0.3, 197.5), North, P(), 10, false, true, 0);
+
+        if (s is { } steer)
+        {
+            Assert.That(steer.GoalPoint.Northing, Is.EqualTo(c.Line[^1].Northing).Within(0.5), "the goal is the line's end");
+            Assert.That(steer.GoalPoint.Easting, Is.EqualTo(0).Within(0.5));
+        }
+    }
+
+    /// <summary>A lap's two sides either side of a corner: sections close at the corner, so the
+    /// strip north along x = 0 ends at n = 100 and the next one starts east, at (5,104).</summary>
+    private static ContourGuidance WithCorner()
+    {
+        var c = new ContourGuidance();
+        for (int n = 0; n <= 100; n++) c.Record(true, new Vec3(0, n, North), 0);
+        c.Record(false, new Vec3(0, 100, North), 0);
+        for (int e = 5; e <= 150; e++) c.Record(true, new Vec3(e, 104, Math.PI / 2), 0);
+        c.Record(false, new Vec3(150, 104, Math.PI / 2), 0);
+        return c;
+    }
+
+    [Test]
+    public void AtTheHeldStripsEnd_TheLineCarriesOnAlongTheNextStrip()
+    {
+        // Not in AgOpenGPS: there the held strip's line runs out at the corner.
+        var c = WithCorner();
+        c.BuildContourGuidanceLine(new Vec3(0.3, 80, North), North, P(), 0, isAutoSteerOn: true); // takes the strip
+        c.BuildContourGuidanceLine(new Vec3(0.3, 85, North), North, P(), 3, isAutoSteerOn: true); // holds it
+        Assert.That(c.StripNum, Is.EqualTo(0));
+        Assert.That(c.Line.Exists(q => q.Easting > 30 && Math.Abs(q.Northing - 104) < 0.5), Is.True,
+            "the line goes on east along the next strip");
+        for (int i = 1; i < c.Line.Count; i++)
+        {
+            double d = Math.Sqrt(Math.Pow(c.Line[i].Easting - c.Line[i - 1].Easting, 2) + Math.Pow(c.Line[i].Northing - c.Line[i - 1].Northing, 2));
+            Assert.That(d, Is.LessThan(8), "the two pieces are joined at the corner, no jump back");
+        }
+
+        // Round the corner the next strip is the one held.
+        c.BuildContourGuidanceLine(new Vec3(12, 104.3, Math.PI / 2), Math.PI / 2, P(), 6, isAutoSteerOn: true);
+        Assert.That(c.StripNum, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void WhileTheStripIsHeld_ItsWayStays_InATurnSharperThan90()
+    {
+        // Driving north one width east of the pass. At a corner sharper than 90° the tractor
+        // turns before the strip does; judged again at the rebuild, the way flips and contour
+        // turns the tractor back. Not in AgOpenGPS: there it is judged at every rebuild.
+        var c = WithNorthPass(0);
+        c.BuildContourGuidanceLine(new Vec3(6.5, 50, North), North, P(), 0, isAutoSteerOn: true); // takes the strip
+        c.BuildContourGuidanceLine(new Vec3(6.5, 55, North), North, P(), 3, isAutoSteerOn: true); // holds it
+        foreach (var pt in c.Line) Assert.That(pt.Easting, Is.EqualTo(6).Within(1e-6));
+
+        double turned = 100 * Math.PI / 180;
+        c.BuildContourGuidanceLine(new Vec3(6.5, 60, turned), turned, P(), 6, isAutoSteerOn: true);
+        Assert.That(c.Line.Count, Is.GreaterThanOrEqualTo(5));
+        foreach (var pt in c.Line) Assert.That(pt.Easting, Is.EqualTo(6).Within(1e-6), "still one width east");
+        Assert.That(c.Line[^1].Northing, Is.GreaterThan(c.Line[0].Northing), "still driven north, not turned back");
+
+        var s = c.DistanceFromContourLine(new Vec3(6.5, 60, turned), new Vec3(6.5 + 3 * Math.Sin(turned), 60 + 3 * Math.Cos(turned), turned),
+            new Vec2(6.5, 60), turned, P(), 10, false, true, 0);
+        Assert.That(s, Is.Not.Null);
+        Assert.That(s!.Value.GoalPoint.Northing, Is.GreaterThan(60), "the goal is ahead along the lap, north");
+    }
+
+    [Test]
+    public void ClearReference_ForgetsTheStrip()
+    {
+        var c = WithNorthPass(0);
+        c.BuildContourGuidanceLine(new Vec3(0.5, 50, North), North, P(), 0);
+        c.SetLockToLine();
+        c.ClearReference();
+        Assert.That(c.StripNum, Is.EqualTo(-1));
+        Assert.That(c.IsLocked, Is.False);
+        Assert.That(c.Line, Is.Empty);
     }
 
     [Test]

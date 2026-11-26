@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 
@@ -37,11 +25,23 @@ public partial class MainViewModel
 
     // Backing fields for properties
     private bool _isSimulatorEnabled;
+    private bool _isSimulatorDrivingSteering;
     private double _simulatorSteerAngle;
+    // The operator's steer while guidance drives the sim; restored when it stops (#411).
+    private double _simManualSteerAngle;
+    private bool _simFollowingGuidance;
     private double _simulatorSpeedKph;
     private bool _isSimulatorSpeed10x;
 
     #endregion
+
+    /// <summary>The simulator can't be turned on while a receiver sends fixes: it is the GPS source.</summary>
+    public const string SimulatorRefusedMessage =
+        "Simulator not turned on: a GPS receiver is sending fixes, and it is the GPS source while it does";
+
+    /// <summary>A receiver's fixes arrived while the simulator ran: the simulator stops.</summary>
+    public const string SimulatorGivesWayMessage =
+        "Simulator off: a GPS receiver started sending fixes, and it is the GPS source now";
 
     #region Simulator Event Handlers
 
@@ -52,6 +52,9 @@ public partial class MainViewModel
         // sim and a live source must not drive the pipeline at once (see #478).
         if (_gpsService.IsGpsLive)
         {
+            // Said, not only done: the simulator went off with no word, and the operator
+            // could not tell why (the HAT on the bench, 2026-11-15).
+            ReportFailure(SimulatorGivesWayMessage);
             IsSimulatorEnabled = false; // stops the timer + emits a final stationary frame
             return;
         }
@@ -118,6 +121,16 @@ public partial class MainViewModel
             SatellitesInUse = simulatedData.SatellitesTracked,
             Hdop = simulatedData.Hdop,
             DifferentialAge = 0.0,
+            // The sim heading is the true heading, so "Dual GPS" may use it as the
+            // antenna heading (AgOpenGPS CSim sets headingTrueDual too, #157).
+            HasDualHeading = true,
+            // With Dual GPS off, heading comes from fix-to-fix travel, and reverse is told
+            // apart by an IMU. Without one, Flip (a 180° turn on the spot) reads as backing
+            // up: the tractor kept facing the old way and drove in reverse. Give the sim an
+            // IMU that reports its true heading, so Flip turns it and reverse speed reverses it.
+            ImuHeading = simulatedData.HeadingDegrees,
+            ImuValid = true,
+            SentenceType = AgOpenWeb.Models.GpsSentenceType.Simulator,
             Timestamp = Models.Timing.Clock.Current.Now
         };
 
@@ -138,6 +151,8 @@ public partial class MainViewModel
             // while real (parsed) GPS data is arriving over UDP (see #478).
             if (value && !_isSimulatorEnabled && _gpsService.IsGpsLive)
             {
+                // The button did nothing on screen: the operator is told why.
+                ReportFailure(SimulatorRefusedMessage);
                 OnPropertyChanged(); // snap the bound toggle back to off
                 return;
             }
@@ -160,7 +175,22 @@ public partial class MainViewModel
 
             if (SetProperty(ref _isSimulatorEnabled, value))
             {
+                // A change of GPS source takes AutoSteer off, before the pipeline is told.
+                // Engaged on the simulator, it would go on steering the real tractor to the
+                // simulated line as soon as the receiver's fix takes over (the simulator
+                // stops by itself then, OnSimulatorTick): nobody engaged it on that tractor.
+                if (IsAutoSteerEngaged)
+                {
+                    string why = value ? "simulator turned on" : "simulator turned off";
+                    ToggleAutoSteerCommand?.Execute(why);
+                    ReportFailure("AutoSteer off: " + why);
+                }
+                // The bench choice ends with the simulator: the next time it is turned on
+                // the tablet may be on the tractor.
+                if (!value) IsSimulatorDrivingSteering = false;
+
                 State.Simulator.IsEnabled = value; // mirror for the web-UI projector
+                _gpsPipelineService.SetSimulatorEnabled(value); // no steer speed limits on the sim (#106)
                 // Persist the "simulator is the GPS source" preference through
                 // the store (config), not by writing the DTO directly.
                 ConfigStore.Simulator.Enabled = value;
@@ -184,6 +214,51 @@ public partial class MainViewModel
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// The operator's choice, for a bench test (a steering motor on the desk): the simulator
+    /// moves the real steering, so PGN 254 says steer while AutoSteer is engaged on the
+    /// simulator. Off by default, when the simulator never asks the steer module to steer.
+    /// It is never saved, and it is dropped when the simulator is turned off (a receiver's fix
+    /// does that too) and when the steer module goes silent (the next one heard may be the
+    /// tractor's): it must not be left on when the tablet goes back to the tractor. A change
+    /// takes AutoSteer off first, so the steering never starts or stops under an engaged line.
+    /// </summary>
+    public bool IsSimulatorDrivingSteering
+    {
+        get => _isSimulatorDrivingSteering;
+        set
+        {
+            if (value && !_isSimulatorEnabled) value = false;   // only with the simulator on
+            if (_isSimulatorDrivingSteering == value) return;
+
+            if (IsAutoSteerEngaged)
+            {
+                string why = value ? "the simulator now moves the real steering"
+                                   : "the simulator no longer moves the real steering";
+                ToggleAutoSteerCommand?.Execute(why);
+                ReportFailure("AutoSteer off: " + why);
+            }
+
+            SetProperty(ref _isSimulatorDrivingSteering, value);
+            State.Simulator.SteersModule = value; // mirror for the web-UI projector (the steer bar)
+            _gpsPipelineService.SetSimulatorSteersModule(value);
+            _logger.LogInformation("[Simulator] The steer module is {What}",
+                value ? "driven by the simulator (bench test)" : "not driven by the simulator");
+            StatusMessage = value
+                ? "Simulator: AutoSteer now moves the real steering (bench test)"
+                : "Simulator: the steer module is not driven";
+        }
+    }
+
+    /// <summary>The steer module went silent (it answered until now): the simulator's leave to
+    /// move the steering ends with it. The next module heard may be the tractor's. Called with
+    /// the module check's result, before it is stored.</summary>
+    internal void DropBenchChoiceWhenSteerModuleGoesSilent(bool steerModuleOk)
+    {
+        if (State.Connections.IsAutoSteerDataOk && !steerModuleOk)
+            IsSimulatorDrivingSteering = false;
     }
 
     public double SimulatorSteerAngle
@@ -300,12 +375,13 @@ public partial class MainViewModel
         Latitude = latitude;
         Longitude = longitude;
 
-        // Push into the live vehicle state too — this is the single source the web UI's status
-        // strip and SceneProjector read. Without it the displayed position (and the SimCoords
-        // dialog's prefill, which seeds from the status frame) stays at the old/zero live position
-        // until the simulator next ticks, so a just-set coordinate reads back as 0.0000.
-        State.Vehicle.Latitude = latitude;
-        State.Vehicle.Longitude = longitude;
+        // The live position (status strip, SceneProjector, the SimCoords dialog's prefill)
+        // is the cycle's mirror, written only by ApplyGpsCycleResult. Emit the new position
+        // through the normal path now instead of waiting up to a timer period: a tick at
+        // step 0 is a stationary fix at the new coordinates. With the simulator off there
+        // is no GPS source to move, and its first tick after enabling places the vehicle.
+        if (_isSimulatorEnabled)
+            _simulatorService.Tick(SimulatorSteerAngle);
 
         StatusMessage = saved
             ? $"Simulator reset to {latitude:F8}, {longitude:F8}"

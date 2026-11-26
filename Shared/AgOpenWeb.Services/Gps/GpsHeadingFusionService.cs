@@ -1,10 +1,10 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Models.Timing;
 using AgOpenWeb.Services.Interfaces;
 
 namespace AgOpenWeb.Services.Gps;
@@ -25,7 +25,11 @@ namespace AgOpenWeb.Services.Gps;
 /// <see cref="ConnectionConfig.DualHeadingOffset"/>. With
 /// <see cref="ConnectionConfig.AutoDualFix"/> on and the speed above
 /// <see cref="ConnectionConfig.DualSwitchSpeed"/> (km/h), it switches to Fix
-/// with the dual heading standing in for the IMU.</item>
+/// with the dual heading standing in for the IMU. Only a fix that carries a
+/// dual-antenna heading ($PAOGI) is used this way: a $PANDA fix's heading is the
+/// IMU heading, so with Dual on it takes the Fix path, exactly as with Dual off,
+/// and <see cref="IsDualHeadingMissing"/> is raised (#157). AgIO never puts
+/// PANDA's heading in headingTrueDual.</item>
 /// </list>
 ///
 /// Reverse detection (#125), when <see cref="ConnectionConfig.ReverseDetection"/> is
@@ -35,6 +39,12 @@ namespace AgOpenWeb.Services.Gps;
 /// heading). In Dual the travel over <see cref="ConnectionConfig.DualReverseDistance"/>
 /// is compared with the antenna heading. While reversing the heading is flipped so it
 /// still points the way the vehicle faces.
+///
+/// Dual heading check: every <see cref="DualCheckDistance"/> of travel the dual heading is
+/// also held against the direction the antenna moved. Reversing reads as along it, but a
+/// heading across it (an offset 90° out: antennas front to back set up as side by side)
+/// raises <see cref="IsDualHeadingOffTravel"/>, and AutoSteer won't steer with it: guidance
+/// would steer for a tractor driving across its line. A 180° error reads as reversing.
 ///
 /// Not ported: the forward/reverse steer-angle heading compensation. AgOpenGPS
 /// also corrects the fix for antenna offset and roll before taking the fix-to-fix
@@ -62,6 +72,10 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     private readonly StepFix[] _steps = new StepFix[TotalFixSteps];
 
     private bool _isFirstHeadingSet;
+    private bool _hasHeading;        // a Fix or Dual heading has been output at least once
+    private StepFix _startFix;       // where the run towards a first heading began
+    private bool _lastWasDual;       // the previous fix took its heading from the dual antenna
+    private volatile bool _resetDirectionRequested;
     private double _gpsHeading;      // radians, last fix-to-fix heading
     private double _fixHeading;      // radians, the output
     private double _imuGpsOffset;    // radians, IMU → GPS alignment
@@ -69,6 +83,31 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     private bool _isReverseWithImu;
     private bool _hasReverseFix;
     private double _reverseFixE, _reverseFixN;
+
+    /// <summary>Travel over which the dual heading is held against the direction moved, m.</summary>
+    public const double DualCheckDistance = 2.0;
+    /// <summary>Slower than this, the direction moved says too little, km/h.</summary>
+    public const double DualCheckSpeedKmh = 2.0;
+    /// <summary>A dual heading further than this from the direction of travel on two checks
+    /// in a row is wrong, degrees. A tight turn with the antenna ahead of the rear axle moves
+    /// it up to about 35° sideways; the offsets people get wrong are 90° out.</summary>
+    public const double DualOffTravelLimitDeg = 60;
+    private const double DualOffTravelClearDeg = 45;
+
+    private bool _hasCheckFix;
+    private double _checkE, _checkN, _checkDual, _checkOffset;
+    private int _offTravelChecks;
+
+    /// <summary>How far the dual heading (with its offset) was from the direction the antenna
+    /// moved at the last check, degrees 0–90; reversing reads as along it. NaN until measured,
+    /// and while the heading doesn't come from the dual antenna.</summary>
+    public double DualHeadingOffTravelDeg { get; private set; } = double.NaN;
+
+    /// <summary>True when the dual heading was more than <see cref="DualOffTravelLimitDeg"/>
+    /// across the direction of travel on two checks in a row: its offset doesn't match how
+    /// the antennas are mounted. Cleared by a check along it, by a new offset, and while the
+    /// heading doesn't come from the dual antenna.</summary>
+    public bool IsDualHeadingOffTravel { get; private set; }
 
     /// <summary>Last fix-to-fix GPS heading, degrees (AgOpenGPS gpsHeading) — heading chart.</summary>
     public double GpsHeadingDeg => _gpsHeading * 180.0 / Math.PI;
@@ -83,20 +122,98 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     /// vehicle changed direction; AgOpenGPS stops steering meanwhile.</summary>
     public bool IsChangingDirection { get; private set; }
 
+    /// <summary>True while Dual GPS is on but the fixes carry no dual-antenna
+    /// heading ($PANDA), so the single-antenna heading is used instead (#157).</summary>
+    public bool IsDualHeadingMissing { get; private set; }
+
+    /// <summary>How long after the first position a receiver gets to resolve its
+    /// dual-antenna heading before <see cref="IsDualHeadingWarning"/> is raised (#313).</summary>
+    public static readonly TimeSpan DualHeadingGrace = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan WarningDataGap = TimeSpan.FromSeconds(2);
+
+    private bool _dualHeadingSeen;        // since the receiver last had no position
+    private DateTime? _positionSince;     // first fix with a position and no dual heading
+    private DateTime _lastWarningUpdate;
+
+    /// <summary>True when <see cref="IsDualHeadingMissing"/> is worth telling the
+    /// operator about (#313): the receiver has a position, and its dual heading
+    /// either was there and went away, or hasn't come within
+    /// <see cref="DualHeadingGrace"/>. A receiver starting up has no position and so
+    /// no heading yet; that is not a fault.</summary>
+    public bool IsDualHeadingWarning { get; private set; }
+
+    public void UpdateDualHeadingWarning(int fixQuality)
+    {
+        DateTime now = Clock.Current.Now;
+        // No position, or the data stopped (module powered off): the receiver starts over.
+        if (fixQuality <= 0 || now - _lastWarningUpdate > WarningDataGap)
+        {
+            _dualHeadingSeen = false;
+            _positionSince = null;
+        }
+        _lastWarningUpdate = now;
+
+        if (!IsDualHeadingMissing)
+        {
+            if (fixQuality > 0) _dualHeadingSeen = true;
+            _positionSince = null;
+            IsDualHeadingWarning = false;
+            return;
+        }
+        if (fixQuality <= 0)
+        {
+            IsDualHeadingWarning = false;
+            return;
+        }
+        _positionSince ??= now;
+        IsDualHeadingWarning = _dualHeadingSeen || now - _positionSince.Value >= DualHeadingGrace;
+    }
+
     public double FuseHeading(double gpsHeading, double imuHeading, bool imuValid,
-                              double speedMs, double easting, double northing)
+                              double speedMs, double easting, double northing,
+                              bool hasDualHeading)
     {
         var con = Connections;
         double speedKmh = Math.Abs(speedMs) * 3.6;
+
+        // Dual GPS on, but this fix has no antenna heading ($PANDA: the heading field
+        // is the IMU's). Don't treat it as one: fall through to Fix, as with Dual off.
+        bool wasMissing = IsDualHeadingMissing;
+        IsDualHeadingMissing = con.IsDualGps && !hasDualHeading;
+        if (IsDualHeadingMissing && !wasMissing)
+        {
+            // The dual path marked the heading as started without learning the IMU
+            // offset; restart Fix so the offset snaps onto the first fix-to-fix heading.
+            // Otherwise the raw IMU heading meets the travel heading and reads as reverse.
+            _hasReverseFix = false;
+            _isFirstHeadingSet = false;
+            Reset();
+        }
+
+        // Reset Direction (the operator tapped the vehicle): start over as if no heading
+        // had been learned. Applied here, on the thread that runs the fusion.
+        if (_resetDirectionRequested)
+        {
+            _resetDirectionRequested = false;
+            if (!_lastWasDual)
+            {
+                _isFirstHeadingSet = false;
+                IsReverse = _isReverseWithImu = IsChangingDirection = false;
+                _filteredDelta = 0;
+                Reset();
+            }
+        }
 
         // The IMU heading this fix, if any (radians).
         double? imu = imuValid ? ToRad(imuHeading) : null;
         ImuCorrectedDeg = imu is double ir ? Wrap(ir + _imuGpsOffset) * 180.0 / Math.PI : double.NaN;
 
         bool useFix = true;
-        if (con.IsDualGps)
+        if (!(con.IsDualGps && hasDualHeading)) ClearDualCheck();
+        if (con.IsDualGps && hasDualHeading)
         {
             double dual = Wrap(ToRad(gpsHeading + con.DualHeadingOffset));
+            CheckDualAgainstTravel(dual, easting, northing, speedKmh, con.DualHeadingOffset);
             if (con.AutoDualFix && speedKmh > con.DualSwitchSpeed)
                 imu = dual;                       // dual stands in for the IMU
             else
@@ -108,16 +225,41 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
                 // current so a switch to Fix picks up smoothly (AgOpenGPS does too).
                 IsChangingDirection = false;
                 DetectDualReverse(dual, easting, northing, con.DualReverseDistance);
-                _isFirstHeadingSet = true;
+                _isFirstHeadingSet = _hasHeading = true;
+                _lastWasDual = true;
                 _fixHeading = _gpsHeading = dual;
                 PushStep(easting, northing);
+                _hasPrevFix = false;          // the dual heading takes no fix-to-fix heading
                 return Output(_fixHeading);
             }
         }
 
         // ── Fix ──────────────────────────────────────────────────────────
+        _lastWasDual = false;
+
+        // A position jump: the receiver changed its solution (another base, a re-fix) and the
+        // reported position moved sideways while the tractor drove on. A heading taken across
+        // it turned 57° for a 1 m jump (GPS/NTRIP scenarios, JUMP-HEADING-SPIKE) and AutoSteer
+        // put the wheels to 35°. The step history starts again from the new position and the
+        // heading is kept until the next FixToFixDistance of travel; the new position itself
+        // is followed (it is where the receiver says the tractor is). AgOpenGPS's own jump
+        // check is commented out.
+        double jE = easting - _prevFixE, jN = northing - _prevFixN;
+        bool jumped = _hasPrevFix && _hasHeading && IsSidewaysJump(jE, jN, _fixHeading);
+        _prevFixE = easting; _prevFixN = northing; _hasPrevFix = true;
+        if (jumped)
+        {
+            LastJumpM = Math.Sqrt(jE * jE + jN * jN);
+            JumpCount++;
+            Reset();
+            PushStep(easting, northing);
+            return ByPass(gpsHeading, imu);
+        }
         if (!_isFirstHeadingSet)
         {
+            // Too slow to tell a direction: the run towards a first heading starts again
+            // from wherever the vehicle next gets going, not from where it last stood.
+            if (speedKmh < StartSpeedKmh) _startFix = default;
             if (speedKmh < StartSpeedKmh || !TryStartHeading(easting, northing, imu))
                 return ByPass(gpsHeading, imu);
             return Output(_fixHeading);
@@ -192,6 +334,7 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
         }
 
         PushStep(easting, northing);
+        _hasHeading = true;
         return Output(_fixHeading);
     }
 
@@ -211,6 +354,62 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
         _reverseFixE = easting; _reverseFixN = northing;
     }
 
+    // Dual heading check: the mean dual heading over the last DualCheckDistance of travel
+    // against the direction moved, folded so that reversing reads as along it.
+    private void CheckDualAgainstTravel(double dual, double easting, double northing, double speedKmh, double offset)
+    {
+        if (offset != _checkOffset)
+        {
+            ClearDualCheck();       // a new offset is judged afresh
+            _checkOffset = offset;
+        }
+        if (speedKmh < DualCheckSpeedKmh)
+        {
+            _hasCheckFix = false;   // start again from where it next gets going
+            return;
+        }
+        if (!_hasCheckFix)
+        {
+            SetCheckFix(dual, easting, northing);
+            return;
+        }
+        double d2 = Dist2(new StepFix { E = _checkE, N = _checkN }, easting, northing);
+        if (d2 < Sq(DualCheckDistance)) return;
+        if (d2 > Sq(5 * DualCheckDistance))
+        {
+            SetCheckFix(dual, easting, northing);   // a jump (simulator, new plane), not travel
+            return;
+        }
+        double moved = Wrap(Math.Atan2(easting - _checkE, northing - _checkN));
+        double mean = Wrap(_checkDual + AngleDelta(_checkDual, dual) / 2);
+        double off = Math.Abs(AngleDelta(mean, moved));
+        off = Math.Min(off, Math.PI - off) * 180.0 / Math.PI;
+        DualHeadingOffTravelDeg = off;
+        if (off > DualOffTravelLimitDeg)
+        {
+            if (++_offTravelChecks >= 2) IsDualHeadingOffTravel = true;
+        }
+        else
+        {
+            _offTravelChecks = 0;
+            if (off < DualOffTravelClearDeg) IsDualHeadingOffTravel = false;
+        }
+        SetCheckFix(dual, easting, northing);
+    }
+
+    private void SetCheckFix(double dual, double easting, double northing)
+    {
+        _checkE = easting; _checkN = northing; _checkDual = dual; _hasCheckFix = true;
+    }
+
+    private void ClearDualCheck()
+    {
+        _hasCheckFix = false;
+        _offTravelChecks = 0;
+        IsDualHeadingOffTravel = false;
+        DualHeadingOffTravelDeg = double.NaN;
+    }
+
     /// <summary>Fusion weight per GPS heading update (AgOpenGPS fusionWeight).</summary>
     private double FusionWeight => Math.Clamp(Connections.HeadingFusionWeight, 0, 1) * FusionShareToWeight;
 
@@ -223,34 +422,68 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
     {
         for (int i = 0; i < TotalFixSteps; i++) _steps[i] = default;
         _hasReverseFix = false;
+        _hasCheckFix = false;
+        _startFix = default;
     }
 
-    // First heading: three stored fixes, heading from the oldest to the newest; the
-    // IMU offset is snapped straight onto it (AgOpenGPS "Start").
+    /// <summary>
+    /// Learn the direction again from the next forward travel: forget the first heading,
+    /// the reverse state and the stored fixes, as AgOpenGPS does when the vehicle is tapped
+    /// ("Reset Direction, drive forward"). For when the first heading was taken while the
+    /// vehicle was backing: with an IMU every forward metre after that reads as reverse
+    /// until this is done. The heading on screen holds until the new one is learned.
+    /// Ignored while the heading comes from the dual antenna. Safe to call from any thread;
+    /// it takes effect on the next fix.
+    /// </summary>
+    public void ResetDirection() => _resetDirectionRequested = true;
+
+    // First heading: from where this run above the start speed began to the first fix far
+    // enough from it (the same reach a fix-to-fix heading needs); the IMU offset is snapped
+    // straight onto it (AgOpenGPS "Start").
+    //
+    // AgOpenGPS takes it from three consecutive fixes whatever their spacing. At 10 Hz and
+    // the 1.5 km/h start speed that is 8 cm of travel, which GPS noise can turn into a
+    // heading pointing backwards; with an IMU the offset then locks 180° out and forward
+    // travel reads as reverse from there on (PR #249).
     private bool TryStartHeading(double easting, double northing, double? imu)
     {
-        PushStep(easting, northing);
-        if (!_steps[2].IsSet) return false;
+        if (!_startFix.IsSet)
+        {
+            _startFix = new StepFix { E = easting, N = northing, IsSet = true };
+            PushStep(easting, northing);
+            return false;
+        }
 
-        _gpsHeading = Wrap(Math.Atan2(easting - _steps[2].E, northing - _steps[2].N));
+        if (Dist2(_startFix, easting, northing) < Sq(Connections.FixToFixDistance) * 0.5)
+        {
+            // Keep the step history filling, as it will be needed after the start.
+            if (Dist2(_steps[0], easting, northing) >= Sq(Connections.MinGpsStep))
+                PushStep(easting, northing);
+            return false;
+        }
+
+        PushStep(easting, northing);
+        _gpsHeading = Wrap(Math.Atan2(easting - _startFix.E, northing - _startFix.N));
         _fixHeading = _gpsHeading;
         if (imu is double imuRad)
         {
             _imuGpsOffset = Wrap(AngleDelta(imuRad, _gpsHeading));
             _fixHeading = Wrap(imuRad + _imuGpsOffset);
         }
-        _isFirstHeadingSet = true;
+        _isFirstHeadingSet = _hasHeading = true;
         return true;
     }
 
     // No new fix-to-fix heading this time. With an IMU, heading follows it (plus the
     // offset); otherwise hold the last heading, or pass the sentence heading through
-    // until there is one.
+    // until there has ever been one. A restart (Dual → $PANDA, #157) forgets the stored
+    // fixes but not the heading: with no IMU, $PANDA's heading field is 0, and showing
+    // it would swing the tractor to north at every stop until the next fix-to-fix heading.
     private double ByPass(double sentenceHeadingDeg, double? imu)
     {
         if (imu is double imuRad)
             _fixHeading = Wrap(imuRad + _imuGpsOffset);
-        else if (!_isFirstHeadingSet)
+        else if (!_hasHeading)
             return Output(ToRad(sentenceHeadingDeg));
         return Output(_fixHeading);
     }
@@ -261,6 +494,28 @@ public class GpsHeadingFusionService : IGpsHeadingFusionService
         deg %= 360.0;
         if (deg < 0) deg += 360.0;
         return deg;
+    }
+
+    /// <summary>A step sideways to the heading of at least this much between two fixes, and
+    /// more than half as large as the step along it, is a position jump, m. Driving never moves
+    /// the antenna that far sideways from one fix to the next: a 10 m radius turn at 30 km/h
+    /// and 5 Hz moves it 0.14 m.</summary>
+    public const double JumpSidewaysM = 0.5;
+
+    private bool _hasPrevFix;
+    private double _prevFixE, _prevFixN;
+
+    /// <summary>How many position jumps the heading was kept across (<see cref="JumpSidewaysM"/>).</summary>
+    public int JumpCount { get; private set; }
+
+    /// <summary>The size of the last position jump, m.</summary>
+    public double LastJumpM { get; private set; }
+
+    private static bool IsSidewaysJump(double dE, double dN, double heading)
+    {
+        double along = dE * Math.Sin(heading) + dN * Math.Cos(heading);
+        double across = dE * Math.Cos(heading) - dN * Math.Sin(heading);
+        return Math.Abs(across) >= JumpSidewaysM && Math.Abs(across) > 0.5 * Math.Abs(along);
     }
 
     private void PushStep(double e, double n)

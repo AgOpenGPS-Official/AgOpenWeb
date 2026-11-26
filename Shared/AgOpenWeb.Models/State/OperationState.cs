@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 namespace AgOpenWeb.Models.State;
 
 /// <summary>
@@ -31,4 +35,17 @@ public sealed class OperationState
 
     /// <summary>A track is available to steer to (else the AutoSteer button greys).</summary>
     public bool IsAutoSteerAvailable { get; set; }
+
+    /// <summary>Ref Nudge panel (#489): how far the selected track was moved since the panel
+    /// opened, in m, the driver's right positive.</summary>
+    public double RefNudgeMoved { get; set; }
+
+    /// <summary>The selected track has a reference move that is not saved yet.</summary>
+    public bool RefNudgePending { get; set; }
+
+    /// <summary>The Smooth Curve panel is open on the selected curve (#929).</summary>
+    public bool SmoothOpen { get; set; }
+
+    /// <summary>... and how many points either side the curve shown is averaged over (0 = as saved).</summary>
+    public int SmoothCount { get; set; }
 }

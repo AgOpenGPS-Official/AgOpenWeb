@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgOpenWeb.Models;
@@ -30,6 +34,20 @@ public class DisplayTogglePersistenceTests
     {
         var settings = new AppSettings();
         Assert.That(settings.SvennArrowVisible, Is.False);
+    }
+
+    [Test]
+    public void AppSettings_IsMetric_DefaultIsTrue()
+    {
+        var settings = new AppSettings();
+        Assert.That(settings.IsMetric, Is.True);
+    }
+
+    [Test]
+    public void ConfigurationStore_IsMetric_DefaultIsTrue()
+    {
+        var store = new ConfigurationStore();
+        Assert.That(store.IsMetric, Is.True);
     }
 
     [Test]
@@ -77,6 +95,7 @@ public class DisplayTogglePersistenceTests
         Assert.That(deserialized, Is.Not.Null);
         Assert.That(deserialized!.KeyboardEnabled, Is.False);
         Assert.That(deserialized!.SvennArrowVisible, Is.False);
+        Assert.That(deserialized!.IsMetric, Is.True);
     }
 
     [Test]

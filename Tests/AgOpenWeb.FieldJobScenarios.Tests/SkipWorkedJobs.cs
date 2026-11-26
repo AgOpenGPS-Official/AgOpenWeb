@@ -1,0 +1,146 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+namespace AgOpenWeb.FieldJobScenarios.Tests;
+
+/// <summary>
+/// The U-turn skip button's third mode, "ignore worked tracks" (the snake order): AgOpenWeb plans
+/// the order of the passes, skipping the rows set, and at each end turns onto the next pass of the
+/// order still to do; when that one has no room at this end or its turn does not build, onto the
+/// nearest pass still to do that has (#807). A failed end is not tried again on every cycle. No
+/// other job drives this mode, so its order, its re-planning and its fallback were held by unit
+/// tests only. Measured besides the whole-field checks: whether a turn ever landed on a pass
+/// already worked, and the order the passes were worked in.
+/// </summary>
+public static class SkipWorkedJobs
+{
+    public static IEnumerable<JobSpec> Jobs()
+    {
+        var w1 = new SnakeWatch(careless: false);
+        yield return new JobSpec("W1", "Baetas, skip worked passes (snake order, 1 row)",
+            "The 8 m sprayer on Baetas (6.3 ha, AB line at 8°), whose narrow end leaves some passes too short to land on, with the skip " +
+            "button on its third mode, ignore worked tracks, 1 row: AgOpenWeb works every other pass on the way out and the rest on the way " +
+            "back, choosing the next pass at every end.",
+            "Baetas", "1 Principal AB 8 deg", Machines.Puma, Machines.Sprayer8, RigJobs.Puma)
+        // A bay cuts a lobe off Baetas's south end for passes 5 and below (pieces of 50-70 m); pass 6
+        // runs on into it, so on the way back the order lands in the lobe and works it, then has no
+        // pass with room left there (2026-11-16: 47 % sprayed). The snake picks the next pass at each
+        // end, as AgOpenGPS; working a field part by part is an enhancement, not a fix.
+        {
+            BeforeStart = SkipWorkedAsync, OnFix = w1.OnFixAsync, ExtraJudge = w1.Judge,
+            ExpectedStop = new("No U-turn onto the next pass: none of it is in the field at this end",
+                "from the field's shape: the snake order worked the lobe that a bay cuts off the south end and had no pass with room left in it; the passes beyond the bay are not reached by U-turn from there"),
+        };
+
+        var w2 = new SnakeWatch(careless: true);
+        yield return new JobSpec("W2", "Olival with a hard boundary, skip worked passes, a careless operator",
+            "J7's field (the outer boundary hard: AgOpenWeb keeps the boom's swept path inside the fence, and at some ends no turn " +
+            "fits) in the snake order, 1 row. The operator taps the U-turn arrow in the middle of the fourth pass (the turn goes the " +
+            "other way and the order is planned again from where it lands), and after the seventh turn taps the row button (2 rows).",
+            "Olival", "AB 159 deg", Machines.Puma, Machines.Sprayer8, RigJobs.Puma)
+        // The arrow tapped mid-pass sends the order out to the west edge (-3, -5, -7); at -7's end the
+        // next pass has 4.5 m in the field and the open passes are on the far side, more than twice
+        // the skip's step away: the operator takes over, as the snake's rules say (2026-11-16: 54 %).
+        {
+            HardBoundary = true, BeforeStart = SkipWorkedAsync, OnFix = w2.OnFixAsync, ExtraJudge = w2.Judge,
+            ExpectedStop = new("No U-turn onto the next pass: only ",
+                "from what the operator did: the U-turn arrow tapped mid-pass sent the order to the field's edge, where the next pass is too short and the passes still open are beyond the snake's reach"),
+        };
+
+        // W1 and W2 skip 1 row, and W2's row button comes after its seventh turn, which the job does
+        // not reach: the order with more rows (#946, a step of rows + 1) was held by unit tests only.
+        var w3 = new SnakeWatch(careless: false, rows: 2);
+        yield return new JobSpec("W3", "Olival, skip worked passes, 2 rows",
+            "J1's field and machine in the snake order with the row button tapped once before the start (2 rows): AgOpenWeb works " +
+            "every third pass to one end, each of the other two lanes end to end, then the rest of the first lane.",
+            "Olival", "AB 159 deg", Machines.Puma, Machines.Sprayer8, RigJobs.Puma)
+        {
+            BeforeStart = r => SkipWorkedAsync(r, rows: 2), OnFix = w3.OnFixAsync, ExtraJudge = w3.Judge,
+        };
+    }
+
+    /// <summary>
+    /// Two taps of the skip button: normal, alternative, ignore worked tracks (1 row); then the row
+    /// button until it shows <paramref name="rows"/>.
+    /// </summary>
+    public static Task SkipWorkedAsync(JobRun r) => SkipWorkedAsync(r, rows: 1);
+
+    public static async Task SkipWorkedAsync(JobRun r, int rows)
+    {
+        await r.SendAsync("youturn.skipToggle");
+        await r.SendAsync("youturn.skipToggle");
+        for (int i = 1; i < rows; i++) await r.SendAsync("youturn.skipCycle");
+        var (mode, set, worked) = await r.Rig.ReadAsync(() => (r.Rig.Vm.UTurnSkipMode, r.Rig.Vm.UTurnSkipRows, r.Rig.Vm.IsSkipWorkedMode));
+        r.S.Step(JobRun.F($"skip rows: mode {mode} (ignore worked tracks), {set} row(s)"));
+        if (mode != 2 || set != rows || !worked) r.Harness(JobRun.F($"the skip button did not go to ignore worked tracks, {rows} row(s) (mode {mode}, {set} rows, skip worked {worked})"));
+    }
+
+    private sealed class SnakeWatch
+    {
+        private readonly bool _careless;
+        private readonly int _rows;
+        private bool _arrowTapped, _rowsTapped;
+        private int _passStartFix = -1, _passStartTurns = -1;
+
+        public SnakeWatch(bool careless, int rows = 1) { _careless = careless; _rows = rows; }
+
+        public async Task OnFixAsync(JobRun r)
+        {
+            if (!_careless || r.InTurn) { _passStartFix = -1; return; }
+            // The fix a pass began on (out of the last turn), to find the middle of it.
+            if (_passStartFix < 0 || _passStartTurns != r.TurnsStarted) { _passStartFix = r.Fix; _passStartTurns = r.TurnsStarted; }
+            double onPass = (r.Fix - _passStartFix) * JobRun.FixSeconds;
+            if (!_arrowTapped && r.TurnsStarted == 3 && onPass > 25)
+            {
+                _arrowTapped = true;
+                r.Did("the operator tapped the U-turn arrow in the middle of the pass (the next turn the other way)");
+                await r.SendAsync("youturn.direction");
+            }
+            if (!_rowsTapped && r.TurnsStarted == 7 && onPass > 10)
+            {
+                _rowsTapped = true;
+                await r.SendAsync("youturn.skipCycle");
+                var (mode, rows) = await r.Rig.ReadAsync(() => (r.Rig.Vm.UTurnSkipMode, r.Rig.Vm.UTurnSkipRows));
+                r.Did(JobRun.F($"the operator tapped the row button: {rows} row(s) (mode {mode})"));
+            }
+        }
+
+        public void Judge(Scenario sc, JobRun r, Action<Severity, string, string> flag)
+        {
+            // The passes the implement worked, in order: where the first turn began, then where
+            // each turn put it (15 s after the turn ended).
+            var turns = r.Turns.Where(t => t.TruthPassBefore != int.MinValue).ToList();
+            if (turns.Count == 0) { r.Harness("no U-turn with the implement's pass known: the snake order was not seen"); return; }
+            var order = new List<int> { turns[0].TruthPassBefore };
+            var ontoWorked = new List<string>();
+            foreach (var t in turns)
+            {
+                if (t.TruthPassAfter == int.MinValue) continue;
+                if (order.Contains(t.TruthPassAfter))
+                    ontoWorked.Add(JobRun.F($"turn {t.Index} at {t.StartSeconds:0} s from pass {t.TruthPassBefore} onto {t.TruthPassAfter}, worked before"));
+                order.Add(t.TruthPassAfter);
+            }
+            sc.Row.Metrics.Add(("The passes in the order worked (the implement's pass after each U-turn)", string.Join(", ", order)));
+            if (_careless)
+                sc.Row.Metrics.Add(("The operator's taps: the U-turn arrow mid-pass / the row button", JobRun.F($"{(_arrowTapped ? "tapped" : "not reached")} / {(_rowsTapped ? "tapped" : "not reached")}")));
+            if (_rows > 1)
+            {
+                // The order starts with the tractor's lane, every (rows + 1)th pass: the first turn
+                // moves that far (the snake moved 2 whatever the rows before #946).
+                int step = _rows + 1, first = order.Count > 1 ? order[1] - order[0] : 0;
+                if (order.Count < 2) r.Harness("no U-turn with the pass after it known: the step of the order was not seen");
+                else if (Math.Abs(first) != step)
+                    flag(Severity.Bug, "SNAKE-ROWS-IGNORED",
+                        JobRun.F($"with {_rows} rows to skip, the first U-turn went from pass {order[0]} to {order[1]} ({Math.Abs(first)} passes over), not {step}: the snake order did not skip the rows chosen"));
+                else
+                    sc.Ok(JobRun.F($"the first U-turn went {step} passes over ({_rows} rows skipped)"));
+            }
+            if (ontoWorked.Count > 0)
+                flag(Severity.Bug, "TURN-ONTO-WORKED-PASS",
+                    JobRun.F($"with skip worked passes on, {ontoWorked.Count} U-turn(s) went onto a pass already worked: {string.Join("; ", ontoWorked.Take(3))}{(ontoWorked.Count > 3 ? "; …" : "")}"));
+            else
+                sc.Ok(JobRun.F($"no U-turn went onto a pass already worked ({order.Count} passes)"));
+        }
+    }
+}

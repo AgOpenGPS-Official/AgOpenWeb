@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -50,7 +49,6 @@ public class LookAheadSlitTests
     private GpsPipelineService _pipeline = null!;
     private SectionControlService _sectionControl = null!;
     private CoverageMapService _coverage = null!;
-    private ApplicationState _appState = null!;
     private List<GpsCycleResult> _results = null!;
     private PositionEstimator _estimator = null!;
     private ToolPositionService _toolPosition = null!;
@@ -75,7 +73,9 @@ public class LookAheadSlitTests
         double sectionWidthCm = (totalToolWidth / numSections) * 100.0;
         for (int i = 0; i < numSections; i++)
             config.Tool.SetSectionWidth(i, (int)sectionWidthCm);
-        config.Tool.HitchLength = 0;
+        // A fixed tool's working point 0 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        config.Vehicle.ThreePointHitchLength = config.Vehicle.FrontHitchLength = System.Math.Abs(0);
+        config.Tool.WorkingPointFromHitch = 0;
         config.Tool.TrailingHitchLength = 0;
         config.Tool.IsToolRearFixed = true;
         config.Tool.IsToolTrailing = false;
@@ -83,26 +83,25 @@ public class LookAheadSlitTests
         config.Tool.LookAheadOffSetting = lookAheadOffSeconds;
 
         SensorState.Instance.ImuRoll = 0;
-        _appState = new ApplicationState();
 
         _gpsService = new GpsService();
         _gpsService.Start();
 
         _toolPosition = new ToolPositionService(config);
         _coverage = new CoverageMapService(config);
-        _sectionControl = new SectionControlService(_toolPosition, _coverage, _appState, config);
+        _sectionControl = new SectionControlService(_toolPosition, _coverage, config);
         _sectionControl.MasterState = SectionMasterState.Auto;
         _sectionControl.SetAllAuto();
         _coverage.SetFieldBounds(-10, FIELD_SIZE + 10, -10, FIELD_SIZE + 10);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
-                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>())
+                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>())
             .Returns(ci => ci.ArgAt<double>(0));
 
         _autoSteer = new AutoSteerService(new TrackGuidanceService(),
             Substitute.For<IUdpCommunicationService>(),
-            _gpsService, _appState, config);
+            _gpsService, config);
 
         _estimator = new PositionEstimator();
 
@@ -118,7 +117,7 @@ public class LookAheadSlitTests
             Substitute.For<IAudioService>(),
             new PipelineIntents(),
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, _appState,
+            NullLogger<GpsPipelineService>.Instance,
             config,
             _estimator);
 
@@ -228,8 +227,7 @@ public class LookAheadSlitTests
 
     private void SetUpField()
     {
-        _appState.Field.LocalPlane = new LocalPlane(
-            new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties());
+        _pipeline.SetLocalPlane(new LocalPlane( new Wgs84(ORIGIN_LAT, ORIGIN_LON), new SharedFieldProperties()));
 
         var outerPoly = new BoundaryPolygon();
         outerPoly.Points.Add(new BoundaryPoint { Easting = 0, Northing = 0 });
@@ -239,11 +237,8 @@ public class LookAheadSlitTests
         outerPoly.UpdateBounds();
         var boundary = new Boundary { OuterBoundary = outerPoly };
         _pipeline.SetBoundary(boundary);
-        // Section control reads CurrentBoundary directly off the shared
-        // ApplicationState; pipeline.SetBoundary only updates the pipeline's
-        // private copy. Without this, sections see no boundary and stay OFF
-        // (issue #347 fix).
-        _appState.Field.CurrentBoundary = boundary;
+        // Section control has its own published copy of the field facts (#347).
+        _sectionControl.SetFieldContext(new AgOpenWeb.Models.Sections.SectionFieldContext(boundary, null, true, false));
     }
 
     /// <summary>

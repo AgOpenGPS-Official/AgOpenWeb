@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using AgOpenWeb.Services.Interfaces;
@@ -104,35 +92,42 @@ namespace AgOpenWeb.Services
             _isAcceleratingBackward = false;
         }
 
+        /// <summary>
+        /// Seconds of travel in one <see cref="StepDistance"/>: AgOpenGPS's CSim moves a step
+        /// per tick of its 93 ms simulator timer and reports 4 * stepDistance * 10 km/h, which
+        /// is one step every 0.09 s.
+        /// </summary>
+        public const double StepSeconds = 3.6 / 40.0;
+
+        private const double TimerSeconds = 1.0 / 30.0; // _simulatorTimer interval (33 ms)
+
         public void Tick(double steerAngleDegrees)
+        {
+            // Advance by wall-clock time, not by tick count. The timer ticks every 33 ms (and
+            // unevenly under the headless host's threading timer), so a step per tick, or a
+            // step per 33 ms, covers ground 2.7 times faster than the reported speed (#328).
+            // The interval is clamped to absorb the first tick after start and any long pause
+            // without a position jump.
+            double dtSeconds = TimerSeconds;
+            long nowTs = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_lastTickTimestamp != 0)
+            {
+                dtSeconds = (nowTs - _lastTickTimestamp) / (double)System.Diagnostics.Stopwatch.Frequency;
+                dtSeconds = Math.Clamp(dtSeconds, TimerSeconds * 0.25, TimerSeconds * 4.0);
+            }
+            _lastTickTimestamp = nowTs;
+            Tick(steerAngleDegrees, dtSeconds);
+        }
+
+        /// <summary>Advance the simulation by <paramref name="dtSeconds"/> at the reported speed.</summary>
+        public void Tick(double steerAngleDegrees, double dtSeconds)
         {
             _steerAngle = steerAngleDegrees;
 
             // Smooth the steer angle (original algorithm from CSim.DoSimTick)
             SmoothSteerAngle();
 
-            // Time-scale the per-tick advance. The original CSim moved a fixed
-            // _stepDistance every tick, which assumes a perfectly regular ~30 Hz
-            // tick. That holds under Avalonia's DispatcherTimer but NOT under a
-            // jittery System.Threading.Timer (the headless host), where uneven tick
-            // spacing makes the real ground speed wander even though the reported
-            // speed is constant — the dead-reckoner then over/undershoots and the
-            // web map re-anchors with a visible snap. Scaling the step by
-            // (realDt / nominalDt) makes motion track wall-clock time, so the
-            // cadence no longer matters. At a steady 30 Hz scale ≈ 1.0, so the
-            // windowed/mobile behaviour is unchanged. Clamped to absorb the first
-            // tick after start and any long pause without a position jump.
-            double scale = 1.0;
-            long nowTs = System.Diagnostics.Stopwatch.GetTimestamp();
-            if (_lastTickTimestamp != 0)
-            {
-                const double NominalDtSeconds = 1.0 / 30.0; // _simulatorTimer interval (33 ms)
-                double dtSeconds = (nowTs - _lastTickTimestamp) / (double)System.Diagnostics.Stopwatch.Frequency;
-                scale = dtSeconds / NominalDtSeconds;
-                if (scale < 0.25) scale = 0.25;
-                if (scale > 4.0) scale = 4.0;
-            }
-            _lastTickTimestamp = nowTs;
+            double scale = dtSeconds / StepSeconds;
             double effectiveStep = _stepDistance * scale;
 
             // Calculate heading change based on steering angle

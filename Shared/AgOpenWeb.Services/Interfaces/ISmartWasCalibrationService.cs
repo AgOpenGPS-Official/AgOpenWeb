@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 
@@ -40,12 +28,13 @@ public interface ISmartWasCalibrationService
     void Reset();
 
     /// <summary>
-    /// Add a steer-angle sample (degrees). Called from
-    /// AutoSteerService.ProcessSteerData on the UDP receive thread.
-    /// Internally gated: rejects unless IsCollecting and the vehicle
-    /// state passes speed/XTE/angle/engaged thresholds.
+    /// Add a steer-angle sample (degrees) with the vehicle speed (m/s) and cross-track
+    /// error (m) the caller holds for the same moment. Called from
+    /// AutoSteerService.ProcessSteerData on the UDP receive thread. Internally gated:
+    /// rejects unless IsCollecting and the sample passes the speed/XTE/angle/engaged
+    /// thresholds.
     /// </summary>
-    void AddSample(double steerAngleDegrees);
+    void AddSample(double steerAngleDegrees, double speedMps, double crossTrackErrorMeters);
 
     /// <summary>
     /// Shift the existing buffer by the given offset to prevent

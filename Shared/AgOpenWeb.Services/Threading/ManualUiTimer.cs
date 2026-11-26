@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using AgOpenWeb.Services.Interfaces;
@@ -16,7 +12,7 @@ namespace AgOpenWeb.Services.Threading;
 /// the behaviour the VM's <c>DispatcherTimer</c>s have in tests (constructed but
 /// not pumped). Use in unit tests so VM construction is deterministic and timer
 /// callbacks don't fire spuriously; <see cref="Fire"/> lets a test trigger a
-/// tick explicitly. See Plans/CONFIG_STATE_AUDIT.md §11.3.
+/// tick explicitly. See Plans/Completed/CONFIG_STATE_AUDIT.md §11.3.
 /// </summary>
 public sealed class ManualUiTimer : IUiTimer
 {

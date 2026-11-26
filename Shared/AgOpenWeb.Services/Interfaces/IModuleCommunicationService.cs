@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using AgOpenWeb.Models.Communication;
@@ -72,5 +60,30 @@ namespace AgOpenWeb.Services.Interfaces
         /// Check work and steer switch states, raising events when UI actions are needed.
         /// </summary>
         void CheckSwitches(ModuleSwitchState currentState);
+
+        /// <summary>
+        /// Remote section switches, PGN 234, as AgOpenGPS DoRemoteSwitches (button hardware):
+        /// what the packet does to the master Auto button and the section buttons, given the
+        /// current states and the previous packet (<see cref="PreviousSectionControlBytes"/>).
+        /// Call it with a field open only, as AgOpenGPS acts with a job started only.
+        /// </summary>
+        /// <param name="switches">The switch bytes, indexed as AgOpenGPS mc.ss (SW_MAIN …).</param>
+        /// <param name="masterAuto">The master Auto button is on.</param>
+        /// <param name="sections">The section buttons now.</param>
+        RemoteSwitchDecision CheckRemoteSwitches(byte[] switches, bool masterAuto,
+            System.Collections.Generic.IReadOnlyList<SectionControlState> sections);
     }
+
+    public enum RemoteMasterCommand
+    {
+        None,
+        AutoOn,
+        AutoOff,
+    }
+
+    /// <summary>
+    /// The master Auto button to set, and every section button's state afterwards
+    /// (one per configured section).
+    /// </summary>
+    public readonly record struct RemoteSwitchDecision(RemoteMasterCommand Master, SectionButtonState[] Sections);
 }

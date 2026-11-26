@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -82,9 +70,10 @@ public class JobService : IJobService
                        ?? throw new InvalidOperationException(
                            $"Field directory for '{fieldName}' not found under {_fieldsRootProvider()}");
 
-        var resolvedName = string.IsNullOrWhiteSpace(taskName)
+        var safeName = string.IsNullOrWhiteSpace(taskName) ? string.Empty : SafeTaskName(taskName!);
+        var resolvedName = safeName.Length == 0
             ? BuildUniqueDefaultTaskName(fieldDir, workType, DateTime.Now)
-            : EnsureUnique(fieldDir, taskName!);
+            : EnsureUnique(fieldDir, safeName);
 
         var now = DateTime.Now;
         var job = new Job
@@ -208,6 +197,15 @@ public class JobService : IJobService
         return true;
     }
 
+    public void RecordRig(JobRig rig)
+    {
+        if (ActiveJob == null || rig.SameAs(ActiveJob.Rig)) return;
+        var fieldDir = ResolveFieldDir(ActiveJob.FieldName);
+        if (fieldDir == null) return;
+        ActiveJob.Rig = rig;
+        JobJsonService.Save(ActiveJob, fieldDir); // not to a newer build's job (Save leaves it)
+    }
+
     public void SuspendCurrentJob()
     {
         if (ActiveJob == null) return;
@@ -245,6 +243,48 @@ public class JobService : IJobService
     private static JobSummary ToSummary(Job j) => new(
         j.Id, j.FieldName, j.TaskName, j.WorkType, j.Notes,
         j.StartedAt, j.EndedAt, j.LastOpenedAt, j.Status);
+
+    /// <summary>
+    /// A job's name is its folder's name (<c>jobs/&lt;name&gt;/</c>), so the name typed for a new job is
+    /// made one a folder can have on every computer: each character Windows refuses in a folder name
+    /// (<c>&lt; &gt; : " / \ | ? *</c> and control characters) becomes '-', a dot or space at the end
+    /// is dropped, a name longer than <see cref="MaxTaskNameLength"/> is cut there, and a name Windows
+    /// keeps for a device (CON, NUL, COM1...) gets a '_' in front. Empty after
+    /// that: the default name is used. A job typed "Spraying 15:51" could not be saved on Windows:
+    /// the field opened with no job, said only in the log, and the coverage driven was never saved
+    /// (a test run on Windows, 2026-11-15). On Linux a '/' made a folder inside the jobs folder.
+    /// </summary>
+    internal static string SafeTaskName(string name)
+    {
+        var chars = name.Trim().ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+            if (char.IsControl(chars[i]) || "<>:\"/\\|?*".IndexOf(chars[i]) >= 0)
+                chars[i] = '-';
+        var safe = new string(chars);
+        if (safe.Length > MaxTaskNameLength)
+            safe = safe[..(char.IsHighSurrogate(safe[MaxTaskNameLength - 1]) ? MaxTaskNameLength - 1 : MaxTaskNameLength)];
+        safe = safe.TrimEnd('.', ' ');
+        if (safe.Length == 0) return safe;
+        var stem = safe.Split('.')[0].TrimEnd(' ');
+        if (WindowsDeviceNames.Contains(stem)) safe = "_" + safe; // "LPT1.job" is the device too
+        return safe;
+    }
+
+    /// <summary>
+    /// The longest typed job name kept. A folder name may have 255 characters, but the job's folder
+    /// sits under the data folder, the field and <c>jobs/</c>, with <c>coverage/</c> and its tiles
+    /// inside: 100 keeps the whole path under Windows' 260 with a long field name.
+    /// </summary>
+    internal const int MaxTaskNameLength = 100;
+
+    // The names Windows keeps for devices (Naming Files, Paths, and Namespaces), with or without an
+    // extension: COM and LPT with 0-9 and the superscripts 1-3, and the console's CONIN$ / CONOUT$.
+    private static readonly HashSet<string> WindowsDeviceNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+        "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "COM\u00B9", "COM\u00B2", "COM\u00B3",
+        "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9", "LPT\u00B9", "LPT\u00B2", "LPT\u00B3",
+    };
 
     private static string EnsureUnique(string fieldDir, string requestedName)
     {

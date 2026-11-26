@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -53,23 +41,46 @@ public partial class YouTurnCreationService
         /// auto-engaged — the operator should be warned to take over.
         /// </summary>
         public bool ClearanceBlocked { get; init; }
+
+        /// <summary>
+        /// True when the turn built would hand over past the end of the next pass's line
+        /// (<see cref="TurnLanding.PastLineEnd"/>), so it was not taken: <see cref="Path"/> is null.
+        /// </summary>
+        public bool LandsPastLineEnd { get; init; }
+
+        /// <summary>Where the path leaves the current pass (see <see cref="YouTurnCreationOutput.ArcStart"/>);
+        /// null for a fallback path, which has no entry leg.</summary>
+        public Vec3? ArcStart { get; init; }
+
+        /// <summary>
+        /// No turn: no arc of this radius fitted inside the turn line anywhere along the pass, and
+        /// this is how far the best try fell outside it (<see cref="YouTurnCreationOutput.OutsideTurnLineBy"/>).
+        /// The geometry refuses the turn, not the planner: the operator can lower the U-turn
+        /// distance from boundary by this much, or turn by hand.
+        /// </summary>
+        public double? OutsideTurnLineBy { get; init; }
     }
 
     /// <summary>
     /// Maps the persisted <see cref="GuidanceConfig.UTurnStyle"/> integer onto the
-    /// creation <see cref="YouTurnType"/>. 0 = Sagitta (default), 1 = K-style.
+    /// creation <see cref="YouTurnType"/>. 0 = Sagitta (default), 1 = K-style, 2 = Keyhole.
     /// Unknown values — including the retired Albin/Dubins style and any old
     /// numbering — fall back to Sagitta.
     /// </summary>
     private static YouTurnType MapTurnStyle(int uTurnStyle) => uTurnStyle switch
     {
         (int)YouTurnType.KStyle => YouTurnType.KStyle,
+        (int)YouTurnType.KeyholeStyle => YouTurnType.KeyholeStyle,
         _ => YouTurnType.SagittaStyle,
     };
 
+    /// <summary>How many times <see cref="CreateTurnPath"/> was called: the tests that hold how often a turn is built.</summary>
+    internal int TurnPathBuilds { get; private set; }
+
     /// <summary>
     /// Build a complete U-turn path for the current vehicle state.
-    /// The returned path is smoothed per <see cref="GuidanceConfig.UTurnSmoothing"/>.
+    /// The turn is smoothed as AgOpenGPS (<see cref="TurnPathSmoothing.SmoothYouTurn"/>, 6 points,
+    /// not a K-turn); <see cref="GuidanceConfig.UTurnSmoothing"/> smooths only the simple fallback.
     /// </summary>
     public TurnPathResult CreateTurnPath(
         Position currentPosition,
@@ -84,6 +95,7 @@ public partial class YouTurnCreationService
         double headlandCalculatedWidth,
         double headlandDistance)
     {
+        TurnPathBuilds++;
         if (headlandLine == null)
             return new TurnPathResult(null, false);
 
@@ -108,14 +120,19 @@ public partial class YouTurnCreationService
         // Diagnostic: one line per turn build to see whether the clearance path is
         // armed at runtime and with what geometry (note actualWidth vs storedWidth).
         _logger.LogDebug(
-            "[YouTurn][HardBoundary] hardOuter={Hard} isHard={IsHard} validOuter={Valid} actualWidth={AW:F1} storedWidth={W:F1} rearFixed={RF} trailing={TR} length={L:F1} margin={M:F1}",
+            "[YouTurn][HardBoundary] hardOuter={Hard} isHard={IsHard} validOuter={Valid} actualWidth={AW:F1} storedWidth={W:F1} mount={Mount} length={L:F1} margin={M:F1}",
             hardOuter, boundary?.OuterBoundary?.IsHard, boundary?.OuterBoundary?.IsValid,
-            config.ActualToolWidth, config.Tool.Width, config.Tool.IsToolRearFixed,
-            config.Tool.IsToolTrailing, config.Tool.Length, clearanceMargin);
+            config.ActualToolWidth, config.Tool.Width, RigGeometry.Mount(config.Tool),
+            config.Tool.Length, clearanceMargin);
 
         const double SetbackStep = 0.5;
         const double MaxExtraSetback = 30.0;
+        // A turn seated back to clear a hard boundary must still start this far ahead of the tractor.
+        const double MinArcStartAhead = 2.0;
         double extraSetback = 0.0;
+        // Where the pass leaves the turn area on the first try: a try with the turn lines moved in
+        // seats the turn back from there (YouTurnCreationInput.TurnLineEndIndex).
+        int? turnLineEnd = null;
 
         while (true)
         {
@@ -129,21 +146,24 @@ public partial class YouTurnCreationService
                 _logger.LogWarning("[YouTurn] Failed to build creation input - no boundary available?");
                 return new TurnPathResult(null, false);
             }
+            if (extraSetback > 0) input.TurnLineEndIndex = turnLineEnd;
 
             var output = CreateTurn(input);
+            if (turnLineEnd == null && output.Success && output.TurnLineEndIndex >= 0)
+                turnLineEnd = output.TurnLineEndIndex;
 
             if (output.Success && output.TurnPath != null && output.TurnPath.Count > 10)
             {
                 var path = output.TurnPath;
 
-                // Smooth FIRST, then validate. The spiral/pretzel guard must judge the path
-                // that is actually driven, not raw construction artifacts: the curve generator
-                // can leave sub-metre folds at arc/leg seams that produce spurious 180° heading
-                // flips. Those inflate the cumulative-turn metric and false-reject a perfectly
-                // good curved U-turn (net 180°), dropping it to the straight fallback — the
-                // "south end misaligned" report. Smoothing removes the folds; a genuine spiral
-                // survives it.
-                TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
+                // Smooth FIRST, then validate: the spiral/pretzel guard judges the path that is
+                // driven. The smoothing is AgOpenGPS's (SmoothYouTurn with 6 points, one pass, a
+                // U turn only): a wider or repeated average pulls a tight arc inward, so the turn
+                // ended a metre short of the turn line and bent tighter than the set radius at a
+                // 5 m radius. The legs meet the arc without a fold (WalkLegByDistance), so there
+                // is nothing for a heavier smoothing to hide.
+                if (input.TurnType != YouTurnType.KStyle)
+                    TurnPathSmoothing.SmoothYouTurn(path, 6);
 
                 // Measure turning from SEGMENT DIRECTIONS (positions), not the stored per-point
                 // headings — smoothing only moves positions (it preserves the stale headings),
@@ -176,8 +196,11 @@ public partial class YouTurnCreationService
                     }
                 }
 
-                // ~π expected for U-turn; tolerate ±30° slack to account for approach angle.
-                bool netIsUTurnLike = Math.Abs(Math.Abs(netHeadingChange) - Math.PI) < Math.PI / 6.0;
+                // ~π expected for a U-turn; tolerate ±30° slack to account for approach angle.
+                // A K-turn's path is AgOpenGPS's KStyleTurn: an arc of 2.2 rad and a straight tail,
+                // the rest of the turn made backing up, so its net turn is 2.2 rad (126°), not π.
+                double expectedNet = input.TurnType == YouTurnType.KStyle ? 2.2 : Math.PI;
+                bool netIsUTurnLike = Math.Abs(Math.Abs(netHeadingChange) - expectedNet) < Math.PI / 6.0;
                 bool cumulativeRunaway = totalHeadingChange > Math.PI * 4.0;
 
                 if (!netIsUTurnLike || cumulativeRunaway)
@@ -190,7 +213,7 @@ public partial class YouTurnCreationService
                     _logger.LogWarning("[YouTurn] Service path rejected: net={Net:F0}° cumulative={Cum:F0}° - using simple fallback",
                         netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI);
                     var fallback = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
-                        guidance, turn, uTurnSkipRows, headlandDistance);
+                        guidance, turn, uTurnSkipRows, headlandDistance, selectedTrack);
                     return new TurnPathResult(fallback.Count > 10 ? fallback : null, UsedFallback: true);
                 }
 
@@ -221,11 +244,26 @@ public partial class YouTurnCreationService
                     // (margin - MaxIntrusion) m inside the fence — log the achieved gap.
                     _logger.LogDebug("[YouTurn][HardBoundary] CLEARED: nearest implement point {C:F2}m inside fence (margin {M:F2}m, setback {S:F2}m)",
                         clearanceMargin - clearance.MaxIntrusion, clearanceMargin, extraSetback);
+
+                    // Seated back under or behind the tractor, the turn would start at once, not
+                    // at the headland (built from a crossing behind the tractor at a field's
+                    // entry, it turned the tractor round there and out of the field): not engaging.
+                    if (output.ArcStart is { } arcStart)
+                    {
+                        double arcAhead = (arcStart.Easting - currentPosition.Easting) * Math.Sin(headingRadians)
+                                        + (arcStart.Northing - currentPosition.Northing) * Math.Cos(headingRadians);
+                        if (arcAhead < MinArcStartAhead)
+                        {
+                            _logger.LogWarning("[YouTurn] The turn seated back {S:F1}m to clear the hard boundary would start {D:F1}m behind the tractor; not engaging.",
+                                extraSetback, MinArcStartAhead - arcAhead);
+                            return new TurnPathResult(null, UsedFallback: false) { ClearanceBlocked = true };
+                        }
+                    }
                 }
 
                 _logger.LogDebug("[YouTurn] Path created with {Count} points, net={Net:F0}° cumulative={Cum:F0}° (setback {S:F2}m)",
                     path.Count, netHeadingChange * 180 / Math.PI, totalHeadingChange * 180 / Math.PI, extraSetback);
-                return new TurnPathResult(path, UsedFallback: false);
+                return new TurnPathResult(path, UsedFallback: false) { ArcStart = output.ArcStart };
             }
 
             // Creation failed outright.
@@ -239,8 +277,11 @@ public partial class YouTurnCreationService
             _logger.LogWarning("[YouTurn] Service failed: {Reason} - using simple fallback",
                 output.FailureReason ?? "unknown");
             var fallbackPath = SimpleFallback(currentPosition, abHeading, turnLeft, boundary,
-                guidance, turn, uTurnSkipRows, headlandDistance);
-            return new TurnPathResult(fallbackPath.Count > 10 ? fallbackPath : null, UsedFallback: true);
+                guidance, turn, uTurnSkipRows, headlandDistance, selectedTrack);
+            return new TurnPathResult(fallbackPath.Count > 10 ? fallbackPath : null, UsedFallback: true)
+            {
+                OutsideTurnLineBy = fallbackPath.Count > 10 ? null : output.OutsideTurnLineBy,
+            };
         }
     }
 
@@ -248,28 +289,10 @@ public partial class YouTurnCreationService
     /// Maps the runtime tool/vehicle config onto the pure <see cref="ToolGeometry"/>
     /// used by the implement swept-path clearance check.
     /// </summary>
-    private static ToolGeometry BuildToolGeometry(ConfigurationStore config)
-    {
-        var tool = config.Tool;
-        ToolMount mount =
-            tool.IsToolFrontFixed ? ToolMount.FrontFixed :
-            tool.IsToolTBT ? ToolMount.TBT :
-            tool.IsToolTrailing ? ToolMount.Trailing :
-            ToolMount.RearFixed; // rear-fixed is the default
-
-        return new ToolGeometry(
-            Mount: mount,
-            // Real implement width comes from the active sections (ActualToolWidth),
-            // not Tool.Width — the latter is a stored fallback (often the 6 m default).
-            Width: config.ActualToolWidth,
-            Offset: tool.Offset,
-            VehicleHitchLength: config.Vehicle.HitchLength,
-            ToolHitchLength: tool.HitchLength,
-            TrailingHitchLength: tool.TrailingHitchLength,
-            TrailingToolToPivotLength: tool.TrailingToolToPivotLength,
-            TankTrailingHitchLength: tool.TankTrailingHitchLength,
-            Length: tool.Length);
-    }
+    // Real implement width comes from the active sections (ActualToolWidth), not Tool.Width:
+    // the latter is a stored fallback (often the 6 m default).
+    private static ToolGeometry BuildToolGeometry(ConfigurationStore config) =>
+        RigGeometry.Geometry(config.Vehicle, config.Tool, config.ActualToolWidth);
 
     /// <summary>
     /// True when the implement swept along <paramref name="path"/> stays clear of a
@@ -360,44 +383,39 @@ public partial class YouTurnCreationService
 
         double headlandWidthForTurn = Math.Max(totalHeadlandWidth - toolWidth, toolWidth);
 
+        // Asked for every candidate path point: the turn line's strip index, built once per plan.
+        var turnArea = PolygonSlabIndex.Build(turnBoundaryVec3);
         Func<Vec3, int> isPointInsideTurnArea = point =>
-            GeometryMath.IsPointInPolygon(turnBoundaryVec3, point) ? 0 : 1;
+            turnArea != null && turnArea.Contains(point.Easting, point.Northing) ? 0 : 1;
 
         var pivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRadians);
 
-        // ONE turn generator. "An AB line is just a curve with 2 points": a 2-point AB
-        // line is densified into a straight poly-curve so it flows through the SAME
-        // curve-aware generator as recorded curves — there is no separate analytic AB path.
-        //
-        // CRITICAL: offset FIRST, then extend the OFFSET RESULT. The in-field portion of the
-        // U-turn's current pass must be byte-for-byte identical to the guidance line the
-        // tractor steers to (GpsPipelineService offsets the NON-extended track), so the
-        // track→turn handoff has zero lateral step. Extending the base BEFORE offsetting
-        // shifts the in-field offset points by up to ~1 m (different point set → different
-        // pruning/spacing) — that step is what made the tractor "get lost" entering the turn.
-        // The tangent extension is added on TOP only so FindCurveTurnPoint can see the curve
-        // cross the boundary (a bare offset curve stops at the field edge → generator fails →
-        // straight fallback).
-        List<Vec3> basePoints = track.Points.Count > 2
-            ? new List<Vec3>(track.Points)
-            : DensifyAbLine(track.Points);
-
         double widthMinusOverlap = toolWidth - config.Tool.Overlap;
-        double offsetDistance = guidance.HowManyPathsAway * widthMinusOverlap + guidance.NudgeOffset;
-        List<Vec3> offsetCurve = Math.Abs(offsetDistance) < 0.01
-            ? new List<Vec3>(basePoints)
-            : CurveProcessing.CreateOffsetCurve(basePoints, offsetDistance);
-        List<Vec3> currentCurvePoints = CurveProcessing.ExtendCurveEnds(offsetCurve);
-
-        int currentLocationIndex = 0;
-        double minDistSq = double.MaxValue;
-        for (int i = 0; i < currentCurvePoints.Count; i++)
+        double offsetDistance = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, widthMinusOverlap, guidance.NudgeOffset,
+            Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay));
+        var (basePoints, currentCurvePoints) = PassForTurn(track, outerPoints, offsetDistance);
+        if (currentCurvePoints.Count < 2)
         {
-            double dx = currentCurvePoints[i].Easting - pivotPosition.Easting;
-            double dy = currentCurvePoints[i].Northing - pivotPosition.Northing;
-            double distSq = dx * dx + dy * dy;
-            if (distSq < minDistSq) { minDistSq = distSq; currentLocationIndex = i; }
+            // No pass here: the offset removed all of it (#694); nothing to turn from.
+            _logger.LogDebug("[YouTurn] Pass {Path} has no line (curve too tight)", guidance.HowManyPathsAway);
+            return null;
         }
+
+        int currentLocationIndex = PassEnds.NearestIndex(currentCurvePoints, pivotPosition.Easting, pivotPosition.Northing);
+        // The end of the pass, found the one way (PassEnds): the turn builder starts its arc from
+        // this point, and the state machine measured its distance to the turn to the same end.
+        // A stretch outside the turn line that stays inside the fence is driven through, on this
+        // pass and on the next (FindCurveOutTurnPoint): the one test for both.
+        Func<Vec3, bool> isPointDrivenThrough = p => boundary.OuterBoundary.IsPointInside(p.Easting, p.Northing);
+        var passEnd = PassEnds.Find(currentCurvePoints, currentLocationIndex, guidance.IsHeadingSameWay,
+            p => isPointInsideTurnArea(p) == 0, turnBoundaryVec3,
+            isPointDrivenThrough,
+            m => _logger.LogDebug("[YouTurn] Pass {Path}: {What}", guidance.HowManyPathsAway, m));
+        if (passEnd is { } end)
+            _logger.LogDebug("[YouTurn] End of pass {Path} ahead at ({E:F1},{N:F1}), point {Idx} of {Count}",
+                guidance.HowManyPathsAway, end.Crossing.Easting, end.Crossing.Northing, end.OutsideIndex, currentCurvePoints.Count);
+        else
+            _logger.LogDebug("[YouTurn] Pass {Path} does not leave the turn area ahead of the tractor", guidance.HowManyPathsAway);
 
         var input = new YouTurnCreationInput
         {
@@ -407,20 +425,21 @@ public partial class YouTurnCreationService
             GuidanceType = GuidanceLineType.Curve,
             BoundaryTurnLines = boundaryTurnLines,
             IsPointInsideTurnArea = isPointInsideTurnArea,
+            IsPointDrivenThrough = isPointDrivenThrough,
 
             // The single generator walks these points (the current offset pass).
             GuidancePoints = currentCurvePoints,
             CurrentLocationIndex = currentLocationIndex,
+            // Where the pass leaves the turn area ahead: the end the turn is made at. A try with
+            // the turn lines moved in gets the first try's end instead (CreateTurnPath).
+            TurnLineEndIndex = passEnd?.OutsideIndex,
             // Non-extended base; the destination (exit) curve is offset+extended from this in
             // BuildNewOffsetCurveList so its in-field portion matches the next guidance line.
             ReferenceCurvePoints = basePoints,
 
-            // Retained for diagnostics / reference-point helpers; the curve generator
-            // anchors on GuidancePoints, not these.
-            ABHeading = track.Points.Count > 2
-                ? FindTrackHeadingAtHeadland(track, pivotPosition, headlandLine, guidance)
-                : abHeading,
-            ABReferencePoint = CalculateCurrentTrackReferencePoint(track, abHeading, pivotPosition, headlandLine, guidance),
+            // Diagnostics; the curve generator anchors on GuidancePoints, not these.
+            ABHeading = passEnd?.Heading ?? abHeading,
+            ABReferencePoint = passEnd?.Crossing ?? new Vec2(pivotPosition.Easting, pivotPosition.Northing),
             IsHeadingSameWay = guidance.IsHeadingSameWay,
 
             PivotPosition = pivotPosition,
@@ -438,6 +457,7 @@ public partial class YouTurnCreationService
             // nudged next pass, matching the current pass built above (and AgOpen, whose
             // BuildNewOffsetList distAway includes track.nudgeDistance).
             NudgeDistance = guidance.NudgeOffset,
+            PassEdgeOffset = Models.Track.PassGeometry.EdgeOffset(track, toolWidth - config.Tool.Overlap),
             TrackMode = 0,
 
             MakeUTurnCounter = turn.YouTurnCounter + 10,
@@ -459,6 +479,42 @@ public partial class YouTurnCreationService
     /// FindCurveTurnPoint (which tests boundary crossing per point) could step over the
     /// turn boundary in one long segment.
     /// </summary>
+    /// <summary>
+    /// An AB line's A and B moved out along the line to past the whole field: the line is
+    /// endless (guidance steers to it anywhere), but its two points can sit anywhere in the
+    /// field. An A+ or Lat/Lon line has B 100 m from A, and the turn generator follows the
+    /// densified points plus 200 m of extension, so in a field longer than that the pass never
+    /// reached the turn line at the far end: no turn could be built there, and after #698 not
+    /// even the fallback (the olive grove in the field job harness: every turn at its south end).
+    /// The line itself is unchanged: same heading, same points on it.
+    /// </summary>
+    internal static IReadOnlyList<Vec3> AbLineAcrossField<T>(IReadOnlyList<Vec3> ab, IReadOnlyList<T> outer) where T : IPlanarPoint
+    {
+        if (ab.Count != 2 || outer.Count < 3) return ab;
+        var a = ab[0];
+        var b = ab[1];
+        double dE = b.Easting - a.Easting, dN = b.Northing - a.Northing;
+        double len = Math.Sqrt(dE * dE + dN * dN);
+        if (len < 0.01) return ab;
+        double uE = dE / len, uN = dN / len;
+        // The field's extent along the line, from A.
+        double tMin = 0, tMax = len;
+        foreach (var p in outer)
+        {
+            double t = (p.Easting - a.Easting) * uE + (p.Northing - a.Northing) * uN;
+            if (t < tMin) tMin = t;
+            if (t > tMax) tMax = t;
+        }
+        const double Margin = 10.0;
+        tMin -= Margin;
+        tMax += Margin;
+        return new List<Vec3>
+        {
+            new(a.Easting + uE * tMin, a.Northing + uN * tMin, a.Heading),
+            new(a.Easting + uE * tMax, a.Northing + uN * tMax, b.Heading),
+        };
+    }
+
     private static List<Vec3> DensifyAbLine(IReadOnlyList<Vec3> ab)
     {
         var a = ab[0];
@@ -482,233 +538,75 @@ public partial class YouTurnCreationService
         return pts;
     }
 
-    // ── Reference-point helpers ─────────────────────────────────────────
+    // ── The pass and its end ─────────────────────────────────────────────
 
     /// <summary>
-    /// For curves: walk the current offset track from the nearest vehicle segment in the travel direction
-    /// and return the heading at the first segment that crosses the headland. Falls back to the nearest-point
-    /// heading when no crossing is found.
+    /// The pass the turn is planned on, as the turn generator walks it: the track (an AB line
+    /// first run across the whole field, <see cref="AbLineAcrossField{T}"/>, and densified: "an AB
+    /// line is just a curve with 2 points") offset by <paramref name="offsetDistance"/> and then
+    /// extended past its ends (<see cref="CurveProcessing.ExtendPassForTurn"/>). Offset first, then
+    /// extend the offset result: the in-field part must be the guidance line the tractor steers to
+    /// (the pipeline offsets the non-extended track), so the track→turn handoff has no lateral
+    /// step; the extension is on top, so the pass is seen to cross the turn line. The U-turn's own
+    /// geometry: no turn-radius limit, a loop not joined at its seam. The base points (not
+    /// extended) come back too: the exit pass is offset and extended from them. The pass has no
+    /// points when the offset removed all of it (#694).
     /// </summary>
-    private double FindTrackHeadingAtHeadland(
-        Models.Track.Track track,
-        Vec3 vehiclePos,
-        IReadOnlyList<Vec3> headlandLine,
-        GuidanceWorkingState guidance)
+    internal static (List<Vec3> Base, List<Vec3> Pass) PassForTurn<T>(Models.Track.Track track, IReadOnlyList<T> outer, double offsetDistance)
+        where T : IPlanarPoint
     {
-        if (headlandLine.Count < 3) return track.Points[0].Heading;
-
-        var config = _configStore;
-        double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double offsetDistance = guidance.HowManyPathsAway * widthMinusOverlap;
-
-        List<Vec3> searchPoints = Math.Abs(offsetDistance) < 0.01
-            ? track.Points
-            : CurveProcessing.CreateOffsetCurve(track.Points, offsetDistance);
-
-        int nearestIdx = 0;
-        double minDistSq = double.MaxValue;
-        for (int i = 0; i < searchPoints.Count; i++)
-        {
-            double dx = searchPoints[i].Easting - vehiclePos.Easting;
-            double dy = searchPoints[i].Northing - vehiclePos.Northing;
-            double distSq = dx * dx + dy * dy;
-            if (distSq < minDistSq) { minDistSq = distSq; nearestIdx = i; }
-        }
-
-        int step = guidance.IsHeadingSameWay ? 1 : -1;
-        int endIdx = guidance.IsHeadingSameWay ? searchPoints.Count - 1 : 0;
-
-        for (int i = nearestIdx; i != endIdx; i += step)
-        {
-            var p1 = searchPoints[i];
-            var p2 = searchPoints[i + step];
-
-            for (int j = 0; j < headlandLine.Count; j++)
-            {
-                var h1 = headlandLine[j];
-                var h2 = headlandLine[(j + 1) % headlandLine.Count];
-
-                if (GeometryMath.SegmentsIntersect(
-                        p1.Easting, p1.Northing, p2.Easting, p2.Northing,
-                        h1.Easting, h1.Northing, h2.Easting, h2.Northing))
-                {
-                    _logger.LogDebug("[YouTurn] Found headland intersection on offset track (path {Path}) at index {Idx}, heading={Deg:F1}°",
-                        guidance.HowManyPathsAway, i, p1.Heading * 180 / Math.PI);
-                    return p1.Heading;
-                }
-            }
-        }
-
-        return searchPoints[nearestIdx].Heading;
+        List<Vec3> basePoints = track.Points.Count > 2
+            ? new List<Vec3>(track.Points)
+            : DensifyAbLine(AbLineAcrossField(track.Points, outer));
+        var offsetCurve = CurveProcessing.CurvePass(basePoints, offsetDistance);
+        if (offsetCurve.Points.Count < 2) return (basePoints, new List<Vec3>());
+        return (basePoints, CurveProcessing.ExtendPassForTurn(offsetCurve));
     }
 
     /// <summary>
-    /// Reference point for the primary Dubins turn: where the current offset track (not the base
-    /// track) crosses the headland, ahead of the vehicle. Falls back to projecting the vehicle
-    /// position onto the offset track.
+    /// The end of the track's pass <paramref name="offsetDistance"/> over, ahead of
+    /// <paramref name="vehiclePos"/> (<see cref="PassEnds.Find"/> on <see cref="PassForTurn{T}"/>,
+    /// the pass run across the turn line's extent). Null past the last crossing.
     /// </summary>
-    private Vec2 CalculateCurrentTrackReferencePoint(
-        Models.Track.Track track,
-        double abHeading,
-        Vec3 vehiclePosition,
-        IReadOnlyList<Vec3> headlandLine,
-        GuidanceWorkingState guidance)
+    internal static PassEnd? PassEndAhead(Models.Track.Track track, Vec3 vehiclePos, IReadOnlyList<Vec3> turnLine,
+        bool headingSameWay, double offsetDistance = 0, IReadOnlyList<Vec3>? fence = null)
     {
-        if (track.Points.Count < 2)
-            return new Vec2(vehiclePosition.Easting, vehiclePosition.Northing);
-
-        var config = _configStore;
-        double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double offsetDistance = guidance.HowManyPathsAway * widthMinusOverlap;
-
-        Models.Track.Track currentOffsetTrack;
-        if (Math.Abs(offsetDistance) < 0.01)
-        {
-            currentOffsetTrack = track;
-        }
-        else
-        {
-            var offsetPoints = CurveProcessing.CreateOffsetCurve(track.Points, offsetDistance);
-            currentOffsetTrack = new Models.Track.Track
-            {
-                Name = $"Current path {guidance.HowManyPathsAway}",
-                Points = offsetPoints,
-                Type = track.Type,
-                IsVisible = false,
-                IsActive = false,
-            };
-        }
-
-        var intersection = FindTrackHeadlandIntersectionAhead(currentOffsetTrack, vehiclePosition, headlandLine, guidance.IsHeadingSameWay);
-        if (intersection.HasValue)
-        {
-            _logger.LogDebug("[YouTurn] Reference point: offset track (path {Path}) crosses headland at ({E:F1},{N:F1})",
-                guidance.HowManyPathsAway, intersection.Value.Easting, intersection.Value.Northing);
-            return intersection.Value;
-        }
-
-        // Fallback: project vehicle onto segment A-B of the offset track, clamped to [0,1].
-        var ptA = currentOffsetTrack.Points[0];
-        var ptB = currentOffsetTrack.Points[currentOffsetTrack.Points.Count - 1];
-        double abE = ptB.Easting - ptA.Easting;
-        double abN = ptB.Northing - ptA.Northing;
-        double abLengthSq = abE * abE + abN * abN;
-
-        double avE = vehiclePosition.Easting - ptA.Easting;
-        double avN = vehiclePosition.Northing - ptA.Northing;
-        double t = Math.Max(0, Math.Min(1, (avE * abE + avN * abN) / abLengthSq));
-
-        _logger.LogDebug("[YouTurn] Reference point: fallback to vehicle projection on offset track, path={Path}",
-            guidance.HowManyPathsAway);
-
-        return new Vec2(ptA.Easting + t * abE, ptA.Northing + t * abN);
-    }
-
-    internal static Vec2? FindTrackHeadlandIntersectionAhead(
-        Models.Track.Track track,
-        Vec3 vehiclePos,
-        IReadOnlyList<Vec3> headlandLine,
-        bool headingSameWay)
-    {
-        if (headlandLine.Count < 3) return null;
-        if (track.Points.Count < 2) return null;
-
-        if (track.Points.Count > 2)
-        {
-            int nearestIdx = 0;
-            double minDistSq = double.MaxValue;
-            for (int i = 0; i < track.Points.Count; i++)
-            {
-                double pdx = track.Points[i].Easting - vehiclePos.Easting;
-                double pdy = track.Points[i].Northing - vehiclePos.Northing;
-                double distSq = pdx * pdx + pdy * pdy;
-                if (distSq < minDistSq) { minDistSq = distSq; nearestIdx = i; }
-            }
-
-            int step = headingSameWay ? 1 : -1;
-            int endIdx = headingSameWay ? track.Points.Count - 1 : 0;
-
-            for (int i = nearestIdx; i != endIdx; i += step)
-            {
-                var p1 = track.Points[i];
-                var p2 = track.Points[i + step];
-
-                for (int j = 0; j < headlandLine.Count; j++)
-                {
-                    var h1 = headlandLine[j];
-                    var h2 = headlandLine[(j + 1) % headlandLine.Count];
-
-                    var intersection = GeometryMath.TryGetSegmentIntersection(
-                        p1.Easting, p1.Northing, p2.Easting, p2.Northing,
-                        h1.Easting, h1.Northing, h2.Easting, h2.Northing);
-                    if (intersection.HasValue) return intersection;
-                }
-            }
-            return null;
-        }
-
-        // AB line: intersect the AB line itself (extended past both endpoints)
-        // with the headland; pick the intersection closest to the vehicle.
-        //
-        // The intersection MUST be a point on the AB line — anything else
-        // produces a perpendicular-offset reference point, which cascades into
-        // FindABTurnPoint and the U-turn arc landing off the cyan NextTrack
-        // line by the same offset (issue #354). The previous implementation
-        // intersected a *vehicle-anchored* line with the headland, which only
-        // landed on AB when the vehicle happened to be on AB exactly — and
-        // produced the order-dependent misalignment when the vehicle was
-        // perpendicular-offset (e.g. activation before the auto-pass-detect
-        // had time to update HowManyPathsAway from a stale 0).
-        var ptA = track.Points[0];
-        var ptB = track.Points[1];
-
-        double dx = ptB.Easting - ptA.Easting;
-        double dy = ptB.Northing - ptA.Northing;
-        double len = Math.Sqrt(dx * dx + dy * dy);
-        if (len < 0.001) return null;
-
-        double dirE = dx / len;
-        double dirN = dy / len;
-        double extendedStartE = ptA.Easting - dirE * 1000;
-        double extendedStartN = ptA.Northing - dirN * 1000;
-        double extendedEndE = ptB.Easting + dirE * 1000;
-        double extendedEndN = ptB.Northing + dirN * 1000;
-
-        Vec2? closestIntersection = null;
-        double closestDist = double.MaxValue;
-
-        for (int j = 0; j < headlandLine.Count; j++)
-        {
-            var h1 = headlandLine[j];
-            var h2 = headlandLine[(j + 1) % headlandLine.Count];
-
-            var intersection = GeometryMath.TryGetSegmentIntersection(
-                extendedStartE, extendedStartN, extendedEndE, extendedEndN,
-                h1.Easting, h1.Northing, h2.Easting, h2.Northing);
-
-            if (intersection.HasValue)
-            {
-                double dxi = intersection.Value.Easting - vehiclePos.Easting;
-                double dyi = intersection.Value.Northing - vehiclePos.Northing;
-                double distSq = dxi * dxi + dyi * dyi;
-                if (distSq < closestDist)
-                {
-                    closestDist = distSq;
-                    closestIntersection = intersection;
-                }
-            }
-        }
-
-        return closestIntersection;
+        if (turnLine.Count < 3 || track.Points.Count < 2) return null;
+        var (_, pass) = PassForTurn(track, fence ?? turnLine, offsetDistance);
+        if (pass.Count < 2) return null;
+        int near = PassEnds.NearestIndex(pass, vehiclePos.Easting, vehiclePos.Northing);
+        return PassEnds.Find(pass, near, headingSameWay, p => GeometryMath.IsPointInPolygon(turnLine, p.Easting, p.Northing), turnLine,
+            fence == null ? null : p => GeometryMath.IsPointInPolygon(fence, p.Easting, p.Northing));
     }
 
     // ── Simple geometric fallback ───────────────────────────────────────
 
     /// <summary>
+    /// The fallback builds the whole turn from one anchor point. Using the tractor's raw
+    /// position carried its cross-track error into the path — a turn created right after
+    /// engaging, before the tractor had converged, came out shifted by that error (#174:
+    /// 2 m). Move the anchor sideways onto the pass being followed (the offset
+    /// <c>PassGeometry.Offset</c>, positive right of the AB heading, as
+    /// guidance uses). AB lines only: the fallback's geometry is straight along abHeading.
+    /// </summary>
+    internal Position OntoPassLine(Position pos, Models.Track.Track? track, double abHeading, GuidanceWorkingState guidance)
+    {
+        if (track == null || track.Points.Count != 2) return pos;
+        var a = track.Points[0];
+        double width = _configStore.ActualToolWidth - _configStore.Tool.Overlap;
+        double passOffset = Models.Track.PassGeometry.Offset(track, guidance.HowManyPathsAway, width, guidance.NudgeOffset,
+            Models.Track.PassGeometry.ToolShift(_configStore.Tool.Offset, guidance.IsHeadingSameWay));
+        double rightE = Math.Cos(abHeading), rightN = -Math.Sin(abHeading);
+        double perp = (pos.Easting - a.Easting) * rightE + (pos.Northing - a.Northing) * rightN;
+        double shift = passOffset - perp;
+        return pos with { Easting = pos.Easting + shift * rightE, Northing = pos.Northing + shift * rightN };
+    }
+
+    /// <summary>
     /// Straight-in, semicircle, straight-out U-turn. Used when the primary Dubins-based creation
     /// returns a spiral or fails entirely.
     /// </summary>
-    private List<Vec3> SimpleFallback(
+    internal List<Vec3> SimpleFallback(
         Position currentPosition,
         double abHeading,
         bool turnLeft,
@@ -716,13 +614,18 @@ public partial class YouTurnCreationService
         GuidanceWorkingState guidance,
         YouTurnWorkingState turn,
         int uTurnSkipRows,
-        double headlandDistance)
+        double headlandDistance,
+        Models.Track.Track? selectedTrack = null)
     {
         var path = new List<Vec3>();
         var config = _configStore;
 
+        currentPosition = OntoPassLine(currentPosition, selectedTrack, abHeading, guidance);
+
         const double pointSpacing = 0.5;
-        double turnOffset = turn.NextTrackTurnOffset;
+        // Signed in the turn direction: negative, the arc goes round the other way.
+        double turnOffset = Math.Abs(turn.NextTrackTurnOffset);
+        if (turn.NextTrackTurnOffset < 0) turnLeft = !turnLeft;
 
         if (turnOffset < 0.1)
         {
@@ -795,8 +698,7 @@ public partial class YouTurnCreationService
         double exitEndE = entryStartE + Math.Sin(perpAngle) * turnOffset;
         double exitEndN = entryStartN + Math.Cos(perpAngle) * turnOffset;
 
-        // Arc apex boundary check removed — the arc is meant to extend into the headland zone.
-        // Validate only that the exit end lands back inside the field boundary.
+        // The exit end must land back in the field; the whole path is checked once built.
         if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid
             && !boundary.OuterBoundary.IsPointInside(exitEndE, exitEndN))
         {
@@ -881,19 +783,47 @@ public partial class YouTurnCreationService
 
         TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
 
+        // The semicircle is built without looking at the field, so it must stay in it: asked for
+        // the pass along the fence, where no real turn fits, it swung up to 17 m outside the
+        // boundary (#692). AgOpenGPS has no fallback; it makes no turn and sounds the failure.
+        if (LeavesField(path, boundary))
+        {
+            _logger.LogDebug("[YouTurn] Simple fallback leaves the field - not creating U-turn");
+            path.Clear();
+        }
+
         return path;
     }
 
     /// <summary>
-    /// Build an immediate U-turn path anchored at the tractor's current position — no
-    /// entry/exit straight legs, no headland traversal. Just a semicircle from the
-    /// tractor to the next parallel pass, executed the moment it's rendered (#260).
+    /// True when a point of <paramref name="path"/> is outside the outer boundary or inside an
+    /// inner boundary a turn may not drive through.
+    /// </summary>
+    internal static bool LeavesField(IReadOnlyList<Vec3> path, Boundary? boundary)
+    {
+        var outer = boundary?.OuterBoundary;
+        if (outer == null || !outer.IsValid) return false;
+        foreach (var p in path)
+        {
+            if (!outer.IsPointInside(p.Easting, p.Northing)) return true;
+            foreach (var inner in boundary!.InnerBoundaries)
+                if (!inner.IsDriveThrough && inner.IsValid && inner.IsPointInside(p.Easting, p.Northing)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Build an immediate U-turn path from the tractor's current position to the target
+    /// pass — no headland traversal, no boundary-anchored entry/exit legs (#260). Like
+    /// AgOpenGPS <c>BuildManualYouTurn</c>: a Dubins path at the configured
+    /// <c>Guidance.UTurnRadius</c> from a start 4 m ahead of the tractor along the track to
+    /// the point abreast of it on the target pass, heading reversed. With a radius larger
+    /// than half the pass offset that is an omega (bulb) turn; smaller, an arc-straight-arc.
     ///
-    /// The arc radius is fixed at <c>offset / 2</c> so the endpoint lands exactly on
-    /// the next parallel pass with reversed heading. The configured
-    /// <c>Guidance.UTurnRadius</c> is ignored because any larger radius would overshoot
-    /// the target pass and would need a connector leg to bridge the gap — which would
-    /// defeat the "no legs, immediate" requirement.
+    /// The radius used to be fixed at offset / 2 so a plain semicircle landed on the next
+    /// pass, ignoring the configured radius. With a 6 m tool that is a 3 m radius, which no
+    /// tractor can drive: it fell more than 4 m outside the arc and the turn was abandoned
+    /// halfway, heading square to the next pass (#156).
     /// </summary>
     public List<Vec3> CreateManualArcPath(
         Position currentPosition,
@@ -901,82 +831,107 @@ public partial class YouTurnCreationService
         bool turnLeft,
         Boundary? boundary,
         GuidanceWorkingState guidance,
-        int uTurnSkipRows)
+        int uTurnSkipRows,
+        Models.Track.Track? targetPass = null)
     {
         var path = new List<Vec3>();
         var config = _configStore;
 
-        const double pointSpacing = 0.5;
         double trackWidth = config.ActualToolWidth - config.Tool.Overlap;
-        double turnOffset = trackWidth * (uTurnSkipRows + 1);
-        if (turnOffset < 0.1)
+        // From the line steered now to the one steered on the next pass: the passes apart, and
+        // with a tool offset twice the offset more or less, since the next pass is driven the
+        // other way (AgOpenGPS BuildManualYouTurn: rowSkipsWidth ± tool.offset * 2).
+        int side = (turnLeft ^ guidance.IsHeadingSameWay) ? 1 : -1;
+        double toolShift = Models.Track.PassGeometry.ToolShift(config.Tool.Offset, guidance.IsHeadingSameWay);
+        // A tool offset over half the pass makes it negative turning away from the tool: the line
+        // steered on the next pass is on the other side of the tractor, and the turn loops back
+        // across to it, as in AgOpenGPS (J8: a 3 m mower 2.5 m to one side).
+        double nearestPassOffset = trackWidth + 2 * toolShift * side;
+        double turnOffset = trackWidth * uTurnSkipRows + nearestPassOffset;
+        if (trackWidth < 0.1)
         {
             _logger.LogWarning("[ManualYouTurn] Tool width is zero — cannot compute offset");
             return path;
         }
 
-        double turnRadius = turnOffset / 2.0;
+        double turnRadius = Math.Max(config.Guidance.UTurnRadius, MinManualTurnRadius);
 
-        // Travel direction as the tractor is currently heading along the AB line.
-        double travelHeading = abHeading;
-        if (!guidance.IsHeadingSameWay)
+        // Travel direction as the tractor is currently heading along the track.
+        double lineHeading = abHeading;
+        if (!guidance.IsHeadingSameWay) lineHeading += Math.PI;
+        lineHeading = NormalizeHeading(lineHeading);
+
+        // The start heading is rotated by 0.01 rad like AgOpenGPS, so start and goal are
+        // never exactly antiparallel: Dubins degenerates into loops when the two turning
+        // circles coincide (offset = 2R).
+        double travelHeading = NormalizeHeading(lineHeading - ManualTurnHeadingTweak);
+
+        // The curve starts ahead of the tractor: the steering needs the lead to reach lock,
+        // and the arc must not begin behind the pivot by the time it renders (AgOpenGPS: 4 m).
+        var start = new Vec3
         {
-            travelHeading += Math.PI;
-            if (travelHeading >= Math.PI * 2) travelHeading -= Math.PI * 2;
+            Easting = currentPosition.Easting + Math.Sin(lineHeading) * ManualTurnStartLead,
+            Northing = currentPosition.Northing + Math.Cos(lineHeading) * ManualTurnStartLead,
+            Heading = travelHeading,
+        };
+
+        // The goal is on the target pass abreast of the start, so the turn ends on the pass
+        // even when the tractor is off its own line at the press (AgOpenGPS anchors on the
+        // line, not the tractor). Seen on #156: 0.9 m off at the press, the turn ended 0.9 m
+        // beside the next pass. The planned pass decides where the turn ends: a skip-worked,
+        // snake or alternative plan can be another number of passes over than the skip, and
+        // the turn completes onto it. Without a usable target pass, go one offset over.
+        double perpAngle = turnLeft ? (lineHeading - Math.PI / 2) : (lineHeading + Math.PI / 2);
+        var goal = new Vec3
+        {
+            Easting = start.Easting + Math.Sin(perpAngle) * turnOffset,
+            Northing = start.Northing + Math.Cos(perpAngle) * turnOffset,
+            Heading = NormalizeHeading(lineHeading + Math.PI),
+        };
+        if (TryProjectOntoPass(targetPass, start, out double passE, out double passN))
+        {
+            double across = (passE - start.Easting) * Math.Sin(perpAngle) + (passN - start.Northing) * Math.Cos(perpAngle);
+            // Only a pass on the turn side: at least the nearest pass there, less half a pass (with
+            // no tool offset, half a pass over; the pass the tractor is on never qualifies).
+            if (across >= nearestPassOffset - trackWidth / 2)
+            {
+                goal.Easting = passE;
+                goal.Northing = passN;
+            }
         }
-
-        double arcStartE = currentPosition.Easting;
-        double arcStartN = currentPosition.Northing;
-
-        double perpAngle = turnLeft ? (travelHeading - Math.PI / 2) : (travelHeading + Math.PI / 2);
-
-        double arcCenterE = arcStartE + Math.Sin(perpAngle) * turnRadius;
-        double arcCenterN = arcStartN + Math.Cos(perpAngle) * turnRadius;
-
-        double arcEndE = arcStartE + Math.Sin(perpAngle) * (2 * turnRadius);
-        double arcEndN = arcStartN + Math.Cos(perpAngle) * (2 * turnRadius);
 
         // Refuse to plot a turn whose endpoint lands outside the field.
         if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid
-            && !boundary.OuterBoundary.IsPointInside(arcEndE, arcEndN))
+            && !boundary.OuterBoundary.IsPointInside(goal.Easting, goal.Northing))
         {
-            _logger.LogDebug("[ManualYouTurn] Arc end ({E:F1},{N:F1}) outside boundary — refusing",
-                arcEndE, arcEndN);
+            _logger.LogDebug("[ManualYouTurn] Turn end ({E:F1},{N:F1}) outside boundary — refusing",
+                goal.Easting, goal.Northing);
             return path;
         }
 
-        double startAngle = Math.Atan2(arcStartE - arcCenterE, arcStartN - arcCenterN);
-        int arcPoints = Math.Max((int)(Math.PI * turnRadius / pointSpacing), 20);
-
-        // Include the start point so guidance has a valid t=0 sample at the tractor.
-        path.Add(new Vec3
+        _dubinsService.TurningRadius = turnRadius;
+        path = _dubinsService.GeneratePath(start, goal);
+        if (path.Count < 3)
         {
-            Easting = arcStartE,
-            Northing = arcStartN,
-            Heading = travelHeading,
-        });
-
-        for (int i = 1; i <= arcPoints; i++)
-        {
-            double t = (double)i / arcPoints;
-            double sweepAngle = turnLeft ? (-Math.PI * t) : (Math.PI * t);
-            double currentAngle = startAngle + sweepAngle;
-
-            double tangentHeading = currentAngle + (turnLeft ? -Math.PI / 2 : Math.PI / 2);
-            if (tangentHeading < 0) tangentHeading += Math.PI * 2;
-            if (tangentHeading >= Math.PI * 2) tangentHeading -= Math.PI * 2;
-
-            path.Add(new Vec3
-            {
-                Easting = arcCenterE + Math.Sin(currentAngle) * turnRadius,
-                Northing = arcCenterN + Math.Cos(currentAngle) * turnRadius,
-                Heading = tangentHeading,
-            });
+            _logger.LogWarning("[ManualYouTurn] Dubins found no path: radius={Rad:F1}m, offset={Off:F1}m",
+                turnRadius, turnOffset);
+            path.Clear();
+            return path;
         }
+
+        // The path begins at the tractor with a straight lead into the Dubins start, so
+        // guidance has its t=0 sample at the pivot: it abandons a turn whose nearest path
+        // point is over 4 m away, which the lead alone would be the moment it renders.
+        path.Insert(0, new Vec3
+        {
+            Easting = currentPosition.Easting,
+            Northing = currentPosition.Northing,
+            Heading = lineHeading,
+        });
 
         TurnPathSmoothing.Smooth(path, config.Guidance.UTurnSmoothing);
 
-        // Hard boundary: a manual arc is anchored at the tractor, so it can't be
+        // Hard boundary: a manual turn is anchored at the tractor, so it can't be
         // shifted inward — if the implement would swing into the fence, refuse it.
         if (!ImplementClearsHardBoundary(path, boundary, config, out double intrusion))
         {
@@ -986,10 +941,67 @@ public partial class YouTurnCreationService
             return path;
         }
 
-        _logger.LogDebug("[ManualYouTurn] Arc path: {Count} points, radius={Rad:F1}m, offset={Off:F1}m, turnLeft={Left}",
+        // A manual turn that would take the tractor out of the field (past the outer boundary,
+        // or into an obstacle a turn may not drive through) is refused, as an automatic one is
+        // (#698): tapped at the headland line with a headland narrower than the turn, it went up
+        // to 7 m out of the field (Turn intervention scenarios T11, TURN-OUTSIDE-BOUNDARY).
+        // AgOpenGPS's manual turn has no such check. Judged only with the tractor inside the field:
+        // from outside, every path starts outside.
+        var outer = boundary?.OuterBoundary;
+        if (outer != null && outer.IsValid && outer.IsPointInside(currentPosition.Easting, currentPosition.Northing)
+            && LeavesField(path, boundary))
+        {
+            _logger.LogDebug("[ManualYouTurn] The turn would leave the field — refusing");
+            path.Clear();
+            return path;
+        }
+
+        _logger.LogDebug("[ManualYouTurn] Dubins path: {Count} points, radius={Rad:F1}m, offset={Off:F1}m, turnLeft={Left}",
             path.Count, turnRadius, turnOffset, turnLeft);
 
         return path;
+    }
+
+    /// <summary>Manual turn starts this far ahead of the tractor (AgOpenGPS: 4 m).</summary>
+    private const double ManualTurnStartLead = 4.0;
+
+    /// <summary>Heading rotation that keeps a manual turn's start and goal from being
+    /// exactly abreast (AgOpenGPS: 0.01 rad).</summary>
+    private const double ManualTurnHeadingTweak = 0.01;
+
+    /// <summary>Floor for a nonsense configured U-turn radius (0 or negative).</summary>
+    private const double MinManualTurnRadius = 1.0;
+
+    /// <summary>
+    /// Closest point on <paramref name="pass"/> to <paramref name="point"/>: on the infinite
+    /// line for an AB pass (two points), on the polyline for a curve.
+    /// </summary>
+    private static bool TryProjectOntoPass(Models.Track.Track? pass, Vec3 point, out double e, out double n)
+    {
+        e = n = 0;
+        if (pass == null || pass.Points.Count < 2) return false;
+        bool infinite = pass.Points.Count == 2;
+        double best = double.MaxValue;
+        for (int i = 0; i < pass.Points.Count - 1; i++)
+        {
+            var a = pass.Points[i];
+            var b = pass.Points[i + 1];
+            double dx = b.Easting - a.Easting, dy = b.Northing - a.Northing;
+            double len2 = dx * dx + dy * dy;
+            if (len2 < 1e-9) continue;
+            double t = ((point.Easting - a.Easting) * dx + (point.Northing - a.Northing) * dy) / len2;
+            if (!infinite) t = Math.Clamp(t, 0, 1);
+            double pe = a.Easting + t * dx, pn = a.Northing + t * dy;
+            double d2 = (pe - point.Easting) * (pe - point.Easting) + (pn - point.Northing) * (pn - point.Northing);
+            if (d2 < best) { best = d2; e = pe; n = pn; }
+        }
+        return best < double.MaxValue;
+    }
+
+    private static double NormalizeHeading(double heading)
+    {
+        heading %= Math.PI * 2;
+        return heading < 0 ? heading + Math.PI * 2 : heading;
     }
 
     /// <summary>

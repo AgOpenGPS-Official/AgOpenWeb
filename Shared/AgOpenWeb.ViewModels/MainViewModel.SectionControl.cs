@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -31,6 +19,34 @@ namespace AgOpenWeb.ViewModels;
 /// </summary>
 public partial class MainViewModel
 {
+    // The setup last warned about (section count and pin map), so the warning comes once, not
+    // at every tap.
+    private string? _relayWarnedFor;
+
+    /// <summary>
+    /// Sections switched on with a machine module heard, but no relay of the module has some of
+    /// them (Tool › Machine › Pin Config, PGN 236): they show on and paint coverage while no
+    /// valve opens. The default pin map has sections 1 to 6 only. AgOpenGPS says nothing either;
+    /// the machine module harness's SECTION-WITHOUT-RELAY. Modules that read the section bits
+    /// themselves (PGN 239/229) don't use the pin map, so only with a machine module heard.
+    /// </summary>
+    private void WarnSectionsWithoutRelay()
+    {
+        if (!State.Connections.IsMachineDataOk) return;
+        var pins = ConfigStore.Machine.PinAssignments;
+        int n = Math.Min(ConfigStore.NumSections, 16);
+        var missing = new List<int>();
+        for (int sec = 1; sec <= n; sec++)
+            if (Array.IndexOf(pins, (PinFunction)sec) < 0) missing.Add(sec);
+        string key = n + ":" + string.Join(",", pins);
+        if (missing.Count == 0) { _relayWarnedFor = null; return; }
+        if (key == _relayWarnedFor) return;
+        _relayWarnedFor = key;
+        string list = missing.Count > 2 && missing[^1] - missing[0] == missing.Count - 1
+            ? $"{missing[0]} to {missing[^1]}" : string.Join(", ", missing);
+        ReportFailure($"No relay of the machine module has section(s) {list}: they show on the map, but no valve opens. Set them in Tool › Machine › Pin Config.");
+    }
+
     #region Section Bar State
 
     // Stable button objects keyed by section index. Reused across row rebuilds
@@ -158,6 +174,39 @@ public partial class MainViewModel
         for (int i = 0; i < result.Length; i++)
             result[i] = config.Tool.GetSectionWidth(i) / 100.0; // cm to meters
         return result;
+    }
+
+    #endregion
+
+    #region Remote Switches
+
+    private void OnRemoteSwitchesReceived(byte[] switches) =>
+        _dispatcher.Post(() => ApplyRemoteSwitches(switches));
+
+    /// <summary>
+    /// PGN 234 from a rate controller or a section control switch box (AgOpenGPS
+    /// DoRemoteSwitches), with a field open only: set the master Auto button and the
+    /// section buttons the module communication service decided on.
+    /// </summary>
+    internal void ApplyRemoteSwitches(byte[] switches)
+    {
+        if (!IsFieldOpen) return;
+
+        var sections = _sectionControlService.SectionStates;
+        var decision = _moduleCommunicationService.CheckRemoteSwitches(switches, IsSectionMasterOn, sections);
+
+        if (decision.Master != RemoteMasterCommand.None)
+        {
+            IsSectionMasterOn = decision.Master == RemoteMasterCommand.AutoOn;
+            IsManualSectionMode = false;
+            _audioService.Play(IsSectionMasterOn ? SoundEffect.SectionOn : SoundEffect.SectionOff);
+        }
+
+        for (int i = 0; i < decision.Sections.Length; i++)
+        {
+            if (sections[i].ButtonState != decision.Sections[i])
+                _sectionControlService.SetSectionState(i, decision.Sections[i]);
+        }
     }
 
     #endregion

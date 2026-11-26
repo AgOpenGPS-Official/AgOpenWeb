@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Linq;
@@ -97,7 +85,7 @@ public partial class MainViewModel
 
     /// <summary>Unit label that pairs with <see cref="SpeedLargeValue"/>.</summary>
     public string SpeedLargeUnit =>
-        _configStore.IsMetric ? "km/h" : "mph";
+        _configStore.IsMetric ? "kph" : "mph";
 
     public int SatelliteCount
     {
@@ -132,7 +120,7 @@ public partial class MainViewModel
     public double RollDegrees
     {
         get => _rollDegrees;
-        set { if (SetProperty(ref _rollDegrees, value)) State.Vehicle.Roll = value; } // mirror for web-UI
+        set => SetProperty(ref _rollDegrees, value);
     }
 
     #endregion
@@ -181,7 +169,17 @@ public partial class MainViewModel
             }
         }
 
-        double headingRad = data.CurrentPosition.Heading * Math.PI / 180.0;
+        // What is recorded follows the pivot, as AgOpenGPS records pivotAxlePos: the cycle's
+        // position has the antenna-to-pivot shift, roll and drift applied, while the fix above is
+        // the antenna's. A curve recorded from the antenna sat beside the drive by the antenna's
+        // lateral offset and the roll (and started with one pivot point). Until the first cycle
+        // there is only the fix.
+        var vehicle = State.Vehicle;
+        bool hasPivot = vehicle.Easting != 0 || vehicle.Northing != 0;
+        double pivotE = hasPivot ? vehicle.Easting : posEasting;
+        double pivotN = hasPivot ? vehicle.Northing : posNorthing;
+        double pivotHeading = hasPivot ? vehicle.Heading : data.CurrentPosition.Heading;
+        double headingRad = pivotHeading * Math.PI / 180.0;
 
         // Auto-initialize coverage bounds from GPS if no boundary exists (#138)
         EnsureCoverageBoundsInitialized(posEasting, posNorthing);
@@ -191,20 +189,20 @@ public partial class MainViewModel
         // Add boundary point if recording is active
         if (_boundaryRecordingService.IsRecording && BoundaryRecordingSectionsAllow())
         {
-            var (bndE, bndN) = BoundaryRecordPoint(posEasting, posNorthing, headingRad);
+            var (bndE, bndN) = BoundaryRecordPoint(pivotE, pivotN, headingRad);
             _boundaryRecordingService.AddPoint(bndE, bndN, headingRad);
         }
 
         // Add curve point if curve recording is active
         if (CurrentABCreationMode == ABCreationMode.Curve)
         {
-            AddCurvePoint(posEasting, posNorthing, data.CurrentPosition.Heading);
+            AddCurvePoint(pivotE, pivotN, pivotHeading);
         }
 
         // Add contour point if contour recording is active
         if (IsRecordingContour)
         {
-            AddContourPoint(posEasting, posNorthing, data.CurrentPosition.Heading);
+            AddContourPoint(pivotE, pivotN, pivotHeading);
         }
 
         // Log elevation data if enabled (#120)
@@ -223,7 +221,7 @@ public partial class MainViewModel
         // Add recorded path point if path recording is active
         if (IsRecordingPath)
         {
-            AddRecordedPathPoint(posEasting, posNorthing, data.CurrentPosition.Heading);
+            AddRecordedPathPoint(pivotE, pivotN, pivotHeading);
         }
 
         // Update recorded path playback if active
@@ -324,7 +322,7 @@ public partial class MainViewModel
     /// <summary>
     /// Add a point to the curve being recorded, with minimum spacing filtering.
     /// </summary>
-    private void AddCurvePoint(double easting, double northing, double headingDegrees)
+    internal void AddCurvePoint(double easting, double northing, double headingDegrees)
     {
         double headingRadians = headingDegrees * Math.PI / 180.0;
 
@@ -398,9 +396,6 @@ public partial class MainViewModel
     private void SyncGuidanceStateToPipeline()
     {
         var track = SelectedTrack;
-        bool isOnBoundary = track != null && State.Field.Tracks.IndexOf(track) == 0
-            && CurrentBoundary?.OuterBoundary != null;
-
         // Use pending initial values if the SelectedTrack setter just seeded
         // them; otherwise re-push the current State.Guidance (which the cycle
         // wrote on the last snapshot). The pipeline's SetActiveTrack is
@@ -411,16 +406,35 @@ public partial class MainViewModel
         _pendingInitialNudgeOffset = null;
 
         _gpsPipelineService.SetAutoSteerEngaged(_isAutoSteerEngaged);
-        _gpsPipelineService.SetActiveTrack(track, pathsAway, nudgeOffset, isOnBoundary);
+        _gpsPipelineService.SetActiveTrack(track, pathsAway, nudgeOffset);
         _gpsPipelineService.SetBoundary(CurrentBoundary);
         _gpsPipelineService.SetHeadlandLine(State.Field.HeadlandLine);
+        SyncFieldContextToSectionControl();
         _gpsPipelineService.SetDriftCompensation(State.Field.DriftEasting, State.Field.DriftNorthing);
         // Never arm U-turns on a closed/polygon track, regardless of the toggle (#421).
         _gpsPipelineService.SetYouTurnEnabled(IsYouTurnEnabled && !IsActiveTrackClosed);
-        _gpsPipelineService.SetYouTurnConfig(
+        SyncYouTurnConfigToPipeline();
+    }
+
+    /// <summary>
+    /// Publish the field facts section control reads on the 100 Hz control loop (boundary,
+    /// headland line, field open, headland on) as one record, from the UI thread. Called with
+    /// the pipeline sync and whenever one of them changes, so the control loop never reads
+    /// the UI-bound State.Field mirror.
+    /// </summary>
+    private void SyncFieldContextToSectionControl() =>
+        _sectionControlService.SetFieldContext(new AgOpenWeb.Models.Sections.SectionFieldContext(
+            CurrentBoundary, State.Field.HeadlandLine, State.Field.HasActiveField, _isHeadlandOn));
+
+    /// <summary>
+    /// The skip count and skip mode, pushed to the cycle as they change. They used to reach it
+    /// only with the next full sync (a turn completing, a track change), so the first turn
+    /// after changing the skip count still used the old one (#272).
+    /// </summary>
+    private void SyncYouTurnConfigToPipeline() =>
+        _gpsPipelineService?.SetYouTurnConfig(
             UTurnSkipRows, IsSkipWorkedMode, HeadlandCalculatedWidth, HeadlandDistance,
             isAlternateSkipMode: UTurnSkipMode == 1);
-    }
 
     #endregion
 
@@ -466,6 +480,7 @@ public partial class MainViewModel
         RollDegrees = _latestRollDegrees;
         FixQuality = GetFixQualityString(v.FixQuality);
         GpsToPgnLatencyMs = _latestGpsToPgnLatencyMs;
+        ExpireNtripNotice();
     }
 
     #endregion

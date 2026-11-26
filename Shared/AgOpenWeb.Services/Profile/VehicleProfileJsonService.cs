@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.IO;
@@ -9,16 +8,14 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
-using AgOpenWeb.Models.State;
 using AgOpenWeb.Services.Storage;
 
 namespace AgOpenWeb.Services.Profile;
 
 /// <summary>
-/// v2 vehicle profile serializer. Persists Vehicle config + Guidance +
-/// YouTurn + General. Tool config + Sections live in the parallel
-/// <see cref="ToolProfileJsonService"/> per the AgOpenGPS 6.8.2-style
-/// vehicle/tool split (#346).
+/// v2 vehicle profile serializer. Persists Vehicle config + Guidance + GPS +
+/// roll. Tool config, Sections, Machine, U-Turn and Tram live in the parallel
+/// <see cref="ToolProfileJsonService"/> (#346, #330).
 /// </summary>
 public static class VehicleProfileJsonService
 {
@@ -41,7 +38,10 @@ public static class VehicleProfileJsonService
 
         // Atomic write + .bak last-known-good (see AtomicJsonFile): a crash
         // mid-write can never leave a truncated profile that loads as defaults.
-        AtomicJsonFile.WriteJson(GetJsonPath(vehiclesDirectory, profileName), ToDto(store), Options);
+        var path = GetJsonPath(vehiclesDirectory, profileName);
+        // A profile from a newer build is left as it is: this build would drop what it doesn't read.
+        if (HitchMigration.IsNewerFormat(path)) return;
+        AtomicJsonFile.WriteJson(path, ToDto(store), Options);
     }
 
     public static bool Load(string vehiclesDirectory, string profileName, ConfigurationStore store)
@@ -103,18 +103,23 @@ public static class VehicleProfileJsonService
 
     internal static VehicleProfileDto ToDto(ConfigurationStore store) => new()
     {
-        FormatVersion = 2,
+        FormatVersion = HitchMigration.CurrentFormatVersion,
         Vehicle = new VehicleDto
         {
             AntennaHeight = store.Vehicle.AntennaHeight,
             AntennaPivot = store.Vehicle.AntennaPivot,
             AntennaOffset = store.Vehicle.AntennaOffset,
+            ImuPivot = store.Vehicle.ImuPivot,
+            ImuHeight = store.Vehicle.ImuHeight,
+            ImuOffset = store.Vehicle.ImuOffset,
             Wheelbase = store.Vehicle.Wheelbase,
             TrackWidth = store.Vehicle.TrackWidth,
             Type = (int)store.Vehicle.Type,
             MaxSteerAngle = store.Vehicle.MaxSteerAngle,
             MaxAngularVelocity = store.Vehicle.MaxAngularVelocity,
             HitchLength = store.Vehicle.HitchLength,
+            ThreePointHitchLength = store.Vehicle.ThreePointHitchLength,
+            FrontHitchLength = store.Vehicle.FrontHitchLength,
             HitchType = store.Vehicle.HitchType,
         },
         Guidance = new GuidanceDto
@@ -130,22 +135,6 @@ public static class VehicleProfileJsonService
             UTurnCompensation = store.Guidance.UTurnCompensation,
             MinLookAheadDistance = store.Guidance.MinLookAheadDistance,
             StanleyIntegralDistanceAwayTriggerAB = store.Guidance.StanleyIntegralDistanceAwayTriggerAB,
-            DeadZoneHeading = store.Guidance.DeadZoneHeading,
-            DeadZoneDelay = store.Guidance.DeadZoneDelay,
-            TramPasses = store.Guidance.TramPasses,
-            TramDisplay = store.Guidance.TramDisplay,
-            TramLine = store.Guidance.TramLine,
-            HydLiftLookAheadDistanceLeft = store.Guidance.HydLiftLookAheadDistanceLeft,
-            HydLiftLookAheadDistanceRight = store.Guidance.HydLiftLookAheadDistanceRight,
-        },
-        YouTurn = new YouTurnDto
-        {
-            TurnRadius = store.Guidance.UTurnRadius,
-            ExtensionLength = store.Guidance.UTurnExtension,
-            DistanceFromBoundary = store.Guidance.UTurnDistanceFromBoundary,
-            SkipWidth = store.Guidance.UTurnSkipWidth,
-            Style = store.Guidance.UTurnStyle,
-            Smoothing = store.Guidance.UTurnSmoothing,
         },
         Gps = new GpsDto
         {
@@ -161,17 +150,18 @@ public static class VehicleProfileJsonService
             RtkLostAlarm = store.Connections.RtkLostAlarm,
             RtkLostAction = store.Connections.RtkLostAction,
         },
+        Ahrs = new AhrsDto
+        {
+            RollZero = store.Ahrs.RollZero,
+            RollFilter = store.Ahrs.RollFilter,
+            IsRollInvert = store.Ahrs.IsRollInvert,
+        },
         General = new GeneralDto
         {
             // IsMetric intentionally omitted: device-/user-scoped, lives
             // in AppSettings now. Kept as a nullable field on the DTO so
             // pre-migration profiles still parse; new writes elide it.
             IsMetric = null,
-            IsSimulatorOn = store.Simulator.Enabled,
-            // Sim position is device STATE (PersistentAppState); these DTO
-            // fields are vestigial but kept populated for back-compat.
-            SimLatitude = PersistentAppState.Instance.SimulatorLatitude,
-            SimLongitude = PersistentAppState.Instance.SimulatorLongitude,
         },
     };
 
@@ -184,6 +174,9 @@ public static class VehicleProfileJsonService
         store.Vehicle.AntennaHeight = dto.Vehicle?.AntennaHeight ?? 3.0;
         store.Vehicle.AntennaPivot = dto.Vehicle?.AntennaPivot ?? 0.0;
         store.Vehicle.AntennaOffset = dto.Vehicle?.AntennaOffset ?? 0.0;
+        store.Vehicle.ImuPivot = dto.Vehicle?.ImuPivot ?? 0.0;
+        store.Vehicle.ImuHeight = dto.Vehicle?.ImuHeight ?? 0.0;
+        store.Vehicle.ImuOffset = dto.Vehicle?.ImuOffset ?? 0.0;
         store.Vehicle.Wheelbase = dto.Vehicle?.Wheelbase ?? 2.5;
         store.Vehicle.TrackWidth = dto.Vehicle?.TrackWidth ?? 1.8;
         store.Vehicle.Type = (VehicleType)(dto.Vehicle?.Type ?? 0);
@@ -192,6 +185,10 @@ public static class VehicleProfileJsonService
         // NaN sentinel = "not present in this file" → ConfigurationService.LoadProfiles
         // seeds it from the legacy Tool.HitchLength after the tool also loads.
         store.Vehicle.HitchLength = dto.Vehicle?.HitchLength ?? double.NaN;
+        // Format 3: the 3-point and front hitches. A format-2 vehicle had one hitch, the drawbar
+        // pin: its 3-point starts there (NaN, filled in with it when the vehicle file had none).
+        store.Vehicle.ThreePointHitchLength = dto.Vehicle?.ThreePointHitchLength ?? store.Vehicle.HitchLength;
+        store.Vehicle.FrontHitchLength = dto.Vehicle?.FrontHitchLength ?? 0.0;
         store.Vehicle.HitchType = dto.Vehicle?.HitchType ?? 0;
 
         // Guidance
@@ -206,21 +203,6 @@ public static class VehicleProfileJsonService
         store.Guidance.UTurnCompensation = dto.Guidance?.UTurnCompensation ?? 1.0;
         store.Guidance.MinLookAheadDistance = dto.Guidance?.MinLookAheadDistance ?? 2.0;
         store.Guidance.StanleyIntegralDistanceAwayTriggerAB = dto.Guidance?.StanleyIntegralDistanceAwayTriggerAB ?? 0.3;
-        store.Guidance.DeadZoneHeading = dto.Guidance?.DeadZoneHeading ?? 0.5;
-        store.Guidance.DeadZoneDelay = dto.Guidance?.DeadZoneDelay ?? 10;
-        store.Guidance.TramPasses = dto.Guidance?.TramPasses ?? 3;
-        store.Guidance.TramDisplay = dto.Guidance?.TramDisplay ?? true;
-        store.Guidance.TramLine = dto.Guidance?.TramLine ?? 1;
-        store.Guidance.HydLiftLookAheadDistanceLeft = dto.Guidance?.HydLiftLookAheadDistanceLeft ?? 1.0;
-        store.Guidance.HydLiftLookAheadDistanceRight = dto.Guidance?.HydLiftLookAheadDistanceRight ?? 1.0;
-
-        // YouTurn (mirrored onto Guidance.UTurn* fields per current store layout)
-        store.Guidance.UTurnRadius = dto.YouTurn?.TurnRadius ?? 8.0;
-        store.Guidance.UTurnExtension = dto.YouTurn?.ExtensionLength ?? 20.0;
-        store.Guidance.UTurnDistanceFromBoundary = dto.YouTurn?.DistanceFromBoundary ?? 2.0;
-        store.Guidance.UTurnSkipWidth = dto.YouTurn?.SkipWidth ?? 1;
-        store.Guidance.UTurnStyle = dto.YouTurn?.Style ?? (int)Models.YouTurn.YouTurnType.SagittaStyle;
-        store.Guidance.UTurnSmoothing = dto.YouTurn?.Smoothing ?? 14;
 
         // GPS / heading (AgOpenGPS keeps these per vehicle). Missing in profiles saved
         // before #112, when they weren't saved at all → defaults.
@@ -237,6 +219,13 @@ public static class VehicleProfileJsonService
         store.Connections.ReverseDetection = gps?.ReverseDetection ?? dc.ReverseDetection;
         store.Connections.RtkLostAlarm = gps?.RtkLostAlarm ?? dc.RtkLostAlarm;
         store.Connections.RtkLostAction = gps?.RtkLostAction ?? dc.RtkLostAction;
+
+        // AHRS / Roll calibration (persisted with vehicle profile)
+        var ahrs = dto.Ahrs;
+        var da = new AhrsConfig();
+        store.Ahrs.RollZero = ahrs?.RollZero ?? da.RollZero;
+        store.Ahrs.RollFilter = ahrs?.RollFilter ?? da.RollFilter;
+        store.Ahrs.IsRollInvert = ahrs?.IsRollInvert ?? da.IsRollInvert;
 
         // General — IsMetric used to live here; it now lives in AppSettings.
         // Apply only if the legacy field is present in the file;
@@ -258,8 +247,8 @@ public static class VehicleProfileJsonService
         public int FormatVersion { get; set; }
         public VehicleDto? Vehicle { get; set; }
         public GuidanceDto? Guidance { get; set; }
-        public YouTurnDto? YouTurn { get; set; }
         public GpsDto? Gps { get; set; }
+        public AhrsDto? Ahrs { get; set; }
         public GeneralDto? General { get; set; }
     }
 
@@ -268,6 +257,9 @@ public static class VehicleProfileJsonService
         public double AntennaHeight { get; set; }
         public double AntennaPivot { get; set; }
         public double AntennaOffset { get; set; }
+        public double ImuPivot { get; set; }
+        public double ImuHeight { get; set; }
+        public double ImuOffset { get; set; }
         public double Wheelbase { get; set; }
         public double TrackWidth { get; set; }
         public int Type { get; set; }
@@ -276,6 +268,10 @@ public static class VehicleProfileJsonService
         // Nullable so a pre-split profile (no hitchLength) is detectable for one-way
         // migration from the legacy Tool.HitchLength (see ConfigurationService.LoadProfiles).
         public double? HitchLength { get; set; }
+        /// <summary>Format 3: the rear 3-point hitch (centre of the lower links) behind the axle.</summary>
+        public double? ThreePointHitchLength { get; set; }
+        /// <summary>Format 3: the front 3-point hitch ahead of the axle; 0 = none.</summary>
+        public double? FrontHitchLength { get; set; }
         public int HitchType { get; set; }
     }
 
@@ -292,23 +288,6 @@ public static class VehicleProfileJsonService
         public double UTurnCompensation { get; set; }
         public double? MinLookAheadDistance { get; set; }
         public double? StanleyIntegralDistanceAwayTriggerAB { get; set; }
-        public double? DeadZoneHeading { get; set; }
-        public int? DeadZoneDelay { get; set; }
-        public int? TramPasses { get; set; }
-        public bool? TramDisplay { get; set; }
-        public int? TramLine { get; set; }
-        public double? HydLiftLookAheadDistanceLeft { get; set; }
-        public double? HydLiftLookAheadDistanceRight { get; set; }
-    }
-
-    internal class YouTurnDto
-    {
-        public double TurnRadius { get; set; }
-        public double ExtensionLength { get; set; }
-        public double DistanceFromBoundary { get; set; }
-        public int SkipWidth { get; set; }
-        public int Style { get; set; }
-        public int Smoothing { get; set; }
     }
 
     internal class GpsDto
@@ -326,6 +305,13 @@ public static class VehicleProfileJsonService
         public int? RtkLostAction { get; set; }
     }
 
+    internal class AhrsDto
+    {
+        public double? RollZero { get; set; }
+        public double? RollFilter { get; set; }
+        public bool? IsRollInvert { get; set; }
+    }
+
     internal class GeneralDto
     {
         /// <summary>
@@ -336,8 +322,5 @@ public static class VehicleProfileJsonService
         /// <see cref="IConfigurationService.ReconcileIsMetricAfterProfileLoad"/>.
         /// </summary>
         public bool? IsMetric { get; set; }
-        public bool IsSimulatorOn { get; set; }
-        public double SimLatitude { get; set; }
-        public double SimLongitude { get; set; }
     }
 }

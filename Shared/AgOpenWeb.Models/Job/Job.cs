@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 
@@ -26,6 +14,10 @@ namespace AgOpenWeb.Models.Job;
 /// </summary>
 public class Job
 {
+    /// <summary>The members of its job.json that this build does not read (a newer build's),
+    /// written back as they were (FIELD_FILE_FORMATS.md).</summary>
+    public IReadOnlyDictionary<string, System.Text.Json.JsonElement>? UnknownProperties { get; set; }
+
     /// <summary>
     /// Stable identifier. Coverage and section-log files key off this on
     /// disk so renaming <see cref="TaskName"/> doesn't break references.
@@ -85,4 +77,10 @@ public class Job
     /// Number of U-turns executed during this job.
     /// </summary>
     public int UTurnCount { get; set; }
+
+    /// <summary>
+    /// The vehicle and the chain of tools the job was worked with (#547), a copy of the loaded
+    /// profiles kept up to date while the job is open; null for a job saved before it was kept.
+    /// </summary>
+    public JobRig? Rig { get; set; }
 }

@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -55,6 +43,30 @@ public interface ISectionControlService
     /// <param name="vehicleHeading">Vehicle heading in radians (for detecting tool catch-up)</param>
     /// <param name="speed">Vehicle speed in m/s</param>
     void Update(Vec3 toolPosition, double toolHeading, double vehicleHeading, double speed);
+
+    /// <summary>
+    /// Publish the field facts <see cref="Update"/> reads (boundary, headland line, field
+    /// open, headland on). Called from the UI thread whenever one of them changes; the
+    /// control-loop tick reads the latest whole record.
+    /// </summary>
+    void SetFieldContext(AgOpenWeb.Models.Sections.SectionFieldContext context);
+
+    /// <summary>
+    /// True while the vehicle is reversing (set each GPS cycle by the pipeline). Auto
+    /// sections turn off in reverse, like AgOpenGPS; Manual-On sections stay on (#173).
+    /// </summary>
+    bool IsReversing { get; set; }
+
+    /// <summary>
+    /// True while the machine module that works the valves has stopped answering (set by the
+    /// module check). The sections keep their state and their bits still go out, so the
+    /// valves work again as soon as the module hears them, but nothing is painted: the module
+    /// shuts its valves by itself when the app goes quiet (Sprayer_ESP32: 2 s after its last
+    /// PGN 239), and a map that went on painting showed ground as sprayed that the valves
+    /// never reached (Machine Module harness, MODULE-LOST-SILENT: 495 m² in a 30 s Wi-Fi drop).
+    /// Ground left unpainted is sprayed by an Auto section on a later pass.
+    /// </summary>
+    bool HoldPainting { get; set; }
 
     /// <summary>
     /// Get section edge positions in world coordinates

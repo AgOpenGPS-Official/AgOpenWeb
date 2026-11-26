@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -102,6 +90,12 @@ public interface ITramLineService
     bool IsOnTramLine(Vec3 position, double tolerance);
 
     /// <summary>
+    /// As <see cref="IsOnTramLine(Vec3, double)"/>, counting only the lines the display mode
+    /// shows (Lines only: no boundary tracks; Outer only: no parallel lines; Off: nothing).
+    /// </summary>
+    bool IsOnTramLine(Vec3 position, double tolerance, AgOpenWeb.Models.Configuration.TramDisplayMode mode);
+
+    /// <summary>
     /// Get distance to the nearest tram line
     /// </summary>
     /// <param name="position">Position to check</param>
@@ -109,11 +103,10 @@ public interface ITramLineService
     double DistanceToNearestTramLine(Vec3 position);
 
     /// <summary>
-    /// Detect which wheels are on tram lines.
-    /// Returns a byte: bit 0 = right wheel, bit 1 = left wheel.
-    /// Includes manual override flags.
+    /// Detect which tram wheel tracks the tool is on (inner or outer, as AgOpenGPS).
+    /// Returns a byte: bit 0 = right, bit 1 = left. Includes manual override flags.
     /// </summary>
-    byte DetectTramWheels(Vec3 vehiclePosition, double vehicleHeading, double tolerance);
+    byte DetectTramWheels(Vec3 toolPosition, double toolHeading, double tolerance);
 
     /// <summary>
     /// Left wheel manual override - force recording left wheel track
@@ -130,17 +123,6 @@ public interface ITramLineService
     /// </summary>
     void Clear();
 
-    /// <summary>
-    /// Save tram lines to field directory
-    /// </summary>
-    /// <param name="fieldDirectory">Path to field directory</param>
-    void SaveToFile(string fieldDirectory);
-
-    /// <summary>
-    /// Load tram lines from field directory
-    /// </summary>
-    /// <param name="fieldDirectory">Path to field directory</param>
-    void LoadFromFile(string fieldDirectory);
 
     /// <summary>
     /// Event fired when tram lines are updated

@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -29,6 +17,7 @@ using AgOpenWeb.Models.IsoXml;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Models.Track;
 using AgOpenWeb.Services;
+using AgOpenWeb.Services.GeoJson;
 using AgOpenWeb.Services.IsoXml;
 using CommunityToolkit.Mvvm.Input;
 
@@ -128,8 +117,7 @@ public partial class MainViewModel
             var fieldName = SelectedFieldInfo.Name;
 
             // Check if this is a legacy field that will be auto-converted
-            bool isLegacy = !File.Exists(Path.Combine(fieldPath, "field.geojson")) &&
-                            File.Exists(Path.Combine(fieldPath, "Field.txt"));
+            bool isLegacy = File.Exists(Path.Combine(fieldPath, "Field.txt"));
 
             if (isLegacy)
             {
@@ -138,7 +126,7 @@ public partial class MainViewModel
                     "Import Legacy Field",
                     $"'{fieldName}' uses the legacy AgOpenGPS format. " +
                     "It will be imported and converted to the new format. " +
-                    "The original files will be kept. Continue?",
+                    "Its AgOpenGPS files in this folder are deleted once imported. Continue?",
                     () =>
                     {
                         SelectedFieldInfo = null;
@@ -207,11 +195,12 @@ public partial class MainViewModel
 
         ConfirmNewFieldDialogCommand = new AsyncRelayCommand(async () =>
         {
-            if (string.IsNullOrWhiteSpace(NewFieldName))
+            if (!FieldNames.TryCheck(NewFieldName, out var checkedName, out var nameProblem))
             {
-                StatusMessage = "Please enter a field name";
+                ReportFailure(nameProblem);
                 return;
             }
+            NewFieldName = checkedName;
 
             var fieldsDir = _settingsService.Settings.FieldsDirectory;
             if (string.IsNullOrWhiteSpace(fieldsDir))
@@ -221,9 +210,9 @@ public partial class MainViewModel
             }
 
             var fieldPath = Path.Combine(fieldsDir, NewFieldName);
-            if (Directory.Exists(fieldPath))
+            if (FieldNames.ExistingTwin(fieldsDir, NewFieldName) is { } twin)
             {
-                StatusMessage = $"Field '{NewFieldName}' already exists";
+                ReportFailure(FieldNames.ExistsMessage(NewFieldName, twin));
                 return;
             }
 
@@ -231,10 +220,6 @@ public partial class MainViewModel
             {
                 Directory.CreateDirectory(fieldPath);
                 WriteNewFieldSkeleton(fieldPath, NewFieldName, NewFieldLatitude, NewFieldLongitude);
-
-                // Create elevation log header if enabled (#120)
-                if (_configStore.Display.ElevationLogEnabled)
-                    _elevationLogService.CreateHeader(fieldPath, NewFieldLatitude, NewFieldLongitude);
 
                 var name = NewFieldName;
                 await OpenCreatedFieldAsync(fieldPath, name);
@@ -288,10 +273,9 @@ public partial class MainViewModel
                 return;
             }
 
-            var newFieldName = FromExistingFieldName.Trim();
-            if (string.IsNullOrWhiteSpace(newFieldName))
+            if (!FieldNames.TryCheck(FromExistingFieldName, out var newFieldName, out var nameProblem))
             {
-                StatusMessage = "Please enter a field name";
+                ReportFailure(nameProblem);
                 return;
             }
 
@@ -307,7 +291,7 @@ public partial class MainViewModel
 
             if (Directory.Exists(newFieldPath))
             {
-                StatusMessage = $"Field '{newFieldName}' already exists";
+                ReportFailure($"Field '{newFieldName}' already exists");
                 return;
             }
 
@@ -339,13 +323,13 @@ public partial class MainViewModel
 
         AppendDateCommand = new RelayCommand(() =>
         {
-            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd");
+            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd", System.Globalization.CultureInfo.InvariantCulture); // becomes a folder name
             FromExistingFieldName = (FromExistingFieldName + " " + dateStr).Trim();
         });
 
         AppendTimeCommand = new RelayCommand(() =>
         {
-            var timeStr = DateTime.Now.ToString("HH-mm");
+            var timeStr = DateTime.Now.ToString("HH-mm", System.Globalization.CultureInfo.InvariantCulture);
             FromExistingFieldName = (FromExistingFieldName + " " + timeStr).Trim();
         });
 
@@ -412,10 +396,9 @@ public partial class MainViewModel
             }
 
             // Create new field mode (opened from field creation)
-            var newFieldName = KmlImportFieldName.Trim();
-            if (string.IsNullOrWhiteSpace(newFieldName))
+            if (!FieldNames.TryCheck(KmlImportFieldName, out var newFieldName, out var nameProblem))
             {
-                StatusMessage = "Please enter a field name";
+                ReportFailure(nameProblem);
                 return;
             }
 
@@ -427,17 +410,16 @@ public partial class MainViewModel
             }
 
             var newFieldPath = Path.Combine(fieldsDir, newFieldName);
-            if (Directory.Exists(newFieldPath))
+            if (FieldNames.ExistingTwin(fieldsDir, newFieldName) is { } twin)
             {
-                StatusMessage = $"Field '{newFieldName}' already exists";
+                ReportFailure(FieldNames.ExistsMessage(newFieldName, twin));
                 return;
             }
 
             try
             {
                 Directory.CreateDirectory(newFieldPath);
-                // Invariant culture (the old {x:F8} wrote "42,03" in comma-decimal locales, #112)
-                // and a Field.txt, which the open path needs.
+                // field.origin + field.geojson, which the open path needs.
                 WriteNewFieldSkeleton(newFieldPath, newFieldName, KmlCenterLatitude, KmlCenterLongitude);
 
                 var origin = new Wgs84(KmlCenterLatitude, KmlCenterLongitude);
@@ -463,7 +445,7 @@ public partial class MainViewModel
                         boundary.InnerBoundaries.Add(polygon);
                 }
 
-                _boundaryFileService.SaveBoundary(boundary, newFieldPath);
+                SaveFieldBoundary(boundary, newFieldPath);
 
                 // Open through the normal path: closes (and saves) the current field first
                 // and loads the new one, boundary included (#107).
@@ -480,13 +462,13 @@ public partial class MainViewModel
 
         KmlAppendDateCommand = new RelayCommand(() =>
         {
-            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd");
+            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd", System.Globalization.CultureInfo.InvariantCulture); // becomes a folder name
             KmlImportFieldName = (KmlImportFieldName + " " + dateStr).Trim();
         });
 
         KmlAppendTimeCommand = new RelayCommand(() =>
         {
-            var timeStr = DateTime.Now.ToString("HH-mm");
+            var timeStr = DateTime.Now.ToString("HH-mm", System.Globalization.CultureInfo.InvariantCulture);
             KmlImportFieldName = (KmlImportFieldName + " " + timeStr).Trim();
         });
 
@@ -528,10 +510,9 @@ public partial class MainViewModel
                 return;
             }
 
-            var newFieldName = IsoXmlImportFieldName.Trim();
-            if (string.IsNullOrWhiteSpace(newFieldName))
+            if (!FieldNames.TryCheck(IsoXmlImportFieldName, out var newFieldName, out var nameProblem))
             {
-                StatusMessage = "Please enter a field name";
+                ReportFailure(nameProblem);
                 return;
             }
 
@@ -543,9 +524,9 @@ public partial class MainViewModel
             }
 
             var newFieldPath = Path.Combine(fieldsDir, newFieldName);
-            if (Directory.Exists(newFieldPath))
+            if (FieldNames.ExistingTwin(fieldsDir, newFieldName) is { } twin)
             {
-                StatusMessage = $"Field '{newFieldName}' already exists";
+                ReportFailure(FieldNames.ExistsMessage(newFieldName, twin));
                 return;
             }
 
@@ -553,10 +534,7 @@ public partial class MainViewModel
             {
                 // Locate TASKDATA.XML inside the selected dataset folder (case-insensitive
                 // so real-world uppercase datasets work on Linux too).
-                var taskDataPath = Directory.Exists(SelectedIsoXmlFile.FullPath)
-                    ? Directory.EnumerateFiles(SelectedIsoXmlFile.FullPath)
-                        .FirstOrDefault(f => string.Equals(Path.GetFileName(f), "TASKDATA.XML", StringComparison.OrdinalIgnoreCase))
-                    : null;
+                var taskDataPath = IsoXmlImportCatalog.FindTaskData(SelectedIsoXmlFile.FullPath);
                 if (taskDataPath == null)
                 {
                     StatusMessage = "TASKDATA.XML not found in the selected folder";
@@ -565,12 +543,15 @@ public partial class MainViewModel
 
                 var doc = new XmlDocument();
                 doc.Load(taskDataPath);
-                var pfd = doc.SelectSingleNode("//PFD");
-                if (pfd == null)
+                // The partfield picked in the list: a TASKDATA.XML can hold a whole farm, and AgOpenGPS
+                // lists every PFD and imports the one chosen (IsoXmlImportCatalog).
+                var pfds = doc.GetElementsByTagName("PFD");
+                if (pfds.Count == 0)
                 {
                     ReportFailure("ISO-XML file contains no field (PFD)");
                     return;
                 }
+                var pfd = pfds[Math.Clamp(SelectedIsoXmlFile.FieldIndex, 0, pfds.Count - 1)]!;
                 var fieldParts = pfd.ChildNodes;
 
                 // The local plane needs an origin. ISO-XML stores absolute WGS84, so use
@@ -583,37 +564,43 @@ public partial class MainViewModel
                 var localPlane = new LocalPlane(new Wgs84(originLat, originLon), new SharedFieldProperties());
 
                 var parsedBoundaries = IsoXmlParserHelpers.ParseBoundaries(fieldParts, localPlane);
-                if (parsedBoundaries.Count == 0 || parsedBoundaries[0].FenceLine.Count < 3)
-                {
-                    ReportFailure("ISO-XML file has no usable boundary");
-                    return;
-                }
                 var parsedHeadland = IsoXmlParserHelpers.ParseHeadland(fieldParts, localPlane);
                 var parsedTracks = IsoXmlParserHelpers.ParseAllGuidanceLines(fieldParts, localPlane);
-
+                // AgOpenGPS imports a partfield with a boundary or with guidance lines ("Missing Outer
+                // Boundary or AB line" is its one refusal): lines alone make a field without a boundary.
+                bool hasBoundary = parsedBoundaries.Count > 0 && parsedBoundaries[0].FenceLine.Count >= 3;
+                if (!hasBoundary && parsedTracks.Count == 0)
+                {
+                    ReportFailure("ISO-XML field has no boundary and no guidance line");
+                    return;
+                }
                 Directory.CreateDirectory(newFieldPath);
                 WriteNewFieldSkeleton(newFieldPath, newFieldName, originLat, originLon);
 
-                // Build the boundary (first = outer, rest = inner holes).
-                var boundary = new Boundary();
-                for (int i = 0; i < parsedBoundaries.Count; i++)
+                // Build the boundary (first = outer, rest = inner holes); the headland goes with it.
+                Boundary? boundary = null;
+                if (hasBoundary)
                 {
-                    var poly = new BoundaryPolygon { IsDriveThrough = parsedBoundaries[i].IsDriveThru };
-                    foreach (var v in parsedBoundaries[i].FenceLine)
-                        poly.Points.Add(new BoundaryPoint(v.Easting, v.Northing, 0));
-                    poly.UpdateBounds();
-                    if (i == 0)
-                        boundary.OuterBoundary = poly;
-                    else
-                        boundary.InnerBoundaries.Add(poly);
-                }
-                if (parsedHeadland.Count >= 3)
-                {
-                    var hp = new BoundaryPolygon();
-                    foreach (var v in parsedHeadland)
-                        hp.Points.Add(new BoundaryPoint(v.Easting, v.Northing, 0));
-                    hp.UpdateBounds();
-                    boundary.HeadlandPolygon = hp;
+                    boundary = new Boundary();
+                    for (int i = 0; i < parsedBoundaries.Count; i++)
+                    {
+                        var poly = new BoundaryPolygon { IsDriveThrough = parsedBoundaries[i].IsDriveThru };
+                        foreach (var v in parsedBoundaries[i].FenceLine)
+                            poly.Points.Add(new BoundaryPoint(v.Easting, v.Northing, 0));
+                        poly.UpdateBounds();
+                        if (i == 0)
+                            boundary.OuterBoundary = poly;
+                        else
+                            boundary.InnerBoundaries.Add(poly);
+                    }
+                    if (parsedHeadland.Count >= 3)
+                    {
+                        var hp = new BoundaryPolygon();
+                        foreach (var v in parsedHeadland)
+                            hp.Points.Add(new BoundaryPoint(v.Easting, v.Northing, 0));
+                        hp.UpdateBounds();
+                        boundary.HeadlandPolygon = hp;
+                    }
                 }
 
                 // Convert guidance lines into Tracks.
@@ -640,21 +627,21 @@ public partial class MainViewModel
 
                 // Persist the boundary + tracks, then open through the normal path, which closes
                 // (and saves) the current field first and loads the new one (#107).
-                _boundaryFileService.SaveBoundary(boundary, newFieldPath);
+                if (boundary != null) SaveFieldBoundary(boundary, newFieldPath);
                 if (tracks.Count > 0)
-                    TrackFilesService.Save(newFieldPath, tracks);
+                    GeoJsonFieldService.SaveTracks(newFieldPath, tracks);
                 await OpenCreatedFieldAsync(newFieldPath, newFieldName);
 
                 // The headland save writes to the ACTIVE field, so it runs once the new field is
                 // open; then reload it into the live state.
-                if (boundary.HeadlandPolygon != null)
+                if (boundary?.HeadlandPolygon != null)
                 {
                     SaveHeadlandToFile(boundary.HeadlandPolygon.Points
                         .Select(p => new Vec3(p.Easting, p.Northing, 0)).ToList());
                     LoadHeadlandFromField(_fieldService.ActiveField);
                 }
 
-                var innerCount = parsedBoundaries.Count - 1;
+                var innerCount = hasBoundary ? parsedBoundaries.Count - 1 : 0;
                 var extras = new List<string>();
                 if (innerCount > 0) extras.Add($"{innerCount} inner");
                 if (tracks.Count > 0) extras.Add($"{tracks.Count} track{(tracks.Count == 1 ? "" : "s")}");
@@ -669,13 +656,13 @@ public partial class MainViewModel
 
         IsoXmlAppendDateCommand = new RelayCommand(() =>
         {
-            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd");
+            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd", System.Globalization.CultureInfo.InvariantCulture); // becomes a folder name
             IsoXmlImportFieldName = (IsoXmlImportFieldName + " " + dateStr).Trim();
         });
 
         IsoXmlAppendTimeCommand = new RelayCommand(() =>
         {
-            var timeStr = DateTime.Now.ToString("HH-mm");
+            var timeStr = DateTime.Now.ToString("HH-mm", System.Globalization.CultureInfo.InvariantCulture);
             IsoXmlImportFieldName = (IsoXmlImportFieldName + " " + timeStr).Trim();
         });
 
@@ -694,11 +681,9 @@ public partial class MainViewModel
             {
                 await CloseFieldAsync();
 
-                // Disconnect NTRIP if connected
-                if (_ntripService.IsConnected)
-                {
-                    await _ntripService.DisconnectAsync();
-                }
+                // Corrections keep flowing with no field open, as at startup (#285);
+                // only a field-specific profile gives way to the default one.
+                await RestoreDefaultNtripProfileAsync();
 
                 StatusMessage = "Field closed";
             }
@@ -773,8 +758,7 @@ public partial class MainViewModel
             }
 
             // Check if this is a legacy field that will be auto-converted
-            bool isLegacy = !File.Exists(Path.Combine(fieldPath, "field.geojson")) &&
-                            File.Exists(Path.Combine(fieldPath, "Field.txt"));
+            bool isLegacy = File.Exists(Path.Combine(fieldPath, "Field.txt"));
 
             if (isLegacy)
             {
@@ -782,7 +766,7 @@ public partial class MainViewModel
                     "Import Legacy Field",
                     $"'{lastField}' uses the legacy AgOpenGPS format. " +
                     "It will be imported and converted to the new format. " +
-                    "The original files will be kept. Continue?",
+                    "Its AgOpenGPS files in this folder are deleted once imported. Continue?",
                     () =>
                     {
                         _ = OpenFieldAsync(fieldPath, lastField).ContinueWith(_ =>
@@ -861,25 +845,21 @@ public partial class MainViewModel
 
     /// <summary>
     /// Write the files a brand-new field needs before it can be opened: field.origin and
-    /// Field.txt, both InvariantCulture (FieldPlaneFileService parses with it; a comma-decimal
-    /// culture wrote "42,03", the origin fell back to 0,0 and "near me" dropped the field).
+    /// field.geojson (origin, no boundary yet). field.origin is InvariantCulture: a comma-decimal
+    /// culture once wrote "42,03", the origin fell back to 0,0 and "near me" dropped the field.
     /// </summary>
     private static void WriteNewFieldSkeleton(string fieldPath, string name, double lat, double lon)
     {
         var inv = CultureInfo.InvariantCulture;
-        var latStr = lat.ToString("F8", inv);
-        var lonStr = lon.ToString("F8", inv);
-        File.WriteAllText(Path.Combine(fieldPath, "field.origin"), $"{latStr},{lonStr}");
-        File.WriteAllText(Path.Combine(fieldPath, "Field.txt"),
-            $"{DateTime.Now.ToString("yyyy-MMM-dd hh:mm:ss tt", inv)}\n" +
-            "$FieldDir\n" +
-            $"{name}\n" +
-            "$Offsets\n" +
-            "0,0\n" +
-            "Convergence\n" +
-            "0\n" +
-            "StartFix\n" +
-            $"{latStr},{lonStr}\n");
+        File.WriteAllText(Path.Combine(fieldPath, "field.origin"), $"{lat.ToString("F8", inv)},{lon.ToString("F8", inv)}");
+        GeoJsonFieldService.Save(new Field
+        {
+            Name = name,
+            DirectoryPath = fieldPath,
+            Origin = new Position { Latitude = lat, Longitude = lon },
+            CreatedDate = DateTime.Now,
+            LastModifiedDate = DateTime.Now,
+        }, tracks: null);
     }
 
     /// <summary>
@@ -968,8 +948,11 @@ public partial class MainViewModel
     public void RemoteCreateFromIsoXml(string fileName, string newName)
     {
         PopulateAvailableIsoXmlFiles();
+        // The picker's entry; a bare dataset folder name (an older client, a script) is its first field.
         SelectedIsoXmlFile = AvailableIsoXmlFiles.FirstOrDefault(f =>
-            string.Equals(f.Name, fileName, StringComparison.OrdinalIgnoreCase));
+                string.Equals(f.Name, fileName, StringComparison.OrdinalIgnoreCase))
+            ?? AvailableIsoXmlFiles.FirstOrDefault(f =>
+                string.Equals(Path.GetFileName(f.FullPath), fileName, StringComparison.OrdinalIgnoreCase));
         IsoXmlImportFieldName = newName;
         ConfirmIsoXmlImportDialogCommand.Execute(null);
     }

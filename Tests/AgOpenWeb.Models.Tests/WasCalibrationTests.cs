@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using AgOpenWeb.Models.Configuration;
 using NUnit.Framework;
@@ -35,6 +34,40 @@ public class WasCalibrationTests
 
         Assert.That(FirmwareAngle(raw, zeroed, cpd, invert), Is.EqualTo(0).Within(0.5 / cpd),
             "After Zero WAS the module must report ~0° (within one count)");
+    }
+
+    [TestCase(false, 7300, 100.0)]
+    [TestCase(false, 6300, 85.0)]
+    [TestCase(true, 7300, 100.0)]
+    [TestCase(true, 6300, 85.0)]
+    public void OffsetForInvert_KeepsTheCentreAcrossTheToggle(bool invertBefore, int raw, double cpd)
+    {
+        // Zeroed with the sensor one way round...
+        int zeroed = WasCalibration.ZeroedOffset(0, FirmwareAngle(raw, 0, cpd, invertBefore), cpd);
+        Assert.That(FirmwareAngle(raw, zeroed, cpd, invertBefore), Is.EqualTo(0).Within(0.5 / cpd), "precondition: zeroed");
+        Assert.That(System.Math.Abs(FirmwareAngle(raw, zeroed, cpd, !invertBefore)), Is.GreaterThan(1),
+            "precondition: the same offset reads off-centre once inverted");
+
+        // ...the operator toggles Invert WAS: the flipped offset keeps straight ahead at 0.
+        int flipped = WasCalibration.OffsetForInvert(zeroed);
+
+        Assert.That(FirmwareAngle(raw, flipped, cpd, !invertBefore), Is.EqualTo(0).Within(0.5 / cpd));
+    }
+
+    [Test]
+    public void SetInvertWasKeepingCentre_FlipsTheOffsetOnlyWhenTheSettingChanges()
+    {
+        var cfg = new AutoSteerConfig { InvertWas = false, WasOffset = -495 };
+
+        Assert.That(cfg.SetInvertWasKeepingCentre(false), Is.False, "same value: nothing to do");
+        Assert.That(cfg.WasOffset, Is.EqualTo(-495));
+
+        Assert.That(cfg.SetInvertWasKeepingCentre(true), Is.True);
+        Assert.That(cfg.InvertWas, Is.True);
+        Assert.That(cfg.WasOffset, Is.EqualTo(495), "the firmware now subtracts the offset: it flips");
+
+        Assert.That(cfg.SetInvertWasKeepingCentre(false), Is.True);
+        Assert.That(cfg.WasOffset, Is.EqualTo(-495), "and back");
     }
 
     [Test]

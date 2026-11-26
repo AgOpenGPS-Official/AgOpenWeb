@@ -1,4 +1,8 @@
 #!/bin/bash
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # Generate test video from integration test screenshots
 # Usage: ./generate-test-video.sh [test-mode] [output.mp4]
 #

@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
 using System.Reflection;
@@ -34,7 +33,6 @@ public class SteeringAlgorithmSelectionTests
 {
     private GpsService _gpsService = null!;
     private GpsPipelineService _pipeline = null!;
-    private ApplicationState _appState = null!;
     private List<GpsCycleResult> _results = null!;
 
     [SetUp]
@@ -49,22 +47,18 @@ public class SteeringAlgorithmSelectionTests
         config.NumSections = 1;
         config.Tool.SetSectionWidth(0, 600);
 
-        _appState = new ApplicationState();
-        _appState.Field.LocalPlane = new LocalPlane(
-            new Wgs84(43.7128, -74.006), new SharedFieldProperties());
-
         _gpsService = new GpsService();
         _gpsService.Start();
 
         var toolPosition = new ToolPositionService(config);
         var coverage = new CoverageMapService(config);
-        var sectionControl = new SectionControlService(toolPosition, coverage, _appState, config);
+        var sectionControl = new SectionControlService(toolPosition, coverage, config);
         var autoSteer = new AutoSteerService(new TrackGuidanceService(),
-            Substitute.For<IUdpCommunicationService>(), _gpsService, _appState, config);
+            Substitute.For<IUdpCommunicationService>(), _gpsService, config);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
-                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>())
+                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>())
             .Returns(ci => ci.ArgAt<double>(0));
 
         _pipeline = new GpsPipelineService(
@@ -79,10 +73,11 @@ public class SteeringAlgorithmSelectionTests
             Substitute.For<IAudioService>(),
             new PipelineIntents(),
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, _appState,
+            NullLogger<GpsPipelineService>.Instance,
             config,
             new PositionEstimator());
 
+        _pipeline.SetLocalPlane(new LocalPlane( new Wgs84(43.7128, -74.006), new SharedFieldProperties()));
         _pipeline.SynchronousMode = true;
         _pipeline.Start();
 
@@ -100,14 +95,19 @@ public class SteeringAlgorithmSelectionTests
     private GpsCycleResult Last => _results[^1];
 
     // Vehicle at the origin heading north at 3 m/s; the line is 0.5 m to its right.
+    // A north line whose pass 0 runs at this easting: the reference is the edge between
+    // passes, half the 6 m tool to its left (PassGeometry).
+    private static Models.Track.Track PassAt(double easting) =>
+        Models.Track.Track.FromABLine("AB", new Vec3(easting - 3, -100, 0), new Vec3(easting - 3, 100, 0));
+
     private double EngagedSteerAngle(bool stanley, double stanleyDistanceGain = 0.8)
     {
         var g = ConfigurationStore.Instance.Guidance;
         g.IsPurePursuit = !stanley;
         g.StanleyDistanceErrorGain = stanleyDistanceGain;
         _pipeline.SetActiveTrack(
-            Models.Track.Track.FromABLine("AB", new Vec3(0.5, -100, 0), new Vec3(0.5, 100, 0)),
-            passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+            PassAt(0.5),
+            passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         _gpsService.UpdateGpsData(new GpsData
         {
@@ -165,7 +165,7 @@ public class SteeringAlgorithmSelectionTests
         ConfigurationStore.Instance.Guidance.IsPurePursuit = false;
         _pipeline.SetActiveTrack(
             Models.Track.Track.FromABLine("AB", new Vec3(0, -100, 0), new Vec3(0, 100, 0)),
-            passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+            passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(false);
         _gpsService.UpdateGpsData(new GpsData
         {
@@ -188,8 +188,8 @@ public class SteeringAlgorithmSelectionTests
         g.IsPurePursuit = !stanley;
         g.StanleyDistanceErrorGain = 5;
         _pipeline.SetActiveTrack(
-            Models.Track.Track.FromABLine("AB", new Vec3(8, -100, 0), new Vec3(8, 100, 0)),
-            passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+            PassAt(8),
+            passNumber: 0, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         _gpsService.UpdateGpsData(new GpsData
         {

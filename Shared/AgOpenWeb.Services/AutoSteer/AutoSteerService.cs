@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.ComponentModel;
@@ -27,7 +15,6 @@ using AgOpenWeb.Services.Interfaces;
 // Aliases to disambiguate from colliding namespaces.
 using TrackModel = AgOpenWeb.Models.Track.Track;
 using TrackInput = AgOpenWeb.Models.Track.TrackGuidanceInput;
-using ApplicationState = AgOpenWeb.Models.State.ApplicationState;
 
 namespace AgOpenWeb.Services.AutoSteer;
 
@@ -45,15 +32,14 @@ public class AutoSteerService : IAutoSteerService
     private readonly ITrackGuidanceService _guidanceService;
     private readonly IUdpCommunicationService _udpService;
     private readonly IGpsService _gpsService;
-    private readonly ApplicationState _appState;
     private readonly ConfigurationStore _configStore;
     private ITramLineService? _tramLineService;
+    private IToolPositionService? _toolPositionService;
     private ISmartWasCalibrationService? _smartWas;
 
-    // Drift compensation applied after LocalPlane → local coordinate conversion.
-    // LocalPlane itself is owned by ApplicationState.Field.LocalPlane — single shared instance
-    // across AutoSteer and the cycle worker. Created by field-open (UI thread) or by the
-    // cycle worker on first valid fix; never written here (receive thread).
+    // Drift compensation applied to the local coordinates the cycle hands over
+    // (ProcessSimulatedPosition). The WGS84 → local conversion happens in the cycle
+    // worker against the field's LocalPlane; this service never converts or holds one.
     private double _driftEasting;
     private double _driftNorthing;
 
@@ -66,6 +52,23 @@ public class AutoSteerService : IAutoSteerService
     private int _latencySampleIndex;
     private long _cycleCount;
     private long _parseFailures;
+
+    /// <inheritdoc />
+    public AgOpenWeb.Services.Gps.GpsSentenceMonitor GpsSentences { get; }
+
+    /// <inheritdoc />
+    public AgOpenWeb.Services.Gps.NmeaLineSplitter GpsLines { get; } = new();
+
+    /// <inheritdoc />
+    public AgOpenWeb.Models.GPS.GpsSource LastGpsSource { get; private set; }
+
+    /// <inheritdoc />
+    public AgOpenWeb.Services.Gps.NmeaEpochAssembler GpsEpochs { get; } = new();
+
+    // Three GPS ports mean up to three receive threads; the parse writes _state and the
+    // splitter's tails, so one datagram is processed at a time. Uncontended on a machine
+    // with one receiver, which is all of them today.
+    private readonly object _gpsIngestLock = new();
 
     // Service state
     private bool _isEnabled;
@@ -84,6 +87,43 @@ public class AutoSteerService : IAutoSteerService
     private AutoSteerConfig? _subscribedAutoSteer;
     private ToolConfig? _subscribedTool;
     private MachineConfig? _subscribedMachine;
+    private VehicleConfig? _subscribedVehicle;
+
+    // PGN 235 (section widths) goes out at start and when a profile is saved or loaded, as
+    // AgOpenGPS sends it when the tool settings are saved, and only when it differs from the
+    // last one sent: a rate controller asks the operator to accept every change it sees, so
+    // neither each edit on the way to a new layout nor a save of other settings may repeat it.
+    // Edits apply live, so a layout left unsaved (the panel or the page closed) is in use too:
+    // it goes out once the section count and widths have stayed unchanged for a while.
+    private byte[]? _lastSectionDimensions;
+    private readonly object _sectionDimensionsLock = new();
+    private readonly Timer _sectionSettleTimer;
+    private int _sectionSettleMs = 10_000;
+
+    // The steer settings (PGN 251/252), the machine config and PGN 247 (vehicle geometry)
+    // also go out when the steer module is heard after this long without PGN 253: a module
+    // (or the HAT daemon) that started after the app, or restarted, runs what it has, and
+    // what was changed while it was away (a Zero WAS with the cable out) was sent to
+    // nobody. It gets everything, as at start (#387 for the geometry). The module answers
+    // every PGN 254 (10 Hz) with a 253, so 2 s is twenty missed replies: a cable out or a
+    // reboot, about when the status bar reports the module gone (hellos every second, 3 s
+    // timeout), not Wi-Fi jitter.
+    internal const long SteerModuleSilenceMs = 2000;
+    private long _lastSteerDataMs = long.MinValue / 2;
+
+    // The machine module keeps PGN 235/236/238 in its flash and works with what it has. One
+    // switched on after the app (a first install with an empty flash), or back after a power
+    // cut or a Wi-Fi drop, gets them again when its hello reply (PGN 123) is heard after this
+    // long without one: hellos go out every second and the status bar calls the module gone
+    // after 3 s, so this is a module the operator saw go, not a lost reply.
+    internal const long MachineModuleSilenceMs = 3000;
+    private long _lastMachineHelloMs = long.MinValue / 2;
+
+    // Start() runs before MainViewModel opens the UDP port, so its baseline went to nobody;
+    // the first control tick that finds the port open sends it again.
+    private volatile bool _baselinePending;
+    /// <summary>Test seam: the clock the silence above is measured on.</summary>
+    internal Func<long> TickClock { get; set; } = () => Environment.TickCount64;
 
     /// <summary>
     /// Test seam: lets tests shorten the debounce so they don't have
@@ -95,8 +135,16 @@ public class AutoSteerService : IAutoSteerService
         set => _configEmitDelayMs = value;
     }
 
+    /// <summary>Test seam: how long an unsaved section layout must stay unchanged before PGN 235.</summary>
+    internal int SectionSettleMilliseconds
+    {
+        get => _sectionSettleMs;
+        set => _sectionSettleMs = value;
+    }
+
     public event EventHandler<VehicleStateSnapshot>? StateUpdated;
     public event Action<string, int, bool>? HardwareMessageReceived;
+    public event Action<byte[]>? RemoteSwitchesReceived;
 
     public bool IsEnabled => _isEnabled;
     public bool IsEngaged => _isEngaged;
@@ -107,14 +155,13 @@ public class AutoSteerService : IAutoSteerService
         ITrackGuidanceService guidanceService,
         IUdpCommunicationService udpService,
         IGpsService gpsService,
-        ApplicationState appState,
         ConfigurationStore configStore)
     {
         _guidanceService = guidanceService;
         _udpService = udpService;
         _gpsService = gpsService;
-        _appState = appState;
         _configStore = configStore;
+        GpsSentences = new AgOpenWeb.Services.Gps.GpsSentenceMonitor(() => _configStore.Connections.GpsUpdateRate);
 
         // Initialize state
         _state = new VehicleState();
@@ -128,6 +175,10 @@ public class AutoSteerService : IAutoSteerService
             state: null,
             dueTime: Timeout.Infinite,
             period: Timeout.Infinite);
+        _sectionSettleTimer = new Timer(_ => { if (_isEnabled) SendSectionDimensions(); },
+            state: null,
+            dueTime: Timeout.Infinite,
+            period: Timeout.Infinite);
     }
 
     /// <summary>
@@ -136,6 +187,15 @@ public class AutoSteerService : IAutoSteerService
     public void SetTramLineService(ITramLineService tramLineService)
     {
         _tramLineService = tramLineService;
+    }
+
+    /// <summary>
+    /// Set the tool position service: the tram wheels are checked where the tool is (#541).
+    /// It is updated by the host control loop; this service only reads it.
+    /// </summary>
+    public void SetToolPositionService(IToolPositionService toolPositionService)
+    {
+        _toolPositionService = toolPositionService;
     }
 
     /// <summary>
@@ -164,12 +224,24 @@ public class AutoSteerService : IAutoSteerService
         // config dialog" symptom — the simulator reads switch-type from
         // PGN 251 byte 5 and we'd previously never send it on startup.
         EmitSteerConfigPgns();
+        SendSectionDimensions();
+        _baselinePending = !_udpService.IsConnected;
+    }
+
+    /// <summary>The start-up baseline, once the UDP port is open (see <see cref="_baselinePending"/>).</summary>
+    private void SendBaselineIfPending()
+    {
+        if (!_baselinePending || !_udpService.IsConnected) return;
+        _baselinePending = false;
+        EmitSteerConfigPgns();
+        SendSectionDimensions(force: true);
     }
 
     public void Stop()
     {
         _udpService.DataReceived -= OnUdpDataReceived;
         UnsubscribeFromConfigChanges();
+        _sectionSettleTimer.Change(Timeout.Infinite, Timeout.Infinite);
         _isEnabled = false;
         _isEngaged = false;
     }
@@ -185,6 +257,14 @@ public class AutoSteerService : IAutoSteerService
         // same way, so edits and profile loads reach the machine module (#110).
         _subscribedMachine = _configStore.Machine;
         _subscribedMachine.PropertyChanged += OnConfigPropertyChanged;
+        // Vehicle geometry (PGN 247): edits and profile loads reach the modules (#387).
+        _subscribedVehicle = _configStore.Vehicle;
+        _subscribedVehicle.PropertyChanged += OnConfigPropertyChanged;
+        // Section widths (PGN 235): on save or load of a whole profile, not on each edit;
+        // an unsaved layout once it has settled. The section count is kept on the store.
+        _configStore.ProfileSaved += OnProfileSavedOrLoaded;
+        _configStore.ProfileLoaded += OnProfileSavedOrLoaded;
+        _configStore.PropertyChanged += OnStorePropertyChanged;
         _configSubscribed = true;
     }
 
@@ -197,6 +277,11 @@ public class AutoSteerService : IAutoSteerService
             _subscribedTool.PropertyChanged -= OnConfigPropertyChanged;
         if (_subscribedMachine != null)
             _subscribedMachine.PropertyChanged -= OnConfigPropertyChanged;
+        if (_subscribedVehicle != null)
+            _subscribedVehicle.PropertyChanged -= OnConfigPropertyChanged;
+        _configStore.ProfileSaved -= OnProfileSavedOrLoaded;
+        _configStore.ProfileLoaded -= OnProfileSavedOrLoaded;
+        _configStore.PropertyChanged -= OnStorePropertyChanged;
         _configSubscribed = false;
     }
 
@@ -211,7 +296,25 @@ public class AutoSteerService : IAutoSteerService
     private void OnConfigPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         _configEmitTimer.Change(_configEmitDelayMs, Timeout.Infinite);
+        if (sender is ToolConfig && e.PropertyName == nameof(ToolConfig.SectionWidths))
+            _sectionSettleTimer.Change(_sectionSettleMs, Timeout.Infinite);
     }
+
+    private void OnStorePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ConfigurationStore.NumSections))
+            _sectionSettleTimer.Change(_sectionSettleMs, Timeout.Infinite);
+    }
+
+    private void OnProfileSavedOrLoaded(object? sender, EventArgs e)
+    {
+        if (!_isEnabled) return;
+        _sectionSettleTimer.Change(Timeout.Infinite, Timeout.Infinite);
+        SendSectionDimensions();
+    }
+
+    private void SendVehicleGeometry() =>
+        _udpService.SendToModules(PgnBuilder.BuildVehicleGeometryPgn(_configStore.Vehicle));
 
     private void EmitSteerConfigPgns()
     {
@@ -225,6 +328,7 @@ public class AutoSteerService : IAutoSteerService
             // with 251/252 on start and profile load; these were built but never sent (#110).
             SendMachineConfig();
             SendMachinePinConfig();
+            SendVehicleGeometry();
         }
         catch (Exception ex)
         {
@@ -245,6 +349,52 @@ public class AutoSteerService : IAutoSteerService
     /// <summary>Latest steer data from module (PGN 253).</summary>
     public SteerModuleData LastSteerData => _lastSteerData;
 
+    private DateTime _lastSteerDataUtc = DateTime.MinValue;
+    /// <inheritdoc/>
+    public DateTime LastSteerDataUtc => _lastSteerDataUtc;
+
+    // Roll from the steer module's IMU (PGN 253) or an external IMU (PGN 211), calibrated
+    // (invert, zero), for fixes whose GPS sentence carries no roll: AgOpenGPS ahrs.imuRoll
+    // (#353). Written on the UDP receive thread, read where a fix is published.
+    private double _imuRoll;
+    private const long NoImuRoll = long.MinValue / 2; // "never", without overflow below (roll and heading)
+    private long _imuRollAtMs = NoImuRoll;
+    /// <summary>IMU roll or heading older than this is dropped (the module stopped sending it).</summary>
+    internal const long ImuRollStaleMs = 1000;
+
+    /// <summary>The roll a fix carries: the sentence's own, else a fresh IMU roll, else 0.</summary>
+    private double FixRoll()
+    {
+        if (_state.RollValid) return _state.Roll;
+        return Environment.TickCount64 - Volatile.Read(ref _imuRollAtMs) <= ImuRollStaleMs
+            ? Volatile.Read(ref _imuRoll) : 0;
+    }
+
+    private void SetImuRoll(double rawRoll)
+    {
+        NmeaParserServiceFast.ApplyAhrsRollCalibration(ref rawRoll, _configStore);
+        Volatile.Write(ref _imuRoll, rawRoll);
+        Volatile.Write(ref _imuRollAtMs, Environment.TickCount64);
+    }
+
+    // Heading from the same IMUs, for fixes whose sentence has no IMU heading: the heading
+    // fusion blends it with fix-to-fix as it does a $PANDA IMU heading (AgOpenGPS
+    // ahrs.imuHeading). Same thread and staleness as the roll above.
+    private double _imuHeading;
+    private long _imuHeadingAtMs = NoImuRoll;
+
+    private bool TryFreshImuHeading(out double headingDegrees)
+    {
+        headingDegrees = Volatile.Read(ref _imuHeading);
+        return Environment.TickCount64 - Volatile.Read(ref _imuHeadingAtMs) <= ImuRollStaleMs;
+    }
+
+    private void SetImuHeading(double headingDegrees)
+    {
+        Volatile.Write(ref _imuHeading, headingDegrees);
+        Volatile.Write(ref _imuHeadingAtMs, Environment.TickCount64);
+    }
+
     /// <summary>Latest sensor data from module (PGN 250).</summary>
     public SensorModuleData LastSensorData => _lastSensorData;
 
@@ -263,16 +413,51 @@ public class AutoSteerService : IAutoSteerService
         switch (e.PGN)
         {
             case PgnNumbers.AUTOSTEER_DATA: // 253 - Steer Data from module
+                long now = TickClock();
+                if (now - Interlocked.Exchange(ref _lastSteerDataMs, now) > SteerModuleSilenceMs)
+                    EmitSteerConfigPgns(); // the module is new or back: everything, as at start
                 ProcessSteerData(e.Data);
+                break;
+
+            case PgnNumbers.HELLO_FROM_MACHINE: // 123 - the machine module answers a hello
+                long heard = TickClock();
+                if (heard - Interlocked.Exchange(ref _lastMachineHelloMs, heard) > MachineModuleSilenceMs)
+                    SendMachineModuleSettings(); // new or back: what it keeps in flash, again
                 break;
 
             case PgnNumbers.SENSOR_DATA: // 250 - Sensor Data from module
                 ProcessSensorData(e.Data);
                 break;
 
+            case PgnNumbers.IMU_DATA: // 211 - external IMU
+                if (PgnBuilder.TryParseImuData(e.Data, out double heading, out double roll))
+                {
+                    SetImuHeading(heading);
+                    SetImuRoll(roll);
+                }
+                break;
+
+            case PgnNumbers.IMU_DISCONNECT: // 212 - external IMU gone
+                if (e.Data.Length > 5 && e.Data[5] == 1)
+                {
+                    Volatile.Write(ref _imuRollAtMs, NoImuRoll);
+                    Volatile.Write(ref _imuHeadingAtMs, NoImuRoll);
+                }
+                break;
+
             case PgnNumbers.HARDWARE_MESSAGE: // 221 - text to show on screen
                 if (TryParseHardwareMessage(e.Data, out var text, out int seconds, out bool warning))
                     HardwareMessageReceived?.Invoke(text, seconds, warning);
+                break;
+
+            case PgnNumbers.SWITCH_CONTROL: // 234 - remote section switches
+                // AgOpenGPS takes the 14-byte packet only, bytes 5-12 into mc.ss[1..8].
+                if (e.Data.Length == 14)
+                {
+                    var ss = new byte[9];
+                    Buffer.BlockCopy(e.Data, 5, ss, 1, 8);
+                    RemoteSwitchesReceived?.Invoke(ss);
+                }
                 break;
         }
     }
@@ -314,13 +499,30 @@ public class AutoSteerService : IAutoSteerService
             _lastSteerData.RemoteButtonPressed != steerData.RemoteButtonPressed;
 
         _lastSteerData = steerData;
+        _lastSteerDataUtc = DateTime.UtcNow;
 
         // Update vehicle state with actual angle from WAS
         _state.ActualSteerAngle = steerData.ActualSteerAngle;
         _state.SteerSwitchActive = steerData.SteerSwitchActive;
         _state.WorkSwitchActive = steerData.WorkSwitchActive;
+        if (steerData.HasImuRoll) SetImuRoll(steerData.ImuRoll);
+        if (steerData.HasImuHeading) SetImuHeading(steerData.ImuHeading);
 
-        _smartWas?.AddSample(steerData.ActualSteerAngle);
+        // Speed and cross-track error are this service's own receive-thread state (set by
+        // ProcessSimulatedPosition and the guidance step), so the gate reads no UI mirror.
+        _smartWas?.AddSample(steerData.ActualSteerAngle, _state.Speed, _state.CrossTrackError);
+
+        // A runaway (the wheels turning away from the set point while the motor drives: motor
+        // or WAS the wrong way round) takes AutoSteer off at once and says why. Judged only
+        // while the module steers for AutoSteer: engaged, not paused, and its motor driving
+        // (PWM above 0; the firmware drives 0 whenever it is not steering).
+        if (_isEngaged && !_state.IsSteerPaused && steerData.PwmDisplay > 0)
+        {
+            if (_runaway.Add(Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency,
+                    steerData.ActualSteerAngle, _state.SteerAngle))
+                RunawayKickout();
+        }
+        else _runaway.Reset();
 
         if (switchChanged)
         {
@@ -357,29 +559,83 @@ public class AutoSteerService : IAutoSteerService
         if (config.PressureSensorEnabled && config.PressureTripPoint > 0)
         {
             if (_sensorPercent >= config.PressureTripPoint)
-            {
-                Disengage();
-                Debug.WriteLine($"[AutoSteer] Pressure kickout: {_sensorPercent:F1}% >= {config.PressureTripPoint}%");
-            }
+                Kickout("pressure", config.PressureTripPoint);
         }
         // Check current sensor trip point (motor overload protection)
         else if (config.CurrentSensorEnabled && config.CurrentTripPoint > 0)
         {
             if (_sensorPercent >= config.CurrentTripPoint)
-            {
-                Disengage();
-                Debug.WriteLine($"[AutoSteer] Current kickout: {_sensorPercent:F1}% >= {config.CurrentTripPoint}%");
-            }
+                Kickout("current", config.CurrentTripPoint);
         }
+    }
+
+    public event EventHandler<string>? SensorKickout;
+
+    // Every PGN 250 above the trip point lands here; tell the app once, on the kickout itself.
+    private void Kickout(string sensor, int tripPoint)
+    {
+        bool wasEngaged = _isEngaged;
+        Disengage();
+        if (wasEngaged)
+            SensorKickout?.Invoke(this, FormattableString.Invariant(
+                $"{sensor} sensor {_sensorPercent:F0}% reached the trip point ({tripPoint}%)"));
+    }
+
+    private readonly SteerRunawayDetector _runaway = new();
+
+    /// <summary>The wheels ran away from the set point: off, and the reason through the same
+    /// event as a sensor kickout (the app takes AutoSteer off and shows it).</summary>
+    private void RunawayKickout()
+    {
+        bool wasEngaged = _isEngaged;
+        Disengage();
+        if (wasEngaged)
+            SensorKickout?.Invoke(this, FormattableString.Invariant(
+                $"steering runaway: the wheels turned away from the steer angle (at {_runaway.LastActualDeg:F1}°, asked for {_runaway.LastSetPointDeg:F1}°). Check the motor direction and the WAS direction in the steer wizard (Invert Motor, Invert WAS)"));
     }
 
     public void Engage()
     {
         if (_isEnabled)
         {
+            // Start the freshness clock now so the first cycle after engaging has the
+            // full limit to deliver guidance.
+            Volatile.Write(ref _lastGuidanceTicks, Stopwatch.GetTimestamp());
             _isEngaged = true;
             _state.IsAutoSteerEngaged = true;
         }
+    }
+
+    /// <summary>
+    /// How long AutoSteer may stay engaged without a guidance update before steering is
+    /// stopped (#169). PGN 254 goes out at 100 Hz from the control loop whether or not
+    /// guidance is fresh, so the firmware's own lost-connection watchdog (AIO v4: 100 × 25 ms
+    /// without an engaged PGN 254) never trips — AgOpenGPS avoids that by sending PGN 254
+    /// once per GPS fix. 1 s ≈ 10 missed fixes at 10 Hz.
+    /// </summary>
+    public static readonly TimeSpan GuidanceStaleLimit = TimeSpan.FromSeconds(1);
+
+    public event EventHandler? GuidanceLost;
+
+    private long _lastGuidanceTicks;
+
+    /// <summary>
+    /// Control-tick check: engaged but no guidance update within <see cref="GuidanceStaleLimit"/>
+    /// → disengage here (so the very next PGN 254 carries status 0 and the motor stops, even
+    /// if the UI thread is the thing that's stuck) and raise <see cref="GuidanceLost"/> once.
+    /// Steering stays off until the operator re-engages. Free Drive has no guidance and is
+    /// exempt. Exposed for tests with an explicit clock.
+    /// </summary>
+    internal bool CheckGuidanceFreshness(long nowTicks)
+    {
+        if (!_isEngaged || _state.IsInFreeDriveMode) return false;
+        long last = Volatile.Read(ref _lastGuidanceTicks);
+        if (Stopwatch.GetElapsedTime(last, nowTicks) <= GuidanceStaleLimit) return false;
+
+        _isEngaged = false;
+        _state.IsAutoSteerEngaged = false;
+        GuidanceLost?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     public void Disengage()
@@ -389,6 +645,12 @@ public class AutoSteerService : IAutoSteerService
     }
 
     public void SetSteerPaused(bool paused) => _state.IsSteerPaused = paused;
+
+    public void SetSimulatorHoldsSteering(bool hold) => _state.SimulatorHoldsSteering = hold;
+
+    private volatile bool _simulatorIsSource;
+
+    public void SetSimulatorIsSource(bool on) => _simulatorIsSource = on;
 
     // ═══════════════════════════════════════════════════════════════════════
     // Free Drive Mode
@@ -408,8 +670,10 @@ public class AutoSteerService : IAutoSteerService
 
     public void SetFreeDriveAngle(double angleDegrees)
     {
-        // Clamp to safe range (-40 to +40 degrees)
-        _state.FreeDriveSteerAngle = Math.Clamp(angleDegrees, -40, 40);
+        // Held to the limit either way. It was ±40° (AgOpenGPS's free drive buttons), which the
+        // max steer angle test hit before the lock: a lock past 40° measured as 40°.
+        const double limit = IAutoSteerService.FreeDriveLimitDeg;
+        _state.FreeDriveSteerAngle = Math.Clamp(angleDegrees, -limit, limit);
     }
 
     /// <summary>
@@ -428,6 +692,46 @@ public class AutoSteerService : IAutoSteerService
         var config = _configStore.Machine;
         var pgn = PgnBuilder.BuildMachineConfigPgn(config);
         _udpService.SendToModules(pgn);
+        // Rate controllers take the hydraulic lift times from it (AgOpenGPS SendPgnToLoop).
+        _udpService.SendToLoopback(pgn);
+    }
+
+    /// <param name="force">Send even when it is the layout sent last: to a module that was not
+    /// there to hear it.</param>
+    /// <param name="loopback">Also to AgIO's loopback port, where rate controllers listen.</param>
+    private void SendSectionDimensions(bool force = false, bool loopback = true)
+    {
+        // The settle timer and a profile save can race; one of them sends.
+        lock (_sectionDimensionsLock)
+        {
+            var pgn = PgnBuilder.BuildSectionDimensionsPgn(_configStore.Tool, _configStore.NumSections);
+            if (force || _lastSectionDimensions == null || !pgn.AsSpan().SequenceEqual(_lastSectionDimensions))
+            {
+                _udpService.SendToModules(pgn);
+                if (loopback) _udpService.SendToLoopback(pgn);
+                _lastSectionDimensions = pgn;
+            }
+        }
+    }
+
+    /// <summary>
+    /// What a machine module keeps in its flash (PGN 238 machine config, 236 relay functions,
+    /// 235 section widths), for one that is new or back. The rate controllers on the loopback
+    /// heard the section widths already; they are not sent there again.
+    /// </summary>
+    private void SendMachineModuleSettings()
+    {
+        if (!_isEnabled) return;
+        try
+        {
+            SendMachineConfig();
+            SendMachinePinConfig();
+            SendSectionDimensions(force: true, loopback: false);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[AutoSteerService] machine module settings failed: {ex.Message}");
+        }
     }
 
     public void SendMachinePinConfig()
@@ -437,12 +741,20 @@ public class AutoSteerService : IAutoSteerService
         _udpService.SendToModules(pgn);
     }
 
-    public void SetMachineState(ulong sectionBits, bool isInUTurn, byte hydLiftState = 0)
+    public void SetMachineState(ulong sectionBits, bool isInUTurn, byte hydLiftState = 0, bool outOfBounds = false,
+        bool toolInHeadland = false)
     {
         _state.SectionStates = sectionBits;
         _state.IsInUTurn = isInUTurn;
         _state.HydLiftState = hydLiftState;
+        _state.GeoStopState = outOfBounds ? (byte)1 : (byte)0; // PGN 239 byte 9 (#494)
+        _toolInHeadland = toolInHeadland;
     }
+
+    // The tool wholly in the headland: no tram lights (AgOpenGPS OpenGL.Designer.cs zeroes tram.controlByte).
+    private bool _toolInHeadland;
+
+    public void SetSectionBits(ulong sectionBits) => _state.SectionStates = sectionBits;
 
     /// <summary>
     /// Set the current track for guidance.
@@ -455,6 +767,7 @@ public class AutoSteerService : IAutoSteerService
 
     public void UpdateGuidanceResults(double steerAngle, double crossTrackError)
     {
+        Volatile.Write(ref _lastGuidanceTicks, Stopwatch.GetTimestamp());
         _state.CrossTrackError = crossTrackError;
 
         // Deadzone (AgOpenGPS Position.designer.cs): while steering forward and the wheel
@@ -499,34 +812,64 @@ public class AutoSteerService : IAutoSteerService
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public void ProcessGpsBuffer(byte[] buffer, int length)
+        => ProcessGpsDatagram(buffer.AsSpan(0, length), AgOpenWeb.Models.GPS.GpsSource.ModulePort);
+
+    /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    public void ProcessGpsDatagram(ReadOnlySpan<byte> datagram, AgOpenWeb.Models.GPS.GpsSource source)
     {
         if (!_isEnabled) return;
 
-        // PERF-05 #7 (autosteer-RX). Cycle = one GPS buffer parsed.
+        // PERF-05 #7 (autosteer-RX). Cycle = one GPS datagram parsed.
         // Marker .perf_autosteer shared with TX. Emits [AutoSteerRx-PERF].
         bool perf = AgOpenWeb.Models.Diagnostics.DiagFlags.PerfAutoSteer;
         long perfT0 = perf ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         long perfA0 = perf ? GC.GetAllocatedBytesForCurrentThread() : 0;
         try
         {
-            // Parse directly into VehicleState (zero-copy). ParseIntoState marks
-            // its own parse-timing fields; no BeginNewCycle here because the
-            // cycle owns timing now.
-            ReadOnlySpan<byte> data = buffer.AsSpan(0, length);
-            if (!NmeaParserServiceFast.ParseIntoState(data, ref _state, _configStore))
+            lock (_gpsIngestLock)
             {
-                _parseFailures++;
-                return;
+                LastGpsSource = source;
+                // Each whole line parses directly into VehicleState (zero-copy: the line is a
+                // span into the receive buffer unless the splitter had to join it). The parser
+                // marks its own parse-timing fields; no BeginNewCycle here because the cycle
+                // owns timing now.
+                foreach (var line in GpsLines.Lines(datagram, source))
+                {
+                    // While the simulator is the source, a receiver's sentence is parsed aside
+                    // and kept only with a fix: a receiver with none (indoors, a HAT's GPS on
+                    // the bench) sends position 0,0 at 10 Hz, which would be the tractor's
+                    // position between the simulator's.
+                    bool simulatorIsSource = _simulatorIsSource;
+                    var probe = simulatorIsSource ? _state : default;
+                    bool parsed = simulatorIsSource
+                        ? NmeaParserServiceFast.TryParseIntoState(line, ref probe, _configStore, GpsEpochs, out var result)
+                        : NmeaParserServiceFast.TryParseIntoState(line, ref _state, _configStore, GpsEpochs, out result);
+                    GpsSentences.Record(line, result);
+                    if (!parsed)
+                    {
+                        if (result != AgOpenWeb.Models.GPS.NmeaParseResult.EpochMember) _parseFailures++;
+                        continue;
+                    }
+                    if (simulatorIsSource)
+                    {
+                        if (probe.FixQuality <= 0) continue;
+                        _state = probe;
+                    }
+
+                    // A real fix parsed from inbound NMEA: mark the live-GPS gate so the
+                    // internal simulator stays mutually exclusive with a live source (it stops,
+                    // or can't be turned on). Only with a fix: a receiver with none made the
+                    // simulator refuse to start and stop at once (the HAT on the bench,
+                    // 2026-11-15). The sim feeds via GpsService.UpdateGpsData and never reaches
+                    // this path.
+                    if (_state.FixQuality > 0) _gpsService.MarkRealGpsParsed();
+
+                    // Publish the parsed fix to GpsService. This is the sole event the
+                    // cycle worker listens to; everything else runs there.
+                    PublishGpsData();
+                }
             }
-
-            // Real GPS fix parsed from inbound NMEA — mark the live-GPS gate so the
-            // internal simulator stays mutually exclusive with a live source. The
-            // sim feeds via GpsService.UpdateGpsData and never reaches this path.
-            _gpsService.MarkRealGpsParsed();
-
-            // Publish the parsed fix to GpsService. This is the sole event the
-            // cycle worker listens to; everything else runs there.
-            PublishGpsData();
         }
         finally
         {
@@ -591,6 +934,25 @@ public class AutoSteerService : IAutoSteerService
         _cycleCount++;
     }
 
+    /// <inheritdoc />
+    public void SendCorrectedPosition(double latitude, double longitude, double headingDegrees)
+    {
+        if (!_isEnabled) return;
+        var pgn = PgnBuilder.BuildCorrectedPositionPgn(latitude, longitude, headingDegrees);
+        _udpService.SendToModules(pgn);
+        _udpService.SendToLoopback(pgn);
+    }
+
+    public void SendGpsData(GpsData data, bool toLoopback)
+    {
+        if (!_isEnabled) return;
+        bool toTaskController = _udpService.IsTaskControllerHeard;
+        if (!toLoopback && !toTaskController) return;
+        var pgn = PgnBuilder.BuildGpsDataPgn(data);
+        if (toLoopback) _udpService.SendGpsDataToLoopback(pgn);
+        if (toTaskController) _udpService.SendToTaskController(pgn);
+    }
+
     /// <summary>
     /// Mirror the parsed VehicleState fields onto a fresh GpsData and fire
     /// GpsService.UpdateGpsData — this is what kicks off the cycle worker.
@@ -601,6 +963,15 @@ public class AutoSteerService : IAutoSteerService
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PublishGpsData()
     {
+        // No IMU heading in the sentence: a fresh one from the steer module or IMU module.
+        bool imuValid = _state.ImuValid;
+        double imuHeading = _state.ImuHeading;
+        if (!imuValid && TryFreshImuHeading(out double moduleHeading))
+        {
+            imuValid = true;
+            imuHeading = moduleHeading;
+        }
+
         var gpsData = new GpsData
         {
             CurrentPosition = new Position
@@ -615,11 +986,13 @@ public class AutoSteerService : IAutoSteerService
             SatellitesInUse = _state.Satellites,
             Hdop = _state.Hdop,
             DifferentialAge = _state.DifferentialAge,
-            ImuRoll = _state.Roll,
+            ImuRoll = FixRoll(),
             ImuPitch = _state.Pitch,
             ImuYawRate = _state.YawRate,
-            ImuHeading = _state.ImuHeading,
-            ImuValid = _state.ImuValid,
+            ImuHeading = imuHeading,
+            ImuValid = imuValid,
+            HasDualHeading = _state.HasDualHeading,
+            SentenceType = _state.SentenceType,
             Timestamp = DateTime.UtcNow,
         };
         _gpsService.UpdateGpsData(gpsData);
@@ -631,24 +1004,23 @@ public class AutoSteerService : IAutoSteerService
         if (_tramLineService != null && _tramLineService.HasTramLines &&
             _configStore.Tram.DisplayMode != Models.Configuration.TramDisplayMode.Off)
         {
-            // Use approximate tool position so detection matches implement indicators.
-            // Rigid tools sit at Tool.HitchLength (working center); trailing/TBT project
-            // from Vehicle.HitchLength (tractor hitch pin) plus the trailing arm.
-            var config = _configStore;
-            double hitchBase = (config.Tool.IsToolFrontFixed || config.Tool.IsToolRearFixed)
-                ? config.Tool.HitchLength
-                : config.Vehicle.HitchLength;
-            double hitchLen = hitchBase + config.Tool.TrailingHitchLength;
-            double toolE = _state.Easting + Math.Sin(_state.HeadingRadians) * hitchLen;
-            double toolN = _state.Northing + Math.Cos(_state.HeadingRadians) * hitchLen;
-
-            _state.TramState = _tramLineService.DetectTramWheels(
-                new Models.Base.Vec3(toolE, toolN, _state.Heading),
-                _state.HeadingRadians, 0.5);
+            // The wheels are checked where the tool is, as AgOpenGPS reads its control byte
+            // off the pixels under the tool: the tool position service's point and heading
+            // (the same ones the sections and the coverage use), not a projection from the
+            // pivot. A projection here once ran the hitch length ahead of the tractor instead
+            // of behind it, so the lights came on as the tractor crossed a tram, not the
+            // implement (#541). Before the first control tick there is no tool position.
+            var tool = _toolPositionService;
+            _state.TramState = tool != null && tool.HasPosition && !_toolInHeadland
+                ? _tramLineService.DetectTramWheels(tool.ToolPosition, tool.ToolHeading, 0.5)
+                : (byte)0;
         }
         else
         {
             _state.TramState = 0;
+            // AgOpenGPS: turning the tram display off clears the manual overrides.
+            if (_tramLineService != null)
+                _tramLineService.IsLeftManualOn = _tramLineService.IsRightManualOn = false;
         }
     }
 
@@ -677,25 +1049,75 @@ public class AutoSteerService : IAutoSteerService
         // Always send PGN 254 - the engage status is a bit in the status byte
         // This keeps the module informed of current position/speed even when not engaged
         var pgn = PgnBuilder.BuildAutoSteerPgn(ref _state);
-        _udpService.SendToModules(pgn);
+        SendSteerPgn(pgn);
 
         // Send PGN 239 (Machine Data) - section control, speed, tramline state
         // Sent every GPS cycle so machine module has current section/speed info
-        var machinePgn = PgnBuilder.BuildMachinePgn(ref _state,
+        _udpService.SendToModules(BuildMachinePgn());
+
+        // PGN 229 (64-section on/off) goes with every 239, whatever the section count, as
+        // AgOpenGPS sends it on every fix. The ISOBUS task controller (AOG-TaskController)
+        // reads the sections from 229 only, so with 16 sections or fewer it got none and an
+        // ISOBUS implement never followed AgOpenWeb (#696's harness). The AiO machine
+        // firmware doesn't listen for 229; the HAT prefers a fresh 229 over 254.
+        var sections64Pgn = PgnBuilder.BuildSection64Pgn(ref _state);
+        _udpService.SendToModules(sections64Pgn);
+    }
+
+    /// <summary>
+    /// Control ticks (10 ms each) during which a PGN 254 with the same status as the last one sent
+    /// is held back after the status changed. The AgOpenGPS reference firmware (AIO v4,
+    /// Autosteer.ino) takes the engage from the tablet as an edge: every PGN 254 sets
+    /// guidanceStatusChanged = (status != previous status), and its control block reads that flag
+    /// only every 25 ms (LOOP_TIME) without clearing it. AgOpenGPS sends PGN 254 once per fix
+    /// (10 Hz), so the flag always lasts until the block runs; at our 100 Hz the next, unchanged
+    /// packet cleared it after 10 ms and the firmware missed about 60 % of engages (the screen said
+    /// steering, the motor never ran; AioV4EngageEdgeTests). Three ticks, 30 ms, outlast one 25 ms
+    /// pass. A packet with a different status (a disengage) is never held.
+    /// </summary>
+    internal const int SteerStatusHoldTicks = 3;
+
+    private byte _lastSentSteerStatus;
+    private int _steerStatusHold;
+
+    private void SendSteerPgn(byte[] pgn)
+    {
+        byte status = pgn[7];
+        if (status != _lastSentSteerStatus)
+        {
+            _lastSentSteerStatus = status;
+            _steerStatusHold = SteerStatusHoldTicks;
+            _udpService.SendToModules(pgn);
+            return;
+        }
+        if (_steerStatusHold > 0)
+        {
+            _steerStatusHold--;
+            return;
+        }
+        _udpService.SendToModules(pgn);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private byte[] BuildMachinePgn() =>
+        PgnBuilder.BuildMachinePgn(ref _state,
             uturn: _state.IsInUTurn ? (byte)1 : (byte)0,
             hydLift: _state.HydLiftState,
             tram: _state.TramState,
             geoStop: _state.GeoStopState);
-        _udpService.SendToModules(machinePgn);
 
-        // Send PGN 229 (64-section on/off) alongside PGN 239 only when more
-        // than 16 sections are configured. PGN 239 still carries sections 1–16;
-        // the firmware reconciles the overlap. Below 17 sections, 239 is
-        // sufficient and 229 is skipped to keep the bus quiet.
-        if (_configStore.NumSections > 16)
+    /// <inheritdoc />
+    public void SendLoopbackPgns(bool hasActiveField)
+    {
+        if (!_isEnabled) return;
+        _udpService.SendToLoopback(PgnBuilder.BuildAutoSteerPgn(ref _state));
+
+        // AgOpenGPS sends 239 and 229 only with a job started, and 229 whatever the section
+        // count: a rate controller reads sections 1-16 from either.
+        if (hasActiveField)
         {
-            var sections64Pgn = PgnBuilder.BuildSection64Pgn(ref _state);
-            _udpService.SendToModules(sections64Pgn);
+            _udpService.SendToLoopback(BuildMachinePgn());
+            _udpService.SendToLoopback(PgnBuilder.BuildSection64Pgn(ref _state));
         }
     }
 
@@ -716,7 +1138,12 @@ public class AutoSteerService : IAutoSteerService
         bool perf = AgOpenWeb.Models.Diagnostics.DiagFlags.PerfAutoSteer;
         long perfT0 = perf ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         long perfA0 = perf ? GC.GetAllocatedBytesForCurrentThread() : 0;
-        try { SendPgns(); }
+        try
+        {
+            SendBaselineIfPending();
+            CheckGuidanceFreshness(Stopwatch.GetTimestamp());
+            SendPgns();
+        }
         finally
         {
             if (perf)
@@ -796,7 +1223,7 @@ public class AutoSteerService : IAutoSteerService
             Satellites = _state.Satellites,
             Hdop = _state.Hdop,
             DifferentialAge = _state.DifferentialAge,
-            Roll = _state.Roll,
+            Roll = FixRoll(),
             Pitch = _state.Pitch,
             YawRate = _state.YawRate,
             Easting = _state.Easting,

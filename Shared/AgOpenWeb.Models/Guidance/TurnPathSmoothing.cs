@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
 using AgOpenWeb.Models.Base;
@@ -24,6 +12,54 @@ namespace AgOpenWeb.Models.Guidance;
 /// </summary>
 public static class TurnPathSmoothing
 {
+    /// <summary>
+    /// AgOpenGPS's <c>CYouTurn.SmoothYouTurn</c>: one pass of a centre-weighted average over
+    /// <paramref name="smPts"/> points, the first and last point dropped, the headings
+    /// recomputed from the smoothed positions. The position cycle applies it with 6 points to
+    /// a U turn (not a K-turn) once the turn is made.
+    /// </summary>
+    public static void SmoothYouTurn(List<Vec3> ytList, int smPts)
+    {
+        int cnt = ytList.Count;
+        if (cnt < smPts + 2) return;
+        var arr = new Vec3[cnt];
+
+        for (int s = 0; s < smPts / 2; s++)
+        {
+            arr[s].Easting = ytList[s].Easting;
+            arr[s].Northing = ytList[s].Northing;
+            arr[s].Heading = ytList[s].Heading;
+        }
+
+        for (int s = cnt - (smPts / 2); s < cnt; s++)
+        {
+            arr[s].Easting = ytList[s].Easting;
+            arr[s].Northing = ytList[s].Northing;
+            arr[s].Heading = ytList[s].Heading;
+        }
+
+        for (int i = smPts / 2; i < cnt - (smPts / 2); i++)
+        {
+            for (int j = -smPts / 2; j < smPts / 2; j++)
+            {
+                arr[i].Easting += ytList[j + i].Easting;
+                arr[i].Northing += ytList[j + i].Northing;
+            }
+            arr[i].Easting /= smPts;
+            arr[i].Northing /= smPts;
+            arr[i].Heading = ytList[i].Heading;
+        }
+
+        ytList.Clear();
+
+        for (int i = 1; i < cnt - 1; i++)
+        {
+            arr[i].Heading = Math.Atan2(arr[i + 1].Easting - arr[i].Easting, arr[i + 1].Northing - arr[i].Northing);
+            if (arr[i].Heading < 0) arr[i].Heading += Math.PI * 2.0;
+            ytList.Add(arr[i]);
+        }
+    }
+
     /// <summary>
     /// Apply an in-place 3-point averaging smooth to the interior of the path.
     /// Endpoints and the points adjacent to them are left untouched so the path

@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Threading.Tasks;
@@ -12,9 +8,8 @@ using System.Threading.Tasks;
 namespace AgOpenWeb.Services.Interfaces;
 
 /// <summary>
-/// Priority for a dispatched UI-thread callback. Mirrors the subset of
-/// Avalonia's DispatcherPriority the ViewModels actually use, without leaking
-/// the Avalonia type into the VM/host layer.
+/// Priority for a dispatched UI-thread callback: the subset the ViewModels
+/// actually use.
 /// </summary>
 public enum UiDispatcherPriority
 {
@@ -29,12 +24,10 @@ public enum UiDispatcherPriority
 }
 
 /// <summary>
-/// Abstraction over the UI-thread marshaller. Replaces direct
-/// <c>Avalonia.Threading.Dispatcher.UIThread</c> access in the ViewModel layer
-/// so the VMs depend on an injected service rather than an ambient framework
-/// static. This keeps the VM (and a headless host that owns it) free of a hard
-/// Avalonia dependency, and lets tests supply an inline dispatcher.
-/// See Plans/CONFIG_STATE_AUDIT.md §11.
+/// Abstraction over the "UI thread" marshaller, so the VMs depend on an injected
+/// service rather than an ambient framework static. Every host implements it with
+/// <c>HostLoopDispatcher</c>; tests supply an inline dispatcher.
+/// See Plans/Completed/CONFIG_STATE_AUDIT.md §11.
 /// </summary>
 public interface IUiDispatcher
 {

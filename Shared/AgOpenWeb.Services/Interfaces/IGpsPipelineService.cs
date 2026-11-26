@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -44,7 +43,7 @@ public interface IGpsPipelineService
     /// <summary>
     /// Set the active track and current pass info.
     /// </summary>
-    void SetActiveTrack(Models.Track.Track? track, int passNumber, double nudgeOffset, bool isOnBoundary);
+    void SetActiveTrack(Models.Track.Track? track, int passNumber, double nudgeOffset);
 
     /// <summary>
     /// Enable/disable YouTurn processing.
@@ -75,6 +74,11 @@ public interface IGpsPipelineService
     /// </summary>
     void SetDriftCompensation(double driftE, double driftN);
 
+    /// <summary>A recorded route playing (P7): what AutoSteer follows instead of the track, the
+    /// Dubins approach (if any) and then the route from its point nearest the tractor; a null
+    /// route when playback stops.</summary>
+    void SetRecordedPathGuidance(IReadOnlyList<Vec3>? approach, IReadOnlyList<Vec3>? route, int routeStartIndex);
+
     // ── Contour (#110, AgOpenGPS CContour) ───────────────────────────────
 
     /// <summary>Contour button: guide along recorded contour strips instead of the track.</summary>
@@ -83,13 +87,13 @@ public interface IGpsPipelineService
     /// <summary>Contour lock button. Returns whether the line is now locked.</summary>
     bool ToggleContourLock();
 
-    /// <summary>Replace the contour strips (field opened: Contour.txt; field closed: none).</summary>
+    /// <summary>Replace the contour strips (field opened: its saved strips; field closed: none).</summary>
     void LoadContours(IEnumerable<List<Vec3>> strips);
 
     /// <summary>Delete contour paths: forget every strip, like AgOpenGPS.</summary>
     void ResetContours();
 
-    /// <summary>Finished strips to append to Contour.txt; each is returned once.</summary>
+    /// <summary>Finished strips to save with the field; each is returned once.</summary>
     List<List<Vec3>> TakeContoursToSave();
 
     /// <summary>
@@ -106,6 +110,24 @@ public interface IGpsPipelineService
     /// when the live GPS position drifts beyond the configured threshold.
     /// </summary>
     void SetHasActiveField(bool hasActiveField);
+
+    /// <summary>
+    /// The UI's committed LocalPlane (<c>State.Field.LocalPlane</c>). Push it whenever it
+    /// changes: field open, the cycle's own first-fix / re-anchor commit, field close.
+    /// The cycle converts positions against it and runs the origin guard on it.
+    /// </summary>
+    void SetLocalPlane(Models.LocalPlane? localPlane);
+
+    /// <summary>Whether the internal simulator is the GPS source: steer speed limits are off
+    /// then, and the steer module is not asked to steer (PGN 254 status stays 0).</summary>
+    void SetSimulatorEnabled(bool enabled);
+
+    /// <summary>Whether the simulator may steer the module on the network (a bench test). Off by
+    /// default: PGN 254 status stays 0 while the simulator is the GPS source.</summary>
+    void SetSimulatorSteersModule(bool steers);
+
+    /// <summary>The headland toggle: the headland distance HUD and the hydraulic lift follow it.</summary>
+    void SetHeadlandOn(bool on);
 
     // ── Read-back state the ViewModel needs for commands ─────────────────
 

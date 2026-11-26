@@ -1,39 +1,29 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Threading;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Models.Tool;
 using AgOpenWeb.Services.Interfaces;
 
 namespace AgOpenWeb.Services.Tool;
 
 /// <summary>
-/// Immutable snapshot of tool position state, swapped atomically by
-/// <see cref="ToolPositionService"/> at the end of each Update so readers
-/// see a fully-consistent view across multiple fields.
+/// Tool position state as published by <see cref="ToolPositionService"/> at the end of each
+/// Update: a value, copied whole by readers (a seqlock, <see cref="ToolPositionService"/>), so
+/// they see a fully-consistent view across its fields and the 100 Hz writer allocates nothing.
 /// </summary>
-internal sealed record ToolPositionSnapshot(
+internal readonly record struct ToolPositionSnapshot(
     Vec3 ToolPosition,
     Vec3 ToolPivotPosition,
     double ToolHeading,
     Vec3 TankPosition,
     Vec3 HitchPosition,
-    bool IsToolPositionReady);
+    bool IsToolPositionReady,
+    bool HasPosition);
 
 /// <summary>
 /// Calculates tool/implement position relative to vehicle pivot point.
@@ -43,7 +33,9 @@ internal sealed record ToolPositionSnapshot(
 /// its own thread; readers (GPS pipeline, UI, renderer) pull from any
 /// thread. A write lock serializes Update / ResetTrailingState so the
 /// internal Torriem state stays consistent across frames; readers get a
-/// fully-consistent snapshot via atomic reference swap with no locking.
+/// fully-consistent snapshot with no locking: a value behind a seqlock
+/// (the writer makes the version odd, writes, makes it even; a reader
+/// copies and retries if it moved), so the 100 Hz writer allocates nothing.
 ///
 /// Tool Types:
 /// - Fixed Front: Tool rigidly attached in front of pivot
@@ -68,13 +60,36 @@ public class ToolPositionService : IToolPositionService
     private const int STARTUP_FRAMES = 50;
     private const double JUMP_THRESHOLD_SQ = 400.0; // 20m squared - snap on GPS jumps
 
-    // Jackknife protection threshold (~115 degrees)
-    private const double JACKKNIFE_THRESHOLD = 2.0;
+    // Jackknife: AgOpenGPS (Position.designer.cs) springs a trailed tool back behind what pulls it
+    // past 1.9 rad from it, and a TBT tank back behind the tractor past 2.0 rad.
+    private const double TOOL_JACKKNIFE = 1.9;
+    private const double TANK_JACKKNIFE = 2.0;
 
-    // Read snapshot — atomically swapped after each writer completes.
-    // Readers never lock; they observe a fully-consistent record.
-    private ToolPositionSnapshot _snapshot = new(
-        default, default, 0, default, default, false);
+
+    private static double AngleBetween(double a, double b) => Math.Abs(Math.PI - Math.Abs(Math.Abs(a - b) - Math.PI));
+
+    // The published state, behind a seqlock: the writer (under _writeLock) makes _version odd,
+    // writes, makes it even again; a reader copies the value and retries if the version was odd
+    // or moved meanwhile. Readers never lock, and the 100 Hz writer allocates nothing (a new
+    // 128-byte snapshot object every control tick was garbage the collector had to clear).
+    private ToolPositionSnapshot _snapshot;
+    private int _version;
+
+    private ToolPositionSnapshot Read()
+    {
+        var spin = new SpinWait();
+        while (true)
+        {
+            int v1 = Volatile.Read(ref _version);
+            if ((v1 & 1) == 0)
+            {
+                var s = _snapshot;
+                Interlocked.MemoryBarrier();
+                if (Volatile.Read(ref _version) == v1) return s;
+            }
+            spin.SpinOnce(sleep1Threshold: -1);
+        }
+    }
 
     // Serializes the two writers (Update from control loop, ResetTrailingState
     // from UI/MainViewModel). Brief — contains only field updates and snapshot
@@ -88,24 +103,35 @@ public class ToolPositionService : IToolPositionService
         _configStore = configStore;
     }
 
-    public Vec3 ToolPosition => Volatile.Read(ref _snapshot).ToolPosition;
-    public Vec3 ToolPivotPosition => Volatile.Read(ref _snapshot).ToolPivotPosition;
-    public double ToolHeading => Volatile.Read(ref _snapshot).ToolHeading;
-    public Vec3 TankPosition => Volatile.Read(ref _snapshot).TankPosition;
-    public Vec3 HitchPosition => Volatile.Read(ref _snapshot).HitchPosition;
+    public Vec3 ToolPosition => Read().ToolPosition;
+    public Vec3 ToolPivotPosition => Read().ToolPivotPosition;
+    public double ToolHeading => Read().ToolHeading;
+    public Vec3 TankPosition => Read().TankPosition;
+    public Vec3 HitchPosition => Read().HitchPosition;
 
     /// <summary>
     /// True when tool position is based on actual movement, not startup snap.
     /// During startup, the tool heading may be unreliable (GPS heading = 0 when stationary).
     /// </summary>
-    public bool IsToolPositionReady => Volatile.Read(ref _snapshot).IsToolPositionReady;
+    public bool IsToolPositionReady => Read().IsToolPositionReady;
 
+    /// <summary>
+    /// True once <see cref="Update"/> has run: the tool has a position. A fixed tool's position
+    /// is right from the first update; <see cref="IsToolPositionReady"/> waits for a trailing
+    /// tool's heading to settle and never turns true for a fixed one.
+    /// </summary>
+    public bool HasPosition => Read().HasPosition;
+
+    /// <summary>Caller holds _writeLock (the one writer at a time the seqlock needs).</summary>
     private void PublishSnapshot()
     {
-        Interlocked.Exchange(ref _snapshot, new ToolPositionSnapshot(
+        Interlocked.Increment(ref _version);   // odd: being written
+        _snapshot = new ToolPositionSnapshot(
             _toolPosition, _toolPivotPosition, _toolHeading,
             _tankPosition, _hitchPosition,
-            _startCounter >= STARTUP_FRAMES));
+            _startCounter >= STARTUP_FRAMES,
+            HasPosition: true);
+        Interlocked.Increment(ref _version);   // even: done
     }
 
     public void Update(Vec3 vehiclePivot, double vehicleHeading)
@@ -115,48 +141,21 @@ public class ToolPositionService : IToolPositionService
             var tool = _configStore.Tool;
             var vehicle = _configStore.Vehicle;
 
-            // Calculate hitch point on vehicle.
-            // Two distinct measurements feed this, chosen by tool type:
-            //  - Rigid front/rear-fixed: Tool.HitchLength = axle -> implement working
-            //    center (tool-dependent).
-            //  - Trailing/TBT: Vehicle.HitchLength = axle -> tractor hitch pin
-            //    (the trailer attach point).
-            // Stored positive; sign applied by direction (front ahead, rest behind).
-            double hitchDistance = (tool.IsToolFrontFixed || tool.IsToolRearFixed)
-                ? Math.Abs(tool.HitchLength)
-                : Math.Abs(vehicle.HitchLength);
-            if (tool.IsToolRearFixed || tool.IsToolTrailing || tool.IsToolTBT)
-            {
-                hitchDistance = -hitchDistance; // Behind the vehicle
-            }
-            // Front fixed keeps positive (ahead of vehicle)
+            // The point the tool hangs on (RigGeometry): a fixed tool's working point, or the
+            // tractor's hitch pin for a trailed one.
+            var mount = RigGeometry.Mount(tool);
+            _hitchPosition = RigGeometry.AlongTractor(vehiclePivot, vehicleHeading, RigGeometry.AttachX(vehicle, tool));
 
-            _hitchPosition = new Vec3(
-                vehiclePivot.Easting + Math.Sin(vehicleHeading) * hitchDistance,
-                vehiclePivot.Northing + Math.Cos(vehicleHeading) * hitchDistance,
-                vehicleHeading
-            );
-
-            if (tool.IsToolFrontFixed || tool.IsToolRearFixed)
+            switch (mount)
             {
-                CalculateFixedToolPosition(vehiclePivot, vehicleHeading, tool);
-            }
-            else if (tool.IsToolTBT)
-            {
-                CalculateTBTToolPosition(vehicleHeading, tool);
-            }
-            else if (tool.IsToolTrailing)
-            {
-                CalculateTrailingToolPosition(vehicleHeading, tool);
-            }
-            else
-            {
-                // Default: treat as fixed rear
-                CalculateFixedToolPosition(vehiclePivot, vehicleHeading, tool);
+                case ToolMount.TBT: CalculateTBTToolPosition(vehicleHeading, tool); break;
+                case ToolMount.Trailing: CalculateTrailingToolPosition(vehicleHeading, tool); break;
+                default: CalculateFixedToolPosition(vehiclePivot, vehicleHeading, tool); break;
             }
 
-            // Apply lateral offset
-            ApplyLateralOffset(tool.Offset);
+            // No lateral offset here: the section spans carry it (SectionControlService,
+            // as AgOpenGPS's section positions do), so this is the tool's point on the
+            // tractor's line. Shifting it as well painted the coverage at twice the offset (#446).
 
             PublishSnapshot();
         }
@@ -217,8 +216,8 @@ public class ToolPositionService : IToolPositionService
             if (_toolHeading < 0) _toolHeading += 2 * Math.PI; // Normalize to [0, 2pi]
         }
 
-        // Check for jackknife condition
-        if (IsJackknifed(vehicleHeading))
+        // Jackknifed: spring it back behind the hitch (AgOpenGPS, against the hitch's heading)
+        if (AngleBetween(_toolHeading, vehicleHeading) > TOOL_JACKKNIFE)
         {
             SnapToolBehindVehicle(vehicleHeading, tool);
             return;
@@ -232,7 +231,7 @@ public class ToolPositionService : IToolPositionService
         );
 
         // Calculate tool center position (offset from pivot by TrailingToolToPivotLength)
-        double pivotOffset = tool.TrailingHitchLength - tool.TrailingToolToPivotLength;
+        double pivotOffset = RigGeometry.ToolBehindPivot(tool);
         _toolPosition = new Vec3(
             _hitchPosition.Easting - Math.Sin(_toolHeading) * pivotOffset,
             _hitchPosition.Northing - Math.Cos(_toolHeading) * pivotOffset,
@@ -283,6 +282,10 @@ public class ToolPositionService : IToolPositionService
             if (tankHeading < 0) tankHeading += 2 * Math.PI;
         }
 
+        // The tank jackknifed against the tractor: spring it back behind the hitch (AgOpenGPS)
+        if (AngleBetween(tankHeading, vehicleHeading) > TANK_JACKKNIFE)
+            tankHeading = vehicleHeading;
+
         // Tank position trails behind hitch
         _tankPosition = new Vec3(
             _hitchPosition.Easting - Math.Sin(tankHeading) * tool.TankTrailingHitchLength,
@@ -300,12 +303,9 @@ public class ToolPositionService : IToolPositionService
             if (_toolHeading < 0) _toolHeading += 2 * Math.PI;
         }
 
-        // Check for jackknife
-        if (IsJackknifed(vehicleHeading))
-        {
-            SnapTBTBehindVehicle(vehicleHeading, tool);
-            return;
-        }
+        // The tool jackknifed against the tank: spring it back behind the tank (AgOpenGPS)
+        if (AngleBetween(_toolHeading, tankHeading) > TOOL_JACKKNIFE)
+            _toolHeading = tankHeading;
 
         // Tool pivot trails behind tank
         _toolPivotPosition = new Vec3(
@@ -315,7 +315,7 @@ public class ToolPositionService : IToolPositionService
         );
 
         // Tool center position
-        double pivotOffset = tool.TrailingHitchLength - tool.TrailingToolToPivotLength;
+        double pivotOffset = RigGeometry.ToolBehindPivot(tool);
         _toolPosition = new Vec3(
             _tankPosition.Easting - Math.Sin(_toolHeading) * pivotOffset,
             _tankPosition.Northing - Math.Cos(_toolHeading) * pivotOffset,
@@ -326,15 +326,6 @@ public class ToolPositionService : IToolPositionService
         _lastTankPos = _tankPosition;
         _lastToolPivotPos = _toolPivotPosition;
         _lastHitchPos = _hitchPosition;
-    }
-
-    /// <summary>
-    /// Check if tool angle relative to vehicle exceeds jackknife threshold
-    /// </summary>
-    private bool IsJackknifed(double vehicleHeading)
-    {
-        double angleDiff = Math.Abs(Math.PI - Math.Abs(Math.Abs(_toolHeading - vehicleHeading) - Math.PI));
-        return angleDiff > JACKKNIFE_THRESHOLD;
     }
 
     /// <summary>
@@ -350,7 +341,7 @@ public class ToolPositionService : IToolPositionService
             vehicleHeading
         );
 
-        double pivotOffset = tool.TrailingHitchLength - tool.TrailingToolToPivotLength;
+        double pivotOffset = RigGeometry.ToolBehindPivot(tool);
         _toolPosition = new Vec3(
             _hitchPosition.Easting - Math.Sin(vehicleHeading) * pivotOffset,
             _hitchPosition.Northing - Math.Cos(vehicleHeading) * pivotOffset,
@@ -383,7 +374,7 @@ public class ToolPositionService : IToolPositionService
             vehicleHeading
         );
 
-        double pivotOffset = tool.TrailingHitchLength - tool.TrailingToolToPivotLength;
+        double pivotOffset = RigGeometry.ToolBehindPivot(tool);
         _toolPosition = new Vec3(
             _tankPosition.Easting - Math.Sin(vehicleHeading) * pivotOffset,
             _tankPosition.Northing - Math.Cos(vehicleHeading) * pivotOffset,
@@ -393,23 +384,6 @@ public class ToolPositionService : IToolPositionService
         _lastTankPos = _tankPosition;
         _lastToolPivotPos = _toolPivotPosition;
         _lastHitchPos = _hitchPosition;
-    }
-
-    /// <summary>
-    /// Apply lateral offset to tool position
-    /// </summary>
-    private void ApplyLateralOffset(double offset)
-    {
-        if (Math.Abs(offset) < 0.001) return;
-
-        // Perpendicular to tool heading (right is positive)
-        double perpHeading = _toolHeading + Math.PI / 2.0;
-
-        _toolPosition = new Vec3(
-            _toolPosition.Easting + Math.Sin(perpHeading) * offset,
-            _toolPosition.Northing + Math.Cos(perpHeading) * offset,
-            _toolPosition.Heading
-        );
     }
 
     public (Vec3 left, Vec3 right) GetToolEdgePositions()
@@ -425,7 +399,7 @@ public class ToolPositionService : IToolPositionService
         double sectionCenter = (sectionLeft + sectionRight) / 2.0;
 
         // Read consistent pose from snapshot.
-        var snap = Volatile.Read(ref _snapshot);
+        var snap = Read();
         double perpHeading = snap.ToolHeading + Math.PI / 2.0;
 
         return new Vec3(
@@ -437,7 +411,7 @@ public class ToolPositionService : IToolPositionService
 
     public (Vec3 left, Vec3 right) GetSectionEdgePositions(double sectionLeft, double sectionRight)
     {
-        var snap = Volatile.Read(ref _snapshot);
+        var snap = Read();
         double perpHeading = snap.ToolHeading + Math.PI / 2.0;
 
         var left = new Vec3(
@@ -464,24 +438,9 @@ public class ToolPositionService : IToolPositionService
             var tool = _configStore.Tool;
             var vehicle = _configStore.Vehicle;
 
-            // Calculate hitch position - must match Update() sign convention and
-            // tool-type hitch reference: rigid tools use Tool.HitchLength (working
-            // center), trailing/TBT use Vehicle.HitchLength (tractor hitch pin).
-            double hitchDistance = (tool.IsToolFrontFixed || tool.IsToolRearFixed)
-                ? Math.Abs(tool.HitchLength)
-                : Math.Abs(vehicle.HitchLength);
-            if (tool.IsToolRearFixed || tool.IsToolTrailing || tool.IsToolTBT)
-            {
-                hitchDistance = -hitchDistance;
-            }
+            _hitchPosition = RigGeometry.AlongTractor(vehiclePivot, vehicleHeading, RigGeometry.AttachX(vehicle, tool));
 
-            _hitchPosition = new Vec3(
-                vehiclePivot.Easting + Math.Sin(vehicleHeading) * hitchDistance,
-                vehiclePivot.Northing + Math.Cos(vehicleHeading) * hitchDistance,
-                vehicleHeading
-            );
-
-            if (tool.IsToolTBT)
+            if (RigGeometry.Mount(tool) == ToolMount.TBT)
             {
                 SnapTBTBehindVehicle(vehicleHeading, tool);
             }

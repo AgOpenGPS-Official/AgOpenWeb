@@ -1,0 +1,98 @@
+{
+ "bg": [
+  "Field Texture",
+  "Right",
+  "Steer Wizard"
+ ],
+ "cs": [
+  "First pass",
+  "Off"
+ ],
+ "de": [
+  "AgShare Download",
+  "Delete Applied Area",
+  "Drive In",
+  "First pass",
+  "Lat/Lon + Heading",
+  "Latitude (−90 to 90)",
+  "Longest Edge",
+  "Next Boundary Dist",
+  "Off",
+  "Place on Map",
+  "Remove Offset",
+  "Rename",
+  "Reset All Settings",
+  "Resume Last Job",
+  "Right",
+  "Save to Job",
+  "✎ Edit",
+  "＋ Add"
+ ],
+ "fi": [
+  "Right"
+ ],
+ "hr": [
+  "Off",
+  "Right"
+ ],
+ "hu": [
+  "Coupling type",
+  "Delete All"
+ ],
+ "ja": [
+  "Field Texture",
+  "Off",
+  "Remove Offset",
+  "Steer Response"
+ ],
+ "lt": [
+  "Coupling type",
+  "Drive AB",
+  "First pass"
+ ],
+ "lv": [
+  "Coupling type",
+  "First pass",
+  "Latitude (−90 to 90)"
+ ],
+ "nl": [
+  "Coupling type",
+  "Latitude (−90 to 90)",
+  "Place on Map",
+  "Playback",
+  "Right",
+  "✎ Edit"
+ ],
+ "pl": [
+  "Coupling type",
+  "Delete All",
+  "Delete Applied Area",
+  "First pass",
+  "Latitude (−90 to 90)",
+  "Right",
+  "Steer Chart"
+ ],
+ "pt": [
+  "Coupling type",
+  "First pass",
+  "Latitude (−90 to 90)"
+ ],
+ "ru": [
+  "App Settings",
+  "Area",
+  "Offset Fix",
+  "Reset All Settings",
+  "Resume Job",
+  "Right"
+ ],
+ "sr": [
+  "Off",
+  "Right"
+ ],
+ "sv": [
+  "Right"
+ ],
+ "ta": [
+  "Off"
+ ]
+}

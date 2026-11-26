@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -95,7 +94,7 @@ public partial class MainViewModel
         set => SetProperty(ref _recordedPathInfo, value);
     }
 
-    // List of available .rec files for the picker
+    // Names of the field's saved recorded paths, for the picker
     public ObservableCollection<string> AvailableRecFiles { get; } = new();
 
     private string? _selectedRecFile;
@@ -106,6 +105,7 @@ public partial class MainViewModel
         {
             // Reload even when the same file is picked again: that's how to undo a Reverse
             // or discard changes to the loaded path (#111).
+            if (value != null && RefusedWhilePlaying()) return;
             SetProperty(ref _selectedRecFile, value);
             if (value != null)
                 OnRecFileSelected(value);
@@ -117,12 +117,12 @@ public partial class MainViewModel
         var activeField = _fieldService.ActiveField;
         if (activeField == null) return;
 
-        var srcPath = Path.Combine(activeField.DirectoryPath, fileName);
-        var dstPath = Path.Combine(activeField.DirectoryPath, "RecPath.txt");
         try
         {
-            File.Copy(srcPath, dstPath, true);
-            var points = Services.RecPathFileService.LoadRecPathPoints(activeField.DirectoryPath);
+            // The selected saved path becomes the one in use.
+            var points = Services.GeoJson.GeoJsonFieldService.LoadRecordedPath(activeField.DirectoryPath, fileName);
+            if (points != null && points.Count >= 2)
+                Services.GeoJson.GeoJsonFieldService.SaveCurrentRecordedPath(activeField.DirectoryPath, points);
             if (points != null && points.Count >= 2)
             {
                 State.RecordedPath.RecordedPoints = points;
@@ -181,13 +181,10 @@ public partial class MainViewModel
                 ? $"RecPath_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}"
                 : RecordedPathName.Trim();
 
-            if (!name.EndsWith(".rec")) name += ".rec";
-
             try
             {
-                Services.RecPathFileService.SaveRecPathToFile(
-                    System.IO.Path.Combine(activeField.DirectoryPath, name),
-                    State.RecordedPath.RecordedPoints);
+                Services.GeoJson.GeoJsonFieldService.SaveRecordedPath(
+                    activeField.DirectoryPath, name, State.RecordedPath.RecordedPoints);
                 HasUnsavedRecordedPath = false;
                 RecordedPathName = "";
                 LoadRecPathForPlayback(); // Refresh file list
@@ -252,13 +249,18 @@ public partial class MainViewModel
             if (string.IsNullOrEmpty(fileName)) return;
             var activeField = _fieldService.ActiveField;
             if (activeField == null) return;
+            if (RefusedWhilePlaying()) return;
 
-            // Copy selected .rec to RecPath.txt and load
-            var srcPath = Path.Combine(activeField.DirectoryPath, fileName);
-            var dstPath = Path.Combine(activeField.DirectoryPath, "RecPath.txt");
+            // The selected saved path becomes the one in use, then load it
             try
             {
-                File.Copy(srcPath, dstPath, true);
+                var points = Services.GeoJson.GeoJsonFieldService.LoadRecordedPath(activeField.DirectoryPath, fileName);
+                if (points == null || points.Count < 2)
+                {
+                    ReportFailure($"Failed to load: {fileName}");
+                    return;
+                }
+                Services.GeoJson.GeoJsonFieldService.SaveCurrentRecordedPath(activeField.DirectoryPath, points);
                 LoadRecPathForPlayback();
                 SetProperty(ref _selectedRecFile, fileName, nameof(SelectedRecFile)); // already loaded
                 RecordedPathInfo = $"Selected: {fileName} ({State.RecordedPath.RecordedPoints.Count} points)";
@@ -275,7 +277,7 @@ public partial class MainViewModel
             var activeField = _fieldService.ActiveField;
             if (activeField == null) return;
 
-            if (Services.RecPathFileService.DeleteRecFile(activeField.DirectoryPath, fileName))
+            if (Services.GeoJson.GeoJsonFieldService.DeleteRecordedPath(activeField.DirectoryPath, fileName))
             {
                 AvailableRecFiles.Remove(fileName);
                 StatusMessage = $"Deleted: {fileName}";
@@ -346,12 +348,45 @@ public partial class MainViewModel
         recState.IsDrivingRecordedPath = true;
         recState.CurrentPositionIndex = startIdx;
 
+        // AutoSteer follows the approach, then the route, once the operator engages it on them
+        // (P7). Steering on another line stops here, so it never jumps from it to the route.
+        StopAutoSteerForPlayback("recorded path started");
+        _gpsPipelineService.SetRecordedPathGuidance(dubinsPath,
+            recState.RecordedPoints.Select(p => new Vec3(p.Easting, p.Northing, p.Heading)).ToList(), startIdx);
+        IsAutoSteerAvailable = true;
+
         // Set Dubins approach path on map
         _mapService.SetYouTurnPath(dubinsPath.Select(p =>
             (p.Easting, p.Northing)).ToList());
 
         StatusMessage = "Driving to recorded path start...";
         return true;
+    }
+
+    /// <summary>
+    /// Field close: the loaded path, a replay being driven and a recording in progress belong to
+    /// the field. AgOpenGPS JobClose (FormGPS.cs) clears recList and stops driving it. Left
+    /// loaded, the path was drawn, and would have been driven, in the next field's coordinates
+    /// until another was picked; left driving, the replay put the Auto master back on at the
+    /// next fix, right after the close had switched the sections off. A recording ends unsaved,
+    /// as a boundary or line being recorded does (ClearFieldState); a stopped recording is
+    /// already the field's current path on disk, loaded again when the field opens.
+    /// </summary>
+    private void EndRecordedPathWithField()
+    {
+        if (State.RecordedPath.IsDrivingRecordedPath)
+            StopDrivingRecordedPath();
+        if (IsRecordingPath)
+        {
+            IsRecordingPath = false;
+            _recPathRecordingPoints.Clear();
+            _lastRecPathPoint = null;
+        }
+        State.RecordedPath.RecordedPoints.Clear();
+        State.RecordedPath.CurrentPositionIndex = 0;
+        HasUnsavedRecordedPath = false;
+        RecordedPathInfo = "No path loaded";
+        _mapService.SetYouTurnPath(null);
     }
 
     /// <summary>
@@ -365,11 +400,26 @@ public partial class MainViewModel
         recState.IsFollowingRecPath = false;
         recState.IsEndOfLine = false;
         recState.DubinsApproachPath.Clear();
+        _gpsPipelineService.SetRecordedPathGuidance(null, null, 0);
+        StopAutoSteerForPlayback("recorded path stopped");
+        IsAutoSteerAvailable = SelectedTrack != null || IsContourModeOn;
 
         // Clear approach path from map
         _mapService.SetYouTurnPath(null);
 
         StatusMessage = "Playback stopped";
+    }
+
+    /// <summary>AutoSteer off as playback starts or stops: the line it steers along changes.</summary>
+    private void StopAutoSteerForPlayback(string reason)
+    {
+        if (!IsAutoSteerEngaged) return;
+        IsAutoSteerEngaged = false;
+        _autoSteerService.Disengage();
+        SyncGuidanceStateToPipeline();
+        _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
+        LogAutoSteerOff(reason);
+        ReportFailure("AutoSteer off: " + reason);
     }
 
     /// <summary>
@@ -431,36 +481,7 @@ public partial class MainViewModel
             return;
         }
 
-        // Pure Pursuit along the Dubins path: lookahead 3-5 points ahead
-        int lookAhead = Math.Min(5, dubinsPath.Count - _dubinsClosestIdx - 1);
-        if (lookAhead < 1) lookAhead = 1;
-        int lookIdx = _dubinsClosestIdx + lookAhead;
-        var lookPt = dubinsPath[lookIdx];
-
-        double dxLook = lookPt.Easting - vehicleE;
-        double dyLook = lookPt.Northing - vehicleN;
-        double lookDistSq = dxLook * dxLook + dyLook * dyLook;
-
-        if (lookDistSq > 0.01)
-        {
-            // Transform to vehicle-local coordinates (vehicleH already in radians)
-            double cosH = Math.Cos(vehicleH);
-            double sinH = Math.Sin(vehicleH);
-            double localX = dxLook * cosH - dyLook * sinH;  // lateral (right+)
-            double localY = dxLook * sinH + dyLook * cosH;  // forward
-
-            double wheelbase = Math.Max(_configStore.Vehicle.Wheelbase, 2.0);
-            double steerAngle;
-            if (localY > 0.1)
-                steerAngle = Math.Atan2(2.0 * wheelbase * localX, lookDistSq);
-            else
-                steerAngle = localX > 0 ? 0.5 : -0.5;
-
-            double maxSteer = _configStore.Vehicle.MaxSteerAngle * Math.PI / 180.0;
-            steerAngle = Math.Clamp(steerAngle, -maxSteer, maxSteer);
-
-            SimulatorSteerAngle = steerAngle * 180.0 / Math.PI;
-        }
+        // The steering along it is the GPS pipeline's (RecordedPathFollower), with AutoSteer.
     }
 
     private void UpdateRecPathFollowing(double vehicleE, double vehicleN)
@@ -504,53 +525,7 @@ public partial class MainViewModel
             }
         }
 
-        // Pure Pursuit guidance: shorter lookahead for tight curves
-        int lookAhead = Math.Max(2, Math.Min(3, points.Count - closestIdx - 1));
-        int lookIdx = Math.Min(closestIdx + lookAhead, points.Count - 1);
-        var lookPt = points[lookIdx];
-        double dxLook = lookPt.Easting - vehicleE;
-        double dyLook = lookPt.Northing - vehicleN;
-        double lookDistSq = dxLook * dxLook + dyLook * dyLook;
-        double lookDist = Math.Sqrt(lookDistSq);
-
-        if (lookDist > 0.1)
-        {
-            // Transform to vehicle-local coordinates
-            double vehicleHRad = State.Vehicle.Heading * Math.PI / 180.0;
-            double cosH = Math.Cos(vehicleHRad);
-            double sinH = Math.Sin(vehicleHRad);
-            double localX = dxLook * cosH - dyLook * sinH;  // lateral (right+)
-            double localY = dxLook * sinH + dyLook * cosH;  // forward
-
-            // Pure Pursuit formula: steer = atan(2 * wheelbase * localX / L^2)
-            double wheelbase = Math.Max(_configStore.Vehicle.Wheelbase, 2.0);
-            double steerAngle;
-            if (localY > 0.1)
-                steerAngle = Math.Atan2(2.0 * wheelbase * localX, lookDistSq);
-            else
-                steerAngle = localX > 0 ? 0.5 : -0.5; // goal behind, turn toward it
-
-            double maxSteer = _configStore.Vehicle.MaxSteerAngle * Math.PI / 180.0;
-            steerAngle = Math.Clamp(steerAngle, -maxSteer, maxSteer);
-
-            SimulatorSteerAngle = steerAngle * 180.0 / Math.PI;
-        }
-
-        // Update display guidance values (cross-track error)
-        if (closestIdx + 1 < points.Count)
-        {
-            var ptA = points[closestIdx];
-            var ptB = points[Math.Min(closestIdx + 1, points.Count - 1)];
-            double segDx = ptB.Easting - ptA.Easting;
-            double segDy = ptB.Northing - ptA.Northing;
-            double segLen = Math.Sqrt(segDx * segDx + segDy * segDy);
-            if (segLen > 0.01)
-            {
-                // Perpendicular distance from vehicle to segment
-                double xte = ((vehicleE - ptA.Easting) * segDy - (vehicleN - ptA.Northing) * segDx) / segLen;
-                CrossTrackError = xte;
-            }
-        }
+        // The steering along it is the GPS pipeline's (RecordedPathFollower), with AutoSteer.
     }
 
     // -- Helpers --
@@ -560,23 +535,28 @@ public partial class MainViewModel
         var activeField = _fieldService.ActiveField;
         if (activeField == null) return;
 
-        var points = Services.RecPathFileService.LoadRecPathPoints(activeField.DirectoryPath);
-        if (points != null && points.Count >= 2)
+        // The path playing stays as it is (the panel opened, a field reloaded): reloaded from the
+        // file it would lose a Reverse and its place, and no longer be the route AutoSteer follows.
+        if (!State.RecordedPath.IsDrivingRecordedPath)
         {
-            State.RecordedPath.RecordedPoints = points;
-            State.RecordedPath.CurrentPositionIndex = 0;
-            UpdateRecordedPathDisplayOnMap();
-            RecordedPathInfo = $"Loaded: {points.Count} points";
-            RecalculateDubinsPreview();
-        }
-        else
-        {
-            RecordedPathInfo = "No path loaded";
+            var points = Services.GeoJson.GeoJsonFieldService.LoadCurrentRecordedPath(activeField.DirectoryPath);
+            if (points != null && points.Count >= 2)
+            {
+                State.RecordedPath.RecordedPoints = points;
+                State.RecordedPath.CurrentPositionIndex = 0;
+                UpdateRecordedPathDisplayOnMap();
+                RecordedPathInfo = $"Loaded: {points.Count} points";
+                RecalculateDubinsPreview();
+            }
+            else
+            {
+                RecordedPathInfo = "No path loaded";
+            }
         }
 
-        // Also refresh the .rec file list
+        // Also refresh the saved-path list
         AvailableRecFiles.Clear();
-        foreach (var f in Services.RecPathFileService.ListRecFiles(activeField.DirectoryPath))
+        foreach (var f in Services.GeoJson.GeoJsonFieldService.ListRecordedPaths(activeField.DirectoryPath))
             AvailableRecFiles.Add(f);
     }
 
@@ -651,6 +631,19 @@ public partial class MainViewModel
             new Vec3(p.Easting, p.Northing, p.Heading)).ToList();
         var track = Track.FromRecordedPath("Playback Path", vec3List);
         _mapService.SetRecordedPaths(new[] { track });
+    }
+
+    /// <summary>
+    /// While a recorded path plays it is the route AutoSteer follows (the GPS pipeline was given
+    /// it at Play) and the one the map shows: another path is not picked and no recording starts
+    /// until playback stops, as AgOpenGPS disables Pick and Record while it drives a path
+    /// (btnPathGoStop_Click). Reverse is refused there too, silently, as before.
+    /// </summary>
+    private bool RefusedWhilePlaying()
+    {
+        if (!State.RecordedPath.IsDrivingRecordedPath) return false;
+        ReportFailure("Stop the recorded path first");
+        return true;
     }
 
     private static int FindClosestPoint(List<RecPathPoint> points, double easting, double northing)

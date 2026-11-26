@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Globalization;
@@ -211,9 +199,14 @@ public class VehicleProfileService : IVehicleProfileService
         store.Vehicle.AntennaHeight = 3.0;
         store.Vehicle.AntennaPivot = 0.0;
         store.Vehicle.AntennaOffset = 0.0;
+        store.Vehicle.ImuPivot = 0.0;
+        store.Vehicle.ImuHeight = 0.0;
+        store.Vehicle.ImuOffset = 0.0;
         store.Vehicle.Wheelbase = 2.5;
         store.Vehicle.TrackWidth = 1.8;
         store.Vehicle.HitchLength = 1.8;
+        store.Vehicle.ThreePointHitchLength = 1.8;
+        store.Vehicle.FrontHitchLength = 0.0;
         store.Vehicle.MaxSteerAngle = 35.0;
         store.Vehicle.MaxAngularVelocity = 35.0;
 
@@ -227,17 +220,11 @@ public class VehicleProfileService : IVehicleProfileService
         store.Guidance.StanleyIntegralGainAB = 0.0;
         store.Guidance.PurePursuitIntegralGain = 0.0;
         store.Guidance.UTurnCompensation = 1.0;
-        store.Guidance.UTurnRadius = 8.0;
-        store.Guidance.UTurnExtension = 20.0;
-        store.Guidance.UTurnDistanceFromBoundary = 2.0;
-        store.Guidance.UTurnSkipWidth = 1;
-        store.Guidance.UTurnStyle = (int)Models.YouTurn.YouTurnType.SagittaStyle; // Sagitta default (Twol parity; no Dubins loop)
-        store.Guidance.UTurnSmoothing = 14;
 
         store.Tool.Width = 6.0;
         store.Tool.Overlap = 0.0;
         store.Tool.Offset = 0.0;
-        store.Tool.HitchLength = 1.8;
+        store.Tool.WorkingPointFromHitch = 0.0;
         store.Tool.TrailingHitchLength = 2.5;
         store.Tool.TankTrailingHitchLength = 3.0;
         store.Tool.TrailingToolToPivotLength = 0.0;
@@ -245,8 +232,8 @@ public class VehicleProfileService : IVehicleProfileService
         store.Tool.IsToolTBT = false;
         store.Tool.IsToolRearFixed = true;
         store.Tool.IsToolFrontFixed = false;
-        store.Tool.LookAheadOnSetting = 0.0;
-        store.Tool.LookAheadOffSetting = 0.0;
+        store.Tool.LookAheadOnSetting = Models.Configuration.ToolConfig.DefaultLookAheadOn;
+        store.Tool.LookAheadOffSetting = Models.Configuration.ToolConfig.DefaultLookAheadOff;
         store.Tool.TurnOffDelay = 0.0;
         store.Tool.MinCoverage = 100;
         store.Tool.IsMultiColoredSections = false;
@@ -258,6 +245,10 @@ public class VehicleProfileService : IVehicleProfileService
         sectionPositions[0] = -3.0;  // Left edge
         sectionPositions[1] = 3.0;   // Right edge
         store.SectionPositions = sectionPositions;
+
+        store.Ahrs.RollZero = 0.0;
+        store.Ahrs.RollFilter = 0.0;
+        store.Ahrs.IsRollInvert = false;
 
         // IsMetric used to be reset here; it now lives in AppSettings and
         // is unaffected by creating a new default vehicle profile.
@@ -275,131 +266,10 @@ public class VehicleProfileService : IVehicleProfileService
     /// Applies parsed XML settings directly to ConfigurationStore.
     /// Used for one-way import from AgOpenGPS XML format.
     /// </summary>
-    private void ApplyXmlSettingsToStore(Dictionary<string, string> settings, string profileName, string filePath, ConfigurationStore store)
-    {
-        // Vehicle config
-        store.Vehicle.Name = profileName;
-        store.Vehicle.Type = (VehicleType)GetInt(settings, "setVehicle_vehicleType", 0);
-        store.Vehicle.AntennaHeight = GetDouble(settings, "setVehicle_antennaHeight", 3.0);
-        store.Vehicle.AntennaPivot = GetDouble(settings, "setVehicle_antennaPivot", 0.0);
-        store.Vehicle.AntennaOffset = GetDouble(settings, "setVehicle_antennaOffset", 0.0);
-        store.Vehicle.Wheelbase = GetDouble(settings, "setVehicle_wheelbase", 2.5);
-        store.Vehicle.TrackWidth = GetDouble(settings, "setVehicle_trackWidth", 1.8);
-        store.Vehicle.MaxSteerAngle = GetDouble(settings, "setVehicle_maxSteerAngle", 35.0);
-        store.Vehicle.MaxAngularVelocity = GetDouble(settings, "setVehicle_maxAngularVelocity", 35.0);
+    private static void ApplyXmlSettingsToStore(Dictionary<string, string> settings, string profileName, string filePath, ConfigurationStore store)
+        => AgOpenGpsSettings.ApplyToStore(settings, profileName, filePath, store);
 
-        // Guidance config
-        // setVehicle_isStanleyUsed is AgOpenGPS's algorithm choice. (setMenu_isPureOn, read
-        // here before #99, is its "show the Pure Pursuit point" display toggle.)
-        store.Guidance.IsPurePursuit = !GetBool(settings, "setVehicle_isStanleyUsed", false);
-        store.Guidance.GoalPointLookAheadHold = GetDouble(settings, "setVehicle_goalPointLookAheadHold", 4.0);
-        store.Guidance.GoalPointLookAheadMult = GetDouble(settings, "setVehicle_goalPointLookAheadMult", 1.4);
-        store.Guidance.GoalPointAcquireFactor = GetDouble(settings, "setVehicle_goalPointAcquireFactor", 0.9);
-        store.Guidance.StanleyDistanceErrorGain = GetDouble(settings, "stanleyDistanceErrorGain", 0.8);
-        store.Guidance.StanleyHeadingErrorGain = GetDouble(settings, "stanleyHeadingErrorGain", 1.0);
-        store.Guidance.StanleyIntegralGainAB = GetDouble(settings, "stanleyIntegralGainAB", 0.0);
-        store.Guidance.PurePursuitIntegralGain = GetDouble(settings, "purePursuitIntegralGainAB", 0.0);
-        store.Guidance.UTurnCompensation = GetDouble(settings, "setAS_uTurnCompensation", 1.0);
-        // Steering speed limits (enforced by the pipeline since #106).
-        store.AutoSteer.MinSteerSpeed = GetDouble(settings, "setAS_minSteerSpeed", 0.0);
-        store.AutoSteer.MaxSteerSpeed = GetDouble(settings, "setAS_maxSteerSpeed", 15.0);
-
-        // U-Turn settings
-        store.Guidance.UTurnRadius = GetDouble(settings, "set_youTurnRadius", 8.0);
-        store.Guidance.UTurnExtension = GetDouble(settings, "set_youTurnExtensionLength", 20.0);
-        store.Guidance.UTurnDistanceFromBoundary = GetDouble(settings, "set_youTurnDistanceFromBoundary", 2.0);
-        store.Guidance.UTurnSkipWidth = GetInt(settings, "set_youSkipWidth", 1);
-        store.Guidance.UTurnStyle = GetInt(settings, "set_uTurnStyle", (int)Models.YouTurn.YouTurnType.SagittaStyle);
-        store.Guidance.UTurnSmoothing = GetInt(settings, "setAS_uTurnSmoothing", 14);
-
-        // Tool config
-        store.Tool.Width = GetDouble(settings, "setVehicle_toolWidth", 6.0);
-        store.Tool.Overlap = GetDouble(settings, "setVehicle_toolOverlap", 0.0);
-        store.Tool.Offset = GetDouble(settings, "setVehicle_toolOffset", 0.0);
-        // AOG's single setVehicle_hitchLength is the tractor hitch pin (now a vehicle
-        // property, used by trailing/TBT) AND doubles as the rigid working-center distance.
-        // Import into both so the value is present whichever tool type the profile uses.
-        double xmlHitch = GetDouble(settings, "setVehicle_hitchLength", 1.8);
-        store.Vehicle.HitchLength = xmlHitch;
-        store.Tool.HitchLength = xmlHitch;
-        // Legacy AOG XML profiles often store TrailingHitchLength as a negative value due to
-        // a historical sign convention. Migrate to "positive = behind hitch" by taking abs.
-        store.Tool.TrailingHitchLength = Math.Abs(GetDouble(settings, "setTool_toolTrailingHitchLength", 2.5));
-        store.Tool.TankTrailingHitchLength = GetDouble(settings, "setVehicle_tankTrailingHitchLength", 3.0);
-        store.Tool.TrailingToolToPivotLength = GetDouble(settings, "setTool_trailingToolToPivotLength", 0.0);
-        store.Tool.IsToolTrailing = GetBool(settings, "setTool_isToolTrailing", false);
-        store.Tool.IsToolTBT = GetBool(settings, "setTool_isToolTBT", false);
-        store.Tool.IsToolRearFixed = GetBool(settings, "setTool_isToolRearFixed", true);
-        store.Tool.IsToolFrontFixed = GetBool(settings, "setTool_isToolFront", false);
-        store.Tool.LookAheadOnSetting = GetDouble(settings, "setVehicle_toolLookAheadOn", 1.0);
-        store.Tool.LookAheadOffSetting = GetDouble(settings, "setVehicle_toolLookAheadOff", 0.5);
-        store.Tool.TurnOffDelay = GetDouble(settings, "setVehicle_toolOffDelay", 0.0);
-        store.Tool.MinCoverage = GetInt(settings, "setVehicle_minCoverage", 100);
-        store.Tool.IsMultiColoredSections = GetBool(settings, "setTool_isMultiColoredSections", false);
-        store.Tool.IsSectionsNotZones = GetBool(settings, "setTool_isSectionsNotZones", true);
-        store.Tool.IsSectionOffWhenOut = GetBool(settings, "setTool_isSectionOffWhenOut", true);
-        store.Tool.IsHeadlandSectionControl = GetBool(settings, "setTool_isHeadlandSectionControl", true);
-
-        // Section config
-        store.NumSections = GetInt(settings, "setVehicle_numSections", 1);
-        var sectionPositions = new double[17];
-        for (int i = 0; i < 17; i++)
-        {
-            sectionPositions[i] = GetDouble(settings, $"setSection_position{i + 1}", 0.0);
-        }
-        store.SectionPositions = sectionPositions;
-
-        // Display config — IsMetric used to live in the vehicle XML.
-        // It now lives in AppSettings; apply the legacy XML value to the
-        // store so the post-load ReconcileIsMetricAfterProfileLoad can
-        // perform the one-shot migration (the same path the JSON profile
-        // services use). Once migration has completed, AppSettings
-        // overrides the XML value on subsequent loads.
-        if (settings.ContainsKey("setMenu_isMetric"))
-            store.IsMetric = GetBool(settings, "setMenu_isMetric", false);
-
-        // Profile metadata
-        store.ActiveVehicleProfileName = profileName;
-        store.ActiveVehicleProfilePath = filePath;
-    }
-
-    private Dictionary<string, string> ParseSettings(XDocument doc)
-    {
-        return doc.Descendants("setting")
-            .Where(s => s.Attribute("name") != null)
-            .ToDictionary(
-                s => s.Attribute("name")!.Value,
-                s => s.Element("value")?.Value ?? ""
-            );
-    }
-
-    private double GetDouble(Dictionary<string, string> settings, string key, double defaultValue)
-    {
-        if (settings.TryGetValue(key, out var value) &&
-            double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
-        {
-            return result;
-        }
-        return defaultValue;
-    }
-
-    private int GetInt(Dictionary<string, string> settings, string key, int defaultValue)
-    {
-        if (settings.TryGetValue(key, out var value) && int.TryParse(value, out var result))
-        {
-            return result;
-        }
-        return defaultValue;
-    }
-
-    private bool GetBool(Dictionary<string, string> settings, string key, bool defaultValue)
-    {
-        if (settings.TryGetValue(key, out var value))
-        {
-            return value.Equals("True", StringComparison.OrdinalIgnoreCase);
-        }
-        return defaultValue;
-    }
+    private static Dictionary<string, string> ParseSettings(XDocument doc) => AgOpenGpsSettings.Parse(doc);
 
     #endregion
 }

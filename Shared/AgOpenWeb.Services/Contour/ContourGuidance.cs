@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -31,11 +30,11 @@ public sealed class ContourGuidance
     private const double PIBy2 = Math.PI / 2.0;
     private const double TwoPI = Math.PI * 2.0;
 
-    /// <summary>All strips: loaded from Contour.txt plus the ones recorded this session.</summary>
+    /// <summary>All strips: the field's saved ones plus the ones recorded this session.</summary>
     public List<List<Vec3>> Strips { get; } = new();
     /// <summary>The guidance line (AgOpenGPS ctList).</summary>
     public List<Vec3> Line { get; } = new(128);
-    /// <summary>Finished strips not yet appended to Contour.txt (AgOpenGPS contourSaveList).</summary>
+    /// <summary>Finished strips not yet saved with the field (AgOpenGPS contourSaveList).</summary>
     public List<List<Vec3>> PendingSave { get; } = new();
 
     public bool IsRecording { get; private set; }  // isContourOn
@@ -49,6 +48,14 @@ public sealed class ContourGuidance
     private double _lastXte; // modeActualXTE: last contour XTE, for the look-ahead
     private double _inty, _pivotDistanceError, _pivotDistanceErrorLast;
     private int _counter2;
+    private bool _wasAutoSteerOn;
+    // Held strip (AutoSteer on or locked): which way it is driven and on which side the line is,
+    // decided when the strip was taken. Judged again at every rebuild, both flip at a corner
+    // sharper than 90° (the tractor turns before the strip does) and the contour turns back.
+    private bool _hasHeld, _heldSameWay;
+    private double _heldPaths;
+    // The line's direction for steering while the strip is held; null: judged per cycle (AgOpenGPS).
+    private bool? _lineSameWay;
 
     public double LastCrossTrackError => _lastXte;
     /// <summary>Bumped whenever <see cref="Line"/> is rebuilt or cleared, so callers can cache.</summary>
@@ -62,6 +69,27 @@ public sealed class ContourGuidance
     }
 
     public void Unlock() { IsLocked = false; }
+
+    /// <summary>
+    /// AgOpenGPS btnAutoSteer_Click "handle contour lock" (#1170): engaging AutoSteer locks
+    /// to the current line, disengaging unlocks. Call every cycle with the engaged state
+    /// after all kickouts, so every engage/disengage path is followed, not only the button.
+    /// </summary>
+    public void FollowAutoSteer(bool isAutoSteerOn)
+    {
+        if (isAutoSteerOn && !_wasAutoSteerOn && !IsLocked) SetLockToLine();
+        else if (!isAutoSteerOn && _wasAutoSteerOn) IsLocked = false;
+        _wasAutoSteerOn = isAutoSteerOn;
+    }
+
+    /// <summary>Contour button toggled: drop the line and the reference strip.</summary>
+    public void ClearReference()
+    {
+        ClearLine();
+        StripNum = -1;
+        _lastLockPt = int.MaxValue;
+        _hasHeld = false;
+    }
 
     // ── Recording ────────────────────────────────────────────────────────
 
@@ -101,7 +129,7 @@ public sealed class ContourGuidance
         IsRecording = false;
     }
 
-    /// <summary>Replace the strips with ones loaded from Contour.txt.</summary>
+    /// <summary>Replace the strips with the field's saved ones.</summary>
     public void Load(IEnumerable<List<Vec3>> strips)
     {
         Reset();
@@ -119,6 +147,7 @@ public sealed class ContourGuidance
         IsLocked = false;
         StripNum = -1;
         _lastLockPt = int.MaxValue;
+        _hasHeld = false;
         _lastSecond = double.NegativeInfinity;
         _lastXte = 0;
     }
@@ -126,8 +155,11 @@ public sealed class ContourGuidance
     // ── Guidance line ────────────────────────────────────────────────────
 
     /// <summary>AgOpenGPS BuildContourGuidanceLine. Rebuilds at most every 0.3 s while there's
-    /// no line, every 2 s once there is.</summary>
-    public void BuildContourGuidanceLine(Vec3 pivot, double fixHeading, in ContourParams p, double nowSeconds)
+    /// no line, every 2 s once there is. While AutoSteer is on the reference strip is kept
+    /// even when unlocked (#1171), so steering never jumps to another strip; a new one is
+    /// only searched for when there's none yet.</summary>
+    public void BuildContourGuidanceLine(Vec3 pivot, double fixHeading, in ContourParams p, double nowSeconds,
+        bool isAutoSteerOn = false)
     {
         if (nowSeconds - _lastSecond < (Line.Count == 0 ? 0.3 : 2)) return;
         _lastSecond = nowSeconds;
@@ -145,9 +177,11 @@ public sealed class ContourGuidance
 
         double minDistance = double.MaxValue;
         int ptCount;
-        if (!IsLocked)
+        bool keepStrip = (IsLocked || isAutoSteerOn) && StripNum >= 0 && StripNum < stripCount;
+        if (!keepStrip)
         {
             StripNum = -1;
+            _hasHeld = false;
             for (int s = 0; s < stripCount; s++)
             {
                 var strip = Strips[s];
@@ -171,6 +205,7 @@ public sealed class ContourGuidance
 
             if (StripNum < 0 || minDistance > toolContourDistance || Strips[StripNum].Count < 4)
             {
+                StripNum = -1; // not a reference: AutoSteer mustn't hold on to it
                 ClearLine();
                 return;
             }
@@ -180,8 +215,11 @@ public sealed class ContourGuidance
             ptCount = Strips[StripNum].Count;
             if (ptCount < 2) { ClearLine(); return; }
 
-            int from = Math.Max(_lastLockPt - 20, 0);
-            int to = Math.Min(_lastLockPt + 20, ptCount);
+            // Near the last point; the whole strip after an unlock at the line's end
+            // (_lastLockPt is int.MaxValue then, and + 20 would overflow).
+            bool anyPt = _lastLockPt == int.MaxValue;
+            int from = anyPt ? 0 : Math.Max(_lastLockPt - 20, 0);
+            int to = anyPt ? ptCount : Math.Min(_lastLockPt + 20, ptCount);
             for (int i = from; i < to; i += 3)
             {
                 var sp = Strips[StripNum][i];
@@ -193,6 +231,34 @@ public sealed class ContourGuidance
                 }
             }
             minDistance = Math.Sqrt(minDistance);
+
+            // Near the end of the held strip and nearer the strip that carries on from it (the
+            // line already runs on along it, see below): follow that one from here (ContinuationOf).
+            var held = Strips[StripNum];
+            bool heldSameWay = _hasHeld ? _heldSameWay : SameWay(fixHeading, held[_pt].Heading);
+            if (heldSameWay ? _pt + 70 > ptCount : _pt - 70 < 0)
+            {
+                int next = ContinuationOf(StripNum, heldSameWay, toolContourDistance);
+                if (next >= 0)
+                {
+                    // Only its first stretch (its last, driven against it): the strip carrying on may be
+                    // the one being recorded, whose newest points are under the tractor.
+                    var c = Strips[next];
+                    double best = double.MaxValue; int nearest = 0;
+                    int cFrom = heldSameWay ? 0 : Math.Max(c.Count - 90, 0), cTo = heldSameWay ? Math.Min(90, c.Count) : c.Count;
+                    for (int i = cFrom; i < cTo; i++)
+                    {
+                        double d = Sq(pivot.Easting - c[i].Easting) + Sq(pivot.Northing - c[i].Northing);
+                        if (d < best) { best = d; nearest = i; }
+                    }
+                    if (Math.Sqrt(best) < minDistance)
+                    {
+                        StripNum = next;
+                        _pt = _lastLockPt = nearest;
+                        minDistance = Math.Sqrt(best);
+                    }
+                }
+            }
             if (minDistance > toolContourDistance) { ClearLine(); return; }
         }
 
@@ -218,7 +284,7 @@ public sealed class ContourGuidance
         else return;
 
         // Driving the same way the strip was made?
-        bool isSameWay = Math.PI - Math.Abs(Math.Abs(fixHeading - ref_[_pt].Heading) - Math.PI) < 1.57;
+        bool isSameWay = keepStrip && _hasHeld ? _heldSameWay : SameWay(fixHeading, ref_[_pt].Heading);
         double widthNoOverlap = p.ToolWidth - p.ToolOverlap;
         double refDist = (distanceFromRefLine + (isSameWay ? p.ToolOffset : -p.ToolOffset)) / widthNoOverlap;
         double halfWidth = p.ToolWidth / 2;
@@ -228,18 +294,38 @@ public sealed class ContourGuidance
             Math.Abs(distanceFromRefLine) > halfWidth || Math.Abs(p.ToolOffset) > halfWidth
                 ? (refDist < 0 ? -1 : 1)
                 : 0;
+        if (keepStrip && _hasHeld) howManyPathsAway = _heldPaths;
+        else { _heldSameWay = isSameWay; _heldPaths = howManyPathsAway; _hasHeld = true; }
+
+        // The held strip ends within the line's reach: build the line on along the strip that
+        // carries on from it, so it goes round the corner where the strip ended.
+        int at = _pt, joinAt = -1;  // joinAt: where the second strip begins in ref_
+        if (keepStrip && (isSameWay ? at + 70 > ref_.Count : at - 70 < 0))
+        {
+            int next = ContinuationOf(StripNum, isSameWay, toolContourDistance);
+            if (next >= 0)
+            {
+                var c = Strips[next];
+                var joined = new List<Vec3>(ref_.Count + c.Count);
+                if (isSameWay) { joinAt = ref_.Count; joined.AddRange(ref_); joined.AddRange(c); }
+                else { joinAt = c.Count; joined.AddRange(c); joined.AddRange(ref_); at += c.Count; }
+                ref_ = joined;
+            }
+        }
 
         Line.Clear();
         ptCount = ref_.Count;
         int start, stop;
-        if (isSameWay) { start = Math.Max(_pt - 20, 0); stop = Math.Min(_pt + 70, ptCount); } // shorter behind you
-        else { start = Math.Max(_pt - 70, 0); stop = Math.Min(_pt + 20, ptCount); }
+        if (isSameWay) { start = Math.Max(at - 20, 0); stop = Math.Min(at + 70, ptCount); } // shorter behind you
+        else { start = Math.Max(at - 70, 0); stop = Math.Min(at + 20, ptCount); }
 
         double distAway = widthNoOverlap * howManyPathsAway + (isSameWay ? -p.ToolOffset : p.ToolOffset);
         double distSqAway = distAway * distAway * 0.97;
 
+        int lineJoin = -1; // where the second strip's points begin in Line
         for (int i = start; i < stop; i++)
         {
+            if (i == joinAt) lineJoin = Line.Count;
             var point = new Vec3(
                 ref_[i].Easting + Math.Cos(ref_[i].Heading) * distAway,
                 ref_[i].Northing - Math.Sin(ref_[i].Heading) * distAway,
@@ -259,6 +345,8 @@ public sealed class ContourGuidance
                 Line.Add(point);
         }
 
+        if (lineJoin > 0) JoinAtCorner(lineJoin);
+        _lineSameWay = keepStrip ? isSameWay : null;
         if (Line.Count < 5) ClearLine();
         LineVersion++;
     }
@@ -268,6 +356,7 @@ public sealed class ContourGuidance
         if (Line.Count > 0) LineVersion++;
         Line.Clear();
         IsLocked = false;
+        _lineSameWay = null;
     }
 
     // ── Steering ─────────────────────────────────────────────────────────
@@ -300,7 +389,7 @@ public sealed class ContourGuidance
 
             double abHeading = Math.Atan2(dx, dy);
             if (abHeading < 0) abHeading += TwoPI;
-            bool sameWay = Math.PI - Math.Abs(Math.Abs(pivot.Heading - abHeading) - Math.PI) < PIBy2;
+            bool sameWay = _lineSameWay ?? Math.PI - Math.Abs(Math.Abs(pivot.Heading - abHeading) - Math.PI) < PIBy2;
 
             double delta;
             if (sameWay) delta = steer.Heading - abHeading;
@@ -368,7 +457,7 @@ public sealed class ContourGuidance
             }
             if (isReverse) _inty = 0;
 
-            bool sameWay = Math.PI - Math.Abs(Math.Abs(pivot.Heading - Line[a].Heading) - Math.PI) < PIBy2;
+            bool sameWay = _lineSameWay ?? Math.PI - Math.Abs(Math.Abs(pivot.Heading - Line[a].Heading) - Math.PI) < PIBy2;
             if (!sameWay) xte *= -1.0;
 
             double u = (((pivot.Easting - Line[a].Easting) * dx) + ((pivot.Northing - Line[a].Northing) * dy))
@@ -379,6 +468,7 @@ public sealed class ContourGuidance
             bool forward = isReverse ? !sameWay : sameWay;
             int step = forward ? 1 : -1;
             double distSoFar = 0;
+            bool reached = false;
             for (int i = forward ? b : a; i < ptCount && i >= 0; i += step)
             {
                 double tempDist = Math.Sqrt(Sq(start.Easting - Line[i].Easting) + Sq(start.Northing - Line[i].Northing));
@@ -387,13 +477,22 @@ public sealed class ContourGuidance
                     double j = (p.GoalPointDistance - distSoFar) / tempDist;
                     goal = new Vec2((1 - j) * start.Easting + j * Line[i].Easting,
                                     (1 - j) * start.Northing + j * Line[i].Northing);
+                    reached = true;
                     break;
                 }
                 distSoFar += tempDist;
                 start = Line[i];
             }
+            // The line ends within the look-ahead: aim at its end. Left at (0,0) the goal was the
+            // field's origin, and AutoSteer swung towards it (AgOpenGPS keeps the last cycle's goal).
+            if (!reached)
+            {
+                var end = forward ? Line[ptCount - 1] : Line[0];
+                goal = new Vec2(end.Easting, end.Northing);
+            }
 
             double goalDistSq = Sq(goal.Northing - pivot.Northing) + Sq(goal.Easting - pivot.Easting);
+            if (goalDistSq < 0.01) { _lastXte = xte; return null; }
             double localHeading = sameWay ? TwoPI - fixHeading + _inty : TwoPI - fixHeading - _inty;
             steerAngle = Math.Atan(2 * (((goal.Easting - pivot.Easting) * Math.Cos(localHeading))
                 + ((goal.Northing - pivot.Northing) * Math.Sin(localHeading))) * p.Wheelbase / goalDistSq)
@@ -406,6 +505,75 @@ public sealed class ContourGuidance
         _lastXte = xte;
         return new ContourSteer(steerAngle, xte, goal);
     }
+
+    /// <summary>
+    /// The strip that carries on from <paramref name="strip"/>'s end in the way it is driven, or -1.
+    /// A strip ends wherever every section closed: at a sharp corner the boom's outer end reaches
+    /// the boundary ahead, so one lap is recorded as several strips with a gap at each corner. Its
+    /// continuation is the strip recorded the same way that begins nearest that end, within
+    /// <paramref name="reach"/> (the distance a strip is taken up from). That may be the strip being
+    /// recorded now: an inner lap never closes its sections, so the outer lap's last piece and the
+    /// whole lap since are one strip. Not AgOpenGPS: there, with AutoSteer on, the line runs out at the strip's end.
+    /// </summary>
+    private int ContinuationOf(int strip, bool sameWay, double reach)
+    {
+        var s = Strips[strip];
+        var end = sameWay ? s[^1] : s[0];
+        int best = -1;
+        double bestDist = reach * reach;
+        for (int t = 0; t < Strips.Count; t++)
+        {
+            var c = Strips[t];
+            if (t == strip || c.Count < 4) continue;
+            var from = sameWay ? c[0] : c[^1];
+            double d = Sq(from.Easting - end.Easting) + Sq(from.Northing - end.Northing);
+            if (d <= bestDist) { bestDist = d; best = t; }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// A line built from two strips meeting at a corner: each strip's piece, set a width in, runs on
+    /// towards the corner of the lap outside (the corner itself is in neither strip, so nothing trims
+    /// them), and where a hand-driven corner wobbled its last points can swing out of the line.
+    /// Join the pieces where they cross, as an offset corner is cut, or else where they come
+    /// closest: the lap's corner. What lies beyond on either piece goes.
+    /// </summary>
+    private void JoinAtCorner(int join)
+    {
+        double best = double.MaxValue;
+        int bi = join - 1, bj = join;
+        for (int i = 0; i + 1 < join; i++)
+        {
+            var a = Line[i]; var b = Line[i + 1];
+            for (int j = join; j + 1 < Line.Count; j++)
+            {
+                var c = Line[j]; var d = Line[j + 1];
+                double rE = b.Easting - a.Easting, rN = b.Northing - a.Northing;
+                double sE = d.Easting - c.Easting, sN = d.Northing - c.Northing;
+                double den = rE * sN - rN * sE;
+                if (Math.Abs(den) > 1e-12)
+                {
+                    double qE = c.Easting - a.Easting, qN = c.Northing - a.Northing;
+                    double t = (qE * sN - qN * sE) / den, u = (qE * rN - qN * rE) / den;
+                    if (t >= 0 && t <= 1 && u >= 0 && u <= 1)
+                    {
+                        var x = new Vec3(a.Easting + rE * t, a.Northing + rN * t, a.Heading);
+                        Line.RemoveRange(i + 1, j - i);  // a's piece up to the crossing, then d onwards
+                        Line.Insert(i + 1, x);
+                        return;
+                    }
+                }
+                double dd = Sq(a.Easting - c.Easting) + Sq(a.Northing - c.Northing);
+                if (dd < best) { best = dd; bi = i; bj = j; }
+            }
+        }
+        // Closest points: keep the first piece up to bi and the second from bj.
+        if (bj - bi > 1) Line.RemoveRange(bi + 1, bj - bi - 1);
+    }
+
+    // Within 90° of each other (AgOpenGPS: within 1.57 rad).
+    private static bool SameWay(double a, double b) => Math.PI - Math.Abs(Math.Abs(a - b) - Math.PI) < 1.57;
 
     // The two line points nearest to pos, in list order.
     private (int a, int b) ClosestTwo(Vec3 pos)

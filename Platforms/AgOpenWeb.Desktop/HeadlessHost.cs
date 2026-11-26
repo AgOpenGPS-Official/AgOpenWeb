@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Reflection;
@@ -28,7 +24,7 @@ namespace AgOpenWeb.Desktop;
 /// Avalonia UI thread in the windowed build.
 ///
 /// Selected by the absence of <c>--windowed</c> (see Program.Main).
-/// See Plans/WEBUI_MIGRATION_PLAN.md Phase 10 and Plans/WEBUI_SESSION_HANDOFF.md.
+/// See Plans/Completed/WEBUI_MIGRATION_PLAN.md Phase 10 and Plans/Completed/WEBUI_SESSION_HANDOFF.md.
 /// </summary>
 internal static class HeadlessHost
 {

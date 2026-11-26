@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
 using AgOpenWeb.Models.Base;
@@ -61,6 +49,14 @@ public class YouTurnState : ObservableObject
     {
         get => _pathIndex;
         set => SetProperty(ref _pathIndex, value);
+    }
+
+    // Where TurnPath leaves the current pass (the arc's first point); null without an entry leg.
+    private Vec3? _arcStart;
+    public Vec3? ArcStart
+    {
+        get => _arcStart;
+        set => SetProperty(ref _arcStart, value);
     }
 
     // Direction
@@ -220,11 +216,24 @@ public class YouTurnState : ObservableObject
     /// </summary>
     public bool? NextUTurnDirectionLeftOverride { get; set; }
 
+    /// <summary>
+    /// The side picked with the U-turn arrow, held until a turn starts.
+    /// Mirror of <see cref="Pipeline.YouTurnWorkingState.HeldDirectionLeft"/>.
+    /// </summary>
+    public bool? HeldDirectionLeft { get; set; }
+
+    /// <summary>
+    /// The pass the turn was built to land on.
+    /// Mirror of <see cref="Pipeline.YouTurnWorkingState.PlannedNextPath"/>.
+    /// </summary>
+    public int? PlannedNextPath { get; set; }
+
     public void Reset()
     {
         IsTriggered = false;
         IsExecuting = false;
         TurnPath = null;
+        ArcStart = null;
         PathIndex = 0;
         DistanceToHeadland = double.MaxValue;
         DistanceToTrigger = 0;
@@ -239,6 +248,8 @@ public class YouTurnState : ObservableObject
         AltSign = 0;
         CurrentZone = TractorZone.OutsideBoundary;
         NextUTurnDirectionLeftOverride = null;
+        HeldDirectionLeft = null;
+        PlannedNextPath = null;
     }
 
     public void CompleteTurn()
@@ -246,7 +257,10 @@ public class YouTurnState : ObservableObject
         IsExecuting = false;
         IsTriggered = false;
         TurnPath = null;
+        ArcStart = null;
         LastTurnWasLeft = IsTurnLeft;
+        HeldDirectionLeft = null;
+        PlannedNextPath = null;
         HasCompletedFirstTurn = true;
         YouTurnCounter = 0;
     }

@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Pipeline;
@@ -28,6 +27,22 @@ public record GpsCycleResult
     public double Hdop { get; init; }
     public double DifferentialAge { get; init; }
     public int FixQuality { get; init; }
+
+    // Heading inputs, for the bug-report GPS log (#157): which sentence the fix came from,
+    // the heading it carried before fusion, and what the fusion made of it.
+    public GpsSentenceType SentenceType { get; init; }
+    /// <summary>Heading field of the sentence, degrees: the dual-antenna heading on
+    /// $PAOGI, the IMU heading (0 when invalid) on $PANDA.</summary>
+    public double SentenceHeading { get; init; }
+    public bool ImuValid { get; init; }
+    public bool IsReverse { get; init; }
+    public bool IsDualHeadingMissing { get; init; }
+    /// <summary>The dual heading runs across the direction of travel (its offset doesn't match
+    /// how the antennas are mounted): AutoSteer won't engage, and disengages.</summary>
+    public bool IsDualHeadingOffTravel { get; init; }
+    /// <summary>How far the dual heading was from the direction of travel at the last check,
+    /// degrees 0–90; NaN until measured, and while the heading isn't from the dual antenna.</summary>
+    public double DualHeadingOffTravelDeg { get; init; } = double.NaN;
     public bool GpsValid { get; init; }
 
     // Tool position
@@ -44,13 +59,15 @@ public record GpsCycleResult
     public bool AutoSteerDisengagedThisCycle { get; init; }
     /// <summary>PGN 239 hydraulic lift: 0 off, 1 down (working), 2 up (headland).</summary>
     public byte HydLiftState { get; init; }
+    /// <summary>The pivot is outside the field (#494): the boundary is drawn red, PGN 239 geoStop.</summary>
+    public bool IsOutOfBounds { get; init; }
 
     /// <summary>Contour (#110): the reference strip being followed (AgOpenGPS draws its
     /// points), null when none. Same instance while unchanged.</summary>
     public IReadOnlyList<Models.Base.Vec3>? ContourRef { get; init; }
     /// <summary>Contour lock state (lock button image).</summary>
     public bool IsContourLocked { get; init; }
-    /// <summary>A contour strip finished this cycle: the VM appends it to Contour.txt.</summary>
+    /// <summary>A contour strip finished this cycle: the VM saves it with the field.</summary>
     public bool HasContoursToSave { get; init; }
     public string? DisengageReason { get; init; }
 
@@ -69,6 +86,11 @@ public record GpsCycleResult
     // Headland proximity
     public double? HeadlandProximityDistance { get; init; }
     public bool HeadlandProximityWarning { get; init; }
+
+    /// <summary>Contour: what the line ahead holds (AgOpenWeb.Services.Contour.ContourAhead:
+    /// 0 clear, 1 turns back, 2 runs over sprayed ground, 3 ends), and how far ahead along the line (m).</summary>
+    public byte ContourAhead { get; init; }
+    public double ContourAheadM { get; init; }
 
     /// <summary>
     /// Phase E: non-null on the single cycle where the cycle worker auto-creates
@@ -103,6 +125,12 @@ public record GpsCycleResult
 
     // Status
     public string? StatusMessage { get; init; }
+
+    /// <summary>
+    /// Non-null on the cycle where a manual U-turn was refused, or a turn could not be made or
+    /// was missed (once, with its sound): why, shown to the operator.
+    /// </summary>
+    public string? YouTurnNotice { get; init; }
 }
 
 /// <summary>

@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 
@@ -16,7 +12,7 @@ namespace AgOpenWeb.Services.Interfaces;
 /// VM depends on an injected service rather than an ambient framework type —
 /// the same de-ambient pass as <see cref="IUiDispatcher"/>. This is what lets a
 /// headless host (no Avalonia dispatcher) run the VM's timers.
-/// See Plans/CONFIG_STATE_AUDIT.md §11.3.
+/// See Plans/Completed/CONFIG_STATE_AUDIT.md §11.3.
 /// </summary>
 public interface IUiTimer
 {

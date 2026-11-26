@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -26,13 +14,12 @@ namespace AgOpenWeb.Models.State;
 /// Every property is written on the UI thread. No service writes here
 /// directly — communication services (<c>NtripClientService</c>,
 /// <c>UdpCommunicationService</c>) raise events from their own background
-/// threads; the ViewModel's handlers check
-/// <c>Dispatcher.UIThread.CheckAccess()</c> and <c>Post</c> if needed
-/// before touching <c>State.Connections</c>. The hello-timer polling
-/// in <c>MainViewModel</c> starts on the UI thread and its <c>await</c>
-/// continuations stay on the UI thread via Avalonia's
-/// <c>SynchronizationContext</c>, so <c>State.Connections</c> writes
-/// there are also UI-thread.
+/// threads; the ViewModel's handlers check the injected
+/// <c>IUiDispatcher</c>'s <c>CheckAccess()</c> and <c>Post</c> if needed
+/// before touching <c>State.Connections</c>. The hello-timer polling in
+/// <c>MainViewModel</c> starts on the host-loop thread and stays there across its
+/// <c>await</c>s: <c>HostLoopDispatcher</c> installs a <c>SynchronizationContext</c>
+/// that brings continuations back to the loop, as the old Avalonia UI thread did.
 /// </para>
 ///
 /// <para>Reader / writer table:</para>
@@ -58,6 +45,16 @@ public class ConnectionState : ObservableObject
     {
         get => _isGpsConnected;
         set => SetProperty(ref _isGpsConnected, value);
+    }
+
+    /// <summary>No position sentences for a couple of seconds (module or simulator):
+    /// autosteer and the sections have been switched off, and the client shows the
+    /// warning until data flows again.</summary>
+    private bool _isGpsLost;
+    public bool IsGpsLost
+    {
+        get => _isGpsLost;
+        set => SetProperty(ref _isGpsLost, value);
     }
 
     private bool _isGpsDataOk;
@@ -94,6 +91,62 @@ public class ConnectionState : ObservableObject
     {
         get => _ntripBytesReceived;
         set => SetProperty(ref _ntripBytesReceived, value);
+    }
+
+    // Where RTCM is being sent (empty with no session), and whether that is the GPS
+    // module's own address rather than the subnet broadcast.
+    private string _ntripRtcmDestination = "";
+    public string NtripRtcmDestination
+    {
+        get => _ntripRtcmDestination;
+        set => SetProperty(ref _ntripRtcmDestination, value);
+    }
+
+    private bool _ntripRtcmUnicast;
+    public bool NtripRtcmUnicast
+    {
+        get => _ntripRtcmUnicast;
+        set => SetProperty(ref _ntripRtcmUnicast, value);
+    }
+
+    // The mount points last asked for in the NTRIP profile editor (empty until then).
+    private AgOpenWeb.Models.Ntrip.NtripMountpointList _ntripMountpoints = AgOpenWeb.Models.Ntrip.NtripMountpointList.None;
+    public AgOpenWeb.Models.Ntrip.NtripMountpointList NtripMountpoints
+    {
+        get => _ntripMountpoints;
+        set => SetProperty(ref _ntripMountpoints, value);
+    }
+
+    // The corrections come from the fallback service, the main service answers again while it is
+    // in use (the operator decides about going back), and the last switch notice (empty = none).
+    private bool _ntripUsingFallback;
+    public bool NtripUsingFallback
+    {
+        get => _ntripUsingFallback;
+        set => SetProperty(ref _ntripUsingFallback, value);
+    }
+
+    private bool _ntripMainIsBack;
+    public bool NtripMainIsBack
+    {
+        get => _ntripMainIsBack;
+        set => SetProperty(ref _ntripMainIsBack, value);
+    }
+
+    // Which profile and services the client was started with, for the cards ("MOUNT@host:port"; the
+    // profile name is empty for a caster typed in by hand). Never holds a login.
+    private string _ntripProfileName = string.Empty;
+    public string NtripProfileName { get => _ntripProfileName; set => SetProperty(ref _ntripProfileName, value); }
+    private string _ntripMainText = string.Empty;
+    public string NtripMainText { get => _ntripMainText; set => SetProperty(ref _ntripMainText, value); }
+    private string _ntripFallbackText = string.Empty;
+    public string NtripFallbackText { get => _ntripFallbackText; set => SetProperty(ref _ntripFallbackText, value); }
+
+    private string _ntripNotice = string.Empty;
+    public string NtripNotice
+    {
+        get => _ntripNotice;
+        set => SetProperty(ref _ntripNotice, value);
     }
 
     // Result of the most recent NTRIP "Test Connection" probe (e.g. from the remote
@@ -198,6 +251,15 @@ public class ConnectionState : ObservableObject
         set => SetProperty(ref _moduleSubnet, value);
     }
 
+    // Bytes 9–11 of the last scan reply: the subnet the scan came from (AgOpenGPS
+    // firmware), offered as the subnet to move the modules to (#334).
+    private string? _scanReplySubnet;
+    public string? ScanReplySubnet
+    {
+        get => _scanReplySubnet;
+        set => SetProperty(ref _scanReplySubnet, value);
+    }
+
     // Overall status
     public bool IsFullyConnected =>
         IsGpsConnected && IsAutoSteerConnected && IsMachineConnected;
@@ -221,6 +283,12 @@ public class ConnectionState : ObservableObject
         IsNtripConnected = false;
         NtripStatus = "Not Connected";
         NtripBytesReceived = 0;
+        NtripRtcmDestination = "";
+        NtripRtcmUnicast = false;
+        NtripUsingFallback = NtripMainIsBack = false;
+        NtripNotice = "";
+        NtripProfileName = NtripMainText = NtripFallbackText = "";
+        NtripMountpoints = AgOpenWeb.Models.Ntrip.NtripMountpointList.None;
         IsAutoSteerConnected = IsAutoSteerDataOk = IsAutoSteerEngaged = false;
         IsMachineConnected = IsMachineDataOk = false;
         IsImuConnected = IsImuDataOk = false;

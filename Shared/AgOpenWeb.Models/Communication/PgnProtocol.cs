@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 
@@ -137,7 +133,8 @@ public static class PgnProtocol
             SpeedKmh = BitConverter.ToInt16(data, 5) / 10.0,
             Status = data[7],
             SteerAngleDeg = BitConverter.ToInt16(data, 8) / 100.0,
-            CrossTrackErrorCm = (sbyte)data[10],
+            // byte 10 as AgOpenGPS sends it: half-centimetres + 127, 255 = no line
+            CrossTrackErrorCm = data[10] == 255 ? null : (data[10] - 127) * 2,
             SectionBits1to8 = data[11],
             SectionBits9to16 = data[12],
             IsEngaged = (data[7] & 0x01) != 0, // firmware steers on bit 0 (#125)
@@ -241,7 +238,7 @@ public struct AutoSteerCommand
     public double SpeedKmh;
     public byte Status;
     public double SteerAngleDeg;
-    public sbyte CrossTrackErrorCm;
+    public int? CrossTrackErrorCm;      // null: no guidance line
     public byte SectionBits1to8;
     public byte SectionBits9to16;
     public bool IsEngaged;

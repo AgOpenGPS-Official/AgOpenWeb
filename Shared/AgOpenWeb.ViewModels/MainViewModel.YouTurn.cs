@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 
@@ -55,6 +43,8 @@ public partial class MainViewModel
     public bool IsActiveTrackClosed => SelectedTrack?.IsClosed == true;
 
     private int _uTurnSkipRows;
+    /// <summary>The row count the operator picked (skip cycle); the skip modes raise it to 1 while on.</summary>
+    private int _uTurnSkipRowsChosen;
     /// <summary>Number of rows to skip during U-turn (0–9).</summary>
     public int UTurnSkipRows
     {
@@ -62,7 +52,10 @@ public partial class MainViewModel
         set
         {
             if (SetProperty(ref _uTurnSkipRows, Math.Max(0, Math.Min(9, value))))
+            {
                 State.FieldTools.UTurnSkipRows = _uTurnSkipRows; // mirror (web-UI; post-clamp)
+                SyncYouTurnConfigToPipeline();
+            }
         }
     }
 
@@ -81,6 +74,7 @@ public partial class MainViewModel
             State.FieldTools.UTurnSkipMode = value;
             IsUTurnSkipRowsEnabled = value != 0;
             IsSkipWorkedMode = value == 2;
+            SyncYouTurnConfigToPipeline();
         }
     }
     private int _uTurnSkipMode;
@@ -202,21 +196,21 @@ public partial class MainViewModel
         var a = ConfigStore.AutoSteer;
         if (!a.ManualTurnsEnabled || SpeedKmh < a.ManualTurnsSpeed) return false;
         ReportFailure(ConfigStore.IsMetric
-            ? $"Too fast: slow down below {a.ManualTurnsSpeed:F0} km/h"
+            ? $"Too fast: slow down below {a.ManualTurnsSpeed:F0} kph"
             : $"Too fast: slow down below {a.ManualTurnsSpeed * 0.621371:F1} mph");
         return true;
     }
 
     public void TriggerManualYouTurnLeft()
     {
-        if (IsActiveTrackClosed) { StatusMessage = "U-turns aren't available on a closed (polygon) track"; return; }
+        if (IsActiveTrackClosed) { ReportFailure("U-turns aren't available on a closed (polygon) track"); return; }
         if (ManualTurnTooFast()) return;
         _intents.RequestManualYouTurn(turnLeft: true);
     }
 
     public void TriggerManualYouTurnRight()
     {
-        if (IsActiveTrackClosed) { StatusMessage = "U-turns aren't available on a closed (polygon) track"; return; }
+        if (IsActiveTrackClosed) { ReportFailure("U-turns aren't available on a closed (polygon) track"); return; }
         if (ManualTurnTooFast()) return;
         _intents.RequestManualYouTurn(turnLeft: false);
     }
@@ -248,61 +242,19 @@ public partial class MainViewModel
             return;
         }
 
-        // Current displayed direction:
-        //   - When armed, the arrow binds to State.YouTurn.IsTurnLeft.
-        //   - When idle, it binds to NextUTurnDirectionLeftOverride; null
-        //     means "no preference" — treat as right (false) so the first
-        //     tap produces a left toggle.
-        bool currentDisplayLeft = State.YouTurn.IsTriggered
-            ? State.YouTurn.IsTurnLeft
-            : (NextUTurnDirectionLeftOverride ?? false);
+        // Flip what the arrow shows. The web's U-turn arrow draws
+        // State.YouTurn.IsTurnLeft, the planned turn's side (SceneProjector),
+        // so a tap must start from that, or from a swap the cycle hasn't
+        // taken yet. Reading the override alone (null = right) made every
+        // tap ask for a left turn: the cycle takes the override in the same
+        // tick, the cache drops back to null, and a left turn never changed
+        // (#411).
+        bool currentDisplayLeft = NextUTurnDirectionLeftOverride ?? State.YouTurn.IsTurnLeft;
 
         NextUTurnDirectionLeftOverride = !currentDisplayLeft;
         StatusMessage = NextUTurnDirectionLeftOverride == true
             ? "U-turn direction: Left"
             : "U-turn direction: Right";
-    }
-
-    #endregion
-
-    #region VM utilities (used outside YouTurn too)
-
-    /// <summary>
-    /// Check if a track runs along the outer boundary (high percentage of points within
-    /// <paramref name="threshold"/> meters). Tracks that do skip the boundary-disengage check
-    /// on the first pass.
-    /// </summary>
-    private bool IsTrackOnBoundary(Track? track, double threshold = 5.0, double minOverlapPercent = 0.5)
-    {
-        if (track == null || track.Points.Count == 0) return false;
-        if (State.Field.CurrentBoundary?.OuterBoundary == null || !State.Field.CurrentBoundary.OuterBoundary.IsValid) return false;
-
-        int pointsNearBoundary = 0;
-        foreach (var point in track.Points)
-        {
-            if (DistanceToBoundary(point.Easting, point.Northing) < threshold)
-                pointsNearBoundary++;
-        }
-
-        return (double)pointsNearBoundary / track.Points.Count >= minOverlapPercent;
-    }
-
-    private double DistanceToBoundary(double easting, double northing)
-    {
-        if (State.Field.CurrentBoundary?.OuterBoundary == null || !State.Field.CurrentBoundary.OuterBoundary.IsValid)
-            return double.MaxValue;
-
-        var points = State.Field.CurrentBoundary.OuterBoundary.Points;
-        double minDist = double.MaxValue;
-        for (int i = 0; i < points.Count; i++)
-        {
-            var p1 = points[i];
-            var p2 = points[(i + 1) % points.Count];
-            double dist = GeometryMath.PointToSegmentDistance(
-                easting, northing, p1.Easting, p1.Northing, p2.Easting, p2.Northing);
-            if (dist < minDist) minDist = dist;
-        }
-        return minDist;
     }
 
     #endregion

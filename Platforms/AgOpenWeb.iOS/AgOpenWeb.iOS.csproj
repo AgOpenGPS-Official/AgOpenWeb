@@ -3,18 +3,24 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-ios</TargetFramework>
-    <RuntimeIdentifier>iossimulator-x64</RuntimeIdentifier>
+    <RuntimeIdentifier>iossimulator-arm64</RuntimeIdentifier>
     <Nullable>enable</Nullable>
     <LangVersion>14</LangVersion>
-    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
     <MtouchLink>None</MtouchLink>
     <ApplicationId>com.agopenweb.ios</ApplicationId>
     <ApplicationTitle>AgOpenWeb</ApplicationTitle>
     <!-- CFBundleShortVersionString (marketing) / CFBundleVersion (build). Bump
          ApplicationVersion on every TestFlight upload; it must strictly increase. -->
-    <ApplicationDisplayVersion>26.7.0</ApplicationDisplayVersion>
-    <ApplicationVersion>2</ApplicationVersion>
+    <ApplicationDisplayVersion>26.7.8</ApplicationDisplayVersion>
+    <ApplicationVersion>3</ApplicationVersion>
+  </PropertyGroup>
+
+  <!-- Simulator builds (the CI compile check and the local simulator loop) run on the
+       interpreter: no AOT step, which took 6 of the 7-9 minutes of the CI job on a 3-core
+       runner (63 s locally). Device builds (ios-arm64) keep AOT, which Apple requires. -->
+  <PropertyGroup Condition="$(RuntimeIdentifier.StartsWith('iossimulator'))">
+    <MtouchInterpreter>all</MtouchInterpreter>
   </PropertyGroup>
 
   <!-- iOS Device Signing Configuration -->
@@ -31,10 +37,6 @@
     <DevTeam>7LRC55SQS3</DevTeam>
   </PropertyGroup>
 
-  <ItemGroup>
-    <AvaloniaResource Include="Assets\**" />
-  </ItemGroup>
-
   <!-- App icon asset catalog (actool). XSAppIconAssets in Info.plist points the
        build at the AppIcon set within it. -->
   <ItemGroup>
@@ -47,16 +49,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.3" />
-    <PackageReference Include="Avalonia.iOS" Version="12.0.3" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
-    <!-- NativeWebView (WKWebView) for the thin all-in-one launcher mode. -->
-    <PackageReference Include="Avalonia.Controls.WebView" Version="12.0.1" />
+    <!-- Native libSkiaSharp for the server's imagery work (same version as RemoteServer's
+         SkiaSharp). -->
+    <PackageReference Include="SkiaSharp.NativeAssets.iOS" Version="3.119.4" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />
-    <!-- HotAvalonia removed - uses DynamicMethod which is not supported on iOS (no JIT allowed) -->
   </ItemGroup>
 
   <ItemGroup>
@@ -67,6 +66,18 @@
          referenceable) + the shared web-command wiring. -->
     <ProjectReference Include="..\..\Shared\AgOpenWeb.RemoteServer\AgOpenWeb.RemoteServer.csproj" />
     <ProjectReference Include="..\..\Shared\AgOpenWeb.RemoteWiring\AgOpenWeb.RemoteWiring.csproj" />
+  </ItemGroup>
+
+  <!-- The ISOBUS virtual terminal (VT card): see Shared/AgOpenWeb.VirtualTerminal. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.VirtualTerminal\AgOpenWeb.VirtualTerminal.csproj" />
+    <!-- From a SharpIsoTerm checkout its native library (static) is linked here, from its
+         native/build-ios/ or, for the simulator, native/build-ios-simulator/; the package's
+         buildTransitive/ does it otherwise. -->
+    <NativeReference Include="$(SharpIsoTermDir)/native/build-ios-simulator/libisoshim-all.a" Kind="Static" ForceLoad="true" IsCxx="true"
+                     Condition="'$(SharpIsoTermDir)' != '' And $(RuntimeIdentifier.StartsWith('iossimulator'))" />
+    <NativeReference Include="$(SharpIsoTermDir)/native/build-ios/libisoshim-all.a" Kind="Static" ForceLoad="true" IsCxx="true"
+                     Condition="'$(SharpIsoTermDir)' != '' And !$(RuntimeIdentifier.StartsWith('iossimulator'))" />
   </ItemGroup>
 
 </Project>

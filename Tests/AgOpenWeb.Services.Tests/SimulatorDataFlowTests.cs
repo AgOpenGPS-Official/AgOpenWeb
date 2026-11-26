@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Net;
@@ -34,7 +30,6 @@ public class SimulatorDataFlowTests
     private ITrackGuidanceService _mockGuidance = null!;
     private IUdpCommunicationService _mockUdp = null!;
     private IGpsService _mockGps = null!;
-    private ApplicationState _appState = null!;
     private AutoSteerService _autoSteer = null!;
 
     [SetUp]
@@ -43,16 +38,8 @@ public class SimulatorDataFlowTests
         _mockGuidance = Substitute.For<ITrackGuidanceService>();
         _mockUdp = Substitute.For<IUdpCommunicationService>();
         _mockGps = Substitute.For<IGpsService>();
-        _appState = new ApplicationState();
-        _autoSteer = new AutoSteerService(_mockGuidance, _mockUdp, _mockGps, _appState, ConfigurationStore.Instance);
+        _autoSteer = new AutoSteerService(_mockGuidance, _mockUdp, _mockGps, ConfigurationStore.Instance);
         _autoSteer.Start();
-    }
-
-    private void PresetLocalPlane(double originLat, double originLon)
-    {
-        _appState.Field.LocalPlane = new LocalPlane(
-            new Wgs84(originLat, originLon),
-            new SharedFieldProperties());
     }
 
     [TearDown]

@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -38,6 +26,11 @@ public class ConfigurationStore : ObservableObject
     /// For testing - allows replacing the singleton instance
     /// </summary>
     public static void SetInstance(ConfigurationStore store) => _instance = store;
+
+    /// <summary>The backend that owned <paramref name="store"/> stopped: the static lets go of it,
+    /// unless another store took its place already (<see cref="AgOpenWeb.Models.State.BackendStateLease"/>).</summary>
+    internal static void Release(ConfigurationStore store) =>
+        System.Threading.Interlocked.CompareExchange(ref _instance, null, store);
 
     // Sub-configurations (each is an ObservableObject for binding)
     public VehicleConfig Vehicle { get; } = new();
@@ -77,6 +70,12 @@ public class ConfigurationStore : ObservableObject
         get => _activeToolProfileName;
         set => SetProperty(ref _activeToolProfileName, value);
     }
+
+    /// <summary>
+    /// What the last profile load converted from an older format (a tool's hitch, #547), for the
+    /// operator and the log; null when nothing was. The loader saves the converted files at once.
+    /// </summary>
+    public string? ProfileMigrationNote { get; set; }
 
     private string _activeToolProfilePath = string.Empty;
     public string ActiveToolProfilePath
@@ -123,6 +122,26 @@ public class ConfigurationStore : ObservableObject
             }
             SetProperty(ref _numSections, clamped);
         }
+    }
+
+    // The operator's section count and default width (Vehicle & Tool › Sections) set every
+    // section to the default width (#676). AgOpenGPS does it on a count change (ConfigTool
+    // cboxNumSections), and a default width that changed nothing on screen confused its users.
+    // Sections of their own widths are typed one by one after. A profile load sets NumSections
+    // and the widths directly, not through these.
+
+    /// <summary>The operator changed the section count: every section takes the default width.</summary>
+    public void ApplySectionCount(int count)
+    {
+        Tool.SetAllSectionWidths(Tool.DefaultSectionWidth);
+        NumSections = count;
+    }
+
+    /// <summary>The operator changed the default section width: every section takes it.</summary>
+    public void ApplyDefaultSectionWidth(double cm)
+    {
+        Tool.DefaultSectionWidth = cm;
+        Tool.SetAllSectionWidths(cm);
     }
 
     /// <summary>

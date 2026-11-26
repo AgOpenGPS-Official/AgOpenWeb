@@ -1,25 +1,12 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Services;
-using Avalonia.Threading;
 
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -150,10 +137,10 @@ public partial class MainViewModel
 
     private void InitializeClock()
     {
-        CurrentTime = DateTime.Now.ToString("HH:mm:ss");
+        CurrentTime = DateTime.Now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
         var clockTimer = _timerFactory.Create();
         clockTimer.Interval = TimeSpan.FromSeconds(1);
-        clockTimer.Tick += (_, _) => CurrentTime = DateTime.Now.ToString("HH:mm:ss");
+        clockTimer.Tick += (_, _) => CurrentTime = DateTime.Now.ToString("HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
         clockTimer.Start();
     }
 
@@ -161,8 +148,8 @@ public partial class MainViewModel
 
     #region Camera Mode
 
-    private CameraMode _cameraMode = CameraMode.Map;
-    private CameraMode _previousCameraMode = CameraMode.Map;
+    private CameraMode _cameraMode = CameraMode.HeadingUp;
+    private CameraMode _previousCameraMode = CameraMode.HeadingUp;
     public CameraMode CameraMode
     {
         get => _cameraMode;
@@ -270,7 +257,6 @@ public partial class MainViewModel
             _displaySettings.IsDayMode = value;
             OnPropertyChanged();
             _mapService.SetDayMode(value);
-            ApplyThemeVariant(value);
         }
     }
 
@@ -324,14 +310,8 @@ public partial class MainViewModel
         }
     }
 
-    public string DisplayResolutionLabel => ConfigStore.Display.DisplayResolutionMultiplier switch
-    {
-        < 1.25 => "Ultra",
-        < 2.0  => "High",
-        < 3.25 => "Med",
-        < 5.0  => "Low",
-        _ => "Min",
-    };
+    public string DisplayResolutionLabel =>
+        AgOpenWeb.Models.Configuration.DisplayConfig.QualityLabel(ConfigStore.Display.DisplayResolutionMultiplier);
 
     #endregion
 

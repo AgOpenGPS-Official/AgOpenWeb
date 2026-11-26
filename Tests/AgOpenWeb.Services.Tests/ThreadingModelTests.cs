@@ -1,0 +1,103 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+
+namespace AgOpenWeb.Services.Tests;
+
+/// <summary>
+/// Source-scanning guards for the CONTRIBUTING "Threading Model" rules. Both carry an
+/// allowlist so that known debt, if any is ever taken on again, is listed by file and
+/// count rather than silently tolerated. Both lists are empty: the tree follows the rules.
+/// </summary>
+[TestFixture]
+public class ThreadingModelTests
+{
+    // Rule 2: the only writer of State.YouTurn / Guidance / Vehicle / Section is
+    // ApplyGpsCycleResult. Known writes elsewhere, by file and count: none (the #294
+    // debt list was paid down; the sim teleport, roll, snake reset, A/B swap and the
+    // DisplayLine clear all go through the pipeline now).
+    private static readonly Dictionary<string, int> KnownStateWrites = new(StringComparer.Ordinal);
+
+    private static readonly Regex StateWrite =
+        new(@"\bState\.(YouTurn|Guidance|Vehicle|Section)\.\w+\s*(=(?!=)|\+=|-=)", RegexOptions.Compiled);
+
+    [Test]
+    public void PipelineOwnedState_IsWrittenOnlyByApplyGpsCycleResult()
+    {
+        var dir = Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.ViewModels");
+        var found = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var file in SourceFiles(dir))
+        {
+            var name = Path.GetFileName(file);
+            if (name == "MainViewModel.ApplyResults.cs") continue;
+            var lines = File.ReadAllLines(file);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var l = lines[i];
+                if (l.TrimStart().StartsWith("//")) continue;
+                // An event subscription or a value quoted inside a log string is not a write.
+                if (l.Contains("PropertyChanged +=") || Regex.IsMatch(l, @"\bLog\w*\(")) continue;
+                if (StateWrite.IsMatch(l))
+                    (found.TryGetValue(name, out var list) ? list : found[name] = new()).Add($"{name}:{i + 1}  {l.Trim()}");
+            }
+        }
+
+        var violations = new List<string>();
+        foreach (var (file, sites) in found)
+        {
+            KnownStateWrites.TryGetValue(file, out var allowed);
+            if (sites.Count > allowed)
+                violations.Add($"{file}: {sites.Count} writes, {allowed} known\n    " + string.Join("\n    ", sites));
+        }
+        Assert.That(violations, Is.Empty,
+            "A new write to pipeline-owned State.* outside ApplyGpsCycleResult. Push an intent " +
+            "through IPipelineIntents and let the cycle's snapshot update the mirror " +
+            "(CONTRIBUTING, Threading Model, rule 2):\n  " + string.Join("\n  ", violations));
+    }
+
+    // "Adding a new service that reads GPS/position: take *WorkingState as a parameter,
+    // don't inject ApplicationState." Services that do, by file: none. The pipeline and
+    // section control take their field facts through setters (SetLocalPlane,
+    // SetSimulatorEnabled, SetHeadlandOn, SetFieldContext), Smart WAS gets speed and
+    // cross-track error with each sample, and the dump takes a RuntimeStateCapture.
+    private static readonly HashSet<string> KnownApplicationStateConsumers = new(StringComparer.Ordinal);
+
+    [Test]
+    public void Services_DoNotTakeApplicationState_BeyondTheKnownOnes()
+    {
+        var dir = Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.Services");
+        var violations = new List<string>();
+        foreach (var file in SourceFiles(dir))
+        {
+            var name = Path.GetFileName(file);
+            if (KnownApplicationStateConsumers.Contains(name)) continue;
+            var lines = File.ReadAllLines(file);
+            for (int i = 0; i < lines.Length; i++)
+                if (Regex.IsMatch(lines[i], @"\bApplicationState\s+\w+\s*[,)=]") && !lines[i].TrimStart().StartsWith("//"))
+                    violations.Add($"{name}:{i + 1}  {lines[i].Trim()}");
+        }
+        Assert.That(violations, Is.Empty,
+            "A service takes ApplicationState. Take the *WorkingState it needs as a parameter " +
+            "instead (CONTRIBUTING, Threading Model, common patterns):\n  " + string.Join("\n  ", violations));
+    }
+
+    private static IEnumerable<string> SourceFiles(string dir) =>
+        Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
+                     && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"));
+
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "AgOpenWeb.sln")))
+            dir = dir.Parent;
+        Assert.That(dir, Is.Not.Null, "Could not locate repo root (AgOpenWeb.sln) from test base dir.");
+        return dir!.FullName;
+    }
+}

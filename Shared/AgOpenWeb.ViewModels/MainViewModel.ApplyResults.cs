@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Linq;
 using AgOpenWeb.Models.State;
@@ -55,9 +54,21 @@ public partial class MainViewModel
         // For values not yet on State.Vehicle (RollDegrees), cache here.
         _latestRollDegrees = result.RollDegrees;
 
+        // Field data card: trip distance (#321).
+        if (result.GpsValid) AccumulateTripDistance(result.Easting, result.Northing);
+
+        // Speed, distance and distance off the line to the ISOBUS task controller (PGN 242, #921).
+        if (result.GpsValid) SendIsobusProcessData(result);
+
         // Sole writer to State.Vehicle — Phase B completion. Was previously
         // also written from MainViewModel.HandleGpsUiUpdates on the
         // _gpsService.GpsDataUpdated callback path (Rule 2 violation).
+        // $KSXT carries neither HDOP nor the correction age (its age slot is reserved), and
+        // neither does #INSPVAXA, so those read "—" rather than a reassuring 0.0. The
+        // pipeline's own fix validator saw the raw zeros, which pass; the receiver's RTK
+        // timeout is the only stale-corrections guard on those sentences.
+        bool reportsHdopAndAge = result.SentenceType
+            is not (AgOpenWeb.Models.GpsSentenceType.Ksxt or AgOpenWeb.Models.GpsSentenceType.Inspvax);
         State.Vehicle.UpdateFromGps(
             new AgOpenWeb.Models.Position
             {
@@ -71,8 +82,9 @@ public partial class MainViewModel
             },
             result.FixQuality,
             result.SatelliteCount,
-            result.Hdop,
-            result.DifferentialAge);
+            reportsHdopAndAge ? result.Hdop : double.NaN,
+            reportsHdopAndAge ? result.DifferentialAge : double.NaN);
+        State.Vehicle.Roll = result.RollDegrees; // the web UI's roll readout and roll-zero read this
 
         // Tool position — set ToolEasting LAST to trigger map update
         ToolNorthing = result.ToolNorthing;
@@ -89,10 +101,12 @@ public partial class MainViewModel
         // DisplayTrack / BaseTrack fields stay populated on GpsCycleResult until D8
         // deletes them, but this method no longer reads them.
 
-        // Contour (#110): lock image, the reference strip, and newly finished strips → Contour.txt.
+        // Contour (#110): lock image, the reference strip, and newly finished strips → the field's contours.
         State.Operation.IsContourLocked = result.IsContourLocked;
         State.Operation.ContourRef = result.ContourRef;
         if (result.HasContoursToSave) SaveContoursToField();
+
+        State.Field.IsOutOfBounds = result.IsOutOfBounds;
 
         // Hydraulic lift sounds on each up/down change (AgOpenGPS CHead.SetHydPosition;
         // gated by the Hydraulic sound setting in the audio service, #110).
@@ -103,13 +117,20 @@ public partial class MainViewModel
             _lastHydLiftState = result.HydLiftState;
         }
 
+        // What the dual antenna says about the direction of travel, for the engage check.
+        _dualHeadingOffTravelDeg = result.IsDualHeadingOffTravel ? result.DualHeadingOffTravelDeg : double.NaN;
+        _dualReadsReverse = result.IsReverse && ConfigStore.Connections.IsDualGps && !result.IsDualHeadingMissing;
+
         // Autosteer state
         if (result.AutoSteerDisengagedThisCycle)
         {
             IsAutoSteerEngaged = false;
             _autoSteerService.Disengage();
             _audioService.Play(Services.Interfaces.SoundEffect.AutoSteerOff);
-            StatusMessage = result.DisengageReason ?? "AutoSteer disengaged";
+            // The cycle's own kickouts (boundary, speed limits, RTK lost): only the app knows
+            // why, so say it on screen. The steer module only sees PGN 254 stop.
+            ReportFailure(result.DisengageReason ?? "AutoSteer disengaged");
+            LogAutoSteerOff(StatusMessage);
         }
 
         // Phase C C5: YouTurn + Guidance snapshot mirror. The cycle worker
@@ -128,7 +149,9 @@ public partial class MainViewModel
             // only on turn start/end) — see TMP-001 resolution.
             sy.TurnPath = yt.TurnPath is List<AgOpenWeb.Models.Base.Vec3> tp ? tp : yt.TurnPath?.ToList();
             sy.PathIndex = yt.PathIndex;
+            sy.ArcStart = yt.ArcStart;
             sy.IsTurnLeft = yt.IsTurnLeft;
+            sy.NextUTurnDirectionLeftOverride = yt.NextUTurnDirectionLeftOverride;
             sy.LastTurnWasLeft = yt.LastTurnWasLeft;
             sy.DistanceToHeadland = yt.DistanceToHeadland;
             sy.DistanceToTrigger = yt.DistanceToTrigger;
@@ -214,9 +237,21 @@ public partial class MainViewModel
             // input, and if we unconditionally wrote g.SteerAngle (=0 when no
             // guidance) every cycle we'd overwrite the user's L/R keypress
             // before the simulator tick consumed it.
+            // The simulator steers by guidance only while autosteer is engaged on a line;
+            // otherwise it goes back to the operator's L/R steer (AgOpenGPS timerSim_Tick:
+            // the guidance angle with the AutoSteer button on, else the steer scroll bar).
+            // Keeping the last guidance angle after a disengage drove the sim in circles (#411).
+            bool simFollowsGuidance = g.HasGuidance && IsAutoSteerEngaged;
+            if (simFollowsGuidance)
+            {
+                if (!_simFollowingGuidance) _simManualSteerAngle = SimulatorSteerAngle;
+                SimulatorSteerAngle = g.SteerAngle;
+            }
+            else if (_simFollowingGuidance)
+                SimulatorSteerAngle = _simManualSteerAngle;
+            _simFollowingGuidance = simFollowsGuidance;
             if (g.HasGuidance)
             {
-                SimulatorSteerAngle = g.SteerAngle;
                 CrossTrackError = g.CrossTrackError * 100;
                 _mapService.SetGuidancePoints(g.GoalPoint.Easting, g.GoalPoint.Northing, isActive: true);
             }
@@ -228,6 +263,10 @@ public partial class MainViewModel
                 // consumers (remote/web map) can draw it (§ guidance projection).
                 State.Guidance.DisplayLine = g.DisplayTrack?.Points;
             }
+            if (!ReferenceEquals(State.Guidance.GuideLines, g.GuideLines))
+                State.Guidance.GuideLines = g.GuideLines;
+            if (!ReferenceEquals(State.Guidance.ToolPass, g.ToolPass))
+                State.Guidance.ToolPass = g.ToolPass;
             if (!ReferenceEquals(_lastMirroredBaseTrack, g.BaseTrack))
             {
                 _lastMirroredBaseTrack = g.BaseTrack;
@@ -249,6 +288,10 @@ public partial class MainViewModel
         // Headland proximity
         State.Field.HeadlandProximityDistance = result.HeadlandProximityDistance;
         State.Field.HeadlandProximityWarning = result.HeadlandProximityWarning;
+
+        // Contour: a stretch ahead that can't be driven as a lap
+        State.Guidance.ContourAhead = result.ContourAhead;
+        State.Guidance.ContourAheadM = result.ContourAheadM;
 
         // Phase E E1: the cycle's first-fix LocalPlane auto-create arrives
         // here. The cycle already holds a cache of it for coord conversion;
@@ -311,6 +354,10 @@ public partial class MainViewModel
         if (result.StatusMessage != null)
             StatusMessage = result.StatusMessage;
 
+        // A manual U-turn that was refused, a turn that can't be made or was missed (a toast).
+        if (result.YouTurnNotice != null)
+            ReportFailure(result.YouTurnNotice);
+
         // Map vehicle/tool/hitch positions are pushed by OnRenderPullTick at
         // 30 Hz (vehicle dead-reckoned to "now" from the estimator, tool/hitch
         // from the live ToolPositionService snapshot updated at 100 Hz by the
@@ -369,4 +416,6 @@ public partial class MainViewModel
     }
 
     private byte _lastHydLiftState; // for the lift sounds (#110)
+    private double _dualHeadingOffTravelDeg = double.NaN; // dual heading across the travel, last cycle
+    private bool _dualReadsReverse;                      // the dual antenna read reversing, last cycle
 }

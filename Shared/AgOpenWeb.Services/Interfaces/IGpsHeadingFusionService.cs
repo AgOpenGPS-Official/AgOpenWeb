@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 namespace AgOpenWeb.Services.Interfaces;
 
@@ -21,7 +20,8 @@ public interface IGpsHeadingFusionService
     /// IMU heading (when valid), and the current fix's position and speed.
     /// </summary>
     /// <param name="gpsHeading">Raw heading from the NMEA sentence, degrees 0–360.
-    /// For PANDA this is seeded from the IMU; for PAOGI it's the dual-antenna heading.</param>
+    /// For PANDA this is seeded from the IMU; for PAOGI it's the dual-antenna heading.
+    /// Used as the dual heading only when <paramref name="hasDualHeading"/> is true.</param>
     /// <param name="imuHeading">IMU heading in degrees 0–360. Only meaningful
     /// when <paramref name="imuValid"/> is true (PANDA + IMU present).</param>
     /// <param name="imuValid">True when the IMU block in the latest sentence
@@ -29,9 +29,13 @@ public interface IGpsHeadingFusionService
     /// <param name="speedMs">Current speed, m/s.</param>
     /// <param name="easting">Current easting, meters, local frame.</param>
     /// <param name="northing">Current northing, meters, local frame.</param>
+    /// <param name="hasDualHeading">True when <paramref name="gpsHeading"/> is a
+    /// dual-antenna heading ($PAOGI, simulator). With Dual GPS on and this false
+    /// ($PANDA), the single-antenna path is used instead (#157).</param>
     /// <returns>Final heading in degrees, normalized to 0–360.</returns>
     double FuseHeading(double gpsHeading, double imuHeading, bool imuValid,
-                       double speedMs, double easting, double northing);
+                       double speedMs, double easting, double northing,
+                       bool hasDualHeading);
 
     /// <summary>Last fix-to-fix GPS heading, degrees (heading chart).</summary>
     double GpsHeadingDeg { get; }
@@ -43,12 +47,49 @@ public interface IGpsHeadingFusionService
     /// heading is flipped so it still points the way the vehicle faces.</summary>
     bool IsReverse { get; }
 
+    /// <summary>How many sideways position jumps the fix-to-fix heading was kept across (the
+    /// receiver changed its solution); the pipeline says so on the status line.</summary>
+    int JumpCount { get; }
+
+    /// <summary>The size of the last such jump, m.</summary>
+    double LastJumpM { get; }
+
     /// <summary>True while a single antenna with no IMU can't yet tell whether the
     /// vehicle changed direction (AgOpenGPS isChangingDirection).</summary>
     bool IsChangingDirection { get; }
+
+    /// <summary>True while Dual GPS is on but the latest fix had no dual-antenna
+    /// heading ($PANDA), so the single-antenna heading is used (#157).</summary>
+    bool IsDualHeadingMissing { get; }
+
+    /// <summary>How far the dual heading (with its offset) was from the direction the antenna
+    /// moved at the last check, degrees 0–90 (reversing reads as along it); NaN until
+    /// measured, and while the heading doesn't come from the dual antenna.</summary>
+    double DualHeadingOffTravelDeg { get; }
+
+    /// <summary>True while the dual heading runs across the direction of travel: its offset
+    /// doesn't match how the antennas are mounted, and AutoSteer won't steer with it.</summary>
+    bool IsDualHeadingOffTravel { get; }
+
+    /// <summary>True when the missing dual heading should be shown to the operator
+    /// (#313): the receiver has a position, and the heading was lost or hasn't come
+    /// within a short grace period. Not while the receiver is still starting up.</summary>
+    bool IsDualHeadingWarning { get; }
+
+    /// <summary>Update <see cref="IsDualHeadingWarning"/> for the fix just passed to
+    /// <see cref="FuseHeading"/>; <paramref name="fixQuality"/> is the GGA quality
+    /// (0 = no position).</summary>
+    void UpdateDualHeadingWarning(int fixQuality);
 
     /// <summary>
     /// Discard fix-to-fix history. Call on field close or GPS reconnect.
     /// </summary>
     void Reset();
+
+    /// <summary>
+    /// Learn the direction again from the next forward travel (AgOpenGPS "Reset
+    /// Direction"): forgets the first heading and the reverse state. Ignored while the
+    /// heading comes from the dual antenna. Takes effect on the next fix.
+    /// </summary>
+    void ResetDirection();
 }

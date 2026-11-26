@@ -1,10 +1,10 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using AgOpenWeb.Models.Configuration;
@@ -13,10 +13,11 @@ using AgOpenWeb.Services.Storage;
 namespace AgOpenWeb.Services.Profile;
 
 /// <summary>
-/// v2 tool profile serializer. Persists the Tool config + Sections array.
-/// All other config groups (Vehicle, Guidance, YouTurn, General) live in
-/// the parallel vehicle profile (<see cref="VehicleProfileJsonService"/>);
-/// see issue #346 / Plans/VEHICLE_TOOL_SPLIT_PLAN.md.
+/// v2 tool profile serializer. Persists what the Tool configuration panel edits: the
+/// Tool config + Sections array, the Machine tab, the U-Turn tab and the Tram tab.
+/// The other config groups (Vehicle, Guidance, General) live in the parallel vehicle
+/// profile (<see cref="VehicleProfileJsonService"/>); see issue #346 /
+/// Plans/VEHICLE_TOOL_SPLIT_PLAN.md.
 /// </summary>
 public static class ToolProfileJsonService
 {
@@ -37,8 +38,12 @@ public static class ToolProfileJsonService
         if (!Directory.Exists(toolsDirectory))
             Directory.CreateDirectory(toolsDirectory);
 
+        // A profile from a newer build is left as it is: this build would drop what it doesn't read.
+        var path = GetJsonPath(toolsDirectory, profileName);
+        if (HitchMigration.IsNewerFormat(path)) return;
+
         // Atomic write + .bak last-known-good (see AtomicJsonFile).
-        AtomicJsonFile.WriteJson(GetJsonPath(toolsDirectory, profileName), ToDto(store), Options);
+        AtomicJsonFile.WriteJson(path, ToDto(store), Options);
     }
 
     public static bool Load(string toolsDirectory, string profileName, ConfigurationStore store)
@@ -115,13 +120,15 @@ public static class ToolProfileJsonService
 
         return new ToolProfileDto
         {
-            FormatVersion = 2,
+            FormatVersion = HitchMigration.CurrentFormatVersion,
             Tool = new ToolDto
             {
                 Width = store.Tool.Width,
                 Overlap = store.Tool.Overlap,
                 Offset = store.Tool.Offset,
-                HitchLength = store.Tool.HitchLength,
+                // Format 2's axle → working point, with this vehicle: an older build reads it.
+                HitchLength = Models.Tool.RigGeometry.AxleToWorkingPoint(store.Vehicle, store.Tool),
+                WorkingPointFromHitch = store.Tool.WorkingPointFromHitch,
                 Length = store.Tool.Length,
                 TrailingHitchLength = store.Tool.TrailingHitchLength,
                 TankTrailingHitchLength = store.Tool.TankTrailingHitchLength,
@@ -158,6 +165,35 @@ public static class ToolProfileJsonService
                 Positions = sectionPositions,
                 Widths = sectionWidths,
             },
+            Machine = new MachineDto
+            {
+                HydraulicLiftEnabled = store.Machine.HydraulicLiftEnabled,
+                RaiseTime = store.Machine.RaiseTime,
+                LowerTime = store.Machine.LowerTime,
+                LookAhead = store.Machine.LookAhead,
+                InvertRelay = store.Machine.InvertRelay,
+                User1Value = store.Machine.User1Value,
+                User2Value = store.Machine.User2Value,
+                User3Value = store.Machine.User3Value,
+                User4Value = store.Machine.User4Value,
+                PinAssignments = store.Machine.PinAssignments.Select(f => (int)f).ToArray(),
+            },
+            YouTurn = new YouTurnDto
+            {
+                TurnRadius = store.Guidance.UTurnRadius,
+                ExtensionLength = store.Guidance.UTurnExtension,
+                DistanceFromBoundary = store.Guidance.UTurnDistanceFromBoundary,
+                Style = store.Guidance.UTurnStyle,
+                Smoothing = store.Guidance.UTurnSmoothing,
+            },
+            Tram = new TramDto
+            {
+                Width = store.Tram.TramWidth,
+                Passes = store.Guidance.TramPasses,
+                Display = store.Guidance.TramDisplay,
+                Line = store.Guidance.TramLine,
+                OuterInverted = store.Tram.IsOuterInverted,
+            },
         };
     }
 
@@ -171,7 +207,6 @@ public static class ToolProfileJsonService
         store.Tool.Width = dto.Tool?.Width ?? 6.0;
         store.Tool.Overlap = dto.Tool?.Overlap ?? 0.0;
         store.Tool.Offset = dto.Tool?.Offset ?? 0.0;
-        store.Tool.HitchLength = dto.Tool?.HitchLength ?? 1.8;
         store.Tool.Length = dto.Tool?.Length ?? 0.0;
         // Legacy AOG sign convention used negative TrailingHitchLength; canonicalize.
         store.Tool.TrailingHitchLength = Math.Abs(dto.Tool?.TrailingHitchLength ?? 2.5);
@@ -182,8 +217,14 @@ public static class ToolProfileJsonService
         store.Tool.IsToolTBT = dto.Tool?.IsToolTBT ?? false;
         store.Tool.IsToolRearFixed = dto.Tool?.IsToolRearFixed ?? true;
         store.Tool.IsToolFrontFixed = dto.Tool?.IsToolFrontFixed ?? false;
-        store.Tool.LookAheadOnSetting = dto.Tool?.LookAheadOn ?? 0.0;
-        store.Tool.LookAheadOffSetting = dto.Tool?.LookAheadOff ?? 0.0;
+        // The working point from the tractor's hitch (format 3); a format-2 tool's axle → working
+        // point is converted against the vehicle loaded with it (HitchMigration), after the type.
+        if (dto.FormatVersion >= 3 && dto.Tool?.WorkingPointFromHitch is double fromHitch)
+            store.Tool.WorkingPointFromHitch = fromHitch;
+        else
+            store.ProfileMigrationNote = $"Tool '{profileName}': " + HitchMigration.FromAxleToWorkingPoint(store, dto.Tool?.HitchLength ?? 1.8);
+        store.Tool.LookAheadOnSetting = dto.Tool?.LookAheadOn ?? Models.Configuration.ToolConfig.DefaultLookAheadOn;
+        store.Tool.LookAheadOffSetting = dto.Tool?.LookAheadOff ?? Models.Configuration.ToolConfig.DefaultLookAheadOff;
         store.Tool.TurnOffDelay = dto.Tool?.TurnOffDelay ?? 0.0;
         store.Tool.MinCoverage = dto.Tool?.MinCoverage ?? 100;
         store.Tool.IsMultiColoredSections = dto.Tool?.IsMultiColoredSections ?? false;
@@ -239,6 +280,43 @@ public static class ToolProfileJsonService
             }
         }
 
+        // Machine module (the Machine tab of the tool configuration): hydraulic lift,
+        // user values and relay pin functions. A file without the section gets the
+        // MachineConfig defaults, not whatever the previous tool left in the store.
+        var mach = dto.Machine;
+        var dm = new MachineConfig();
+        store.Machine.HydraulicLiftEnabled = mach?.HydraulicLiftEnabled ?? dm.HydraulicLiftEnabled;
+        store.Machine.RaiseTime = mach?.RaiseTime ?? dm.RaiseTime;
+        store.Machine.LowerTime = mach?.LowerTime ?? dm.LowerTime;
+        store.Machine.LookAhead = mach?.LookAhead ?? dm.LookAhead;
+        store.Machine.InvertRelay = mach?.InvertRelay ?? dm.InvertRelay;
+        store.Machine.User1Value = mach?.User1Value ?? dm.User1Value;
+        store.Machine.User2Value = mach?.User2Value ?? dm.User2Value;
+        store.Machine.User3Value = mach?.User3Value ?? dm.User3Value;
+        store.Machine.User4Value = mach?.User4Value ?? dm.User4Value;
+        var pins = dm.PinAssignments;   // defaults; saved values overlay them
+        if (mach?.PinAssignments != null)
+            for (int i = 0; i < Math.Min(mach.PinAssignments.Length, pins.Length); i++)
+                pins[i] = Enum.IsDefined(typeof(PinFunction), mach.PinAssignments[i])
+                    ? (PinFunction)mach.PinAssignments[i] : PinFunction.None;
+        store.Machine.PinAssignments = pins;
+
+        // U-Turn and Tram tabs of the tool configuration (#330): the turn a rig can make
+        // and its tram spacing follow the implement, not the tractor. As with Machine, a
+        // file without the section gets the defaults, not the previous tool's values.
+        var dg = new GuidanceConfig();
+        store.Guidance.UTurnRadius = VehicleToolLimits.Hold("uturn.radius", dto.YouTurn?.TurnRadius ?? dg.UTurnRadius, dg.UTurnRadius);
+        store.Guidance.UTurnExtension = VehicleToolLimits.Hold("uturn.extension", dto.YouTurn?.ExtensionLength ?? dg.UTurnExtension, dg.UTurnExtension);
+        store.Guidance.UTurnDistanceFromBoundary = dto.YouTurn?.DistanceFromBoundary ?? dg.UTurnDistanceFromBoundary;
+        store.Guidance.UTurnStyle = dto.YouTurn?.Style ?? dg.UTurnStyle;
+        store.Guidance.UTurnSmoothing = dto.YouTurn?.Smoothing ?? dg.UTurnSmoothing;
+
+        store.Tram.TramWidth = dto.Tram?.Width ?? new TramConfig().TramWidth;
+        store.Guidance.TramPasses = dto.Tram?.Passes ?? dg.TramPasses;
+        store.Guidance.TramDisplay = dto.Tram?.Display ?? dg.TramDisplay;
+        store.Guidance.TramLine = dto.Tram?.Line ?? dg.TramLine;
+        store.Tram.IsOuterInverted = dto.Tram?.OuterInverted ?? false;
+
         // Profile metadata
         store.ActiveToolProfileName = profileName;
         store.ActiveToolProfilePath = filePath;
@@ -251,6 +329,9 @@ public static class ToolProfileJsonService
         public int FormatVersion { get; set; }
         public ToolDto? Tool { get; set; }
         public SectionsDto? Sections { get; set; }
+        public MachineDto? Machine { get; set; }
+        public YouTurnDto? YouTurn { get; set; }
+        public TramDto? Tram { get; set; }
     }
 
     internal class ToolDto
@@ -258,7 +339,11 @@ public static class ToolProfileJsonService
         public double Width { get; set; }
         public double Overlap { get; set; }
         public double Offset { get; set; }
+        /// <summary>Format 2: rear axle → working point. Format 3 still writes it (with the vehicle it
+        /// was saved with) for older builds; it reads <see cref="WorkingPointFromHitch"/>.</summary>
         public double HitchLength { get; set; }
+        /// <summary>Format 3: the working point from the tractor's hitch, away from the tractor.</summary>
+        public double? WorkingPointFromHitch { get; set; }
         public double Length { get; set; }
         public double TrailingHitchLength { get; set; }
         public double TankTrailingHitchLength { get; set; }
@@ -295,5 +380,38 @@ public static class ToolProfileJsonService
         public int Count { get; set; }
         public double[] Positions { get; set; } = Array.Empty<double>();
         public double[]? Widths { get; set; }
+    }
+
+    internal class YouTurnDto
+    {
+        public double? TurnRadius { get; set; }
+        public double? ExtensionLength { get; set; }
+        public double? DistanceFromBoundary { get; set; }
+        public int? Style { get; set; }
+        public int? Smoothing { get; set; }
+    }
+
+    internal class TramDto
+    {
+        public double? Width { get; set; }
+        public int? Passes { get; set; }
+        public bool? Display { get; set; }
+        public int? Line { get; set; }
+        public bool? OuterInverted { get; set; } // AgOpenGPS setTool_isTramOuterInverted (#451)
+    }
+
+    internal class MachineDto
+    {
+        public bool? HydraulicLiftEnabled { get; set; }
+        public int? RaiseTime { get; set; }
+        public int? LowerTime { get; set; }
+        public double? LookAhead { get; set; }
+        public bool? InvertRelay { get; set; }
+        public int? User1Value { get; set; }
+        public int? User2Value { get; set; }
+        public int? User3Value { get; set; }
+        public int? User4Value { get; set; }
+        /// <summary>One <see cref="PinFunction"/> value per relay pin.</summary>
+        public int[]? PinAssignments { get; set; }
     }
 }

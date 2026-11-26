@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -35,6 +23,12 @@ public static class JobJsonService
     private const string JobsFolder = "jobs";
     private const string JobFileName = "job.json";
 
+    /// <summary>
+    /// The job.json version this build writes. A new member doesn't change it (a reader ignores
+    /// it, a writer keeps it: <see cref="Job.UnknownProperties"/>); a change of meaning raises it.
+    /// A job in a newer version, or whose coverage is (<see cref="Coverage.CoverageTileStore"/>),
+    /// is listed but never written: <see cref="IsNewerFormat"/>.
+    /// </summary>
     public const int CurrentSchemaVersion = 1;
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -91,9 +85,38 @@ public static class JobJsonService
         var dir = JobDirectory(fieldDirectory, job.TaskName);
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
+        var path = Path.Combine(dir, JobFileName);
+        if (SchemaVersionOf(path) > CurrentSchemaVersion)
+            return; // a newer build's job: read, never written
+
         var dto = JobDto.FromJob(job);
         var json = JsonSerializer.Serialize(dto, SerializerOptions);
-        File.WriteAllText(Path.Combine(dir, JobFileName), json);
+        File.WriteAllText(path, json);
+    }
+
+    /// <summary>
+    /// The job was saved by a newer build, its job.json or its coverage, in a format this one
+    /// doesn't fully understand: it is listed, but its coverage isn't loaded and nothing is
+    /// written to it, so this build can't overwrite what it doesn't understand.
+    /// </summary>
+    public static bool IsNewerFormat(string fieldDirectory, string taskName) =>
+        SchemaVersionOf(JobFilePath(fieldDirectory, taskName)) > CurrentSchemaVersion
+        || new Coverage.CoverageTileStore(JobDirectory(fieldDirectory, taskName)).IsNewerFormat;
+
+    /// <summary>A job.json's schemaVersion; 1 when it has none, or there is no readable file.</summary>
+    private static int SchemaVersionOf(string path)
+    {
+        if (!File.Exists(path)) return CurrentSchemaVersion;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            foreach (var p in doc.RootElement.EnumerateObject())
+                if (string.Equals(p.Name, "schemaVersion", StringComparison.OrdinalIgnoreCase)
+                    && p.Value.TryGetInt32(out int v))
+                    return Math.Max(1, v);
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or InvalidOperationException) { }
+        return CurrentSchemaVersion;
     }
 
     /// <summary>
@@ -151,10 +174,17 @@ public static class JobJsonService
         public DateTime? StartedAt { get; set; }
         public DateTime? EndedAt { get; set; }
         public DateTime? LastOpenedAt { get; set; }
-        public JobStatus? Status { get; set; }
+        // Read leniently: a status a newer build added must not make the job unreadable (it would
+        // drop out of the list). Such a job is never written, so the stand-in is never saved.
+        public JsonElement? Status { get; set; }
         public double DistanceTraveledMeters { get; set; }
         public double AreaWorkedHectares { get; set; }
         public int UTurnCount { get; set; }
+        public JobRig? Rig { get; set; }
+
+        /// <summary>Members this build doesn't read, kept as they were.</summary>
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement>? Other { get; set; }
 
         public static JobDto FromJob(Job j) => new()
         {
@@ -167,10 +197,12 @@ public static class JobJsonService
             StartedAt = j.StartedAt,
             EndedAt = j.EndedAt,
             LastOpenedAt = j.LastOpenedAt,
-            Status = j.Status,
+            Status = JsonSerializer.SerializeToElement(j.Status, SerializerOptions),
             DistanceTraveledMeters = j.DistanceTraveledMeters,
             AreaWorkedHectares = j.AreaWorkedHectares,
-            UTurnCount = j.UTurnCount
+            UTurnCount = j.UTurnCount,
+            Rig = j.Rig,
+            Other = j.UnknownProperties?.ToDictionary(p => p.Key, p => p.Value),
         };
 
         public Job ToJob(string fieldName, string taskName) => new()
@@ -183,10 +215,21 @@ public static class JobJsonService
             StartedAt = StartedAt ?? DateTime.Now,
             EndedAt = EndedAt,
             LastOpenedAt = LastOpenedAt ?? DateTime.Now,
-            Status = Status ?? JobStatus.InProgress,
+            Status = ReadStatus(Status),
             DistanceTraveledMeters = DistanceTraveledMeters,
             AreaWorkedHectares = AreaWorkedHectares,
-            UTurnCount = UTurnCount
+            UTurnCount = UTurnCount,
+            Rig = Rig,
+            UnknownProperties = Other,
         };
+
+        private static JobStatus ReadStatus(JsonElement? e)
+        {
+            if (e is { ValueKind: JsonValueKind.String } s && Enum.TryParse<JobStatus>(s.GetString(), true, out var named))
+                return named;
+            if (e is { ValueKind: JsonValueKind.Number } n && n.TryGetInt32(out int i) && Enum.IsDefined(typeof(JobStatus), i))
+                return (JobStatus)i;
+            return JobStatus.InProgress;
+        }
     }
 }

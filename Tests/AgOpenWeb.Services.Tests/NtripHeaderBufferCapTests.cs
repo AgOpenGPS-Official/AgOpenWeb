@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 using System;
 using System.Net;
 using System.Net.Sockets;
@@ -73,7 +77,8 @@ public class NtripHeaderBufferCapTests
             NullLogger<NtripClientService>.Instance);
         service.ConnectionStatusChanged += (_, args) =>
         {
-            if (!args.IsConnected) clientDisconnected.Set();
+            // Ignore the "Connecting…" status raised before the reply is checked.
+            if (!args.IsConnected && args.Message?.StartsWith("Connecting") != true) clientDisconnected.Set();
         };
 
         var config = new NtripConfiguration

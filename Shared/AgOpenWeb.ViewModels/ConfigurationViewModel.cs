@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.ObjectModel;
@@ -514,7 +502,7 @@ public partial class ConfigurationViewModel : ObservableObject
         "Section 5", "Section 6", "Section 7", "Section 8",
         "Section 9", "Section 10", "Section 11", "Section 12",
         "Section 13", "Section 14", "Section 15", "Section 16",
-        "Hyd Up", "Hyd Down", "Tram Left", "Tram Right", "Geo Stop"
+        "Hyd Up", "Hyd Down", "Tram Right", "Tram Left", "Geo Stop"
     };
 
     // ISO 11783 hitch/coupling types, in code order (list index = ISO code + 1, so
@@ -963,19 +951,22 @@ public partial class ConfigurationViewModel : ObservableObject
     public ICommand EditUTurnRadiusCommand { get; private set; } = null!;
     public ICommand EditUTurnExtensionCommand { get; private set; } = null!;
     public ICommand EditUTurnDistanceCommand { get; private set; } = null!;
-    public ICommand EditUTurnSkipWidthCommand { get; private set; } = null!;
     public ICommand EditUTurnSmoothingCommand { get; private set; } = null!;
 
-    // U-Turn style selector (0 = Sagitta [default], 1 = K-style). Dubins/Omega is
+    // U-Turn style selector (0 = Sagitta [default], 1 = K-style, 2 = Keyhole). Dubins/Omega is
     // no longer offered — it looped on close rows; Sagitta covers every case.
     public ICommand SetSagittaTurnStyleCommand { get; private set; } = null!;
     public ICommand SetKTurnStyleCommand { get; private set; } = null!;
+    public ICommand SetKeyholeTurnStyleCommand { get; private set; } = null!;
 
     /// <summary>True when the active U-turn style is Sagitta (the default).</summary>
-    public bool IsSagittaTurnStyle => Guidance.UTurnStyle != (int)YouTurnType.KStyle;
+    public bool IsSagittaTurnStyle => Guidance.UTurnStyle is not ((int)YouTurnType.KStyle or (int)YouTurnType.KeyholeStyle);
 
     /// <summary>True when the active U-turn style is K-style.</summary>
     public bool IsKTurnStyle => Guidance.UTurnStyle == (int)YouTurnType.KStyle;
+
+    /// <summary>True when the active U-turn style is Keyhole.</summary>
+    public bool IsKeyholeTurnStyle => Guidance.UTurnStyle == (int)YouTurnType.KeyholeStyle;
 
     // GPS Tab Commands
     public ICommand SetSingleGpsCommand { get; private set; } = null!;
@@ -1204,12 +1195,11 @@ public partial class ConfigurationViewModel : ObservableObject
                 v => Tool.Offset = v,
                 "m", integerOnly: false, allowNegative: true, min: -5, max: 5));
 
-        // Rigid tool (#2/#3): axle center -> implement working center (tiller/disc shaft).
-        // Tool-dependent; used only by front/rear-fixed tools.
+        // Rigid tool: its working point from the tractor's 3-point hitch (#547).
         EditToolHitchLengthCommand = new RelayCommand(() =>
-            ShowNumericInput("Working Center Distance", Tool.HitchLength,
-                v => Tool.HitchLength = v,
-                "m", integerOnly: false, allowNegative: true, min: -15, max: 15));
+            ShowNumericInput("Hitch to Working Point", Tool.WorkingPointFromHitch,
+                v => Tool.WorkingPointFromHitch = v,
+                "m", integerOnly: false, allowNegative: true, min: -10, max: 30));
 
         EditToolLengthCommand = new RelayCommand(() =>
             ShowNumericInput("Implement Length", Tool.Length,
@@ -1294,7 +1284,7 @@ public partial class ConfigurationViewModel : ObservableObject
         EditCutoffSpeedCommand = new RelayCommand(() =>
             ShowNumericInput("Slow Speed Cutoff", Tool.SlowSpeedCutoff,
                 v => Tool.SlowSpeedCutoff = v,
-                "km/h", integerOnly: false, allowNegative: false, min: 0, max: 10));
+                "kph", integerOnly: false, allowNegative: false, min: 0, max: 10));
 
         EditCoverageMarginCommand = new RelayCommand(() =>
             ShowNumericInput("Coverage Margin", Tool.CoverageMargin,
@@ -1394,11 +1384,6 @@ public partial class ConfigurationViewModel : ObservableObject
                 v => Guidance.UTurnDistanceFromBoundary = v,
                 "m", integerOnly: false, allowNegative: true, min: -10, max: 10));
 
-        EditUTurnSkipWidthCommand = new RelayCommand(() =>
-            ShowNumericInput("Skip Width", Guidance.UTurnSkipWidth,
-                v => Guidance.UTurnSkipWidth = (int)v,
-                "", integerOnly: true, allowNegative: false, min: 1, max: 10));
-
         EditUTurnSmoothingCommand = new RelayCommand(() =>
             ShowNumericInput("Smoothing", Guidance.UTurnSmoothing,
                 v => Guidance.UTurnSmoothing = (int)v,
@@ -1406,6 +1391,7 @@ public partial class ConfigurationViewModel : ObservableObject
 
         SetSagittaTurnStyleCommand = new RelayCommand(() => SetTurnStyle((int)YouTurnType.SagittaStyle));
         SetKTurnStyleCommand = new RelayCommand(() => SetTurnStyle((int)YouTurnType.KStyle));
+        SetKeyholeTurnStyleCommand = new RelayCommand(() => SetTurnStyle((int)YouTurnType.KeyholeStyle));
     }
 
     /// <summary>
@@ -1418,6 +1404,7 @@ public partial class ConfigurationViewModel : ObservableObject
         Config.MarkChanged();
         OnPropertyChanged(nameof(IsSagittaTurnStyle));
         OnPropertyChanged(nameof(IsKTurnStyle));
+        OnPropertyChanged(nameof(IsKeyholeTurnStyle));
     }
 
     private void InitializeGpsEditCommands()
@@ -1515,7 +1502,7 @@ public partial class ConfigurationViewModel : ObservableObject
         EditDualSwitchSpeedCommand = new RelayCommand(() =>
             ShowNumericInput("Switch Speed", Connections.DualSwitchSpeed,
                 v => Connections.DualSwitchSpeed = v,
-                "km/h", integerOnly: false, allowNegative: false, min: 0, max: 10));
+                "kph", integerOnly: false, allowNegative: false, min: 0, max: 10));
 
         // Single Antenna Settings
         EditMinGpsStepCommand = new RelayCommand(() =>
@@ -1764,7 +1751,6 @@ public partial class ConfigurationViewModel : ObservableObject
         {
             // Day/night current value is persistent STATE, not config.
             PersistentState.IsDayMode = !PersistentState.IsDayMode;
-            MainViewModel.ApplyThemeVariant(PersistentState.IsDayMode);
         });
 
         SetMetricUnitsCommand = new RelayCommand(() =>

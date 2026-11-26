@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using AgOpenWeb.Models; // CameraMode
@@ -50,6 +38,11 @@ public class PersistentAppState : ObservableObject
     /// <summary>For testing — replace the singleton instance.</summary>
     public static void SetInstance(PersistentAppState state) => _instance = state;
 
+    /// <summary>The backend that used <paramref name="state"/> stopped: the static lets go of it
+    /// (<see cref="BackendStateLease"/>); the next backend reads appstate.json into a new one.</summary>
+    internal static void Release(PersistentAppState state) =>
+        System.Threading.Interlocked.CompareExchange(ref _instance, null, state);
+
     // ---- Window geometry (Desktop; ignored on mobile) ----
     private double _windowWidth = 1200;
     public double WindowWidth { get => _windowWidth; set => SetProperty(ref _windowWidth, value); }
@@ -84,7 +77,7 @@ public class PersistentAppState : ObservableObject
     private double _cameraPitch = -60.0;
     public double CameraPitch { get => _cameraPitch; set => SetProperty(ref _cameraPitch, Math.Clamp(value, -90, -20)); }
 
-    private CameraMode _cameraMode = CameraMode.Map;
+    private CameraMode _cameraMode = CameraMode.HeadingUp; // centred, heading up: AgOpenGPS's default (#730)
     public CameraMode CameraMode { get => _cameraMode; set => SetProperty(ref _cameraMode, value); }
 
     // ---- Web client camera view (browser / CanvasKit PWA) ----

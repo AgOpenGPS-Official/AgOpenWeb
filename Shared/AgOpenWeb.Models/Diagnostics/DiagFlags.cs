@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.IO;
@@ -42,7 +41,7 @@ public static class DiagFlags
 
     // PERF-05 subsystem markers — each enables [<Subsystem>-PERF] emission
     // (time + GC.GetAllocatedBytesForCurrentThread deltas at 1 Hz). See
-    // Plans/PERF_05_SUBSYSTEM_CHURN_AUDIT.md. Subsystem 1 (2D render path)
+    // Plans/Ideas/PERF_05_SUBSYSTEM_CHURN_AUDIT.md. Subsystem 1 (2D render path)
     // reuses LogRenderTiming above.
     public static readonly bool PerfStateMirror;
     public static readonly bool PerfGpsPipeline;

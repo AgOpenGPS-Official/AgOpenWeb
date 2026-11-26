@@ -154,8 +154,8 @@ line. Report the finding; pick the next-step branch based on it.
 ## What to load at session start
 
 1. This file.
-2. `Plans/PERF_05_SUBSYSTEM_CHURN_AUDIT.md` and
-   `Plans/perf_data/2026-05-20/ANALYSIS.md` — the existing perf
+2. `Plans/Ideas/PERF_05_SUBSYSTEM_CHURN_AUDIT.md` and
+   `Plans/Ideas/perf_data/2026-05-20/ANALYSIS.md` — the existing perf
    instrumentation framework.
 3. `Shared/AgOpenWeb.ViewModels/MainViewModel.ApplyResults.cs` —
    where to add the GC instrumentation.

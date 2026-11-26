@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # AgOpenWeb — Linux systemd uninstaller. Stops + disables the service and removes
 # the unit and /opt/agopenweb. Keeps /home/agopenweb (field data + config) unless
 # --purge is given.

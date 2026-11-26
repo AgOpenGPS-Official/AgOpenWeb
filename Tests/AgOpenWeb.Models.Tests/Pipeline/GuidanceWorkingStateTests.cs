@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Linq;
 using System.Reflection;
@@ -25,10 +24,12 @@ public class GuidanceWorkingStateTests
         // ApplyGpsCycleResult from the snapshot) for view-independent consumers
         // — not values the cycle iterates on. DisplayLine is the followed offset
         // line (the points form of the snapshot's cycle-only DisplayTrack), drawn
-        // by the remote/web map. The guard's real intent — every WORKING field
+        // by the remote/web map; GuideLines are the curve's extra guidelines beside it
+        // (the snapshot's GuideLines, #450); ContourAhead/ContourAheadM say the contour line
+        // ahead can't be driven as a lap (GpsCycleResult). The guard's real intent — every WORKING field
         // has an observable mirror — is unaffected; only the reverse direction
         // carries these documented exceptions.
-        var observableOnly = new HashSet<string> { "DisplayLine" };
+        var observableOnly = new HashSet<string> { "DisplayLine", "GuideLines", "ToolPass", "ContourAhead", "ContourAheadM" };
         var observableProps = DeclaredProps(typeof(GuidanceState))
             .Where(p => !observableOnly.Contains(p.Name))
             .ToArray();

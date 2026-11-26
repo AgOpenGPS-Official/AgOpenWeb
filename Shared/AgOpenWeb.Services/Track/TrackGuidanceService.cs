@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -189,6 +177,12 @@ public class TrackGuidanceService : ITrackGuidanceService
         if (input.UseStanley)
         {
             CalculateStanleyGuidance(input, output, points, indexA, indexB, ptA, ptB, dx, dz, isHeadingSameWay);
+
+            // Stanley has no goal point: the curve has ended when the pivot is past its end (#694).
+            if (!isABLine && !isClosed && !input.Track.IsPivot && input.IsAutoSteerOn && !input.IsReverse
+                && !input.IsYouTurnTriggered
+                && PastOpenEnd(points, indexA, indexB, output.ClosestPointPivot, reverseHeading, out _, out _))
+                output.IsAtEndOfTrack = true;
         }
         else
         {
@@ -242,16 +236,18 @@ public class TrackGuidanceService : ITrackGuidanceService
                 output.ClosestPointPivot,
                 input.GoalPointDistance,
                 reverseHeading,
-                isClosed);
+                isClosed,
+                out bool goalAtEnd);
 
-            // Check for end of track
-            if (!isClosed && input.IsAutoSteerOn && !input.IsReverse)
+            // Past the end of the curve, as AgOpenGPS (CABCurve.GetCurrentCurveLine): with AutoSteer
+            // on and going forward, a goal point at the open curve's end in the direction of travel
+            // (within 0.5 m of it, or beyond it on the straight past it, so a fix that steps over
+            // the 0.5 m doesn't miss it) stops guidance: the pipeline turns AutoSteer off unless a
+            // U-turn takes over there (#694).
+            if (goalAtEnd && !isClosed && !input.Track.IsPivot && input.IsAutoSteerOn && !input.IsReverse
+                && !input.IsYouTurnTriggered)
             {
-                var endPoint = isHeadingSameWay ? points[^1] : points[0];
-                if (GeometryMath.Distance(output.GoalPoint, endPoint) < 0.5)
-                {
-                    output.IsAtEndOfTrack = true;
-                }
+                output.IsAtEndOfTrack = true;
             }
         }
 
@@ -309,7 +305,12 @@ public class TrackGuidanceService : ITrackGuidanceService
     }
 
     /// <summary>
-    /// Calculate Stanley steering guidance.
+    /// Calculate Stanley steering guidance: AgOpenGPS's StanleyGuidanceService (the AB line
+    /// routine and CalculateSteerAngle), here serving curves too, segment by segment. The
+    /// cross-track term is damped by speed and filtered 50/50 with the last cycle's, the angle
+    /// is halved more than 0.5 m off the line and scaled by 1 − |d| closer in, and the integral
+    /// has its own blend, gate and decay. Tests/…/Guidance/SteeringMatchesAgOpenGpsTests holds
+    /// it to the snapshot's code.
     /// </summary>
     private void CalculateStanleyGuidance(
         TrackGuidanceInput input,
@@ -320,8 +321,16 @@ public class TrackGuidanceService : ITrackGuidanceService
         double dx, double dz,
         bool isHeadingSameWay)
     {
-        // Apply integral offset to create virtual offset line
-        double integral = input.PreviousState?.Integral ?? 0;
+        var state = output.State;
+        var prev = input.PreviousState ?? new TrackGuidanceState();
+
+        // Apply integral offset to create virtual offset line. The integral is accumulated
+        // from the pivot distance, which is flipped when driving against the track — it is
+        // vehicle-relative — but ptA.Heading + 90° is line-relative. Flip the offset to match,
+        // or driving against the track shifts the line toward the tractor and the integral
+        // cancels the correction instead of adding to it (XTE holds one way, drifts the other).
+        // AgOpenGPS StanleyGuidanceABLine has that asymmetry; this is the one place the two differ.
+        double integral = prev.Integral * (isHeadingSameWay ? 1.0 : -1.0);
         Vec3 steerA = new Vec3(
             ptA.Easting + Math.Sin(ptA.Heading + PIBy2) * integral,
             ptA.Northing + Math.Cos(ptA.Heading + PIBy2) * integral,
@@ -366,22 +375,45 @@ public class TrackGuidanceService : ITrackGuidanceService
         output.CrossTrackError = output.DistanceFromLinePivot;
         output.HeadingErrorDegrees = GeometryMath.ToDegrees(steerHeadingError);
 
-        // Stanley integral calculation
-        CalculateStanleyIntegral(input, output);
+        // Heading component (the overshoot setting); backing up it works the other way
+        if (input.IsReverse)
+            steerHeadingError *= -1;
+        steerHeadingError *= input.StanleyHeadingErrorGain;
 
-        // Stanley steering formula
-        double speedMs = input.AvgSpeed * 0.27778; // km/h to m/s
-        if (speedMs < 0.1) speedMs = 0.1;
+        // Speed damping: 1 up to walking pace, then 0.277 more per km/h
+        double sped = Math.Abs(input.AvgSpeed);
+        sped = sped > 1 ? 1 + 0.277 * (sped - 1) : 1;
 
-        // Heading component
-        double headingComponent = steerHeadingError * input.StanleyHeadingErrorGain;
+        // Cross-track component, filtered 50/50 with the last cycle's
+        double xteCorrection = Math.Atan(output.DistanceFromLineSteer * input.StanleyDistanceErrorGain / sped);
+        state.XTrackSteerCorrection = prev.XTrackSteerCorrection * 0.5 + xteCorrection * 0.5;
 
-        // Cross-track error component
-        double xteComponent = Math.Atan(
-            input.StanleyDistanceErrorGain * output.DistanceFromLineSteer / speedMs);
+        // Its derivative, sampled every 6th cycle: gates the integral below
+        state.DistSteerError = prev.DistSteerError * 0.95 + (state.XTrackSteerCorrection * 60) * 0.05;
+        state.Counter = prev.Counter + 1;
+        if (state.Counter > 5)
+        {
+            state.DerivativeDistError = state.DistSteerError - prev.LastDistSteerError;
+            state.LastDistSteerError = state.DistSteerError;
+            state.Counter = 0;
+        }
+        else
+        {
+            state.DerivativeDistError = 0;
+            state.LastDistSteerError = prev.LastDistSteerError;
+        }
 
         // Stanley uses inverted angle (matches original AOG implementation)
-        output.SteerAngle = GeometryMath.ToDegrees((headingComponent + xteComponent) * -1.0);
+        output.SteerAngle = GeometryMath.ToDegrees((state.XTrackSteerCorrection + steerHeadingError) * -1.0);
+
+        // Distance damping: half the angle far off the line, eased in close to it
+        if (Math.Abs(output.DistanceFromLineSteer) > 0.5)
+            output.SteerAngle *= 0.5;
+        else
+            output.SteerAngle *= 1 - Math.Abs(output.DistanceFromLineSteer);
+
+        // Stanley integral calculation
+        CalculateStanleyIntegral(input, output, prev);
 
         // Side hill compensation
         if (input.ImuRoll != 88888)
@@ -460,63 +492,41 @@ public class TrackGuidanceService : ITrackGuidanceService
     }
 
     /// <summary>
-    /// Calculate the integral term for Stanley.
+    /// The integral term for Stanley (AgOpenGPS CalculateSteerAngle's "pivot PID"): it builds
+    /// from the pivot distance only when the tractor is close (under 0.25 m), moving and settled,
+    /// and decays fast otherwise.
     /// </summary>
-    private void CalculateStanleyIntegral(TrackGuidanceInput input, TrackGuidanceOutput output)
+    private void CalculateStanleyIntegral(TrackGuidanceInput input, TrackGuidanceOutput output, TrackGuidanceState prev)
     {
         var state = output.State;
-        var prev = input.PreviousState ?? new TrackGuidanceState();
+        double pivotDistance = output.DistanceFromLinePivot;
 
-        if (input.StanleyIntegralGain != 0 && !input.IsReverse)
+        state.PivotDistanceError = prev.PivotDistanceError * 0.6 + pivotDistance * 0.4;
+
+        if (input.AvgSpeed > 1 && input.IsAutoSteerOn &&
+            Math.Abs(state.DerivativeDistError) < 1 && Math.Abs(state.PivotDistanceError) < 0.25)
         {
-            state.PivotDistanceError = output.DistanceFromLinePivot * 0.2 + prev.PivotDistanceError * 0.8;
-            state.Counter = prev.Counter + 1;
-
-            if (state.Counter > 4)
+            if ((prev.Integral < 0 && pivotDistance < 0) ||
+                (prev.Integral > 0 && pivotDistance > 0))
             {
-                state.PivotDerivative = state.PivotDistanceError - prev.PivotDistanceErrorLast;
-                state.PivotDistanceErrorLast = state.PivotDistanceError;
-                state.Counter = 0;
+                // Over the line heading the wrong way: unwind quickly
+                state.Integral = prev.Integral + state.PivotDistanceError * input.StanleyIntegralGain * -0.03;
             }
             else
             {
-                state.PivotDerivative = 0;
-                state.PivotDistanceErrorLast = prev.PivotDistanceErrorLast;
+                state.Integral = prev.Integral + state.PivotDistanceError * input.StanleyIntegralGain * -0.01;
             }
 
-            // Integral update
-            if (input.IsAutoSteerOn && input.AvgSpeed > 2.5 && Math.Abs(state.PivotDerivative) < 0.1)
-            {
-                if ((prev.Integral < 0 && output.DistanceFromLinePivot < 0) ||
-                    (prev.Integral > 0 && output.DistanceFromLinePivot > 0))
-                {
-                    state.Integral = prev.Integral + state.PivotDistanceError * input.StanleyIntegralGain * -0.06;
-                }
-                else
-                {
-                    if (Math.Abs(output.DistanceFromLinePivot) > 0.02)
-                    {
-                        state.Integral = prev.Integral + state.PivotDistanceError * input.StanleyIntegralGain * -0.02;
-                        state.Integral = Math.Clamp(state.Integral, -2.0, 2.0);
-                    }
-                    else
-                    {
-                        state.Integral = prev.Integral;
-                    }
-                }
-            }
-            else
-            {
-                state.Integral = prev.Integral * 0.97;
-            }
+            if (input.StanleyIntegralGain == 0)
+                state.Integral = 0;
         }
         else
         {
-            state.Integral = 0;
-            state.PivotDistanceError = 0;
-            state.PivotDistanceErrorLast = prev.PivotDistanceErrorLast;
-            state.Counter = prev.Counter;
+            state.Integral = prev.Integral * 0.7;
         }
+
+        if (input.IsReverse)
+            state.Integral = 0;
     }
 
     /// <summary>
@@ -715,7 +725,9 @@ public class TrackGuidanceService : ITrackGuidanceService
     }
 
     /// <summary>
-    /// Calculate goal point by walking along curve points.
+    /// Calculate goal point by walking along curve points. <paramref name="atEnd"/>: on an open
+    /// curve the goal point is at its end in the direction of travel, within 0.5 m of it or
+    /// beyond it (AgOpenGPS's "past end of curve").
     /// </summary>
     private Vec2 CalculateCurveGoalPoint(
         List<Vec3> points,
@@ -723,14 +735,62 @@ public class TrackGuidanceService : ITrackGuidanceService
         Vec2 startPoint,
         double goalDistance,
         bool reverseDirection,
-        bool isClosed)
+        bool isClosed,
+        out bool atEnd)
     {
+        var goal = CurveGoalPoint(points, indexA, indexB, startPoint, goalDistance, reverseDirection, isClosed, out atEnd);
+        if (!isClosed && !atEnd)
+            atEnd = GeometryMath.Distance(goal, reverseDirection ? points[^1] : points[0]) < 0.5;
+        return goal;
+    }
+
+    /// <summary>
+    /// <paramref name="p"/> (on the nearest segment's line) lies past the open curve's end in
+    /// the direction of travel: the segment is the last one that way and p is beyond its end
+    /// point. (<paramref name="ux"/>, <paramref name="uz"/>): the unit direction of travel there.
+    /// </summary>
+    private static bool PastOpenEnd(List<Vec3> points, int indexA, int indexB, Vec2 p, bool forward,
+        out double ux, out double uz)
+    {
+        ux = uz = 0;
+        int count = points.Count;
+        int endIdx = forward ? indexB : indexA;
+        if (count < 2 || endIdx != (forward ? count - 1 : 0)) return false;
+        var end = points[endIdx];
+        var before = points[forward ? indexA : indexB];
+        double tx = end.Easting - before.Easting, tz = end.Northing - before.Northing;
+        double tlen = Math.Sqrt(tx * tx + tz * tz);
+        if (tlen < 1e-6) return false;
+        ux = tx / tlen; uz = tz / tlen;
+        return (p.Easting - end.Easting) * ux + (p.Northing - end.Northing) * uz >= 0;
+    }
+
+    private Vec2 CurveGoalPoint(
+        List<Vec3> points,
+        int indexA, int indexB,
+        Vec2 startPoint,
+        double goalDistance,
+        bool reverseDirection,
+        bool isClosed,
+        out bool pastEnd)
+    {
+        pastEnd = false;
         int direction = reverseDirection ? 1 : -1;
         Vec3 current = new Vec3(startPoint.Easting, startPoint.Northing, 0);
         double distSoFar = 0;
         int count = points.Count;
 
         int startIdx = reverseDirection ? indexB : indexA;
+
+        // Already past the open curve's end: the closest point lies on the last segment's line
+        // beyond its end point. Walking from there to that point went BACK, and once the tractor
+        // was a look-ahead past the end the goal point was behind it, so it turned round and
+        // came back to the end (#694). Look ahead along the straight past the end instead.
+        if (!isClosed && PastOpenEnd(points, indexA, indexB, startPoint, reverseDirection, out double ux, out double uz))
+        {
+            pastEnd = true;
+            return new Vec2(startPoint.Easting + ux * goalDistance, startPoint.Northing + uz * goalDistance);
+        }
 
         for (int i = startIdx; ; )
         {
@@ -764,8 +824,10 @@ public class TrackGuidanceService : ITrackGuidanceService
                 // project the remaining look-ahead along the LAST segment's tangent instead
                 // of clamping at the endpoint. Clamping froze the goal at the last point, so
                 // the tractor reached it and spun 180° instead of driving on to the turn.
+                // The goal point is then past the end: AutoSteer stops (#694).
                 if (i < 0 || i >= count)
                 {
+                    pastEnd = true;
                     int lastIdx = i - direction;        // endpoint just consumed (== current)
                     int prevIdx = lastIdx - direction;  // point before it → travel tangent
                     if (prevIdx < 0 || prevIdx >= count)

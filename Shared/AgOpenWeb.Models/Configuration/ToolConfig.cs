@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -59,15 +47,18 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _offset, value);
     }
 
-    // Hitch (rigid tool): axle center -> implement working center (e.g. tiller rotary
-    // shaft, disc shaft). Tool-dependent, so it lives with the tool. Used ONLY by
-    // front/rear-fixed rigid tools. Trailing/TBT tools instead use Vehicle.HitchLength
-    // for the tractor hitch pin. Front tools use this positive (ahead), rear negative.
-    private double _hitchLength = 1.8;
-    public double HitchLength
+    // Rigid (front/rear fixed) tool: its working point (e.g. a tiller's rotor, a boom) from the
+    // tractor hitch it is mounted on (the rear 3-point's lower links, or the front 3-point), measured
+    // away from the tractor: behind a rear hitch, ahead of a front one. Negative = the working point
+    // is on the tractor's side of the hitch. The tractor's hitch is the vehicle's
+    // (Vehicle.ThreePointHitchLength / FrontHitchLength), so one tool profile fits every tractor
+    // (#547; ISO 11783-10: the device element's offset from its connector). Trailing/TBT tools hang
+    // on the drawbar (Vehicle.HitchLength) and use their own lengths below.
+    private double _workingPointFromHitch;
+    public double WorkingPointFromHitch
     {
-        get => _hitchLength;
-        set => SetProperty(ref _hitchLength, Math.Max(0, value));
+        get => _workingPointFromHitch;
+        set => SetProperty(ref _workingPointFromHitch, value);
     }
 
     // Fore-aft length of the implement body, from its attachment (hitch for rigid
@@ -101,6 +92,9 @@ public class ToolConfig : ObservableObject
     }
 
     private double _trailingToolToPivotLength;
+    /// <summary>Trailing / TBT: the tool's working centre from its wheels (the pivot), AgOpenGPS's
+    /// setTool_trailingToolToPivotLength: positive behind them, negative ahead (the Tool panel's
+    /// Behind / Ahead).</summary>
     public double TrailingToolToPivotLength
     {
         get => _trailingToolToPivotLength;
@@ -146,19 +140,21 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _isToolFrontFixed, value);
     }
 
-    // Section lookahead settings — default to 0 (no anticipation, no wait).
-    // Non-zero values model an actuator open/close delay; with the SectionControlService
-    // implementation the projection cancels the phase delay so the spray edge lands on
-    // the boundary, but only if the user actually has a slow valve. Defaulting to 0
-    // means a freshly-created vehicle paints right up to coverage edges (#332/#339).
-    private double _lookAheadOnSetting = 0.0;
+    // Section look-ahead, s: how long before an edge the module is asked to switch, to cover
+    // the valves' own time (the map waits that long, so it paints where product lands, #707).
+    // AgOpenGPS's defaults (ToolSettings setVehicle_toolLookAheadOn 1.0, ...Off 0.5): on 0 a
+    // sprayer with real valves started 2.5 m late at 9 km/h and ran on into the headland, and
+    // the map showed ground as sprayed before any product reached it (field job harness C16).
+    public const double DefaultLookAheadOn = 1.0;
+    public const double DefaultLookAheadOff = 0.5;
+    private double _lookAheadOnSetting = DefaultLookAheadOn;
     public double LookAheadOnSetting
     {
         get => _lookAheadOnSetting;
         set => SetProperty(ref _lookAheadOnSetting, value);
     }
 
-    private double _lookAheadOffSetting = 0.0;
+    private double _lookAheadOffSetting = DefaultLookAheadOff;
     public double LookAheadOffSetting
     {
         get => _lookAheadOffSetting;
@@ -259,7 +255,9 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _singleCoverageColor, value);
     }
 
-    private bool _isSectionOffWhenOut;
+    // On by default, as AgOpenGPS (ToolSettings setTool_isSectionOffWhenOut = true) and as a
+    // new or reset profile here: a fresh install sprayed outside the boundary (#690, finding 10).
+    private bool _isSectionOffWhenOut = true;
     public bool IsSectionOffWhenOut
     {
         get => _isSectionOffWhenOut;
@@ -283,11 +281,15 @@ public class ToolConfig : ObservableObject
         set => SetProperty(ref _isSectionsNotZones, value);
     }
 
-    private double _defaultSectionWidth = 100; // cm
+    /// <summary>The default section width a new tool starts with, in cm.</summary>
+    public const double InitialSectionWidthCm = 100;
+
+    private double _defaultSectionWidth = InitialSectionWidthCm; // cm
     public double DefaultSectionWidth
     {
         get => _defaultSectionWidth;
-        set => SetProperty(ref _defaultSectionWidth, value);
+        // No number (a profile may hold "NaN"): the initial 100 cm, not the last tool's width.
+        set => SetProperty(ref _defaultSectionWidth, double.IsFinite(value) ? value : InitialSectionWidthCm);
     }
 
     // Cutoff is stored and edited in km/h to match the UI label and user
@@ -347,12 +349,29 @@ public class ToolConfig : ObservableObject
     }
 
     /// <summary>
+    /// Sets every section to <paramref name="cm"/>, with one change notification: the operator
+    /// changed the section count or the default width (#676).
+    /// </summary>
+    public void SetAllSectionWidths(double cm)
+    {
+        if (!double.IsFinite(cm)) cm = DefaultSectionWidth; // as SetSectionWidth
+        var widths = new double[MaxSections];
+        Array.Fill(widths, cm);
+        SectionWidths = widths;
+        OnPropertyChanged(nameof(TotalSectionWidth));
+    }
+
+    /// <summary>
     /// Sets a specific section width by index and raises change notification.
     /// </summary>
     public void SetSectionWidth(int index, double value)
     {
+        // A width that is no number is not taken, wherever it comes from (a screen, a profile):
+        // the implement's width, the pass spacing and every section's place are sums of these.
+        // The default width takes its place, so a profile loaded with one does not keep the
+        // last tool's width for that section.
         if (index < 0 || index >= MaxSections) return;
-        _sectionWidths[index] = value;
+        _sectionWidths[index] = double.IsFinite(value) ? value : DefaultSectionWidth;
         OnPropertyChanged(nameof(SectionWidths));
         OnPropertyChanged(nameof(TotalSectionWidth));
     }

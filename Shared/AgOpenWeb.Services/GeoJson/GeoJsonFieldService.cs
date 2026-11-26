@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -22,19 +10,62 @@ using System.Text.Json;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.GeoJson;
+using AgOpenWeb.Models.Guidance;
 using AgOpenWeb.Models.Track;
-using AgOpenWeb.Services.Geometry;
 
 namespace AgOpenWeb.Services.GeoJson;
 
 /// <summary>
-/// Loads and saves field data as GeoJSON FeatureCollections.
-/// Each field component (boundary, tracks, headland, etc.) becomes a Feature
-/// with a "role" property for identification on load.
+/// A field's one file, field.geojson: a FeatureCollection where every part of the field is a
+/// Feature with a "role" property. <see cref="Save"/> writes the field itself (metadata,
+/// boundaries, headland polygon); the background image, tracks, flags and headland lines are
+/// saved on their own, when they change, and each save replaces only its own features.
 /// </summary>
-public class GeoJsonFieldService
+public partial class GeoJsonFieldService
 {
     private const string FileName = "field.geojson";
+
+    /// <summary>
+    /// The version of the format this build writes (the metadata feature's "formatVersion"; a
+    /// file without one is version 1). A new role or a new property doesn't change it: a reader
+    /// ignores what it doesn't know and a writer keeps it (the parts' UnknownProperties). Raise
+    /// it only when a change alters what something already in the file means. A build that
+    /// finds a higher version reads the field but writes nothing to it (<see cref="IsNewerFormat"/>),
+    /// so it can't overwrite what it doesn't understand.
+    /// </summary>
+    public const int CurrentFormatVersion = 1;
+
+    // The properties each role's reader reads (and its builder writes). Every other property of
+    // a feature is kept in the part's UnknownProperties and written back.
+    private static readonly HashSet<string> MetadataKeys = new()
+    {
+        FieldPropertyKeys.Role, FieldPropertyKeys.FormatVersion, FieldPropertyKeys.Name,
+        FieldPropertyKeys.OriginLatitude, FieldPropertyKeys.OriginLongitude, FieldPropertyKeys.Convergence,
+        FieldPropertyKeys.AreaHectares, FieldPropertyKeys.CreatedDate, FieldPropertyKeys.LastModifiedDate,
+    };
+    private static readonly HashSet<string> BoundaryKeys = new()
+    {
+        FieldPropertyKeys.Role, FieldPropertyKeys.IsDriveThrough, FieldPropertyKeys.IsHard, FieldPropertyKeys.AreaHectares,
+    };
+    private static readonly HashSet<string> TrackKeys = new()
+    {
+        FieldPropertyKeys.Role, FieldPropertyKeys.Name, FieldPropertyKeys.TrackType, FieldPropertyKeys.IsClosed,
+        FieldPropertyKeys.NoPassOffset, FieldPropertyKeys.NudgeDistance, FieldPropertyKeys.IsVisible,
+    };
+    private static readonly HashSet<string> FlagKeys = new()
+    {
+        FieldPropertyKeys.Role, FieldPropertyKeys.Name, FieldPropertyKeys.Color, FieldPropertyKeys.Id, FieldPropertyKeys.Notes,
+    };
+    private static readonly HashSet<string> HeadlandLineKeys = new()
+    {
+        FieldPropertyKeys.Role, FieldPropertyKeys.Name, FieldPropertyKeys.MoveDistance, FieldPropertyKeys.Mode,
+        FieldPropertyKeys.APointIndex,
+    };
+    private static readonly HashSet<string> BackgroundKeys = new()
+    {
+        FieldPropertyKeys.Role, FieldPropertyKeys.Image, FieldPropertyKeys.MercatorMinX, FieldPropertyKeys.MercatorMaxX,
+        FieldPropertyKeys.MercatorMinY, FieldPropertyKeys.MercatorMaxY,
+    };
 
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -51,8 +82,20 @@ public class GeoJsonFieldService
         return File.Exists(Path.Combine(fieldDirectory, FileName));
     }
 
+    // Several savers read-modify-write the file at different times, some off the UI thread.
+    private static readonly object FileLock = new();
+
+    // The roles Save(field) writes. Everything else in the file is left as it is.
+    private static readonly HashSet<string> FieldRoles = new()
+    {
+        FeatureRoles.Metadata, FeatureRoles.OuterBoundary, FeatureRoles.InnerBoundary,
+        FeatureRoles.Headland,
+    };
+
     /// <summary>
-    /// Save a field as a GeoJSON FeatureCollection.
+    /// Save the field itself (metadata, boundaries, headland polygon), keeping its background
+    /// image, tracks, flags and headland lines. Passing <paramref name="tracks"/> also
+    /// replaces the tracks.
     /// </summary>
     public static void Save(Models.Field field, IReadOnlyList<Models.Track.Track>? tracks)
     {
@@ -62,44 +105,189 @@ public class GeoJsonFieldService
         if (!Directory.Exists(field.DirectoryPath))
             Directory.CreateDirectory(field.DirectoryPath);
 
-        var geo = new GeoConversion(field.Origin.Latitude, field.Origin.Longitude);
-        var fc = new GeoJsonFeatureCollection();
-
-        // Metadata feature -- a Point at the field origin
-        fc.Features.Add(BuildMetadataFeature(field));
+        var geo = new Projection(field.Origin.Latitude, field.Origin.Longitude);
+        var features = new List<GeoJsonFeature>
+        {
+            // Metadata feature -- a Point at the field origin, always first
+            BuildMetadataFeature(field),
+        };
 
         // Boundaries
         if (field.Boundary != null)
         {
             if (field.Boundary.OuterBoundary is { IsValid: true })
-                fc.Features.Add(BuildBoundaryFeature(geo, field.Boundary.OuterBoundary, FeatureRoles.OuterBoundary));
+                features.Add(BuildBoundaryFeature(geo, field.Boundary.OuterBoundary, FeatureRoles.OuterBoundary));
 
             foreach (var inner in field.Boundary.InnerBoundaries)
             {
                 if (inner.IsValid)
-                    fc.Features.Add(BuildBoundaryFeature(geo, inner, FeatureRoles.InnerBoundary));
+                    features.Add(BuildBoundaryFeature(geo, inner, FeatureRoles.InnerBoundary));
             }
 
             if (field.Boundary.HeadlandPolygon is { IsValid: true })
-                fc.Features.Add(BuildBoundaryFeature(geo, field.Boundary.HeadlandPolygon, FeatureRoles.Headland));
+                features.Add(BuildBoundaryFeature(geo, field.Boundary.HeadlandPolygon, FeatureRoles.Headland));
         }
 
-        // Tracks
         if (tracks != null)
+            features.AddRange(TrackFeatures(geo, tracks));
+
+        var path = Path.Combine(field.DirectoryPath, FileName);
+        lock (FileLock)
         {
-            foreach (var track in tracks)
+            // Keep the parts this save doesn't own. An unreadable file has nothing to keep
+            // (FieldService sets an unreadable one aside when it reads it).
+            GeoJsonFeatureCollection? existing = null;
+            if (File.Exists(path))
             {
-                if (track.Points.Count >= 2)
-                    fc.Features.Add(BuildTrackFeature(geo, track));
+                try { existing = ReadCollection(path); }
+                catch (Exception ex) when (ex is InvalidDataException or JsonException) { }
             }
+            if (existing != null && FormatVersionOf(existing) > CurrentFormatVersion)
+                return; // a newer build's field: read, never written (CurrentFormatVersion)
+            if (existing != null)
+                features.AddRange(existing.Features.Where(f =>
+                {
+                    var role = GetStringProp(f, FieldPropertyKeys.Role) ?? "";
+                    return !FieldRoles.Contains(role) && !(tracks != null && role == FeatureRoles.Track);
+                }));
+            Write(path, new GeoJsonFeatureCollection { Features = features, Other = existing?.Other });
         }
+    }
 
-        // Background image bounds
-        if (field.BackgroundImage is { IsValid: true })
-            fc.Features.Add(BuildBackgroundImageFeature(geo, field.BackgroundImage));
+    /// <summary>Replace the field's tracks.</summary>
+    public static void SaveTracks(string fieldDirectory, IReadOnlyList<Models.Track.Track> tracks) =>
+        ReplaceRole(fieldDirectory, FeatureRoles.Track, geo => TrackFeatures(geo, tracks));
 
+    /// <summary>Replace the field's flags.</summary>
+    public static void SaveFlags(string fieldDirectory, IReadOnlyList<Flag> flags) =>
+        ReplaceRole(fieldDirectory, FeatureRoles.Flag, geo => flags.Select(f => BuildFlagFeature(geo, f)));
+
+    /// <summary>Replace the field's headland lines.</summary>
+    public static void SaveHeadlandLine(string fieldDirectory, HeadlandLine headlandLine) =>
+        ReplaceRole(fieldDirectory, FeatureRoles.HeadlandLine, geo => headlandLine.Tracks
+            .Where(p => p.TrackPoints.Count > 0)
+            .Select(p => BuildHeadlandPathFeature(geo, p)));
+
+    /// <summary>
+    /// Remove the headland polygon the field's file carries with its boundary (an import, a field
+    /// from a test rig): the headland made since, or its removal, is the field's headland now.
+    /// </summary>
+    public static void RemoveHeadlandPolygon(string fieldDirectory) =>
+        ReplaceRole(fieldDirectory, FeatureRoles.Headland, _ => Array.Empty<GeoJsonFeature>());
+
+    /// <summary>Set or (with null) remove the field's background image placement.</summary>
+    public static void SaveBackground(string fieldDirectory, FieldBackground? background) =>
+        ReplaceRole(fieldDirectory, FeatureRoles.BackgroundImage, _ => background == null
+            ? Array.Empty<GeoJsonFeature>()
+            : new[] { BuildBackgroundFeature(background) });
+
+    public static FieldBackground? LoadBackground(string fieldDirectory) =>
+        ReadRole(fieldDirectory, FeatureRoles.BackgroundImage, ReadBackground).FirstOrDefault();
+
+    public static List<Models.Track.Track> LoadTracks(string fieldDirectory) =>
+        ReadRole(fieldDirectory, FeatureRoles.Track, ReadTrack);
+
+    public static List<Flag> LoadFlags(string fieldDirectory) =>
+        ReadRole(fieldDirectory, FeatureRoles.Flag, ReadFlag);
+
+    public static HeadlandLine LoadHeadlandLine(string fieldDirectory) =>
+        new() { Tracks = ReadRole(fieldDirectory, FeatureRoles.HeadlandLine, ReadHeadlandPath) };
+
+    private static IEnumerable<GeoJsonFeature> TrackFeatures(Projection geo, IReadOnlyList<Models.Track.Track> tracks) =>
+        tracks.Where(t => t.Points.Count >= 2).Select(t => BuildTrackFeature(geo, t)).ToList();
+
+    private static void ReplaceRole(string fieldDirectory, string role, Func<Projection, IEnumerable<GeoJsonFeature>> build)
+    {
+        var path = Path.Combine(fieldDirectory, FileName);
+        lock (FileLock)
+        {
+            var fc = ReadCollection(path);
+            if (FormatVersionOf(fc) > CurrentFormatVersion)
+                return; // a newer build's field: read, never written (CurrentFormatVersion)
+            var geo = ProjectionOf(fc);
+            fc.Features.RemoveAll(f => GetStringProp(f, FieldPropertyKeys.Role) == role);
+            fc.Features.AddRange(build(geo));
+            Write(path, fc);
+        }
+    }
+
+    private static List<T> ReadRole<T>(string fieldDirectory, string role, Func<Projection, GeoJsonFeature, T?> read)
+        where T : class
+    {
+        var fc = ReadCollection(Path.Combine(fieldDirectory, FileName));
+        var geo = ProjectionOf(fc);
+        return fc.Features
+            .Where(f => GetStringProp(f, FieldPropertyKeys.Role) == role)
+            .Select(f => read(geo, f))
+            .OfType<T>()
+            .ToList();
+    }
+
+    private static GeoJsonFeatureCollection ReadCollection(string path)
+    {
+        if (!File.Exists(path))
+            throw new FileNotFoundException("field.geojson not found", path);
+        return JsonSerializer.Deserialize<GeoJsonFeatureCollection>(File.ReadAllText(path), SerializerOptions)
+            ?? throw new InvalidDataException("Failed to deserialize GeoJSON");
+    }
+
+    /// <summary>The format version of the field's file (1 when it has none, or no file).</summary>
+    public static int FormatVersion(string fieldDirectory)
+    {
+        var path = Path.Combine(fieldDirectory, FileName);
+        if (!File.Exists(path)) return CurrentFormatVersion;
+        try { return FormatVersionOf(ReadCollection(path)); }
+        catch (Exception ex) when (ex is InvalidDataException or JsonException or IOException) { return CurrentFormatVersion; }
+    }
+
+    /// <summary>
+    /// The field was written by a newer build in a format this one doesn't fully understand: it
+    /// is read and can be worked, but nothing is written to its field.geojson.
+    /// </summary>
+    public static bool IsNewerFormat(string fieldDirectory) => FormatVersion(fieldDirectory) > CurrentFormatVersion;
+
+    private static int FormatVersionOf(GeoJsonFeatureCollection fc)
+    {
+        var meta = fc.Features.FirstOrDefault(f => GetStringProp(f, FieldPropertyKeys.Role) == FeatureRoles.Metadata);
+        if (meta == null || !HasProp(meta, FieldPropertyKeys.FormatVersion)) return 1;
+        return Math.Max(1, GetIntProp(meta, FieldPropertyKeys.FormatVersion));
+    }
+
+    /// <summary>A feature's properties outside <paramref name="known"/>, or null if none.</summary>
+    private static IReadOnlyDictionary<string, object?>? Unknown(GeoJsonFeature f, HashSet<string> known)
+    {
+        Dictionary<string, object?>? extra = null;
+        foreach (var (key, value) in f.Properties)
+            if (!known.Contains(key))
+                (extra ??= new Dictionary<string, object?>())[key] = value;
+        return extra;
+    }
+
+    /// <summary>Add a part's unknown properties back; a property the builder wrote wins.</summary>
+    private static Dictionary<string, object?> WithUnknown(Dictionary<string, object?> props, IReadOnlyDictionary<string, object?>? unknown)
+    {
+        if (unknown != null)
+            foreach (var (key, value) in unknown)
+                props.TryAdd(key, value);
+        return props;
+    }
+
+    private static GeoJsonFeature MetadataOf(GeoJsonFeatureCollection fc) =>
+        fc.Features.FirstOrDefault(f => GetStringProp(f, FieldPropertyKeys.Role) == FeatureRoles.Metadata)
+        ?? throw new InvalidDataException("GeoJSON missing metadata feature");
+
+    private static Projection ProjectionOf(GeoJsonFeatureCollection fc)
+    {
+        var meta = MetadataOf(fc);
+        return new Projection(GetDoubleProp(meta, FieldPropertyKeys.OriginLatitude),
+                              GetDoubleProp(meta, FieldPropertyKeys.OriginLongitude));
+    }
+
+    private static void Write(string path, GeoJsonFeatureCollection fc)
+    {
         var json = JsonSerializer.Serialize(fc, SerializerOptions);
-        File.WriteAllText(Path.Combine(field.DirectoryPath, FileName), json);
+        File.WriteAllText(path + ".tmp", json);
+        File.Move(path + ".tmp", path, overwrite: true);
     }
 
     /// <summary>
@@ -112,14 +300,10 @@ public class GeoJsonFieldService
         if (!File.Exists(path))
             throw new FileNotFoundException("field.geojson not found", path);
 
-        var json = File.ReadAllText(path);
-        var fc = JsonSerializer.Deserialize<GeoJsonFeatureCollection>(json, SerializerOptions)
-            ?? throw new InvalidDataException("Failed to deserialize GeoJSON");
+        var fc = ReadCollection(path);
 
         // We need the origin first to set up coordinate conversion
-        var metaFeature = fc.Features.FirstOrDefault(f => GetStringProp(f, FieldPropertyKeys.Role) == FeatureRoles.Metadata);
-        if (metaFeature == null)
-            throw new InvalidDataException("GeoJSON missing metadata feature");
+        var metaFeature = MetadataOf(fc);
 
         double originLat = GetDoubleProp(metaFeature, FieldPropertyKeys.OriginLatitude);
         double originLon = GetDoubleProp(metaFeature, FieldPropertyKeys.OriginLongitude);
@@ -130,6 +314,7 @@ public class GeoJsonFieldService
             DirectoryPath = fieldDirectory,
             Origin = new Position { Latitude = originLat, Longitude = originLon },
             Convergence = GetDoubleProp(metaFeature, FieldPropertyKeys.Convergence),
+            UnknownProperties = Unknown(metaFeature, MetadataKeys),
         };
 
         var nameProp = GetStringProp(metaFeature, FieldPropertyKeys.Name);
@@ -144,7 +329,7 @@ public class GeoJsonFieldService
         if (DateTime.TryParse(modifiedStr, out var modified))
             field.LastModifiedDate = modified;
 
-        var geo = new GeoConversion(originLat, originLon);
+        var geo = new Projection(originLat, originLon);
         var boundary = new Boundary();
         var tracks = new List<Models.Track.Track>();
 
@@ -179,16 +364,53 @@ public class GeoJsonFieldService
                         tracks.Add(track);
                     break;
 
-                case FeatureRoles.BackgroundImage:
-                    field.BackgroundImage = ReadBackgroundImage(geo, feature);
-                    break;
             }
         }
 
-        if (boundary.OuterBoundary != null)
+        if (boundary.OuterBoundary != null || boundary.InnerBoundaries.Count > 0 || boundary.HeadlandPolygon != null)
             field.Boundary = boundary;
 
         return (field, tracks);
+    }
+
+    // ---------------------------------------------------------------
+    // Plane <-> WGS84
+    // ---------------------------------------------------------------
+
+    // The field plane <-> WGS84, with LocalPlane: longitude scaled at each point's own
+    // latitude, the same conversion as live GPS and the AgOpenGPS import, so the coordinates
+    // are right for GIS tools too.
+    private sealed class Projection
+    {
+        private readonly LocalPlane _plane;
+
+        public Projection(double originLat, double originLon) =>
+            _plane = new LocalPlane(new Wgs84(originLat, originLon), new SharedFieldProperties());
+
+        public (double lat, double lon) ToWgs84(Vec2 local)
+        {
+            var w = _plane.ConvertGeoCoordToWgs84(new GeoCoord(local.Northing, local.Easting));
+            return (w.Latitude, w.Longitude);
+        }
+
+        public Vec2 ToLocal(double lat, double lon)
+        {
+            var c = _plane.ConvertWgs84ToGeoCoord(new Wgs84(lat, lon));
+            return new Vec2(c.Easting, c.Northing);
+        }
+
+        /// <summary>Local points to GeoJSON [lon, lat] (Vec2) or [lon, lat, heading] (Vec3).</summary>
+        public List<double[]> ToGeoJsonCoordinates(IReadOnlyList<Vec2> points) =>
+            points.Select(p => { var (lat, lon) = ToWgs84(p); return new[] { lon, lat }; }).ToList();
+
+        public List<double[]> ToGeoJsonCoordinates(IReadOnlyList<Vec3> points) =>
+            points.Select(p => { var (lat, lon) = ToWgs84(new Vec2(p.Easting, p.Northing)); return new[] { lon, lat, p.Heading }; }).ToList();
+
+        /// <summary>GeoJSON [lon, lat(, heading)] back to local points; heading defaults to 0.</summary>
+        public List<Vec3> FromGeoJsonCoordinatesVec3(IReadOnlyList<double[]> coords) =>
+            coords.Where(c => c.Length >= 2)
+                  .Select(c => { var l = ToLocal(c[1], c[0]); return new Vec3(l.Easting, l.Northing, c.Length >= 3 ? c[2] : 0); })
+                  .ToList();
     }
 
     // ---------------------------------------------------------------
@@ -204,9 +426,10 @@ public class GeoJsonFieldService
                 Type = GeoJsonTypes.Point,
                 Coordinates = new[] { field.Origin.Longitude, field.Origin.Latitude }
             },
-            Properties = new Dictionary<string, object?>
+            Properties = WithUnknown(new Dictionary<string, object?>
             {
                 [FieldPropertyKeys.Role] = FeatureRoles.Metadata,
+                [FieldPropertyKeys.FormatVersion] = CurrentFormatVersion,
                 [FieldPropertyKeys.Name] = field.Name,
                 [FieldPropertyKeys.OriginLatitude] = field.Origin.Latitude,
                 [FieldPropertyKeys.OriginLongitude] = field.Origin.Longitude,
@@ -214,11 +437,11 @@ public class GeoJsonFieldService
                 [FieldPropertyKeys.AreaHectares] = field.TotalArea,
                 [FieldPropertyKeys.CreatedDate] = field.CreatedDate.ToString("O"),
                 [FieldPropertyKeys.LastModifiedDate] = field.LastModifiedDate.ToString("O"),
-            }
+            }, field.UnknownProperties)
         };
     }
 
-    private static GeoJsonFeature BuildBoundaryFeature(GeoConversion geo, BoundaryPolygon polygon, string role)
+    private static GeoJsonFeature BuildBoundaryFeature(Projection geo, BoundaryPolygon polygon, string role)
     {
         var ring = BoundaryToGeoJsonRing(geo, polygon);
         return new GeoJsonFeature
@@ -228,17 +451,17 @@ public class GeoJsonFieldService
                 Type = GeoJsonTypes.Polygon,
                 Coordinates = new[] { ring }
             },
-            Properties = new Dictionary<string, object?>
+            Properties = WithUnknown(new Dictionary<string, object?>
             {
                 [FieldPropertyKeys.Role] = role,
                 [FieldPropertyKeys.IsDriveThrough] = polygon.IsDriveThrough,
                 [FieldPropertyKeys.IsHard] = polygon.IsHard,
                 [FieldPropertyKeys.AreaHectares] = polygon.AreaHectares,
-            }
+            }, polygon.UnknownProperties)
         };
     }
 
-    private static GeoJsonFeature BuildTrackFeature(GeoConversion geo, Models.Track.Track track)
+    private static GeoJsonFeature BuildTrackFeature(Projection geo, Models.Track.Track track)
     {
         var coords = geo.ToGeoJsonCoordinates(track.Points);
         return new GeoJsonFeature
@@ -248,7 +471,7 @@ public class GeoJsonFieldService
                 Type = GeoJsonTypes.LineString,
                 Coordinates = coords.Select(c => (object)c).ToArray()
             },
-            Properties = new Dictionary<string, object?>
+            Properties = WithUnknown(new Dictionary<string, object?>
             {
                 [FieldPropertyKeys.Role] = FeatureRoles.Track,
                 [FieldPropertyKeys.Name] = track.Name,
@@ -257,42 +480,41 @@ public class GeoJsonFieldService
                 [FieldPropertyKeys.NoPassOffset] = track.NoPassOffset,
                 [FieldPropertyKeys.NudgeDistance] = track.NudgeDistance,
                 [FieldPropertyKeys.IsVisible] = track.IsVisible,
-            }
+            }, track.UnknownProperties)
         };
     }
 
-    private static GeoJsonFeature BuildBackgroundImageFeature(GeoConversion geo, BackgroundImage img)
+    // The image's corners as a WGS84 polygon (NW, NE, SE, SW, closed), so GIS tools place it.
+    private static GeoJsonFeature BuildBackgroundFeature(FieldBackground bg)
     {
-        // Store image bounds as a polygon (4 corners + closing point)
-        var corners = new List<Vec2>
+        double n = bg.NwLatitude, w = bg.NwLongitude, s = bg.SeLatitude, e = bg.SeLongitude;
+        var props = new Dictionary<string, object?>
         {
-            new(img.MinEasting, img.MinNorthing),
-            new(img.MaxEasting, img.MinNorthing),
-            new(img.MaxEasting, img.MaxNorthing),
-            new(img.MinEasting, img.MaxNorthing),
+            [FieldPropertyKeys.Role] = FeatureRoles.BackgroundImage,
+            [FieldPropertyKeys.Image] = bg.ImageFile,
         };
-        var ring = geo.ToGeoJsonCoordinates(corners);
-        // Close the ring per GeoJSON spec
-        ring.Add(ring[0]);
-
+        if (bg.Mercator is { } m)
+        {
+            props[FieldPropertyKeys.MercatorMinX] = m.MinX;
+            props[FieldPropertyKeys.MercatorMaxX] = m.MaxX;
+            props[FieldPropertyKeys.MercatorMinY] = m.MinY;
+            props[FieldPropertyKeys.MercatorMaxY] = m.MaxY;
+        }
         return new GeoJsonFeature
         {
             Geometry = new GeoJsonGeometry
             {
                 Type = GeoJsonTypes.Polygon,
-                Coordinates = new[] { ring.Select(c => (object)c).ToArray() }
+                Coordinates = new[] { new object[] { new[] { w, n }, new[] { e, n }, new[] { e, s }, new[] { w, s }, new[] { w, n } } },
             },
-            Properties = new Dictionary<string, object?>
-            {
-                [FieldPropertyKeys.Role] = FeatureRoles.BackgroundImage,
-            }
+            Properties = WithUnknown(props, bg.UnknownProperties),
         };
     }
 
     /// <summary>
     /// Convert a BoundaryPolygon to a GeoJSON ring (closed array of [lon, lat, heading]).
     /// </summary>
-    private static object[] BoundaryToGeoJsonRing(GeoConversion geo, BoundaryPolygon polygon)
+    private static object[] BoundaryToGeoJsonRing(Projection geo, BoundaryPolygon polygon)
     {
         var ring = new List<object>(polygon.Points.Count + 1);
         foreach (var pt in polygon.Points)
@@ -310,11 +532,50 @@ public class GeoJsonFieldService
         return ring.ToArray();
     }
 
+    private static GeoJsonFeature BuildFlagFeature(Projection geo, Flag flag)
+    {
+        var (lat, lon) = geo.ToWgs84(new Vec2(flag.Easting, flag.Northing));
+        var props = new Dictionary<string, object?>
+        {
+            [FieldPropertyKeys.Role] = FeatureRoles.Flag,
+            [FieldPropertyKeys.Name] = flag.Name,
+            [FieldPropertyKeys.Color] = (int)flag.FlagColor,
+            [FieldPropertyKeys.Id] = flag.UniqueNumber,
+        };
+        if (!string.IsNullOrEmpty(flag.Notes))
+            props[FieldPropertyKeys.Notes] = flag.Notes;
+        return new GeoJsonFeature
+        {
+            Geometry = new GeoJsonGeometry { Type = GeoJsonTypes.Point, Coordinates = new[] { lon, lat } },
+            Properties = WithUnknown(props, flag.UnknownProperties),
+        };
+    }
+
+    private static GeoJsonFeature BuildHeadlandPathFeature(Projection geo, HeadlandPath path)
+    {
+        return new GeoJsonFeature
+        {
+            Geometry = new GeoJsonGeometry
+            {
+                Type = GeoJsonTypes.LineString,
+                Coordinates = geo.ToGeoJsonCoordinates(path.TrackPoints).Select(c => (object)c).ToArray(),
+            },
+            Properties = WithUnknown(new Dictionary<string, object?>
+            {
+                [FieldPropertyKeys.Role] = FeatureRoles.HeadlandLine,
+                [FieldPropertyKeys.Name] = path.Name,
+                [FieldPropertyKeys.MoveDistance] = path.MoveDistance,
+                [FieldPropertyKeys.Mode] = path.Mode,
+                [FieldPropertyKeys.APointIndex] = path.APointIndex,
+            }, path.UnknownProperties)
+        };
+    }
+
     // ---------------------------------------------------------------
     // Feature readers (GeoJSON -> local)
     // ---------------------------------------------------------------
 
-    private static BoundaryPolygon? ReadBoundaryPolygon(GeoConversion geo, GeoJsonFeature feature)
+    private static BoundaryPolygon? ReadBoundaryPolygon(Projection geo, GeoJsonFeature feature)
     {
         var coords = ReadPolygonRing(feature.Geometry, 0);
         if (coords == null || coords.Count < 3)
@@ -341,21 +602,33 @@ public class GeoJsonFieldService
         }
 
         polygon.UpdateBounds();
+        polygon.UnknownProperties = Unknown(feature, BoundaryKeys);
         return polygon;
     }
 
-    private static Models.Track.Track? ReadTrack(GeoConversion geo, GeoJsonFeature feature)
+    private static Models.Track.Track? ReadTrack(Projection geo, GeoJsonFeature feature)
     {
         var coords = ReadLineStringCoords(feature.Geometry);
         if (coords == null || coords.Count < 2)
             return null;
 
-        var points = geo.FromGeoJsonCoordinatesVec3(coords);
+        // The stored heading is not trusted: guidance takes a point's heading as that of the
+        // segment starting there, and curve offsets build on it, so it is worked out again the
+        // same way for every track, an AB line too. A file from AgOpenGPS (headings averaged
+        // over both neighbours) or another writer (none, or anything) reads the same.
+        var local = geo.FromGeoJsonCoordinatesVec3(coords);
+        double? storedHeading = coords[0].Length >= 3 ? local[0].Heading : null; // before it is worked out again
+        var points = Models.Guidance.CurveProcessing.CalculateHeadings(local);
 
         var trackTypeInt = GetIntProp(feature, FieldPropertyKeys.TrackType);
         var trackType = Enum.IsDefined(typeof(TrackType), trackTypeInt)
             ? (TrackType)trackTypeInt
             : TrackType.ABLine;
+
+        // An AB line from AgOpenGPS (its A+ line) can have B 1 m from A: no pass could be offset
+        // from it. B is moved out along the line, its stored heading kept where it agrees.
+        if (trackType == TrackType.ABLine && points.Count == 2)
+            points = Models.Track.Track.LengthenShortABLine(points, storedHeading);
 
         return new Models.Track.Track
         {
@@ -366,35 +639,59 @@ public class GeoJsonFieldService
             NoPassOffset = GetBoolProp(feature, FieldPropertyKeys.NoPassOffset),
             NudgeDistance = GetDoubleProp(feature, FieldPropertyKeys.NudgeDistance),
             IsVisible = GetBoolPropDefault(feature, FieldPropertyKeys.IsVisible, true),
+            UnknownProperties = Unknown(feature, TrackKeys),
         };
     }
 
-    private static BackgroundImage? ReadBackgroundImage(GeoConversion geo, GeoJsonFeature feature)
+    private static Flag? ReadFlag(Projection geo, GeoJsonFeature feature)
+    {
+        if (feature.Geometry.Coordinates is not JsonElement je || je.ValueKind != JsonValueKind.Array)
+            return null;
+        var c = je.EnumerateArray().Select(x => x.GetDouble()).ToArray();
+        if (c.Length < 2)
+            return null;
+        var local = geo.ToLocal(c[1], c[0]);
+        int id = GetIntProp(feature, FieldPropertyKeys.Id);
+        int color = GetIntProp(feature, FieldPropertyKeys.Color);
+        var flag = new Flag(local.Easting, local.Northing,
+            Enum.IsDefined(typeof(FlagColor), color) ? (FlagColor)color : FlagColor.Red, id,
+            GetStringProp(feature, FieldPropertyKeys.Name) is { Length: > 0 } name ? name : $"Flag {id}");
+        if (GetStringProp(feature, FieldPropertyKeys.Notes) is { Length: > 0 } notes)
+            flag.Notes = notes;
+        flag.UnknownProperties = Unknown(feature, FlagKeys);
+        return flag;
+    }
+
+    private static HeadlandPath? ReadHeadlandPath(Projection geo, GeoJsonFeature feature)
+    {
+        var coords = ReadLineStringCoords(feature.Geometry);
+        if (coords == null || coords.Count == 0)
+            return null;
+        return new HeadlandPath
+        {
+            Name = GetStringProp(feature, FieldPropertyKeys.Name) ?? string.Empty,
+            TrackPoints = geo.FromGeoJsonCoordinatesVec3(coords),
+            MoveDistance = GetDoubleProp(feature, FieldPropertyKeys.MoveDistance),
+            Mode = GetIntProp(feature, FieldPropertyKeys.Mode),
+            APointIndex = GetIntProp(feature, FieldPropertyKeys.APointIndex),
+            UnknownProperties = Unknown(feature, HeadlandLineKeys),
+        };
+    }
+
+    private static FieldBackground? ReadBackground(Projection geo, GeoJsonFeature feature)
     {
         var coords = ReadPolygonRing(feature.Geometry, 0);
-        if (coords == null || coords.Count < 4)
+        var image = GetStringProp(feature, FieldPropertyKeys.Image);
+        if (coords == null || coords.Count < 4 || string.IsNullOrEmpty(image))
             return null;
-
-        double minE = double.MaxValue, maxE = double.MinValue;
-        double minN = double.MaxValue, maxN = double.MinValue;
-
-        foreach (var c in coords)
-        {
-            var local = geo.ToLocal(c[1], c[0]);
-            if (local.Easting < minE) minE = local.Easting;
-            if (local.Easting > maxE) maxE = local.Easting;
-            if (local.Northing < minN) minN = local.Northing;
-            if (local.Northing > maxN) maxN = local.Northing;
-        }
-
-        return new BackgroundImage
-        {
-            MinEasting = minE,
-            MaxEasting = maxE,
-            MinNorthing = minN,
-            MaxNorthing = maxN,
-            IsEnabled = true,
-        };
+        MercatorBounds? mercator = HasProp(feature, FieldPropertyKeys.MercatorMinX)
+            ? new MercatorBounds(GetDoubleProp(feature, FieldPropertyKeys.MercatorMinX), GetDoubleProp(feature, FieldPropertyKeys.MercatorMaxX),
+                                 GetDoubleProp(feature, FieldPropertyKeys.MercatorMinY), GetDoubleProp(feature, FieldPropertyKeys.MercatorMaxY))
+            : null;
+        return new FieldBackground(image,
+            coords.Max(c => c[1]), coords.Min(c => c[0]),
+            coords.Min(c => c[1]), coords.Max(c => c[0]),
+            mercator) { UnknownProperties = Unknown(feature, BackgroundKeys) };
     }
 
     // ---------------------------------------------------------------
@@ -468,6 +765,10 @@ public class GeoJsonFieldService
         }
         return null;
     }
+
+    private static bool HasProp(GeoJsonFeature f, string key) =>
+        f.Properties.TryGetValue(key, out var val) && val is not null &&
+        !(val is JsonElement je && je.ValueKind == JsonValueKind.Null);
 
     private static double GetDoubleProp(GeoJsonFeature f, string key)
     {

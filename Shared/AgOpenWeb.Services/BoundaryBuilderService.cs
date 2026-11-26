@@ -1,11 +1,7 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
+// SPDX-License-Identifier: Apache-2.0
+
 // Ported from AgOpenGPS BoundaryBuilder by Brian Tischler.
 
 using System;
@@ -68,7 +64,7 @@ public class BoundaryBuilderService : IBoundaryBuilderService
 
         // Convert to BoundaryPolygon, then normalize resolution once at the source so
         // the 0.5 m build-segment density doesn't propagate downstream. See
-        // Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md.
+        // Plans/Completed/BOUNDARY_RESOLUTION_NORMALIZATION.md.
         var raw = new List<BoundaryPoint>(polygon.Count);
         foreach (var point in polygon)
             raw.Add(new BoundaryPoint(point.Easting, point.Northing, 0));

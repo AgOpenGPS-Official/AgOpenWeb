@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -59,7 +58,9 @@ public static class ContourFilesService
     }
 
     /// <summary>Append finished strips, creating the file with its header if needed.</summary>
-    public static void Append(string fieldDirectory, IEnumerable<IReadOnlyList<Vec3>> strips)
+    // AgOpenWeb never writes AgOpenGPS files (Contour.txt is imported into contours.geojson
+    // and deleted, see FieldService.LoadField). Internal so tests can build fixtures.
+    internal static void Append(string fieldDirectory, IEnumerable<IReadOnlyList<Vec3>> strips)
     {
         var path = Path.Combine(fieldDirectory, FileName);
         bool isNew = !File.Exists(path);

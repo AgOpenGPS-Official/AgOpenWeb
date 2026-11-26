@@ -1,21 +1,10 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Headland;
 
@@ -27,114 +16,121 @@ namespace AgOpenWeb.Models;
 /// </summary>
 public class BoundaryPolygon
 {
+    /// <summary>The properties of this part's feature in field.geojson that this build does not
+    /// read (a newer build's, another tool's), written back as they were (FIELD_FILE_FORMATS.md).</summary>
+    public IReadOnlyDictionary<string, object?>? UnknownProperties { get; set; }
+
     /// <summary>
     /// Boundary points (Easting, Northing, Heading in local coordinates)
     /// Minimum 3 points required for valid polygon
     /// </summary>
     public List<BoundaryPoint> Points { get; set; } = new List<BoundaryPoint>();
 
-    // Bounding box cache for fast rejection/acceptance
-    private double _minEasting = double.MaxValue;
-    private double _maxEasting = double.MinValue;
-    private double _minNorthing = double.MaxValue;
-    private double _maxNorthing = double.MinValue;
-    private bool _boundsDirty = true;
-
-    // Spatial index for fast segment lookup
+    // Bounding box, segment grid and point-in-polygon index, built together from Points and
+    // published as one immutable object: the GPS cycle and the 100 Hz control tick read the
+    // same polygon. Rebuilt when Points is replaced or changes length; call UpdateBounds after
+    // moving points in place.
     private const double GRID_CELL_SIZE = 50.0; // meters per cell
-    private Dictionary<(int, int), List<int>>? _spatialIndex; // cell -> list of segment indices
-    private int _gridOffsetE; // offset to make grid indices non-negative
-    private int _gridOffsetN;
 
-    /// <summary>
-    /// Call this after modifying Points to update the bounding box cache and spatial index
-    /// </summary>
-    public void UpdateBounds()
+    private sealed class Index
     {
-        if (Points.Count == 0)
-        {
-            _minEasting = _maxEasting = _minNorthing = _maxNorthing = 0;
-            _boundsDirty = false;
-            _spatialIndex = null;
-            return;
-        }
-
-        _minEasting = double.MaxValue;
-        _maxEasting = double.MinValue;
-        _minNorthing = double.MaxValue;
-        _maxNorthing = double.MinValue;
-
-        foreach (var pt in Points)
-        {
-            if (pt.Easting < _minEasting) _minEasting = pt.Easting;
-            if (pt.Easting > _maxEasting) _maxEasting = pt.Easting;
-            if (pt.Northing < _minNorthing) _minNorthing = pt.Northing;
-            if (pt.Northing > _maxNorthing) _maxNorthing = pt.Northing;
-        }
-        _boundsDirty = false;
-
-        // Build spatial index
-        BuildSpatialIndex();
+        public required List<BoundaryPoint> Source { get; init; }
+        public required int Count { get; init; }
+        public required PolygonSlabIndex? Slabs { get; init; }
+        public required PolygonClearGrid? Clear { get; init; } // where the inside is clear of the outline
+        public required double MinEasting { get; init; }
+        public required double MaxEasting { get; init; }
+        public required double MinNorthing { get; init; }
+        public required double MaxNorthing { get; init; }
+        public required Dictionary<(int, int), List<int>> Grid { get; init; } // cell -> segment indices
+        public required int GridOffsetE { get; init; } // makes grid indices non-negative
+        public required int GridOffsetN { get; init; }
     }
 
+    private Index? _index;
+
     /// <summary>
-    /// Build grid-based spatial index for fast segment lookup
+    /// Call this after modifying Points in place to rebuild the bounding box and indexes
     /// </summary>
-    private void BuildSpatialIndex()
+    public void UpdateBounds() => Volatile.Write(ref _index, Build(Points));
+
+    private Index Current()
     {
-        _spatialIndex = new Dictionary<(int, int), List<int>>();
+        var index = Volatile.Read(ref _index);
+        var points = Points;
+        if (index != null && ReferenceEquals(index.Source, points) && index.Count == points.Count)
+            return index;
+        index = Build(points);
+        Volatile.Write(ref _index, index);
+        return index;
+    }
 
-        // Calculate grid offset to handle negative coordinates
-        _gridOffsetE = (int)Math.Floor(_minEasting / GRID_CELL_SIZE);
-        _gridOffsetN = (int)Math.Floor(_minNorthing / GRID_CELL_SIZE);
-
-        // Index each segment (edge between consecutive points)
-        for (int i = 0; i < Points.Count; i++)
+    private static Index Build(List<BoundaryPoint> points)
+    {
+        double minE = 0, maxE = 0, minN = 0, maxN = 0;
+        if (points.Count > 0)
         {
-            int j = (i + 1) % Points.Count;
+            minE = minN = double.MaxValue;
+            maxE = maxN = double.MinValue;
+            foreach (var pt in points)
+            {
+                if (pt.Easting < minE) minE = pt.Easting;
+                if (pt.Easting > maxE) maxE = pt.Easting;
+                if (pt.Northing < minN) minN = pt.Northing;
+                if (pt.Northing > maxN) maxN = pt.Northing;
+            }
+        }
 
-            var p1 = Points[i];
-            var p2 = Points[j];
+        // Grid-based spatial index for fast segment lookup
+        var grid = new Dictionary<(int, int), List<int>>();
+        int offsetE = (int)Math.Floor(minE / GRID_CELL_SIZE);
+        int offsetN = (int)Math.Floor(minN / GRID_CELL_SIZE);
+        for (int i = 0; i < points.Count; i++)
+        {
+            int j = (i + 1) % points.Count;
+            var p1 = points[i];
+            var p2 = points[j];
 
             // Find all cells this segment touches
-            double minE = Math.Min(p1.Easting, p2.Easting);
-            double maxE = Math.Max(p1.Easting, p2.Easting);
-            double minN = Math.Min(p1.Northing, p2.Northing);
-            double maxN = Math.Max(p1.Northing, p2.Northing);
+            int cellMinE = (int)Math.Floor(Math.Min(p1.Easting, p2.Easting) / GRID_CELL_SIZE) - offsetE;
+            int cellMaxE = (int)Math.Floor(Math.Max(p1.Easting, p2.Easting) / GRID_CELL_SIZE) - offsetE;
+            int cellMinN = (int)Math.Floor(Math.Min(p1.Northing, p2.Northing) / GRID_CELL_SIZE) - offsetN;
+            int cellMaxN = (int)Math.Floor(Math.Max(p1.Northing, p2.Northing) / GRID_CELL_SIZE) - offsetN;
 
-            int cellMinE = (int)Math.Floor(minE / GRID_CELL_SIZE) - _gridOffsetE;
-            int cellMaxE = (int)Math.Floor(maxE / GRID_CELL_SIZE) - _gridOffsetE;
-            int cellMinN = (int)Math.Floor(minN / GRID_CELL_SIZE) - _gridOffsetN;
-            int cellMaxN = (int)Math.Floor(maxN / GRID_CELL_SIZE) - _gridOffsetN;
-
-            // Add segment index to all cells it touches
             for (int ce = cellMinE; ce <= cellMaxE; ce++)
             {
                 for (int cn = cellMinN; cn <= cellMaxN; cn++)
                 {
-                    var key = (ce, cn);
-                    if (!_spatialIndex.TryGetValue(key, out var list))
+                    if (!grid.TryGetValue((ce, cn), out var list))
                     {
                         list = new List<int>();
-                        _spatialIndex[key] = list;
+                        grid[(ce, cn)] = list;
                     }
                     list.Add(i);
                 }
             }
         }
+
+        var slabs = PolygonSlabIndex.Build(points);
+        return new Index
+        {
+            Source = points,
+            Count = points.Count,
+            Slabs = slabs,
+            Clear = PolygonClearGrid.Build(slabs),
+            MinEasting = minE, MaxEasting = maxE, MinNorthing = minN, MaxNorthing = maxN,
+            Grid = grid, GridOffsetE = offsetE, GridOffsetN = offsetN,
+        };
     }
 
     /// <summary>
     /// Get segment indices near a point (from spatial index)
     /// </summary>
-    private IEnumerable<int> GetNearbySegments(double easting, double northing, double radius)
+    private static IEnumerable<int> GetNearbySegments(Index index, double easting, double northing, double radius)
     {
-        if (_spatialIndex == null) BuildSpatialIndex();
-        if (_spatialIndex == null) yield break;
-
         // Find cells within radius
-        int cellE = (int)Math.Floor(easting / GRID_CELL_SIZE) - _gridOffsetE;
-        int cellN = (int)Math.Floor(northing / GRID_CELL_SIZE) - _gridOffsetN;
+        int cellE = (int)Math.Floor(easting / GRID_CELL_SIZE) - index.GridOffsetE;
+        int cellN = (int)Math.Floor(northing / GRID_CELL_SIZE) - index.GridOffsetN;
         int cellRadius = (int)Math.Ceiling(radius / GRID_CELL_SIZE);
 
         var seen = new HashSet<int>();
@@ -143,7 +139,7 @@ public class BoundaryPolygon
         {
             for (int cn = cellN - cellRadius; cn <= cellN + cellRadius; cn++)
             {
-                if (_spatialIndex.TryGetValue((ce, cn), out var segments))
+                if (index.Grid.TryGetValue((ce, cn), out var segments))
                 {
                     foreach (int idx in segments)
                     {
@@ -153,26 +149,6 @@ public class BoundaryPolygon
                 }
             }
         }
-    }
-
-    /// <summary>
-    /// Check if point is definitely outside the bounding box (fast rejection)
-    /// </summary>
-    private bool IsOutsideBounds(double easting, double northing, double margin = 0)
-    {
-        if (_boundsDirty) UpdateBounds();
-        return easting < _minEasting - margin || easting > _maxEasting + margin ||
-               northing < _minNorthing - margin || northing > _maxNorthing + margin;
-    }
-
-    /// <summary>
-    /// Check if point is definitely inside the bounding box with margin (potential fast accept)
-    /// </summary>
-    private bool IsDeepInsideBounds(double easting, double northing, double margin)
-    {
-        if (_boundsDirty) UpdateBounds();
-        return easting > _minEasting + margin && easting < _maxEasting - margin &&
-               northing > _minNorthing + margin && northing < _maxNorthing - margin;
     }
 
     /// <summary>
@@ -225,8 +201,8 @@ public class BoundaryPolygon
     public bool IsValid => Points.Count >= 3;
 
     /// <summary>
-    /// Check if a point is inside this polygon using ray-casting algorithm
-    /// Ported from AOG_Dev CPolygon.IsPointInPolygon()
+    /// Check if a point is inside this polygon (the crossing rule of GeometryMath.CrossesSouth,
+    /// through the polygon's strip index: a dozen edges instead of all of them)
     /// </summary>
     /// <param name="easting">Point easting coordinate</param>
     /// <param name="northing">Point northing coordinate</param>
@@ -234,29 +210,7 @@ public class BoundaryPolygon
     public bool IsPointInside(double easting, double northing)
     {
         if (Points.Count < 3) return false;
-
-        // Fast rejection: if outside bounding box, definitely not inside
-        if (IsOutsideBounds(easting, northing))
-            return false;
-
-        bool isInside = false;
-        int j = Points.Count - 1;
-
-        for (int i = 0; i < Points.Count; i++)
-        {
-            // Ray-casting algorithm: cast ray from point to infinity
-            // Count intersections with polygon edges
-            if ((Points[i].Northing > northing) != (Points[j].Northing > northing) &&
-                (easting < (Points[j].Easting - Points[i].Easting) *
-                (northing - Points[i].Northing) /
-                (Points[j].Northing - Points[i].Northing) + Points[i].Easting))
-            {
-                isInside = !isInside;
-            }
-            j = i;
-        }
-
-        return isInside;
+        return Current().Slabs?.Contains(easting, northing) ?? false;
     }
 
     /// <summary>
@@ -272,12 +226,26 @@ public class BoundaryPolygon
         if (Points.Count < 3)
             return BoundaryResult.FullyInside; // No boundary = always inside
 
-        // FAST PATH: If section center is deep inside bounding box (50m+ from any edge),
-        // skip expensive polygon intersection tests - we're definitely fully inside
-        const double DEEP_INSIDE_MARGIN = 50.0; // meters from bounding box edge
-        if (IsDeepInsideBounds(sectionCenter.Easting, sectionCenter.Northing, DEEP_INSIDE_MARGIN + halfWidth))
+        // FAST PATH: nothing of the outline is within the section's half width of its centre and
+        // the centre is inside, so the whole section is: skip the intersection tests. The
+        // bounding box moved in 50 m was used here, and a section in a notch of the fence (deep
+        // inside the box, outside the field) was answered "inside": the sections stayed on there.
+        var index = Current();
+        if (index.Clear != null && index.Clear.IsClearInside(sectionCenter.Easting, sectionCenter.Northing, halfWidth))
         {
             return BoundaryResult.FullyInside;
+        }
+
+        // FAST PATH: the section's line, with a 1 m margin, lies wholly beside the bounding box: no edge can cross it and its ends and centre
+        // are outside, so the walk below would answer fully outside. An obstacle away from the
+        // tool is this case, every section three times a control tick (82 obstacles cost
+        // 0.8 ms and 1.5 MB a tick without it).
+        {
+            double reach = halfWidth + 1.0;
+            double dE = Math.Abs(Math.Cos(heading)) * reach, dN = Math.Abs(Math.Sin(heading)) * reach;
+            if (sectionCenter.Easting + dE < index.MinEasting || sectionCenter.Easting - dE > index.MaxEasting ||
+                sectionCenter.Northing + dN < index.MinNorthing || sectionCenter.Northing - dN > index.MaxNorthing)
+                return BoundaryResult.FullyOutside;
         }
 
         // Precompute transform
@@ -290,8 +258,10 @@ public class BoundaryPolygon
         // Use spatial index to only check nearby segments (within search radius)
         double searchRadius = halfWidth + GRID_CELL_SIZE; // Section width + one cell margin
 
-        foreach (int i in GetNearbySegments(sectionCenter.Easting, sectionCenter.Northing, searchRadius))
+        WorkCounters.PolygonTests++;
+        foreach (int i in GetNearbySegments(index, sectionCenter.Easting, sectionCenter.Northing, searchRadius))
         {
+            WorkCounters.PolygonEdges++;
             int j = (i + 1) % Points.Count;
 
             // Transform boundary points to local coordinates
@@ -306,8 +276,12 @@ public class BoundaryPolygon
             var intercept = GeometryMath.GetXInterceptAtYZero(p1, p2);
             if (intercept.HasValue)
             {
-                // Only count crossings within section width (with margin)
-                if (intercept.Value >= -halfWidth - 1.0 && intercept.Value <= halfWidth + 1.0)
+                // Only crossings on the section itself: the walk below starts at its left end
+                // (inside or not), so a crossing beyond either end must not toggle it. Counted up to
+                // 1 m beyond the ends, an edge crossing the section's line just past its end turned
+                // a section wholly in the field to 0 % inside (path job scenarios P1, the outer
+                // section shut along the boundary on the first lap).
+                if (intercept.Value > -halfWidth && intercept.Value < halfWidth)
                 {
                     crossings.Add(intercept.Value);
                 }
@@ -381,7 +355,7 @@ public class BoundaryPolygon
 /// Represents a single point in a boundary polygon
 /// Coordinates are in local system (meters from field origin)
 /// </summary>
-public class BoundaryPoint
+public class BoundaryPoint : IPlanarPoint
 {
     /// <summary>
     /// Easting (X coordinate) in meters

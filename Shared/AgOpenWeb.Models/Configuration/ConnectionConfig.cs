@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -87,6 +75,51 @@ public class ConnectionConfig : ObservableObject
     {
         get => _agShareEnabled;
         set => SetProperty(ref _agShareEnabled, value);
+    }
+
+    // RTCM corrections go to the GPS module's own address when it is known. On: always
+    // broadcast them to the modules' subnet, as AgIO does, for a setup where something
+    // other than the module sending positions needs them too.
+    private bool _rtcmBroadcast;
+    public bool RtcmBroadcast
+    {
+        get => _rtcmBroadcast;
+        set => SetProperty(ref _rtcmBroadcast, value);
+    }
+
+    // PGN 100, corrected position (Network IO, #337): sent on every fix to the module subnet
+    // and to AgIO's loopback port, for seed monitors, rate controllers and GPS_Out. With it,
+    // PGN 214 (speed, heading, fix quality) to AgIO's GPS loopback port for GPS_Out (#364).
+    private bool _sendCorrectedPosition;
+    public bool SendCorrectedPosition
+    {
+        get => _sendCorrectedPosition;
+        set => SetProperty(ref _sendCorrectedPosition, value);
+    }
+
+    // NTRIP on/off (Network IO). Off: no connection to a caster at all, for work where
+    // there is no mobile coverage and the connection would only keep retrying.
+    private bool _ntripEnabled = true;
+    public bool NtripEnabled
+    {
+        get => _ntripEnabled;
+        set => SetProperty(ref _ntripEnabled, value);
+    }
+
+    // NTRIP profile per field (a loaded field switches the profile) instead of one profile
+    // with a fallback service.
+    private bool _ntripProfilePerField;
+    public bool NtripProfilePerField
+    {
+        get => _ntripProfilePerField;
+        set => SetProperty(ref _ntripProfilePerField, value);
+    }
+
+    private bool _ntripModeNoticeShown;
+    public bool NtripModeNoticeShown
+    {
+        get => _ntripModeNoticeShown;
+        set => SetProperty(ref _ntripModeNoticeShown, value);
     }
 
     // GPS Mode

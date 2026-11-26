@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -131,76 +119,6 @@ namespace AgOpenWeb.Models.Base
             }
 
             return result;
-        }
-    }
-
-    /// <summary>
-    /// Helper utilities for curve operations
-    /// </summary>
-    public static class CurveUtils
-    {
-        /// <summary>
-        /// Calculate heading for curve points based on direction to next point
-        /// Last point uses heading from previous segment
-        /// </summary>
-        public static List<Vec3> CalculateHeadings(IReadOnlyList<Vec2> inputPoints)
-        {
-            var output = new List<Vec3>();
-
-            if (inputPoints == null || inputPoints.Count < 2)
-                return output;
-
-            for (int i = 0; i < inputPoints.Count - 1; i++)
-            {
-                var p1 = inputPoints[i];
-                var p2 = inputPoints[i + 1];
-
-                var dx = p2.Easting - p1.Easting;
-                var dy = p2.Northing - p1.Northing;
-
-                var heading = Math.Atan2(dx, dy);
-
-                output.Add(new Vec3(p1.Easting, p1.Northing, heading));
-            }
-
-            // Last point uses heading from previous segment
-            var last = inputPoints[inputPoints.Count - 1];
-            var lastHeading = output[output.Count - 1].Heading;
-            output.Add(new Vec3(last.Easting, last.Northing, lastHeading));
-
-            return output;
-        }
-
-        /// <summary>
-        /// Calculate heading for curve points (Vec3) based on direction to next point
-        /// Last point uses heading from previous segment
-        /// </summary>
-        public static List<Vec3> CalculateHeadings(IReadOnlyList<Vec3> inputPoints)
-        {
-            var output = new List<Vec3>();
-
-            if (inputPoints == null || inputPoints.Count < 2)
-                return output;
-
-            for (int i = 0; i < inputPoints.Count - 1; i++)
-            {
-                var p1 = inputPoints[i];
-                var p2 = inputPoints[i + 1];
-
-                var dx = p2.Easting - p1.Easting;
-                var dy = p2.Northing - p1.Northing;
-
-                var heading = Math.Atan2(dx, dy);
-
-                output.Add(new Vec3(p1.Easting, p1.Northing, heading));
-            }
-
-            // Last point uses heading from previous segment
-            var last = inputPoints[inputPoints.Count - 1];
-            var lastHeading = output[output.Count - 1].Heading;
-            output.Add(new Vec3(last.Easting, last.Northing, lastHeading));
-
-            return output;
         }
     }
 

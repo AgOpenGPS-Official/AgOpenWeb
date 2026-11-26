@@ -1,22 +1,11 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using AgOpenWeb.Models.Track;
 using AgOpenWeb.Services.AutoSteer;
 using AgOpenWeb.Services.Interfaces;
+using Microsoft.Extensions.Logging;
 
 namespace AgOpenWeb.ViewModels;
 
@@ -36,6 +25,71 @@ public partial class MainViewModel
 
     #region AutoSteer Event Handlers
 
+    /// <summary>
+    /// The service stopped steering because guidance went stale (#169). Steering is already
+    /// off at the module; take AutoSteer off in the app too so the operator re-engages
+    /// deliberately instead of the tractor lunging at a line that moved during the stall.
+    /// </summary>
+    private void OnGuidanceLost(object? sender, EventArgs e) => _dispatcher.Post(() =>
+    {
+        _logger.LogWarning("[AutoSteer] No guidance update for {Limit:F1} s while engaged — AutoSteer turned off (#169)",
+            AutoSteerService.GuidanceStaleLimit.TotalSeconds);
+        if (IsAutoSteerEngaged) ToggleAutoSteerCommand?.Execute("no GPS/guidance update for over 1 s");
+        ReportFailure("AutoSteer off: no GPS/guidance update for over 1 s");
+    });
+
+    /// <summary>
+    /// The service stopped steering on a pressure or current sensor kickout (PGN 250). Take
+    /// AutoSteer off in the app too, as when guidance goes stale; otherwise the button stays
+    /// on while nothing steers, and nothing says why.
+    /// </summary>
+    private void OnSensorKickout(object? sender, string reason) => _dispatcher.Post(() =>
+    {
+        if (IsAutoSteerEngaged) ToggleAutoSteerCommand?.Execute(reason);
+        ReportFailure($"AutoSteer off: {reason}");
+    });
+
+    /// <summary>
+    /// Every way AutoSteer goes off logs why here, so logs.txt in a bug report has the
+    /// reason: the status line only shows the latest message, and the steer module sees
+    /// only that PGN 254 stopped asking it to steer.
+    /// </summary>
+    private void LogAutoSteerOff(string reason) =>
+        _logger.LogInformation("[AutoSteer] Off: {Reason}", reason);
+
+    /// <summary>
+    /// Why the dual antenna's heading can't be steered with, from the last GPS cycle, or null.
+    /// Across the direction of travel: its offset doesn't match how the antennas are mounted.
+    /// Reversing while the operator engages: either the tractor is reversing (drive forward
+    /// first), or it isn't and the offset is 180° out. Either way guidance would steer the
+    /// wrong way.
+    /// </summary>
+    private string? WhyDualHeadingCannotSteer()
+    {
+        if (double.IsFinite(_dualHeadingOffTravelDeg))
+            return Services.Pipeline.GpsPipelineService.DualHeadingOffTravelText(_dualHeadingOffTravelDeg);
+        if (_dualReadsReverse)
+            return "the dual antenna reads reversing: drive forward, and if the tractor already is, its Heading offset is 180° out (GPS tab)";
+        return null;
+    }
+
+    /// <summary>
+    /// Why the steer module stopped steering, as far as the app can tell. The module's own
+    /// pressure or current kickout clears the same PGN 253 bit as its switch and button, so
+    /// the latest sensor reading (PGN 250) goes with it when a sensor is in use.
+    /// </summary>
+    private string ModuleStoppedSteeringReason()
+    {
+        const string reason = "steer module stopped steering (switch, button or kickout)";
+        var a = ConfigStore.AutoSteer;
+        double pct = _autoSteerService.SensorPercent;
+        if (a.PressureSensorEnabled)
+            return FormattableString.Invariant($"{reason}, pressure sensor {pct:F0}% (trip point {a.PressureTripPoint}%)");
+        if (a.CurrentSensorEnabled)
+            return FormattableString.Invariant($"{reason}, current sensor {pct:F0}% (trip point {a.CurrentTripPoint}%)");
+        return reason;
+    }
+
     private void OnAutoSteerStateUpdated(object? sender, VehicleStateSnapshot state)
     {
         // AutoSteer fires StateUpdated at the unified control-loop rate
@@ -51,18 +105,19 @@ public partial class MainViewModel
         // atomic on x86/ARM — no lock needed.
         _latestGpsToPgnLatencyMs = state.TotalLatencyMs;
         if (_dispatcher.CheckAccess())
-        {
-            TramControlByte = state.TramState;
-            _mapService.SetTramControlByte(state.TramState);
-        }
+            ApplyTramState(state.TramState);
         else
-        {
-            _dispatcher.Post(() =>
-            {
-                TramControlByte = state.TramState;
-                _mapService.SetTramControlByte(state.TramState);
-            });
-        }
+            _dispatcher.Post(() => ApplyTramState(state.TramState));
+    }
+
+    private void ApplyTramState(byte tramState)
+    {
+        TramControlByte = tramState;
+        _mapService.SetTramControlByte(tramState);
+        // The web tram lights: the detected bits, plus the manual overrides (#451).
+        State.FieldTools.TramLights = (byte)(tramState
+            | (_tramLineService.IsRightManualOn ? 4 : 0)
+            | (_tramLineService.IsLeftManualOn ? 8 : 0));
     }
 
     #endregion

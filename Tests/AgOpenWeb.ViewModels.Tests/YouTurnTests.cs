@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Pipeline;
@@ -165,8 +169,7 @@ public class YouTurnTests
         builder.GpsPipelineService.Received().SetActiveTrack(
             Arg.Any<Track?>(),
             Arg.Any<int>(),
-            Arg.Any<double>(),
-            Arg.Any<bool>());
+            Arg.Any<double>());
     }
 
     // ── Phase D D4/D5 — guidance-command intent channel locks ──────────

@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Threading.Tasks;
@@ -91,6 +87,14 @@ public class AntennaSetupStepViewModel : WizardStepViewModel
         if (Touched(nameof(AntennaPivot))) vehicle.AntennaPivot = AntennaPivot;
         if (Touched(nameof(AntennaHeight))) vehicle.AntennaHeight = AntennaHeight;
         if (Touched(nameof(AntennaOffset))) vehicle.AntennaOffset = AntennaOffset;
+    }
+
+    protected override void ReloadFromStore()
+    {
+        var vehicle = _configService.Store.Vehicle;
+        if (!Touched(nameof(AntennaPivot))) AntennaPivot = vehicle.AntennaPivot;
+        if (!Touched(nameof(AntennaHeight))) AntennaHeight = vehicle.AntennaHeight;
+        if (!Touched(nameof(AntennaOffset))) AntennaOffset = vehicle.AntennaOffset;
     }
 
     public override Task<bool> ValidateAsync()

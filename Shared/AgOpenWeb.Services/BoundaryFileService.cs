@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -188,8 +176,10 @@ public class BoundaryFileService
 
     /// <summary>
     /// Save boundary to Boundary.txt
+    /// AgOpenWeb never writes AgOpenGPS files (they are imported once and deleted, see
+    /// FieldService.LoadField); internal so tests can build AgOpenGPS fixtures.
     /// </summary>
-    public void SaveBoundary(Boundary boundary, string fieldDirectory)
+    internal void SaveBoundary(Boundary boundary, string fieldDirectory)
     {
         if (string.IsNullOrWhiteSpace(fieldDirectory))
         {
@@ -249,8 +239,10 @@ public class BoundaryFileService
 
     /// <summary>
     /// Create an empty Boundary.txt
+    /// AgOpenWeb never writes AgOpenGPS files (they are imported once and deleted, see
+    /// FieldService.LoadField); internal so tests can build AgOpenGPS fixtures.
     /// </summary>
-    public void CreateEmptyBoundary(string fieldDirectory)
+    internal void CreateEmptyBoundary(string fieldDirectory)
     {
         if (string.IsNullOrWhiteSpace(fieldDirectory))
         {

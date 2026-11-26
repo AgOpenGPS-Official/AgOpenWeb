@@ -14,7 +14,7 @@ job).
 - The host runs inside a **foreground service** (type `specialUse`) with a persistent
   notification, so the 100 Hz control loop, UDP to the AiO hardware, and the LAN web feed keep
   running while the app is **backgrounded** (home / app-switch) or the screen is off.
-- The backend runs on its own host-loop thread (not the Avalonia UI thread, which Android pauses
+- The backend runs on its own host-loop thread (not the Activity's UI thread, which Android pauses
   when backgrounded) — the same model as the headless daemon.
 - The host runs **until you force-stop the app** — backgrounding and even swiping the app away
   from Recents leave it serving, because LAN clients may still be connected (like a navigation or

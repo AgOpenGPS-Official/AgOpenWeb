@@ -60,30 +60,21 @@ dotnet --version
 
 ## 2. Install system dependencies
 
-Avalonia UI requires some native libraries for rendering.
+The headless daemon needs only ICU (.NET globalization). The desktop launcher window
+(`--launcher`) is Photino.NET over WebKitGTK and needs it installed.
 
 **Debian/Ubuntu:**
 
 ```bash
-sudo apt-get install -y \
-  libx11-dev \
-  libice-dev \
-  libsm-dev \
-  libfontconfig1-dev \
-  libgbm-dev \
-  libdrm-dev
+sudo apt-get install -y libicu-dev                       # daemon
+sudo apt-get install -y libwebkit2gtk-4.1-0 libsoup-3.0-0  # launcher window
 ```
 
 **Fedora:**
 
 ```bash
-sudo dnf install -y \
-  libX11-devel \
-  libICE-devel \
-  libSM-devel \
-  fontconfig-devel \
-  mesa-libgbm-devel \
-  libdrm-devel
+sudo dnf install -y libicu                               # daemon
+sudo dnf install -y webkit2gtk4.1 libsoup3                # launcher window
 ```
 
 ## 3. Clone and build
@@ -99,7 +90,10 @@ dotnet build AgOpenWeb.sln
 ## 4. Run the application
 
 ```bash
+# Headless daemon (the Linux default): the UI is at http://localhost:5174
 dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
+# Desktop window (real hardware; needs WebKitGTK)
+dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -- --launcher
 ```
 
 ## 5. Run tests
@@ -120,15 +114,10 @@ export PATH="$HOME/.dotnet:$PATH"
 
 Add this to your shell profile to make it permanent.
 
-### Avalonia rendering issues on headless/SSH sessions
+### No display (CI, SSH)
 
-If running without a display (CI, SSH), set:
-
-```bash
-export DISPLAY=:0       # if X11 is available
-# or for headless testing:
-export AVALONIA_SCREEN_SCALE_FACTORS="1"
-```
+Run the daemon (the default on Linux, or `--headless`) and open `http://<host>:5174` from a
+browser on another machine. Only `--launcher` needs a display.
 
 ### NuGet restore failures
 

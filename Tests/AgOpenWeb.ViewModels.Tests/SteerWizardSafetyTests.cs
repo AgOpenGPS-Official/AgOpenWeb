@@ -1,0 +1,572 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+using System.Reflection;
+using AgOpenWeb.Models;
+using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Services;
+using AgOpenWeb.Services.Interfaces;
+using AgOpenWeb.Services.Threading;
+using AgOpenWeb.ViewModels.Wizards;
+using AgOpenWeb.ViewModels.Wizards.SteerWizard;
+using NSubstitute;
+
+namespace AgOpenWeb.ViewModels.Tests;
+
+/// <summary>
+/// #154: the steer wizard's motor tests steer through Free Drive. When a test ended, PGN 254
+/// went back to normal mode while AgOpenWeb's AutoSteer was engaged (by the steer switch or the
+/// button) and sent the guidance angle — full right lock in the field. AutoSteer now stays off
+/// while the wizard is open, every Free Drive hand-back turns it off, the wheels are back at
+/// centre before the hand-back, and Start waits on the module being armed, not on AutoSteer.
+/// </summary>
+[TestFixture]
+[NonParallelizable] // ConfigurationStore singleton.
+public class SteerWizardSafetyTests
+{
+    [SetUp]
+    public void SetUp() => ConfigurationStore.SetInstance(new ConfigurationStore());
+
+    // PGN 253 byte 11 bit 1 (SteerSwitchActive) is set when the module is NOT steering.
+    private static SteerModuleData Module(bool steering, double was = 0) =>
+        SteerModuleData.Empty with { ActualSteerAngle = was, SteerSwitchActive = !steering };
+
+    // ── MainViewModel: AutoSteer lockout while the wizard is open ─────────
+
+    [Test]
+    public void Opening_the_wizard_disengages_AutoSteer()
+    {
+        var b = new MainViewModelBuilder();
+        var vm = b.Build();
+        vm.IsAutoSteerAvailable = true;
+        vm.ToggleAutoSteerCommand!.Execute(null);
+        Assume.That(vm.IsAutoSteerEngaged, Is.True);
+
+        vm.StartRemoteSteerWizard();
+
+        Assert.That(vm.IsAutoSteerEngaged, Is.False);
+        b.AutoSteerService.Received().Disengage();
+    }
+
+    [Test]
+    public void AutoSteer_button_cannot_engage_while_the_wizard_is_open()
+    {
+        var b = new MainViewModelBuilder();
+        var vm = b.Build();
+        vm.IsAutoSteerAvailable = true;
+        string? msg = null; vm.FailureReported += m => msg = m;
+
+        vm.StartRemoteSteerWizard();
+        vm.ToggleAutoSteerCommand!.Execute(null);
+
+        Assert.That(vm.IsAutoSteerEngaged, Is.False);
+        Assert.That(msg, Does.Contain("steer wizard"));
+        b.AutoSteerService.DidNotReceive().Engage();
+
+        vm.EndRemoteSteerWizard();
+        vm.ToggleAutoSteerCommand.Execute(null);
+        Assert.That(vm.IsAutoSteerEngaged, Is.True, "the lockout lifts when the wizard closes");
+    }
+
+    [Test]
+    public void Steer_switch_cannot_engage_while_the_wizard_is_open()
+    {
+        var b = new MainViewModelBuilder();
+        b.ModuleCommunicationService = new ModuleCommunicationService(ConfigurationStore.Instance);
+        var vm = b.Build();
+        ConfigurationStore.Instance.AutoSteer.ExternalEnable = 1; // switch
+        vm.SelectedTrack = new AgOpenWeb.Models.Track.Track
+        {
+            Name = "AB",
+            Points = new List<AgOpenWeb.Models.Base.Vec3> { new(0, 0, 0), new(0, 100, 0) },
+        };
+        int failures = 0; vm.FailureReported += _ => failures++;
+
+        SwitchCycle(b, vm, steering: false);
+        vm.StartRemoteSteerWizard();
+        SwitchCycle(b, vm, steering: true);   // switch on / module armed by a Free Drive test
+
+        Assert.That(vm.IsAutoSteerEngaged, Is.False);
+        Assert.That(failures, Is.Zero, "the module arming for a test is not an engage request");
+        b.AutoSteerService.DidNotReceive().Engage();
+
+        vm.EndRemoteSteerWizard();
+        SwitchCycle(b, vm, steering: true);
+        Assert.That(vm.IsAutoSteerEngaged, Is.False, "closing the wizard must not engage on a switch left on");
+    }
+
+    [Test]
+    public void Closing_the_wizard_mid_test_releases_Free_Drive()
+    {
+        var b = new MainViewModelBuilder { ConfigurationService = Config() };
+        var vm = b.Build();
+        vm.StartRemoteSteerWizard();
+        var w = vm.SteerWizardViewModel!;
+        w.GoToStep(w.Steps.IndexOf(w.Steps.OfType<MaxSteeringAngleStepViewModel>().Single()));
+        b.AutoSteerService.IsInFreeDriveMode.Returns(true);
+
+        vm.EndRemoteSteerWizard();
+
+        b.AutoSteerService.Received().DisableFreeDrive();
+        Assert.That(vm.IsSteerWizardOpen, Is.False);
+    }
+
+    [Test]
+    public void Browser_lost_mid_test_stops_the_test_and_closes_the_wizard()
+    {
+        // The max-angle test went on sweeping the wheels lock to lock for 5 s after the
+        // tablet's Wi-Fi dropped, and the wizard stayed open on the host: AutoSteer then
+        // refused to engage, with no wizard on the reloaded page to close.
+        var b = new MainViewModelBuilder { ConfigurationService = Config() };
+        var vm = b.Build();
+        vm.StartRemoteSteerWizard();
+        var w = vm.SteerWizardViewModel!;
+        w.GoToStep(w.Steps.IndexOf(w.Steps.OfType<MaxSteeringAngleStepViewModel>().Single()));
+        b.AutoSteerService.IsInFreeDriveMode.Returns(true);
+
+        vm.OnBrowserControlEnded("browser control ended: client disconnected");
+
+        b.AutoSteerService.Received().DisableFreeDrive();
+        Assert.That(vm.IsSteerWizardOpen, Is.False);
+    }
+
+    [Test]
+    public void Browser_lost_turns_AutoSteer_off()
+    {
+        var b = new MainViewModelBuilder();
+        var vm = b.Build();
+        vm.IsAutoSteerAvailable = true;
+        vm.ToggleAutoSteerCommand!.Execute(null);
+        Assume.That(vm.IsAutoSteerEngaged, Is.True);
+
+        vm.OnBrowserControlEnded("browser control ended: released");
+
+        Assert.That(vm.IsAutoSteerEngaged, Is.False);
+    }
+
+    [Test]
+    public void Browser_lost_switches_a_section_switched_On_by_hand_off()
+    {
+        // Web client scenarios, FORCED-SECTION-STAYS-ON: master off, manual off, section 2
+        // On by hand: the module went on getting it with nobody at the screen.
+        var b = new MainViewModelBuilder();
+        var states = new[]
+        {
+            new SectionControlState { Index = 0, ButtonState = SectionButtonState.Auto },
+            new SectionControlState { Index = 1, ButtonState = SectionButtonState.On },
+            new SectionControlState { Index = 2, ButtonState = SectionButtonState.Off },
+        };
+        b.SectionControlService.NumSections.Returns(3);
+        b.SectionControlService.SectionStates.Returns(states);
+        var vm = b.Build();
+
+        vm.OnBrowserControlEnded("browser control ended: presence lost (deadman)", involuntary: true);
+
+        b.SectionControlService.Received().SetSectionState(1, SectionButtonState.Off);
+        b.SectionControlService.DidNotReceive().SetSectionState(2, Arg.Any<SectionButtonState>());
+        Assert.That(vm.ControlLostNotice, Does.Contain("the sections").And.Contain("stopped answering"));
+    }
+
+    [Test]
+    public void Browser_lost_switches_a_section_left_in_Auto_by_its_own_button_off()
+    {
+        // Master off, manual off, section 0 put in Auto by its own button: SectionControlService
+        // runs it by that button, so it opened and closed by itself over the field with nobody at
+        // the screen.
+        var b = new MainViewModelBuilder();
+        var states = new[]
+        {
+            new SectionControlState { Index = 0, ButtonState = SectionButtonState.Auto },
+            new SectionControlState { Index = 1, ButtonState = SectionButtonState.Off },
+        };
+        b.SectionControlService.NumSections.Returns(2);
+        b.SectionControlService.SectionStates.Returns(states);
+        var vm = b.Build();
+
+        vm.OnBrowserControlEnded("browser control ended: presence lost (deadman)", involuntary: true);
+
+        b.SectionControlService.Received().SetSectionState(0, SectionButtonState.Off);
+        b.SectionControlService.DidNotReceive().SetSectionState(1, Arg.Any<SectionButtonState>());
+        Assert.That(vm.ControlLostNotice, Does.Contain("the sections"));
+    }
+
+    [Test]
+    public void Browser_lost_switches_a_section_beyond_the_count_off_too()
+    {
+        // The implement set to fewer sections with one of the others still On: its button is
+        // kept, and it would be On again when the count goes back up.
+        var b = new MainViewModelBuilder();
+        var states = new[]
+        {
+            new SectionControlState { Index = 0, ButtonState = SectionButtonState.Off },
+            new SectionControlState { Index = 1, ButtonState = SectionButtonState.Off },
+            new SectionControlState { Index = 2, ButtonState = SectionButtonState.On },
+        };
+        b.SectionControlService.NumSections.Returns(2);
+        b.SectionControlService.SectionStates.Returns(states);
+        var vm = b.Build();
+
+        vm.OnBrowserControlEnded("browser control ended: client disconnected", involuntary: true);
+
+        b.SectionControlService.Received().SetSectionState(2, SectionButtonState.Off);
+    }
+
+    [Test]
+    public void Browser_lost_ends_Free_Drive_outside_the_wizard()
+    {
+        // FREE-DRIVE-KEEPS-STEERING: Free Drive from the AutoSteer panel (no wizard) kept the
+        // wheels at 10° with a made-up 8 km/h after the screen went.
+        var b = new MainViewModelBuilder();
+        b.AutoSteerService.IsInFreeDriveMode.Returns(true);
+        var vm = b.Build();
+
+        vm.OnBrowserControlEnded("browser control ended: client disconnected", involuntary: true);
+
+        b.AutoSteerService.Received().DisableFreeDrive();
+        Assert.That(vm.TakeControlLostNotice(), Does.Contain("Free Drive").And.Contain("lost its connection"));
+        Assert.That(vm.TakeControlLostNotice(), Is.Null, "told once");
+    }
+
+    [Test]
+    public void Browser_lost_with_the_wizard_open_tells_the_screens_the_host_closed_it()
+    {
+        // A tester's tractor (18 Nov 2026): the window was behind another for a moment, the host
+        // closed the wizard, and the page came back with it still on the screen: Next, Back and
+        // Skip reached a host with no wizard, and nothing said why.
+        var b = new MainViewModelBuilder { ConfigurationService = Config() };
+        var vm = b.Build();
+        vm.StartRemoteSteerWizard();
+
+        vm.OnBrowserControlEnded("browser control ended: presence lost (deadman)", involuntary: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(vm.IsSteerWizardOpen, Is.False);
+            Assert.That(vm.SteerWizardClosedByHost, Is.True, "the screens still showing it are told");
+        });
+
+        // Close on that message, from the screen in control: nothing left to tell.
+        vm.EndRemoteSteerWizard();
+        Assert.That(vm.SteerWizardClosedByHost, Is.False, "closed from the screen");
+
+        // Opened again: a live wizard, not a closed one.
+        vm.StartRemoteSteerWizard();
+        vm.OnBrowserControlEnded("browser control ended: client disconnected", involuntary: true);
+        vm.StartRemoteSteerWizard();
+        Assert.That(vm.SteerWizardClosedByHost, Is.False, "opened again");
+    }
+
+    [Test]
+    public void The_wizard_closed_from_the_screen_or_control_lost_with_no_wizard_is_not_said_closed_by_the_host()
+    {
+        var b = new MainViewModelBuilder { ConfigurationService = Config() };
+        var vm = b.Build();
+        vm.StartRemoteSteerWizard();
+        vm.EndRemoteSteerWizard(); // Cancel or Finish on the screen
+        Assert.That(vm.SteerWizardClosedByHost, Is.False, "Cancel on the screen");
+
+        vm.OnBrowserControlEnded("browser control ended: presence lost (deadman)", involuntary: true);
+        Assert.That(vm.SteerWizardClosedByHost, Is.False, "no wizard was open");
+    }
+
+    [Test]
+    public void A_release_with_nothing_on_leaves_no_notice()
+    {
+        var b = new MainViewModelBuilder();
+        var vm = b.Build();
+
+        vm.OnBrowserControlEnded("browser control ended: released");
+
+        Assert.That(vm.ControlLostNotice, Is.Null);
+    }
+
+    private static void SwitchCycle(MainViewModelBuilder b, MainViewModel vm, bool steering)
+    {
+        b.AutoSteerService.LastSteerData.Returns(Module(steering));
+        typeof(MainViewModel).GetMethod("UpdateModuleSwitches", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(vm, null);
+    }
+
+    // ── Free Drive steps: arming gate and hand-back ──────────────────────
+
+    private static IConfigurationService Config()
+    {
+        var c = Substitute.For<IConfigurationService>();
+        c.Store.Returns(ConfigurationStore.Instance);
+        return c;
+    }
+
+    private static MaxSteeringAngleStepViewModel MaxStep(IAutoSteerService autoSteer, List<int>? delays = null)
+    {
+        var step = new MaxSteeringAngleStepViewModel(Config(), new InlineUiDispatcher(), autoSteer);
+        step.DelayFunc = (ms, _) => { delays?.Add(ms); return Task.CompletedTask; };
+        return step;
+    }
+
+    [Test]
+    public async Task Start_runs_with_the_module_armed_and_AgOpenWeb_AutoSteer_off()
+    {
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        autoSteer.IsEngaged.Returns(false);
+        autoSteer.LastSteerData.Returns(Module(steering: true));
+        ConfigurationStore.Instance.Tool.IsSteerSwitchEnabled = true;
+        var step = MaxStep(autoSteer);
+
+        Assert.That(step.CanStartTest, Is.True);
+        await step.RunMaxAngleMeasurementAsync();
+
+        autoSteer.Received().SetFreeDriveAngle(60);
+        autoSteer.DidNotReceive().Engage();
+    }
+
+    [Test]
+    public async Task AIO_v4_not_steering_before_Free_Drive_does_not_block_Start()
+    {
+        // AIO v4 reports "not steering" while the app sends status 0; it arms once Free Drive
+        // sends status 1. Arming is judged after the settle, not before Start.
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        bool freeDrive = false;
+        autoSteer.When(a => a.EnableFreeDrive()).Do(_ => freeDrive = true);
+        autoSteer.LastSteerData.Returns(_ => Module(steering: freeDrive));
+        var delays = new List<int>();
+        var step = MaxStep(autoSteer, delays);
+
+        await step.RunMaxAngleMeasurementAsync();
+
+        Assert.That(delays[0], Is.EqualTo(SwitchGatedWizardStep.ArmSettleMs));
+        autoSteer.Received().SetFreeDriveAngle(60);
+    }
+
+    [Test]
+    public async Task Module_not_armed_after_Free_Drive_stops_before_moving_and_says_why()
+    {
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        autoSteer.LastSteerData.Returns(Module(steering: false));
+        var step = MaxStep(autoSteer);
+
+        await step.RunMaxAngleMeasurementAsync();
+
+        autoSteer.DidNotReceive().SetFreeDriveAngle(60);
+        autoSteer.Received().DisableFreeDrive();
+        Assert.That(step.Phase, Is.EqualTo(MaxSteeringAnglePhase.WaitingToStart));
+        Assert.That(step.PhaseResult, Does.Contain("turn on the steer switch").And.Not.Contain("AutoSteer"));
+    }
+
+    [Test]
+    public async Task Module_that_arms_slowly_still_starts_on_the_first_press()
+    {
+        // #240: armed 900 ms after Free Drive came on; the single check at 500 ms failed
+        // the first press with "turn on the steer switch".
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        int waited = 0; bool freeDrive = false;
+        autoSteer.When(a => a.EnableFreeDrive()).Do(_ => { freeDrive = true; waited = 0; });
+        autoSteer.LastSteerData.Returns(_ => Module(steering: freeDrive && waited >= 900));
+        var step = new MaxSteeringAngleStepViewModel(Config(), new InlineUiDispatcher(), autoSteer);
+        step.DelayFunc = (ms, _) => { waited += ms; return Task.CompletedTask; };
+
+        await step.RunMaxAngleMeasurementAsync();
+
+        autoSteer.Received(1).EnableFreeDrive();
+        autoSteer.Received().SetFreeDriveAngle(60);
+        Assert.That(step.PhaseResult, Does.Not.Contain("turn on the steer switch"));
+    }
+
+    [Test]
+    public async Task Module_that_arms_only_on_the_second_edge_starts_without_a_second_press()
+    {
+        // #240: nothing changed between the reporter's two presses; the second one worked.
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        int edges = 0; bool freeDrive = false;
+        autoSteer.When(a => a.EnableFreeDrive()).Do(_ => { freeDrive = true; edges++; });
+        autoSteer.When(a => a.DisableFreeDrive()).Do(_ => freeDrive = false);
+        autoSteer.LastSteerData.Returns(_ => Module(steering: freeDrive && edges >= 2));
+        var delays = new List<int>();
+        var step = MaxStep(autoSteer, delays);
+
+        await step.RunMaxAngleMeasurementAsync();
+
+        Assert.That(edges, Is.EqualTo(2));
+        Assert.That(delays, Does.Contain(SwitchGatedWizardStep.ArmRetryGapMs));
+        autoSteer.Received().SetFreeDriveAngle(60);
+        Assert.That(step.PhaseResult, Does.Not.Contain("turn on the steer switch"));
+    }
+
+    [Test]
+    public async Task Module_never_armed_gives_up_after_one_retry_within_about_three_seconds()
+    {
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        autoSteer.LastSteerData.Returns(Module(steering: false));
+        var delays = new List<int>();
+        var step = MaxStep(autoSteer, delays);
+
+        await step.RunMaxAngleMeasurementAsync();
+
+        autoSteer.Received(2).EnableFreeDrive();
+        autoSteer.DidNotReceive().SetFreeDriveAngle(60);
+        Assert.That(delays.Sum(), Is.InRange(3000, 3500));
+        Assert.That(step.PhaseResult, Does.Contain("turn on the steer switch"));
+    }
+
+    [Test]
+    public async Task Not_armed_after_an_earlier_capture_does_not_leave_the_captured_line()
+    {
+        // #240 first screenshot: "Maximum steering angle captured." above the error.
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        bool armed = true;
+        autoSteer.LastSteerData.Returns(_ => Module(steering: armed));
+        var step = MaxStep(autoSteer);
+        await step.RunMaxAngleMeasurementAsync();
+        Assume.That(step.Phase, Is.EqualTo(MaxSteeringAnglePhase.Complete));
+
+        armed = false;
+        await step.RunMaxAngleMeasurementAsync();
+
+        Assert.That(step.Phase, Is.EqualTo(MaxSteeringAnglePhase.WaitingToStart));
+        Assert.That(step.PhaseDescription, Does.Not.Contain("captured"));
+        Assert.That(step.PhaseResult, Does.Contain("turn on the steer switch"));
+    }
+
+    [Test]
+    public async Task Motor_test_not_armed_stops_and_says_why()
+    {
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        autoSteer.LastSteerData.Returns(Module(steering: false));
+        var step = new AutoMotorCalibrationStepViewModel(Config(), new InlineUiDispatcher(), autoSteer);
+        step.DelayFunc = (_, _) => Task.CompletedTask;
+
+        await step.RunKpRampAsync();
+
+        Assert.That(step.Phase, Is.EqualTo(CalibrationPhase.WaitingToStart));
+        Assert.That(step.PhaseResult, Does.Contain("turn on the steer switch"));
+        autoSteer.Received().DisableFreeDrive();
+    }
+
+    [Test]
+    public async Task End_of_test_holds_centre_until_the_WAS_is_back_then_releases()
+    {
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        autoSteer.LastSteerData.Returns(Module(steering: true));
+        var step = new Probe(autoSteer);
+        double was = 20;
+        step.Was = () => was;
+        int polls = 0;
+        step.DelayFunc = (_, _) => { polls++; was /= 3; return Task.CompletedTask; }; // 20 → 6.7 → 2.2 → 0.7
+
+        Assume.That(await step.Begin(), Is.True);
+        polls = 0; was = 20;
+        bool releasedEarly = false;
+        autoSteer.When(a => a.DisableFreeDrive()).Do(_ => releasedEarly = Math.Abs(was) > SwitchGatedWizardStep.CenterToleranceDeg);
+
+        await step.End();
+
+        Assert.That(polls, Is.EqualTo(3));
+        Assert.That(releasedEarly, Is.False, "Free Drive must hold 0° until the wheels are centred");
+        autoSteer.Received().DisableFreeDrive();
+    }
+
+    [Test]
+    public async Task End_of_test_gives_up_waiting_for_centre_after_the_timeout()
+    {
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        autoSteer.LastSteerData.Returns(Module(steering: true));
+        var step = new Probe(autoSteer) { Was = () => 12 }; // stuck
+        int waited = 0;
+        step.DelayFunc = (ms, _) => { waited += ms; return Task.CompletedTask; };
+        await step.Begin();
+        waited = 0;
+
+        await step.End();
+
+        Assert.That(waited, Is.EqualTo(SwitchGatedWizardStep.CenterHoldTimeoutMs));
+        autoSteer.Received().DisableFreeDrive();
+    }
+
+    [Test]
+    public async Task Hand_back_turns_an_engaged_AutoSteer_off_first()
+    {
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        autoSteer.LastSteerData.Returns(Module(steering: true));
+        autoSteer.IsEngaged.Returns(true);
+        var step = new Probe(autoSteer);
+        await step.Begin();
+
+        await step.End();
+
+        Received.InOrder(() =>
+        {
+            autoSteer.Disengage();
+            autoSteer.DisableFreeDrive();
+        });
+    }
+
+    [Test]
+    public async Task Hint_shows_only_when_the_module_stops_steering_during_a_test()
+    {
+        var autoSteer = Substitute.For<IAutoSteerService>();
+        autoSteer.LastSteerData.Returns(Module(steering: false));
+        var step = new Probe(autoSteer);
+        Assert.That(step.RecordHint, Is.Empty, "before Start the bit says nothing on AIO v4");
+
+        autoSteer.LastSteerData.Returns(Module(steering: true));
+        await step.Begin();
+        Assert.That(step.RecordHint, Is.Empty);
+
+        autoSteer.LastSteerData.Returns(Module(steering: false)); // switch turned off mid-test
+        Assert.That(step.RecordHint, Does.Contain("steer switch"));
+    }
+
+    [Test]
+    public void Closing_the_wizard_mid_circle_stops_the_recording()
+    {
+        // Cancel (or a second tablet opening the wizard) while the CPD circle was being
+        // recorded left the step recording with no wizard on screen: it set CPD 110 → 94
+        // a few seconds later.
+        var b = new MainViewModelBuilder { ConfigurationService = Config() };
+        var vm = b.Build();
+        vm.StartRemoteSteerWizard();
+        var w = vm.SteerWizardViewModel!;
+        var cpd = w.Steps.OfType<CpdCircleTestStepViewModel>().Single();
+        w.GoToStep(w.Steps.IndexOf(cpd));
+        cpd.StartRecordingAt(0, 0);
+        Assume.That(cpd.IsRecording, Is.True);
+
+        vm.EndRemoteSteerWizard();
+
+        Assert.That(cpd.IsRecording, Is.False, "the closed wizard's step went on recording");
+        Assert.That(cpd.IsActive, Is.False);
+    }
+
+    [Test]
+    public void Opening_the_wizard_again_stops_the_old_ones_recording()
+    {
+        var b = new MainViewModelBuilder { ConfigurationService = Config() };
+        var vm = b.Build();
+        vm.StartRemoteSteerWizard();
+        var w = vm.SteerWizardViewModel!;
+        var ack = w.Steps.OfType<AckermannTestStepViewModel>().Single();
+        w.GoToStep(w.Steps.IndexOf(ack));
+        ack.StartRecordingAt(0, 0, -20);
+        Assume.That(ack.IsRecording, Is.True);
+
+        vm.StartRemoteSteerWizard();
+
+        Assert.That(ack.IsRecording, Is.False);
+        Assert.That(vm.SteerWizardViewModel, Is.Not.SameAs(w));
+    }
+
+    /// <summary>Drives the shared Free Drive lifecycle directly.</summary>
+    private sealed class Probe : SwitchGatedWizardStep
+    {
+        public Probe(IAutoSteerService autoSteer)
+            : base(Config(), autoSteer, new InlineUiDispatcher()) =>
+            DelayFunc = (_, _) => Task.CompletedTask;
+
+        public Func<double>? Was { get; set; }
+        public override string Title => "Probe";
+        public override string Description => "";
+        protected override double CurrentWasAngle => Was?.Invoke() ?? base.CurrentWasAngle;
+        public Task<bool> Begin() => BeginFreeDriveAsync(CancellationToken.None);
+        public Task End() => EndFreeDriveAsync();
+    }
+}

@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -93,6 +81,20 @@ public interface IConfigurationService
     void SaveProfiles(string vehicleName, string toolName);
 
     /// <summary>
+    /// Saves the live settings under these names and makes them the active pair, so the
+    /// next changes and saves go to them ("New" in the picker: save as). The profiles in
+    /// use before keep what they last saved.
+    /// </summary>
+    void SaveProfilesAs(string vehicleName, string toolName);
+
+    /// <summary>
+    /// Saves the AutoSteer Display tab's settings (line width, nudge, next guidance, cm per
+    /// pixel, the guidance bar) into the active vehicle's AutoSteer file at once, leaving the
+    /// steering settings there as they were: those wait for Send+Save (#479).
+    /// </summary>
+    void SaveAutoSteerDisplaySettings();
+
+    /// <summary>
     /// Creates a new profile with default values
     /// </summary>
     /// <param name="name">Profile name</param>
@@ -138,6 +140,15 @@ public interface IConfigurationService
     /// No-op if Tools/ is non-empty.
     /// </summary>
     bool MigrateV1ProfilesIfNeeded();
+
+    /// <summary>
+    /// One-way import of AgOpenGPS 6.8.2+ profiles copied into the data folder
+    /// (<c>VehicleProfiles</c>, <c>ToolProfiles</c>, <c>Environment</c>): each becomes an
+    /// AgOpenWeb vehicle or tool profile unless one of that name exists, and the copied file is
+    /// deleted. On a first start the newest pair becomes the one in use. Run after
+    /// <see cref="MigrateV1ProfilesIfNeeded"/>.
+    /// </summary>
+    AgOpenGpsImport ImportAgOpenGpsProfiles();
 
     #endregion
 

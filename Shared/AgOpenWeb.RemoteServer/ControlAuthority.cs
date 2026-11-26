@@ -1,6 +1,10 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Remote actuation authority (Phase 2 safety layer). A single client may hold
-// "control" at a time; only the fresh holder's Tier-2 (live actuation) commands
-// are honored by the hub. Presence must be refreshed (heartbeat) within the
+// "control" at a time; only the fresh holder's commands are honored by the hub
+// (everyone else is an observer). Presence must be refreshed (heartbeat) within the
 // deadman window or the hold is revoked. A socket drop or a stale hold fires
 // Revoked → the host runs its failsafe (Phase 3: disengage what the remote
 // actuated). All state behind a lock; touched from the hub (per-connection) and
@@ -27,6 +31,16 @@ public sealed class ControlAuthority
     /// its failsafe. Not raised on a voluntary Release.</summary>
     public event Action<string>? Revoked;
 
+    /// <summary>The deadman revoked this connection's hold: no presence for this many ms.
+    /// Raised before <see cref="Revoked"/>, for the log (the hub adds the link's state).</summary>
+    public event Action<Guid, long>? DeadmanTripped;
+
+    /// <summary>True when <paramref name="conn"/> holds control, fresh or not.</summary>
+    public bool IsHolder(Guid conn)
+    {
+        lock (_lock) return _holder == conn;
+    }
+
     public ControlStateDto Snapshot()
     {
         lock (_lock)
@@ -34,7 +48,7 @@ public sealed class ControlAuthority
     }
 
     /// <summary>True only when <paramref name="conn"/> holds control AND its presence
-    /// is fresh — the gate the hub applies to every Tier-2 command.</summary>
+    /// is fresh — the gate the hub applies to every restricted command.</summary>
     public bool HoldsFresh(Guid conn)
     {
         lock (_lock)
@@ -85,13 +99,17 @@ public sealed class ControlAuthority
     public bool SweepStale()
     {
         bool revoked;
+        Guid holder = default;
+        long silent = 0;
         lock (_lock)
         {
-            revoked = _holder.HasValue && (Environment.TickCount64 - _lastPresenceTicks) > DeadmanMs;
-            if (revoked) { _holder = null; _holderName = ""; }
+            silent = Environment.TickCount64 - _lastPresenceTicks;
+            revoked = _holder.HasValue && silent > DeadmanMs;
+            if (revoked) { holder = _holder!.Value; _holder = null; _holderName = ""; }
         }
         if (revoked)
         {
+            DeadmanTripped?.Invoke(holder, silent);
             Revoked?.Invoke("presence lost (deadman)");
             Changed?.Invoke(Snapshot());
         }

@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -68,6 +56,10 @@ public class Track : INotifyPropertyChanged
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
+    /// <summary>The properties of this part's feature in field.geojson that this build does not
+    /// read (a newer build's, another tool's), written back as they were (FIELD_FILE_FORMATS.md).</summary>
+    public IReadOnlyDictionary<string, object?>? UnknownProperties { get; set; }
+
     /// <summary>
     /// Track name for display and file storage.
     /// </summary>
@@ -171,6 +163,14 @@ public class Track : INotifyPropertyChanged
     /// </summary>
     public Vec3 PointB => Points.Count > 1 ? Points[^1] : default;
 
+    /// <summary>A copy that differs only in its points, e.g. to write a track as it was saved.</summary>
+    public Track WithPoints(List<Vec3> points)
+    {
+        var copy = (Track)MemberwiseClone();
+        copy.Points = points;
+        return copy;
+    }
+
     /// <summary>
     /// Create an AB line track from two points.
     /// </summary>
@@ -197,6 +197,50 @@ public class Track : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// An AB line with A and B closer than this, metres, is made longer when it is read from a file
+    /// (<see cref="LengthenShortABLine"/>).
+    /// </summary>
+    public const double MinABLineLength = 10.0;
+
+    /// <summary>The length a short AB line is given: B as far from A as the app's own A+ line puts it.</summary>
+    public const double ShortABLineNewLength = 100.0;
+
+    /// <summary>
+    /// An AB line's two points, B moved to <see cref="ShortABLineNewLength"/> from A along the line
+    /// when they are closer than <see cref="MinABLineLength"/>: the same line, A and its heading as they
+    /// were. AgOpenGPS's A+ line puts B 1 m from A along the heading (FormQuickAB.btnAPlus_Click; 200 m
+    /// when the heading is typed in), and read as it was, AgOpenWeb had no pass on it but the line
+    /// itself: an offset pass leaves out a point within 1 m of the one before
+    /// (<see cref="Guidance.CurveProcessing.CreateOffsetCurveWithInfo"/>), so pass after pass had one
+    /// point and nothing to steer, and AutoSteer held the wheels straight (a tester's field, a line
+    /// brought from AgOpenGPS with A and B 0.96 m apart). <paramref name="heading"/> (radians) is the
+    /// line's own, from the file, when it has one: over 1 m the points' rounding turns the line a tenth
+    /// of a degree, half a metre 300 m away. It is used only within 5° of A to B, else A to B is.
+    /// Any other list (a curve, A and B on one spot) is returned as it is.
+    /// </summary>
+    public static List<Vec3> LengthenShortABLine(List<Vec3> points, double? heading = null)
+    {
+        if (points.Count != 2) return points;
+        var a = points[0];
+        var b = points[1];
+        double de = b.Easting - a.Easting, dn = b.Northing - a.Northing;
+        double length = Math.Sqrt(de * de + dn * dn);
+        if (length >= MinABLineLength || length < 0.01) return points;
+        double h = Math.Atan2(de, dn);
+        if (heading is { } given && double.IsFinite(given))
+        {
+            double diff = Math.Abs(Math.IEEERemainder(given - h, 2 * Math.PI));
+            if (diff <= 5.0 * Math.PI / 180.0) h = given;
+        }
+        if (h < 0) h += 2 * Math.PI;
+        return new List<Vec3>
+        {
+            new Vec3(a.Easting, a.Northing, h),
+            new Vec3(a.Easting + Math.Sin(h) * ShortABLineNewLength, a.Northing + Math.Cos(h) * ShortABLineNewLength, h),
+        };
+    }
+
+    /// <summary>
     /// Create a curve track from a list of points.
     /// </summary>
     /// <param name="name">Track name</param>
@@ -208,11 +252,39 @@ public class Track : INotifyPropertyChanged
         return new Track
         {
             Name = name,
-            Type = isClosed ? TrackType.WaterPivot : TrackType.Curve,
+            Type = TrackType.Curve, // closed or not: a pivot is made by FromPivot
             Points = new List<Vec3>(points),
             IsClosed = isClosed
         };
     }
+
+    /// <summary>
+    /// A water pivot track (AgOpenGPS TrackMode.waterPivot): a circle round the pivot's centre,
+    /// clockwise, closed, with a point at least every metre. Its passes are circles about the same
+    /// centre (<see cref="Guidance.CurveProcessing.PivotPass"/>), half a width either side of it like
+    /// any reference line.
+    /// </summary>
+    public static Track FromPivot(string name, Vec3 center, double radius) => new()
+    {
+        Name = name,
+        Type = TrackType.WaterPivot,
+        Points = Guidance.CurveProcessing.Circle(center, radius),
+        IsClosed = true,
+    };
+
+    /// <summary>A water pivot's centre and radius, from its circle.</summary>
+    public (Vec3 Center, double Radius) PivotCircle()
+    {
+        int n = IsClosed && Points.Count > 1 ? Points.Count - 1 : Points.Count; // the closing point repeats the first
+        double e = 0, no = 0;
+        for (int i = 0; i < n; i++) { e += Points[i].Easting; no += Points[i].Northing; }
+        var c = new Vec3(e / n, no / n, 0);
+        double r = 0;
+        for (int i = 0; i < n; i++) r += Math.Sqrt(Math.Pow(Points[i].Easting - c.Easting, 2) + Math.Pow(Points[i].Northing - c.Northing, 2));
+        return (c, r / n);
+    }
+
+    public bool IsPivot => Type == TrackType.WaterPivot;
 
     /// <summary>
     /// Create a recorded path track from a list of points.
@@ -250,6 +322,10 @@ public class Track : INotifyPropertyChanged
     /// Whether this is a recorded path (display only, not for guidance).
     /// </summary>
     public bool IsRecordedPath => Type == TrackType.RecordedPath;
+
+    /// <summary>A line to guide on: not a recorded path or a contour strip, which share the
+    /// track list but are driven their own way (AgOpenGPS keeps them out of its track list).</summary>
+    public bool IsGuidanceTrack => Type is not (TrackType.RecordedPath or TrackType.Contour);
 
     /// <summary>
     /// Whether this is a contour strip (for contour guidance).

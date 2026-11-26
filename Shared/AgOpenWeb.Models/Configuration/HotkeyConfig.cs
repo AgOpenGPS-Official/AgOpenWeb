@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -92,21 +80,28 @@ public class HotkeyConfig : ObservableObject
         return _reverseMap.TryGetValue(key, out var action) ? action : null;
     }
 
-    public void SetKeyForAction(HotkeyAction action, string key)
+    /// <summary>Bind <paramref name="key"/> to <paramref name="action"/>. False, and nothing
+    /// changed, when the key is another action's (checklist 12.9: a conflict is refused; it used
+    /// to take the key away from the other action without a word).</summary>
+    public bool SetKeyForAction(HotkeyAction action, string key)
     {
-        // Remove any existing binding for this key
-        var existing = _bindings.FirstOrDefault(kvp =>
-            string.Equals(kvp.Value, key, StringComparison.OrdinalIgnoreCase));
-        if (existing.Value != null && existing.Key != action)
-        {
-            _bindings[existing.Key] = "";
-        }
+        if (BoundTo(key) is { } other && other != action) return false;
 
         // Letters are stored upper-case; named keys keep their name ("ArrowUp", "F1") so
         // they read properly. Lookups are case-insensitive either way (#111).
         _bindings[action] = key.Length == 1 ? key.ToUpperInvariant() : key;
         _reverseMap = null;
         OnPropertyChanged(nameof(Bindings));
+        return true;
+    }
+
+    /// <summary>The action <paramref name="key"/> is bound to, if any.</summary>
+    public HotkeyAction? BoundTo(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        foreach (var kvp in _bindings)
+            if (string.Equals(kvp.Value, key, StringComparison.OrdinalIgnoreCase)) return kvp.Key;
+        return null;
     }
 
     public void ResetToDefaults()

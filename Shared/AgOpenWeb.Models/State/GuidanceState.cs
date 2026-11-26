@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Track;
@@ -45,6 +33,22 @@ public class GuidanceState : ObservableObject
     {
         get => _displayLine;
         set => SetProperty(ref _displayLine, value);
+    }
+
+    // The extra guidelines of the curve being followed (GuidanceSnapshot.GuideLines); null for none.
+    private System.Collections.Generic.IReadOnlyList<System.Collections.Generic.IReadOnlyList<Vec3>>? _guideLines;
+    public System.Collections.Generic.IReadOnlyList<System.Collections.Generic.IReadOnlyList<Vec3>>? GuideLines
+    {
+        get => _guideLines;
+        set => SetProperty(ref _guideLines, value);
+    }
+
+    // Where the tool runs on the pass shown (GuidanceSnapshot.ToolPass); null for none.
+    private System.Collections.Generic.IReadOnlyList<Vec3>? _toolPass;
+    public System.Collections.Generic.IReadOnlyList<Vec3>? ToolPass
+    {
+        get => _toolPass;
+        set => SetProperty(ref _toolPass, value);
     }
 
     private bool _isGuidanceActive;
@@ -197,10 +201,31 @@ public class GuidanceState : ObservableObject
         set => SetProperty(ref _isContourMode, value);
     }
 
+    /// <summary>Contour: what the line ahead holds (GpsCycleResult.ContourAhead: 0 clear, 1 the
+    /// line turns back, 2 it runs over sprayed ground, 3 it ends), so the operator can take over in time.</summary>
+    private byte _contourAhead;
+    public byte ContourAhead
+    {
+        get => _contourAhead;
+        set => SetProperty(ref _contourAhead, value);
+    }
+
+    /// <summary>How far ahead along the contour line <see cref="ContourAhead"/> starts (m).</summary>
+    private double _contourAheadM;
+    public double ContourAheadM
+    {
+        get => _contourAheadM;
+        set => SetProperty(ref _contourAheadM, value);
+    }
+
     public void Reset()
     {
         ActiveTrack = null;
         DisplayLine = null;
+        ContourAhead = 0;
+        ContourAheadM = 0;
+        GuideLines = null;
+        ToolPass = null;
         IsGuidanceActive = false;
         CrossTrackError = HeadingError = SteerAngle = 0;
         SteerAngleRaw = DistanceOffRaw = 0;

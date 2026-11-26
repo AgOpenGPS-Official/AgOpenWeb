@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
 using AgOpenWeb.Models.Base;
@@ -37,6 +25,9 @@ public class YouTurnWorkingState
     // Turn path
     public List<Vec3>? TurnPath { get; set; }
     public int PathIndex { get; set; }
+    // Where TurnPath leaves the current pass (the arc's first point); null when the path has
+    // no entry leg. The approach alarm and the too-close rule measure against it.
+    public Vec3? ArcStart { get; set; }
 
     // Direction
     public bool IsTurnLeft { get; set; }
@@ -101,11 +92,27 @@ public class YouTurnWorkingState
     /// </summary>
     public bool? NextUTurnDirectionLeftOverride { get; set; }
 
+    /// <summary>
+    /// The side the operator picked with the U-turn arrow for the coming turn, kept from when
+    /// the override is taken until a turn starts. A planned turn dropped before then (the skip
+    /// changed, a nudge, a lateral move) is planned again on that side, as AgOpenGPS keeps
+    /// <c>yt.isTurnLeft</c> when the skip changes (#577).
+    /// </summary>
+    public bool? HeldDirectionLeft { get; set; }
+
+    /// <summary>
+    /// The pass a normal (or skip-worked) turn was built to land on, set when its next track is
+    /// planned. The turn completes onto it, so a skip changed while the turn is driven applies
+    /// from the next turn on, not to the one already laid out (#585).
+    /// </summary>
+    public int? PlannedNextPath { get; set; }
+
     public void Reset()
     {
         IsTriggered = false;
         IsExecuting = false;
         TurnPath = null;
+        ArcStart = null;
         PathIndex = 0;
         PreviousDistToTurnEnd = double.MaxValue;
         DistanceToHeadland = double.MaxValue;
@@ -121,6 +128,8 @@ public class YouTurnWorkingState
         AltSign = 0;
         CurrentZone = TractorZone.OutsideBoundary;
         NextUTurnDirectionLeftOverride = null;
+        HeldDirectionLeft = null;
+        PlannedNextPath = null;
     }
 
     public void CompleteTurn()
@@ -128,7 +137,10 @@ public class YouTurnWorkingState
         IsExecuting = false;
         IsTriggered = false;
         TurnPath = null;
+        ArcStart = null;
         LastTurnWasLeft = IsTurnLeft;
+        HeldDirectionLeft = null;
+        PlannedNextPath = null;
         HasCompletedFirstTurn = true;
         YouTurnCounter = 0;
     }

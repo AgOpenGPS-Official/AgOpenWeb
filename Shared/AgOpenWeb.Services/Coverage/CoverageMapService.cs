@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -65,6 +53,13 @@ public class CoverageMapService : ICoverageMapService
     private int _displayHeight;
     private double _displayCellSize = BITMAP_CELL_SIZE;
 
+    // Absolute display-pixel index of local pixel (0,0): pixel X covers world
+    // [X * cell, (X + 1) * cell). Snapped to the world grid so a display pixel sits on the
+    // same ground whatever the field bounds, which is what lets display tiles be saved by
+    // absolute key (see CoverageTileStore).
+    private int _displayOriginX;
+    private int _displayOriginY;
+
     // Display-resolution dirty rect since last ConsumeDirtyRect(), inclusive
     // bounds in local display coords. Maintained under _coverageLock.
     private int _dirtyMinX, _dirtyMinY, _dirtyMaxX, _dirtyMaxY;
@@ -74,6 +69,10 @@ public class CoverageMapService : ICoverageMapService
     // resolution.
     private const long MAX_DISPLAY_PIXELS = 25_000_000;
 
+    // Largest display grid side the web clients can hold as one texture (0 = no limit
+    // reported yet). See LimitDisplaySide.
+    private int _maxDisplaySide;
+
     // Per-zone cell counters for acreage calculation (zone index -> cell count)
     private readonly Dictionary<int, long> _cellCountPerZone = new();
 
@@ -81,19 +80,10 @@ public class CoverageMapService : ICoverageMapService
     // 582ha @ 0.1m = 582M cells / 8 = 72MB (much better than HashSet at high coverage)
     private byte[]? _detectionBits;
 
-    // Track newly added cells since last GetNewCoverageBitmapCells call
-    // Still use HashSet for new cells (small, cleared frequently)
-    private readonly HashSet<(int CellE, int CellN, int Zone)> _newCells = new();
-
-    // Reusable buffers for GetNewCoverageBitmapCells to avoid allocations
-    private readonly List<(int CellX, int CellY, CoverageColor Color)> _newCellsResult = new();
-    private readonly HashSet<(int, int)> _newCellsDedup = new();
-
-    // Parallel new-cell stream for a SECOND independent consumer (the remote/web
-    // server's CoverageProjector). GetNewCoverageBitmapCells drains _newCells for the
-    // native map control; the server needs its own drain so the two don't steal cells
-    // from each other. Without this the server fell back to an O(whole-grid) scan that,
-    // run on the 100 Hz control-loop thread, stalled real-time control in ~500 ms bursts.
+    // Newly covered cells since the web server's CoverageProjector last drained them
+    // (GetNewCoverageBitmapCellsServer). Small as long as it IS drained: a queue nobody
+    // drains grows by every painted cell for the whole job. (The native map had one; it was
+    // left behind when that UI went, and its resizes stalled the control loop on slow devices.)
     private readonly HashSet<(int CellE, int CellN, int Zone)> _newCellsServer = new();
     private readonly List<(int CellX, int CellY, CoverageColor Color)> _newCellsServerResult = new();
     private readonly HashSet<(int, int)> _newCellsServerDedup = new();
@@ -133,6 +123,15 @@ public class CoverageMapService : ICoverageMapService
 
     public double TotalWorkedArea => _totalWorkedArea;
     public double TotalWorkedAreaUser => _totalWorkedAreaUser;
+
+    // Cells of the detection grid covered at least once, all zones. Kept beside
+    // _cellCountPerZone as one number another thread can read.
+    private long _coveredCells;
+
+    /// <summary>Ground covered at least once, m²: the covered cells of the detection grid,
+    /// so overlap counts once (AgOpenGPS actualAreaCovered) (#321).</summary>
+    public double ActualAreaCovered =>
+        System.Threading.Interlocked.Read(ref _coveredCells) * BITMAP_CELL_SIZE * BITMAP_CELL_SIZE;
     public int PatchCount => (int)GetTotalCellCount(); // Total covered cells across all zones
     public bool IsAnyZoneMapping => _activeSections.Count > 0;
     public int ActiveSectionCount => _activeSections.Count;
@@ -159,9 +158,9 @@ public class CoverageMapService : ICoverageMapService
 
     public (double MinE, double MinN, double MaxE, double MaxN)? DisplayBoundsWorld =>
         _fieldBoundsSet
-            ? (_fieldMinE, _fieldMinN,
-               _fieldMinE + _displayWidth * _displayCellSize,
-               _fieldMinN + _displayHeight * _displayCellSize)
+            ? (_displayOriginX * _displayCellSize, _displayOriginY * _displayCellSize,
+               (_displayOriginX + _displayWidth) * _displayCellSize,
+               (_displayOriginY + _displayHeight) * _displayCellSize)
             : null;
 
     /// <summary>
@@ -196,6 +195,7 @@ public class CoverageMapService : ICoverageMapService
     private int _edgePointCount;
     private const double EDGE_GATE = 2.0;          // metres between committed edge vertex pairs
     private const int EDGE_MAX_POINTS = 200_000;   // safety cap on total accumulated points
+    private const double EDGE_STROKE_WIDTH = 0.6;  // metres; the stroke in js/map-layers.js drawCoverageEdgeSk
 
     private void ClearEdges()
     {
@@ -412,7 +412,16 @@ public class CoverageMapService : ICoverageMapService
             double len = Math.Sqrt(ox * ox + oy * oy);
             bool perim = len > 1e-6 &&
                 !IsPointCovered(edge[i].Easting + ox / len * 0.2, edge[i].Northing + oy / len * 0.2);
-            if (perim) { (cur ??= new List<Vec2>()).Add(edge[i]); }
+            if (perim)
+            {
+                // The client strokes this line EDGE_STROKE_WIDTH wide, centred on it. Move it
+                // in by half that, so the stroke ends at the swept edge instead of painting
+                // past the end of the tool (#325). A section narrower than the stroke keeps
+                // its line in the middle.
+                double inset = Math.Min(EDGE_STROKE_WIDTH * 0.5, len * 0.5);
+                (cur ??= new List<Vec2>()).Add(new Vec2(
+                    edge[i].Easting - ox / len * inset, edge[i].Northing - oy / len * inset));
+            }
             else if (cur != null) { if (cur.Count >= 2) result.Add(cur); cur = null; }
         }
         if (cur != null && cur.Count >= 2) result.Add(cur);
@@ -452,11 +461,14 @@ public class CoverageMapService : ICoverageMapService
             return;
         }
 
-        // Form quad: prevLeft -> prevRight -> currRight -> currLeft
-        var p0 = lastEdges.Left;
-        var p1 = lastEdges.Right;
-        var p2 = currRight;
-        var p3 = currLeft;
+        // The coverage margin (Tool settings) widens what is painted by a few centimetres each
+        // side so adjacent sections and successive quads leave no hairline gap in the cells. It
+        // is a painting margin only: the worked area and the vector edges are the section's own
+        // edges, as AgOpenGPS's patches are (checklist 4.11/4.12; counted into the area it
+        // inflated the worked area by the margin per section, 3 % on a 10 m tool in three).
+        double margin = _configStore.Tool.CoverageMarginMeters;
+        var (p0, p1) = Widen(lastEdges.Left, lastEdges.Right, margin);   // prevLeft, prevRight
+        var (p3, p2) = Widen(currLeft, currRight, margin);               // currLeft, currRight
 
         // Find bounding box
         double minE = Math.Min(Math.Min(p0.E, p1.E), Math.Min(p2.E, p3.E));
@@ -485,11 +497,7 @@ public class CoverageMapService : ICoverageMapService
                     || IsPointInTriangle(cellCenterE, cellCenterN, p0, p2, p3))
                 {
                     if (MarkCellCovered(ce, cn, zoneIndex))
-                    {
-                        // New cell - track it for incremental display update
-                        _newCells.Add((ce, cn, zoneIndex));
                         UpdateBounds(ce, cn);
-                    }
                 }
             }
         }
@@ -502,6 +510,18 @@ public class CoverageMapService : ICoverageMapService
     /// Check if a point is inside a quad (4-point polygon).
     /// Uses cross product sign test - point is inside if all cross products have same sign.
     /// </summary>
+    /// <summary>The edge pair moved apart by <paramref name="margin"/> along its own line.</summary>
+    private static ((double E, double N) left, (double E, double N) right) Widen(
+        (double E, double N) left, (double E, double N) right, double margin)
+    {
+        if (margin <= 0) return (left, right);
+        double dE = right.E - left.E, dN = right.N - left.N;
+        double len = Math.Sqrt(dE * dE + dN * dN);
+        if (len < 1e-9) return (left, right);
+        dE *= margin / len; dN *= margin / len;
+        return ((left.E - dE, left.N - dN), (right.E + dE, right.N + dN));
+    }
+
     private static bool IsPointInQuad(double px, double py,
         (double E, double N) p0, (double E, double N) p1,
         (double E, double N) p2, (double E, double N) p3)
@@ -705,14 +725,20 @@ public class CoverageMapService : ICoverageMapService
         // Mark as covered in detection array
         _detectionBits[byteIndex] |= mask;
 
-        // Track for batched write by map control (via GetNewCoverageBitmapCells)
-        _newCells.Add((cellE, cellN, zone));
-        _newCellsServer.Add((cellE, cellN, zone)); // parallel drain for the web server
+        long tileKey = CoverageTileStore.Key(cellE >> CoverageTileStore.DetectTileShift, cellN >> CoverageTileStore.DetectTileShift);
+        if (tileKey != _lastDetectTileKey)
+        {
+            _lastDetectTileKey = tileKey;
+            _dirtyDetectTiles.Add(tileKey);
+        }
+
+        _newCellsServer.Add((cellE, cellN, zone)); // drained by the web server at 10 Hz
 
         // Update per-zone counter
         if (!_cellCountPerZone.TryGetValue(zone, out long count))
             count = 0;
         _cellCountPerZone[zone] = count + 1;
+        System.Threading.Interlocked.Increment(ref _coveredCells);
 
         return true;
     }
@@ -731,13 +757,22 @@ public class CoverageMapService : ICoverageMapService
         double worldY = (cellN + 0.5) * BITMAP_CELL_SIZE;
 
         // Map to display-resolution pixel coords
-        int dx = (int)Math.Floor((worldX - _fieldMinE) / _displayCellSize);
-        int dy = (int)Math.Floor((worldY - _fieldMinN) / _displayCellSize);
+        int px = (int)Math.Floor(worldX / _displayCellSize);
+        int py = (int)Math.Floor(worldY / _displayCellSize);
+        int dx = px - _displayOriginX;
+        int dy = py - _displayOriginY;
         if (dx < 0 || dx >= _displayWidth || dy < 0 || dy >= _displayHeight) return;
 
         ushort rgb565 = GetZoneColorRgb565(zone);
         _displayPixels[(long)dy * _displayWidth + dx] = rgb565;
         ExpandDirty(dx, dy);
+
+        long tileKey = CoverageTileStore.Key(px >> CoverageTileStore.DisplayTileShift, py >> CoverageTileStore.DisplayTileShift);
+        if (tileKey != _lastDisplayTileKey)
+        {
+            _lastDisplayTileKey = tileKey;
+            _dirtyDisplayTiles.Add(tileKey);
+        }
     }
 
     /// <summary>Expand the dirty rect to include the given display pixel. Caller holds lock.</summary>
@@ -770,7 +805,7 @@ public class CoverageMapService : ICoverageMapService
     private ushort GetZoneColorRgb565(int zoneIndex)
     {
         var tool = _configStore.Tool;
-        uint rgb888 = tool.IsMultiColoredSections
+        uint rgb888 = tool.IsMultiColoredSections && tool.IsSectionsNotZones
             ? tool.GetSectionColor(zoneIndex)
             : tool.SingleCoverageColor;
         return Rgb888ToRgb565(rgb888);
@@ -781,6 +816,7 @@ public class CoverageMapService : ICoverageMapService
     /// </summary>
     private bool IsCellCovered(int cellE, int cellN)
     {
+        WorkCounters.CoverageLookups++;
         if (_detectionBits == null || !_fieldBoundsSet)
             return false;
 
@@ -811,15 +847,18 @@ public class CoverageMapService : ICoverageMapService
     public int GetDisplayCellAlpha255(int displayX, int displayY)
     {
         if (_detectionBits == null || !_fieldBoundsSet) return 255;
-        int span = (int)Math.Round(_displayCellSize / BITMAP_CELL_SIZE);
-        if (span < 1) span = 1;
-        // Display cell's world origin → its first underlying detection cell.
-        int ce0 = (int)Math.Floor((_fieldMinE + displayX * _displayCellSize) / BITMAP_CELL_SIZE);
-        int cn0 = (int)Math.Floor((_fieldMinN + displayY * _displayCellSize) / BITMAP_CELL_SIZE);
-        int covered = 0, total = span * span;
-        for (int j = 0; j < span; j++)
-            for (int i = 0; i < span; i++)
-                if (IsCellCovered(ce0 + i, cn0 + j)) covered++;
+        // Count exactly the detection cells that paint this display cell (the mapping in
+        // PaintDisplayPixel). At a cell size that isn't a whole number of detection cells
+        // (0.625 m = 6.25) some display cells own 7 rows, not 6: a fixed 6x6 window counted
+        // a neighbour's row instead, so the last cell to fill a display cell could belong
+        // to a different one and the live stream never sent the final value.
+        var (ce0, ce1) = DetectionRange(_displayOriginX + displayX);
+        var (cn0, cn1) = DetectionRange(_displayOriginY + displayY);
+        int covered = 0, total = (ce1 - ce0) * (cn1 - cn0);
+        if (total <= 0) return 255;
+        for (int cn = cn0; cn < cn1; cn++)
+            for (int ce = ce0; ce < ce1; ce++)
+                if (IsCellCovered(ce, cn)) covered++;
         // Near-full cells snap to opaque: the rasterizer center-samples, so interior cells
         // occasionally miss a stray detection cell at quad seams. A literal fraction would
         // let the (often dark) map fleck through those — the old binary "any → opaque" rule
@@ -827,6 +866,19 @@ public class CoverageMapService : ICoverageMapService
         const double FULL = 0.75;
         double frac = (double)covered / total;
         return frac >= FULL ? 255 : (int)(frac / FULL * 255.0);
+    }
+
+    /// <summary>Detection cells [first, end) whose centre falls in absolute display cell <paramref name="displayAbs"/>.</summary>
+    private (int First, int End) DetectionRange(int displayAbs) => DetectionRange(displayAbs, _displayCellSize);
+
+    private static (int First, int End) DetectionRange(int displayAbs, double displayCellSize)
+    {
+        int DisplayOf(int c) => (int)Math.Floor((c + 0.5) * BITMAP_CELL_SIZE / displayCellSize);
+        int first = (int)Math.Floor(displayAbs * displayCellSize / BITMAP_CELL_SIZE) - 1;
+        while (DisplayOf(first) < displayAbs) first++;
+        int end = first;
+        while (DisplayOf(end) == displayAbs) end++;
+        return (first, end);
     }
 
     /// <summary>
@@ -995,104 +1047,142 @@ public class CoverageMapService : ICoverageMapService
     /// </summary>
     public IReadOnlyList<(int X, int Y, CoverageColor Color, int Alpha)> GetPaintedDisplayCells()
     {
-        var result = new List<(int, int, CoverageColor, int)>();
-        // MUST hold _coverageLock: a bounds-expansion on the control thread clears the display
-        // buffer in SetFieldBounds and then spends tens of ms resampling the old pixels back in
-        // (CheckAndExpandBounds) — all under this lock. A lock-free read here could catch the
-        // buffer cleared-but-not-yet-refilled and return an EMPTY snapshot, which (with the client
-        // tearing down on a reset init and re-anchor no longer resending) permanently dropped the
-        // pre-expansion coverage on the first cell-size-change expansion. Locking waits for the
-        // fully-resampled buffer. Alpha is folded in here too so it's consistent with the cells.
-        lock (_coverageLock)
+        // MUST hold _coverageLock while reading: a bounds-expansion on the control thread clears
+        // the display buffer in SetFieldBounds and then spends tens of ms resampling the old
+        // pixels back in (CheckAndExpandBounds) — all under this lock. A lock-free read here
+        // could catch the buffer cleared-but-not-yet-refilled and return an EMPTY snapshot,
+        // which (with the client tearing down on a reset init and re-anchor no longer resending)
+        // permanently dropped the pre-expansion coverage on the first cell-size-change expansion.
+        // Alpha is folded in here too so it's consistent with the cells.
+        //
+        // But only to copy the pixels: a worked field has a million painted cells or more, each
+        // counting the detection cells under it, and the 100 Hz control tick paints coverage
+        // under the same lock, so one snapshot (a browser connecting) held the tick up to 200 ms
+        // (Working Day scenarios, CONTROL-TICK-OVER-10-MS). Taking the lock per band of rows
+        // was not enough: the walk let go of it between bands only for an instant, the lock is
+        // not fair, and the tick, woken each time just too late, still waited the whole walk
+        // (101 ms on a 22 MB seed, measured). Under the lock the walk now only copies a band's
+        // pixels (microseconds); the colours, the alpha (lock-free, as its own doc says) and the
+        // list are made outside it. The control thread paints on meanwhile: a band read later
+        // may hold newer paint, which the live stream sends again anyway (idempotent, newer
+        // alpha wins). A grid change (an expansion swaps the buffer) starts the walk again, also
+        // when it comes after the last band.
+        for (int attempt = 0; ; attempt++)
         {
-            var buf = _displayPixels;
-            int w = _displayWidth, h = _displayHeight;
-            if (buf == null || !_fieldBoundsSet || !_boundsValid || w <= 0 || h <= 0)
-                return result;
-            double cell = _displayCellSize, fMinE = _fieldMinE, fMinN = _fieldMinN;
-
-            // Painted bounding box (detection cells at 0.1 m) → display-pixel index window, clamped.
-            int dxMin = ClampIndex((int)Math.Floor((_minCellE * BITMAP_CELL_SIZE - fMinE) / cell), w);
-            int dxMax = ClampIndex((int)Math.Floor(((_maxCellE + 1) * BITMAP_CELL_SIZE - fMinE) / cell), w);
-            int dyMin = ClampIndex((int)Math.Floor((_minCellN * BITMAP_CELL_SIZE - fMinN) / cell), h);
-            int dyMax = ClampIndex((int)Math.Floor(((_maxCellN + 1) * BITMAP_CELL_SIZE - fMinN) / cell), h);
-
-            for (int dy = dyMin; dy <= dyMax; dy++)
+            var result = new List<(int, int, CoverageColor, int)>();
+            ushort[]? buf;
+            int w, h, oX, oY, dxMin, dxMax, dyMin, dyMax, gen;
+            double cell;
+            lock (_coverageLock)
             {
-                long row = (long)dy * w;
-                for (int dx = dxMin; dx <= dxMax; dx++)
+                gen = _coverageGeneration;
+                buf = _displayPixels;
+                w = _displayWidth; h = _displayHeight;
+                if (buf == null || !_fieldBoundsSet || !_boundsValid || w <= 0 || h <= 0)
+                    return result;
+                cell = _displayCellSize; oX = _displayOriginX; oY = _displayOriginY;
+                double fMinE = oX * cell, fMinN = oY * cell;
+                // Painted bounding box (detection cells at 0.1 m) → display-pixel index window, clamped.
+                dxMin = ClampIndex((int)Math.Floor((_minCellE * BITMAP_CELL_SIZE - fMinE) / cell), w);
+                dxMax = ClampIndex((int)Math.Floor(((_maxCellE + 1) * BITMAP_CELL_SIZE - fMinE) / cell), w);
+                dyMin = ClampIndex((int)Math.Floor((_minCellN * BITMAP_CELL_SIZE - fMinN) / cell), h);
+                dyMax = ClampIndex((int)Math.Floor(((_maxCellN + 1) * BITMAP_CELL_SIZE - fMinN) / cell), h);
+            }
+
+            // Short bands, microseconds each under the lock. After three restarts (the grid kept
+            // changing under the walk) the whole window in one hold: a single copy, a few ms at
+            // the largest texture, so a field that keeps changing still gets its snapshot.
+            int cols = dxMax - dxMin + 1;
+            int band = attempt >= 3 ? dyMax - dyMin + 1 : Math.Max(1, PaintedCellsBandPixels / Math.Max(1, cols));
+            var copy = new ushort[(long)Math.Min(band, dyMax - dyMin + 1) * cols];
+            bool changed = false;
+            DetectionView view = default;
+            for (int y0 = dyMin; y0 <= dyMax && !changed; y0 += band)
+            {
+                int y1 = (int)Math.Min((long)y0 + band - 1, dyMax);
+                lock (_coverageLock)
                 {
-                    ushort px = buf[row + dx];
-                    if (px == 0) continue; // unpainted display pixel
-                    result.Add((dx, dy, Rgb565ToColor(px), GetDisplayCellAlpha255(dx, dy)));
+                    if (!SameGrid(buf, w, h, oX, oY, cell, gen)) { changed = true; break; }
+                    for (int dy = y0; dy <= y1; dy++)
+                        Array.Copy(buf, (long)dy * w + dxMin, copy, (long)(dy - y0) * cols, cols);
+                    // The detection grid as one consistent view (array, origin, size): the alpha
+                    // is counted from it outside the lock. Read field by field there, an
+                    // expansion could pair the new width with the old array and index past it.
+                    view = new DetectionView(_detectionBits, _bitmapOriginE, _bitmapOriginN, _bitmapWidth, _bitmapHeight);
+                }
+                for (int dy = y0; dy <= y1; dy++)
+                {
+                    long row = (long)(dy - y0) * cols;
+                    for (int i = 0; i < cols; i++)
+                    {
+                        ushort px = copy[row + i];
+                        if (px == 0) continue; // unpainted display pixel
+                        int dx = dxMin + i;
+                        result.Add((dx, dy, Rgb565ToColor(px), Alpha255(view, oX + dx, oY + dy, cell)));
+                    }
                 }
             }
+            // One band (the whole window in one hold): pixels and detection view were copied
+            // together, so the snapshot is coherent as of that copy whatever changed since;
+            // checked again, a field regridded faster than the alpha is counted never got one.
+            if (!changed && band >= dyMax - dyMin + 1) return result;
+            if (!changed)
+                lock (_coverageLock)
+                    if (SameGrid(buf, w, h, oX, oY, cell, gen)) return result;
         }
-        return result;
     }
+
+    /// <summary>Is the display grid still the one a walk started on (the same buffer, size,
+    /// origin and cell, and no clear, reset or reload since: <see cref="_coverageGeneration"/>)?
+    /// Caller holds _coverageLock.</summary>
+    private bool SameGrid(ushort[] buf, int w, int h, int oX, int oY, double cell, int gen) =>
+        ReferenceEquals(buf, _displayPixels) && w == _displayWidth && h == _displayHeight
+        && oX == _displayOriginX && oY == _displayOriginY && cell == _displayCellSize && _fieldBoundsSet
+        && gen == _coverageGeneration;
+
+    /// <summary>Bumped (under _coverageLock) whenever coverage is cleared, reset or reloaded
+    /// wholesale, also on a grid of the same size: a snapshot walk across one starts again.</summary>
+    private int _coverageGeneration;
+
+    /// <summary>The detection grid as read together under the lock.</summary>
+    private readonly record struct DetectionView(byte[]? Bits, int OriginE, int OriginN, int Width, int Height);
+
+    /// <summary><see cref="GetDisplayCellAlpha255"/> on a <see cref="DetectionView"/> and a display
+    /// cell given absolutely: the same count, from values that belong together.</summary>
+    private static int Alpha255(in DetectionView v, int displayAbsX, int displayAbsY, double displayCell)
+    {
+        if (v.Bits == null) return 255;
+        var (ce0, ce1) = DetectionRange(displayAbsX, displayCell);
+        var (cn0, cn1) = DetectionRange(displayAbsY, displayCell);
+        int covered = 0, total = (ce1 - ce0) * (cn1 - cn0);
+        if (total <= 0) return 255;
+        for (int cn = cn0; cn < cn1; cn++)
+        {
+            int ln = cn - v.OriginN;
+            if (ln < 0 || ln >= v.Height) continue;
+            for (int ce = ce0; ce < ce1; ce++)
+            {
+                int le = ce - v.OriginE;
+                if (le < 0 || le >= v.Width) continue;
+                long bit = (long)ln * v.Width + le;
+                if ((v.Bits[(int)(bit / 8)] & (1 << (int)(bit % 8))) != 0) covered++;
+            }
+        }
+        const double FULL = 0.75;
+        double frac = (double)covered / total;
+        return frac >= FULL ? 255 : (int)(frac / FULL * 255.0);
+    }
+
+    /// <summary>Display pixels the snapshot copies per hold of the coverage lock (a band of
+    /// whole rows of the painted window): a copy of 32 KB, microseconds.</summary>
+    private const int PaintedCellsBandPixels = 16_384;
 
     private static int ClampIndex(int v, int size) => v < 0 ? 0 : (v >= size ? size - 1 : v);
 
     /// <summary>
-    /// Get newly added coverage cells since last call.
-    /// Clears the pending list after returning.
-    /// Uses fixed field bounds if set, otherwise coverage bounds.
-    /// </summary>
-    public IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCells(double cellSize)
-    {
-        lock (_coverageLock)
-        {
-            if (_newCells.Count == 0)
-                return Array.Empty<(int, int, CoverageColor)>();
-
-            // Determine origin for coordinate calculations
-            double minE, minN;
-            if (_fieldBoundsSet)
-            {
-                minE = _fieldMinE;
-                minN = _fieldMinN;
-            }
-            else
-            {
-                if (!_boundsValid)
-                {
-                    _newCells.Clear();
-                    return Array.Empty<(int, int, CoverageColor)>();
-                }
-                minE = _minCellE * BITMAP_CELL_SIZE;
-                minN = _minCellN * BITMAP_CELL_SIZE;
-            }
-
-            _newCellsDedup.Clear();
-            _newCellsResult.Clear();
-
-            foreach (var (cellE, cellN, zone) in _newCells)
-            {
-                double worldE = (cellE + 0.5) * BITMAP_CELL_SIZE;
-                double worldN = (cellN + 0.5) * BITMAP_CELL_SIZE;
-
-                int outCellX = (int)Math.Floor((worldE - minE) / cellSize);
-                int outCellY = (int)Math.Floor((worldN - minN) / cellSize);
-
-                if (_newCellsDedup.Add((outCellX, outCellY)))
-                {
-                    var color = GetZoneColor(zone);
-                    _newCellsResult.Add((outCellX, outCellY, color));
-                }
-            }
-
-            _newCells.Clear();
-
-            // Return a copy since _newCellsResult is reused
-            return _newCellsResult.ToArray();
-        }
-    }
-
-    /// <summary>
-    /// Second, independent incremental drain — newly-covered cells since the LAST
-    /// call to THIS method (parallel to GetNewCoverageBitmapCells, which serves the
-    /// native map). For the remote/web server's CoverageProjector so it gets O(new
-    /// cells) deltas instead of an O(whole-grid) scan. Same downsample logic.
+    /// Incremental drain — newly-covered cells since the LAST call to this method. For
+    /// the remote/web server's CoverageProjector so it gets O(new cells) deltas instead
+    /// of an O(whole-grid) scan.
     /// </summary>
     public IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCellsServer(double cellSize)
     {
@@ -1101,11 +1191,15 @@ public class CoverageMapService : ICoverageMapService
             if (_newCellsServer.Count == 0)
                 return Array.Empty<(int, int, CoverageColor)>();
 
-            double minE, minN;
+            // Cell indices in the DISPLAY grid, whose origin is the field corner snapped to
+            // the world grid (SetDisplayGrid) — the grid the client was told about, and the
+            // one the snapshot and GetDisplayCellAlpha255 use. Indexing from the raw corner
+            // put each cell up to one cell off, so its alpha was read for a neighbour.
+            int originX, originY;
             if (_fieldBoundsSet)
             {
-                minE = _fieldMinE;
-                minN = _fieldMinN;
+                originX = (int)Math.Floor(_fieldMinE / cellSize);
+                originY = (int)Math.Floor(_fieldMinN / cellSize);
             }
             else
             {
@@ -1114,8 +1208,8 @@ public class CoverageMapService : ICoverageMapService
                     _newCellsServer.Clear();
                     return Array.Empty<(int, int, CoverageColor)>();
                 }
-                minE = _minCellE * BITMAP_CELL_SIZE;
-                minN = _minCellN * BITMAP_CELL_SIZE;
+                originX = (int)Math.Floor(_minCellE * BITMAP_CELL_SIZE / cellSize);
+                originY = (int)Math.Floor(_minCellN * BITMAP_CELL_SIZE / cellSize);
             }
 
             _newCellsServerDedup.Clear();
@@ -1125,8 +1219,8 @@ public class CoverageMapService : ICoverageMapService
             {
                 double worldE = (cellE + 0.5) * BITMAP_CELL_SIZE;
                 double worldN = (cellN + 0.5) * BITMAP_CELL_SIZE;
-                int outCellX = (int)Math.Floor((worldE - minE) / cellSize);
-                int outCellY = (int)Math.Floor((worldN - minN) / cellSize);
+                int outCellX = (int)Math.Floor(worldE / cellSize) - originX;
+                int outCellY = (int)Math.Floor(worldN / cellSize) - originY;
                 if (_newCellsServerDedup.Add((outCellX, outCellY)))
                     _newCellsServerResult.Add((outCellX, outCellY, GetZoneColor(zone)));
             }
@@ -1148,35 +1242,46 @@ public class CoverageMapService : ICoverageMapService
         return Array.Empty<CoveragePatch>();
     }
 
+    /// <summary>
+    /// Clear all painted coverage. Zones that are mapping stay mapping: the section service
+    /// only calls <see cref="StartMapping"/> on a section's off→on edge, so dropping them here
+    /// would make every later point of a section that stays on be discarded (deleting the
+    /// applied area while painting stopped the painting until each section cycled off/on).
+    /// Their next point re-seeds the strip and the edge ribbon.
+    /// </summary>
     public void ClearAll()
     {
-        // Clear display pixel buffer and detection bits in lockstep
-        if (_displayPixels != null)
-            Array.Clear(_displayPixels, 0, _displayPixels.Length);
-        ExpandDirtyAll();
-        _newCells.Clear();
-        _newCellsServer.Clear();
-        if (_detectionBits != null)
-            Array.Clear(_detectionBits, 0, _detectionBits.Length);
-        _cellCountPerZone.Clear();
+        lock (_coverageLock) // the cycle thread paints concurrently
+        {
+            _coverageGeneration++;
+            RequireFullSave(detection: true, display: true);
+            // Clear display pixel buffer and detection bits in lockstep
+            if (_displayPixels != null)
+                Array.Clear(_displayPixels, 0, _displayPixels.Length);
+            ExpandDirtyAll();
+            _newCellsServer.Clear();
+            if (_detectionBits != null)
+                Array.Clear(_detectionBits, 0, _detectionBits.Length);
+            _cellCountPerZone.Clear();
+            System.Threading.Interlocked.Exchange(ref _coveredCells, 0);
 
-        // Reset bounds
-        _minCellE = int.MaxValue;
-        _maxCellE = int.MinValue;
-        _minCellN = int.MaxValue;
-        _maxCellN = int.MinValue;
-        _boundsValid = false;
+            // Reset bounds
+            _minCellE = int.MaxValue;
+            _maxCellE = int.MinValue;
+            _minCellN = int.MaxValue;
+            _maxCellN = int.MinValue;
+            _boundsValid = false;
 
-        // Clear tracking state
-        _activeSections.Clear();
-        _lastEdgesPerSection.Clear();
-        ClearEdges();
+            // Clear tracking state (not _activeSections, see above)
+            _lastEdgesPerSection.Clear();
+            ClearEdges();
 
-        // Reset totals
-        _totalWorkedArea = 0;
-        _totalWorkedAreaUser = 0;
-        _coverageDirty = false;
-        _pendingAreaAdded = 0;
+            // Reset totals
+            _totalWorkedArea = 0;
+            _totalWorkedAreaUser = 0;
+            _coverageDirty = false;
+            _pendingAreaAdded = 0;
+        }
 
         // IsFullReload tells the 2D map control to drop its SKBitmap and
         // repaint from the (now empty) service. Without this, ClearAll wipes
@@ -1208,6 +1313,54 @@ public class CoverageMapService : ICoverageMapService
 
     public void SetFieldBounds(double minE, double maxE, double minN, double maxN)
     {
+        // Under the lock so a coverage save never snapshots half-updated geometry.
+        // Re-entrant from CheckAndExpandBounds, which already holds it.
+        lock (_coverageLock)
+        {
+            // The field's box moved while the grid holds worked area: its boundary was edited
+            // with a job open (an obstacle's choice, one added or deleted, another outer
+            // boundary; MainViewModel.SetCurrentBoundary gives the outer boundary's box each
+            // time). A new grid here is an empty one, and the next save deletes every tile of
+            // the job: a tester lost a day's spraying map to one obstacle deleted (the grid had
+            // grown while painting, so the box was no longer the grid's). The grid grows to hold
+            // the box as well and keeps what is painted. A field closing clears the bounds
+            // first (ClearFieldBounds), so another field still starts empty.
+            if (_fieldBoundsSet && !_inExpansion && GetTotalCellCount() > 0)
+            {
+                GrowBoundsToHold(minE, maxE, minN, maxN);
+                return;
+            }
+            SetFieldBoundsCore(minE, maxE, minN, maxN);
+        }
+    }
+
+    /// <summary>
+    /// Grow the grid so it holds this box too, keeping the worked area (as painting near the
+    /// grid's edge does). A box the grid already holds changes nothing; the grid never shrinks
+    /// while it has worked area. Caller holds _coverageLock.
+    /// </summary>
+    private void GrowBoundsToHold(double minE, double maxE, double minN, double maxN)
+    {
+        double newMinE = Math.Min(minE, _fieldMinE), newMaxE = Math.Max(maxE, _fieldMaxE);
+        double newMinN = Math.Min(minN, _fieldMinN), newMaxN = Math.Max(maxN, _fieldMaxN);
+        const double tol = 0.01;
+        if (newMinE >= _fieldMinE - tol && newMaxE <= _fieldMaxE + tol &&
+            newMinN >= _fieldMinN - tol && newMaxN <= _fieldMaxN + tol)
+            return;
+
+        double cells = Math.Ceiling((newMaxE - newMinE) / BITMAP_CELL_SIZE) * Math.Ceiling((newMaxN - newMinN) / BITMAP_CELL_SIZE);
+        if (cells > MAX_LOAD_GRID_CELLS)
+        {
+            // A boundary drawn far from the worked area: the grid stays, and grows by itself
+            // where painting gets near its edge.
+            Console.WriteLine($"[Coverage] Field box too far from the worked area to hold both ({cells:E1} cells); keeping the grid");
+            return;
+        }
+        ResizeKeepingCoverage(newMinE, newMaxE, newMinN, newMaxN);
+    }
+
+    private void SetFieldBoundsCore(double minE, double maxE, double minN, double maxN)
+    {
         // Skip if bounds unchanged
         if (_fieldBoundsSet &&
             Math.Abs(_fieldMinE - minE) < 0.01 &&
@@ -1219,17 +1372,20 @@ public class CoverageMapService : ICoverageMapService
             return;
         }
 
+        _coverageGeneration++;
         _fieldMinE = minE;
         _fieldMaxE = maxE;
         _fieldMinN = minN;
         _fieldMaxN = maxN;
         _fieldBoundsSet = true;
+        double oldDisplayCell = _displayCellSize;
 
-        // Calculate bitmap dimensions: (int)Math.Ceiling((max - min) / cellSize)
-        _bitmapOriginE = (int)Math.Floor(minE / BITMAP_CELL_SIZE);
+        // Detection grid in absolute 0.1 m cells. Origin and width are rounded out to multiples
+        // of 8 so every row starts on a byte: a detection tile's rows are then plain byte copies.
+        _bitmapOriginE = (int)Math.Floor(minE / BITMAP_CELL_SIZE) & ~7;
         _bitmapOriginN = (int)Math.Floor(minN / BITMAP_CELL_SIZE);
-        _bitmapWidth = (int)Math.Ceiling((maxE - minE) / BITMAP_CELL_SIZE);
-        _bitmapHeight = (int)Math.Ceiling((maxN - minN) / BITMAP_CELL_SIZE);
+        _bitmapWidth = ((int)Math.Ceiling(maxE / BITMAP_CELL_SIZE) - _bitmapOriginE + 7) & ~7;
+        _bitmapHeight = (int)Math.Ceiling(maxN / BITMAP_CELL_SIZE) - _bitmapOriginN;
 
         long totalDetectionCells = (long)_bitmapWidth * _bitmapHeight;
 
@@ -1240,7 +1396,10 @@ public class CoverageMapService : ICoverageMapService
         // eventually fires for 1-3 s when ~3 close/open cycles accumulate.
         // User repro: close + reopen field 3x → beach ball.
         long totalBytes = (totalDetectionCells + 7) / 8;
-        if (_detectionBits != null && _detectionBits.LongLength == totalBytes)
+        // Never while the grid is resized with its worked area kept: the caller copies the old
+        // arrays into the new ones, and a resize that leaves the size as it was (the box moved
+        // by less than a cell) would clear the very array it copies from.
+        if (!_inExpansion && _detectionBits != null && _detectionBits.LongLength == totalBytes)
             Array.Clear(_detectionBits, 0, _detectionBits.Length);
         else
             _detectionBits = new byte[totalBytes];
@@ -1252,14 +1411,20 @@ public class CoverageMapService : ICoverageMapService
         // DisplayConfig.DisplayResolutionMultiplier and a 25M-pixel cap)
         // then allocate (or reuse) the RGB565 display buffer.
         _displayCellSize = ComputeDisplayCellSize(maxE - minE, maxN - minN);
-        _displayWidth = (int)Math.Ceiling((maxE - minE) / _displayCellSize);
-        _displayHeight = (int)Math.Ceiling((maxN - minN) / _displayCellSize);
+        SetDisplayGrid(_displayCellSize);
         long totalDisplayPixels = (long)_displayWidth * _displayHeight;
-        if (_displayPixels != null && _displayPixels.LongLength == totalDisplayPixels)
+        if (!_inExpansion && _displayPixels != null && _displayPixels.LongLength == totalDisplayPixels)
             Array.Clear(_displayPixels, 0, _displayPixels.Length);
         else
             _displayPixels = new ushort[totalDisplayPixels];
         _dirtyValid = false;
+
+        // A new field (or reopen) replaces the coverage: the next save rewrites every tile.
+        // Growing the bounds keeps tile keys (they're absolute) unless the display cell changed.
+        if (!_inExpansion)
+            RequireFullSave(detection: true, display: true);
+        else if (Math.Abs(oldDisplayCell - _displayCellSize) > 1e-12)
+            RequireFullSave(detection: false, display: true);
 
         double areaMSq = (maxE - minE) * (maxN - minN);
         double areaHa = areaMSq / 10000.0;
@@ -1268,6 +1433,15 @@ public class CoverageMapService : ICoverageMapService
         Console.WriteLine($"[Coverage] Field bounds set: E[{minE:F1}, {maxE:F1}] N[{minN:F1}, {maxN:F1}] {areaHa:F0}ha");
         Console.WriteLine($"[Coverage] Detection {_bitmapWidth}x{_bitmapHeight} @ {BITMAP_CELL_SIZE}m = {totalDetectionCells:N0} cells / {detectionMB:F1}MB");
         Console.WriteLine($"[Coverage] Display   {_displayWidth}x{_displayHeight} @ {_displayCellSize:F2}m = {totalDisplayPixels:N0} pixels / {displayMB:F1}MB");
+    }
+
+    /// <summary>Display grid for a cell size over the current field bounds, snapped to the world grid.</summary>
+    private void SetDisplayGrid(double cellSize)
+    {
+        _displayOriginX = (int)Math.Floor(_fieldMinE / cellSize);
+        _displayOriginY = (int)Math.Floor(_fieldMinN / cellSize);
+        _displayWidth = (int)Math.Ceiling(_fieldMaxE / cellSize) - _displayOriginX;
+        _displayHeight = (int)Math.Ceiling(_fieldMaxN / cellSize) - _displayOriginY;
     }
 
     /// <summary>
@@ -1299,7 +1473,45 @@ public class CoverageMapService : ICoverageMapService
         double multiplier = _configStore.Display.DisplayResolutionMultiplier;
         if (multiplier > 1.0) cellSize *= multiplier;
 
+        // Keep each side within the largest texture a browser can hold. A bigger grid can't be
+        // a GPU render target, and the web client's 2D fallback then copies the whole image
+        // several times over (about 100 MB per copy at 5000 x 5000), enough to get a tablet
+        // killed. SetDisplayGrid snaps to the world grid, which can add a pixel at each end.
+        if (_maxDisplaySide > 2)
+        {
+            double needed = Math.Max(worldWidthM, worldHeightM) / (_maxDisplaySide - 2);
+            if (needed > cellSize) cellSize = SnapDisplayCellUp(needed);
+        }
+
         return cellSize;
+    }
+
+    /// <summary>The next display cell size at or above <paramref name="cellSize"/>, from a
+    /// short list of steps, so saved display tiles keep to a few predictable cell sizes.</summary>
+    private static double SnapDisplayCellUp(double cellSize)
+    {
+        foreach (double step in DisplayCellSteps)
+            if (cellSize <= step + 1e-9) return step;
+        return Math.Ceiling(cellSize);
+    }
+
+    private static readonly double[] DisplayCellSteps = { 0.15, 0.2, 0.25, 0.35, 0.5, 0.75 };
+
+    /// <summary>
+    /// Limit both sides of the display grid to <paramref name="maxSide"/> pixels (a web
+    /// client's largest texture). Only ever tightens: a second browser with a bigger GPU
+    /// doesn't lift the limit the tablet set. An open field is regridded at once.
+    /// </summary>
+    public void LimitDisplaySide(int maxSide)
+    {
+        if (maxSide <= 2) return;
+        lock (_coverageLock)
+        {
+            if (_maxDisplaySide != 0 && _maxDisplaySide <= maxSide) return;
+            _maxDisplaySide = maxSide;
+        }
+        Console.WriteLine($"[Coverage] Display grid limited to {maxSide} px a side (the web client's largest texture)");
+        RebuildDisplayForResolutionChange();
     }
 
     /// <summary>
@@ -1316,44 +1528,120 @@ public class CoverageMapService : ICoverageMapService
         lock (_coverageLock)
         {
             if (!_fieldBoundsSet) return;
+            _coverageGeneration++;
             double worldW = _fieldMaxE - _fieldMinE, worldH = _fieldMaxN - _fieldMinN;
             if (worldW <= 0 || worldH <= 0) return;
 
             double newCell = ComputeDisplayCellSize(worldW, worldH);
-            int newW = (int)Math.Ceiling(worldW / newCell);
-            int newH = (int)Math.Ceiling(worldH / newCell);
-            if (newW <= 0 || newH <= 0) return;
-            if (newW == _displayWidth && newH == _displayHeight) return; // same pixel grid → nothing to do
+            if (Math.Abs(newCell - _displayCellSize) < 1e-12) return; // same pixel grid → nothing to do
 
             _displayCellSize = newCell;
-            _displayWidth = newW;
-            _displayHeight = newH;
-            long total = (long)newW * newH;
+            SetDisplayGrid(newCell);
+            if (_displayWidth <= 0 || _displayHeight <= 0) return;
+            RequireFullSave(detection: false, display: true);
+            long total = (long)_displayWidth * _displayHeight;
             if (_displayPixels != null && _displayPixels.LongLength == total)
                 Array.Clear(_displayPixels, 0, _displayPixels.Length);
             else
                 _displayPixels = new ushort[total];
             _dirtyValid = false;
+            RepaintDisplayFromDetection();
+        }
+    }
 
-            // Repaint from detection bits (0.1 m, resolution-independent). The 1-bit detection
-            // layer carries no per-cell zone, so paint zone 0 — the remote coverage projection
-            // is single-colour too (GetCoverageBitmapCells yields the default zone colour).
-            if (_detectionBits != null)
+    /// <summary>
+    /// Paint the display layer from the detection bits (0.1 m, resolution-independent). The
+    /// 1-bit detection layer carries no per-cell zone, so this paints zone 0 — the remote
+    /// coverage projection is single-colour too (GetCoverageBitmapCells yields the default
+    /// zone colour). Caller holds _coverageLock.
+    /// </summary>
+    private void RepaintDisplayFromDetection()
+    {
+        if (_detectionBits == null) return;
+        for (int byteIdx = 0; byteIdx < _detectionBits.Length; byteIdx++)
+        {
+            byte bits = _detectionBits[byteIdx];
+            if (bits == 0) continue; // 8 uncovered cells at once
+            long baseBitIdx = (long)byteIdx * 8;
+            for (int bit = 0; bit < 8; bit++)
             {
-                for (int byteIdx = 0; byteIdx < _detectionBits.Length; byteIdx++)
+                if ((bits & (1 << bit)) == 0) continue;
+                long bitIdx = baseBitIdx + bit;
+                // PaintDisplayPixel takes ABSOLUTE detection cells (as MarkCellCovered
+                // passes them); bitIdx is local to the bitmap. Without the origin every
+                // repainted pixel was shifted by the field's min corner, so the fill
+                // vanished and only the edge strokes were left after a quality change (#175).
+                PaintDisplayPixel(_bitmapOriginE + (int)(bitIdx % _bitmapWidth),
+                                  _bitmapOriginN + (int)(bitIdx / _bitmapWidth), 0);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Paint every display pixel that is empty although a detection cell under it is covered.
+    /// Like <see cref="RepaintDisplayFromDetection"/> it paints zone 0 (detection carries no
+    /// zone), but it leaves painted pixels and their colours alone. Returns the number of
+    /// pixels filled. Both layers are scanned a run at a time, so a job whose layers agree
+    /// costs two vectorised passes, not a test per cell. Caller holds _coverageLock.
+    /// </summary>
+    private int FillDisplayGapsFromDetection()
+    {
+        if (_detectionBits == null || _displayPixels == null || _displayWidth <= 0 || _displayHeight <= 0)
+            return 0;
+
+        // Display column of each detection column (the mapping in PaintDisplayPixel), and the
+        // detection columns [first, end) under each display column.
+        var columnOf = new int[_bitmapWidth];
+        var firstUnder = new int[_displayWidth];
+        var endUnder = new int[_displayWidth];
+        for (int i = 0; i < columnOf.Length; i++)
+        {
+            int dx = (int)Math.Floor((_bitmapOriginE + i + 0.5) * BITMAP_CELL_SIZE / _displayCellSize) - _displayOriginX;
+            columnOf[i] = dx;
+            if (dx < 0 || dx >= _displayWidth) continue;
+            if (endUnder[dx] == 0) firstUnder[dx] = i;
+            endUnder[dx] = i + 1;
+        }
+
+        int stride = _bitmapWidth / 8, filled = 0;
+        for (int row = 0; row < _bitmapHeight; row++)
+        {
+            int dy = (int)Math.Floor((_bitmapOriginN + row + 0.5) * BITMAP_CELL_SIZE / _displayCellSize) - _displayOriginY;
+            if (dy < 0 || dy >= _displayHeight) continue;
+            var bits = _detectionBits.AsSpan(row * stride, stride);
+            var pixels = _displayPixels.AsSpan(dy * _displayWidth, _displayWidth);
+            int b = 0;
+            while (b < stride)
+            {
+                // The next run of bytes with worked cells, and its first and last worked cell.
+                int skip = bits.Slice(b).IndexOfAnyExcept((byte)0);
+                if (skip < 0) break;
+                int b0 = b + skip;
+                int length = bits.Slice(b0).IndexOf((byte)0);
+                int b1 = length < 0 ? stride : b0 + length;
+                b = b1;
+                int i0 = b0 * 8 + System.Numerics.BitOperations.TrailingZeroCount(bits[b0]);
+                int i1 = (b1 - 1) * 8 + System.Numerics.BitOperations.Log2(bits[b1 - 1]);
+                int dx0 = Math.Max(columnOf[i0], 0), dx1 = Math.Min(columnOf[i1], _displayWidth - 1);
+
+                // Empty pixels within the run: fill those with a worked cell under them (the
+                // rest are gaps narrower than a byte of cells).
+                for (int dx = dx0; dx <= dx1; dx++)
                 {
-                    byte bits = _detectionBits[byteIdx];
-                    if (bits == 0) continue; // 8 uncovered cells at once
-                    long baseBitIdx = (long)byteIdx * 8;
-                    for (int bit = 0; bit < 8; bit++)
+                    int empty = pixels.Slice(dx, dx1 - dx + 1).IndexOf((ushort)0);
+                    if (empty < 0) break;
+                    dx += empty;
+                    for (int i = Math.Max(firstUnder[dx], i0); i < endUnder[dx] && i <= i1; i++)
                     {
-                        if ((bits & (1 << bit)) == 0) continue;
-                        long bitIdx = baseBitIdx + bit;
-                        PaintDisplayPixel((int)(bitIdx % _bitmapWidth), (int)(bitIdx / _bitmapWidth), 0);
+                        if ((bits[i >> 3] & (1 << (i & 7))) == 0) continue;
+                        PaintDisplayPixel(_bitmapOriginE + i, _bitmapOriginN + row, 0);
+                        filled++;
+                        break;
                     }
                 }
             }
         }
+        return filled;
     }
 
     private const double EXPAND_MARGIN = 50.0; // Expand when within 50m of edge
@@ -1380,7 +1668,16 @@ public class CoverageMapService : ICoverageMapService
         if (maxN > _fieldMaxN - EXPAND_MARGIN) { newMaxN = _fieldMaxN + EXPAND_AMOUNT; needsExpand = true; }
 
         if (!needsExpand) return;
+        ResizeKeepingCoverage(newMinE, newMaxE, newMinN, newMaxN);
+    }
 
+    /// <summary>
+    /// A grid for new bounds with the worked area of the old one copied in: detection bits and
+    /// display pixels (resampled when the display cell size changes with the bounds). Listeners
+    /// are told through <see cref="BoundsExpanded"/>. Caller holds _coverageLock.
+    /// </summary>
+    private void ResizeKeepingCoverage(double newMinE, double newMaxE, double newMinN, double newMaxN)
+    {
         // Save old state — both detection (always at 0.1m) and display (at
         // _displayCellSize). Detection origin is in 0.1m cells; display origin
         // derives from world bounds since the policy could change cell size.
@@ -1394,8 +1691,8 @@ public class CoverageMapService : ICoverageMapService
         int oldDispWidth = _displayWidth;
         int oldDispHeight = _displayHeight;
         double oldDispCell = _displayCellSize;
-        double oldMinE = _fieldMinE;
-        double oldMinN = _fieldMinN;
+        int oldDispOriginX = _displayOriginX;
+        int oldDispOriginY = _displayOriginY;
 
         // Reallocate with new bounds (keep the edge ribbons — detection is copied below)
         _inExpansion = true;
@@ -1403,59 +1700,36 @@ public class CoverageMapService : ICoverageMapService
         finally { _inExpansion = false; }
 
         // Copy old detection bits to new array
-        if (oldBits != null && _detectionBits != null)
-        {
-            int offsetE = oldOriginE - _bitmapOriginE;
-            int offsetN = oldOriginN - _bitmapOriginN;
+        if (oldBits != null)
+            CopyDetectionBitsIn(oldBits, oldWidth, oldHeight, oldOriginE, oldOriginN);
 
-            for (int y = 0; y < oldHeight; y++)
-            {
-                for (int x = 0; x < oldWidth; x++)
-                {
-                    long oldIdx = (long)y * oldWidth + x;
-                    if ((oldBits[oldIdx / 8] & (1 << (int)(oldIdx % 8))) != 0)
-                    {
-                        int newX = x + offsetE;
-                        int newY = y + offsetN;
-                        if (newX >= 0 && newX < _bitmapWidth && newY >= 0 && newY < _bitmapHeight)
-                        {
-                            long newIdx = (long)newY * _bitmapWidth + newX;
-                            _detectionBits[newIdx / 8] |= (byte)(1 << (int)(newIdx % 8));
-                        }
-                    }
-                }
-            }
-        }
-
-        // Copy old display pixels to new buffer. If the display cell size
-        // changed (rare — only when the new bounds cross a policy threshold),
-        // resample by mapping each old pixel through world coordinates.
+        // Copy old display pixels to new buffer. Same cell size: the grids share the world
+        // snap, so it's a row-by-row copy at the origin offset. A changed cell size (rare —
+        // only when the new bounds cross a policy threshold) resamples through world coordinates.
         if (oldPixels != null && _displayPixels != null)
         {
-            bool sameCell = Math.Abs(oldDispCell - _displayCellSize) < 1e-9;
+            bool sameCell = Math.Abs(oldDispCell - _displayCellSize) < 1e-12;
+            int offX = oldDispOriginX - _displayOriginX, offY = oldDispOriginY - _displayOriginY;
             for (int oy = 0; oy < oldDispHeight; oy++)
             {
+                if (sameCell)
+                {
+                    int ny = oy + offY;
+                    if (ny < 0 || ny >= _displayHeight) continue;
+                    int x0 = Math.Max(0, -offX), x1 = Math.Min(oldDispWidth, _displayWidth - offX);
+                    if (x1 > x0)
+                        oldPixels.AsSpan(oy * oldDispWidth + x0, x1 - x0)
+                                 .CopyTo(_displayPixels.AsSpan(ny * _displayWidth + x0 + offX));
+                    continue;
+                }
                 for (int ox = 0; ox < oldDispWidth; ox++)
                 {
                     ushort px = oldPixels[(long)oy * oldDispWidth + ox];
                     if (px == 0) continue;
-
-                    int nx, ny;
-                    if (sameCell)
-                    {
-                        // Direct offset in display cells based on origin shift.
-                        double worldX = oldMinE + (ox + 0.5) * oldDispCell;
-                        double worldY = oldMinN + (oy + 0.5) * oldDispCell;
-                        nx = (int)Math.Floor((worldX - _fieldMinE) / _displayCellSize);
-                        ny = (int)Math.Floor((worldY - _fieldMinN) / _displayCellSize);
-                    }
-                    else
-                    {
-                        double worldX = oldMinE + (ox + 0.5) * oldDispCell;
-                        double worldY = oldMinN + (oy + 0.5) * oldDispCell;
-                        nx = (int)Math.Floor((worldX - _fieldMinE) / _displayCellSize);
-                        ny = (int)Math.Floor((worldY - _fieldMinN) / _displayCellSize);
-                    }
+                    double worldX = (oldDispOriginX + ox + 0.5) * oldDispCell;
+                    double worldY = (oldDispOriginY + oy + 0.5) * oldDispCell;
+                    int nx = (int)Math.Floor(worldX / _displayCellSize) - _displayOriginX;
+                    int ny = (int)Math.Floor(worldY / _displayCellSize) - _displayOriginY;
                     if (nx < 0 || nx >= _displayWidth || ny < 0 || ny >= _displayHeight) continue;
                     _displayPixels[(long)ny * _displayWidth + nx] = px;
                 }
@@ -1474,16 +1748,57 @@ public class CoverageMapService : ICoverageMapService
     }
 
     /// <summary>
+    /// OR a detection grid with its own origin and size (in absolute 0.1 m cells) into
+    /// _detectionBits. Cells outside the current grid are dropped.
+    /// </summary>
+    private void CopyDetectionBitsIn(byte[] srcBits, int srcWidth, int srcHeight, int srcOriginE, int srcOriginN)
+    {
+        if (_detectionBits == null) return;
+        int offsetE = srcOriginE - _bitmapOriginE;
+        int offsetN = srcOriginN - _bitmapOriginN;
+        long srcCells = (long)srcWidth * srcHeight;
+
+        for (long byteIdx = 0; byteIdx < srcBits.LongLength; byteIdx++)
+        {
+            byte bits = srcBits[byteIdx];
+            if (bits == 0) continue; // 8 uncovered cells at once
+            for (int bit = 0; bit < 8; bit++)
+            {
+                if ((bits & (1 << bit)) == 0) continue;
+                long srcIdx = byteIdx * 8 + bit;
+                if (srcIdx >= srcCells) break;
+                int newX = (int)(srcIdx % srcWidth) + offsetE;
+                int newY = (int)(srcIdx / srcWidth) + offsetN;
+                if (newX >= 0 && newX < _bitmapWidth && newY >= 0 && newY < _bitmapHeight)
+                {
+                    long newIdx = (long)newY * _bitmapWidth + newX;
+                    _detectionBits[newIdx / 8] |= (byte)(1 << (int)(newIdx % 8));
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// Clear field bounds (when field is closed).
     /// </summary>
     public void ClearFieldBounds()
     {
+        lock (_coverageLock)
+            ClearFieldBoundsCore();
+    }
+
+    private void ClearFieldBoundsCore()
+    {
+        _coverageGeneration++;
         _fieldBoundsSet = false;
+        RequireFullSave(detection: true, display: true);
+        _savedDirectory = null;
         _bitmapWidth = 0;
         _bitmapHeight = 0;
         _displayWidth = 0;
         _displayHeight = 0;
         _cellCountPerZone.Clear();
+        System.Threading.Interlocked.Exchange(ref _coveredCells, 0);
         // Keep _detectionBits and _displayPixels alive — SetFieldBounds
         // reuses them when LongLength matches (the reuse fix at lines
         // 981-996). Nulling here silently defeats the reuse on every
@@ -1498,32 +1813,349 @@ public class CoverageMapService : ICoverageMapService
         _totalWorkedAreaUser = 0;
     }
 
+    // ========== PERSISTENCE: world-anchored tiles (CoverageTileStore) ==========
+
+    // Tiles painted since the last save, keyed CoverageTileStore.Key of absolute tile indices.
+    // A third dirty stream, independent of the renderer's dirty rect and the web projector's
+    // new-cell drain, so a save steals from neither. Mutated under _coverageLock; a save swaps
+    // the sets out and puts them back if it fails.
+    private HashSet<long> _dirtyDetectTiles = new();
+    private HashSet<long> _dirtyDisplayTiles = new();
+    private long _lastDetectTileKey = long.MinValue;  // skips the set probe for runs in one tile
+    private long _lastDisplayTileKey = long.MinValue;
+
+    // Rewrite every tile on the next save, and delete the rest: the coverage was cleared,
+    // replaced (new field, import) or regridded (display cell size).
+    private bool _detectFullSave = true;
+    private bool _displayFullSave = true;
+
+    private string? _savedDirectory;        // job folder the tiles on disk match (null: unknown)
+    private string? _newerFormatDirectory;  // a newer build's coverage folder: never written (CoverageTileStore.IsNewerFormat)
+    private string? _legacyFilesDirectory;  // job imported from coverage_*.bin or Sections.txt: delete them after its first tiled save
+
+    // Serialises saves: the autosave can still be running when the field-close save starts,
+    // and both write the same files. The scratch buffers below are only used under it.
+    private readonly object _saveLock = new();
+    private readonly CoverageTileStore.RunBuffer _runBuffer = new();
+    private readonly byte[] _detectTileScratch = new byte[CoverageTileStore.DetectTileBytes];
+    private readonly ushort[] _displayTileScratch = new ushort[CoverageTileStore.DisplayTileLength];
+
+    /// <summary>Caller holds _coverageLock.</summary>
+    private void RequireFullSave(bool detection, bool display)
+    {
+        if (detection)
+        {
+            _detectFullSave = true;
+            _dirtyDetectTiles.Clear();
+            _lastDetectTileKey = long.MinValue;
+        }
+        if (display)
+        {
+            _displayFullSave = true;
+            _dirtyDisplayTiles.Clear();
+            _lastDisplayTileKey = long.MinValue;
+        }
+    }
+
+    // Everything a save needs, captured under _coverageLock. The arrays are the live ones:
+    // tiles are encoded from them outside the lock. A cell painted meanwhile may or may not
+    // make it into this save, but it re-dirties its tile, so the next save has it. Expansion
+    // allocates new arrays, so these references stay consistent with these dimensions.
+    private sealed record TileSave(
+        byte[]? DetectionBits, int BitmapOriginE, int BitmapOriginN, int BitmapWidth, int BitmapHeight,
+        ushort[]? DisplayPixels, int DisplayOriginX, int DisplayOriginY, int DisplayWidth, int DisplayHeight,
+        double DisplayCellSize, double TotalWorkedArea,
+        double MinE, double MaxE, double MinN, double MaxN,
+        bool DetectFull, bool DisplayFull, HashSet<long> DetectKeys, HashSet<long> DisplayKeys);
+
     public void SaveToFile(string fieldDirectory)
     {
-        // Save detection bits (authoritative coverage data at 0.1m resolution)
-        SaveDetectionBits(fieldDirectory);
+        lock (_saveLock)
+        {
+            string dir = Path.GetFullPath(fieldDirectory);
+            if (dir == _newerFormatDirectory)
+                return;
+            var store = new CoverageTileStore(dir);
+            if (store.IsNewerFormat)
+                return; // a newer build's coverage: this build would replace its manifest and tiles
+            TileSave save;
+            lock (_coverageLock)
+            {
+                if (!_fieldBoundsSet)
+                    return;
+                // A different job folder, or one whose tiles we didn't write: write all of it.
+                bool newTarget = dir != _savedDirectory || !store.ManifestExists;
+                bool detectFull = _detectFullSave || newTarget;
+                bool displayFull = _displayFullSave || newTarget;
+                if (!detectFull && !displayFull && _dirtyDetectTiles.Count == 0 && _dirtyDisplayTiles.Count == 0)
+                    return; // nothing painted since the last save here
 
-        // Save section display data (colors with palette, resolution-independent)
-        SaveSectionDisplay(fieldDirectory);
+                save = new TileSave(
+                    _detectionBits, _bitmapOriginE, _bitmapOriginN, _bitmapWidth, _bitmapHeight,
+                    _displayPixels, _displayOriginX, _displayOriginY, _displayWidth, _displayHeight,
+                    _displayCellSize, _totalWorkedArea,
+                    _fieldMinE, _fieldMaxE, _fieldMinN, _fieldMaxN,
+                    detectFull, displayFull, _dirtyDetectTiles, _dirtyDisplayTiles);
+                _dirtyDetectTiles = new HashSet<long>();
+                _dirtyDisplayTiles = new HashSet<long>();
+                _lastDetectTileKey = _lastDisplayTileKey = long.MinValue;
+                _detectFullSave = _displayFullSave = false;
+            }
+
+            try
+            {
+                WriteTiles(store, save);
+            }
+            catch
+            {
+                // Leave the work for the next save (a failed autosave is a warning, not fatal).
+                lock (_coverageLock)
+                {
+                    _dirtyDetectTiles.UnionWith(save.DetectKeys);
+                    _dirtyDisplayTiles.UnionWith(save.DisplayKeys);
+                    _detectFullSave |= save.DetectFull;
+                    _displayFullSave |= save.DisplayFull;
+                }
+                throw;
+            }
+
+            _savedDirectory = dir;
+            if (_legacyFilesDirectory == dir)
+            {
+                // One-way import: the job's coverage now lives in its tiles.
+                foreach (var name in new[] { "coverage_detect.bin", "coverage_disp.bin", "Sections.txt" })
+                {
+                    var path = Path.Combine(dir, name);
+                    if (File.Exists(path)) File.Delete(path);
+                }
+                _legacyFilesDirectory = null;
+                Console.WriteLine($"[Coverage] Imported the old coverage files into tiles and removed them: {dir}");
+            }
+        }
+    }
+
+    private void WriteTiles(CoverageTileStore store, TileSave s)
+    {
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        long bytes = 0;
+        int written = 0, removed = 0;
+
+        // Detection tiles. Full: every tile over the grid (empty ones get no file), then
+        // anything else on disk is stale. Incremental: the dirty tiles only.
+        var keepDetect = s.DetectFull ? new HashSet<long>() : null;
+        foreach (long key in s.DetectFull
+                     ? TilesOver(s.BitmapOriginE, s.BitmapOriginN, s.BitmapWidth, s.BitmapHeight, CoverageTileStore.DetectTileShift)
+                     : s.DetectKeys)
+        {
+            int tx = CoverageTileStore.KeyX(key), ty = CoverageTileStore.KeyY(key);
+            if (ExtractDetectionTile(s, tx, ty, _detectTileScratch))
+            {
+                bytes += store.WriteDetectionTile(tx, ty, _detectTileScratch, _runBuffer);
+                written++;
+                keepDetect?.Add(key);
+            }
+            else if (keepDetect == null)
+            {
+                CoverageTileStore.DeleteTile(store.DetectionDir, tx, ty);
+                removed++;
+            }
+        }
+
+        // Display tiles, in the folder for this cell size.
+        string displayDir = store.DisplayDir(s.DisplayCellSize);
+        var keepDisplay = s.DisplayFull ? new HashSet<long>() : null;
+        foreach (long key in s.DisplayFull
+                     ? TilesOver(s.DisplayOriginX, s.DisplayOriginY, s.DisplayWidth, s.DisplayHeight, CoverageTileStore.DisplayTileShift)
+                     : s.DisplayKeys)
+        {
+            int tx = CoverageTileStore.KeyX(key), ty = CoverageTileStore.KeyY(key);
+            if (ExtractDisplayTile(s, tx, ty, _displayTileScratch))
+            {
+                bytes += store.WriteDisplayTile(tx, ty, s.DisplayCellSize, _displayTileScratch, _runBuffer);
+                written++;
+                keepDisplay?.Add(key);
+            }
+            else if (keepDisplay == null)
+            {
+                CoverageTileStore.DeleteTile(displayDir, tx, ty);
+                removed++;
+            }
+        }
+
+        // Tiles land before the manifest, which switches the display folder and carries the area.
+        store.CommitTiles();
+        store.WriteManifest(new CoverageTileStore.Manifest
+        {
+            DisplayCellSize = s.DisplayCellSize,
+            TotalWorkedArea = s.TotalWorkedArea,
+            MinE = s.MinE, MaxE = s.MaxE, MinN = s.MinN, MaxN = s.MaxN,
+        });
+
+        if (keepDetect != null)
+            foreach (long key in CoverageTileStore.ListTiles(store.DetectionDir))
+                if (!keepDetect.Contains(key))
+                {
+                    CoverageTileStore.DeleteTile(store.DetectionDir, CoverageTileStore.KeyX(key), CoverageTileStore.KeyY(key));
+                    removed++;
+                }
+        if (keepDisplay != null)
+        {
+            foreach (long key in CoverageTileStore.ListTiles(displayDir))
+                if (!keepDisplay.Contains(key))
+                {
+                    CoverageTileStore.DeleteTile(displayDir, CoverageTileStore.KeyX(key), CoverageTileStore.KeyY(key));
+                    removed++;
+                }
+            store.DeleteOtherDisplayDirs(s.DisplayCellSize);
+        }
+
+        double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        Console.WriteLine(
+            $"[Coverage] Saved {(s.DetectFull || s.DisplayFull ? "all" : "changed")} tiles: " +
+            $"{written} written ({bytes / 1024}KB), {removed} removed, in {ms:F0}ms");
+    }
+
+    /// <summary>Keys of the tiles (2^shift cells per side) over a grid of absolute indices.</summary>
+    private static IEnumerable<long> TilesOver(int originX, int originY, int width, int height, int shift)
+    {
+        if (width <= 0 || height <= 0) yield break;
+        for (int ty = originY >> shift; ty <= (originY + height - 1) >> shift; ty++)
+            for (int tx = originX >> shift; tx <= (originX + width - 1) >> shift; tx++)
+                yield return CoverageTileStore.Key(tx, ty);
+    }
+
+    /// <summary>
+    /// Copy one detection tile out of the grid into <paramref name="tile"/>. Rows are byte
+    /// copies: the grid's origin and width are multiples of 8, as is a tile's first cell.
+    /// False when the tile holds no coverage.
+    /// </summary>
+    private static bool ExtractDetectionTile(TileSave s, int tx, int ty, byte[] tile)
+    {
+        Array.Clear(tile);
+        var bits = s.DetectionBits;
+        if (bits == null) return false;
+        const int n = CoverageTileStore.DetectTileCells, rowBytes = n / 8;
+        int lx0 = tx * n - s.BitmapOriginE, ly0 = ty * n - s.BitmapOriginN;
+        int cx0 = Math.Max(lx0, 0), cx1 = Math.Min(lx0 + n, s.BitmapWidth);
+        if (cx0 >= cx1) return false;
+        int stride = s.BitmapWidth / 8, len = (cx1 - cx0) / 8;
+        bool any = false;
+        for (int r = Math.Max(0, -ly0); r < n && ly0 + r < s.BitmapHeight; r++)
+        {
+            var src = bits.AsSpan((ly0 + r) * stride + cx0 / 8, len);
+            src.CopyTo(tile.AsSpan(r * rowBytes + (cx0 - lx0) / 8));
+            any = any || src.IndexOfAnyExcept((byte)0) >= 0;
+        }
+        return any;
+    }
+
+    /// <summary>Copy one display tile out of the grid. False when it holds no coverage.</summary>
+    private static bool ExtractDisplayTile(TileSave s, int tx, int ty, ushort[] tile)
+    {
+        Array.Clear(tile);
+        var pixels = s.DisplayPixels;
+        if (pixels == null) return false;
+        const int n = CoverageTileStore.DisplayTilePixels;
+        int lx0 = tx * n - s.DisplayOriginX, ly0 = ty * n - s.DisplayOriginY;
+        int cx0 = Math.Max(lx0, 0), cx1 = Math.Min(lx0 + n, s.DisplayWidth);
+        if (cx0 >= cx1) return false;
+        bool any = false;
+        for (int r = Math.Max(0, -ly0); r < n && ly0 + r < s.DisplayHeight; r++)
+        {
+            var src = pixels.AsSpan((ly0 + r) * s.DisplayWidth + cx0, cx1 - cx0);
+            src.CopyTo(tile.AsSpan(r * n + (cx0 - lx0)));
+            any = any || src.IndexOfAnyExcept((ushort)0) >= 0;
+        }
+        return any;
     }
 
     public void LoadFromFile(string fieldDirectory)
     {
-        // Load detection bits (authoritative coverage data at 0.1m resolution)
-        bool hasDetectionBits = LoadDetectionBits(fieldDirectory);
+        string dir = Path.GetFullPath(fieldDirectory);
+        var store = new CoverageTileStore(dir);
+        bool hasDetectionBits, hasSectionDisplay, fromTiles = false, fromOldFiles = false;
 
-        // Load section display (colors with palette, resolution-independent)
-        bool hasSectionDisplay = LoadSectionDisplay(fieldDirectory);
-
-        // Fallback: try legacy AgOpenGPS Sections.txt format
-        if (!hasDetectionBits && !hasSectionDisplay)
+        // A newer build's coverage: shown as none and never saved, so it stays as that build left it.
+        _newerFormatDirectory = null;
+        if (store.IsNewerFormat)
         {
-            hasDetectionBits = LoadLegacySections(fieldDirectory);
+            ClearAll();
+            lock (_coverageLock)
+            {
+                _savedDirectory = null;
+                _legacyFilesDirectory = null;
+            }
+            _newerFormatDirectory = dir;
+            return;
         }
 
-        if (hasSectionDisplay || hasDetectionBits)
+        var manifest = store.ManifestExists || Directory.Exists(store.DetectionDir)
+            ? store.ReadManifest() ?? RecoverManifest(store)
+            : null;
+        if (manifest != null)
         {
-            Console.WriteLine($"[Coverage] Loaded: detectionBits={hasDetectionBits}, sectionDisplay={hasSectionDisplay}");
+            // The tiles carry their own extent: the bounds may have grown while painting, or not
+            // be set at all yet (no boundary: they normally come from the first GPS fix).
+            EnsureBoundsHold(manifest.MinE, manifest.MaxE, manifest.MinN, manifest.MaxN);
+            (hasDetectionBits, hasSectionDisplay) = LoadTiles(store, manifest);
+            fromTiles = hasDetectionBits;
+        }
+        else
+        {
+            // Pre-tile job: one file per layer. Imported once; the first save writes tiles.
+            EnsureBoundsHoldLegacyFiles(fieldDirectory);
+            hasDetectionBits = LoadDetectionBits(fieldDirectory);
+            hasSectionDisplay = LoadSectionDisplay(fieldDirectory);
+            fromOldFiles = hasDetectionBits || hasSectionDisplay;
+
+            // Fallback: try legacy AgOpenGPS Sections.txt format
+            if (!hasDetectionBits && !hasSectionDisplay)
+            {
+                hasDetectionBits = LoadLegacySections(fieldDirectory);
+                fromOldFiles = hasDetectionBits;
+            }
+        }
+
+        lock (_coverageLock)
+        {
+            // Every load path ends here: a snapshot walk that overlapped the reload (the
+            // pre-tile and Sections.txt imports write without the lock) starts again.
+            _coverageGeneration++;
+            // Without display tiles (lost, or never written) draw the worked area from detection.
+            if (hasDetectionBits && !hasSectionDisplay)
+            {
+                RepaintDisplayFromDetection();
+                ExpandDirtyAll();
+            }
+
+            // What's in memory now matches the tiles on disk, unless it came from elsewhere
+            // (old files, Sections.txt) or was resampled to a different display cell size.
+            bool regridded = fromTiles && Math.Abs(manifest!.DisplayCellSize - _displayCellSize) > 1e-12;
+            _dirtyDetectTiles.Clear();
+            _dirtyDisplayTiles.Clear();
+            _lastDetectTileKey = _lastDisplayTileKey = long.MinValue;
+            _detectFullSave = !fromTiles;
+            _displayFullSave = !fromTiles || regridded || !hasSectionDisplay;
+            _savedDirectory = fromTiles ? dir : null;
+            _legacyFilesDirectory = fromOldFiles ? dir : null;
+
+            // The display layer can lag the detection layer (a lost or stale display tile, a job
+            // saved by an older build). Ground the detection grid counts as worked must show as
+            // worked: sections switch off over it, and the live stream only sends cells that are
+            // new to detection, so driving over it again never filled it in (#325). Done after
+            // the dirty sets are cleared, so the repaired tiles are written by the next save.
+            if (hasDetectionBits && hasSectionDisplay)
+            {
+                int filled = FillDisplayGapsFromDetection();
+                if (filled > 0)
+                    Console.WriteLine($"[Coverage] Display layer was missing {filled:N0} worked pixels; filled from detection");
+            }
+        }
+
+        // A tiled job with no coverage yet still replaces whatever the map showed before.
+        if (hasSectionDisplay || hasDetectionBits || manifest != null)
+        {
+            Console.WriteLine($"[Coverage] Loaded{(manifest != null ? " tiles" : "")}: detectionBits={hasDetectionBits}, sectionDisplay={hasSectionDisplay}");
             CoverageUpdated?.Invoke(this, new CoverageUpdatedEventArgs
             {
                 TotalArea = _totalWorkedArea,
@@ -1532,6 +2164,137 @@ public class CoverageMapService : ICoverageMapService
                 IsFullReload = true
             });
         }
+    }
+
+    /// <summary>
+    /// A manifest from the tiles alone, when manifest.json is unreadable: bounds from the
+    /// detection tiles' extent, the display cell size from its folder name, area recounted.
+    /// </summary>
+    private static CoverageTileStore.Manifest? RecoverManifest(CoverageTileStore store)
+    {
+        var keys = CoverageTileStore.ListTiles(store.DetectionDir);
+        if (keys.Count == 0)
+            return null;
+        int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
+        foreach (long k in keys)
+        {
+            minX = Math.Min(minX, CoverageTileStore.KeyX(k)); maxX = Math.Max(maxX, CoverageTileStore.KeyX(k));
+            minY = Math.Min(minY, CoverageTileStore.KeyY(k)); maxY = Math.Max(maxY, CoverageTileStore.KeyY(k));
+        }
+        const double tileM = CoverageTileStore.DetectTileCells * BITMAP_CELL_SIZE;
+        double cell = 0;
+        if (Directory.Exists(store.Root))
+            foreach (var d in Directory.EnumerateDirectories(store.Root, "s*"))
+                if (long.TryParse(Path.GetFileName(d).AsSpan(1), System.Globalization.NumberStyles.None,
+                                  System.Globalization.CultureInfo.InvariantCulture, out long um) && um > 0)
+                    cell = um / 1e6;
+        Console.WriteLine("[Coverage] manifest.json unreadable — rebuilding it from the tiles");
+        return new CoverageTileStore.Manifest
+        {
+            DisplayCellSize = cell > 0 ? cell : BITMAP_CELL_SIZE,
+            TotalWorkedArea = 0, // recounted from the bits
+            MinE = minX * tileM, MaxE = (maxX + 1) * tileM - 1e-6,
+            MinN = minY * tileM, MaxN = (maxY + 1) * tileM - 1e-6,
+        };
+    }
+
+    /// <summary>Read every tile into the (cleared) grids. Returns which layers had coverage.</summary>
+    private (bool Detection, bool Display) LoadTiles(CoverageTileStore store, CoverageTileStore.Manifest manifest)
+    {
+        var detectKeys = CoverageTileStore.ListTiles(store.DetectionDir);
+        double savedCell = manifest.DisplayCellSize;
+        var displayKeys = CoverageTileStore.ListTiles(store.DisplayDir(savedCell));
+        var tile = new byte[CoverageTileStore.DetectTileBytes];
+        var dtile = new ushort[CoverageTileStore.DisplayTileLength];
+        long setBits = 0;
+        int detectTiles = 0, displayTiles = 0;
+
+        lock (_coverageLock)
+        {
+            if (!_fieldBoundsSet || _detectionBits == null || _displayPixels == null)
+                return (false, false);
+            _coverageGeneration++;   // under the lock, in the block that replaces the coverage
+            Array.Clear(_detectionBits);
+            Array.Clear(_displayPixels);
+
+            const int n = CoverageTileStore.DetectTileCells, rowBytes = n / 8;
+            int stride = _bitmapWidth / 8;
+            foreach (long key in detectKeys)
+            {
+                int tx = CoverageTileStore.KeyX(key), ty = CoverageTileStore.KeyY(key);
+                if (!store.TryReadDetectionTile(tx, ty, tile))
+                    continue;
+                int lx0 = tx * n - _bitmapOriginE, ly0 = ty * n - _bitmapOriginN;
+                int cx0 = Math.Max(lx0, 0), cx1 = Math.Min(lx0 + n, _bitmapWidth);
+                if (cx0 >= cx1) continue;
+                for (int r = Math.Max(0, -ly0); r < n && ly0 + r < _bitmapHeight; r++)
+                    tile.AsSpan(r * rowBytes + (cx0 - lx0) / 8, (cx1 - cx0) / 8)
+                        .CopyTo(_detectionBits.AsSpan((ly0 + r) * stride + cx0 / 8));
+                foreach (ulong w in System.Runtime.InteropServices.MemoryMarshal.Cast<byte, ulong>(tile))
+                    setBits += System.Numerics.BitOperations.PopCount(w);
+                detectTiles++;
+            }
+
+            bool sameCell = Math.Abs(savedCell - _displayCellSize) < 1e-12;
+            const int dn = CoverageTileStore.DisplayTilePixels;
+            foreach (long key in displayKeys)
+            {
+                int tx = CoverageTileStore.KeyX(key), ty = CoverageTileStore.KeyY(key);
+                if (!store.TryReadDisplayTile(tx, ty, savedCell, dtile))
+                    continue;
+                displayTiles++;
+                if (sameCell)
+                {
+                    int lx0 = tx * dn - _displayOriginX, ly0 = ty * dn - _displayOriginY;
+                    int cx0 = Math.Max(lx0, 0), cx1 = Math.Min(lx0 + dn, _displayWidth);
+                    if (cx0 >= cx1) continue;
+                    for (int r = Math.Max(0, -ly0); r < dn && ly0 + r < _displayHeight; r++)
+                        dtile.AsSpan(r * dn + (cx0 - lx0), cx1 - cx0)
+                             .CopyTo(_displayPixels.AsSpan((ly0 + r) * _displayWidth + cx0));
+                }
+                else
+                {
+                    // Saved at another display cell size: for each current pixel whose centre
+                    // falls in this tile, take the saved pixel under it.
+                    double e0 = tx * dn * savedCell, n0 = ty * dn * savedCell, size = dn * savedCell;
+                    int gx0 = Math.Max(0, (int)Math.Floor(e0 / _displayCellSize) - _displayOriginX);
+                    int gx1 = Math.Min(_displayWidth - 1, (int)Math.Ceiling((e0 + size) / _displayCellSize) - _displayOriginX);
+                    int gy0 = Math.Max(0, (int)Math.Floor(n0 / _displayCellSize) - _displayOriginY);
+                    int gy1 = Math.Min(_displayHeight - 1, (int)Math.Ceiling((n0 + size) / _displayCellSize) - _displayOriginY);
+                    for (int gy = gy0; gy <= gy1; gy++)
+                    {
+                        int sy = (int)Math.Floor((_displayOriginY + gy + 0.5) * _displayCellSize / savedCell) - ty * dn;
+                        if (sy < 0 || sy >= dn) continue;
+                        for (int gx = gx0; gx <= gx1; gx++)
+                        {
+                            int sx = (int)Math.Floor((_displayOriginX + gx + 0.5) * _displayCellSize / savedCell) - tx * dn;
+                            if (sx < 0 || sx >= dn) continue;
+                            ushort v = dtile[sy * dn + sx];
+                            if (v != 0) _displayPixels[gy * _displayWidth + gx] = v;
+                        }
+                    }
+                }
+            }
+
+            double area = manifest.TotalWorkedArea > 0 ? manifest.TotalWorkedArea : setBits * BITMAP_CELL_SIZE * BITMAP_CELL_SIZE;
+            _totalWorkedArea = area;
+            _totalWorkedAreaUser = area;
+            _cellCountPerZone.Clear();
+            _cellCountPerZone[0] = setBits;
+            System.Threading.Interlocked.Exchange(ref _coveredCells, setBits);
+            _boundsValid = setBits > 0;
+            if (_boundsValid)
+            {
+                _minCellE = _bitmapOriginE;
+                _maxCellE = _bitmapOriginE + _bitmapWidth - 1;
+                _minCellN = _bitmapOriginN;
+                _maxCellN = _bitmapOriginN + _bitmapHeight - 1;
+            }
+            ExpandDirtyAll();
+        }
+
+        Console.WriteLine($"[Coverage] Loaded {detectTiles} detection + {displayTiles} display tiles: {setBits:N0} covered cells");
+        return (setBits > 0, displayTiles > 0);
     }
 
     public void SaveToFile(string fieldDirectory, string taskName)
@@ -1576,12 +2339,19 @@ public class CoverageMapService : ICoverageMapService
                 if (string.IsNullOrEmpty(countLine)) continue;
                 if (!int.TryParse(countLine, out int n) || n < 3) continue;
 
-                int nPairs = (n - 1) / 2;
+                // n = colour line + vertex lines. An even n means the colour line is missing
+                // (some AgOpenGPS versions wrote it that way): reading the first vertex as the
+                // colour then paired every left edge with the next strip's right (AgOpenGPS
+                // #1206 SectionFiles).
+                bool hasColor = n % 2 == 1;
+                int nPairs = hasColor ? (n - 1) / 2 : n / 2;
 
-                // Read RGB color line (R,G,B format)
-                if (lineIdx >= lines.Length) break;
-                var colorParts = lines[lineIdx++].Split(',');
-                // We ignore the color and use default coverage color
+                // Read RGB color line (R,G,B format) — ignored, we use the default colour
+                if (hasColor)
+                {
+                    if (lineIdx >= lines.Length) break;
+                    lineIdx++;
+                }
 
                 // Read vertex pairs and rasterize each quad
                 double prevLeftE = 0, prevLeftN = 0, prevRightE = 0, prevRightN = 0;
@@ -1617,7 +2387,10 @@ public class CoverageMapService : ICoverageMapService
 
             if (totalCells > 0)
             {
-                Console.WriteLine($"[Coverage] Loaded legacy Sections.txt: {totalCells} cells rasterized");
+                // Worked area = covered cells (each counted once, so overlapping strips aren't
+                // double-counted). It was left at 0, and the job then saved 0 with its coverage.
+                _totalWorkedArea = _totalWorkedAreaUser = totalCells * BITMAP_CELL_SIZE * BITMAP_CELL_SIZE;
+                Console.WriteLine($"[Coverage] Loaded legacy Sections.txt: {totalCells} cells rasterized, {_totalWorkedArea:F0} m²");
                 return true;
             }
         }
@@ -1673,56 +2446,95 @@ public class CoverageMapService : ICoverageMapService
         return count;
     }
 
-    /// <summary>
-    /// Save detection bits to coverage_detect.bin (COVD format).
-    /// This is the authoritative source for coverage detection at 0.1m resolution.
-    /// Format: Header + RLE-compressed bit array
-    /// </summary>
-    private void SaveDetectionBits(string fieldDirectory)
+    // A corrupt header must not make SetFieldBounds allocate gigabytes. ~4 000 ha of
+    // detection grid (500 MB of bits) is far beyond any real job.
+    private const double MAX_LOAD_GRID_CELLS = 4e9;
+
+    private void EnsureBoundsHoldLegacyFiles(string fieldDirectory)
     {
-        if (!_fieldBoundsSet || _detectionBits == null)
-            return;
+        // The detection grid is the exact field extent. The display grid is rounded up to whole
+        // display cells, so it only stands in when there is no detection file; including it
+        // would grow the bounds by up to a display cell on every reopen.
+        var saved = ReadSavedExtent(Path.Combine(fieldDirectory, "coverage_detect.bin"), "COVD")
+                    ?? ReadSavedExtent(Path.Combine(fieldDirectory, "coverage_disp.bin"), "COVS");
+        if (saved is { } sv)
+            EnsureBoundsHold(sv.MinE, sv.MaxE, sv.MinN, sv.MaxN);
+    }
 
-        var filename = Path.Combine(fieldDirectory, "coverage_detect.bin");
-
-        using var stream = new FileStream(filename, FileMode.Create);
-        using var writer = new BinaryWriter(stream);
-
-        // Write header - COVD format
-        writer.Write("COVD".ToCharArray()); // Magic (4 bytes)
-        writer.Write((byte)1);               // Version
-        writer.Write((float)BITMAP_CELL_SIZE); // Resolution (always 0.1m)
-        writer.Write(_fieldMinE);            // Origin E
-        writer.Write(_fieldMinN);            // Origin N
-        writer.Write((uint)_bitmapWidth);    // Width in cells
-        writer.Write((uint)_bitmapHeight);   // Height in cells
-        writer.Write(_totalWorkedArea);      // Total area for quick restore
-
-        // RLE compress the bit array
-        // Format: [runLength:ushort][value:byte] pairs
-        // value is 0x00 (8 zero bits) or 0xFF (8 one bits) or actual mixed byte
-        long compressedSize = 0;
-        int i = 0;
-        while (i < _detectionBits.Length)
+    /// <summary>Grow (or set) the field bounds so they hold saved coverage with this extent.</summary>
+    private void EnsureBoundsHold(double minE, double maxE, double minN, double maxN)
+    {
+        void Include(double e0, double e1, double n0, double n1)
         {
-            byte value = _detectionBits[i];
-            int runLength = 1;
-
-            // Only RLE consecutive identical bytes
-            while (i + runLength < _detectionBits.Length &&
-                   _detectionBits[i + runLength] == value &&
-                   runLength < 65535)
-            {
-                runLength++;
-            }
-
-            writer.Write((ushort)runLength);
-            writer.Write(value);
-            compressedSize += 3;
-            i += runLength;
+            minE = Math.Min(minE, e0); maxE = Math.Max(maxE, e1);
+            minN = Math.Min(minN, n0); maxN = Math.Max(maxN, n1);
         }
 
-        Console.WriteLine($"[Coverage] Saved detection bits: {_detectionBits.Length / 1024}KB -> {compressedSize / 1024}KB compressed to {filename}");
+        lock (_coverageLock)
+        {
+            if (_fieldBoundsSet)
+            {
+                const double tol = 1e-6;
+                if (minE >= _fieldMinE - tol && maxE <= _fieldMaxE + tol &&
+                    minN >= _fieldMinN - tol && maxN <= _fieldMaxN + tol)
+                    return; // already holds it — the usual case
+                Include(_fieldMinE, _fieldMaxE, _fieldMinN, _fieldMaxN);
+            }
+
+            double cells = Math.Ceiling((maxE - minE) / BITMAP_CELL_SIZE) * Math.Ceiling((maxN - minN) / BITMAP_CELL_SIZE);
+            if (cells > MAX_LOAD_GRID_CELLS)
+            {
+                Console.WriteLine($"[Coverage] Saved coverage extent too large to load ({cells:E1} cells); keeping current bounds");
+                return;
+            }
+
+            Console.WriteLine($"[Coverage] Growing bounds to hold saved coverage: E[{minE:F1}, {maxE:F1}] N[{minN:F1}, {maxN:F1}]");
+            SetFieldBoundsCore(minE, maxE, minN, maxN);
+        }
+    }
+
+    /// <summary>
+    /// World extent of a saved coverage file, from its header. Null when the file is
+    /// missing, not that format, or the header is implausible.
+    /// </summary>
+    private static (double MinE, double MaxE, double MinN, double MaxN)? ReadSavedExtent(string path, string magic)
+    {
+        if (!File.Exists(path))
+            return null;
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read);
+            using var reader = new BinaryReader(stream);
+            if (new string(reader.ReadChars(4)) != magic)
+                return null;
+            reader.ReadByte(); // version
+            if (magic == "COVS")
+            {
+                byte paletteSize = reader.ReadByte();
+                stream.Seek(paletteSize * 2, SeekOrigin.Current);
+            }
+            // Stored as float: 0.1f is 0.10000000149, enough to push width x cell past the edge.
+            double cell = Math.Round(reader.ReadSingle(), 6);
+            double originE = reader.ReadDouble();
+            double originN = reader.ReadDouble();
+            uint width = reader.ReadUInt32();
+            uint height = reader.ReadUInt32();
+
+            if (!(cell > 0) || !double.IsFinite(originE) || !double.IsFinite(originN) || width == 0 || height == 0)
+                return null;
+            // Pull the far edges in a hair so SetFieldBounds' Ceiling gives back exactly
+            // width x height; otherwise rounding adds a cell, and a no-boundary job would
+            // grow by one cell every time it is reopened.
+            const double edge = 1e-6;
+            double maxE = originE + width * cell - edge, maxN = originN + height * cell - edge;
+            if ((double)width * height > MAX_LOAD_GRID_CELLS)
+                return null;
+            return (originE, maxE, originN, maxN);
+        }
+        catch (Exception ex) when (ex is IOException or EndOfStreamException or ArgumentException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -1765,39 +2577,50 @@ public class CoverageMapService : ICoverageMapService
                 return false;
             }
 
-            // Calculate expected bit array size
-            long totalCells = (long)width * height;
-            int expectedBytes = (int)((totalCells + 7) / 8);
-
-            // Allocate detection bits if needed
-            if (_detectionBits == null || _detectionBits.Length != expectedBytes)
+            if (!_fieldBoundsSet || _detectionBits == null)
             {
-                _detectionBits = new byte[expectedBytes];
+                Console.WriteLine("[Coverage] LoadDetectionBits: no field bounds");
+                return false;
             }
+
+            // The file's grid: the same absolute 0.1 m cells, with its own origin and size
+            // (LoadFromFile has grown the bounds to hold it). Decode straight into the live
+            // array when the grids match, else into a scratch array copied in at its offset.
+            int savedOriginE = (int)Math.Floor(originE / BITMAP_CELL_SIZE);
+            int savedOriginN = (int)Math.Floor(originN / BITMAP_CELL_SIZE);
+            bool sameGrid = savedOriginE == _bitmapOriginE && savedOriginN == _bitmapOriginN &&
+                            width == _bitmapWidth && height == _bitmapHeight;
+            long savedBytes = ((long)width * height + 7) / 8;
             Array.Clear(_detectionBits, 0, _detectionBits.Length);
+            var decoded = sameGrid ? _detectionBits : new byte[savedBytes];
 
             // RLE decompress
-            int destIndex = 0;
+            long destIndex = 0;
             long setBits = 0;
-            while (destIndex < _detectionBits.Length && stream.Position < stream.Length)
+            while (destIndex < decoded.LongLength && stream.Position < stream.Length)
             {
                 ushort runLength = reader.ReadUInt16();
                 byte value = reader.ReadByte();
 
-                for (int j = 0; j < runLength && destIndex < _detectionBits.Length; j++, destIndex++)
+                for (int j = 0; j < runLength && destIndex < decoded.LongLength; j++, destIndex++)
                 {
-                    _detectionBits[destIndex] = value;
+                    decoded[destIndex] = value;
                     // Count set bits for statistics
                     setBits += CountBits(value);
                 }
             }
 
+            if (!sameGrid)
+                CopyDetectionBitsIn(decoded, (int)width, (int)height, savedOriginE, savedOriginN);
+
             // Update service state
-            _bitmapWidth = (int)width;
-            _bitmapHeight = (int)height;
+            // A job migrated from Sections.txt before the legacy loader totalled its area was
+            // saved with area 0: recover it from the covered cells.
+            if (area <= 0 && setBits > 0) area = setBits * BITMAP_CELL_SIZE * BITMAP_CELL_SIZE;
             _totalWorkedArea = area;
             _totalWorkedAreaUser = area;
             _cellCountPerZone[0] = setBits;
+            System.Threading.Interlocked.Exchange(ref _coveredCells, setBits);
             _boundsValid = setBits > 0;
 
             if (_boundsValid)
@@ -1830,174 +2653,6 @@ public class CoverageMapService : ICoverageMapService
             value >>= 1;
         }
         return count;
-    }
-
-    /// <summary>
-    /// Save section display data to coverage_disp.bin (COVS format).
-    /// Stores section indices with color palette for resolution-independent display.
-    /// Format: Header + Palette + RLE-compressed section indices
-    /// Uses detection bits to filter out background image pixels.
-    /// </summary>
-    private void SaveSectionDisplay(string fieldDirectory)
-    {
-        if (!_fieldBoundsSet || _displayPixels == null || _displayPixels.Length == 0)
-            return;
-
-        var pixels = _displayPixels;
-        int dispWidth = _displayWidth;
-        int dispHeight = _displayHeight;
-        double dispCellSize = _displayCellSize;
-
-        // Verify pixel count matches expected display dimensions
-        long expectedPixels = (long)dispWidth * dispHeight;
-        if (pixels.Length != expectedPixels)
-        {
-            Console.WriteLine($"[Coverage] SaveSectionDisplay: Pixel count mismatch: {pixels.Length} vs expected {expectedPixels}");
-            return;
-        }
-
-        var filename = Path.Combine(fieldDirectory, "coverage_disp.bin");
-
-        // Build palette from current tool config
-        var tool = _configStore.Tool;
-        var palette = new List<ushort>();
-        var colorToIndex = new Dictionary<ushort, byte>();
-
-        // Index 0 is reserved for "not covered"
-        palette.Add(0);
-        colorToIndex[0] = 0;
-
-        // Add all section colors to palette
-        for (int i = 0; i < 16; i++)
-        {
-            uint rgb888 = tool.GetSectionColor(i);
-            ushort rgb565 = Rgb888ToRgb565(rgb888);
-            if (!colorToIndex.ContainsKey(rgb565))
-            {
-                colorToIndex[rgb565] = (byte)palette.Count;
-                palette.Add(rgb565);
-            }
-        }
-
-        // Add single coverage color
-        ushort singleColor = Rgb888ToRgb565(tool.SingleCoverageColor);
-        if (!colorToIndex.ContainsKey(singleColor))
-        {
-            colorToIndex[singleColor] = (byte)palette.Count;
-            palette.Add(singleColor);
-        }
-
-        // Calculate scale factor from detection to display resolution
-        double scaleRatio = BITMAP_CELL_SIZE / dispCellSize; // e.g., 0.1/0.2 = 0.5
-
-        // Scan COVERED pixels only - map detection coordinates to display coordinates
-        // This is O(covered cells) not O(total pixels)
-        var indices = new byte[pixels.Length];
-        if (_detectionBits != null)
-        {
-            for (int byteIdx = 0; byteIdx < _detectionBits.Length; byteIdx++)
-            {
-                byte bits = _detectionBits[byteIdx];
-                if (bits == 0) continue; // Skip 8 uncovered cells at once
-
-                // Calculate detection cell coordinates for this byte
-                long baseBitIdx = (long)byteIdx * 8;
-                for (int bit = 0; bit < 8; bit++)
-                {
-                    if ((bits & (1 << bit)) == 0) continue;
-
-                    long bitIdx = baseBitIdx + bit;
-                    int detY = (int)(bitIdx / _bitmapWidth);
-                    int detX = (int)(bitIdx % _bitmapWidth);
-
-                    // Map detection cell to display pixel
-                    int dispX = (int)(detX * scaleRatio);
-                    int dispY = (int)(detY * scaleRatio);
-
-                    // Bounds check for display
-                    if (dispX >= dispWidth || dispY >= dispHeight) continue;
-
-                    long dispIdx = (long)dispY * dispWidth + dispX;
-                    if (dispIdx >= pixels.Length) continue;
-
-                    ushort color = pixels[dispIdx];
-                    if (color == 0) continue;
-
-                    // Add to palette if not seen
-                    if (!colorToIndex.ContainsKey(color) && palette.Count < 255)
-                    {
-                        colorToIndex[color] = (byte)palette.Count;
-                        palette.Add(color);
-                    }
-
-                    // Set index (may overwrite same pixel multiple times when downscaling, that's fine)
-                    if (colorToIndex.TryGetValue(color, out byte idx))
-                        indices[dispIdx] = idx;
-                    else if (palette.Count > 1)
-                        indices[dispIdx] = FindClosestColorIndex(color, palette);
-                }
-            }
-        }
-        else
-        {
-            // Fallback: iterate all pixels (slow but works without detection bits)
-            for (long i = 0; i < pixels.Length; i++)
-            {
-                ushort color = pixels[i];
-                if (color != 0)
-                {
-                    if (!colorToIndex.ContainsKey(color) && palette.Count < 255)
-                    {
-                        colorToIndex[color] = (byte)palette.Count;
-                        palette.Add(color);
-                    }
-                    if (colorToIndex.TryGetValue(color, out byte idx))
-                        indices[i] = idx;
-                    else
-                        indices[i] = FindClosestColorIndex(color, palette);
-                }
-            }
-        }
-
-        using var stream = new FileStream(filename, FileMode.Create);
-        using var writer = new BinaryWriter(stream);
-
-        // Write header - COVS format
-        writer.Write("COVS".ToCharArray());  // Magic (4 bytes)
-        writer.Write((byte)1);                // Version
-        writer.Write((byte)palette.Count);    // Palette size (1-255)
-
-        // Write palette (RGB565 colors)
-        foreach (var color in palette)
-            writer.Write(color);
-
-        // Write bitmap info - use ACTUAL display resolution and dimensions
-        writer.Write((float)dispCellSize);    // Resolution when saved
-        writer.Write(_fieldMinE);              // Origin E
-        writer.Write(_fieldMinN);              // Origin N
-        writer.Write((uint)dispWidth);         // Width at display resolution
-        writer.Write((uint)dispHeight);        // Height at display resolution
-
-        // RLE compress section indices
-        long compressedSize = 0;
-        int idx2 = 0;
-        while (idx2 < indices.Length)
-        {
-            byte value = indices[idx2];
-            int runLength = 1;
-            while (idx2 + runLength < indices.Length &&
-                   indices[idx2 + runLength] == value &&
-                   runLength < 65535)
-            {
-                runLength++;
-            }
-            writer.Write((ushort)runLength);
-            writer.Write(value);
-            compressedSize += 3;
-            idx2 += runLength;
-        }
-
-        Console.WriteLine($"[Coverage] Saved section display: {palette.Count} colors, {dispWidth}x{dispHeight} @ {dispCellSize}m -> {compressedSize / 1024}KB to {filename}");
     }
 
     /// <summary>
@@ -2049,13 +2704,15 @@ public class CoverageMapService : ICoverageMapService
             uint savedWidth = reader.ReadUInt32();
             uint savedHeight = reader.ReadUInt32();
 
-            // Check if resolution scaling is needed (compare to actual display resolution, not detection)
+            // Resample unless the saved grid is the current one. The saved grid can differ in
+            // cell size (display quality) and in origin and size (bounds that grew while painting).
+            double targetMinE = _displayOriginX * targetCellSize, targetMinN = _displayOriginY * targetCellSize;
             bool needsScaling = Math.Abs(savedResolution - targetCellSize) > 0.001 ||
-                                savedWidth != targetWidth || savedHeight != targetHeight;
-            double scaleRatio = savedResolution / targetCellSize;
+                                savedWidth != targetWidth || savedHeight != targetHeight ||
+                                Math.Abs(originE - targetMinE) > 1e-6 || Math.Abs(originN - targetMinN) > 1e-6;
 
             if (needsScaling)
-                Console.WriteLine($"[Coverage] Section display v{version}: {savedWidth}x{savedHeight} @ {savedResolution}m -> scaling to {targetWidth}x{targetHeight} @ {targetCellSize}m (ratio {scaleRatio:F2})");
+                Console.WriteLine($"[Coverage] Section display v{version}: {savedWidth}x{savedHeight} @ {savedResolution}m origin ({originE:F1}, {originN:F1}) -> resampling to {targetWidth}x{targetHeight} @ {targetCellSize}m origin ({targetMinE:F1}, {targetMinN:F1})");
             else
                 Console.WriteLine($"[Coverage] Section display v{version}: {savedWidth}x{savedHeight} @ {savedResolution}m, {paletteSize} colors");
 
@@ -2107,19 +2764,19 @@ public class CoverageMapService : ICoverageMapService
             }
             else
             {
-                // Scale using nearest-neighbor interpolation
-                // For each pixel in target (display bitmap), find corresponding pixel in source (saved)
+                // Nearest-neighbour through world coordinates: for each target pixel,
+                // take the saved pixel under its centre.
                 for (int y = 0; y < targetHeight; y++)
                 {
-                    // Map target Y to source Y
-                    int srcY = (int)(y * scaleRatio);
-                    if (srcY >= savedHeight) srcY = (int)savedHeight - 1;
+                    double worldN = targetMinN + (y + 0.5) * targetCellSize;
+                    long srcY = (long)Math.Floor((worldN - originN) / savedResolution);
+                    if (srcY < 0 || srcY >= savedHeight) continue;
 
                     for (int x = 0; x < targetWidth; x++)
                     {
-                        // Map target X to source X
-                        int srcX = (int)(x * scaleRatio);
-                        if (srcX >= savedWidth) srcX = (int)savedWidth - 1;
+                        double worldE = targetMinE + (x + 0.5) * targetCellSize;
+                        long srcX = (long)Math.Floor((worldE - originE) / savedResolution);
+                        if (srcX < 0 || srcX >= savedWidth) continue;
 
                         long srcIdx = (long)srcY * savedWidth + srcX;
                         long dstIdx = (long)y * targetWidth + x;
@@ -2183,36 +2840,6 @@ public class CoverageMapService : ICoverageMapService
     }
 
     /// <summary>
-    /// Find closest color index in palette (simple Euclidean distance in RGB565 space).
-    /// </summary>
-    private static byte FindClosestColorIndex(ushort color, List<ushort> palette)
-    {
-        // Extract RGB components from RGB565
-        int r1 = (color >> 11) & 0x1F;
-        int g1 = (color >> 5) & 0x3F;
-        int b1 = color & 0x1F;
-
-        int bestIndex = 1; // Default to first non-zero color
-        int bestDist = int.MaxValue;
-
-        for (int i = 1; i < palette.Count; i++) // Skip index 0 (not covered)
-        {
-            int r2 = (palette[i] >> 11) & 0x1F;
-            int g2 = (palette[i] >> 5) & 0x3F;
-            int b2 = palette[i] & 0x1F;
-
-            int dist = (r1 - r2) * (r1 - r2) + (g1 - g2) * (g1 - g2) + (b1 - b2) * (b1 - b2);
-            if (dist < bestDist)
-            {
-                bestDist = dist;
-                bestIndex = i;
-            }
-        }
-
-        return (byte)bestIndex;
-    }
-
-    /// <summary>
     /// Get color for a zone/section from configuration.
     /// Uses single color or per-section colors based on IsMultiColoredSections setting.
     /// </summary>
@@ -2220,7 +2847,9 @@ public class CoverageMapService : ICoverageMapService
     {
         var tool = _configStore.Tool;
 
-        if (!tool.IsMultiColoredSections)
+        // Zones paint in the one colour, as AgOpenGPS (CPatches.TurnMappingOn: section colours
+        // with sections only).
+        if (!tool.IsMultiColoredSections || !tool.IsSectionsNotZones)
         {
             // Use single coverage color
             uint color = tool.SingleCoverageColor;

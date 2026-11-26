@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using AgOpenWeb.Models;
@@ -26,6 +14,21 @@ namespace AgOpenWeb.Services.Interfaces;
 /// </summary>
 public interface IAutoSteerService
 {
+    /// <summary>What the GPS module last sent (raw sentences, rate, missed), for the
+    /// System Data card.</summary>
+    AgOpenWeb.Services.Gps.GpsSentenceMonitor GpsSentences { get; }
+
+    /// <summary>The line splitter in front of the parser: how many lines a bridge cut
+    /// across datagrams, and bytes that belonged to no line (System Data card).</summary>
+    AgOpenWeb.Services.Gps.NmeaLineSplitter GpsLines { get; }
+
+    /// <summary>The port the last GPS datagram came in on (Network IO names it).</summary>
+    AgOpenWeb.Models.GPS.GpsSource LastGpsSource { get; }
+
+    /// <summary>The epoch assembler for receivers that spread a fix over standard sentences
+    /// (GGA/GNS + VTG + HPR/HDT/THS): the learned family and the incomplete-epoch count.</summary>
+    AgOpenWeb.Services.Gps.NmeaEpochAssembler GpsEpochs { get; }
+
     /// <summary>
     /// Event fired when the control cycle completes (for UI updates).
     /// Note: UI should not rely on this for control - it's purely observational.
@@ -35,6 +38,28 @@ public interface IAutoSteerService
     /// <summary>A module sent a text message (PGN 221, e.g. AiO board): text, seconds to
     /// show it, and whether it's a warning (AgOpenGPS: byte 6 == 0 → salmon) (#110).</summary>
     event Action<string, int, bool>? HardwareMessageReceived;
+
+    /// <summary>
+    /// PGN 234 (remote section switches) arrived: its switch bytes, indexed as AgOpenGPS
+    /// <c>mc.ss</c> (1 = main … 8 = off group 1; 0 unused). Raised on the socket thread.
+    /// </summary>
+    event Action<byte[]>? RemoteSwitchesReceived;
+
+    /// <summary>
+    /// AutoSteer was engaged but guidance stopped updating for longer than
+    /// <c>AutoSteerService.GuidanceStaleLimit</c> (GPS input or the pipeline stalled), so the
+    /// service stopped steering on its own (#169). Raised once per stall, on the control-loop
+    /// thread; the handler should marshal to the UI and take AutoSteer off.
+    /// </summary>
+    event EventHandler? GuidanceLost;
+
+    /// <summary>
+    /// The pressure or current sensor (PGN 250) reached its trip point while AutoSteer was
+    /// engaged, or the wheels ran away from the set point (<see cref="AutoSteer.SteerRunawayDetector"/>),
+    /// so the service stopped steering. Raised once per kickout, on the UDP receive
+    /// thread, with the reason; the handler should marshal to the UI and take AutoSteer off.
+    /// </summary>
+    event EventHandler<string>? SensorKickout;
 
     /// <summary>
     /// Whether auto-steer is enabled and processing GPS data.
@@ -66,12 +91,41 @@ public interface IAutoSteerService
     void ProcessGpsBuffer(byte[] buffer, int length);
 
     /// <summary>
+    /// As <see cref="ProcessGpsBuffer"/>, for a datagram from any GPS port: every whole line
+    /// in it goes through the parser (one line per datagram is the normal case and stays
+    /// zero-copy; a bridge that batches or cuts lines is handled by the splitter).
+    /// </summary>
+    void ProcessGpsDatagram(ReadOnlySpan<byte> datagram, AgOpenWeb.Models.GPS.GpsSource source);
+
+    /// <summary>
     /// Process simulated position data (bypass NMEA parsing).
     /// Used by simulator which already has parsed GPS data.
     /// </summary>
     void ProcessSimulatedPosition(double latitude, double longitude, double altitude,
         double headingDegrees, double speedMps, int fixQuality, int satellites, double hdop,
         double easting, double northing);
+
+    /// <summary>
+    /// Send PGN 100 (corrected position) to the module subnet and to AgIO's loopback
+    /// port, once per fix, as AgOpenGPS does. Seed monitors and rate controllers use it.
+    /// </summary>
+    void SendCorrectedPosition(double latitude, double longitude, double headingDegrees);
+
+    /// <summary>
+    /// Copy PGN 254 to AgIO's loopback port, and with a field open PGN 239 and 229 too,
+    /// once per fix: AgOpenGPS sends every module PGN there, where rate controllers listen
+    /// for speed and section states. The modules keep getting theirs from the 100 Hz control
+    /// loop; this copy goes at the fix rate, as AgOpenGPS's does.
+    /// </summary>
+    void SendLoopbackPgns(bool hasActiveField);
+
+    /// <summary>
+    /// Send PGN 214, the fix as the receiver (or the simulator) gave it: to AgIO's GPS
+    /// loopback port when <paramref name="toLoopback"/>, as AgIO does after parsing each
+    /// sentence (GPS_Out needs it, #364), and to the ISOBUS task controller while one is heard,
+    /// which tells the implements the fix quality from it.
+    /// </summary>
+    void SendGpsData(GpsData data, bool toLoopback);
 
     /// <summary>
     /// Update guidance results from external calculation (e.g. ViewModel guidance).
@@ -101,6 +155,16 @@ public interface IAutoSteerService
     /// reversing with Steer in reverse off, or while a direction change is unclear (#125).</summary>
     void SetSteerPaused(bool paused);
 
+    /// <summary>The internal simulator is the GPS source and may not steer the module: PGN 254
+    /// status stays 0, engaged or not, so a simulated drive does not move the real steering
+    /// of a module on the network. Free Drive still does.</summary>
+    void SetSimulatorHoldsSteering(bool hold);
+
+    /// <summary>The internal simulator is the chosen GPS source: a receiver's sentence without a
+    /// fix is left out (it would put the tractor at 0,0 between the simulator's positions), and one
+    /// with a fix takes over as before.</summary>
+    void SetSimulatorIsSource(bool on);
+
     /// <summary>Reverse state for the deadzone, which is off in reverse (#110).</summary>
     void SetReverse(bool isReverse);
 
@@ -123,7 +187,7 @@ public interface IAutoSteerService
     bool IsInFreeDriveMode { get; }
 
     /// <summary>
-    /// Current free drive steer angle in degrees (-40 to +40).
+    /// Current free drive steer angle in degrees (within ±<see cref="FreeDriveLimitDeg"/>).
     /// </summary>
     double FreeDriveSteerAngle { get; }
 
@@ -139,10 +203,18 @@ public interface IAutoSteerService
     void DisableFreeDrive();
 
     /// <summary>
+    /// The most a free drive command asks for, in degrees, either way: past any tractor's lock,
+    /// so the max steer angle test, which commands this and reads where the wheels stop, reads
+    /// the lock (±40° read a 38° lock, 42° as the left side reports it, as 40°). The operator's
+    /// own free drive is held to the vehicle's max steer angle by its view model.
+    /// </summary>
+    const double FreeDriveLimitDeg = 60;
+
+    /// <summary>
     /// Set the free drive steer angle.
     /// Only effective when IsInFreeDriveMode is true.
     /// </summary>
-    /// <param name="angleDegrees">Target steer angle (-40 to +40 degrees)</param>
+    /// <param name="angleDegrees">Target steer angle, held within ±<see cref="FreeDriveLimitDeg"/></param>
     void SetFreeDriveAngle(double angleDegrees);
 
     /// <summary>
@@ -168,7 +240,15 @@ public interface IAutoSteerService
     /// when more than 16 sections are configured, PGN 229 (all 64 sections).
     /// Called by ViewModel after section control updates.
     /// </summary>
-    void SetMachineState(ulong sectionBits, bool isInUTurn, byte hydLiftState = 0);
+    void SetMachineState(ulong sectionBits, bool isInUTurn, byte hydLiftState = 0, bool outOfBounds = false,
+        bool toolInHeadland = false);
+
+    /// <summary>
+    /// Update only the section bits carried by PGN 254, 239 and 229. Called by the
+    /// host control loop on every tick, right after section control ran, so a section
+    /// edge decided between two GPS fixes goes out with that tick's PGNs (#311).
+    /// </summary>
+    void SetSectionBits(ulong sectionBits);
 
     // ═══════════════════════════════════════════════════════════════════════
     // Module Feedback (PGN 253, 250)
@@ -179,6 +259,13 @@ public interface IAutoSteerService
     /// Contains actual steer angle, switch states, PWM feedback.
     /// </summary>
     SteerModuleData LastSteerData { get; }
+
+    /// <summary>
+    /// When <see cref="LastSteerData"/> arrived (UTC); <see cref="DateTime.MinValue"/> before
+    /// the first PGN 253. A calibration that reads the module (Zero WAS) checks it is recent:
+    /// with the module unplugged the last reading stays, and a zero taken from it is wrong.
+    /// </summary>
+    DateTime LastSteerDataUtc => DateTime.MinValue;
 
     /// <summary>
     /// Latest sensor data from module (PGN 250).

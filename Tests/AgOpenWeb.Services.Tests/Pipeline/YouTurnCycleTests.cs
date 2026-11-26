@@ -1,8 +1,9 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using AgOpenWeb.Models;
@@ -24,8 +25,21 @@ namespace AgOpenWeb.Services.Tests.Pipeline;
 /// <see cref="IPipelineIntents"/>.
 /// </summary>
 [TestFixture]
+[NonParallelizable] // ConfigurationStore is a singleton.
 public class YouTurnCycleTests
 {
+    // Own config, not whatever an earlier fixture left in the singleton: with the default
+    // 1 m tool the manual arc is a 1 m semicircle, too short for the state machine's own
+    // completion checks (the pipeline's guidance backstop completes those in the app).
+    [SetUp]
+    public void SetUp()
+    {
+        ConfigurationStore.SetInstance(new ConfigurationStore());
+        var config = ConfigurationStore.Instance;
+        config.NumSections = 1;
+        config.Tool.SetSectionWidth(0, 600); // 6 m tool
+    }
+
     /// <summary>
     /// Posting <c>RequestManualYouTurn</c> and then draining + calling the
     /// state machine (mirroring <c>GpsPipelineService.ProcessCycle</c>) must
@@ -161,6 +175,179 @@ public class YouTurnCycleTests
 
         Assert.That(snapshot.JustCompleted, Is.True,
             "JustCompleted is the cycle's one-shot completion signal consumed by the VM");
+    }
+
+    /// <summary>
+    /// #163 backstop: when U-turn guidance reports the path finished, the pipeline
+    /// completes the executing turn through <c>CompleteFromGuidance</c> — advancing to
+    /// the next pass — instead of leaving it executing with no steering.
+    /// </summary>
+    [Test]
+    public void CompleteFromGuidance_completes_executing_turn_and_advances_pass()
+    {
+        var stateMachine = BuildStateMachine();
+        var ctx = BuildTickContext();
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = 0 };
+        var youTurn = new YouTurnWorkingState
+        {
+            IsTriggered = true,
+            IsExecuting = true,
+            IsTurnLeft = true,
+            WasHeadingSameWayAtTurnStart = true,
+            TurnPath = new List<Vec3> { new(0, 0, 0), new(-3, 3, 0), new(-6, 0, 0) },
+        };
+
+        var effects = stateMachine.CompleteFromGuidance(in ctx, guidance, youTurn);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(effects.TurnCompleted, Is.True);
+            Assert.That(youTurn.IsExecuting, Is.False);
+            Assert.That(youTurn.IsTriggered, Is.False);
+            Assert.That(youTurn.TurnPath, Is.Null);
+            Assert.That(guidance.HowManyPathsAway, Is.EqualTo(-1),
+                "Left turn heading the same way as AB moves one pass negative");
+        });
+    }
+
+    [Test]
+    public void CompleteFromGuidance_is_noop_when_no_turn_is_executing()
+    {
+        var stateMachine = BuildStateMachine();
+        var ctx = BuildTickContext();
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = 3 };
+        var youTurn = new YouTurnWorkingState();
+
+        var effects = stateMachine.CompleteFromGuidance(in ctx, guidance, youTurn);
+
+        Assert.That(effects.TurnCompleted, Is.False);
+        Assert.That(guidance.HowManyPathsAway, Is.EqualTo(3));
+    }
+
+    /// <summary>
+    /// #163: <c>TickExecutingTurn</c> runs the completion checks without a headland line —
+    /// driving the pivot along a manual turn's path must complete it.
+    /// </summary>
+    [Test]
+    public void TickExecutingTurn_completes_manual_turn_without_headland()
+    {
+        var stateMachine = BuildStateMachine();
+        var baseCtx = BuildTickContext() with { Boundary = null, HeadlandLine = null };
+        var guidance = new GuidanceWorkingState();
+        var youTurn = new YouTurnWorkingState();
+
+        stateMachine.TriggerManual(true, isAutoSteerEngaged: true, in baseCtx, guidance, youTurn);
+        Assume.That(youTurn.IsExecuting, Is.True, "Manual trigger must start a turn");
+        var path = youTurn.TurnPath!.ToList();
+
+        bool completed = false;
+        foreach (var p in path)
+        {
+            var ctx = baseCtx with
+            {
+                CurrentPosition = new Position { Easting = p.Easting, Northing = p.Northing, Heading = p.Heading * 180 / Math.PI },
+            };
+            completed |= stateMachine.TickExecutingTurn(in ctx, guidance, youTurn).TurnCompleted;
+            if (completed) break;
+        }
+
+        Assert.That(completed, Is.True, "Driving the manual arc should complete the turn");
+        Assert.That(youTurn.IsExecuting, Is.False);
+    }
+
+    /// <summary>
+    /// A manual turn on a curve is laid out along the curve where the tractor is (AgOpenGPS
+    /// manualUturnHeading), not along the straight line from the curve's first point to its
+    /// last. With the chord heading, the arc started 35° off the tractor and ended short of
+    /// the next pass, so the tractor jumped onto it.
+    /// </summary>
+    [Test]
+    public void ManualTurn_on_a_curve_follows_the_local_heading()
+    {
+        // Quarter circle, radius 100 m: north at the start, east at the end. Chord heading 45°.
+        var points = new List<Vec3>();
+        for (int deg = 0; deg <= 90; deg += 2)
+        {
+            double t = deg * Math.PI / 180;
+            points.Add(new Vec3(100 - 100 * Math.Cos(t), 100 * Math.Sin(t), t));
+        }
+        const double localDeg = 80;
+        double local = localDeg * Math.PI / 180;
+        var stateMachine = BuildStateMachine();
+        var ctx = BuildTickContext() with
+        {
+            Boundary = null,
+            HeadlandLine = null,
+            SelectedTrack = Models.Track.Track.FromCurve("curve-test", points),
+            CurrentPosition = new Position
+            {
+                Easting = 100 - 100 * Math.Cos(local), Northing = 100 * Math.Sin(local), Heading = localDeg,
+            },
+        };
+        var guidance = new GuidanceWorkingState();
+        var youTurn = new YouTurnWorkingState();
+
+        stateMachine.TriggerManual(turnLeft: false, isAutoSteerEngaged: true, in ctx, guidance, youTurn);
+        Assume.That(youTurn.IsExecuting, Is.True, "Manual trigger must start a turn");
+        var first = youTurn.TurnPath![0];
+        var last = youTurn.TurnPath![^1];
+
+        double Deg(double rad) => ((rad * 180 / Math.PI) % 360 + 360) % 360;
+        Assert.Multiple(() =>
+        {
+            Assert.That(guidance.IsHeadingSameWay, Is.True);
+            Assert.That(Deg(first.Heading), Is.EqualTo(localDeg).Within(3), "the arc starts along the tractor's heading");
+            Assert.That(Deg(last.Heading), Is.EqualTo(localDeg + 180).Within(3), "and ends heading back along the curve");
+            // Curve start → end runs square to the local heading (onto the next pass), not
+            // along it. Point 0 is the tractor; the curve starts 4 m ahead of it (#156).
+            var curveStart = youTurn.TurnPath![1];
+            double along = (last.Easting - curveStart.Easting) * Math.Sin(local) + (last.Northing - curveStart.Northing) * Math.Cos(local);
+            Assert.That(along, Is.EqualTo(0).Within(0.5));
+        });
+    }
+
+    /// <summary>
+    /// A snake / alternate turn was planned (target pass 5) but discarded before it ran.
+    /// A manual turn must then complete by its own direction, not jump to the stale pass.
+    /// </summary>
+    [Test]
+    public void ManualTurn_after_discarded_planned_turn_ignores_stale_target_pass()
+    {
+        var stateMachine = BuildStateMachine();
+        var baseCtx = BuildTickContext() with { Boundary = null, HeadlandLine = null };
+        var guidance = new GuidanceWorkingState { HowManyPathsAway = 0 };
+        var youTurn = new YouTurnWorkingState
+        {
+            TurnPath = new List<Vec3> { new(0, 40, 0), new(3, 43, 0), new(6, 40, 0) },
+            ReturnPassTargetPath = 5,
+        };
+
+        stateMachine.TriggerManual(true, isAutoSteerEngaged: true, in baseCtx, guidance, youTurn);
+        Assume.That(youTurn.IsExecuting, Is.True, "Manual trigger must start a turn");
+        Assert.That(youTurn.ReturnPassTargetPath, Is.Null);
+
+        var effects = stateMachine.CompleteFromGuidance(in baseCtx, guidance, youTurn);
+        Assert.That(effects.TurnCompleted, Is.True);
+        Assert.That(guidance.HowManyPathsAway, Is.EqualTo(-1),
+            "Left manual turn heading with the AB moves one pass negative, not to pass 5");
+    }
+
+    [Test]
+    public void ClearState_drops_the_target_pass()
+    {
+        var youTurn = new YouTurnWorkingState
+        {
+            TurnPath = new List<Vec3> { new(0, 0, 0), new(1, 1, 0), new(2, 2, 0) },
+            NextTrack = Models.Track.Track.FromABLine("n", new Vec3(6, -100, 0), new Vec3(6, 100, 0)),
+            ReturnPassTargetPath = 3,
+        };
+        YouTurnStateMachine.ClearState(youTurn);
+        Assert.Multiple(() =>
+        {
+            Assert.That(youTurn.TurnPath, Is.Null);
+            Assert.That(youTurn.NextTrack, Is.Null);
+            Assert.That(youTurn.ReturnPassTargetPath, Is.Null);
+        });
     }
 
     // ── Test helpers ─────────────────────────────────────────────────────

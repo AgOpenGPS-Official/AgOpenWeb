@@ -1,12 +1,9 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,10 +22,12 @@ namespace AgOpenWeb.Services.Threading;
 /// so they never overlap. The headless host has no UI thread, so this class
 /// reproduces that exact single-threaded serialization for the VM/services layer.
 /// The 100 Hz control loop keeps running on its own thread (as it does in the
-/// windowed app); only the UI-thread-equivalent work is funnelled here.
+/// windowed app); only the UI-thread-equivalent work is funnelled here. The loop
+/// thread carries a <see cref="SynchronizationContext"/>, so an <c>await</c> in work
+/// started on it resumes on it, as on a UI thread.
 ///
-/// Framework-free (no Avalonia). See Plans/WEBUI_MIGRATION_PLAN.md Phase 10 and
-/// Plans/CONFIG_STATE_AUDIT.md §11.
+/// Framework-free (no Avalonia). See Plans/Completed/WEBUI_MIGRATION_PLAN.md Phase 10 and
+/// Plans/Completed/CONFIG_STATE_AUDIT.md §11.
 /// </summary>
 public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDisposable
 {
@@ -36,6 +35,17 @@ public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDispos
     private readonly Thread _thread;
     private readonly int _threadId;
     private volatile bool _running = true;
+
+    /// <summary>
+    /// Optional; set once the host's logging is up (WebBackend.StartAsync). Used to report
+    /// work items that hold the loop longer than <see cref="SlowWorkThreshold"/> — the loop
+    /// also carries web commands and GPS-result application, so a long item freezes the UI
+    /// (#169).
+    /// </summary>
+    public Microsoft.Extensions.Logging.ILogger? Logger { get; set; }
+
+    /// <summary>Host-loop work longer than this is logged as a warning.</summary>
+    public static readonly TimeSpan SlowWorkThreshold = TimeSpan.FromMilliseconds(500);
 
     public HostLoopDispatcher()
     {
@@ -53,16 +63,34 @@ public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDispos
 
     private void Pump()
     {
+        // The UI thread the VM was written for brings its awaits back to itself; a bare
+        // thread does not. Without this, after `await Task.Delay(50)` in a field open the
+        // rest of the open ran on a thread-pool thread, setting IsFieldOpen, CurrentBoundary,
+        // SelectedTrack and much more while the GPS cycle and the web server read them. With
+        // the context an await started on the loop resumes on the loop (ConfigureAwait(false)
+        // still leaves it, and Task.Run still runs its work elsewhere).
+        SynchronizationContext.SetSynchronizationContext(new LoopSynchronizationContext(this));
         foreach (var work in _queue.GetConsumingEnumerable())
         {
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
             try { work(); }
             catch (Exception ex)
             {
                 // A single bad callback must never tear down the host loop —
                 // log and keep pumping (mirrors the UI thread surviving an
-                // unhandled handler exception in a debugger-less run).
+                // unhandled handler exception in a debugger-less run). Logged, not only
+                // written to the debugger: a continuation after an await is a work item
+                // too, and its failure must show up in a field log.
                 System.Diagnostics.Debug.WriteLine($"[HostLoop] callback threw: {ex}");
+                if (Logger is { } errLog)
+                    Microsoft.Extensions.Logging.LoggerExtensions.LogError(errLog, ex,
+                        "[HostLoop] Work item threw ({Method})", work.Method.DeclaringType?.Name + "." + work.Method.Name);
             }
+            var took = System.Diagnostics.Stopwatch.GetElapsedTime(t0);
+            if (took > SlowWorkThreshold && Logger is { } log)
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(log,
+                    "[HostLoop] Work item held the loop for {Ms:F0} ms ({Method}); {Queued} queued behind it",
+                    took.TotalMilliseconds, work.Method.DeclaringType?.Name + "." + work.Method.Name, _queue.Count);
         }
     }
 
@@ -98,13 +126,50 @@ public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDispos
         return tcs.Task;
     }
 
+    /// <summary>The loop thread's <see cref="SynchronizationContext"/>: continuations are
+    /// posted to the queue (dropped once the loop is disposed, as <see cref="Post"/> drops
+    /// work), and <see cref="Send"/> runs inline on the loop or waits for its turn.</summary>
+    private sealed class LoopSynchronizationContext(HostLoopDispatcher loop) : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state) => loop.Post(() => d(state));
+
+        public override void Send(SendOrPostCallback d, object? state)
+        {
+            if (loop.CheckAccess()) { d(state); return; }
+            loop.InvokeAsync(() => d(state)).GetAwaiter().GetResult();
+        }
+
+        public override SynchronizationContext CreateCopy() => this;
+    }
+
     // --- IUiTimerFactory: timers that marshal their Tick onto this same loop ---
-    public IUiTimer Create() => new HostLoopTimer(this);
+    // Every timer made on this loop, stopped with it: a System.Threading.Timer outlives the loop
+    // otherwise, and its Tick handlers (MainViewModel's) kept the stopped backend alive (the
+    // working day harness's BACKEND-NOT-FREED-AFTER-EXIT).
+    private readonly List<HostLoopTimer> _timers = new();
+    private bool _disposed;
+
+    public IUiTimer Create()
+    {
+        var t = new HostLoopTimer(this);
+        lock (_timers)
+        {
+            if (_disposed) t.Dispose();
+            else _timers.Add(t);
+        }
+        return t;
+    }
 
     public void Dispose()
     {
         _running = false;
         _queue.CompleteAdding();
+        lock (_timers)
+        {
+            _disposed = true;
+            foreach (var t in _timers) t.Dispose();
+            _timers.Clear();
+        }
     }
 
     /// <summary>
@@ -149,6 +214,6 @@ public sealed class HostLoopDispatcher : IUiDispatcher, IUiTimerFactory, IDispos
 
         public void Start() { IsEnabled = true; _timer.Change(_interval, _interval); }
         public void Stop() { IsEnabled = false; _timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan); }
-        public void Dispose() => _timer.Dispose();
+        public void Dispose() { IsEnabled = false; Tick = null; _timer.Dispose(); }
     }
 }

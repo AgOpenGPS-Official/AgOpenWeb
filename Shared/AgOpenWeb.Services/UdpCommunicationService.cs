@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -21,9 +9,13 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using AgOpenWeb.Models;
+using AgOpenWeb.Models.GPS;
 using AgOpenWeb.Services.AutoSteer;
 using AgOpenWeb.Services.Interfaces;
+using AgOpenWeb.Services.Network;
 
 namespace AgOpenWeb.Services;
 
@@ -43,8 +35,34 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
     private Socket? _udpSocket;
     private readonly ILocalNetworkInfoProvider _localNetworkInfoProvider;
-    private readonly byte[] _receiveBuffer = new byte[1024];
-    private EndPoint _remoteEndPoint = new IPEndPoint(IPAddress.Any, 0);
+
+    /// <summary>The module port, and Ace's GPS1 / GPS2 ports a bridge may use for a receiver.</summary>
+    public const int ModulePort = 9999;
+    public const int Gps1Port = 2211;
+    public const int Gps2Port = 2222;
+
+    /// <summary>
+    /// AgOpenGPS's own loopback port, where programs beside it send to it: a rate controller
+    /// sends its section switches (PGN 234) here. AgIO sends its GPS data here too (and so
+    /// does this app, for GPS_Out), so only PGN 234 is taken from it.
+    /// </summary>
+    public const int AgOpenGpsLoopbackPort = 15555;
+
+    // One receive buffer and endpoint per listening socket; each socket's callbacks are
+    // serial, so a listener is touched by one thread at a time.
+    private sealed class Listener
+    {
+        public readonly Socket Socket;
+        public readonly GpsSource Source;
+        public readonly bool SwitchControlOnly;
+        public readonly byte[] Buffer = new byte[1024];
+        public EndPoint Remote = new IPEndPoint(IPAddress.Any, 0);
+        public Listener(Socket socket, GpsSource source, bool switchControlOnly = false)
+        {
+            Socket = socket; Source = source; SwitchControlOnly = switchControlOnly;
+        }
+    }
+    private readonly List<Listener> _listeners = new();
     private CancellationTokenSource? _cancellationTokenSource;
     private bool _isDisposed;
 
@@ -55,10 +73,22 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     private List<IPEndPoint> _discoveryEndpoints = new();
     private IPEndPoint? _lockedEndpoint;
     private DateTime _lastModuleResponse = DateTime.MinValue;
-    private DateTime _lastDiscoveryRefresh = DateTime.MinValue;
+    // Set by the network watcher (an address changed, or its heartbeat), so a link that
+    // comes up after the app started (Ethernet to the AiO, Wi-Fi at boot) is broadcast to
+    // on the next send (#385).
+    private int _refreshRequested;
     private static readonly IPEndPoint _localhostEndpoint = new(IPAddress.Loopback, 8888);
+    // AgIO's loopback port: AgOpenGPS sends PGNs to the loopback broadcast so every program
+    // bound to 17777 gets a copy. Apple platforms accept a loopback broadcast but never
+    // deliver it, so there it goes to 127.0.0.1 (one listener).
+    private static readonly IPAddress _loopbackTarget =
+        OperatingSystem.IsMacOS() || OperatingSystem.IsIOS() || OperatingSystem.IsMacCatalyst()
+            ? IPAddress.Loopback
+            : IPAddress.Parse("127.255.255.255");
+    private static readonly IPEndPoint _agIoLoopbackEndpoint = new(_loopbackTarget, 17777);
+    // Where AgIO sends its parsed GPS data (PGN 214) for AgOpenGPS; GPS_Out listens there too.
+    private static readonly IPEndPoint _agIoGpsLoopbackEndpoint = new(_loopbackTarget, 15555);
     private const int ModuleTimeoutSeconds = 5;
-    private const int DiscoveryRefreshSeconds = 30;
 
     // Module connection tracking - Hello responses (2 second timeout)
     private DateTime _lastHelloFromAutoSteer = DateTime.MinValue;
@@ -78,18 +108,48 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     private string? _imuIp;
     private string? _gpsIp;
     private string? _moduleSubnet;
+    private string? _scanSubnet;
 
-    private const int HELLO_TIMEOUT_MS = 2000; // 2 seconds for hello response
-    private const int DATA_TIMEOUT_STEER_MACHINE_MS = 100; // 50Hz data = 20ms cycle, allow 100ms
-    private const int DATA_TIMEOUT_IMU_MS = 300; // 10Hz data = 100ms cycle, allow 300ms
+    private const int HELLO_TIMEOUT_MS = 3000; // 3 seconds for hello response (tolerates Wi-Fi jitter)
+    private const int DATA_TIMEOUT_STEER_MACHINE_MS = 1500; // 50Hz data, allow 1500ms for Wi-Fi latency jitter
+    // The machine module's own PGN 237 (five times a second or more)
+    // counts in the same window as its hello reply.
+    private const int DATA_TIMEOUT_MACHINE_MS = HELLO_TIMEOUT_MS;
+    private const int DATA_TIMEOUT_IMU_MS = 1500; // 10Hz data, allow 1500ms for Wi-Fi latency jitter
+
+    // #169 diagnostics: log once when GPS NMEA or steer PGN 253 stops for over 2 s and once
+    // when it resumes (with the gap), so a bug-report log shows what the board stopped sending.
+    private const string SourceGpsNmea = "GPS NMEA";
+    private const string SourceSteerPgn253 = "steer PGN 253";
+    private readonly SourceSilenceMonitor _silence = new();
+
+    // Whether each module's own periodic stream arrives as it is sent (gaps, bursts): a
+    // link that loses or holds back datagrams shows here before anything goes silent. The
+    // steer module, an IMU and the task controller send on a timer; the machine module's
+    // PGN 237 is measured and reported only, its firmwares not being known to.
+    private readonly DataQuality.StreamQualityMonitor _steerStream = new("Steer module data (PGN 253)");
+    private readonly DataQuality.StreamQualityMonitor _machineStream = new("Machine module data (PGN 237)", warns: false);
+    private readonly DataQuality.StreamQualityMonitor _imuStream = new("IMU data (PGN 211)");
+    private readonly DataQuality.StreamQualityMonitor _isobusStream = new("ISOBUS task controller data (PGN 240)");
+    private DataQuality.IDataSensor[]? _dataSensors;
+
+    /// <inheritdoc />
+    public IReadOnlyList<DataQuality.IDataSensor> DataSensors
+        => _dataSensors ??= new DataQuality.IDataSensor[] { _steerStream, _machineStream, _imuStream, _isobusStream };
+    private readonly ILogger<UdpCommunicationService> _logger;
 
     public bool IsConnected { get; private set; }
     public string? LocalIPAddress { get; private set; }
 
-    public UdpCommunicationService(ILocalNetworkInfoProvider localNetworkInfoProvider)
+    public UdpCommunicationService(
+        ILocalNetworkInfoProvider localNetworkInfoProvider,
+        ILogger<UdpCommunicationService>? logger = null,
+        INetworkWatcher? networkWatcher = null)
     {
         _localNetworkInfoProvider = localNetworkInfoProvider
             ?? throw new ArgumentNullException(nameof(localNetworkInfoProvider));
+        _logger = logger ?? NullLogger<UdpCommunicationService>.Instance;
+        networkWatcher?.Subscribe(NetworkStage.Modules, _ => RequestDiscoveryRefresh());
     }
 
     /// <summary>
@@ -116,8 +176,8 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.Broadcast, true);
             _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
 
-            // Reduce receive buffer to minimize packet buffering/delay
-            _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, 8192);
+            // 64 KB receive buffer to absorb Wi-Fi bursts without kernel packet drops
+            _udpSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, 65536);
 
             // Windows: an ICMP Port Unreachable from a peer on a prior Send would
             // otherwise surface as a SocketException (ConnectionReset) on the next
@@ -129,12 +189,47 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 _udpSocket.IOControl((IOControlCode)SIO_UDP_CONNRESET, new byte[] { 0 }, null);
             }
 
-            _udpSocket.Bind(new IPEndPoint(IPAddress.Any, 9999));
+            _udpSocket.Bind(new IPEndPoint(IPAddress.Any, ModulePort));
+            _listeners.Clear();
+            _listeners.Add(new Listener(_udpSocket, GpsSource.ModulePort));
+
+            // Ace's GPS ports: a bridge that keeps two receivers apart sends GPS1 to 2211 and
+            // GPS2 to 2222. Text only; a port another program holds is logged and skipped.
+            foreach (var (port, source) in new[] { (Gps1Port, GpsSource.Gps1), (Gps2Port, GpsSource.Gps2) })
+            {
+                try
+                {
+                    var s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                    s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                    s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReceiveBuffer, 65536);
+                    s.Bind(new IPEndPoint(IPAddress.Any, port));
+                    _listeners.Add(new Listener(s, source));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("[UDP] not listening on {Port} ({Source}): {Message}", port, source, ex.Message);
+                }
+            }
+
+            // A rate controller's section switches (PGN 234), on the loopback as AgOpenGPS
+            // listens. Shared, as GPS_Out listens there too; a port another program holds
+            // exclusively is logged and skipped.
+            try
+            {
+                var s = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                s.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                s.Bind(new IPEndPoint(IPAddress.Loopback, AgOpenGpsLoopbackPort));
+                _listeners.Add(new Listener(s, GpsSource.ModulePort, switchControlOnly: true));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("[UDP] not listening on {Port} (rate controller switches): {Message}",
+                    AgOpenGpsLoopbackPort, ex.Message);
+            }
 
             // Discover broadcast endpoints on all network interfaces
             _discoveryEndpoints = GetBroadcastEndpoints();
             _lockedEndpoint = null;
-            _lastDiscoveryRefresh = DateTime.UtcNow;
 
             IsConnected = true;
 
@@ -156,13 +251,31 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         if (!IsConnected) return;
 
         _cancellationTokenSource?.Cancel();
-        _udpSocket?.Close();
-        _udpSocket?.Dispose();
+        foreach (var l in _listeners)
+        {
+            try { l.Socket.Close(); l.Socket.Dispose(); } catch { /* closing */ }
+        }
+        _listeners.Clear();
         _udpSocket = null;
         IsConnected = false;
+        _silence.Reset();
+        foreach (var sensor in DataSensors) sensor.Reset();
 
         await Task.CompletedTask;
     }
+
+    private void RequestDiscoveryRefresh() => Interlocked.Exchange(ref _refreshRequested, 1);
+
+    /// <summary>Rebuild the broadcast list when the network watcher asked for it. Runs on the
+    /// send path, the list's only reader.</summary>
+    internal void RefreshDiscoveryIfDue()
+    {
+        if (Interlocked.Exchange(ref _refreshRequested, 0) == 0) return;
+        _discoveryEndpoints = GetBroadcastEndpoints();
+        LocalIPAddress = GetLocalIPAddress();
+    }
+
+    internal IReadOnlyList<IPEndPoint> DiscoveryEndpoints => _discoveryEndpoints;
 
     public void SendToModules(byte[] data)
     {
@@ -175,12 +288,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         long perfT0 = perf ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
         long perfA0 = perf ? GC.GetAllocatedBytesForCurrentThread() : 0;
 
-        // Refresh discovery endpoints periodically
-        if ((DateTime.UtcNow - _lastDiscoveryRefresh).TotalSeconds > DiscoveryRefreshSeconds)
-        {
-            _discoveryEndpoints = GetBroadcastEndpoints();
-            _lastDiscoveryRefresh = DateTime.UtcNow;
-        }
+        RefreshDiscoveryIfDue();
 
         // Check for module timeout -> go back to discovery
         if (_lockedEndpoint != null &&
@@ -211,6 +319,48 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         }
     }
 
+    public void SendToLoopback(byte[] data)
+    {
+        if (!IsConnected || _udpSocket == null) return;
+        SendPacket(data, _agIoLoopbackEndpoint);
+    }
+
+    public void SendGpsDataToLoopback(byte[] data)
+    {
+        if (!IsConnected || _udpSocket == null) return;
+        SendPacket(data, _agIoGpsLoopbackEndpoint);
+    }
+
+    // The task controller's own address, from its heartbeat (it binds <LAN-IP>:8888 only, so
+    // the localhost copy of the module PGNs never reaches it), and when it was last heard.
+    private IPEndPoint? _taskControllerEndpoint;
+    private long _taskControllerHeardAt;   // Environment.TickCount64
+    private const int TaskControllerTimeoutMs = 3000;
+
+    public bool IsTaskControllerHeard =>
+        Volatile.Read(ref _taskControllerEndpoint) != null
+        && Environment.TickCount64 - Volatile.Read(ref _taskControllerHeardAt) < TaskControllerTimeoutMs;
+
+    public void SendToTaskController(byte[] data)
+    {
+        if (!IsConnected || _udpSocket == null || Volatile.Read(ref _taskControllerEndpoint) is not { } endpoint) return;
+        SendPacket(data, endpoint);
+    }
+
+    private void NoteTaskController(IPAddress address)
+    {
+        var known = _taskControllerEndpoint;
+        if (known == null || !known.Address.Equals(address))
+            Volatile.Write(ref _taskControllerEndpoint, new IPEndPoint(address, 8888));
+        Volatile.Write(ref _taskControllerHeardAt, Environment.TickCount64);
+    }
+
+    // Each endpoint's serialised address, made once (an endpoint dropped is dropped from here too).
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<IPEndPoint, SocketAddress> Addresses = new();
+
+    internal static SocketAddress Address(IPEndPoint endpoint) =>
+        Addresses.TryGetValue(endpoint, out var a) ? a : Addresses.GetValue(endpoint, static ep => ep.Serialize());
+
     private void SendPacket(byte[] data, IPEndPoint endpoint)
     {
         try
@@ -223,7 +373,10 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             // that eventually triggers a Gen2 collection and produces a
             // 1-3 s UI thread freeze. UDP sends to a local socket are
             // microseconds; the kernel queues immediately.
-            _udpSocket!.SendTo(data, endpoint);
+            // Not SendTo(byte[], EndPoint): that serialises the endpoint on every call (64 bytes a
+            // send, six a control tick, against the comment above). The endpoint's address is
+            // serialised once and kept with it.
+            _udpSocket!.SendTo(data, SocketFlags.None, Address(endpoint));
         }
         catch { }
     }
@@ -254,7 +407,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         return moduleType switch
         {
             ModuleType.AutoSteer => (now - _lastDataFromAutoSteer).TotalMilliseconds < DATA_TIMEOUT_STEER_MACHINE_MS,
-            ModuleType.Machine => (now - _lastDataFromMachine).TotalMilliseconds < DATA_TIMEOUT_STEER_MACHINE_MS,
+            ModuleType.Machine => (now - _lastDataFromMachine).TotalMilliseconds < DATA_TIMEOUT_MACHINE_MS,
             ModuleType.IMU => (now - _lastDataFromIMU).TotalMilliseconds < DATA_TIMEOUT_IMU_MS,
             _ => false
         };
@@ -262,48 +415,66 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
     private async Task ReceiveLoop(CancellationToken cancellationToken)
     {
-        // Start the first receive operation
-        if (_udpSocket != null)
-        {
-            try
-            {
-                _udpSocket.BeginReceiveFrom(_receiveBuffer, 0, _receiveBuffer.Length, SocketFlags.None,
-                    ref _remoteEndPoint, ReceiveCallback, null);
-            }
-            catch { }
-        }
+        // Start the first receive operation on every listening port
+        foreach (var l in _listeners)
+            BeginReceive(l);
 
-        // Keep the task alive until cancellation
+        // Keep the task alive until cancellation; also the 100 ms tick for silence checks.
         while (!cancellationToken.IsCancellationRequested)
         {
             await Task.Delay(100, cancellationToken);
+            foreach (var (name, silentMs, from) in _silence.CheckSilences())
+            {
+                _logger.LogWarning("[UDP] no {Source} for {Sec:F1}s (last from {From})",
+                    name, silentMs / 1000.0, from ?? "?");
+            }
         }
+    }
+
+    private void BeginReceive(Listener l)
+    {
+        try
+        {
+            l.Socket.BeginReceiveFrom(l.Buffer, 0, l.Buffer.Length, SocketFlags.None,
+                ref l.Remote, ReceiveCallback, l);
+        }
+        catch { }
     }
 
     private void ReceiveCallback(IAsyncResult ar)
     {
+        var l = (Listener)ar.AsyncState!;
         if (_udpSocket == null) return;
 
         try
         {
-            int bytesReceived = _udpSocket.EndReceiveFrom(ar, ref _remoteEndPoint);
+            int bytesReceived = l.Socket.EndReceiveFrom(ar, ref l.Remote);
 
             if (bytesReceived > 0)
             {
-                // ZERO-COPY PATH: Check if this is NMEA data for AutoSteer
-                // Process directly from receive buffer before any copying
-                if (_receiveBuffer[0] == (byte)'$' && _autoSteerService != null)
+                // ZERO-COPY PATH: GPS text (a line, or the rest of a line a bridge cut)
+                // goes to the line splitter + parser straight from the receive buffer
+                // before any copying. GPS → Parse → Guidance → PGN all happen here.
+                // Binary PGNs take the event path below; other binary datagrams (strangers
+                // broadcasting to 9999) are ignored as they always were.
+                var datagram = l.Buffer.AsSpan(0, bytesReceived);
+                if (l.SwitchControlOnly)
                 {
-                    // Direct zero-copy call - this is the critical low-latency path
-                    // GPS → Parse → Guidance → PGN all happen here before we continue
-                    _autoSteerService.ProcessGpsBuffer(_receiveBuffer, bytesReceived);
+                    if (bytesReceived > 3 && datagram[0] == PgnMessage.HEADER1 && datagram[1] == PgnMessage.HEADER2
+                        && datagram[3] == PgnNumbers.SWITCH_CONTROL)
+                        ProcessReceivedData(datagram.ToArray(), (IPEndPoint)l.Remote);
                 }
+                else
+                {
+                    if (_autoSteerService != null && Gps.NmeaLineSplitter.IsTextDatagram(datagram))
+                        _autoSteerService.ProcessGpsDatagram(datagram, l.Source);
 
-                // Now copy for other consumers (events, logging, etc.)
-                byte[] data = new byte[bytesReceived];
-                Array.Copy(_receiveBuffer, data, bytesReceived);
+                    // Now copy for other consumers (events, logging, etc.)
+                    byte[] data = new byte[bytesReceived];
+                    Array.Copy(l.Buffer, data, bytesReceived);
 
-                ProcessReceivedData(data, (IPEndPoint)_remoteEndPoint);
+                    ProcessReceivedData(data, (IPEndPoint)l.Remote);
+                }
             }
         }
         catch (SocketException ex) when (ex.SocketErrorCode == SocketError.ConnectionReset)
@@ -325,14 +496,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
 
         // IMMEDIATELY start the next receive operation - this is the key fix!
         if (_udpSocket != null)
-        {
-            try
-            {
-                _udpSocket.BeginReceiveFrom(_receiveBuffer, 0, _receiveBuffer.Length, SocketFlags.None,
-                    ref _remoteEndPoint, ReceiveCallback, null);
-            }
-            catch { }
-        }
+            BeginReceive(l);
     }
 
     private void ProcessReceivedData(byte[] data, IPEndPoint remoteEndPoint)
@@ -365,8 +529,13 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                     Timestamp = DateTime.Now
                 });
             }
-            else if (data.Length > 0 && data[0] == (byte)'$')
+            else if (data.Length > 0 && (data[0] == (byte)'$' || data[0] == (byte)'#' || data[0] == (byte)'%'))
             {
+                // A '$' sentence or a Unicore '#'/'%' log: this is where the position comes
+                // from, so the RTCM corrections go back to this address (unicast on 2233) and
+                // Network IO names it.
+                MarkSourceSeen(SourceGpsNmea, remoteEndPoint);
+
                 // Text NMEA sentence (starts with $)
                 // Fire event with PGN 0 to indicate NMEA text
                 DataReceived?.Invoke(this, new UdpDataReceivedEventArgs
@@ -449,7 +618,7 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         _perfTxWindowStart = DateTime.UtcNow;
     }
 
-    private void UpdateModuleConnection(byte[] data, IPEndPoint remoteEndPoint)
+    internal void UpdateModuleConnection(byte[] data, IPEndPoint remoteEndPoint)
     {
         var now = DateTime.Now;
         var remoteIp = remoteEndPoint.Address.ToString();
@@ -458,12 +627,13 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         // Track ALL PGNs as data - if we're getting any PGN from a module, it's sending data
         switch (pgn)
         {
-            // Scan reply: the module self-reports its full IP + subnet (and is the
-            // only inbound PGN that carries the GPS module's IP).
+            // Scan reply: the module self-reports its full IP (and is the only inbound
+            // PGN that carries the GPS module's IP), plus the subnet the scan came from.
             case PgnNumbers.SCAN_REPLY: // 203
                 if (PgnBuilder.TryParseScanReply(data, out byte moduleId, out string scanIp, out string scanSubnet))
                 {
-                    _moduleSubnet = scanSubnet;
+                    _moduleSubnet = scanIp[..scanIp.LastIndexOf('.')];
+                    _scanSubnet = scanSubnet;
                     switch (moduleId)
                     {
                         case 126: _autoSteerIp = scanIp; break;
@@ -488,12 +658,17 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
             case PgnNumbers.AUTOSTEER_DATA2:      // 254
             case PgnNumbers.STEER_SETTINGS:       // 252
             case PgnNumbers.STEER_CONFIG:         // 251
+                if (pgn == PgnNumbers.AUTOSTEER_DATA)
+                {
+                    MarkSourceSeen(SourceSteerPgn253, remoteEndPoint);
+                    _steerStream.Record();
+                }
                 _lastDataFromAutoSteer = now;
                 _autoSteerIp = remoteIp;
                 _lastModuleResponse = DateTime.UtcNow;
                 break;
 
-            // Machine PGNs (receive-only, only Hello matters)
+            // Machine module: its hello reply here, its own PGN 237 below.
             case PgnNumbers.HELLO_FROM_MACHINE:  // 123
                 _lastHelloFromMachine = now;
                 _machineIp = remoteIp;
@@ -509,10 +684,47 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
                 System.Diagnostics.Debug.WriteLine($"IMU HELLO received at {now:HH:mm:ss.fff}");
                 break;
 
+            case PgnNumbers.IMU_DATA: // 211 - external IMU roll/heading (#353)
+                _lastDataFromIMU = now;
+                _imuIp = remoteIp;
+                _imuStream.Record();
+                break;
+
+            case PgnNumbers.ISOBUS_HEARTBEAT: // 240 - task controller; IsobusTaskControllerService reads it
+                if (data.Length > 2 && data[2] == Isobus.IsobusTaskControllerService.TaskControllerSource)
+                {
+                    NoteTaskController(remoteEndPoint.Address);
+                    _isobusStream.Record();
+                }
+                break;
+
+            case PgnNumbers.SWITCH_CONTROL: // 234 - remote section switches; AutoSteerService reads it
+                break;
+
+            // The machine module talking on its own: present, as with its hello reply. Over Wi-Fi
+            // the hello and its reply are both broadcasts, which nothing resends, while 237 comes
+            // five times a second or more; on the hello alone the Modules dot went amber for
+            // seconds with the module working.
+            case PgnNumbers.FROM_MACHINE: // 237 - what the module's outputs do
+                _lastDataFromMachine = now;
+                _machineIp = remoteIp;
+                _lastModuleResponse = DateTime.UtcNow;
+                _machineStream.Record();
+                break;
+
             default:
                 // Log unknown PGNs to help debug
                 System.Diagnostics.Debug.WriteLine($"Unknown PGN {pgn} (0x{pgn:X2}) received");
                 break;
+        }
+    }
+
+    private void MarkSourceSeen(string source, IPEndPoint remoteEndPoint)
+    {
+        if (_silence.MarkSeen(source, remoteEndPoint.Address.ToString()) is { } gapMs)
+        {
+            _logger.LogWarning("[UDP] {Source} resumed after {Sec:F1}s silence (from {From})",
+                source, gapMs / 1000.0, remoteEndPoint.Address);
         }
     }
 
@@ -525,15 +737,37 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
         ModuleType.AutoSteer => _autoSteerIp,
         ModuleType.Machine   => _machineIp,
         ModuleType.IMU       => _imuIp,
-        ModuleType.GPS       => _gpsIp,
+        // Where the position sentences are coming from; a scan reply's address otherwise.
+        ModuleType.GPS       => GetGpsSourceAddress()?.ToString() ?? _gpsIp,
         _                    => null,
     };
 
     /// <summary>
-    /// The /24 subnet (first three octets) most recently reported by a module in
-    /// a PGN 203 scan reply, or null if no scan reply has been seen.
+    /// The /24 subnet (first three octets) of the module that sent the most recent
+    /// PGN 203 scan reply (from its IP), or null if no scan reply has been seen.
     /// </summary>
     public string? GetModuleSubnet() => _moduleSubnet;
+
+    /// <inheritdoc />
+    public string? GetScanReplySubnet() => _scanSubnet;
+
+    public IPAddress? GetGpsSourceAddress(double maxAgeSeconds = 10)
+    {
+        if (_silence.LastSeen(SourceGpsNmea) is not { } seen || seen.AgeMs > maxAgeSeconds * 1000.0)
+            return null;
+        return IPAddress.TryParse(seen.From, out var address) ? address : null;
+    }
+
+    public string? GetActiveModuleSubnet()
+    {
+        var locked = _lockedEndpoint;
+        if (locked != null)
+        {
+            var b = locked.Address.GetAddressBytes();
+            return $"{b[0]}.{b[1]}.{b[2]}";
+        }
+        return _moduleSubnet;
+    }
 
     /// <summary>
     /// Broadcast a scan request (PGN 202). Modules reply with PGN 203 (parsed in
@@ -602,7 +836,6 @@ public class UdpCommunicationService : IUdpCommunicationService, IDisposable
     {
         _lockedEndpoint = null;
         _discoveryEndpoints = GetBroadcastEndpoints();
-        _lastDiscoveryRefresh = DateTime.UtcNow;
     }
 
     /// <summary>

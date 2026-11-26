@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using Microsoft.Extensions.DependencyInjection;
@@ -54,14 +42,16 @@ public static class ServiceCollectionExtensions
         });
 
         // Centralized application state (single source of truth)
-        services.AddSingleton<ApplicationState>();           // ephemeral, in-memory only
-        services.AddSingleton(_ => AgOpenWeb.Models.Configuration.ConfigurationStore.Instance); // config SoT; same object as .Instance (Views/tests use the static seam)
-        services.AddSingleton(_ => PersistentAppState.Instance); // persisted to appstate.json (same object as .Instance)
+        // The backend's state: the statics point to it while it runs, let go when it stops (BackendStateLease).
+        services.AddSingleton<AgOpenWeb.Models.State.BackendStateLease>();
+        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().State);
+        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().Store);
+        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().Persistent);
 
         // UI-thread dispatcher + timer abstraction. With the native UI gone the VM/pipeline
         // run on a single HostLoopDispatcher (owned by the foreground BackendService's
         // AndroidBackendHost, which re-registers its own instance — last-wins), so guidance
-        // stays live while the WebView Activity is backgrounded. See Plans/CONFIG_STATE_AUDIT.md §11.
+        // stays live while the WebView Activity is backgrounded. See Plans/Completed/CONFIG_STATE_AUDIT.md §11.
         services.AddSingleton<HostLoopDispatcher>();
         services.AddSingleton<IUiDispatcher>(sp => sp.GetRequiredService<HostLoopDispatcher>());
         services.AddSingleton<IUiTimerFactory>(sp => sp.GetRequiredService<HostLoopDispatcher>());
@@ -75,6 +65,14 @@ public static class ServiceCollectionExtensions
             new AndroidLocalNetworkInfoProvider(
                 global::Android.App.Application.Context
                 ?? throw new InvalidOperationException("Android application context is unavailable.")));
+        // One watcher for network changes; UDP, NTRIP and the bug report outbox subscribe (#385).
+        services.AddSingleton<AgOpenWeb.Services.Network.INetworkWatcher>(sp =>
+        {
+            var watcher = new AgOpenWeb.Services.Network.NetworkWatcher(
+                sp.GetService<Microsoft.Extensions.Logging.ILogger<AgOpenWeb.Services.Network.NetworkWatcher>>());
+            AgOpenWeb.Android.Services.AndroidNetworkEvents.Register(global::Android.App.Application.Context, watcher);
+            return watcher;
+        });
         services.AddSingleton<IUdpCommunicationService, UdpCommunicationService>();
 
         // Core services
@@ -99,7 +97,6 @@ public static class ServiceCollectionExtensions
 
         // Field file I/O services
         services.AddSingleton<FieldPlaneFileService>();
-        services.AddSingleton<BoundaryFileService>();
 
         // Boundary recording service
         services.AddSingleton<IBoundaryRecordingService, BoundaryRecordingService>();
@@ -116,6 +113,13 @@ public static class ServiceCollectionExtensions
         // AutoSteer pipeline service (zero-copy GPS→PGN path)
         services.AddSingleton<IAutoSteerService, AutoSteerService>();
 
+        // ISOBUS task controller link: PGN 240 heartbeat in, PGN 241 section control out
+        services.AddSingleton<IIsobusTaskControllerService, AgOpenWeb.Services.Isobus.IsobusTaskControllerService>();
+        // ISOBUS virtual terminal for the VT card; not registered while it is switched off
+        // (FeatureSwitches): no terminal, no gateway browsing, and the cards never show.
+        if (AgOpenWeb.Models.FeatureSwitches.VirtualTerminal)
+            services.AddSingleton<IVirtualTerminalService, AgOpenWeb.VirtualTerminal.VirtualTerminalService>();
+
         // Smart WAS calibration (statistical WAS zero analyzer)
         services.AddSingleton<ISmartWasCalibrationService, SmartWasCalibrationService>();
 
@@ -128,11 +132,16 @@ public static class ServiceCollectionExtensions
         // Audio service (cross-platform sound effects)
         services.AddSingleton<IAudioService, AgOpenWeb.Services.Audio.WebClientAudioService>();
 
+        // The tablet, its networks and USB devices, for the bug report dump (device_info.txt).
+        services.AddSingleton<IDeviceInfoProvider>(_ =>
+            new AgOpenWeb.Android.Services.AndroidDeviceInfoProvider(global::Android.App.Application.Context!));
+
         // Battery service — subscribes to the sticky ACTION_BATTERY_CHANGED
         // broadcast via Application.Context (no polling needed).
-        services.AddSingleton<IBatteryService>(_ =>
+        services.AddSingleton<IBatteryService>(sp =>
             new AgOpenWeb.Android.Services.AndroidBatteryService(
-                global::Android.App.Application.Context!));
+                global::Android.App.Application.Context!,
+                sp.GetRequiredService<IUiDispatcher>()));
 
         // Module communication service (work switch, steer switch logic)
         services.AddSingleton<IModuleCommunicationService, ModuleCommunicationService>();

@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Net;
@@ -167,6 +163,20 @@ public class MachineConfigPgnTests
         Assert.That(pgn[15], Is.EqualTo((byte)PinFunction.TramLeft), "Pin 10 = TramLeft");
         Assert.That(pgn[16], Is.EqualTo((byte)PinFunction.TramRight), "Pin 11 = TramRight");
         Assert.That(pgn[28], Is.EqualTo((byte)PinFunction.GeoStop), "Pin 23 = GeoStop");
+    }
+
+    [Test]
+    public void PinFunctions_AreNumberedAsTheMachineFirmware()
+    {
+        // AgOpenGPS (ConfigModule: ... "Hyd Up", "Hyd Down", "Tram Right", "Tram Left",
+        // "Geo Stop") and the machine firmware (Machine_UDP_v5: relay function 19 follows
+        // tram bit 0 = right wheel, 20 follows bit 1 = left wheel). The relay page shows these
+        // names, so an operator who wires the left tram light to "Tram Left" gets the left one.
+        Assert.That((int)PinFunction.HydUp, Is.EqualTo(17));
+        Assert.That((int)PinFunction.HydDown, Is.EqualTo(18));
+        Assert.That((int)PinFunction.TramRight, Is.EqualTo(19));
+        Assert.That((int)PinFunction.TramLeft, Is.EqualTo(20));
+        Assert.That((int)PinFunction.GeoStop, Is.EqualTo(21));
     }
 
     [Test]

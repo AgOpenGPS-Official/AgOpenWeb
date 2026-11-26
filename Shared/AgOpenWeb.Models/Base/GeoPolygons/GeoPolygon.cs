@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 ﻿using System;
 using System.Collections.Generic;
@@ -92,16 +80,9 @@ namespace AgOpenWeb.Models
             {
                 var iCoord = this[i];
                 var jCoord = i == 0 ? Last : this[i - 1];
-                if ((iCoord.Easting < testPoint.Easting && jCoord.Easting >= testPoint.Easting)
-                    || (jCoord.Easting < testPoint.Easting && iCoord.Easting >= testPoint.Easting))
-                {
-                    if (iCoord.Northing + (testPoint.Easting - iCoord.Easting)
-                        / (jCoord.Easting - iCoord.Easting) * (jCoord.Northing - iCoord.Northing)
-                        < testPoint.Northing)
-                    {
-                        result = !result;
-                    }
-                }
+                if (Base.GeometryMath.CrossesSouth(iCoord.Easting, iCoord.Northing, jCoord.Easting, jCoord.Northing,
+                        testPoint.Easting, testPoint.Northing))
+                    result = !result;
             }
             return result;
         }

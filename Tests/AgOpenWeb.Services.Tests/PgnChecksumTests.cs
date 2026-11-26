@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -60,6 +56,7 @@ public class PgnChecksumTests
         yield return Case("BuildAutoSteerPgn", 14, () => { var s = SampleState(); return PgnBuilder.BuildAutoSteerPgn(ref s); });
         yield return Case("BuildMachinePgn", 14, () => { var s = SampleState(); return PgnBuilder.BuildMachinePgn(ref s, uturn: 1, hydLift: 2, tram: 3, geoStop: 1); });
         yield return Case("BuildSection64Pgn", 16, () => { var s = SampleState(); return PgnBuilder.BuildSection64Pgn(ref s); });
+        yield return Case("BuildCorrectedPositionPgn", 30, () => PgnBuilder.BuildCorrectedPositionPgn(43.7128, -74.006, 123.4));
 
         yield return Case("BuildMachineConfigPgn", 14, () => PgnBuilder.BuildMachineConfigPgn(new MachineConfig
         {
@@ -84,7 +81,7 @@ public class PgnChecksumTests
             Ackermann = 150
         }));
 
-        yield return Case("BuildSteerConfigPgn", 11, () => PgnBuilder.BuildSteerConfigPgn(new AutoSteerConfig
+        yield return Case("BuildSteerConfigPgn", 14, () => PgnBuilder.BuildSteerConfigPgn(new AutoSteerConfig
         {
             InvertWas = true,
             DanfossEnabled = true,

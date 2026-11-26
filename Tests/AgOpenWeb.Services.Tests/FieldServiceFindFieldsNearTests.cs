@@ -1,5 +1,9 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 using AgOpenWeb.Models;
-using AgOpenWeb.Services.Fields;
+using AgOpenWeb.Services.GeoJson;
 
 namespace AgOpenWeb.Services.Tests;
 
@@ -42,7 +46,7 @@ public class FieldServiceFindFieldsNearTests
             DirectoryPath = dir,
             Origin = new Position { Latitude = lat, Longitude = lon }
         };
-        FieldJsonService.Save(field, dir);
+        GeoJsonFieldService.Save(field, tracks: null);
         return dir;
     }
 
@@ -118,7 +122,7 @@ public class FieldServiceFindFieldsNearTests
     [Test]
     public void FindFieldsNear_SkipsDirectoriesWithoutMetadata()
     {
-        // A bare directory under FieldsRoot (no field.json, no Field.txt) —
+        // A bare directory under FieldsRoot (no field.geojson, no Field.txt) —
         // someone mkdir'd a folder. Must not crash; just gets skipped.
         Directory.CreateDirectory(Path.Combine(_root, "empty"));
         SeedField("real", NorthportLat, NorthportLon);

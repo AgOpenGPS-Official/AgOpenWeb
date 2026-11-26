@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 using System;
 using System.Diagnostics;
 using System.Text;
@@ -19,7 +23,7 @@ public static class NmeaParserBenchmark
         Console.WriteLine("=== NMEA Parser Benchmark ===\n");
 
         var mockGpsService = new MockGpsService();
-        var fastParser = new NmeaParserServiceFast(mockGpsService);
+        var fastParser = new NmeaParserServiceFast(mockGpsService, new AgOpenWeb.Models.Configuration.ConfigurationStore());
         byte[] sampleBytes = Encoding.ASCII.GetBytes(SamplePanda);
 
         Console.WriteLine("Warming up...");

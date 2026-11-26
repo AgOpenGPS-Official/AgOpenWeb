@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Phase 1 wire contract (deliberate, not VM-mirroring). Field-local meters;
 // the host sends the field origin once in the Scene, everything else is x=E, y=N.
 // Camera is NOT here — it's client-owned (REMOTE_WEB_UI_SPLIT.md §5 rule 3).
@@ -44,7 +48,7 @@ public record SceneDto(
     IReadOnlyList<Vec2Dto>? Headland, // inner headland ring (green line), if any
     IReadOnlyList<Vec2Dto>? GuidanceLine, // the followed offset line (magenta), if guiding
     IReadOnlyList<SectionSpanDto> ToolSections, // section spans (static layout); pose is per-Tick
-    IReadOnlyList<Vec2Dto>? UTurnPath, // the planned U-turn arc through the headland (green), if active
+    IReadOnlyList<Vec2Dto>? UTurnPath, // the planned U-turn arc through the headland (green), if active; or the way to a recorded path being played
     IReadOnlyList<Vec2Dto>? NextTrack, // the next pass to pick up after the turn (cyan), if any
     IReadOnlyList<FlagDto> Flags, // field marker flags (Phase 8 follow-up)
     ImageryDto? Imagery, // background field image world-rect + version (PNG served over HTTP)
@@ -52,10 +56,12 @@ public record SceneDto(
     IReadOnlyList<HeadlandSegInfoDto> HeadlandSegs, // Field Builder Headland-tab segment list
     IReadOnlyList<TramSystemDto> TramSystems, // Field Builder Tram-tab system list
     IReadOnlyList<IReadOnlyList<Vec2Dto>> TramLines, // generated tram lines, for the map
-    IReadOnlyList<IReadOnlyList<Vec2Dto>> RecordedPaths, // saved recorded paths, when "Rec paths" is on (#110)
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> RecordedPaths, // saved recorded paths, when "Rec paths" is on (#110); last, the recorded path in use
     IReadOnlyList<IReadOnlyList<Vec2Dto>> ContourStrips, // saved contour strips (#110)
     IReadOnlyList<Vec2Dto>? ContourRef, // contour mode: the strip being followed (points) (#110)
-    bool ContourLocked); // contour lock on
+    bool ContourLocked, // contour lock on
+    IReadOnlyList<IReadOnlyList<Vec2Dto>> GuideLines, // a curve's extra guidelines, built by the host (#450)
+    IReadOnlyList<Vec2Dto>? ToolPass); // the centre of the pass shown, where the tool runs: the map draws the tool's width along it
 
 /// <summary>A field flag marker: field-local position (m) + display colour hex + name.</summary>
 public record FlagDto(double E, double N, string ColorHex, string Name);
@@ -129,7 +135,8 @@ public record TickDto(
     // FieldState.HeadlandProximityDistance/…Warning.
     double HeadlandProximityDistance,
     bool HeadlandProximityWarning,
-    // Steer-bar value: steer-angle error (actual WAS − commanded guidance angle, deg).
+    // Steer-bar value: steer-angle error (the wheels' angle − commanded guidance angle, deg): the
+    // module's WAS, or the simulator's angle while it drives and doesn't move the real steering.
     // The web top bar shows this in steer-bar mode (light-bar mode uses CrossTrackError).
     double SteerAngleError,
     // Diagnostic-chart scalars (Tools panel: Steer / Heading / XTE charts). Streamed
@@ -170,6 +177,13 @@ public record TickDto(
     // driver's seat (GuidanceState.NudgeOffset sign-flipped when heading against the track,
     // matching how the nudge intent applies it). Shown on the AB flyout's nudge readout (#93).
     double NudgeOffset,
+    // Ref Nudge panel (#489): how far the selected track was moved since the panel opened (m, +right).
+    double RefNudgeMoved,
+    // ... and whether that move still waits for Save (Undo / Save enable on it).
+    bool RefNudgePending,
+    // Smooth Curve panel (#929): open on the selected curve, and the amount shown (0 = as saved).
+    bool SmoothOpen,
+    int SmoothCount,
     // Pure Pursuit goal point (field-local m) — the steering target while engaged, or in
     // free-drive the target it would chase if engaged now. HasGoal gates the map marker (#95).
     bool HasGoal,
@@ -180,7 +194,18 @@ public record TickDto(
     // Engaged, but the steer module reports it isn't steering (#126).
     bool ModuleNotSteering,
     // Heading chart: GPS fix-to-fix heading, degrees (#111).
-    double ChartGpsHeading);
+    double ChartGpsHeading,
+    // Tram lights (#451, FieldToolsState.TramLights): bit 0/1 right/left on a tram track,
+    // bit 2/3 right/left forced on by hand, bit 4 = show the lights (Tram tab "Display"
+    // on, a tram display mode on, and a tool wider than the wheel track).
+    int TramLights,
+    // The pivot is outside the field (#494, FieldState.IsOutOfBounds): the boundary is drawn
+    // thick and red and the map gets an orange frame, as AgOpenGPS.
+    bool IsOutOfBounds,
+    // Contour: what the line ahead holds (GuidanceState.ContourAhead: 0 clear, 1 the line turns
+    // back, 2 it runs over sprayed ground, 3 it ends) and how far ahead (m): the operator should take over.
+    int ContourAhead,
+    double ContourAheadM);
 
 /// <summary>Top status-bar readouts (Phase 1), sent at a low rate. GPS fix quality
 /// + correction age + sat count; the units preference (so the client formats speed
@@ -259,6 +284,12 @@ public record StatusDto(
     bool NtripConnected,
     string NtripStatus,
     double NtripBytes,
+    // Where RTCM goes ("" with no session), whether that is the GPS module's own address,
+    // and the "always broadcast" setting (Network IO).
+    string NtripDestination,
+    bool NtripUnicast,
+    bool RtcmBroadcast,
+    bool NtripEnabled,
     string NtripTestStatus,
     // Simulator panel visibility (persisted in PersistentAppState.SimulatorPanelVisible) —
     // the web sim bar shows/hides from this so the choice survives app restarts.
@@ -276,7 +307,111 @@ public record StatusDto(
     // bar's taller diagnostics line; GpsToPgnLatencyMs is the host control-loop latency
     // (GPS receive → PGN send, ms) shown there beside the client FPS + transport age.
     bool DevOverlay,
-    double GpsToPgnLatencyMs);
+    double GpsToPgnLatencyMs,
+    // GPS source (#157): the incoming sentence ("PANDA", "PAOGI", "SIM"; "" before any
+    // fix) for the GPS detail card, and DualHeadingMissing — Dual GPS is on and the
+    // receiver has a position but no antenna heading, so the single-antenna heading is
+    // used. Not raised while the receiver is starting up (#313).
+    string GpsSentence,
+    bool DualHeadingMissing,
+    // What the NTRIP caster is sending, for the Network IO panel (RTCM plan, Phase 5);
+    // null with no NTRIP session.
+    NtripRtcmDto? NtripRtcm = null,
+    // System Data card (Network IO → GPS): what the status frame doesn't already carry.
+    SystemDataDto? SystemData = null,
+    // No position sentences for a couple of seconds: the host has switched autosteer and
+    // the sections off, and the client shows the warning over the map until data is back.
+    bool GpsLost = false,
+    // ISOBUS task controller (#312); null while none is heard.
+    IsobusDto? Isobus = null,
+    // Field data card (#321); null with no field open.
+    FieldDataDto? FieldData = null,
+    // Network IO: PGN 100 (corrected position) is sent (#337).
+    bool SendCorrectedPosition = false,
+    // Bytes 9–11 of the last scan reply: the subnet the scan came from (#334); "" = none.
+    string ScanReplySubnet = "",
+    // The NTRIP session: which service is in use, the failover state, the last failure (NTRIP plan).
+    NtripSessionDto? NtripSession = null,
+    // How each stream from the modules arrives (gaps, bursts): the GPS fixes first. null before
+    // the first judgement.
+    IReadOnlyList<DataStreamDto>? DataQuality = null);
+
+/// <summary>One data quality sensor's judgement (<c>DataReading</c>, <c>DataQualityMonitor</c>).</summary>
+/// <param name="Name">"GPS positions", "GPS position times", "Steer module data (PGN 253)", ...</param>
+/// <param name="Finding"><c>DataFinding</c>: 0 no data (silent, too little to judge, not looked at), 1 even,
+/// 2 gaps, 3 bursts, 4 in order, 5 out of order, 6 at rate, 7 slow, 8 whole, 9 damaged.</param>
+/// <param name="Faulty">Not fit to use: the operator was told.</param>
+/// <param name="RateHz">Arrivals a second, where the sensor counts them; else 0.</param>
+/// <param name="NominalHz">The rate the sender sends at; 0 when not known.</param>
+/// <param name="Amount">How much is wrong, in the sensor's measure: per cent missing (gaps), the number in the
+/// last minute (out of order).</param>
+public record DataStreamDto(string Name, int Finding, bool Faulty, double RateHz, double NominalHz, double Amount);
+
+/// <summary>What the field data card shows beyond the worked area the status frame already
+/// carries: the boundary area less inner boundaries (0 = no boundary), the ground covered
+/// at least once (overlap counted once), and the trip area and distance. m² and m.</summary>
+public record FieldDataDto(double BoundaryAreaSqM, double ActualAreaSqM, double TripAreaSqM, double TripDistanceM);
+
+/// <summary>The ISOBUS task controller's heartbeat (PGN 240): whether section control is
+/// enabled on the implement, the implement's section count (0 = no implement), how many
+/// implements are connected, and the implement's own section states (section 1 in bit 0).</summary>
+public record IsobusDto(bool SectionControl, int Sections, int Clients, ulong Reported);
+
+/// <summary>GPS values for the System Data card that ride no other frame: attitude, the
+/// heading sources before fusion, the sentence rate and counters, and the latest raw
+/// sentences. Headings are degrees; NaN where the source isn't there (no IMU, no dual
+/// antenna).</summary>
+public record SystemDataDto(
+    double Pitch,
+    double YawRate,
+    double ImuHeading,
+    double DualHeading,
+    double FixToFixHeading,
+    double RateHz,
+    long Missed,
+    long Rejected,
+    IReadOnlyList<GpsSentenceDto> Sentences,
+    long BadChecksum = 0,
+    long UnknownSentence = 0,
+    long JoinedLines = 0,
+    long DroppedBytes = 0,
+    string Source = "",
+    long IncompleteEpochs = 0);
+
+/// <param name="Type">"PANDA", "PAOGI", "KSXT", or "REJECTED" for the last line the parser refused.</param>
+public record GpsSentenceDto(string Type, string Text, double AgeSeconds);
+
+/// <summary>The caster's RTCM stream this session: totals, and each message type with how
+/// often it comes and how long ago the last one came. The client turns this into the
+/// message table and the "no base position" / "no observations" warnings.</summary>
+public record NtripRtcmDto(
+    double SessionSeconds,
+    long Messages,
+    long ChecksumFailures,
+    long BytesSkipped,
+    long NotSent,        // replaced by a newer message before sending, or dropped by the memory guard
+    bool Unframed,       // the stream is not RTCM 3 and is forwarded as it comes
+    IReadOnlyList<NtripRtcmTypeDto> Types);
+
+/// <param name="EverySeconds">Mean spacing; NaN after a single message.</param>
+public record NtripRtcmTypeDto(int Type, long Count, double EverySeconds, double LastSeconds);
+
+/// <summary>Which NTRIP service the corrections come from and how the connection is doing, for the
+/// Network IO card. State is <c>NtripState</c> (0 Stopped, 1 Connecting, 2 Connected, 3 Streaming,
+/// 4 Waiting, 5 GaveUp); LastError is <c>NtripCategory</c>, -1 for none. Notice is the last switch
+/// message ("" for none).</summary>
+public record NtripSessionDto(
+    bool UsingFallback,
+    bool MainIsBack,
+    bool HasFallback,
+    bool ProfilePerField,
+    int State,
+    int LastError,
+    int Attempts,
+    double RetryInSeconds,
+    string Notice,
+    string Profile = "",
+    string Service = "");
 
 /// <summary>Config read-frame (Phase 9). A structured projection of
 /// ConfigurationStore for the left-nav settings panels — seeded on connect and
@@ -313,7 +448,9 @@ public record AutoSteerConfigDto(
     bool ManualTurnsEnabled, double ManualTurnsSpeed, double MinSteerSpeed, double MaxSteerSpeed,
     // Tab 9 — Display
     int LineWidth, int NudgeDistance, double NextGuidanceTime, int CmPerPixel,
-    bool LightbarEnabled, bool SteerBarEnabled, bool GuidanceBarOn);
+    bool LightbarEnabled, bool SteerBarEnabled, bool GuidanceBarOn,
+    // Ref Nudge panel step, cm (moves the reference line; NudgeDistance offsets the guidance line).
+    int RefNudgeDistance);
 
 /// <summary>Screen &amp; Alerts panel (ConfigStore.Display): display toggles, on-screen
 /// buttons, alert sounds, plus the App-Settings device flags (keyboard / start
@@ -330,12 +467,16 @@ public record DisplayConfigDto(
     double DisplayResolutionMultiplier,
     // Day/Night theme (PersistentAppState.IsDayMode). The web client switches its full
     // light/dark palette + map colours on this; the Day/Night Theme button toggles it.
-    bool IsDayMode);
+    bool IsDayMode,
+    // UI size in percent (100/115/130/150): the client zooms its controls, not the map.
+    int UiScale,
+    // The field's aerial imagery shown on the map (#500).
+    bool ImageryVisible);
 
 /// <summary>Tool/Implement tab (ConfigStore.Tool + NumSections). Type: 0 front, 1 rear,
 /// 2 TBT, 3 trailing. Arrays fixed-size (16 widths/colours, 9 zone ranges).</summary>
 public record ToolConfigDto(
-    int Type, int HitchType, double HitchLength, double TrailingHitchLength,
+    int Type, int HitchType, double WorkingPointFromHitch, double TrailingHitchLength,
     double TankTrailingHitchLength, double Length,
     double LookAheadOn, double LookAheadOff, double TurnOffDelay,
     double Offset, double Overlap, double TrailingToolToPivotLength,
@@ -352,7 +493,7 @@ public record ToolConfigDto(
 public record UturnConfigDto(int Style, double Extension, int Smoothing, double Radius, double DistanceFromBoundary);
 
 /// <summary>Tram Lines tab (ConfigStore.Guidance tram fields).</summary>
-public record TramConfigDto(int Passes, bool Display, int Line, double Width);
+public record TramConfigDto(int Passes, bool Display, int Line, double Width, bool OuterInverted);
 
 /// <summary>Machine Control tab (ConfigStore.Machine). PinAssignments: 24 PinFunction ints.</summary>
 public record MachineConfigDto(
@@ -384,19 +525,34 @@ public record WizardDto(
     int HardwareLevel,
     double LiveAngle, double LiveRoll, double LiveError,
     string TestPhase, string TestResult, double TestProgress, bool TestActive,
-    bool RtkFixed, string FixLabel, double Diameter);
+    bool RtkFixed, string FixLabel, double Diameter,
+    // Circle-test feedback (#154): why Record can't start / a fix warning, and whether it can.
+    string RecordHint, bool CanRecord,
+    // The host closed the wizard (the screen in control went): no live state, only this.
+    bool Closed = false)
+{
+    /// <summary>The wizard the host closed (MainViewModel.SteerWizardClosedByHost).</summary>
+    public static readonly WizardDto ClosedByHost = new(
+        0, 0, "", "", "", false, false, false, false, "",
+        0, 0, "", 0, 0, false, 0, 0, 0, 0, "", "", 0, false, false, "", 0, "", false, Closed: true);
+}
 
 /// <summary>Vehicle tab: type / hitch / dimensions / antenna (ConfigStore.Vehicle).</summary>
 public record VehicleConfigDto(
     string Name,
     int Type,            // VehicleType: 0 Tractor, 1 Harvester, 2 FourWD
     int HitchType,       // code; index into HitchTypeOptions = HitchType + 1
-    double HitchLength,
+    double HitchLength,            // drawbar pin behind the rear axle
+    double ThreePointHitchLength,  // rear 3-point (lower links) behind the rear axle
+    double FrontHitchLength,       // front 3-point ahead of the rear axle; 0 = none
     double Wheelbase,
     double TrackWidth,
     double AntennaPivot,
     double AntennaHeight,
-    double AntennaOffset);
+    double AntennaOffset,
+    double ImuPivot,
+    double ImuHeight,
+    double ImuOffset);
 
 /// <summary>Data Sources → GPS tab (ConfigStore.Connections).</summary>
 public record GpsConfigDto(
@@ -436,8 +592,9 @@ public record ControlStateDto(bool Held, string HolderId, string HolderName);
 /// <summary>NTRIP profiles read-frame (Phase 9 Network IO) — the saved caster
 /// profiles plus the list of fields they can associate with. Seeded on connect +
 /// re-sent when the profile set changes (fingerprint). The browser edits a
-/// client-side buffer and writes back via ntrip.* commands; passwords ride the wire
-/// (LAN trust model, same as all config) so an edit preserves them.</summary>
+/// client-side buffer and writes back via ntrip.* commands. Passwords never go out:
+/// a set one is sent as <see cref="Secrets.Mask"/>, and the mask coming back in
+/// ntrip.save / ntrip.test means "the stored one" (#397).</summary>
 public record NtripProfilesDto(
     IReadOnlyList<NtripProfileDto> Profiles,
     IReadOnlyList<string> AvailableFields);
@@ -445,7 +602,25 @@ public record NtripProfilesDto(
 public record NtripProfileDto(
     string Id, string Name, string CasterHost, int CasterPort, string MountPoint,
     string Username, string Password, bool AutoConnectOnFieldLoad, bool IsDefault,
-    IReadOnlyList<string> AssociatedFields);
+    IReadOnlyList<string> AssociatedFields,
+    NtripFallbackDto? Fallback = null);
+
+/// <summary>A profile's fallback service. Like the profile's own, its password goes out only as <see cref="Secrets.Mask"/>.</summary>
+public record NtripFallbackDto(
+    string CasterHost, int CasterPort, string MountPoint, string Username, string Password,
+    bool AutoSwitch, int SwitchAfterFailures);
+
+/// <summary>The mount points last asked for in the NTRIP profile editor: its own frame, sent when a new
+/// list (or a new status) is ready. For is "main" or "fallback"; Status is the sentence to show.</summary>
+public record NtripMountpointsDto(int Seq, string For, string Status, IReadOnlyList<NtripMountpointDto> Items);
+
+/// <summary>The web cards' bookmarks (AppSettings.WebCards), in their own frame.</summary>
+public record WebCardsDto(IReadOnlyList<WebCardDto> Cards);
+public record WebCardDto(string Name, string Url);
+
+/// <param name="DistanceKm">NaN when the position of the mount point or of the receiver is unknown.</param>
+public record NtripMountpointDto(string Mount, string Name, string Format, string Systems, string Country,
+    double DistanceKm, bool NeedsPosition);
 
 /// <summary>Field Operations read-frame (Phase 9 Field Ops) — the field/job lifecycle
 /// lists for the Fields-and-Jobs dialog. Fields = every field on disk (distance enriched
@@ -473,6 +648,7 @@ public record JobEntryDto(
 /// state. Settings come from ConfigStore.Connections; Status/Busy/CloudFields are the live
 /// result of the last test/fetch/upload/download (ApplicationState.AgShare). LocalFields are
 /// the upload candidates (every field on disk + whether it has a boundary).</summary>
+/// <remarks>ApiKey is <see cref="Secrets.Mask"/> when one is set, never the key (#397).</remarks>
 public record AgShareDto(
     string ServerUrl, string ApiKey, bool Enabled,
     string Status, bool Busy,
@@ -494,7 +670,8 @@ public record AppInfoDto(
     IReadOnlyList<AppDirDto> Directories,
     IReadOnlyList<AppHotkeyDto> Hotkeys,
     IReadOnlyList<AppLogDto> Logs,
-    string BugReportStatus);
+    string BugReportStatus,
+    string BugReportSendStatus);
 
 /// <summary>Field Tools read-frame. Grows per sub-increment (append-only). Import
 /// Tracks: the other fields on disk that have saved tracks (current field excluded).
@@ -503,7 +680,7 @@ public record FieldToolsDto(
     IReadOnlyList<string> ImportFields);
 
 /// <summary>Recorded Path read-frame (host-driven, like the Wizard — the panel's UI
-/// state lives in the VM, not ApplicationState). RecFiles = saved .rec files in the
+/// state lives in the VM, not ApplicationState). RecFiles = names of the saved recorded paths in the
 /// active field; the booleans + info/label mirror the live VM. RecordedPathName is the
 /// client's own text input, so it isn't projected. Re-sent on a fingerprint change.</summary>
 public record RecordedPathDto(
@@ -541,10 +718,23 @@ public record BoundaryDto(
     bool DrawAtPivot,
     bool SectionControlOn,
     // Live drive-around markers (field-local m, flat [E,N,…]); empty when idle.
-    IReadOnlyList<double> RecordingPoints);
+    IReadOnlyList<double> RecordingPoints,
+    // The recording under way is an obstacle (an inner boundary), not the field's outer
+    // boundary: the recorder's title says which (MainViewModel.IsRecordingObstacle).
+    bool RecordingObstacle = false);
 
 public record AppLangDto(string Code, string Name);
 public record AppDirDto(string Name, string Path, bool Exists);
 public record AppHotkeyDto(string Action, string Key, string Label);
 /// <summary>One log line. Level: 0 Trace,1 Debug,2 Info,3 Warn,4 Error,5 Critical (Microsoft LogLevel).</summary>
 public record AppLogDto(string Time, int Level, string Message);
+
+/// <summary>Credentials stay on the host (#397): every browser on the LAN receives the read
+/// frames, so a stored password or key is sent as a fixed mask, and the mask sent back
+/// means "keep the stored one".</summary>
+public static class Secrets
+{
+    public const string Mask = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+
+    public static string Masked(string? secret) => string.IsNullOrEmpty(secret) ? "" : Mask;
+}

@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 using System.Collections.Generic;
 using System.Linq;
 
@@ -32,7 +36,9 @@ public class ManualTurnHardBoundaryTests
         config.NumSections = 1;
         config.Tool.SetSectionWidth(0, 1600); // 16 m via sections -> ActualToolWidth = 16
         config.Tool.Overlap = 0;
-        config.Tool.HitchLength = 2;
+        // A fixed tool's working point 2 m from the rear axle: the tractor's hitch there, the tool on it (#547).
+        config.Vehicle.ThreePointHitchLength = config.Vehicle.FrontHitchLength = System.Math.Abs(2);
+        config.Tool.WorkingPointFromHitch = 0;
         config.Tool.IsToolRearFixed = true;
         config.Tool.IsToolTrailing = false;
         config.Tool.IsToolTBT = false;
@@ -69,10 +75,23 @@ public class ManualTurnHardBoundaryTests
     }
 
     [Test]
-    public void SoftBoundary_NearEdge_PlotsTurn()
+    public void SoftBoundary_ImplementSwingsPast_TractorInside_PlotsTurn()
     {
-        var path = ManualTurn(Square(hard: false), startN: 45);
+        // Started at N=36 the tractor stays inside (its arc tops out short of +50) while the 16 m
+        // implement's end swings past: a soft boundary allows that, as AgOpenGPS does.
+        var path = ManualTurn(Square(hard: false), startN: 36);
         Assert.That(path.Count, Is.GreaterThan(2), "soft boundary should still plot the manual turn");
+        Assert.That(path.Max(p => p.Northing), Is.LessThan(50), "the tractor itself stays inside");
+    }
+
+    [Test]
+    public void SoftBoundary_TractorWouldLeaveTheField_RefusesTurn()
+    {
+        // Started at N=45 the tractor's own arc goes past the +50 edge: refused, as an automatic
+        // turn is (#698). AgOpenGPS's manual turn has no such check (Turn intervention T11 went
+        // 7 m out of the field).
+        var path = ManualTurn(Square(hard: false), startN: 45);
+        Assert.That(path.Count, Is.LessThanOrEqualTo(2), "a manual turn that leaves the field is refused");
     }
 
     [Test]

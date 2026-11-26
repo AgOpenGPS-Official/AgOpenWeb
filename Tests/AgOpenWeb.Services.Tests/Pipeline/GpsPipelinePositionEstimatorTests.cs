@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using AgOpenWeb.Models;
@@ -34,7 +33,6 @@ public class GpsPipelinePositionEstimatorTests
     private GpsService _gpsService = null!;
     private GpsPipelineService _pipeline = null!;
     private PositionEstimator _estimator = null!;
-    private ApplicationState _appState = null!;
 
     [SetUp]
     public void SetUp()
@@ -48,22 +46,18 @@ public class GpsPipelinePositionEstimatorTests
         config.NumSections = 1;
         config.Tool.SetSectionWidth(0, 600);
 
-        _appState = new ApplicationState();
-        _appState.Field.LocalPlane = new LocalPlane(
-            new Wgs84(43.7128, -74.006), new SharedFieldProperties());
-
         _gpsService = new GpsService();
         _gpsService.Start();
 
         var toolPosition = new ToolPositionService(config);
         var coverage = new CoverageMapService(config);
-        var sectionControl = new SectionControlService(toolPosition, coverage, _appState, config);
+        var sectionControl = new SectionControlService(toolPosition, coverage, config);
         var autoSteer = new AutoSteerService(new TrackGuidanceService(),
-            Substitute.For<IUdpCommunicationService>(), _gpsService, _appState, config);
+            Substitute.For<IUdpCommunicationService>(), _gpsService, config);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
-                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>())
+                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>())
             .Returns(ci => ci.ArgAt<double>(0));
 
         _estimator = new PositionEstimator();
@@ -80,10 +74,11 @@ public class GpsPipelinePositionEstimatorTests
             Substitute.For<IAudioService>(),
             new PipelineIntents(),
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, _appState,
+            NullLogger<GpsPipelineService>.Instance,
             config,
             _estimator);
 
+        _pipeline.SetLocalPlane(new LocalPlane( new Wgs84(43.7128, -74.006), new SharedFieldProperties()));
         _pipeline.SynchronousMode = true;
         _pipeline.Start();
     }
@@ -111,8 +106,8 @@ public class GpsPipelinePositionEstimatorTests
         Assert.That(snap!.SpeedMps, Is.EqualTo(5.0).Within(1e-9));
         Assert.That(snap.Heading, Is.EqualTo(Math.PI / 2).Within(1e-6),
             "Heading should be in radians (90° → π/2)");
-        Assert.That(snap.YawRateRadPerSec, Is.EqualTo(12 * Math.PI / 180).Within(1e-6),
-            "YawRate should be in rad/s (12 deg/s converted)");
+        Assert.That(snap.YawRateRadPerSec, Is.EqualTo(0),
+            "the sentence's yaw rate is not used for prediction");
         Assert.That(snap.Roll, Is.EqualTo(1.5 * Math.PI / 180).Within(1e-6),
             "Roll should be in radians (1.5° converted)");
     }
@@ -132,6 +127,42 @@ public class GpsPipelinePositionEstimatorTests
     }
 
     [Test]
+    public void OnGpsCycle_DualHeading_PublishesRollButNotYawRate()
+    {
+        // $PAOGI: ImuValid is false (no heading fusion), but the dual roll in the
+        // sentence is real and must reach the estimator (#157). Its yaw rate is not used.
+        _gpsService.UpdateGpsData(BuildGpsData(
+            latitude: 43.7128, longitude: -74.006,
+            heading: 0, speed: 3.0,
+            imuValid: false, imuYawRateDegPerSec: 12, imuRollDeg: 1.5,
+            hasDualHeading: true));
+
+        var snap = _estimator.GetLatestSnapshot();
+        Assert.That(snap, Is.Not.Null);
+        Assert.That(snap!.YawRateRadPerSec, Is.EqualTo(0));
+        Assert.That(snap.Roll, Is.EqualTo(1.5 * Math.PI / 180).Within(1e-6));
+    }
+
+    [Test]
+    public void ParkedDualFix_WithBogusYawRate_PredictedHeadingStaysOnTheAntennaHeading()
+    {
+        // Seen on a bench board: parked, dual heading steady at 200.1 degrees, and
+        // -103.8 deg/s in the $PAOGI yaw rate field. The predicted heading must not move.
+        for (int i = 0; i < 5; i++)
+            _gpsService.UpdateGpsData(BuildGpsData(
+                latitude: 43.7128, longitude: -74.006,
+                heading: 200.1, speed: 0,
+                imuValid: false, imuYawRateDegPerSec: -103.8, imuRollDeg: -1.1,
+                hasDualHeading: true));
+
+        var snap = _estimator.GetLatestSnapshot()!;
+        long later = snap.TimestampTicks + (long)(0.09 * System.Diagnostics.Stopwatch.Frequency);
+        double predictedDeg = _estimator.GetPose(later).Heading * 180 / Math.PI;
+        Assert.That(predictedDeg, Is.EqualTo(200.1).Within(0.1),
+            "90 ms after the fix the predicted heading left the antenna heading");
+    }
+
+    [Test]
     public void OnSecondGpsCycle_SnapshotIsReplaced()
     {
         _gpsService.UpdateGpsData(BuildGpsData(43.7128, -74.006, heading: 0, speed: 1.0));
@@ -148,7 +179,8 @@ public class GpsPipelinePositionEstimatorTests
         double latitude, double longitude,
         double heading = 0, double speed = 0,
         bool imuValid = false,
-        double imuYawRateDegPerSec = 0, double imuRollDeg = 0)
+        double imuYawRateDegPerSec = 0, double imuRollDeg = 0,
+        bool hasDualHeading = false)
     {
         return new GpsData
         {
@@ -161,6 +193,7 @@ public class GpsPipelinePositionEstimatorTests
             },
             FixQuality = 4,
             ImuValid = imuValid,
+            HasDualHeading = hasDualHeading,
             ImuYawRate = imuYawRateDegPerSec,
             ImuRoll = imuRollDeg,
             IsValid = true,

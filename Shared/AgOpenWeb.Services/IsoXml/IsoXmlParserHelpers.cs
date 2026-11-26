@@ -1,20 +1,9 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Xml;
@@ -98,7 +87,22 @@ namespace AgOpenWeb.Services.IsoXml
                 }
             }
 
-            return boundaries;
+            // First = outer, rest = holes (the importer relies on it). An obstacle listed before
+            // the field boundary used to become the outer boundary: sort by area, largest
+            // first, as the field encloses its obstacles; drop rings that can't form an area
+            // (AgOpenGPS b1e931ef2, #1165).
+            boundaries.RemoveAll(b => b.FenceLine.Count < 3);
+            foreach (var b in boundaries) b.Area = PolygonArea(b.FenceLine);
+            return boundaries.OrderByDescending(b => b.Area).ToList(); // stable: ties keep file order
+        }
+
+        // Shoelace area (m², unsigned).
+        private static double PolygonArea(List<Vec3> pts)
+        {
+            double sum = 0;
+            for (int i = 0, j = pts.Count - 1; i < pts.Count; j = i++)
+                sum += (pts[j].Easting + pts[i].Easting) * (pts[j].Northing - pts[i].Northing);
+            return Math.Abs(sum / 2);
         }
 
         // Parse Headland if available
@@ -309,6 +313,8 @@ namespace AgOpenWeb.Services.IsoXml
             return localPlane.ConvertWgs84ToGeoCoord(new Wgs84(lat, lon));
         }
 
+        // The 100 m extension of each end, along the end segment. (The AgOpenGPS.Core copy this
+        // was ported from built the new points as Vec3(northing, easting): transposed.)
         private static List<Vec3> ExtendEnds(List<Vec3> pts, double extendMeters)
         {
             if (pts == null || pts.Count < 2 || extendMeters <= 0) return pts;
@@ -325,8 +331,8 @@ namespace AgOpenWeb.Services.IsoXml
             {
                 dxF /= lenF; dyF /= lenF;
                 list.Insert(0, new Vec3(
-                    first.Northing + dyF * extendMeters,
                     first.Easting + dxF * extendMeters,
+                    first.Northing + dyF * extendMeters,
                     0
                 ));
             }
@@ -341,8 +347,8 @@ namespace AgOpenWeb.Services.IsoXml
             {
                 dxL /= lenL; dyL /= lenL;
                 list.Add(new Vec3(
-                    last.Northing + dyL * extendMeters,
                     last.Easting + dxL * extendMeters,
+                    last.Northing + dyL * extendMeters,
                     0
                 ));
             }

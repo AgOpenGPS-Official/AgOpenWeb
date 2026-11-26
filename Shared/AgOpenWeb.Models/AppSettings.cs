@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -28,11 +16,13 @@ namespace AgOpenWeb.Models
         // application STATE, not config — it now lives in PersistentAppState
         // (appstate.json), not here.
         public bool StartFullscreen { get; set; } = false;
+        public bool ImageryVisible { get; set; } = true;
         public bool SvennArrowVisible { get; set; } = false;
         public bool KeyboardEnabled { get; set; } = false;
         public bool HeadlandDistanceVisible { get; set; } = true;
         public bool ExtraGuidelines { get; set; } = false;
         public int ExtraGuidelinesCount { get; set; } = 10;
+        public int UiScale { get; set; } = 100;
         public bool AutoTrack { get; set; } = false; // AgOpenGPS default (see DisplayConfig)
         public bool FieldTextureVisible { get; set; } = true;
         public bool FieldTextureMoveable { get; set; } = true;
@@ -44,10 +34,9 @@ namespace AgOpenWeb.Models
         /// <summary>
         /// Device-/user-scoped metric vs imperial preference. The source of
         /// truth lives here (in AppSettings); vehicle profiles must not
-        /// dictate units. Default false (imperial) matches the legacy
-        /// per-vehicle default before the migration.
+        /// dictate units. Default true (metric).
         /// </summary>
-        public bool IsMetric { get; set; } = false;
+        public bool IsMetric { get; set; } = true;
 
         /// <summary>
         /// One-shot migration latch: if false, the next vehicle-profile
@@ -146,6 +135,45 @@ namespace AgOpenWeb.Models
         public string AgShareApiKey { get; set; } = string.Empty;
         public bool AgShareEnabled { get; set; } = false;
 
+        /// <summary>Always broadcast RTCM to the modules' subnet (default: unicast to the
+        /// GPS module when its address is known).</summary>
+        public bool RtcmBroadcast { get; set; } = false;
+
+        /// <summary>Send PGN 100 (corrected position) for seed monitors and rate controllers.</summary>
+        public bool SendCorrectedPosition { get; set; } = false;
+
+        /// <summary>NTRIP on/off (Network IO). Off: the app does not connect to a caster.</summary>
+        public bool NtripEnabled { get; set; } = true;
+
+        /// <summary>NTRIP profile per field (a loaded field switches the profile). Off, the default:
+        /// one profile in use, with its fallback service, and a field load changes nothing.</summary>
+        public bool NtripProfilePerField { get; set; } = false;
+
+        /// <summary>The one-time note that NTRIP now uses one profile with a fallback has been shown.</summary>
+        public bool NtripModeNoticeShown { get; set; } = false;
+
+        /// <summary>The AOW link gateway the virtual terminal reaches the ISOBUS through:
+        /// "host" or "host:port" (port 2323 when left out). Empty: no terminal.</summary>
+        public string VtGateway { get; set; } = string.Empty;
+
+        /// <summary>The name the gateway announces on the network (DNS-SD), when it was picked
+        /// from the gear's list: a gateway that comes back at another address is followed by
+        /// it. Empty: the address was typed.</summary>
+        public string VtGatewayName { get; set; } = string.Empty;
+
+        /// <summary>How many virtual terminals, 1 to 4: as displays in one cab, each implement
+        /// choosing one (in its own menu). One VT card each.</summary>
+        public int VtCount { get; set; } = 1;
+
+        /// <summary>An slcan CAN adapter on this device the virtual terminals use instead of the
+        /// gateway: its serial port ("/dev/cu.usbmodem…", "COM3", "/dev/ttyACM0"). Empty: the
+        /// gateway.</summary>
+        public string VtAdapter { get; set; } = string.Empty;
+
+        /// <summary>The add-on pages a web card can show (Plans/ADD_ON_CARDS_PLAN.md): the same
+        /// list on every browser. Replaced whole on a change, never edited in place.</summary>
+        public List<WebCardBookmark> WebCards { get; set; } = new();
+
         // Vehicle profile settings
         public string LastUsedVehicleProfile { get; set; } = string.Empty;
         public string LastUsedToolProfile { get; set; } = string.Empty;
@@ -181,5 +209,13 @@ namespace AgOpenWeb.Models
 
             return fixes;
         }
+    }
+
+    /// <summary>A web card's bookmark: a name and an http(s) URL, where <c>{host}</c> is the
+    /// AgOpenWeb host as the browser reaches it.</summary>
+    public class WebCardBookmark
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Url { get; set; } = string.Empty;
     }
 }

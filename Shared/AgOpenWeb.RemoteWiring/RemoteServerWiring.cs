@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Linq;
@@ -17,12 +13,10 @@ namespace AgOpenWeb.RemoteWiring;
 public static partial class RemoteServerWiring
 {
     // Wire the RemoteServer's command handler, Tier-2 gating, authority/failsafe
-    // hooks, and every state projector to a live MainViewModel. Shared by the
-    // windowed host (App.OnFrameworkInitializationCompleted) and the headless host
-    // (HeadlessHost). The ONLY behavioural difference is the injected IUiDispatcher
-    // resolved below: the Avalonia UI thread when windowed, the single-thread
-    // HostLoopDispatcher when headless. Commands + projectors are otherwise
-    // identical. See Plans/WEBUI_MIGRATION_PLAN.md Phase 10.
+    // hooks, and every state projector to a live MainViewModel. Shared by every
+    // head (WebBackend) and the headless host (HeadlessHost). All of them inject the
+    // single-thread HostLoopDispatcher as IUiDispatcher, resolved below.
+    // See Plans/Completed/WEBUI_MIGRATION_PLAN.md Phase 10.
     public static void Wire(
         AgOpenWeb.RemoteServer.RemoteServerHost server,
         AgOpenWeb.ViewModels.MainViewModel vm,
@@ -30,14 +24,26 @@ public static partial class RemoteServerWiring
         IConfigurationService configService,
         IBoundaryImageryCapture imageryCapture)
     {
-        // UI-thread marshaller. Windowed => AvaloniaUiDispatcher (Dispatcher.UIThread);
-        // headless => HostLoopDispatcher (the dedicated host-loop thread). Replaces the
-        // old hardcoded Avalonia.Threading.Dispatcher.UIThread.Post in this block.
+        // "UI thread" marshaller: the HostLoopDispatcher (the dedicated host-loop thread).
         var dispatcher = services.GetRequiredService<IUiDispatcher>();
 
         // AgShareRemote marshals its async cloud-op results back to the UI thread via
-        // this dispatcher (set once; it's a process singleton).
+        // this dispatcher (this backend's; let go when it stops).
         AgShareRemote.Ui = dispatcher;
+
+        // Send Report: the outbox retries reports queued while offline, from now on.
+        BugReportRemote.Start(services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>(), dispatcher,
+            services.GetService<AgOpenWeb.Services.Network.INetworkWatcher>());
+
+        // The statics above hold this backend: they let go of it when it stops, or it stays
+        // alive after Exit, and on Android, where the process outlives the backend, beside the
+        // next one (BACKEND-NOT-FREED-AFTER-EXIT); the next backend then wires its own.
+        server.Stopped += () =>
+        {
+            vm.StopBackgroundLoops();
+            if (ReferenceEquals(AgShareRemote.Ui, dispatcher)) AgShareRemote.Ui = null;
+            BugReportRemote.Stop();
+        };
 
         // Alert sounds play on the CLIENT, not the host (a headless box has no speaker).
         // The gating-aware WebClientAudioService raises an effect; forward it to clients.
@@ -48,15 +54,47 @@ public static partial class RemoteServerWiring
         // shared by the command-handler and wizard-projector closures below.
         bool wizardActive = false;
 
+                    // The ISOBUS virtual terminal (VT card), when this head has one.
+                    var vt = services.GetService<IVirtualTerminalService>();
+                    if (vt is not null) VirtualTerminalRemote.Start(server, vt);
+
+                    // Capture + save the aerial imagery covering a boundary in a
+                    // CRASH-ISOLATED child process — SkiaSharp can hard-crash on a
+                    // headless board and must never take the host down. On success,
+                    // apply the background back on the UI thread. A drawn boundary gets
+                    // it at once; any other gets it on request (#500).
+                    void CaptureBoundaryImagery(System.Collections.Generic.IReadOnlyList<(double E, double N)> pts)
+                    {
+                        if (vm.GetBoundaryImageryBounds(pts) is not { } bb) return;
+                        _ = System.Threading.Tasks.Task.Run(async () =>
+                        {
+                            var outPath = System.IO.Path.Combine(
+                                System.IO.Path.GetTempPath(), "AgOpenWeb_SatCap",
+                                "BackPic_" + System.Guid.NewGuid().ToString("N") + ".png");
+                            var ok = await imageryCapture.TryCaptureAsync(
+                                bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY, outPath);
+                            dispatcher.Post(() =>
+                            {
+                                if (!ok) { server.ShowToast("No aerial imagery: no internet?"); return; }
+                                vm.ApplyCapturedBackground(outPath,
+                                    bb.nwLat, bb.nwLon, bb.seLat, bb.seLon,
+                                    bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY);
+                                server.ShowToast("Aerial imagery saved");
+                            });
+                        });
+                    }
+
                     server.CommandHandler = (cmd, arg) =>
                         dispatcher.Post(() =>
                         {
+                            // A feature switched off (VT, web cards, AgShare) takes no
+                            // commands: its controls are gone, and an old page can't reach it.
+                            if (!AgOpenWeb.Models.FeatureSwitches.Allows(cmd, arg, AgOpenWeb.Models.FeatureSwitches.Enabled)) return;
                             var inv = System.Globalization.CultureInfo.InvariantCulture;
-                            var num = System.Globalization.NumberStyles.Float;
                             // Starting a line or path turns contour off first, like AgOpenGPS's
                             // track / AB+ / draw / record / path Go buttons (#110).
-                            if (vm.IsContourModeOn && cmd is "track.activate" or "track.aPlus" or "track.drawStraight"
-                                    or "track.drawCurve" or "track.recordCurve" or "track.driveAB" or "recpath.play")
+                            if (vm.IsContourModeOn && cmd is "track.activate" or "track.aPlus" or "track.latLonHeading" or "track.latLonAB" or "track.latLonPivot" or "track.drawStraight"
+                                    or "track.drawCurve" or "track.recordCurve" or "track.recordPivot" or "track.driveAB" or "recpath.play")
                                 vm.ToggleContourModeCommand?.Execute(null);
 
                             // Sim ids that set a property or carry an arg (all Tier-1,
@@ -77,19 +115,92 @@ public static partial class RemoteServerWiring
                                     return;
                                 }
                                 case "sim.setSteer":
-                                    if (double.TryParse(arg, num, inv, out var deg))
+                                    if (FiniteNumber(arg, out var deg))
                                         vm.SimulatorSteerAngle = deg;
                                     return;
                                 case "sim.setCoords":
                                     var parts = arg.Split(',');
                                     if (parts.Length == 2
-                                        && double.TryParse(parts[0], num, inv, out var lat)
-                                        && double.TryParse(parts[1], num, inv, out var lon))
+                                        && FiniteNumber(parts[0], out var lat)
+                                        && FiniteNumber(parts[1], out var lon))
                                         vm.SetSimulatorCoordinates(lat, lon);
                                     return;
                                 case "section.toggleZone": // Tier-2 (gated); arg = zone 1..8 (#111)
                                     if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var zi))
                                         vm.ToggleZone(zi);
+                                    return;
+                                case "fielddata.resetTrip": // Tier-1; the card's trip Reset (#321)
+                                    vm.ResetTrip();
+                                    return;
+                                case "isobus.sectionControl": // Tier-2 (gated); toggle the implement's section control (#312)
+                                    services.GetRequiredService<AgOpenWeb.Services.Interfaces.IIsobusTaskControllerService>()
+                                        .ToggleSectionControl();
+                                    return;
+                                // VT card: the implement's soft keys, buttons and input fields. Each
+                                // arg starts with the terminal ("0," to "3,"): one card per terminal.
+                                // vt.key arg = "t,s|b,id,p|r|a": soft key or button, object id, press,
+                                // release or abort; the terminal repeats a held key.
+                                case "vt.key":
+                                {
+                                    var k = arg.Split(',');
+                                    if (vt is not null && k.Length == 4
+                                        && int.TryParse(k[0], System.Globalization.NumberStyles.Integer, inv, out var kt)
+                                        && ushort.TryParse(k[2], System.Globalization.NumberStyles.Integer, inv, out var kid))
+                                        vt.Key(kt, k[1] == "b", kid,
+                                            k[3] == "p" ? VtKeyAction.Press : k[3] == "r" ? VtKeyAction.Release : VtKeyAction.Abort);
+                                    return;
+                                }
+                                case "vt.select": // arg = "t,id"
+                                {
+                                    var k = arg.Split(',');
+                                    if (vt is not null && k.Length == 2
+                                        && int.TryParse(k[0], System.Globalization.NumberStyles.Integer, inv, out var st)
+                                        && ushort.TryParse(k[1], System.Globalization.NumberStyles.Integer, inv, out var sid))
+                                        vt.Select(st, sid);
+                                    return;
+                                }
+                                case "vt.number": // arg = "t,id,raw" (number, bool 0/1, list index)
+                                case "vt.string": // arg = "t,id,text"
+                                {
+                                    var c1 = arg.IndexOf(',');
+                                    var c2 = c1 < 0 ? -1 : arg.IndexOf(',', c1 + 1);
+                                    if (vt is null || c2 < 0
+                                        || !int.TryParse(arg[..c1], System.Globalization.NumberStyles.Integer, inv, out var nt)
+                                        || !ushort.TryParse(arg[(c1 + 1)..c2], System.Globalization.NumberStyles.Integer, inv, out var nid))
+                                        return;
+                                    if (cmd == "vt.string") vt.SetString(nt, nid, arg[(c2 + 1)..]);
+                                    else if (uint.TryParse(arg[(c2 + 1)..], System.Globalization.NumberStyles.Integer, inv, out var raw))
+                                        vt.SetNumber(nt, nid, raw);
+                                    return;
+                                }
+                                case "vt.escape": // arg = "t"
+                                    if (vt is not null && int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var et))
+                                        vt.Escape(et);
+                                    return;
+                                case "vt.activate": // arg = "t,NAME": the implement's NAME, 16 hex digits
+                                {
+                                    var k = arg.Split(',');
+                                    if (vt is not null && k.Length == 2
+                                        && int.TryParse(k[0], System.Globalization.NumberStyles.Integer, inv, out var at)
+                                        && ulong.TryParse(k[1], System.Globalization.NumberStyles.HexNumber, inv, out var wsName))
+                                        vt.Activate(at, wsName);
+                                    return;
+                                }
+                                case "vt.gateway": // arg = "host" or "host:port", then a tab and the name of a gateway picked from the list; "" turns the terminal off
+                                {
+                                    int tab = arg.IndexOf('\t');
+                                    vt?.SetGateway(tab < 0 ? arg : arg[..tab], tab < 0 ? "" : arg[(tab + 1)..]);
+                                    return;
+                                }
+                                case "vt.adapter": // arg = an slcan adapter's serial port on this device; "" back to the gateway
+                                    vt?.SetAdapter(arg);
+                                    return;
+                                case "vt.ports": // look for serial ports and gateways again (the gear's lists)
+                                    vt?.RefreshPorts();
+                                    return;
+                                case "vt.count": // arg = how many terminals, 1 to 4
+                                    if (vt is not null && int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var vc))
+                                        vt.SetCount(vc);
                                     return;
                                 case "section.toggle": // Tier-2 (gated); cycle one section
                                     if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var si)
@@ -98,25 +209,50 @@ public static partial class RemoteServerWiring
                                     return;
                                 case "config.set": // config bridge (Phase 9a). arg = "key:value"
                                     var ci = arg.IndexOf(':');
-                                    if (ci > 0)
-                                        ApplyConfigSet(
+                                    if (ci > 0
+                                        && ApplyCheckedConfigSet(
                                             services.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>(),
-                                            configService, arg[..ci], arg[(ci + 1)..]);
+                                            configService, arg[..ci], arg[(ci + 1)..]) is { } setNote)
+                                    {
+                                        // Refused (or changed by the app): say why, and send the
+                                        // settings again so the box shows what is kept.
+                                        vm.ReportFailure(setNote);
+                                        server.ResendConfig();
+                                    }
                                     return;
                                 case "display.capResolution": // web auto-quality: arg = min multiplier
-                                    if (double.TryParse(arg, num, inv, out var capMult)) // (2.5 = Medium)
+                                    if (FiniteNumber(arg, out var capMult)) // (2.5 = Medium)
                                         vm.CapDisplayResolution(capMult); // only coarsens; idempotent
                                     return;
-                                case "view.save": // web camera tilt+zoom persisted host-side (issue #35).
-                                {                 // arg = "pitch|zoom" (pitch radians, zoom px/m). Tier-1.
+                                case "display.maxTexture": // arg = the web view's largest texture side (px)
+                                    if (int.TryParse(arg, System.Globalization.NumberStyles.Integer, inv, out var maxTex))
+                                        services.GetRequiredService<AgOpenWeb.Services.Interfaces.ICoverageMapService>()
+                                            .LimitDisplaySide(maxTex); // only tightens; regrids an open field
+                                    return;
+                                case "view.save": // web camera tilt+zoom (+ follow mode, #176) persisted host-side (issue #35).
+                                {                 // arg = "pitch|zoom[|mode]" (pitch radians, zoom px/m, client mode). Tier-1.
                                     var vparts = arg.Split('|');
-                                    if (vparts.Length == 2
-                                        && double.TryParse(vparts[0], num, inv, out var vpitch)
-                                        && double.TryParse(vparts[1], num, inv, out var vzoom))
+                                    if (vparts.Length is 2 or 3
+                                        && FiniteNumber(vparts[0], out var vpitch)
+                                        && FiniteNumber(vparts[1], out var vzoom))
                                     {
                                         var ps = services.GetRequiredService<IPersistentStateService>();
                                         ps.State.WebCameraPitch = vpitch;
                                         ps.State.WebCameraZoom = vzoom;
+                                        // Client numbering (0 N, 1 H, 2 Free, 3 Map) differs from the
+                                        // enum's (Map=2, Free=3): map explicitly. Free (a temporary
+                                        // "I panned" state) is never saved.
+                                        if (vparts.Length == 3 && int.TryParse(vparts[2], out var vmode))
+                                        {
+                                            AgOpenWeb.Models.CameraMode? cm = vmode switch
+                                            {
+                                                0 => AgOpenWeb.Models.CameraMode.NorthUp,
+                                                1 => AgOpenWeb.Models.CameraMode.HeadingUp,
+                                                3 => AgOpenWeb.Models.CameraMode.Map,
+                                                _ => null,
+                                            };
+                                            if (cm is { } m) ps.State.CameraMode = m;
+                                        }
                                         ps.Save();
                                     }
                                     return;
@@ -130,8 +266,14 @@ public static partial class RemoteServerWiring
                                     var rollStore = services.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>();
                                     var rollState = services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>();
                                     rollStore.Ahrs.RollZero += rollState.Vehicle.Roll;
+                                    var cfg = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IConfigurationService>();
+                                    cfg.SaveProfiles(rollStore.ActiveVehicleProfileName, rollStore.ActiveToolProfileName);
                                     return;
                                 }
+                                case "heading.resetDirection": // tap on the vehicle (AgOpenGPS "Reset Direction");
+                                    // Tier-2: it changes the heading the steering uses.
+                                    services.GetRequiredService<AgOpenWeb.Services.Interfaces.IGpsHeadingFusionService>().ResetDirection();
+                                    return;
                                 case "field.deleteApplied": // Tier-1; browser already confirmed
                                     vm.DeleteAppliedAreaConfirmed();
                                     return;
@@ -143,12 +285,17 @@ public static partial class RemoteServerWiring
                                     vm.RecordedPathName = arg;
                                     vm.SaveNamedRecordedPathCommand?.Execute(null);
                                     return;
-                                case "recpath.selectFile": // arg = .rec file name → load for playback (Tier-1)
+                                case "recpath.selectFile": // arg = saved path name → load for playback (Tier-1)
                                     vm.SelectedRecFile = arg;
                                     return;
-                                case "recpath.delete": // arg = .rec file name (Tier-1; browser confirmed)
+                                case "recpath.delete": // arg = saved path name (Tier-1; browser confirmed)
                                     if (vm.DeleteRecordedPathCommand?.CanExecute(arg) == true)
                                         vm.DeleteRecordedPathCommand.Execute(arg);
+                                    return;
+                                case "lists.refresh": // a list panel opened: the projector re-reads its lists (SceneProjector.OnCommand, #604)
+                                    return;
+                                case "import.scan": // a picker opened: list the Import folder, off the
+                                    server.RequestImportScan(); // host thread (observers too: a read)
                                     return;
                                 case "boundary.refresh": // rebuild the menu list from the field (Tier-1)
                                     vm.RefreshBoundaryList();
@@ -157,7 +304,7 @@ public static partial class RemoteServerWiring
                                     if (int.TryParse(arg, out var bsi)) vm.SelectedBoundaryIndex = bsi;
                                     return;
                                 case "boundary.setOffset": // arg = recording offset cm (Tier-1)
-                                    if (double.TryParse(arg, num, inv, out var boff)) vm.BoundaryOffset = boff;
+                                    if (FiniteNumber(arg, out var boff)) vm.BoundaryOffset = boff;
                                     return;
                                 case "boundary.toggleSectionControl": // ToggleButton has no command (Tier-1)
                                     vm.IsBoundarySectionControlOn = !vm.IsBoundarySectionControlOn;
@@ -167,6 +314,30 @@ public static partial class RemoteServerWiring
                                     var ri = arg.IndexOf(',');
                                     if (ri > 0 && int.TryParse(arg[..ri], out var rti))
                                         vm.RenameTrackAt(rti, arg[(ri + 1)..]);
+                                    return;
+                                }
+                                case "track.aPlus": // Quick AB. arg = heading in degrees, or empty for
+                                    // the vehicle's heading (#335). Ungated, like the other creators.
+                                    vm.CreateAPlusLine(FiniteNumber(arg, out var apd) ? apd : null);
+                                    return;
+                                case "track.refSide": // Quick AB. arg = left|right: the side of a driven
+                                    // line its first pass lies on; sent before A+ / Drive AB / Curve (#345)
+                                    vm.TrackRefSideRight = arg != "left";
+                                    return;
+                                case "track.latLonHeading": // Quick AB. arg = "lat,lon,heading" (#335)
+                                case "track.latLonAB":      // Quick AB. arg = "latA,lonA,latB,lonB" (#335)
+                                case "track.latLonPivot":   // Quick AB. arg = "lat,lon" of a water pivot's centre
+                                {
+                                    var llParts = arg.Split(',');
+                                    var ll = new double[llParts.Length];
+                                    for (int i = 0; i < llParts.Length; i++)
+                                        if (!FiniteNumber(llParts[i], out ll[i])) return;
+                                    if (cmd == "track.latLonHeading" && ll.Length == 3)
+                                        vm.CreateLatLonHeadingLine(ll[0], ll[1], ll[2]);
+                                    else if (cmd == "track.latLonAB" && ll.Length == 4)
+                                        vm.CreateLatLonABLine(ll[0], ll[1], ll[2], ll[3]);
+                                    else if (cmd == "track.latLonPivot" && ll.Length == 2)
+                                        vm.CreateLatLonPivot(ll[0], ll[1]);
                                     return;
                                 }
                                 case "track.select": // Tracks manager / Field Builder — tap a row:
@@ -198,24 +369,24 @@ public static partial class RemoteServerWiring
                                 {                              // "<line|curve>,offset,e1,n1,e2,n2"
                                     var hp = arg.Split(',');   // (m). Host snaps to boundary +
                                     if (hp.Length >= 6         // builds the segment + headland.
-                                        && double.TryParse(hp[1], num, inv, out var hoff)
-                                        && double.TryParse(hp[2], num, inv, out var he1)
-                                        && double.TryParse(hp[3], num, inv, out var hn1)
-                                        && double.TryParse(hp[4], num, inv, out var he2)
-                                        && double.TryParse(hp[5], num, inv, out var hn2))
+                                        && FiniteNumber(hp[1], out var hoff)
+                                        && FiniteNumber(hp[2], out var he1)
+                                        && FiniteNumber(hp[3], out var hn1)
+                                        && FiniteNumber(hp[4], out var he2)
+                                        && FiniteNumber(hp[5], out var hn2))
                                         vm.RemoteCreateHeadlandFromMapPoints(
                                             hp[0] == "curve", hoff, he1, hn1, he2, hn2);
                                     return;
                                 }
                                 case "headland.wholeBoundary": // arg = offset (m). Whole boundary
-                                    if (double.TryParse(arg, num, inv, out var hwb)) // offset inward.
+                                    if (FiniteNumber(arg, out var hwb)) // offset inward.
                                         vm.RemoteCreateHeadlandWholeBoundary(hwb);
                                     return;
                                 case "headland.setOffset": // arg = "index,offset" (m).
                                 {
                                     var so = arg.Split(',');
                                     if (so.Length == 2 && int.TryParse(so[0], out var hsi)
-                                        && double.TryParse(so[1], num, inv, out var hso))
+                                        && FiniteNumber(so[1], out var hso))
                                         vm.RemoteSetHeadlandOffsetAt(hsi, hso);
                                     return;
                                 }
@@ -242,8 +413,8 @@ public static partial class RemoteServerWiring
                                         {
                                             var en = teParts[k].Split(',');
                                             if (en.Length == 2
-                                                && double.TryParse(en[0], num, inv, out var pe)
-                                                && double.TryParse(en[1], num, inv, out var pn))
+                                                && FiniteNumber(en[0], out var pe)
+                                                && FiniteNumber(en[1], out var pn))
                                                 ep.Add((pe, pn));
                                         }
                                         if (ep.Count >= 2) vm.RemoteSaveTrackEdit(tei, ep);
@@ -254,10 +425,10 @@ public static partial class RemoteServerWiring
                                 {
                                     var hp = arg.Split(',');
                                     if (hp.Length >= 5 && int.TryParse(hp[0], out var hei)
-                                        && double.TryParse(hp[1], num, inv, out var he1)
-                                        && double.TryParse(hp[2], num, inv, out var hn1)
-                                        && double.TryParse(hp[3], num, inv, out var he2)
-                                        && double.TryParse(hp[4], num, inv, out var hn2))
+                                        && FiniteNumber(hp[1], out var he1)
+                                        && FiniteNumber(hp[2], out var hn1)
+                                        && FiniteNumber(hp[3], out var he2)
+                                        && FiniteNumber(hp[4], out var hn2))
                                         vm.RemoteSaveHeadlandEdit(hei, he1, hn1, he2, hn2);
                                     return;
                                 }
@@ -275,6 +446,20 @@ public static partial class RemoteServerWiring
                                         vm.RemoteSetTramField(tsi, arg[(t1 + 1)..t2], arg[(t2 + 1)..]);
                                     return;
                                 }
+                                case "webcard.save":   // Web card bookmarks: "index\tname\turl", index −1 adds.
+                                case "webcard.delete": // "index".
+                                {
+                                    var st = services.GetRequiredService<ISettingsService>();
+                                    var wp = arg.Split('\t');
+                                    var edited = !int.TryParse(wp[0], out var wi) ? null
+                                        : cmd == "webcard.delete" ? AgOpenWeb.Models.WebCardBookmarks.Delete(st.Settings.WebCards, wi)
+                                        : wp.Length == 3 ? AgOpenWeb.Models.WebCardBookmarks.Save(st.Settings.WebCards, wi, wp[1], wp[2])
+                                        : null;
+                                    if (edited is null) { server.ShowToast("Bookmark not saved: a name and an http:// or https:// address"); return; }
+                                    st.Settings.WebCards = edited; // replaced whole: the broadcaster reads it
+                                    st.Save();
+                                    return;
+                                }
                                 case "boundary.importKmlFile": // Import-KML picker. arg = KML file name.
                                     vm.RemoteImportKmlBoundary(arg);
                                     return;
@@ -285,37 +470,25 @@ public static partial class RemoteServerWiring
                                     {
                                         var en = pair.Split(',');
                                         if (en.Length == 2
-                                            && double.TryParse(en[0], num, inv, out var pe)
-                                            && double.TryParse(en[1], num, inv, out var pn))
+                                            && FiniteNumber(en[0], out var pe)
+                                            && FiniteNumber(en[1], out var pn))
                                             bmp.Add((pe, pn));
                                     }
                                     vm.RemoteCreateBoundaryFromMapPoints(bmp);
-                                    // Capture + save the aerial imagery covering the boundary in a
-                                    // CRASH-ISOLATED child process — SkiaSharp can hard-crash on a
-                                    // headless board and must never take the host down. On success,
-                                    // apply the background back on the UI thread.
-                                    if (vm.GetBoundaryImageryBounds(bmp) is { } bb)
-                                        _ = System.Threading.Tasks.Task.Run(async () =>
-                                        {
-                                            var outPath = System.IO.Path.Combine(
-                                                System.IO.Path.GetTempPath(), "AgOpenWeb_SatCap",
-                                                "BackPic_" + System.Guid.NewGuid().ToString("N") + ".png");
-                                            var ok = await imageryCapture.TryCaptureAsync(
-                                                bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY, outPath);
-                                            if (ok)
-                                                dispatcher.Post(() =>
-                                                    vm.ApplyCapturedBackground(outPath,
-                                                        bb.nwLat, bb.nwLon, bb.seLat, bb.seLon,
-                                                        bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY));
-                                        });
+                                    CaptureBoundaryImagery(bmp);
                                     return;
                                 }
+                                case "boundary.captureImagery": // Boundary menu: the aerial for the
+                                    if (vm.OuterBoundaryPoints() is { } obp) // field's boundary, however
+                                        CaptureBoundaryImagery(obp);         // it was made (#500).
+                                    else server.ShowToast("The field has no boundary");
+                                    return;
                                 case "track.drawPoint": // Phase MT — map-tap AB/curve point.
                                 {                       // arg = "e,n" (m, from s2w). Routes to the
                                     var tp = arg.Split(','); // native SetABPointCommand (DrawAB =
                                     if (tp.Length >= 2  // tap A then B; DrawCurve = tap N points).
-                                        && double.TryParse(tp[0], num, inv, out var te)
-                                        && double.TryParse(tp[1], num, inv, out var tn))
+                                        && FiniteNumber(tp[0], out var te)
+                                        && FiniteNumber(tp[1], out var tn))
                                     {
                                         var pos = new AgOpenWeb.Models.Position { Easting = te, Northing = tn };
                                         if (vm.SetABPointCommand?.CanExecute(pos) == true)
@@ -324,22 +497,28 @@ public static partial class RemoteServerWiring
                                     return;
                                 }
                                 case "track.boundaryCurveSeg": // "Bnd. Curve": tap A + B on the boundary.
-                                {                              // arg = "aE,aN,bE,bN" (m, from s2w). Tier-1.
-                                    var bc = arg.Split(',');
+                                {                              // arg = "aE,aN,bE,bN[,viaE,viaN]" (m, from s2w):
+                                    var bc = arg.Split(',');   // via = a point on the way round picked (#450)
                                     if (bc.Length >= 4
-                                        && double.TryParse(bc[0], num, inv, out var caE)
-                                        && double.TryParse(bc[1], num, inv, out var caN)
-                                        && double.TryParse(bc[2], num, inv, out var cbE)
-                                        && double.TryParse(bc[3], num, inv, out var cbN))
-                                        vm.RemoteCreateBoundaryCurveSegment(caE, caN, cbE, cbN);
+                                        && FiniteNumber(bc[0], out var caE)
+                                        && FiniteNumber(bc[1], out var caN)
+                                        && FiniteNumber(bc[2], out var cbE)
+                                        && FiniteNumber(bc[3], out var cbN))
+                                    {
+                                        Models.Base.Vec2? via = bc.Length >= 6
+                                            && FiniteNumber(bc[4], out var cvE)
+                                            && FiniteNumber(bc[5], out var cvN)
+                                            ? new Models.Base.Vec2(cvE, cvN) : null;
+                                        vm.RemoteCreateBoundaryCurveSegment(caE, caN, cbE, cbN, via);
+                                    }
                                     return;
                                 }
                                 case "flag.placeAt": // Phase MT map-tap. arg = "easting,northing"
                                 {                     // (m, field-local, from s2w). Tier-1 marker.
                                     var fp = arg.Split(',');
                                     if (fp.Length >= 2
-                                        && double.TryParse(fp[0], num, inv, out var fe)
-                                        && double.TryParse(fp[1], num, inv, out var fn))
+                                        && FiniteNumber(fp[0], out var fe)
+                                        && FiniteNumber(fp[1], out var fn))
                                         vm.PlaceFlagAtWorldPosition(fe, fn);
                                     return;
                                 }
@@ -379,8 +558,8 @@ public static partial class RemoteServerWiring
                                 {
                                     var op = arg.Split(',');
                                     if (op.Length == 2
-                                        && double.TryParse(op[0], num, inv, out var oe)
-                                        && double.TryParse(op[1], num, inv, out var on))
+                                        && FiniteNumber(op[0], out var oe)
+                                        && FiniteNumber(op[1], out var on))
                                         vm.OffsetFixSet(oe, on);
                                     return;
                                 }
@@ -392,9 +571,10 @@ public static partial class RemoteServerWiring
                                 case "profile.load": case "profile.new": case "profile.delete":
                                 case "profile.rename": case "profile.reset":
                                 case "profile.configureVehicle": case "profile.configureTool":
-                                    ApplyProfileCommand(
+                                    if (AgOpenWeb.Services.Profile.ProfilePicker.Apply(
                                         services.GetRequiredService<AgOpenWeb.Models.Configuration.ConfigurationStore>(),
-                                        configService, cmd, arg);
+                                        configService, cmd, arg) is { } profileNote)
+                                        vm.ReportFailure(profileNote);
                                     return;
                                 // --- AutoSteer config hardware-push actions (Phase 9). All
                                 // route through the AutoSteerConfigViewModel so the PGN /
@@ -494,11 +674,11 @@ public static partial class RemoteServerWiring
                                 // directly (mirrors the vehicle/tool ApplyProfileCommand path);
                                 // confirmations happen client-side. Tier-1 (config files). ---
                                 case "ntrip.save": case "ntrip.delete": case "ntrip.setDefault":
-                                case "ntrip.test":
+                                case "ntrip.test": case "ntrip.switch": case "ntrip.mountpoints": case "ntrip.mountpoints.clear": case "ntrip.use":
                                     ApplyNtripCommand(
                                         services.GetRequiredService<INtripProfileService>(),
                                         services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>(),
-                                        dispatcher, cmd, arg, vm);
+                                        dispatcher, cmd, arg, vm, services.GetService<IGpsService>());
                                     return;
                                 // --- Field Operations (Phase 9). Lifecycle routes through the real
                                 // StartWorkSessionDialogViewModel (host-driven) so field/job open/
@@ -537,8 +717,8 @@ public static partial class RemoteServerWiring
                                     if (vm.SetLanguageCommand?.CanExecute(arg) == true) vm.SetLanguageCommand.Execute(arg);
                                     return;
                                 case "app.resetSettings": case "app.setHotkey":
-                                case "app.resetHotkeys": case "app.bugReport":
-                                    ApplyAppCommand(services, cmd, arg);
+                                case "app.resetHotkeys": case "app.bugReport": case "app.bugReport.send":
+                                    ApplyAppCommand(services, vm, cmd, arg, server.ClientDiagnosticsSummary);
                                     return;
                             }
 
@@ -573,6 +753,8 @@ public static partial class RemoteServerWiring
                                 "headland.toggle" => vm.ToggleHeadlandCommand,
                                 "headland.sectionToggle" => vm.ToggleSectionInHeadlandCommand,
                                 "tram.cycle" => vm.ToggleTramDisplayCommand,
+                                "tram.manualLeft" => vm.ToggleTramLeftManualCommand,  // tram lights (#451)
+                                "tram.manualRight" => vm.ToggleTramRightManualCommand,
                                 "tool.resetHeading" => vm.ResetToolHeadingCommand,
                                 "map.cycleColor" => vm.ChangeMappingColorCommand,
                                 "flag.placeHere" => vm.PlaceFlagHereCommand,
@@ -586,12 +768,24 @@ public static partial class RemoteServerWiring
                                 "track.halfNudgeLeft" => vm.HalfToolNudgeLeftCommand,
                                 "track.halfNudgeRight" => vm.HalfToolNudgeRightCommand,
                                 "track.resetNudge" => vm.ResetNudgeCommand,
+                                "track.refNudgeLeft" => vm.RefNudgeLeftCommand,    // Ref Nudge panel (#489)
+                                "track.refNudgeRight" => vm.RefNudgeRightCommand,
+                                "track.refHalfNudgeLeft" => vm.RefHalfNudgeLeftCommand,
+                                "track.refHalfNudgeRight" => vm.RefHalfNudgeRightCommand,
+                                "track.refNudgeBegin" => vm.RefNudgeBeginCommand,
+                                "track.refNudgeSave" => vm.RefNudgeSaveCommand,
+                                "track.refNudgeUndo" => vm.RefNudgeUndoCommand,
                                 "track.extendA" => vm.ExtendTrackACommand,
                                 "track.extendB" => vm.ExtendTrackBCommand,
                                 "track.shrinkA" => vm.ShrinkTrackACommand,
                                 "track.shrinkB" => vm.ShrinkTrackBCommand,
                                 "track.cycle" => vm.CycleABLinesCommand,
-                                "track.smooth" => vm.SmoothABLineCommand,
+                                "track.cycleBack" => vm.CycleABLinesBackCommand,
+                                "track.smoothBegin" => vm.SmoothBeginCommand,   // Smooth Curve panel (#929)
+                                "track.smoothMore" => vm.SmoothMoreCommand,
+                                "track.smoothLess" => vm.SmoothLessCommand,
+                                "track.smoothSave" => vm.SmoothSaveCommand,
+                                "track.smoothCancel" => vm.SmoothCancelCommand,
                                 "track.deleteContours" => vm.DeleteContoursCommand,
                                 "track.autoTrack" => vm.ToggleAutoTrackCommand,
                                 "track.createFromBoundary" => vm.CreateTrackFromBoundaryCommand,
@@ -604,7 +798,6 @@ public static partial class RemoteServerWiring
                                 "track.drawFinish" => vm.FinishDrawCurveCommand,
                                 "track.drawUndo" => vm.UndoLastDrawnPointCommand,
                                 "track.drawCancel" => vm.CancelABCreationCommand,
-                                "track.aPlus" => vm.StartAPlusLineCommand,
                                 "track.boundaryCurve" => vm.CreateCurveFromBoundaryCommand,
                                 "track.allEdges" => vm.CreateTracksFromAllEdgesCommand,
 
@@ -613,6 +806,7 @@ public static partial class RemoteServerWiring
                                 // DriveAB/Curve modes → uses live GPS).
                                 "track.driveAB" => vm.StartDriveABCommand,
                                 "track.recordCurve" => vm.StartCurveRecordingCommand,
+                                "track.recordPivot" => vm.StartPivotRecordingCommand,
                                 "track.finishCurve" => vm.FinishCurveRecordingCommand,
                                 "track.setABGps" => vm.SetABPointCommand,
                                 // Tracks manager toolbar (act on the active/selected track).
@@ -653,55 +847,60 @@ public static partial class RemoteServerWiring
                             if (c?.CanExecute(null) == true) c.Execute(null);
                         });
 
-                    // Tier-2 (live actuation) ids — honored only while a client holds
-                    // fresh control authority (Phase 2 safety gate).
-                    server.IsRestrictedCommand = id =>
-                        id.StartsWith("section.") || id.StartsWith("autosteer.")
-                        || id.StartsWith("youturn.") || id.StartsWith("contour.")
-                        || (id.StartsWith("track.") && !UngatedTrackIds.Contains(id)) // see below
-                        || (id.StartsWith("headland.") && !UngatedHeadlandIds.Contains(id))
-                        || id.StartsWith("smartwas.") || id.StartsWith("wizard.action")
-                        || id == "net.subnet" // restarts every module → gate it
-                        || id == "prompt.answer" // a confirm can delete data or restart modules
-                        || id == "recpath.play"; // drives the vehicle along the path → actuation
+                    // Every command needs fresh control authority except the few an observer
+                    // may send (#397: a second browser watches, it changes nothing).
+                    server.IsRestrictedCommand = id => !ObserverIds.Contains(id);
 
                     // One operator, via the browser. When the control session ends —
                     // release, disconnect, or deadman — the machine must not keep
-                    // actuating with no interface: disengage autosteer and turn sections
-                    // off. (Headless target → control state lives in the browser.)
+                    // actuating with no interface: disengage autosteer, turn sections
+                    // off and close the steer wizard, which stops its motor test
+                    // (MainViewModel.OnBrowserControlEnded). (Headless target → control
+                    // state lives in the browser.)
+                    // ControlAuthority raises Revoked just before Changed, on the same thread,
+                    // so the failsafe's reason is here when the release below runs.
+                    string? controlLostReason = null;
                     server.AuthorityChangedHandler = (held, name) =>
                     {
+                        vt?.AbortKeys(); // a VT key held by the last holder ends here
                         if (held)
                         {
                             System.Diagnostics.Debug.WriteLine($"[remote] control taken by {name}");
+                            // What the last loss of control switched off, told to the screen
+                            // that has control now (the one that came back, or another).
+                            dispatcher.Post(() =>
+                            {
+                                if (vm.TakeControlLostNotice() is { } notice) vm.ReportFailure(notice);
+                            });
                             return;
                         }
+                        bool involuntary = controlLostReason != null;
+                        string offReason = "browser control ended: " + (controlLostReason ?? "released");
+                        controlLostReason = null;
                         dispatcher.Post(() =>
                         {
-                            if (vm.IsAutoSteerEngaged
-                                && vm.ToggleAutoSteerCommand?.CanExecute(null) == true)
-                                vm.ToggleAutoSteerCommand.Execute(null);
-                            if (vm.IsManualSectionMode
-                                && vm.ToggleManualModeCommand?.CanExecute(null) == true)
-                                vm.ToggleManualModeCommand.Execute(null);
-                            if (vm.IsSectionMasterOn
-                                && vm.ToggleSectionMasterCommand?.CanExecute(null) == true)
-                                vm.ToggleSectionMasterCommand.Execute(null);
+                            vm.OnBrowserControlEnded(offReason, involuntary);
+                            wizardActive = false;
                         });
                     };
 
                     // Involuntary loss (disconnect / deadman) — log the reason; the
                     // disengage runs in AuthorityChangedHandler (covers release too).
                     server.FailsafeHandler = reason =>
+                    {
+                        controlLostReason = reason;
                         System.Diagnostics.Debug.WriteLine($"[remote] actuation failsafe: {reason}");
+                    };
 
                     // Steer Wizard projector: while the remote wizard is open, project the
-                    // live SteerWizardViewModel to a WizardDto each broadcast tick. Read off
+                    // live SteerWizardViewModel to a WizardDto each broadcast tick; once the host
+                    // has closed it under the screens (control lost), the closed frame. Read off
                     // the broadcaster thread (read-only; tolerates the same transient races
                     // as the other projectors).
                     server.WizardProvider = () =>
-                        wizardActive && vm.SteerWizardViewModel is { } w
-                            ? BuildWizardDto(w) : null;
+                        wizardActive && vm.SteerWizardViewModel is { } w ? BuildWizardDto(w)
+                        : vm.SteerWizardClosedByHost ? AgOpenWeb.RemoteServer.WizardDto.ClosedByHost
+                        : null;
 
                     // Pending confirm/error projector (#109): the host's ShowConfirmationDialog /
                     // ShowErrorDialog used to open a native overlay the web never saw, so the
@@ -722,6 +921,7 @@ public static partial class RemoteServerWiring
 
                     // Refusals and failures (#109): shown as a short notification on the web.
                     vm.FailureReported += msg => server.ShowToast(msg);
+                    vm.NtripNoticeReported += msg => server.ShowToast(msg);
 
                     // AiO board messages (PGN 221), when "AiO Board Msgs" is on (#110).
                     if (services.GetService<IAutoSteerService>() is { } hwSteer)
@@ -741,14 +941,14 @@ public static partial class RemoteServerWiring
 
                     // Recorded Path projector: the panel's UI state (IsRecordingPath,
                     // HasUnsaved, info/label) is VM-owned, so project it from the live VM
-                    // each tick; the .rec file list comes off disk. Read-only on the
+                    // each tick; the saved-path names come off disk (cached until it changes). Read-only on the
                     // broadcaster thread, same race tolerance as the other projectors.
                     server.RecordedPathProvider = () =>
                     {
                         var dir = services.GetRequiredService<AgOpenWeb.Services.IFieldService>()
                             .ActiveField?.DirectoryPath;
                         var recFiles = !string.IsNullOrEmpty(dir)
-                            ? AgOpenWeb.Services.RecPathFileService.ListRecFiles(dir)
+                            ? AgOpenWeb.Services.GeoJson.GeoJsonFieldService.ListRecordedPaths(dir)
                             : new System.Collections.Generic.List<string>();
                         var st = services.GetRequiredService<AgOpenWeb.Models.State.ApplicationState>();
                         var live = vm.LiveRecordingPoints;
@@ -791,7 +991,8 @@ public static partial class RemoteServerWiring
                             vm.IsDrawRightSide,
                             vm.IsDrawAtPivot,
                             vm.IsBoundarySectionControlOn,
-                            bpts);
+                            bpts,
+                            vm.IsRecordingObstacle);
                     };
 
                     // Web-camera view seed: the last tilt+zoom the client sent
@@ -800,7 +1001,13 @@ public static partial class RemoteServerWiring
                     server.ViewPrefsProvider = () =>
                     {
                         var st = services.GetRequiredService<IPersistentStateService>().State;
-                        return (st.WebCameraPitch, st.WebCameraZoom);
+                        int webMode = st.CameraMode switch
+                        {
+                            AgOpenWeb.Models.CameraMode.NorthUp => 0,
+                            AgOpenWeb.Models.CameraMode.HeadingUp => 1,
+                            _ => 3, // Map; Free is never restored (#176)
+                        };
+                        return (st.WebCameraPitch, st.WebCameraZoom, webMode);
                     };
 
                     // Field Builder Headland-tab list: the segments live on the VM
@@ -811,6 +1018,95 @@ public static partial class RemoteServerWiring
                     // IMU-corrected heading, straight from the heading stage.
                     var headingFusion = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IGpsHeadingFusionService>();
                     server.HeadingChartProvider = () => (headingFusion.GpsHeadingDeg, headingFusion.ImuCorrectedDeg);
+
+                    // Field data card (#321): boundary area, actual area and the trip counters.
+                    var fieldDataCoverage = services.GetRequiredService<AgOpenWeb.Services.Interfaces.ICoverageMapService>();
+                    server.FieldDataProvider = () => vm.IsFieldOpen
+                        ? new AgOpenWeb.RemoteServer.FieldDataDto(vm.FieldBoundaryAreaSqM,
+                            fieldDataCoverage.ActualAreaCovered, fieldDataCoverage.TotalWorkedAreaUser, vm.TripDistanceMeters)
+                        : null;
+
+                    // ISOBUS task controller (#312): its heartbeat for the status frame.
+                    var isobusSvc = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IIsobusTaskControllerService>();
+                    server.IsobusProvider = () =>
+                    {
+                        var st = isobusSvc.Status;
+                        return st.IsAlive
+                            ? new AgOpenWeb.RemoteServer.IsobusDto(st.SectionControlEnabled, st.SectionCount, st.ClientCount, st.ReportedSections)
+                            : null;
+                    };
+
+                    // GPS source (#157): the incoming sentence for the GPS detail card, and
+                    // "Dual GPS on but no dual heading" while real GPS is live ($PANDA with
+                    // Dual on: the heading stage falls back to the single-antenna heading).
+                    var gpsSvc = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IGpsService>();
+                    var steerForLabel = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IAutoSteerService>();
+                    server.GpsSourceProvider = () =>
+                    {
+                        var sentence = gpsSvc.CurrentData?.SentenceType switch
+                        {
+                            AgOpenWeb.Models.GpsSentenceType.Panda => "PANDA",
+                            AgOpenWeb.Models.GpsSentenceType.Paogi => "PAOGI",
+                            AgOpenWeb.Models.GpsSentenceType.Ksxt => "KSXT",
+                            // The family as the receiver prints it ("GGA+VTG+HPR"), once learned.
+                            AgOpenWeb.Models.GpsSentenceType.NmeaEpoch =>
+                                steerForLabel.GpsEpochs.IsLearned ? steerForLabel.GpsEpochs.FamilyText : "GGA…",
+                            AgOpenWeb.Models.GpsSentenceType.Inspvax => "INSPVAX",
+                            AgOpenWeb.Models.GpsSentenceType.Simulator => "SIM",
+                            _ => "",
+                        };
+                        return (sentence, headingFusion.IsDualHeadingWarning && gpsSvc.IsGpsLive);
+                    };
+
+                    // System Data card (Network IO → GPS): like AgIO's and AgOpenGPS's
+                    // "System Data" forms — attitude, each heading source before fusion,
+                    // the sentence rate and the module's latest raw sentences.
+                    var steerSvc = services.GetRequiredService<AgOpenWeb.Services.Interfaces.IAutoSteerService>();
+                    // The data quality sensors, as judged in the last second.
+                    server.DataQualityProvider = () =>
+                    {
+                        var streams = vm.DataQuality;
+                        if (streams.Count == 0) return null;
+                        var list = new AgOpenWeb.RemoteServer.DataStreamDto[streams.Count];
+                        for (int i = 0; i < list.Length; i++)
+                        {
+                            var q = streams[i];
+                            list[i] = new AgOpenWeb.RemoteServer.DataStreamDto(q.Name, (int)q.Finding, q.Faulty, q.RateHz, q.NominalHz, q.Amount);
+                        }
+                        return list;
+                    };
+                    server.SystemDataProvider = () =>
+                    {
+                        var d = gpsSvc.CurrentData;
+                        if (d == null) return null;
+                        var raw = steerSvc.GpsSentences.GetSnapshot();
+                        var sentences = new System.Collections.Generic.List<AgOpenWeb.RemoteServer.GpsSentenceDto>(raw.Sentences.Count);
+                        foreach (var s in raw.Sentences)
+                            sentences.Add(new AgOpenWeb.RemoteServer.GpsSentenceDto(s.Type, s.Text, s.AgeSeconds));
+                        // Where the sentences come in: the sender's address and the port
+                        // (the module port, or Ace's GPS1 / GPS2 ports a bridge may use).
+                        var gpsAddress = services.GetRequiredService<IUdpCommunicationService>()
+                            .GetModuleIpAddress(AgOpenWeb.Services.Interfaces.ModuleType.GPS) ?? "";
+                        var port = steerSvc.LastGpsSource switch
+                        {
+                            AgOpenWeb.Models.GPS.GpsSource.Gps1 => "GPS1 :2211",
+                            AgOpenWeb.Models.GPS.GpsSource.Gps2 => "GPS2 :2222",
+                            _ => ":9999",
+                        };
+                        var source = gpsAddress.Length > 0 ? gpsAddress + " · " + port : "";
+                        return new AgOpenWeb.RemoteServer.SystemDataDto(
+                            d.ImuPitch, d.ImuYawRate,
+                            d.ImuValid ? d.ImuHeading : double.NaN,
+                            // The simulator's heading is flagged dual so the fusion takes it as is;
+                            // it isn't an antenna reading.
+                            d.HasDualHeading && d.SentenceType != AgOpenWeb.Models.GpsSentenceType.Simulator
+                                ? d.CurrentPosition.Heading : double.NaN,
+                            headingFusion.GpsHeadingDeg,
+                            raw.RateHz, raw.Missed, raw.Rejected, sentences,
+                            raw.BadChecksum, raw.UnknownSentence,
+                            steerSvc.GpsLines.JoinedLines, steerSvc.GpsLines.DroppedBytes, source,
+                            steerSvc.GpsEpochs.IncompleteEpochs);
+                    };
 
                     server.HeadlandSegsProvider = () =>
                     {

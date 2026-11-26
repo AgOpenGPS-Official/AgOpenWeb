@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Diagnostics;
@@ -30,7 +29,8 @@ public class ToolPositionServiceConcurrencyTests
         ConfigurationStore.SetInstance(new ConfigurationStore());
         var tool = ConfigurationStore.Instance.Tool;
         tool.Width = 6;
-        tool.HitchLength = 0;
+        tool.WorkingPointFromHitch = 0; // the rigid tool at the rear axle, as before #547
+        ConfigurationStore.Instance.Vehicle.ThreePointHitchLength = 0;
         tool.IsToolRearFixed = true;
         tool.IsToolTrailing = false;
         tool.Offset = 0;
@@ -80,6 +80,64 @@ public class ToolPositionServiceConcurrencyTests
 
         Assert.That(torn, Is.EqualTo(0),
             "Each ToolPosition read must return a Vec3 from one full Update, never a torn mix");
+    }
+
+    [Test]
+    public void SectionPosition_UnderConcurrentWrites_TakesPositionAndHeadingFromOneUpdate()
+    {
+        // A section's position needs the tool's position and heading from the same update: the
+        // writer flips between two poses with different headings, and each section position
+        // read must be one of the two, never A's position turned by B's heading.
+        var service = new ToolPositionService(ConfigurationStore.Instance);
+        var poseA = new Vec3(100, 200, 0);
+        var poseB = new Vec3(500, 600, Math.PI / 2);
+        service.Update(poseA, poseA.Heading);
+        var expectA = service.GetSectionPosition(0, 1, 1);
+        service.Update(poseB, poseB.Heading);
+        var expectB = service.GetSectionPosition(0, 1, 1);
+
+        using var cts = new CancellationTokenSource();
+        int torn = 0;
+        var readers = new Task[4];
+        for (int i = 0; i < readers.Length; i++)
+            readers[i] = Task.Run(() =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    var p = service.GetSectionPosition(0, 1, 1);
+                    bool isA = p.Easting == expectA.Easting && p.Northing == expectA.Northing && p.Heading == expectA.Heading;
+                    bool isB = p.Easting == expectB.Easting && p.Northing == expectB.Northing && p.Heading == expectB.Heading;
+                    if (!isA && !isB) Interlocked.Increment(ref torn);
+                }
+            });
+
+        var writerEnd = Stopwatch.GetTimestamp() + (long)(Stopwatch.Frequency * 0.05);
+        bool useA = false;
+        while (Stopwatch.GetTimestamp() < writerEnd)
+        {
+            var pose = useA ? poseA : poseB;
+            service.Update(pose, pose.Heading);
+            useA = !useA;
+        }
+        cts.Cancel();
+        Task.WaitAll(readers);
+
+        Assert.That(torn, Is.EqualTo(0), "a section position must come from one update's position and heading");
+    }
+
+    [Test]
+    public void Update_AllocatesNothing()
+    {
+        // The 100 Hz control tick runs Update: it allocated a 128-byte snapshot object every
+        // tick. The published state is now a value behind a seqlock.
+        var service = new ToolPositionService(ConfigurationStore.Instance);
+        for (int i = 0; i < 100; i++) service.Update(new Vec3(i * 0.03, 0, 0), 0);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 10_000; i++) service.Update(new Vec3(i * 0.03, 0, 0), 0);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(allocated, Is.EqualTo(0), "Update allocated " + allocated + " bytes over 10,000 calls");
     }
 
     [Test]

@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 using System.Reflection;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
@@ -122,6 +126,62 @@ public class WorkSwitchTests
         ModuleSteering(true);                      // the module follows (steer bit clears)
 
         Assert.That(_vm.IsAutoSteerEngaged, Is.True);
+    }
+
+    // Tool config → Steer switch with a module switch/button: the press engages AutoSteer and
+    // the sections follow it. The section check used to read the AutoSteer state from before
+    // the press (the engage was only queued), so engaging turned sections off and
+    // disengaging turned them on.
+    [TestCase(1)] // switch
+    [TestCase(2)] // button
+    public void SteerSwitchSections_FollowTheModuleButton(int externalEnable)
+    {
+        ConfigurationStore.Instance.AutoSteer.ExternalEnable = externalEnable;
+        var tool = ConfigurationStore.Instance.Tool;
+        tool.IsSteerSwitchEnabled = true;
+        tool.IsSteerSwitchManualSections = false;
+        WithTrack();
+
+        ModuleSteering(false);
+        Assert.That(_vm.IsSectionMasterOn, Is.False);
+
+        ModuleSteering(true);
+        Assert.That(_vm.IsAutoSteerEngaged, Is.True);
+        Assert.That(_vm.IsSectionMasterOn, Is.True, "engaging from the module turns auto sections on");
+
+        ModuleSteering(false);
+        Assert.That(_vm.IsAutoSteerEngaged, Is.False);
+        Assert.That(_vm.IsSectionMasterOn, Is.False, "disengaging turns them off");
+    }
+
+    [Test]
+    public void SteerSwitchSections_ManualMode_UsesTheManualButton()
+    {
+        ConfigurationStore.Instance.AutoSteer.ExternalEnable = 2;
+        var tool = ConfigurationStore.Instance.Tool;
+        tool.IsSteerSwitchEnabled = true;
+        tool.IsSteerSwitchManualSections = true;
+        WithTrack();
+
+        ModuleSteering(false);
+        ModuleSteering(true);
+
+        Assert.That(_vm.IsManualSectionMode, Is.True);
+        Assert.That(_vm.IsSectionMasterOn, Is.False);
+    }
+
+    [Test]
+    public void SteerSwitchSections_EngageRefused_LeavesSectionsOff()
+    {
+        // No track: ToggleAutoSteer refuses, so (as in AgOpenGPS) the sections stay off.
+        ConfigurationStore.Instance.AutoSteer.ExternalEnable = 2;
+        ConfigurationStore.Instance.Tool.IsSteerSwitchEnabled = true;
+
+        ModuleSteering(false);
+        ModuleSteering(true);
+
+        Assert.That(_vm.IsAutoSteerEngaged, Is.False);
+        Assert.That(_vm.IsSectionMasterOn, Is.False);
     }
 
     [Test]

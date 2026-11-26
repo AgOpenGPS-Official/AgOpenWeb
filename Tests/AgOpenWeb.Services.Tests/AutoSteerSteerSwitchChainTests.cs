@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using AgOpenWeb.Models.Configuration;
@@ -39,8 +38,7 @@ public class AutoSteerSteerSwitchChainTests
         _udp = Substitute.For<IUdpCommunicationService>();
         var guidance = Substitute.For<ITrackGuidanceService>();
         var gps = Substitute.For<IGpsService>();
-        var appState = new ApplicationState();
-        _service = new AutoSteerService(guidance, _udp, gps, appState, ConfigurationStore.Instance);
+        _service = new AutoSteerService(guidance, _udp, gps, ConfigurationStore.Instance);
         _service.Start();
     }
 

@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -37,7 +33,13 @@ public sealed class LogStore
     private readonly object _lock = new();
     private readonly List<LogEntry> _entries = new(MaxEntries);
 
+    private long _version;
+
     public event Action? LogAdded;
+
+    /// <summary>Lines added (or the log cleared) so far: a cheap "did it change" for a loop,
+    /// without copying the log (#604).</summary>
+    public long Version => System.Threading.Interlocked.Read(ref _version);
 
     public void Add(LogEntry entry)
     {
@@ -46,6 +48,7 @@ public sealed class LogStore
             if (_entries.Count >= MaxEntries)
                 _entries.RemoveAt(0);
             _entries.Add(entry);
+            System.Threading.Interlocked.Increment(ref _version);
         }
         LogAdded?.Invoke();
     }
@@ -59,7 +62,10 @@ public sealed class LogStore
     public void Clear()
     {
         lock (_lock)
+        {
             _entries.Clear();
+            System.Threading.Interlocked.Increment(ref _version);
+        }
         LogAdded?.Invoke();
     }
 }
@@ -82,7 +88,14 @@ internal sealed class InMemoryLogger : ILogger
     {
         if (!IsEnabled(logLevel)) return;
 
+        // One entry is one line of a bug report's logs.txt. A message can hold text from outside
+        // the app (what a page says of itself and why it closed, a name typed on a screen, a
+        // device's name on the network), and a line break in it started lines of its own that
+        // read as the app's: CR and LF in it are written as \r and \n. An exception keeps its
+        // own lines below.
         var message = formatter(state, exception);
+        if (message.AsSpan().IndexOfAny('\r', '\n') >= 0)
+            message = message.Replace("\r", "\\r").Replace("\n", "\\n");
         if (exception != null)
             message += Environment.NewLine + exception;
 

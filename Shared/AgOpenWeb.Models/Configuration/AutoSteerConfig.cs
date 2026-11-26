@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -32,7 +20,7 @@ public class AutoSteerConfig : ObservableObject
     // Tab 2: Steering Sensor Calibration
     // ============================================
 
-    private int _wasOffset = 0;
+    private int _wasOffset = 3;
     /// <summary>
     /// Wheel Angle Sensor zero offset (raw counts).
     /// Used to zero the WAS when wheels are straight.
@@ -43,7 +31,7 @@ public class AutoSteerConfig : ObservableObject
         set => SetProperty(ref _wasOffset, value);
     }
 
-    private double _countsPerDegree = 100;
+    private double _countsPerDegree = 110;
     /// <summary>
     /// WAS counts per degree of steering angle.
     /// Range: 1 - 255
@@ -111,10 +99,10 @@ public class AutoSteerConfig : ObservableObject
     // Tab 4: Gain / PWM Settings
     // ============================================
 
-    private int _proportionalGain = 10;
+    private int _proportionalGain = 50;
     /// <summary>
     /// Proportional gain (Kp) for steering PID.
-    /// Range: 1 - 100
+    /// Range: 1 - 200 (AgOpenGPS's slider)
     /// </summary>
     public int ProportionalGain
     {
@@ -122,7 +110,7 @@ public class AutoSteerConfig : ObservableObject
         set => SetProperty(ref _proportionalGain, value);
     }
 
-    private int _maxPwm = 235;
+    private int _maxPwm = 180;
     /// <summary>
     /// Maximum PWM output (high steer PWM).
     /// Range: 50 - 255
@@ -133,10 +121,10 @@ public class AutoSteerConfig : ObservableObject
         set => SetProperty(ref _maxPwm, value);
     }
 
-    private int _minPwm = 5;
+    private int _minPwm = 25;
     /// <summary>
     /// Minimum PWM to overcome static friction.
-    /// Range: 1 - 50
+    /// Range: 1 - 200 (AgOpenGPS's slider)
     /// </summary>
     public int MinPwm
     {
@@ -230,6 +218,23 @@ public class AutoSteerConfig : ObservableObject
     {
         get => _invertWas;
         set => SetProperty(ref _invertWas, value);
+    }
+
+    /// <summary>
+    /// Turn Invert WAS on or off and keep the centre: the firmware applies the offset with the
+    /// opposite sign for an inverted sensor, so the offset is negated with the toggle
+    /// (<see cref="WasCalibration.OffsetForInvert"/>). Without this, a sensor zeroed and then
+    /// inverted read twice the offset off straight ahead and had to be zeroed again. Every
+    /// operator toggle goes through here; loading settings sets <see cref="InvertWas"/> directly.
+    /// </summary>
+    /// <returns>True when the setting changed.</returns>
+    public bool SetInvertWasKeepingCentre(bool invert)
+    {
+        if (invert == _invertWas)
+            return false;
+        InvertWas = invert;
+        WasOffset = WasCalibration.OffsetForInvert(WasOffset);
+        return true;
     }
 
     private bool _invertMotor = false;
@@ -383,6 +388,17 @@ public class AutoSteerConfig : ObservableObject
     {
         get => _nudgeDistance;
         set => SetProperty(ref _nudgeDistance, value);
+    }
+
+    private int _refNudgeDistance = 5;
+    /// <summary>
+    /// Step of the Ref Nudge panel in centimeters (AgOpenGPS setAS_snapDistanceRef): moves the
+    /// reference line itself, apart from <see cref="NudgeDistance"/>, which offsets the guidance line.
+    /// </summary>
+    public int RefNudgeDistance
+    {
+        get => _refNudgeDistance;
+        set => SetProperty(ref _refNudgeDistance, Math.Clamp(value, 1, 500));
     }
 
     private double _nextGuidanceTime = 1.5;
@@ -546,6 +562,7 @@ public class AutoSteerConfig : ObservableObject
             MaxSteerSpeed = MaxSteerSpeed,
             LineWidth = LineWidth,
             NudgeDistance = NudgeDistance,
+            RefNudgeDistance = RefNudgeDistance,
             NextGuidanceTime = NextGuidanceTime,
             CmPerPixel = CmPerPixel,
             LightbarEnabled = LightbarEnabled,
@@ -590,6 +607,7 @@ public class AutoSteerConfig : ObservableObject
         MaxSteerSpeed = dto.MaxSteerSpeed;
         LineWidth = dto.LineWidth;
         NudgeDistance = dto.NudgeDistance;
+        RefNudgeDistance = dto.RefNudgeDistance;
         NextGuidanceTime = dto.NextGuidanceTime;
         CmPerPixel = dto.CmPerPixel;
         LightbarEnabled = dto.LightbarEnabled;
@@ -604,11 +622,13 @@ public class AutoSteerConfig : ObservableObject
     /// <summary>
     /// Reset all settings to factory defaults.
     /// </summary>
+    /// <summary>The steer page back to AgOpenGPS's defaults (its Settings.cs values; FormSteer's own
+    /// reset button sets max steer 45 and acquire 0.85, which its defaults don't): checklist 10.7.</summary>
     public void ResetToDefaults()
     {
         // Tab 2: Steering Sensor
-        WasOffset = 0;
-        CountsPerDegree = 100;
+        WasOffset = 3;
+        CountsPerDegree = 110;
         Ackermann = 100;
 
         // Tab 3: Deadzone / Timing
@@ -617,9 +637,9 @@ public class AutoSteerConfig : ObservableObject
         AcquireFactor = 0.9;
 
         // Tab 4: Gain / PWM
-        ProportionalGain = 10;
-        MaxPwm = 235;
-        MinPwm = 5;
+        ProportionalGain = 50;
+        MaxPwm = 180;
+        MinPwm = 25;
 
         // Tab 5: Turn Sensors
         TurnSensorEnabled = false;
@@ -652,6 +672,7 @@ public class AutoSteerConfig : ObservableObject
         // Tab 9: Display
         LineWidth = 2;
         NudgeDistance = 20;
+        RefNudgeDistance = 5;
         NextGuidanceTime = 1.5;
         CmPerPixel = 5;
         LightbarEnabled = true;
@@ -666,8 +687,8 @@ public class AutoSteerConfig : ObservableObject
 public record AutoSteerConfigDto
 {
     // Tab 2: Steering Sensor
-    public int WasOffset { get; init; } = 0;
-    public double CountsPerDegree { get; init; } = 100;
+    public int WasOffset { get; init; } = 3;
+    public double CountsPerDegree { get; init; } = 110;
     public int Ackermann { get; init; } = 100;
 
     // Tab 3: Deadzone / Timing
@@ -676,9 +697,9 @@ public record AutoSteerConfigDto
     public double AcquireFactor { get; init; } = 0.9;
 
     // Tab 4: Gain / PWM
-    public int ProportionalGain { get; init; } = 10;
-    public int MaxPwm { get; init; } = 235;
-    public int MinPwm { get; init; } = 5;
+    public int ProportionalGain { get; init; } = 50;
+    public int MaxPwm { get; init; } = 180;
+    public int MinPwm { get; init; } = 25;
 
     // Tab 5: Turn Sensors
     public bool TurnSensorEnabled { get; init; } = false;
@@ -711,6 +732,7 @@ public record AutoSteerConfigDto
     // Tab 9: Display
     public int LineWidth { get; init; } = 2;
     public int NudgeDistance { get; init; } = 20;
+    public int RefNudgeDistance { get; init; } = 5;
     public double NextGuidanceTime { get; init; } = 1.5;
     public int CmPerPixel { get; init; } = 5;
     public bool LightbarEnabled { get; init; } = true;

@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <InternalsVisibleTo Include="AgOpenWeb.Models.Tests" />
   </ItemGroup>
 
 </Project>

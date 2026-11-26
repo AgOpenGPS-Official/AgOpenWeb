@@ -1,0 +1,65 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
+namespace AgOpenWeb.Desktop.Launcher;
+
+/// <summary>
+/// Keeps the display from sleeping/blanking while the launcher shows the web UI — a guidance screen
+/// that dims mid-pass is unusable. Always on, no setting. Best effort; each hold ends on its own
+/// when the process (or window) goes away.
+/// <list type="bullet">
+///   <item>Windows: <c>SetThreadExecutionState</c> on the UI thread (held until that thread exits).</item>
+///   <item>macOS: <c>caffeinate -d -i -w &lt;pid&gt;</c> (exits with this process).</item>
+///   <item>Linux: <c>systemd-inhibit --what=idle</c> holding a child that lives as long as this process.</item>
+/// </list>
+/// </summary>
+internal static class ScreenAwake
+{
+    private const uint ES_CONTINUOUS = 0x80000000;
+    private const uint ES_SYSTEM_REQUIRED = 0x00000001;
+    private const uint ES_DISPLAY_REQUIRED = 0x00000002;
+
+    [DllImport("kernel32.dll")]
+    private static extern uint SetThreadExecutionState(uint esFlags);
+
+    private static bool _held;
+
+    /// <summary>Idempotent, so a page reload never spawns a second caffeinate / inhibitor.</summary>
+    public static void Hold()
+    {
+        if (_held) return;
+        _held = true;
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED);
+            }
+            else if (OperatingSystem.IsMacOS())
+            {
+                Spawn("/usr/bin/caffeinate", $"-d -i -w {Environment.ProcessId}")?.Dispose();
+            }
+            else if (OperatingSystem.IsLinux())
+            {
+                // logind idle inhibitor; the sleeping child keeps it until this process exits.
+                var p = Spawn("systemd-inhibit", "--what=idle:sleep --who=AgOpenWeb --why=\"Guidance screen\" --mode=block sleep infinity");
+                if (p != null) AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { p.Kill(); } catch { } };
+            }
+            else return;
+            Console.WriteLine("[screen] keep-awake on");
+        }
+        catch (Exception ex)
+        {
+            // e.g. no xdg-utils installed — the UI still works, the screen may just blank.
+            Console.WriteLine($"[screen] keep-awake unavailable: {ex.Message}");
+        }
+    }
+
+    private static Process? Spawn(string file, string args) =>
+        Process.Start(new ProcessStartInfo(file, args) { UseShellExecute = false, CreateNoWindow = true });
+}

@@ -1,21 +1,10 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using AgOpenWeb.Models.Base;
 
 namespace AgOpenWeb.Models.Guidance
@@ -114,6 +103,33 @@ namespace AgOpenWeb.Models.Guidance
             }
 
             result.Add(points[points.Count - 1]);
+            return result;
+        }
+
+        /// <summary>
+        /// A Catmull-Rom curve through the points, only on the segments longer than
+        /// <paramref name="minLength"/> (with a point every <paramref name="step"/> metres): a line drawn
+        /// through a few taps and along stretches of fence, whose fence points stay where they are.
+        /// </summary>
+        public static List<Vec3> SmoothLongSegments(IReadOnlyList<Vec3> points, double minLength = 2.0, double step = 1.0)
+        {
+            int n = points.Count;
+            var result = new List<Vec3>(n);
+            if (n == 0) return result;
+            for (int i = 0; i + 1 < n; i++)
+            {
+                var p1 = points[i];
+                var p2 = points[i + 1];
+                result.Add(p1);
+                double len = Math.Sqrt(Math.Pow(p2.Easting - p1.Easting, 2) + Math.Pow(p2.Northing - p1.Northing, 2));
+                if (len <= minLength) continue;
+                var p0 = i > 0 ? points[i - 1] : ExtrapolatePoint(p2, p1);
+                var p3 = i + 2 < n ? points[i + 2] : ExtrapolatePoint(p1, p2);
+                int steps = (int)Math.Ceiling(len / step);
+                for (int k = 1; k < steps; k++)
+                    result.Add(CatmullRomPoint(p0, p1, p2, p3, (double)k / steps));
+            }
+            result.Add(points[n - 1]);
             return result;
         }
 
@@ -255,13 +271,74 @@ namespace AgOpenWeb.Models.Guidance
         /// Use this instead of manually offsetting and calling CalculateHeadings.
         /// </summary>
         /// <param name="originalPoints">Original curve points with headings</param>
-        /// <param name="offsetDistance">Perpendicular offset distance (positive = left of heading)</param>
+        /// <param name="offsetDistance">Perpendicular offset distance (positive = right of heading)</param>
         /// <returns>Clean offset curve without self-intersections</returns>
         public static List<Vec3> CreateOffsetCurve(IReadOnlyList<Vec3> originalPoints, double offsetDistance)
+            => CreateOffsetCurveWithInfo(originalPoints, offsetDistance).Points;
+
+        /// <summary>
+        /// Pass <paramref name="distAway"/> of a curve, before its ends are extended: the one routine
+        /// the line the tractor steers, the line drawn, the guidelines and the U-turn build a curve's
+        /// pass with, so they can't differ (#694). The offset with the collision test
+        /// (<see cref="CreateOffsetCurveWithInfo"/>), then, with a <paramref name="minTurnRadius"/>,
+        /// no bend tighter than that (<see cref="LimitTurnRadius"/>). A pass the offset removes
+        /// altogether has no points: there is no pass there, as in AgOpenGPS (CABCurve.BuildNewOffsetList),
+        /// nothing to draw, steer or turn onto. On the reference itself (no offset) the curve as it is.
+        /// Extend it with <see cref="ExtendPass"/>.
+        /// </summary>
+        public static (List<Vec3> Points, double PercentRemoved, bool StartKept, bool EndKept, bool StartIsEnd, bool EndIsEnd) CurvePass(
+            IReadOnlyList<Vec3> reference, double distAway, bool closed = false, double minTurnRadius = 0)
         {
-            var (result, _) = CreateOffsetCurveWithInfo(originalPoints, offsetDistance);
-            return result;
+            var made = CreateOffsetCurveWithInfo(reference, distAway, closed);
+            if (Math.Abs(distAway) >= 0.01 && made.Points.Count >= 2)
+                made.Points = LimitTurnRadius(made.Points, minTurnRadius, closed);
+            return made;
         }
+
+        /// <summary>
+        /// The reference itself (pass 0) as a pass, without copying it: its ends as they are, with
+        /// its own verdict on whether they are the line's real ends (<see cref="EndsFacingEachOther"/>).
+        /// </summary>
+        public static (List<Vec3> Points, double PercentRemoved, bool StartKept, bool EndKept, bool StartIsEnd, bool EndIsEnd) ReferencePass(
+            List<Vec3> reference, bool closed = false)
+        {
+            var (startIsEnd, endIsEnd) = closed ? (false, false) : EndsFacingEachOther(reference);
+            return (reference, 0, true, true, startIsEnd, endIsEnd);
+        }
+
+        /// <summary>
+        /// A pass from <see cref="CurvePass"/> run on straight past its ends (<see cref="ExtendCurveEnds"/>),
+        /// but only at an end the offset kept: where it removed the reference's end, AgOpenGPS's pass
+        /// (the offset of the extended reference) has no extension either, and one taken from what was
+        /// left aimed a 200 m tail across the field and out of it (#694). Nor at the line's real end
+        /// (the reference's ends face or meet each other across an opening, <see cref="EndsFacingEachOther"/>).
+        /// </summary>
+        public static List<Vec3> ExtendPass((List<Vec3> Points, double PercentRemoved, bool StartKept, bool EndKept, bool StartIsEnd, bool EndIsEnd) pass,
+            double lengthMeters = DefaultExtension)
+            => RunOn(pass.Points,
+                pass.StartKept && !pass.StartIsEnd ? lengthMeters : 0,
+                pass.EndKept && !pass.EndIsEnd ? lengthMeters : 0, 1.0);
+
+        /// <summary>
+        /// <see cref="ExtendPass"/> for the U-turn's own geometry: the line's real end (not extended
+        /// for steering or drawing) runs on into the opening, short of where it meets the other end's
+        /// run-on (halfway across a straight opening), so the turn generator sees the pass cross the
+        /// opening's virtual turn line there (<c>CurveEndOpening</c>, #694). Other ends as
+        /// <see cref="ExtendPass"/>.
+        /// </summary>
+        public static List<Vec3> ExtendPassForTurn((List<Vec3> Points, double PercentRemoved, bool StartKept, bool EndKept, bool StartIsEnd, bool EndIsEnd) pass,
+            double lengthMeters = DefaultExtension)
+        {
+            if (!(pass.StartKept && pass.StartIsEnd) && !(pass.EndKept && pass.EndIsEnd))
+                return ExtendPass(pass, lengthMeters);
+            var (toStart, toEnd) = OpeningRunOn(pass.Points);
+            return RunOn(pass.Points,
+                !pass.StartKept ? 0 : pass.StartIsEnd ? toStart : lengthMeters,
+                !pass.EndKept ? 0 : pass.EndIsEnd ? toEnd : lengthMeters, 1.0);
+        }
+
+        /// <summary>How far a curve's pass runs on straight past each end, as AgOpenGPS's extended reference.</summary>
+        public const double DefaultExtension = 200.0;
 
         /// <summary>
         /// Extends a curve straight along its end tangents at both ends so it behaves like
@@ -274,9 +351,30 @@ namespace AgOpenWeb.Models.Guidance
         /// <param name="lengthMeters">How far to extend past each end.</param>
         /// <param name="spacing">Spacing between added extension points.</param>
         public static List<Vec3> ExtendCurveEnds(IReadOnlyList<Vec3> points,
-            double lengthMeters = 200.0, double spacing = 1.0)
+            double lengthMeters = DefaultExtension, double spacing = 1.0)
+            => ExtendCurveEnds(points, lengthMeters, lengthMeters, spacing);
+
+        /// <summary>
+        /// <see cref="ExtendCurveEnds(IReadOnlyList{Vec3}, double, double)"/> with a length for each end:
+        /// <paramref name="startLength"/> before the first point, <paramref name="endLength"/> past the
+        /// last; 0 leaves that end as it is. An end facing or meeting the other
+        /// (<see cref="EndsFacingEachOther"/>) is the line's real end and is not extended: a boundary
+        /// curve made the long way round has its ends facing each other across the part it leaves
+        /// out; extended 200 m each they ran past each other, and cut 1 m short of halfway they left
+        /// a 2 m hole the tractor drove into and looped back from (#694).
+        /// </summary>
+        public static List<Vec3> ExtendCurveEnds(IReadOnlyList<Vec3> points,
+            double startLength, double endLength, double spacing)
         {
-            if (points == null || points.Count < 2 || lengthMeters <= 0 || spacing <= 0)
+            var (startIsEnd, endIsEnd) = EndsFacingEachOther(points);
+            return RunOn(points, startIsEnd ? 0 : startLength, endIsEnd ? 0 : endLength, spacing);
+        }
+
+        // The curve run on straight past its start and end by the lengths given (0: not at all).
+        private static List<Vec3> RunOn(IReadOnlyList<Vec3> points,
+            double startLength, double endLength, double spacing)
+        {
+            if (points == null || points.Count < 2 || (startLength <= 0 && endLength <= 0) || spacing <= 0)
                 return points != null ? new List<Vec3>(points) : new List<Vec3>();
 
             // Closed loops (boundary curves / water pivots) must not be extended.
@@ -287,8 +385,9 @@ namespace AgOpenWeb.Models.Guidance
             if (closeSq < 1.0)
                 return new List<Vec3>(points);
 
-            int steps = (int)(lengthMeters / spacing);
-            var extended = new List<Vec3>(points.Count + steps * 2);
+            int startSteps = startLength > 0 ? (int)(startLength / spacing) : 0;
+            int endSteps = endLength > 0 ? (int)(endLength / spacing) : 0;
+            var extended = new List<Vec3>(points.Count + startSteps + endSteps);
 
             // Extend along a SMOOTHED end direction measured from point POSITIONS over a span,
             // not the single endpoint's stored heading. Recorded-curve endpoints frequently
@@ -305,9 +404,11 @@ namespace AgOpenWeb.Models.Guidance
             var inTo = points[span];
             double inHead = Math.Atan2(inTo.Easting - first.Easting, inTo.Northing - first.Northing);
 
+            int inSteps = startSteps, outSteps = endSteps;
+
             // Lead-in: walk backward from the first point (opposite the into-curve direction).
             double sinH = Math.Sin(inHead), cosH = Math.Cos(inHead);
-            for (int i = steps; i >= 1; i--)
+            for (int i = inSteps; i >= 1; i--)
             {
                 extended.Add(new Vec3(
                     first.Easting - sinH * (i * spacing),
@@ -319,7 +420,7 @@ namespace AgOpenWeb.Models.Guidance
 
             // Lead-out: walk forward from the last point along the smoothed end direction.
             sinH = Math.Sin(outHead); cosH = Math.Cos(outHead);
-            for (int i = 1; i <= steps; i++)
+            for (int i = 1; i <= outSteps; i++)
             {
                 extended.Add(new Vec3(
                     last.Easting + sinH * (i * spacing),
@@ -330,22 +431,137 @@ namespace AgOpenWeb.Models.Guidance
             return extended;
         }
 
+        // The offset of the curve's extension a metre past its start or end (along the direction
+        // ExtendCurveEnds extends it), against the collision test of CreateOffsetCurveWithInfo.
+        private static bool ExtensionClear(IReadOnlyList<Vec3> points, bool atStart, double offset, double distSqAway, PointGrid? near)
+        {
+            int n = points.Count;
+            int span = Math.Min(5, n - 1);
+            var end = atStart ? points[0] : points[n - 1];
+            var from = atStart ? points[span] : points[n - 1 - span];
+            // The way the pass runs there (into the curve at the start), and the way out along it.
+            double head = atStart
+                ? Math.Atan2(from.Easting - end.Easting, from.Northing - end.Northing)
+                : Math.Atan2(end.Easting - from.Easting, end.Northing - from.Northing);
+            double outward = atStart ? -1 : 1;
+            double e = end.Easting + outward * Math.Sin(head) + Math.Sin(head + Math.PI / 2) * offset;
+            double no = end.Northing + outward * Math.Cos(head) + Math.Cos(head + Math.PI / 2) * offset;
+            return near != null ? !near.AnyCloser(points, e, no, distSqAway) : !AnyCloser(points, e, no, distSqAway);
+        }
+
+        /// <summary>
+        /// Which ends of an open curve are the line's real ends, with an opening between them that
+        /// the curve leaves out (#694), measured along the smoothed end direction
+        /// <see cref="ExtendCurveEnds(IReadOnlyList{Vec3}, double, double, double)"/> extends it by
+        /// (the start running on backwards, the end forwards):
+        /// <list type="bullet">
+        /// <item>an end pointing at the other end (within 30°): A and B on one side of the field,
+        /// facing each other across a straight opening;</item>
+        /// <item>both ends, when their run-ons meet ahead of both, at 60° or more: A and B on two
+        /// sides of a corner the curve leaves out. Run on, they crossed at the corner and the
+        /// passes ran past B across it. A U-shaped curve's ends, side by side or
+        /// splaying, don't meet; ends converging slowly meet far off, at a narrow angle.</item>
+        /// </list>
+        /// Such an end gets no extension. A closed loop (ends within 1 m) has none.
+        /// </summary>
+        public static (bool Start, bool End) EndsFacingEachOther(IReadOnlyList<Vec3> points)
+        {
+            if (!EndRays(points, out var r)) return (false, false);
+            bool startFaces = FacesOtherEnd(r.InE, r.InN, r.GapE, r.GapN, r.Gap);
+            bool endFaces = FacesOtherEnd(r.OutE, r.OutN, -r.GapE, -r.GapN, r.Gap);
+            // The run-ons meet t and u metres out; t + u is at most twice the gap when they meet at
+            // 60° or more (the triangle A, B and the meeting point: (sin a + sin b) / sin c ≤ 2).
+            bool meet = RunOnsMeet(r, out double t, out double u) && t + u <= 2 * r.Gap;
+            return (startFaces || meet, endFaces || meet);
+        }
+
+        // An open curve's ends and the directions it runs on there (unit vectors): the start
+        // backwards, the end forwards; the gap from the start to the end.
+        private readonly record struct Rays(Vec3 First, Vec3 Last, double InE, double InN, double OutE, double OutN,
+            double GapE, double GapN, double Gap);
+
+        private static bool EndRays(IReadOnlyList<Vec3> points, out Rays rays)
+        {
+            rays = default;
+            if (points == null || points.Count < 2) return false;
+            var first = points[0];
+            var last = points[points.Count - 1];
+            double gapE = last.Easting - first.Easting, gapN = last.Northing - first.Northing;
+            double gap = Math.Sqrt(gapE * gapE + gapN * gapN);
+            if (gap < 1.0) return false;
+            int span = Math.Min(5, points.Count - 1);
+            var outFrom = points[points.Count - 1 - span];
+            double outHead = Math.Atan2(last.Easting - outFrom.Easting, last.Northing - outFrom.Northing);
+            var inTo = points[span];
+            double inHead = Math.Atan2(inTo.Easting - first.Easting, inTo.Northing - first.Northing);
+            rays = new Rays(first, last, -Math.Sin(inHead), -Math.Cos(inHead), Math.Sin(outHead), Math.Cos(outHead),
+                gapE, gapN, gap);
+            return true;
+        }
+
+        // Where the run-ons cross: t metres out from the start, u from the end, both ahead.
+        private static bool RunOnsMeet(Rays r, out double t, out double u)
+        {
+            t = u = 0;
+            double den = r.InE * r.OutN - r.InN * r.OutE;
+            if (Math.Abs(den) < 1e-9) return false; // parallel: side by side, or head on (FacesOtherEnd)
+            // First + In·t = Last + Out·u
+            t = (r.GapE * r.OutN - r.GapN * r.OutE) / den;
+            u = (r.GapE * r.InN - r.GapN * r.InE) / den;
+            return t > 0 && u > 0;
+        }
+
+        // How far each real end of a pass runs on into the opening for the U-turn's geometry: short
+        // of where it meets the other end's run-on, or halfway across a straight opening.
+        private static (double Start, double End) OpeningRunOn(IReadOnlyList<Vec3> points)
+        {
+            if (!EndRays(points, out var r)) return (0, 0);
+            if (RunOnsMeet(r, out double t, out double u) && t + u <= 2 * r.Gap)
+                return (Math.Max(0, t - 0.5), Math.Max(0, u - 0.5));
+            double half = Math.Max(0, r.Gap / 2 - 0.5);
+            return (half, half);
+        }
+
+        // The extension direction (de, dn) points at the other end, which lies (toE, toN) away:
+        // within 30° of it, so the two extensions would meet rather than run side by side.
+        private static bool FacesOtherEnd(double de, double dn, double toE, double toN, double dist)
+            => dist > 1e-9 && (de * toE + dn * toN) / dist > Math.Cos(Math.PI / 6);
+
+        // The same place (a loop's closing point repeating its first).
+        private static bool SamePoint(Vec3 a, Vec3 b)
+            => Math.Abs(a.Easting - b.Easting) <= 1e-6 && Math.Abs(a.Northing - b.Northing) <= 1e-6;
+
         /// <summary>
         /// Creates a clean offset curve and returns information about whether points were removed.
         /// Uses AgOpenGPS collision detection: if an offset point is within offset² distance
         /// of ANY original curve point, it indicates self-intersection and the point is skipped.
         /// </summary>
         /// <param name="originalPoints">Original curve points with headings</param>
-        /// <param name="offsetDistance">Perpendicular offset distance (positive = left of heading)</param>
-        /// <returns>Tuple of (cleaned curve, percentage of points removed due to self-intersection)</returns>
-        public static (List<Vec3> Points, double PercentRemoved) CreateOffsetCurveWithInfo(
-            IReadOnlyList<Vec3> originalPoints, double offsetDistance)
+        /// <param name="offsetDistance">Perpendicular offset distance (positive = right of heading)</param>
+        /// <returns>The cleaned curve, the percentage of points removed due to self-intersection, and
+        /// whether the pass goes on past the reference's start and end: whether the offset of the
+        /// reference's straight extension there clears the same test, as in AgOpenGPS, whose pass is
+        /// the offset of the extended reference (an end the offset removed gets no extension,
+        /// <see cref="ExtendPass"/>; always true on a closed loop). Fewer than two points left is
+        /// no curve: the list is empty, as AgOpenGPS's (CABCurve.BuildNewOffsetList), not a chord
+        /// between the offset ends that ran across the field (#694).</returns>
+        /// <param name="closed">The curve is a closed loop (its last point repeats the first): the
+        /// offset curve is closed too, so the pass does not stop short at the seam.</param>
+        public static (List<Vec3> Points, double PercentRemoved, bool StartKept, bool EndKept, bool StartIsEnd, bool EndIsEnd) CreateOffsetCurveWithInfo(
+            IReadOnlyList<Vec3> originalPoints, double offsetDistance, bool closed = false)
         {
+            WorkCounters.OffsetCurvePoints += originalPoints?.Count ?? 0;
             if (originalPoints == null || originalPoints.Count < 2)
-                return (originalPoints != null ? new List<Vec3>(originalPoints) : new List<Vec3>(), 0);
+                return (originalPoints != null ? new List<Vec3>(originalPoints) : new List<Vec3>(), 0, true, true, false, false);
+
+            // Whether the reference's ends are the line's real ends (they face or meet each other
+            // across an opening) is the track's, decided once on the reference: every pass has the
+            // same ends. Judged on each pass instead, the inner passes of a curve whose ends meet
+            // round a corner came out differently and ran on across the opening (#694).
+            var (startIsEnd, endIsEnd) = closed ? (false, false) : EndsFacingEachOther(originalPoints);
 
             if (Math.Abs(offsetDistance) < 0.01)
-                return (new List<Vec3>(originalPoints), 0);
+                return (new List<Vec3>(originalPoints), 0, true, true, startIsEnd, endIsEnd);
 
             // AgOpenGPS collision detection threshold: offset² - small margin
             // If offset point is closer than this to ANY original point, it's a self-intersection
@@ -354,9 +570,24 @@ namespace AgOpenWeb.Models.Guidance
             int skippedCount = 0;
 
             var offsetPoints = new List<Vec3>(originalPoints.Count);
+            // A long curve (a boundary with a point every metre) is bucketed once, so the test
+            // looks only at the points near each offset point instead of all of them.
+            var near = refCount > NearGridMinPoints ? new PointGrid(originalPoints, Math.Abs(offsetDistance)) : null;
+
+            // A loop's last point repeats its first, so the seam's point is offset twice: along the
+            // last stretch's normal and along the first's. On the inside of the bend there the second
+            // copy lies behind the first: the pass ran on past the seam and back (0.2 m on a 26 m lap),
+            // its closing stretch pointing backwards, and a tractor a little off the line at the seam
+            // was steered to a goal behind it and turned round. There it is left out, and the pass
+            // goes from the last stretch's offset straight to the first's, as at any inside bend; on
+            // the outside it starts the arc round the seam (below).
+            bool seamInside = closed && refCount > 2
+                && SamePoint(originalPoints[0], originalPoints[refCount - 1])
+                && Math.IEEERemainder(originalPoints[0].Heading - originalPoints[refCount - 2].Heading, 2 * Math.PI) * offsetDistance > 0;
 
             for (int i = 0; i < refCount; i++)
             {
+                if (seamInside && i == refCount - 1) break;
                 var pt = originalPoints[i];
 
                 // Calculate offset point position
@@ -366,24 +597,26 @@ namespace AgOpenWeb.Models.Guidance
 
                 // AgOpenGPS collision detection: check if offset point is too close
                 // to ANY original curve point (indicates self-intersection)
-                bool addPoint = true;
-                for (int t = 0; t < refCount; t++)
-                {
-                    double dx = offsetE - originalPoints[t].Easting;
-                    double dy = offsetN - originalPoints[t].Northing;
-                    double distSq = dx * dx + dy * dy;
+                bool addPoint = !SharpInsideBend(originalPoints, i, offsetDistance, closed)
+                    && (near != null
+                        ? !near.AnyCloser(originalPoints, offsetE, offsetN, distSqAway)
+                        : !AnyCloser(originalPoints, offsetE, offsetN, distSqAway));
+                if (!addPoint) skippedCount++;
 
-                    if (distSq < distSqAway)
-                    {
-                        // Offset point is too close to original curve - self-intersection detected
-                        addPoint = false;
-                        skippedCount++;
-                        break;
-                    }
-                }
+                // Round the outside of a bend: the offset jumps from the last point's normal to this
+                // one's, which left a chord with a kink at each end that the tractor overshot. Every
+                // arc point goes through the collision test, and the arc is added whether or not the
+                // points either side cleared it: where a short zigzag in a boundary removes them, the
+                // arc round its inward bump is the offset, and without it a chord across the gap ran
+                // up to 2 m nearer the boundary than the pass's distance (Path job scenarios P1,
+                // OFF-ITS-PASS).
+                if (i > 0)
+                    AddArc(offsetPoints, pt, originalPoints[i - 1].Heading, pt.Heading, offsetDistance,
+                        (e, n) => near != null ? !near.AnyCloser(originalPoints, e, n, distSqAway) : !AnyCloser(originalPoints, e, n, distSqAway));
 
                 if (addPoint)
                 {
+
                     // Also check minimum spacing from previous offset point (AgOpenGPS uses ~0.48 * tool width)
                     // We use a simpler 1m minimum spacing check
                     if (offsetPoints.Count > 0)
@@ -403,28 +636,17 @@ namespace AgOpenWeb.Models.Guidance
                 }
             }
 
-            // Need at least 2 points for a valid track
+            // Does the pass go on past each end? AgOpenGPS offsets the reference with its straight
+            // extensions on (CABCurve.GetExtendedReferenceCurve): there is a tail at an end when the
+            // offset of the extension just past it clears the collision test, and none where the
+            // offset removed the pass's end (#694). The point is on the line ExtendCurveEnds draws.
+            bool startKept = closed || ExtensionClear(originalPoints, atStart: true, offsetDistance, distSqAway, near);
+            bool endKept = closed || ExtensionClear(originalPoints, atStart: false, offsetDistance, distSqAway, near);
+
+            // Fewer than two points left: no pass here (AgOpenGPS draws and steers nothing). A chord
+            // between the offset ends, extended 200 m each way, ran across the field and out (#694).
             if (offsetPoints.Count < 2)
-            {
-                // Fallback: return first and last original points offset
-                var first = originalPoints[0];
-                var last = originalPoints[refCount - 1];
-
-                double perpAngle1 = first.Heading + Math.PI / 2;
-                double perpAngle2 = last.Heading + Math.PI / 2;
-
-                return (new List<Vec3>
-                {
-                    new Vec3(
-                        first.Easting + Math.Sin(perpAngle1) * offsetDistance,
-                        first.Northing + Math.Cos(perpAngle1) * offsetDistance,
-                        first.Heading),
-                    new Vec3(
-                        last.Easting + Math.Sin(perpAngle2) * offsetDistance,
-                        last.Northing + Math.Cos(perpAngle2) * offsetDistance,
-                        last.Heading)
-                }, skippedCount * 100.0 / refCount);
-            }
+                return (new List<Vec3>(), skippedCount * 100.0 / refCount, false, false, startIsEnd, endIsEnd);
 
             // Collision removal at a tight inward bend (e.g. a boundary curve wrapping a field
             // end) deletes the colliding inner-corner points, leaving a straight chord across
@@ -437,11 +659,382 @@ namespace AgOpenWeb.Models.Guidance
             if (skippedCount > 0 && offsetPoints.Count > 2)
                 offsetPoints = ChaikinsSmooth(offsetPoints, 1);
 
+            // A loop's first and last points are offset along different sides of the seam corner:
+            // join them, or the pass (and its guidelines) stop short there (#450). Round the join
+            // on the outside of the seam's bend, as at any other, with the arc's points through the
+            // same collision test: untested, a seam at the tip of a narrow slot into the field (its
+            // sides closer than twice the offset) put the whole arc round the tip into the pass, out
+            // across the fence beyond it (8.7 m on a 12 m lap), and the pass crossed itself coming
+            // back.
+            if (closed && offsetPoints.Count > 2)
+            {
+                if (refCount > 2)
+                    AddArc(offsetPoints, originalPoints[0], originalPoints[refCount - 2].Heading, originalPoints[0].Heading, offsetDistance,
+                        (e, n) => near != null ? !near.AnyCloser(originalPoints, e, n, distSqAway) : !AnyCloser(originalPoints, e, n, distSqAway));
+                var first = offsetPoints[0];
+                var last = offsetPoints[^1];
+                if (Math.Abs(first.Easting - last.Easting) > 1e-6 || Math.Abs(first.Northing - last.Northing) > 1e-6)
+                    offsetPoints.Add(first);
+            }
+
             // Recalculate headings based on actual offset point positions
             CalculateHeadings(offsetPoints);
 
             double percentRemoved = refCount > 0 ? skippedCount * 100.0 / refCount : 0;
-            return (offsetPoints, percentRemoved);
+            return (offsetPoints, percentRemoved, startKept, endKept, startIsEnd, endIsEnd);
+        }
+
+        /// <summary>
+        /// A boundary ring as a closed curve with a point at least every <see cref="FenceSpacing"/>
+        /// metres along each side, the last point repeating the first. The collision test above
+        /// only sees the curve's points, so a corner between two long bare sides went unseen and
+        /// inward passes kept sharp, skewed corners (#450). AgOpenGPS's fence line is filled in the
+        /// same way (CFenceLine.FixFenceLine) before it becomes a boundary curve.
+        /// </summary>
+        public static List<Vec3> DensifyLoop(IReadOnlyList<Vec3> ring)
+        {
+            if (ring == null || ring.Count < 2) return new List<Vec3>();
+            var closed = new List<Vec3>(ring) { ring[0] };
+            return Densify(closed, FenceSpacing(ring));
+        }
+
+        /// <summary>
+        /// A polyline with a point at least every <paramref name="spacing"/> metres along each
+        /// segment (the given points kept), with headings. A curve's passes are offset point by
+        /// point, so a curve with long bare segments offsets badly at its corners (#450).
+        /// </summary>
+        public static List<Vec3> Densify(IReadOnlyList<Vec3> points, double spacing)
+        {
+            var result = new List<Vec3>();
+            if (points == null || points.Count == 0) return result;
+            for (int i = 0; i + 1 < points.Count; i++)
+            {
+                var a = points[i];
+                var b = points[i + 1];
+                double len = Math.Sqrt((b.Easting - a.Easting) * (b.Easting - a.Easting) + (b.Northing - a.Northing) * (b.Northing - a.Northing));
+                int steps = Math.Max(1, (int)Math.Ceiling(len / spacing));
+                for (int k = 0; k < steps; k++)
+                {
+                    double t = (double)k / steps;
+                    result.Add(new Vec3(a.Easting + (b.Easting - a.Easting) * t, a.Northing + (b.Northing - a.Northing) * t, 0));
+                }
+            }
+            result.Add(new Vec3(points[^1].Easting, points[^1].Northing, 0));
+            return result.Count < 2 ? result : CalculateHeadings(result);
+        }
+
+        /// <summary>The point spacing of a fence line, by the field's area, as AgOpenGPS FixFenceLine: 1.1 m under 20 ha, 2.2 m under 40 ha, else 3.3 m.</summary>
+        public static double FenceSpacing(IReadOnlyList<Vec3> ring)
+        {
+            double twiceArea = 0;
+            for (int i = 0; i < ring.Count; i++)
+            {
+                var a = ring[i];
+                var b = ring[(i + 1) % ring.Count];
+                twiceArea += a.Easting * b.Northing - b.Easting * a.Northing;
+            }
+            return FenceSpacing(Math.Abs(twiceArea) / 2);
+        }
+
+        /// <summary>The point spacing of a fence line around <paramref name="areaSquareMetres"/>.</summary>
+        public static double FenceSpacing(double areaSquareMetres) =>
+            areaSquareMetres < 200_000 ? 1.1 : areaSquareMetres < 400_000 ? 2.2 : 3.3;
+
+        /// <summary>
+        /// The round join of a parallel offset on the outside of a bend at <paramref name="corner"/>:
+        /// points <paramref name="offset"/> from it, at least a metre apart, turning from the normal of
+        /// <paramref name="fromHeading"/> to that of <paramref name="toHeading"/> (the end points are the
+        /// offset points either side, already there). Nothing on the inside of a bend, where the
+        /// collision test removes the points instead, or for a turn that spans under two metres.
+        /// </summary>
+        /// <summary>
+        /// Does the curve bend more than 90° towards the offset side at point <paramref name="i"/>?
+        /// There the point's own offset (along its heading, the next segment's) lies on the part of
+        /// the next offset line the corner cuts away: it belongs to the self-intersection, though it
+        /// is exactly the offset from the point itself and so passes the collision test. At the tip
+        /// of a thin spike in a boundary (Olival's, a 177° turn) it landed outside the field, and the
+        /// smoothing after drew 37 m of the lap line 5 m out of it (Path job scenarios P1,
+        /// LAP-LINE-LEAVES-FIELD). AgOpenGPS takes a point's heading from both neighbours, which
+        /// points such an offset back along the spike, into the test. A gentler bend's point is kept:
+        /// its error is negligible.
+        /// </summary>
+        private static bool SharpInsideBend(IReadOnlyList<Vec3> pts, int i, double offset, bool closed)
+        {
+            int prev = i > 0 ? i - 1 : closed && pts.Count > 2 ? pts.Count - 2 : -1;
+            if (prev < 0) return false;
+            double turn = Math.IEEERemainder(pts[i].Heading - pts[prev].Heading, 2 * Math.PI); // + = a right turn
+            return Math.Sign(turn) == Math.Sign(offset) && Math.Abs(turn) > Math.PI / 2;
+        }
+
+        private static void AddArc(List<Vec3> pts, Vec3 corner, double fromHeading, double toHeading, double offset,
+            Func<double, double, bool>? clear = null)
+        {
+            double turn = Math.IEEERemainder(toHeading - fromHeading, 2 * Math.PI); // + = a right turn
+            if (Math.Sign(turn) != -Math.Sign(offset)) return; // a right turn's outside is on the left
+            int steps = (int)Math.Ceiling(Math.Abs(turn * offset) / 1.0);
+            for (int k = 1; k < steps; k++)
+            {
+                double a = fromHeading + turn * k / steps + Math.PI / 2;
+                double e = corner.Easting + Math.Sin(a) * offset, n = corner.Northing + Math.Cos(a) * offset;
+                if (clear == null || clear(e, n)) pts.Add(new Vec3(e, n, 0));
+            }
+        }
+
+        /// <summary>
+        /// A clockwise circle from north, closed (the last point repeats the first), with a point at
+        /// least every metre (36 to 4000 points), with headings: a water pivot's reference and passes.
+        /// </summary>
+        public static List<Vec3> Circle(Vec3 center, double radius)
+        {
+            radius = Math.Max(Math.Abs(radius), 0.1);
+            int n = Math.Clamp((int)Math.Ceiling(2 * Math.PI * radius), 36, 4000);
+            var pts = new List<Vec3>(n + 1);
+            for (int i = 0; i < n; i++)
+            {
+                double a = 2 * Math.PI * i / n;
+                pts.Add(new Vec3(center.Easting + radius * Math.Sin(a), center.Northing + radius * Math.Cos(a), 0));
+            }
+            pts.Add(pts[0]);
+            return CalculateHeadings(pts);
+        }
+
+        /// <summary>
+        /// A water pivot's pass <paramref name="offsetDistance"/> from its reference circle (+ = right of
+        /// travel, inward on the clockwise circle): the circle about the same centre, as AgOpenGPS builds
+        /// it. Past the centre it is the circle on the other side, as AgOpenGPS's negative radius is.
+        /// </summary>
+        public static List<Vec3> PivotPass(Vec3 center, double referenceRadius, double offsetDistance) =>
+            Circle(center, referenceRadius - offsetDistance);
+
+        /// <summary>
+        /// The circle through points driven round a pivot (an algebraic least-squares fit), with the
+        /// points' RMS distance from it; null when they don't define one (fewer than 3, or in a line).
+        /// </summary>
+        public static (Vec3 Center, double Radius, double Rms)? FitCircle(IReadOnlyList<Vec3> points)
+        {
+            if (points == null || points.Count < 3) return null;
+            // Relative to the mean for conditioning; solve for a, b, c in x² + y² + a·x + b·y + c = 0.
+            double mx = points.Average(p => p.Easting), my = points.Average(p => p.Northing);
+            double sxx = 0, sxy = 0, syy = 0, sx = 0, sy = 0, sxz = 0, syz = 0, sz = 0;
+            int n = points.Count;
+            foreach (var p in points)
+            {
+                double x = p.Easting - mx, y = p.Northing - my, z = x * x + y * y;
+                sxx += x * x; sxy += x * y; syy += y * y; sx += x; sy += y;
+                sxz += x * z; syz += y * z; sz += z;
+            }
+            // Normal equations of [x y 1]·[a b c] = −z.
+            double[,] m = { { sxx, sxy, sx }, { sxy, syy, sy }, { sx, sy, n } };
+            double[] rhs = { -sxz, -syz, -sz };
+            double det = Det3(m);
+            if (Math.Abs(det) < 1e-9 * Math.Max(1, sxx * syy)) return null;
+            double[] sol = new double[3];
+            for (int k = 0; k < 3; k++)
+            {
+                var mk = (double[,])m.Clone();
+                for (int r = 0; r < 3; r++) mk[r, k] = rhs[r];
+                sol[k] = Det3(mk) / det;
+            }
+            double cx = -sol[0] / 2, cy = -sol[1] / 2;
+            double r2 = cx * cx + cy * cy - sol[2];
+            if (r2 <= 0) return null;
+            double radius = Math.Sqrt(r2);
+            var center = new Vec3(cx + mx, cy + my, 0);
+            double ss = 0;
+            foreach (var p in points)
+            {
+                double d = Math.Sqrt(Math.Pow(p.Easting - center.Easting, 2) + Math.Pow(p.Northing - center.Northing, 2)) - radius;
+                ss += d * d;
+            }
+            return (center, radius, Math.Sqrt(ss / n));
+        }
+
+        private static double Det3(double[,] m) =>
+            m[0, 0] * (m[1, 1] * m[2, 2] - m[1, 2] * m[2, 1])
+            - m[0, 1] * (m[1, 0] * m[2, 2] - m[1, 2] * m[2, 0])
+            + m[0, 2] * (m[1, 0] * m[2, 1] - m[1, 1] * m[2, 0]);
+
+        /// <summary>
+        /// Each point averaged with the <paramref name="half"/> points either side (fewer at the ends,
+        /// whose first and last points stay put), with headings: takes the wobble out of a driven line.
+        /// The line keeps its number of points. On a <paramref name="closed"/> loop (its last point
+        /// repeats the first) the window runs on round the seam, so the seam is smoothed as the rest.
+        /// </summary>
+        public static List<Vec3> SmoothMovingAverage(IReadOnlyList<Vec3> points, int half, bool closed = false)
+        {
+            int n = points.Count;
+            var result = new List<Vec3>(n);
+            int ring = n - 1; // a loop's points without the one that repeats the first
+            if (closed && ring > 2 * half)
+            {
+                for (int i = 0; i < ring; i++)
+                {
+                    double e = 0, no = 0;
+                    for (int j = i - half; j <= i + half; j++)
+                    {
+                        var p = points[((j % ring) + ring) % ring];
+                        e += p.Easting; no += p.Northing;
+                    }
+                    result.Add(new Vec3(e / (2 * half + 1), no / (2 * half + 1), 0));
+                }
+                result.Add(result[0]);
+                return CalculateHeadings(result);
+            }
+            for (int i = 0; i < n; i++)
+            {
+                int k = Math.Min(half, Math.Min(i, n - 1 - i)); // a symmetric window that fits
+                double e = 0, no = 0;
+                for (int j = i - k; j <= i + k; j++) { e += points[j].Easting; no += points[j].Northing; }
+                result.Add(new Vec3(e / (2 * k + 1), no / (2 * k + 1), 0));
+            }
+            return n < 2 ? result : CalculateHeadings(result);
+        }
+
+        /// <summary>
+        /// The line with its bends no tighter than <paramref name="radius"/> (the U-turn radius, what
+        /// the rig can turn): a corner tighter than that becomes an arc on its inside, as the tractor
+        /// drives it anyway, cutting it. Where nothing is tighter the line is returned as it is. Bends
+        /// are measured on a 1 m resampling, over chords two points either side, and smoothed a step
+        /// at a time (each point toward its neighbours) where too tight, until none is; straight
+        /// stretches and gentle curves are not moved. The ends of an open line stay put.
+        /// </summary>
+        public static List<Vec3> LimitTurnRadius(List<Vec3> points, double radius, bool closed)
+        {
+            if (radius <= 0 || points == null || points.Count < 5) return points!;
+            var pts = ResampleUniform(points, 1.0);
+            int count = closed ? pts.Count - 1 : pts.Count; // a loop's last point repeats the first
+            if (count < 5) return points;
+            const int k = 2;
+            var e = new double[count];
+            var no = new double[count];
+            for (int i = 0; i < count; i++) { e[i] = pts[i].Easting; no[i] = pts[i].Northing; }
+
+            int Wrap(int i) => (i % count + count) % count;
+            bool TooTight(int i)
+            {
+                int a = closed ? Wrap(i - k) : i - k, c = closed ? Wrap(i + k) : i + k;
+                return Circumradius(e[a], no[a], e[i], no[i], e[c], no[c]) < radius * 0.98;
+            }
+
+            int lo = closed ? 0 : k, hi = closed ? count - 1 : count - 1 - k;
+            bool any = false;
+            for (int i = lo; i <= hi && !any; i++) any = TooTight(i);
+            if (!any) return points;
+
+            var ne = new double[count];
+            var nn = new double[count];
+            for (int iter = 0; iter < 2000; iter++)
+            {
+                bool moved = false;
+                Array.Copy(e, ne, count);
+                Array.Copy(no, nn, count);
+                for (int i = lo; i <= hi; i++)
+                {
+                    if (!TooTight(i)) continue;
+                    int a = closed ? Wrap(i - 1) : i - 1, c = closed ? Wrap(i + 1) : i + 1;
+                    if (!closed && (a < 1 || c > count - 2)) continue; // the ends stay put
+                    ne[i] = (e[a] + 2 * e[i] + e[c]) / 4;
+                    nn[i] = (no[a] + 2 * no[i] + no[c]) / 4;
+                    moved = true;
+                }
+                (e, ne) = (ne, e);
+                (no, nn) = (nn, no);
+                if (!moved) break;
+            }
+
+            var result = new List<Vec3>(count + 1);
+            for (int i = 0; i < count; i++) result.Add(new Vec3(e[i], no[i], 0));
+            if (closed) result.Add(result[0]);
+            return CalculateHeadings(result);
+        }
+
+        private static double Circumradius(double ax, double ay, double bx, double by, double cx, double cy)
+        {
+            double ab = Math.Sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+            double bc = Math.Sqrt((cx - bx) * (cx - bx) + (cy - by) * (cy - by));
+            double ca = Math.Sqrt((ax - cx) * (ax - cx) + (ay - cy) * (ay - cy));
+            double area2 = Math.Abs((bx - ax) * (cy - ay) - (by - ay) * (cx - ax)); // twice the area
+            return area2 < 1e-12 ? double.PositiveInfinity : ab * bc * ca / (2 * area2);
+        }
+
+        /// <summary>The line with points <paramref name="spacing"/> apart along it (the last point kept).</summary>
+        public static List<Vec3> ResampleUniform(IReadOnlyList<Vec3> points, double spacing)
+        {
+            var result = new List<Vec3>();
+            if (points.Count == 0) return result;
+            result.Add(points[0]);
+            double carry = 0; // distance along the current segment to the next sample
+            for (int i = 0; i + 1 < points.Count; i++)
+            {
+                var a = points[i];
+                var b = points[i + 1];
+                double len = Math.Sqrt((b.Easting - a.Easting) * (b.Easting - a.Easting) + (b.Northing - a.Northing) * (b.Northing - a.Northing));
+                double at = spacing - carry;
+                while (at <= len)
+                {
+                    double t = at / len;
+                    result.Add(new Vec3(a.Easting + (b.Easting - a.Easting) * t, a.Northing + (b.Northing - a.Northing) * t, 0));
+                    at += spacing;
+                }
+                carry = len - (at - spacing);
+            }
+            var last = points[^1];
+            if (Math.Abs(result[^1].Easting - last.Easting) > 1e-6 || Math.Abs(result[^1].Northing - last.Northing) > 1e-6)
+                result.Add(new Vec3(last.Easting, last.Northing, 0));
+            return result;
+        }
+
+        // Below this many points the plain scan is as quick as building a grid.
+        private const int NearGridMinPoints = 64;
+
+        internal static bool AnyCloser(IReadOnlyList<Vec3> points, double e, double n, double distSq)
+        {
+            for (int t = 0; t < points.Count; t++)
+            {
+                double dx = e - points[t].Easting, dy = n - points[t].Northing;
+                if (dx * dx + dy * dy < distSq) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// The curve's points bucketed in square cells as wide as the offset: a point closer than the
+        /// offset to a query point lies in its cell or one of the eight around it. The answer is the
+        /// plain scan's, found in a few cells.
+        /// </summary>
+        internal sealed class PointGrid
+        {
+            private readonly double _cell;
+            private readonly Dictionary<(long, long), List<int>> _cells = new();
+
+            public PointGrid(IReadOnlyList<Vec3> points, double cell)
+            {
+                _cell = Math.Max(cell, 0.01);
+                for (int i = 0; i < points.Count; i++)
+                {
+                    var key = Key(points[i].Easting, points[i].Northing);
+                    if (!_cells.TryGetValue(key, out var list)) _cells[key] = list = new List<int>(4);
+                    list.Add(i);
+                }
+            }
+
+            private (long, long) Key(double e, double n) => ((long)Math.Floor(e / _cell), (long)Math.Floor(n / _cell));
+
+            public bool AnyCloser(IReadOnlyList<Vec3> points, double e, double n, double distSq)
+            {
+                var (cx, cy) = Key(e, n);
+                for (long x = cx - 1; x <= cx + 1; x++)
+                    for (long y = cy - 1; y <= cy + 1; y++)
+                    {
+                        if (!_cells.TryGetValue((x, y), out var list)) continue;
+                        foreach (int t in list)
+                        {
+                            double dx = e - points[t].Easting, dy = n - points[t].Northing;
+                            if (dx * dx + dy * dy < distSq) return true;
+                        }
+                    }
+                return false;
+            }
         }
 
         /// <summary>

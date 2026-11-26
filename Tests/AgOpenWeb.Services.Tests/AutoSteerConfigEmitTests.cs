@@ -1,14 +1,15 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
+using System.Linq;
 using System.Threading;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Services.AutoSteer;
 using AgOpenWeb.Services.Interfaces;
+using System.Linq.Expressions;
 using NSubstitute;
 
 namespace AgOpenWeb.Services.Tests;
@@ -48,8 +49,7 @@ public class AutoSteerConfigEmitTests
         _udp = Substitute.For<IUdpCommunicationService>();
         var guidance = Substitute.For<ITrackGuidanceService>();
         var gps = Substitute.For<IGpsService>();
-        var appState = new ApplicationState();
-        _service = new AutoSteerService(guidance, _udp, gps, appState, ConfigurationStore.Instance);
+        _service = new AutoSteerService(guidance, _udp, gps, ConfigurationStore.Instance);
 
         // Shorten the debounce so tests don't have to sleep 150 ms
         // wall-clock per assertion. 20 ms is well over the timer's
@@ -165,11 +165,16 @@ public class AutoSteerConfigEmitTests
 
     private short SentAngle()
     {
-        _udp.ClearReceivedCalls();
-        _service.SendPgnsForControlTick();
-        foreach (var call in _udp.ReceivedCalls())
-            if (call.GetArguments()[0] is byte[] b && b.Length > 9 && b[3] == 0xFE)
-                return (short)(b[8] | (b[9] << 8));
+        // The next PGN 254 sent: right after the engage the unchanged ones are held for a few
+        // ticks (AutoSteerService.SteerStatusHoldTicks, for the AIO v4's engage edge).
+        for (int tick = 0; tick <= AutoSteerService.SteerStatusHoldTicks; tick++)
+        {
+            _udp.ClearReceivedCalls();
+            _service.SendPgnsForControlTick();
+            foreach (var call in _udp.ReceivedCalls())
+                if (call.GetArguments() is [byte[] b, ..] && b.Length > 9 && b[3] == 0xFE) // calls only: a tick also reads IsConnected
+                    return (short)(b[8] | (b[9] << 8));
+        }
         return short.MinValue;
     }
 
@@ -228,5 +233,72 @@ public class AutoSteerConfigEmitTests
 
         // PGN 238 byte 5 = raise time (AgOpenGPS CPGN_EE.raiseTime).
         _udp.Received().SendToModules(Arg.Is<byte[]>(b => b.Length > 5 && b[3] == 0xEE && b[5] == 7));
+    }
+
+    // ── #387: vehicle geometry (PGN 247) ────────────────────────────────
+
+    [Test]
+    public void Start_AlsoEmitsVehicleGeometry()
+    {
+        _service.Start();
+
+        _udp.Received(1).SendToModules(Arg.Is<byte[]>(b => b.Length > 4 && b[3] == 0xF7));
+    }
+
+    [Test]
+    public void VehicleChange_ReemitsGeometry_WithTheNewWheelbase()
+    {
+        _service.Start();
+        _udp.ClearReceivedCalls();
+
+        ConfigurationStore.Instance.Vehicle.Wheelbase = 3.2;
+        Thread.Sleep(200);
+
+        // Bytes 7-8: wheelbase in cm, little-endian (320 = 0x0140).
+        _udp.Received().SendToModules(Arg.Is<byte[]>(b => b.Length > 8 && b[3] == 0xF7 && b[7] == 0x40 && b[8] == 0x01));
+    }
+
+    [Test]
+    public void SteerModuleHeard_SendsGeometry_OnlyWhenNewOrBack()
+    {
+        _service.Start();
+        _udp.ClearReceivedCalls();
+
+        var steer = new byte[] { 0x80, 0x81, 0x7E, 0xFD, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        steer[^1] = (byte)(steer[2..^1].Sum(x => x) & 0xFF);
+        void Heard() => _udp.DataReceived += Raise.EventWith(new UdpDataReceivedEventArgs { Data = steer, PGN = 0xFD });
+
+        Heard(); // first PGN 253: the module is new
+        Heard(); // 10 ms later in real life: nothing new
+        _udp.Received(1).SendToModules(Arg.Is<byte[]>(b => b.Length > 4 && b[3] == 0xF7));
+    }
+
+    // A module back after a power cut (or started after the app) runs the settings it has;
+    // a change made while it was away (Zero WAS with the cable out) went to nobody.
+    [Test]
+    public void SteerModuleBack_AfterSilence_GetsTheSteerSettingsAgain()
+    {
+        long t = 1_000_000;
+        _service.TickClock = () => t;
+        _service.Start();
+
+        var steer = new byte[] { 0x80, 0x81, 0x7E, 0xFD, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        steer[^1] = (byte)(steer[2..^1].Sum(x => x) & 0xFF);
+        void Heard() => _udp.DataReceived += Raise.EventWith(new UdpDataReceivedEventArgs { Data = steer, PGN = 0xFD });
+        static Expression<Predicate<byte[]>> Pgn(byte id) => b => b.Length > 4 && b[3] == id;
+
+        Heard(); // new
+        _udp.ClearReceivedCalls();
+        t += 100; Heard(); // still there: nothing
+        t += 2000; Heard();
+        _udp.DidNotReceive().SendToModules(Arg.Is(Pgn(0xFB)));
+
+        t += AutoSteerService.SteerModuleSilenceMs + 1; Heard(); // back after a gap
+        _udp.Received(1).SendToModules(Arg.Is(Pgn(0xFB))); // 251 steer config
+        _udp.Received(1).SendToModules(Arg.Is(Pgn(0xFC))); // 252 steer settings
+        _udp.Received(1).SendToModules(Arg.Is(Pgn(0xF7))); // 247 geometry
+
+        t += 100; Heard(); // and no more while it keeps talking
+        _udp.Received(1).SendToModules(Arg.Is(Pgn(0xFB)));
     }
 }

@@ -1,19 +1,8 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using AgOpenWeb.Services.Interfaces;
 
@@ -96,7 +85,7 @@ public class SteerWizardViewModel : WizardViewModel
         AddStep(new SpeedAndSensorsStepViewModel(configService));
 
         // Step 12: Finish
-        AddStep(new FinishStepViewModel());
+        AddStep(new FinishStepViewModel(() => NotTested(hardwareStep, rollCal, wasCal, autoCal, maxSteer, cpdCircle, ackermannTest)));
 
         // Initialize navigation
         Initialize();
@@ -108,5 +97,21 @@ public class SteerWizardViewModel : WizardViewModel
         var store = _configService.Store;
         _configService.SaveProfiles(store.ActiveVehicleProfileName, store.ActiveToolProfileName);
         return Task.CompletedTask;
+    }
+
+    /// <summary>The tests not run in this wizard, for the Finish page (none with GPS only: it has no tests).</summary>
+    private static IReadOnlyList<string> NotTested(HardwareInstalledStepViewModel hardware,
+        RollCalibrationStepViewModel roll, WasCalibrationStepViewModel was, AutoMotorCalibrationStepViewModel motor,
+        MaxSteeringAngleStepViewModel maxAngle, CpdCircleTestStepViewModel cpd, AckermannTestStepViewModel ackermann)
+    {
+        var missing = new List<string>();
+        if (hardware.HardwareLevel == 0) return missing;
+        if (!was.ZeroDone) missing.Add("the WAS zero");
+        if (!roll.ZeroDone) missing.Add("the roll zero");
+        if (!motor.TestDone) missing.Add("the motor direction test");
+        if (!maxAngle.TestDone) missing.Add("the max steer angle test");
+        if (!cpd.TestCompleted) missing.Add("the CPD circle");
+        if (!ackermann.TestCompleted) missing.Add("the Ackermann circle");
+        return missing;
     }
 }

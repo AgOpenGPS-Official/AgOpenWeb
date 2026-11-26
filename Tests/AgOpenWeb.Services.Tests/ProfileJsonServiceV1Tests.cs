@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 using System.Linq;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
@@ -76,7 +80,8 @@ public class ProfileJsonServiceV1Tests
         _store.Tool.Width = 12.0;
         _store.Tool.Overlap = 0.15;
         _store.Tool.Offset = -0.5;
-        _store.Tool.HitchLength = 2.5;
+        _store.Vehicle.ThreePointHitchLength = 2.5; // v1 kept one hitch length (#547)
+        _store.Tool.WorkingPointFromHitch = 0;
         _store.Tool.IsToolTrailing = true;
         _store.Tool.IsToolTBT = false;
         _store.NumSections = 4;
@@ -90,7 +95,8 @@ public class ProfileJsonServiceV1Tests
         Assert.That(loadStore.Tool.Width, Is.EqualTo(12.0).Within(1e-6));
         Assert.That(loadStore.Tool.Overlap, Is.EqualTo(0.15).Within(1e-6));
         Assert.That(loadStore.Tool.Offset, Is.EqualTo(-0.5).Within(1e-6));
-        Assert.That(loadStore.Tool.HitchLength, Is.EqualTo(2.5).Within(1e-6));
+        Assert.That(loadStore.Vehicle.HitchLength, Is.EqualTo(2.5).Within(1e-6), "v1's one hitch length: the drawbar");
+        Assert.That(AgOpenWeb.Models.Tool.RigGeometry.AxleToWorkingPoint(loadStore.Vehicle, loadStore.Tool), Is.EqualTo(2.5).Within(1e-6));
         Assert.That(loadStore.Tool.IsToolTrailing, Is.True);
         Assert.That(loadStore.Tool.IsToolTBT, Is.False);
         Assert.That(loadStore.NumSections, Is.EqualTo(4));
@@ -223,13 +229,9 @@ public class ProfileJsonServiceV1Tests
         SetupTestStore("GuidanceFields");
         _store.Guidance.MinLookAheadDistance = 3.5;
         _store.Guidance.StanleyIntegralDistanceAwayTriggerAB = 0.45;
-        _store.Guidance.DeadZoneHeading = 0.8;
-        _store.Guidance.DeadZoneDelay = 25;
         _store.Guidance.TramPasses = 7;
         _store.Guidance.TramDisplay = false;
         _store.Guidance.TramLine = 4;
-        _store.Guidance.HydLiftLookAheadDistanceLeft = 2.5;
-        _store.Guidance.HydLiftLookAheadDistanceRight = 1.75;
 
         ProfileJsonServiceV1.Save(_tempDir, "GuidanceFields", _store);
         var loadStore = new ConfigurationStore();
@@ -237,13 +239,9 @@ public class ProfileJsonServiceV1Tests
 
         Assert.That(loadStore.Guidance.MinLookAheadDistance, Is.EqualTo(3.5).Within(1e-6));
         Assert.That(loadStore.Guidance.StanleyIntegralDistanceAwayTriggerAB, Is.EqualTo(0.45).Within(1e-6));
-        Assert.That(loadStore.Guidance.DeadZoneHeading, Is.EqualTo(0.8).Within(1e-6));
-        Assert.That(loadStore.Guidance.DeadZoneDelay, Is.EqualTo(25));
         Assert.That(loadStore.Guidance.TramPasses, Is.EqualTo(7));
         Assert.That(loadStore.Guidance.TramDisplay, Is.False);
         Assert.That(loadStore.Guidance.TramLine, Is.EqualTo(4));
-        Assert.That(loadStore.Guidance.HydLiftLookAheadDistanceLeft, Is.EqualTo(2.5).Within(1e-6));
-        Assert.That(loadStore.Guidance.HydLiftLookAheadDistanceRight, Is.EqualTo(1.75).Within(1e-6));
     }
 
     [Test]
@@ -291,7 +289,6 @@ public class ProfileJsonServiceV1Tests
         Assert.That(loadStore.Tool.CoverageMargin, Is.EqualTo(5.0).Within(1e-6));
         Assert.That(loadStore.Tool.Zones, Is.EqualTo(2));
         Assert.That(loadStore.Guidance.MinLookAheadDistance, Is.EqualTo(2.0).Within(1e-6));
-        Assert.That(loadStore.Guidance.DeadZoneDelay, Is.EqualTo(10));
     }
 
     [Test]
@@ -301,7 +298,6 @@ public class ProfileJsonServiceV1Tests
         _store.Guidance.UTurnRadius = 10.0;
         _store.Guidance.UTurnExtension = 25.0;
         _store.Guidance.UTurnDistanceFromBoundary = 3.0;
-        _store.Guidance.UTurnSkipWidth = 2;
         _store.Guidance.UTurnStyle = 1;
         _store.Guidance.UTurnSmoothing = 20;
 
@@ -312,7 +308,6 @@ public class ProfileJsonServiceV1Tests
         Assert.That(loadStore.Guidance.UTurnRadius, Is.EqualTo(10.0).Within(1e-6));
         Assert.That(loadStore.Guidance.UTurnExtension, Is.EqualTo(25.0).Within(1e-6));
         Assert.That(loadStore.Guidance.UTurnDistanceFromBoundary, Is.EqualTo(3.0).Within(1e-6));
-        Assert.That(loadStore.Guidance.UTurnSkipWidth, Is.EqualTo(2));
         Assert.That(loadStore.Guidance.UTurnStyle, Is.EqualTo(1));
         Assert.That(loadStore.Guidance.UTurnSmoothing, Is.EqualTo(20));
     }

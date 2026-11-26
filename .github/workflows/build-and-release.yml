@@ -4,7 +4,7 @@ name: CI
 # main or develop. develop is the integration branch and its protection requires the `test`
 # check, so CI must trigger there too (otherwise PRs into develop block forever awaiting a
 # check that never starts). It does NOT package or publish anything — all artifacts, tagged
-# releases, and the nightly prerelease are produced by build-deploy-bundles.yml.
+# releases, and the beta prerelease are produced by build-deploy-bundles.yml.
 on:
   push:
     branches: [main, develop]
@@ -20,39 +20,263 @@ permissions:
   contents: read   # CI only — no releases here
 
 env:
-  DOTNET_VERSION: '10.0.x'
+  # Pinned: workload set 10.0.402.1 names an iOS manifest (27.1.10018) that is not
+  # on NuGet yet, so 'dotnet workload install android' fails. Back to 10.0.x and drop
+  # ANDROID_WORKLOAD_VERSION once that is published.
+  # global.json holds dotnet to SDK 10 (runner images from 2026-11-11 carry SDK 11.0.100,
+  # which dotnet would otherwise pick, and its workload install fails); change both together.
+  DOTNET_VERSION: '10.0.401'
+  ANDROID_WORKLOAD_VERSION: '10.0.401.1'
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
+  # Which parts a change touches, for jobs that only matter for some of them. Anything it
+  # can't tell (a manual run, a push with no "before", a failed diff) counts as touching
+  # everything, so a check is never skipped by mistake.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ui: ${{ steps.diff.outputs.ui }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Changed paths
+        id: diff
+        shell: bash
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          ui=true
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && [ -n "$BASE" ] \
+             && [ "$BASE" != "0000000000000000000000000000000000000000" ] \
+             && files=$(git diff --name-only "$BASE...$HEAD"); then
+            # What translations-fit measures: the web client, the check, its baseline, this workflow.
+            if ! printf '%s\n' "$files" | grep -qE '^(Shared/AgOpenWeb\.RemoteServer/wwwroot/|Tools/i18n-limits\.py$|Tools/i18n-fit-baseline\.json$|\.github/workflows/build-and-release\.yml$)'; then
+              ui=false
+            fi
+          fi
+          echo "ui=$ui" >> "$GITHUB_OUTPUT"
+          echo "web client touched: $ui"
+
+  # CLAUDE.md is the maintainers' working context for their Claude Code sessions, loaded into
+  # every one of them: only the maintainers named here change it. A contributor keeps their own
+  # notes in CLAUDE.local.md (ignored by git). See CONTRIBUTING.md.
+  claude-md:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: CLAUDE.md is changed by the maintainers only
+        shell: bash
+        env:
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          ALLOWED: chriskinal
+        run: |
+          if ! git diff --quiet "$BASE...$HEAD" -- CLAUDE.md; then
+            for a in $ALLOWED; do [ "$AUTHOR" = "$a" ] && { echo "CLAUDE.md changed by $AUTHOR: allowed"; exit 0; }; done
+            echo "::error file=CLAUDE.md::CLAUDE.md is kept by the maintainers. Take its change out of this PR (git checkout $BASE -- CLAUDE.md); keep your own notes in CLAUDE.local.md, which git ignores. See CONTRIBUTING.md."
+            exit 1
+          fi
+          echo "CLAUDE.md not changed"
+
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: Check translation source is up to date
+        run: python3 Tools/i18n-extract.py --check
+
+      # Apache 2.0 header in every source file; no other licence named anywhere.
+      - name: Check licence headers
+        run: python3 Tools/license-headers.py --check
+
+      # Language files are translated on Weblate; a PR edits only the English source.
+      # Weblate's own PRs (from its fork, as the weblate user) are how they arrive.
+      # HEAD is the PR's merge commit; its first parent is the base branch as merged,
+      # so a Weblate merge on develop while the PR is open isn't counted against it
+      # (pull_request.base.sha can be older than that).
+      - name: Check language files are untouched
+        if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'weblate'
+        run: |
+          git fetch --no-tags --depth=2 origin ${{ github.sha }}
+          changed=$(git diff --name-only HEAD^1 HEAD -- 'Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/*.json' | grep -v '/en\.json$' || true)
+          if [ -n "$changed" ]; then
+            echo "::error::Language files are maintained on Weblate (Docs/TRANSLATIONS.md); only en.json changes in a PR:"
+            echo "$changed"
+            exit 1
+          fi
+
+      # The client has no build step, so a syntax error would otherwise surface in the browser.
+      - name: Check client scripts parse
+        run: |
+          cd Shared/AgOpenWeb.RemoteServer/wwwroot
+          for f in *.js js/*.js; do
+            if [ -e "$f" ]; then node --check "$f"; fi
+          done
+
+      # The bug report Workers (Tools/bugreport-worker): plain node --test, no packages needed.
+      - name: Bug report Worker tests
+        run: node --test Tools/bugreport-worker/test/*.test.js
+
       - name: Run Model Tests
         run: dotnet test Tests/AgOpenWeb.Models.Tests/ --verbosity normal
 
+      # The hot-path budgets run in their own job (below), in Release.
       - name: Run Service Tests
-        run: dotnet test Tests/AgOpenWeb.Services.Tests/ --verbosity normal
+        run: dotnet test Tests/AgOpenWeb.Services.Tests/ --verbosity normal --filter "TestCategory!=HotPath"
 
       - name: Run ViewModels Tests
         run: dotnet test Tests/AgOpenWeb.ViewModels.Tests/ --verbosity normal
 
+      - name: Run RemoteServer Tests
+        run: dotnet test Tests/AgOpenWeb.RemoteServer.Tests/ --verbosity normal
+
       - name: Run Guidance Algorithm Tests
         run: dotnet run --project TestRunner/TestRunner.csproj
 
-  # Compile-check each platform head (no packaging — build-deploy-bundles.yml does the publishes).
-  build-desktop:
+      # The Vehicle & Tool scenario harness takes minutes too: built here, run nightly
+      # (vehicle-tool-scenarios.yml).
+      - name: Build Vehicle & Tool Scenario harness
+        run: dotnet build Tests/AgOpenWeb.VehicleToolScenarios.Tests/ --verbosity minimal
+
+      # The field job scenario harness (whole fields driven with AutoSteer, U-turns and automatic
+      # sections; its path jobs on curves, pivots and contour, the testers' rigs, U-turn
+      # interventions, imperial units) takes tens of minutes: built here, run nightly
+      # (job-scenarios.yml).
+      - name: Build Field Job Scenario harness
+        run: dotnet build Tests/AgOpenWeb.FieldJobScenarios.Tests/ --verbosity minimal
+
+      # The field scenario harness takes minutes, so it runs nightly (field-scenarios.yml);
+      # here it is only built, so a backend change can't break it unnoticed.
+      - name: Build Field Scenario harness
+        run: dotnet build Tests/AgOpenWeb.FieldScenarios.Tests/ --verbosity minimal
+
+      # Likewise the steer wizard harness (steer-wizard-scenarios.yml runs it nightly).
+      - name: Build Steer Wizard Scenario harness
+        run: dotnet build Tests/AgOpenWeb.SteerWizardScenarios.Tests/ --verbosity minimal
+
+      # And the machine module harness (machine-module-scenarios.yml runs it nightly).
+      - name: Build Machine Module Scenario harness
+        run: dotnet build Tests/AgOpenWeb.MachineModuleScenarios.Tests/ --verbosity minimal
+
+      # And the GPS and NTRIP harness (gps-ntrip-scenarios.yml runs it nightly).
+      - name: Build GPS and NTRIP Scenario harness
+        run: dotnet build Tests/AgOpenWeb.GpsNtripScenarios.Tests/ --verbosity minimal
+      # And the ISOBUS harness (isobus-scenarios.yml runs it nightly).
+      - name: Build ISOBUS Scenario harness
+        run: dotnet build Tests/AgOpenWeb.IsobusScenarios.Tests/ --verbosity minimal
+      # And the web client harness (web-client-scenarios.yml runs it nightly, in headless Chromium).
+      - name: Build Web Client Scenario harness
+        run: dotnet build Tests/AgOpenWeb.WebClientScenarios.Tests/ --verbosity minimal
+      # And the update and settings-survival harness (update-scenarios.yml runs it nightly).
+      - name: Build Update Scenario harness
+        run: dotnet build Tests/AgOpenWeb.UpdateScenarios.Tests/ --verbosity minimal
+      # And the working day harness (working-day-scenarios.yml runs it).
+      - name: Build Working Day Scenario harness
+        run: dotnet build Tests/AgOpenWeb.WorkingDayScenarios.Tests/ --verbosity minimal
+      # And the dump replay harness (dump-replay-scenarios.yml runs it nightly).
+      - name: Build Dump Replay Scenario harness
+        run: dotnet build Tests/AgOpenWeb.DumpReplayScenarios.Tests/ --verbosity minimal
+
+  # Work budgets for the GPS cycle and the 100 Hz control tick (Performance/HotPathBudgetTests):
+  # a large field driven through the real pipeline, every cycle held to a budget of polygon
+  # edges, coverage lookups, offset points and bytes allocated. Counts, not time, so the
+  # runner's speed doesn't matter; Release only because it is five times faster than Debug.
+  # Then the host loop and the 10 Hz broadcast with a field open (the Vehicle & Tool
+  # harness's HostLoopBudgetTests: the whole backend, about 16 s; also files read).
+  hot-path-budgets:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Run hot-path budgets
+        run: dotnet test Tests/AgOpenWeb.Services.Tests/ -c Release --filter "TestCategory=HotPath" --verbosity normal
+
+      - name: Run host-loop budgets
+        run: dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ -c Release --filter "TestCategory=HotPath" --verbosity normal
+
+  # Every translated label must fit the English layout (Docs/TRANSLATIONS.md): the app runs
+  # headless and Tools/i18n-limits.py --check measures each translation in place. Roboto
+  # stands in for the system font, as on the Android tablets. The container fixes the fonts,
+  # so a local run in the same image measures the same (the baseline was made that way).
+  # Only when the change touches what it measures (see `changes`). It is a required check:
+  # a job skipped by its `if` counts as passed, so other PRs don't wait ~15 min for it. If
+  # `changes` itself failed, it runs (a skip would count as a pass).
+  translations-fit:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ui == 'true') }}
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright/python:v1.64.0-noble
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install Playwright and Roboto
+        run: |
+          apt-get update -qq && apt-get install -y -qq fonts-roboto libicu74 curl
+          pip install playwright==1.64.0
+          mkdir -p ~/.config/fontconfig
+          cat > ~/.config/fontconfig/fonts.conf <<'EOF'
+          <?xml version="1.0"?>
+          <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+          <fontconfig>
+            <alias binding="strong"><family>system-ui</family><prefer><family>Roboto</family></prefer></alias>
+            <alias binding="strong"><family>sans-serif</family><prefer><family>Roboto</family></prefer></alias>
+          </fontconfig>
+          EOF
+          fc-cache -f
+
+      - name: Build Desktop
+        run: dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -p:DesktopOnly=true
+
+      # One step: the headless app lives only as long as the step that started it.
+      - name: Check translations fit
+        shell: bash
+        run: |
+          AGOPENWEB_DATA="$RUNNER_TEMP/aow" Platforms/AgOpenWeb.Desktop/bin/Debug/net10.0/AgOpenWeb.Desktop --headless > "$RUNNER_TEMP/app.log" 2>&1 &
+          for i in $(seq 60); do curl -sf -o /dev/null http://localhost:5174/ && break; sleep 1; done
+          curl -sf -o /dev/null http://localhost:5174/ || { cat "$RUNNER_TEMP/app.log"; exit 1; }
+          python3 Tools/i18n-limits.py --check
+
+  # Compile-check each platform head (no packaging — build-deploy-bundles.yml does the publishes).
+  # The Desktop and Android heads compile on every PR so a broken head is caught before
+  # merge; iOS needs a macOS runner and compiles after merge.
+  build-desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -66,9 +290,10 @@ jobs:
 
   build-android:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -84,7 +309,7 @@ jobs:
       - name: Install Android workload
         run: |
           for i in 1 2 3; do
-            dotnet workload install android && break
+            dotnet workload install android --version "$ANDROID_WORKLOAD_VERSION" && break
             echo "Attempt $i failed, retrying in 10s..."
             sleep 10
           done
@@ -92,11 +317,21 @@ jobs:
       - name: Compile Android
         run: dotnet build Platforms/AgOpenWeb.Android/AgOpenWeb.Android.csproj -c Release
 
+      # The VT's native library comes with SharpIsoTerm's Android build; with its desktop build
+      # instead (the VT project not targeting net10.0-android) the app would build but have none.
+      - name: The terminal's native library is in the APK
+        run: |
+          APK=$(find Platforms/AgOpenWeb.Android/bin/Release -name "*.apk" | head -1)
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            unzip -l "$APK" "lib/$abi/libisoshim.so" > /dev/null || { echo "::error::$APK has no lib/$abi/libisoshim.so"; exit 1; }
+          done
+
   build-ios:
     runs-on: macos-26
-    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Select Xcode 26.4.1
         # The .NET for iOS workload is pinned to 26.4.x via dotnet-ios-rollback.json to match

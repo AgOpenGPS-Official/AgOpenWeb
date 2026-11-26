@@ -1,13 +1,13 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -32,85 +32,99 @@ public class DebugDumpService
     };
 
     /// <summary>
-    /// Create a debug dump zip file containing all diagnostic information.
-    /// Returns the path to the created zip file.
+    /// The live parts of a dump, read at one moment: settings, configuration, runtime state,
+    /// logs and the GPS recorder, as text. <see cref="Capture"/> reads them on the host loop,
+    /// where that state lives; <see cref="WriteDump"/> does the slow part (field files, coverage
+    /// tiles, compression) on any thread, so making a report doesn't stall the loop, the
+    /// simulator or guidance (a dump held a slow tablet's loop for 1-4 s and set off GPS lost).
     /// </summary>
-    public static string CreateDump(
-        ISettingsService settingsService,
-        ApplicationState appState,
-        ConfigurationStore configStore,
-        string? additionalNotes = null,
-        byte[]? screenshotPng = null,
-        string? outputDirectory = null,
-        string filePrefix = "debug_dump",
-        IReadOnlyList<string>? userAttachments = null)
+    public sealed class DumpSnapshot
     {
-        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
-        var dumpDir = outputDirectory
-            ?? Path.Combine(Path.GetTempPath(), "AgOpenWeb", "dumps");
-        Directory.CreateDirectory(dumpDir);
-        var zipPath = Path.Combine(dumpDir, $"{filePrefix}_{timestamp}.zip");
+        internal List<(string Name, string Text)> Entries { get; } = new();
+        internal string? FieldDirectory { get; init; }
+        internal string? ProfileName { get; init; }
+    }
 
-        using var zipStream = File.Create(zipPath);
-        using var archive = new ZipArchive(zipStream, ZipArchiveMode.Create);
+    /// <summary>Read the dump's live parts (see <see cref="DumpSnapshot"/>). Quick; call it on the host loop.</summary>
+    public static DumpSnapshot Capture(
+        ISettingsService settingsService,
+        RuntimeStateCapture runtime,
+        ConfigurationStore configStore,
+        string? ntripRtcmReport = null,
+        string? ntripSessionReport = null,
+        string? ntripSummary = null,
+        string? browsersSummary = null,
+        string? dataQualityReport = null)
+    {
+        string? profileName = null;
+        try { profileName = configStore.ActiveVehicleProfileName; } catch { }
+        var snap = new DumpSnapshot { FieldDirectory = runtime.FieldDirectory, ProfileName = profileName };
+        var entries = snap.Entries;
 
         // 1. System info
-        AddTextEntry(archive, "system_info.txt", BuildSystemInfo());
+        double? quality = null;
+        try { quality = configStore.Display.DisplayResolutionMultiplier; } catch { }
+        entries.Add(("system_info.txt", BuildSystemInfo(ntripSummary, browsersSummary, quality, dataQualityReport)));
 
         // 2. App settings
         try
         {
-            var settingsJson = JsonSerializer.Serialize(settingsService.Settings, JsonOptions);
-            AddTextEntry(archive, "appsettings.json", settingsJson);
+            var settingsJson = RedactSecrets(JsonSerializer.Serialize(settingsService.Settings, JsonOptions));
+            entries.Add(("appsettings.json", settingsJson));
         }
         catch (Exception ex)
         {
-            AddTextEntry(archive, "appsettings_error.txt", ex.ToString());
+            entries.Add(("appsettings_error.txt", ex.ToString()));
         }
 
         // 3. Configuration store snapshot
         try
         {
-            var configSnapshot = BuildConfigSnapshot(configStore);
-            AddTextEntry(archive, "configuration.json", configSnapshot);
+            entries.Add(("configuration.json", BuildConfigSnapshot(configStore)));
         }
         catch (Exception ex)
         {
-            AddTextEntry(archive, "configuration_error.txt", ex.ToString());
+            entries.Add(("configuration_error.txt", ex.ToString()));
         }
 
         // 4. Runtime state snapshot
         try
         {
-            var stateSnapshot = BuildStateSnapshot(appState);
-            AddTextEntry(archive, "runtime_state.json", stateSnapshot);
+            entries.Add(("runtime_state.json", runtime.Json));
         }
         catch (Exception ex)
         {
-            AddTextEntry(archive, "state_error.txt", ex.ToString());
+            entries.Add(("state_error.txt", ex.ToString()));
         }
 
         // 5. Log entries
         try
         {
-            var logs = BuildLogDump();
-            AddTextEntry(archive, "logs.txt", logs);
+            entries.Add(("logs.txt", BuildLogDump()));
         }
         catch (Exception ex)
         {
-            AddTextEntry(archive, "logs_error.txt", ex.ToString());
+            entries.Add(("logs_error.txt", ex.ToString()));
         }
 
-        // 5b. GPS data recorder (last 60 seconds of position/guidance/YouTurn)
+        // 5a. What the NTRIP caster sent, by RTCM message, and the receiver's differential age.
+        if (!string.IsNullOrEmpty(ntripRtcmReport))
+            entries.Add(("ntrip_rtcm.txt", ntripRtcmReport));
+
+        // 5a2. What the NTRIP connection did and why it failed (no login in it).
+        if (!string.IsNullOrEmpty(ntripSessionReport))
+            entries.Add(("ntrip_session.txt", ntripSessionReport));
+
+        // 5b. GPS data recorder (last 5 minutes of position/guidance/YouTurn/heading inputs)
         try
         {
             var gpsCsv = Logging.GpsDataRecorder.Instance.ExportCsv();
             if (gpsCsv.Length > 50) // more than just the header
-                AddTextEntry(archive, "gps_data_log.csv", gpsCsv);
+                entries.Add(("gps_data_log.csv", gpsCsv));
         }
         catch (Exception ex)
         {
-            AddTextEntry(archive, "gps_data_log_error.txt", ex.ToString());
+            entries.Add(("gps_data_log_error.txt", ex.ToString()));
         }
 
         // 5c. Last observed YouTurn path — forensic sidecar so we can
@@ -129,19 +143,76 @@ public class DebugDumpService
                     var p = lastPath[i];
                     pathDtos[i] = new { e = p.Easting, n = p.Northing, h = p.Heading };
                 }
-                var json = JsonSerializer.Serialize(pathDtos, JsonOptions);
-                AddTextEntry(archive, "turn_path.json", json);
+                entries.Add(("turn_path.json", JsonSerializer.Serialize(pathDtos, JsonOptions)));
             }
         }
         catch (Exception ex)
         {
-            AddTextEntry(archive, "turn_path_error.txt", ex.ToString());
+            entries.Add(("turn_path_error.txt", ex.ToString()));
         }
+
+        return snap;
+    }
+
+    /// <summary>
+    /// Create a debug dump zip file containing all diagnostic information.
+    /// Returns the path to the created zip file.
+    /// </summary>
+    public static string CreateDump(
+        ISettingsService settingsService,
+        RuntimeStateCapture runtime,
+        ConfigurationStore configStore,
+        string? additionalNotes = null,
+        byte[]? screenshotPng = null,
+        string? outputDirectory = null,
+        string filePrefix = "debug_dump",
+        IReadOnlyList<string>? userAttachments = null,
+        string? activeJobTaskName = null,
+        string? ntripRtcmReport = null,
+        string? ntripSessionReport = null,
+        string? ntripSummary = null,
+        string? dataQualityReport = null) =>
+        WriteDump(Capture(settingsService, runtime, configStore, ntripRtcmReport, ntripSessionReport, ntripSummary,
+                dataQualityReport: dataQualityReport),
+            additionalNotes, screenshotPng, outputDirectory, filePrefix, userAttachments, activeJobTaskName);
+
+    /// <summary>
+    /// Write a captured dump to its zip with the field's files, the active job's coverage tiles,
+    /// the screenshot, notes and attachments. Reads only the disk and the snapshot: any thread.
+    /// Returns the path to the created zip file.
+    /// </summary>
+    public static string WriteDump(
+        DumpSnapshot snapshot,
+        string? additionalNotes = null,
+        byte[]? screenshotPng = null,
+        string? outputDirectory = null,
+        string filePrefix = "debug_dump",
+        IReadOnlyList<string>? userAttachments = null,
+        string? activeJobTaskName = null,
+        string? deviceInfo = null)
+    {
+        var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
+        var dumpDir = outputDirectory
+            ?? Path.Combine(Path.GetTempPath(), "AgOpenWeb", "dumps");
+        Directory.CreateDirectory(dumpDir);
+        var zipPath = Path.Combine(dumpDir, $"{filePrefix}_{timestamp}.zip");
+
+        using var zipStream = File.Create(zipPath);
+        using var archive = new ZipArchive(zipStream, ZipArchiveMode.Create);
+
+        // 1-5c. The live parts, as captured.
+        foreach (var (name, text) in snapshot.Entries)
+            AddTextEntry(archive, name, text);
+
+        // The device and what is connected to it (DeviceReport), read by the caller off the
+        // host loop: it starts the system's tools on a desktop.
+        if (!string.IsNullOrEmpty(deviceInfo))
+            AddTextEntry(archive, "device_info.txt", deviceInfo);
 
         // 6. Current field files (if a field is open)
         try
         {
-            var fieldDir = appState.Field.ActiveField?.DirectoryPath;
+            var fieldDir = snapshot.FieldDirectory;
             if (!string.IsNullOrEmpty(fieldDir) && Directory.Exists(fieldDir))
             {
                 foreach (var file in Directory.GetFiles(fieldDir))
@@ -152,10 +223,7 @@ public class DebugDumpService
                     if (ext == ".bin" && new FileInfo(file).Length > 5_000_000)
                         continue;
 
-                    var entry = archive.CreateEntry($"field/{fileName}");
-                    using var entryStream = entry.Open();
-                    using var fileStream = File.OpenRead(file);
-                    fileStream.CopyTo(entryStream);
+                    AddFileEntry(archive, $"field/{fileName}", file);
                 }
             }
         }
@@ -164,23 +232,41 @@ public class DebugDumpService
             AddTextEntry(archive, "field_error.txt", ex.ToString());
         }
 
-        // 7. Current vehicle profile
+        // 6b. The active job's folder: its coverage tiles (worked area) and job file,
+        // so coverage display bugs can be reproduced from the dump (#175). The caller
+        // saves coverage first; the tiles on disk are otherwise up to an autosave old.
         try
         {
-            var profileName = configStore.ActiveVehicleProfileName;
-            if (!string.IsNullOrEmpty(profileName))
+            var fieldDir = snapshot.FieldDirectory;
+            if (!string.IsNullOrEmpty(fieldDir) && !string.IsNullOrWhiteSpace(activeJobTaskName))
             {
-                AddTextEntry(archive, "active_profile_name.txt", profileName);
+                var jobDir = Path.Combine(fieldDir, "jobs", activeJobTaskName);
+                if (Directory.Exists(jobDir))
+                {
+                    foreach (var file in Directory.GetFiles(jobDir, "*", SearchOption.AllDirectories))
+                    {
+                        if (new FileInfo(file).Length > 20_000_000) continue;
+                        var relative = Path.GetRelativePath(fieldDir, file).Replace('\\', '/');
+                        AddFileEntry(archive, $"field/{relative}", file);
+                    }
+                }
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            AddTextEntry(archive, "job_error.txt", ex.ToString());
+        }
+
+        // 7. Current vehicle profile
+        if (!string.IsNullOrEmpty(snapshot.ProfileName))
+            AddTextEntry(archive, "active_profile_name.txt", snapshot.ProfileName);
 
         // 8. Screenshot
         if (screenshotPng != null && screenshotPng.Length > 0)
         {
             try
             {
-                var entry = archive.CreateEntry("screenshot.png");
+                var entry = archive.CreateEntry("screenshot.png", CompressionLevel.NoCompression);
                 using var entryStream = entry.Open();
                 entryStream.Write(screenshotPng, 0, screenshotPng.Length);
             }
@@ -204,13 +290,7 @@ public class DebugDumpService
                 try
                 {
                     if (File.Exists(filePath))
-                    {
-                        var fileName = Path.GetFileName(filePath);
-                        var entry = archive.CreateEntry($"attachments/{fileName}");
-                        using var entryStream = entry.Open();
-                        using var fileStream = File.OpenRead(filePath);
-                        fileStream.CopyTo(entryStream);
-                    }
+                        AddFileEntry(archive, $"attachments/{Path.GetFileName(filePath)}", filePath);
                 }
                 catch (Exception ex)
                 {
@@ -268,13 +348,7 @@ public class DebugDumpService
                     try
                     {
                         if (File.Exists(filePath))
-                        {
-                            var fileName = Path.GetFileName(filePath);
-                            var entry = archive.CreateEntry($"attachments/{fileName}");
-                            using var entryStream = entry.Open();
-                            using var fileStream = File.OpenRead(filePath);
-                            fileStream.CopyTo(entryStream);
-                        }
+                            AddFileEntry(archive, $"attachments/{Path.GetFileName(filePath)}", filePath);
                     }
                     catch (Exception ex)
                     {
@@ -288,7 +362,8 @@ public class DebugDumpService
         return finalPath;
     }
 
-    private static string BuildSystemInfo()
+    private static string BuildSystemInfo(string? ntripSummary, string? browsersSummary = null, double? displayQuality = null,
+        string? dataQualityReport = null)
     {
         var sb = new StringBuilder();
 
@@ -315,6 +390,20 @@ public class DebugDumpService
         sb.AppendLine(inv, $"Machine: {Environment.MachineName}");
         sb.AppendLine(inv, $"Processors: {Environment.ProcessorCount}");
         sb.AppendLine(inv, $"Working Set: {Environment.WorkingSet / 1024 / 1024}MB");
+        if (!string.IsNullOrEmpty(ntripSummary)) sb.AppendLine(inv, $"NTRIP: {ntripSummary}");
+        // How the modules' data arrived (gaps, bursts): a faulty link is told apart from a slow
+        // app at a glance.
+        if (!string.IsNullOrEmpty(dataQualityReport))
+        {
+            sb.AppendLine();
+            sb.Append(dataQualityReport);
+        }
+        // How each browser draws the map (GPU or software, frame rate): a slow map on a weak
+        // tablet is told apart from a slow app at a glance.
+        sb.AppendLine();
+        if (displayQuality is { } q)
+            sb.AppendLine(inv, $"Display quality: {AgOpenWeb.Models.Configuration.DisplayConfig.QualityLabel(q)} (coverage resolution multiplier {q:0.##})");
+        sb.Append(string.IsNullOrEmpty(browsersSummary) ? "Browsers: none reported\n" : browsersSummary);
         return sb.ToString();
     }
 
@@ -330,77 +419,107 @@ public class DebugDumpService
                 store.Vehicle.AntennaHeight,
                 store.Vehicle.AntennaPivot,
                 store.Vehicle.AntennaOffset,
-                store.Vehicle.MaxSteerAngle
+                store.Vehicle.MaxSteerAngle,
+                store.Vehicle.HitchLength,
+                store.Vehicle.ThreePointHitchLength,
+                store.Vehicle.FrontHitchLength
             },
             Tool = new
             {
                 store.Tool.Width,
                 store.Tool.Overlap,
                 store.Tool.Offset,
-                store.Tool.HitchLength,
+                // The working point from the tractor's hitch (format 3, #547), and from the rear axle
+                // as format 2 had it (what older dumps carry as HitchLength).
+                store.Tool.WorkingPointFromHitch,
+                HitchLength = AgOpenWeb.Models.Tool.RigGeometry.AxleToWorkingPoint(store.Vehicle, store.Tool),
                 store.Tool.TrailingHitchLength,
+                // Where the working line is (#679: a placement report needs these, and they were missing).
+                store.Tool.TrailingToolToPivotLength,
+                store.Tool.TankTrailingHitchLength,
+                store.Tool.IsToolFrontFixed,
                 store.Tool.IsToolTrailing,
                 store.Tool.IsToolRearFixed,
                 store.Tool.IsToolTBT,
-                store.Tool.IsMultiColoredSections
+                store.Tool.IsMultiColoredSections,
+                // When the sections switch, and how wide coverage is painted.
+                store.Tool.LookAheadOnSetting,
+                store.Tool.LookAheadOffSetting,
+                store.Tool.TurnOffDelay,
+                store.Tool.SlowSpeedCutoff,
+                store.Tool.CoverageMargin,
+                store.Tool.MinCoverage
             },
             Guidance = new
             {
                 store.Guidance.GoalPointLookAheadHold,
                 store.Guidance.StanleyHeadingErrorGain,
                 store.Guidance.StanleyDistanceErrorGain,
-                store.Guidance.UTurnRadius
+                // Where and how a U-turn is laid out (#418: only the radius was here).
+                store.Guidance.UTurnRadius,
+                store.Guidance.UTurnExtension,
+                store.Guidance.UTurnDistanceFromBoundary,
+                store.Guidance.UTurnStyle,
+                store.Guidance.UTurnSmoothing,
+                store.Guidance.UTurnCompensation
             },
+            // GPS / dual-antenna / heading settings (#157: a heading bug report had none of
+            // these). ConnectionConfig also holds NTRIP and AgShare credentials — listed
+            // field by field so those can never ride along.
+            Gps = new
+            {
+                store.Connections.IsDualGps,
+                store.Connections.DualHeadingOffset,
+                store.Connections.DualReverseDistance,
+                store.Connections.AutoDualFix,
+                store.Connections.DualSwitchSpeed,
+                store.Connections.GpsUpdateRate,
+                store.Connections.UseRtk,
+                store.Connections.MinGpsStep,
+                store.Connections.FixToFixDistance,
+                store.Connections.HeadingFusionWeight,
+                store.Connections.ReverseDetection,
+                store.Connections.HeadingSource,
+                store.Connections.MinFixQuality,
+                store.Connections.RtkLostAlarm,
+                store.Connections.RtkLostAction,
+                store.Connections.MaxDifferentialAge,
+                store.Connections.MaxHdop
+            },
+            Ahrs = store.Ahrs,
+            AutoSteer = store.AutoSteer,
             NumSections = store.NumSections,
+            // Pass spacing and coverage width come from these, not Tool.Width.
+            SectionWidthsCm = store.Tool.SectionWidths.Take(Math.Max(0, store.NumSections)).ToArray(),
+            ActualToolWidth = store.ActualToolWidth,
             IsMetric = store.IsMetric,
-            ActiveProfile = store.ActiveVehicleProfileName
+            ActiveProfile = store.ActiveVehicleProfileName,
+            ActiveToolProfile = store.ActiveToolProfileName
         };
         return JsonSerializer.Serialize(snapshot, JsonOptions);
     }
 
-    private static string BuildStateSnapshot(ApplicationState state)
+    /// <summary>
+    /// Bug reports get attached to public issues: blank out anything credential-shaped
+    /// (NTRIP user/password, AgShare API key, …) that's set. Empty values stay empty so
+    /// the report still shows whether one was configured.
+    /// </summary>
+    internal static string RedactSecrets(string json)
     {
-        var snapshot = new
+        var node = System.Text.Json.Nodes.JsonNode.Parse(json);
+        if (node is not System.Text.Json.Nodes.JsonObject obj) return json;
+        foreach (var key in new List<string>(obj.Select(kv => kv.Key)))
         {
-            Vehicle = new
-            {
-                state.Vehicle.Latitude,
-                state.Vehicle.Longitude,
-                state.Vehicle.Easting,
-                state.Vehicle.Northing,
-                state.Vehicle.Heading,
-                Speed = state.Vehicle.Speed,
-                state.Vehicle.FixQuality,
-                state.Vehicle.SatelliteCount,
-                state.Vehicle.Hdop
-            },
-            Field = new
-            {
-                ActiveField = state.Field.ActiveField?.Name ?? "None",
-                HasBoundary = state.Field.CurrentBoundary?.IsValid ?? false,
-                HasHeadland = state.Field.HasHeadland,
-                HeadlandDistance = state.Field.HeadlandDistance,
-                TrackCount = state.Field.Tracks.Count,
-                ActiveTrack = state.Field.ActiveTrack?.Name,
-                OriginLat = state.Field.OriginLatitude,
-                OriginLon = state.Field.OriginLongitude,
-                DriftEasting = state.Field.DriftEasting,
-                DriftNorthing = state.Field.DriftNorthing
-            },
-            Guidance = new
-            {
-                state.Guidance.CrossTrackError,
-                state.Guidance.SteerAngle,
-                state.Guidance.HeadingError
-            },
-            UI = new
-            {
-                ActiveDialog = state.UI.ActiveDialog.ToString(),
-                state.UI.IsSimulatorPanelVisible,
-                state.UI.IsBoundaryPanelVisible
-            }
-        };
-        return JsonSerializer.Serialize(snapshot, JsonOptions);
+            bool secret = key.Contains("Password", StringComparison.OrdinalIgnoreCase)
+                || key.Contains("ApiKey", StringComparison.OrdinalIgnoreCase)
+                || key.Contains("Token", StringComparison.OrdinalIgnoreCase)
+                || key.Contains("Secret", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("NtripUsername", StringComparison.OrdinalIgnoreCase);
+            if (secret && obj[key] is System.Text.Json.Nodes.JsonValue v
+                && v.TryGetValue<string>(out var str) && !string.IsNullOrEmpty(str))
+                obj[key] = "REDACTED";
+        }
+        return obj.ToJsonString(JsonOptions);
     }
 
     private static string BuildLogDump()
@@ -413,6 +532,22 @@ public class DebugDumpService
                 $"[{entry.Timestamp:HH:mm:ss.fff}] [{entry.Level}] {entry.Category}: {entry.Message}");
         }
         return sb.ToString();
+    }
+
+    // Already compressed: deflating these again takes the most time in a dump (a field's
+    // background image is several MB) and saves nothing.
+    private static readonly HashSet<string> StoredExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".webp", ".gif", ".zip", ".gz", ".mp4", ".mov", ".webm",
+    };
+
+    private static void AddFileEntry(ZipArchive archive, string name, string path)
+    {
+        var level = StoredExtensions.Contains(Path.GetExtension(path)) ? CompressionLevel.NoCompression : CompressionLevel.Optimal;
+        var entry = archive.CreateEntry(name, level);
+        using var entryStream = entry.Open();
+        using var fileStream = File.OpenRead(path);
+        fileStream.CopyTo(entryStream);
     }
 
     private static void AddTextEntry(ZipArchive archive, string name, string content)

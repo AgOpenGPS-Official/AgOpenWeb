@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -36,6 +24,11 @@ public interface ICoverageMapService
     /// User-resettable worked area counter in square meters
     /// </summary>
     double TotalWorkedAreaUser { get; }
+
+    /// <summary>
+    /// Ground covered at least once, in square meters: overlap counts once (#321).
+    /// </summary>
+    double ActualAreaCovered { get; }
 
     /// <summary>
     /// Number of coverage patches
@@ -156,24 +149,17 @@ public interface ICoverageMapService
     /// The full-coverage snapshot for a server re-init / new-client seed: ONLY the painted
     /// display cells (display-cell coords) with their edge-feather alpha (0..255). Walks just the
     /// tracked painted bounding box of the RGB565 display buffer, so cost is O(painted area) — it
-    /// never scans the empty field the way <see cref="GetCoverageBitmapCells"/> does. Materialized
-    /// under the coverage lock so it can't observe a mid-expansion (half-resampled) display buffer.
+    /// never scans the empty field the way <see cref="GetCoverageBitmapCells"/> does. The coverage
+    /// lock is held only to copy a short band of pixels at a time (the 100 Hz control tick paints
+    /// under it); the cells are made outside it, and a grid change, clear or reload during the
+    /// walk starts it again, so it never returns a mid-expansion (half-resampled) buffer.
     /// </summary>
     IReadOnlyList<(int X, int Y, CoverageColor Color, int Alpha)> GetPaintedDisplayCells();
 
     /// <summary>
-    /// Get newly added coverage cells since last call (for incremental bitmap updates).
-    /// Clears the pending list after returning.
-    /// </summary>
-    /// <param name="cellSize">Size of each cell in meters</param>
-    /// <returns>Enumerable of (cellX, cellY, color) for newly added cells</returns>
-    IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCells(double cellSize);
-
-    /// <summary>
-    /// Second, independent incremental drain (parallel to GetNewCoverageBitmapCells) for a
-    /// separate consumer — the remote/web server's coverage projector. Returns newly-covered
-    /// cells since the last call to THIS method and clears its own pending list, so the two
-    /// consumers don't steal cells from each other.
+    /// Incremental drain for the remote/web server's coverage projector: newly-covered cells
+    /// since the last call, at <paramref name="cellSize"/>. Clears its pending list. It has
+    /// exactly one consumer; a second one needs its own queue AND its own drain.
     /// </summary>
     IEnumerable<(int CellX, int CellY, CoverageColor Color)> GetNewCoverageBitmapCellsServer(double cellSize);
 
@@ -326,6 +312,12 @@ public interface ICoverageMapService
     /// at the new cell size. No-op if no field is open or the resolution is unchanged.
     /// </summary>
     void RebuildDisplayForResolutionChange();
+
+    /// <summary>
+    /// Keep both sides of the display grid at or below <paramref name="maxSide"/> pixels: the
+    /// largest texture a web client reported. Only ever tightens; an open field is regridded.
+    /// </summary>
+    void LimitDisplaySide(int maxSide);
 }
 
 /// <summary>

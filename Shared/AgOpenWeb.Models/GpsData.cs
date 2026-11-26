@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 
@@ -51,7 +39,7 @@ public class GpsData
     /// <summary>IMU pitch angle in degrees (from $PANDA field 14)</summary>
     public double ImuPitch { get; set; }
 
-    /// <summary>IMU yaw rate in degrees/second (from $PANDA field 15)</summary>
+    /// <summary>IMU yaw rate in degrees/second (field 15 of $PANDA and $PAOGI)</summary>
     public double ImuYawRate { get; set; }
 
     /// <summary>
@@ -69,6 +57,17 @@ public class GpsData
     /// and <see cref="ImuRoll"/>.
     /// </summary>
     public bool ImuValid { get; set; }
+
+    /// <summary>
+    /// True when <see cref="Position.Heading"/> is a dual-antenna heading ($PAOGI, or
+    /// the simulator). False for $PANDA, whose heading field is the IMU heading, so
+    /// "Dual GPS" must not use it as the antenna heading (#157; AgIO routes PANDA's
+    /// heading to imuHeading only).
+    /// </summary>
+    public bool HasDualHeading { get; set; }
+
+    /// <summary>Sentence this fix came from (#157), shown in the GPS detail card.</summary>
+    public GpsSentenceType SentenceType { get; set; }
 
     /// <summary>
     /// Timestamp when data was received

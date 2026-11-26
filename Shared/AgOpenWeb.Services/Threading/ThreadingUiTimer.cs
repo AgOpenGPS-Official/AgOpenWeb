@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Threading;
@@ -18,7 +14,7 @@ namespace AgOpenWeb.Services.Threading;
 /// timers (autosave, status rotation, etc.) must actually run but there is no
 /// Avalonia dispatcher. Ticks fire on a thread-pool thread; a headless host that
 /// needs them marshalled routes through <see cref="IUiDispatcher"/>.
-/// See Plans/CONFIG_STATE_AUDIT.md §11.3.
+/// See Plans/Completed/CONFIG_STATE_AUDIT.md §11.3.
 /// </summary>
 public sealed class ThreadingUiTimer : IUiTimer, IDisposable
 {

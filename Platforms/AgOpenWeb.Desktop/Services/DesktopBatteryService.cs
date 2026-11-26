@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Diagnostics;
@@ -22,7 +10,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using AgOpenWeb.Models;
 using AgOpenWeb.Services.Interfaces;
-using Avalonia.Threading;
 
 namespace AgOpenWeb.Desktop.Services;
 
@@ -46,6 +33,9 @@ public sealed class DesktopBatteryService : IBatteryService, IDisposable
     private Timer? _timer;
     private BatteryStatus _current = BatteryStatus.Unavailable;
     private readonly object _gate = new();
+    private readonly IUiDispatcher _dispatcher;
+
+    public DesktopBatteryService(IUiDispatcher dispatcher) => _dispatcher = dispatcher;
 
     public BatteryStatus CurrentStatus
     {
@@ -94,7 +84,7 @@ public sealed class DesktopBatteryService : IBatteryService, IDisposable
         }
         if (changed)
         {
-            Dispatcher.UIThread.Post(() => StatusChanged?.Invoke(this, next));
+            _dispatcher.Post(() => StatusChanged?.Invoke(this, next));
         }
     }
 

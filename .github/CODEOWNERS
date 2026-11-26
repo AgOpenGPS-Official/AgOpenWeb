@@ -1,3 +1,4 @@
 # Code owners for AgOpenWeb
-# PRs to main require approval from at least one of these people.
-* @chriskinal @richardklasens @Xyntexx
+# PRs to main require approval from at least one member of this team.
+# The team's code review auto assignment picks one reviewer per PR.
+* @AgOpenGPS-Official/aow-maintainers

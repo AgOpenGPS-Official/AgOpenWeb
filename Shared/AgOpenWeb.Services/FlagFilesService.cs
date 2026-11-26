@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -60,7 +59,9 @@ namespace AgOpenWeb.Services
         }
 
         /// <param name="originLat">Field origin (for the lat/lon columns); 0/0 writes 0/0.</param>
-        public static void Save(string fieldDirectory, IReadOnlyList<Flag> flags, double originLat, double originLon)
+        // AgOpenWeb never writes AgOpenGPS files: they are imported into field.geojson once and
+        // deleted (FieldService.LoadField). Internal so tests can build AgOpenGPS fixtures.
+        internal static void Save(string fieldDirectory, IReadOnlyList<Flag> flags, double originLat, double originLon)
         {
             var inv = CultureInfo.InvariantCulture;
             var geo = originLat != 0 || originLon != 0 ? new GeoConversion(originLat, originLon) : null;

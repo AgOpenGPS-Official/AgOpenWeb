@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using AgOpenWeb.Models.Configuration;
 using NUnit.Framework;
@@ -25,6 +24,22 @@ public class GuidanceConfigTests
     }
 
     [Test]
+    public void The_distance_from_the_boundary_is_never_negative_and_always_a_number()
+    {
+        // A negative distance (the settings box takes one) put the turn line outside the fence.
+        var g = new GuidanceConfig { UTurnDistanceFromBoundary = -3 };
+        Assert.That(g.UTurnDistanceFromBoundary, Is.EqualTo(0));
+
+        g.UTurnDistanceFromBoundary = 4.5;
+        Assert.That(g.UTurnDistanceFromBoundary, Is.EqualTo(4.5));
+
+        g.UTurnDistanceFromBoundary = double.NaN;
+        Assert.That(g.UTurnDistanceFromBoundary, Is.EqualTo(GuidanceConfig.DefaultUTurnDistanceFromBoundary));
+        g.UTurnDistanceFromBoundary = double.NegativeInfinity;
+        Assert.That(g.UTurnDistanceFromBoundary, Is.EqualTo(GuidanceConfig.DefaultUTurnDistanceFromBoundary));
+    }
+
+    [Test]
     public void ResetSteeringTuning_RestoresNewProfileDefaults_AndLeavesUTurnGeometry()
     {
         var g = new GuidanceConfig
@@ -44,10 +59,10 @@ public class GuidanceConfigTests
         Assert.Multiple(() =>
         {
             Assert.That(g.IsPurePursuit, Is.True);
-            Assert.That(g.GoalPointLookAheadHold, Is.EqualTo(4.0));
-            Assert.That(g.GoalPointLookAheadMult, Is.EqualTo(1.4));
+            Assert.That(g.GoalPointLookAheadHold, Is.EqualTo(3.0)); // AgOpenGPS's defaults (checklist 10.7)
+            Assert.That(g.GoalPointLookAheadMult, Is.EqualTo(1.5));
             Assert.That(g.PurePursuitIntegralGain, Is.EqualTo(0.0));
-            Assert.That(g.StanleyDistanceErrorGain, Is.EqualTo(0.8));
+            Assert.That(g.StanleyDistanceErrorGain, Is.EqualTo(1.0));
             Assert.That(g.StanleyHeadingErrorGain, Is.EqualTo(1.0));
             Assert.That(g.UTurnCompensation, Is.EqualTo(1.0));
             Assert.That(g.UTurnRadius, Is.EqualTo(12), "Not a steering-tuning value — must be left alone");

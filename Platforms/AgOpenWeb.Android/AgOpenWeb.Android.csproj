@@ -8,7 +8,7 @@
     <LangVersion>14</LangVersion>
     <ApplicationId>com.agopenweb.android</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>26.7.0</ApplicationDisplayVersion>
+    <ApplicationDisplayVersion>26.7.8</ApplicationDisplayVersion>
     <ApplicationTitle>AgOpenWeb</ApplicationTitle>
     <OutputType>Exe</OutputType>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
@@ -17,13 +17,10 @@
     <RuntimeIdentifiers>android-arm;android-arm64;android-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
-  <!-- Avalonia packages -->
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.3" />
-    <PackageReference Include="Avalonia.Android" Version="12.0.3" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.0.3" />
-    <!-- NativeWebView (Android System WebView) for the all-in-one launcher mode. -->
-    <PackageReference Include="Avalonia.Controls.WebView" Version="12.0.1" />
+    <!-- Native libSkiaSharp for the server's imagery work (same version as RemoteServer's
+         SkiaSharp). -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Android" Version="3.119.4" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
@@ -39,6 +36,11 @@
          the shared web-command wiring, same as the iOS all-in-one head. -->
     <ProjectReference Include="..\..\Shared\AgOpenWeb.RemoteServer\AgOpenWeb.RemoteServer.csproj" />
     <ProjectReference Include="..\..\Shared\AgOpenWeb.RemoteWiring\AgOpenWeb.RemoteWiring.csproj" />
+  </ItemGroup>
+
+  <!-- The ISOBUS virtual terminal (VT card): see Shared/AgOpenWeb.VirtualTerminal. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\Shared\AgOpenWeb.VirtualTerminal\AgOpenWeb.VirtualTerminal.csproj" />
   </ItemGroup>
 
 </Project>

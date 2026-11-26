@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -34,7 +22,7 @@ namespace AgOpenWeb.Models.Base;
 ///   3. Per-point heading is recomputed as the forward direction (atan2(dE, dN)),
 ///      matching the offset convention used across the app.
 ///
-/// This is curvature-adaptive (Option 1 in Plans/BOUNDARY_RESOLUTION_NORMALIZATION.md):
+/// This is curvature-adaptive (Option 1 in Plans/Completed/BOUNDARY_RESOLUTION_NORMALIZATION.md):
 /// one deviation tolerance, shape-aware, scale-robust. If real fields ever show the
 /// fixed tolerance mis-sized, prefer a hard point-count ceiling (re-run with a larger
 /// tolerance when the result exceeds a budget) over an area-scaled tolerance curve.

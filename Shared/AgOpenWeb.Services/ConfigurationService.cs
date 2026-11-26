@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -120,12 +108,17 @@ public class ConfigurationService(
     private static string FormatTool(ConfigurationStore store, bool isMetric)
     {
         var t = store.Tool;
-        string attach = t.IsToolFrontFixed ? "Front fixed"
-                      : t.IsToolRearFixed ? "Rear fixed"
-                      : t.IsToolTrailing ? "Trailing"
-                      : "—";
+        string attach = AgOpenWeb.Models.Tool.RigGeometry.Mount(t) switch
+        {
+            AgOpenWeb.Models.Tool.ToolMount.FrontFixed => "Front fixed",
+            AgOpenWeb.Models.Tool.ToolMount.RearFixed => "Rear fixed",
+            AgOpenWeb.Models.Tool.ToolMount.TBT => "TBT",
+            _ => "Trailing",
+        };
         return
-            $"Width: {Len(t.Width, isMetric)}\n" +
+            // The sections' total, as guidance and coverage use; Tool.Width is a stored
+            // default the section editor never updates (#345).
+            $"Width: {Len(store.ActualToolWidth, isMetric)}\n" +
             $"Overlap: {Len(t.Overlap, isMetric)}\n" +
             $"Offset: {Len(t.Offset, isMetric)}\n" +
             $"Sections: {store.NumSections}\n" +
@@ -164,6 +157,7 @@ public class ConfigurationService(
         // Capture corruption status up-front (no mutation, no quarantine) so we
         // can record it for the startup recovery prompt after the load.
         var probe = ProbeProfiles(vehicleName, toolName);
+        Store.ProfileMigrationNote = null;
 
         // profileService.Load transparently recovers from the .bak
         // last-known-good copy when the primary v2 file is damaged.
@@ -179,18 +173,11 @@ public class ConfigurationService(
         // CreateDefaultProfile path) populated it.
         toolProfileService.Load(toolName, Store);
 
-        // One-way hitch migration (vehicle/tool config split): pre-split profiles stored
-        // the trailing/TBT tractor hitch-pin distance under Tool.HitchLength. It is now a
-        // vehicle property (Vehicle.HitchLength = axle -> hitch pin). When the vehicle file
-        // predates the split it loads as NaN (sentinel); seed it from the legacy tool value
-        // so existing trailing/TBT setups keep working, then it persists under the vehicle on
-        // next save. Rigid setups keep their own Tool.HitchLength regardless; a stray vehicle
-        // value is harmless because rigid geometry never reads it. Must run after BOTH files
-        // load (vehicle loads first), so the legacy Tool.HitchLength is available here.
-        if (double.IsNaN(Store.Vehicle.HitchLength))
-        {
-            Store.Vehicle.HitchLength = Store.Tool.HitchLength;
-        }
+        // A vehicle file from before the hitch moved to the vehicle loads with no hitch (NaN); a
+        // format-2 tool loaded with it filled it in (HitchMigration). With no tool file to take it
+        // from, the default.
+        if (double.IsNaN(Store.Vehicle.HitchLength)) Store.Vehicle.HitchLength = 1.8;
+        if (double.IsNaN(Store.Vehicle.ThreePointHitchLength)) Store.Vehicle.ThreePointHitchLength = Store.Vehicle.HitchLength;
 
         LoadAutoSteerConfig(vehicleName);
 
@@ -209,6 +196,12 @@ public class ConfigurationService(
         // so the user isn't re-prompted on every subsequent load. (The damaged
         // primary was quarantined during the recovering read.)
         if (probe.AnyRecovered)
+        {
+            SaveProfiles(vehicleName, toolName);
+        }
+        // A tool converted to the hitch on the vehicle (format 3, HitchMigration) is saved at once
+        // with its vehicle: a tool saved later without the vehicle's new hitch would move.
+        else if (Store.ProfileMigrationNote != null)
         {
             SaveProfiles(vehicleName, toolName);
         }
@@ -233,6 +226,18 @@ public class ConfigurationService(
         Store.HasUnsavedChanges = false;
         Store.OnProfileSaved();
         ProfileSaved?.Invoke(this, vehicleName);
+    }
+
+    public void SaveProfilesAs(string vehicleName, string toolName)
+    {
+        Store.ActiveVehicleProfileName = vehicleName;
+        Store.ActiveVehicleProfilePath = Path.Combine(profileService.VehiclesDirectory, $"{vehicleName}.json");
+        Store.ActiveToolProfileName = toolName;
+        Store.ActiveToolProfilePath = Path.Combine(toolProfileService.ToolsDirectory, $"{toolName}.json");
+        settingsService.Settings.LastUsedVehicleProfile = vehicleName;
+        settingsService.Settings.LastUsedToolProfile = toolName;
+        settingsService.Save();
+        SaveProfiles(vehicleName, toolName);
     }
 
     public void CreateProfile(string name) => CreateProfile(name, vehicle: true, tool: true);
@@ -390,6 +395,27 @@ public class ConfigurationService(
         return migrated;
     }
 
+    /// <inheritdoc/>
+    public AgOpenGpsImport ImportAgOpenGpsProfiles()
+    {
+        string? dataRoot = Path.GetDirectoryName(Path.GetFullPath(ProfilesDirectory));
+        if (string.IsNullOrEmpty(dataRoot))
+            return AgOpenGpsImport.None;
+        var result = AgOpenGpsProfileImport.Run(dataRoot, ProfilesDirectory, toolProfileService, SaveAutoSteerConfig);
+        // A first start on AgOpenGPS's profiles: the tractor and implement AgOpenGPS saved last
+        // are the pair in use, as they were there.
+        if (result.Any && string.IsNullOrEmpty(settingsService.Settings.LastUsedVehicleProfile))
+        {
+            if (result.Vehicles.Count > 0) settingsService.Settings.LastUsedVehicleProfile = result.Vehicles[0];
+            if (result.Tools.Count > 0) settingsService.Settings.LastUsedToolProfile = result.Tools[0];
+            settingsService.Save();
+        }
+        return result;
+    }
+
+    private static bool IsAgOpenGpsFile(string? path) =>
+        !string.IsNullOrEmpty(path) && string.Equals(Path.GetExtension(path), ".xml", StringComparison.OrdinalIgnoreCase);
+
     private static int? PeekFormatVersion(string path)
     {
         try
@@ -479,11 +505,13 @@ public class ConfigurationService(
         // Display config (preferences only — window/camera/day-night/panel
         // STATE moved to PersistentAppState).
         store.Display.StartFullscreen = settings.StartFullscreen;
+        store.Display.ImageryVisible = settings.ImageryVisible;
         store.Display.SvennArrowVisible = settings.SvennArrowVisible;
         store.Display.KeyboardEnabled = settings.KeyboardEnabled;
         store.Display.HeadlandDistanceVisible = settings.HeadlandDistanceVisible;
         store.Display.ExtraGuidelines = settings.ExtraGuidelines;
         store.Display.ExtraGuidelinesCount = settings.ExtraGuidelinesCount;
+        store.Display.UiScale = settings.UiScale;
         store.Display.AutoTrack = settings.AutoTrack;
         store.Display.FieldTextureVisible = settings.FieldTextureVisible;
         if (!settings.HasMigratedTextureMoveable)
@@ -526,6 +554,11 @@ public class ConfigurationService(
         store.Connections.AgShareServer = settings.AgShareServer;
         store.Connections.AgShareApiKey = settings.AgShareApiKey;
         store.Connections.AgShareEnabled = settings.AgShareEnabled;
+        store.Connections.RtcmBroadcast = settings.RtcmBroadcast;
+        store.Connections.SendCorrectedPosition = settings.SendCorrectedPosition;
+        store.Connections.NtripEnabled = settings.NtripEnabled;
+        store.Connections.NtripProfilePerField = settings.NtripProfilePerField;
+        store.Connections.NtripModeNoticeShown = settings.NtripModeNoticeShown;
         store.Connections.GpsUpdateRate = settings.GpsUpdateRate;
         store.Connections.UseRtk = settings.UseRtk;
         store.Connections.IsGpsConfigured = settings.IsGpsConfigured;
@@ -554,11 +587,13 @@ public class ConfigurationService(
         // Display config (preferences only — window/camera/day-night/panel
         // STATE is persisted by PersistentStateService).
         settings.StartFullscreen = store.Display.StartFullscreen;
+        settings.ImageryVisible = store.Display.ImageryVisible;
         settings.SvennArrowVisible = store.Display.SvennArrowVisible;
         settings.KeyboardEnabled = store.Display.KeyboardEnabled;
         settings.HeadlandDistanceVisible = store.Display.HeadlandDistanceVisible;
         settings.ExtraGuidelines = store.Display.ExtraGuidelines;
         settings.ExtraGuidelinesCount = store.Display.ExtraGuidelinesCount;
+        settings.UiScale = store.Display.UiScale;
         settings.AutoTrack = store.Display.AutoTrack;
         settings.FieldTextureVisible = store.Display.FieldTextureVisible;
         settings.FieldTextureMoveable = store.Display.FieldTextureMoveable;
@@ -596,6 +631,11 @@ public class ConfigurationService(
         settings.AgShareServer = store.Connections.AgShareServer;
         settings.AgShareApiKey = store.Connections.AgShareApiKey;
         settings.AgShareEnabled = store.Connections.AgShareEnabled;
+        settings.RtcmBroadcast = store.Connections.RtcmBroadcast;
+        settings.SendCorrectedPosition = store.Connections.SendCorrectedPosition;
+        settings.NtripEnabled = store.Connections.NtripEnabled;
+        settings.NtripProfilePerField = store.Connections.NtripProfilePerField;
+        settings.NtripModeNoticeShown = store.Connections.NtripModeNoticeShown;
         settings.GpsUpdateRate = store.Connections.GpsUpdateRate;
         settings.UseRtk = store.Connections.UseRtk;
         settings.IsGpsConfigured = store.Connections.IsGpsConfigured;
@@ -635,18 +675,50 @@ public class ConfigurationService(
     /// <summary>
     /// Save AutoSteerConfig to JSON file alongside the profile.
     /// </summary>
-    private void SaveAutoSteerConfig(string profileName)
+    private void SaveAutoSteerConfig(string profileName) => SaveAutoSteerConfig(profileName, Store.AutoSteer);
+
+    private void SaveAutoSteerConfig(string profileName, AutoSteerConfig config)
     {
         try
         {
             var path = GetAutoSteerConfigPath(profileName);
-            var dto = Store.AutoSteer.ToDto();
+            var dto = config.ToDto();
             var json = JsonSerializer.Serialize(dto, JsonOptions);
             File.WriteAllText(path, json);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Failed to save AutoSteer config: {ex.Message}");
+        }
+    }
+
+    /// <inheritdoc/>
+    public void SaveAutoSteerDisplaySettings()
+    {
+        try
+        {
+            var path = GetAutoSteerConfigPath(Store.ActiveVehicleProfileName);
+            var a = Store.AutoSteer;
+            var saved = File.Exists(path)
+                ? JsonSerializer.Deserialize<AutoSteerConfigDto>(File.ReadAllText(path))
+                : null;
+            // No file yet: everything as it is now, as a profile save would write it.
+            var dto = (saved ?? a.ToDto()) with
+            {
+                LineWidth = a.LineWidth,
+                NudgeDistance = a.NudgeDistance,
+                RefNudgeDistance = a.RefNudgeDistance,
+                NextGuidanceTime = a.NextGuidanceTime,
+                CmPerPixel = a.CmPerPixel,
+                LightbarEnabled = a.LightbarEnabled,
+                SteerBarEnabled = a.SteerBarEnabled,
+                GuidanceBarOn = a.GuidanceBarOn,
+            };
+            File.WriteAllText(path, JsonSerializer.Serialize(dto, JsonOptions));
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to save AutoSteer display settings: {ex.Message}");
         }
     }
 
@@ -660,8 +732,11 @@ public class ConfigurationService(
             var path = GetAutoSteerConfigPath(profileName);
             if (!File.Exists(path))
             {
-                // No AutoSteer config file - reset to defaults
-                Store.AutoSteer.ResetToDefaults();
+                // A vehicle read from an AgOpenGPS settings file brought its own AutoSteer
+                // settings (AgOpenGpsSettings.ApplyAutoSteer): keep them until the first save
+                // writes the AutoSteer file. Otherwise there is none yet: the defaults.
+                if (!IsAgOpenGpsFile(Store.ActiveVehicleProfilePath))
+                    Store.AutoSteer.ResetToDefaults();
                 return;
             }
 

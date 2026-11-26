@@ -1,0 +1,451 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+
+namespace AgOpenWeb.Services.Tests;
+
+/// <summary>
+/// Architectural guards for code-path continuity: the repo has one way to do each of
+/// these things, and a change that adds a second way should fail here before anyone
+/// reads the diff. Each test names the existing path in its failure message. Like
+/// <see cref="NoAmbientStoreAccessTests"/>, these scan the source tree, so they need no
+/// project references and run in the ordinary test job.
+///
+/// What is pinned, and where the one way lives:
+/// <list type="bullet">
+/// <item>Project dependencies flow Models → Services → ViewModels / RemoteServer → RemoteWiring.</item>
+/// <item>The web client is <c>index.html</c>, <c>transport.js</c>, <c>i18n.js</c> and its own scripts
+/// (<c>js/</c>) and styles (<c>css/</c>): classic scripts, every one loaded by
+/// <c>index.html</c>, no modules, no workers (Docs/WEB_CLIENT.md).</item>
+/// <item>Client → host is an <c>id|arg</c> text frame routed in <c>RemoteServerWiring</c>;
+/// host → client is a binary frame from <c>WireCodec</c>. The hub never sends text.</item>
+/// <item>Every command id the client sends has a handler on the host.</item>
+/// <item>Files written to disk have names from one list (field, job, app and AgOpenGPS-import
+/// formats). A new file name is a format decision, made here on purpose.</item>
+/// <item>JSON is <c>System.Text.Json</c>; <c>Newtonsoft.Json</c> stays inside the AgShare client.</item>
+/// <item>The host-side wiring runs on the host loop; it creates no timers or threads of its own.</item>
+/// <item>A browser without control is an observer: every command needs control except the
+/// host's <c>ObserverIds</c>, and the client's <c>OBSERVER_IDS</c> is the same list (#397).</item>
+/// <item>Stored credentials (NTRIP passwords, the AgShare key) never go to a client: the
+/// projectors send them only through <c>Secrets.Masked</c> (#397).</item>
+/// <item>Point-in-polygon has one crossing rule, <c>GeometryMath.CrossesSouth</c>, walked by
+/// <c>GeometryMath.IsPointInPolygon</c> or looked up through <c>PolygonSlabIndex</c>.</item>
+/// </list>
+/// </summary>
+[TestFixture]
+public class CodePathContinuityTests
+{
+    // ── Project layering ──────────────────────────────────────────────────
+
+    [Test]
+    public void ProjectReferences_FlowOneWay()
+    {
+        var root = RepoRoot();
+        var allowed = new Dictionary<string, string[]>
+        {
+            ["AgOpenWeb.Models"] = Array.Empty<string>(),
+            ["AgOpenWeb.Services"] = new[] { "AgOpenWeb.Models" },
+            ["AgOpenWeb.ViewModels"] = new[] { "AgOpenWeb.Models", "AgOpenWeb.Services" },
+            ["AgOpenWeb.RemoteServer"] = new[] { "AgOpenWeb.Models", "AgOpenWeb.Services" },
+            ["AgOpenWeb.RemoteWiring"] = new[] { "AgOpenWeb.Models", "AgOpenWeb.Services", "AgOpenWeb.ViewModels", "AgOpenWeb.RemoteServer" },
+        };
+        var violations = new List<string>();
+        foreach (var (project, refs) in allowed)
+        {
+            var csproj = Path.Combine(root, "Shared", project, project + ".csproj");
+            var actual = Regex.Matches(File.ReadAllText(csproj), @"ProjectReference Include=""[^""]*[\\/]([^\\/""]+)\.csproj""")
+                .Select(m => m.Groups[1].Value).ToList();
+            foreach (var r in actual.Where(r => !refs.Contains(r)))
+                violations.Add($"{project} → {r}");
+        }
+        Assert.That(violations, Is.Empty,
+            "A Shared project gained a reference outside the layering Models → Services → " +
+            "ViewModels / RemoteServer → RemoteWiring. Put the code in the lower project instead:\n  " +
+            string.Join("\n  ", violations));
+    }
+
+    // ── Section bits follow the control loop ──────────────────────────────
+
+    [Test]
+    public void ControlTick_HandsSectionBitsToTheSender_BeforeItSends()
+    {
+        var src = File.ReadAllText(Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.ViewModels", "MainViewModel.cs"));
+        int start = src.IndexOf("void OnControlLoopTicked(", StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThan(0), "MainViewModel.OnControlLoopTicked not found; update this test");
+        var body = src.Substring(start, src.IndexOf("\n    }", start, StringComparison.Ordinal) - start);
+        int set = body.IndexOf("_autoSteerService.SetSectionBits(", StringComparison.Ordinal);
+        int send = body.IndexOf("_autoSteerService.SendPgnsForControlTick(", StringComparison.Ordinal);
+        Assert.That(set >= 0 && send > set,
+            "The 100 Hz control tick must call IAutoSteerService.SetSectionBits before " +
+            "SendPgnsForControlTick. Without it PGN 254/239/229 repeat the section bits of the " +
+            "last GPS cycle, and a section edge waits up to one GPS period (#311).");
+    }
+
+    // ── The broadcast loop ────────────────────────────────────────────────
+
+    /// <summary>
+    /// The fingerprints run every broadcast tick (10 Hz, browser or not). Loops are for work
+    /// that always needs doing; a list on disk changes only on a user action. Listing the
+    /// Fields folder and parsing every job.json here cost 15.7 ms and 5.7 MB a tick at
+    /// 100 fields × 5 jobs (#604). A fingerprint compares numbers (ListsWatch's versions,
+    /// the log's Version); the Build* methods read the disk when one moved.
+    /// </summary>
+    [Test]
+    public void BroadcastFingerprints_ReadNoDisk()
+    {
+        var src = File.ReadAllText(Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.RemoteServer", "SceneProjector.cs"));
+        string[] banned =
+        {
+            "System.IO.", "Directory.", "File.", "GetAvailable", "ListAllJobs", "ListJobs",
+            "GetSnapshot", "Peek", "FindFieldsNear", "SuggestWorkTypes", "ScanImportFolder",
+        };
+        var offenders = new List<string>();
+        int found = 0;
+        foreach (Match m in Regex.Matches(src, @"public long (\w+Fingerprint)\(\)"))
+        {
+            found++;
+            int open = src.IndexOf('{', m.Index), depth = 0, end = open;
+            for (; end < src.Length; end++)
+            {
+                if (src[end] == '{') depth++;
+                else if (src[end] == '}' && --depth == 0) break;
+            }
+            var body = src[open..end];
+            foreach (var b in banned)
+                if (body.Contains(b, StringComparison.Ordinal))
+                    offenders.Add($"{m.Groups[1].Value}: {b}");
+        }
+        Assert.That(found, Is.GreaterThanOrEqualTo(8), "the fingerprints were not found");
+        Assert.That(offenders, Is.Empty,
+            "A broadcast fingerprint reads the disk every tick (#604). Compare a version " +
+            "(ListsWatch, LogStore.Version) and read the disk in the Build* method.");
+    }
+
+    // ── The web client ────────────────────────────────────────────────────
+
+    // The client's files outside vendor/: the loader and the transport, and the client's own
+    // scripts (js/) and styles (css/) (Docs/WEB_CLIENT.md).
+    private static readonly string[] FixedScripts = { "transport.js", "i18n.js" };
+
+    private static string WwwRoot() => Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.RemoteServer", "wwwroot");
+
+    private static bool IsAppScript(string rel) =>
+        Regex.IsMatch(rel, @"^js/[a-z0-9-]+\.js$");
+
+    private static bool IsStylesheet(string rel) => Regex.IsMatch(rel, @"^css/[a-z0-9-]+\.css$");
+
+    /// <summary>The scripts index.html loads, in order, without vendor/.</summary>
+    private static List<string> LoadedScripts(string html) =>
+        Regex.Matches(html, @"<script\b[^>]*\bsrc=""/?([^""]+)""").Select(m => m.Groups[1].Value)
+            .Where(src => !src.StartsWith("vendor/")).ToList();
+
+    /// <summary>The client's own code (js/*.js), in the order index.html loads it.</summary>
+    private static string AppSource(string www)
+    {
+        var html = File.ReadAllText(Path.Combine(www, "index.html"));
+        return string.Join("\n", LoadedScripts(html).Where(IsAppScript)
+            .Select(rel => File.ReadAllText(Path.Combine(www, rel))));
+    }
+
+    [Test]
+    public void WebClient_ClassicScriptsLoadedByIndex_NoModulesNoWorkers()
+    {
+        var www = WwwRoot();
+        var violations = new List<string>();
+        var html = File.ReadAllText(Path.Combine(www, "index.html"));
+        var scripts = LoadedScripts(html);
+        var sheets = Regex.Matches(html, @"<link\b[^>]*rel=""stylesheet""[^>]*href=""/?(?!https?://)([^""]+)""")
+            .Select(m => m.Groups[1].Value).ToList();
+
+        // Script and stylesheet files outside vendor/: the fixed scripts, the client's scripts
+        // and styles, each one loaded by index.html (a file nothing loads is dead or forgotten).
+        foreach (var file in Directory.EnumerateFiles(www, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(www, file).Replace('\\', '/');
+            if (rel.StartsWith("vendor/")) continue;
+            var ext = Path.GetExtension(rel);
+            if (ext != ".js" && ext != ".mjs" && ext != ".css") continue;
+            if (!FixedScripts.Contains(rel) && !IsAppScript(rel) && !IsStylesheet(rel))
+                violations.Add($"{rel}: not a client file; scripts go in js/ (lower-case-name.js), styles in css/");
+            else if (ext == ".css" ? !sheets.Contains(rel) : !scripts.Contains(rel))
+                violations.Add($"{rel}: index.html doesn't load it");
+        }
+
+        // index.html loads only those, as classic scripts, and only files that exist.
+        foreach (var tag in Regex.Matches(html, @"<script\b[^>]*>").Select(m => m.Value))
+            if (tag.Contains("type=\"module\"")) violations.Add($"index.html: {tag} — module scripts are not used; the client's scripts are classic scripts");
+        foreach (var rel in scripts)
+            if (!FixedScripts.Contains(rel) && !IsAppScript(rel)) violations.Add($"index.html: loads {rel}, not one of the client's scripts");
+            else if (!File.Exists(Path.Combine(www, rel))) violations.Add($"index.html: loads {rel}, which doesn't exist");
+        foreach (var rel in sheets)
+            if (!IsStylesheet(rel)) violations.Add($"index.html: stylesheet {rel}; styles go in css/");
+            else if (!File.Exists(Path.Combine(www, rel))) violations.Add($"index.html: stylesheet {rel}, which doesn't exist");
+
+        // The scripts don't import or spawn anything.
+        foreach (var name in scripts.Where(r => File.Exists(Path.Combine(www, r))))
+        {
+            var lines = File.ReadAllLines(Path.Combine(www, name));
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var l = lines[i].TrimStart();
+                if (l.StartsWith("//") || l.StartsWith("*")) continue;
+                if (Regex.IsMatch(l, @"^import\s|^export\s|\bimport\(|\bnew Worker\(|\bimportScripts\("))
+                    violations.Add($"{name}:{i + 1}: {l.Trim()} — no modules or workers; a classic script in js/ shares the page's scope");
+            }
+        }
+
+        Assert.That(violations, Is.Empty, string.Join("\n  ", violations));
+    }
+
+    // ── The wire ──────────────────────────────────────────────────────────
+
+    [Test]
+    public void WebSocket_HostSendsBinaryOnly_TextIsTheCommandFrame()
+    {
+        var hub = Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.RemoteServer", "WebSocketHub.cs");
+        var lines = File.ReadAllLines(hub);
+        var textUses = lines.Select((l, i) => (l, i)).Where(x => x.l.Contains("WebSocketMessageType.Text")).ToList();
+        Assert.That(textUses.Select(x => x.l.Trim()), Is.EqualTo(new[]
+        {
+            "if (res.MessageType != WebSocketMessageType.Text) continue;",
+        }), "WebSocketHub uses WebSocketMessageType.Text somewhere new. Host → client goes out " +
+            "as binary frames encoded by WireCodec (add a DTO in Contracts.cs, encode it in " +
+            "WireCodec.cs, decode it in transport.js); client → host is the one id|arg text frame.");
+
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.RemoteServer"), "*.cs"))
+            if (Path.GetFileName(file) != "WebSocketHub.cs")
+                Assert.That(File.ReadAllText(file), Does.Not.Contain("WebSocketMessageType"),
+                    $"{Path.GetFileName(file)} touches the WebSocket directly; only WebSocketHub does.");
+    }
+
+    [Test]
+    public void Observers_ChangeNothing_ClientAndHostAgree()
+    {
+        var root = RepoRoot();
+        var wiring = File.ReadAllText(Path.Combine(root, "Shared", "AgOpenWeb.RemoteWiring", "RemoteServerWiring.cs"));
+        Assert.That(wiring, Does.Contain("server.IsRestrictedCommand = id => !ObserverIds.Contains(id);"),
+            "Every command needs control except ObserverIds (#397): an observer sees everything " +
+            "and changes nothing. Don't gate by prefix again.");
+
+        var helpers = File.ReadAllText(Path.Combine(root, "Shared", "AgOpenWeb.RemoteWiring", "RemoteServerWiring.Helpers.cs"));
+        var hostBlock = Regex.Match(helpers, @"ObserverIds\s*=\s*new\(\)\s*\{(.*?)\};", RegexOptions.Singleline);
+        Assert.That(hostBlock.Success, "ObserverIds not found in RemoteServerWiring.Helpers.cs");
+        var host = Regex.Matches(hostBlock.Groups[1].Value, @"""([^""]+)""").Select(m => m.Groups[1].Value);
+
+        var app = AppSource(WwwRoot());
+        var clientBlock = Regex.Match(app, @"OBSERVER_IDS\s*=\s*new Set\(\[(.*?)\]\)", RegexOptions.Singleline);
+        Assert.That(clientBlock.Success, "OBSERVER_IDS not found in the client's scripts");
+        var client = Regex.Matches(clientBlock.Groups[1].Value, @"'([^']+)'").Select(m => m.Groups[1].Value);
+
+        // The hub answers these itself, before the gate.
+        var hub = new[] { "control.acquire", "control.release", "control.presence", "diag.ping", "diag.client" };
+        Assert.That(client.OrderBy(x => x), Is.EqualTo(host.Concat(hub).OrderBy(x => x)),
+            "The client's OBSERVER_IDS must be the host's ObserverIds plus the hub's control.* and diag.*.");
+    }
+
+    [Test]
+    public void Credentials_GoOutMasked()
+    {
+        // Every browser on the LAN gets the read frames, signed in or not.
+        var bare = new System.Text.RegularExpressions.Regex(@"\.(Password|AgShareApiKey)\b");
+        // The projectors build the DTOs; WireCodec only encodes what they hold.
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.RemoteServer"), "*Projector.cs"))
+        {
+            foreach (var (line, i) in File.ReadAllLines(file).Select((l, i) => (l, i + 1)))
+                if (bare.IsMatch(line) && !line.Contains("Secrets.Masked(") && !line.Contains("GetHashCode()"))
+                    Assert.Fail($"{Path.GetFileName(file)}:{i} reads a stored credential without Secrets.Masked: " +
+                        $"{line.Trim()}. Send the mask; the wiring takes the mask back as \"unchanged\".");
+        }
+    }
+
+    [Test]
+    public void EveryClientCommand_HasAHostHandler()
+    {
+        var root = RepoRoot();
+        var www = WwwRoot();
+        var app = AppSource(www);
+        var html = File.ReadAllText(Path.Combine(www, "index.html"));
+
+        // Command ids the client can send: literal ids in transport.send(...), data-cmd
+        // attributes in the page and in the scripts' markup, and the hotkey → command table.
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Match m in Regex.Matches(app, @"transport\.send\([^)]*?'([a-z][A-Za-z0-9_.-]*\.[A-Za-z][A-Za-z0-9_.-]*)"))
+            ids.Add(m.Groups[1].Value);
+        foreach (Match m in Regex.Matches(html + app, @"data-cmd=\\?""([a-z][A-Za-z0-9_.-]*\.[A-Za-z][A-Za-z0-9_.-]*)"))
+            ids.Add(m.Groups[1].Value);
+        var hotkeys = Regex.Match(app, @"HOTKEY_TIER1\s*=\s*\{(.*?)\};", RegexOptions.Singleline);
+        if (hotkeys.Success)
+            foreach (Match m in Regex.Matches(hotkeys.Groups[1].Value, @"'([a-z][A-Za-z0-9_.-]*\.[A-Za-z][A-Za-z0-9_.-]*)'"))
+                ids.Add(m.Groups[1].Value);
+        Assert.That(ids.Count, Is.GreaterThan(100), "the extraction found too few command ids; the send() idiom changed?");
+
+        // Handlers on the host: `case "id":` and `"id" => ...` in the wiring, plus the hub's
+        // own control.* ids. config.set is a table of keys with its own switch.
+        var host = string.Concat(Directory.EnumerateFiles(Path.Combine(root, "Shared", "AgOpenWeb.RemoteWiring"), "RemoteServerWiring*.cs")
+            .Select(File.ReadAllText));
+        var hub = File.ReadAllText(Path.Combine(root, "Shared", "AgOpenWeb.RemoteServer", "WebSocketHub.cs"));
+        var handled = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Match m in Regex.Matches(host + hub, @"(?:case\s+""|^\s*"")([A-Za-z0-9_.-]+)""\s*(?::|=>)", RegexOptions.Multiline))
+            handled.Add(m.Groups[1].Value);
+        foreach (Match m in Regex.Matches(host + hub, @"""([A-Za-z0-9_.-]+)""\s*=>"))
+            handled.Add(m.Groups[1].Value);
+
+        var unhandled = ids.Where(id => !handled.Contains(id.Split('|')[0]) && !id.StartsWith("control.")).OrderBy(x => x).ToList();
+        Assert.That(unhandled, Is.Empty,
+            "The client's scripts / index.html send command ids with no handler in RemoteServerWiring. " +
+            "Route them there (a `case` or a `\"id\" => vm.Command` arm); that is the only " +
+            "client → host path:\n  " + string.Join("\n  ", unhandled));
+    }
+
+    // ── Files on disk ─────────────────────────────────────────────────────
+
+    // Every data file name the Shared code writes or reads, by literal. A new name here is a
+    // new on-disk format: add it with the plan or issue that decided it. Field data is one
+    // field.geojson plus the named companions; AgOpenGPS names are import-only.
+    private static readonly HashSet<string> KnownDataFiles = new(StringComparer.Ordinal)
+    {
+        // Field folder (Plans/Completed/FILE_FORMAT_MODERNIZATION_PLAN.md)
+        "field.geojson", "background.png", "contours.geojson", "recorded-paths.geojson", "elevation.csv",
+        "job.json", "screenshot.png", "manifest.json", "doc.kml",
+        "coverage_disp.bin", "coverage_detect.bin",
+        // App data
+        "appsettings.json", "appstate.json", "configuration.json", "runtime_state.json",
+        "active_profile_name.txt", "user_notes.txt", "agshare.txt", "turn_path.json",
+        "TramSystems.json", "TramConfig.json", "HeadlandSegments.json",
+        "window.json", // the desktop window's size, place and maximized state, as AgOpenGPS keeps them (#571)
+        ".AutoSteer.json", ".tool.xml", ".env.xml",
+        // Bug report dump
+        "gps_data_log.csv", "logs.txt", "system_info.txt", "ntrip_rtcm.txt",
+        "ntrip_session.txt", // what the NTRIP connection did and why it failed (Plans/Completed/NTRIP_MAIN_FALLBACK_PLAN.md, Phase 2)
+        "contact.txt", // the reporter's email, maintainers only (#407 follow-up)
+        "device_info.txt", // the device, its networks and USB devices (#922: the dump could not say how the modules were connected)
+        "appsettings_error.txt", "configuration_error.txt", "field_error.txt", "job_error.txt",
+        "logs_error.txt", "save_error.txt", "screenshot_error.txt", "state_error.txt",
+        "turn_path_error.txt", "gps_data_log_error.txt",
+        // AgOpenGPS formats, imported once and deleted
+        "Field.txt", "Boundary.txt", "Sections.txt", "RecPath.txt", "Elevation.txt", "Contour.txt",
+        "TramLines.txt", "TrackLines.txt", "Headlines.txt", "Headland.txt", "Flags.txt",
+        "BackPic.txt", "BackPic.png", "ActiveTrack.txt", "ABLines.txt",
+        "environment.xml", // AgOpenGPS 6.8.2+ Environment/ (AgOpenGpsProfileImport)
+        "DefaultEnvironment.xml", // the same on a fresh 6.8.2+ install, read when there is no environment.xml (as AgOpenGPS Settings.Load)
+    };
+
+    [Test]
+    public void DataFileNames_ComeFromOneList()
+    {
+        var root = RepoRoot();
+        var found = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var project in new[] { "AgOpenWeb.Models", "AgOpenWeb.Services", "AgOpenWeb.ViewModels", "AgOpenWeb.RemoteServer", "AgOpenWeb.RemoteWiring" })
+            foreach (var file in SourceFiles(Path.Combine(root, "Shared", project)))
+            {
+                var lines = File.ReadAllLines(file);
+                for (int i = 0; i < lines.Length; i++)
+                    foreach (Match m in Regex.Matches(lines[i], @"""([A-Za-z0-9_.-]+\.(?:json|geojson|csv|txt|png|bin|zip|log|kml|xml))"""))
+                        found.TryAdd(m.Groups[1].Value, $"{Path.GetFileName(file)}:{i + 1}");
+            }
+        var unknown = found.Where(kv => !KnownDataFiles.Contains(kv.Key)).Select(kv => $"{kv.Key}  ({kv.Value})").ToList();
+        Assert.That(unknown, Is.Empty,
+            "New on-disk file names. Field data belongs in field.geojson (or one of its named " +
+            "companions); if a new file is really needed, add it to KnownDataFiles with the " +
+            "decision that introduced it:\n  " + string.Join("\n  ", unknown));
+    }
+
+    // ── One JSON library ──────────────────────────────────────────────────
+
+    [Test]
+    public void Newtonsoft_StaysInsideAgShare()
+    {
+        var root = RepoRoot();
+        var violations = new List<string>();
+        foreach (var project in new[] { "AgOpenWeb.Models", "AgOpenWeb.Services", "AgOpenWeb.ViewModels", "AgOpenWeb.RemoteServer", "AgOpenWeb.RemoteWiring" })
+            foreach (var file in SourceFiles(Path.Combine(root, "Shared", project)))
+            {
+                var rel = Path.GetRelativePath(root, file).Replace('\\', '/');
+                if (rel.StartsWith("Shared/AgOpenWeb.Services/AgShare/")) continue;
+                if (Regex.IsMatch(File.ReadAllText(file), @"\bNewtonsoft\b"))
+                    violations.Add(rel);
+            }
+        Assert.That(violations, Is.Empty,
+            "Newtonsoft.Json outside the AgShare client. New code uses System.Text.Json " +
+            "(see DebugDumpService / the GeoJson services):\n  " + string.Join("\n  ", violations));
+    }
+
+    // ── No timers of their own in the wiring ──────────────────────────────
+
+    [Test]
+    public void RemoteWiring_CreatesNoTimersOrThreads()
+    {
+        var root = RepoRoot();
+        var pattern = new Regex(@"\bnew\s+(?:System\.Threading\.)?Timer\s*\(|\bPeriodicTimer\s*\(|\bnew\s+Thread\s*\(|\bDispatcherTimer\b");
+        var violations = new List<string>();
+        foreach (var file in SourceFiles(Path.Combine(root, "Shared", "AgOpenWeb.RemoteWiring")))
+        {
+            var lines = File.ReadAllLines(file);
+            for (int i = 0; i < lines.Length; i++)
+                if (pattern.IsMatch(lines[i]) && !lines[i].TrimStart().StartsWith("//"))
+                    violations.Add($"{Path.GetFileName(file)}:{i + 1}  {lines[i].Trim()}");
+        }
+        Assert.That(violations, Is.Empty,
+            "RemoteWiring created a timer or thread. Periodic host work runs on the host loop " +
+            "via IUiTimerFactory in MainViewModel; the client feed is MapBroadcaster's single " +
+            "PeriodicTimer. Nothing else should tick on its own:\n  " + string.Join("\n  ", violations));
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+
+    private static IEnumerable<string> SourceFiles(string dir) =>
+        Directory.Exists(dir)
+            ? Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories)
+                .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
+                         && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
+            : Enumerable.Empty<string>();
+
+    // ── Geometry ──────────────────────────────────────────────────────────
+
+    [Test]
+    public void PointInPolygon_HasOneImplementation()
+    {
+        // A ray cast flips a flag at each edge it crosses, worked out from eastings and
+        // northings. Copies used to differ on points on an edge, missed speed-ups and were
+        // invisible to the hot-path budgets.
+        var allowed = new[] { "GeometryMath.cs", "PolygonSlabIndex.cs" };
+        var toggle = new Regex(@"\b(\w+)\s*=\s*!\1\s*;");
+        var root = RepoRoot();
+        var offenders = new List<string>();
+        foreach (var dir in new[] { "Shared", "Platforms" })
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(root, dir), "*.cs", SearchOption.AllDirectories))
+        {
+            if (file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
+                || file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+                || allowed.Contains(Path.GetFileName(file)))
+                continue;
+            var lines = File.ReadAllLines(file);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (!toggle.IsMatch(lines[i])) continue;
+                var before = string.Join(" ", lines.Skip(Math.Max(0, i - 6)).Take(Math.Min(6, i))).Replace("//", "");
+                if ((before.Contains("Easting") || before.Contains("Northing")) && before.Contains('/'))
+                    offenders.Add($"{Path.GetRelativePath(root, file)}:{i + 1}");
+            }
+        }
+        Assert.That(offenders, Is.Empty,
+            "Point-in-polygon tests go through GeometryMath.IsPointInPolygon (or a PolygonSlabIndex for one " +
+            "tested every tick, as BoundaryPolygon does), so every caller uses one edge rule and is counted by " +
+            "the hot-path budgets. Hand-written ray casts: " + string.Join(", ", offenders));
+    }
+
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "AgOpenWeb.sln")))
+            dir = dir.Parent;
+        Assert.That(dir, Is.Not.Null, "Could not locate repo root (AgOpenWeb.sln) from test base dir.");
+        return dir!.FullName;
+    }
+}

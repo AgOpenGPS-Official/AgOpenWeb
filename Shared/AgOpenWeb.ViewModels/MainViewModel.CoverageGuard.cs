@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Windows.Input;
@@ -73,7 +72,11 @@ public partial class MainViewModel
             }
             catch (Exception ex)
             {
+                // Going on would close with no job and drop the very coverage the operator chose
+                // to keep: stay in the field instead.
                 _logger.LogError(ex, "[CoverageGuard] Failed to create job for unsaved coverage");
+                ReportFailure("Couldn't make a job for the coverage, so the field stays open: " + ex.Message);
+                return;
             }
 
             proceed?.Invoke();

@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 
@@ -34,6 +22,16 @@ sealed class Program
             return;
         }
 
+        // One copy per computer. A second would share the module ports (ReuseAddress), talk
+        // to the steering board, then crash on :5174; stop it before it loads anything.
+        var single = SingleInstance.TryAcquire();
+        if (single == null)
+        {
+            Console.Error.WriteLine("AgOpenWeb is already running on this computer. Open it at http://localhost:5174.");
+            Environment.Exit(1);
+            return;
+        }
+
         // Mode selection. The backend is identical in both modes; only how it's hosted differs.
         // The UI is always the browser/WebView at http://<host>:5174 — there is no native UI.
         //   --headless → display-less daemon (force; systemd / Windows Service).
@@ -48,5 +46,6 @@ sealed class Program
             Launcher.LauncherEntry.Run(args);
         else
             HeadlessHost.RunAsync(args).GetAwaiter().GetResult();
+        GC.KeepAlive(single);
     }
 }

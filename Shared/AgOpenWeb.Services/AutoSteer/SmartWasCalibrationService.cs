@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -55,7 +43,6 @@ public sealed class SmartWasCalibrationService : ISmartWasCalibrationService
     private const double MIN_VALID_CONFIDENCE = 40.0;
 
     private readonly IAutoSteerService _autoSteerService;
-    private readonly ApplicationState _appState;
     private readonly ConfigurationStore _configStore;
 
     private readonly List<double> _history = new(MAX_SAMPLES + 1);
@@ -69,10 +56,9 @@ public sealed class SmartWasCalibrationService : ISmartWasCalibrationService
     private bool _hasValidCalibration;
     private bool _isCollecting;
 
-    public SmartWasCalibrationService(IAutoSteerService autoSteerService, ApplicationState appState, ConfigurationStore configStore)
+    public SmartWasCalibrationService(IAutoSteerService autoSteerService, ConfigurationStore configStore)
     {
         _autoSteerService = autoSteerService;
-        _appState = appState;
         _configStore = configStore;
     }
 
@@ -113,16 +99,15 @@ public sealed class SmartWasCalibrationService : ISmartWasCalibrationService
         SnapshotChanged?.Invoke(this, snap);
     }
 
-    public void AddSample(double steerAngleDegrees)
+    public void AddSample(double steerAngleDegrees, double speedMps, double crossTrackErrorMeters)
     {
-        // Outside-lock fast checks. ReadonlyState reads from singletons —
-        // these can race but each is a single-field read; worst case the
-        // sample is rejected when it shouldn't have been (or vice-versa)
-        // for one frame, which is harmless in a 200-sample average.
+        // Outside-lock fast checks. Speed and cross-track error are the caller's
+        // own receive-thread values; IsCollecting / IsEngaged are single-field
+        // reads that can race by one sample, which is harmless in a 200-sample average.
         if (!_isCollecting) return;
         if (!_autoSteerService.IsEngaged) return;
-        if (_appState.Vehicle.Speed < MIN_SPEED_MPS) return;
-        if (Math.Abs(_appState.Guidance.CrossTrackError) > MAX_DIST_OFF_M) return;
+        if (speedMps < MIN_SPEED_MPS) return;
+        if (Math.Abs(crossTrackErrorMeters) > MAX_DIST_OFF_M) return;
         if (Math.Abs(steerAngleDegrees) > MAX_ANGLE_DEG) return;
 
         // No Invert WAS flip here: the module has already applied the inversion to the

@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using AgOpenWeb.Models.Base;
 using System;
@@ -39,6 +27,14 @@ namespace AgOpenWeb.Models.YouTurn
         /// </summary>
         public Func<Vec3, int> IsPointInsideTurnArea { get; set; }
 
+        /// <summary>
+        /// True where a pass may run outside the turn line without ending there: inside the field's
+        /// outer boundary (the test the tractor's own pass gets in PassEnds.Find). The next pass's
+        /// end is found with it too. Null when the field is not known: every point outside the
+        /// turn line is then an end.
+        /// </summary>
+        public Func<Vec3, bool>? IsPointDrivenThrough { get; set; }
+
         // Guidance line data
         /// <summary>
         /// For curves: List of curve points.
@@ -50,6 +46,15 @@ namespace AgOpenWeb.Models.YouTurn
         /// Current location index in the guidance points (for curves).
         /// </summary>
         public int CurrentLocationIndex { get; set; }
+
+        /// <summary>
+        /// The pass's first point outside the turn area on the plan's first try, when a turn is tried
+        /// again with the turn lines moved in (the clearance from a hard fence, a landing on a bend):
+        /// the turn is then seated back from that end, at the moved turn line's crossing nearest to
+        /// it. Null on the first try. Moved in, the fence's turn line can cross the pass much earlier
+        /// where the fence comes in beside it, and the turn was made there.
+        /// </summary>
+        public int? TurnLineEndIndex { get; set; }
 
         /// <summary>
         /// For curves: the BASE (path 0) reference curve points with headings.
@@ -88,11 +93,18 @@ namespace AgOpenWeb.Models.YouTurn
         public int TurnStartOffset { get; set; }  // How far before/after boundary to start turn
 
         /// <summary>
-        /// Pre-calculated turn offset in meters (perpendicular distance to next track).
-        /// When set (> 0), this value is used directly instead of calculating from RowSkipsWidth.
+        /// Pre-calculated turn offset in meters: the tractor's sideways move to the next line,
+        /// signed in the turn direction (<see cref="IsTurnLeft"/>), as AgOpenGPS's turnOffset.
+        /// Negative when a tool offset over half the pass spacing puts the tractor's next line on
+        /// the other side; the arc then goes round the other way (<see cref="ArcTurnLeft"/>).
+        /// When set (non-zero), this value is used instead of calculating from RowSkipsWidth.
         /// This ensures the U-turn arc matches the cyan next-track line exactly.
         /// </summary>
         public double TurnOffset { get; set; }
+
+        /// <summary>The side the arc goes to: <see cref="IsTurnLeft"/> (which also picks the
+        /// next pass), the other side when <see cref="TurnOffset"/> is negative.</summary>
+        public bool ArcTurnLeft => IsTurnLeft ^ (TurnOffset < 0);
 
         /// <summary>
         /// How many paths away from current line (negative or positive).
@@ -103,6 +115,10 @@ namespace AgOpenWeb.Models.YouTurn
         /// Nudge distance for track mode.
         /// </summary>
         public double NudgeDistance { get; set; }
+
+        /// <summary>Reference line to pass 0's centre: half a width, or 0 for a
+        /// boundary-follow track (PassGeometry.EdgeOffset).</summary>
+        public double PassEdgeOffset { get; set; }
 
         /// <summary>
         /// Track mode (for determining if this is a special mode like waterPivot).

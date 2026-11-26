@@ -1,0 +1,7 @@
+# GitHub's generated release notes (build-deploy-bundles.yml, numbered releases):
+# every merged PR since the previous version tag, minus the bots' own PRs.
+changelog:
+  exclude:
+    authors:
+      - weblate
+      - dependabot

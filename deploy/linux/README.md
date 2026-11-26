@@ -3,7 +3,7 @@
 Run the **headless** AgOpenWeb host as a daemon on a cab-PC / one-box SBC. The host
 has no native UI; operators use a browser (remote tablet, or a local chromium-kiosk
 pointed at `http://localhost:5174`). Background and rationale:
-[`Plans/DEPLOYMENT_PATTERNS.md`](../../Plans/DEPLOYMENT_PATTERNS.md).
+[`Plans/Ideas/DEPLOYMENT_PATTERNS.md`](../../Plans/Ideas/DEPLOYMENT_PATTERNS.md).
 
 ## Install
 
@@ -41,7 +41,8 @@ Browse to `http://<box-ip>:5174`.
   watchdog via `sd_notify` (`SystemdWatchdogService`); a wedged host is killed and
   restarted.
 - **`Restart=always`** — the brain comes back after a crash.
-- **`After=network-online.target`** — modules/NTRIP sockets have a real network.
+- **No wait for the network** — the host starts without one (it would cost ~16 s of boot
+  on Wi-Fi); modules are found and NTRIP connects once a network comes up (#385).
 - **journald logging**, dedicated unprivileged user, and moderate hardening
   (tighten per site — see comments in `agopenweb.service`).
 
@@ -73,7 +74,7 @@ point `AGOPENWEB_DATA` at it.
   manually (or `libicu-dev` / `icu-devtools` both pull it in).
 - The build is **not trimmed** — the steer wizard projects step ViewModels by
   reflection, which trimming would break. Self-contained-untrimmed is ~160 MB
-  (bundles the .NET runtime; the unused Avalonia desktop natives ride along but are
+  (bundles the .NET runtime; the launcher's Photino native library rides along but is
   never loaded on the headless path).
 - A local kiosk display is a separate concern: install a minimal X/Wayland +
   `chromium --kiosk http://localhost:5174` as its own unit. The AgOpenWeb host

@@ -1,0 +1,83 @@
+# Keep the translators' length limits on Weblate current: after a merge that changes the web
+# client, measure every label's room again and give each English source string on Weblate its
+# max-length flag (Tools/i18n-limits.py, Docs/TRANSLATIONS.md). Without this, a label added
+# since the last measurement has no flag, and translators get no warning for it.
+name: Label limits
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'Shared/AgOpenWeb.RemoteServer/wwwroot/**'
+      - 'Tools/i18n-limits.py'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.401'
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  label-limits:
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright/python:v1.64.0-noble
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # Measured with DejaVu Sans, wider than the tablets' Roboto (which translations-fit
+      # checks with), so the character limits keep some room, as the macOS font did.
+      - name: Install Playwright and DejaVu Sans
+        run: |
+          apt-get update -qq && apt-get install -y -qq fonts-dejavu-core libicu74 curl
+          pip install playwright==1.64.0
+          mkdir -p ~/.config/fontconfig
+          cat > ~/.config/fontconfig/fonts.conf <<'EOF'
+          <?xml version="1.0"?>
+          <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+          <fontconfig>
+            <alias binding="strong"><family>system-ui</family><prefer><family>DejaVu Sans</family></prefer></alias>
+            <alias binding="strong"><family>sans-serif</family><prefer><family>DejaVu Sans</family></prefer></alias>
+          </fontconfig>
+          EOF
+          fc-cache -f
+
+      - name: Build Desktop
+        run: dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -p:DesktopOnly=true
+
+      # One step: the headless app lives only as long as the step that started it.
+      - name: Measure label limits
+        shell: bash
+        run: |
+          AGOPENWEB_DATA="$RUNNER_TEMP/aow" Platforms/AgOpenWeb.Desktop/bin/Debug/net10.0/AgOpenWeb.Desktop --headless > "$RUNNER_TEMP/app.log" 2>&1 &
+          for i in $(seq 60); do curl -sf -o /dev/null http://localhost:5174/ && break; sleep 1; done
+          curl -sf -o /dev/null http://localhost:5174/ || { cat "$RUNNER_TEMP/app.log"; exit 1; }
+          python3 Tools/i18n-limits.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: i18n-limits
+          path: Tools/i18n-limits.json
+
+      # Needs the repository secret WEBLATE_TOKEN (a Weblate API token with project admin).
+      - name: Push the limits to Weblate
+        env:
+          WEBLATE_TOKEN: ${{ secrets.WEBLATE_TOKEN }}
+        shell: bash
+        run: |
+          if [ -z "$WEBLATE_TOKEN" ]; then
+            echo "::warning::No WEBLATE_TOKEN secret: the limits were measured but not pushed to Weblate."
+            exit 0
+          fi
+          python3 Tools/i18n-limits.py --push

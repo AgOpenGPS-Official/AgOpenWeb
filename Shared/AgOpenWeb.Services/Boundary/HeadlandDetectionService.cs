@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Headland;
@@ -27,6 +15,9 @@ namespace AgOpenWeb.Services.Headland
     /// </summary>
     public class HeadlandDetectionService
     {
+        // The headland line's strip index for the proximity's inside test (every GPS cycle).
+        private readonly PolygonIndexCache _headlandIndex = new();
+
         /// <summary>
         /// Perform headland detection for tool sections and proximity.
         /// </summary>
@@ -183,7 +174,7 @@ namespace AgOpenWeb.Services.Headland
             output.HeadlandDistance = distance;
 
             // Check if vehicle is inside the headland
-            bool isInside = GeometryMath.IsPointInPolygon(input.Boundaries[0].HeadlandLine, vehiclePos);
+            bool isInside = _headlandIndex.Contains(input.Boundaries[0].HeadlandLine, vehiclePos.Easting, vehiclePos.Northing);
 
             // Calculate angle to nearest point
             double dx = nearestVal.Easting - vehiclePos.Easting;

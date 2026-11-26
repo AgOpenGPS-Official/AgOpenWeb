@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -68,6 +56,12 @@ public struct VehicleState
     /// <summary>Roll angle in degrees (positive = right side down)</summary>
     public double Roll;
 
+    /// <summary>
+    /// True when the latest GPS sentence carried roll. Without it, roll comes from the
+    /// steer module's IMU (PGN 253) or an external IMU (PGN 211), as in AgOpenGPS (#353).
+    /// </summary>
+    public bool RollValid;
+
     /// <summary>Pitch angle in degrees (positive = nose up)</summary>
     public double Pitch;
 
@@ -82,6 +76,15 @@ public struct VehicleState
     /// Only populated for PANDA sentences with a valid IMU; PAOGI leaves it 0.
     /// </summary>
     public double ImuHeading;
+
+    /// <summary>
+    /// True when <see cref="Heading"/> is a dual-antenna heading ($PAOGI). False for
+    /// $PANDA, where <see cref="Heading"/> is only seeded from the IMU (#157).
+    /// </summary>
+    public bool HasDualHeading;
+
+    /// <summary>Sentence the latest fix was parsed from (#157).</summary>
+    public GpsSentenceType SentenceType;
 
     // ═══════════════════════════════════════════════════════════════════════
     // Local Coordinates (updated after GPS parse, using LocalPlane)
@@ -125,6 +128,14 @@ public struct VehicleState
     /// reverse off, or a direction change being worked out. PGN 254 status goes to 0
     /// while AutoSteer stays engaged (AgOpenGPS, #125).</summary>
     public bool IsSteerPaused;
+
+    /// <summary>The internal simulator is the GPS source and may not steer the module: PGN 254
+    /// status stays 0. The steer module is on the network while the simulator runs, and a
+    /// simulated speed with status 1 made it open the lock valve and drive the steering of a
+    /// parked tractor. AutoSteer stays engaged in the app, so the simulator follows the line.
+    /// False with the simulator off, and when the operator let the simulator move the steering
+    /// for a bench test. Free Drive, the operator's own test of the steering, is not held back.</summary>
+    public bool SimulatorHoldsSteering;
 
     // ═══════════════════════════════════════════════════════════════════════
     // Section Control (updated by section control logic)

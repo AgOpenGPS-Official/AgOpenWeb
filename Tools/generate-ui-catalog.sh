@@ -1,4 +1,8 @@
 #!/bin/bash
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 # Generate UI screenshot catalog PDF
 # Usage: ./generate-ui-catalog.sh [output.pdf]
 #

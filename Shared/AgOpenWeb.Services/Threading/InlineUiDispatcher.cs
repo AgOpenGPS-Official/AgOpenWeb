@@ -1,10 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Threading.Tasks;
@@ -16,7 +12,7 @@ namespace AgOpenWeb.Services.Threading;
 /// Framework-free <see cref="IUiDispatcher"/> that runs callbacks synchronously
 /// on the calling thread. Intended for unit tests and headless hosts that have
 /// no separate UI thread — there is nothing to marshal to, so everything is
-/// "already on the UI thread". See Plans/CONFIG_STATE_AUDIT.md §11.
+/// "already on the UI thread". See Plans/Completed/CONFIG_STATE_AUDIT.md §11.
 /// </summary>
 public sealed class InlineUiDispatcher : IUiDispatcher
 {

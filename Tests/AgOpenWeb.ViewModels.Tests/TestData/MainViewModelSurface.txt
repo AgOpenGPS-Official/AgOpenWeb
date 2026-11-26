@@ -1,0 +1,361 @@
+# The MainViewModel members the rest of the app uses, with their signatures.
+# Made by MainViewModelSurfaceTests (AGOPENWEB_UPDATE_SURFACE=1); do not edit by hand.
+event DriveInPickRequested : System.Action<System.Collections.Generic.IReadOnlyList<AgOpenWeb.Models.NearbyField>>
+event FailureReported : System.Action<System.String>
+event NtripNoticeReported : System.Action<System.String>
+field SimulatorGivesWayMessage : System.String
+field SimulatorRefusedMessage : System.String
+field SmoothCountMax : System.Int32
+method ActivateTrackAt(System.Int32) : System.Void
+method AnswerPrompt(System.Int32, System.Boolean, System.Boolean) : System.Boolean
+method ApplyCapturedBackground(System.String, System.Double, System.Double, System.Double, System.Double, System.Double, System.Double, System.Double, System.Double) : System.Void
+method ApplyGpsCycleResult(AgOpenWeb.Models.State.GpsCycleResult) : System.Void
+method BuildHeadlandFromSegments() : System.Void
+method CapDisplayResolution(System.Double) : System.Void
+method ClearYouTurnState() : System.Void
+method CloseFieldAsync() : System.Threading.Tasks.Task
+method ComputeSegmentOffset(AgOpenWeb.Models.Headland.HeadlandSegment) : System.Void
+method ConnectNewNtripProfileAsync(AgOpenWeb.Models.Ntrip.NtripProfile) : System.Threading.Tasks.Task
+method ConnectToNtripAsync() : System.Threading.Tasks.Task
+method CreateAPlusLine(System.Double?) : System.Void
+method CreateLatLonABLine(System.Double, System.Double, System.Double, System.Double) : System.Void
+method CreateLatLonHeadingLine(System.Double, System.Double, System.Double) : System.Void
+method CreateLatLonPivot(System.Double, System.Double) : System.Void
+method DataQualityReport() : System.String
+method DeleteAllFlagsRemote() : System.Void
+method DeleteAllTracksConfirmed() : System.Void
+method DeleteAppliedAreaConfirmed() : System.Void
+method DeleteFlagAt(System.Int32) : System.Void
+method DeleteTrackAt(System.Int32) : System.Void
+method DriveInOpen(System.String) : System.Void
+method EndRemoteSteerWizard() : System.Void
+method EnsureAutoSteerConfigViewModel() : System.Void
+method EnsureRemoteStartWorkSession() : AgOpenWeb.ViewModels.StartWorkSessionDialogViewModel
+method EnsureSmartWasViewModel() : System.Void
+method GetBoundaryImageryBounds(System.Collections.Generic.IReadOnlyList<System.ValueTuple<System.Double, System.Double>>) : System.ValueTuple<System.Double, System.Double, System.Double, System.Double, System.Double, System.Double, System.Double, System.ValueTuple<System.Double>>?
+method GetHeadlandSegmentEditLine(AgOpenWeb.Models.Headland.HeadlandSegment) : System.Collections.Generic.List<AgOpenWeb.Models.Base.Vec3>
+method OffsetFixSet(System.Double, System.Double) : System.Void
+method OnBrowserControlEnded(System.String, System.Boolean) : System.Void
+method OnTrackVisibilityChanged() : System.Void
+method OpenFieldAsync(System.String, System.String) : System.Threading.Tasks.Task
+method OpenFieldOnlyAsync(System.String, System.String) : System.Threading.Tasks.Task
+method OuterBoundaryPoints() : System.Collections.Generic.IReadOnlyList<System.ValueTuple<System.Double, System.Double>>
+method PlaceFlagAtWorldPosition(System.Double, System.Double, AgOpenWeb.Models.FlagColor?) : System.Void
+method ReconnectNtripIfConnectedAsync(AgOpenWeb.Models.Ntrip.NtripProfile, AgOpenWeb.Models.Ntrip.NtripProfile) : System.Threading.Tasks.Task
+method RefreshBoundaryList(System.Boolean) : System.Void
+method RemoteAddTramSystem() : System.Void
+method RemoteCreateBoundaryCurveSegment(System.Double, System.Double, System.Double, System.Double, AgOpenWeb.Models.Base.Vec2?) : System.Void
+method RemoteCreateBoundaryFromMapPoints(System.Collections.Generic.IReadOnlyList<System.ValueTuple<System.Double, System.Double>>) : System.Void
+method RemoteCreateFromExisting(System.String, System.String, System.Boolean, System.Boolean, System.Boolean, System.Boolean) : System.Void
+method RemoteCreateFromIsoXml(System.String, System.String) : System.Void
+method RemoteCreateFromKml(System.String, System.String) : System.Void
+method RemoteCreateHeadlandFromMapPoints(System.Boolean, System.Double, System.Double, System.Double, System.Double, System.Double) : System.Void
+method RemoteCreateHeadlandWholeBoundary(System.Double) : System.Void
+method RemoteDeleteAllHeadland() : System.Void
+method RemoteDeleteHeadlandAt(System.Int32) : System.Void
+method RemoteDeleteTramSystemAt(System.Int32) : System.Void
+method RemoteImportKmlBoundary(System.String) : System.Void
+method RemoteRenameHeadlandAt(System.Int32, System.String) : System.Void
+method RemoteSaveHeadlandEdit(System.Int32, System.Double, System.Double, System.Double, System.Double) : System.Void
+method RemoteSaveTrackEdit(System.Int32, System.Collections.Generic.List<System.ValueTuple<System.Double, System.Double>>) : System.Void
+method RemoteSetHeadlandOffsetAt(System.Int32, System.Double) : System.Void
+method RemoteSetTramField(System.Int32, System.String, System.String) : System.Void
+method RenameFlagAt(System.Int32, System.String) : System.Void
+method RenameTrackAt(System.Int32, System.String) : System.Void
+method ReportFailure(System.String) : System.Void
+method ResetTrip() : System.Void
+method RestoreDefaultNtripProfileAsync() : System.Threading.Tasks.Task
+method SaveOpenFieldForExit(System.TimeSpan) : System.Boolean
+method SaveTracksToFile() : System.Void
+method SaveTracksToFile(System.Boolean) : System.Void
+method SelectTrackAt(System.Int32) : System.Void
+method SetFlagColorAt(System.Int32, AgOpenWeb.Models.FlagColor) : System.Void
+method SetSimulatorCoordinates(System.Double, System.Double) : System.Void
+method ShowConfirmationDialog(System.String, System.String, System.Action) : System.Void
+method ShowConfirmationDialog(System.String, System.String, System.String, System.Boolean, System.Action<System.Boolean>) : System.Void
+method ShowConfirmationDialog(System.String, System.String, System.String, System.String, System.Action) : System.Void
+method ShowErrorDialog(System.String, System.String) : System.Void
+method StartRemoteSteerWizard() : System.Void
+method StopBackgroundLoops() : System.Void
+method SwapTrackABAt(System.Int32) : System.Void
+method SwitchNtripServiceAsync(AgOpenWeb.Services.Interfaces.NtripService) : System.Threading.Tasks.Task
+method TakeControlLostNotice() : System.String
+method ToggleUTurnDirection() : System.Void
+method ToggleZone(System.Int32) : System.Void
+method TriggerManualYouTurnLeft() : System.Void
+method TriggerManualYouTurnRight() : System.Void
+method TryShowUnsavedCoverageGuard(System.Action) : System.Boolean
+method UseNtripProfileAsync(System.String) : System.Threading.Tasks.Task
+property ActiveField : AgOpenWeb.Models.Field { get; set; }
+property ActiveFieldName : System.String { get; }
+property AddBoundaryPointCommand : System.Windows.Input.ICommand { get; }
+property AutoSteerConfigViewModel : AgOpenWeb.ViewModels.AutoSteerConfigViewModel { get; set; }
+property AvailableFields : System.Collections.ObjectModel.ObservableCollection<AgOpenWeb.ViewModels.FieldSelectionItem> { get; }
+property AvailableRecFiles : System.Collections.ObjectModel.ObservableCollection<System.String> { get; }
+property BatteryLevel : System.Double { get; }
+property BatteryStatus : AgOpenWeb.Models.BatteryStatus { get; }
+property BoundaryAreaHectares : System.Double { get; }
+property BoundaryItems : System.Collections.Generic.IReadOnlyList<AgOpenWeb.ViewModels.BoundaryListItem> { get; }
+property BoundaryOffset : System.Double { get; set; }
+property BoundaryPointCount : System.Int32 { get; }
+property BugReportAttachments : System.Collections.ObjectModel.ObservableCollection<AgOpenWeb.ViewModels.BugReportAttachment> { get; }
+property BuildFromTracksCommand : System.Windows.Input.ICommand { get; }
+property BuildTramLinesCommand : System.Windows.Input.ICommand { get; }
+property CameraMode : AgOpenWeb.Models.CameraMode { get; set; }
+property CameraPitch : System.Double { get; set; }
+property CancelABCreationCommand : System.Windows.Input.ICommand { get; }
+property CancelUnsavedCoverageCommand : System.Windows.Input.ICommand { get; }
+property ChangeMappingColorCommand : System.Windows.Input.ICommand { get; }
+property ClearBoundaryCommand : System.Windows.Input.ICommand { get; }
+property CloseFieldCommand : System.Windows.Input.ICommand { get; }
+property ConfirmIsoXmlImportDialogCommand : System.Windows.Input.ICommand { get; }
+property ConfirmNewFieldDialogCommand : System.Windows.Input.ICommand { get; }
+property ConfirmationDialogCancelLabel : System.String { get; set; }
+property ConfirmationDialogCheckboxChecked : System.Boolean { get; set; }
+property ConfirmationDialogCheckboxLabel : System.String { get; set; }
+property ConfirmationDialogConfirmLabel : System.String { get; set; }
+property ConfirmationDialogMessage : System.String { get; set; }
+property ConfirmationDialogTitle : System.String { get; set; }
+property ContourStrips : System.Collections.ObjectModel.ObservableCollection<AgOpenWeb.Models.Track.Track> { get; }
+property ControlLostNotice : System.String { get; }
+property CreateCurveFromBoundaryCommand : System.Windows.Input.ICommand { get; }
+property CreateTrackFromBoundaryCommand : System.Windows.Input.ICommand { get; }
+property CreateTracksFromAllEdgesCommand : System.Windows.Input.ICommand { get; }
+property CrossTrackError : System.Double { get; set; }
+property CurrentABCreationMode : AgOpenWeb.Models.ABCreationMode { get; set; }
+property CurrentABPointStep : AgOpenWeb.Models.ABPointStep { get; set; }
+property CurrentBoundary : AgOpenWeb.Models.Boundary { get; }
+property CurrentFieldName : System.String { get; }
+property CurrentHeadlandLine : System.Collections.Generic.List<AgOpenWeb.Models.Base.Vec3> { get; set; }
+property CurrentHeadlandLineForPreview : System.Collections.Generic.IReadOnlyList<AgOpenWeb.Models.Base.Vec3> { get; }
+property CurrentJobTaskName : System.String { get; }
+property CurrentTime : System.String { get; }
+property CycleABLinesBackCommand : System.Windows.Input.ICommand { get; }
+property CycleABLinesCommand : System.Windows.Input.ICommand { get; }
+property CycleDisplayResolutionCommand : System.Windows.Input.ICommand { get; }
+property CycleResumeModeCommand : System.Windows.Input.ICommand { get; }
+property CycleUTurnSkipRowsCommand : System.Windows.Input.ICommand { get; }
+property DataQuality : System.Collections.Generic.IReadOnlyList<AgOpenWeb.Services.DataQuality.DataReading> { get; }
+property DeleteBoundaryCommand : System.Windows.Input.ICommand { get; }
+property DeleteContourTrackCommand : System.Windows.Input.ICommand { get; }
+property DeleteContoursCommand : System.Windows.Input.ICommand { get; }
+property DeleteRecordedPathCommand : System.Windows.Input.ICommand { get; }
+property DiscardCoverageAndCloseCommand : System.Windows.Input.ICommand { get; }
+property Display : AgOpenWeb.Models.Configuration.DisplayConfig { get; }
+property DrawMapInnerBoundaryCommand : System.Windows.Input.ICommand { get; }
+property DriveAroundFieldCommand : System.Windows.Input.ICommand { get; }
+property DriveAroundInnerBoundaryCommand : System.Windows.Input.ICommand { get; }
+property DriveInCommand : System.Windows.Input.ICommand { get; }
+property Easting : System.Double { get; set; }
+property ErrorDialogMessage : System.String { get; set; }
+property ErrorDialogTitle : System.String { get; set; }
+property ExtendTrackACommand : System.Windows.Input.ICommand { get; }
+property ExtendTrackBCommand : System.Windows.Input.ICommand { get; }
+property FieldBoundaryAreaSqM : System.Double { get; }
+property FineNudgeLeftCommand : System.Windows.Input.ICommand { get; }
+property FineNudgeRightCommand : System.Windows.Input.ICommand { get; }
+property FinishCurveRecordingCommand : System.Windows.Input.ICommand { get; }
+property FinishDrawCurveCommand : System.Windows.Input.ICommand { get; }
+property FixQuality : System.String { get; set; }
+property Flags : System.Collections.ObjectModel.ObservableCollection<AgOpenWeb.Models.Flag> { get; }
+property GpsToPgnLatencyMs : System.Double { get; set; }
+property HalfToolNudgeLeftCommand : System.Windows.Input.ICommand { get; }
+property HalfToolNudgeRightCommand : System.Windows.Input.ICommand { get; }
+property HasActiveTrack : System.Boolean { get; set; }
+property HasBoundary : System.Boolean { get; set; }
+property HasHeadland : System.Boolean { get; set; }
+property HasUnsavedRecordedPath : System.Boolean { get; set; }
+property Heading : System.Double { get; set; }
+property HeadlandSegments : System.Collections.ObjectModel.ObservableCollection<AgOpenWeb.Models.Headland.HeadlandSegment> { get; }
+property HitchEasting : System.Double { get; set; }
+property HitchNorthing : System.Double { get; set; }
+property ImportKmlBoundaryCommand : System.Windows.Input.ICommand { get; }
+property ImportTracksFromFieldCommand : System.Windows.Input.ICommand { get; }
+property Is2DMode : System.Boolean { get; set; }
+property IsActiveTrackClosed : System.Boolean { get; }
+property IsAutoSteerAvailable : System.Boolean { get; set; }
+property IsAutoSteerDataOk : System.Boolean { get; set; }
+property IsAutoSteerEngaged : System.Boolean { get; set; }
+property IsAutoTrackEnabled : System.Boolean { get; set; }
+property IsBoundaryPlayerPanelVisible : System.Boolean { get; set; }
+property IsBoundaryRecording : System.Boolean { get; set; }
+property IsBoundarySectionControlOn : System.Boolean { get; set; }
+property IsContourModeOn : System.Boolean { get; set; }
+property IsDayMode : System.Boolean { get; set; }
+property IsDrawAtPivot : System.Boolean { get; set; }
+property IsDrawRightSide : System.Boolean { get; set; }
+property IsFieldOpen : System.Boolean { get; set; }
+property IsGpsDataOk : System.Boolean { get; set; }
+property IsHeadlandOn : System.Boolean { get; set; }
+property IsImuDataOk : System.Boolean { get; set; }
+property IsInnerBoundaryMode : System.Boolean { get; }
+property IsMachineDataOk : System.Boolean { get; set; }
+property IsManualSectionMode : System.Boolean { get; set; }
+property IsNorthUp : System.Boolean { get; set; }
+property IsNtripConnected : System.Boolean { get; set; }
+property IsPromptPending : System.Boolean { get; }
+property IsRecordingCurve : System.Boolean { get; }
+property IsRecordingObstacle : System.Boolean { get; }
+property IsRecordingPath : System.Boolean { get; set; }
+property IsReversing : System.Boolean { get; }
+property IsSectionMasterOn : System.Boolean { get; set; }
+property IsSimulatorDrivingSteering : System.Boolean { get; set; }
+property IsSimulatorEnabled : System.Boolean { get; set; }
+property IsSimulatorPanelVisible : System.Boolean { get; set; }
+property IsSimulatorSpeed10x : System.Boolean { get; set; }
+property IsSkipWorkedMode : System.Boolean { get; set; }
+property IsSteerWizardOpen : System.Boolean { get; }
+property IsToolPositionReady : System.Boolean { get; }
+property IsUTurnButtonVisible : System.Boolean { get; }
+property IsUTurnSkipRowsEnabled : System.Boolean { get; set; }
+property IsYouTurnEnabled : System.Boolean { get; set; }
+property Latitude : System.Double { get; set; }
+property LiveRecordingPoints : System.Collections.Generic.IReadOnlyList<AgOpenWeb.Models.Track.RecPathPoint> { get; }
+property Longitude : System.Double { get; set; }
+property ManualYouTurnLeftCommand : System.Windows.Input.ICommand { get; }
+property ManualYouTurnRightCommand : System.Windows.Input.ICommand { get; }
+property ModuleStatusKind : AgOpenWeb.Models.State.ModuleStatusKind { get; }
+property NewFieldLatitude : System.Double { get; set; }
+property NewFieldLongitude : System.Double { get; set; }
+property NewFieldName : System.String { get; set; }
+property NextUTurnDirectionLeftOverride : System.Boolean? { get; set; }
+property Northing : System.Double { get; set; }
+property NtripBytesReceived : System.String { get; }
+property NtripCasterAddress : System.String { get; set; }
+property NtripCasterPort : System.Int32 { get; set; }
+property NtripMountPoint : System.String { get; set; }
+property NtripPassword : System.String { get; set; }
+property NtripStatus : System.String { get; set; }
+property NtripTestStatus : System.String { get; set; }
+property NtripUsername : System.String { get; set; }
+property NudgeLeftCommand : System.Windows.Input.ICommand { get; }
+property NudgeRightCommand : System.Windows.Input.ICommand { get; }
+property NumSections : System.Int32 { get; }
+property OffsetFixEastCommand : System.Windows.Input.ICommand { get; }
+property OffsetFixNorthCommand : System.Windows.Input.ICommand { get; }
+property OffsetFixSouthCommand : System.Windows.Input.ICommand { get; }
+property OffsetFixWestCommand : System.Windows.Input.ICommand { get; }
+property OffsetFixZeroCommand : System.Windows.Input.ICommand { get; }
+property PendingPointA : AgOpenWeb.Models.Position { get; set; }
+property PickRecordedPathCommand : System.Windows.Input.ICommand { get; }
+property PlaceFlagHereCommand : System.Windows.Input.ICommand { get; }
+property PlaceRedFlagCommand : System.Windows.Input.ICommand { get; }
+property PlayRecordedPathCommand : System.Windows.Input.ICommand { get; }
+property PromptSeq : System.Int32 { get; }
+property RecordInnerBoundaryCommand : System.Windows.Input.ICommand { get; }
+property RecordedCurvePointCount : System.Int32 { get; }
+property RecordedPathInfo : System.String { get; set; }
+property RecordedPathName : System.String { get; set; }
+property RefHalfNudgeLeftCommand : System.Windows.Input.ICommand { get; }
+property RefHalfNudgeRightCommand : System.Windows.Input.ICommand { get; }
+property RefNudgeBeginCommand : System.Windows.Input.ICommand { get; }
+property RefNudgeLeftCommand : System.Windows.Input.ICommand { get; }
+property RefNudgeRightCommand : System.Windows.Input.ICommand { get; }
+property RefNudgeSaveCommand : System.Windows.Input.ICommand { get; }
+property RefNudgeUndoCommand : System.Windows.Input.ICommand { get; }
+property RemainingPercent : System.Double { get; }
+property ResetNudgeCommand : System.Windows.Input.ICommand { get; }
+property ResetSimulatorCommand : System.Windows.Input.ICommand { get; }
+property ResetSteerAngleCommand : System.Windows.Input.ICommand { get; }
+property ResetToolHeadingCommand : System.Windows.Input.ICommand { get; }
+property ResumeLastJobCommand : System.Windows.Input.ICommand { get; }
+property ResumeModeLabel : System.String { get; set; }
+property ReverseRecordedPathCommand : System.Windows.Input.ICommand { get; }
+property RollDegrees : System.Double { get; set; }
+property SatelliteCount : System.Int32 { get; set; }
+property SaveCoverageToJobCommand : System.Windows.Input.ICommand { get; }
+property SaveNamedRecordedPathCommand : System.Windows.Input.ICommand { get; }
+property SavedTracks : System.Collections.ObjectModel.ObservableCollection<AgOpenWeb.Models.Track.Track> { get; }
+property SectionRows : System.Collections.ObjectModel.ObservableCollection<AgOpenWeb.ViewModels.SectionRowViewModel> { get; }
+property SelectedBoundaryIndex : System.Int32 { get; set; }
+property SelectedRecFile : System.String { get; set; }
+property SelectedTrack : AgOpenWeb.Models.Track.Track { get; set; }
+property SetABPointCommand : System.Windows.Input.ICommand { get; }
+property SetLanguageCommand : System.Windows.Input.ICommand { get; }
+property ShowFieldSelectionDialogCommand : System.Windows.Input.ICommand { get; }
+property ShowHeadlandBuilderCommand : System.Windows.Input.ICommand { get; }
+property ShowRecordedPathDialogCommand : System.Windows.Input.ICommand { get; }
+property ShowRecordedPaths : System.Boolean { get; set; }
+property ShowToolConfigDialogCommand : System.Windows.Input.ICommand { get; }
+property ShowVehicleConfigDialogCommand : System.Windows.Input.ICommand { get; }
+property ShrinkTrackACommand : System.Windows.Input.ICommand { get; }
+property ShrinkTrackBCommand : System.Windows.Input.ICommand { get; }
+property SimulatorReverseDirectionCommand : System.Windows.Input.ICommand { get; }
+property SimulatorSpeedDownCommand : System.Windows.Input.ICommand { get; }
+property SimulatorSpeedKph : System.Double { get; set; }
+property SimulatorSpeedUpCommand : System.Windows.Input.ICommand { get; }
+property SimulatorSteerAngle : System.Double { get; set; }
+property SimulatorSteerLeftCommand : System.Windows.Input.ICommand { get; }
+property SimulatorSteerRightCommand : System.Windows.Input.ICommand { get; }
+property SimulatorStopCommand : System.Windows.Input.ICommand { get; }
+property SmartWasViewModel : AgOpenWeb.ViewModels.SmartWasViewModel { get; set; }
+property SmoothBeginCommand : System.Windows.Input.ICommand { get; }
+property SmoothCancelCommand : System.Windows.Input.ICommand { get; }
+property SmoothLessCommand : System.Windows.Input.ICommand { get; }
+property SmoothMoreCommand : System.Windows.Input.ICommand { get; }
+property SmoothSaveCommand : System.Windows.Input.ICommand { get; }
+property SnapLeftCommand : System.Windows.Input.ICommand { get; }
+property SnapRightCommand : System.Windows.Input.ICommand { get; }
+property SnapToPivotCommand : System.Windows.Input.ICommand { get; }
+property Speed : System.Double { get; set; }
+property SpeedKmh : System.Double { get; }
+property StartAPlusLineCommand : System.Windows.Input.ICommand { get; }
+property StartBoundaryRecordingCommand : System.Windows.Input.ICommand { get; }
+property StartCurveRecordingCommand : System.Windows.Input.ICommand { get; }
+property StartDrawABModeCommand : System.Windows.Input.ICommand { get; }
+property StartDrawCurveModeCommand : System.Windows.Input.ICommand { get; }
+property StartDriveABCommand : System.Windows.Input.ICommand { get; }
+property StartPivotRecordingCommand : System.Windows.Input.ICommand { get; }
+property StartRecordedPathCommand : System.Windows.Input.ICommand { get; }
+property State : AgOpenWeb.Models.State.ApplicationState { get; }
+property StatusMessage : System.String { get; set; }
+property SteerWizardClosedByHost : System.Boolean { get; }
+property SteerWizardViewModel : AgOpenWeb.ViewModels.Wizards.SteerWizard.SteerWizardViewModel { get; set; }
+property StopBoundaryRecordingCommand : System.Windows.Input.ICommand { get; }
+property StopPlaybackCommand : System.Windows.Input.ICommand { get; }
+property StopRecordedPathCommand : System.Windows.Input.ICommand { get; }
+property SwapABPointsCommand : System.Windows.Input.ICommand { get; }
+property Toggle3DModeCommand : System.Windows.Input.ICommand { get; }
+property ToggleAutoSteerCommand : System.Windows.Input.ICommand { get; }
+property ToggleAutoTrackCommand : System.Windows.Input.ICommand { get; }
+property ToggleBoundaryAntennaToolCommand : System.Windows.Input.ICommand { get; }
+property ToggleBoundaryLeftRightCommand : System.Windows.Input.ICommand { get; }
+property ToggleContourLockCommand : System.Windows.Input.ICommand { get; }
+property ToggleContourModeCommand : System.Windows.Input.ICommand { get; }
+property ToggleDayNightCommand : System.Windows.Input.ICommand { get; }
+property ToggleDriveThroughCommand : System.Windows.Input.ICommand { get; }
+property ToggleGridCommand : System.Windows.Input.ICommand { get; }
+property ToggleHardCommand : System.Windows.Input.ICommand { get; }
+property ToggleHeadlandCommand : System.Windows.Input.ICommand { get; }
+property ToggleManualModeCommand : System.Windows.Input.ICommand { get; }
+property ToggleNorthUpCommand : System.Windows.Input.ICommand { get; }
+property ToggleRecordedPathsCommand : System.Windows.Input.ICommand { get; }
+property ToggleRecordingCommand : System.Windows.Input.ICommand { get; }
+property ToggleSectionCommand : System.Windows.Input.ICommand { get; }
+property ToggleSectionInHeadlandCommand : System.Windows.Input.ICommand { get; }
+property ToggleSectionMasterCommand : System.Windows.Input.ICommand { get; }
+property ToggleSimulatorPanelCommand : System.Windows.Input.ICommand { get; }
+property ToggleTramDisplayCommand : System.Windows.Input.ICommand { get; }
+property ToggleTramLeftManualCommand : System.Windows.Input.ICommand { get; }
+property ToggleTramRightManualCommand : System.Windows.Input.ICommand { get; }
+property ToggleUTurnDirectionCommand : System.Windows.Input.ICommand { get; }
+property ToggleUTurnSkipRowsCommand : System.Windows.Input.ICommand { get; }
+property ToggleYouTurnCommand : System.Windows.Input.ICommand { get; }
+property ToolEasting : System.Double { get; set; }
+property ToolHeadingRadians : System.Double { get; set; }
+property ToolNorthing : System.Double { get; set; }
+property ToolWidth : System.Double { get; set; }
+property TrackRefSideRight : System.Boolean { get; set; }
+property TramControlByte : System.Byte { get; set; }
+property TramPasses : System.Int32 { get; }
+property TramSystems : System.Collections.ObjectModel.ObservableCollection<AgOpenWeb.Models.Tram.TramSystem> { get; }
+property TramWidth : System.Double { get; }
+property TripDistanceMeters : System.Double { get; }
+property TurnOffRecordedPathCommand : System.Windows.Input.ICommand { get; }
+property UTurnCommand : System.Windows.Input.ICommand { get; }
+property UTurnSkipMode : System.Int32 { get; set; }
+property UTurnSkipRows : System.Int32 { get; set; }
+property UndoBoundaryPointCommand : System.Windows.Input.ICommand { get; }
+property UndoLastDrawnPointCommand : System.Windows.Input.ICommand { get; }
+property ZoomInCommand : System.Windows.Input.ICommand { get; }
+property ZoomOutCommand : System.Windows.Input.ICommand { get; }

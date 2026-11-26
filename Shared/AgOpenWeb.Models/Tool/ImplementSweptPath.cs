@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -40,10 +28,10 @@ namespace AgOpenWeb.Models.Tool
     /// <param name="Mount">Attachment type.</param>
     /// <param name="Width">Implement working width.</param>
     /// <param name="Offset">Lateral offset of the tool centre (right positive).</param>
-    /// <param name="VehicleHitchLength">Axle → tractor hitch pin (used by Trailing/TBT).</param>
-    /// <param name="ToolHitchLength">Axle → implement working centre (used by rigid tools).</param>
+    /// <param name="AttachX">Where the tool hangs along the tractor from the rear axle, + ahead: a fixed
+    /// tool's working point, a trailed tool's drawbar pin (<see cref="RigGeometry.AttachX(ToolMount, double, double, double, double)"/>).</param>
     /// <param name="TrailingHitchLength">Hitch → tool pivot, along the tool.</param>
-    /// <param name="TrailingToolToPivotLength">Tool pivot → tool working centre.</param>
+    /// <param name="TrailingToolToPivotLength">Tool pivot → tool working centre, AgOpenGPS's sign: positive with the tool behind its wheels.</param>
     /// <param name="TankTrailingHitchLength">Hitch → tank pivot (TBT only).</param>
     /// <param name="Length">
     /// Fore-aft length of the implement body, from its attachment to the
@@ -56,8 +44,7 @@ namespace AgOpenWeb.Models.Tool
         ToolMount Mount,
         double Width,
         double Offset,
-        double VehicleHitchLength,
-        double ToolHitchLength,
+        double AttachX,
         double TrailingHitchLength,
         double TrailingToolToPivotLength,
         double TankTrailingHitchLength,
@@ -113,12 +100,8 @@ namespace AgOpenWeb.Models.Tool
 
             double halfWidth = geom.Width / 2.0;
 
-            // Hitch distance + sign: rigid tools measure axle→implement centre,
-            // trailing/TBT measure axle→tractor pin. Behind for everything except
-            // a front-fixed tool.
-            bool rigid = geom.Mount == ToolMount.FrontFixed || geom.Mount == ToolMount.RearFixed;
-            double hitchDistance = Math.Abs(rigid ? geom.ToolHitchLength : geom.VehicleHitchLength);
-            if (geom.Mount != ToolMount.FrontFixed) hitchDistance = -hitchDistance;
+            // The point the tool hangs on, as the tool position has it (RigGeometry).
+            double hitchDistance = geom.AttachX;
 
             Vec3 lastToolPivot = default;
             Vec3 lastTank = default;
@@ -146,7 +129,7 @@ namespace AgOpenWeb.Models.Tool
                         if (!seeded) { lastToolPivot = Behind(hitch, heading, geom.TrailingHitchLength); seeded = true; }
                         toolHeading = DirectionFrom(lastToolPivot, hitch, heading);
                         attachment = Behind(hitch, toolHeading, geom.TrailingHitchLength);
-                        toolCenter = Behind(hitch, toolHeading, geom.TrailingHitchLength - geom.TrailingToolToPivotLength);
+                        toolCenter = Behind(hitch, toolHeading, geom.TrailingHitchLength + geom.TrailingToolToPivotLength);
                         lastToolPivot = attachment;
                         break;
                     }
@@ -162,7 +145,7 @@ namespace AgOpenWeb.Models.Tool
                         Vec3 tank = Behind(hitch, tankHeading, geom.TankTrailingHitchLength);
                         toolHeading = DirectionFrom(lastToolPivot, tank, tankHeading);
                         attachment = Behind(tank, toolHeading, geom.TrailingHitchLength);
-                        toolCenter = Behind(tank, toolHeading, geom.TrailingHitchLength - geom.TrailingToolToPivotLength);
+                        toolCenter = Behind(tank, toolHeading, geom.TrailingHitchLength + geom.TrailingToolToPivotLength);
                         lastTank = tank;
                         lastToolPivot = attachment;
                         break;

@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
 using AgOpenWeb.Models;
@@ -35,7 +34,6 @@ public class OriginGuardCycleTests
 {
     private GpsService _gpsService = null!;
     private GpsPipelineService _pipeline = null!;
-    private ApplicationState _appState = null!;
     private List<GpsCycleResult> _results = null!;
 
     [SetUp]
@@ -50,22 +48,18 @@ public class OriginGuardCycleTests
         config.NumSections = 1;
         config.Tool.SetSectionWidth(0, 600);
 
-        _appState = new ApplicationState();
-        _appState.Field.LocalPlane = new LocalPlane(
-            new Wgs84(43.7128, -74.006), new SharedFieldProperties());
-
         _gpsService = new GpsService();
         _gpsService.Start();
 
         var toolPosition = new ToolPositionService(config);
         var coverage = new CoverageMapService(config);
-        var sectionControl = new SectionControlService(toolPosition, coverage, _appState, config);
+        var sectionControl = new SectionControlService(toolPosition, coverage, config);
         var autoSteer = new AutoSteerService(new TrackGuidanceService(),
-            Substitute.For<IUdpCommunicationService>(), _gpsService, _appState, config);
+            Substitute.For<IUdpCommunicationService>(), _gpsService, config);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
-                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>())
+                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>())
             .Returns(ci => ci.ArgAt<double>(0));
 
         _pipeline = new GpsPipelineService(
@@ -80,10 +74,11 @@ public class OriginGuardCycleTests
             Substitute.For<IAudioService>(),
             new PipelineIntents(),
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, _appState,
+            NullLogger<GpsPipelineService>.Instance,
             config,
             new PositionEstimator());
 
+        _pipeline.SetLocalPlane(new LocalPlane( new Wgs84(43.7128, -74.006), new SharedFieldProperties()));
         _pipeline.SynchronousMode = true;
         _pipeline.Start();
 
@@ -149,7 +144,7 @@ public class OriginGuardCycleTests
 
         // Mirror what ApplyGpsCycleResult does on the UI thread so the next
         // cycle reads the new origin from ApplicationState.
-        _appState.Field.LocalPlane = newPlane;
+        _pipeline.SetLocalPlane(newPlane);
 
         // Second cycle: stay near the new origin → no further replacement.
         _gpsService.UpdateGpsData(At(59.330, 18.069));

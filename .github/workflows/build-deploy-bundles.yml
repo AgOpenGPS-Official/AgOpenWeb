@@ -2,7 +2,7 @@ name: Build Deployment Bundles
 
 # Builds the AgOpenWeb deployment bundles on clean runners and publishes ONE complete Release
 # with every user-facing artifact (the single release publisher; build-and-release.yml is for
-# per-commit CI + nightly only):
+# per-commit CI only):
 #   - Linux x64 / arm64 daemon: self-contained host + systemd unit + install scripts (.tar.gz),
 #     via deploy/linux/package.sh — the in-cab headless daemon for mini-PCs / SBCs.
 #   - Linux x64 / arm64 launcher: self-contained desktop app (.tar.gz), via
@@ -18,40 +18,80 @@ name: Build Deployment Bundles
 # Windows bundle cross-publishes win-x64 from a Linux runner — no Windows runner needed.
 #
 # Triggers:
-#   - push of a v* tag: build + publish the tagged Release for that tag.
-#   - schedule (daily): build + refresh the rolling "nightly" prerelease.
-#   - workflow_dispatch: build on demand. Supply a release_tag to also publish that Release;
-#     leave it empty to just upload build artifacts (a dry run — no Release).
+#   - push of a v* tag: build + publish the tagged Release for that tag, as a prerelease so it
+#     never shows as "Latest" (the beta is the build to use).
+#   - schedule (daily): refresh the rolling "beta" prerelease from the default branch, if it
+#     has moved on since the beta was last built (else the run builds nothing).
+#   - workflow_dispatch: build on demand, then by the `publish` input:
+#       beta (default) — refresh the rolling "beta" prerelease now, so testers get current
+#                        code without waiting for the schedule (default branch only);
+#       release           — publish the Release named by `release_tag`;
+#       none              — just upload build artifacts (a dry run — no Release).
 # (Per-commit CI — tests + compile checks — lives in build-and-release.yml.)
 
 on:
   workflow_dispatch:
     inputs:
+      publish:
+        description: 'What to publish after building'
+        type: choice
+        options: [beta, release, none]
+        default: beta
       release_tag:
-        description: 'Release tag (e.g. v26.6.7). Leave empty to only upload build artifacts.'
+        description: 'Release tag (e.g. v26.6.7) — only for publish = release'
         required: false
         default: ''
   push:
     tags:
       - 'v*'
   schedule:
-    # Daily rolling nightly prerelease at 06:00 UTC.
+    # Daily refresh of the rolling beta at 06:00 UTC, when the default branch has moved on.
     - cron: '0 6 * * *'
 
+# Beta runs (scheduled or manual) share one group and the newest wins; a release run is
+# never cancelled by a later run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ (github.event_name == 'schedule' || inputs.publish == 'beta') && 'beta' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'schedule' || inputs.publish == 'beta' }}
 
 permissions:
   contents: read    # build jobs only read; the release job grants itself write
 
 env:
-  DOTNET_VERSION: '10.0.x'
+  # Pinned: workload set 10.0.402.1 names an iOS manifest (27.1.10018) that is not
+  # on NuGet yet, so 'dotnet workload install android' fails. Back to 10.0.x and drop
+  # ANDROID_WORKLOAD_VERSION once that is published.
+  DOTNET_VERSION: '10.0.401'
+  ANDROID_WORKLOAD_VERSION: '10.0.401.1'
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
+  # The scheduled run builds only when the default branch has moved on since the beta was
+  # built, so the beta's date stays the date of its code. Every other run builds.
+  changed:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          BUILD=true
+          if [ "$EVENT" = "schedule" ]; then
+            BETA=$(gh api "repos/${GITHUB_REPOSITORY}/commits/beta" --jq .sha 2>/dev/null || true)
+            if [ "$BETA" = "$GITHUB_SHA" ]; then
+              echo "The beta is already at ${GITHUB_SHA::8}; nothing to build."
+              BUILD=false
+            fi
+          fi
+          echo "build=${BUILD}" >> "$GITHUB_OUTPUT"
+
   linux:
+    needs: changed
+    if: needs.changed.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -59,6 +99,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -79,6 +121,8 @@ jobs:
           retention-days: 30
 
   linux-launcher:
+    needs: changed
+    if: needs.changed.outputs.build == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -86,6 +130,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -106,9 +152,13 @@ jobs:
           retention-days: 30
 
   windows:
+    needs: changed
+    if: needs.changed.outputs.build == 'true'
     runs-on: ubuntu-latest   # cross-publishes win-x64 from Linux — no Windows runner needed
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -128,9 +178,13 @@ jobs:
           retention-days: 30
 
   macos:
-    runs-on: macos-14   # Apple silicon (arm64) — the .dmg is osx-arm64; needs macOS for hdiutil/codesign
+    needs: changed
+    if: needs.changed.outputs.build == 'true'
+    runs-on: macos-26   # Apple silicon (arm64) — the .dmg is osx-arm64; needs macOS for hdiutil/codesign (macos-14 retired 2026-11-02)
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -150,9 +204,13 @@ jobs:
           retention-days: 30
 
   android:
+    needs: changed
+    if: needs.changed.outputs.build == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/sharpisoterm-cache
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -168,7 +226,7 @@ jobs:
       - name: Install Android workload
         run: |
           for i in 1 2 3; do
-            dotnet workload install android && break
+            dotnet workload install android --version "$ANDROID_WORKLOAD_VERSION" && break
             echo "Attempt $i failed, retrying in 10s..."
             sleep 10
           done
@@ -247,10 +305,9 @@ jobs:
 
   release:
     needs: [linux, linux-launcher, windows, macos, android]
-    # Publish a Release only for a v* tag push, or a manual run that supplied a tag.
-    # Publish for a v* tag, a dispatch that supplied a release_tag, or the scheduled nightly.
-    # A plain dispatch with no tag still builds the artifacts (above) but skips publishing.
-    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != '' || github.event_name == 'schedule'
+    # Publish for a v* tag push, the scheduled beta refresh, or a dispatch with publish = beta /
+    # release. Skipped with the builds when the scheduled run found nothing new. A dispatch with publish = none still builds the artifacts (above) but skips this.
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.publish != 'none')
     runs-on: ubuntu-latest
     permissions:
       contents: write   # publish/refresh the Release
@@ -264,33 +321,77 @@ jobs:
 
       - name: Resolve release metadata
         id: meta
+        env:
+          EVENT: ${{ github.event_name }}
+          PUBLISH: ${{ inputs.publish }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           VERSION=$(grep -oP 'VERSION\s+"\K[^"]+' sys/version.h || echo "0.0.0")
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            # Rolling nightly: a single reused "nightly" tag/release, refreshed each run.
-            echo "tag=nightly" >> "$GITHUB_OUTPUT"
-            echo "name=Nightly Build ($(date +'%Y-%m-%d'))" >> "$GITHUB_OUTPUT"
+          SHORT_SHA="${GITHUB_SHA::8}"
+          if [ "$EVENT" = "schedule" ] || [ "$PUBLISH" = "beta" ]; then
+            # Rolling beta: one reused "beta" tag/release, refreshed each run. Only from the
+            # default branch, so a dispatch from a feature branch can't replace it.
+            if [ "$GITHUB_REF_NAME" != "$DEFAULT_BRANCH" ]; then
+              echo "::error::The beta is built from '$DEFAULT_BRANCH'; this run is on '$GITHUB_REF_NAME'. Use publish = none for a branch build."
+              exit 1
+            fi
+            if [ "$EVENT" = "schedule" ]; then TRIGGER="scheduled"; else TRIGGER="manual"; fi
+            echo "tag=beta" >> "$GITHUB_OUTPUT"
+            echo "name=Beta Build ($(date -u +'%Y-%m-%d %H:%M') UTC · ${SHORT_SHA})" >> "$GITHUB_OUTPUT"
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
-            echo "nightly=true" >> "$GITHUB_OUTPUT"
-            echo "banner=> ⚠️ Automated nightly prerelease of the latest \`main\` — unversioned, may be unstable." >> "$GITHUB_OUTPUT"
+            echo "beta=true" >> "$GITHUB_OUTPUT"
+            echo "banner=> ⚠️ Unversioned prerelease of the latest \`${DEFAULT_BRANCH}\` (${TRIGGER} build of [\`${SHORT_SHA}\`](${REPO_URL}/commit/${GITHUB_SHA})) — may be unstable." >> "$GITHUB_OUTPUT"
           else
-            if [ -n "${{ github.event.inputs.release_tag }}" ]; then TAG="${{ github.event.inputs.release_tag }}"; else TAG="${GITHUB_REF#refs/tags/}"; fi
+            if [ "$EVENT" = "workflow_dispatch" ]; then
+              if [ -z "$RELEASE_TAG" ]; then
+                echo "::error::publish = release needs a release_tag (e.g. v26.6.7)."
+                exit 1
+              fi
+              TAG="$RELEASE_TAG"
+            else
+              TAG="${GITHUB_REF#refs/tags/}"
+            fi
             echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
             echo "name=AgOpenWeb ${TAG}" >> "$GITHUB_OUTPUT"
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-            echo "nightly=false" >> "$GITHUB_OUTPUT"
-            echo "banner=" >> "$GITHUB_OUTPUT"
+            # Numbered builds are prereleases too: GitHub's "Latest" would otherwise send people
+            # to a build older than the beta.
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "beta=false" >> "$GITHUB_OUTPUT"
+            echo "banner=> **Use the [Beta](${REPO_URL}/releases/tag/beta)** — it is rebuilt from \`${DEFAULT_BRANCH}\` on demand and daily when there are changes, and is the build to report issues against." >> "$GITHUB_OUTPUT"
           fi
+
+      # A numbered release lists every PR merged since the previous numbered tag (GitHub's
+      # generated notes, grouped by .github/release.yml). The previous tag is found among the
+      # version tags ("v26.7.1", and the older "26.7.0" spelling), not by GitHub's default,
+      # which would pick the rolling beta and list almost nothing.
+      - name: Changes since the previous release
+        if: steps.meta.outputs.beta != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          git fetch --tags --quiet origin
+          # The version tag just below this one (a rebuild of an older tag gets its own range).
+          PREV=$( { git tag; echo "$TAG"; } | sort -u | awk '/^v?[0-9]+\.[0-9]+\.[0-9]+$/ { v=$0; sub(/^v/, "", v); print v "\t" $0 }' \
+            | sort -V | awk -F'\t' -v cur="$TAG" '$2 == cur { print prev; exit } { prev=$2 }')
+          ARGS=(-f "tag_name=$TAG" -f "target_commitish=$GITHUB_SHA")
+          if [ -n "$PREV" ]; then ARGS+=(-f "previous_tag_name=$PREV"); fi
+          echo "Notes from ${PREV:-the first commit} to $TAG"
+          gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" "${ARGS[@]}" --jq .body > "$RUNNER_TEMP/changes.md"
+          { echo 'body<<CHANGES_EOF'; cat "$RUNNER_TEMP/changes.md"; echo; echo 'CHANGES_EOF'; } >> "$GITHUB_OUTPUT"
+        id: changes
 
       - name: List bundles
         run: find dist -type f \( -name '*.tar.gz' -o -name '*.zip' -o -name '*.dmg' -o -name '*.apk' \)
 
-      # The nightly reuses one tag/release; delete the prior one so assets don't accumulate.
-      - name: Refresh rolling nightly
-        if: steps.meta.outputs.nightly == 'true'
+      # The beta reuses one tag/release; delete the prior one so assets don't accumulate.
+      - name: Refresh rolling beta
+        if: steps.meta.outputs.beta == 'true'
         run: |
-          gh release delete nightly --yes --cleanup-tag || true
+          gh release delete beta --yes --cleanup-tag || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -298,6 +399,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: ${{ steps.meta.outputs.name }}
           prerelease: ${{ steps.meta.outputs.prerelease }}
           body: |
@@ -330,6 +432,8 @@ jobs:
             | Android | `agopenweb-android.apk` | sideload |
 
             See each download's bundled `README` for full prerequisites and details.
+
+            ${{ steps.changes.outputs.body }}
           draft: false
           files: |
             dist/**/*.tar.gz

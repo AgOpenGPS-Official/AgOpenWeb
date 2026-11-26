@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -70,6 +58,29 @@ public interface IUdpCommunicationService
     void SendToModules(byte[] data);
 
     /// <summary>
+    /// Send data to programs on this machine that listen where AgIO does
+    /// (127.255.255.255:17777), e.g. GPS_Out. AgIO isn't running beside AgOpenWeb,
+    /// so these programs get the packet straight from us.
+    /// </summary>
+    void SendToLoopback(byte[] data);
+
+    /// <summary>
+    /// Send PGN 214 (the receiver's data) where AgIO sends it for AgOpenGPS
+    /// (127.255.255.255:15555); GPS_Out reads speed, heading and fix quality from it.
+    /// </summary>
+    void SendGpsDataToLoopback(byte[] data);
+
+    /// <summary>
+    /// An ISOBUS task controller (AOG-TaskController, source 0x80) sent its heartbeat in the
+    /// last few seconds. It listens on 8888 at its own address and reads the fix quality only
+    /// from PGN 214 (its DDI 514 to the implements); without it every implement is told plain GPS.
+    /// </summary>
+    bool IsTaskControllerHeard => false;
+
+    /// <summary>Send to the task controller's own address, port 8888, while it is heard.</summary>
+    void SendToTaskController(byte[] data) { }
+
+    /// <summary>
     /// Send hello/ping packet to check module connections
     /// PGN 200 (0xC8) - communication check
     /// </summary>
@@ -86,16 +97,43 @@ public interface IUdpCommunicationService
     bool IsModuleDataOk(ModuleType moduleType);
 
     /// <summary>
+    /// The sensors on the modules' data, for the data quality monitor: their own periodic
+    /// streams (PGN 253, 237, 211, 240), each judged on whether it arrives as it is sent.
+    /// Empty for a transport that has none.
+    /// </summary>
+    IReadOnlyList<DataQuality.IDataSensor> DataSensors => Array.Empty<DataQuality.IDataSensor>();
+
+    /// <summary>
     /// Most-recently-observed remote IP for the given module, or null if no packet
     /// has been received from it yet. Dotted-quad string (no port).
     /// </summary>
     string? GetModuleIpAddress(ModuleType moduleType);
 
     /// <summary>
-    /// The /24 subnet (first three octets, e.g. "192.168.5") most recently
-    /// reported by a module in a PGN 203 scan reply, or null if none seen.
+    /// The /24 subnet (first three octets, e.g. "192.168.5") of the module that sent
+    /// the most recent PGN 203 scan reply, from its IP, or null if none seen.
     /// </summary>
     string? GetModuleSubnet();
+
+    /// <summary>
+    /// Bytes 9–11 of the most recent scan reply: in AgOpenGPS firmware the subnet the
+    /// scan came from, which AgIO's Auto Set offers as the one to move the modules to
+    /// (#334). AiO v26 repeats the module's own subnet there. Null if none seen.
+    /// </summary>
+    string? GetScanReplySubnet();
+
+    /// <summary>
+    /// The /24 the modules are on right now: the subnet outgoing PGNs are locked to
+    /// (from module hellos), else the last scan reply's, else null (nothing heard yet).
+    /// </summary>
+    string? GetActiveModuleSubnet();
+
+    /// <summary>
+    /// The address the GPS position sentences are coming from, if one arrived within
+    /// <paramref name="maxAgeSeconds"/>; else null. This is the module the receiver hangs
+    /// on, so it is where RTCM corrections are sent.
+    /// </summary>
+    System.Net.IPAddress? GetGpsSourceAddress(double maxAgeSeconds = 10);
 
     /// <summary>
     /// Broadcast a scan request (PGN 202) asking every module to reply with its

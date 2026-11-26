@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.IO;
@@ -110,7 +109,7 @@ public class ToolProfileService : IToolProfileService
         store.Tool.Width = 6.0;
         store.Tool.Overlap = 0.0;
         store.Tool.Offset = 0.0;
-        store.Tool.HitchLength = 1.8;
+        store.Tool.WorkingPointFromHitch = 0.0;
         store.Tool.TrailingHitchLength = 2.5;
         store.Tool.TankTrailingHitchLength = 3.0;
         store.Tool.TrailingToolToPivotLength = 0.0;
@@ -118,8 +117,8 @@ public class ToolProfileService : IToolProfileService
         store.Tool.IsToolTBT = false;
         store.Tool.IsToolRearFixed = true;
         store.Tool.IsToolFrontFixed = false;
-        store.Tool.LookAheadOnSetting = 0.0;
-        store.Tool.LookAheadOffSetting = 0.0;
+        store.Tool.LookAheadOnSetting = Models.Configuration.ToolConfig.DefaultLookAheadOn;
+        store.Tool.LookAheadOffSetting = Models.Configuration.ToolConfig.DefaultLookAheadOff;
         store.Tool.TurnOffDelay = 0.0;
         store.Tool.MinCoverage = 100;
         store.Tool.IsMultiColoredSections = false;
@@ -131,6 +130,32 @@ public class ToolProfileService : IToolProfileService
         sectionPositions[0] = -3.0;
         sectionPositions[1] = 3.0;
         store.SectionPositions = sectionPositions;
+
+        // Machine tab: a new tool starts from the module defaults.
+        var dm = new MachineConfig();
+        store.Machine.HydraulicLiftEnabled = dm.HydraulicLiftEnabled;
+        store.Machine.RaiseTime = dm.RaiseTime;
+        store.Machine.LowerTime = dm.LowerTime;
+        store.Machine.LookAhead = dm.LookAhead;
+        store.Machine.InvertRelay = dm.InvertRelay;
+        store.Machine.User1Value = dm.User1Value;
+        store.Machine.User2Value = dm.User2Value;
+        store.Machine.User3Value = dm.User3Value;
+        store.Machine.User4Value = dm.User4Value;
+        store.Machine.ResetPinAssignments();
+
+        // U-Turn and Tram tabs: likewise from the defaults.
+        var dg = new GuidanceConfig();
+        store.Guidance.UTurnRadius = dg.UTurnRadius;
+        store.Guidance.UTurnExtension = dg.UTurnExtension;
+        store.Guidance.UTurnDistanceFromBoundary = dg.UTurnDistanceFromBoundary;
+        store.Guidance.UTurnStyle = dg.UTurnStyle; // Sagitta (Twol parity; no Dubins loop)
+        store.Guidance.UTurnSmoothing = dg.UTurnSmoothing;
+        store.Tram.TramWidth = new TramConfig().TramWidth;
+        store.Guidance.TramPasses = dg.TramPasses;
+        store.Guidance.TramDisplay = dg.TramDisplay;
+        store.Guidance.TramLine = dg.TramLine;
+        store.Tram.IsOuterInverted = false;
 
         store.ActiveToolProfileName = profileName;
         store.ActiveToolProfilePath = Path.Combine(ToolsDirectory, $"{profileName}.json");

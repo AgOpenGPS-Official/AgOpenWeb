@@ -1,0 +1,551 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+using System.Globalization;
+
+namespace AgOpenWeb.FieldJobScenarios.Tests;
+
+/// <summary>Runs one job and judges what the real implement did against the field, the
+/// headland, the obstacles, the neighbouring passes and AgOpenWeb's own map.</summary>
+public static class Jobs
+{
+    public static string F(FormattableString s) => s.ToString(CultureInfo.InvariantCulture);
+
+    public static string NewDataRoot(string code)
+    {
+        string root = Path.Combine(Path.GetTempPath(), "agopenweb-field-job", code + "-" + Guid.NewGuid().ToString("N")[..6]);
+        Directory.CreateDirectory(root);
+        return root;
+    }
+
+    /// <summary>
+    /// Runs a fixture's jobs one after the other (those AGOPENWEB_SCENARIO_ONLY picks), with a
+    /// progress line per job (NUnit shows the console only at the end, so a slow nightly shows
+    /// where it is), and writes the report after every job, so a run cut short by its time limit
+    /// keeps what it did. When the time is up before every job has run, the jobs not run are a
+    /// HARNESS finding (TIME-UP) in the report, so a short report says what it lacks instead of
+    /// reading as a quiet night. The report goes to AGOPENWEB_SCENARIO_REPORT, else <paramref name="reportName"/>
+    /// in the test's work directory; the harness's own failures are asserted at the end.
+    /// </summary>
+    public static async Task RunFixtureAsync(IEnumerable<(string Op, JobSpec Job)> jobs, string reportName,
+        Func<Journal, string> toMarkdown, CancellationToken ct)
+    {
+        string? only = Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_ONLY");
+        string path = ReportPath.For(reportName);
+        var journal = new Journal();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        void Progress(string what) => TestContext.Progress.WriteLine(F($"[{clock.Elapsed:hh\\:mm\\:ss}] {what}"));
+        var wanted = jobs.Where(j => Want(only, j.Job.Code)).ToList();
+        // None of AGOPENWEB_SCENARIO_ONLY's jobs is in this fixture: no report, which would read
+        // as a clean run of jobs that never ran.
+        if (wanted.Count == 0)
+            Assert.Ignore($"none of AGOPENWEB_SCENARIO_ONLY={only} is in this fixture");
+        for (int i = 0; i < wanted.Count; i++)
+        {
+            var (op, job) = wanted[i];
+            if (ct.IsCancellationRequested)
+            {
+                var left = wanted.Skip(i).Select(w => w.Op + " " + w.Job.Code).ToList();
+                var sc = new Scenario(op, "TIME-UP", "The run's time limit was reached",
+                    "The test's CancelAfter limit was reached before every job had run.");
+                sc.Harness(F($"the time limit was reached after {clock.Elapsed.TotalMinutes:0} min and {i} job(s): {left.Count} not run ({string.Join(", ", left)})"));
+                journal.Add(sc.Row);
+                Progress($"time up: {left.Count} job(s) not run");
+                break;
+            }
+            Progress($"{job.Code} ({op}): {job.Title}");
+            await RunAsync(journal, op, job, Evidence.FolderFor(path));
+            await File.WriteAllTextAsync(path, toMarkdown(journal), CancellationToken.None);
+        }
+        Progress("done");
+        string report = toMarkdown(journal);
+        await File.WriteAllTextAsync(path, report, CancellationToken.None);
+        TestContext.Out.WriteLine(report);
+        TestContext.Out.WriteLine("Report: " + path);
+
+        var harness = journal.Findings.Where(f => f.Key == "HARNESS").ToList();
+        Assert.That(harness, Is.Empty, "the harness itself failed: " + string.Join("; ", harness.Select(h => h.Value.First.Message)));
+    }
+
+    /// <summary>
+    /// Whether AGOPENWEB_SCENARIO_ONLY names this job: its code exactly, or its letter alone for every
+    /// job of that letter (J for the careful operator's jobs). Not a substring: J1 picked J10–J19 too,
+    /// and a comparison of six jobs ran the whole rig fixture (2026-11-15).
+    /// </summary>
+    public static bool Want(string? only, string code) =>
+        string.IsNullOrEmpty(only) || only.Split(',').Select(o => o.Trim()).Any(o =>
+            o.Length == 1 ? code.StartsWith(o, StringComparison.OrdinalIgnoreCase) : code.Equals(o, StringComparison.OrdinalIgnoreCase));
+
+    public static async Task<JobAreas?> RunAsync(Journal journal, string op, JobSpec spec, string? evidenceFolder = null)
+    {
+        // The evidence first: it clears the process's logs and the harness trace, and the
+        // scenario's banner is the trace's first line.
+        var ev = evidenceFolder != null && !Evidence.Off ? new Evidence(evidenceFolder, spec.Code) : null;
+        var sc = new Scenario(op, spec.Code, spec.Title, spec.Story);
+        JobAreas? areas = null;
+        await using var run = new JobRun(spec, sc);
+        run.Ev = ev;
+        try
+        {
+            if (await run.SetUpAsync(NewDataRoot(spec.Code)) && await run.DriveAsync())
+            {
+                areas = run.Measure();
+                Judge(sc, run, areas);
+                if (Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_DUMP") is { Length: > 0 } dumpDir)
+                {
+                    Directory.CreateDirectory(dumpDir);
+                    run.DumpImage(Path.Combine(dumpDir, spec.Code + ".ppm"));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            sc.Harness("the harness threw: " + ex.GetType().Name + ": " + ex.Message + "\n" + ex.StackTrace);
+        }
+        foreach (var p in run.Problems) if (!p.StartsWith("HARNESS", StringComparison.Ordinal)) sc.Note(p);
+        sc.Row.Steps.AddRange(run.Said.Select(s => "  app: " + s));
+        sc.ModuleSnapshot(run.Module, run.Seconds);
+        try { await KeepEvidenceAsync(sc, run, op); }
+        finally { run.Ev?.Close(); }
+        journal.Add(sc.Row);
+        return areas;
+    }
+
+    /// <summary>
+    /// A job with a finding leaves the app's bug report dump beside the report (Evidence), taken
+    /// here, at the end of the job with the field and the job still open: the fix is made and
+    /// proven from it, as from a tester's dump, without running the job again.
+    /// </summary>
+    private static async Task KeepEvidenceAsync(Scenario sc, JobRun run, string op)
+    {
+        if (run.Ev is not { } ev || run.Rig == null) return;
+        if (sc.Row.Findings.Count == 0 && !Evidence.All) return;
+        var notes = new System.Text.StringBuilder(Evidence.NotesHeader("Field job scenarios", run.Spec.Code, run.Spec.Title));
+        notes.Append(op).Append(" operator. ").Append(run.Spec.Story).Append("\n\n## Findings\n\n");
+        foreach (var f in sc.Row.Findings) notes.Append("- ").Append(f.Severity).Append(" `").Append(f.Code).Append("`: ").Append(f.Message).Append('\n');
+        if (sc.Row.Findings.Count == 0) notes.Append("none\n");
+        notes.Append("\n## Measured\n\n");
+        foreach (var (k, v) in sc.Row.Metrics) notes.Append("- ").Append(k).Append(": ").Append(v).Append('\n');
+        notes.Append("\n## Checks\n\n");
+        foreach (var c in sc.Row.Checks) notes.Append("- ").Append(c).Append('\n');
+        notes.Append("\n## Timeline\n\n");
+        foreach (var s in sc.Row.Steps) notes.Append(s).Append('\n');
+
+        // The picture of the job (what was sprayed, the track) and the harness's grids, when the
+        // job got as far as driving.
+        var files = new List<string>();
+        string tmp = Path.Combine(Path.GetTempPath(), "agopenweb-field-job", run.Spec.Code + "-" + Guid.NewGuid().ToString("N")[..6]);
+        string picture = Path.Combine(tmp, run.Spec.Code + ".ppm");
+        string bin = Path.Combine(tmp, "truth_grid.bin"), json = Path.Combine(tmp, "truth_grid.json");
+        string bins = Path.Combine(tmp, "pass_bins.csv"), gaps = Path.Combine(tmp, "pass_gaps.csv");
+        if (run.Track.Count > 0)
+        {
+            // Each kept on its own: one that fails leaves the others, and the notes list only those kept.
+            void Keep(string what, Action write, params string[] paths)
+            {
+                try { write(); files.AddRange(paths); }
+                catch (Exception ex) { sc.Note("evidence: no " + what + " of the job (" + ex.Message + ")"); }
+            }
+            try { Directory.CreateDirectory(tmp); } catch { }
+            Keep("picture", () => run.DumpImage(picture), picture);
+            Keep("grids", () => run.DumpGrids(bin, json), bin, json);
+            Keep("pass bins", () => run.DumpPassBins(bins, gaps), bins, gaps);
+        }
+
+        // What the harness itself measured, listed only where the job got far enough to have it.
+        bool drove = files.Count > 0, tracked = ev.HasTable("truth_track");
+        notes.Append("\n## The harness's own data (attachments/)\n\n")
+             .Append("To check a finding against what the harness measured, the app's dump aside:\n\n");
+        if (tracked)
+            notes.Append("- `truth_track.csv`: what the harness's machine really did, fix by fix: the real pivot and implement, the module's relays and nozzles, the screen's sections, and AgOpenWeb's tool position and sections for the same cycle (").Append(JobRun.TruthTrackHeader).Append(").\n");
+        if (files.Contains(bin))
+            notes.Append("- `truth_grid.bin` with `truth_grid.json`: the harness's 0.2 m grid over the field: where the real implement sprayed, the zones, the cells each area check counted (bit 32 is SPRAYED-IN-HEADLAND, 2 MISSED-STRIPS, ...: see the json), and what AgOpenWeb's screen and mapping swept.\n");
+        if (files.Contains(bins))
+            notes.Append("- `pass_bins.csv`: each pass as the harness recorded it, in 1 m bins along its frame (").Append(run.FrameWords).Append("): the sprayed width's edges in u, where the tool was on average and its way, the fixes, and whether the bin counts as settling after a turn or bending (").Append(JobRun.PassBinsHeader).Append(").\n")
+                 .Append("- `pass_gaps.csv`: every gap the strip check read between neighbouring passes (+ a gap, - an overlap), where, and what it counted as: `settling`, `bend`, or `along` (the widest of these is MISSED-STRIPS'; the widest overlap of all, DOUBLE-SPRAYED's) (").Append(JobRun.PassGapsHeader).Append(").\n");
+        if (files.Contains(picture))
+            notes.Append("- the picture (`.ppm`): green sprayed once, yellow twice, blue/cyan/magenta AgOpenWeb's map where nothing was sprayed, red the cells a Bug check counted; white the path, orange in the U-turns.\n");
+        notes.Append("- `harness_trace.txt`: the harness's own trace lines.\n");
+        if (!tracked && !drove) notes.Append("- the job stopped before it drove: no track, grid or picture.\n");
+
+        string? zip = await ev.SaveAsync(null, notes.ToString(), run.Rig.Services, run.Rig.State, run.Rig.Store, run.Rig.RunAsync, files);
+        try { Directory.Delete(tmp, true); } catch { }
+        if (zip != null) sc.Note("evidence (the app's bug report dump at the end of the job): `evidence/" + Path.GetFileName(zip) + "`");
+        foreach (var e in ev.Errors) sc.Note("evidence not kept: " + e);
+    }
+
+    /// <summary>The checks a job must pass. Thresholds in metres and square metres, with the
+    /// 0.2 m grid's own rounding allowed for.</summary>
+    public static void Judge(Scenario sc, JobRun r, JobAreas a)
+    {
+        var spec = r.Spec;
+        void flag(Severity sev, string code, string text)
+        {
+            if (spec.Expected.Contains(code) && (spec.ExpectedWhen?.Invoke(code, a) ?? true)) sc.Note($"expected from what the operator did (`{code}`): {text}");
+            else sc.Problem(sev, code, text);
+        }
+        double ha = a.Work / 1e4;
+        sc.Row.Metrics.Add(("Cultivated area (inside the headland line, outside obstacles)", F($"{ha:0.00} ha")));
+        sc.Row.Metrics.Add(("Sprayed at least once (valves open, real implement)", F($"{a.Sprayed / 1e4:0.00} ha = {Pct(a.Sprayed, a.Work)}")));
+        sc.Row.Metrics.Add(("Never sprayed, of which between passes / at the pass ends (within 3 m of the headland line) / next to the obstacles (within 2 m) / elsewhere inside the worked passes", F($"{a.Missed:0} m² = {Pct(a.Missed, a.Work)}, {a.MissedBetweenPasses:0} / {a.MissedAtEnds:0} / {a.MissedAtObstacles:0} / {a.MissedInWorkedPasses:0} m²")));
+        sc.Row.Metrics.Add(("Widest missed strip / overlap between neighbouring passes", F($"{a.LargestMissedStripM:0.00} m / {a.LargestOverlapM:0.00} m")));
+        sc.Row.Metrics.Add(("Sprayed twice or more", F($"{a.Twice:0} m² = {Pct(a.Twice, a.Work)}")));
+        sc.Row.Metrics.Add(("Sprayed outside the boundary / in obstacles / in the headland", F($"{a.OutsideBoundary:0} / {a.InObstacles:0} / {a.InHeadland:0} m²")));
+        sc.Row.Metrics.Add(("AgOpenWeb's map: painted where no valve was open / open but not painted", F($"{a.AppPaintedNotSprayed:0} / {a.SprayedNotAppPainted:0} m²")));
+        sc.Row.Metrics.Add(("AgOpenWeb's own sections on screen: swept / swept but the map blank / the map painted beyond them", F($"{a.ScreenSwept / 1e4:0.00} ha / {a.ScreenSweptNotPainted:0} m² / {a.AppPaintedNotSprayed - a.AppPaintedScreenSweptNotSprayed:0} m²")));
+        sc.Row.Metrics.Add(("AgOpenWeb's mapping at 100 Hz (IsMappingOn at its tool position): swept / the map painted beyond it / it swept beyond the screen's sections", F($"{a.MapSwept / 1e4:0.00} ha / {a.AppPaintedNotMapped:0} m² / {a.MappedNotScreen:0} m²")));
+        sc.Row.Metrics.Add(("AgOpenWeb's worked area / area covered once vs the truth", F($"{a.AppTotalWorked / 1e4:0.00} / {a.AppActualCovered / 1e4:0.00} ha vs {(a.Sprayed + a.OutsideBoundary + a.InObstacles + a.InDriveThrough + a.InHeadland) / 1e4:0.00} ha")));
+        sc.Row.Metrics.Add(("U-turns / passes / simulated time", F($"{r.Turns.Count} / {(r.PathOp != null ? r.PassesDriven : r.Turns.Count + 1)} / {r.Seconds / 60:0.0} min")));
+        if (r.ToolSamples > 0)
+            sc.Row.Metrics.Add(("AgOpenWeb's tool position vs the real implement on the passes, along (+ ahead) / across (+ right), mean and worst", F($"{r.ToolAlongSum / r.ToolSamples:+0.00;-0.00;+0.00} m ({r.ToolAlongMax:+0.00;-0.00;+0.00}) / {r.ToolAcrossSum / r.ToolSamples:+0.00;-0.00;+0.00} m ({r.ToolAcrossMax:+0.00;-0.00;+0.00})")));
+        sc.Row.Metrics.Add(("AgOpenWeb's position behind the receiver's (harness pace check): median lag in fixes of 0.1 s / GPS cycles run of fixes sent", F($"{r.MedianLagFixes} / {r.CyclesAtEnd} of {r.FixesAtEnd}")));
+        if (r.SecondsGeoStop > 0)
+            sc.Row.Metrics.Add(("Geo-stop sent to the module (tractor out of bounds)", F($"{r.SecondsGeoStop:0.0} s")));
+        r.PathOp?.Metrics(sc, r);
+        if (r.PathOp is { JudgesCoverage: false } only)
+        {
+            only.Judge(sc, r, a, flag);
+            JudgeAutoSteer(sc, r, a, flag);
+            return;
+        }
+        if (r.SliverPasses.Count > 0)
+            sc.Note(F($"pass(es) AgOpenWeb counts as inside the field but with less than 20 m of line in the cultivated area: {string.Join(", ", r.SliverPasses.Select(p => F($"{p.Pass} ({p.ChordM:0} m)")))}"));
+        if (r.Turns.Count > 0)
+            sc.Row.Metrics.Add(("U-turn time, mean / longest; furthest past the boundary", F($"{r.Turns.Average(t => t.Seconds):0.0} / {r.Turns.Max(t => t.Seconds):0.0} s; {r.Turns.Max(t => t.MaxOutsideM):0.0} m")));
+            if (Journal.Verbose)
+                foreach (var t in r.Turns)
+                    sc.Note(F($"turn {t.Index}: pass {t.PassBefore} -> {t.PassAfter}, {(t.Left ? "left" : "right")}, {t.Seconds:0.0} s, past the boundary: tractor {t.MaxPivotOutsideM:0.0} m, implement end {t.MaxOutsideM:0.0} m{(t.Fallback ? ", fallback path" : "")}, slowest {t.MinSpeedKmh:0.0} km/h{(t.BackOnPassSeconds >= 0 && t.Seconds - t.BackOnPassSeconds > 20 ? F($", back on the next pass after {t.BackOnPassSeconds:0} s but AgOpenWeb kept the turn going for {t.Seconds - t.BackOnPassSeconds:0} s more") : "")}"));
+
+        // ---- the field done
+        if (r.EndedEarly)
+        {
+            sc.Note(F($"the job ended early ({r.EndedBy}): {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed by then"));
+            // The operator took over before any U-turn: the job never got past its first pass. A
+            // turn blocked (or missed) at the first end is noted as what the app said, and every
+            // coverage check passes on nothing sprayed, so J7 sprayed 0 % night after night with
+            // the run green (2026-11-13). A refused turn is TURN-REFUSED already; no room on the
+            // next pass is the end of the field.
+            if (r.TookOverAt >= 0 && r.Turns.Count == 0 && !r.ShortStopped
+                && !r.Problems.Any(p => p.Contains("refused the U-turn", StringComparison.Ordinal)
+                    || p.Contains("had no room for a U-turn", StringComparison.Ordinal)))
+                flag(Severity.Bug, "JOB-NEVER-TURNED", F($"the job never got past its first pass: the operator took over before any U-turn ({r.EndedBy}), with {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed."));
+            // "No U-turn onto the next pass: ..." (JobRun.IsNoRoom) with the field not done:
+            // what was said and what was left, not whether the app was right to say it. J14, J8 and
+            // J19 stopped so in the 2026-11-16 nightly with 99.5, 16 and 15 % of the field left, and
+            // nothing but the sprayed share in a note showed it. Not on a short run (TURNS,
+            // MINUTES, FROM_PASS): the field is not meant to be done.
+            if (JobRun.IsNoRoom(r.EndedBy)
+                && !r.ShortStopped && r.StartedAtPass == int.MinValue && a.Missed > NoRoomLeftShare * a.Work)
+            {
+                string left = F($"the job ended where AgOpenWeb had no room for a U-turn on the next pass, with {Pct(a.Missed, a.Work)} of the cultivated area unsprayed ({r.EndedBy}).");
+                // A job whose field has that shape (J9, J17, J18): the next pass runs nearer the fence
+                // than a tractor fits, and refusing to drive it there is right. Only for that reason
+                // ("... it runs 1.1 m from the boundary, 2.0 m needed"): another stop is a finding.
+                if (spec.Expected.Contains("END-OF-FIELD-FIELD-LEFT") && r.EndedBy.Contains(" m from the boundary, ", StringComparison.Ordinal))
+                    sc.Note(F($"expected from the field's shape (`END-OF-FIELD-FIELD-LEFT`): the next pass runs nearer the fence than the U-turn distance, where no tractor fits; {left}"));
+                else if (spec.ExpectedStop is { } stop && r.EndedBy.Contains(stop.Says, StringComparison.Ordinal))
+                    sc.Note(F($"expected (`END-OF-FIELD-FIELD-LEFT`): {stop.Why}; {left}"));
+                else
+                    flag(Severity.Improvement, "END-OF-FIELD-FIELD-LEFT", left);
+            }
+        }
+        else if (!r.FieldDone)
+            flag(Severity.Bug, "FIELD-NOT-FINISHED", F($"AgOpenWeb never reported the end of the field; the job stopped after {r.Seconds / 60:0} min with {Pct(a.Missed, a.Work)} of the cultivated area unsprayed. {string.Join(" | ", r.Problems)}"));
+        else if (a.Missed - a.MissedBetweenPasses - a.MissedLeftInMiddle - a.MissedAtCorners - a.MissedAtLapChange > 0.05 * a.Work)
+        {
+            // Where the ground left lies: in passes that were driven but not along their whole
+            // length (a U-turn cut a corner off them), or in no driven pass (a side of the field,
+            // passes skipped). Said apart, since the two have different causes.
+            double left = a.Missed - a.MissedBetweenPasses - a.MissedAtEnds - a.MissedAtObstacles - a.MissedAlongBoundary - a.MissedLeftInMiddle - a.MissedAtCorners - a.MissedAtLapChange;
+            string where = a.MissedInWorkedPasses >= 0.9 * left ? "unsprayed inside the worked passes (passes it drove, but not along their whole length)"
+                : a.MissedInWorkedPasses <= 0.1 * left ? "a side of the field, or passes it skipped"
+                : F($"{a.MissedInWorkedPasses:0} m² unsprayed inside the worked passes, {left - a.MissedInWorkedPasses:0} m² on a side of the field or in passes it skipped");
+            flag(Severity.Bug, "FIELD-LEFT-UNDONE", F($"{(r.EndedBy.Length > 0 ? "The job ended (" + r.EndedBy + ")" : "AgOpenWeb reported the end of the field")} with {Pct(left, a.Work)} of the cultivated area never sprayed outside the strips between passes, the pass ends and the obstacles: {where}."));
+        }
+        else if (a.MissedLeftInMiddle > 0.003 * a.Work && r.PathOp == null)
+            sc.Ok(F($"the field was worked as the operator chose: {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed, {Pct(a.MissedLeftInMiddle, a.Work)} left where the operator turned back in the middle of a pass; {(r.EndedBy.Length > 0 ? r.EndedBy : F($"AgOpenWeb reported the end of the field after {r.Turns.Count} U-turns"))}"));
+        else if (a.MissedLeftInMiddle > 0.003 * a.Work)
+            sc.Ok(F($"the laps were worked: {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed, {Pct(a.MissedLeftInMiddle, a.Work)} left in the middle where no lap reaches (for an AB line or by hand); {r.EndedBy}"));
+        else
+            sc.Ok(F($"the whole field was worked: {Pct(a.Sprayed, a.Work)} of the cultivated area sprayed, {(r.EndedBy.Length > 0 ? r.EndedBy : F($"AgOpenWeb reported the end of the field after {r.Turns.Count} U-turns"))}"));
+        if (r.EarlyEnds.Count > 0)
+            flag(Severity.Bug, "END-OF-FIELD-TOO-EARLY", F($"AgOpenWeb said \"End of field reached\" (or that there was no room at this end) and then made a U-turn onto another pass after all ({string.Join("; ", r.EarlyEnds)}): an operator who stops at the message leaves the rest of the field undone. The operator here drove on."));
+        if (a.MissedAtLapChange > 0)
+            sc.Note(F($"{a.MissedAtLapChange:0} m² ({Pct(a.MissedAtLapChange, a.Work)}) where the operator moved a width in by hand at the end of a lap were never sprayed: the implement crossing from one lap to the next"));
+        if (a.MissedAtCorners > 0)
+            sc.Note(F($"{a.MissedAtCorners:0} m² ({Pct(a.MissedAtCorners, a.Work)}) at corners were never sprayed: a lap is rounded where it turns tighter than the rig can (the U-turn radius, {r.Rig.Store.Guidance.UTurnRadius:0} m), and a lap or a curve's pass line cuts a chord across a notch in its reference, so there the next one in pulls away from it"));
+
+        // ---- strips between passes
+        if (a.MissedAtObstacles > 0)
+            sc.Note(F($"{a.MissedAtObstacles:0} m² of the cultivated area within 2 m of the obstacles were never sprayed: the sections closing over an obstacle and opening again after it (the section look-ahead and the valves' latency)"));
+        // Passes that meet within 5 cm leave only the 0.2 m grid's rounding between them: with a
+        // narrow implement the many pass edges add that up past the area threshold (a note, not a gap).
+        // Only the cells on a seam where both passes ran at full width count as rounding, at most
+        // 0.05 m along every pass (what a gap of 5 cm or less can leave); the rest (wedges at the
+        // pass ends, a section late) is held to the usual 0.5 % as before. A gap the operator asked
+        // for (a negative overlap: a drill's row spacing between passes) is allowed.
+        double askedGap = Math.Max(0, -spec.T.Overlap), passM = a.Work / Math.Max(r.Spacing, 0.1);
+        double stripArea = 0.005 * a.Work + askedGap * passM;
+        double beyondRounding = (a.MissedBetweenPasses - a.MissedAtSeams) + Math.Max(0, a.MissedAtSeams - (0.05 + askedGap) * passM);
+        if (a.LargestMissedStripM <= 0.05 + askedGap && a.MissedBetweenPasses > stripArea && beyondRounding <= 0.005 * a.Work)
+            sc.Note(F($"{a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}) between passes counted unsprayed on the 0.2 m grid, {a.MissedAtSeams:0} m² of it on the seams where the implement's ends met within {a.LargestMissedStripM:0.00} m{(askedGap > 0 ? F($" ({askedGap:0.00} m gap asked for)") : "")}: the grid's rounding along {r.Spacing:0.0} m passes, not a strip"));
+        else if (a.LargestMissedStripM <= 0.15 + askedGap && a.MissedBetweenPasses > stripArea && r.Said.FirstOrDefault(l => l.Contains("Headland too narrow", StringComparison.Ordinal)) is { } narrow)
+            sc.Note(F($"{a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}) between sprayed ground were never sprayed (widest strip along the passes {a.LargestMissedStripM:0.00} m): wedges at the pass ends where the U-turn leaves its pass inside the headland line, as AgOpenWeb warned (\"{narrow}\"): the headland is narrower than the turn needs at this radius and pass spacing"));
+        else if (a.LargestMissedStripM <= 0.15 + askedGap && a.MissedBetweenPasses > stripArea)
+            flag(Severity.Bug, "MISSED-STRIPS", F($"{a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}) between sprayed ground were never sprayed, centred on ({a.MissedBetweenE / Math.Max(a.MissedBetweenPasses, 1e-9):0},{a.MissedBetweenN / Math.Max(a.MissedBetweenPasses, 1e-9):0}), though wherever two neighbouring passes run at full width their edges meet (widest {a.LargestMissedStripM:0.00} m): wedges where a pass starts or ends with the implement still turning or a section still off, not a strip along the passes."));
+        else if (a.LargestMissedStripM > 0.15 + askedGap || a.MissedBetweenPasses > stripArea)
+            flag(Severity.Bug, "MISSED-STRIPS", F($"strips of ground between neighbouring passes were never sprayed: {a.MissedBetweenPasses:0} m² ({Pct(a.MissedBetweenPasses, a.Work)}), the widest {a.LargestMissedStripM:0.00} m{(a.LargestStripWhere.Length > 0 ? " " + a.LargestStripWhere : "")}; the strips centre on ({a.MissedBetweenE / Math.Max(a.MissedBetweenPasses, 1e-9):0},{a.MissedBetweenN / Math.Max(a.MissedBetweenPasses, 1e-9):0}). AgOpenWeb's passes are {r.Spacing:0.00} m apart for a {spec.T.Width:0.00} m implement with {spec.T.Overlap:0.00} m overlap."));
+        else
+            sc.Ok(F($"no strip was left between passes (widest {a.LargestMissedStripM:0.00} m, {a.MissedBetweenPasses:0} m² in all)"));
+        if (a.LargestBendStripM > 0.15 + askedGap)
+            sc.Note(F($"where a pass bends sharply (faster than {JobRun.BendDegPerM:0} ° per metre), the widest gap to the pass beside it was {a.LargestBendStripM:0.00} m ({a.LargestBendWhere}): AutoSteer cutting the inside of the bend, or running wide of it, for a few metres, as any line following does"));
+        if (a.LargestSettlingStripM > 0.15 + askedGap)
+            sc.Note(F($"where a pass starts, the implement still settling onto it after the U-turn handed back (the first {JobRun.SettlingM:0} m of its edges), the widest gap to the pass beside it was {a.LargestSettlingStripM:0.00} m ({a.LargestSettlingWhere}): a wedge at the start of the pass, closing as the implement comes onto its line, as in AgOpenGPS"));
+        // ---- the edge of a field worked with no headland (laps along the boundary)
+        if (r.Work == null)
+        {
+            sc.Row.Metrics.Add(("Never sprayed along the boundary (no headland: within 1.5 m of it) / at the laps' corners / in the middle no lap reaches", F($"{a.MissedAlongBoundary:0} / {a.MissedAtCorners:0} / {a.MissedLeftInMiddle:0} m²")));
+            if (a.MissedAlongBoundary > 0.003 * a.Work)
+                flag(Severity.Improvement, "EDGE-NOT-SPRAYED", F($"{a.MissedAlongBoundary:0} m² ({Pct(a.MissedAlongBoundary, a.Work)}) along the boundary were never sprayed with the boom's end on the boundary (the first lap half a width inside it): a strip about {a.MissedAlongBoundary / Math.Max(Ring.Perimeter(r.Outer), 1):0.00} m wide round the field. With 'Off outside boundary' on, a section closes when either of its ends is more than {AgOpenWeb.Services.Section.SectionControlService.EdgeLeewayM * 100:0} cm outside the boundary, as it must, so wherever the lap bends or the tractor runs a little outward the outermost section closes."));
+            else
+                sc.Ok(F($"the edge along the boundary was sprayed ({a.MissedAlongBoundary:0} m² missed within 1.5 m of it)"));
+        }
+        double overlapExpected = spec.T.Overlap + 0.25;
+        if (a.LargestOverlapM > overlapExpected + 0.5 || a.Twice > 0.05 * a.Work)
+            flag(Severity.Improvement, "DOUBLE-SPRAYED", F($"{Pct(a.Twice, a.Work)} of the cultivated area was sprayed twice (widest overlap between passes {a.LargestOverlapM:0.00} m, {spec.T.Overlap:0.00} m asked for)."));
+        else
+            sc.Ok(F($"overlap as set: {Pct(a.Twice, a.Work)} sprayed twice, widest {a.LargestOverlapM:0.00} m"));
+
+        // ---- where it must not spray
+        if (a.OutsideBoundary > 10)
+            flag(spec.OffWhenOut ? Severity.Safety : Severity.Improvement, "SPRAYED-OUTSIDE-BOUNDARY",
+                F($"{a.OutsideBoundary:0} m² outside the field boundary were sprayed (valves open with the implement past the edge){(spec.OffWhenOut ? " with 'Off outside boundary' on." : " with 'Off outside boundary' off, AgOpenWeb's default (AgOpenGPS's default is on).")}"));
+        else
+            sc.Ok(F($"nothing sprayed outside the boundary ({a.OutsideBoundary:0} m²)"));
+        if (spec.Obstacles)
+        {
+            if (a.InObstacles > 2)
+                flag(Severity.Safety, "SPRAYED-IN-OBSTACLE", F($"{a.InObstacles:0} m² inside obstacles (inner boundaries that are not drive-through) were sprayed."));
+            else
+                sc.Ok(F($"nothing sprayed inside the obstacles ({a.InObstacles:0} m²; {a.InDriveThrough:0} m² in drive-through ones, allowed)"));
+        }
+        if (spec.HeadlandM > 0 && spec.HeadlandSections)
+        {
+            // A section is in the headland only with both its ends in it (AgOpenGPS): where a pass
+            // meets the headland line at an angle, up to a section's width lands past the line so
+            // that nothing inside it is left unsprayed. Only spray further in is a fault. A
+            // reversible plough works FieldOffset to one side of where AgOpenWeb shows it (J19): its
+            // spray is measured where AgOpenWeb's plough was (JobRun.Measure).
+            double widest = spec.T.HeadlandAllowance;
+            string where = spec.T.FieldOffset == 0 ? ""
+                : F($" (measured where AgOpenWeb shows the implement, {Math.Abs(spec.T.FieldOffset):0.0} m to one side of where it works)");
+            if (a.InHeadlandPastSection > 20)
+                flag(Severity.Bug, "SPRAYED-IN-HEADLAND", F($"{a.InHeadlandPastSection:0} m² of the headland were sprayed further past the headland line than a section's width ({widest:0.00} m){where}, with section control in the headland on (the sections should be off there); {a.InHeadland:0} m² in all."));
+            else
+                sc.Ok(F($"the headland was left alone: {a.InHeadland:0} m² sprayed in it, all within a section's width ({widest:0.00} m) of the line{where}, where a section crosses it at an angle and stays on until both its ends are in (AgOpenGPS)"));
+        }
+
+        // ---- the map against the valves
+        if (a.AppPaintedNotSprayed > 20 && a.AppPaintedNotSprayed > 0.005 * a.Sprayed)
+            flag(Severity.Bug, "MAP-SHOWS-UNSPRAYED", F($"AgOpenWeb's map shows {a.AppPaintedNotSprayed:0} m² as worked where no valve was open within 0.4 m: {a.AppPaintedScreenSweptNotSprayed:0} m² of it its own sections swept with the screen on and the valves shut ({r.ScreenOnValveShut.Take(spec.T.Sections).Sum():0.0} section-seconds; module link down {r.SecondsLinkDown:0.0} s), {a.AppPaintedNotSprayed - a.AppPaintedScreenSweptNotSprayed:0} m² the map painted where its sections never were."));
+        else
+            sc.Ok(F($"the map shows nothing that was not sprayed ({a.AppPaintedNotSprayed:0} m²)"));
+        if (a.SprayedNotAppPainted > 20 && a.SprayedNotAppPainted > 0.005 * a.Sprayed)
+            flag(Severity.Bug, "SPRAYED-NOT-ON-MAP", F($"{a.SprayedNotAppPainted:0} m² were sprayed (valves open) but AgOpenWeb's map shows nothing within 0.4 m there."));
+        else
+            sc.Ok(F($"everything sprayed is on the map ({a.SprayedNotAppPainted:0} m² not)"));
+        double truthTotal = a.Sprayed + a.OutsideBoundary + a.InObstacles + a.InDriveThrough + a.InHeadland;
+        // Over 20 m² as the map checks: on a job cut at its first U-turn the areas are a few
+        // hundred m², and a second of driving at the stop is 5 % of them (J12, J19, 2026-11-15).
+        if (truthTotal > 0 && Math.Abs(a.AppActualCovered - truthTotal) > 20 && Math.Abs(a.AppActualCovered - truthTotal) > 0.05 * truthTotal)
+            flag(Severity.Inconsistency, "APP-AREA-OFF", F($"AgOpenWeb's 'area covered once' is {a.AppActualCovered / 1e4:0.00} ha, the real implement sprayed {truthTotal / 1e4:0.00} ha ({(a.AppActualCovered / truthTotal - 1) * 100:+0.0;-0.0;+0.0} %)."));
+        else
+            sc.Ok(F($"AgOpenWeb's area covered once ({a.AppActualCovered / 1e4:0.00} ha) matches the truth ({truthTotal / 1e4:0.00} ha)"));
+
+        // ---- valves vs screen
+        var lag = new List<string>();
+        for (int s = 0; s < Math.Min(64, spec.T.Sections); s++)
+            if (r.PersistentDisagreement[s] > 1)
+                lag.Add(F($"{s + 1} (on screen, valve shut {r.ScreenOnValveShut[s]:0.0} s; off, valve open {r.ScreenOffValveOpen[s]:0.0} s; {r.PersistentDisagreement[s]:0.0} s of it in stretches over 1 s)"));
+        string? toldNoRelay = r.Said.FirstOrDefault(m => m.Contains("No relay of the machine module", StringComparison.Ordinal));
+        if (lag.Count > 0 && spec.DefaultRelays && toldNoRelay != null)
+            // The relay functions left at the defaults (sections 1 to 6), and the operator told so.
+            sc.Note("the valves did not follow the screen for section(s) " + string.Join(", ", lag) + ": the relay functions were left at the defaults, and AgOpenWeb said so: " + toldNoRelay);
+        else if (lag.Count > 0)
+            flag(spec.DefaultRelays ? Severity.Robustness : Severity.Bug, spec.DefaultRelays ? "SECTION-WITHOUT-RELAY" : "VALVES-NOT-FOLLOWING",
+                "the valves did not follow the screen for section(s) " + string.Join(", ", lag));
+        else
+            sc.Ok("every valve followed the screen within 2 s over the whole job");
+        // The harness's own machine: frames the module never got while online (a busy runner).
+        // A mismatch in those stretches is not counted against AgOpenWeb above.
+        var v = r.Valves;
+        double harnessLag = v.DuringLostFrames.Take(Math.Min(64, spec.T.Sections)).Sum();
+        if (v.FramesMissed > 0 || harnessLag > 0)
+            sc.Note(F($"harness: the module missed {v.FramesMissed} of {v.FramesExpected} PGN 239 frames while online (the runner too busy to deliver them, not AgOpenWeb){(harnessLag > 0 ? F($"; {harnessLag:0.0} section-seconds of valves not following the screen fell in those stretches and are not counted") : "")}"));
+
+        // ---- where AgOpenWeb thinks the implement is
+        if (r.ToolSamples > 0)
+        {
+            double along = r.ToolAlongSum / r.ToolSamples, across = r.ToolAcrossSum / r.ToolSamples;
+            if (Math.Abs(along) > 0.5 || Math.Abs(across) > 0.3)
+                flag(Severity.Bug, "TOOL-POSITION-OFF", F($"on the passes AgOpenWeb places the implement {along:+0.00;-0.00;+0.00} m along the track and {across:+0.00;-0.00;+0.00} m across from where the real {spec.T.Name} is (hitch {spec.T.HitchLength:0.0} m, pivot to tool {spec.T.ToolToPivot:0.0} m, offset {spec.T.Offset:0.0} m); its map and section timing are shifted by that much."));
+            else
+                sc.Ok(F($"AgOpenWeb's implement position matches the real one on the passes ({along:+0.00;-0.00;+0.00} m along, {across:+0.00;-0.00;+0.00} m across)"));
+        }
+
+        // ---- the turns
+        var outTurns = r.Turns.Where(t => t.MaxPivotOutsideM > 0.5).ToList();
+        var outTool = r.Turns.Where(t => t.MaxOutsideM > 0.5).ToList();
+        int fallbacks = r.Turns.Count(t => t.Fallback);
+        var late = r.Turns.Where(t => t.BackOnPassSeconds >= 0 && t.Seconds - t.BackOnPassSeconds > 30).ToList();
+        if (late.Count > 0)
+        {
+            var worst = late.OrderByDescending(t => t.Seconds - t.BackOnPassSeconds).First();
+            flag(Severity.Improvement, "TURN-ENDS-LATE", F($"in {late.Count} of {r.Turns.Count} U-turns AgOpenWeb kept the turn 'executing' long after the tractor was back on the next pass inside the cultivated area: turn {worst.Index} ended {worst.Seconds - worst.BackOnPassSeconds:0} s ({(worst.Seconds - worst.BackOnPassSeconds) * 2.5:0} m at 9 km/h) after the tractor was on the pass{(worst.Fallback ? ", a simple fallback path" : "")}; until then no next turn can be planned and the screen says the turn is still on."));
+        }
+        // Started mid-field (AGOPENWEB_SCENARIO_FROM_PASS): the pass behind is not the edge, and
+        // which way AgOpenWeb's first arrow points there is not this check's question.
+        if (r.ArrowAtEdge is { } edge && r.StartedAtPass == int.MinValue)
+            flag(Severity.Bug, "FIRST-TURN-TOWARD-EDGE", F($"before the first U-turn AgOpenWeb's arrow pointed at the edge the operator started from: pass {edge.Pass}, with only {edge.ChordM:0} m of line inside the cultivated area (any 5 m sample inside counts as a pass); left alone, AgOpenWeb turns onto it and then reports the end of the field with the whole field undone. The operator tapped the arrow the other way."));
+        if (outTurns.Count > 0)
+            flag(Severity.Safety, "TURN-OUTSIDE-BOUNDARY", F($"{outTurns.Count} of {r.Turns.Count} U-turns took the tractor itself past the field boundary, the furthest by {outTurns.Max(t => t.MaxPivotOutsideM):0.0} m (turn {outTurns.OrderByDescending(t => t.MaxPivotOutsideM).First().Index}{(outTurns.Any(t => t.Fallback) ? ", AgOpenWeb's simple fallback path" : "")}); 'distance from boundary' was {spec.UTurnDistanceFromBoundary:0.0} m."));
+        else if (outTool.Count > 0)
+            // AgOpenGPS behaviour, kept on purpose (decided 2026-11-10): 'distance from boundary'
+            // keeps the tractor inside, not the implement; an operator who wants the boom inside
+            // sets a larger distance. Noted, not a finding.
+            sc.Note(F($"as in AgOpenGPS, 'distance from boundary' ({spec.UTurnDistanceFromBoundary:0.0} m) keeps the tractor inside, not the implement: the {spec.T.Width:0} m implement's end swung past the boundary in {outTool.Count} of {r.Turns.Count} turns, the furthest by {outTool.Max(t => t.MaxOutsideM):0.0} m"));
+        else if (r.Turns.Count > 0)
+            sc.Ok(F($"all {r.Turns.Count} U-turns kept the tractor and the implement inside the boundary"));
+        if (fallbacks > 0)
+            sc.Note(F($"AgOpenWeb's turn service failed ('path invalid or out of bounds') and the simple fallback path was used in {fallbacks} of {r.Turns.Count} turns"));
+        // AgOpenWeb's warning that a turn can't be made from here ("U-turn missed: ...", "No U-turn
+        // can be made ..."). Heard before the tractor had driven a planning distance on its pass since
+        // the last turn landed it (or AutoSteer came on), the pass was too short at this end to plan a
+        // turn on (field job J3: landed 8.3 m from the turn line at a narrow corner, where a turn is
+        // planned from 10 m out; AgOpenGPS sounds "too close" there): the warning is the right thing to
+        // do, noted. Heard after a longer run on the pass, AgOpenWeb had room to plan the turn and
+        // didn't: TURN-MISSED. Silence where no turn can be made is RAN-OFF.
+        const double TooShortToPlanM = 5;
+        var tooShort = r.TurnWarnings.Where(w => w.LegM < TooShortToPlanM).ToList();
+        var hadRoom = r.TurnWarnings.Where(w => w.LegM >= TooShortToPlanM).ToList();
+        if (tooShort.Count > 0)
+            sc.Note(F($"AgOpenWeb warned that a U-turn could not be made {tooShort[0].LegM:0.0} m after the tractor started on its pass, too short at this end to plan one: {tooShort[0].Text}"));
+        if (hadRoom.Count > 0)
+            flag(Severity.Bug, "TURN-MISSED", F($"{hadRoom.Count} U-turn(s) were missed after the tractor had driven {hadRoom[0].LegM:0} m of its pass with AutoSteer on, room to plan the turn: {hadRoom[0].Text}"));
+        var cancelled = r.Said.Where(s => s.Contains("cancelled", StringComparison.Ordinal)).ToList();
+        if (cancelled.Count > 0)
+            flag(Severity.Bug, "TURN-MISSED", F($"{cancelled.Count} U-turn(s) were cancelled while the operator did nothing wrong: {cancelled[0]}"));
+        r.PathOp?.Judge(sc, r, a, flag);
+        if (r.PathOp == null && spec.PassCheck) { LapOperator.JudgePassError(sc, r, flag, "the AB line's passes"); JudgeTurnExits(sc, r, flag); }
+        JudgeDrawbar(sc, r, flag);
+        spec.ExtraJudge?.Invoke(sc, r, flag);
+        JudgeAutoSteer(sc, r, a, flag);
+    }
+
+    /// <summary>Ground left, as a share of the cultivated area, below which a refused U-turn
+    /// came at the end of the field: a few square metres of the grid's rounding and the wedges
+    /// the turns leave, not a pass.</summary>
+    private const double RefusedWithNothingLeft = 0.01;
+
+    /// <summary>AutoSteer dropping out on its own, and the tractor running off the field.</summary>
+    private static void JudgeAutoSteer(Scenario sc, JobRun r, JobAreas a, Action<Severity, string, string> flag)
+    {
+        var offs = r.Said.Where(s => s.Contains("AutoSteer off", StringComparison.Ordinal)).ToList();
+        // At the end of a played route AutoSteer goes off by design, with the reason (P7): the
+        // last off, on a route AgOpenWeb then said was complete. One anywhere else is a drop.
+        if (offs.Count > 0 && offs[^1].Contains("end of the recorded path", StringComparison.Ordinal)
+            && r.EndedBy?.Contains("recorded path is complete", StringComparison.Ordinal) == true)
+            offs.RemoveAt(offs.Count - 1);
+        if (offs.Count > 0 && r.Spec.OnFix == null)
+            flag(Severity.Bug, "AUTOSTEER-DROPPED", F($"AutoSteer switched itself off {offs.Count} time(s) during the job, re-engaged by the operator {r.Reengaged} time(s): {offs[0]}"));
+        if (r.Problems.Any(p => p.StartsWith("HARNESS", StringComparison.Ordinal))) return;
+        foreach (var p in r.Problems)
+        {
+            // A refusal is a finding when it left ground to work: what is left beyond the strips
+            // between passes, the pass ends, the obstacles, the boundary and the corners, as
+            // FIELD-LEFT-UNDONE counts it. With none left the field was done and the turn had
+            // nowhere to go (J8's last corner: 95.6 % sprayed, the passes there 10 m, 1 m, 0 m of
+            // cultivated ground, no loop at 8 m radius fits): the refusal is right, and noted.
+            if (p.Contains("refused the U-turn", StringComparison.Ordinal))
+            {
+                double left = a.Missed - a.MissedBetweenPasses - a.MissedAtEnds - a.MissedAtObstacles - a.MissedAlongBoundary - a.MissedLeftInMiddle - a.MissedAtCorners - a.MissedAtLapChange;
+                if (!r.ShortStopped && left <= RefusedWithNothingLeft * a.Work)
+                    sc.Note(F($"AgOpenWeb refused a U-turn with the field done ({Pct(left, a.Work)} of the cultivated area left outside the strips between passes, the pass ends and the boundary); the operator took over and the job stopped there: ") + p);
+                // The geometry refused it: the planner tried every start along the pass with both
+                // its shapes and the arc always fell outside the turn line, and the app says by how
+                // much (C14: pass -8 runs 4 m from a fence parallel to it, the turn line 2 m in; an
+                // 8 m radius onto the 8 m pass needs 2.0 m on the fence side and has 1.9 m; AgOpenGPS
+                // can't turn there either). Said, that is correct behaviour, and the operator's choice.
+                else if (p.Contains("nearer the boundary than the U-turn distance", StringComparison.Ordinal))
+                    sc.Note("AgOpenWeb refused a U-turn because no turn of this radius fits inside the turn line at this end, and said by how much; the operator took over and the job stopped there: " + p);
+                else
+                    flag(Severity.Bug, "TURN-REFUSED", F($"{p}; {left:0} m² ({Pct(left, a.Work)}) of the cultivated area left to work"));
+            }
+            // A missed turn the app warned about is noted (from what it said); the operator taking
+            // over at the warning, as a farmer would, is what the job did, not a finding.
+            // A blocked turn (it would swing into a hard boundary or an obstacle, #698) is the app
+            // refusing what it must refuse: noted, with the ground left from there as its consequence.
+            else if (p.Contains("missed the U-turn", StringComparison.Ordinal)) sc.Note("the operator took over at the warning and the job stopped there, as a person would: " + p);
+            else if (p.Contains("blocked the U-turn", StringComparison.Ordinal)) sc.Note("AgOpenWeb refused a turn that would have swung into a hard boundary or an obstacle, as it must (#698); the operator took over at the warning and the job stopped there: " + p);
+            else if (p.Contains("ran", StringComparison.Ordinal)) flag(Severity.Safety, "RAN-OFF", p);
+        }
+    }
+
+    /// <summary>The share of the cultivated area left unsprayed at a "no room" end above which it is
+    /// reported (END-OF-FIELD-FIELD-LEFT): the real end of a field leaves the strips between passes
+    /// and the wedges at the pass ends, 1-2 % (J1, J13).</summary>
+    private const double NoRoomLeftShare = 0.05;
+
+    private static string Pct(double part, double whole) => whole <= 0 ? "n/a" : F($"{part / whole * 100:0.0} %");
+
+    /// <summary>
+    /// Where each U-turn's exit leg left the implement: against the pass it then worked (15 s after
+    /// the turn), so a turn that lands beside its pass, and AutoSteer pulling the implement across in
+    /// the headland, shows even when the pass itself is driven well.
+    /// </summary>
+    /// <summary>Trailed and TBT: the drawbar must never reach the tractor's rear tyres. The angle
+    /// at which it does comes from the tractor's hitch, track and tyres and the drawbar's width
+    /// (<see cref="VehicleSpec.DrawbarContactDeg"/>); the harness's own turns (reversing,
+    /// a K-turn) count as well as AgOpenWeb's.</summary>
+    static void JudgeDrawbar(Scenario sc, JobRun r, Action<Severity, string, string> flag)
+    {
+        var spec = r.Spec;
+        if (spec.T.Type is not ("trailing" or "tbt") || r.Fix == 0) return;
+        double contact = spec.V.DrawbarContactDeg(spec.T.DrawbarWidth);
+        if (double.IsNaN(contact))
+        {
+            r.Harness(F($"the drawbar check cannot judge {spec.V.Name} with {spec.T.Name}: track {spec.V.TrackWidth:0.00} m, rear tyres {spec.V.RearTyreWidth:0.00} m wide, drawbar {spec.T.DrawbarWidth:0.00} m wide, pin {spec.V.HitchLength:0.00} m behind the axle"));
+            return;
+        }
+        bool stop = spec.T.SwivelStopDeg > 0 && spec.T.SwivelStopDeg < contact;
+        double limit = stop ? spec.T.SwivelStopDeg : contact;
+        string what = stop
+            ? F($"the implement's own swivel stops it at {limit:0}° (a rear tyre would be at {contact:0}°)")
+            : F($"the drawbar ({spec.T.DrawbarWidth:0.0#} m wide, its pin {spec.V.HitchLength:0.00} m behind the rear axle) reaches a rear tyre ({spec.V.RearTyreRadius * 2:0.00} m, track {spec.V.TrackWidth:0.00} m) at {contact:0}°");
+        var turns = r.Turns.Where(t => t.MaxHitchDeg > 0).ToList();
+        sc.Row.Metrics.Add(("Hitch angle (tractor to drawbar): largest in a U-turn / in the whole job; where it must stop (rear tyre or the implement's swivel)",
+            F($"{(turns.Count > 0 ? turns.Max(t => t.MaxHitchDeg) : 0):0}° / {r.MaxHitchDeg:0}° ({r.MaxHitchWhere}); {limit:0}°{(stop ? " (swivel)" : " (tyre)")}")));
+        if (r.MaxHitchDeg >= limit)
+        {
+            var hit = turns.Where(t => t.MaxHitchDeg >= limit).ToList();
+            flag(Severity.Safety, "DRAWBAR-HITS-WHEEL", F($"the hitch angle reached {r.MaxHitchDeg:0}° ({r.MaxHitchWhere}{(hit.Count > 0 ? F($"; {hit.Count} of {r.Turns.Count} U-turns past it") : "")}): {what}. AgOpenWeb plans the turn from the U-turn radius alone; it has no limit for the hitch angle."));
+        }
+        else sc.Ok(F($"the hitch angle stayed below where it must stop: {r.MaxHitchDeg:0}° at most, {limit - r.MaxHitchDeg:0}° short of {limit:0}° ({(stop ? "the implement's swivel" : "the drawbar on a rear tyre")})"));
+    }
+
+    static void JudgeTurnExits(Scenario sc, JobRun r, Action<Severity, string, string> flag)
+    {
+        var known = r.Turns.Where(t => !double.IsNaN(t.ExitOffM)).ToList();
+        if (known.Count == 0) return;
+        // A quarter of a pass (1 m at least): a front boom still points along the arc as the turn
+        // hands back, a few decimetres to a metre aside; a turn built from the wrong side lands a pass over.
+        double limit = Math.Max(1.0, 0.25 * r.Spacing);
+        var off = known.Where(t => Math.Abs(t.ExitOffM) > limit).ToList();
+        sc.Row.Metrics.Add((JobRun.F($"U-turns whose exit leg put the implement on its next pass (within {limit:0.#} m) / measured; worst beside it"), JobRun.F($"{known.Count - off.Count} / {known.Count}; {known.Max(t => Math.Abs(t.ExitOffM)):0.00} m")));
+        if (off.Count == 0) { sc.Ok(JobRun.F($"every U-turn's exit leg put the implement on the pass it then worked (worst {known.Max(t => Math.Abs(t.ExitOffM)):0.00} m beside it)")); return; }
+        var w = off.OrderByDescending(t => Math.Abs(t.ExitOffM)).First();
+        string turns = string.Join(", ", off.Take(6).Select(t => JobRun.F($"{t.Index} ({(t.Left ? "left" : "right")}, {t.ExitOffM:+0.0;-0.0;+0.0} m)")));
+        flag(Severity.Bug, "TURN-EXIT-OFF-PASS", JobRun.F($"{off.Count} of {known.Count} U-turns ended with the implement more than {limit:0.#} m beside the pass it then worked, so AutoSteer pulled it across in the headland: turns {turns}{(off.Count > 6 ? ", ..." : "")}; the worst {Math.Abs(w.ExitOffM):0.0} m (turn {w.Index}, pass {w.TruthPassBefore} -> {w.TruthPassAfter}, implement offset {r.Spec.T.Offset:+0.0;-0.0;+0.0} m, {r.Spec.T.Width:0.#} m wide)."));
+    }
+}

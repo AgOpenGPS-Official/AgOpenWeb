@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
 using System.Reflection;
@@ -34,7 +33,6 @@ public class SwapABGuidanceTests
 {
     private GpsService _gpsService = null!;
     private GpsPipelineService _pipeline = null!;
-    private ApplicationState _appState = null!;
     private List<GpsCycleResult> _results = null!;
 
     [SetUp]
@@ -49,22 +47,18 @@ public class SwapABGuidanceTests
         config.NumSections = 1;
         config.Tool.SetSectionWidth(0, 600);
 
-        _appState = new ApplicationState();
-        _appState.Field.LocalPlane = new LocalPlane(
-            new Wgs84(43.7128, -74.006), new SharedFieldProperties());
-
         _gpsService = new GpsService();
         _gpsService.Start();
 
         var toolPosition = new ToolPositionService(config);
         var coverage = new CoverageMapService(config);
-        var sectionControl = new SectionControlService(toolPosition, coverage, _appState, config);
+        var sectionControl = new SectionControlService(toolPosition, coverage, config);
         var autoSteer = new AutoSteerService(new TrackGuidanceService(),
-            Substitute.For<IUdpCommunicationService>(), _gpsService, _appState, config);
+            Substitute.For<IUdpCommunicationService>(), _gpsService, config);
 
         var headingFusion = Substitute.For<IGpsHeadingFusionService>();
         headingFusion.FuseHeading(Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>(),
-                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>())
+                Arg.Any<double>(), Arg.Any<double>(), Arg.Any<double>(), Arg.Any<bool>())
             .Returns(ci => ci.ArgAt<double>(0));
 
         _pipeline = new GpsPipelineService(
@@ -79,10 +73,11 @@ public class SwapABGuidanceTests
             Substitute.For<IAudioService>(),
             new PipelineIntents(),
             headingFusion,
-            NullLogger<GpsPipelineService>.Instance, _appState,
+            NullLogger<GpsPipelineService>.Instance,
             config,
             new PositionEstimator());
 
+        _pipeline.SetLocalPlane(new LocalPlane( new Wgs84(43.7128, -74.006), new SharedFieldProperties()));
         _pipeline.SynchronousMode = true;
         _pipeline.Start();
 
@@ -99,12 +94,13 @@ public class SwapABGuidanceTests
 
     private GpsCycleResult Last => _results[^1];
 
-    // A north-running line 0.5 m right of the vehicle (heading north, 3 m/s).
+    // A north-running reference line whose pass 0 (half the 6 m tool to its right) is 0.5 m
+    // right of the vehicle (heading north, 3 m/s).
     private static List<Vec3> NorthLine(bool curve)
     {
         var pts = new List<Vec3>();
         int n = curve ? 21 : 2;
-        for (int i = 0; i < n; i++) pts.Add(new Vec3(0.5, -100 + 200.0 * i / (n - 1), 0));
+        for (int i = 0; i < n; i++) pts.Add(new Vec3(-2.5, -100 + 200.0 * i / (n - 1), 0));
         return pts;
     }
 
@@ -117,7 +113,7 @@ public class SwapABGuidanceTests
         return r;
     }
 
-    private double Steer(List<Vec3> pts, bool stanley)
+    private double Steer(List<Vec3> pts, bool stanley, int pass = 0)
     {
         ConfigurationStore.Instance.Guidance.IsPurePursuit = !stanley;
         var track = new Models.Track.Track
@@ -125,7 +121,7 @@ public class SwapABGuidanceTests
             Name = "T", Points = pts,
             Type = pts.Count == 2 ? Models.Track.TrackType.ABLine : Models.Track.TrackType.Curve,
         };
-        _pipeline.SetActiveTrack(track, passNumber: 0, nudgeOffset: 0, isOnBoundary: false);
+        _pipeline.SetActiveTrack(track, passNumber: pass, nudgeOffset: 0);
         _pipeline.SetAutoSteerEngaged(true);
         _gpsService.UpdateGpsData(new GpsData
         {
@@ -146,7 +142,9 @@ public class SwapABGuidanceTests
         line = Models.Guidance.CurveProcessing.CalculateHeadings(line);
 
         double before = Steer(line, stanley);
-        double after = Steer(Swapped(line), stanley);
+        // Pass 0 lies half a width right of A→B; reversed, the same line is pass -1
+        // (PassGeometry; MainViewModel.SwapTrackAB maps the pass the same way).
+        double after = Steer(Swapped(line), stanley, pass: -1);
         TestContext.Out.WriteLine($"curve={curve} stanley={stanley}: before={before:F2}° after={after:F2}°");
 
         Assert.That(Math.Abs(before), Is.GreaterThan(0.1), "0.5 m off the line must produce a steer command");

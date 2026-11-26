@@ -1,0 +1,359 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+
+namespace AgOpenWeb.FieldScenarios.Tests;
+
+/// <summary>What the operator meant by a step, so the harness knows what to complain about.</summary>
+public enum Expect
+{
+    /// <summary>A correct action: a refusal or an error message is itself a finding.</summary>
+    Works,
+    /// <summary>A wrong action: it must change nothing harmful, and should say why it was refused.</summary>
+    Refused,
+    /// <summary>No opinion (random mischief): only the invariants count.</summary>
+    Any,
+}
+
+public sealed class StepRecord
+{
+    public int Index;
+    public string What = "";
+    public Expect Expect;
+    public long Ms;
+    public List<string> Messages = new();
+    public List<Finding> NewFindings = new();
+    public string After = "";
+}
+
+public sealed class ScenarioRecord
+{
+    public string Name = "";
+    public string Operator = "";
+    public List<StepRecord> Steps = new();
+}
+
+/// <summary>Collects every scenario's steps and findings and writes the reports.</summary>
+public sealed class ScenarioJournal
+{
+    public List<ScenarioRecord> Scenarios { get; } = new();
+
+    /// <summary>Every finding with where it was first seen and how often.</summary>
+    public Dictionary<string, (Finding First, string Where, int Count, List<string> Places)> Findings { get; } = new();
+
+    /// <summary>The evidence kept for a finding, by its key, as the report shows it: the dump taken
+    /// at the step where the kind was first seen (Scenario.KeepEvidenceAsync), or why there is none.</summary>
+    public Dictionary<string, string> EvidenceFor { get; } = new();
+
+    /// <summary>Adds a finding; returns its key when this is the first of its kind in the run, else null.</summary>
+    public string? Add(Finding f, string where)
+    {
+        string key = f.Code + "|" + Normalize(f.Message);
+        if (Findings.TryGetValue(key, out var e))
+        {
+            if (e.Places.Count < 6 && !e.Places.Contains(where)) e.Places.Add(where);
+            Findings[key] = (e.First, e.Where, e.Count + 1, e.Places);
+            return null;
+        }
+        Findings[key] = (f, where, 1, new List<string> { where });
+        return key;
+    }
+
+    /// <summary>Numbers (their sign included) and quoted names vary from field to field; the rest
+    /// identifies the finding, so "near -0.0,-0.0" and "near 50.0,50.0" are one kind.</summary>
+    private static string Normalize(string m)
+    {
+        var sb = new StringBuilder();
+        bool inNum = false, inQuote = false;
+        for (int i = 0; i < m.Length; i++)
+        {
+            char c = m[i];
+            if (c == '\'') { inQuote = !inQuote; sb.Append("'…'"); continue; }
+            if (inQuote) continue;
+            bool digit = char.IsDigit(c) || (inNum && (c == '.' || c == '-'))
+                || (!inNum && c == '-' && i + 1 < m.Length && char.IsDigit(m[i + 1]));
+            if (digit) { if (!inNum) sb.Append('#'); inNum = true; continue; }
+            inNum = false;
+            sb.Append(c);
+        }
+        return sb.ToString();
+    }
+
+    public string ToMarkdown(string title, string intro)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        var sb = new StringBuilder();
+        sb.Append("# ").Append(title).Append("\n\n").Append(intro).Append("\n\n");
+
+        sb.Append("## Scenarios\n\n| Scenario | Operator | Steps | Bug | Inconsistency | Robustness | Improvement |\n|---|---|---|---|---|---|---|\n");
+        foreach (var s in Scenarios)
+        {
+            var all = s.Steps.SelectMany(x => x.NewFindings).ToList();
+            sb.Append(string.Create(inv, $"| {s.Name} | {s.Operator} | {s.Steps.Count} | {all.Count(x => x.Severity == Severity.Bug)} | {all.Count(x => x.Severity == Severity.Inconsistency)} | {all.Count(x => x.Severity == Severity.Robustness)} | {all.Count(x => x.Severity == Severity.Improvement)} |\n"));
+        }
+
+        sb.Append("\n## Findings (each kind once, most serious first)\n\n");
+        int n = 1;
+        foreach (var (key, g) in Findings.OrderBy(v => v.Value.First.Severity).ThenBy(v => v.Value.First.Code).ThenByDescending(v => v.Value.Count))
+        {
+            sb.Append(string.Create(inv, $"{n++}. **{g.First.Severity}** `{g.First.Code}` ×{g.Count}: {g.First.Message}\n"));
+            sb.Append("   First seen: ").Append(g.Where).Append('\n');
+            if (g.Places.Count > 1)
+                sb.Append("   Also: ").Append(string.Join("; ", g.Places.Skip(1))).Append('\n');
+            if (EvidenceFor.TryGetValue(key, out var zip))
+                sb.Append("   Evidence: ").Append(zip).Append('\n');
+        }
+
+        sb.Append("\n## Step logs\n");
+        foreach (var s in Scenarios)
+        {
+            sb.Append("\n### ").Append(s.Name).Append(" (").Append(s.Operator).Append(")\n\n");
+            foreach (var st in s.Steps)
+            {
+                sb.Append(string.Create(inv, $"{st.Index}. {st.What}"));
+                if (st.Expect == Expect.Refused) sb.Append(" *(should be refused)*");
+                // A step's time is noise from night to night; only a slow one is worth a word.
+                if (st.Ms >= 2000) sb.Append(string.Create(inv, $" — slow: {st.Ms / 1000.0:0.0} s"));
+                // The same status line can arrive two or three times in one step (events race the
+                // snapshot): once is the fact, so two nights' reports read the same.
+                if (st.Messages.Count > 0) sb.Append(" — says: ").Append(string.Join(" / ", st.Messages.Distinct(StringComparer.Ordinal).Select(m => "\"" + Trim(m) + "\"")));
+                sb.Append('\n');
+                foreach (var f in st.NewFindings)
+                    sb.Append("   - **").Append(f.Severity.ToString()).Append("** `").Append(f.Code).Append("` ").Append(f.Message).Append('\n');
+                if (st.NewFindings.Count > 0 || st.Index % 10 == 0)
+                    sb.Append("   - state: ").Append(st.After).Append('\n');
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static string Trim(string s) => s.Length > 140 ? s[..140] + "…" : s.Replace("\n", " ", StringComparison.Ordinal);
+}
+
+/// <summary>
+/// One operator working through one story. Every step: run it, collect what the app said and
+/// threw, take a snapshot, run the invariants, and keep only the findings that are new since
+/// the step before (a self-crossing boundary is reported by the step that drew it, not by
+/// every step after it).
+/// </summary>
+public sealed class Scenario
+{
+    private readonly FieldScenarioRig _rig;
+    private readonly ScenarioJournal _journal;
+    private readonly ScenarioRecord _record;
+    private HashSet<string> _active = new();
+    private int _index;
+    private readonly Evidence _ev;
+    // The first of a kind of finding in the run, seen at a step whose dump is not yet taken:
+    // the key, and the step. Taken before the next step changes anything (KeepEvidenceAsync).
+    private readonly List<(string Key, StepRecord Step)> _evidenceWanted = new();
+    private int _dumpedAtStep = -1;   // the step the last dump was taken after
+
+    public FieldScenarioRig Rig => _rig;
+    public FieldSnapshot Last { get; private set; } = new();
+    public StepRecord? LastStep => _record.Steps.Count > 0 ? _record.Steps[^1] : null;
+    public static bool Verbose => Environment.GetEnvironmentVariable("AGOPENWEB_SCENARIO_VERBOSE") == "1";
+
+    public Scenario(FieldScenarioRig rig, ScenarioJournal journal, string name, string op)
+    {
+        _rig = rig;
+        _journal = journal;
+        _record = new ScenarioRecord { Name = name, Operator = op };
+        journal.Scenarios.Add(_record);
+        _ev = new Evidence(Evidence.FolderFor(ReportPath.For(ReportName)), name);
+        rig.BeforeAction = () => KeepEvidenceAsync();
+        rig.LogAction("# scenario: " + name + " (" + op + " operator)");
+    }
+
+    public const string ReportName = "field-scenarios-report.md";
+
+    private void Found(Finding f, StepRecord st)
+    {
+        if (_journal.Add(f, _record.Name + " #" + st.Index.ToString(CultureInfo.InvariantCulture) + " (" + st.What + ")") is { } key)
+            _evidenceWanted.Add((key, st));
+    }
+
+    /// <summary>
+    /// Keeps the evidence of the findings first seen at the last step: the app's bug report dump
+    /// as it stands now, before the next step changes it, with what the operator did up to here
+    /// (<c>attachments/commands.txt</c>) and the scenario's steps in the notes. A finding is fixed
+    /// from it with a unit test, as from a tester's dump. One dump per kind of finding in the run:
+    /// the step where it was first seen. Taken at the start of the next step, and before any
+    /// command, placing, drive or import file in between (the rig's BeforeAction). With
+    /// <c>AGOPENWEB_SCENARIO_EVIDENCE=all</c>, every scenario also keeps one at its end. A dump
+    /// that fails is not taken again later (the state would be a later one): the report says why.
+    /// </summary>
+    public async Task KeepEvidenceAsync(bool end = false)
+    {
+        if (Evidence.Off) return;
+        if (_evidenceWanted.Count == 0 && !(end && Evidence.All && _dumpedAtStep != _index)) return;
+        var wanted = _evidenceWanted.ToList();
+        _evidenceWanted.Clear();
+        var st = wanted.Count > 0 ? wanted[0].Step : LastStep;
+        string moment = st == null ? "end" : "step" + st.Index.ToString(CultureInfo.InvariantCulture);
+        var inv = CultureInfo.InvariantCulture;
+        var notes = new StringBuilder(Evidence.NotesHeader("Field scenarios", _record.Name, st == null ? "the end" : "step " + st.Index.ToString(inv) + ": " + st.What,
+            taken: wanted.Count > 0 ? "right after the step, before the next one" : "at the end of the scenario", turns: false));
+        notes.Append(_record.Operator).Append(" operator.\n\n## Findings first seen at this step\n\n");
+        foreach (var (key, _) in wanted)
+            if (_journal.Findings.TryGetValue(key, out var g))
+                notes.Append("- ").Append(g.First.Severity.ToString()).Append(" `").Append(g.First.Code).Append("`: ").Append(g.First.Message).Append('\n');
+        if (wanted.Count == 0) notes.Append("none (kept for every scenario: AGOPENWEB_SCENARIO_EVIDENCE=all)\n");
+        notes.Append("\n## The scenario's steps up to here\n\n");
+        foreach (var s in _record.Steps)
+        {
+            notes.Append(s.Index.ToString(inv)).Append(". ").Append(s.What);
+            if (s.Expect == Expect.Refused) notes.Append(" *(should be refused)*");
+            if (s.Messages.Count > 0) notes.Append(" — says: ").Append(string.Join(" / ", s.Messages.Distinct(StringComparer.Ordinal).Select(m => "\"" + m + "\"")));
+            notes.Append('\n');
+            foreach (var f in s.NewFindings) notes.Append("   - ").Append(f.Severity.ToString()).Append(" `").Append(f.Code).Append("` ").Append(f.Message).Append('\n');
+        }
+        if (st != null) notes.Append("\nState after step ").Append(st.Index.ToString(inv)).Append(": ").Append(st.After).Append('\n');
+        notes.Append("\n## The harness's own data (attachments/)\n\n")
+             .Append("- `commands.txt`: what the operator did in the whole run up to here, in order: every command as the web client sends it (`id|arg`), every placing and drive of the tractor and every file put in the import folder (`#` lines). One backend works field after field, so this scenario's field may have been built by an earlier one.\n");
+
+        string tmp = Path.Combine(Path.GetTempPath(), "aow-field-evidence-" + Guid.NewGuid().ToString("N")[..8]);
+        var files = new List<string>();
+        try
+        {
+            Directory.CreateDirectory(tmp);
+            string cmds = Path.Combine(tmp, "commands.txt");
+            await File.WriteAllTextAsync(cmds, _rig.ActionsText());
+            files.Add(cmds);
+        }
+        catch (Exception ex) { notes.Append("- (commands.txt not written: ").Append(ex.Message).Append(")\n"); }
+        string? zip = await _ev.SaveAsync(moment, notes.ToString(), _rig.Services, _rig.State,
+            AgOpenWeb.Models.Configuration.ConfigurationStore.Instance, _rig.RunAsync, files);
+        try { Directory.Delete(tmp, true); } catch { }
+        _dumpedAtStep = _index;
+        string shown = zip != null ? "`evidence/" + Path.GetFileName(zip) + "`"
+            : "not kept (" + (_ev.Errors.Count > 0 ? _ev.Errors[^1] : "no reason given") + ")";
+        foreach (var (key, _) in wanted) _journal.EvidenceFor[key] = shown;
+        foreach (var e in _ev.Errors) TestContext.Out.WriteLine("evidence not kept: " + e);
+        _ev.Errors.Clear();
+    }
+
+    public string Name => _record.Name;
+
+    public async Task<FieldSnapshot> Step(string what, Func<Task> act, Expect expect = Expect.Works)
+    {
+        await KeepEvidenceAsync();
+        var rec = new StepRecord { Index = ++_index, What = what, Expect = expect };
+        var sw = Stopwatch.StartNew();
+        try { await act(); }
+        catch (Exception ex)
+        {
+            rec.NewFindings.Add(new Finding("HARNESS", Severity.Bug, "the step itself threw: " + ex.GetType().Name + ": " + ex.Message));
+        }
+        rec.Ms = sw.ElapsedMilliseconds;
+
+        var events = _rig.TakeEvents();
+        var found = new List<Finding>();
+        var offLoop = new List<string>();
+        bool refused = false;
+        foreach (var e in events)
+        {
+            switch (e.Kind)
+            {
+                case RigEventKind.Exception:
+                    found.Add(new Finding("EXCEPTION", Severity.Bug, "host loop work item threw " + FirstLines(e.Text, 3)));
+                    break;
+                case RigEventKind.Error:
+                    found.Add(new Finding("LOG-ERROR", Severity.Bug, "error logged: " + FirstLines(e.Text, 1)));
+                    break;
+                case RigEventKind.Hang:
+                    found.Add(new Finding("HANG", Severity.Bug, e.Text));
+                    break;
+                case RigEventKind.OffLoop:
+                    offLoop.Add(e.Text);
+                    break;
+                case RigEventKind.Failure:
+                    refused = true;
+                    rec.Messages.Add("⚠ " + e.Text);
+                    break;
+                case RigEventKind.Status:
+                    if (!IsNoise(e.Text)) rec.Messages.Add(e.Text);
+                    break;
+                case RigEventKind.Note:
+                    rec.Messages.Add("(" + e.Text + ")");
+                    break;
+            }
+        }
+
+        if (offLoop.Count > 0)
+        {
+            // One finding per step: which VM properties were written from another thread, and
+            // the code path of the first one (the properties differ, the cause is the same).
+            var props = offLoop.Select(t => t.Split(' ')[0]).Distinct().ToList();
+            var first = offLoop[0];
+            var at = first.Contains(" at ", StringComparison.Ordinal) ? first[(first.IndexOf(" at ", StringComparison.Ordinal) + 4)..] : "";
+            found.Add(new Finding("OFF-LOOP", Severity.Inconsistency,
+                "VM state written from a thread-pool thread, not the host loop (" + props.Count.ToString(CultureInfo.InvariantCulture) + " properties: "
+                + string.Join(", ", props.Take(8)) + (props.Count > 8 ? ", …" : "") + "); first via " + at));
+        }
+
+        var snap = await _rig.ReadAsync(() => FieldSnapshot.Take(_rig));
+        found.AddRange(FieldInvariants.Check(snap));
+        if (snap.IsPromptPending)
+            rec.Messages.Add("prompt open: " + snap.PromptText);
+
+        if (expect == Expect.Works && refused)
+            found.Add(new Finding("REFUSED-GOOD", Severity.Bug, "a correct action was refused: " + string.Join(" / ", rec.Messages.Where(m => m.StartsWith('⚠')))));
+
+        // Only what is new since the previous step.
+        var now = new HashSet<string>();
+        foreach (var f in found)
+        {
+            var key = f.Code + "|" + f.Message;
+            now.Add(key);
+            bool persistent = f.Code is not ("EXCEPTION" or "LOG-ERROR" or "HANG" or "REFUSED-GOOD" or "HARNESS" or "SILENT" or "CHECK");
+            if (!persistent || !_active.Contains(key))
+            {
+                rec.NewFindings.Add(f);
+            }
+        }
+        _active = now;
+
+        rec.After = snap.Summary();
+        Last = snap;
+        _record.Steps.Add(rec);
+        foreach (var f in rec.NewFindings) Found(f, rec);
+        _ev.PullGpsLog();
+        if (Verbose)
+        {
+            TestContext.Out.WriteLine($"[{_record.Name}] {rec.Index}. {what} ({rec.Ms} ms) {string.Join(" / ", rec.Messages)}");
+            foreach (var f in rec.NewFindings) TestContext.Out.WriteLine($"      {f.Severity} {f.Code}: {f.Message}");
+        }
+        return snap;
+    }
+
+    /// <summary>An extra, step-specific expectation (e.g. "the AB line was added").</summary>
+    public void Check(bool ok, Severity sev, string message)
+    {
+        if (ok || LastStep is not { } st) return;
+        var f = new Finding("CHECK", sev, message);
+        st.NewFindings.Add(f);
+        Found(f, st);
+        if (Verbose) TestContext.Out.WriteLine($"      {f.Severity} CHECK: {f.Message}");
+    }
+
+    /// <summary>A refused action should say why: flag a refusal-worthy step that left no message.</summary>
+    public void ExpectFeedback(string code = "SILENT")
+    {
+        if (LastStep is not { } st || st.Messages.Count > 0) return;
+        var f = new Finding(code, Severity.Improvement, "wrong input ignored without any message: " + st.What);
+        st.NewFindings.Add(f);
+        Found(f, st);
+    }
+
+    private static bool IsNoise(string s) =>
+        s.StartsWith("Waiting for modules", StringComparison.Ordinal) || s == "GPS Timeout" || s.StartsWith("Simulator reset", StringComparison.Ordinal)
+        || s.StartsWith("Ready", StringComparison.Ordinal) || s.Length == 0;
+
+    private static string FirstLines(string s, int n) =>
+        string.Join(" | ", s.Split('\n').Take(n).Select(l => l.Trim()));
+}

@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Buffers;
@@ -45,15 +33,31 @@ public static class PgnBuilder
     public const byte PGN_MACHINE_PINS = 0xEC;   // 236 - Machine Pin Config
     public const byte PGN_STEER_DATA = 0xFD;     // 253 - Steer Data FROM Module
     public const byte PGN_SENSOR_DATA = 0xFA;    // 250 - Sensor Data FROM Module
+    public const byte PGN_CORRECTED_POSITION = 0x64; // 100 - Corrected position (seed monitors, rate control)
+    public const byte PGN_GPS_DATA = 0xD6;       // 214 - AgIO's GPS data (GPS_Out)
+    public const byte SOURCE_GPS = 0x7C;         // AgIO sends PGN 214 as the GPS module
+    public const byte PGN_ISOBUS_PROCESS_DATA = 0xF2; // 242 - Speed, distance, deviation to the ISOBUS task controller (#921)
+    public const int ISOBUS_PROCESS_DATA_PGN_SIZE = 12;
+    /// <summary>ISO 11783-11 data dictionary identifiers AgOpenGPS sends in PGN 242 (CISOBUS.cs).</summary>
+    public const ushort DDI_ACTUAL_SPEED = 397;
+    public const ushort DDI_GUIDANCE_LINE_DEVIATION = 513;
+    public const ushort DDI_TOTAL_DISTANCE = 597;
+    public const byte PGN_VEHICLE_GEOMETRY = 0xF7; // 247 - Vehicle geometry (AgOpenWeb, #387)
+    public const byte PGN_SECTION_DIMENSIONS = 0xEB; // 235 - Section widths (rate controllers)
 
     // Buffer sizes: header(2) + source(1) + pgn(1) + length(1) + data(N) + crc(1)
     public const int AUTOSTEER_PGN_SIZE = 14;       // 5 header + 8 data + 1 crc
     public const int MACHINE_PGN_SIZE = 14;         // 5 header + 8 data + 1 crc
     public const int SECTIONS_64_PGN_SIZE = 16;     // 5 header + 10 data + 1 crc
     public const int STEER_SETTINGS_PGN_SIZE = 14;  // 5 header + 8 data + 1 crc
-    public const int STEER_CONFIG_PGN_SIZE = 11;    // 5 header + 5 data + 1 crc
+    public const int STEER_CONFIG_PGN_SIZE = 14;    // 5 header + 8 data (5 used, 3 zero, as AgOpenGPS pads it) + 1 crc
     public const int MACHINE_CONFIG_PGN_SIZE = 14;  // 5 header + 8 data + 1 crc
     public const int MACHINE_PINS_PGN_SIZE = 30;    // 5 header + 24 data + 1 crc
+    public const int CORRECTED_POSITION_PGN_SIZE = 30; // 5 header + 24 data + 1 crc
+    public const int GPS_DATA_PGN_SIZE = 57;        // 5 header + 51 data + 1 crc
+    public const int VEHICLE_GEOMETRY_PGN_SIZE = 25; // 5 header + 19 data + 1 crc
+    public const int SECTION_DIMENSIONS_PGN_SIZE = 39; // 5 header + 33 data + 1 crc
+    public const byte VEHICLE_GEOMETRY_VERSION = 1;
 
     // Thread-local buffers to avoid allocation
     [ThreadStatic]
@@ -70,6 +74,12 @@ public static class PgnBuilder
 
     [ThreadStatic]
     private static byte[]? _steerConfigBuffer;
+
+    [ThreadStatic]
+    private static byte[]? _correctedPositionBuffer;
+
+    [ThreadStatic]
+    private static byte[]? _gpsDataBuffer;
 
     /// <summary>
     /// Build PGN 254 (Steer Data) from VehicleState.
@@ -142,17 +152,20 @@ public static class PgnBuilder
             // AutosteerProcessor: status & 0x01; AIO v4: guidanceStatus == 1).
             // This used to put the module's own echoed steer state in bit 0 and
             // AgOpenWeb's engage in bit 2, which no firmware reads (#125).
-            buf[7] = (byte)(state.IsAutoSteerEngaged && !state.IsSteerPaused ? 1 : 0);
+            // Not 1 on the simulator: the module would steer a real tractor to a
+            // simulated line (VehicleState.SimulatorHoldsSteering).
+            buf[7] = (byte)(state.IsAutoSteerEngaged && !state.IsSteerPaused && !state.SimulatorHoldsSteering ? 1 : 0);
 
             // Steer angle * 100 (signed, 2 bytes)
             short angleInt = (short)(state.SteerAngle * 100);
             buf[8] = (byte)(angleInt & 0xFF);         // low byte
             buf[9] = (byte)(angleInt >> 8);           // high byte
 
-            // XTE - cross-track error (single byte, clamped to -127 to 127 cm)
-            int xte = (int)(state.CrossTrackError * 100); // meters to cm
-            xte = Math.Clamp(xte, -127, 127);
-            buf[10] = (byte)(sbyte)xte;
+            // XTE as AgOpenGPS sends it (Position.designer.cs): the distance in mm × 0.05, so half
+            // centimetres, clamped to ±127, plus 127; 255 with steering off or no guidance line
+            // (AgOpenGPS's 32020 / 32000). Used to go out as signed centimetres; no module reads
+            // the byte today (the AiO v26 and the Arduino v5 store it unused), but it is the wire format.
+            buf[10] = LineDistanceByte(ref state);
 
             // Section states (16 bits = 2 bytes)
             buf[11] = (byte)(state.SectionStates & 0xFF);         // Sections 1-8
@@ -160,6 +173,21 @@ public static class PgnBuilder
         }
 
         return WithCrc(buf);
+    }
+
+    /// <summary>
+    /// PGN 254 byte 10, AgOpenGPS's lightbar distance: mm × 0.05 clamped to ±127, plus 127, so 127
+    /// is on the line, 0 and 254 are 2.54 m or more either side; 255 means no line. The guidance
+    /// service's 32000 (no usable line) arrives as the cross-track error. The mm value is a short
+    /// as in AgOpenGPS, overflow included.
+    /// </summary>
+    private static byte LineDistanceByte(ref VehicleState state)
+    {
+        if (!state.IsAutoSteerEngaged || !state.GuidanceValid || Math.Abs(state.CrossTrackError) >= 32000)
+            return 255;
+        short mm = unchecked((short)Math.Round(state.CrossTrackError * 1000.0, MidpointRounding.AwayFromZero));
+        int distanceX2 = Math.Clamp((int)(mm * 0.05), -127, 127);
+        return (byte)(distanceX2 + 127);
     }
 
     /// <summary>
@@ -260,6 +288,121 @@ public static class PgnBuilder
     }
 
     /// <summary>
+    /// Build PGN 100 (0x64) — corrected position, AgOpenGPS's 24-byte layout
+    /// (Position.designer.cs "Corrected Position"). Seed monitors, rate controllers
+    /// and GPS_Out read it.
+    ///
+    /// Bytes 5–12:  longitude, double (little-endian)
+    /// Bytes 13–20: latitude, double
+    /// Bytes 21–28: heading, degrees, double
+    /// Byte 29:     CRC
+    /// </summary>
+    public static byte[] BuildCorrectedPositionPgn(double latitude, double longitude, double headingDegrees)
+    {
+        _correctedPositionBuffer ??= new byte[CORRECTED_POSITION_PGN_SIZE];
+        var buf = _correctedPositionBuffer;
+
+        buf[0] = HEADER1;
+        buf[1] = HEADER2;
+        buf[2] = SOURCE;
+        buf[3] = PGN_CORRECTED_POSITION;
+        buf[4] = 24;  // Data length
+
+        System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(buf.AsSpan(5, 8), longitude);
+        System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(buf.AsSpan(13, 8), latitude);
+        System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(buf.AsSpan(21, 8), headingDegrees);
+
+        return WithCrc(buf);
+    }
+
+    /// <summary>
+    /// Write PGN 242 (0xF2), one process data value for the ISOBUS task controller, as
+    /// AgOpenGPS sends it (CISOBUS.SendProcessData): [0x80, 0x81, 0x7F, 0xF2, 6, DDI lo,
+    /// DDI hi, value (int32, little-endian), CRC]. AOG-TaskController reads DDI 397 (speed,
+    /// mm/s, negative in reverse) and 597 (distance, mm) into its tractor ECU's speed
+    /// messages, and 513 (guidance line deviation) into an NMEA 2000 cross-track message.
+    /// </summary>
+    /// <param name="buffer">At least <see cref="ISOBUS_PROCESS_DATA_PGN_SIZE"/> bytes; the caller may reuse it.</param>
+    public static byte[] WriteIsobusProcessDataPgn(byte[] buffer, ushort ddi, int value)
+    {
+        buffer[0] = HEADER1;
+        buffer[1] = HEADER2;
+        buffer[2] = SOURCE;
+        buffer[3] = PGN_ISOBUS_PROCESS_DATA;
+        buffer[4] = 6;
+        buffer[5] = (byte)(ddi & 0xFF);
+        buffer[6] = (byte)(ddi >> 8);
+        buffer[7] = (byte)value;
+        buffer[8] = (byte)(value >> 8);
+        buffer[9] = (byte)(value >> 16);
+        buffer[10] = (byte)(value >> 24);
+        buffer[11] = CalculateCrc(buffer, 2, ISOBUS_PROCESS_DATA_PGN_SIZE - 3);
+        return buffer;
+    }
+
+    /// <summary>
+    /// Build PGN 214 (0xD6) — the receiver's data as AgIO sends it to AgOpenGPS and
+    /// GPS_Out after parsing the NMEA (AgIO NMEA.Designer.cs). GPS_Out builds its GGA, VTG,
+    /// RMC and ZDA sentences from it (#364). A field the sentence doesn't carry holds its
+    /// type's MaxValue, as in AgIO.
+    ///
+    /// Bytes 5–12:  longitude, double
+    /// Bytes 13–20: latitude, double
+    /// Bytes 21–24: dual-antenna heading, float ($PAOGI, $KSXT, INS, the simulator)
+    /// Bytes 25–28: single-antenna heading, float (course over ground; not $PANDA)
+    /// Bytes 29–32: speed, km/h, float
+    /// Bytes 33–36: roll, degrees, float (not $PANDA: its roll is the IMU roll below)
+    /// Bytes 37–40: altitude, m, float
+    /// Bytes 41–42: satellites, ushort
+    /// Byte 43:     fix quality
+    /// Bytes 44–45: HDOP × 100, ushort
+    /// Bytes 46–47: differential age × 100, ushort
+    /// Bytes 48–55: $PANDA's IMU heading × 10 (ushort), roll × 10, pitch, yaw rate (short),
+    ///              as the sentence carries them
+    /// Byte 56:     CRC
+    /// </summary>
+    public static byte[] BuildGpsDataPgn(GpsData data)
+    {
+        _gpsDataBuffer ??= new byte[GPS_DATA_PGN_SIZE];
+        var buf = _gpsDataBuffer;
+        var pos = data.CurrentPosition;
+        bool panda = data.SentenceType == GpsSentenceType.Panda;
+        bool imu = panda && data.ImuValid;
+
+        buf[0] = HEADER1;
+        buf[1] = HEADER2;
+        buf[2] = SOURCE_GPS;
+        buf[3] = PGN_GPS_DATA;
+        buf[4] = GPS_DATA_PGN_SIZE - 6;
+
+        var s = buf.AsSpan();
+        System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(s.Slice(5, 8), pos.Longitude);
+        System.Buffers.Binary.BinaryPrimitives.WriteDoubleLittleEndian(s.Slice(13, 8), pos.Latitude);
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(s.Slice(21, 4),
+            data.HasDualHeading ? (float)pos.Heading : float.MaxValue);
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(s.Slice(25, 4),
+            !data.HasDualHeading && !panda ? (float)pos.Heading : float.MaxValue);
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(s.Slice(29, 4), (float)(pos.Speed * 3.6));
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(s.Slice(33, 4),
+            panda ? float.MaxValue : (float)data.ImuRoll);
+        System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(s.Slice(37, 4), (float)pos.Altitude);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(s.Slice(41, 2), UShort(data.SatellitesInUse));
+        buf[43] = (byte)Math.Clamp(data.FixQuality, 0, 255);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(s.Slice(44, 2), UShort(data.Hdop * 100));
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(s.Slice(46, 2), UShort(data.DifferentialAge * 100));
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(s.Slice(48, 2),
+            imu ? UShort(data.ImuHeading * 10) : ushort.MaxValue);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(s.Slice(50, 2), imu ? Short(data.ImuRoll * 10) : short.MaxValue);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(s.Slice(52, 2), panda ? Short(data.ImuPitch) : short.MaxValue);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(s.Slice(54, 2), panda ? Short(data.ImuYawRate) : short.MaxValue);
+
+        return WithCrc(buf);
+
+        static ushort UShort(double v) => (ushort)Math.Clamp(Math.Round(v), 0, ushort.MaxValue - 1);
+        static short Short(double v) => (short)Math.Clamp(Math.Round(v), short.MinValue, short.MaxValue - 1);
+    }
+
+    /// <summary>
     /// Build PGN 238 (0xEE) Machine Config - hydraulic settings and user values.
     /// Sent to machine module when config changes (not periodic).
     ///
@@ -301,6 +444,60 @@ public static class PgnBuilder
     }
 
     /// <summary>
+    /// Build PGN 247 (0xF7) Vehicle geometry, an AgOpenWeb PGN (#387): what a module needs
+    /// to know about the vehicle — a steer module estimating the wheel angle from the heading
+    /// rate needs the wheelbase, a receiver's INS (UM981) the IMU-to-antenna lever arm. Sent
+    /// with PGN 251/252 and again when the steer module comes back after a silence.
+    ///
+    /// Lengths in cm, little-endian; positions from the pivot (rear axle centre): pivot =
+    /// ahead (+), offset = right (+), height = above the ground.
+    /// Byte 5:      layout version (1); a module reads the fields it knows and skips the rest
+    /// Byte 6:      flags, bit 0: IMU position entered (else bytes 17-22 are 0, not a position)
+    /// Bytes 7-8:   wheelbase, uint16
+    /// Bytes 9-10:  track width, uint16
+    /// Bytes 11-12: antenna height, uint16
+    /// Bytes 13-14: antenna pivot, int16
+    /// Bytes 15-16: antenna offset, int16
+    /// Bytes 17-18: IMU pivot, int16
+    /// Bytes 19-20: IMU height, uint16
+    /// Bytes 21-22: IMU offset, int16
+    /// Byte 23:     max steer angle, degrees
+    /// Byte 24:     CRC
+    /// </summary>
+    public static byte[] BuildVehicleGeometryPgn(VehicleConfig v)
+    {
+        var buf = new byte[VEHICLE_GEOMETRY_PGN_SIZE];
+        buf[0] = HEADER1;
+        buf[1] = HEADER2;
+        buf[2] = SOURCE;
+        buf[3] = PGN_VEHICLE_GEOMETRY;
+        buf[4] = VEHICLE_GEOMETRY_PGN_SIZE - 6;
+
+        buf[5] = VEHICLE_GEOMETRY_VERSION;
+        bool imu = v.ImuPivot != 0 || v.ImuHeight != 0 || v.ImuOffset != 0;
+        buf[6] = imu ? (byte)1 : (byte)0;
+        PutCm(buf, 7, v.Wheelbase, unsigned: true);
+        PutCm(buf, 9, v.TrackWidth, unsigned: true);
+        PutCm(buf, 11, v.AntennaHeight, unsigned: true);
+        PutCm(buf, 13, v.AntennaPivot, unsigned: false);
+        PutCm(buf, 15, v.AntennaOffset, unsigned: false);
+        PutCm(buf, 17, v.ImuPivot, unsigned: false);
+        PutCm(buf, 19, v.ImuHeight, unsigned: true);
+        PutCm(buf, 21, v.ImuOffset, unsigned: false);
+        buf[23] = (byte)Math.Clamp((int)Math.Round(v.MaxSteerAngle), 0, 255);
+
+        return WithCrc(buf);
+    }
+
+    private static void PutCm(byte[] buf, int at, double metres, bool unsigned)
+    {
+        int cm = (int)Math.Round(metres * 100);
+        int value = unsigned ? Math.Clamp(cm, 0, ushort.MaxValue) : Math.Clamp(cm, short.MinValue, short.MaxValue);
+        buf[at] = (byte)(value & 0xFF);
+        buf[at + 1] = (byte)((value >> 8) & 0xFF);
+    }
+
+    /// <summary>
     /// Build PGN 236 (0xEC) Machine Pin Config - 24 relay pin assignments.
     /// Sent to machine module when pin config changes (not periodic).
     ///
@@ -326,9 +523,55 @@ public static class PgnBuilder
     }
 
     /// <summary>
+    /// Build PGN 235 (0xEB) Section dimensions - AgOpenGPS's layout (CPGN_EB), sent when
+    /// the section count or widths change. Rate controllers read it to match their sections
+    /// to the tool's.
+    ///
+    /// Bytes 5-36: widths of sections 1-16 in cm, uint16 little-endian (0 past the last)
+    /// Byte 37:    number of sections (as AgOpenGPS, the count even above 16)
+    /// </summary>
+    public static byte[] BuildSectionDimensionsPgn(ToolConfig tool, int numSections)
+    {
+        var buf = new byte[SECTION_DIMENSIONS_PGN_SIZE];
+
+        buf[0] = HEADER1;
+        buf[1] = HEADER2;
+        buf[2] = SOURCE;
+        buf[3] = PGN_SECTION_DIMENSIONS;
+        buf[4] = 33;
+
+        for (int i = 0; i < 16 && i < numSections; i++)
+        {
+            int cm = Math.Clamp((int)Math.Round(tool.GetSectionWidth(i)), 0, ushort.MaxValue);
+            buf[5 + i * 2] = (byte)(cm & 0xFF);
+            buf[6 + i * 2] = (byte)((cm >> 8) & 0xFF);
+        }
+        buf[37] = (byte)Math.Clamp(numSections, 0, 255);
+
+        return WithCrc(buf);
+    }
+
+    /// <summary>
     /// Calculate CRC as sum of bytes (matching PgnMessage.CalculateCRC)
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    /// <summary>
+    /// Build PGN 241 (0xF1) for the ISOBUS task controller: section control mode, one
+    /// data byte, 1 = automatic (the task controller drives the implement's sections),
+    /// 0 = manual (#312). AgOpenGPS CISOBUS.RequestSectionControlEnabled, with the CRC.
+    /// </summary>
+    public static byte[] BuildIsobusSectionControlPgn(bool enabled)
+    {
+        var buf = new byte[7];
+        buf[0] = HEADER1;
+        buf[1] = HEADER2;
+        buf[2] = SOURCE;
+        buf[3] = PgnNumbers.ISOBUS_SECTION_CONTROL;
+        buf[4] = 1;
+        buf[5] = (byte)(enabled ? 1 : 0);
+        return WithCrc(buf);
+    }
+
     private static byte CalculateCrc(byte[] data, int start, int length)
     {
         byte crc = 0;
@@ -399,14 +642,17 @@ public static class PgnBuilder
 
     /// <summary>
     /// Parse a PGN 203 scan reply (13 bytes): module id at [2], full module IP at
-    /// [5..8], subnet (3 octets) at [9..11]. Returns false if not a well-formed
-    /// scan reply. Pure so it can be unit-tested without sockets.
+    /// [5..8], and at [9..11] the first three octets of the address the scan came
+    /// from (AgOpenGPS firmware: <c>rem_ip</c>), which AgIO's Auto Set offers as the
+    /// subnet to move the modules to. Some firmware (AiO v26) repeats the module's own
+    /// subnet there instead. Returns false if not a well-formed scan reply. Pure so it
+    /// can be unit-tested without sockets.
     /// </summary>
-    public static bool TryParseScanReply(byte[] data, out byte moduleId, out string ip, out string subnet)
+    public static bool TryParseScanReply(byte[] data, out byte moduleId, out string ip, out string scanSubnet)
     {
         moduleId = 0;
         ip = string.Empty;
-        subnet = string.Empty;
+        scanSubnet = string.Empty;
 
         if (data == null || data.Length < 12) return false;
         if (data[0] != HEADER1 || data[1] != HEADER2) return false;
@@ -414,7 +660,7 @@ public static class PgnBuilder
 
         moduleId = data[2];
         ip = $"{data[5]}.{data[6]}.{data[7]}.{data[8]}";
-        subnet = $"{data[9]}.{data[10]}.{data[11]}";
+        scanSubnet = $"{data[9]}.{data[10]}.{data[11]}";
         return true;
     }
 
@@ -470,8 +716,8 @@ public static class PgnBuilder
         buf[3] = PGN_STEER_SETTINGS;
         buf[4] = 8;  // Data length
 
-        // Proportional gain (1-100)
-        buf[5] = (byte)Math.Clamp(config.ProportionalGain, 1, 100);
+        // Proportional gain (1-200, AgOpenGPS's slider)
+        buf[5] = (byte)Math.Clamp(config.ProportionalGain, 1, 200);
 
         // High PWM (max PWM, 50-255)
         buf[6] = (byte)Math.Clamp(config.MaxPwm, 50, 255);
@@ -479,8 +725,8 @@ public static class PgnBuilder
         // Low PWM (typically highPWM / 3)
         buf[7] = (byte)(buf[6] / 3);
 
-        // Min PWM to move (1-50)
-        buf[8] = (byte)Math.Clamp(config.MinPwm, 1, 50);
+        // Min PWM to move (1-200, AgOpenGPS's slider; #600)
+        buf[8] = (byte)Math.Clamp(config.MinPwm, 1, 200);
 
         // Counts per degree (1-255, sent as-is)
         // Round, not truncate: the CPD test can give 110.9, which must go out as 111 (#112).
@@ -499,7 +745,8 @@ public static class PgnBuilder
 
     /// <summary>
     /// Build PGN 251 (Steer Config) from AutoSteerConfig.
-    /// Format: [0x80, 0x81, 0x7F, 0xFB, 5, set0, pulseCount, minSpeed, set1, angVel, CRC]
+    /// Format: [0x80, 0x81, 0x7F, 0xFB, 8, set0, pulseCount, minSpeed, set1, angVel, 0, 0, 0, CRC]
+    /// (AgOpenGPS's framing: a length of 8 with the last three data bytes zero; the modules read five)
     ///
     /// Byte 5 (set0):
     ///   bit 0: Invert WAS
@@ -517,7 +764,8 @@ public static class PgnBuilder
     ///   bit 2: Current Sensor
     ///   bit 3-4: IMU Axis Swap
     /// Byte 9:  Angular velocity
-    /// Byte 10: CRC
+    /// Byte 10-12: 0
+    /// Byte 13: CRC
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static byte[] BuildSteerConfigPgn(AutoSteerConfig config)
@@ -530,7 +778,7 @@ public static class PgnBuilder
         buf[1] = HEADER2;
         buf[2] = SOURCE;
         buf[3] = PGN_STEER_CONFIG;
-        buf[4] = 5;  // Data length
+        buf[4] = 8;  // Data length, as AgOpenGPS sends it
 
         // Set0 byte (use helper from config)
         buf[5] = config.GetSetting0Byte();
@@ -548,6 +796,11 @@ public static class PgnBuilder
 
         // Angular velocity (not currently used, set to 0)
         buf[9] = 0;
+
+        // AgOpenGPS pads the frame to 8 data bytes
+        buf[10] = 0;
+        buf[11] = 0;
+        buf[12] = 0;
 
         return WithCrc(buf);
     }
@@ -574,8 +827,8 @@ public static class PgnBuilder
     /// Format: [0x80, 0x81, Source, 0xFD, 8, AngleLo, AngleHi, HeadingLo, HeadingHi, RollLo, RollHi, Switches, PWM, CRC]
     ///
     /// Byte 5-6:  Actual steer angle * 100 (signed int16, little-endian)
-    /// Byte 7-8:  Heading from IMU * 0.1 (signed int16, little-endian)
-    /// Byte 9-10: Roll from IMU * 0.1 (signed int16, little-endian)
+    /// Byte 7-8:  Heading from IMU * 0.1 (signed int16, little-endian); 9999 = no IMU
+    /// Byte 9-10: Roll from IMU * 0.1 (signed int16, little-endian); 8888 = no IMU
     /// Byte 11:   Switch status byte
     ///            bit 0: Work switch (INVERTED: 0=ON, 1=OFF)
     ///            bit 1: Steer switch active
@@ -609,15 +862,17 @@ public static class PgnBuilder
         short angleRaw = (short)(data[5] | (data[6] << 8));
         double actualSteerAngle = angleRaw / 100.0;
 
-        // Parse IMU heading (signed int16, heading * 0.1) - deprecated, GNSS supplies this now
-        // Little-endian: low byte first
+        // Parse IMU heading (signed int16, heading * 0.1; 9999 = no IMU). AgOpenGPS uses it
+        // when the GPS sentence carries no IMU heading. Little-endian: low byte first
         short headingRaw = (short)(data[7] | (data[8] << 8));
         double imuHeading = headingRaw * 0.1;
+        bool hasImuHeading = headingRaw != 9999;
 
-        // Parse IMU roll (signed int16, roll * 0.1) - deprecated, GNSS supplies this now
-        // Little-endian: low byte first
+        // Parse IMU roll (signed int16, roll * 0.1; 8888 = no IMU). AgOpenGPS uses it
+        // when the GPS sentence carries no roll (#353). Little-endian: low byte first
         short rollRaw = (short)(data[9] | (data[10] << 8));
         double imuRoll = rollRaw * 0.1;
+        bool hasImuRoll = rollRaw != 8888;
 
         // Parse switch status byte (byte 11)
         // Bit 0: Work switch (INVERTED: 1=OFF, 0=ON)
@@ -641,7 +896,9 @@ public static class PgnBuilder
             steerSwitchActive,
             remoteButton,
             vwasFusionActive,
-            pwmDisplay);
+            pwmDisplay,
+            hasImuRoll,
+            hasImuHeading);
 
         return true;
     }
@@ -653,6 +910,25 @@ public static class PgnBuilder
     public static bool TryParseSteerData(byte[] data, out SteerModuleData result)
     {
         return TryParseSteerData(data.AsSpan(), out result);
+    }
+
+    #endregion
+
+    #region PGN 211 Parser (External IMU)
+
+    /// <summary>
+    /// Parse PGN 211 (0xD3, external IMU) as AgOpenGPS does: 14 bytes, heading ×10 at
+    /// bytes 5-6 and roll ×10 at bytes 7-8 (signed int16, little-endian). Roll is
+    /// uncalibrated.
+    /// </summary>
+    public static bool TryParseImuData(ReadOnlySpan<byte> data, out double headingDegrees, out double rollDegrees)
+    {
+        headingDegrees = rollDegrees = 0;
+        if (data.Length != 14 || data[0] != HEADER1 || data[1] != HEADER2 || data[3] != PgnNumbers.IMU_DATA)
+            return false;
+        headingDegrees = (short)(data[5] | (data[6] << 8)) * 0.1;
+        rollDegrees = (short)(data[7] | (data[8] << 8)) * 0.1;
+        return true;
     }
 
     #endregion

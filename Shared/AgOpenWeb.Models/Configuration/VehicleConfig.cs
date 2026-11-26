@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -95,16 +83,58 @@ public class VehicleConfig : ObservableObject
         set => SetProperty(ref _antennaOffset, value);
     }
 
-    // Hitch (vehicle): rear axle center -> tractor hitch pin. This is the trailer
-    // attach point and is used ONLY by trailing/TBT tools to place the hitch.
-    // Rigid front/rear-fixed tools instead use Tool.HitchLength (axle -> implement
-    // working center, which is tool-dependent). Stored unsigned/positive; the tool
-    // position geometry applies the rear sign and takes Math.Abs().
+    // IMU position, same axes as the antenna: pivot = ahead of the rear axle (+), height =
+    // above the ground, offset = right of the centreline (+). Sent to the modules in PGN 247
+    // so a receiver's INS (UM981) or the steer firmware gets the IMU-to-antenna lever arm; a
+    // remote IMU is often mounted low, away from the board (#387). All 0 = not entered.
+    private double _imuPivot = 0.0;
+    public double ImuPivot
+    {
+        get => _imuPivot;
+        set => SetProperty(ref _imuPivot, value);
+    }
+
+    private double _imuHeight = 0.0;
+    public double ImuHeight
+    {
+        get => _imuHeight;
+        set => SetProperty(ref _imuHeight, value);
+    }
+
+    private double _imuOffset = 0.0;
+    public double ImuOffset
+    {
+        get => _imuOffset;
+        set => SetProperty(ref _imuOffset, value);
+    }
+
+    // The tractor's hitch points, distances from the centre of the rear axle (ISO 11783-10: the
+    // tractor's device reference point; its connectors). Kept positive, each in its own direction.
+    //
+    // Drawbar: the hitch pin, behind the axle. Trailing and TBT tools hang on it.
     private double _hitchLength = 1.8;
     public double HitchLength
     {
         get => _hitchLength;
         set => SetProperty(ref _hitchLength, value);
+    }
+
+    // Rear 3-point hitch: the centre of the lower link points, behind the axle (ISO 11783-10's CRP
+    // of a three-point hitch). Rear-fixed tools hang on it.
+    private double _threePointHitchLength = 1.8;
+    public double ThreePointHitchLength
+    {
+        get => _threePointHitchLength;
+        set => SetProperty(ref _threePointHitchLength, Math.Max(0, value));
+    }
+
+    // Front 3-point hitch: the centre of its lower link points, ahead of the axle. Front-fixed tools
+    // hang on it; asked for only when a front tool is used.
+    private double _frontHitchLength;
+    public double FrontHitchLength
+    {
+        get => _frontHitchLength;
+        set => SetProperty(ref _frontHitchLength, Math.Max(0, value));
     }
 
     // ISO 11783 hitch/coupling type code on the tractor side (-1 = not available,

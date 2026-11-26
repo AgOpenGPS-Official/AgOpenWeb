@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -145,6 +133,16 @@ public class FieldState : ObservableObject
         set => SetProperty(ref _headlandProximityWarning, value);
     }
 
+    /// <summary>
+    /// The pivot is outside the field (#494; GpsCycleResult.IsOutOfBounds).
+    /// </summary>
+    private bool _isOutOfBounds;
+    public bool IsOutOfBounds
+    {
+        get => _isOutOfBounds;
+        set => SetProperty(ref _isOutOfBounds, value);
+    }
+
     public bool HasHeadland => HeadlandLine != null && HeadlandLine.Count > 0;
 
     // Field origin (local plane reference)
@@ -185,7 +183,7 @@ public class FieldState : ObservableObject
         set => SetProperty(ref _localPlane, value);
     }
 
-    // Background imagery (BackPic.png) placement in field-local meters, mirrored
+    // Background imagery (the field's background image) placement in field-local meters, mirrored
     // from the VM's LoadBackgroundImage (which also pushes it to the map control).
     // View-independent consumers (remote/web map) read this; null when none.
     private FieldImagery? _imagery;
@@ -205,6 +203,7 @@ public class FieldState : ObservableObject
         HeadlandDistance = 0;
         HeadlandProximityDistance = null;
         HeadlandProximityWarning = false;
+        IsOutOfBounds = false;
         DriftNorthing = DriftEasting = 0;
         OriginLatitude = OriginLongitude = 0;
         LocalPlane = null;

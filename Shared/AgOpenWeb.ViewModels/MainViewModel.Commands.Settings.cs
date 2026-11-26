@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
@@ -25,7 +13,6 @@ using AgOpenWeb.Models;
 using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Services.Interfaces;
 using AgOpenWeb.Services.Logging;
-using Avalonia.Threading;
 using Microsoft.Extensions.Logging;
 using CommunityToolkit.Mvvm.Input;
 
@@ -212,7 +199,10 @@ public partial class MainViewModel
                 catch { /* screenshot is optional */ }
 
                 var zipPath = Services.DebugDumpService.CreateDump(
-                    _settingsService, _appState, _configStore, screenshotPng: screenshot);
+                    _settingsService, AgOpenWeb.Models.State.RuntimeStateCapture.From(_appState), _configStore, screenshotPng: screenshot,
+                    activeJobTaskName: SaveCoverageForDump(),
+                    ntripRtcmReport: NtripRtcmReport(),
+                    ntripSessionReport: NtripSessionReport(), ntripSummary: NtripSummary(), dataQualityReport: DataQualityReport());
                 StatusMessage = $"Debug dump saved: {zipPath}";
                 _logger.LogInformation($"Debug dump created: {zipPath}");
             }
@@ -243,7 +233,10 @@ public partial class MainViewModel
             try
             {
                 _bugReportTempZipPath = Services.DebugDumpService.CreateDump(
-                    _settingsService, _appState, _configStore, screenshotPng: _bugReportScreenshot);
+                    _settingsService, AgOpenWeb.Models.State.RuntimeStateCapture.From(_appState), _configStore, screenshotPng: _bugReportScreenshot,
+                    activeJobTaskName: SaveCoverageForDump(),
+                    ntripRtcmReport: NtripRtcmReport(),
+                    ntripSessionReport: NtripSessionReport(), ntripSummary: NtripSummary(), dataQualityReport: DataQualityReport());
             }
             catch (Exception ex)
             {
@@ -346,10 +339,13 @@ public partial class MainViewModel
                     // everything in one shot now.
                     zipPath = Services.DebugDumpService.CreateDump(
                         _settingsService,
-                        _appState,
+                        AgOpenWeb.Models.State.RuntimeStateCapture.From(_appState),
                         _configStore,
                         additionalNotes: notes,
                         screenshotPng: _bugReportScreenshot,
+                        activeJobTaskName: SaveCoverageForDump(),
+                        ntripRtcmReport: NtripRtcmReport(),
+                        ntripSessionReport: NtripSessionReport(), ntripSummary: NtripSummary(), dataQualityReport: DataQualityReport(),
                         outputDirectory: bugReportsDir,
                         filePrefix: $"bugreport_{titleSlug}",
                         userAttachments: attachmentPaths);
@@ -472,6 +468,8 @@ public partial class MainViewModel
     /// </summary>
     public void OffsetFixSet(double easting, double northing)
     {
+        // An offset that is no number would put every position the GPS gives at NaN.
+        if (!double.IsFinite(easting) || !double.IsFinite(northing)) return;
         ApplyDrift(easting - State.Field.DriftEasting, northing - State.Field.DriftNorthing);
     }
 
@@ -487,6 +485,27 @@ public partial class MainViewModel
 
         AppDirectories = dirs;
     }
+
+    private string? NtripRtcmReport() => Services.NtripRtcmReport.Build(_ntripService, _gpsService);
+
+    private string? NtripSessionReport() => Services.NtripSupportReport.Build(_ntripService, _gpsService);
+
+    private string? NtripSummary() => Services.NtripSupportReport.Summary(_ntripService);
+
+    /// <summary>
+    /// Save the active job's coverage so a dump's tiles are current, and return the job's
+    /// task name for <see cref="Services.DebugDumpService.CreateDump"/>; null with no job.
+    /// </summary>
+    private string? SaveCoverageForDump()
+    {
+        var task = _jobService.ActiveJob?.TaskName;
+        var fieldDir = ActiveField?.DirectoryPath;
+        if (string.IsNullOrWhiteSpace(task) || string.IsNullOrEmpty(fieldDir)) return null;
+        try { _coverageMapService.SaveToFile(fieldDir, task); }
+        catch (Exception ex) { _logger.LogWarning(ex, "[Coverage] Save before dump failed"); }
+        return task;
+    }
+
 }
 
 // --- Log Viewer (#22) ---
@@ -630,7 +649,7 @@ public partial class MainViewModel
         var global = new SettingsGroupItem("Global");
         global.Items.Add(new SettingsValueItem("Active Profile", store.ActiveVehicleProfileName));
         global.Items.Add(new SettingsValueItem("Is Metric", store.IsMetric.ToString()));
-        global.Items.Add(new SettingsValueItem("Num Sections", store.NumSections.ToString()));
+        global.Items.Add(new SettingsValueItem("Num Sections", store.NumSections.ToString(System.Globalization.CultureInfo.InvariantCulture)));
         global.Items.Add(new SettingsValueItem("Actual Tool Width",
             store.IsMetric ? $"{store.ActualToolWidth:F2} m"
                            : $"{AgOpenWeb.Models.Base.UnitConversion.MetersToFeet(store.ActualToolWidth):F2} ft"));
@@ -689,6 +708,7 @@ public class SettingsValueItem
         Name = name;
         Value = value;
     }
+
 }
 
 public class AppDirectoryInfo

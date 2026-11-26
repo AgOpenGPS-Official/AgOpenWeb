@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# AgOpenWeb
+# Copyright (C) 2024-2026 AgOpenWeb Contributors
+# SPDX-License-Identifier: Apache-2.0
+
 """Assemble screenshot catalog into a labeled PDF.
 
 Usage: python3 screenshots-to-pdf.py <catalog_dir> [output.pdf] [--small]

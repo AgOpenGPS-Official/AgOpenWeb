@@ -1,21 +1,3 @@
-<!--
-AgOpenWeb
-Copyright (C) 2024-2025 AgOpenWeb Contributors
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
--->
-
 # AgOpenWeb Build Guide
 
 This guide covers building AgOpenWeb on Windows, macOS (Intel and Apple Silicon), and Linux.
@@ -436,7 +418,6 @@ sudo apt install libfontconfig1
 
 ### Getting Help
 
-- Avalonia Documentation: https://docs.avaloniaui.net/
 - .NET Documentation: https://docs.microsoft.com/dotnet/
 - Report issues: https://github.com/your-repo/AgOpenWeb/issues
 
@@ -446,9 +427,9 @@ sudo apt install libfontconfig1
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| Avalonia | 11.3.9 | Cross-platform UI framework |
-| ReactiveUI | 20.1.1 | MVVM framework |
+| Photino.NET | 4.0.16 | Desktop launcher window (WebView2 / WKWebView / WebKitGTK) |
+| CommunityToolkit.Mvvm | 8.4.0 | ObservableObject / RelayCommand |
 | Microsoft.Extensions.DependencyInjection | 9.0.0 | Dependency injection |
 | Newtonsoft.Json | 13.0.3 | JSON serialization |
 | System.IO.Ports | 9.0.0 | Serial port communication |
-| SkiaSharp | 3.119.1 | Graphics rendering (iOS) |
+| SkiaSharp | 3.119.4 | Server-side imagery work (native package per head) |

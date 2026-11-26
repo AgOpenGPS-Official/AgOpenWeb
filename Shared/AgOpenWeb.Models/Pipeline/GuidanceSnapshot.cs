@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Track;
@@ -79,17 +67,30 @@ public record GuidanceSnapshot
 
     /// <summary>
     /// The offset track the tractor is following (i.e., the visible magenta
-    /// line on the map). Equal to <see cref="ActiveTrack"/> when
-    /// <see cref="HowManyPathsAway"/> is 0, otherwise a fresh offset curve.
+    /// line on the map): the reference moved to the pass (Track.PassGeometry). Equal to
+    /// <see cref="ActiveTrack"/> only when that offset is zero (a boundary-follow track on
+    /// pass 0), otherwise a fresh offset curve.
     /// </summary>
     public Track.Track? DisplayTrack { get; init; }
 
     /// <summary>
     /// The reference (unshifted) track that <see cref="DisplayTrack"/> was
-    /// offset from, or <c>null</c> when the tractor is on pass 0 and
-    /// DisplayTrack already equals the base.
+    /// offset from, or <c>null</c> when DisplayTrack already equals the base.
     /// </summary>
     public Track.Track? BaseTrack { get; init; }
+
+    /// <summary>
+    /// The extra guidelines (Display → Extra guidelines): the passes either side of
+    /// <see cref="DisplayTrack"/>, built from the reference like the pass itself so they keep its
+    /// shape (#450) and its spacing (width − overlap, the tool offset on alternate sides). An AB
+    /// line's are two points each, which the map draws across the field. The same list until the
+    /// pass or the setting changes; null with the setting off.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyList<Base.Vec3>>? GuideLines { get; init; }
+
+    /// <summary>The centre of the pass shown, where the tool runs (no tool shift); the map draws
+    /// the tool's width along it. The same list until the pass changes; null with no track.</summary>
+    public IReadOnlyList<Base.Vec3>? ToolPass { get; init; }
 
     // ── Cycle-only U-turn pure-pursuit diagnostics ────────────────────────
     // Produced by the YouTurn guidance branch; surfaced here so the debug

@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System.Collections.Generic;
 using System.Linq;
@@ -41,6 +29,7 @@ public class PolygonOffsetService : IPolygonOffsetService
     /// <returns>Offset polygon points, or null if offset collapses the polygon</returns>
     public List<Vec2>? CreateInwardOffset(List<Vec2> boundaryPoints, double offsetDistance, OffsetJoinType joinType = OffsetJoinType.Round)
     {
+        WorkCounters.PolygonOffsetPoints += boundaryPoints?.Count ?? 0;
         if (boundaryPoints == null || boundaryPoints.Count < 3)
             return null;
 
@@ -51,6 +40,41 @@ public class PolygonOffsetService : IPolygonOffsetService
         // Use Round join for curved boundaries, Miter for straight-edge
         var clipperJoin = IsStraightEdgeBoundary(boundaryPoints) ? JoinType.Miter : JoinType.Round;
         return CreateClipperInwardOffset(boundaryPoints, offsetDistance, clipperJoin);
+    }
+
+    /// <summary>
+    /// Round the corners to <paramref name="radius"/> by morphological opening then closing:
+    /// shrink by the radius and grow back with round joins (outside corners become arcs of
+    /// exactly the radius), then grow and shrink back (inside corners too). Only a corner
+    /// moves, by as little as a turn of that radius allows.
+    /// </summary>
+    public List<Vec2>? RoundCorners(List<Vec2> ring, double radius)
+    {
+        WorkCounters.PolygonOffsetPoints += ring?.Count ?? 0;
+        if (ring == null || ring.Count < 3) return null;
+        if (radius < 0.05) return new List<Vec2>(ring);
+
+        var path = new Path64(ring.Count);
+        foreach (var pt in ring)
+            path.Add(new Point64((long)(pt.Easting * Scale), (long)(pt.Northing * Scale)));
+        var paths = new Paths64 { path };
+        foreach (double delta in new[] { -radius, radius, radius, -radius })
+        {
+            var offset = new ClipperOffset { ArcTolerance = Scale * 0.02 }; // arcs within 2 cm
+            offset.AddPaths(paths, JoinType.Round, EndType.Polygon);
+            var next = new Paths64();
+            offset.Execute(delta * Scale, next);
+            if (next.Count == 0) return null;
+            paths = next;
+        }
+
+        Path64 largest = paths[0];
+        foreach (var p in paths)
+            if (System.Math.Abs(Clipper.Area(p)) > System.Math.Abs(Clipper.Area(largest))) largest = p;
+        if (largest.Count < 3) return null;
+        var result = new List<Vec2>(largest.Count);
+        foreach (var pt in largest) result.Add(new Vec2(pt.X / Scale, pt.Y / Scale));
+        return result;
     }
 
     /// <summary>
@@ -747,29 +771,6 @@ public class PolygonOffsetService : IPolygonOffsetService
     }
 
     /// <summary>
-    /// Check if a point is inside a polygon using ray casting algorithm.
-    /// </summary>
-    private bool IsPointInPolygon(Vec2 point, List<Vec2> polygon)
-    {
-        bool inside = false;
-        int n = polygon.Count;
-
-        for (int i = 0, j = n - 1; i < n; j = i++)
-        {
-            var pi = polygon[i];
-            var pj = polygon[j];
-
-            if ((pi.Northing > point.Northing) != (pj.Northing > point.Northing) &&
-                point.Easting < (pj.Easting - pi.Easting) * (point.Northing - pi.Northing) / (pj.Northing - pi.Northing) + pi.Easting)
-            {
-                inside = !inside;
-            }
-        }
-
-        return inside;
-    }
-
-    /// <summary>
     /// Calculate the signed area of a polygon.
     /// Positive = counter-clockwise, Negative = clockwise
     /// </summary>
@@ -843,6 +844,7 @@ public class PolygonOffsetService : IPolygonOffsetService
     /// <returns>Offset polygon points</returns>
     public List<Vec2>? CreateOutwardOffset(List<Vec2> boundaryPoints, double offsetDistance, OffsetJoinType joinType = OffsetJoinType.Round)
     {
+        WorkCounters.PolygonOffsetPoints += boundaryPoints?.Count ?? 0;
         if (boundaryPoints == null || boundaryPoints.Count < 3)
             return null;
 
@@ -925,6 +927,7 @@ public class PolygonOffsetService : IPolygonOffsetService
     /// <returns>Offset line points, or null if offset fails</returns>
     public List<Vec2>? CreateLineOffset(List<Vec2> linePoints, double offsetDistance, OffsetJoinType joinType = OffsetJoinType.Round)
     {
+        WorkCounters.PolygonOffsetPoints += linePoints?.Count ?? 0;
         if (linePoints == null || linePoints.Count < 2)
             return null;
 

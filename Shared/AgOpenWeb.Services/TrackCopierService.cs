@@ -1,22 +1,11 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Collections.Generic;
 using AgOpenWeb.Models;
+using AgOpenWeb.Services.GeoJson;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Track;
 using TrackModel = AgOpenWeb.Models.Track.Track;
@@ -67,10 +56,13 @@ public sealed class TrackCopierService : ITrackCopierService
 
         var convertedTracks = ConvertTracks(tracks, sourcePlane, targetPlane);
 
-        // Append-then-save so existing tracks in the target field aren't lost
-        var existing = TrackFilesService.Load(targetFieldDirectory);
+        // Append-then-save so existing tracks in the target field aren't lost. Loading the
+        // target first imports an AgOpenGPS field, so its TrackLines.txt can't later be
+        // imported over what's written here.
+        new FieldService().LoadField(targetFieldDirectory);
+        var existing = GeoJsonFieldService.LoadTracks(targetFieldDirectory);
         existing.AddRange(convertedTracks);
-        TrackFilesService.Save(targetFieldDirectory, existing);
+        GeoJsonFieldService.SaveTracks(targetFieldDirectory, existing);
 
         return convertedTracks.Count;
     }
@@ -155,13 +147,12 @@ public sealed class TrackCopierService : ITrackCopierService
     }
 
     /// <summary>
-    /// Read the WGS84 origin from a field directory's Field.txt.
-    /// Wraps <see cref="FieldPlaneFileService"/> so the call site doesn't
-    /// have to manage the round-trip through <see cref="Field"/>.
+    /// Read the WGS84 origin of a field directory (field.geojson, or its AgOpenGPS files if
+    /// not yet imported), without changing it.
     /// </summary>
     private static Wgs84 LoadOrigin(string fieldDirectory)
     {
-        var field = new FieldPlaneFileService().LoadField(fieldDirectory);
+        var field = new FieldService().PeekField(fieldDirectory);
         return new Wgs84(field.Origin.Latitude, field.Origin.Longitude);
     }
 }

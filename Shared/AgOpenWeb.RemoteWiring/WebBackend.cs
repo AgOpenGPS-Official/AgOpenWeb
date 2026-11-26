@@ -1,7 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
-//
-// Licensed under GNU GPL v3. See LICENSE.md.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using System.Threading.Tasks;
@@ -44,6 +43,9 @@ public sealed class WebBackend
     public static async Task<WebBackend> StartAsync(IServiceProvider sp, IBoundaryImageryCapture imageryCapture)
     {
         // Persisted settings → ConfigurationStore, then app config + persistent state.
+        // Slow-work reporting on the host loop (#169) once logging is available.
+        if (sp.GetService<IUiDispatcher>() is AgOpenWeb.Services.Threading.HostLoopDispatcher hostLoop)
+            hostLoop.Logger = sp.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()?.CreateLogger("HostLoop");
         sp.GetRequiredService<ISettingsService>().Load();
         var configService = sp.GetRequiredService<IConfigurationService>();
         configService.LoadAppSettings();
@@ -57,6 +59,9 @@ public sealed class WebBackend
 
         // Start the embedded browser server, then wire its command handler + projectors.
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
+        // Browsers arriving and leaving, and why, in the app's log (the bug report dump's logs.txt).
+        if (sp.GetService<Microsoft.Extensions.Logging.ILoggerFactory>()?.CreateLogger("AgOpenWeb.RemoteServer.Browsers") is { } browserLog)
+            server.BrowserLog = line => Microsoft.Extensions.Logging.LoggerExtensions.LogInformation(browserLog, "{Line}", line);
         await server.StartAsync(
             sp.GetRequiredService<ApplicationState>(),
             sp.GetRequiredService<ICoverageMapService>(),
@@ -72,7 +77,8 @@ public sealed class WebBackend
             sp.GetRequiredService<IFieldService>(),
             sp.GetRequiredService<ISettingsService>(),
             sp.GetRequiredService<IVehicleProfileService>(),
-            sp.GetRequiredService<IPersistentStateService>()).ConfigureAwait(false);
+            sp.GetRequiredService<IPersistentStateService>(),
+            sp.GetService<INtripClientService>()).ConfigureAwait(false);
 
         // Wire on the host loop so the command handler runs serialized with the render-pull /
         // status timers, exactly as the Avalonia UI thread did in the old windowed build.

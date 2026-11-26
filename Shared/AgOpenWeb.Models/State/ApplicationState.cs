@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -41,6 +29,11 @@ public class ApplicationState : ObservableObject
         _instance = this;
     }
 
+    /// <summary>The backend that owned <paramref name="state"/> stopped: the static lets go of it
+    /// (<see cref="BackendStateLease"/>), unless another took its place already.</summary>
+    internal static void Release(ApplicationState state) =>
+        System.Threading.Interlocked.CompareExchange(ref _instance, null, state);
+
     // Domain state objects
     public VehicleState Vehicle { get; } = new();
     public GuidanceState Guidance { get; } = new();
@@ -52,6 +45,7 @@ public class ApplicationState : ObservableObject
     public FieldToolsState FieldTools { get; } = new(); // bottom-nav toggle mirror (web-UI)
     public AgShareState AgShare { get; } = new(); // remote AgShare action status/results (web-UI)
     public string BugReportStatus { get; set; } = string.Empty; // remote bug-report submit result (web-UI)
+    public string BugReportSendStatus { get; set; } = string.Empty; // Send Report state of that dump (BugReportRemote)
     public RecordedPathState RecordedPath { get; } = new();
     public BoundaryRecState BoundaryRec { get; } = new();
     public UIState UI { get; } = new();

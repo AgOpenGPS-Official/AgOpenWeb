@@ -1,3 +1,7 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 // Embeds a minimal web host inside the running app and streams the map feed over a
 // raw binary WebSocket (no SignalR). The host passes in the live ApplicationState
 // (the DI singleton the pipeline writes to) and the other services it needs.
@@ -11,6 +15,7 @@
 
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Security.Cryptography;
 using SkiaSharp;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Services;
@@ -31,6 +36,17 @@ public sealed class RemoteServerHost
     /// <summary>Number of connected browser clients — drives the launcher's live status.</summary>
     public int ClientCount => _ws?.ClientCount ?? 0;
 
+    /// <summary>How each browser draws the map, for the bug report dump's <c>system_info.txt</c>.</summary>
+    public string ClientDiagnosticsSummary() => _ws?.DiagnosticsSummary() ?? "";
+
+    /// <summary>The 10 Hz broadcaster (null before <see cref="StartAsync"/>).</summary>
+    public MapBroadcaster? Broadcaster => _broadcaster;
+
+    /// <summary>False (set before <see cref="StartAsync"/>): the 10 Hz loop stays off and
+    /// nothing is broadcast until <see cref="MapBroadcaster.BroadcastOnceAsync"/> is called.
+    /// The host-loop budget (HostLoopBudgetTests) runs the ticks itself to count their cost.</summary>
+    public bool BroadcastLoop { get; set; } = true;
+
     /// <summary>
     /// Broadcast a one-shot alert sound to every connected client. The host never
     /// plays audio itself (it may be a headless box with no speaker); the operator's
@@ -39,14 +55,40 @@ public sealed class RemoteServerHost
     public void PlaySound(AgOpenWeb.Services.Interfaces.SoundEffect effect)
         => _ = _ws?.BroadcastAsync(WireCodec.EncodeSound((byte)effect));
 
+    /// <summary>Send the Config frame again on the next tick even if nothing changed, so a
+    /// box holding a refused value shows the one that was kept.</summary>
+    public void ResendConfig() => _broadcaster?.ResendConfig();
+
     /// <summary>Broadcast a one-shot notification (a refusal or failure, #109) to every
     /// connected client.</summary>
     public void ShowToast(string message)
         => _ = _ws?.BroadcastAsync(WireCodec.EncodeToast(message));
 
+    /// <summary>List the Import folder for the pickers, in the background (<c>import.scan</c>);
+    /// a new listing goes out in the next FieldOps frame.</summary>
+    public void RequestImportScan() => _broadcaster?.Projector.ImportScan.Request();
+
     /// <summary>Broadcast a module hardware message (PGN 221, #110).</summary>
     public void ShowHardwareMessage(string text, int seconds, bool warning)
         => _ = _ws?.BroadcastAsync(WireCodec.EncodeHardwareMessage(text, seconds, warning));
+
+    /// <summary>The VT card's frames for a client that just connected: its link state, the
+    /// pictures and the latest screen. Empty when the build has no terminal.</summary>
+    public Func<IReadOnlyList<byte[]>>? VtSeedProvider
+    {
+        get => _broadcaster?.VtSeedProvider;
+        set { _vtSeedProvider = value; if (_broadcaster is not null) _broadcaster.VtSeedProvider = value; }
+    }
+    private Func<IReadOnlyList<byte[]>>? _vtSeedProvider;
+
+    /// <summary>The VT card's frames to send since the last broadcast tick, in order (drained:
+    /// each call returns them once). Null or empty when there are none.</summary>
+    public Func<IReadOnlyList<byte[]>?>? VtFramesProvider
+    {
+        get => _broadcaster?.VtFramesProvider;
+        set { _vtFramesProvider = value; if (_broadcaster is not null) _broadcaster.VtFramesProvider = value; }
+    }
+    private Func<IReadOnlyList<byte[]>?>? _vtFramesProvider;
 
     /// <summary>Broadcast the Drive In pick list (#109). The browser that pressed Drive In
     /// shows it.</summary>
@@ -70,18 +112,54 @@ public sealed class RemoteServerHost
         new() { Timeout = TimeSpan.FromSeconds(10) };
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> _tileCache = new();
 
-    public static async System.Threading.Tasks.Task<byte[]?> FetchSatTileAsync(string quadkey)
+    /// <summary>What Bing said about one tile.</summary>
+    internal enum TileReply { Tile, NoTile, Failed }
+
+    // MD5 of the 1033-byte "no imagery" JPEG Bing serves (HTTP 200) where it has no tile,
+    // in case a reply ignores &n=z (which asks for an empty body instead).
+    private const string PlaceholderTileMd5 = "C13269481C73DE6E18589F9FBC3BDF7E";
+
+    /// <summary>
+    /// Sort a tile reply. Bing answers a missing tile with 200 plus <c>X-VE-Tile-Info: no-tile</c>
+    /// and an empty body (or the placeholder JPEG). Anything that isn't a 200 is a failure
+    /// (rate limit, gateway, a weak cab link) — worth asking again, never "no tile".
+    /// </summary>
+    internal static TileReply ClassifyTileReply(bool success, bool noTileHeader, byte[]? body)
     {
-        if (_tileCache.TryGetValue(quadkey, out var cached)) return cached;
+        if (!success || body is null) return TileReply.Failed;
+        if (noTileHeader || body.Length == 0) return TileReply.NoTile;
+        return Convert.ToHexString(MD5.HashData(body)) == PlaceholderTileMd5 ? TileReply.NoTile : TileReply.Tile;
+    }
+
+    /// <summary>A Bing aerial tile, or null where Bing has none or the fetch failed.</summary>
+    public static async System.Threading.Tasks.Task<byte[]?> FetchSatTileAsync(string quadkey) =>
+        (await FetchSatTileReplyAsync(quadkey).ConfigureAwait(false)).Bytes;
+
+    /// <summary>
+    /// Fetch a Bing aerial tile through the cache. Tiles and "no tile" answers are cached
+    /// ("no tile" as an empty entry); failures are not, so the next request tries again.
+    /// </summary>
+    internal static async System.Threading.Tasks.Task<(TileReply Reply, byte[]? Bytes)> FetchSatTileReplyAsync(string quadkey)
+    {
+        if (_tileCache.TryGetValue(quadkey, out var cached))
+            return cached.Length == 0 ? (TileReply.NoTile, null) : (TileReply.Tile, cached);
+        TileReply reply;
+        byte[]? bytes = null;
         try
         {
-            var bytes = await _tileHttp.GetByteArrayAsync(
-                $"https://ecn.t0.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587").ConfigureAwait(false);
-            if (_tileCache.Count > 1024) _tileCache.Clear();
-            _tileCache[quadkey] = bytes;
-            return bytes;
+            using var response = await _tileHttp.GetAsync(
+                $"https://ecn.t0.tiles.virtualearth.net/tiles/a{quadkey}.jpeg?g=587&n=z").ConfigureAwait(false);
+            bool noTile = response.Headers.TryGetValues("X-VE-Tile-Info", out var info)
+                && info.Any(v => v.Equals("no-tile", StringComparison.OrdinalIgnoreCase));
+            if (response.IsSuccessStatusCode)
+                bytes = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+            reply = ClassifyTileReply(response.IsSuccessStatusCode, noTile, bytes);
         }
-        catch { return null; }
+        catch { return (TileReply.Failed, null); }
+        if (reply == TileReply.Failed) return (reply, null);
+        if (_tileCache.Count > 1024) _tileCache.Clear();
+        _tileCache[quadkey] = reply == TileReply.Tile ? bytes! : Array.Empty<byte>();
+        return reply == TileReply.Tile ? (reply, bytes) : (reply, null);
     }
 
     /// <summary>Host-supplied projector for the live Steer Wizard — returns a WizardDto
@@ -115,12 +193,12 @@ public sealed class RemoteServerHost
     /// <summary>Host-supplied persisted web-camera view (pitch radians, zoom px/m).
     /// Read once per connection and sent in the seed so the client restores its last
     /// tilt+zoom (issue #35). Set after <see cref="StartAsync"/>.</summary>
-    public Func<(double Pitch, double Zoom)?>? ViewPrefsProvider
+    public Func<(double Pitch, double Zoom, int CameraMode)?>? ViewPrefsProvider
     {
         get => _broadcaster?.ViewPrefsProvider;
         set { _viewPrefsProvider = value; if (_broadcaster is not null) _broadcaster.ViewPrefsProvider = value; }
     }
-    private Func<(double Pitch, double Zoom)?>? _viewPrefsProvider;
+    private Func<(double Pitch, double Zoom, int CameraMode)?>? _viewPrefsProvider;
 
     /// <summary>Host-supplied projector for the Field Builder Headland-tab segment list
     /// (VM-owned, rides the Scene frame). Set after <see cref="StartAsync"/>.</summary>
@@ -131,6 +209,49 @@ public sealed class RemoteServerHost
         set { _headingChartProvider = value; if (_broadcaster is not null) _broadcaster.Projector.HeadingChartProvider = value; }
     }
     private Func<(double Gps, double Imu)>? _headingChartProvider;
+
+    /// <summary>GPS source for the status frame: sentence type and whether Dual GPS is
+    /// on without a dual-antenna heading (#157).</summary>
+    public Func<(string Sentence, bool DualHeadingMissing)>? GpsSourceProvider
+    {
+        get => _broadcaster?.Projector.GpsSourceProvider;
+        set { _gpsSourceProvider = value; if (_broadcaster is not null) _broadcaster.Projector.GpsSourceProvider = value; }
+    }
+    private Func<(string Sentence, bool DualHeadingMissing)>? _gpsSourceProvider;
+
+    /// <summary>The ISOBUS task controller's heartbeat for the status frame (#312); null
+    /// while none is heard.</summary>
+    public Func<IsobusDto?>? IsobusProvider
+    {
+        get => _broadcaster?.Projector.IsobusProvider;
+        set { _isobusProvider = value; if (_broadcaster is not null) _broadcaster.Projector.IsobusProvider = value; }
+    }
+    private Func<IsobusDto?>? _isobusProvider;
+
+    /// <summary>The field data card's numbers for the status frame (#321); null with no
+    /// field open.</summary>
+    public Func<FieldDataDto?>? FieldDataProvider
+    {
+        get => _broadcaster?.Projector.FieldDataProvider;
+        set { _fieldDataProvider = value; if (_broadcaster is not null) _broadcaster.Projector.FieldDataProvider = value; }
+    }
+    private Func<FieldDataDto?>? _fieldDataProvider;
+
+    /// <summary>GPS values for the System Data card (Network IO → GPS).</summary>
+    public Func<SystemDataDto?>? SystemDataProvider
+    {
+        get => _broadcaster?.Projector.SystemDataProvider;
+        set { _systemDataProvider = value; if (_broadcaster is not null) _broadcaster.Projector.SystemDataProvider = value; }
+    }
+    private Func<SystemDataDto?>? _systemDataProvider;
+
+    /// <summary>How each stream from the modules arrives (gaps, bursts).</summary>
+    public Func<IReadOnlyList<DataStreamDto>?>? DataQualityProvider
+    {
+        get => _broadcaster?.Projector.DataQualityProvider;
+        set { _dataQualityProvider = value; if (_broadcaster is not null) _broadcaster.Projector.DataQualityProvider = value; }
+    }
+    private Func<IReadOnlyList<DataStreamDto>?>? _dataQualityProvider;
 
     public Func<IReadOnlyList<HeadlandSegInfoDto>>? HeadlandSegsProvider
     {
@@ -161,8 +282,13 @@ public sealed class RemoteServerHost
     }
     private Action<string, string>? _commandHandler;
 
-    /// <summary>Classifies a command id as Tier-2 (live actuation) — those are
-    /// honored only while the sending client holds fresh control authority.</summary>
+    /// <summary>Lines for the app's log about the browsers: arriving, leaving and why, a deadman
+    /// with the state of the link, what each page saw of itself (<see cref="WebSocketHub.Log"/>).
+    /// Set before <see cref="StartAsync"/>, so the first browser is logged too.</summary>
+    public Action<string>? BrowserLog { get; set; }
+
+    /// <summary>True for a command id that needs control — honored only while the
+    /// sending client holds fresh control authority.</summary>
     public Func<string, bool>? IsRestrictedCommand
     {
         get => _ws?.IsRestrictedCommand;
@@ -186,7 +312,8 @@ public sealed class RemoteServerHost
         IJobService jobs, IConfigurationService configService, IAutoSteerService autoSteer,
         ISmartWasCalibrationService smartWas, IUdpCommunicationService udp,
         INtripProfileService ntripProfiles, IFieldService fields, ISettingsService settings,
-        IVehicleProfileService vehicleProfiles, IPersistentStateService persist, int port = 5174)
+        IVehicleProfileService vehicleProfiles, IPersistentStateService persist,
+        INtripClientService? ntrip = null, int port = 5174)
     {
         Port = port;
 
@@ -196,22 +323,30 @@ public sealed class RemoteServerHost
         var authority = new ControlAuthority();
         var sceneProjector = new SceneProjector(state, sections, tool, config, coverage, jobs,
             configService, autoSteer, smartWas, udp, ntripProfiles, fields, settings,
-            vehicleProfiles, persist);
+            vehicleProfiles, persist, ntrip);
         var coverageProjector = new CoverageProjector(coverage);
-        _ws = new WebSocketHub(authority);
+        _ws = new WebSocketHub(authority) { Log = BrowserLog };
         _broadcaster = new MapBroadcaster(_ws, sceneProjector, coverage, coverageProjector, authority);
 
         // Hook the WS hub for inbound commands + apply any providers/handlers set
         // before start (identical wiring to the old host).
         _ws.CommandHandler = _commandHandler;
         _ws.IsRestrictedCommand = _isRestricted;
+        _ws.CommandAccepted = sceneProjector.OnCommand;
         _broadcaster.WizardProvider = _wizardProvider;
         _broadcaster.PromptProvider = _promptProvider;
+        _broadcaster.VtSeedProvider = _vtSeedProvider;
+        _broadcaster.VtFramesProvider = _vtFramesProvider;
         _broadcaster.RecordedPathProvider = _recordedPathProvider;
         _broadcaster.BoundaryProvider = _boundaryProvider;
         _broadcaster.ViewPrefsProvider = _viewPrefsProvider;
         _broadcaster.Projector.HeadlandSegsProvider = _headlandSegsProvider;
         _broadcaster.Projector.HeadingChartProvider = _headingChartProvider;
+        _broadcaster.Projector.GpsSourceProvider = _gpsSourceProvider;
+        _broadcaster.Projector.IsobusProvider = _isobusProvider;
+        _broadcaster.Projector.FieldDataProvider = _fieldDataProvider;
+        _broadcaster.Projector.SystemDataProvider = _systemDataProvider;
+        _broadcaster.Projector.DataQualityProvider = _dataQualityProvider;
         _broadcaster.Projector.TramLinesProvider = _tramLinesProvider;
 
         // Control authority → broadcast state to clients + drive the native banner;
@@ -223,11 +358,23 @@ public sealed class RemoteServerHost
         };
         authority.Revoked += reason => FailsafeHandler?.Invoke(reason);
 
+        // A command from a screen without control is dropped (#397). Tell that screen, and
+        // send the settings again so a box edited there shows the host's value, not the
+        // one typed (an edit on an observer looked saved).
+        _ws.CommandRefused = (conn, id, tell) =>
+        {
+            if (id == "config.set") _broadcaster.ResendConfig();
+            if (tell)
+                _ws.SendTo(conn, WireCodec.EncodeToast(authority.Snapshot().Held
+                    ? "This screen is view only: another screen has control"
+                    : "This screen has no control: nothing was changed"));
+        };
+
         var server = new SimpleWebServer(port);
 
         // The /ws receive loop's token is linked to the server's shutdown inside
         // SimpleWebServer, so StopAsync cancels connected browsers promptly.
-        server.MapWebSocket("/ws", (socket, ct) => _ws.HandleAsync(socket, ct));
+        server.MapWebSocket("/ws", (socket, from, ct) => _ws.HandleAsync(socket, ct, from));
 
         // The UI bundle (HTML + JS) ships inside the app and changes with every build, and
         // the server is in-process on localhost — so there's no value in caching it, and a
@@ -235,8 +382,22 @@ public sealed class RemoteServerHost
         // Force a fresh fetch every load.
         var noStore = new[] { ("Cache-Control", "no-store") };
         server.MapGet("/", () => SimpleWebServer.Response.Text(ReadAsset("index.html"), "text/html", noStore));
-        server.MapGet("/app.js", () => SimpleWebServer.Response.Text(ReadAsset("app.js"), "text/javascript", noStore));
         server.MapGet("/transport.js", () => SimpleWebServer.Response.Text(ReadAsset("transport.js"), "text/javascript", noStore));
+        // The client's scripts and styles, one file per feature (Docs/WEB_CLIENT.md).
+        // Filename-only (no path traversal); unknown names 404.
+        server.MapGetPrefix("/js/", file => ClientFile(file, ".js", "js.", "text/javascript", noStore));
+        server.MapGetPrefix("/css/", file => ClientFile(file, ".css", "css.", "text/css", noStore));
+        // Translations (#143): the loader, and one JSON file per language (en.json is the
+        // source Weblate reads). Filename-only (no path traversal); unknown names 404.
+        server.MapGet("/i18n.js", () => SimpleWebServer.Response.Text(ReadAsset("i18n.js"), "text/javascript", noStore));
+        server.MapGetPrefix("/i18n/", file =>
+        {
+            if (file.Contains('/') || file.Contains('\\') || file.Contains("..")
+                || !file.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                return SimpleWebServer.Response.NotFound;
+            try { return SimpleWebServer.Response.Text(ReadAsset("i18n." + file), "application/json", noStore); }
+            catch (FileNotFoundException) { return SimpleWebServer.Response.NotFound; }
+        });
         // PWA manifest — lets "Add to home screen" launch fullscreen (no browser chrome).
         server.MapGet("/manifest.webmanifest", () => SimpleWebServer.Response.Text(ReadAsset("manifest.webmanifest"), "application/manifest+json"));
 
@@ -288,16 +449,88 @@ public sealed class RemoteServerHost
             bool valid = quadkey.Length is > 0 and <= 23;
             foreach (var c in quadkey) if (c is < '0' or > '3') { valid = false; break; }
             if (!valid) return SimpleWebServer.Response.NotFound;
-            var bytes = await FetchSatTileAsync(quadkey).ConfigureAwait(false);
-            if (bytes is null) return SimpleWebServer.Response.NotFound;
+            // 404 = Bing has no tile here (the client falls back to a coarser one);
+            // 502 = the fetch failed (the client asks again later).
+            var (reply, bytes) = await FetchSatTileReplyAsync(quadkey).ConfigureAwait(false);
+            if (reply == TileReply.NoTile) return SimpleWebServer.Response.NotFound;
+            if (bytes is null) return new SimpleWebServer.Response(502, "text/plain", "tile fetch failed"u8.ToArray());
             return SimpleWebServer.Response.Bytes(bytes, "image/jpeg",
                 new[] { ("Cache-Control", "public, max-age=604800") }); // a week
         });
 
+        // Bug report zips, as a download: the report is made on the host, and this is how it
+        // reaches the device in the user's hand, where the browser saves it to Downloads.
+        // Filename-only (no path traversal), and only the reports the app wrote.
+        server.MapGetPrefix("/bugreports/", file =>
+        {
+            var path = BugReportZip(file);
+            if (path is null) return SimpleWebServer.Response.NotFound;
+            return SimpleWebServer.Response.Bytes(File.ReadAllBytes(path), "application/zip",
+                // No filename in the header: the browser takes it from the URL, which carries
+                // non-ASCII titles intact.
+                new[] { ("Content-Disposition", "attachment"), ("Cache-Control", "no-store") });
+        });
+
+        // Screenshots and files added to a report (the body is the file). Only the screen
+        // holding control may change a report, like every other change (observers change
+        // nothing, #397); the client sends its connection id. The files stay in the dump.
+        server.MapPost("/bugreports/attach", (int)AgOpenWeb.Services.BugReport.BugReportAttachments.MaxFileBytes + 1024,
+            req => Task.FromResult(ChangeReport(req, authority, (path, name) =>
+                AgOpenWeb.Services.BugReport.BugReportAttachments.Add(path, name, req.Body))));
+        server.MapPost("/bugreports/detach", 0,
+            req => Task.FromResult(ChangeReport(req, authority, (path, name) =>
+                (AgOpenWeb.Services.BugReport.BugReportAttachments.Refusal.None,
+                 AgOpenWeb.Services.BugReport.BugReportAttachments.Remove(path, name)))));
+
         await server.StartAsync().ConfigureAwait(false);
-        _broadcaster.Start();
+        _broadcaster.Start(BroadcastLoop);
         _server = server;
     }
+
+    // A bug report the app wrote: filename only (no path traversal), bugreport_*.zip, present.
+    private static string? BugReportZip(string file)
+    {
+        if (file.Contains('/') || file.Contains('\\') || file.Contains("..")
+            || !file.StartsWith("bugreport_", StringComparison.Ordinal)
+            || !file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            return null;
+        var path = Path.Combine(AgOpenWeb.Services.AppDataRoot.Documents, "BugReports", file);
+        return File.Exists(path) ? path : null;
+    }
+
+    // POST /bugreports/attach|detach?zip=&name=&client=: gate on control, run the change,
+    // reply {refusal, files:[{name,size}]}. A dump being read by Send at that moment is "busy".
+    private static SimpleWebServer.Response ChangeReport(SimpleWebServer.PostRequest req, ControlAuthority authority,
+        Func<string, string, (AgOpenWeb.Services.BugReport.BugReportAttachments.Refusal,
+            IReadOnlyList<AgOpenWeb.Services.BugReport.BugReportAttachments.Attachment>)> change)
+    {
+        string Q(string k) => req.Query.TryGetValue(k, out var v) ? v : "";
+        if (!Guid.TryParse(Q("client"), out var client) || !authority.HoldsFresh(client))
+            return new SimpleWebServer.Response(403, "text/plain", "view only"u8.ToArray());
+        var path = BugReportZip(Q("zip"));
+        if (path is null || Q("name").Length == 0) return SimpleWebServer.Response.NotFound;
+        object reply;
+        try
+        {
+            var (refusal, files) = change(path, Q("name"));
+            reply = new
+            {
+                refusal = refusal.ToString(),
+                files = files.Select(f => new { name = f.Name, size = f.Size }),
+            };
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            reply = new { refusal = "Busy", files = Array.Empty<object>() };
+        }
+        return SimpleWebServer.Response.Text(System.Text.Json.JsonSerializer.Serialize(reply), "application/json",
+            new[] { ("Cache-Control", "no-store") });
+    }
+
+    /// <summary>Raised once the server has stopped (the backend is shutting down): what was
+    /// wired to this backend in statics lets go of it, as the process may outlive the backend
+    /// (Android) and start another.</summary>
+    public event Action? Stopped;
 
     public async Task StopAsync()
     {
@@ -305,6 +538,8 @@ public sealed class RemoteServerHost
         if (_broadcaster is not null) await _broadcaster.DisposeAsync().ConfigureAwait(false);
         await _server.StopAsync().ConfigureAwait(false);
         _server = null;
+        try { Stopped?.Invoke(); } catch { /* a teardown fault must not wedge the shut-down */ }
+        Stopped = null;
     }
 
     // Web imagery: cap the longest side so an iOS WKWebView can decode it. Native
@@ -357,6 +592,16 @@ public sealed class RemoteServerHost
             return new WebImage(jpg, "image/jpeg");
         }
         catch { return null; }
+    }
+
+    private static SimpleWebServer.Response ClientFile(string file, string ext, string folder,
+        string contentType, (string, string)[] headers)
+    {
+        if (file.Contains('/') || file.Contains('\\') || file.Contains("..")
+            || !file.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+            return SimpleWebServer.Response.NotFound;
+        try { return SimpleWebServer.Response.Text(ReadAsset(folder + file), contentType, headers); }
+        catch (FileNotFoundException) { return SimpleWebServer.Response.NotFound; }
     }
 
     private static string ReadAsset(string name)

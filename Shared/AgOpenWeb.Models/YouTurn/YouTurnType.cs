@@ -1,18 +1,6 @@
 // AgOpenWeb
 // Copyright (C) 2024-2025 AgOpenWeb Contributors
-//
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
+// SPDX-License-Identifier: Apache-2.0
 
 namespace AgOpenWeb.Models.YouTurn
 {
@@ -41,7 +29,15 @@ namespace AgOpenWeb.Models.YouTurn
         /// K-style turn. A more squared-off / tighter turn pattern (Twol's
         /// alternate-sweep style).
         /// </summary>
-        KStyle = 1
+        KStyle = 1,
+
+        /// <summary>
+        /// Keyhole turn (#418). Like Sagitta for rows closer than twice the turn radius, but
+        /// with the counter-arc mirrored at the end, so the loop is centred between the rows:
+        /// about 3 m shallower on a close row and half the swing past the row being left.
+        /// Wider rows use the same omega fallback as Sagitta.
+        /// </summary>
+        KeyholeStyle = 2
     }
 
     /// <summary>
