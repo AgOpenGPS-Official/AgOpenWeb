@@ -1,7 +1,8 @@
 # MainViewModel refactor plan
 
-**Status:** Draft for discussion, not agreed. Proposed as a planned piece of work in a quiet
-period before R1, under a code freeze. The dead code removal (Phase 0) may go in at any time.
+**Status:** Agreed 26 Nov 2026: all eight items, under a total change freeze in early December
+2026, before R1. Done by chriskinal and Claude. The dead code removal goes in with the refactor.
+See [Decided](#decided).
 
 ## Why
 
@@ -111,21 +112,21 @@ pull, the GPS cycle and its `Sync*ToPipeline` steps, the section bar and the rem
 6. **Cross-platform parity.** A new service is registered in all three heads' DI (`Platforms/*/
    DependencyInjection/ServiceCollectionExtensions.cs`), or made by the VM itself.
 
-## Phase 0: dead code removal (any time, before the freeze)
+## Dead code removal (the first commit of round 1)
 
 The ~211 public members nothing uses, and the private fields and methods only they used. Found
 by: declared in the VM, not named in `RemoteWiring`, `RemoteServer`, `Platforms`, `Tests` or
 `Simulators`, and named no more than twice in the ViewModels and Services projects. Each is
 checked by hand before it goes (a hotkey or a name built at run time would not show in a search).
-CI and one nightly on develop are enough for this; it is what was agreed for #953.
 
-Doing this first makes the freeze shorter and the refactor's diffs smaller.
+It goes in with the refactor, as the first commit on the branch, and is tested with round 1.
+Done first, it makes the moves after it smaller and their diffs easier to read.
 
 ## Phase 1: before the freeze
 
-1. **Announce the freeze** to the contributors at least a week ahead, with its dates and what is
-   allowed during it (below). Open PRs are not waited for: bug fixes ready before the freeze are
-   merged, the rest are rebased after it.
+1. **Announce the freeze** to the contributors at least a week ahead, with its dates: nothing is
+   merged to develop while it lasts. Contributors may keep working on their branches. Open PRs are
+   not waited for: bug fixes ready before the freeze are merged, the rest are rebased after it.
 2. **Characterization tests** for each domain, written against develop and merged before the
    freeze. They drive the VM through its public members and check the results, so they pass
    unchanged before and after:
@@ -146,9 +147,9 @@ Doing this first makes the freeze shorter and the refactor's diffs smaller.
 
 | Day | Step |
 |---|---|
-| 1 | Freeze starts at commit **F** on develop. Only safety fixes are merged (also applied to the refactor branch) |
-| 1-2 | **Testing before:** CI, the hot-path budgets, and the full nightly set on F on two nights: the second night shows the noise (on 25 and 26 Nov the finding codes matched and only timings and counts moved, e.g. a turn at 139.8 s against 139.5 s). Manual check on hardware (below) |
-| 3-6 | **Refactor, round 1:** domains 0-5, one per commit |
+| 1 | Freeze starts at commit **F** on develop. Total change freeze: nothing is merged to develop until day 20 |
+| 1-2 | **Testing before:** CI, the hot-path budgets, and the full nightly set on F on two nights: the second night shows the noise (on 25 and 26 Nov the finding codes matched and only timings and counts moved, e.g. a turn at 139.8 s against 139.5 s). The nightly keeps running on F every night of the freeze, so the baseline's spread grows with it. Manual check on hardware (below) |
+| 3-6 | **Refactor, round 1:** the dead code removal, then items 0-5, one commit each |
 | 7 | **Testing round 1:** CI, the hot-path budgets, the characterization and surface tests, all eleven harnesses as whole runs (no `TURNS` or `ONLY`) against F with `runner-compare.sh` on the harness host |
 | 8-10 | Fixes from round 1. **Refactor, round 2:** the field lifecycle (6) |
 | 11 | **Testing round 2:** the same set, against F |
@@ -192,10 +193,14 @@ reopen the first; a bug report dump.
   refactor bug until shown otherwise.
 - This plan moves to `Plans/Completed/` with what was done and what was learned.
 
-## To decide
+## Decided
 
-1. **Scope:** all eight items, or the field lifecycle and the control path in a second freeze.
-2. **When:** which quiet period before R1, and the freeze dates.
-3. **During the freeze:** safety fixes only, or also small fixes outside MainViewModel.
-4. **Who:** who does the refactor and who does the manual check on hardware.
-5. **Phase 0 now:** whether the dead code goes in ahead of everything else.
+Agreed 26 Nov 2026:
+
+1. **Scope:** all eight items, in one freeze.
+2. **When:** early December 2026. The start date is set when the freeze is announced, at least a
+   week ahead; the characterization tests and the surface test are merged before it.
+3. **During the freeze:** nothing is merged to develop. Total change freeze.
+4. **Who:** Claude does the refactor, the tests and the harness runs; chriskinal reviews each round
+   and does the manual check on hardware.
+5. **Dead code:** removed with the refactor, as the first commit of round 1, not ahead of it.
