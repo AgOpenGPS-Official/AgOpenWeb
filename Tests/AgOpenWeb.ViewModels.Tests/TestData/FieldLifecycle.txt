@@ -1,0 +1,16 @@
+# What a field leaves behind on close, and what of field A shows when B is opened after it.
+# Made by FieldLifecycleCharacterizationTests (AGOPENWEB_UPDATE_FIELD_LIFECYCLE=1); do not edit by hand.
+left behind: vm.FieldsRootDirectory
+left behind: vm.HeadlandDistance
+left behind: vm.Latitude
+left behind: vm.Longitude
+left behind: vm.PersistentState.LastOpenedField
+left behind: vm.PersistentState.SimulatorLatitude
+left behind: vm.PersistentState.SimulatorLongitude
+left behind: vm.State.Field.LocalPlane
+left behind: vm.State.Field.LocalPlane.Origin
+left behind: vm.State.Field.OriginLatitude
+left behind: vm.State.Field.OriginLongitude
+left behind: vm.State.UI.BusyMessage
+left behind: vm.StatusMessage
+showing through: vm.HeadlandDistance

@@ -132,9 +132,10 @@ shares every field.
 2. **Moved code is moved, not edited,** apart from the calls into the new service. Each domain is
    one commit (the field lifecycle, the control path and the GPS cycle a few, each one reviewable), so
    `git diff --color-moved` shows what changed beyond the move.
-3. **The wiring's surface stays the same.** The 192 public VM members that `RemoteWiring`,
-   `RemoteServer`, the heads and the tests use keep their names, types and behaviour, so
-   `RemoteServerWiring` does not change. A test added before the freeze (below) holds this.
+3. **The wiring's surface stays the same.** The 359 public VM members that `RemoteWiring`,
+   `RemoteServer`, the heads, the tests and the simulators use keep their names, types and
+   behaviour, so `RemoteServerWiring` does not change. A test added before the freeze (below)
+   holds this.
 4. **Threads stay as they are,** and every service says in its header which thread it runs on.
 5. **Hot-path budgets unchanged.** `WorkCounters` budgets pass with the same numbers.
 6. **Cross-platform parity.** A new service is registered in all three heads' DI (`Platforms/*/
@@ -160,19 +161,32 @@ Done first, it makes the moves after it smaller and their diffs easier to read.
 2. **Characterization tests** for each domain, written against develop and merged before the
    freeze. They drive the VM through its public members and check the results, so they pass
    unchanged before and after:
-   - flags: add, rename, recolour, delete, delete all, save and load again;
-   - headland: build from a boundary at several widths, clip at a line, undo, save and load;
-   - boundary and import: a KML with one and several polygons, a bow-tie, an ISO-XML field;
-   - tracks: save, load, the AgOpenGPS migration, a short A+ line lengthened;
-   - field lifecycle: the whole cycle above, open, use, close, open another;
-   - control path: a recorded GPS run fed through the VM (from a dump, as the dump replay harness
-     does), the steer angles, PGNs and section states compared with today's. The control tick is
-     timed, so the comparison allows the spread two runs of today's code show; if that spread is
-     too wide to catch a change, the harnesses carry this step and the test is dropped.
-   - GPS cycle (`GpsCycleCharacterizationTests`): whole drives, closed loop, through the real
-     cycle on a clock the test moves (`Clock.Set`), every fix's result recorded and compared with
-     today's: pose, tool, AutoSteer, guidance, U-turn, sections, lift, messages. The cycle's own
-     wall-clock reads are only in its performance diagnostics, so no app change is needed.
+   - flags, headland, boundary and import, tracks (`DomainCharacterizationTests`, #964): each
+     domain driven through the members the web commands call, 13 to 16 steps with the field closed
+     and reopened between them (flags placed, renamed, recoloured, deleted; headlands made from the
+     boundary and from map points, offset, renamed, toggled, deleted; boundaries selected, made
+     drive-through, deleted, KML imported with one polygon and a bow-tie; tracks selected,
+     activated, renamed, swapped, nudged, deleted). After each step, what changed in the VM and a
+     digest of the field's files is recorded and compared with today's;
+   - field lifecycle (`FieldLifecycleCharacterizationTests`, #964): every public property of the VM
+     and its `State` read (`VmStateReader`) before a field is opened and after it is used and
+     closed, and what of field A shows when B is opened after it. No list kept by hand: a new
+     property is covered by itself. What it records today includes #965 (the headland distance
+     carried over);
+   - control path: **dropped.** A replayed GPS run through the VM's 100 Hz tick, which runs on a
+     real timer, could only be compared within a spread, and what it would have checked is held
+     elsewhere: the GPS cycle test below
+     drives the guidance, U-turns, sections and lift fix by fix on a clock the test moves, and the
+     harnesses (the Vehicle & Tool sweep, the machine module's PGNs, the working day's tick
+     timings) carry the tick itself, within F's spread (step 7's extra checks);
+   - GPS cycle (`GpsCycleCharacterizationTests`, #963): five whole drives (AB and curve, normal and
+     skip worked, alternate on a half-worked field without a headland), closed loop, through the
+     real cycle on a clock the test moves (`Clock.Set`), every fix's result recorded and compared
+     with today's: pose, tool, AutoSteer, guidance, U-turn, sections, lift, messages. The cycle's
+     own wall-clock reads are only in its performance diagnostics, so no app change is needed.
+   - Not in these tests: the ISO-XML import, the AgOpenGPS migration and the short A+ line. Their
+     code is in services that do not move, and has its own tests (`InteropImportTests`,
+     `LegacyFieldMigrationServiceTests`, `ShortABLineTests`).
 3. **The surface test** (`MainViewModelSurfaceTests`): a list of the public VM members the rest of
    the app uses (from reflection), checked in. The test fails when one is added, removed or changes type. It is updated on purpose after
    the refactor if a change is wanted, never as a side effect.
