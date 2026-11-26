@@ -219,6 +219,175 @@ public class PositionEstimatorTests
             "Readers must always see a fully-consistent snapshot record");
     }
 
+    // ── The time between two fixes is the receiver's ──────────────────────────
+
+    private const double StepRad = -0.72 * Math.PI / 180;   // a 7.2 deg/s bend, read ten times a second
+    private const double BendRate = StepRad / 0.1;
+
+    /// <summary>A tractor in a steady bend, its fixes a tenth of a second apart on the receiver's clock.</summary>
+    private sealed class Bend
+    {
+        public readonly PositionEstimator Estimator = new();
+        public long Ticks = TicksFromSeconds(1000);
+        public double Heading = 5.5;
+        public int FixTime = (12 * 3600 + 34 * 60 + 56) * 100;
+        /// <summary>False: the fixes carry no time (the simulator's).</summary>
+        public bool Timed = true;
+
+        /// <summary><paramref name="count"/> fixes reaching the app <paramref name="arrivalSeconds"/> apart.</summary>
+        public void Fixes(int count, double arrivalSeconds, Action? afterEach = null)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                Ticks += TicksFromSeconds(arrivalSeconds);
+                Heading += StepRad;
+                FixTime = (FixTime + 10) % (24 * 360000);
+                Estimator.UpdateFromGps(new PoseSnapshot(new Vec2(0, 0), Heading, 2.5, 0, 0, Ticks, Timed ? FixTime : -1));
+                afterEach?.Invoke();
+            }
+        }
+
+        public double Rate => Estimator.GetLatestSnapshot()!.YawRateRadPerSec;
+    }
+
+    [Test]
+    public void Fixes_that_arrive_together_are_still_a_tenth_of_a_second_apart()
+    {
+        // A job harness run: fixes fed ten at a time, then a pause. Over the time between their
+        // arrivals the bend read 7.2 deg/s as some 450, and the pose predicted through the pause
+        // turned an 8 m front boom 23 degrees round, into an obstacle it was 1 m clear of. The
+        // fix published soon after a cycle that ran long is the same case, in small.
+        var bend = new Bend();
+        bend.Fixes(20, 0.1);
+        Assert.That(bend.Rate, Is.EqualTo(BendRate).Within(Math.Abs(BendRate) * 0.01), "a steady 10 Hz");
+
+        bend.Fixes(10, 0.001, () =>
+            Assert.That(bend.Rate, Is.EqualTo(BendRate).Within(Math.Abs(BendRate) * 0.01),
+                "a fix that came 1 ms after the one before is still a tenth of a second of driving on"));
+
+        var pose = bend.Estimator.GetPose(bend.Ticks + TicksFromSeconds(0.076));
+        double turnedDeg = (pose.Heading - bend.Heading) * 180 / Math.PI;
+        Assert.That(turnedDeg, Is.EqualTo(-7.2 * 0.076).Within(0.05),
+            "76 ms after the last fix the tractor has turned half a degree, not 23");
+    }
+
+    [Test]
+    public void With_no_time_on_the_fixes_the_rate_is_over_their_arrivals_as_before()
+    {
+        var bend = new Bend { Timed = false };
+        bend.Fixes(20, 0.1);
+        Assert.That(bend.Rate, Is.EqualTo(BendRate).Within(Math.Abs(BendRate) * 0.01));
+
+        // Half the time apart is twice the rate.
+        bend.Fixes(20, 0.05);
+        Assert.That(bend.Rate, Is.EqualTo(2 * BendRate).Within(Math.Abs(BendRate) * 0.02));
+    }
+
+    [Test]
+    public void The_receiver_s_time_is_used_after_ten_fixes_in_a_row_each_newer_than_the_last()
+    {
+        var bend = new Bend();
+        // The first fix has none before it, the next ten are counted: all over their arrivals.
+        bend.Fixes(1 + PositionEstimator.TimedFixesToTrust, 0.05);
+        Assert.That(bend.Rate, Is.EqualTo(2 * BendRate).Within(Math.Abs(BendRate) * 0.02),
+            "not yet: the time between arrivals, as before");
+
+        // The next one is: its rate starts the filter afresh, with nothing left of the rate
+        // measured over arrivals.
+        bend.Fixes(1, 0.05);
+        Assert.That(bend.Rate, Is.EqualTo(BendRate).Within(Math.Abs(BendRate) * 0.001),
+            "from then on the receiver's own tenth of a second");
+        bend.Fixes(30, 0.05, () => Assert.That(bend.Rate, Is.EqualTo(BendRate).Within(Math.Abs(BendRate) * 0.001)));
+    }
+
+    [Test]
+    public void A_receiver_that_writes_its_time_to_the_whole_second_is_never_used()
+    {
+        // Ten fixes with one time, then the next second: nine intervals of nothing and one of a
+        // whole second. Used, the rate would fall to a tenth at every second's first fix.
+        var estimator = new PositionEstimator();
+        long ticks = TicksFromSeconds(1000);
+        double heading = 5.5;
+        int second = (12 * 3600 + 34 * 60 + 56) * 100;
+        for (int i = 0; i < 60; i++)
+        {
+            ticks += TicksFromSeconds(0.1);
+            heading += StepRad;
+            estimator.UpdateFromGps(new PoseSnapshot(new Vec2(0, 0), heading, 2.5, 0, 0, ticks, second + i / 10 * 100));
+            if (i > 0)
+                Assert.That(estimator.GetLatestSnapshot()!.YawRateRadPerSec,
+                    Is.EqualTo(BendRate).Within(Math.Abs(BendRate) * 0.01), $"fix {i}");
+        }
+    }
+
+    [Test]
+    public void Midnight_is_a_newer_time()
+    {
+        var bend = new Bend { FixTime = 24 * 360000 - 250 };   // 23:59:57.50
+        bend.Fixes(20, 0.1);
+        // 23:59:59.50 now: the ten that arrive together cross midnight.
+        bend.Fixes(10, 0.001, () =>
+            Assert.That(bend.Rate, Is.EqualTo(BendRate).Within(Math.Abs(BendRate) * 0.01)));
+        Assert.That(bend.FixTime, Is.EqualTo(50), "00:00:00.50");
+    }
+
+    [Test]
+    public void A_clock_that_jumps_on_is_not_the_time_between_two_fixes()
+    {
+        // A receiver that starts on its own clock and then takes the satellites' time jumps on by
+        // seconds or hours between two fixes a tenth of a second apart. Over that jump the bend
+        // would read as no turn at all: the arrivals stand for it, and the receiver's time is
+        // used again once ten fixes have followed each other on the new time.
+        var bend = new Bend();
+        bend.Fixes(20, 0.1);
+        Assert.That(bend.Rate, Is.EqualTo(BendRate).Within(Math.Abs(BendRate) * 0.01));
+
+        bend.FixTime += 3 * 360000;   // three hours on
+        bend.Fixes(1, 0.1);
+        Assert.That(bend.Rate, Is.EqualTo(BendRate).Within(Math.Abs(BendRate) * 0.01),
+            "the heading's step over the tenth of a second it took to arrive, not over three hours");
+
+        bend.FixTime += PositionEstimator.MaxFixIntervalCentiseconds;   // 2.1 s on with the next fix's tenth
+        bend.Fixes(1, 0.1);
+        Assert.That(bend.Rate, Is.EqualTo(BendRate).Within(Math.Abs(BendRate) * 0.01), "2.1 s on is a jump too");
+
+        // On the new time, arriving together: over arrivals until ten have followed each other.
+        bend.Fixes(PositionEstimator.TimedFixesToTrust, 0.001);
+        Assert.That(Math.Abs(bend.Rate), Is.GreaterThan(Math.Abs(BendRate) * 10), "counted anew after the jump");
+        bend.Fixes(1, 0.001);
+        Assert.That(bend.Rate, Is.EqualTo(BendRate).Within(Math.Abs(BendRate) * 0.01), "the receiver's time again");
+    }
+
+    [Test]
+    public void Fixes_up_to_two_seconds_apart_are_timed_by_the_receiver()
+    {
+        // A receiver at 1 Hz, or fixes left out while a cycle ran: still the receiver's time.
+        var bend = new Bend();
+        bend.Fixes(20, 0.1);
+        bend.FixTime += PositionEstimator.MaxFixIntervalCentiseconds - 10;   // 2.0 s on with the next fix's tenth
+        bend.Fixes(1, 0.001);
+        double over2s = StepRad / 2.0;
+        Assert.That(bend.Rate, Is.EqualTo(BendRate + 0.3 * (over2s - BendRate)).Within(Math.Abs(BendRate) * 0.01),
+            "the heading's step over the receiver's 2 s, not the 1 ms it took to arrive");
+    }
+
+    [Test]
+    public void The_same_fix_again_is_not_a_tenth_of_a_second_on()
+    {
+        // A module heard twice (two links): the same time again is no interval, and the fixes
+        // after it are counted anew before the receiver's time is used again.
+        var bend = new Bend();
+        bend.Fixes(20, 0.1);
+        var last = bend.Estimator.GetLatestSnapshot()!;
+        bend.Estimator.UpdateFromGps(last with { TimestampTicks = last.TimestampTicks + TicksFromSeconds(0.1), YawRateRadPerSec = 0 });
+        Assert.That(bend.Estimator.GetLatestSnapshot()!.YawRateRadPerSec, Is.EqualTo(0.7 * BendRate).Within(Math.Abs(BendRate) * 0.01),
+            "no turn over the tenth of a second it took to arrive: the filter's step towards 0");
+
+        bend.Ticks = last.TimestampTicks + TicksFromSeconds(0.1);
+        bend.Fixes(40, 0.1);
+        Assert.That(bend.Rate, Is.EqualTo(BendRate).Within(Math.Abs(BendRate) * 0.01));
+    }
+
     private static long TicksFromSeconds(double seconds)
         => (long)(seconds * Stopwatch.Frequency);
 

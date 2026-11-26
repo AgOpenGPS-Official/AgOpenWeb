@@ -52,6 +52,25 @@ non-real-time host can do deterministically).
 | Standard set | `GGA` or `GNS`, plus `VTG`, `HPR`, `HDT`, `THS` in any combination | UM982, Septentrio, F9P via a bridge | `HPR`/`HDT`/`THS` from the receiver (`GP`, `GN`…); from an IMU talker (`IN`, `HE`) it is the IMU heading | `HPR` pitch, when fixed | from `GGA`/`GNS` |
 | INSPVAX | `#INSPVAXA`, `#INSPVAA` (long header) or `%INSPVAXSA`, `%INSPVASA` (short header) | Unicore UM981 (RTK + INS, single antenna) via a bridge | the INS azimuth | the INS roll | no: both read "—" |
 
+### The time between two fixes
+
+Between two fixes the app predicts the pose for the 100 Hz control loop and the map
+(`PositionEstimator`): the position from the speed, and the heading from the yaw rate, which
+is the heading's change from one fix to the next over the time between them.
+
+That time is the receiver's own: the time of day on the fix's position sentence
+(`GpsData.FixTimeCentiseconds`; `$PANDA`, `$PAOGI`, `$KSXT`, and the `GGA` or `GNS` of a
+standard set), used once ten fixes in a row have each come with a newer time. When the app
+published a fix is not when the receiver measured it: after a GPS cycle that ran long the
+next fix is published soon after, and two fixes published a millisecond apart are still a
+tenth of a second of driving apart. Over the time between publications the rate came out
+many times too high in a bend, and the implement was placed turned with it until the next
+fix.
+
+The time between arrivals is still used for a fix with no time, for a time that is not newer
+than the one before or more than 2 s on (a clock being set, fixes lost), and for the INSPVAX
+logs.
+
 ### The standard set: epochs
 
 A receiver printing `GGA`+`VTG`+`HPR` spreads one fix over three sentences. The app groups

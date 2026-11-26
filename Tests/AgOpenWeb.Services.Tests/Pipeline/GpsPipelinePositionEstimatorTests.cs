@@ -175,12 +175,38 @@ public class GpsPipelinePositionEstimatorTests
         Assert.That(secondSnap.SpeedMps, Is.EqualTo(2.0).Within(1e-9));
     }
 
+    [Test]
+    public void Fixes_that_reach_the_cycle_together_in_a_bend_do_not_swing_the_predicted_heading()
+    {
+        // A job harness run (26 Nov 2026): its fixes come ten at a time, a tenth of a second of
+        // driving apart on the receiver's clock, and the pose predicted 70 ms after such a burst
+        // was 23 degrees round in a 7 deg/s bend, an 8 m front boom placed with it.
+        int fixTime = (12 * 3600 + 34 * 60 + 56) * 100;
+        double heading = 320;
+        for (int i = 0; i < 40; i++)
+        {
+            heading -= 0.72;
+            fixTime += 10;
+            _gpsService.UpdateGpsData(BuildGpsData(
+                latitude: 43.7128, longitude: -74.006,
+                heading: heading, speed: 2.5, hasDualHeading: true, fixTimeCentiseconds: fixTime));
+        }
+
+        var snap = _estimator.GetLatestSnapshot()!;
+        Assert.That(snap.FixTimeCentiseconds, Is.EqualTo(fixTime), "the fix's own time reaches the estimator");
+        long later = snap.TimestampTicks + (long)(0.07 * System.Diagnostics.Stopwatch.Frequency);
+        double predictedDeg = _estimator.GetPose(later).Heading * 180 / Math.PI;
+        Assert.That(predictedDeg, Is.EqualTo(heading - 7.2 * 0.07).Within(0.2),
+            "70 ms after the last fix the tractor has turned half a degree");
+    }
+
     private static GpsData BuildGpsData(
         double latitude, double longitude,
         double heading = 0, double speed = 0,
         bool imuValid = false,
         double imuYawRateDegPerSec = 0, double imuRollDeg = 0,
-        bool hasDualHeading = false)
+        bool hasDualHeading = false,
+        int fixTimeCentiseconds = -1)
     {
         return new GpsData
         {
@@ -197,6 +223,7 @@ public class GpsPipelinePositionEstimatorTests
             ImuYawRate = imuYawRateDegPerSec,
             ImuRoll = imuRollDeg,
             IsValid = true,
+            FixTimeCentiseconds = fixTimeCentiseconds,
         };
     }
 }

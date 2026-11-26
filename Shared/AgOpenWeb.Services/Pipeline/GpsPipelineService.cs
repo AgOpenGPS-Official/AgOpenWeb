@@ -941,7 +941,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 pos.Speed,
                 yawRateRadPerSec,
                 rollRad,
-                ts));
+                ts,
+                data.FixTimeCentiseconds));
             // Test hook: fire so a synchronous control-loop tick can advance
             // the section state machine before this cycle's GpsCycleResult
             // captures section bits. No-op in production (loop runs on its

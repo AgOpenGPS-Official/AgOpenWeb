@@ -27,6 +27,9 @@ public class AutoSteerService : IAutoSteerService
 {
     // Core state - single instance, updated in place
     private VehicleState _state;
+    // The receiver's time of day (1/100 s) on the position sentence of the fix being published;
+    // -1 = none (GpsData.FixTimeCentiseconds). Set for every fix. Under _gpsIngestLock.
+    private int _fixTimeCentiseconds = -1;
 
     // Dependencies
     private readonly ITrackGuidanceService _guidanceService;
@@ -842,6 +845,7 @@ public class AutoSteerService : IAutoSteerService
                     // position between the simulator's.
                     bool simulatorIsSource = _simulatorIsSource;
                     var probe = simulatorIsSource ? _state : default;
+                    long epochsBefore = GpsEpochs.EpochsEmitted;
                     bool parsed = simulatorIsSource
                         ? NmeaParserServiceFast.TryParseIntoState(line, ref probe, _configStore, GpsEpochs, out var result)
                         : NmeaParserServiceFast.TryParseIntoState(line, ref _state, _configStore, GpsEpochs, out result);
@@ -856,6 +860,13 @@ public class AutoSteerService : IAutoSteerService
                         if (probe.FixQuality <= 0) continue;
                         _state = probe;
                     }
+                    // The receiver's own time on this fix's position sentence, set for every fix (none
+                    // is -1, never the time of a sentence before). A fix of several sentences has its
+                    // own epoch's time, not this sentence's: an epoch can be closed by the first
+                    // sentence of the next one, which carries the next time.
+                    _fixTimeCentiseconds = GpsEpochs.EpochsEmitted != epochsBefore
+                        ? GpsEpochs.LastFixTimeCentiseconds
+                        : DataQuality.FixTimeSensor.TimeOfDay(line);
 
                     // A real fix parsed from inbound NMEA: mark the live-GPS gate so the
                     // internal simulator stays mutually exclusive with a live source (it stops,
@@ -994,6 +1005,7 @@ public class AutoSteerService : IAutoSteerService
             HasDualHeading = _state.HasDualHeading,
             SentenceType = _state.SentenceType,
             Timestamp = DateTime.UtcNow,
+            FixTimeCentiseconds = _fixTimeCentiseconds,
         };
         _gpsService.UpdateGpsData(gpsData);
     }

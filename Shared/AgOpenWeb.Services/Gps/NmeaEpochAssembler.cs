@@ -112,6 +112,14 @@ public sealed class NmeaEpochAssembler
     public long DroppedEpochs { get; private set; }
 
     /// <summary>
+    /// The receiver's time of day on the position sentence of the last fix emitted, in 1/100 s since
+    /// midnight; under 0 = none (no fix yet, a position sentence with no time). It is that fix's own
+    /// time: an epoch can be closed by the first sentence of the next one, which carries the next
+    /// time.
+    /// </summary>
+    public int LastFixTimeCentiseconds { get; private set; } = -1;
+
+    /// <summary>
     /// Take one decoded sentence. Returns true when a fix was written into
     /// <paramref name="state"/>: the epoch it completed, or the previous epoch this sentence
     /// closed. At most one fix per call.
@@ -217,10 +225,22 @@ public sealed class NmeaEpochAssembler
         }
     }
 
+    /// <summary>A sentence's time as <see cref="EpochMemberData.UtcCentiseconds"/> holds it (hhmmss.ss × 100)
+    /// in 1/100 s since midnight; -1 for none, or what is no time of day.</summary>
+    internal static int TimeOfDay(int printed)
+    {
+        if (printed < 0) return -1;
+        int hundredths = printed % 100, hhmmss = printed / 100;
+        int hh = hhmmss / 10000, mm = hhmmss / 100 % 100, ss = hhmmss % 100;
+        if (hh > 23 || mm > 59 || ss > 60) return -1;
+        return ((hh * 60 + mm) * 60 + ss) * 100 + hundredths;
+    }
+
     private void Emit(ref VehicleState state, ConfigurationStore configStore)
     {
         _emitted = true;
         EpochsEmitted++;
+        LastFixTimeCentiseconds = TimeOfDay(_position.UtcCentiseconds);
 
         state.SentenceType = GpsSentenceType.NmeaEpoch;
         state.Latitude = _position.Latitude;

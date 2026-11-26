@@ -22,6 +22,21 @@ public sealed class PositionEstimator : IPositionEstimator
     private PoseSnapshot? _latest;
     private double _filteredYawRate;
     private bool _hasFilteredYaw;
+    // Fixes in a row whose receiver's time was newer than the one before (FixInterval).
+    private int _timedInARow;
+
+    /// <summary>
+    /// Fixes in a row that must each come with a newer receiver's time before that time is used
+    /// for the time between two fixes (<see cref="FixInterval"/>): a receiver that writes its time
+    /// to the whole second sends ten fixes with one time, and is never used.
+    /// </summary>
+    public const int TimedFixesToTrust = 10;
+
+    private const int DayCentiseconds = 24 * 60 * 60 * 100;
+
+    /// <summary>The longest time between two fixes taken from the receiver's clock, in 1/100 s (2 s);
+    /// further apart, the clock was set or fixes were lost, and the time between arrivals stands.</summary>
+    public const int MaxFixIntervalCentiseconds = 200;
 
     public double MaxStaleSeconds { get; set; } = 1.0;
 
@@ -47,9 +62,21 @@ public sealed class PositionEstimator : IPositionEstimator
         // turning. Using the heading-delta-derived yaw rate makes heading
         // ramp smoothly across the inter-sample interval, killing the snap.
         var prev = Volatile.Read(ref _latest);
+        double fixInterval = FixInterval(prev, snapshot);
         if (prev is not null && Math.Abs(snapshot.YawRateRadPerSec) < 1e-9)
         {
-            double dt = Clock.Current.ElapsedSeconds(prev.TimestampTicks, snapshot.TimestampTicks);
+            // The heading changed over the time between the two positions, which is the receiver's
+            // to say. A snapshot's own stamp is when the GPS cycle published it: after a cycle
+            // that ran long the next fix is published soon after, and two fixes that reach the
+            // cycle together (a job harness feeding fixes faster than real time) are stamped
+            // almost at one instant, yet each is a tenth of a second of driving on from the one
+            // before. Over the time between those stamps the rate came out many times too high in
+            // a bend, and the pose dead-reckoned from it until the next fix turned the implement
+            // with it: in a job harness run an 8 m front boom was placed 23 degrees round, its end
+            // 0.85 m "in" an obstacle the boom was 1 m clear of.
+            double dt = fixInterval > 0
+                ? fixInterval
+                : Clock.Current.ElapsedSeconds(prev.TimestampTicks, snapshot.TimestampTicks);
             if (dt > 1e-6)
             {
                 double dh = snapshot.Heading - prev.Heading;
@@ -72,6 +99,48 @@ public sealed class PositionEstimator : IPositionEstimator
             _hasFilteredYaw = false;
         }
         Interlocked.Exchange(ref _latest, snapshot);
+    }
+
+    /// <summary>
+    /// The seconds between two fixes by the receiver's own clock (<see cref="PoseSnapshot.FixTimeCentiseconds"/>),
+    /// or 0 when it is not to be used and the time between their arrivals stands, as before: a fix
+    /// with no time, a time that is not newer (the same fix again, an older one, a receiver that does
+    /// not know the time yet) or more than <see cref="MaxFixIntervalCentiseconds"/> on (a clock that
+    /// was set, fixes lost), and the first <see cref="TimedFixesToTrust"/> fixes after any of those.
+    /// The first rate measured by the receiver's time starts the rate's filter afresh.
+    /// </summary>
+    private double FixInterval(PoseSnapshot? prev, PoseSnapshot now)
+    {
+        if (prev is null || prev.FixTimeCentiseconds < 0 || now.FixTimeCentiseconds < 0)
+        {
+            _timedInARow = 0;
+            return 0;
+        }
+        int apart = now.FixTimeCentiseconds - prev.FixTimeCentiseconds;
+        // Midnight: the time of day starts again, which is newer.
+        if (apart < -DayCentiseconds / 2) apart += DayCentiseconds;
+        // Not newer, or further on than fixes are apart: a receiver that sets its clock (the time
+        // from the satellites after a start on its own clock) jumps on by seconds or hours, and over
+        // that the turn in a tenth of a second would read as no turn at all.
+        if (apart <= 0 || apart > MaxFixIntervalCentiseconds)
+        {
+            _timedInARow = 0;
+            return 0;
+        }
+        if (_timedInARow < TimedFixesToTrust)
+        {
+            _timedInARow++;
+            return 0;
+        }
+        if (_timedInARow == TimedFixesToTrust)
+        {
+            // The first rate by the receiver's time starts the filter afresh: what it holds was
+            // measured over arrivals, and a rate read many times too high there would take a
+            // second or two more to fade.
+            _timedInARow++;
+            _hasFilteredYaw = false;
+        }
+        return apart / 100.0;
     }
 
     public PoseSnapshot? GetLatestSnapshot() => Volatile.Read(ref _latest);

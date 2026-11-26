@@ -15,6 +15,10 @@ namespace AgOpenWeb.Models.Pipeline;
 /// Used by the host control loop (running at 100 Hz) to interpolate vehicle
 /// pose between GPS samples (typically 10 Hz) so that section control,
 /// guidance, and PGN sends can run at sub-frame resolution.
+///
+/// <paramref name="FixTimeCentiseconds"/> is the receiver's own time of day on the fix, in 1/100 s
+/// (<see cref="GpsData.FixTimeCentiseconds"/>; under 0 = none): the estimator derives the yaw rate
+/// over the time between two fixes by it, not over the time between their arrivals.
 /// </summary>
 public sealed record PoseSnapshot(
     Vec2 Position,
@@ -22,4 +26,5 @@ public sealed record PoseSnapshot(
     double SpeedMps,
     double YawRateRadPerSec,
     double Roll,
-    long TimestampTicks);
+    long TimestampTicks,
+    int FixTimeCentiseconds = -1);
