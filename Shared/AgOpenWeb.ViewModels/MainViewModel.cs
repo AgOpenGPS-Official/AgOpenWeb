@@ -2234,6 +2234,7 @@ public partial class MainViewModel : ObservableObject
             // segments / preview were never cleared).
             State.Field.HeadlandLine = null;
             State.Field.HeadlandDistance = 0;
+            HeadlandDistance = DefaultHeadlandDistance; // the builder starts afresh, not from the last field's (#965)
 
             State.Field.HeadlandLine = null;
             _mapService.SetHeadlandLine(null);
@@ -2273,6 +2274,7 @@ public partial class MainViewModel : ObservableObject
             {
                 State.Field.HeadlandLine = null;
                 State.Field.HeadlandDistance = 0;
+                HeadlandDistance = DefaultHeadlandDistance;
 
                 State.Field.HeadlandLine = null;
                 _mapService.SetHeadlandLine(null);
@@ -2286,6 +2288,7 @@ public partial class MainViewModel : ObservableObject
             _logger.LogDebug($"[Headland] Failed to load headland: {ex.Message}");
             State.Field.HeadlandLine = null;
             State.Field.HeadlandDistance = 0;
+            HeadlandDistance = DefaultHeadlandDistance; // the builder starts afresh, not from the last field's (#965)
 
             State.Field.HeadlandLine = null;
             _mapService.SetHeadlandLine(null);
@@ -3955,7 +3958,8 @@ public partial class MainViewModel : ObservableObject
 
     // UTurnSkipRows and IsUTurnSkipRowsEnabled are now in MainViewModel.YouTurn.cs
 
-    private double _headlandDistance = 12.0;
+    private const double DefaultHeadlandDistance = 12.0;
+    private double _headlandDistance = DefaultHeadlandDistance;
     public double HeadlandDistance
     {
         get => _headlandDistance;

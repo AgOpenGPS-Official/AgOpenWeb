@@ -131,6 +131,26 @@ public class FieldLifecycleCharacterizationTests
         });
     }
 
+    /// <summary>
+    /// #965: field A's headland was made 16 m in. Closed, and B (no headland) opened after it, the
+    /// headland builder starts from the 12 m a fresh start gives, not from A's 16 m.
+    /// </summary>
+    [Test]
+    public async Task The_headland_distance_of_a_closed_field_is_not_kept()
+    {
+        var vm = Fresh();
+        double fresh = vm.HeadlandDistance;
+        await vm.OpenFieldAsync(_dirA, "Lifecycle A");
+        Assume.That(vm.HeadlandDistance, Is.EqualTo(16), "field A's headland distance was not loaded");
+
+        await vm.CloseFieldAsync();
+        Assert.That(vm.HeadlandDistance, Is.EqualTo(fresh), "after closing A");
+
+        await vm.OpenFieldAsync(_dirA, "Lifecycle A");
+        await vm.OpenFieldAsync(_dirB, "Lifecycle B"); // straight from A to B, without closing first
+        Assert.That(vm.HeadlandDistance, Is.EqualTo(fresh), "B opened after A");
+    }
+
     private MainViewModel Fresh()
     {
         var b = new MainViewModelBuilder { FieldService = new FieldService() };
