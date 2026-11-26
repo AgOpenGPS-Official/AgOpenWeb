@@ -12,7 +12,7 @@ wwwroot/
 ├── js/             the client, one file per feature
 ├── transport.js    the WebSocket and the binary frames (pairs with WireCodec.cs)
 ├── i18n.js         the translation loader; i18n/<lang>.json the strings
-├── vendor/         CanvasKit (Skia in WebAssembly), bundled for offline use
+├── vendor/         CanvasKit (Skia in WebAssembly) and html-to-image (the Bug Report screenshot), bundled for offline use
 ├── icons/, sounds/
 └── manifest.webmanifest
 ```
