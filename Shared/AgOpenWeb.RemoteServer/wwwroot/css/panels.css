@@ -534,6 +534,10 @@ input.as-valbox { width: 80px; box-sizing: content-box; }
   color: var(--text-2); cursor: pointer; font: 600 12px system-ui, sans-serif; }
 .vc-typecard img { width: 100%; height: 56px; object-fit: contain; background: #fff; border-radius: 4px; }
 .vc-typecard.active { border-color: #4A90D9; background: var(--sel); color: var(--text); }
+.vc-colourrow { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
+.vc-colourrow .cfg-sel { flex: 0 1 280px; min-width: 0; }
+/* The colour button stays level with the list's first line, open or not: the list is 34 px high, the button 32 px. */
+.vc-colourrow .cfg-color { margin-top: 1px; }
 .vc-diagrow { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
 .vc-diag { width: 150px; height: 96px; object-fit: contain; background: #fff; border-radius: 6px; flex: none; }
 .vc-fieldcol { flex: 1; min-width: 0; display: grid; grid-template-columns: auto max-content; gap: 6px 10px; align-items: center; }
