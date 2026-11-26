@@ -190,6 +190,9 @@ To use a separate phone or tablet as the in-cab display:
 The same host serves every connected device at once, so the cab PC and a tablet can show the
 screen simultaneously.
 
+Wi-Fi is for the screen only. The steer, GPS and machine modules must reach the host by Ethernet
+cable, as with AgOpenGPS: see [Why the modules need a cable](MODULE_LINK.md).
+
 ---
 
 ## Moving from AgOpenGPS

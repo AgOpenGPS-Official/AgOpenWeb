@@ -46,6 +46,7 @@ npx wrangler dev         # local run on :8787 with a local R2 bucket
 
 - `MAX_BYTES` 50 MB per dump; `DAILY_CAP` 100 reports a day in all; `PER_IP_DAILY` 10 per
   connection a day; the `RATE_LIMIT` binding allows 2 a minute per connection.
+- `BUILD_BRANCHES`: a report's build must be a commit on one of these branches. Empty: no check.
 - `PRUNE_AT_BYTES` 9 GB / `PRUNE_TO_BYTES` 8 GB: at 9 GB the cron deletes down to below
   8 GB, dumps of closed issues first, then the rest oldest first; an open issue whose dump
   goes gets a comment saying so.

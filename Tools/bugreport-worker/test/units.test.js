@@ -9,7 +9,7 @@ import { generateKeyPairSync, verify } from 'node:crypto';
 import { listEntries, readEntry, publicSystemInfo } from '../src/zip.js';
 import { appJwt, pemToPkcs8 } from '../src/github.js';
 import { planPrune, issueOf } from '../src/prune.js';
-import { cleanMeta, issueFor } from '../src/reports.js';
+import { cleanMeta, issueFor, buildCommit } from '../src/reports.js';
 import { verifyAccess } from '../src/dumps.js';
 
 const fixture = name => new Uint8Array(readFileSync(new URL('./fixtures/' + name, import.meta.url)));
@@ -119,4 +119,14 @@ test('dumps: Access assertion checked for signature, audience, expiry and issuer
   const forged = t[0] + '.' + Buffer.from(JSON.stringify({ ...good, email: 'x' })).toString('base64url') + '.' + t[2];
   assert.equal(await verifyAccess(forged, team, aud, 1000, [jwk]), null);
   assert.equal(await verifyAccess('', team, aud, 1000, [jwk]), null);
+});
+
+test('buildCommit: the commit of a clean build, null otherwise', () => {
+  assert.equal(buildCommit('1.0.0+80d4a1a8cd1a29a06ce22d986cfa97c79604ec55'), '80d4a1a8cd1a29a06ce22d986cfa97c79604ec55');
+  assert.equal(buildCommit('26.7.7+9e92e46'), '9e92e46');
+  assert.equal(buildCommit('26.7.7+9e92e46-dirty'), null); // built with local changes
+  assert.equal(buildCommit('1.0.0'), null);
+  assert.equal(buildCommit('1.0.0+develop'), null);
+  assert.equal(buildCommit(''), null);
+  assert.equal(buildCommit(undefined), null);
 });

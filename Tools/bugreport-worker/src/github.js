@@ -83,6 +83,21 @@ export async function userExists(env, name) {
   catch (e) { if (/: 404 /.test(e.message)) return false; throw e; }
 }
 
+/**
+ * Whether a commit is on one of the branches; throws when GitHub can't say. Page 2 of one
+ * commit a page keeps the reply small (no file list).
+ */
+export async function commitOnBranch(env, sha, branches) {
+  const token = await installationToken(env);
+  for (const branch of branches) {
+    try {
+      const c = await call(`/repos/${env.GITHUB_REPO}/compare/${encodeURIComponent(branch)}...${sha}?per_page=1&page=2`, token);
+      if (c.status === 'behind' || c.status === 'identical') return true;
+    } catch (e) { if (!/: 404 /.test(e.message)) throw e; }
+  }
+  return false;
+}
+
 export async function comment(env, number, body) {
   const token = await installationToken(env);
   return call(`/repos/${env.GITHUB_REPO}/issues/${number}/comments`, token,
