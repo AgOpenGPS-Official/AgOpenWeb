@@ -162,9 +162,13 @@ public sealed class SceneProjector : System.IDisposable
         for (int i = 0; i < nSec && i < states.Count; i++)
             toolSections.Add(new SectionSpanDto(states[i].PositionLeft, states[i].PositionRight));
 
-        // Planned U-turn path through the headland (when a turn is active).
+        // Planned U-turn path through the headland (when a turn is active). While a recorded path
+        // plays, no U-turn is planned or driven, and this is the way from the tractor to the path
+        // until the route starts (the Dubins approach the VM puts in State.RecordedPath; AgOpenGPS
+        // CRecordedPath.DrawDubins, the same green), never a turn left from before Play.
         IReadOnlyList<Vec2Dto>? uTurnPath = null;
-        var tp = _state.YouTurn.TurnPath?.ToArray();
+        var tp = _state.RecordedPath.IsDrivingRecordedPath
+            ? RecordedPathApproach()?.ToArray() : _state.YouTurn.TurnPath?.ToArray();
         if (tp is { Length: >= 2 })
             uTurnPath = tp.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
 
@@ -219,6 +223,12 @@ public sealed class SceneProjector : System.IDisposable
             .ToList();
         var recordedPaths = _state.FieldTools.ShowRecordedPaths
             ? Lines(Models.Track.TrackType.RecordedPath) : new List<IReadOnlyList<Vec2Dto>>();
+        // The recorded path in use (picked in the Playback list, reversed, just recorded, being
+        // played) is drawn whatever "Rec paths" shows, as AgOpenGPS DrawRecordedLine draws recList:
+        // it is the line AutoSteer follows when it plays.
+        var routePts = _state.RecordedPath.RecordedPoints?.ToArray();
+        if (routePts is { Length: >= 2 })
+            recordedPaths.Add(routePts.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList());
         var contourStrips = Lines(Models.Track.TrackType.Contour);
         var cref = _state.Operation.IsContourOn ? _state.Operation.ContourRef : null;
         IReadOnlyList<Vec2Dto>? contourRef = cref?.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList();
@@ -255,6 +265,14 @@ public sealed class SceneProjector : System.IDisposable
             _state.Operation.IsContourOn && _state.Operation.IsContourLocked,
             guideLines,
             _state.Guidance.ToolPass?.Select(p => new Vec2Dto(p.Easting, p.Northing)).ToList());
+    }
+
+    /// <summary>The way to the recorded path while it is driven, else null (the VM's list:
+    /// copy it before reading the points).</summary>
+    private List<AgOpenWeb.Models.Base.Vec3>? RecordedPathApproach()
+    {
+        var rp = _state.RecordedPath;
+        return rp.IsDrivingRecordedPath && rp.IsFollowingDubinsToPath ? rp.DubinsApproachPath : null;
     }
 
     // Tracks-manager display label — mirrors native TracksDialog (Contour → Path →
@@ -1108,6 +1126,15 @@ public sealed class SceneProjector : System.IDisposable
             h = h * 31 + (long)System.Math.Round(p0.Easting * 10);
             h = h * 31 + (long)System.Math.Round(p0.Northing * 10);
         }
+
+        // Recorded path: playing or not (it takes the U-turn path's place), the route in use (a
+        // new list per pick, reverse or recording; cleared in place when turned off) and the way
+        // to it (a new list per start, cleared in place when the route starts and at stop).
+        h = h * 31 + (_state.RecordedPath.IsDrivingRecordedPath ? 1 : 0);
+        var route = _state.RecordedPath.RecordedPoints;
+        h = h * 31 + (route is null ? -1 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(route) * 31L + route.Count);
+        var approach = RecordedPathApproach();
+        h = h * 31 + (approach is null ? -1 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(approach) * 31L + approach.Count);
 
         // Next track: appears when a turn is set up, clears once picked up.
         var nt = _state.YouTurn.NextTrack?.Points;
