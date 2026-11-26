@@ -346,6 +346,7 @@ function clientDiagReport() {
   put('canvas', ckcv.width + 'x' + ckcv.height);
   put('dpr', (window.devicePixelRatio || 1).toFixed(2) + (dpr !== (window.devicePixelRatio || 1) ? ' (drawn at ' + dpr + ')' : ''));
   put('screen', screen.width + 'x' + screen.height);
+  put('window', innerWidth + 'x' + innerHeight + (navigator.standalone === true ? ', Home Screen app' : ''));
   put('skia', ckStatus);
   put('ua', navigator.userAgent);
   _drawMsSum = 0; _drawMsN = 0; _drawMsMax = 0; // the next report covers the frames since this one

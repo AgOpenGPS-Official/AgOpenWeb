@@ -82,6 +82,9 @@ html, body { margin: 0; height: 100%; background: var(--bg-input); overflow: hid
    chart and VT card titles), and buttons, boxes and lists in the browser's own Arial 13.3 px. */
 body { font-family: system-ui, sans-serif; }
 button, input, select, textarea { font-family: inherit; }
+/* iOS Home Screen web app (js/core.js): taller than the window by the status bar, so iOS 26 lays
+   the page out on the whole screen (#943). Nothing scrolls: the overflow is hidden. */
+html.home-app { min-height: calc(100% + env(safe-area-inset-top, 0px)); }
 #ck { position: fixed; top: 0; bottom: 0; left: 0; display: block; touch-action: none; } /* CanvasKit (Skia) — the only renderer */
 
 /* Features switched off (FeatureSwitches on the host): the body starts with every fs-no-*

@@ -89,7 +89,12 @@
 .cp-secs i { display: block; width: 16px; height: 16px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.5); }
 .cp-bar { display: none; flex-basis: 100%; height: 20px; justify-content: center; align-items: center; gap: 4px; }
 #cardpane.full.moving .cp-bar { display: flex; }
-.cp-bar i { display: block; width: 18px; height: 14px; border-radius: 2px; background: #1c2230; }
+/* The light bar's arrows, as lbArrowSk: faceted, pointing outwards, with a small shadow. */
+.cp-bar > i { display: block; width: 18px; height: 16px; background-color: #1c2230;
+  background-image: linear-gradient(rgba(255,255,255,0.28) 50%, rgba(0,0,0,0.22) 50%);
+  clip-path: polygon(0 0, 100% 50%, 0 100%, 30% 50%); }
+.cp-bar > i:has(~ .cp-mid) { transform: scaleX(-1); }
+.cp-bar:has(.cp-mid) { filter: drop-shadow(0 2px 0 rgba(0,0,0,0.45)); }
 .cp-bar .cp-mid { width: 20px; }
 .cp-sbar { position: relative; width: 60%; height: 8px; background: rgba(var(--ov),0.1); border-radius: 4px; }
 .cp-sbar i { position: absolute; top: 0; height: 8px; width: 0; border-radius: 4px; background: #f2fb66; }

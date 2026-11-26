@@ -301,6 +301,10 @@ function drawCoverageSk(canvas) {
 // tool, and the caps are butt so it doesn't run past the ends of a pass either (#325). Polylines
 // are broken at the near plane per vertex (see below). Reloaded fields have no perimeter
 // (graceful fall back to feather).
+// Tilted, the 0.6 m are on the ground: drawn in screen pixels, 0.6 m times pxPerM, the stroke
+// was 0.6 m only where pxPerM holds; in 3D the ground further away is smaller on the screen,
+// and there it reached metres past the worked area and the field's edge (a tester's tablet,
+// 25 Nov 2026).
 function drawCoverageEdgeSk(canvas) {
   if (EDGE_OFF || !coverageEdges || !coverageEdges.length) return;
   const p = SKP.covEdge || (SKP.covEdge = (() => {
@@ -309,25 +313,54 @@ function drawCoverageEdgeSk(canvas) {
   })());
   const c = covEdgeRgb;
   p.setColor(CK.Color((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF, 1));
-  p.setStrokeWidth(Math.max(1, 0.6 * pxPerM));
-  // Per-vertex near-plane gate: a vertex at/behind the near plane (homogeneous w ≤ NEAR)
-  // projects through w2s to a huge/flipped coord, so a polyline crossing behind the camera
-  // would shoot a stroke to infinity (seen on zoom/tilt). Break the polyline at those
-  // vertices and draw each in-front run separately — no clipping math, no infinity lines.
-  const NEAR = 0.02;
+  // Seen from straight above (pitch 0) the ground's scale is the same all over the screen, so the
+  // stroke is drawn in screen pixels, 0.6 m times pxPerM (at least a pixel). Tilted, it is drawn
+  // in camera-relative metres under the ground's projection (perspM), so it is 0.6 m wide on the
+  // ground everywhere. From above the pixel path is kept: through the perspective matrix the
+  // zoomed-out top view drew slower on a software renderer; tilted, both ways cost the same.
+  const M = perspM, flat = Math.abs(M[12]) + Math.abs(M[13]) <= 1e-9 * Math.abs(M[15]);
+  p.setStrokeWidth(flat ? Math.max(1, 0.6 * pxPerM) : 0.6);
+  // Near-plane gate: a vertex at/behind the near plane (homogeneous w < NEAR) projects to a
+  // huge/flipped coord, so a polyline crossing behind the camera would shoot a stroke to infinity
+  // (seen on zoom/tilt). Each run in front is drawn on its own, a segment that crosses the plane
+  // cut where it crosses, as lineCmds does: gated per vertex, a segment with one end behind was
+  // left out whole, its part in front too.
+  // Tilted, NEAR is the near plane (w = 1): the stroke's sides, 0.3 m off its line, change w by
+  // under 0.3, so they stay in front of the camera too.
+  const NEAR = flat ? 0.02 : 1;
+  // From above: screen pixels. Tilted: metres from the camera, subtracted here in f64 (see buildScreenMatrix).
+  const at = (e, n) => flat ? w2s(e, n) : [e - camE, n - camN];
+  const cut = (a, wa, b, wb) => { const t = (NEAR - wa) / (wb - wa); return at(a.e + (b.e - a.e) * t, a.n + (b.n - a.n) * t); };
   const flush = (cmds) => {
     if (cmds && cmds.length >= 6) { const path = CK.Path.MakeFromCmds(cmds); if (path) { canvas.drawPath(path, p); path.delete(); } }
   };
-  for (const pl of coverageEdges) {
-    if (pl.length < 2) continue;
-    let cmds = null;
-    for (let i = 0; i < pl.length; i++) {
-      if (pw(pl[i].e, pl[i].n) < NEAR) { flush(cmds); cmds = null; continue; } // behind near plane → break
-      const xy = w2s(pl[i].e, pl[i].n);
-      if (!cmds) cmds = [CK.MOVE_VERB, xy[0], xy[1]];
-      else cmds.push(CK.LINE_VERB, xy[0], xy[1]);
+  // The canvas is put back whatever happens: skFrame catches a throw and draws the next frame on
+  // the same canvas.
+  const saves = canvas.getSaveCount();
+  try {
+    if (!flat) { canvas.save(); canvas.concat(M); }
+    for (const pl of coverageEdges) {
+      if (pl.length < 2) continue;
+      let cmds = null, prev = null, wPrev = 0;
+      for (let i = 0; i < pl.length; i++) {
+        const q = pl[i], w = pw(q.e, q.n);
+        if (w < NEAR) { // behind the near plane: end the run where the segment crosses it
+          if (cmds) { const xy = cut(prev, wPrev, q, w); cmds.push(CK.LINE_VERB, xy[0], xy[1]); }
+          flush(cmds); cmds = null;
+        } else {
+          if (!cmds) {
+            cmds = [];
+            if (prev && wPrev < NEAR) { const xy = cut(prev, wPrev, q, w); cmds.push(CK.MOVE_VERB, xy[0], xy[1]); }
+          }
+          const xy = at(q.e, q.n);
+          cmds.push(cmds.length ? CK.LINE_VERB : CK.MOVE_VERB, xy[0], xy[1]);
+        }
+        prev = q; wPrev = w;
+      }
+      flush(cmds);
     }
-    flush(cmds);
+  } finally {
+    canvas.restoreToCount(saves);
   }
 }
 // Tool/section footprint — section bars perpendicular to the (dead-reckoned) tool
@@ -395,15 +428,32 @@ function lightbarSk(canvas) {
   let k = hudK;
   while (k > 0.5 && inner0(k) + SIDE * (W + GAP) * k > 0.47 * vw) k -= 0.05;
   const inner = inner0(k), w = W * k, h = H * k, g = GAP * k, top = lbCy - h / 2;
-  const p = SKP.lbFill;
   for (let i = 1; i <= SIDE; i++) {
     const off = inner + (i - 1) * (w + g);
     for (const left of [true, false]) {
       const on = left === steerLeft && i <= lit;
-      p.setColor(ckColor(on ? litCol : '#1c2230'));
-      canvas.drawRect(CK.XYWHRect(left ? vw / 2 - off - w : vw / 2 + off, top, w, h), p);
+      const dir = left ? -1 : 1; // arrows point outwards, the way to steer
+      lbArrowSk(canvas, vw / 2 + dir * off, top, dir * w, h, k, on ? litCol : '#1c2230');
     }
   }
+}
+// One light bar cell: a notched arrow from its tail at x (w < 0 points left), faceted to look
+// 3D (upper half lighter, lower half darker) over a small shadow.
+function lbArrowSk(canvas, x, y, w, h, k, col) {
+  const tail = [x, y], tip = [x + w, y + h / 2], foot = [x, y + h], notch = [x + w * 0.3, y + h / 2];
+  const poly = (pts, color, dy = 0) => {
+    const cmds = pts.flatMap(([px, py], i) => [i ? CK.LINE_VERB : CK.MOVE_VERB, px, py + dy]);
+    const path = CK.Path.MakeFromCmds([...cmds, CK.CLOSE_VERB]);
+    if (!path) return;
+    SKP.lbFill.setColor(ckColor(color));
+    canvas.drawPath(path, SKP.lbFill);
+    path.delete();
+  };
+  const all = [tail, tip, foot, notch];
+  poly(all, 'rgba(0,0,0,0.45)', 2 * k);
+  poly(all, col);
+  poly([tail, tip, notch], 'rgba(255,255,255,0.28)');
+  poly([notch, tip, foot], 'rgba(0,0,0,0.22)');
 }
 // Steer bar (AgOpenGPS DrawSteerBarText): the steer angle error (actual − commanded) as a
 // yellow bar from the centre, its length the error (up to 12°), lying on the side away from

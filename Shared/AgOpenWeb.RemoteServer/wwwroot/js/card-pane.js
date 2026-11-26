@@ -227,8 +227,8 @@ const CardPane = (() => {
       const cells = bar.querySelectorAll('i'); // left cells first, lit outwards from the middle
       for (let i = 0; i < LB_SIDE; i++) {
         const on = steerLeft && i >= LB_SIDE - lit, onR = !steerLeft && i < lit;
-        cells[i].style.background = on ? LB_LEFT : '#1c2230';
-        cells[LB_SIDE + i].style.background = onR ? LB_RIGHT : '#1c2230';
+        cells[i].style.backgroundColor = on ? LB_LEFT : '#1c2230';
+        cells[LB_SIDE + i].style.backgroundColor = onR ? LB_RIGHT : '#1c2230';
       }
     } else {
       const auto = !!(op && op.autoSteer), err = tick.steerAngleError || 0;
