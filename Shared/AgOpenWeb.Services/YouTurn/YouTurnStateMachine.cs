@@ -1203,7 +1203,9 @@ public sealed class YouTurnStateMachine
     private void PlanSnake(in TickContext ctx, Models.Track.Track track, double abHeading,
         GuidanceWorkingState guidance, YouTurnWorkingState turn, long fieldStamp)
     {
-        _pathing.BuildSnakeSequence(track, abHeading, guidance, turn, ctx.Boundary, ctx.HeadlandLine);
+        // The rows the operator skips, at least one (AgOpenGPS: "at least 1" in the skip modes).
+        _pathing.BuildSnakeSequence(track, abHeading, guidance, turn, ctx.Boundary, ctx.HeadlandLine,
+            step: Math.Max(2, ctx.UTurnSkipRows + 1));
         _snakePlan = turn.SnakeSequence;
         _snakePlanFieldStamp = fieldStamp;
     }

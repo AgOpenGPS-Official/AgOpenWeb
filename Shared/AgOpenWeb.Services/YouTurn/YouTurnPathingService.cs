@@ -672,8 +672,9 @@ public sealed class YouTurnPathingService
     }
 
     /// <summary>
-    /// Build the snake-pattern sequence for the cultivated area and rotate it so the
-    /// tractor's current pass comes first. Stored on the state object.
+    /// Build the snake-pattern sequence for the cultivated area, starting on the tractor's
+    /// current pass, with <paramref name="step"/> passes from one pass to the next (the rows the
+    /// operator skips plus one, at least 2). Stored on the state object.
     /// </summary>
     public void BuildSnakeSequence(
         Models.Track.Track referenceTrack,
@@ -681,7 +682,8 @@ public sealed class YouTurnPathingService
         GuidanceWorkingState guidance,
         YouTurnWorkingState turn,
         Boundary? boundary,
-        IReadOnlyList<Vec3>? headlandLine)
+        IReadOnlyList<Vec3>? headlandLine,
+        int step = 2)
     {
         var config = _configStore;
         double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
@@ -708,23 +710,19 @@ public sealed class YouTurnPathingService
         while (maxPath - seed < 200 && Inside(maxPath + 1)) maxPath++;
         while (seed - minPath < 200 && Inside(minPath - 1)) minPath--;
 
-        var fullSequence = AgOpenWeb.Services.Track.SwathOrderingService.GeneratePathSequence(
-            minPath, maxPath, AgOpenWeb.Services.Track.SwathPattern.Snake);
-
-        // Rotate so the sequence starts at the current pass — the tractor may start anywhere in the field.
-        // A pass outside the order (its middle is outside the cultivated area) is put in front of
-        // it, so the plan still starts from the pass the tractor is on and goes on to the first
-        // one; otherwise the plan would be made again on every cycle.
-        int currentIdx = fullSequence.IndexOf(guidance.HowManyPathsAway);
-        turn.SnakeSequence = currentIdx > 0
-            ? fullSequence.Skip(currentIdx).Concat(fullSequence.Take(currentIdx)).ToList()
-            : currentIdx < 0
-                ? fullSequence.Prepend(guidance.HowManyPathsAway).ToList()
-                : fullSequence;
+        // Started on the current pass: the tractor may start anywhere in the field. A pass outside
+        // the order (its middle is outside the cultivated area) is put in front of it, so the plan
+        // still starts from the pass the tractor is on and goes on to the first one; otherwise the
+        // plan would be made again on every cycle. The step is the operator's: the order was the
+        // fixed snake (one pass in two), so the row count did nothing in this mode and changing it
+        // planned the same turn again (a tester's field, 25 Nov 2026).
+        step = Math.Max(2, step);
+        turn.SnakeSequence = AgOpenWeb.Services.Track.SwathOrderingService.SkipAndFillFrom(
+            minPath, maxPath, guidance.HowManyPathsAway, step);
         turn.SnakeIndex = 0;
 
-        _logger.LogDebug("[YouTurn] Built snake sequence (rotated from path {Cur}): [{Seq}]",
-            guidance.HowManyPathsAway, string.Join(", ", turn.SnakeSequence));
+        _logger.LogDebug("[YouTurn] Built snake sequence (every {Step} passes, from path {Cur}): [{Seq}]",
+            step, guidance.HowManyPathsAway, string.Join(", ", turn.SnakeSequence));
     }
 
     /// <summary>
