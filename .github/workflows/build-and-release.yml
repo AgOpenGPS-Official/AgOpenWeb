@@ -111,9 +111,13 @@ jobs:
       # Weblate's own PRs (from its fork, as the weblate user) are how they arrive.
       # HEAD is the PR's merge commit; its first parent is the base branch as merged,
       # so a Weblate merge on develop while the PR is open isn't counted against it
-      # (pull_request.base.sha can be older than that).
+      # (pull_request.base.sha can be older than that). This repo's develop -> main sync
+      # carries Weblate's merges on develop, so it is not checked.
       - name: Check language files are untouched
-        if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'weblate'
+        if: >-
+          github.event_name == 'pull_request' && github.event.pull_request.user.login != 'weblate' &&
+          !(github.base_ref == 'main' && github.head_ref == 'develop' &&
+            github.event.pull_request.head.repo.full_name == github.repository)
         run: |
           git fetch --no-tags --depth=2 origin ${{ github.sha }}
           changed=$(git diff --name-only HEAD^1 HEAD -- 'Shared/AgOpenWeb.RemoteServer/wwwroot/i18n/*.json' | grep -v '/en\.json$' || true)
