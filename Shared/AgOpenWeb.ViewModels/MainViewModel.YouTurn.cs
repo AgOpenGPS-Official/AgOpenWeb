@@ -6,6 +6,7 @@ using System;
 
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Track;
+using Microsoft.Extensions.Logging;
 
 namespace AgOpenWeb.ViewModels;
 
@@ -78,6 +79,33 @@ public partial class MainViewModel
         }
     }
     private int _uTurnSkipMode;
+
+    /// <summary>The skip choice as the field's file keeps it: the mode and the operator's own
+    /// row count (not the 1 the skip modes raise it to).</summary>
+    private Services.YouTurn.UTurnSkipFileService.Choice CurrentUTurnSkipChoice => new(UTurnSkipMode, _uTurnSkipRowsChosen);
+
+    /// <summary>
+    /// Put the field's own skip choice back as it opens (Normal with no rows skipped for a field
+    /// that has none), with the row rule of the skip button: the skip modes skip at least 1 row.
+    /// Each field keeps its own, also after the app is closed.
+    /// </summary>
+    private void LoadUTurnSkipFromField(string fieldDirectory)
+    {
+        var choice = Services.YouTurn.UTurnSkipFileService.Load(fieldDirectory);
+        _uTurnSkipRowsChosen = choice.Rows;
+        UTurnSkipMode = choice.Mode;
+        UTurnSkipRows = choice.Mode != 0 ? Math.Max(1, choice.Rows) : choice.Rows;
+    }
+
+    /// <summary>Write the skip choice to <paramref name="field"/> (the open field when null) at
+    /// once, so it is there after the app is closed or the tractor switched off.</summary>
+    private void SaveUTurnSkipToField(Models.Field? field = null)
+    {
+        var dir = (field ?? ActiveField)?.DirectoryPath;
+        if (string.IsNullOrEmpty(dir)) return;
+        if (!Services.YouTurn.UTurnSkipFileService.Save(dir, CurrentUTurnSkipChoice))
+            _logger.LogWarning("[YouTurn] Could not save the U-turn skip choice in {FieldDirectory}", dir);
+    }
 
     private bool _isUTurnSkipRowsEnabled;
     public bool IsUTurnSkipRowsEnabled

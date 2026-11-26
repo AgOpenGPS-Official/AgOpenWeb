@@ -1924,6 +1924,10 @@ public partial class MainViewModel : ObservableObject
             // Load field-scoped tram scalar settings (resets to defaults if absent).
             Services.Tram.TramConfigFileService.Load(fieldPath, ConfigStore.Tram);
 
+            // The field's own U-turn skip choice (Normal for a field that has none), so the last
+            // field's doesn't carry over and a restart doesn't lose it.
+            LoadUTurnSkipFromField(fieldPath);
+
             // Load tram systems
             try
             {
@@ -1990,7 +1994,8 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>The field's own files, as a close writes them: tram systems and settings, the
-    /// elevation log, the tracks and field.geojson. Coverage is the caller's (it needs the job).</summary>
+    /// U-turn skip choice, the elevation log, the tracks and field.geojson. Coverage is the
+    /// caller's (it needs the job).</summary>
     private void SaveFieldFiles(Field field)
     {
         if (ConfigStore.Tram.Systems.Count > 0)
@@ -1999,6 +2004,7 @@ public partial class MainViewModel : ObservableObject
             _logger.LogDebug($"[Tram] Saved {ConfigStore.Tram.Systems.Count} tram systems");
         }
         Services.Tram.TramConfigFileService.Save(field.DirectoryPath, ConfigStore.Tram);
+        SaveUTurnSkipToField(field); // written at each change too; again here in case that failed
         _elevationLogService.Flush(field.DirectoryPath);
         SaveTracksToFile();
         _fieldService.SaveField(field);
