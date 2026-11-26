@@ -9,7 +9,7 @@
 // the nightly scenario harnesses on GitHub: GitHub's own schedule ran them hours late.
 
 import { listEntries, readEntry, publicSystemInfo } from './zip.js';
-import { createIssue, comment, closedReportIssues, userExists, dispatchWorkflow } from './github.js';
+import { createIssue, comment, closedReportIssues, userExists, dispatchWorkflow, commitOnBranch } from './github.js';
 import { planPrune, issueOf } from './prune.js';
 
 const json = (status, body) => new Response(JSON.stringify(body), {
@@ -78,6 +78,16 @@ export function whatsMissing(meta, contact) {
   return null;
 }
 
+// A report has to name a build we can check out (a commit on one of BUILD_BRANCHES).
+export const UNKNOWN_BUILD = 'This build is not known to the report service. '
+  + 'Please get AgOpenWeb from the official repository, github.com/AgOpenGPS-Official/AgOpenWeb, and send the report again.';
+
+/** The commit a build was made from ("26.7.7+<hash>"), or null: no hash, or local changes. */
+export function buildCommit(buildInfo) {
+  const m = /\+([0-9a-f]{6,40})(-dirty)?\s*$/.exec(buildInfo || '');
+  return m && !m[2] ? m[1] : null;
+}
+
 export function issueFor(env, meta, sysInfo, key, attachments = 0) {
   const link = `${env.DUMPS_URL}/v1/${key}`;
   const facts = [
@@ -131,6 +141,15 @@ async function report(request, env) {
   const contactBytes = contactEntry ? await readEntry(bytes, contactEntry, 4 * 1024) : null;
   const missing = whatsMissing(meta, contactBytes ? new TextDecoder().decode(contactBytes) : '');
   if (missing) return json(400, { error: missing });
+  // GitHub trouble doesn't block the report.
+  const branches = (env.BUILD_BRANCHES || '').split(',').map(b => b.trim()).filter(Boolean);
+  if (branches.length) {
+    const build = sysInfo.find(l => l.startsWith('Build Info:'))?.slice('Build Info:'.length).trim() || meta.version;
+    const commit = buildCommit(build);
+    const known = commit != null
+      && await commitOnBranch(env, commit, branches).catch(e => { console.error('build check', e.message); return true; });
+    if (!known) { console.log('unknown build:', build); return json(403, { error: UNKNOWN_BUILD }); }
+  }
   // A made-up username would leave the reporter unreachable. GitHub trouble doesn't block
   // the report: only a clear "no such user" does.
   if (meta.github) {

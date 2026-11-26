@@ -40,7 +40,7 @@ beforeEach(() => {
     GITHUB_APP_KEY: privateKey.export({ type: 'pkcs1', format: 'pem' }),
     DUMPS_URL: 'https://dumps.example', PRUNE_AT_BYTES: '1000', PRUNE_TO_BYTES: '500',
   };
-  github = { up: true, issues: [], comments: [], closed: [], users: ['crf767'], dispatched: [], refuse: [] };
+  github = { up: true, issues: [], comments: [], closed: [], users: ['crf767'], dispatched: [], refuse: [], compared: [], standing: {} };
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(url);
     const reply = (status, body) => new Response(JSON.stringify(body), { status });
@@ -51,6 +51,13 @@ beforeEach(() => {
       const n = 400 + github.issues.length;
       github.issues.push({ number: n, ...JSON.parse(init.body) });
       return reply(201, { number: n, html_url: `https://github.com/org/repo/issues/${n}` });
+    }
+    // compare/<branch>...<commit>: how the commit stands to the branch, 404 when unknown.
+    const cmp = /^\/repos\/org\/repo\/compare\/([^.]+)\.\.\.([0-9a-f]+)$/.exec(u.pathname);
+    if (cmp) {
+      github.compared.push(cmp[1] + '...' + cmp[2] + u.search);
+      const status = github.standing[cmp[1]];
+      return status ? reply(200, { status }) : reply(404, { message: 'Not Found' });
     }
     const user = /^\/users\/([^/]+)$/.exec(u.pathname);
     if (user) return github.users.includes(user[1]) ? reply(200, { login: user[1] }) : reply(404, { message: 'Not Found' });
@@ -97,6 +104,44 @@ test('a dump is stored and its issue opened', async () => {
   assert.doesNotMatch(issue.body, /FARM-PC/);
   assert.ok(issue.body.includes('https://dumps.example/v1/' + stored.key));
   assert.match(issue.body, /by @crf767\./);
+});
+
+// The fixture dump's build is 1.0.0+abc123.
+test('a build of a commit on a build branch is taken', async () => {
+  env.BUILD_BRANCHES = 'develop,main';
+  for (const status of ['behind', 'identical']) {
+    github.standing = { develop: status };
+    assert.equal((await post(dump)).status, 201);
+  }
+  github.standing = { develop: 'diverged', main: 'behind' };
+  assert.equal((await post(dump)).status, 201);
+  assert.equal(dumps().length, 3);
+  assert.equal(github.compared[0], 'develop...abc123?per_page=1&page=2');
+});
+
+test('an unknown build is turned away and nothing is stored', async () => {
+  env.BUILD_BRANCHES = 'develop,main';
+  for (const standing of [{ develop: 'ahead', main: 'ahead' }, { develop: 'diverged', main: 'diverged' }, {}]) {
+    github.standing = standing;
+    const res = await post(dump);
+    assert.equal(res.status, 403);
+    assert.match((await res.json()).error, /not known to the report service/);
+  }
+  assert.equal(env.DUMPS.objects.size, 0);
+  assert.equal(github.issues.length, 0);
+});
+
+test('GitHub being down does not turn a build away', async () => {
+  env.BUILD_BRANCHES = 'develop';
+  github.up = false;
+  const res = await post(dump);
+  assert.equal(res.status, 202); // stored, the issue opened later
+  assert.equal(dumps().length, 1);
+});
+
+test('with no build branches named, every build is taken', async () => {
+  assert.equal((await post(dump)).status, 201);
+  assert.equal(github.compared.length, 0);
 });
 
 test('a report needs a real title, a description and a way to reply', async () => {
