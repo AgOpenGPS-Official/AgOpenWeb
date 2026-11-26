@@ -169,14 +169,12 @@ Done first, it makes the moves after it smaller and their diffs easier to read.
      does), the steer angles, PGNs and section states compared with today's. The control tick is
      timed, so the comparison allows the spread two runs of today's code show; if that spread is
      too wide to catch a change, the harnesses carry this step and the test is dropped.
-   - GPS cycle: `ProcessCycle` driven directly with a recorded run of fixes and intents (no
-     timer), every cycle's snapshot compared with today's: the guidance, the steer angle, the
-     U-turn state, the light bar, the lift and tram state, PGN 214. It can be close to exact, but
-     the cycle reads the wall clock itself (`DateTime.UtcNow` three times, `Stopwatch` twice) and
-     no test fakes it yet: those reads go through `Clock.Current` first, as a change of its own
-     before the freeze (same values in the app), so the test can set the time.
-3. **The surface test:** a list of the public VM members the wiring uses (from reflection), checked
-   in. The test fails when one is added, removed or changes type. It is updated on purpose after
+   - GPS cycle (`GpsCycleCharacterizationTests`): whole drives, closed loop, through the real
+     cycle on a clock the test moves (`Clock.Set`), every fix's result recorded and compared with
+     today's: pose, tool, AutoSteer, guidance, U-turn, sections, lift, messages. The cycle's own
+     wall-clock reads are only in its performance diagnostics, so no app change is needed.
+3. **The surface test** (`MainViewModelSurfaceTests`): a list of the public VM members the rest of
+   the app uses (from reflection), checked in. The test fails when one is added, removed or changes type. It is updated on purpose after
    the refactor if a change is wanted, never as a side effect.
 
 ## Phase 2: the freeze
