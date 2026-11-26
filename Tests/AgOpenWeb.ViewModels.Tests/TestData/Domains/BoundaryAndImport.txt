@@ -285,7 +285,7 @@
   vm.State.Field.ActiveField.Boundary.OuterBoundary.Points[9].Heading = (gone)
   vm.State.Field.ActiveField.Boundary.OuterBoundary.Points[9].Northing = (gone)
   vm.StatusMessage = Inner 1 drive-through: On
-  files: field.geojson#8dd77f86
+  files: field.geojson#10135630
 == select the second island
   vm.SelectedBoundaryIndex = 2
 == delete it
@@ -319,7 +319,7 @@
   vm.State.Field.ActiveField.Boundary.InnerBoundaries[1].UnknownProperties = (gone)
   vm.State.Field.ActiveField.TotalArea = 3.977
   vm.StatusMessage = Boundary deleted
-  files: field.geojson#01e90bbb
+  files: field.geojson#078c2cd1
 == close the field
   vm.ActiveField = null
   vm.ActiveFieldArea = null
@@ -471,7 +471,7 @@
   vm.State.Field.Tracks[2].WorkedPaths = (gone)
   vm.State.UI.BusyMessage = Saving field...
   vm.StatusStripRotatingLine = No field
-  files: TramConfig.json#cc8c5326 field.geojson#d9a3aaf6
+  files: TramConfig.json#cc8c5326 field.geojson#0dedc41c
 == open it again
   vm.ActiveField = same as vm.State.Field.ActiveField
   vm.ActiveFieldArea = 3.977
@@ -759,7 +759,7 @@
   vm.State.Field.ActiveField.Boundary.OuterBoundary.Points[9].Northing = (gone)
   vm.State.Field.ActiveField.TotalArea = 4.687
   vm.StatusMessage = KML boundary imported + 1 inner
-  files: TramConfig.json#cc8c5326 field.geojson#41c938ca
+  files: TramConfig.json#cc8c5326 field.geojson#285c3e1b
 == close the field
   vm.ActiveField = null
   vm.ActiveFieldArea = null
@@ -1218,6 +1218,6 @@
   vm.State.Field.ActiveField.Boundary.OuterBoundary.Points[9].Northing = (gone)
   vm.State.Field.ActiveField.TotalArea = -0.123
   vm.StatusMessage = KML boundary imported
-  files: TramConfig.json#cc8c5326 field.geojson#cfcb30e3
+  files: TramConfig.json#cc8c5326 field.geojson#0f466df6
 == import a KML that is not there
   vm.StatusMessage = KML file not found: missing.kml

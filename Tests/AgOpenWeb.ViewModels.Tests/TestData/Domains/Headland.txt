@@ -245,7 +245,7 @@
   vm.State.Field.HeadlandLine = count 9 #06cef1e8
   vm.State.FieldTools.IsHeadlandOn = True
   vm.StatusMessage = Headland modified (1 cuts, 9 points)
-  files: HeadlandSegments.json#8f60a2e3 field.geojson#9f4a1c13
+  files: HeadlandSegments.json#1c0b142a field.geojson#be56de1d
 == its offset to 20 m
   vm.CurrentHeadlandLine = count 9 #6077c072
   vm.CurrentHeadlandLineForPreview = count 9 #6077c072
@@ -253,10 +253,10 @@
   vm.HeadlandSegments[0].OffsetPoints = count 8 #3b6ac16b
   vm.HeadlandStatusText = 2.56 ha (1 lines)
   vm.State.Field.HeadlandLine = count 9 #6077c072
-  files: HeadlandSegments.json#a4a70364 field.geojson#18f04993
+  files: HeadlandSegments.json#e07e4aab field.geojson#b4e790d5
 == rename it
   vm.HeadlandSegments[0].Name = Outer ring
-  files: HeadlandSegments.json#e2ce5dde field.geojson#18f04993
+  files: HeadlandSegments.json#cdf5f925 field.geojson#b4e790d5
 == a whole-boundary piece is not point-edited
 == a line piece along the south edge
   vm.HeadlandSegments = count 2 #b13c2351
@@ -274,7 +274,7 @@
   vm.HeadlandSegments[1].Type = Line
   vm.HeadlandStatusText = 2.56 ha (2 lines)
   vm.SelectedHeadlandSegment = same as vm.HeadlandSegments[1]
-  files: HeadlandSegments.json#c771cf66 field.geojson#18f04993
+  files: HeadlandSegments.json#aa1d9825 field.geojson#b4e790d5
 == a curve piece along the east edge
   vm.HeadlandSegments = count 3 #c58ae557
   vm.HeadlandSegments[2].BoundaryEndIndex = 9
@@ -291,19 +291,19 @@
   vm.HeadlandSegments[2].Type = Curve
   vm.HeadlandStatusText = 2.56 ha (3 lines)
   vm.SelectedHeadlandSegment = same as vm.HeadlandSegments[2]
-  files: HeadlandSegments.json#a195535b field.geojson#18f04993
+  files: HeadlandSegments.json#ff8c081c field.geojson#b4e790d5
 == re-point the line piece
   vm.HeadlandSegments[1].BoundaryEndIndex = 2
   vm.HeadlandSegments[1].BoundaryPoints = count 2 #dfb6ff2c
   vm.HeadlandSegments[1].OffsetPoints = count 2 #85f12f18
   vm.SelectedHeadlandSegment = same as vm.HeadlandSegments[1]
-  files: HeadlandSegments.json#78b3fb78 field.geojson#18f04993
+  files: HeadlandSegments.json#b03346ab field.geojson#b4e790d5
 == re-point the curve piece
   vm.HeadlandSegments[2].BoundaryEndIndex = 7
   vm.HeadlandSegments[2].BoundaryPoints = count 3 #8f5a9c1c
   vm.HeadlandSegments[2].OffsetPoints = count 3 #5ba7332b
   vm.SelectedHeadlandSegment = same as vm.HeadlandSegments[2]
-  files: HeadlandSegments.json#18718967 field.geojson#18f04993
+  files: HeadlandSegments.json#6f0ffebd field.geojson#b4e790d5
 == headland on and off
   vm.StatusMessage = Headland ON
 == close the field
@@ -575,7 +575,7 @@
   vm.State.UI.BusyMessage = Saving field...
   vm.StatusMessage = Headland OFF
   vm.StatusStripRotatingLine = No field
-  files: HeadlandSegments.json#18718967 TramConfig.json#cc8c5326 field.geojson#564a5112
+  files: HeadlandSegments.json#6f0ffebd TramConfig.json#cc8c5326 field.geojson#48e53fe4
 == open it again
   vm.ActiveField = same as vm.State.Field.ActiveField
   vm.ActiveFieldArea = 3.967
@@ -833,7 +833,7 @@
   vm.State.UI.BusyMessage = Loading coverage...
   vm.StatusMessage = Opened field: <field>
   vm.StatusStripRotatingLine = Field: <field>
-  files: HeadlandSegments.json#18718967 TramConfig.json#cc8c5326 field.geojson#6ea5fe52
+  files: HeadlandSegments.json#6f0ffebd TramConfig.json#cc8c5326 field.geojson#c5217a0e
 == whole boundary at 8 m
   vm.CurrentHeadlandLine = count 11 #c83c94de
   vm.CurrentHeadlandLineForPreview = count 11 #c83c94de
@@ -868,7 +868,7 @@
   vm.SelectedHeadlandSegment.Type = (gone)
   vm.State.Field.HeadlandLine = count 11 #c83c94de
   vm.StatusMessage = Headland modified (4 cuts, 11 points)
-  files: HeadlandSegments.json#c5f139f7 TramConfig.json#cc8c5326 field.geojson#b71299c5
+  files: HeadlandSegments.json#61ce1394 TramConfig.json#cc8c5326 field.geojson#4e8ab71f
 == delete the first
   vm.HeadlandSegments = count 3 #c58ae557
   vm.HeadlandSegments[0].BoundaryEndIndex = 2
@@ -910,7 +910,7 @@
   vm.HeadlandStatusText = 3.22 ha (3 lines)
   vm.SelectedHeadlandSegment = same as vm.HeadlandSegments[2]
   vm.StatusMessage = Headland modified (3 cuts, 11 points)
-  files: HeadlandSegments.json#da48aae0 TramConfig.json#cc8c5326 field.geojson#b71299c5
+  files: HeadlandSegments.json#162abfa4 TramConfig.json#cc8c5326 field.geojson#4e8ab71f
 == delete all
   vm.CurrentHeadlandLine = null
   vm.CurrentHeadlandLineForPreview = null
@@ -959,7 +959,7 @@
   vm.State.Field.HeadlandLine = null
   vm.State.FieldTools.IsHeadlandOn = False
   vm.StatusMessage = Headland OFF
-  files: HeadlandSegments.json#00004b33 TramConfig.json#cc8c5326 field.geojson#20c28bad
+  files: HeadlandSegments.json#00004b33 TramConfig.json#cc8c5326 field.geojson#d8a62130
 == close the field
   vm.ActiveField = null
   vm.ActiveFieldArea = null

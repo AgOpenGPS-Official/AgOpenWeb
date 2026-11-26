@@ -231,7 +231,7 @@
   vm.State.Field.Tracks[1].IsActive = True
   vm.State.Operation.IsAutoSteerAvailable = True
   vm.StatusMessage = Active track: Curve 1
-  files: ActiveTrack.txt#8c5a17ef field.geojson#63e587fb
+  files: ActiveTrack.txt#8c5a17ef field.geojson#423e49ef
 == activate it
   vm.HasActiveTrack = False
   vm.IsAutoSteerAvailable = False
@@ -242,10 +242,10 @@
   vm.State.Field.Tracks[1].IsActive = False
   vm.State.Operation.IsAutoSteerAvailable = False
   vm.StatusMessage = Track deactivated
-  files: field.geojson#63e587fb
+  files: field.geojson#423e49ef
 == rename the first
   vm.State.Field.Tracks[0].Name = North-south
-  files: field.geojson#efc2d997
+  files: field.geojson#10e45496
 == swap A and B of the third
   vm.State.Field.Tracks[2].Heading = -1.72
   vm.State.Field.Tracks[2].HeadingDegrees = -98.531
@@ -254,7 +254,7 @@
   vm.State.Field.Tracks[2].PointB = (-100.000, 0.000, 4.563)
   vm.State.Field.Tracks[2].Points = count 2 #cd525529
   vm.StatusMessage = Swapped A/B points for AB 2
-  files: field.geojson#97fb3665
+  files: field.geojson#358c8dc4
 == nudge right
   vm.StatusMessage = No track selected
 == activate the first
@@ -267,7 +267,7 @@
   vm.State.Field.Tracks[0].IsActive = True
   vm.State.Operation.IsAutoSteerAvailable = True
   vm.StatusMessage = Activated track: North-south
-  files: ActiveTrack.txt#b5af3234 field.geojson#97fb3665
+  files: ActiveTrack.txt#b5af3234 field.geojson#358c8dc4
 == close the field
   vm.ActiveField = null
   vm.ActiveFieldArea = null
@@ -485,7 +485,7 @@
   vm.State.Operation.IsAutoSteerAvailable = False
   vm.State.UI.BusyMessage = Saving field...
   vm.StatusStripRotatingLine = No field
-  files: ActiveTrack.txt#b5af3234 TramConfig.json#cc8c5326 field.geojson#c761b868
+  files: ActiveTrack.txt#b5af3234 TramConfig.json#cc8c5326 field.geojson#fb2ce4d8
 == open it again
   vm.ActiveField = same as vm.State.Field.ActiveField
   vm.ActiveFieldArea = 3.967
@@ -729,7 +729,7 @@
   vm.State.Field.Tracks[2].UnknownProperties = (gone)
   vm.State.Field.Tracks[2].WorkedPaths = (gone)
   vm.StatusMessage = Deleted track 'AB 2'
-  files: ActiveTrack.txt#b5af3234 TramConfig.json#cc8c5326 field.geojson#60665bdc
+  files: ActiveTrack.txt#b5af3234 TramConfig.json#cc8c5326 field.geojson#5d20ca90
 == close the field
   vm.ActiveField = null
   vm.ActiveFieldArea = null
@@ -1176,7 +1176,7 @@
   vm.State.Field.Tracks[1].WorkedPaths = (gone)
   vm.State.Operation.IsAutoSteerAvailable = False
   vm.StatusMessage = All tracks deleted
-  files: TramConfig.json#cc8c5326 field.geojson#0870ec3e
+  files: TramConfig.json#cc8c5326 field.geojson#e4878cb5
 == close the field
   vm.ActiveField = null
   vm.ActiveFieldArea = null

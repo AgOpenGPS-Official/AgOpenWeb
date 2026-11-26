@@ -211,7 +211,15 @@ public class DomainCharacterizationTests
             if (Path.GetRelativePath(_dir, f).StartsWith("zISOXML", StringComparison.Ordinal)) continue;
             string text = File.ReadAllText(f);
             text = Regex.Replace(text, @"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", "id");
-            text = Regex.Replace(text, @"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?", "time");
+            // A time zone's + is written + in JSON (UTC on the CI runner).
+            text = Regex.Replace(text, @"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|(\+|\\u002B|-)\d{2}:\d{2})?", "time");
+            // The maths library differs in the last digits between machines (macOS arm64 and the
+            // Linux x64 runner): numbers to 9 decimals.
+            text = Regex.Replace(text, @"-?\d+\.\d+([eE][+-]?\d+)?", m =>
+            {
+                string r = double.Parse(m.Value, CultureInfo.InvariantCulture).ToString("0.#########", CultureInfo.InvariantCulture);
+                return r == "-0" ? "0" : r;
+            });
             unchecked
             {
                 int h = 17;

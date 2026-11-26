@@ -241,7 +241,7 @@
   vm.Flags[0].Wgs84 = AgOpenWeb.Models.Wgs84
   vm.State.Field.Flags = count 1 #8abce7cc
   vm.StatusMessage = Red flag 'Flag 1' at E:10.0 N:10.0
-  files: field.geojson#6360d98d
+  files: field.geojson#191f5e10
 == place a second
   vm.Flags = count 2 #3c91a029
   vm.Flags[1].Easting = -30
@@ -259,7 +259,7 @@
   vm.Flags[1].Wgs84 = AgOpenWeb.Models.Wgs84
   vm.State.Field.Flags = count 2 #92a08bbf
   vm.StatusMessage = Green flag 'Flag 2' at E:-30.0 N:50.0
-  files: field.geojson#dc9dc643
+  files: field.geojson#2d7b03c7
 == place a third
   vm.Flags = count 3 #5d24d735
   vm.Flags[2].Easting = 0
@@ -277,15 +277,15 @@
   vm.Flags[2].Wgs84 = AgOpenWeb.Models.Wgs84
   vm.State.Field.Flags = count 3 #24b8fc4a
   vm.StatusMessage = Blue flag 'Flag 3' at E:0.0 N:-40.0
-  files: field.geojson#1be862c9
+  files: field.geojson#ba443014
 == rename the first
   vm.Flags[0].Name = Stone
   vm.State.Field.Flags = count 3 #2b428686
-  files: field.geojson#8d11cbc7
+  files: field.geojson#e06967fc
 == recolour the second
   vm.Flags[1].FlagColor = Red
   vm.State.Field.Flags = count 3 #584056e6
-  files: field.geojson#44325c46
+  files: field.geojson#82c2441d
 == delete the second
   vm.Flags = count 2 #3c91a029
   vm.Flags[1].Easting = 0
@@ -308,7 +308,7 @@
   vm.Flags[2].Wgs84 = (gone)
   vm.State.Field.Flags = count 2 #1be10899
   vm.StatusMessage = Deleted flag 'Flag 2'
-  files: field.geojson#72bcb801
+  files: field.geojson#195c3c35
 == rename one past the end
 == close the field
   vm.ActiveField = null
@@ -551,7 +551,7 @@
   vm.State.Field.Tracks[2].WorkedPaths = (gone)
   vm.State.UI.BusyMessage = Saving field...
   vm.StatusStripRotatingLine = No field
-  files: TramConfig.json#cc8c5326 field.geojson#a113c445
+  files: TramConfig.json#cc8c5326 field.geojson#c9bc8d3d
 == open it again
   vm.ActiveField = same as vm.State.Field.ActiveField
   vm.ActiveFieldArea = 3.968
@@ -824,7 +824,7 @@
   vm.Flags[1].Wgs84 = (gone)
   vm.State.Field.Flags = count 0 #00000011
   vm.StatusMessage = Deleted 2 flags
-  files: TramConfig.json#cc8c5326 field.geojson#15771dec
+  files: TramConfig.json#cc8c5326 field.geojson#45757dcb
 == close the field
   vm.ActiveField = null
   vm.ActiveFieldArea = null
