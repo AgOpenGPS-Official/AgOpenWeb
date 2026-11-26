@@ -171,8 +171,8 @@ Done first, it makes the moves after it smaller and their diffs easier to read.
    - field lifecycle (`FieldLifecycleCharacterizationTests`, #964): every public property of the VM
      and its `State` read (`VmStateReader`) before a field is opened and after it is used and
      closed, and what of field A shows when B is opened after it. No list kept by hand: a new
-     property is covered by itself. What it records today includes #965 (the headland distance
-     carried over);
+     property is covered by itself. It found #965 (the headland distance carried over to the next
+     field), fixed before the freeze;
    - control path: **dropped.** A replayed GPS run through the VM's 100 Hz tick, which runs on a
      real timer, could only be compared within a spread, and what it would have checked is held
      elsewhere: the GPS cycle test below
