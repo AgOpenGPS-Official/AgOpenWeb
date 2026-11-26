@@ -12,6 +12,7 @@ using System.Text;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
 using AgOpenWeb.Models.Configuration;
+using AgOpenWeb.Models.Guidance;
 using AgOpenWeb.Models.Sections;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Models.Timing;
@@ -59,6 +60,7 @@ public class GpsCycleCharacterizationTests
     {
         new("ab-headland-normal", Curve: false, Headland: true, Turns.Normal, HalfWorked: false, Fixes: 2400),
         new("curve-headland-normal", Curve: true, Headland: true, Turns.Normal, HalfWorked: false, Fixes: 2400),
+        new("curve-headland-skipworked", Curve: true, Headland: true, Turns.SkipWorked, HalfWorked: false, Fixes: 2400),
         new("ab-headland-skipworked", Curve: false, Headland: true, Turns.SkipWorked, HalfWorked: false, Fixes: 2400),
         new("ab-noheadland-alternate-halfworked", Curve: false, Headland: false, Turns.Alternate, HalfWorked: true, Fixes: 2400),
     };
@@ -153,8 +155,8 @@ public class GpsCycleCharacterizationTests
             };
             var headlandLine = d.Headland ? Ring(HeadlandWidth).Select(p => new Vec3(p.Easting, p.Northing, 0)).ToList() : null;
             var track = d.Curve
-                ? Models.Track.Track.FromCurve("Curve", Enumerable.Range(0, 401)
-                    .Select(i => new Vec3(TrackEasting + 3 * Math.Sin(i / 40.0), -FieldLength + i, 0)).ToList())
+                ? Models.Track.Track.FromCurve("Curve", CurveProcessing.CalculateHeadings(Enumerable.Range(0, 401) // headings as a field's load gives them
+                    .Select(i => new Vec3(TrackEasting + 3 * Math.Sin(i / 40.0), -FieldLength + i, 0)).ToList()))
                 : Models.Track.Track.FromABLine("AB", new Vec3(TrackEasting, -FieldLength, 0), new Vec3(TrackEasting, FieldLength, 0));
 
             pipeline.SetHasActiveField(true);
