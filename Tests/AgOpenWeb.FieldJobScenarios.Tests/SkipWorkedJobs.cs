@@ -47,25 +47,43 @@ public static class SkipWorkedJobs
             ExpectedStop = new("No U-turn onto the next pass: only ",
                 "from what the operator did: the U-turn arrow tapped mid-pass sent the order to the field's edge, where the next pass is too short and the passes still open are beyond the snake's reach"),
         };
+
+        // W1 and W2 skip 1 row, and W2's row button comes after its seventh turn, which the job does
+        // not reach: the order with more rows (#946, a step of rows + 1) was held by unit tests only.
+        var w3 = new SnakeWatch(careless: false, rows: 2);
+        yield return new JobSpec("W3", "Olival, skip worked passes, 2 rows",
+            "J1's field and machine in the snake order with the row button tapped once before the start (2 rows): AgOpenWeb works " +
+            "every third pass to one end, each of the other two lanes end to end, then the rest of the first lane.",
+            "Olival", "AB 159 deg", Machines.Puma, Machines.Sprayer8, RigJobs.Puma)
+        {
+            BeforeStart = r => SkipWorkedAsync(r, rows: 2), OnFix = w3.OnFixAsync, ExtraJudge = w3.Judge,
+        };
     }
 
-    /// <summary>Two taps of the skip button: normal, alternative, ignore worked tracks (1 row).</summary>
-    public static async Task SkipWorkedAsync(JobRun r)
+    /// <summary>
+    /// Two taps of the skip button: normal, alternative, ignore worked tracks (1 row); then the row
+    /// button until it shows <paramref name="rows"/>.
+    /// </summary>
+    public static Task SkipWorkedAsync(JobRun r) => SkipWorkedAsync(r, rows: 1);
+
+    public static async Task SkipWorkedAsync(JobRun r, int rows)
     {
         await r.SendAsync("youturn.skipToggle");
         await r.SendAsync("youturn.skipToggle");
-        var (mode, rows, worked) = await r.Rig.ReadAsync(() => (r.Rig.Vm.UTurnSkipMode, r.Rig.Vm.UTurnSkipRows, r.Rig.Vm.IsSkipWorkedMode));
-        r.S.Step(JobRun.F($"skip rows: mode {mode} (ignore worked tracks), {rows} row(s)"));
-        if (mode != 2 || rows != 1 || !worked) r.Harness(JobRun.F($"the skip button did not go to ignore worked tracks, 1 row (mode {mode}, {rows} rows, skip worked {worked})"));
+        for (int i = 1; i < rows; i++) await r.SendAsync("youturn.skipCycle");
+        var (mode, set, worked) = await r.Rig.ReadAsync(() => (r.Rig.Vm.UTurnSkipMode, r.Rig.Vm.UTurnSkipRows, r.Rig.Vm.IsSkipWorkedMode));
+        r.S.Step(JobRun.F($"skip rows: mode {mode} (ignore worked tracks), {set} row(s)"));
+        if (mode != 2 || set != rows || !worked) r.Harness(JobRun.F($"the skip button did not go to ignore worked tracks, {rows} row(s) (mode {mode}, {set} rows, skip worked {worked})"));
     }
 
     private sealed class SnakeWatch
     {
         private readonly bool _careless;
+        private readonly int _rows;
         private bool _arrowTapped, _rowsTapped;
         private int _passStartFix = -1, _passStartTurns = -1;
 
-        public SnakeWatch(bool careless) => _careless = careless;
+        public SnakeWatch(bool careless, int rows = 1) { _careless = careless; _rows = rows; }
 
         public async Task OnFixAsync(JobRun r)
         {
@@ -106,6 +124,18 @@ public static class SkipWorkedJobs
             sc.Row.Metrics.Add(("The passes in the order worked (the implement's pass after each U-turn)", string.Join(", ", order)));
             if (_careless)
                 sc.Row.Metrics.Add(("The operator's taps: the U-turn arrow mid-pass / the row button", JobRun.F($"{(_arrowTapped ? "tapped" : "not reached")} / {(_rowsTapped ? "tapped" : "not reached")}")));
+            if (_rows > 1)
+            {
+                // The order starts with the tractor's lane, every (rows + 1)th pass: the first turn
+                // moves that far (the snake moved 2 whatever the rows before #946).
+                int step = _rows + 1, first = order.Count > 1 ? order[1] - order[0] : 0;
+                if (order.Count < 2) r.Harness("no U-turn with the pass after it known: the step of the order was not seen");
+                else if (Math.Abs(first) != step)
+                    flag(Severity.Bug, "SNAKE-ROWS-IGNORED",
+                        JobRun.F($"with {_rows} rows to skip, the first U-turn went from pass {order[0]} to {order[1]} ({Math.Abs(first)} passes over), not {step}: the snake order did not skip the rows chosen"));
+                else
+                    sc.Ok(JobRun.F($"the first U-turn went {step} passes over ({_rows} rows skipped)"));
+            }
             if (ontoWorked.Count > 0)
                 flag(Severity.Bug, "TURN-ONTO-WORKED-PASS",
                     JobRun.F($"with skip worked passes on, {ontoWorked.Count} U-turn(s) went onto a pass already worked: {string.Join("; ", ontoWorked.Take(3))}{(ontoWorked.Count > 3 ? "; …" : "")}"));
