@@ -64,6 +64,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IElevationLogService _elevationLogService;
     private readonly IJobService _jobService;
     private readonly FieldFlags _fieldFlags;
+    private readonly Services.Headland.FieldHeadland _fieldHeadland;
     private readonly ITramLineService _tramLineService;
     private bool _hasTramSystemsEverUsed;
     private readonly Dictionary<string, (int start, int count, bool isBoundary)> _tramSystemLineRanges = new();
@@ -187,6 +188,7 @@ public partial class MainViewModel : ObservableObject
         IJobService jobService,
         ITramLineService tramLineService,
         FieldFlags fieldFlags,
+        Services.Headland.FieldHeadland fieldHeadland,
         IGpsPipelineService gpsPipelineService,
         IPipelineIntents intents,
         ILogger<MainViewModel> logger,
@@ -209,6 +211,7 @@ public partial class MainViewModel : ObservableObject
         _timerFactory = uiTimerFactory;
         _tramLineService = tramLineService;
         _fieldFlags = fieldFlags;
+        _fieldHeadland = fieldHeadland;
 
         // Battery icon in the strip — start the per-platform reader, prime with
         // its initial reading, and refresh on each StatusChanged notification.
@@ -2141,7 +2144,7 @@ public partial class MainViewModel : ObservableObject
             State.Field.HeadlandLine = null;
             _mapService.SetHeadlandLine(null);
             _mapService.SetHeadlandVisible(false);
-            HeadlandSegments.Clear();
+            _fieldHeadland.Clear();
             HeadlandPreviewLine = null; // setter pushes null to map service
 
             HasHeadland = false;
@@ -2202,12 +2205,12 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var segments = Services.Headland.HeadlandSegmentFileService.Load(field.DirectoryPath);
-            HeadlandSegments.Clear();
+            _fieldHeadland.Clear();
             foreach (var seg in segments)
             {
                 // Recompute offsets with current algorithm (may differ from saved)
                 ComputeSegmentOffset(seg);
-                HeadlandSegments.Add(seg);
+                _fieldHeadland.Add(seg);
             }
             if (HeadlandSegments.Count > 0)
                 BuildHeadlandFromSegments();
@@ -3856,7 +3859,8 @@ public partial class MainViewModel : ObservableObject
     /// <summary>
     /// List of headland segments that form the headland polygon.
     /// </summary>
-    public ObservableCollection<Models.Headland.HeadlandSegment> HeadlandSegments { get; } = new();
+    // The field's headland segments are FieldHeadland's.
+    public ObservableCollection<Models.Headland.HeadlandSegment> HeadlandSegments => _fieldHeadland.Segments;
 
     private Models.Headland.HeadlandSegment? _selectedHeadlandSegment;
     public Models.Headland.HeadlandSegment? SelectedHeadlandSegment

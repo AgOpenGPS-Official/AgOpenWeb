@@ -139,6 +139,8 @@ public static class BackendServices
 
         // The open field's flags (refactor item 1)
         services.AddSingleton<FieldFlags>();
+        // The open field's headland segments (item 3)
+        services.AddSingleton<FieldHeadland>();
 
         // Vehicle profile service
         services.AddSingleton<IVehicleProfileService, VehicleProfileService>();

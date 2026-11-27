@@ -87,7 +87,7 @@ public partial class MainViewModel
         };
 
         ComputeSegmentOffset(segment);
-        HeadlandSegments.Add(segment);
+        _fieldHeadland.Add(segment);
         SelectedHeadlandSegment = segment;
         BuildHeadlandFromSegments();
     }
@@ -135,7 +135,7 @@ public partial class MainViewModel
 
         ComputeSegmentOffset(segment);
         if (!WholeBoundaryOffsetFits(segment)) return;
-        HeadlandSegments.Add(segment);
+        _fieldHeadland.Add(segment);
         SelectedHeadlandSegment = segment;
         BuildHeadlandFromSegments();
     }
@@ -219,7 +219,7 @@ public partial class MainViewModel
         if (index < 0 || index >= HeadlandSegments.Count) return;
         var seg = HeadlandSegments[index];
         if (SelectedHeadlandSegment == seg) SelectedHeadlandSegment = null;
-        HeadlandSegments.Remove(seg);
+        _fieldHeadland.Remove(seg);
         if (HeadlandSegments.Count == 0) ClearHeadland();
         else BuildHeadlandFromSegments();
     }
@@ -229,7 +229,7 @@ public partial class MainViewModel
     {
         if (HeadlandSegments.Count == 0 && !HasHeadland) return;
         SelectedHeadlandSegment = null;
-        HeadlandSegments.Clear();
+        _fieldHeadland.Clear();
         ClearHeadland();
     }
 

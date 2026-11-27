@@ -269,6 +269,7 @@ public sealed class IsobusRig : IAsyncDisposable
         services.AddSingleton<ITramLineOffsetService, TramLineOffsetService>();
         services.AddSingleton<ITramLineService, TramLineService>();
         services.AddSingleton<AgOpenWeb.Services.FieldFlags>();
+        services.AddSingleton<AgOpenWeb.Services.Headland.FieldHeadland>();
         services.AddSingleton<IVehicleProfileService, VehicleProfileService>();
         services.AddSingleton<IToolProfileService, ToolProfileService>();
         services.AddSingleton<INtripProfileService, NtripProfileService>();
