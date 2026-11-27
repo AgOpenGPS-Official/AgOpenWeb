@@ -1001,7 +1001,11 @@ public sealed class JobRun : IAsyncDisposable
                 EndedEarly = true;
                 break;
             }
-            if (Fix % 10 == 0) await Task.Delay(PaceMs * 10);
+            // The next fix PaceMs after this one's work, as a receiver sends them: one at a time,
+            // evenly apart. Ten sent together, then a pause of ten, read a bend to AgOpenWeb's pose
+            // estimator (heading change over the time between arrivals) as many times faster than it
+            // is, and the implement was turned off the tractor's heading between fixes (#971).
+            await Task.Delay(PaceMs);
         }
         CyclesAtEnd = Rig.CycleCount; FixesAtEnd = Fix;
         if (Fix >= maxFixes) Problems.Add(F($"stopped after {Seconds / 60:0} simulated minutes without AgOpenWeb reporting the end of the field"));
