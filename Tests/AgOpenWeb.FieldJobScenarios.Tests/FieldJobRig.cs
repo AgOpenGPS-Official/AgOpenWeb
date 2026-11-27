@@ -128,7 +128,7 @@ public sealed class FieldJobRig : IAsyncDisposable
         configService.LoadAppSettings();
         sp.GetRequiredService<IPersistentStateService>().Load();
         WebBackend.WireCrossServices(sp);
-        var vm = await OnLoop(hostLoop, () => sp.GetRequiredService<MainViewModel>());
+        var vm = await OnLoop(hostLoop, () => WebBackend.CreateViewModel(sp));
 
         // FreePort hands back a port the OS had free a moment ago; something can take it before
         // the server binds it ("Address already in use", seen 2026-11-08): try a fresh one.

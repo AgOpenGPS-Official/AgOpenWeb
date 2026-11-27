@@ -132,7 +132,7 @@ public sealed class VehicleToolRig : IAsyncDisposable
         WebBackend.WireCrossServices(sp);
         // WireCrossServices finds the UDP service by its type; behind the tap it is one level in.
         sp.GetRequiredService<UdpCommunicationService>().SetAutoSteerService(sp.GetRequiredService<IAutoSteerService>());
-        var vm = await OnLoop(hostLoop, () => sp.GetRequiredService<MainViewModel>());
+        var vm = await OnLoop(hostLoop, () => WebBackend.CreateViewModel(sp));
 
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost { BroadcastLoop = broadcastLoop };
         await server.StartAsync(

@@ -67,7 +67,8 @@ public class MainViewModelBuilder
 
     public MainViewModel Build()
     {
-        return new MainViewModel(
+        var battery = new NullBatteryService();
+        var vm = new MainViewModel(
             udpService: UdpService,
             gpsService: GpsService,
             fieldService: FieldService,
@@ -110,10 +111,18 @@ public class MainViewModelBuilder
             appState: new ApplicationState(),
             configStore: ConfigurationStore.Instance,
             persistentStateService: Substitute.For<IPersistentStateService>(),
-            batteryService: new NullBatteryService(),
+            batteryService: battery,
             uiDispatcher: new AgOpenWeb.Services.Threading.InlineUiDispatcher(),
             uiTimerFactory: new RecordingTimerFactory(Timers),
             positionEstimator: PositionEstimator);
+
+        // The starts, as WebBackend.StartServices makes them after building the view model (no
+        // control loop here).
+        battery.Start();
+        AutoSteerService.Start();
+        GpsPipelineService.Start();
+        vm.Start(UdpService.StartAsync());
+        return vm;
     }
 }
 

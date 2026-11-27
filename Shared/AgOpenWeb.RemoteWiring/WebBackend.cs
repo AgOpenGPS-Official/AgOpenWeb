@@ -53,9 +53,8 @@ public sealed class WebBackend
 
         WireCrossServices(sp);
 
-        // Construct the single MainViewModel (starts the control loop + render-pull /
-        // status timers on the host loop).
-        var vm = sp.GetRequiredService<MainViewModel>();
+        // Construct the single MainViewModel (it subscribes), then start the services.
+        var vm = CreateViewModel(sp);
 
         // Start the embedded browser server, then wire its command handler + projectors.
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
@@ -86,6 +85,31 @@ public sealed class WebBackend
             RemoteServerWiring.Wire(server, vm, sp, configService, imageryCapture));
 
         return new WebBackend { Server = server, ViewModel = vm };
+    }
+
+    /// <summary>
+    /// Build the view model, then start the services and the view model, in this order: what
+    /// the view model listens to is subscribed before a service sends its first event. The
+    /// order of the starts is the one the view model's constructor had. Called by
+    /// <see cref="StartAsync"/> and by the harness rigs, on the thread that builds the view
+    /// model; after <see cref="WireCrossServices"/>.
+    /// </summary>
+    public static MainViewModel CreateViewModel(IServiceProvider sp)
+    {
+        var vm = sp.GetRequiredService<MainViewModel>();
+        StartServices(sp, vm);
+        return vm;
+    }
+
+    /// <summary>The services' starts, in the order the view model's constructor had them, then
+    /// the view model's own (<see cref="MainViewModel.Start"/>), which waits for the UDP port.</summary>
+    private static void StartServices(IServiceProvider sp, MainViewModel vm)
+    {
+        sp.GetRequiredService<IBatteryService>().Start();
+        sp.GetRequiredService<IAutoSteerService>().Start(); // Enable zero-copy GPS pipeline
+        sp.GetRequiredService<IGpsPipelineService>().Start(); // the background GPS processing pipeline
+        sp.GetService<ISteerMachineLoopService>()?.Start(); // the 100 Hz control loop (#313)
+        vm.Start(sp.GetRequiredService<IUdpCommunicationService>().StartAsync());
     }
 
     /// <summary>Wire cross-referencing services after the container is built: the

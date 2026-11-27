@@ -123,7 +123,7 @@ public sealed class ReplayRig : IAsyncDisposable
         configService.LoadAppSettings();
         sp.GetRequiredService<IPersistentStateService>().Load();
         WebBackend.WireCrossServices(sp);
-        var vm = await OnLoop(hostLoop, () => sp.GetRequiredService<MainViewModel>());
+        var vm = await OnLoop(hostLoop, () => WebBackend.CreateViewModel(sp));
 
         // FreePort hands back a port the OS had free a moment ago; something can take it before
         // the server binds it ("Address already in use"): try a fresh one (as the field job rig).

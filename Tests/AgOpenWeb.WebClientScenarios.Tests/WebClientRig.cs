@@ -116,7 +116,7 @@ public sealed class WebClientRig : IAsyncDisposable
         sp.GetRequiredService<IPersistentStateService>().Load();
         WebBackend.WireCrossServices(sp);
         MainViewModel vm = null!;
-        await hostLoop.InvokeAsync(() => vm = sp.GetRequiredService<MainViewModel>());
+        await hostLoop.InvokeAsync(() => vm = WebBackend.CreateViewModel(sp));
 
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
         // As WebBackend.StartAsync: browsers arriving and leaving, and why (a deadman says when

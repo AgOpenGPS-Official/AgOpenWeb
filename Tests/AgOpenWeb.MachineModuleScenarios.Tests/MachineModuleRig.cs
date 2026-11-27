@@ -118,7 +118,7 @@ public sealed class MachineModuleRig : IAsyncDisposable
         configService.LoadAppSettings();
         sp.GetRequiredService<IPersistentStateService>().Load();
         WebBackend.WireCrossServices(sp);
-        var vm = await OnLoop(hostLoop, () => sp.GetRequiredService<MainViewModel>());
+        var vm = await OnLoop(hostLoop, () => WebBackend.CreateViewModel(sp));
 
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
         await server.StartAsync(

@@ -229,8 +229,6 @@ public partial class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(IsBatteryCharging));
             OnPropertyChanged(nameof(IsBatteryAvailable));
         };
-        _batteryService.Start();
-        _batteryStatus = _batteryService.CurrentStatus;
 
         // Status-strip rotator: cycles the bottom of the two-line text stack
         // through field name / stats / AB-line every 5 s, with a pause button.
@@ -412,11 +410,9 @@ public partial class MainViewModel : ObservableObject
         _autoSteerService.StateUpdated += OnAutoSteerStateUpdated;
         _autoSteerService.GuidanceLost += OnGuidanceLost;
         _autoSteerService.SensorKickout += OnSensorKickout;
-        _autoSteerService.Start(); // Enable zero-copy GPS pipeline
 
-        // Start the background GPS processing pipeline
+        // The background GPS processing pipeline (started by the backend)
         _gpsPipelineService.CycleCompleted += OnGpsCycleCompleted;
-        _gpsPipelineService.Start();
 
         // Host control loop (#313): runs at 100 Hz on its own thread.
         // Each tick: read interpolated pose from estimator, update tool
@@ -428,7 +424,6 @@ public partial class MainViewModel : ObservableObject
         if (_controlLoop is not null)
         {
             _controlLoop.Ticked += OnControlLoopTicked;
-            _controlLoop.Start();
         }
 
         // Renderer-pull timer (#313 commit 6): when a position estimator is
@@ -449,7 +444,6 @@ public partial class MainViewModel : ObservableObject
             _renderPullTimer = _timerFactory.Create();
             _renderPullTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
             _renderPullTimer.Tick += OnRenderPullTick;
-            _renderPullTimer.Start();
         }
 
         // PERF-05 Phase 2c #2. Unified 5 Hz status-display tick — the single
@@ -467,7 +461,6 @@ public partial class MainViewModel : ObservableObject
         _statusTickTimer = _timerFactory.Create();
         _statusTickTimer.Interval = TimeSpan.FromMilliseconds(200);
         _statusTickTimer.Tick += OnStatusTick;
-        _statusTickTimer.Start();
         _udpService.ModuleConnectionChanged += OnModuleConnectionChanged;
         _ntripService.ConnectionStatusChanged += OnNtripConnectionChanged;
         _ntripService.RtcmDataReceived += OnRtcmDataReceived;
@@ -598,12 +591,27 @@ public partial class MainViewModel : ObservableObject
         // subscription above).
         _configReady = true;
 
+    }
+
+    /// <summary>
+    /// The view model's own start, once the backend has built it (the constructor only
+    /// subscribes) and started the services (<c>WebBackend.StartServices</c>): the battery
+    /// reading, the map's pose pull and the status tick, the clock and day/night, and the module
+    /// checks once the UDP port the backend is opening (<paramref name="udpStarted"/>) is open.
+    /// Called once, on the thread that built it.
+    /// </summary>
+    public void Start(Task udpStarted)
+    {
+        _batteryStatus = _batteryService.CurrentStatus;
+        _renderPullTimer?.Start();
+        _statusTickTimer.Start();
+
         // Initialize clock and auto day/night timer
         InitializeClock();
         InitializeAutoDayNight();
 
         // Start UDP communication (fire-and-forget but explicit)
-        _ = InitializeAsync();
+        _ = InitializeAsync(udpStarted);
 
         // Diagnostic auto-resume field — lets the FPS test harness run field-open
         // scenarios across force-stop restarts without manual taps.
@@ -939,11 +947,11 @@ public partial class MainViewModel : ObservableObject
 
     // NTRIP methods (ConnectToNtripAsync, DisconnectFromNtripAsync, HandleNtripProfileForFieldAsync) are in MainViewModel.Ntrip.cs
 
-    private async Task InitializeAsync()
+    private async Task InitializeAsync(Task udpStarted)
     {
         try
         {
-            await _udpService.StartAsync();
+            await udpStarted;
             NetworkStatus = $"UDP Connected: {_udpService.LocalIPAddress}";
             StatusMessage = "Ready - Waiting for modules...";
 

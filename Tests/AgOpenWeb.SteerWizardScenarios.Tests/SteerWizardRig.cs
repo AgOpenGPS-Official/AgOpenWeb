@@ -125,7 +125,7 @@ public sealed class SteerWizardRig : IAsyncDisposable
         sp.GetRequiredService<IPersistentStateService>().Load();
         WebBackend.WireCrossServices(sp);
         MainViewModel vm = null!;
-        await hostLoop.InvokeAsync(() => vm = sp.GetRequiredService<MainViewModel>());
+        await hostLoop.InvokeAsync(() => vm = WebBackend.CreateViewModel(sp));
 
         var server = new RemoteServerHost();
         await server.StartAsync(

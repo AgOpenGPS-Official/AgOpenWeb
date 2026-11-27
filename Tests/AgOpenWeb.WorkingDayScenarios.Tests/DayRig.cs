@@ -136,7 +136,7 @@ public sealed class DayRig : IAsyncDisposable
         // provider, the VM or the server would keep the whole backend alive after its
         // shut-down through whatever holds the closure, and the after-exit census would blame
         // the app for the harness.
-        var vm = await OnLoop(hostLoop, Resolve<MainViewModel>(sp));
+        var vm = await OnLoop(hostLoop, () => WebBackend.CreateViewModel(sp));
 
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
         await server.StartAsync(
