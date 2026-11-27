@@ -1,0 +1,215 @@
+<!doctype html>
+<!--
+  Source of MAINVIEWMODEL_REFACTOR_MIGRATION.png (Plans/MAINVIEWMODEL_REFACTOR_PLAN.md). Edit this file, then make the
+  PNG again with headless Chrome, from Plans/:
+    chrome --headless=new --hide-scrollbars --force-device-scale-factor=2 --window-size=1600,HEIGHT \
+      --screenshot=MAINVIEWMODEL_REFACTOR_MIGRATION.png "file://$PWD/MAINVIEWMODEL_REFACTOR_MIGRATION.html"
+  HEIGHT: the page height (the page puts it in its title as H=...; 2606 when last made).
+-->
+<html><head><meta charset="utf-8">
+<style>
+  :root { --ink:#1c2430; --muted:#5b6675; --paper:#f7f5f0; --line:#9aa4b1;
+    --red:#b3261e; --green:#2e7d46; --blue:#3b6ea8; --amber:#b7860b; --orange:#c2571a; --purple:#6a5a9c; --grey:#6b7280; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); }
+  body { width: 1600px; padding: 34px 44px 30px; color: var(--ink);
+         font: 16px/1.35 -apple-system, "Helvetica Neue", Arial, sans-serif; }
+  h1 { font-size: 31px; margin: 0 0 4px; text-align: center; letter-spacing: -0.3px; }
+  .sub { font-size: 18px; color: var(--muted); margin: 0 0 18px; text-align: center; }
+  h3 { font-size: 22px; margin: 0 0 2px; text-align: center; }
+  h3.r { color: var(--red); } h3.g { color: var(--green); }
+  .cap { text-align: center; color: var(--muted); margin: 0 0 12px; font-size: 15.5px; }
+  code { font: 14.5px ui-monospace, Menlo, monospace; }
+  .banner { border: 2px solid #b0306a; background: #fbe4ee; border-radius: 10px; padding: 10px 16px; margin-bottom: 20px; }
+  .banner b { color: #8c1d50; }
+  .band { border: 2px solid; border-radius: 12px; padding: 12px 14px 12px 190px; position: relative; margin-bottom: 10px;
+          display: flex; gap: 12px; }
+  .band > .t { position: absolute; left: 14px; top: 12px; width: 165px; font-weight: 700; font-size: 16px; }
+  .band > .t small { display: block; font-weight: 400; color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .b-heads { border-color: var(--grey); background: #ececee; }
+  .b-host { border-color: var(--blue); background: #e6eef8; }
+  .b-back { border-color: var(--blue); background: #e6eef8; }
+  .b-work { border-color: var(--orange); background: #fdeedd; }
+  .b-svc { border-color: var(--green); background: #e6f3e9; }
+  .card { flex: 1; background: #fff; border: 2px solid; border-radius: 8px; padding: 8px 12px; }
+  .card h4 { margin: 0 0 4px; font-size: 16.5px; }
+  .card p { margin: 0; font-size: 14.8px; color: #36404d; }
+  .bad { border-color: var(--red); } .bad h4 { color: var(--red); }
+  .ok { border-color: var(--green); } .ok h4 { color: var(--green); }
+  .tgt { border-color: var(--blue); } .tgt h4 { color: #23466f; }
+  .n { display: inline-block; width: 25px; height: 25px; line-height: 25px; border-radius: 50%; color: #fff;
+       font-size: 14px; font-weight: 700; text-align: center; margin-right: 6px; vertical-align: 1px; }
+  .n.r { background: var(--red); } .n.g { background: var(--green); }
+  .wrap { flex-wrap: wrap; }
+  .arrow { text-align: center; margin: 12px 0 10px; color: var(--muted); font-weight: 600; font-size: 15.5px; position: relative; }
+  .arrow::before { content: ""; display: block; margin: 0 auto 6px; width: 0; height: 0;
+       border-left: 30px solid transparent; border-right: 30px solid transparent; border-top: 44px solid #44525f; }
+  .ph { border: 2px solid; border-radius: 10px; padding: 10px 14px 10px 62px; position: relative; margin-bottom: 9px; }
+  .ph .k { position: absolute; left: 12px; top: 10px; width: 38px; height: 30px; line-height: 30px; border-radius: 6px;
+           color: #fff; font-weight: 700; text-align: center; font-size: 15px; }
+  .ph h4 { margin: 0 0 2px; font-size: 17.5px; }
+  .ph h4 span.d { float: right; font-weight: 600; font-size: 14.5px; color: var(--muted); }
+  .ph p { margin: 0; font-size: 14.8px; color: #36404d; }
+  .ph .mv { margin-top: 5px; font-style: italic; font-size: 14.5px; }
+  .p0 { border-color: #2f7f7a; background: #e0f1ef; } .p0 .k { background: #2f7f7a; } .p0 h4, .p0 .mv { color: #1f5d59; }
+  .pF { border-color: var(--grey); background: #ececee; } .pF .k { background: var(--grey); }
+  .p1 { border-color: var(--blue); background: #e2eefb; } .p1 .k { background: var(--blue); } .p1 h4, .p1 .mv { color: #23466f; }
+  .p2 { border-color: var(--green); background: #e6f3e9; } .p2 .k { background: var(--green); } .p2 h4, .p2 .mv { color: #1f5a32; }
+  .p3 { border-color: var(--amber); background: #fdf3d7; } .p3 .k { background: var(--amber); } .p3 h4, .p3 .mv { color: #7a5a06; }
+  .p4 { border-color: var(--orange); background: #fdeedd; } .p4 .k { background: var(--orange); } .p4 h4, .p4 .mv { color: #8a3c10; }
+  .p5 { border-color: var(--red); background: #fbe6e1; } .p5 .k { background: var(--red); } .p5 h4, .p5 .mv { color: #7f1b15; }
+  .pM { border-color: var(--purple); background: #ece8f4; } .pM .k { background: var(--purple); } .pM h4 { color: #473b73; }
+  .two { display: flex; gap: 12px; } .two > * { flex: 1; }
+  .gate { border: 2px dashed #44525f; border-radius: 10px; padding: 9px 14px; margin: 2px 0 11px; background: #fff; font-size: 14.8px; }
+  .gate b { color: var(--ink); }
+  .trace { border: 2px solid var(--line); border-radius: 12px; background: #fff; padding: 12px 18px; margin-top: 16px; }
+  .trace h4 { margin: 0 0 6px; font-size: 17px; }
+  .trace .cols { columns: 2; column-gap: 40px; font-size: 14.8px; }
+  .trace .cols div { break-inside: avoid; margin-bottom: 3px; }
+  .trace .note { font-style: italic; color: var(--muted); font-size: 14.5px; margin-top: 6px; }
+</style></head>
+<body>
+<h1>AgOpenWeb: the MainViewModel refactor, the whole picture</h1>
+<p class="sub">Today (top) → the steps before and during the freeze (middle) → where it ends (bottom). Problem numbers trace through all three.</p>
+
+<div class="banner"><b>Requirements, for good (every step):</b>
+  steering, sections, the lift and the PGNs act as they do; no field data lost or changed. The web protocol, control authority
+  and the failsafes stay as they are. No new work per control tick or GPS cycle. No thread changes. All three heads run the same shared code.</div>
+
+<h3 class="r">Today</h3>
+<p class="cap">Six numbered problems, from the plan's "Why"</p>
+
+<div class="band b-heads"><div class="t">Heads<small>Desktop, iOS, Android</small></div>
+  <div class="card bad"><h4><span class="n r">1</span>Each head registers every service itself</h4>
+    <p>59 to 60 registrations a head, all but 5 to 7 the same line. The VM is registered transient while it starts singletons.</p></div>
+  <div class="card ok"><h4>WebBackend boots the same backend on every head</h4>
+    <p>OK as far as it goes: <code>WireCrossServices</code> already joins UDP to AutoSteer.</p></div>
+</div>
+
+<div class="band b-host wrap"><div class="t">MainViewModel<small>host loop thread<br>core file 6,617 lines, 314 private fields, 53 event subscriptions</small></div>
+  <div class="card bad"><h4><span class="n r">1</span>The VM is the composition root</h4>
+    <p>A 460-line constructor takes 45 services, starts AutoSteer, the GPS pipeline and the control loop, and joins services by casts.
+       Every new feature is started there: merge conflicts.</p></div>
+  <div class="card bad"><h4><span class="n r">2</span>Domains live in the VM</h4>
+    <p>Flags, headland geometry and builder, boundary and KML import, track persistence: about 3,850 lines, most in the core file.
+       A change can't be judged from its diff.</p></div>
+  <div class="card bad"><h4><span class="n r">3</span>Field open and close are not tied together</h4>
+    <p>What a field sets up is cleared elsewhere (<code>ClearFieldState</code>, an 85-line list kept by hand).
+       Six fixes since October for something left behind.</p></div>
+  <div style="flex-basis:100%;height:0"></div>
+  <div class="card bad"><h4><span class="n r">4</span>The 100 Hz control tick is glue in the VM</h4>
+    <p><code>OnControlLoopTicked</code> moves the tool, decides the sections, sends PGN 254 and 239.
+       Which VM fields it reads, from which thread, is visible nowhere.</p></div>
+  <div class="card bad"><h4><span class="n r">6</span>Dead surface</h4>
+    <p>About 211 public members (182 commands) nothing uses, left from the Avalonia dialogs.
+       A reader can't tell live code from dead.</p></div>
+  <div class="card ok"><h4>The algorithms are already services</h4>
+    <p>OK: guidance, section control and the U-turn (#256) have their own tests, and the work since has been made there.</p></div>
+</div>
+
+<div class="band b-work"><div class="t">GpsPipelineService<small>worker thread, every fix</small></div>
+  <div class="card bad"><h4><span class="n r">5</span><code>ProcessCycle</code>: one method of about 1,100 lines</h4>
+    <p>98 fields every step can read and write; the order of the steps is nowhere but in the method.
+       Of the 52 PRs that touched the file since October, 42 were fixes.</p></div>
+  <div class="card ok"><h4>Intents in, snapshot out</h4>
+    <p>OK: one way in from the host loop and one way out. It stays.</p></div>
+</div>
+
+<div class="arrow">before the freeze, then five rounds under a total freeze · each round tested on its own against the baseline</div>
+
+<h3>The steps</h3>
+<p class="cap">Moves are moves (one commit a domain, checked by the move script); a behaviour change is its own commit with a test that fails before it</p>
+
+<div class="ph p0"><div class="k">P</div>
+  <h4>Before the freeze: the tests that hold the behaviour, and the tooling <span class="d">develop stays open</span></h4>
+  <p>Done: characterization tests for the GPS cycle, the domains and the field lifecycle, and the surface test (359 members).
+     To do: the busy-field lifecycle test on real services, the dead code removal PR, the fix for #969, the move script,
+     a rehearsal of one round (headland geometry) on a throwaway branch, the freeze announced a week ahead.</p>
+  <div class="mv"><span class="n r">6</span>removed here, as its own PR · the rehearsal corrects the schedule</div></div>
+
+<div class="ph pF"><div class="k">F</div>
+  <h4>Freeze starts at commit F: the baseline <span class="d">days 1-2</span></h4>
+  <p>Nothing is merged to develop until the merge. CI, the hot-path budgets and the full nightly set on F on two nights (the second shows the noise);
+     the manual check on hardware.</p></div>
+
+<div class="ph p1"><div class="k">R1</div>
+  <h4>Startup and lifetimes (item 0) <span class="d">days 3-5</span></h4>
+  <p>WebBackend starts the services in today's order and stops them in reverse; the casts go to <code>WireCrossServices</code>; the VM a singleton;
+     one shared DI registration with a test of the real graph. Checked on all three heads on a device.</p>
+  <div class="mv"><span class="n r">1</span>out of the VM and the heads</div></div>
+
+<div class="ph p2"><div class="k">R2</div>
+  <h4>The domains (items 1-5), one commit each <span class="d">days 6-10</span></h4>
+  <p>Flags; headland geometry to Models as plain functions; headland builder state (three owners); boundary list, KML and ISO-XML import; track persistence.</p>
+  <div class="mv"><span class="n r">2</span>into services with their own tests · they provide the open and close steps round 3 needs</div></div>
+
+<div class="ph p3"><div class="k">R3</div>
+  <h4>Field lifecycle (item 6), in two stages <span class="d">days 11-15</span></h4>
+  <p>First the open and close steps move into a field session, in the same order. Then the field data changes owner, a commit a domain.
+     A session number drops a result that comes back to another field.</p>
+  <div class="mv"><span class="n r">3</span>designed out: nothing field-specific outlives its field by forgetting a reset</div></div>
+
+<div class="ph p4"><div class="k">R4</div>
+  <h4>Control path (item 7) <span class="d">days 16-19</span></h4>
+  <p>A control loop service owns the tick and its thread, and states everything it reads that another thread writes.
+     Extra checks: tick timings, allocation, the full sweep, PGN counts; the manual check.</p>
+  <div class="mv"><span class="n r">4</span>the boundary becomes visible; it does not move</div></div>
+
+<div class="ph p5"><div class="k">R5</div>
+  <h4>GPS cycle (item 8), a step at a time <span class="d">days 20-25</span></h4>
+  <p>Each step its own method or class, stating what it reads and writes; the cycle is the list of steps in today's order, on the same thread.
+     Extra checks: pass order, turns, area sprayed, steer angles; the manual check.</p>
+  <div class="mv"><span class="n r">5</span>last: the riskiest work, on a base already tested</div></div>
+
+<div class="gate"><b>After every round, the pass mark:</b> CI green; hot-path budgets and the surface test unchanged; all eleven harnesses as whole runs against F,
+  no finding new and none gone; measured values within F's spread; owner, thread and lifetime of each moved state read in review. chriskinal reviews each round.</div>
+
+<div class="two">
+  <div class="ph pM"><div class="k">M</div>
+    <h4>Fixes, the whole set again, merge <span class="d">days 26-30</span></h4>
+    <p>The merge is on the pass mark, not on day 30: if a round fails, the rounds that passed are merged and the rest waits, or the freeze is extended.</p></div>
+  <div class="ph pM"><div class="k">A</div>
+    <h4>After the merge <span class="d">not frozen</span></h4>
+    <p>A beta for at least a week in the field. Open PRs rebased. Then, each its own plan: the web commands off the VM a group at a time, the statics left.</p></div>
+</div>
+
+<div class="arrow" style="margin-top:4px"></div>
+
+<h3 class="g">Where it ends</h3>
+<p class="cap">Green markers show where each numbered problem has gone by the merge</p>
+
+<div class="band b-back"><div class="t">WebBackend<small>the composition root</small></div>
+  <div class="card tgt"><h4><span class="n g">1</span>Builds, joins, starts and stops the services</h4>
+    <p>One shared registration all three heads call; each head keeps only its own. The VM builds, starts and stops no service.</p></div>
+</div>
+
+<div class="band b-svc"><div class="t">Host loop thread</div>
+  <div class="card tgt"><h4><span class="n g">6</span>MainViewModel: a facade</h4>
+    <p>What <code>RemoteServerWiring</code> calls while the commands move; hands each call to the service that owns it. No dead members.</p></div>
+  <div class="card tgt"><h4><span class="n g">3</span>Field session</h4>
+    <p>Owns the field's state, runs the open and close steps in one declared order, and is dropped on close.</p></div>
+  <div class="card tgt"><h4><span class="n g">2</span>Domain services</h4>
+    <p>Flags, headland, boundary and import, tracks: each with its tests, its open and close side by side, its state's owner stated.</p></div>
+</div>
+
+<div class="band b-work"><div class="t">Time-critical paths<small>each on its own thread, as today</small></div>
+  <div class="card tgt"><h4><span class="n g">4</span>Control loop service</h4>
+    <p>The 100 Hz tick, readable and testable on its own; cross-thread reads stated in one place.</p></div>
+  <div class="card tgt"><h4><span class="n g">5</span>GPS cycle: a list of steps</h4>
+    <p>The order in one place with its reasons; each step states what it reads and writes. Intents in, snapshot out.</p></div>
+</div>
+
+<div class="trace"><h4>Problem → step → where it ends</h4>
+  <div class="cols">
+    <div>Problem 1 (the VM and the heads build and start the services) → R1 → WebBackend, one shared registration</div>
+    <div>Problem 2 (domains in the VM) → R2 → domain services, geometry in Models</div>
+    <div>Problem 3 (open and close not tied together) → R3 → the field session</div>
+    <div>Problem 4 (the control tick is glue in the VM) → R4 → the control loop service</div>
+    <div>Problem 5 (the GPS cycle is one method) → R5 → a list of steps</div>
+    <div>Problem 6 (dead surface) → P, before the freeze → removed</div>
+  </div>
+  <div class="note">Left for after the merge: <code>RemoteServerWiring</code> calling the domain services itself, the app running without a MainViewModel, the remaining statics.
+    Source: <code>Plans/MAINVIEWMODEL_REFACTOR_PLAN.md</code>.</div>
+</div>
+<script>document.title = 'H=' + document.documentElement.scrollHeight;</script>
+</body></html>

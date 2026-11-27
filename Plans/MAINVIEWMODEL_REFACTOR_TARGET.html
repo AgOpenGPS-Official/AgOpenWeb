@@ -1,0 +1,177 @@
+<!doctype html>
+<!--
+  Source of MAINVIEWMODEL_REFACTOR_TARGET.png (Plans/MAINVIEWMODEL_REFACTOR_PLAN.md). Edit this file, then make the
+  PNG again with headless Chrome, from Plans/:
+    chrome --headless=new --hide-scrollbars --force-device-scale-factor=2 --window-size=1600,HEIGHT \
+      --screenshot=MAINVIEWMODEL_REFACTOR_TARGET.png "file://$PWD/MAINVIEWMODEL_REFACTOR_TARGET.html"
+  HEIGHT: 1452.
+-->
+<html><head><meta charset="utf-8">
+<style>
+  :root {
+    --ink: #1c2430; --muted: #5b6675; --paper: #f7f5f0; --line: #9aa4b1;
+    --backend: #e6eef8; --backend-b: #3b6ea8;
+    --vm: #fdf3d7; --vm-b: #b7860b;
+    --dom: #e4f2e7; --dom-b: #3d8451;
+    --hot: #fbe6e1; --hot-b: #b4472f;
+    --state: #ece8f4; --state-b: #6a5a9c;
+    --infra: #e9eaec; --infra-b: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); }
+  body { width: 1600px; padding: 36px 44px 30px; color: var(--ink);
+         font: 17px/1.35 -apple-system, "Helvetica Neue", Arial, sans-serif; position: relative; }
+  h1 { font-size: 32px; margin: 0 0 4px; letter-spacing: -0.3px; }
+  .sub { font-size: 20px; color: var(--muted); margin: 0 0 22px; }
+  .sub b { color: var(--ink); }
+  .row { display: flex; gap: 18px; }
+  .box { flex: 1; border: 2px solid; border-radius: 10px; padding: 12px 16px; position: relative; }
+  .box h2 { font-size: 21px; margin: 0 0 3px; }
+  .box p { margin: 0; color: #36404d; }
+  .box code, .chip code { font: 15px ui-monospace, Menlo, monospace; }
+  .infra { background: var(--infra); border-color: var(--infra-b); }
+  .backend { background: var(--backend); border-color: var(--backend-b); }
+  .vm { background: var(--vm); border-color: var(--vm-b); border-style: dashed; }
+  .dom { background: var(--dom); border-color: var(--dom-b); }
+  .hot { background: var(--hot); border-color: var(--hot-b); }
+  .state { background: var(--state); border-color: var(--state-b); }
+  .n { display: inline-block; min-width: 26px; height: 26px; line-height: 26px; padding: 0 7px; border-radius: 13px;
+       background: var(--ink); color: #fff; font-size: 14px; font-weight: 700; text-align: center;
+       vertical-align: 2px; margin-left: 6px; }
+  .conn { display: flex; justify-content: space-around; height: 40px; align-items: center;
+          color: var(--muted); font-size: 15.5px; }
+  .conn span::before { content: "▼"; color: var(--line); margin-right: 8px; font-size: 13px; }
+  .conn span.both::before { content: "▲▼"; letter-spacing: 1px; }
+  .frame { border: 2.5px solid var(--backend-b); border-radius: 14px; background: #fbfcfe;
+           padding: 0 190px 18px; }
+  .frame > .head { margin: 0 -190px 14px; padding: 12px 18px; background: var(--backend);
+                   border-radius: 11px 11px 0 0; border-bottom: 2px solid var(--backend-b); }
+  .frame > .head h2 { font-size: 23px; margin: 0 0 2px; }
+  .frame > .head p { margin: 0; color: #36404d; }
+  .group { border: 1.5px dashed var(--line); border-radius: 12px; padding: 26px 14px 14px; position: relative; }
+  .group > .tag { position: absolute; top: -12px; left: 16px; background: #fbfcfe; padding: 0 8px;
+                  font-size: 14.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+  .chip { border: 1.5px solid var(--dom-b); background: #fff; border-radius: 7px; padding: 3px 9px; font-size: 15.5px; }
+  .chip.plain { border-color: var(--line); color: #36404d; }
+  .chip .n { min-width: 22px; height: 22px; line-height: 22px; font-size: 13px; vertical-align: 0; }
+  svg#ov { position: absolute; left: 0; top: 0; pointer-events: none; }
+  .lab { position: absolute; width: 150px; font-size: 14.5px; line-height: 1.3; color: var(--muted); }
+  .lab b { color: var(--ink); }
+  .foot { display: flex; gap: 28px; margin-top: 18px; font-size: 15px; color: var(--muted); align-items: flex-start; }
+  .foot > div { flex: 1; }
+  .key { display: inline-block; width: 30px; height: 0; border-top: 2.5px solid var(--ink); vertical-align: middle; margin-right: 6px; }
+  .key.dash { border-top-style: dashed; border-color: var(--dom-b); }
+  .key.dot { border-top-style: dotted; border-color: var(--state-b); }
+</style></head>
+<body>
+<h1>AgOpenWeb: where the MainViewModel refactor ends</h1>
+<p class="sub"><b>MainViewModel is a consumer of the application, not the application.</b>
+  Numbers are the items of <code>Plans/MAINVIEWMODEL_REFACTOR_PLAN.md</code>.</p>
+
+<div class="row">
+  <div class="box infra"><h2>Heads: Desktop, iOS, Android</h2>
+    <p>The host process and its web view. Each keeps only its own 5 to 7 registrations.</p></div>
+  <div class="box infra"><h2>Web client</h2>
+    <p>The page, in the head's web view or any browser on the LAN. One holds control, the others observe.</p></div>
+</div>
+<div class="conn"><span>boots</span><span class="both">WebSocket: <code>id|arg</code> commands in, binary frames out</span></div>
+
+<div class="frame">
+  <div class="head"><h2>WebBackend <span class="n">0</span></h2>
+    <p>Builds the services from one shared DI registration, joins them (<code>WireCrossServices</code>), lets the VM subscribe,
+       then starts them in order and stops them in reverse.</p></div>
+
+  <div class="row">
+    <div class="box backend" id="wiring"><h2>RemoteServerWiring</h2>
+      <p>Web commands in. Control authority and the failsafes unchanged.</p></div>
+    <div class="box backend" id="proj"><h2>Projectors</h2>
+      <p>State out: scene, coverage, status. Protocol unchanged.</p></div>
+  </div>
+  <div class="conn"><span>calls the 359 public members (kept the same: a migration guard)</span></div>
+
+  <div class="row">
+    <div class="box vm"><h2>MainViewModel</h2>
+      <p>A facade while the commands move: hands each call to the service that owns it.
+         Builds, starts and stops no service; holds no service's state.</p></div>
+  </div>
+  <div class="conn"><span>hands each call on</span></div>
+
+  <div class="group" id="hostgroup"><div class="tag">Host loop thread</div>
+    <div class="row">
+      <div class="box dom" style="flex: 0.9"><h2>Field session <span class="n">6</span></h2>
+        <p>Made on open, ended on close: owns the field's data and drops it. Runs the open and close steps
+           in one declared order. A session number keeps a late result out of another field.</p></div>
+      <div class="box dom" style="flex: 1.25" id="domains"><h2>Domain services</h2>
+        <p>Live as long as the app, work on the session's data. Each gives its open and close side by side,
+           and states its state's owner, thread and lifetime.</p>
+        <div class="chips">
+          <span class="chip">Flags <span class="n">1</span></span>
+          <span class="chip">Headland <span class="n">3</span></span>
+          <span class="chip">Boundary, KML, ISO-XML <span class="n">4</span></span>
+          <span class="chip">Tracks <span class="n">5</span></span>
+          <span class="chip plain">recorded path</span><span class="chip plain">coverage</span>
+          <span class="chip plain">tram</span><span class="chip plain">NTRIP</span><span class="chip plain">imagery</span>
+          <span class="chip plain">Headland geometry: plain functions in Models <span class="n">2</span></span>
+        </div></div>
+    </div>
+  </div>
+  <div class="conn"><span class="both">intents in, snapshot out: the one way across</span></div>
+
+  <div class="group"><div class="tag">Time-critical paths, each on its own thread</div>
+    <div class="row">
+      <div class="box hot"><h2>GpsPipelineService <span class="n">8</span></h2>
+        <p>The GPS cycle as a list of steps in one place, each stating what it reads and writes:
+           fix quality, heading, estimator, U-turn tick, AutoSteer rules, guidance, PGN 214, snapshot.</p></div>
+      <div class="box hot"><h2>Control loop service <span class="n">7</span></h2>
+        <p>Owns the 100 Hz tick and its thread: tool position, sections, PGN 254 and 239.
+           States everything it reads that another thread writes.</p></div>
+    </div>
+  </div>
+  <div class="conn"><span>write the read copy</span></div>
+
+  <div class="row">
+    <div class="box state" id="appstate"><h2>ApplicationState</h2>
+      <p>A read projection for the page, not the owner of the data. <code>ApplicationState.Field</code> is cleared by the session.</p></div>
+  </div>
+</div>
+
+<div class="conn"><span class="both">packets, files, streams</span></div>
+<div class="row">
+  <div class="box infra"><h2>Infrastructure</h2>
+    <p>UDP to the modules (cabled) &nbsp;·&nbsp; field files (<code>field.geojson</code>, coverage tiles) &nbsp;·&nbsp; NTRIP caster &nbsp;·&nbsp; imagery</p></div>
+</div>
+
+<div class="foot">
+  <div><span class="key dash"></span>after this refactor, command by command<br><span class="key dot"></span>read only</div>
+  <div>No thread changes: every boundary becomes visible, none moves. Moves are moves; a behaviour change is its own commit.</div>
+  <div>Not an enterprise layering: no interface per class, no event bus, no <code>ApplicationService</code> in the VM's place.</div>
+</div>
+
+<svg id="ov"></svg>
+<div class="lab" id="labL"><b>After this refactor:</b> the wiring calls the domain services itself, until the app runs without a MainViewModel.</div>
+<div class="lab" id="labR"><b>The projectors pull</b> what the page shows; nothing is pushed to them.</div>
+
+<script>
+  const r = id => document.getElementById(id).getBoundingClientRect();
+  const sx = window.scrollX, sy = window.scrollY;
+  const ov = document.getElementById('ov');
+  const W = document.body.scrollWidth, H = document.body.scrollHeight;
+  ov.setAttribute('width', W); ov.setAttribute('height', H);
+  const w = r('wiring'), p = r('proj'), g = r('hostgroup'), a = r('appstate');
+  const xl = w.left - 150, xr = p.right + 150;
+  const yw = w.top + w.height / 2, yg = g.top + g.height / 2, yp = p.top + p.height / 2, ya = a.top + a.height / 2;
+  const R = 14;
+  const path = (d, color, dash) =>
+    `<path d="${d}" fill="none" stroke="${color}" stroke-width="2.5" stroke-dasharray="${dash}" marker-end="url(#m${color.slice(1)})"/>`;
+  const marker = c => `<marker id="m${c.slice(1)}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+    <path d="M0,0 L10,5 L0,10 z" fill="${c}"/></marker>`;
+  const green = '#3d8451', purple = '#6a5a9c';
+  ov.innerHTML = `<defs>${marker(green)}${marker(purple)}</defs>` +
+    path(`M${w.left},${yw} H${xl + R} Q${xl},${yw} ${xl},${yw + R} V${yg - R} Q${xl},${yg} ${xl + R},${yg} H${g.left - 3}`, green, '8 6') +
+    path(`M${p.right},${yp} H${xr - R} Q${xr},${yp} ${xr},${yp + R} V${ya - R} Q${xr},${ya} ${xr - R},${ya} H${a.right + 3}`, purple, '2 5');
+  const L = document.getElementById('labL'), Rr = document.getElementById('labR');
+  L.style.left = (xl + 12) + 'px'; L.style.top = (yw + 30) + 'px'; L.style.width = '132px';
+  Rr.style.left = (xr - 142) + 'px'; Rr.style.top = (yp + 30) + 'px'; Rr.style.width = '132px';
+</script>
+</body></html>
