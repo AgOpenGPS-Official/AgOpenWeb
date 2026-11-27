@@ -40,12 +40,30 @@ harnesses on a development machine, where the app and other runs share its ports
     8, 4 and 2: every report's pace check at 0 lag, every finding the same. A shard whose report
     shows AgOpenWeb behind the fixes fails the comparison as starved (`!!`).
 
+  - **Named shards.** An entry of `AGOPENWEB_SCENARIO_ONLY` may be `name=selector`: the selector is
+    the shard's ONLY, the name its container and folder (`sweep-type=tool.type`; a selector may hold
+    `|` and `.`, a container name cannot).
+- **A whole round** (every harness, a fix against its base): `run-round.sh <fix> <base> [out]`
+  starts all the comparisons at once, the longest first, the job harness in the nightly's groups and
+  one container a job, and prints a line per comparison at the end. Vehicle & Tool, 2.5 hours in one
+  piece, runs as its two operators and its settings sweep in the shards of `sweep-shards.txt`
+  (selected by the harness's own rule, so the base commit's harness runs them too; the longest about
+  40 minutes). `sweep-shards.py check` stops the round when the shards do not split both sides'
+  sweep tables, every row in one shard; the Vehicle & Tool workflow runs the same shards as its
+  matrix. A round then takes about as long as the working day (about 40 minutes, one piece). GitHub's runners can take the same round at the
+  same time: `github-compare.sh start <branch>` dispatches the eleven workflows on the branch, and
+  `github-compare.sh compare <branch>` compares their reports with the nightly runs on develop
+  (`BASE_SHAS` names the base commits). Both exit 1 on anything new, gone or marked `!!`.
+
 Each container has its own network, so runs side by side don't share UDP 9999/8888. They do share
 the CPU, and a starved run misses its watchdogs and reports it (a false `AUTOSTEER-DROPPED`,
 2026-11-10, a build beside an unlimited run). So a whole harness gets `--cpus 4` and a shard
-`--cpus 2`, and `runner-compare.sh` starts at most the host's threads over that many at once (12 on
-the 6-core Mac mini: three whole runs or six shards), the rest waiting for a slot (`CPUS`, `MAX_RUNS`
-to change them); a run started by hand needs `--cpus 4` too.
+`--cpus 2`, and the host's threads are shared by every comparison running on it, not shared out per
+comparison: `runner-compare.sh` starts a container when the `--cpus` of all the harness containers
+there plus its own fit in `CPU_BUDGET` (default the host's 12 on the 6-core Mac mini), checked under
+a lock on the machine the comparisons are started from, so several comparisons run at once and the
+host stays full (`CPUS` changes a container's share, `MAX_RUNS` caps one comparison's containers);
+a run started by hand needs `--cpus 4` too and counts against the budget.
 
 They share the disk as well: a container keeps its clone and build (about 0.8 GB, a web client one
 2.8 GB) until it is removed. `runner-compare.sh` copies each one's `/out` and removes it as soon as

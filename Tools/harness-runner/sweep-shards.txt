@@ -1,0 +1,14 @@
+# The Vehicle & Tool settings sweep in shards: name=selector, one a line, the longest first.
+# A row of SettingsSweep.Cases runs in a shard when its key or its group's name contains one of the
+# selector's "|"-separated strings (the harness's own rule, so a base commit's harness runs them
+# too). Every row must be in exactly one shard: sweep-shards.py checks it (run-round.sh and the
+# Vehicle & Tool workflow stop when it is not). A key that names a setup (tool.type) brings that
+# setup's groups with it, so sweep-type is the longest, about 40 minutes; the whole sweep is 1 h 45.
+sweep-type=tool.type
+sweep-module=Module|Approach|tool.numSections|None
+sweep-drive=Nudge|ManualTurn|Deadzone|Slope|SingleImu|SingleNoImu|Reverse|Slow|Fast|RtkDrop|FreeDrive
+sweep-lookahead=tool.lookAheadOn|tool.turnOffDelay
+sweep-zones=tool.isSectionsNotZones|tool.isMultiColoredSections|tool.singleCoverageColor|tool.sectionColor
+sweep-hitch=vehicle.threePointHitchLength|tool.workingPointFromHitch|vehicle.type
+sweep-shifted=SectionsShifted
+sweep-switches=Switches

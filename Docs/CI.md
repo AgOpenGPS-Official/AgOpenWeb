@@ -4,7 +4,10 @@
 GitHub Actions workflows, split by purpose:
 
 - **`build-and-release.yml`** ("CI") — on every push / PR to `main` or `develop`: runs the test suite plus a
-  compile-check of each platform head (Desktop, Android, iOS). No packaging, no releases.
+  compile-check of each platform head (Desktop, Android, iOS). No packaging, no releases. It also checks
+  the settings reader map (`Tools/settings-readers`): every `config.set` key and the code that reads it,
+  found by the compiler; it fails when the map is out of date or a setting is read by nothing
+  (`dotnet run --project Tools/settings-readers -- --write` updates it).
 - **`build-deploy-bundles.yml`** — the single packaging + release publisher. Runs the
   `deploy/{linux,windows,macos}/package.sh` scripts + builds the signed Android APK on clean runners:
   - on a **`v*` tag** (or manual dispatch with a tag) → publishes one complete Release, marked
