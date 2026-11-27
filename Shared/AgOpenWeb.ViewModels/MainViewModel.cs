@@ -4995,29 +4995,6 @@ public partial class MainViewModel : ObservableObject
     /// Load tracks from field directory.
     /// Supports WinForms TrackLines.txt format (primary) and legacy ABLines.txt format (fallback).
     /// </summary>
-    /// <summary>
-    /// Migrate a loaded curve track to the resolution-independent guidance
-    /// conventions: recompute per-point headings (atan2(dEast,dNorth)) and flag
-    /// closed loops. Tracks saved before #422's fix carried boundary-convention or
-    /// zero headings and IsClosed=false, which made the "which way is forward"
-    /// decision random (spin/reverse). Idempotent for correctly-built tracks.
-    /// </summary>
-    private static void MigrateCurveTrack(Track track)
-    {
-        if (track == null || !track.IsCurve || track.Points.Count < 3)
-            return;
-
-        // Closed loop if the first and last points coincide.
-        var first = track.Points[0];
-        var last = track.Points[^1];
-        double de = first.Easting - last.Easting;
-        double dn = first.Northing - last.Northing;
-        if (de * de + dn * dn < 1.0)
-            track.IsClosed = true;
-
-        track.Points = Models.Guidance.CurveProcessing.CalculateHeadings(track.Points);
-    }
-
     private void LoadTracksFromField(Field? field)
     {
         // Clear existing tracks (State.Field.Tracks mirrors SavedTracks via the subscription)
@@ -5031,28 +5008,10 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            // field.geojson (opening the field imported any AgOpenGPS track files).
-            var tracks = Services.GeoJson.GeoJsonFieldService.LoadTracks(field.DirectoryPath);
             int loadedCount = 0;
 
-            foreach (var track in tracks)
+            foreach (var track in Services.Track.TrackFile.Load(field.DirectoryPath, PassWidth))
             {
-                // A recorded path saved more than once (each open added a copy, fixed above) is
-                // loaded once; the next save drops the copies.
-                if (track.IsRecordedPath && SavedTracks.Any(t => t.IsRecordedPath && SamePoints(t, track)))
-                    continue;
-
-                // Ensure all tracks start inactive (SelectedTrack setter will activate)
-                track.IsActive = false;
-                MigrateCurveTrack(track);
-                // A pivot imported from AgOpenGPS has only its centre: its reference circle is a
-                // pass width out, so its passes are AgOpenGPS's (half a width, then whole widths).
-                if (track.IsPivot && track.Points.Count < 3 && track.Points.Count > 0)
-                {
-                    var c = track.Points[0];
-                    track.Points = Models.Guidance.CurveProcessing.Circle(new Vec3(c.Easting, c.Northing, 0), PassWidth);
-                    track.IsClosed = true;
-                }
                 AddSavedTrack(track); // mirrors into State.Field.Tracks
 
                 // Debug: log track details
@@ -5074,10 +5033,6 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    private static bool SamePoints(Track a, Track b) =>
-        a.Points.Count == b.Points.Count
-        && a.Points.Zip(b.Points).All(p => Math.Abs(p.First.Easting - p.Second.Easting) < 0.01 && Math.Abs(p.First.Northing - p.Second.Northing) < 0.01);
-
     private void LoadRecPathFromField(string fieldPath)
     {
         try
@@ -5088,7 +5043,7 @@ public partial class MainViewModel : ObservableObject
                 : null;
             // The path in use is usually among the field's tracks already (saved with them when it
             // was recorded): adding it again put one more copy in the track list at every open.
-            if (recPath != null && SavedTracks.Any(t => t.IsRecordedPath && SamePoints(t, recPath)))
+            if (recPath != null && SavedTracks.Any(t => t.IsRecordedPath && Services.Track.TrackFile.SamePoints(t, recPath)))
                 recPath = null;
             if (recPath != null)
             {
