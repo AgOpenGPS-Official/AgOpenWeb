@@ -105,7 +105,6 @@ public class MainViewModelBuilder
             elevationLogService: Substitute.For<IElevationLogService>(),
             jobService: JobService,
             tramLineService: TramLineService,
-            fieldHeadland: new AgOpenWeb.Services.Headland.FieldHeadland(dispatcher),
             gpsPipelineService: GpsPipelineService,
             intents: Intents,
             logger: Logger,

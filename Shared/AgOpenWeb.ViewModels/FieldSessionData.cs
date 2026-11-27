@@ -17,4 +17,7 @@ internal sealed class FieldSessionData(IUiDispatcher host)
 {
     /// <summary>The field's marker flags: the list and its numbering.</summary>
     public FieldFlags Flags { get; } = new(host);
+
+    /// <summary>The field's headland segments, the lines the headland is built from.</summary>
+    public Services.Headland.FieldHeadland Headland { get; } = new(host);
 }

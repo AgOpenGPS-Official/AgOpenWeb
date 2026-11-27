@@ -93,7 +93,7 @@ public partial class MainViewModel
         new("contours", "saved and exported while the field is still there (#110)", CloseContours),
         new("closed", "the field no longer counts as open for what is cleared below", CloseMarkFieldClosed),
         new("boundary", "", CloseBoundary),
-        new("headland", "", CloseHeadland),
+        new("headland", "its segments went with the session: the line and the preview cleared from the map", CloseHeadland),
         new("imagery", "or the closed field's picture stays on screen (#309)", CloseImagery),
         new("tracks", "", CloseTracks),
         new("U-turn", "", CloseYouTurn),

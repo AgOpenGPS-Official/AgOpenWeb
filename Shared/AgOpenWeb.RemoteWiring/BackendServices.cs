@@ -137,9 +137,6 @@ public static class BackendServices
         services.AddSingleton<ITramLineOffsetService, TramLineOffsetService>();
         services.AddSingleton<ITramLineService, TramLineService>();
 
-        // The open field's headland segments (item 3)
-        services.AddSingleton<FieldHeadland>();
-
         // Vehicle profile service
         services.AddSingleton<IVehicleProfileService, VehicleProfileService>();
         services.AddSingleton<IToolProfileService, ToolProfileService>();

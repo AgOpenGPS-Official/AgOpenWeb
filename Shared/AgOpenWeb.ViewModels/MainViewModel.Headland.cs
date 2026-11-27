@@ -145,7 +145,7 @@ public partial class MainViewModel
             if (!hasOuter)
             {
                 SelectedHeadlandSegment = null;
-                _fieldHeadland.Clear();
+                _sessionData.Headland.Clear();
                 ClearHeadland();
                 done.Add("headland removed");
             }
@@ -156,7 +156,7 @@ public partial class MainViewModel
                     if (HeadlandSegments[i].Type == Models.Headland.HeadlandSegmentType.Boundary) continue;
                     if (ReferenceEquals(SelectedHeadlandSegment, HeadlandSegments[i])) SelectedHeadlandSegment = null;
                     droppedNames.Insert(0, HeadlandSegments[i].Name);
-                    _fieldHeadland.RemoveAt(i);
+                    _sessionData.Headland.RemoveAt(i);
                 }
                 int dropped = droppedNames.Count;
                 if (HeadlandSegments.Count == 0)

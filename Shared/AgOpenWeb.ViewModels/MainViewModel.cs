@@ -65,7 +65,6 @@ public partial class MainViewModel : ObservableObject
     private readonly IJobService _jobService;
     // What the open field session owns: replaced, not cleared, when a session starts.
     private FieldSessionData _sessionData;
-    private readonly Services.Headland.FieldHeadland _fieldHeadland;
     private readonly ITramLineService _tramLineService;
     private bool _hasTramSystemsEverUsed;
     private readonly Dictionary<string, (int start, int count, bool isBoundary)> _tramSystemLineRanges = new();
@@ -188,7 +187,6 @@ public partial class MainViewModel : ObservableObject
         IElevationLogService elevationLogService,
         IJobService jobService,
         ITramLineService tramLineService,
-        Services.Headland.FieldHeadland fieldHeadland,
         IGpsPipelineService gpsPipelineService,
         IPipelineIntents intents,
         ILogger<MainViewModel> logger,
@@ -211,7 +209,6 @@ public partial class MainViewModel : ObservableObject
         _timerFactory = uiTimerFactory;
         _tramLineService = tramLineService;
         _sessionData = new FieldSessionData(uiDispatcher);
-        _fieldHeadland = fieldHeadland;
 
         // Battery icon in the strip — start the per-platform reader, prime with
         // its initial reading, and refresh on each StatusChanged notification.
@@ -1809,7 +1806,7 @@ public partial class MainViewModel : ObservableObject
             State.Field.HeadlandLine = null;
             _mapService.SetHeadlandLine(null);
             _mapService.SetHeadlandVisible(false);
-            _fieldHeadland.Clear();
+            // The segments were the session's and went with it.
             HeadlandPreviewLine = null; // setter pushes null to map service
 
             HasHeadland = false;
@@ -1870,12 +1867,12 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var segments = Services.Headland.HeadlandSegmentFileService.Load(field.DirectoryPath);
-            _fieldHeadland.Clear();
+            _sessionData.Headland.Clear();
             foreach (var seg in segments)
             {
                 // Recompute offsets with current algorithm (may differ from saved)
                 ComputeSegmentOffset(seg);
-                _fieldHeadland.Add(seg);
+                _sessionData.Headland.Add(seg);
             }
             if (HeadlandSegments.Count > 0)
                 BuildHeadlandFromSegments();
@@ -3524,8 +3521,8 @@ public partial class MainViewModel : ObservableObject
     /// <summary>
     /// List of headland segments that form the headland polygon.
     /// </summary>
-    // The field's headland segments are FieldHeadland's.
-    public ObservableCollection<Models.Headland.HeadlandSegment> HeadlandSegments => _fieldHeadland.Segments;
+    // The field's headland segments are the session's (FieldHeadland).
+    public ObservableCollection<Models.Headland.HeadlandSegment> HeadlandSegments => _sessionData.Headland.Segments;
 
     private Models.Headland.HeadlandSegment? _selectedHeadlandSegment;
     public Models.Headland.HeadlandSegment? SelectedHeadlandSegment

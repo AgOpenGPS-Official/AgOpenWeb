@@ -246,7 +246,6 @@ public sealed class WebClientRig : IAsyncDisposable
         services.AddSingleton<ISectionControlService, SectionControlService>();
         services.AddSingleton<ITramLineOffsetService, TramLineOffsetService>();
         services.AddSingleton<ITramLineService, TramLineService>();
-        services.AddSingleton<AgOpenWeb.Services.Headland.FieldHeadland>();
         services.AddSingleton<IVehicleProfileService, VehicleProfileService>();
         services.AddSingleton<IToolProfileService, ToolProfileService>();
         services.AddSingleton<INtripProfileService, NtripProfileService>();
