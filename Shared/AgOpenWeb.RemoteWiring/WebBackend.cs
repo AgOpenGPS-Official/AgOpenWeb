@@ -89,11 +89,23 @@ public sealed class WebBackend
     }
 
     /// <summary>Wire cross-referencing services after the container is built: the
-    /// AutoSteerService into UdpCommunicationService for the zero-copy GPS→steering path.
-    /// Replaces the per-platform <c>WireUpServices()</c> DI extensions.</summary>
+    /// AutoSteerService into UdpCommunicationService for the zero-copy GPS→steering path, the
+    /// services AutoSteer reads, and the control loop's rate into section control.
+    /// Replaces the per-platform <c>WireUpServices()</c> DI extensions; services are joined
+    /// here, where they are built, not by casts in the view model.</summary>
     public static void WireCrossServices(IServiceProvider sp)
     {
         var udp = sp.GetRequiredService<IUdpCommunicationService>() as UdpCommunicationService;
         udp?.SetAutoSteerService(sp.GetRequiredService<IAutoSteerService>());
+        (sp.GetRequiredService<IAutoSteerService>() as Services.AutoSteer.AutoSteerService)?.SetTramLineService(sp.GetRequiredService<ITramLineService>());
+        (sp.GetRequiredService<IAutoSteerService>() as Services.AutoSteer.AutoSteerService)?.SetToolPositionService(sp.GetRequiredService<IToolPositionService>());
+        (sp.GetRequiredService<IAutoSteerService>() as Services.AutoSteer.AutoSteerService)?.SetSmartWasService(sp.GetRequiredService<ISmartWasCalibrationService>());
+        if (sp.GetService<ISteerMachineLoopService>() is { } controlLoop)
+        {
+            // TickHz is on the concrete SectionControlService, not the
+            // interface (it's an internal-tuning concern, not a contract).
+            if (sp.GetRequiredService<ISectionControlService>() is Services.Section.SectionControlService scsConcrete)
+                scsConcrete.TickHz = controlLoop.FrequencyHz;
+        }
     }
 }

@@ -412,9 +412,6 @@ public partial class MainViewModel : ObservableObject
         _autoSteerService.StateUpdated += OnAutoSteerStateUpdated;
         _autoSteerService.GuidanceLost += OnGuidanceLost;
         _autoSteerService.SensorKickout += OnSensorKickout;
-        (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetTramLineService(_tramLineService);
-        (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetToolPositionService(_toolPositionService);
-        (_autoSteerService as Services.AutoSteer.AutoSteerService)?.SetSmartWasService(_smartWasService);
         _autoSteerService.Start(); // Enable zero-copy GPS pipeline
 
         // Start the background GPS processing pipeline
@@ -430,10 +427,6 @@ public partial class MainViewModel : ObservableObject
         // Optional in test builds.
         if (_controlLoop is not null)
         {
-            // TickHz is on the concrete SectionControlService, not the
-            // interface (it's an internal-tuning concern, not a contract).
-            if (_sectionControlService is Services.Section.SectionControlService scsConcrete)
-                scsConcrete.TickHz = _controlLoop.FrequencyHz;
             _controlLoop.Ticked += OnControlLoopTicked;
             _controlLoop.Start();
         }
