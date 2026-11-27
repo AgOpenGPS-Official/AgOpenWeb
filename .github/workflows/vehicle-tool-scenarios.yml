@@ -55,6 +55,8 @@ jobs:
 
       - name: Anything new since the last night?
         id: fresh
+        env:
+          NIGHTLY_ALWAYS: ${{ vars.NIGHTLY_ALWAYS }}
         run: |
           # The settings sweep (about 100 min) only when what it covers changed, and on Sundays;
           # the operators every night with a commit.

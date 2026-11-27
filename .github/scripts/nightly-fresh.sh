@@ -7,6 +7,8 @@
 #   nightly-fresh.sh <nightly true|false> [path ...]
 #
 # - Not a nightly (a manual dispatch): always.
+# - The repo variable NIGHTLY_ALWAYS is true (the env of the same name): always. For a freeze, when
+#   develop has no commits but the nightly must keep running on it.
 # - No commit on the branch in the last 25 hours: no.
 # - With paths (the slow harnesses that rarely change, #harness-speed): only when a commit in the
 #   last 25 hours touched one of them, and every Sunday (UTC) whatever changed, so nothing goes
@@ -16,6 +18,7 @@ set -euo pipefail
 nightly="$1"; shift
 out() { echo "run=$1" >> "$GITHUB_OUTPUT"; [ -n "${2:-}" ] && echo "$2" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
 [ "$nightly" != "true" ] && out true
+[ "${NIGHTLY_ALWAYS:-}" = "true" ] && out true "NIGHTLY_ALWAYS is set: every harness every night, commit or not."
 last=$(git log -1 --format=%ct HEAD)
 [ $(( $(date +%s) - last )) -ge 90000 ] && out false "No commit on develop in the last 25 hours; nothing to run."
 [ $# -eq 0 ] && out true
