@@ -9,6 +9,9 @@ ahead of the freeze as its own PR. The total freeze stays. A second pass against
 the startup order stated and its own round, the field lifecycle in two stages, a busy-field
 lifecycle test still to write, a move script, thread checks, a rehearsal, and thirty days, not 26.
 
+The whole plan in one picture, from today's problems through the steps to where it ends:
+[MAINVIEWMODEL_REFACTOR_MIGRATION.png](MAINVIEWMODEL_REFACTOR_MIGRATION.png).
+
 ## Why
 
 Not for elegance. The goal is code a person can review: a change to steering, sections, the GPS
@@ -78,6 +81,12 @@ road, one feature at a time, with classes all round it.
       |
  UDP, files, NTRIP, imagery            infrastructure
 ```
+
+As a diagram, with the plan's item numbers, the threads and the two links the sketch can't show
+(the projectors pulling from `ApplicationState`, and the wiring calling the domain services itself
+after this refactor):
+
+![Where the MainViewModel refactor ends](MAINVIEWMODEL_REFACTOR_TARGET.png)
 
 Not an enterprise layering: no interface per class, no event bus, no `ApplicationService` that
 takes the VM's place. Geometry stays plain functions; the GPS cycle stays a list of direct calls.
@@ -330,6 +339,9 @@ it was never in the surface list), and a nightly on develop after it is merged.
    schedule below is corrected from what it shows.
 
 ## Phase 2: the freeze
+
+The steps, and the problem each takes out, are drawn in
+[MAINVIEWMODEL_REFACTOR_MIGRATION.png](MAINVIEWMODEL_REFACTOR_MIGRATION.png).
 
 | Day | Step |
 |---|---|
