@@ -137,6 +137,9 @@ public static class BackendServices
         services.AddSingleton<ITramLineOffsetService, TramLineOffsetService>();
         services.AddSingleton<ITramLineService, TramLineService>();
 
+        // The open field's flags (refactor item 1)
+        services.AddSingleton<FieldFlags>();
+
         // Vehicle profile service
         services.AddSingleton<IVehicleProfileService, VehicleProfileService>();
         services.AddSingleton<IToolProfileService, ToolProfileService>();

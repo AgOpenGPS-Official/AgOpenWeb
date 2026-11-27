@@ -285,6 +285,7 @@ public sealed class FieldScenarioRig : IAsyncDisposable
         services.AddSingleton<ISectionControlService, SectionControlService>();
         services.AddSingleton<ITramLineOffsetService, TramLineOffsetService>();
         services.AddSingleton<ITramLineService, TramLineService>();
+        services.AddSingleton<AgOpenWeb.Services.FieldFlags>();
         services.AddSingleton<IVehicleProfileService, VehicleProfileService>();
         services.AddSingleton<IToolProfileService, ToolProfileService>();
         services.AddSingleton<INtripProfileService, NtripProfileService>();

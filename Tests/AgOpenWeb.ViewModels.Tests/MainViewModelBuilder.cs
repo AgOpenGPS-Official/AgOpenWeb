@@ -68,6 +68,7 @@ public class MainViewModelBuilder
     public MainViewModel Build()
     {
         var battery = new NullBatteryService();
+        var dispatcher = new AgOpenWeb.Services.Threading.InlineUiDispatcher();
         var vm = new MainViewModel(
             udpService: UdpService,
             gpsService: GpsService,
@@ -104,6 +105,7 @@ public class MainViewModelBuilder
             elevationLogService: Substitute.For<IElevationLogService>(),
             jobService: JobService,
             tramLineService: TramLineService,
+            fieldFlags: new FieldFlags(dispatcher),
             gpsPipelineService: GpsPipelineService,
             intents: Intents,
             logger: Logger,
@@ -111,7 +113,7 @@ public class MainViewModelBuilder
             configStore: ConfigurationStore.Instance,
             persistentStateService: Substitute.For<IPersistentStateService>(),
             batteryService: battery,
-            uiDispatcher: new AgOpenWeb.Services.Threading.InlineUiDispatcher(),
+            uiDispatcher: dispatcher,
             uiTimerFactory: new RecordingTimerFactory(Timers),
             positionEstimator: PositionEstimator);
 

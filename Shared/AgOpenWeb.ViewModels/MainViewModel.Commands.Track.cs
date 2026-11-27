@@ -779,7 +779,7 @@ public partial class MainViewModel
         // Flags Commands
         PlaceRedFlagCommand = new RelayCommand(() => PlaceFlag(FlagColor.Red));
 
-        PlaceFlagHereCommand = new RelayCommand(() => PlaceFlag(NextAutoColor()));
+        PlaceFlagHereCommand = new RelayCommand(() => PlaceFlag(null));
 
         // Section control commands
         ToggleManualModeCommand = new RelayCommand(() =>
