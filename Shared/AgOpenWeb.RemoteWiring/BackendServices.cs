@@ -137,8 +137,6 @@ public static class BackendServices
         services.AddSingleton<ITramLineOffsetService, TramLineOffsetService>();
         services.AddSingleton<ITramLineService, TramLineService>();
 
-        // The open field's flags (refactor item 1)
-        services.AddSingleton<FieldFlags>();
         // The open field's headland segments (item 3)
         services.AddSingleton<FieldHeadland>();
 

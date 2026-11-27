@@ -329,9 +329,9 @@ public partial class MainViewModel
 
     private void CloseFlags()
     {
-        // Clear flags (without saving — IsFieldOpen is already false) so they don't carry
-        // over into the next field (#107)
-        LoadFlagsFromField(null);
+        // The flags were the session's and went with it (#107: they carried over into the next
+        // field): show the empty list. Not saved, IsFieldOpen is already false.
+        UpdateFlagsOnMap();
     }
 
     // ── Contours ──────────────────────────────────────────────────────────────────────────────────

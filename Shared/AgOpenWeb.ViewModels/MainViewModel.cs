@@ -63,7 +63,8 @@ public partial class MainViewModel : ObservableObject
     private readonly IAudioService _audioService;
     private readonly IElevationLogService _elevationLogService;
     private readonly IJobService _jobService;
-    private readonly FieldFlags _fieldFlags;
+    // What the open field session owns: replaced, not cleared, when a session starts.
+    private FieldSessionData _sessionData;
     private readonly Services.Headland.FieldHeadland _fieldHeadland;
     private readonly ITramLineService _tramLineService;
     private bool _hasTramSystemsEverUsed;
@@ -187,7 +188,6 @@ public partial class MainViewModel : ObservableObject
         IElevationLogService elevationLogService,
         IJobService jobService,
         ITramLineService tramLineService,
-        FieldFlags fieldFlags,
         Services.Headland.FieldHeadland fieldHeadland,
         IGpsPipelineService gpsPipelineService,
         IPipelineIntents intents,
@@ -210,7 +210,7 @@ public partial class MainViewModel : ObservableObject
         _dispatcher = uiDispatcher;
         _timerFactory = uiTimerFactory;
         _tramLineService = tramLineService;
-        _fieldFlags = fieldFlags;
+        _sessionData = new FieldSessionData(uiDispatcher);
         _fieldHeadland = fieldHeadland;
 
         // Battery icon in the strip — start the per-platform reader, prime with
@@ -1963,7 +1963,7 @@ public partial class MainViewModel : ObservableObject
     public void PlaceFlagAtWorldPosition(double easting, double northing, FlagColor? color = null)
     {
         if (!FieldIsOpen()) return;
-        var flag = _fieldFlags.Add(easting, northing, color);
+        var flag = _sessionData.Flags.Add(easting, northing, color);
         var actualColor = flag.FlagColor;
         UpdateFlagsOnMap();
         StatusMessage = $"{actualColor} flag '{flag.Name}' at E:{easting:F1} N:{northing:F1}";
@@ -2194,8 +2194,8 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(TramLineCountDisplay));
     }
 
-    // Flag markers: the list and its numbering are FieldFlags'; showing and saving them is here.
-    public ObservableCollection<Flag> Flags => _fieldFlags.Items;
+    // Flag markers: the list and its numbering are the session's (FieldFlags); showing and saving them is here.
+    public ObservableCollection<Flag> Flags => _sessionData.Flags.Items;
 
     /// <summary>
     /// Tracks, flags and tram systems belong to a field: made with none open they stayed in
@@ -2226,7 +2226,7 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        var flag = _fieldFlags.Add(Easting, Northing, color);
+        var flag = _sessionData.Flags.Add(Easting, Northing, color);
         UpdateFlagsOnMap();
         StatusMessage = $"{flag.FlagColor} flag '{flag.Name}' at E:{Easting:F1} N:{Northing:F1}";
     }
@@ -2425,7 +2425,7 @@ public partial class MainViewModel : ObservableObject
                     _logger.LogWarning(ex, "[Flags] Failed to load flags");
                 }
             }
-            _fieldFlags.Replace(loaded);
+            _sessionData.Flags.Replace(loaded);
             UpdateFlagsOnMap();
         }
         finally { _suppressFlagSave = false; }
@@ -2434,19 +2434,19 @@ public partial class MainViewModel : ObservableObject
     // ---- Remote/web flag-list operations (index into Flags, matching the projected list) ----
     public void RenameFlagAt(int index, string name)
     {
-        if (!_fieldFlags.Rename(index, name)) return;
+        if (!_sessionData.Flags.Rename(index, name)) return;
         UpdateFlagsOnMap();
     }
 
     public void SetFlagColorAt(int index, FlagColor color)
     {
-        if (!_fieldFlags.SetColor(index, color)) return;
+        if (!_sessionData.Flags.SetColor(index, color)) return;
         UpdateFlagsOnMap();
     }
 
     public void DeleteFlagAt(int index)
     {
-        if (_fieldFlags.RemoveAt(index) is not { } f) return;
+        if (_sessionData.Flags.RemoveAt(index) is not { } f) return;
         UpdateFlagsOnMap();
         StatusMessage = $"Deleted flag '{f.Name}'";
     }
@@ -2454,7 +2454,7 @@ public partial class MainViewModel : ObservableObject
     public void DeleteAllFlagsRemote()
     {
         int count = Flags.Count;
-        _fieldFlags.Replace(Array.Empty<Flag>());
+        _sessionData.Flags.Replace(Array.Empty<Flag>());
         UpdateFlagsOnMap();
         StatusMessage = $"Deleted {count} flags";
     }

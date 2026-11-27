@@ -37,9 +37,16 @@ public partial class MainViewModel
     /// </summary>
     private int _fieldSession;
 
-    private Task OpenNewSession(FieldOpening o) { _fieldSession++; return Task.CompletedTask; }
+    private Task OpenNewSession(FieldOpening o) { StartSession(); return Task.CompletedTask; }
 
-    private void CloseEndSession() => _fieldSession++;
+    private void CloseEndSession() => StartSession();
+
+    /// <summary>A new session: a new number, and what the last one owned dropped.</summary>
+    private void StartSession()
+    {
+        _fieldSession++;
+        _sessionData = new FieldSessionData(_dispatcher);
+    }
 
     private sealed record OpenStep(string Name, string Why, Func<FieldOpening, Task> Run);
     private sealed record CloseStep(string Name, string Why, Action Run);
@@ -50,7 +57,7 @@ public partial class MainViewModel
     /// <summary>Opening a field, in this order. The previous field is closed before these run.</summary>
     private IReadOnlyList<OpenStep> OpenSteps => _openSteps ??= new OpenStep[]
     {
-        new("session", "first: work started for the field takes its number", OpenNewSession),
+        new("session", "first: a new number for work started for the field, and the session's own data", OpenNewSession),
         new("busy", "the overlay is drawn before the field is read", OpenShowBusy),
         new("open", "the field counts as open for everything loaded below", OpenMarkFieldOpen),
         new("field file", "the origin, before anything placed by it", OpenLoadField),
@@ -77,7 +84,7 @@ public partial class MainViewModel
     /// <summary>Closing a field, in this order, after CloseFieldAsync has saved it.</summary>
     private IReadOnlyList<CloseStep> CloseSteps => _closeSteps ??= new CloseStep[]
     {
-        new("session", "first: what the field started and comes back later is dropped", CloseEndSession),
+        new("session", "first: what the field started and comes back later is dropped, and what it owned", CloseEndSession),
         new("coverage autosave", "a tick can't fire in the middle of the close", CloseCoverageAutosave),
         new("AutoSteer", "off before the track, boundary and U-turn go: the module kept the last steer angle", CloseAutoSteer),
         new("recorded path", "before the sections: a replay left driving puts the Auto master back on (#956)", CloseRecordedPath),
@@ -91,7 +98,7 @@ public partial class MainViewModel
         new("tracks", "", CloseTracks),
         new("U-turn", "", CloseYouTurn),
         new("tram lines", "or the map draws them until the next open (#310)", CloseTram),
-        new("flags", "not saved: the field is already closed (#107)", CloseFlags),
+        new("flags", "the session's flags went with it: the empty list shown (#107)", CloseFlags),
         new("coverage", "", CloseCoverage),
         new("active field", "last: the field service lets go of the field", CloseActiveField),
     };
