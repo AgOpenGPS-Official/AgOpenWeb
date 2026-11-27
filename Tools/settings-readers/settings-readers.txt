@@ -567,7 +567,7 @@ display.autoSteerSound
 display.elevationLogEnabled
   writes   DisplayConfig.ElevationLogEnabled
   app      MainViewModel.HandleGpsUiUpdates
-  app      MainViewModel.OpenFieldCoreAsync
+  app      MainViewModel.OpenElevationLog
   page     SceneProjector.BuildDisplay -> ElevationLogEnabled
   page     SceneProjector.ConfigFingerprint
   js       elevationLogEnabled: used by no script; shown in index.html
