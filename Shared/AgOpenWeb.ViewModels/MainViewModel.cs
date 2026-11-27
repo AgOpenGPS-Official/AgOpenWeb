@@ -344,32 +344,10 @@ public partial class MainViewModel : ObservableObject
 
         // State.Field.Tracks is the SoT (projected to the web + read by guidance); it
         // mirrors SavedTracks, the working collection EVERY creation/management path
-        // mutates. Subscribing once here keeps them in lockstep for ALL paths — not just
+        // mutates. Subscribing to each session's list keeps them in lockstep for ALL paths — not just
         // load/delete, which used to update both by hand (so a freshly-drawn track never
         // reached ApplicationState and was invisible to the web + the Tracks manager).
-        SavedTracks.CollectionChanged += (_, e) =>
-        {
-            var dst = _appState.Field.Tracks;
-            switch (e.Action)
-            {
-                case System.Collections.Specialized.NotifyCollectionChangedAction.Add:
-                    for (int i = 0; i < e.NewItems!.Count; i++)
-                        dst.Insert(e.NewStartingIndex + i, (Track)e.NewItems[i]!);
-                    break;
-                case System.Collections.Specialized.NotifyCollectionChangedAction.Remove:
-                    foreach (var t in e.OldItems!) dst.Remove((Track)t!);
-                    break;
-                case System.Collections.Specialized.NotifyCollectionChangedAction.Replace:
-                    foreach (var t in e.OldItems!) dst.Remove((Track)t!);
-                    for (int i = 0; i < e.NewItems!.Count; i++)
-                        dst.Insert(e.NewStartingIndex + i, (Track)e.NewItems[i]!);
-                    break;
-                default: // Reset (Clear) / Move → rebuild from scratch
-                    dst.Clear();
-                    foreach (var t in SavedTracks) dst.Add(t);
-                    break;
-            }
-        };
+        SavedTracks.CollectionChanged += MirrorTracksToState;
 
         // Live half of the aggregate module-status indicator (see the
         // ConfigStore.Connections subscription above for the configured-set
@@ -1985,7 +1963,33 @@ public partial class MainViewModel : ObservableObject
     }
 
     // Tracks Dialog data properties
-    public ObservableCollection<Track> SavedTracks { get; } = new();
+    // The field's tracks are the session's.
+    public ObservableCollection<Track> SavedTracks => _sessionData.Tracks;
+
+    /// <summary>State.Field.Tracks follows the session's track list (subscribed to each new one).</summary>
+    private void MirrorTracksToState(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        var dst = _appState.Field.Tracks;
+        switch (e.Action)
+        {
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Add:
+                for (int i = 0; i < e.NewItems!.Count; i++)
+                    dst.Insert(e.NewStartingIndex + i, (Track)e.NewItems[i]!);
+                break;
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Remove:
+                foreach (var t in e.OldItems!) dst.Remove((Track)t!);
+                break;
+            case System.Collections.Specialized.NotifyCollectionChangedAction.Replace:
+                foreach (var t in e.OldItems!) dst.Remove((Track)t!);
+                for (int i = 0; i < e.NewItems!.Count; i++)
+                    dst.Insert(e.NewStartingIndex + i, (Track)e.NewItems[i]!);
+                break;
+            default: // Reset (Clear) / Move → rebuild from scratch
+                dst.Clear();
+                foreach (var t in SavedTracks) dst.Add(t);
+                break;
+        }
+    }
 
     private Track? _selectedTrack;
     public Track? SelectedTrack

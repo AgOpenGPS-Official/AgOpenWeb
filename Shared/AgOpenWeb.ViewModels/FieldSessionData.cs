@@ -2,6 +2,8 @@
 // Copyright (C) 2024-2026 AgOpenWeb Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+using System.Collections.ObjectModel;
+using AgOpenWeb.Models.Track;
 using AgOpenWeb.Services;
 using AgOpenWeb.Services.Interfaces;
 
@@ -20,4 +22,8 @@ internal sealed class FieldSessionData(IUiDispatcher host)
 
     /// <summary>The field's headland segments, the lines the headland is built from.</summary>
     public Services.Headland.FieldHeadland Headland { get; } = new(host);
+
+    /// <summary>The field's tracks (AB lines and curves), mirrored into <c>State.Field.Tracks</c>
+    /// for the page and the guidance by the view model.</summary>
+    public ObservableCollection<Track> Tracks { get; } = new();
 }

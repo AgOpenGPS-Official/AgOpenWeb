@@ -37,15 +37,25 @@ public partial class MainViewModel
     /// </summary>
     private int _fieldSession;
 
-    private Task OpenNewSession(FieldOpening o) { StartSession(); return Task.CompletedTask; }
-
-    private void CloseEndSession() => StartSession();
-
-    /// <summary>A new session: a new number, and what the last one owned dropped.</summary>
-    private void StartSession()
+    private Task OpenNewSession(FieldOpening o)
     {
         _fieldSession++;
+        NewSessionData();
+        return Task.CompletedTask;
+    }
+
+    private void CloseEndSession() => _fieldSession++;
+
+    /// <summary>What the closed field owned goes; the no-field session starts with nothing.</summary>
+    private void CloseDropSessionData() => NewSessionData();
+
+    /// <summary>A session's own data, made new: the last one's is dropped, not cleared. The track
+    /// list is followed by State.Field.Tracks, which starts again from the new (empty) one.</summary>
+    private void NewSessionData()
+    {
         _sessionData = new FieldSessionData(_dispatcher);
+        _sessionData.Tracks.CollectionChanged += MirrorTracksToState;
+        _appState.Field.Tracks.Clear();
     }
 
     private sealed record OpenStep(string Name, string Why, Func<FieldOpening, Task> Run);
@@ -84,18 +94,19 @@ public partial class MainViewModel
     /// <summary>Closing a field, in this order, after CloseFieldAsync has saved it.</summary>
     private IReadOnlyList<CloseStep> CloseSteps => _closeSteps ??= new CloseStep[]
     {
-        new("session", "first: what the field started and comes back later is dropped, and what it owned", CloseEndSession),
+        new("session", "first: what the field started and comes back later is dropped", CloseEndSession),
         new("coverage autosave", "a tick can't fire in the middle of the close", CloseCoverageAutosave),
         new("AutoSteer", "off before the track, boundary and U-turn go: the module kept the last steer angle", CloseAutoSteer),
         new("recorded path", "before the sections: a replay left driving puts the Auto master back on (#956)", CloseRecordedPath),
         new("sections", "off, those on by hand too: with no field there is no section bar (#749)", CloseSections),
         new("recordings", "a boundary or line being recorded belongs to this field (#625)", CloseRecordings),
         new("contours", "saved and exported while the field is still there (#110)", CloseContours),
+        new("session data", "after the export, the last step to read the field's tracks: its flags, headland segments and tracks go", CloseDropSessionData),
         new("closed", "the field no longer counts as open for what is cleared below", CloseMarkFieldClosed),
         new("boundary", "", CloseBoundary),
         new("headland", "its segments went with the session: the line and the preview cleared from the map", CloseHeadland),
         new("imagery", "or the closed field's picture stays on screen (#309)", CloseImagery),
-        new("tracks", "", CloseTracks),
+        new("tracks", "the list went with the session: no track selected, Auto Track off", CloseTracks),
         new("U-turn", "", CloseYouTurn),
         new("tram lines", "or the map draws them until the next open (#310)", CloseTram),
         new("flags", "the session's flags went with it: the empty list shown (#107)", CloseFlags),

@@ -288,8 +288,8 @@ public partial class MainViewModel
 
     private void CloseTracks()
     {
-        // Clear tracks (State.Field.Tracks mirrors SavedTracks via the ctor subscription)
-        SavedTracks.Clear();
+        // The tracks were the session's and went with it (State.Field.Tracks started again
+        // from the new, empty list).
         SelectedTrack = null;
         IsAutoTrackEnabled = false; // AgOpenGPS turns Auto Track off with the job
     }
