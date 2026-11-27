@@ -308,7 +308,7 @@ public partial class MainViewModel
             if (profile == null || !profile.AutoConnectOnFieldLoad || IsNtripConnectedTo(profile)) return;
 
             _logger.LogInformation("Field closed; returning to the default NTRIP profile '{ProfileName}'", profile.Name);
-            await SwitchToNtripProfileAsync(profile);
+            await SwitchToNtripProfileAsync(profile, _fieldSession);
         }
         catch (Exception ex)
         {
@@ -323,13 +323,20 @@ public partial class MainViewModel
         profile.CasterPort == NtripCasterPort &&
         profile.MountPoint == NtripMountPoint;
 
-    /// <summary>Drop the current session, if any, and connect with this profile.</summary>
-    private async Task SwitchToNtripProfileAsync(Models.Ntrip.NtripProfile profile)
+    /// <summary>Drop the current session, if any, and connect with this profile. With a field
+    /// session's number (work started for a field), nothing is connected when another field
+    /// session is open by the time the disconnect is done.</summary>
+    private async Task SwitchToNtripProfileAsync(Models.Ntrip.NtripProfile profile, int? fieldSession = null)
     {
         if (_ntripService.IsActive)
         {
             _logger.LogDebug("Disconnecting from current NTRIP caster");
             await _ntripService.DisconnectAsync();
+        }
+        if (fieldSession is { } started && started != _fieldSession)
+        {
+            _logger.LogInformation("NTRIP profile '{ProfileName}' not connected: it was for a field session that has ended", profile.Name);
+            return;
         }
 
         // Reflect the profile in the display props.
@@ -455,7 +462,7 @@ public partial class MainViewModel
             }
 
             _logger.LogInformation("Connecting to NTRIP profile '{ProfileName}' for field '{FieldName}'", profile.Name, fieldName);
-            await SwitchToNtripProfileAsync(profile);
+            await SwitchToNtripProfileAsync(profile, _fieldSession);
         }
         catch (Exception ex)
         {

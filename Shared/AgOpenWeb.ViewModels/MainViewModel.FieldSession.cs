@@ -29,6 +29,18 @@ public partial class MainViewModel
         public Job? ActiveJob { get; set; }
     }
 
+    /// <summary>
+    /// The session's number: a new one when a field is opened and when it is closed. Work started
+    /// for a field and finished later (the field's NTRIP switch, the return to the default caster
+    /// after a close) takes the number when it starts, and drops its result when another session
+    /// is open by the time it comes back: a result can't land in another field.
+    /// </summary>
+    private int _fieldSession;
+
+    private Task OpenNewSession(FieldOpening o) { _fieldSession++; return Task.CompletedTask; }
+
+    private void CloseEndSession() => _fieldSession++;
+
     private sealed record OpenStep(string Name, string Why, Func<FieldOpening, Task> Run);
     private sealed record CloseStep(string Name, string Why, Action Run);
 
@@ -38,6 +50,7 @@ public partial class MainViewModel
     /// <summary>Opening a field, in this order. The previous field is closed before these run.</summary>
     private IReadOnlyList<OpenStep> OpenSteps => _openSteps ??= new OpenStep[]
     {
+        new("session", "first: work started for the field takes its number", OpenNewSession),
         new("busy", "the overlay is drawn before the field is read", OpenShowBusy),
         new("open", "the field counts as open for everything loaded below", OpenMarkFieldOpen),
         new("field file", "the origin, before anything placed by it", OpenLoadField),
@@ -64,7 +77,8 @@ public partial class MainViewModel
     /// <summary>Closing a field, in this order, after CloseFieldAsync has saved it.</summary>
     private IReadOnlyList<CloseStep> CloseSteps => _closeSteps ??= new CloseStep[]
     {
-        new("coverage autosave", "first: a tick can't fire in the middle of the close", CloseCoverageAutosave),
+        new("session", "first: what the field started and comes back later is dropped", CloseEndSession),
+        new("coverage autosave", "a tick can't fire in the middle of the close", CloseCoverageAutosave),
         new("AutoSteer", "off before the track, boundary and U-turn go: the module kept the last steer angle", CloseAutoSteer),
         new("recorded path", "before the sections: a replay left driving puts the Auto master back on (#956)", CloseRecordedPath),
         new("sections", "off, those on by hand too: with no field there is no section bar (#749)", CloseSections),
