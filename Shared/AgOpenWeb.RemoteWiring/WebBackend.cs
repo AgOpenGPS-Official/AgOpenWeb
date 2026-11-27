@@ -102,14 +102,31 @@ public sealed class WebBackend
     }
 
     /// <summary>The services' starts, in the order the view model's constructor had them, then
-    /// the view model's own (<see cref="MainViewModel.Start"/>), which waits for the UDP port.</summary>
-    private static void StartServices(IServiceProvider sp, MainViewModel vm)
+    /// the view model's own (<see cref="MainViewModel.Start"/>), which waits for the UDP port.
+    /// Stopped in reverse by <see cref="StopServices"/>.</summary>
+    public static void StartServices(IServiceProvider sp, MainViewModel vm)
     {
         sp.GetRequiredService<IBatteryService>().Start();
         sp.GetRequiredService<IAutoSteerService>().Start(); // Enable zero-copy GPS pipeline
         sp.GetRequiredService<IGpsPipelineService>().Start(); // the background GPS processing pipeline
         sp.GetService<ISteerMachineLoopService>()?.Start(); // the 100 Hz control loop (#313)
         vm.Start(sp.GetRequiredService<IUdpCommunicationService>().StartAsync());
+    }
+
+    /// <summary>
+    /// The backend's stop, when its web server stops: the reverse of <see cref="StartServices"/>.
+    /// The view model's background loops end first (the module checks), then the control loop
+    /// (it waits up to 1 s for its last tick), the GPS pipeline, AutoSteer and the battery
+    /// reader. The UDP port is closed when the provider is disposed, as before; the control loop
+    /// and the battery reader are disposed then too, a second stop that does nothing.
+    /// </summary>
+    public static void StopServices(IServiceProvider sp, MainViewModel vm)
+    {
+        vm.StopBackgroundLoops();
+        sp.GetService<ISteerMachineLoopService>()?.Stop();
+        sp.GetRequiredService<IGpsPipelineService>().Stop();
+        sp.GetRequiredService<IAutoSteerService>().Stop();
+        sp.GetRequiredService<IBatteryService>().Stop();
     }
 
     /// <summary>Wire cross-referencing services after the container is built: the
