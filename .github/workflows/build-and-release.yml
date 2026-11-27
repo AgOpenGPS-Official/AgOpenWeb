@@ -155,6 +155,13 @@ jobs:
       - name: Run Guidance Algorithm Tests
         run: dotnet run --project TestRunner/TestRunner.csproj
 
+      # Every config.set key and the code that reads it, by the compiler (Tools/settings-readers):
+      # the map must be up to date, and no setting may be read by nothing (#99, #101, #110).
+      - name: Settings reader map
+        run: |
+          dotnet restore Shared/AgOpenWeb.RemoteWiring/ --verbosity minimal
+          dotnet run --project Tools/settings-readers -c Release -- --check
+
       # The Vehicle & Tool scenario harness takes minutes too: built here, run nightly
       # (vehicle-tool-scenarios.yml).
       - name: Build Vehicle & Tool Scenario harness
