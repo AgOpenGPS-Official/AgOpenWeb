@@ -6,7 +6,9 @@ name: Vehicle & Tool Scenarios
 # operator. It takes minutes, so it runs nightly on develop, not on every PR (CI only builds it).
 # The run fails when the harness breaks; the findings are in the report, kept as an artifact
 # and shown in the run's summary. The settings sweep (every guidance, AutoSteer, tool and
-# vehicle setting flipped, about 50 minutes) runs after the careful and careless operators.
+# vehicle setting flipped, 1 h 45 in one piece) runs in the shards of
+# Tools/harness-runner/sweep-shards.txt, each on its own runner beside the two operators: the
+# longest part is about 40 minutes.
 #
 #   - nightly (dispatched with nightly=true): only when develop has a commit from the last day;
 #   - manual dispatch: always, on the branch picked.
@@ -32,19 +34,28 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 concurrency:
-  group: vehicle-tool-scenarios
+  # By branch: a run on a branch (a refactor round) must not cancel develop's, nor the other way.
+  group: vehicle-tool-scenarios-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # The parts: the two operators and the sweep's shards (Tools/harness-runner/sweep-shards.py),
+  # after checking that the shards split the sweep's table, every row in one shard.
+  shards:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        run: echo "matrix=$(python3 Tools/harness-runner/sweep-shards.py matrix Tests/AgOpenWeb.VehicleToolScenarios.Tests/SettingsSweep.cs)" >> "$GITHUB_OUTPUT"
+
   scenarios:
-    # The two operators and the settings sweep run as two jobs side by side, each on its own
-    # runner: together they no longer fit in one job's time.
+    # Each part on its own runner, side by side.
+    needs: shards
     strategy:
       fail-fast: false
-      matrix:
-        part:
-          - { name: operators, who: 'careful,careless' }
-          - { name: sweep, who: sweep }
+      matrix: ${{ fromJSON(needs.shards.outputs.matrix) }}
     name: scenarios (${{ matrix.part.name }})
     runs-on: ubuntu-latest
     timeout-minutes: 300
@@ -60,7 +71,7 @@ jobs:
         run: |
           # The settings sweep (about 100 min) only when what it covers changed, and on Sundays;
           # the operators every night with a commit.
-          if [ "${{ matrix.part.name }}" = sweep ]; then
+          if [ "${{ matrix.part.who }}" = sweep ]; then
             .github/scripts/nightly-fresh.sh "${{ inputs.nightly }}" \
             Shared/AgOpenWeb.Services/AutoSteer \
             Shared/AgOpenWeb.Services/Track \
@@ -99,6 +110,7 @@ jobs:
         env:
           AGOPENWEB_SCENARIO_REPORT: ${{ runner.temp }}/vehicle-tool-scenarios-report.md
           AGOPENWEB_SCENARIO_OPERATOR: ${{ matrix.part.who }}
+          AGOPENWEB_SCENARIO_ONLY: ${{ matrix.part.only }}
         run: dotnet test Tests/AgOpenWeb.VehicleToolScenarios.Tests/ -c Release --filter "FullyQualifiedName~VehicleToolScenarioTests" --verbosity normal
 
       - name: Report to the summary

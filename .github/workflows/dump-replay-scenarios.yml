@@ -42,7 +42,7 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 concurrency:
-  group: dump-replay-scenarios
+  group: dump-replay-scenarios-${{ github.ref }}  # by branch: a round's run must not cancel develop's
   cancel-in-progress: true
 
 jobs:

@@ -34,7 +34,7 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 concurrency:
-  group: web-client-scenarios
+  group: web-client-scenarios-${{ github.ref }}  # by branch: a round's run must not cancel develop's
   cancel-in-progress: true
 
 jobs:

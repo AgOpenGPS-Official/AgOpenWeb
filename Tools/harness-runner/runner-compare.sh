@@ -17,7 +17,7 @@
 # for each report. It exits 1 when a side did not pass, a report is on one side only, or there is none.
 #
 # The jobs AGOPENWEB_SCENARIO_ONLY names run one per container (a shard), on each side, as many at
-# once as the host's cores allow: a job runs on one core, so the wait is the longest job, not the
+# once as the host's threads allow, counting every comparison running on it (CPU_BUDGET): a job runs on one core, so the wait is the longest job, not the
 # sum of them (SHARDS=0 runs the list in one container, as a run without ONLY does). The base side
 # is cached on the host by commit and settings (RESULT_CACHE in run-harness.sh; BASE_CACHE=0 to
 # run it again): a second fix against the same base runs the fix side only.
@@ -41,14 +41,21 @@ while IFS='=' read -r k _; do [ "$k" = AGOPENWEB_SCENARIO_ONLY ] || envs+=(-e "$
 # every finding the same. A shard that lags is reported below.
 [ -n "${AGOPENWEB_SCENARIO_PACE:-}" ] || envs+=(-e AGOPENWEB_SCENARIO_PACE=2)
 
-# The shards: the codes in AGOPENWEB_SCENARIO_ONLY, or "all" for one container a side.
+# The shards: the entries of AGOPENWEB_SCENARIO_ONLY (comma-separated), or "all" for one container
+# a side. An entry is a job code (J1) or name=selector, the selector passed as the shard's ONLY and
+# the name used for its container and folder: the Vehicle & Tool sweep's selectors hold "|" and "."
+# (sweep-type=tool.type, sweep-module=Module|Approach), which a container name cannot.
 only="${AGOPENWEB_SCENARIO_ONLY:-}"
 shards=()
 if [ -n "$only" ] && [ "${SHARDS:-1}" != 0 ]; then
-  for c in $(echo "$only" | tr ',' ' '); do shards+=("$c"); done
+  IFS=',' read -r -a entries <<< "$only"
+  for e in "${entries[@]}"; do shards+=("${e%%=*}"); done
 else
   shards=(all)
 fi
+selector() { # the ONLY a shard runs with
+  local e; for e in "${entries[@]}"; do [ "${e%%=*}" = "$1" ] && { echo "${e#*=}"; return; }; done
+}
 
 # Each run is held to CPUS cores, so runs share the host's threads without starving one another:
 # a starved run misses its watchdogs and reports false findings (a false AUTOSTEER-DROPPED,
@@ -56,13 +63,18 @@ fi
 # one core) 2; at most MAX_RUNS (default the host's threads over CPUS) run at once, the rest wait.
 ncpu=$(dk info --format '{{.NCPU}}')
 if [ "${shards[0]}" = all ]; then cpus="${CPUS:-4}"; else cpus="${CPUS:-2}"; fi
-max="${MAX_RUNS:-$(( ncpu / cpus ))}"; [ "$max" -ge 1 ] || max=1
+# The host's threads are shared by every comparison running on it, not shared out per comparison: a
+# container starts when the threads of all the harness containers on the host plus its own fit in
+# CPU_BUDGET (default the host's), so several comparisons run at once and fill the host without
+# starving a run. MAX_RUNS still caps this comparison's own containers when set.
+budget="${CPU_BUDGET:-$ncpu}"
+max="${MAX_RUNS:-0}"
 
 start() { # side code
   local side=$1 code=$2; shift 2
   local ref=$fix; [ "$side" = base ] && ref=$base
   local args=(run -d --cpus "$cpus" --name "$name-$side-$code" -v aow-cache:/cache "${envs[@]}")
-  if [ "$code" != all ]; then args+=(-e "AGOPENWEB_SCENARIO_ONLY=$code"); elif [ -n "$only" ]; then args+=(-e AGOPENWEB_SCENARIO_ONLY); fi
+  if [ "$code" != all ]; then args+=(-e "AGOPENWEB_SCENARIO_ONLY=$(selector "$code")"); elif [ -n "$only" ]; then args+=(-e AGOPENWEB_SCENARIO_ONLY); fi
   [ "$side" = base ] && [ "${BASE_CACHE:-1}" != 0 ] && args+=(-e RESULT_CACHE=1)
   dk "${args[@]}" aow-harness:latest "$ref" "$proj" "$@" >/dev/null
 }
@@ -134,6 +146,22 @@ reap() {
     fi
   done
 }
+# Threads held by the harness containers running on the host now (their --cpus).
+used_cpus() {
+  local ids; ids=$(dk ps --filter ancestor=aow-harness:latest -q)
+  [ -n "$ids" ] || { echo 0; return; }
+  dk inspect -f '{{.HostConfig.NanoCpus}}' $ids | awk '{ s += $1 } END { printf "%d", s / 1000000000 }'
+}
+# Two comparisons must not both see room for their next container at the same moment: the check
+# and the start are made under a lock on this machine (every comparison is started from it). A lock
+# older than 5 minutes was left by a comparison that was killed.
+lock=${TMPDIR:-/tmp}/aow-runner-slot.lock
+take_lock() {
+  until mkdir "$lock" 2>/dev/null; do
+    [ -n "$(find "$lock" -maxdepth 0 -mmin +5 2>/dev/null)" ] && rmdir "$lock" 2>/dev/null
+    sleep 2
+  done
+}
 free_kb() { dk run --rm --entrypoint df aow-harness:latest -Pk / 2>/dev/null | awk 'NR==2 {print $4}'; }
 
 runs=()
@@ -142,17 +170,20 @@ for item in "${runs[@]}"; do
   waited=0
   while :; do
     reap
-    busy=$(dk ps --filter ancestor=aow-harness:latest -q | wc -l | tr -d ' ')
-    if [ "$busy" -lt "$max" ]; then
+    take_lock
+    used=$(used_cpus); mine=$(ls "$running" | wc -l | tr -d ' ')
+    if [ $(( used + cpus )) -le "$budget" ] && { [ "$max" = 0 ] || [ "$mine" -lt "$max" ]; }; then
       free=$(free_kb); free=${free:-0}
       [ "$free" -ge "$min_free_kb" ] && break
       [ $waited = 2 ] || { echo "-- the host has $(( free / 1024 / 1024 )) GB free, under ${MIN_FREE_GB:-10}; $item waits"; waited=2; }
     else
-      [ $waited = 1 ] || { echo "-- the host runs $busy of $max harness containers; $item waits for a slot"; waited=1; }
+      [ $waited = 1 ] || { echo "-- the host's harness containers hold $used of $budget threads; $item ($cpus) waits"; waited=1; }
     fi
+    rmdir "$lock" 2>/dev/null
     sleep 15
   done
   start "${item%/*}" "${item#*/}" "$@"
+  rmdir "$lock" 2>/dev/null
   date +%s > "$running/${item%/*}.${item#*/}"
   echo "== $item started: $name-${item%/*}-${item#*/}"
 done
