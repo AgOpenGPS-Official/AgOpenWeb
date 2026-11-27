@@ -24,7 +24,7 @@ public class Part3FileIoTests
             using (var w = new System.IO.StreamWriter(zip.CreateEntry("doc.kml").Open()))
                 w.Write("<kml><coordinates>-87.1,32.5,0 -87.2,32.6,0</coordinates></kml>");
 
-            using var r = MainViewModel.OpenKmlText(path);
+            using var r = AgOpenWeb.Services.Kml.KmlBoundaryFile.OpenKmlText(path);
             Assert.That(r.ReadToEnd(), Does.Contain("<coordinates>-87.1,32.5,0"));
         }
         finally { System.IO.File.Delete(path); }
