@@ -1,0 +1,2262 @@
+# The settings reader map: Tools/settings-readers (README.md). Generated; do not edit.
+# app = read by AgOpenWeb's own code; page = sent to the web client; save = saved/restored only;
+# report = the bug report dump; routing = read by config.set itself; via = the store's own members it passes through.
+# Store bookkeeping, left out below: ConfigurationStore.HasUnsavedChanges
+
+# Settings no app or page code reads (0):
+
+autosteer.ackermann
+  writes   AutoSteerConfig.Ackermann
+  app      AckermannTestStepViewModel.OnEntering
+  app      AckermannTestStepViewModel.StartRecording
+  app      AutoSteerConfigViewModel.InitializeTab2Commands
+  app      PgnBuilder.BuildSteerSettingsPgn
+  page     SceneProjector.BuildAutoSteer -> Ackermann
+  page     SceneProjector.ConfigFingerprint
+  js       ackermann: wizards.js; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.acquireFactor
+  writes   GuidanceConfig.GoalPointAcquireFactor
+  app      GpsPipelineService.GoalLookAheadFor
+  page     SceneProjector.BuildAutoSteer -> AcquireFactor
+  page     SceneProjector.ConfigFingerprint
+  js       acquireFactor: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, VehicleProfileJsonService
+
+autosteer.adConverter
+  writes   AutoSteerConfig.AdConverter
+  app      HardwareConfigStepViewModel.OnEntering
+  app      PgnBuilder.BuildSteerConfigPgn  (via AutoSteerConfig.GetSetting0Byte)
+  page     SceneProjector.BuildAutoSteer -> AdConverter
+  page     SceneProjector.ConfigFingerprint
+  js       adConverter: wizards.js; shown in index.html
+  save     ConfigurationService
+
+autosteer.cmPerPixel
+  writes   AutoSteerConfig.CmPerPixel
+  app      AutoSteerConfigViewModel.InitializeTab9Commands
+  page     SceneProjector.BuildAutoSteer -> CmPerPixel
+  page     SceneProjector.ConfigFingerprint
+  js       cmPerPixel: card-pane.js, map-layers.js; shown in settings-panels.js
+  save     ConfigurationService
+
+autosteer.countsPerDegree
+  writes   AutoSteerConfig.CountsPerDegree
+  app      AutoSteerConfigViewModel.InitializeTab2Commands
+  app      CpdCircleTestStepViewModel.OnEntering
+  app      CpdCircleTestStepViewModel.ProcessGpsUpdate
+  app      CpdCircleTestStepViewModel.ReloadFromStore
+  app      PgnBuilder.BuildSteerSettingsPgn
+  app      SmartWasViewModel.Apply
+  app      SmartWasViewModel.RecommendedOffsetCounts
+  app      WasCalibrationStepViewModel.ZeroWas
+  page     SceneProjector.BuildAutoSteer -> CountsPerDegree
+  page     SceneProjector.ConfigFingerprint
+  js       countsPerDegree: wizards.js; shown in config-panels.js, index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.currentSensorEnabled
+  writes   AutoSteerConfig.CurrentSensorEnabled
+  app      AutoSteerConfigViewModel.InitializeTab5Commands
+  app      AutoSteerConfigViewModel.OnUdpDataReceived
+  app      AutoSteerService.ProcessSensorData
+  app      MainViewModel.ModuleStoppedSteeringReason
+  app      PgnBuilder.BuildSteerConfigPgn  (via AutoSteerConfig.GetSetting1Byte)
+  app      PgnBuilder.SensorTripByte
+  app      SpeedAndSensorsStepViewModel.OnEntering
+  page     SceneProjector.BuildAutoSteer -> CurrentSensorEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       currentSensorEnabled: wizards.js; shown in config-panels.js, index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.currentTripPoint
+  writes   AutoSteerConfig.CurrentTripPoint
+  app      AutoSteerService.ProcessSensorData
+  app      MainViewModel.ModuleStoppedSteeringReason
+  app      PgnBuilder.SensorTripByte
+  page     SceneProjector.BuildAutoSteer -> CurrentTripPoint
+  page     SceneProjector.ConfigFingerprint
+  js       currentTripPoint: used by no script; shown in index.html
+  save     ConfigurationService
+
+autosteer.danfossEnabled
+  writes   AutoSteerConfig.DanfossEnabled
+  app      AutoSteerConfigViewModel.InitializeTab6Commands
+  app      HardwareConfigStepViewModel.OnEntering
+  app      PgnBuilder.BuildSteerConfigPgn  (via AutoSteerConfig.GetSetting1Byte)
+  page     SceneProjector.BuildAutoSteer -> DanfossEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       danfossEnabled: wizards.js; shown in index.html
+  save     ConfigurationService
+
+autosteer.deadzoneDelay
+  writes   AutoSteerConfig.DeadzoneDelay
+  app      AutoSteerConfigViewModel.InitializeTab3Commands
+  app      AutoSteerService.UpdateGuidanceResults
+  page     SceneProjector.BuildAutoSteer -> DeadzoneDelay
+  page     SceneProjector.ConfigFingerprint
+  js       deadzoneDelay: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.deadzoneHeading
+  writes   AutoSteerConfig.DeadzoneHeading
+  app      AutoSteerConfigViewModel.InitializeTab3Commands
+  app      AutoSteerService.UpdateGuidanceResults
+  app      SpeedAndSensorsStepViewModel.OnEntering
+  page     SceneProjector.BuildAutoSteer -> DeadzoneHeading
+  page     SceneProjector.ConfigFingerprint
+  js       deadzoneHeading: wizards.js; shown in index.html
+  save     ConfigurationService
+
+autosteer.externalEnable
+  writes   AutoSteerConfig.ExternalEnable
+  app      HardwareConfigStepViewModel.OnEntering
+  app      MainViewModel.UpdateModuleSteeringState
+  app      MainViewModel.UpdateModuleSwitches
+  app      PgnBuilder.BuildSteerConfigPgn  (via AutoSteerConfig.GetSetting0Byte)
+  page     SceneProjector.BuildAutoSteer -> ExternalEnable
+  page     SceneProjector.ConfigFingerprint
+  js       externalEnable: wizards.js; shown in index.html
+  save     ConfigurationService
+
+autosteer.guidanceBarOn
+  writes   AutoSteerConfig.GuidanceBarOn
+  app      AutoSteerConfigViewModel.InitializeTab9Commands
+  page     SceneProjector.BuildAutoSteer -> GuidanceBarOn
+  page     SceneProjector.ConfigFingerprint
+  js       guidanceBarOn: card-pane.js, map-layers.js, overlays.js
+  save     ConfigurationService
+
+autosteer.imuAxisSwap
+  writes   AutoSteerConfig.ImuAxisSwap
+  app      PgnBuilder.BuildSteerConfigPgn  (via AutoSteerConfig.GetSetting1Byte)
+  page     SceneProjector.BuildAutoSteer -> ImuAxisSwap
+  page     SceneProjector.ConfigFingerprint
+  js       imuAxisSwap: used by no script; shown in index.html
+  save     ConfigurationService
+
+autosteer.integralGain
+  writes   GuidanceConfig.PurePursuitIntegralGain
+  app      GpsPipelineService.CalculateTrackGuidance
+  app      GpsPipelineService.ContourParamsFor
+  app      SteeringGainsStepViewModel.OnEntering
+  app      SteeringGainsStepViewModel.ReloadFromStore
+  page     SceneProjector.BuildAutoSteer -> IntegralGain
+  page     SceneProjector.ConfigFingerprint
+  js       integralGain: wizards.js; shown in index.html
+  save     ProfileJsonServiceV1, VehicleProfileJsonService
+
+autosteer.invertMotor
+  writes   AutoSteerConfig.InvertMotor
+  app      AutoMotorCalibrationStepViewModel.OnEntering
+  app      AutoMotorCalibrationStepViewModel.RunKpRampAsync
+  app      AutoSteerConfigViewModel.InitializeTab6Commands
+  app      PgnBuilder.BuildSteerConfigPgn  (via AutoSteerConfig.GetSetting0Byte)
+  page     SceneProjector.BuildAutoSteer -> InvertMotor
+  page     SceneProjector.ConfigFingerprint
+  js       invertMotor: used by no script; shown in index.html
+  save     ConfigurationService
+
+autosteer.invertRelays
+  writes   AutoSteerConfig.InvertRelays
+  app      AutoSteerConfigViewModel.InitializeTab6Commands
+  app      HardwareConfigStepViewModel.OnEntering
+  app      PgnBuilder.BuildSteerConfigPgn  (via AutoSteerConfig.GetSetting0Byte)
+  page     SceneProjector.BuildAutoSteer -> InvertRelays
+  page     SceneProjector.ConfigFingerprint
+  js       invertRelays: wizards.js; shown in index.html
+  save     ConfigurationService
+
+autosteer.invertWas
+  writes   AutoSteerConfig.InvertWas, AutoSteerConfig.WasOffset
+  app      AutoSteerConfigViewModel.InitializeTab2Commands
+  app      AutoSteerConfigViewModel.InitializeTab6Commands
+  app      AutoSteerConfigViewModel.InitializeTab6Commands  (via AutoSteerConfig.SetInvertWasKeepingCentre)
+  app      AutoSteerConfigViewModel.InitializeTab6Commands  (via AutoSteerConfig._invertWas > AutoSteerConfig.SetInvertWasKeepingCentre)
+  app      PgnBuilder.BuildSteerConfigPgn  (via AutoSteerConfig.GetSetting0Byte)
+  app      PgnBuilder.BuildSteerSettingsPgn
+  app      WasCalibrationStepViewModel.OnEntering
+  app      WasCalibrationStepViewModel.OnStoreChanged
+  app      WasCalibrationStepViewModel.ZeroWas
+  page     SceneProjector.BuildAutoSteer -> InvertWas
+  page     SceneProjector.BuildAutoSteer -> WasOffset
+  page     SceneProjector.ConfigFingerprint
+  routing  RemoteServerWiring.ApplyConfigSet  (via AutoSteerConfig.SetInvertWasKeepingCentre)
+  routing  RemoteServerWiring.ApplyConfigSet  (via AutoSteerConfig._invertWas > AutoSteerConfig.SetInvertWasKeepingCentre)
+  js       invertWas: wizards.js; shown in index.html
+  js       wasOffset: wizards.js; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.isStanleyMode
+  writes   GuidanceConfig.IsPurePursuit
+  app      GpsPipelineService.CalculateDisplayGuidance  (via GuidanceConfig.IsStanley)
+  app      GpsPipelineService.CalculateTrackGuidance  (via GuidanceConfig.IsStanley)
+  app      GpsPipelineService.CalculateYouTurnGuidance  (via GuidanceConfig.IsStanley)
+  app      GpsPipelineService.ContourParamsFor  (via GuidanceConfig.IsStanley)
+  app      GpsPipelineService.ProcessCycle  (via GuidanceConfig.IsStanley)
+  app      SteeringGainsStepViewModel.OnEntering  (via GuidanceConfig.IsStanley)
+  page     SceneProjector.BuildAutoSteer -> IsStanleyMode  (via GuidanceConfig.IsStanley)
+  page     SceneProjector.ConfigFingerprint  (via GuidanceConfig.IsStanley)
+  js       isStanleyMode: wizards.js; shown in config-panels.js
+  save     ProfileJsonServiceV1, VehicleProfileJsonService
+
+autosteer.lightbarEnabled
+  writes   AutoSteerConfig.LightbarEnabled
+  app      AutoSteerConfigViewModel.InitializeTab9Commands
+  app      AutoSteerConfigViewModel.IsBarEnabled
+  page     SceneProjector.BuildAutoSteer -> LightbarEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       lightbarEnabled: card-pane.js, map-layers.js, overlays.js; shown in index.html, settings-panels.js
+  save     ConfigurationService
+
+autosteer.lineWidth
+  writes   AutoSteerConfig.LineWidth
+  app      AutoSteerConfigViewModel.InitializeTab9Commands
+  page     SceneProjector.BuildAutoSteer -> LineWidth
+  page     SceneProjector.ConfigFingerprint
+  js       lineWidth: hud-tools.js, map-draw.js, vt.js; shown in index.html
+  save     ConfigurationService
+
+autosteer.manualTurnsEnabled
+  writes   AutoSteerConfig.ManualTurnsEnabled
+  app      AutoSteerConfigViewModel.InitializeTab8Commands
+  app      MainViewModel.ManualTurnTooFast
+  app      SpeedAndSensorsStepViewModel.OnEntering
+  page     SceneProjector.BuildAutoSteer -> ManualTurnsEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       manualTurnsEnabled: used by no script; shown in index.html
+  save     ConfigurationService
+
+autosteer.manualTurnsSpeed
+  writes   AutoSteerConfig.ManualTurnsSpeed
+  app      AutoSteerConfigViewModel.InitializeTab8Commands
+  app      MainViewModel.ManualTurnTooFast
+  page     SceneProjector.BuildAutoSteer -> ManualTurnsSpeed
+  page     SceneProjector.ConfigFingerprint
+  js       manualTurnsSpeed: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.maxPwm
+  writes   AutoSteerConfig.MaxPwm
+  app      AutoMotorCalibrationStepViewModel.OnLeaving
+  app      AutoMotorCalibrationStepViewModel.RunKpRampAsync
+  app      AutoSteerConfigViewModel.InitializeTab4Commands
+  app      AutoSteerConfigViewModel.OnUdpDataReceived
+  app      PgnBuilder.BuildSteerSettingsPgn
+  page     SceneProjector.BuildAutoSteer -> MaxPwm
+  page     SceneProjector.ConfigFingerprint
+  js       maxPwm: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.maxSteerAngle
+  writes   VehicleConfig.MaxSteerAngle
+  app      AutoSteerConfigViewModel.FreeDriveLimit
+  app      AutoSteerConfigViewModel.InitializeTab2Commands
+  app      GpsPipelineService.CalculateDisplayGuidance
+  app      GpsPipelineService.CalculateTrackGuidance
+  app      GpsPipelineService.CalculateYouTurnGuidance
+  app      GpsPipelineService.ContourParamsFor
+  app      GpsPipelineService.ProcessCycle
+  app      MaxSteeringAngleStepViewModel.OnEntering
+  app      PgnBuilder.BuildVehicleGeometryPgn
+  page     SceneProjector.BuildAutoSteer
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  save     ConfigurationService, ProfileJsonServiceV1, VehicleProfileJsonService
+
+autosteer.maxSteerSpeed
+  writes   AutoSteerConfig.MaxSteerSpeed
+  app      AutoSteerConfigViewModel.InitializeTab8Commands
+  app      GpsPipelineService.CheckSteerSpeedLimits
+  app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.TramValueRefused  (via VehicleToolLimits.Check)
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via VehicleToolLimits.Check)
+  app      SpeedAndSensorsStepViewModel.OnEntering
+  app      SpeedAndSensorsStepViewModel.ReloadFromStore
+  page     SceneProjector.BuildAutoSteer -> MaxSteerSpeed
+  page     SceneProjector.ConfigFingerprint
+  js       maxSteerSpeed: wizards.js; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.minPwm
+  writes   AutoSteerConfig.MinPwm
+  app      AutoMotorCalibrationStepViewModel.OnEntering
+  app      AutoMotorCalibrationStepViewModel.RunKpRampAsync
+  app      AutoSteerConfigViewModel.InitializeTab4Commands
+  app      AutoSteerConfigViewModel.OnUdpDataReceived
+  app      PgnBuilder.BuildSteerSettingsPgn
+  page     SceneProjector.BuildAutoSteer -> MinPwm
+  page     SceneProjector.ConfigFingerprint
+  js       minPwm: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.minSteerSpeed
+  writes   AutoSteerConfig.MinSteerSpeed
+  app      AutoSteerConfigViewModel.InitializeTab8Commands
+  app      GpsPipelineService.CheckSteerSpeedLimits
+  app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.TramValueRefused  (via VehicleToolLimits.Check)
+  app      PgnBuilder.BuildSteerConfigPgn
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via VehicleToolLimits.Check)
+  app      SpeedAndSensorsStepViewModel.OnEntering
+  app      SpeedAndSensorsStepViewModel.ReloadFromStore
+  page     SceneProjector.BuildAutoSteer -> MinSteerSpeed
+  page     SceneProjector.ConfigFingerprint
+  js       minSteerSpeed: wizards.js; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.motorDriver
+  writes   AutoSteerConfig.MotorDriver
+  app      HardwareConfigStepViewModel.OnEntering
+  app      PgnBuilder.BuildSteerConfigPgn  (via AutoSteerConfig.GetSetting0Byte)
+  page     SceneProjector.BuildAutoSteer -> MotorDriver
+  page     SceneProjector.ConfigFingerprint
+  js       motorDriver: wizards.js; shown in index.html
+  save     ConfigurationService
+
+autosteer.nextGuidanceTime
+  writes   AutoSteerConfig.NextGuidanceTime
+  app      AutoSteerConfigViewModel.InitializeTab9Commands
+  app      GpsPipelineService.ProcessCycle
+  page     SceneProjector.BuildAutoSteer -> NextGuidanceTime
+  page     SceneProjector.ConfigFingerprint
+  js       nextGuidanceTime: used by no script; shown in index.html
+  save     ConfigurationService
+
+autosteer.nudgeDistance
+  writes   AutoSteerConfig.NudgeDistance
+  app      AutoSteerConfigViewModel.InitializeTab9Commands
+  app      MainViewModel.InitializeTrackCommands
+  page     SceneProjector.BuildAutoSteer -> NudgeDistance
+  page     SceneProjector.ConfigFingerprint
+  js       nudgeDistance: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.pressureSensorEnabled
+  writes   AutoSteerConfig.PressureSensorEnabled
+  app      AutoSteerConfigViewModel.InitializeTab5Commands
+  app      AutoSteerConfigViewModel.OnUdpDataReceived
+  app      AutoSteerService.ProcessSensorData
+  app      MainViewModel.ModuleStoppedSteeringReason
+  app      PgnBuilder.BuildSteerConfigPgn  (via AutoSteerConfig.GetSetting1Byte)
+  app      PgnBuilder.SensorTripByte
+  app      SpeedAndSensorsStepViewModel.OnEntering
+  page     SceneProjector.BuildAutoSteer -> PressureSensorEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       pressureSensorEnabled: wizards.js; shown in config-panels.js, index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.pressureTripPoint
+  writes   AutoSteerConfig.PressureTripPoint
+  app      AutoSteerService.ProcessSensorData
+  app      MainViewModel.ModuleStoppedSteeringReason
+  app      PgnBuilder.SensorTripByte
+  page     SceneProjector.BuildAutoSteer -> PressureTripPoint
+  page     SceneProjector.ConfigFingerprint
+  js       pressureTripPoint: used by no script; shown in index.html
+  save     ConfigurationService
+
+autosteer.proportionalGain
+  writes   AutoSteerConfig.ProportionalGain
+  app      AutoMotorCalibrationStepViewModel.RunKpRampAsync
+  app      AutoSteerConfigViewModel.InitializeTab4Commands
+  app      AutoSteerConfigViewModel.OnUdpDataReceived
+  app      PgnBuilder.BuildSteerSettingsPgn
+  app      SteeringGainsStepViewModel.OnEntering
+  app      SteeringGainsStepViewModel.ReloadFromStore
+  page     SceneProjector.BuildAutoSteer -> ProportionalGain
+  page     SceneProjector.ConfigFingerprint
+  js       proportionalGain: wizards.js; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.refNudgeDistance
+  writes   AutoSteerConfig.RefNudgeDistance
+  app      MainViewModel.InitializeRefNudgeCommands
+  page     SceneProjector.BuildAutoSteer -> RefNudgeDistance
+  page     SceneProjector.ConfigFingerprint
+  js       refNudgeDistance: tracks.js; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.sideHillCompensation
+  writes   AutoSteerConfig.SideHillCompensation
+  app      AutoSteerConfigViewModel.InitializeTab7Commands
+  app      GpsPipelineService.CalculateTrackGuidance
+  app      GpsPipelineService.ContourParamsFor
+  app      SteeringGainsStepViewModel.OnEntering
+  app      SteeringGainsStepViewModel.ReloadFromStore
+  page     SceneProjector.BuildAutoSteer -> SideHillCompensation
+  page     SceneProjector.ConfigFingerprint
+  js       sideHillCompensation: wizards.js; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.speedFactor
+  writes   GuidanceConfig.GoalPointLookAheadMult
+  app      GpsPipelineService.GoalLookAheadFor
+  page     SceneProjector.BuildAutoSteer -> SpeedFactor
+  page     SceneProjector.ConfigFingerprint
+  js       speedFactor: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, VehicleProfileJsonService
+
+autosteer.stanleyAggressiveness
+  writes   GuidanceConfig.StanleyDistanceErrorGain
+  app      GpsPipelineService.CalculateDisplayGuidance
+  app      GpsPipelineService.CalculateTrackGuidance
+  app      GpsPipelineService.CalculateYouTurnGuidance
+  app      GpsPipelineService.ContourParamsFor
+  app      SteeringGainsStepViewModel.OnEntering
+  app      SteeringGainsStepViewModel.ReloadFromStore
+  page     SceneProjector.BuildAutoSteer -> StanleyAggressiveness
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       stanleyAggressiveness: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, VehicleProfileJsonService
+
+autosteer.stanleyOvershootReduction
+  writes   GuidanceConfig.StanleyHeadingErrorGain
+  app      GpsPipelineService.CalculateDisplayGuidance
+  app      GpsPipelineService.CalculateTrackGuidance
+  app      GpsPipelineService.CalculateYouTurnGuidance
+  app      GpsPipelineService.ContourParamsFor
+  page     SceneProjector.BuildAutoSteer -> StanleyOvershootReduction
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       stanleyOvershootReduction: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, VehicleProfileJsonService
+
+autosteer.steerBarEnabled
+  writes   AutoSteerConfig.SteerBarEnabled
+  app      AutoSteerConfigViewModel.InitializeTab9Commands
+  app      AutoSteerConfigViewModel.IsBarEnabled
+  page     SceneProjector.BuildAutoSteer -> SteerBarEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       steerBarEnabled: card-pane.js, map-layers.js, overlays.js; shown in index.html, settings-panels.js
+  save     ConfigurationService
+
+autosteer.steerInReverse
+  writes   AutoSteerConfig.SteerInReverse
+  app      AutoSteerConfigViewModel.InitializeTab7Commands
+  app      GpsPipelineService.ProcessCycle
+  app      SpeedAndSensorsStepViewModel.OnEntering
+  page     SceneProjector.BuildAutoSteer -> SteerInReverse
+  page     SceneProjector.ConfigFingerprint
+  js       steerInReverse: wizards.js; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+autosteer.steerResponseHold
+  writes   GuidanceConfig.GoalPointLookAheadHold
+  app      GpsPipelineService.GoalLookAheadFor
+  app      SteeringGainsStepViewModel.OnEntering
+  app      SteeringGainsStepViewModel.ReloadFromStore
+  page     SceneProjector.BuildAutoSteer -> SteerResponseHold
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       steerResponseHold: wizards.js; shown in index.html
+  save     ProfileJsonServiceV1, VehicleProfileJsonService
+
+autosteer.turnSensorCounts
+  writes   AutoSteerConfig.TurnSensorCounts
+  app      AutoSteerConfigViewModel.InitializeTestModeCommands
+  app      PgnBuilder.SensorTripByte
+  page     SceneProjector.BuildAutoSteer -> TurnSensorCounts
+  page     SceneProjector.ConfigFingerprint
+  js       turnSensorCounts: used by no script; shown in index.html
+  save     ConfigurationService
+
+autosteer.turnSensorEnabled
+  writes   AutoSteerConfig.TurnSensorEnabled
+  app      AutoSteerConfigViewModel.InitializeTab5Commands
+  app      PgnBuilder.BuildSteerConfigPgn  (via AutoSteerConfig.GetSetting0Byte)
+  app      SpeedAndSensorsStepViewModel.OnEntering
+  page     SceneProjector.BuildAutoSteer -> TurnSensorEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       turnSensorEnabled: wizards.js; shown in config-panels.js, index.html
+  save     ConfigurationService
+
+autosteer.uTurnCompensation
+  writes   GuidanceConfig.UTurnCompensation
+  app      GpsPipelineService.CalculateYouTurnGuidance
+  page     SceneProjector.BuildAutoSteer
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  save     ProfileJsonServiceV1, VehicleProfileJsonService
+
+autosteer.wasOffset
+  writes   AutoSteerConfig.WasOffset
+  app      AutoSteerConfigViewModel.InitializeTab2Commands
+  app      AutoSteerConfigViewModel.InitializeTab6Commands  (via AutoSteerConfig.SetInvertWasKeepingCentre)
+  app      PgnBuilder.BuildSteerSettingsPgn
+  app      WasCalibrationStepViewModel.OnEntering
+  app      WasCalibrationStepViewModel.OnStoreChanged
+  app      WasCalibrationStepViewModel.ZeroWas
+  page     SceneProjector.BuildAutoSteer -> WasOffset
+  page     SceneProjector.ConfigFingerprint
+  routing  RemoteServerWiring.ApplyConfigSet  (via AutoSteerConfig.SetInvertWasKeepingCentre)
+  js       wasOffset: wizards.js; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService
+
+conn.agShareApiKey
+  writes   ConnectionConfig.AgShareApiKey
+  app      AgShareRemote.Handle
+  app      MainViewModel.InitializeBoundaryCommands
+  page     SceneProjector.AgShareFingerprint
+  page     SceneProjector.BuildAgShare
+  save     ConfigurationService
+
+conn.agShareEnabled
+  writes   ConnectionConfig.AgShareEnabled
+  app      AgShareRemote.Handle
+  app      MainViewModel.InitializeBoundaryCommands
+  page     SceneProjector.AgShareFingerprint
+  page     SceneProjector.BuildAgShare -> Enabled
+  js       enabled: field-builder.js, fields.js
+  save     ConfigurationService
+
+conn.agShareServer
+  writes   ConnectionConfig.AgShareServer
+  app      AgShareRemote.Handle
+  app      MainViewModel.InitializeBoundaryCommands
+  page     SceneProjector.AgShareFingerprint
+  page     SceneProjector.BuildAgShare
+  save     ConfigurationService
+
+conn.autoSteerConfigured
+  writes   ConnectionConfig.IsAutoSteerConfigured
+  app      MainViewModel.ModuleStatusKind
+  page     SceneProjector.BuildStatus -> AutoSteerConfigured
+  js       autoSteerConfigured: not decoded by transport.js under this name
+  save     ConfigurationService
+
+conn.gpsConfigured
+  writes   ConnectionConfig.IsGpsConfigured
+  app      MainViewModel (initializer)
+  app      MainViewModel.ModuleStatusKind
+  page     SceneProjector.BuildStatus -> GpsConfigured
+  js       gpsConfigured: not decoded by transport.js under this name
+  save     ConfigurationService
+
+conn.imuConfigured
+  writes   ConnectionConfig.IsImuConfigured
+  app      MainViewModel.ModuleStatusKind
+  page     SceneProjector.BuildStatus -> ImuConfigured
+  js       imuConfigured: not decoded by transport.js under this name
+  save     ConfigurationService
+
+conn.machineConfigured
+  writes   ConnectionConfig.IsMachineConfigured
+  app      MainViewModel.ModuleStatusKind
+  app      MainViewModel.UpdateMachineModuleLost
+  page     SceneProjector.BuildStatus -> MachineConfigured
+  js       machineConfigured: not decoded by transport.js under this name
+  save     ConfigurationService
+
+conn.ntripEnabled
+  writes   ConnectionConfig.NtripEnabled
+  app      MainViewModel.ApplyNtripModeAsync
+  app      MainViewModel.ConnectDefaultNtripProfileOnStartupAsync
+  app      MainViewModel.ConnectNewNtripProfileAsync
+  app      MainViewModel.HandleNtripProfileForFieldAsync
+  app      MainViewModel.OnNtripEnabledChanged
+  app      MainViewModel.RestoreDefaultNtripProfileAsync
+  app      MainViewModel.UseNtripProfileAsync
+  page     SceneProjector.BuildStatus -> NtripEnabled
+  js       ntripEnabled: not decoded by transport.js under this name
+  save     ConfigurationService
+
+conn.ntripProfilePerField
+  writes   ConnectionConfig.NtripProfilePerField
+  app      MainViewModel.ApplyNtripModeAsync
+  app      MainViewModel.FallbackFor
+  app      MainViewModel.HandleNtripProfileForFieldAsync
+  app      MainViewModel.RestoreDefaultNtripProfileAsync
+  app      MainViewModel.ShowNtripModeNoticeOnce
+  app      MainViewModel.UseNtripProfileAsync
+  page     SceneProjector.BuildStatus
+  save     ConfigurationService
+
+conn.rtcmBroadcast
+  writes   ConnectionConfig.RtcmBroadcast
+  app      MainViewModel.ConnectToNtripAsync
+  page     SceneProjector.BuildStatus -> RtcmBroadcast
+  js       rtcmBroadcast: not decoded by transport.js under this name
+  save     ConfigurationService
+
+conn.sendCorrectedPosition
+  writes   ConnectionConfig.SendCorrectedPosition
+  app      GpsPipelineService.ProcessCycle
+  page     SceneProjector.BuildStatus -> SendCorrectedPosition
+  js       sendCorrectedPosition: not decoded by transport.js under this name
+  save     ConfigurationService
+
+display.autoDayNight
+  writes   DisplayConfig.AutoDayNight
+  app      ConfigurationViewModel.InitializeDisplayCommands
+  app      MainViewModel.CheckAutoDayNight
+  app      MainViewModel.InitializeNavigationCommands
+  page     SceneProjector.BuildDisplay -> AutoDayNight
+  page     SceneProjector.ConfigFingerprint
+  js       autoDayNight: used by no script; shown in index.html
+  save     ConfigurationService
+
+display.autoSteerSound
+  writes   DisplayConfig.AutoSteerSound
+  app      ConfigurationViewModel.InitializeAdditionalOptionsCommands
+  app      WebClientAudioService.Play
+  page     SceneProjector.BuildDisplay -> AutoSteerSound
+  page     SceneProjector.ConfigFingerprint
+  js       autoSteerSound: used by no script; shown in index.html
+  save     ConfigurationService
+
+display.elevationLogEnabled
+  writes   DisplayConfig.ElevationLogEnabled
+  app      ConfigurationViewModel.InitializeDisplayCommands
+  app      MainViewModel.HandleGpsUiUpdates
+  app      MainViewModel.OpenFieldCoreAsync
+  page     SceneProjector.BuildDisplay -> ElevationLogEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       elevationLogEnabled: used by no script; shown in index.html
+  save     ConfigurationService
+
+display.extraGuidelines
+  writes   DisplayConfig.ExtraGuidelines
+  app      ConfigurationViewModel.InitializeDisplayCommands
+  app      GpsPipelineService.ProcessCycle
+  page     SceneProjector.BuildDisplay -> ExtraGuidelines
+  page     SceneProjector.ConfigFingerprint
+  js       extraGuidelines: map-draw.js; shown in index.html
+  save     ConfigurationService
+
+display.extraGuidelinesCount
+  writes   DisplayConfig.ExtraGuidelinesCount
+  app      ConfigurationViewModel.InitializeDisplayCommands
+  app      GpsPipelineService.ProcessCycle
+  page     SceneProjector.BuildDisplay -> ExtraGuidelinesCount
+  page     SceneProjector.ConfigFingerprint
+  js       extraGuidelinesCount: used by no script; shown in settings-panels.js
+  save     ConfigurationService
+
+display.fieldTextureMoveable
+  writes   DisplayConfig.FieldTextureMoveable
+  app      ConfigurationViewModel.InitializeDisplayCommands
+  page     SceneProjector.BuildDisplay -> FieldTextureMoveable
+  page     SceneProjector.ConfigFingerprint
+  js       fieldTextureMoveable: map-draw.js; shown in index.html
+  save     ConfigurationService
+
+display.fieldTextureVisible
+  writes   DisplayConfig.FieldTextureVisible
+  app      ConfigurationViewModel.InitializeDisplayCommands
+  page     SceneProjector.BuildDisplay -> FieldTextureVisible
+  page     SceneProjector.ConfigFingerprint
+  js       fieldTextureVisible: map-draw.js; shown in index.html
+  save     ConfigurationService
+
+display.gridVisible
+  writes   DisplayConfig.GridVisible
+  app      ConfigurationViewModel.InitializeDisplayCommands
+  app      DisplaySettingsService.IsGridOn
+  app      DisplaySettingsService.LoadSettings
+  page     SceneProjector.BuildDisplay -> GridVisible
+  page     SceneProjector.ConfigFingerprint
+  js       gridVisible: map-draw.js; shown in index.html
+  save     ConfigurationService
+
+display.hardwareMessagesEnabled
+  writes   DisplayConfig.HardwareMessagesEnabled
+  app      ConfigurationViewModel.InitializeAdditionalOptionsCommands
+  app      RemoteServerWiring.Wire
+  page     SceneProjector.BuildDisplay -> HardwareMessagesEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       hardwareMessagesEnabled: used by no script; shown in index.html
+  save     ConfigurationService
+
+display.headlandDistanceVisible
+  writes   DisplayConfig.HeadlandDistanceVisible
+  app      ConfigurationViewModel.InitializeDisplayCommands
+  page     SceneProjector.BuildDisplay -> HeadlandDistanceVisible
+  page     SceneProjector.ConfigFingerprint
+  js       headlandDistanceVisible: overlays.js; shown in index.html
+  save     ConfigurationService
+
+display.hydraulicSound
+  writes   DisplayConfig.HydraulicSound
+  app      ConfigurationViewModel.InitializeAdditionalOptionsCommands
+  app      WebClientAudioService.Play
+  page     SceneProjector.BuildDisplay -> HydraulicSound
+  page     SceneProjector.ConfigFingerprint
+  js       hydraulicSound: used by no script; shown in index.html
+  save     ConfigurationService
+
+display.imageryVisible
+  writes   DisplayConfig.ImageryVisible
+  page     SceneProjector.BuildDisplay -> ImageryVisible
+  page     SceneProjector.ConfigFingerprint
+  js       imageryVisible: map-draw.js; shown in settings-panels.js
+  save     ConfigurationService
+
+display.keyboardEnabled
+  writes   DisplayConfig.KeyboardEnabled
+  app      ConfigurationViewModel.InitializeDisplayCommands
+  app      MainViewModel.HandleHotkey
+  page     SceneProjector.BuildDisplay -> KeyboardEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       keyboardEnabled: osk.js; shown in index.html
+  save     ConfigurationService
+
+display.lateralButtonVisible
+  writes   DisplayConfig.LateralButtonVisible
+  app      ConfigurationViewModel.InitializeAdditionalOptionsCommands
+  app      MainViewModel (initializer)
+  app      MainViewModel.IsLateralOverlayVisible
+  page     SceneProjector.BuildDisplay -> LateralButtonVisible
+  page     SceneProjector.ConfigFingerprint
+  js       lateralButtonVisible: bars.js; shown in index.html
+  save     ConfigurationService
+
+display.lineSmoothEnabled
+  writes   DisplayConfig.LineSmoothEnabled
+  app      ConfigurationViewModel.InitializeDisplayCommands
+  page     SceneProjector.BuildDisplay -> LineSmoothEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       lineSmoothEnabled: map-draw.js; shown in index.html
+  save     ConfigurationService
+
+display.sectionsSound
+  writes   DisplayConfig.SectionsSound
+  app      ConfigurationViewModel.InitializeAdditionalOptionsCommands
+  app      WebClientAudioService.Play
+  page     SceneProjector.BuildDisplay -> SectionsSound
+  page     SceneProjector.ConfigFingerprint
+  js       sectionsSound: used by no script; shown in index.html
+  save     ConfigurationService
+
+display.startFullscreen
+  writes   DisplayConfig.StartFullscreen
+  app      ConfigurationViewModel.InitializeDisplayCommands
+  page     SceneProjector.BuildDisplay -> StartFullscreen
+  page     SceneProjector.ConfigFingerprint
+  js       startFullscreen: overlays.js; shown in index.html
+  save     ConfigurationService
+
+display.svennArrowVisible
+  writes   DisplayConfig.SvennArrowVisible
+  app      ConfigurationViewModel.InitializeDisplayCommands
+  page     SceneProjector.BuildDisplay -> SvennArrowVisible
+  page     SceneProjector.ConfigFingerprint
+  js       svennArrowVisible: map-draw.js; shown in index.html
+  save     ConfigurationService
+
+display.uTurnButtonVisible
+  writes   DisplayConfig.UTurnButtonVisible
+  app      ConfigurationViewModel.InitializeAdditionalOptionsCommands
+  app      MainViewModel (initializer)
+  app      MainViewModel.IsUTurnOverlayVisible
+  page     SceneProjector.BuildDisplay -> UTurnButtonVisible
+  page     SceneProjector.ConfigFingerprint
+  js       uTurnButtonVisible: bars.js; shown in index.html
+  save     ConfigurationService
+
+display.uTurnSound
+  writes   DisplayConfig.UTurnSound
+  app      ConfigurationViewModel.InitializeAdditionalOptionsCommands
+  app      WebClientAudioService.Play
+  page     SceneProjector.BuildDisplay -> UTurnSound
+  page     SceneProjector.ConfigFingerprint
+  js       uTurnSound: used by no script; shown in index.html
+  save     ConfigurationService
+
+display.uiScale
+  writes   DisplayConfig.UiScale
+  page     SceneProjector.BuildDisplay -> UiScale
+  page     SceneProjector.ConfigFingerprint
+  js       uiScale: core.js; shown in settings-panels.js
+  save     ConfigurationService
+
+gps.autoDualFix
+  writes   ConnectionConfig.AutoDualFix
+  app      ConfigurationViewModel.InitializeGpsEditCommands
+  app      GpsHeadingFusionService (initializer)
+  app      GpsHeadingFusionService.FuseHeading
+  page     SceneProjector.BuildConfig -> AutoDualFix
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       autoDualFix: map-input.js; shown in index.html, settings-panels.js
+  save     AgOpenGpsSettings, VehicleProfileJsonService
+
+gps.dualHeadingOffset
+  writes   ConnectionConfig.DualHeadingOffset
+  app      ConfigurationViewModel.InitializeGpsEditCommands
+  app      GpsHeadingFusionService (initializer)
+  app      GpsHeadingFusionService.FuseHeading
+  app      MainViewModel.SteeringGeometry
+  page     SceneProjector.BuildConfig -> DualHeadingOffset
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       dualHeadingOffset: used by no script; shown in index.html, settings-panels.js
+  save     AgOpenGpsSettings, VehicleProfileJsonService
+
+gps.dualReverseDistance
+  writes   ConnectionConfig.DualReverseDistance
+  app      ConfigurationViewModel.InitializeGpsEditCommands
+  app      GpsHeadingFusionService (initializer)
+  app      GpsHeadingFusionService.FuseHeading
+  page     SceneProjector.BuildConfig -> DualReverseDistance
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       dualReverseDistance: used by no script; shown in index.html, settings-panels.js
+  save     AgOpenGpsSettings, VehicleProfileJsonService
+
+gps.dualSwitchSpeed
+  writes   ConnectionConfig.DualSwitchSpeed
+  app      ConfigurationViewModel.InitializeGpsEditCommands
+  app      GpsHeadingFusionService (initializer)
+  app      GpsHeadingFusionService.FuseHeading
+  page     SceneProjector.BuildConfig -> DualSwitchSpeed
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       dualSwitchSpeed: used by no script; shown in index.html, settings-panels.js
+  save     AgOpenGpsSettings, VehicleProfileJsonService
+
+gps.fixToFixDistance
+  writes   ConnectionConfig.FixToFixDistance
+  app      ConfigurationViewModel.InitializeGpsEditCommands
+  app      GpsHeadingFusionService (initializer)
+  app      GpsHeadingFusionService.FuseHeading
+  app      GpsHeadingFusionService.TryStartHeading
+  page     SceneProjector.BuildConfig -> FixToFixDistance
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       fixToFixDistance: used by no script; shown in index.html
+  save     VehicleProfileJsonService
+
+gps.headingFusionWeight
+  writes   ConnectionConfig.HeadingFusionWeight
+  app      ConfigurationViewModel.InitializeGpsEditCommands
+  app      GpsHeadingFusionService.FusionWeight
+  page     SceneProjector.BuildConfig -> HeadingFusionWeight
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       headingFusionWeight: used by no script; shown in index.html, settings-panels.js
+  save     AgOpenGpsSettings, VehicleProfileJsonService
+
+gps.isDualGps
+  writes   ConnectionConfig.IsDualGps
+  app      GpsHeadingFusionService.FuseHeading
+  app      MainViewModel.ApplyGpsCycleResult
+  app      MainViewModel.SteeringGeometry
+  page     SceneProjector.BuildConfig -> IsDualGps
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       isDualGps: map-input.js; shown in index.html, settings-panels.js
+  save     AgOpenGpsSettings, VehicleProfileJsonService
+
+gps.minGpsStep
+  writes   ConnectionConfig.MinGpsStep
+  app      ConfigurationViewModel.InitializeGpsEditCommands
+  app      GpsHeadingFusionService (initializer)
+  app      GpsHeadingFusionService.FuseHeading
+  app      GpsHeadingFusionService.TryStartHeading
+  page     SceneProjector.BuildConfig -> MinGpsStep
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       minGpsStep: used by no script; shown in index.html
+  save     AgOpenGpsSettings, VehicleProfileJsonService
+
+gps.reverseDetection
+  writes   ConnectionConfig.ReverseDetection
+  app      ConfigurationViewModel.InitializeGpsEditCommands
+  app      GpsHeadingFusionService (initializer)
+  app      GpsHeadingFusionService.FuseHeading
+  page     SceneProjector.BuildConfig -> ReverseDetection
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       reverseDetection: used by no script; shown in index.html, settings-panels.js
+  save     AgOpenGpsSettings, VehicleProfileJsonService
+
+gps.rtkLostAction
+  writes   ConnectionConfig.RtkLostAction
+  app      ConfigurationViewModel.InitializeGpsEditCommands
+  app      GpsPipelineService.CheckRtkQualityChange
+  page     SceneProjector.BuildConfig -> RtkLostAction
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       rtkLostAction: used by no script; shown in index.html
+  save     AgOpenGpsSettings, VehicleProfileJsonService
+
+gps.rtkLostAlarm
+  writes   ConnectionConfig.RtkLostAlarm
+  app      ConfigurationViewModel.InitializeGpsEditCommands
+  app      GpsPipelineService.CheckRtkQualityChange
+  page     SceneProjector.BuildConfig -> RtkLostAlarm
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       rtkLostAlarm: used by no script; shown in index.html
+  save     AgOpenGpsSettings, VehicleProfileJsonService
+
+machine.hydraulicLiftEnabled
+  writes   MachineConfig.HydraulicLiftEnabled
+  app      ConfigurationViewModel.InitializeMachineCommands
+  app      GpsPipelineService.HydLiftFor
+  app      ModuleCommunicationService.HydraulicLiftEnabled
+  app      PgnBuilder.BuildMachineConfigPgn
+  page     SceneProjector.BuildConfig -> HydraulicLiftEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       hydraulicLiftEnabled: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ToolProfileJsonService, ToolProfileService
+
+machine.invertRelay
+  writes   MachineConfig.InvertRelay
+  app      ConfigurationViewModel.InitializeMachineCommands
+  app      ModuleCommunicationService.InvertRelay
+  app      PgnBuilder.BuildMachineConfigPgn
+  page     SceneProjector.BuildConfig -> InvertRelay
+  page     SceneProjector.ConfigFingerprint
+  js       invertRelay: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ToolProfileJsonService, ToolProfileService
+
+machine.lookAhead
+  writes   MachineConfig.LookAhead
+  app      ConfigurationViewModel.InitializeMachineCommands
+  app      GpsPipelineService.IsToolInHeadland
+  app      ModuleCommunicationService.LookAhead
+  page     SceneProjector.BuildConfig -> LookAhead
+  page     SceneProjector.ConfigFingerprint
+  js       lookAhead: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ToolProfileJsonService, ToolProfileService
+
+machine.lowerTime
+  writes   MachineConfig.LowerTime
+  app      ConfigurationViewModel.InitializeMachineCommands
+  app      ModuleCommunicationService.LowerTime
+  app      PgnBuilder.BuildMachineConfigPgn
+  page     SceneProjector.BuildConfig -> LowerTime
+  page     SceneProjector.ConfigFingerprint
+  js       lowerTime: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ToolProfileJsonService, ToolProfileService
+
+machine.pin
+  writes   MachineConfig.PinAssignments
+  app      ConfigurationViewModel.GetPinFunctionName  (via MachineConfig._pinAssignments > MachineConfig.GetPinAssignment)
+  app      ConfigurationViewModel.SetPinFunctionByName  (via MachineConfig._pinAssignments > MachineConfig.SetPinAssignment)
+  app      MainViewModel.WarnSectionsWithoutRelay
+  app      PgnBuilder.BuildMachinePinsPgn
+  page     SceneProjector.BuildConfig  (via MachineConfig._pinAssignments > MachineConfig.GetPinAssignment)
+  page     SceneProjector.ConfigFingerprint  (via MachineConfig._pinAssignments > MachineConfig.GetPinAssignment)
+  routing  RemoteServerWiring.ApplyConfigSet  (via MachineConfig._pinAssignments > MachineConfig.SetPinAssignment)
+  save     ToolProfileJsonService
+
+machine.raiseTime
+  writes   MachineConfig.RaiseTime
+  app      ConfigurationViewModel.InitializeMachineCommands
+  app      ModuleCommunicationService.RaiseTime
+  app      PgnBuilder.BuildMachineConfigPgn
+  page     SceneProjector.BuildConfig -> RaiseTime
+  page     SceneProjector.ConfigFingerprint
+  js       raiseTime: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ToolProfileJsonService, ToolProfileService
+
+machine.resetPins
+  writes   MachineConfig.PinAssignments
+  app      ConfigurationViewModel.GetPinFunctionName  (via MachineConfig._pinAssignments > MachineConfig.GetPinAssignment)
+  app      ConfigurationViewModel.SetPinFunctionByName  (via MachineConfig._pinAssignments > MachineConfig.SetPinAssignment)
+  app      MainViewModel.WarnSectionsWithoutRelay
+  app      PgnBuilder.BuildMachinePinsPgn
+  page     SceneProjector.BuildConfig  (via MachineConfig._pinAssignments > MachineConfig.GetPinAssignment)
+  page     SceneProjector.ConfigFingerprint  (via MachineConfig._pinAssignments > MachineConfig.GetPinAssignment)
+  routing  RemoteServerWiring.ApplyConfigSet  (via MachineConfig._pinAssignments > MachineConfig.SetPinAssignment)
+  save     ToolProfileJsonService
+
+machine.user1
+  writes   MachineConfig.User1Value
+  app      ConfigurationViewModel.InitializeMachineCommands
+  app      ModuleCommunicationService.User1Value
+  app      PgnBuilder.BuildMachineConfigPgn
+  page     SceneProjector.BuildConfig -> User1
+  page     SceneProjector.ConfigFingerprint
+  js       user1: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ToolProfileJsonService, ToolProfileService
+
+machine.user2
+  writes   MachineConfig.User2Value
+  app      ConfigurationViewModel.InitializeMachineCommands
+  app      ModuleCommunicationService.User2Value
+  app      PgnBuilder.BuildMachineConfigPgn
+  page     SceneProjector.BuildConfig -> User2
+  page     SceneProjector.ConfigFingerprint
+  js       user2: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ToolProfileJsonService, ToolProfileService
+
+machine.user3
+  writes   MachineConfig.User3Value
+  app      ConfigurationViewModel.InitializeMachineCommands
+  app      ModuleCommunicationService.User3Value
+  app      PgnBuilder.BuildMachineConfigPgn
+  page     SceneProjector.BuildConfig -> User3
+  page     SceneProjector.ConfigFingerprint
+  js       user3: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ToolProfileJsonService, ToolProfileService
+
+machine.user4
+  writes   MachineConfig.User4Value
+  app      ConfigurationViewModel.InitializeMachineCommands
+  app      ModuleCommunicationService.User4Value
+  app      PgnBuilder.BuildMachineConfigPgn
+  page     SceneProjector.BuildConfig -> User4
+  page     SceneProjector.ConfigFingerprint
+  js       user4: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ToolProfileJsonService, ToolProfileService
+
+roll.isRollInvert
+  writes   AhrsConfig.IsRollInvert
+  app      ConfigurationViewModel.InitializeRollEditCommands
+  app      MainViewModel.SteeringGeometry
+  app      NmeaParserServiceFast.ApplyAhrsRollCalibration
+  app      RollCalibrationStepViewModel.OnEntering
+  page     SceneProjector.BuildConfig -> IsRollInvert
+  page     SceneProjector.ConfigFingerprint
+  js       isRollInvert: hud-tools.js, left-nav.js, wizards.js; shown in index.html
+  save     VehicleProfileJsonService
+
+roll.rollFilter
+  writes   AhrsConfig.RollFilter
+  app      ConfigurationViewModel.InitializeRollEditCommands
+  app      GpsPipelineService.ProcessCycle
+  page     SceneProjector.BuildConfig -> RollFilter
+  page     SceneProjector.ConfigFingerprint
+  js       rollFilter: used by no script; shown in index.html
+  save     VehicleProfileJsonService
+
+roll.rollZero
+  writes   AhrsConfig.RollZero
+  app      ConfigurationViewModel.InitializeRollEditCommands
+  app      MainViewModel.SteeringGeometry
+  app      NmeaParserServiceFast.ApplyAhrsRollCalibration
+  app      RollCalibrationStepViewModel.OnEntering
+  app      RollCalibrationStepViewModel.ZeroRoll
+  page     SceneProjector.BuildConfig -> RollZero
+  page     SceneProjector.ConfigFingerprint
+  js       rollZero: hud-tools.js, wizards.js; shown in index.html
+  save     VehicleProfileJsonService
+
+roll.setZero
+  writes   AhrsConfig.RollZero
+  app      ConfigurationViewModel.InitializeRollEditCommands
+  app      MainViewModel.SteeringGeometry
+  app      NmeaParserServiceFast.ApplyAhrsRollCalibration
+  app      RollCalibrationStepViewModel.OnEntering
+  app      RollCalibrationStepViewModel.ZeroRoll
+  page     SceneProjector.BuildConfig -> RollZero
+  page     SceneProjector.ConfigFingerprint
+  js       rollZero: hud-tools.js, wizards.js; shown in index.html
+  save     VehicleProfileJsonService
+
+tool.coverageMargin
+  writes   ToolConfig.CoverageMargin
+  app      ConfigurationViewModel.InitializeSectionsEditCommands
+  app      CoverageMapService.RasterizeQuadToBitmap  (via ToolConfig._coverageMargin > ToolConfig.CoverageMarginMeters)
+  app      SectionControlService.UpdateSection  (via ToolConfig._coverageMargin > ToolConfig.CoverageMarginMeters)
+  page     SceneProjector.BuildConfig -> CoverageMargin
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       coverageMargin: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.defaultSectionWidth
+  writes   ToolConfig.DefaultSectionWidth, ToolConfig.SectionWidths
+  app      AutoSteerService.SendSectionDimensions  (via ConfigurationStore.NumSections)
+  app      ConfigurationViewModel.CalculatedSectionTotal
+  app      ConfigurationViewModel.CalculatedSectionTotal  (via ConfigurationStore.NumSections)
+  app      ConfigurationViewModel.CalculatedSectionTotal  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.CalculatedSectionTotal  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.DefaultSectionWidthDisplay
+  app      ConfigurationViewModel.EditSectionWidth  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.EditSectionWidth  (via ToolConfig.SetSectionWidth)
+  app      ConfigurationViewModel.EditSectionWidth  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.EditZoneEndSection  (via ConfigurationStore.NumSections)
+  app      ConfigurationViewModel.GetSectionWidthForDisplay  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.GetSectionWidthForDisplay  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.InitializeSectionsEditCommands
+  app      ConfigurationViewModel.InitializeSectionsEditCommands  (via ConfigurationStore.NumSections)
+  app      ConfigurationViewModel.Section10Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section10Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section11Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section11Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section12Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section12Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section13Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section13Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section14Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section14Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section15Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section15Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section16Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section16Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section1Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section1Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section2Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section2Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section3Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section3Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section4Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section4Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section5Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section5Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section6Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section6Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section7Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section7Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section8Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section8Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section9Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section9Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      GpsPipelineService.CalculateTrackGuidance  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.CalculateTrackGuidance  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ContourParamsFor  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ContourParamsFor  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ProcessContour  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ProcessContour  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ProcessCycle  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ProcessCycle  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.UpdateDisplayTrack  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.UpdateDisplayTrack  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      JobRig.From  (via ConfigurationStore.NumSections)
+  app      JobRig.From  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      JobRig.From  (via ToolConfig.GetSectionWidth)
+  app      JobRig.From  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      JobRig.From  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      MainViewModel.GetSectionWidths  (via ToolConfig.GetSectionWidth)
+  app      MainViewModel.GetSectionWidths  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      MainViewModel.HeadlandCalculatedWidth  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.HeadlandCalculatedWidth  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.HeadlandToolWidthMultiplier  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.HeadlandToolWidthMultiplier  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.InitializeBoundaryCommands  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.InitializeBoundaryCommands  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.InitializeTrackCommands  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth > VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.InitializeTrackCommands  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.InitializeTrackCommands  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth > VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.InitializeTrackCommands  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.LoadDefaultVehicleProfile  (via ConfigurationStore.NumSections)
+  app      MainViewModel.LoadDefaultVehicleProfile  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.LoadDefaultVehicleProfile  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.OnRenderPullTick  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.OnRenderPullTick  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.PassWidth  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.PassWidth  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefHalfWorkingWidth  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefHalfWorkingWidth  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefSideOffset  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefSideOffset  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefreshSettingsTree  (via ConfigurationStore.NumSections)
+  app      MainViewModel.RefreshSettingsTree  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefreshSettingsTree  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RemoteCreateHeadlandWholeBoundary  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RemoteCreateHeadlandWholeBoundary  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RestoreSettings  (via ConfigurationStore.NumSections)
+  app      MainViewModel.RestoreSettings  (via ToolConfig.GetSectionWidth)
+  app      MainViewModel.RestoreSettings  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      MainViewModel.SaveTracksToFile  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.SaveTracksToFile  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.SelectedTrack  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.SelectedTrack  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.SteeringGeometry  (via ConfigurationStore.NumSections)
+  app      MainViewModel.SteeringGeometry  (via ToolConfig.GetSectionWidth)
+  app      MainViewModel.SteeringGeometry  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      MainViewModel.SwapTrackAB  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.SwapTrackAB  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.TramToolWidthDisplay  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.TramToolWidthDisplay  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.TramValueRefused  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth > VehicleToolLimits.Check)
+  app      MainViewModel.TramValueRefused  (via VehicleToolLimits.ImplementWidthAfter > VehicleToolLimits.Check)
+  app      MainViewModel.UpdateIsobusSectionCount  (via ConfigurationStore.NumSections)
+  app      MainViewModel.WarnSectionsWithoutRelay  (via ConfigurationStore.NumSections)
+  app      MainViewModel.ctor  (via ConfigurationStore.NumSections)
+  app      ModuleCommunicationService.CheckRemoteSwitches  (via ConfigurationStore.NumSections)
+  app      PgnBuilder.BuildSectionDimensionsPgn  (via ToolConfig.GetSectionWidth)
+  app      PgnBuilder.BuildSectionDimensionsPgn  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth > VehicleToolLimits.Check)
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via VehicleToolLimits.ImplementWidthAfter > VehicleToolLimits.Check)
+  app      SectionControlService.NumSections  (via ConfigurationStore.NumSections)
+  app      SectionControlService.RecalculateSectionPositions  (via ToolConfig.GetSectionWidth)
+  app      SectionControlService.RecalculateSectionPositions  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      TramLineService.DetectTramWheels  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      TramLineService.DetectTramWheels  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.BuildCreationInput  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.BuildCreationInput  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.BuildToolGeometry  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.BuildToolGeometry  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.CreateManualArcPath  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.CreateManualArcPath  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.CreateTurnPath  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.CreateTurnPath  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.OntoPassLine  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.OntoPassLine  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.SimpleFallback  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.SimpleFallback  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.BuildSnakeSequence  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.BuildSnakeSequence  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.CheckOffsetLineInsideCultivated  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.CheckOffsetLineInsideCultivated  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.ComputeNextTrack  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.ComputeNextTrack  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.CultivatedAhead  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.CultivatedAhead  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.InsideLength  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.InsideLength  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.IsPassWorked  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.IsPassWorked  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.Landing  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.Landing  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.AimTurnAt  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.AimTurnAt  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.CompleteTurn  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.CompleteTurn  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.DistanceToPassEnd  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.DistanceToPassEnd  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.EndKey  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.EndKey  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.BuildConfig  (via ToolConfig.GetSectionWidth)
+  page     SceneProjector.BuildConfig  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  page     SceneProjector.BuildConfig -> DefaultSectionWidth
+  page     SceneProjector.BuildConfig -> NumSections  (via ConfigurationStore.NumSections)
+  page     SceneProjector.BuildConfig -> TotalWidth  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.BuildConfig -> TotalWidth  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.BuildTick  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.BuildTick  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.ConfigFingerprint
+  page     SceneProjector.ConfigFingerprint  (via ConfigurationStore.NumSections)
+  page     SceneProjector.ConfigFingerprint  (via ToolConfig.GetSectionWidth)
+  page     SceneProjector.ConfigFingerprint  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  report   DebugDumpService.BuildConfigSnapshot
+  report   DebugDumpService.BuildConfigSnapshot  (via ConfigurationStore.NumSections)
+  report   DebugDumpService.BuildConfigSnapshot  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  report   DebugDumpService.BuildConfigSnapshot  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  routing  RemoteServerWiring.ApplyConfigSet  (via ConfigurationStore.ApplySectionCount)
+  routing  RemoteServerWiring.ApplyConfigSet  (via ToolConfig.SetAllSectionWidths > ConfigurationStore.ApplyDefaultSectionWidth)
+  routing  RemoteServerWiring.ApplyConfigSet  (via ToolConfig.SetSectionWidth)
+  js       defaultSectionWidth: used by no script; shown in index.html
+  js       numSections: used by no script; shown in config-panels.js, index.html
+  js       totalWidth: core.js; shown in config-panels.js
+  save     AgOpenGpsSettings, ConfigurationService, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.hitchType
+  writes   ToolConfig.HitchType
+  app      ConfigurationViewModel.SelectedHitchType
+  app      JobRig.From
+  app      MainViewModel.ExportFieldIsoXml
+  page     SceneProjector.BuildConfig -> HitchType
+  page     SceneProjector.ConfigFingerprint
+  js       hitchType: used by no script; shown in config-panels.js, index.html, settings-panels.js
+  save     ToolProfileJsonService
+
+tool.isHeadlandSectionControl
+  writes   ToolConfig.IsHeadlandSectionControl
+  app      MainViewModel.IsSectionControlInHeadland
+  app      SectionControlService.IsPointInHeadland
+  page     SceneProjector.BuildConfig -> IsHeadlandSectionControl
+  page     SceneProjector.BuildTick -> SectionInHeadland
+  page     SceneProjector.ConfigFingerprint
+  js       isHeadlandSectionControl: used by no script; shown in index.html
+  js       sectionInHeadland: overlays.js
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.isMultiColoredSections
+  writes   ToolConfig.IsMultiColoredSections
+  app      CoverageMapService.GetZoneColor
+  app      CoverageMapService.GetZoneColorRgb565
+  page     SceneProjector.BuildConfig -> IsMultiColoredSections
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       isMultiColoredSections: used by no script; shown in config-panels.js, index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.isSectionOffWhenOut
+  writes   ToolConfig.IsSectionOffWhenOut
+  app      SectionControlService.UpdateSection
+  page     SceneProjector.BuildConfig -> IsSectionOffWhenOut
+  page     SceneProjector.ConfigFingerprint
+  js       isSectionOffWhenOut: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.isSectionsNotZones
+  writes   ToolConfig.IsSectionsNotZones
+  app      ConfigurationViewModel.CalculatedSectionTotal
+  app      CoverageMapService.GetZoneColor
+  app      CoverageMapService.GetZoneColorRgb565
+  app      ModuleCommunicationService.CheckRemoteSwitches
+  page     SceneProjector.BuildConfig -> IsSectionsNotZones
+  page     SceneProjector.ConfigFingerprint
+  js       isSectionsNotZones: overlays.js; shown in config-panels.js, index.html
+  save     AgOpenGpsSettings, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.isSteerSwitchEnabled
+  writes   ToolConfig.IsSteerSwitchEnabled
+  app      MainViewModel.UpdateModuleSwitches
+  app      ModuleCommunicationService.IsSteerWorkSwitchEnabled
+  page     SceneProjector.BuildConfig -> IsSteerSwitchEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       isSteerSwitchEnabled: used by no script; shown in config-panels.js, index.html
+  save     AgOpenGpsSettings, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.isSteerSwitchManualSections
+  writes   ToolConfig.IsSteerSwitchManualSections
+  app      ModuleCommunicationService.IsSteerWorkSwitchManualSections
+  page     SceneProjector.BuildConfig -> IsSteerSwitchManualSections
+  page     SceneProjector.ConfigFingerprint
+  js       isSteerSwitchManualSections: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.isWorkSwitchActiveLow
+  writes   ToolConfig.IsWorkSwitchActiveLow
+  app      ModuleCommunicationService.IsWorkSwitchActiveLow
+  page     SceneProjector.BuildConfig -> IsWorkSwitchActiveLow
+  page     SceneProjector.ConfigFingerprint
+  js       isWorkSwitchActiveLow: used by no script; shown in config-panels.js, index.html
+  save     AgOpenGpsSettings, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.isWorkSwitchEnabled
+  writes   ToolConfig.IsWorkSwitchEnabled
+  app      MainViewModel.UpdateModuleSwitches
+  app      ModuleCommunicationService.IsWorkSwitchEnabled
+  page     SceneProjector.BuildConfig -> IsWorkSwitchEnabled
+  page     SceneProjector.ConfigFingerprint
+  js       isWorkSwitchEnabled: used by no script; shown in config-panels.js, index.html
+  save     AgOpenGpsSettings, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.isWorkSwitchManualSections
+  writes   ToolConfig.IsWorkSwitchManualSections
+  app      ModuleCommunicationService.IsWorkSwitchManualSections
+  page     SceneProjector.BuildConfig -> IsWorkSwitchManualSections
+  page     SceneProjector.ConfigFingerprint
+  js       isWorkSwitchManualSections: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.length
+  writes   ToolConfig.Length
+  app      ConfigurationViewModel.InitializeToolEditCommands
+  app      JobRig.From
+  app      RigGeometry.Geometry
+  app      RigGeometry.Stamp
+  app      YouTurnCreationService.CreateTurnPath
+  page     SceneProjector.BuildConfig -> Length
+  page     SceneProjector.ConfigFingerprint
+  js       length: app-menu.js, card-pane.js, core.js, field-builder.js, fields.js, frame.js, hud-tools.js, map-draw.js, map-input.js, map-layers.js, network.js, osk.js, overlays.js, skia-setup.js, tracks.js, vt.js, web-cards.js; shown in cfg-controls.js, index.html
+  save     ToolProfileJsonService
+
+tool.lookAheadOff
+  writes   ToolConfig.LookAheadOffSetting
+  app      ConfigurationViewModel.InitializeSectionsEditCommands
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via VehicleToolLimits.ApplySectionTiming)
+  app      SectionControlService.GetSectionBits
+  app      SectionControlService.GetSectionBits64
+  app      SectionControlService.UpdateSection
+  page     SceneProjector.BuildConfig -> LookAheadOff
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       lookAheadOff: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.lookAheadOn
+  writes   ToolConfig.LookAheadOnSetting
+  app      ConfigurationViewModel.InitializeSectionsEditCommands
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via VehicleToolLimits.ApplySectionTiming)
+  app      SectionControlService.UpdateSection
+  page     SceneProjector.BuildConfig -> LookAheadOn
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       lookAheadOn: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.minCoverage
+  writes   ToolConfig.MinCoverage
+  app      ConfigurationViewModel.InitializeSectionsEditCommands
+  app      SectionControlService.UpdateSection
+  page     SceneProjector.BuildConfig -> MinCoverage
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       minCoverage: used by no script; shown in index.html
+  save     ConfigurationService, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.numSections
+  writes   ConfigurationStore.NumSections, ToolConfig.SectionWidths
+  app      AutoSteerService.SendSectionDimensions
+  app      ConfigurationViewModel.CalculatedSectionTotal
+  app      ConfigurationViewModel.CalculatedSectionTotal  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.EditSectionWidth  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.EditZoneEndSection
+  app      ConfigurationViewModel.GetSectionWidthForDisplay  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.InitializeSectionsEditCommands
+  app      ConfigurationViewModel.Section10Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section11Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section12Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section13Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section14Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section15Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section16Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section1Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section2Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section3Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section4Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section5Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section6Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section7Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section8Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section9Width  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      GpsPipelineService.CalculateTrackGuidance  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.CalculateTrackGuidance  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ContourParamsFor  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ContourParamsFor  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ProcessContour  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ProcessContour  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ProcessCycle  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ProcessCycle  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.UpdateDisplayTrack  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.UpdateDisplayTrack  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      JobRig.From
+  app      JobRig.From  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      JobRig.From  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      JobRig.From  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      MainViewModel.GetSectionWidths  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      MainViewModel.HeadlandCalculatedWidth  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.HeadlandCalculatedWidth  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.HeadlandToolWidthMultiplier  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.HeadlandToolWidthMultiplier  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.InitializeBoundaryCommands  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.InitializeBoundaryCommands  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.InitializeTrackCommands  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth > VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.InitializeTrackCommands  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.InitializeTrackCommands  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth > VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.InitializeTrackCommands  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.LoadDefaultVehicleProfile
+  app      MainViewModel.LoadDefaultVehicleProfile  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.LoadDefaultVehicleProfile  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.OnRenderPullTick  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.OnRenderPullTick  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.PassWidth  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.PassWidth  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefHalfWorkingWidth  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefHalfWorkingWidth  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefSideOffset  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefSideOffset  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefreshSettingsTree
+  app      MainViewModel.RefreshSettingsTree  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefreshSettingsTree  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RemoteCreateHeadlandWholeBoundary  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RemoteCreateHeadlandWholeBoundary  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RestoreSettings
+  app      MainViewModel.RestoreSettings  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      MainViewModel.SaveTracksToFile  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.SaveTracksToFile  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.SelectedTrack  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.SelectedTrack  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.SteeringGeometry
+  app      MainViewModel.SteeringGeometry  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      MainViewModel.SwapTrackAB  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.SwapTrackAB  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.TramToolWidthDisplay  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.TramToolWidthDisplay  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.TramValueRefused  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth > VehicleToolLimits.Check)
+  app      MainViewModel.TramValueRefused  (via VehicleToolLimits.ImplementWidthAfter > VehicleToolLimits.Check)
+  app      MainViewModel.UpdateIsobusSectionCount
+  app      MainViewModel.WarnSectionsWithoutRelay
+  app      MainViewModel.ctor
+  app      ModuleCommunicationService.CheckRemoteSwitches
+  app      PgnBuilder.BuildSectionDimensionsPgn  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth > VehicleToolLimits.Check)
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via VehicleToolLimits.ImplementWidthAfter > VehicleToolLimits.Check)
+  app      SectionControlService.NumSections
+  app      SectionControlService.RecalculateSectionPositions  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  app      TramLineService.DetectTramWheels  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      TramLineService.DetectTramWheels  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.BuildCreationInput  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.BuildCreationInput  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.BuildToolGeometry  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.BuildToolGeometry  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.CreateManualArcPath  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.CreateManualArcPath  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.CreateTurnPath  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.CreateTurnPath  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.OntoPassLine  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.OntoPassLine  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.SimpleFallback  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.SimpleFallback  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.BuildSnakeSequence  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.BuildSnakeSequence  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.CheckOffsetLineInsideCultivated  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.CheckOffsetLineInsideCultivated  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.ComputeNextTrack  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.ComputeNextTrack  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.CultivatedAhead  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.CultivatedAhead  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.InsideLength  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.InsideLength  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.IsPassWorked  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.IsPassWorked  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.Landing  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.Landing  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.AimTurnAt  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.AimTurnAt  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.CompleteTurn  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.CompleteTurn  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.DistanceToPassEnd  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.DistanceToPassEnd  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.EndKey  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.EndKey  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.BuildConfig  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  page     SceneProjector.BuildConfig -> NumSections
+  page     SceneProjector.BuildConfig -> TotalWidth  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.BuildConfig -> TotalWidth  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.BuildTick  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.BuildTick  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.ConfigFingerprint
+  page     SceneProjector.ConfigFingerprint  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
+  report   DebugDumpService.BuildConfigSnapshot
+  report   DebugDumpService.BuildConfigSnapshot  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  report   DebugDumpService.BuildConfigSnapshot  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  js       numSections: used by no script; shown in config-panels.js, index.html
+  js       totalWidth: core.js; shown in config-panels.js
+  save     AgOpenGpsSettings, ConfigurationService, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.offset
+  writes   ToolConfig.Offset
+  app      ConfigurationViewModel.InitializeToolEditCommands
+  app      GpsPipelineService.CalculateTrackGuidance
+  app      GpsPipelineService.ContourParamsFor
+  app      GpsPipelineService.ProcessContour
+  app      GpsPipelineService.ProcessCycle
+  app      GpsPipelineService.UpdateDisplayTrack
+  app      JobRig.From
+  app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.RefSideOffset
+  app      MainViewModel.SteeringGeometry
+  app      RigGeometry.Geometry
+  app      RigGeometry.Stamp
+  app      SectionControlService.RecalculateSectionPositions
+  app      TramLineService.DetectTramWheels
+  app      YouTurnCreationService.BuildCreationInput
+  app      YouTurnCreationService.CreateManualArcPath
+  app      YouTurnCreationService.OntoPassLine
+  app      YouTurnPathingService.ComputeNextTrack
+  app      YouTurnStateMachine.AimTurnAt
+  app      YouTurnStateMachine.Tick
+  page     SceneProjector.BuildConfig -> Offset
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  routing  RemoteServerWiring.ApplyConfigSet
+  js       offset: field-builder.js, tracks.js, vt.js; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.offsetSide
+  writes   ToolConfig.Offset
+  app      ConfigurationViewModel.InitializeToolEditCommands
+  app      GpsPipelineService.CalculateTrackGuidance
+  app      GpsPipelineService.ContourParamsFor
+  app      GpsPipelineService.ProcessContour
+  app      GpsPipelineService.ProcessCycle
+  app      GpsPipelineService.UpdateDisplayTrack
+  app      JobRig.From
+  app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.RefSideOffset
+  app      MainViewModel.SteeringGeometry
+  app      RigGeometry.Geometry
+  app      RigGeometry.Stamp
+  app      SectionControlService.RecalculateSectionPositions
+  app      TramLineService.DetectTramWheels
+  app      YouTurnCreationService.BuildCreationInput
+  app      YouTurnCreationService.CreateManualArcPath
+  app      YouTurnCreationService.OntoPassLine
+  app      YouTurnPathingService.ComputeNextTrack
+  app      YouTurnStateMachine.AimTurnAt
+  app      YouTurnStateMachine.Tick
+  page     SceneProjector.BuildConfig -> Offset
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  routing  RemoteServerWiring.ApplyConfigSet
+  js       offset: field-builder.js, tracks.js, vt.js; shown in index.html
+  save     AgOpenGpsSettings, ConfigurationService, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.overlap
+  writes   ToolConfig.Overlap
+  app      ConfigurationViewModel.InitializeToolEditCommands
+  app      GpsPipelineService.CalculateTrackGuidance
+  app      GpsPipelineService.ContourParamsFor
+  app      GpsPipelineService.ProcessContour
+  app      GpsPipelineService.ProcessCycle
+  app      GpsPipelineService.UpdateDisplayTrack
+  app      MainViewModel.InitializeTrackCommands
+  app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.PassWidth
+  app      MainViewModel.RefHalfWorkingWidth
+  app      MainViewModel.RefSideOffset
+  app      MainViewModel.SaveTracksToFile
+  app      MainViewModel.SelectedTrack
+  app      MainViewModel.SteeringGeometry
+  app      MainViewModel.SwapTrackAB
+  app      MainViewModel.TramValueRefused  (via VehicleToolLimits.Check)
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via VehicleToolLimits.Check)
+  app      YouTurnCreationService.BuildCreationInput
+  app      YouTurnCreationService.CreateManualArcPath
+  app      YouTurnCreationService.OntoPassLine
+  app      YouTurnCreationService.SimpleFallback
+  app      YouTurnPathingService.BuildSnakeSequence
+  app      YouTurnPathingService.CheckOffsetLineInsideCultivated
+  app      YouTurnPathingService.ComputeNextTrack
+  app      YouTurnPathingService.CultivatedAhead
+  app      YouTurnPathingService.InsideLength
+  app      YouTurnPathingService.IsPassWorked
+  app      YouTurnPathingService.Landing
+  app      YouTurnStateMachine.AimTurnAt
+  app      YouTurnStateMachine.CompleteTurn
+  app      YouTurnStateMachine.DistanceToPassEnd
+  app      YouTurnStateMachine.EndKey
+  page     SceneProjector.BuildConfig -> Overlap
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  routing  RemoteServerWiring.ApplyConfigSet
+  js       overlap: overlays.js, tracks.js; shown in index.html
+  save     ConfigurationService, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.overlapSide
+  writes   ToolConfig.Overlap
+  app      ConfigurationViewModel.InitializeToolEditCommands
+  app      GpsPipelineService.CalculateTrackGuidance
+  app      GpsPipelineService.ContourParamsFor
+  app      GpsPipelineService.ProcessContour
+  app      GpsPipelineService.ProcessCycle
+  app      GpsPipelineService.UpdateDisplayTrack
+  app      MainViewModel.InitializeTrackCommands
+  app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.PassWidth
+  app      MainViewModel.RefHalfWorkingWidth
+  app      MainViewModel.RefSideOffset
+  app      MainViewModel.SaveTracksToFile
+  app      MainViewModel.SelectedTrack
+  app      MainViewModel.SteeringGeometry
+  app      MainViewModel.SwapTrackAB
+  app      MainViewModel.TramValueRefused  (via VehicleToolLimits.Check)
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via VehicleToolLimits.Check)
+  app      YouTurnCreationService.BuildCreationInput
+  app      YouTurnCreationService.CreateManualArcPath
+  app      YouTurnCreationService.OntoPassLine
+  app      YouTurnCreationService.SimpleFallback
+  app      YouTurnPathingService.BuildSnakeSequence
+  app      YouTurnPathingService.CheckOffsetLineInsideCultivated
+  app      YouTurnPathingService.ComputeNextTrack
+  app      YouTurnPathingService.CultivatedAhead
+  app      YouTurnPathingService.InsideLength
+  app      YouTurnPathingService.IsPassWorked
+  app      YouTurnPathingService.Landing
+  app      YouTurnStateMachine.AimTurnAt
+  app      YouTurnStateMachine.CompleteTurn
+  app      YouTurnStateMachine.DistanceToPassEnd
+  app      YouTurnStateMachine.EndKey
+  page     SceneProjector.BuildConfig -> Overlap
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  routing  RemoteServerWiring.ApplyConfigSet
+  js       overlap: overlays.js, tracks.js; shown in index.html
+  save     ConfigurationService, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.pivotSide
+  writes   ToolConfig.TrailingToolToPivotLength
+  app      ConfigurationViewModel.InitializeToolEditCommands
+  app      JobRig.From
+  app      MainViewModel.SteeringGeometry
+  app      RigGeometry.Geometry
+  app      RigGeometry.Stamp
+  app      RigGeometry.ToolBehindPivot
+  page     SceneProjector.BuildConfig -> TrailingToolToPivotLength
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  routing  RemoteServerWiring.ApplyConfigSet
+  js       trailingToolToPivotLength: used by no script; shown in cfg-controls.js, index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.sectionColor
+  writes   ToolConfig._sectionColors
+  app      ConfigurationViewModel.SectionColor1  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor10  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor11  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor12  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor13  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor14  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor15  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor16  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor2  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor3  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor4  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor5  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor6  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor7  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor8  (via ToolConfig.GetSectionColor)
+  app      ConfigurationViewModel.SectionColor9  (via ToolConfig.GetSectionColor)
+  app      CoverageMapService.GetZoneColor  (via ToolConfig.GetSectionColor)
+  app      CoverageMapService.GetZoneColorRgb565  (via ToolConfig.GetSectionColor)
+  page     SceneProjector.BuildConfig  (via ToolConfig.GetSectionColor)
+  page     SceneProjector.ConfigFingerprint  (via ToolConfig.GetSectionColor)
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.sectionWidth
+  writes   ToolConfig._sectionWidths
+  app      ConfigurationViewModel.CalculatedSectionTotal  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.EditSectionWidth  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.GetSectionWidthForDisplay  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section10Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section11Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section12Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section13Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section14Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section15Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section16Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section1Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section2Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section3Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section4Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section5Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section6Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section7Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section8Width  (via ToolConfig.GetSectionWidth)
+  app      ConfigurationViewModel.Section9Width  (via ToolConfig.GetSectionWidth)
+  app      GpsPipelineService.CalculateTrackGuidance  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ContourParamsFor  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ProcessContour  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.ProcessCycle  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.UpdateDisplayTrack  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      JobRig.From  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      JobRig.From  (via ToolConfig.GetSectionWidth)
+  app      MainViewModel.GetSectionWidths  (via ToolConfig.GetSectionWidth)
+  app      MainViewModel.HeadlandCalculatedWidth  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.HeadlandToolWidthMultiplier  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.InitializeBoundaryCommands  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.InitializeTrackCommands  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth > VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.InitializeTrackCommands  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.LoadDefaultVehicleProfile  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.OnRenderPullTick  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.PassWidth  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefHalfWorkingWidth  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefSideOffset  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RefreshSettingsTree  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RemoteCreateHeadlandWholeBoundary  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.RestoreSettings  (via ToolConfig.GetSectionWidth)
+  app      MainViewModel.SaveTracksToFile  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.SelectedTrack  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.SteeringGeometry  (via ToolConfig.GetSectionWidth)
+  app      MainViewModel.SwapTrackAB  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.TramToolWidthDisplay  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      MainViewModel.TramValueRefused  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth > VehicleToolLimits.Check)
+  app      PgnBuilder.BuildSectionDimensionsPgn  (via ToolConfig.GetSectionWidth)
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth > VehicleToolLimits.Check)
+  app      SectionControlService.RecalculateSectionPositions  (via ToolConfig.GetSectionWidth)
+  app      TramLineService.DetectTramWheels  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.BuildCreationInput  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.BuildToolGeometry  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.CreateManualArcPath  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.CreateTurnPath  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.OntoPassLine  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnCreationService.SimpleFallback  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.BuildSnakeSequence  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.CheckOffsetLineInsideCultivated  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.ComputeNextTrack  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.CultivatedAhead  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.InsideLength  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.IsPassWorked  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnPathingService.Landing  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.AimTurnAt  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.CompleteTurn  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.DistanceToPassEnd  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      YouTurnStateMachine.EndKey  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.BuildConfig  (via ToolConfig.GetSectionWidth)
+  page     SceneProjector.BuildConfig -> TotalWidth  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.BuildTick  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  page     SceneProjector.ConfigFingerprint  (via ToolConfig.GetSectionWidth)
+  report   DebugDumpService.BuildConfigSnapshot  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  report   DebugDumpService.BuildConfigSnapshot  (via ToolConfig.SectionWidths)
+  js       totalWidth: core.js; shown in config-panels.js
+  save     ConfigurationService, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.singleCoverageColor
+  writes   ToolConfig.SingleCoverageColor
+  app      ConfigurationViewModel.SingleCoverageColor
+  app      CoverageMapService.GetZoneColor
+  app      CoverageMapService.GetZoneColorRgb565
+  app      MainViewModel.InitializeTrackCommands
+  page     SceneProjector.BuildConfig -> SingleCoverageColor
+  page     SceneProjector.ConfigFingerprint
+  js       singleCoverageColor: used by no script; shown in config-panels.js
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.slowSpeedCutoff
+  writes   ToolConfig.SlowSpeedCutoff
+  app      ConfigurationViewModel.InitializeSectionsEditCommands
+  app      SectionControlService.Update
+  page     SceneProjector.BuildConfig -> SlowSpeedCutoff
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       slowSpeedCutoff: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.tankTrailingHitchLength
+  writes   ToolConfig.TankTrailingHitchLength
+  app      ConfigurationViewModel.InitializeToolEditCommands
+  app      JobRig.From
+  app      MainViewModel.SteeringGeometry
+  app      RigGeometry.Geometry
+  app      RigGeometry.Stamp
+  app      RigGeometry.TrailedToolCentre
+  app      ToolPositionService.CalculateTBTToolPosition
+  app      ToolPositionService.SnapTBTBehindVehicle
+  page     SceneProjector.BuildConfig -> TankTrailingHitchLength
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       tankTrailingHitchLength: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.trailingHitchLength
+  writes   ToolConfig.TrailingHitchLength
+  app      ConfigurationViewModel.InitializeToolEditCommands
+  app      JobRig.From
+  app      MainViewModel.SteeringGeometry
+  app      RigGeometry.Geometry
+  app      RigGeometry.Stamp
+  app      RigGeometry.ToolBehindPivot
+  app      ToolPositionService.CalculateTBTToolPosition
+  app      ToolPositionService.CalculateTrailingToolPosition
+  app      ToolPositionService.SnapTBTBehindVehicle
+  app      ToolPositionService.SnapToolBehindVehicle
+  page     SceneProjector.BuildConfig -> TrailingHitchLength
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       trailingHitchLength: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.trailingToolToPivotLength
+  writes   ToolConfig.TrailingToolToPivotLength
+  app      ConfigurationViewModel.InitializeToolEditCommands
+  app      JobRig.From
+  app      MainViewModel.SteeringGeometry
+  app      RigGeometry.Geometry
+  app      RigGeometry.Stamp
+  app      RigGeometry.ToolBehindPivot
+  page     SceneProjector.BuildConfig -> TrailingToolToPivotLength
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  routing  RemoteServerWiring.ApplyConfigSet
+  js       trailingToolToPivotLength: used by no script; shown in cfg-controls.js, index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.turnOffDelay
+  writes   ToolConfig.TurnOffDelay
+  app      ConfigurationViewModel.InitializeSectionsEditCommands
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via VehicleToolLimits.ApplySectionTiming)
+  app      SectionControlService.UpdateSection
+  page     SceneProjector.BuildConfig -> TurnOffDelay
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       turnOffDelay: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.type
+  writes   ToolConfig.IsToolFrontFixed, ToolConfig.IsToolRearFixed, ToolConfig.IsToolTBT, ToolConfig.IsToolTrailing
+  app      MainViewModel.SteeringGeometry
+  app      ProfilePicker.Apply
+  app      RemoteServerWiring.ApplyCheckedConfigSet
+  app      RigGeometry.Mount
+  app      RigGeometry.TrailedToolCentre
+  report   DebugDumpService.BuildConfigSnapshot
+  save     AgOpenGpsSettings, ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.workingPointFromHitch
+  writes   ToolConfig.WorkingPointFromHitch
+  app      ConfigurationViewModel.InitializeToolEditCommands
+  app      JobRig.From
+  app      MainViewModel.SteeringGeometry
+  app      RigGeometry.AttachX
+  app      RigGeometry.AxleToWorkingPoint
+  page     SceneProjector.BuildConfig -> WorkingPointFromHitch
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       workingPointFromHitch: used by no script; shown in config-panels.js, index.html
+  save     HitchMigration, ToolProfileJsonService
+
+tool.zoneEnd
+  writes   ToolConfig._zoneRanges
+  app      ConfigurationViewModel.EditZoneEndSection  (via ToolConfig.GetZoneEndSection)
+  app      ConfigurationViewModel.Zone1EndSection  (via ToolConfig.GetZoneEndSection)
+  app      ConfigurationViewModel.Zone2EndSection  (via ToolConfig.GetZoneEndSection)
+  app      ConfigurationViewModel.Zone3EndSection  (via ToolConfig.GetZoneEndSection)
+  app      ConfigurationViewModel.Zone4EndSection  (via ToolConfig.GetZoneEndSection)
+  app      ConfigurationViewModel.Zone5EndSection  (via ToolConfig.GetZoneEndSection)
+  app      ConfigurationViewModel.Zone6EndSection  (via ToolConfig.GetZoneEndSection)
+  app      ConfigurationViewModel.Zone7EndSection  (via ToolConfig.GetZoneEndSection)
+  app      ConfigurationViewModel.Zone8EndSection  (via ToolConfig.GetZoneEndSection)
+  app      MainViewModel.ToggleZone  (via ToolConfig.ZoneRanges)
+  app      ModuleCommunicationService.RemoteZones  (via ToolConfig.ZoneRanges)
+  page     SceneProjector.BuildConfig  (via ToolConfig.GetZoneEndSection)
+  page     SceneProjector.ConfigFingerprint  (via ToolConfig.GetZoneEndSection)
+  save     AgOpenGpsSettings (initializer), ProfileJsonServiceV1, ToolProfileJsonService
+
+tool.zones
+  writes   ToolConfig.Zones
+  app      ConfigurationViewModel.InitializeSectionsEditCommands
+  app      MainViewModel.ToggleZone
+  app      ModuleCommunicationService.RemoteZones
+  page     SceneProjector.BuildConfig -> Zones
+  page     SceneProjector.ConfigFingerprint
+  js       zones: overlays.js; shown in config-panels.js, index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService
+
+tram.display
+  writes   GuidanceConfig.TramDisplay
+  app      ConfigurationViewModel.InitializeTramCommands
+  app      MainViewModel.ctor
+  page     SceneProjector.BuildConfig -> Display
+  page     SceneProjector.BuildTick
+  page     SceneProjector.ConfigFingerprint
+  js       display: app-menu.js, bars.js, card-pane.js, core.js, fields.js, hud-tools.js, map-draw.js, map-input.js, osk.js, overlays.js, tracks.js, vt.js, web-cards.js, wizards.js; shown in config-panels.js, index.html, settings-panels.js
+  save     ProfileJsonServiceV1, ToolProfileJsonService, ToolProfileService
+
+tram.line
+  writes   GuidanceConfig.TramLine
+  app      ConfigurationViewModel.InitializeTramCommands
+  app      MainViewModel.InitializeTrackCommands
+  app      MainViewModel.TramLineNumber
+  app      MainViewModel.ctor
+  page     SceneProjector.ConfigFingerprint
+  save     ProfileJsonServiceV1, ToolProfileJsonService, ToolProfileService
+
+tram.outerInverted
+  writes   TramConfig.IsOuterInverted
+  app      MainViewModel.InitializeTrackCommands
+  app      TramLineService (initializer)
+  app      TramLineService.DetectTramWheels
+  page     SceneProjector.BuildConfig -> OuterInverted
+  page     SceneProjector.ConfigFingerprint
+  js       outerInverted: used by no script; shown in index.html
+  save     AgOpenGpsSettings, ToolProfileJsonService
+
+tram.passes
+  writes   GuidanceConfig.TramPasses
+  app      ConfigurationViewModel.InitializeTramCommands
+  app      MainViewModel.ctor
+  page     SceneProjector.BuildConfig -> Passes
+  page     SceneProjector.ConfigFingerprint
+  js       passes: used by no script
+  save     AgOpenGpsSettings, ProfileJsonServiceV1, ToolProfileJsonService, ToolProfileService
+
+tram.width
+  writes   TramConfig.TramWidth
+  app      MainViewModel.RemoteAddTramSystem
+  app      MainViewModel.TramWidth
+  app      MainViewModel.TramWidthDisplay
+  app      TramLineService.DetectTramWheels
+  app      TramLineService.GenerateBoundaryTramTracks
+  app      TramLineService.GenerateConcentricTramLanes
+  app      TramLineService.GenerateParallelTramLines
+  page     SceneProjector.BuildConfig -> Width
+  page     SceneProjector.ConfigFingerprint
+  js       width: alerts.js, app-menu.js, card-pane.js, core.js, field-builder.js, hud-tools.js, map-draw.js, map-layers.js, overlays.js, skia-setup.js, vt.js, wizards.js; shown in index.html
+  save     AgOpenGpsSettings, ToolProfileJsonService, ToolProfileService
+
+units
+  writes   ConfigurationStore.IsMetric
+  app      ConfigurationViewModel.CalculatedTotalWidthText
+  app      ConfigurationViewModel.DefaultSectionWidthDisplay
+  app      ConfigurationViewModel.EditSectionWidth
+  app      ConfigurationViewModel.FormatSectionWidth
+  app      ConfigurationViewModel.InitializeSectionsEditCommands
+  app      ConfigurationViewModel.SectionWidthFormat
+  app      ConfigurationViewModel.SectionWidthUnit
+  app      ConfigurationViewModel.SectionWidthUnitLabel
+  app      GpsPipelineService.FormatSpeed
+  app      MainViewModel.BoundaryAreaDisplay
+  app      MainViewModel.FormatArea
+  app      MainViewModel.ManualTurnTooFast
+  app      MainViewModel.RefreshSettingsTree
+  app      MainViewModel.SimulatorSpeedDisplay
+  app      MainViewModel.SpeedLargeUnit
+  app      MainViewModel.SpeedLargeValue
+  app      MainViewModel.TramValueRefused  (via VehicleToolLimits.Check)
+  app      MainViewModel.WorkRateDisplay
+  app      RemoteServerWiring.ApplyCheckedConfigSet  (via VehicleToolLimits.Check)
+  page     SceneProjector.BuildStatus -> IsMetric
+  page     SceneProjector.ProfilesFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       isMetric: not decoded by transport.js under this name
+  save     ConfigurationService
+
+uturn.distanceFromBoundary
+  writes   GuidanceConfig.UTurnDistanceFromBoundary
+  app      ConfigurationViewModel.InitializeUTurnEditCommands
+  app      GpsPipelineService.GetOrComputeSyntheticHeadland
+  app      GpsPipelineService.OpeningTurnRoom
+  app      YouTurnCreationService.BuildCreationInput
+  app      YouTurnCreationService.CreateTurnPath
+  app      YouTurnCreationService.ImplementClearsHardBoundary
+  app      YouTurnCreationService.SimpleFallback
+  app      YouTurnPathingService.NoLandingMessage
+  app      YouTurnStateMachine.EndKey
+  app      YouTurnStateMachine.ReportNoTurn
+  page     SceneProjector.BuildConfig -> DistanceFromBoundary
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       distanceFromBoundary: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService, ToolProfileService
+
+uturn.extension
+  writes   GuidanceConfig.UTurnExtension
+  app      ConfigurationViewModel.InitializeUTurnEditCommands
+  app      YouTurnCreationService.BuildCreationInput
+  app      YouTurnCreationService.SimpleFallback
+  app      YouTurnStateMachine.EndKey
+  page     SceneProjector.BuildConfig -> Extension
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       extension: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService, ToolProfileService
+
+uturn.radius
+  writes   GuidanceConfig.UTurnRadius
+  app      ConfigurationViewModel.InitializeUTurnEditCommands
+  app      GpsPipelineService.CalculateTrackGuidance
+  app      GpsPipelineService.GuideLines
+  app      GpsPipelineService.OpeningTurnRoom
+  app      GpsPipelineService.ProcessContour
+  app      GpsPipelineService.ProcessCycle
+  app      GpsPipelineService.ToolPass
+  app      GpsPipelineService.UpdateDisplayTrack
+  app      MainViewModel.LoadDefaultVehicleProfile
+  app      MainViewModel.RecalculateDubinsPreview
+  app      MainViewModel.StartDrivingRecordedPath
+  app      YouTurnCreationService.BuildCreationInput
+  app      YouTurnCreationService.CreateManualArcPath
+  app      YouTurnCreationService.SimpleFallback
+  app      YouTurnPathingService.Landing
+  app      YouTurnStateMachine.EndKey
+  page     SceneProjector.BuildConfig -> Radius
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       radius: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService, ToolProfileService
+
+uturn.smoothing
+  writes   GuidanceConfig.UTurnSmoothing
+  app      ConfigurationViewModel.InitializeUTurnEditCommands
+  app      YouTurnCreationService (initializer)
+  app      YouTurnCreationService.CreateManualArcPath
+  app      YouTurnCreationService.SimpleFallback
+  app      YouTurnStateMachine.EndKey
+  page     SceneProjector.BuildConfig -> Smoothing
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       smoothing: used by no script; shown in index.html
+  save     ProfileJsonServiceV1, ToolProfileJsonService, ToolProfileService
+
+uturn.style
+  writes   GuidanceConfig.UTurnStyle
+  app      ConfigurationViewModel.IsKTurnStyle
+  app      ConfigurationViewModel.IsKeyholeTurnStyle
+  app      ConfigurationViewModel.IsSagittaTurnStyle
+  app      GpsPipelineService.CalculateYouTurnGuidance
+  app      YouTurnCreationService (initializer)
+  app      YouTurnCreationService.BuildCreationInput
+  app      YouTurnStateMachine.CompleteFromGuidance
+  app      YouTurnStateMachine.EndKey
+  page     SceneProjector.BuildConfig -> Style
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       style: alerts.js, app-menu.js, card-pane.js, control.js, core.js, fields.js, hud-tools.js, map-input.js, network.js, overlays.js, skia-setup.js, tracks.js, vt.js, web-cards.js, wizards.js; shown in config-panels.js, index.html, settings-panels.js
+  save     ProfileJsonServiceV1, ToolProfileJsonService, ToolProfileService
+
+vehicle.antennaHeight
+  writes   VehicleConfig.AntennaHeight
+  app      AntennaSetupStepViewModel.OnEntering
+  app      AntennaSetupStepViewModel.ReloadFromStore
+  app      AntennaToPivotTransform.Apply
+  app      ConfigurationViewModel.InitializeVehicleEditCommands
+  app      MainViewModel.HandleGpsUiUpdates
+  app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.SteeringGeometry
+  app      PgnBuilder.BuildVehicleGeometryPgn
+  page     SceneProjector.BuildConfig -> AntennaHeight
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       antennaHeight: wizards.js; shown in index.html
+  save     ConfigurationService, ProfileJsonServiceV1, VehicleProfileJsonService
+
+vehicle.antennaOffset
+  writes   VehicleConfig.AntennaOffset
+  app      AntennaSetupStepViewModel.OnEntering
+  app      AntennaSetupStepViewModel.ReloadFromStore
+  app      AntennaToPivotTransform.Apply
+  app      ConfigurationViewModel.InitializeVehicleEditCommands
+  app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.SteeringGeometry
+  app      PgnBuilder.BuildVehicleGeometryPgn
+  page     SceneProjector.BuildConfig -> AntennaOffset
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  routing  RemoteServerWiring.ApplyConfigSet
+  js       antennaOffset: used by no script; shown in cfg-controls.js, index.html
+  save     ConfigurationService, ProfileJsonServiceV1, VehicleProfileJsonService
+
+vehicle.antennaPivot
+  writes   VehicleConfig.AntennaPivot
+  app      AntennaSetupStepViewModel.OnEntering
+  app      AntennaSetupStepViewModel.ReloadFromStore
+  app      AntennaToPivotTransform.Apply
+  app      ConfigurationViewModel.InitializeVehicleEditCommands
+  app      GpsPipelineService.ProcessCycle
+  app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.SteeringGeometry
+  app      PgnBuilder.BuildVehicleGeometryPgn
+  page     SceneProjector.BuildConfig -> AntennaPivot
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       antennaPivot: wizards.js; shown in index.html
+  save     ConfigurationService, ProfileJsonServiceV1, VehicleProfileJsonService
+
+vehicle.antennaSide
+  writes   VehicleConfig.AntennaOffset
+  app      AntennaSetupStepViewModel.OnEntering
+  app      AntennaSetupStepViewModel.ReloadFromStore
+  app      AntennaToPivotTransform.Apply
+  app      ConfigurationViewModel.InitializeVehicleEditCommands
+  app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.SteeringGeometry
+  app      PgnBuilder.BuildVehicleGeometryPgn
+  page     SceneProjector.BuildConfig -> AntennaOffset
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  routing  RemoteServerWiring.ApplyConfigSet
+  js       antennaOffset: used by no script; shown in cfg-controls.js, index.html
+  save     ConfigurationService, ProfileJsonServiceV1, VehicleProfileJsonService
+
+vehicle.frontHitchLength
+  writes   VehicleConfig.FrontHitchLength
+  app      JobRig.From
+  app      MainViewModel.SteeringGeometry
+  app      RigGeometry.AttachX
+  app      RigGeometry.AxleToWorkingPoint
+  page     SceneProjector.BuildConfig -> FrontHitchLength
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       frontHitchLength: used by no script; shown in config-panels.js, index.html, settings-panels.js
+  save     AgOpenGpsSettings, HitchMigration, VehicleProfileJsonService
+
+vehicle.hitchLength
+  writes   VehicleConfig.HitchLength
+  app      ConfigurationViewModel.InitializeVehicleEditCommands
+  app      JobRig.From
+  app      MainViewModel.SteeringGeometry
+  app      RigGeometry.AttachX
+  page     SceneProjector.BuildConfig -> HitchLength
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       hitchLength: used by no script; shown in index.html, settings-panels.js
+  save     ConfigurationService, HitchMigration, VehicleProfileJsonService
+
+vehicle.hitchType
+  writes   VehicleConfig.HitchType
+  app      ConfigurationViewModel.SelectedVehicleHitchType
+  app      JobRig.From
+  app      MainViewModel.ExportFieldIsoXml
+  page     SceneProjector.BuildConfig -> HitchType
+  page     SceneProjector.ConfigFingerprint
+  js       hitchType: used by no script; shown in config-panels.js, index.html, settings-panels.js
+  save     VehicleProfileJsonService
+
+vehicle.imuHeight
+  writes   VehicleConfig.ImuHeight
+  app      PgnBuilder.BuildVehicleGeometryPgn
+  page     SceneProjector.BuildConfig -> ImuHeight
+  js       imuHeight: used by no script; shown in index.html
+  save     VehicleProfileJsonService
+
+vehicle.imuOffset
+  writes   VehicleConfig.ImuOffset
+  app      PgnBuilder.BuildVehicleGeometryPgn
+  page     SceneProjector.BuildConfig -> ImuOffset
+  js       imuOffset: used by no script; shown in index.html
+  save     VehicleProfileJsonService
+
+vehicle.imuPivot
+  writes   VehicleConfig.ImuPivot
+  app      PgnBuilder.BuildVehicleGeometryPgn
+  page     SceneProjector.BuildConfig -> ImuPivot
+  js       imuPivot: used by no script; shown in index.html
+  save     VehicleProfileJsonService
+
+vehicle.threePointHitchLength
+  writes   VehicleConfig.ThreePointHitchLength
+  app      JobRig.From
+  app      MainViewModel.SteeringGeometry
+  app      RigGeometry.AttachX
+  app      RigGeometry.AxleToWorkingPoint
+  page     SceneProjector.BuildConfig -> ThreePointHitchLength
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       threePointHitchLength: used by no script; shown in config-panels.js, index.html, settings-panels.js
+  save     AgOpenGpsSettings, ConfigurationService, HitchMigration, VehicleProfileJsonService
+
+vehicle.trackWidth
+  writes   VehicleConfig.TrackWidth
+  app      AckermannTestStepViewModel.ProcessGpsUpdate
+  app      ConfigurationViewModel.InitializeVehicleEditCommands
+  app      CpdCircleTestStepViewModel.ProcessGpsUpdate
+  app      MainViewModel.TramTrackWidthDisplay
+  app      MainViewModel.TramTrackWidthValue
+  app      PgnBuilder.BuildVehicleGeometryPgn
+  app      TramLineService.DetectTramWheels
+  app      TramLineService.GenerateBoundaryTramTracks
+  app      TramLineService.GenerateConcentricTramLanes
+  app      TramLineService.GenerateForSystem
+  app      TramLineService.GenerateParallelTramLines
+  app      VehicleDimensionsStepViewModel.OnEntering
+  app      VehicleDimensionsStepViewModel.ReloadFromStore
+  page     SceneProjector.BuildConfig -> TrackWidth
+  page     SceneProjector.BuildTick
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       trackWidth: map-draw.js, wizards.js; shown in index.html
+  save     ConfigurationService, ProfileJsonServiceV1, VehicleProfileJsonService
+
+vehicle.type
+  writes   ToolConfig.IsToolFrontFixed, ToolConfig.IsToolRearFixed, ToolConfig.IsToolTBT, ToolConfig.IsToolTrailing, VehicleConfig.Type
+  app      JobRig.From
+  app      MainViewModel.InitializeFieldCommands  (via VehicleConfig.VehicleTypeDisplayName)
+  app      MainViewModel.SteeringGeometry
+  app      ProfilePicker.Apply
+  app      RemoteServerWiring.ApplyCheckedConfigSet
+  app      RigGeometry.Mount
+  app      RigGeometry.TrailedToolCentre
+  app      VehicleTypeStepViewModel.OnEntering
+  page     SceneProjector.BuildConfig -> Type
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  routing  RemoteServerWiring.ApplyConfigSet
+  js       type: field-builder.js, fields.js, frame.js, map-draw.js, network.js, osk.js, tracks.js, vt.js, wizards.js; shown in cfg-controls.js, config-panels.js, index.html, settings-panels.js
+  save     AgOpenGpsSettings, ConfigurationService, ProfileJsonServiceV1, ToolProfileJsonService, VehicleProfileJsonService
+
+vehicle.wheelbase
+  writes   VehicleConfig.Wheelbase
+  app      AckermannTestStepViewModel.ProcessGpsUpdate
+  app      ConfigurationViewModel.InitializeVehicleEditCommands
+  app      CpdCircleTestStepViewModel.ProcessGpsUpdate
+  app      GpsPipelineService.CalculateDisplayGuidance
+  app      GpsPipelineService.CalculateTrackGuidance
+  app      GpsPipelineService.CalculateYouTurnGuidance
+  app      GpsPipelineService.ContourParamsFor
+  app      GpsPipelineService.ProcessContour
+  app      GpsPipelineService.ProcessCycle
+  app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
+  app      MainViewModel.LoadDefaultVehicleProfile
+  app      MainViewModel.SteeringGeometry
+  app      PgnBuilder.BuildVehicleGeometryPgn
+  app      VehicleDimensionsStepViewModel.OnEntering
+  app      VehicleDimensionsStepViewModel.ReloadFromStore
+  page     SceneProjector.BuildConfig -> Wheelbase
+  page     SceneProjector.ConfigFingerprint
+  report   DebugDumpService.BuildConfigSnapshot
+  js       wheelbase: map-draw.js, wizards.js; shown in index.html
+  save     ConfigurationService, ProfileJsonServiceV1, VehicleProfileJsonService
+
