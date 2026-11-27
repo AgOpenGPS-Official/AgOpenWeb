@@ -29,7 +29,6 @@ public partial class MainViewModel
 
     private AgOpenWeb.Services.Interfaces.IUiTimer? _statusStripRotationTimer;
     private StatusStripPage _statusStripPage = StatusStripPage.Field;
-    private bool _isStatusStripRotationPaused;
 
     /// <summary>
     /// Bottom line: rotates through field / stats / AB-line content. Falls
@@ -75,19 +74,6 @@ public partial class MainViewModel
             $"AB Line: {name}  {primary:F1}°, {reciprocal:F1}°");
     }
 
-    /// <summary>True when the user has tapped the pause button on the strip.</summary>
-    public bool IsStatusStripRotationPaused
-    {
-        get => _isStatusStripRotationPaused;
-        set
-        {
-            if (SetProperty(ref _isStatusStripRotationPaused, value))
-            {
-                if (value) _statusStripRotationTimer?.Stop();
-                else _statusStripRotationTimer?.Start();
-            }
-        }
-    }
 
     /// <summary>
     /// Called from the MainViewModel constructor after services are wired.

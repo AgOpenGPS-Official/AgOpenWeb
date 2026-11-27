@@ -20,10 +20,6 @@ public partial class MainViewModel
         {
             if (e.Current != Models.State.DialogType.None)
                 CloseAllNavFlyouts();
-            // Re-evaluate whether a confirmation can offer a Back-to-fly-out button
-            // (it depends on which fly-out, if any, was just closed).
-            if (e.Current == Models.State.DialogType.Confirmation)
-                OnPropertyChanged(nameof(IsConfirmationBackVisible));
             // The Vehicle/Tool config dialogs edit the live store and have no Apply
             // button; persist the active profiles to disk when navigating away from
             // them (Back to the picker or Close to the map) so edits aren't lost.

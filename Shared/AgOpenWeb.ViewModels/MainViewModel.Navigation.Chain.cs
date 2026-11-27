@@ -41,13 +41,6 @@ public partial class MainViewModel
     // to None) by OpenChainDialog so it can't go stale across unrelated opens.
     private NavFlyout _lastClosedFlyout = NavFlyout.None;
 
-    /// <summary>
-    /// True when the active confirmation was raised directly from a left-nav
-    /// fly-out item (no parent dialog) so a Back button can return to that fly-out.
-    /// </summary>
-    public bool IsConfirmationBackVisible =>
-        _previousDialogBeforeConfirmation == DialogType.None
-        && _lastClosedFlyout != NavFlyout.None;
 
     /// <summary>
     /// Open the FIRST dialog of a chain from the currently-open fly-out. Records

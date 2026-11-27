@@ -69,20 +69,6 @@ public partial class MainViewModel
         });
     }
 
-    private string _bugReportTitle = string.Empty;
-    public string BugReportTitle
-    {
-        get => _bugReportTitle;
-        set { _bugReportTitle = value; OnPropertyChanged(); }
-    }
-
-    private string _bugReportDescription = string.Empty;
-    public string BugReportDescription
-    {
-        get => _bugReportDescription;
-        set { _bugReportDescription = value; OnPropertyChanged(); }
-    }
-
     public ObservableCollection<BugReportAttachment> BugReportAttachments { get; } = new();
 
     private void ApplyDrift(double deltaEasting, double deltaNorthing)
@@ -118,7 +104,6 @@ public partial class MainViewModel
 // --- Log Viewer (#22) ---
 public partial class MainViewModel
 {
-    public ObservableCollection<LogEntry> FilteredLogEntries { get; } = new();
 
     public ICommand? OffsetFixNorthCommand { get; private set; }
     public ICommand? OffsetFixSouthCommand { get; private set; }
@@ -130,32 +115,11 @@ public partial class MainViewModel
 // --- Flag By Lat/Lon (#23) ---
 public partial class MainViewModel
 {
-    private string _flagLatitudeInput = "";
-    public string FlagLatitudeInput
-    {
-        get => _flagLatitudeInput;
-        set => SetProperty(ref _flagLatitudeInput, value);
-    }
-
-    private string _flagLongitudeInput = "";
-    public string FlagLongitudeInput
-    {
-        get => _flagLongitudeInput;
-        set => SetProperty(ref _flagLongitudeInput, value);
-    }
-
-    private string _flagByLatLonError = "";
-    public string FlagByLatLonError
-    {
-        get => _flagByLatLonError;
-        set => SetProperty(ref _flagByLatLonError, value);
-    }
 }
 
 // --- View All Settings (#29) ---
 public partial class MainViewModel
 {
-    public ObservableCollection<SettingsGroupItem> SettingsTree { get; } = new();
 
     public ICommand? SetLanguageCommand { get; private set; }
 }

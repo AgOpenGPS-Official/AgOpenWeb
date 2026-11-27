@@ -27,9 +27,6 @@ public partial class MainViewModel
     private bool _isFieldToolsPanelVisible;
     private bool _isNetworkIoPanelVisible;
     private bool _isSimulatorPanelVisible;
-    private bool _isSteerChartPanelVisible;
-    private bool _isHeadingChartPanelVisible;
-    private bool _isXTEChartPanelVisible;
 
     #endregion
 
@@ -84,23 +81,8 @@ public partial class MainViewModel
         set => SetProperty(ref _isSimulatorPanelVisible, value);
     }
 
-    public bool IsSteerChartPanelVisible
-    {
-        get => _isSteerChartPanelVisible;
-        set => SetProperty(ref _isSteerChartPanelVisible, value);
-    }
 
-    public bool IsHeadingChartPanelVisible
-    {
-        get => _isHeadingChartPanelVisible;
-        set => SetProperty(ref _isHeadingChartPanelVisible, value);
-    }
 
-    public bool IsXTEChartPanelVisible
-    {
-        get => _isXTEChartPanelVisible;
-        set => SetProperty(ref _isXTEChartPanelVisible, value);
-    }
 
     /// <summary>
     /// Close every left-nav fly-out menu. Used to enforce "one menu open at a
@@ -158,20 +140,11 @@ public partial class MainViewModel
             SetProperty(ref _cameraMode, value);
             if (old != value)
             {
-                OnPropertyChanged(nameof(CameraModeLabel));
                 ApplyCameraMode();
             }
         }
     }
 
-    public string CameraModeLabel => _cameraMode switch
-    {
-        CameraMode.NorthUp => "N",
-        CameraMode.HeadingUp => "H",
-        CameraMode.Map => "M",
-        CameraMode.Free => "C",  // "Center" -- tap to recenter on vehicle
-        _ => "?"
-    };
 
     private void ApplyCameraMode()
     {
@@ -237,22 +210,9 @@ public partial class MainViewModel
             _displaySettings.CameraPitch = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(Is2DMode));
-            OnPropertyChanged(nameof(CameraPitchDisplay));
         }
     }
 
-    public string CameraPitchDisplay
-    {
-        get
-        {
-            double pitch = _displaySettings.CameraPitch;
-            if (pitch <= -89.0) return "2D (overhead)";
-            // Convert: -90 = overhead, -10 = nearly horizontal
-            // Show as tilt angle: 0 = overhead, 80 = horizontal
-            double tilt = 90.0 + pitch;
-            return $"Tilt: {tilt:F0} deg";
-        }
-    }
 
     public bool Is2DMode
     {
@@ -428,43 +388,7 @@ public partial class MainViewModel
     /// <summary>True when the platform exposed a real reading. The icon hides when this is false.</summary>
     public bool IsBatteryAvailable => _batteryStatus.IsAvailable;
 
-    /// <summary>
-    /// On-map field-stats detail card. Replaces the old auto-show-when-active
-    /// top-right strip; toggled from the strip button. Persists via
-    /// <see cref="DisplayConfig.FieldStatsOnMapVisible"/>.
-    /// </summary>
-    public bool IsFieldStatsOnMapVisible
-    {
-        get => _configStore.Display.FieldStatsOnMapVisible;
-        set
-        {
-            if (_configStore.Display.FieldStatsOnMapVisible != value)
-            {
-                _configStore.Display.FieldStatsOnMapVisible = value;
-                OnPropertyChanged();
-                _settingsService.Save();
-            }
-        }
-    }
 
-    /// <summary>
-    /// On-map GPS detail card. Toggled by tapping the strip's Modules
-    /// aggregate button (the button still shows the aggregate dot colour).
-    /// Shares the on-map slot with the Field-Stats card.
-    /// </summary>
-    public bool IsGpsDetailOverlayVisible
-    {
-        get => _configStore.Display.GpsDetailOverlayVisible;
-        set
-        {
-            if (_configStore.Display.GpsDetailOverlayVisible != value)
-            {
-                _configStore.Display.GpsDetailOverlayVisible = value;
-                OnPropertyChanged();
-                _settingsService.Save();
-            }
-        }
-    }
 
     #endregion
 }

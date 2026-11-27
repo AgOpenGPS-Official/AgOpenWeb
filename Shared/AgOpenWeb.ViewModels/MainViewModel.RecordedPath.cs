@@ -52,16 +52,6 @@ public partial class MainViewModel
         set => SetProperty(ref _resumeModeLabel, value);
     }
 
-    // Dialog tab state: 0 = Record, 1 = Playback
-    private int _recordedPathTabIndex;
-    public int RecordedPathTabIndex
-    {
-        get => _recordedPathTabIndex;
-        set
-        {
-            SetProperty(ref _recordedPathTabIndex, value);
-        }
-    }
 
     // Name for saving recorded path
     private string _recordedPathName = "";

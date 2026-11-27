@@ -2218,30 +2218,8 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    // Panel-based dialog data properties (visibility now managed by State.UI)
-    private decimal? _simCoordsDialogLatitude;
-    public decimal? SimCoordsDialogLatitude
-    {
-        get => _simCoordsDialogLatitude;
-        set => SetProperty(ref _simCoordsDialogLatitude, value);
-    }
-
-    private decimal? _simCoordsDialogLongitude;
-    public decimal? SimCoordsDialogLongitude
-    {
-        get => _simCoordsDialogLongitude;
-        set => SetProperty(ref _simCoordsDialogLongitude, value);
-    }
-
     // Field Selection Dialog properties (visibility managed by State.UI)
     public ObservableCollection<FieldSelectionItem> AvailableFields { get; } = new();
-
-    private FieldSelectionItem? _selectedFieldInfo;
-    public FieldSelectionItem? SelectedFieldInfo
-    {
-        get => _selectedFieldInfo;
-        set => SetProperty(ref _selectedFieldInfo, value);
-    }
 
     // AB Line Creation Mode state (dialog visibility managed by State.UI)
     private ABCreationMode _currentABCreationMode = ABCreationMode.None;
@@ -2310,15 +2288,6 @@ public partial class MainViewModel : ObservableObject
                                           _isPlaceFlagOnClickMode;
 
     private bool _isPlaceFlagOnClickMode;
-    public bool IsPlaceFlagOnClickMode
-    {
-        get => _isPlaceFlagOnClickMode;
-        set
-        {
-            SetProperty(ref _isPlaceFlagOnClickMode, value);
-            OnPropertyChanged(nameof(EnableABClickSelection));
-        }
-    }
 
     /// <summary>
     /// Place a flag at the given world coordinates (from map click).
@@ -2331,8 +2300,6 @@ public partial class MainViewModel : ObservableObject
         UpdateFlagsOnMap();
         StatusMessage = $"{actualColor} flag '{flag.Name}' at E:{easting:F1} N:{northing:F1}";
 
-        // Exit flag click mode after placing
-        IsPlaceFlagOnClickMode = false;
     }
 
     public string ABCreationInstructions
@@ -2912,24 +2879,6 @@ public partial class MainViewModel : ObservableObject
     // NTRIP Profiles Dialog properties
     public ObservableCollection<NtripProfile> NtripProfiles { get; } = new();
 
-    private NtripProfile? _selectedNtripProfile;
-    public NtripProfile? SelectedNtripProfile
-    {
-        get => _selectedNtripProfile;
-        set => SetProperty(ref _selectedNtripProfile, value);
-    }
-
-    private NtripProfile? _editingNtripProfile;
-    public NtripProfile? EditingNtripProfile
-    {
-        get => _editingNtripProfile;
-        set => SetProperty(ref _editingNtripProfile, value);
-    }
-
-    /// <summary>
-    /// Available fields for NTRIP profile association (with selection state)
-    /// </summary>
-    public ObservableCollection<FieldAssociationItem> AvailableFieldsForProfile { get; } = new();
 
     private string _ntripTestStatus = string.Empty;
     public string NtripTestStatus
@@ -3124,18 +3073,8 @@ public partial class MainViewModel : ObservableObject
     // Existing boundary polygons for reference display in the map dialog (WGS84 coordinates)
     public List<List<(double Latitude, double Longitude)>> BoundaryMapExistingPolygons { get; } = new();
 
-    // Result properties for boundary map dialog
-    public List<(double Latitude, double Longitude)> BoundaryMapResultPoints { get; } = new();
-    public string? BoundaryMapResultBackgroundPath { get; set; }
 
     public ICommand? ShowBoundaryMapDialogCommand { get; private set; }
-
-    private decimal? _numericInputDialogValue;
-    public decimal? NumericInputDialogValue
-    {
-        get => _numericInputDialogValue;
-        set => SetProperty(ref _numericInputDialogValue, value);
-    }
 
     // Confirmation Dialog properties (visibility managed by State.UI)
     private string _confirmationDialogTitle = string.Empty;
@@ -3305,28 +3244,6 @@ public partial class MainViewModel : ObservableObject
         ErrorDialogMessage = message;
         PromptSeq++;
         State.UI.ShowDialog(Models.State.DialogType.Error);
-    }
-
-    // AgShare Settings Dialog properties (visibility managed by State.UI)
-    private string _agShareSettingsServerUrl = "https://agshare.agopengps.com";
-    public string AgShareSettingsServerUrl
-    {
-        get => _agShareSettingsServerUrl;
-        set => SetProperty(ref _agShareSettingsServerUrl, value);
-    }
-
-    private string _agShareSettingsApiKey = string.Empty;
-    public string AgShareSettingsApiKey
-    {
-        get => _agShareSettingsApiKey;
-        set => SetProperty(ref _agShareSettingsApiKey, value);
-    }
-
-    private bool _agShareSettingsEnabled;
-    public bool AgShareSettingsEnabled
-    {
-        get => _agShareSettingsEnabled;
-        set => SetProperty(ref _agShareSettingsEnabled, value);
     }
 
     // iOS Modal Sheet Visibility Properties
@@ -3571,13 +3488,6 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _startWorkSessionDialogVm, value);
     }
 
-    // Resume Job cross-field history dialog (#349 M4)
-    private ResumeJobDialogViewModel? _resumeJobDialogVm;
-    public ResumeJobDialogViewModel? ResumeJobDialogVm
-    {
-        get => _resumeJobDialogVm;
-        set => SetProperty(ref _resumeJobDialogVm, value);
-    }
 
     public ICommand? ShowVehicleConfigDialogCommand { get; private set; }
     public ICommand? ShowToolConfigDialogCommand { get; private set; }
@@ -3657,13 +3567,6 @@ public partial class MainViewModel : ObservableObject
     {
         get => _headlandDistance;
         set => SetProperty(ref _headlandDistance, Math.Max(1.0, Math.Min(100.0, value)));
-    }
-
-    private int _headlandPasses = 1;
-    public int HeadlandPasses
-    {
-        get => _headlandPasses;
-        set => SetProperty(ref _headlandPasses, Math.Max(1, Math.Min(5, value)));
     }
 
     // Headland — single home is State.Field.HeadlandLine (§12.1). Pass-through.
@@ -3769,153 +3672,13 @@ public partial class MainViewModel : ObservableObject
     // Headland point selection (for clipping headland via boundary points)
     // Each point is stored as (segmentIndex, t parameter 0-1, world position)
     private int _headlandPoint1Index = -1;
-    public int HeadlandPoint1Index
-    {
-        get => _headlandPoint1Index;
-        set
-        {
-            SetProperty(ref _headlandPoint1Index, value);
-            OnPropertyChanged(nameof(HeadlandPointsSelected));
-        }
-    }
-    private double _headlandPoint1T = 0;  // Parameter along segment (0 = start vertex, 1 = end vertex)
-    private Models.Base.Vec2? _headlandPoint1Position;  // Actual world position
 
     private int _headlandPoint2Index = -1;
-    public int HeadlandPoint2Index
-    {
-        get => _headlandPoint2Index;
-        set
-        {
-            SetProperty(ref _headlandPoint2Index, value);
-            OnPropertyChanged(nameof(HeadlandPointsSelected));
-        }
-    }
-    private double _headlandPoint2T = 0;  // Parameter along segment (0 = start vertex, 1 = end vertex)
-    private Models.Base.Vec2? _headlandPoint2Position;  // Actual world position
 
-    // For curve mode: store headland segment index/t (separate from boundary segment)
-    private int _headlandCurvePoint1Index = -1;
-    private double _headlandCurvePoint1T = 0;
-    private int _headlandCurvePoint2Index = -1;
-    private double _headlandCurvePoint2T = 0;
-
-    // Cached clip path (to avoid recalculating on every access)
-    private List<Models.Base.Vec2>? _cachedClipPath;
-    private bool _clipPathDirty = true;
-
-    // Visual markers for selected points (world coordinates)
-    private List<Models.Base.Vec2>? _headlandSelectedMarkers;
-    public List<Models.Base.Vec2>? HeadlandSelectedMarkers
-    {
-        get => _headlandSelectedMarkers;
-        set => SetProperty(ref _headlandSelectedMarkers, value);
-    }
 
     public bool HeadlandPointsSelected => _headlandPoint1Index >= 0 && _headlandPoint2Index >= 0;
 
-    // Clip path for headland clipping (follows the headland curve) - used in CURVE MODE
-    // This shows the section that will be REMOVED (the shorter path)
-    public List<Models.Base.Vec2>? HeadlandClipPath
-    {
-        get
-        {
-            // Only return clip path when in curve mode and both points selected on headland
-            if (!IsHeadlandCurveMode || _headlandCurvePoint1Index < 0 || _headlandCurvePoint2Index < 0)
-            {
-                _cachedClipPath = null;
-                return null;
-            }
 
-            // Return cached path if available and not dirty
-            if (!_clipPathDirty && _cachedClipPath != null)
-                return _cachedClipPath;
-
-            var headland = CurrentHeadlandLine ?? HeadlandGeometry.ConvertPreviewToVec3(HeadlandPreviewLine);
-            if (headland == null || headland.Count < 3)
-            {
-                _cachedClipPath = null;
-                return null;
-            }
-
-            // Build both paths along the headland between the two selected points
-            var forwardPath = BuildCurveModePath(headland, _headlandCurvePoint1Index, _headlandCurvePoint1T,
-                                                           _headlandCurvePoint2Index, _headlandCurvePoint2T, true);
-            var backwardPath = BuildCurveModePath(headland, _headlandCurvePoint1Index, _headlandCurvePoint1T,
-                                                            _headlandCurvePoint2Index, _headlandCurvePoint2T, false);
-
-            // Return the LONGER path - this is what will be REMOVED (shown in red)
-            // Curve mode keeps the shorter section (between the two points), so the red line shows what's being cut away
-            _cachedClipPath = forwardPath.Count > backwardPath.Count ? forwardPath : backwardPath;
-            _clipPathDirty = false;
-            return _cachedClipPath;
-        }
-    }
-
-    private void InvalidateClipPathCache()
-    {
-        _clipPathDirty = true;
-        _cachedClipPath = null;
-    }
-
-    // Helper to build clip path for curve mode visualization
-    private List<Models.Base.Vec2> BuildCurveModePath(List<Models.Base.Vec3> headland, int idx1, double t1, int idx2, double t2, bool forward)
-    {
-        var path = new List<Models.Base.Vec2>();
-        int n = headland.Count;
-
-        // Start position (interpolated on headland segment)
-        var start = InterpolateHeadlandPoint(headland, idx1, t1);
-        path.Add(start);
-
-        if (forward)
-        {
-            // Go from idx1 to idx2 in forward (increasing index) direction
-            // Start from the next vertex after idx1's segment end
-            int current = (idx1 + 1) % n;
-            int target = (idx2 + 1) % n;
-            int iterations = 0;
-
-            while (current != target && iterations < n)
-            {
-                path.Add(new Models.Base.Vec2(headland[current].Easting, headland[current].Northing));
-                current = (current + 1) % n;
-                iterations++;
-            }
-        }
-        else
-        {
-            // Go from idx1 to idx2 in backward (decreasing index) direction
-            // Start from idx1's vertex (segment start)
-            int current = idx1;
-            int target = idx2;
-            int iterations = 0;
-
-            while (current != target && iterations < n)
-            {
-                path.Add(new Models.Base.Vec2(headland[current].Easting, headland[current].Northing));
-                current = (current - 1 + n) % n;
-                iterations++;
-            }
-        }
-
-        // End position (interpolated on headland segment)
-        var end = InterpolateHeadlandPoint(headland, idx2, t2);
-        path.Add(end);
-
-        return path;
-    }
-
-    // Helper to interpolate a point on a headland segment
-    private Models.Base.Vec2 InterpolateHeadlandPoint(List<Models.Base.Vec3> headland, int segmentIndex, double t)
-    {
-        int n = headland.Count;
-        var p1 = headland[segmentIndex];
-        var p2 = headland[(segmentIndex + 1) % n];
-        return new Models.Base.Vec2(
-            p1.Easting + t * (p2.Easting - p1.Easting),
-            p1.Northing + t * (p2.Northing - p1.Northing));
-    }
 
     // Field management properties
     private bool _isFieldOpen;
@@ -4000,12 +3763,6 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public event Action<Field?>? FieldFullyLoaded;
 
-    /// <summary>
-    /// Platform-provided callback that captures the current window as a PNG byte array.
-    /// Set by platform code (MainWindow/MainView) after ViewModel is created.
-    /// Used by debug dump to include a screenshot.
-    /// </summary>
-    public Func<byte[]?>? ScreenshotProvider { get; set; }
 
     public ICommand? StartBoundaryRecordingCommand { get; private set; }
     public ICommand? StopBoundaryRecordingCommand { get; private set; }
@@ -4030,7 +3787,6 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ToggleHeadlandCommand { get; private set; }
     public ICommand? ToggleSectionInHeadlandCommand { get; private set; }
     public ICommand? ResetToolHeadingCommand { get; private set; }
-    public ICommand? ClearHeadlandCommand { get; private set; }
 
     // AB Line Guidance Commands - Bottom Bar (always visible)
     public ICommand? SnapLeftCommand { get; private set; }
@@ -4110,22 +3866,13 @@ public partial class MainViewModel : ObservableObject
     }
 
     public int TramPasses => ConfigStore.Tram.Passes;
-    public int TramStartPass => ConfigStore.Tram.StartPass;
     public double TramWidth => ConfigStore.Tram.TramWidth;
     public System.Collections.ObjectModel.ObservableCollection<Models.Tram.TramSystem> TramSystems => ConfigStore.Tram.Systems;
-    public string TramWidthDisplay => FormatLengthMeters(ConfigStore.Tram.TramWidth);
-    // A host-rendered length string, honoring the authoritative unit choice
-    // (AppSettings.IsMetric — same source as the profile previews), not a hardcoded metre.
-    private string FormatLengthMeters(double meters) =>
-        _settingsService.Settings.IsMetric
-            ? $"{meters:F2} m"
-            : $"{UnitConversion.MetersToFeet(meters):F2} ft";
     public string TramLineCountDisplay => $"{_tramLineService.ParallelTramLines.Count}";
     public ICommand? ToggleTramLeftManualCommand { get; private set; }
     public ICommand? ToggleTramRightManualCommand { get; private set; }
     /// <summary>Runtime tram detection byte: bit 0=right wheel, bit 1=left wheel.</summary>
     public byte TramControlByte { get; set; }
-    public int TramLineNumber => ConfigStore.Guidance.TramLine;
 
     public string TramDisplayLabel => ConfigStore.Tram.DisplayMode switch
     {
@@ -4141,7 +3888,6 @@ public partial class MainViewModel : ObservableObject
     public ICommand? StopRecordedPathCommand { get; private set; }
     public ICommand? DeleteContourTrackCommand { get; private set; }
     public ICommand? ImportTracksFromFieldCommand { get; private set; }
-    public ObservableCollection<string> ImportFieldsList { get; } = new();
     public ICommand? ToggleManualModeCommand { get; private set; }
     public ICommand? ToggleSectionMasterCommand { get; private set; }
     public ICommand? ToggleSectionCommand { get; private set; }
@@ -4876,25 +4622,6 @@ public partial class MainViewModel : ObservableObject
         HeadlandPreviewLine = preview;
     }
 
-    /// <summary>
-    /// Clear the selected headland points
-    /// </summary>
-    public void ClearHeadlandPointSelection()
-    {
-        HeadlandPoint1Index = -1;
-        _headlandPoint1T = 0;
-        _headlandPoint1Position = null;
-        HeadlandPoint2Index = -1;
-        _headlandPoint2T = 0;
-        _headlandPoint2Position = null;
-        HeadlandSelectedMarkers = null;
-        // Also clear curve mode fields
-        _headlandCurvePoint1Index = -1;
-        _headlandCurvePoint1T = 0;
-        _headlandCurvePoint2Index = -1;
-        _headlandCurvePoint2T = 0;
-        InvalidateClipPathCache();
-    }
 
     /// <summary>
     /// Calculate heading (in degrees) from point A to point B using Easting/Northing

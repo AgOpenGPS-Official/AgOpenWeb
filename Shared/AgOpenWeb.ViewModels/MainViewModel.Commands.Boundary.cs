@@ -36,7 +36,6 @@ public partial class MainViewModel
                 BoundaryMapCenterLongitude = Longitude;
             }
 
-            BoundaryMapResultPoints.Clear();
             PopulateBoundaryMapExistingPolygons();
             State.UI.ShowDialog(DialogType.BoundaryMap);
         });
@@ -81,14 +80,6 @@ public partial class MainViewModel
             StatusMessage = "Tool heading reset to vehicle heading";
         });
 
-        ClearHeadlandCommand = new RelayCommand(() =>
-        {
-            CurrentHeadlandLine = null;
-            HeadlandPreviewLine = null;
-            HasHeadland = false;
-            IsHeadlandOn = false;
-            StatusMessage = "Headland cleared";
-        });
 
         StartBoundaryRecordingCommand = new RelayCommand(() =>
         {

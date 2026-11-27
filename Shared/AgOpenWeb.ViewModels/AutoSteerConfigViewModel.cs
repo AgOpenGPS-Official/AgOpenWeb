@@ -144,35 +144,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
 
     #region Panel Visibility & Mode
 
-    private bool _isPanelVisible;
-    public bool IsPanelVisible
-    {
-        get => _isPanelVisible;
-        set
-        {
-            if (SetProperty(ref _isPanelVisible, value))
-            {
-                if (value)
-                {
-                    SubscribeToUdpEvents();
-                }
-                else
-                {
-                    UnsubscribeFromUdpEvents();
-                    // Disable free drive when panel closes (safety)
-                    StopFreeDrive();
-                }
-            }
-        }
-    }
-
-    private bool _isFullMode;
-    public bool IsFullMode
-    {
-        get => _isFullMode;
-        set => SetProperty(ref _isFullMode, value);
-    }
-
     #endregion
 
     #region Numeric Input Dialog
@@ -182,20 +153,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     {
         get => _isNumericInputVisible;
         set => SetProperty(ref _isNumericInputVisible, value);
-    }
-
-    private string _numericInputTitle = string.Empty;
-    public string NumericInputTitle
-    {
-        get => _numericInputTitle;
-        set => SetProperty(ref _numericInputTitle, value);
-    }
-
-    private string _numericInputUnit = string.Empty;
-    public string NumericInputUnit
-    {
-        get => _numericInputUnit;
-        set => SetProperty(ref _numericInputUnit, value);
     }
 
     private string _numericInputDisplayText = string.Empty;
@@ -382,8 +339,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
 
     #region Tab 9: Display Settings
 
-    /// <summary>Whether any bar mode (lightbar or steerbar) is enabled.</summary>
-    public bool IsBarEnabled => AutoSteer.LightbarEnabled || AutoSteer.SteerBarEnabled;
 
     private void InitializeTab9Commands()
     {
@@ -424,13 +379,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         set => SetProperty(ref _actualSteerAngle, value);
     }
 
-    private double _steerError;
-    public double SteerError
-    {
-        get => _steerError;
-        set => SetProperty(ref _steerError, value);
-    }
-
     private double _setSteerAngle;
     public double SetSteerAngle
     {
@@ -465,13 +413,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     {
         get => _vwasFusionActive;
         set => SetProperty(ref _vwasFusionActive, value);
-    }
-
-    private int _testSteerOffset;
-    public int TestSteerOffset
-    {
-        get => _testSteerOffset;
-        set => SetProperty(ref _testSteerOffset, value);
     }
 
     /// <summary>Free Drive off and the wheels back to centre in the panel (the panel closed,
@@ -541,13 +482,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
 
     public ICommand SendAndSaveCommand { get; private set; } = null!;
 
-    private bool _isResetConfirmVisible;
-    public bool IsResetConfirmVisible
-    {
-        get => _isResetConfirmVisible;
-        set => SetProperty(ref _isResetConfirmVisible, value);
-    }
-
     public ICommand ConfirmResetCommand { get; private set; } = null!;
 
     private void InitializeActionCommands()
@@ -578,7 +512,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
             SendSteerSettingsPgn();
             SendSteerConfigPgn();
 
-            IsResetConfirmVisible = false;
         });
     }
 
@@ -608,78 +541,9 @@ public partial class AutoSteerConfigViewModel : ObservableObject
 
     #region UDP Event Subscription
 
-    private bool _isSubscribed;
-
-    // Display throttling: update at ~10Hz instead of 50Hz
-    private const int DisplayUpdateIntervalMs = 100;
-    private DateTime _lastDisplayUpdate = DateTime.MinValue;
-
     // Smoothing: exponential moving average for angle display
     private double _smoothedActualAngle;
-    private const double SmoothingFactor = 0.3; // Lower = smoother, higher = more responsive
 
-    private void SubscribeToUdpEvents()
-    {
-        if (_isSubscribed || _udpService == null) return;
-
-        _udpService.DataReceived += OnUdpDataReceived;
-        _isSubscribed = true;
-        _smoothedActualAngle = 0;
-        _lastDisplayUpdate = DateTime.MinValue;
-    }
-
-    private void UnsubscribeFromUdpEvents()
-    {
-        if (!_isSubscribed || _udpService == null) return;
-
-        _udpService.DataReceived -= OnUdpDataReceived;
-        _isSubscribed = false;
-    }
-
-    private void OnUdpDataReceived(object? sender, UdpDataReceivedEventArgs e)
-    {
-        // Handle PGN 253 (Steer Data from module)
-        if (e.PGN != PgnNumbers.AUTOSTEER_DATA) return;
-
-        // Parse the incoming steer data
-        if (!PgnBuilder.TryParseSteerData(e.Data, out var steerData))
-            return;
-
-        // Apply exponential moving average smoothing to angle
-        _smoothedActualAngle = (_smoothedActualAngle * (1 - SmoothingFactor)) +
-                              (steerData.ActualSteerAngle * SmoothingFactor);
-
-        // Throttle display updates to ~10Hz
-        var now = DateTime.UtcNow;
-        if ((now - _lastDisplayUpdate).TotalMilliseconds < DisplayUpdateIntervalMs)
-            return;
-
-        _lastDisplayUpdate = now;
-
-        // Update display properties with smoothed values
-        ActualSteerAngle = Math.Round(_smoothedActualAngle, 1);
-
-        // Calculate steer error
-        double error = SetSteerAngle - _smoothedActualAngle;
-        SteerError = Math.Round(Math.Abs(error), 1);
-
-        // Calculate PWM based on error and proportional gain
-        // This is the PWM AgOpenWeb would send to the motor
-        double pwmRaw = error * AutoSteer.ProportionalGain;
-        int pwmClamped = (int)Math.Clamp(Math.Abs(pwmRaw), 0, AutoSteer.MaxPwm);
-
-        // Apply minimum PWM threshold (deadband)
-        if (pwmClamped < AutoSteer.MinPwm)
-            pwmClamped = 0;
-
-        PwmDisplay = pwmClamped;
-
-        // Update switch status from module
-        WorkSwitchActive = steerData.WorkSwitchActive;
-        SteerSwitchActive = steerData.SteerSwitchActive;
-        RemoteButtonPressed = steerData.RemoteButtonPressed;
-        VwasFusionActive = steerData.VwasFusionActive;
-    }
 
     #endregion
 }

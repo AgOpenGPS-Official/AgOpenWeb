@@ -41,20 +41,6 @@ public partial class ConfigurationViewModel : ObservableObject
         set => SetProperty(ref _isNumericInputVisible, value);
     }
 
-    private string _numericInputTitle = string.Empty;
-    public string NumericInputTitle
-    {
-        get => _numericInputTitle;
-        set => SetProperty(ref _numericInputTitle, value);
-    }
-
-    private string _numericInputUnit = string.Empty;
-    public string NumericInputUnit
-    {
-        get => _numericInputUnit;
-        set => SetProperty(ref _numericInputUnit, value);
-    }
-
     private decimal? _numericInputValue;
     public decimal? NumericInputValue
     {
@@ -229,20 +215,6 @@ public partial class ConfigurationViewModel : ObservableObject
 
     #region Text Input Dialog
 
-    private bool _isTextInputVisible;
-    public bool IsTextInputVisible
-    {
-        get => _isTextInputVisible;
-        set => SetProperty(ref _isTextInputVisible, value);
-    }
-
-    private string _textInputValue = string.Empty;
-    public string TextInputValue
-    {
-        get => _textInputValue;
-        set => SetProperty(ref _textInputValue, value);
-    }
-
     private void InitializeTextInputCommands()
     {
     }
@@ -250,13 +222,6 @@ public partial class ConfigurationViewModel : ObservableObject
     #endregion
 
     #region Color Picker Dialog
-
-    private bool _isColorPickerVisible;
-    public bool IsColorPickerVisible
-    {
-        get => _isColorPickerVisible;
-        set => SetProperty(ref _isColorPickerVisible, value);
-    }
 
     // -1 = single coverage color, 0-15 = section index
 

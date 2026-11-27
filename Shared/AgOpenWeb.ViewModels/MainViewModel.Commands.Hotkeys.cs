@@ -15,11 +15,4 @@ namespace AgOpenWeb.ViewModels;
 
 public partial class MainViewModel
 {
-    // Editing state
-    private HotkeyAction? _editingHotkeyAction;
-    public HotkeyAction? EditingHotkeyAction
-    {
-        get => _editingHotkeyAction;
-        set => SetProperty(ref _editingHotkeyAction, value);
-    }
 }
