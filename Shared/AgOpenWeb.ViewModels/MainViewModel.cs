@@ -50,13 +50,6 @@ public partial class MainViewModel : ObservableObject
     private readonly IBoundaryRecordingService _boundaryRecordingService;
     private readonly IBoundaryBuilderService _boundaryBuilderService;
     private readonly Services.Headland.IHeadlandBuilderService _headlandBuilderService;
-    private readonly ITrackGuidanceService _trackGuidanceService;
-    private readonly YouTurnCreationService _youTurnCreationService;
-    private readonly YouTurnPathingService _youTurnPathingService;
-    private readonly Services.Geometry.IPolygonOffsetService _polygonOffsetService;
-    private readonly Services.Interfaces.ITurnAreaService _turnAreaService;
-    private readonly YouTurnGuidanceService _youTurnGuidanceService;
-    private readonly IVehicleProfileService _vehicleProfileService;
     private readonly IConfigurationService _configurationService;
     private readonly IAutoSteerService _autoSteerService;
     private readonly ISmartWasCalibrationService _smartWasService;
@@ -66,7 +59,6 @@ public partial class MainViewModel : ObservableObject
     private readonly ICoverageMapService _coverageMapService;
     private readonly ISectionControlService _sectionControlService;
     private readonly INtripProfileService _ntripProfileService;
-    private readonly IChartDataService _chartDataService;
     private readonly IAudioService _audioService;
     private readonly IElevationLogService _elevationLogService;
     private readonly IJobService _jobService;
@@ -107,9 +99,7 @@ public partial class MainViewModel : ObservableObject
     // Convenience accessors for the injected ConfigurationStore (§11.2 — no
     // ambient _configStore access in the VM/services).
     private ConfigurationStore ConfigStore => _configStore;
-    private VehicleConfig Vehicle => _configStore.Vehicle;
     private ToolConfig Tool => _configStore.Tool;
-    private GuidanceConfig Guidance => _configStore.Guidance;
 
     /// <summary>
     /// Sets the field origin in centralized FieldState — the single home (§12.1) —
@@ -133,7 +123,6 @@ public partial class MainViewModel : ObservableObject
 
     private string _statusMessage = "Starting...";
     private string _networkStatus = "Disconnected";
-    private double _currentFps;
     private double _gpsToPgnLatencyMs;
 
     // Guidance/Steering status
@@ -144,7 +133,6 @@ public partial class MainViewModel : ObservableObject
     private bool _isAutoSteerHelloOk;
     private bool _isMachineHelloOk;
     private bool _isImuHelloOk;
-    private bool _isGpsHelloOk;
 
     // Data status (data flow)
     private bool _isAutoSteerDataOk;
@@ -192,7 +180,6 @@ public partial class MainViewModel : ObservableObject
         ICoverageMapService coverageMapService,
         ISectionControlService sectionControlService,
         INtripProfileService ntripProfileService,
-        IChartDataService chartDataService,
         IAudioService audioService,
         IElevationLogService elevationLogService,
         IJobService jobService,
@@ -318,13 +305,6 @@ public partial class MainViewModel : ObservableObject
         _boundaryRecordingService = boundaryRecordingService;
         _boundaryBuilderService = boundaryBuilderService;
         _headlandBuilderService = headlandBuilderService;
-        _trackGuidanceService = trackGuidanceService;
-        _youTurnCreationService = youTurnCreationService;
-        _youTurnGuidanceService = youTurnGuidanceService;
-        _youTurnPathingService = youTurnPathingService;
-        _polygonOffsetService = polygonOffsetService;
-        _turnAreaService = turnAreaService;
-        _vehicleProfileService = vehicleProfileService;
         _configurationService = configurationService;
         // Refresh status-bar bindings whenever the active profile changes
         // (load / save / picker dialog) so labels like CurrentProfileName
@@ -340,7 +320,6 @@ public partial class MainViewModel : ObservableObject
         _coverageMapService = coverageMapService;
         _sectionControlService = sectionControlService;
         _ntripProfileService = ntripProfileService;
-        _chartDataService = chartDataService;
         _audioService = audioService;
         _elevationLogService = elevationLogService;
         _jobService = jobService;
@@ -533,7 +512,6 @@ public partial class MainViewModel : ObservableObject
                 OnPropertyChanged(nameof(WorkRateDisplay));
                 OnPropertyChanged(nameof(SimulatorSpeedDisplay));
                 OnPropertyChanged(nameof(SpeedLargeValue));
-                OnPropertyChanged(nameof(SpeedLargeUnit));
                 RaiseStatusStripChanged();
             }
         };
@@ -552,7 +530,6 @@ public partial class MainViewModel : ObservableObject
         _simulatorTimer.Tick += OnSimulatorTick;
 
         // Initialize commands (split into partial class files for organization)
-        InitializeChainNavigationCommands();
         InitializeNavigationCommands();
         InitializeSimulatorCommands();
         InitializeConfigurationCommands();
@@ -561,12 +538,9 @@ public partial class MainViewModel : ObservableObject
         InitializeTrackCommands();
         InitializeTrackManagementCommands();
         InitializeRecordedPathCommands();
-        InitializeNtripCommands();
         InitializeNetworkIoCommands();
         InitializeWizardCommands();
         InitializeSettingsCommands();
-        InitializeHotkeyCommands();
-        InitializeChartCommands();
         InitializeCoverageGuardCommands();
 
         // Load display settings first, then restore our app settings on top
@@ -590,7 +564,6 @@ public partial class MainViewModel : ObservableObject
         // user-driven and should persist (see the ConfigStore.Connections
         // subscription above).
         _configReady = true;
-
     }
 
     /// <summary>
@@ -818,13 +791,6 @@ public partial class MainViewModel : ObservableObject
         // Restore last camera follow mode (Map / NorthUp / HeadingUp) — state.
         if (PersistentState.CameraMode != CameraMode.Free)
             CameraMode = PersistentState.CameraMode;
-
-        // Prime _last3DPitch from the saved CameraPitch so the 2D/3D toggle
-        // restores the user's prior tilt instead of the hard-coded -60° default.
-        // ConfigurationService loads CameraPitch directly into the backing
-        // field, bypassing the setter that would otherwise capture this.
-        if (_displaySettings.CameraPitch > -89.0)
-            _last3DPitch = _displaySettings.CameraPitch;
 
         // Restore simulator position (state). Always restore coords regardless
         // of enabled state so map dialogs work at startup.
@@ -1061,15 +1027,6 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Current rendering frames per second
-    /// </summary>
-    public double CurrentFps
-    {
-        get => _currentFps;
-        set => SetProperty(ref _currentFps, value);
-    }
-
-    /// <summary>
     /// GPS-to-PGN pipeline latency in milliseconds.
     /// This is the critical latency from GPS receipt to steering PGN send.
     /// </summary>
@@ -1091,15 +1048,6 @@ public partial class MainViewModel : ObservableObject
         get => _crossTrackError;
         set => SetProperty(ref _crossTrackError, value);
     }
-
-    /// <summary>
-    /// Steer-bar value (AgOpen): the steer-angle ERROR = actual WAS angle (from the
-    /// steer module) − commanded guidance steer angle, both in degrees. The light bar
-    /// shows cross-track distance; the steer bar shows this. Read per-frame by the
-    /// LightBarPanel when SteerBarEnabled.
-    /// </summary>
-    public double SteerBarAngleError =>
-        _autoSteerService.LastSteerData.ActualSteerAngle - State.Guidance.SteerAngle;
 
     public bool IsAutoSteerActive
     {
@@ -1302,14 +1250,11 @@ public partial class MainViewModel : ObservableObject
 
     // OnAutoSteerStateUpdated is now in MainViewModel.Guidance.cs
 
-
-
     // AutoSteer guidance state and event handlers
     // are now in MainViewModel.Guidance.cs
 
     // YouTurn methods (ProcessYouTurn, CreateYouTurnPath, CompleteYouTurn, etc.)
     // are now in MainViewModel.YouTurn.cs
-
 
     private void OnCoverageBoundsExpanded(object? sender, BoundsExpandedEventArgs e)
     {
@@ -1453,7 +1398,6 @@ public partial class MainViewModel : ObservableObject
             : "Waiting for modules...";
     }
 
-
     // Field management properties
     // Active field — single home is State.Field.ActiveField (§12.1). Pass-through.
     public Field? ActiveField
@@ -1476,7 +1420,6 @@ public partial class MainViewModel : ObservableObject
     }
 
     public string? ActiveFieldName => ActiveField?.Name;
-    public double? ActiveFieldArea => ActiveField?.TotalArea;
     public bool HasActiveField => ActiveField != null;
 
     // Services exposed for UI/control access
@@ -1532,49 +1475,8 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>Worked area minus overlap, formatted for the AgOpen-style stats card.</summary>
-    public string ActualAreaDisplay => FormatArea(_fieldStatistics.ActualAreaCovered);
-
-    /// <summary>Remaining boundary area = total minus worked, formatted.</summary>
-    public string RemainingAreaDisplay
-    {
-        get
-        {
-            double remaining = FieldBoundaryAreaSqM - _coverageMapService.TotalWorkedArea;
-            return FormatArea(Math.Max(0, remaining));
-        }
-    }
-
-    /// <summary>Percentage of the boundary that has been worked.</summary>
-    public double WorkedPercent
-    {
-        get
-        {
-            double fieldArea = FieldBoundaryAreaSqM;
-            if (fieldArea <= 0) return 0;
-            return Math.Clamp((_coverageMapService.TotalWorkedArea / fieldArea) * 100.0, 0, 100);
-        }
-    }
-
     /// <summary>Overlap percent from the field-statistics service.</summary>
     public double OverlapPercent => _fieldStatistics.OverlapPercent;
-
-    /// <summary>
-    /// Hours remaining at the current work rate. Returns <c>∞</c> when the
-    /// instantaneous rate is zero (stopped) so the card mirrors AgOpen's
-    /// readout instead of showing a confusing 0.
-    /// </summary>
-    public string HoursRemainingDisplay
-    {
-        get
-        {
-            double rateSqMPerHour = Speed * 3600 * ToolWidth;
-            if (rateSqMPerHour <= 0) return "∞";
-            double remainingSqM = Math.Max(0, FieldBoundaryAreaSqM - _coverageMapService.TotalWorkedArea);
-            double hours = remainingSqM / rateSqMPerHour;
-            return $"{hours:F1}";
-        }
-    }
 
     // Helper method to format area with metric/imperial support
     private string FormatArea(double squareMeters)
@@ -1594,11 +1496,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(WorkedAreaDisplay));
         OnPropertyChanged(nameof(RemainingPercent));
         OnPropertyChanged(nameof(WorkRateDisplay));
-        OnPropertyChanged(nameof(ActualAreaDisplay));
-        OnPropertyChanged(nameof(RemainingAreaDisplay));
-        OnPropertyChanged(nameof(WorkedPercent));
         OnPropertyChanged(nameof(OverlapPercent));
-        OnPropertyChanged(nameof(HoursRemainingDisplay));
         RaiseStatusStripChanged();
     }
 
@@ -1628,7 +1526,6 @@ public partial class MainViewModel : ObservableObject
         State.Field.ActiveField = field;
         ActiveField = field;
         OnPropertyChanged(nameof(ActiveFieldName));
-        OnPropertyChanged(nameof(ActiveFieldArea));
         OnPropertyChanged(nameof(HasActiveField));
         RaiseStatusStripChanged();
     }
@@ -2342,9 +2239,6 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _selectedFieldInfo, value);
     }
 
-    private string _fieldSelectionDirectory = string.Empty;
-    private bool _fieldsSortedAZ = false;
-
     // AB Line Creation Mode state (dialog visibility managed by State.UI)
     private ABCreationMode _currentABCreationMode = ABCreationMode.None;
     public ABCreationMode CurrentABCreationMode
@@ -2353,7 +2247,6 @@ public partial class MainViewModel : ObservableObject
         set
         {
             SetProperty(ref _currentABCreationMode, value);
-            OnPropertyChanged(nameof(IsCreatingABLine));
             OnPropertyChanged(nameof(EnableABClickSelection));
             OnPropertyChanged(nameof(ABCreationInstructions));
         }
@@ -2405,9 +2298,6 @@ public partial class MainViewModel : ObservableObject
     /// Number of points drawn in current curve
     /// </summary>
     public int DrawnCurvePointCount => _drawnCurvePoints.Count;
-
-    // Computed properties for UI binding
-    public bool IsCreatingABLine => CurrentABCreationMode != ABCreationMode.None;
 
     public bool EnableABClickSelection => CurrentABCreationMode == ABCreationMode.DrawAB ||
                                           CurrentABCreationMode == ABCreationMode.DriveAB ||
@@ -2602,7 +2492,6 @@ public partial class MainViewModel : ObservableObject
         _tramSystemLineRanges.Clear();
         if (config.Systems.Count > 0)
         {
-            bool hasBoundarySystem = false;
             foreach (var sys in config.Systems)
             {
                 if (!sys.IsEnabled) continue;
@@ -2610,7 +2499,6 @@ public partial class MainViewModel : ObservableObject
                 // Boundary reference system: generate boundary tram tracks from field boundary
                 if (sys.ReferenceBoundaryIndex >= 0)
                 {
-                    hasBoundarySystem = true;
                     int passes = sys.PassCount > 0 ? sys.PassCount : 1;
                     int bndStartIdx = _tramLineService.ParallelTramLines.Count;
                     if (State.Field.CurrentBoundary?.OuterBoundary?.Points != null &&
@@ -3034,11 +2922,7 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    // Track management commands
-    public ICommand? DeleteSelectedTrackCommand { get; private set; }
-    public ICommand? DeleteAllTracksCommand { get; private set; }
     public ICommand? SwapABPointsCommand { get; private set; }
-    public ICommand? SelectTrackAsActiveCommand { get; private set; }
 
     // NTRIP Profiles Dialog properties
     public ObservableCollection<NtripProfile> NtripProfiles { get; } = new();
@@ -3061,41 +2945,6 @@ public partial class MainViewModel : ObservableObject
     /// Available fields for NTRIP profile association (with selection state)
     /// </summary>
     public ObservableCollection<FieldAssociationItem> AvailableFieldsForProfile { get; } = new();
-
-    // Shared chain navigation (Back / Close) for every fly-out → dialog chain.
-    // See MainViewModel.Navigation.Chain.cs.
-    public ICommand? NavBackCommand { get; private set; }
-    public ICommand? NavCloseChainCommand { get; private set; }
-
-    // Back from a Field Tools tool overlay to the Field Tools fly-out.
-    public ICommand? BackToFieldToolsCommand { get; private set; }
-
-    // Back from a fly-out-launched confirmation to its originating fly-out.
-    public ICommand? BackFromConfirmationCommand { get; private set; }
-
-    // NTRIP Profiles commands
-    public ICommand? ShowNtripProfilesDialogCommand { get; private set; }
-    public ICommand? AddNtripProfileCommand { get; private set; }
-    public ICommand? EditNtripProfileCommand { get; private set; }
-    public ICommand? DeleteNtripProfileCommand { get; private set; }
-    public ICommand? SetDefaultNtripProfileCommand { get; private set; }
-    public ICommand? SaveNtripProfileCommand { get; private set; }
-    public ICommand? CancelNtripProfileEditCommand { get; private set; }
-    public ICommand? TestNtripConnectionCommand { get; private set; }
-
-    // Settings Commands
-    public ICommand? ShowAppSettingsDialogCommand { get; private set; }
-    public ICommand? CloseAppSettingsDialogCommand { get; private set; }
-    public ICommand? ShowAboutDialogCommand { get; private set; }
-    public ICommand? CloseAboutDialogCommand { get; private set; }
-    public ICommand? ResetAllSettingsCommand { get; private set; }
-
-    private ObservableCollection<AppDirectoryInfo> _appDirectories = new();
-    public ObservableCollection<AppDirectoryInfo> AppDirectories
-    {
-        get => _appDirectories;
-        set => SetProperty(ref _appDirectories, value);
-    }
 
     private string _ntripTestStatus = string.Empty;
     public string NtripTestStatus
@@ -3133,7 +2982,6 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _newFieldLongitude, value);
     }
 
-    public ICommand? CancelNewFieldDialogCommand { get; private set; }
     public ICommand? ConfirmNewFieldDialogCommand { get; private set; }
 
     // From Existing Field Dialog properties (visibility managed by State.UI)
@@ -3188,16 +3036,7 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _copyLines, value);
     }
 
-    public ICommand? CancelFromExistingFieldDialogCommand { get; private set; }
     public ICommand? ConfirmFromExistingFieldDialogCommand { get; private set; }
-    public ICommand? AppendVehicleNameCommand { get; private set; }
-    public ICommand? AppendDateCommand { get; private set; }
-    public ICommand? AppendTimeCommand { get; private set; }
-    public ICommand? BackspaceFieldNameCommand { get; private set; }
-    public ICommand? ToggleCopyFlagsCommand { get; private set; }
-    public ICommand? ToggleCopyMappingCommand { get; private set; }
-    public ICommand? ToggleCopyHeadlandCommand { get; private set; }
-    public ICommand? ToggleCopyLinesCommand { get; private set; }
 
     // KML Import Dialog properties (visibility managed by State.UI)
     public ObservableCollection<KmlFileItem> AvailableKmlFiles { get; } = new();
@@ -3254,11 +3093,7 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private bool _kmlImportToExistingField;
 
-    public ICommand? CancelKmlImportDialogCommand { get; private set; }
     public ICommand? ConfirmKmlImportDialogCommand { get; private set; }
-    public ICommand? KmlAppendDateCommand { get; private set; }
-    public ICommand? KmlAppendTimeCommand { get; private set; }
-    public ICommand? KmlBackspaceFieldNameCommand { get; private set; }
 
     // ISO-XML Import Dialog properties (visibility managed by State.UI)
     public ObservableCollection<IsoXmlFileItem> AvailableIsoXmlFiles { get; } = new();
@@ -3284,11 +3119,7 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _isoXmlImportFieldName, value);
     }
 
-    public ICommand? CancelIsoXmlImportDialogCommand { get; private set; }
     public ICommand? ConfirmIsoXmlImportDialogCommand { get; private set; }
-    public ICommand? IsoXmlAppendDateCommand { get; private set; }
-    public ICommand? IsoXmlAppendTimeCommand { get; private set; }
-    public ICommand? IsoXmlBackspaceFieldNameCommand { get; private set; }
 
     // Boundary Map Dialog properties (visibility managed by State.UI)
     private double _boundaryMapCenterLatitude;
@@ -3305,61 +3136,14 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _boundaryMapCenterLongitude, value);
     }
 
-    private int _boundaryMapPointCount;
-    public int BoundaryMapPointCount
-    {
-        get => _boundaryMapPointCount;
-        set => SetProperty(ref _boundaryMapPointCount, value);
-    }
-
-    private string _boundaryMapCoordinateText = string.Empty;
-    public string BoundaryMapCoordinateText
-    {
-        get => _boundaryMapCoordinateText;
-        set => SetProperty(ref _boundaryMapCoordinateText, value);
-    }
-
-    private bool _boundaryMapIncludeBackground = true;
-    public bool BoundaryMapIncludeBackground
-    {
-        get => _boundaryMapIncludeBackground;
-        set => SetProperty(ref _boundaryMapIncludeBackground, value);
-    }
-
-    private bool _boundaryMapCanSave;
-    public bool BoundaryMapCanSave
-    {
-        get => _boundaryMapCanSave;
-        set => SetProperty(ref _boundaryMapCanSave, value);
-    }
-
     // Existing boundary polygons for reference display in the map dialog (WGS84 coordinates)
     public List<List<(double Latitude, double Longitude)>> BoundaryMapExistingPolygons { get; } = new();
 
     // Result properties for boundary map dialog
     public List<(double Latitude, double Longitude)> BoundaryMapResultPoints { get; } = new();
     public string? BoundaryMapResultBackgroundPath { get; set; }
-    public double BoundaryMapResultNwLat { get; set; }
-    public double BoundaryMapResultNwLon { get; set; }
-    public double BoundaryMapResultSeLat { get; set; }
-    public double BoundaryMapResultSeLon { get; set; }
-    // Web Mercator bounds for proper satellite tile sampling
-    public double BoundaryMapResultMercMinX { get; set; }
-    public double BoundaryMapResultMercMaxX { get; set; }
-    public double BoundaryMapResultMercMinY { get; set; }
-    public double BoundaryMapResultMercMaxY { get; set; }
 
     public ICommand? ShowBoundaryMapDialogCommand { get; private set; }
-    public ICommand? CancelBoundaryMapDialogCommand { get; private set; }
-    public ICommand? ConfirmBoundaryMapDialogCommand { get; private set; }
-
-    // Numeric Input Dialog properties (visibility managed by State.UI)
-    private string _numericInputDialogTitle = string.Empty;
-    public string NumericInputDialogTitle
-    {
-        get => _numericInputDialogTitle;
-        set => SetProperty(ref _numericInputDialogTitle, value);
-    }
 
     private decimal? _numericInputDialogValue;
     public decimal? NumericInputDialogValue
@@ -3367,33 +3151,6 @@ public partial class MainViewModel : ObservableObject
         get => _numericInputDialogValue;
         set => SetProperty(ref _numericInputDialogValue, value);
     }
-
-    private string _numericInputDialogDisplayText = string.Empty;
-    public string NumericInputDialogDisplayText
-    {
-        get => _numericInputDialogDisplayText;
-        set => SetProperty(ref _numericInputDialogDisplayText, value);
-    }
-
-    private bool _numericInputDialogIntegerOnly;
-    public bool NumericInputDialogIntegerOnly
-    {
-        get => _numericInputDialogIntegerOnly;
-        set => SetProperty(ref _numericInputDialogIntegerOnly, value);
-    }
-
-    private bool _numericInputDialogAllowNegative = true;
-    public bool NumericInputDialogAllowNegative
-    {
-        get => _numericInputDialogAllowNegative;
-        set => SetProperty(ref _numericInputDialogAllowNegative, value);
-    }
-
-    // Callback to run when numeric input is confirmed
-    private Action<double>? _numericInputDialogCallback;
-
-    public ICommand? CancelNumericInputDialogCommand { get; private set; }
-    public ICommand? ConfirmNumericInputDialogCommand { get; private set; }
 
     // Confirmation Dialog properties (visibility managed by State.UI)
     private string _confirmationDialogTitle = string.Empty;
@@ -3415,15 +3172,8 @@ public partial class MainViewModel : ObservableObject
     public string? ConfirmationDialogCheckboxLabel
     {
         get => _confirmationDialogCheckboxLabel;
-        set
-        {
-            if (SetProperty(ref _confirmationDialogCheckboxLabel, value))
-                OnPropertyChanged(nameof(IsConfirmationDialogCheckboxVisible));
-        }
+        set => SetProperty(ref _confirmationDialogCheckboxLabel, value);
     }
-
-    public bool IsConfirmationDialogCheckboxVisible =>
-        !string.IsNullOrEmpty(_confirmationDialogCheckboxLabel);
 
     private bool _confirmationDialogCheckboxChecked;
     public bool ConfirmationDialogCheckboxChecked
@@ -3593,15 +3343,6 @@ public partial class MainViewModel : ObservableObject
         get => _agShareSettingsEnabled;
         set => SetProperty(ref _agShareSettingsEnabled, value);
     }
-
-    public ICommand? CancelAgShareSettingsDialogCommand { get; private set; }
-    public ICommand? ConfirmAgShareSettingsDialogCommand { get; private set; }
-
-    // AgShare Upload Dialog (visibility managed by State.UI)
-    public ICommand? CancelAgShareUploadDialogCommand { get; private set; }
-
-    // AgShare Download Dialog (visibility managed by State.UI)
-    public ICommand? CancelAgShareDownloadDialogCommand { get; private set; }
 
     // iOS Modal Sheet Visibility Properties
     private bool _isFileMenuVisible;
@@ -3837,14 +3578,6 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _smartWasViewModel, value);
     }
 
-    // Load Vehicle/Tool picker dialog (#346)
-    private LoadVehicleToolDialogViewModel? _loadVehicleToolDialogVm;
-    public LoadVehicleToolDialogViewModel? LoadVehicleToolDialogVm
-    {
-        get => _loadVehicleToolDialogVm;
-        set => SetProperty(ref _loadVehicleToolDialogVm, value);
-    }
-
     // Start Work Session dialog (#349 M3)
     private StartWorkSessionDialogViewModel? _startWorkSessionDialogVm;
     public StartWorkSessionDialogViewModel? StartWorkSessionDialogVm
@@ -3863,34 +3596,10 @@ public partial class MainViewModel : ObservableObject
 
     public ICommand? ShowVehicleConfigDialogCommand { get; private set; }
     public ICommand? ShowToolConfigDialogCommand { get; private set; }
-    public ICommand? ShowLoadVehicleToolDialogCommand { get; private set; }
-    public ICommand? CancelLoadVehicleToolDialogCommand { get; private set; }
-    public ICommand? ShowStartWorkSessionDialogCommand { get; private set; }
-    public ICommand? CancelStartWorkSessionDialogCommand { get; private set; }
-    public ICommand? ShowResumeJobDialogCommand { get; private set; }
-    public ICommand? CancelResumeJobDialogCommand { get; private set; }
     public ICommand? ResumeLastJobCommand { get; private set; }
-    public ICommand? ShowAutoSteerConfigCommand { get; private set; }
     public ICommand? ShowSmartWasCommand { get; private set; }
-    public ICommand? CloseSmartWasDialogCommand { get; private set; }
 
     public string CurrentProfileName => _configurationService.Store.ActiveVehicleProfileName;
-    public string CurrentToolProfileName => _configurationService.Store.ActiveToolProfileName;
-
-    /// <summary>
-    /// Combined "Vehicle / Tool" label for the configuration-panel pill so
-    /// the operator sees both halves of the active pair at a glance.
-    /// </summary>
-    public string CurrentProfileSummary
-    {
-        get
-        {
-            var v = _configurationService.Store.ActiveVehicleProfileName;
-            var t = _configurationService.Store.ActiveToolProfileName;
-            if (string.IsNullOrEmpty(t)) return v;
-            return $"{v} / {t}";
-        }
-    }
 
     /// <summary>
     /// Notifies bindings tied to the active vehicle/tool profile names.
@@ -3917,8 +3626,6 @@ public partial class MainViewModel : ObservableObject
     private void RaiseProfileNameChanged()
     {
         OnPropertyChanged(nameof(CurrentProfileName));
-        OnPropertyChanged(nameof(CurrentToolProfileName));
-        OnPropertyChanged(nameof(CurrentProfileSummary));
     }
 
     // Headland Builder properties (visibility managed by State.UI)
@@ -4033,16 +3740,6 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _hasBoundary, value);
     }
 
-    private bool _isNudgeEnabled;
-    /// <summary>
-    /// True when AB line nudging is enabled (controls visibility of snap/adjust buttons)
-    /// </summary>
-    public bool IsNudgeEnabled
-    {
-        get => _isNudgeEnabled;
-        set => SetProperty(ref _isNudgeEnabled, value);
-    }
-
     /// <summary>
     /// Gets the current field's boundary for use in the headland editor.
     /// </summary>
@@ -4061,10 +3758,6 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    // Headland undo state
-    private List<Vec3>? _previousHeadlandLine;
-    private bool _previousHasHeadland;
-
     // Headland Dialog properties (visibility managed by State.UI)
     private bool _isHeadlandCurveMode = true;
     public bool IsHeadlandCurveMode
@@ -4075,7 +3768,6 @@ public partial class MainViewModel : ObservableObject
             var oldValue = _isHeadlandCurveMode;
             if (SetProperty(ref _isHeadlandCurveMode, value))
             {
-                OnPropertyChanged(nameof(IsHeadlandLineMode));
                 // Update preview when track type changes
                 if (State.UI.IsFieldBuilderDialogVisible)
                 {
@@ -4085,41 +3777,7 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    public bool IsHeadlandLineMode
-    {
-        get => !_isHeadlandCurveMode;
-        set
-        {
-            if (value != !_isHeadlandCurveMode)
-            {
-                IsHeadlandCurveMode = !value;
-                // No need to call UpdateHeadlandPreview here - IsHeadlandCurveMode setter handles it
-            }
-        }
-    }
-
-    private bool _isHeadlandZoomMode;
-    public bool IsHeadlandZoomMode
-    {
-        get => _isHeadlandZoomMode;
-        set => SetProperty(ref _isHeadlandZoomMode, value);
-    }
-
     private int _headlandToolWidthMultiplier = 1;
-    public int HeadlandToolWidthMultiplier
-    {
-        get => _headlandToolWidthMultiplier;
-        set
-        {
-            SetProperty(ref _headlandToolWidthMultiplier, value);
-            OnPropertyChanged(nameof(HeadlandCalculatedWidth));
-            // Update distance based on tool width multiplier
-            if (value > 0)
-            {
-                HeadlandDistance = ConfigStore.ActualToolWidth * value;
-            }
-        }
-    }
 
     public double HeadlandCalculatedWidth => ConfigStore.ActualToolWidth * _headlandToolWidthMultiplier;
 
@@ -4170,20 +3828,6 @@ public partial class MainViewModel : ObservableObject
     }
 
     public bool HeadlandPointsSelected => _headlandPoint1Index >= 0 && _headlandPoint2Index >= 0;
-
-    // Clip line for headland clipping (line between two selected points) - used in LINE mode
-    public (Models.Base.Vec2 Start, Models.Base.Vec2 End)? HeadlandClipLine
-    {
-        get
-        {
-            // Only return straight clip line when NOT in curve mode
-            if (!IsHeadlandCurveMode && _headlandPoint1Position.HasValue && _headlandPoint2Position.HasValue)
-            {
-                return (_headlandPoint1Position.Value, _headlandPoint2Position.Value);
-            }
-            return null;
-        }
-    }
 
     // Clip path for headland clipping (follows the headland curve) - used in CURVE MODE
     // This shows the section that will be REMOVED (the shorter path)
@@ -4334,59 +3978,24 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    // Commands
-    public ICommand? ToggleScreenAlertsPanelCommand { get; private set; }
-    public ICommand? ToggleFileMenuPanelCommand { get; private set; }
-    public ICommand? ToggleToolsPanelCommand { get; private set; }
-    public ICommand? ToggleFieldOperationsPanelCommand { get; private set; }
-    public ICommand? ToggleFieldToolsPanelCommand { get; private set; }
-    public ICommand? ToggleNetworkIoPanelCommand { get; private set; }
-    public ICommand? CloseAllNavFlyoutsCommand { get; private set; }
     public ICommand? ToggleAutoTrackCommand { get; private set; }
     public ICommand? ToggleGridCommand { get; private set; }
     public ICommand? ToggleDayNightCommand { get; private set; }
-    public ICommand? Toggle2D3DCommand { get; private set; }
     public ICommand? ToggleNorthUpCommand { get; private set; }
-    public ICommand? ToggleCameraModeCommand { get; private set; }
-    public ICommand? IncreaseCameraPitchCommand { get; private set; }
-    public ICommand? DecreaseCameraPitchCommand { get; private set; }
     public ICommand? CycleDisplayResolutionCommand { get; private set; }
-
-    // iOS Sheet Toggle Commands
-    public ICommand? ToggleFileMenuCommand { get; private set; }
-    public ICommand? ToggleFieldToolsCommand { get; private set; }
-    public ICommand? ToggleSettingsCommand { get; private set; }
 
     // Simulator Commands
     public ICommand? ToggleSimulatorPanelCommand { get; private set; }
     public ICommand? ResetSimulatorCommand { get; private set; }
     public ICommand? ResetSteerAngleCommand { get; private set; }
-    public ICommand? SimulatorForwardCommand { get; private set; }
     public ICommand? SimulatorStopCommand { get; private set; }
-    public ICommand? SimulatorReverseCommand { get; private set; }
     public ICommand? SimulatorReverseDirectionCommand { get; private set; }
     public ICommand? SimulatorSteerLeftCommand { get; private set; }
     public ICommand? SimulatorSteerRightCommand { get; private set; }
     public ICommand? SimulatorSpeedDownCommand { get; private set; }
     public ICommand? SimulatorSpeedUpCommand { get; private set; }
 
-    // Dialog Commands
-    public ICommand? ShowSimCoordsDialogCommand { get; private set; }
-    public ICommand? CancelSimCoordsDialogCommand { get; private set; }
-    public ICommand? ConfirmSimCoordsDialogCommand { get; private set; }
     public ICommand? ShowFieldSelectionDialogCommand { get; private set; }
-    public ICommand? CancelFieldSelectionDialogCommand { get; private set; }
-    public ICommand? ConfirmFieldSelectionDialogCommand { get; private set; }
-    public ICommand? DeleteSelectedFieldCommand { get; private set; }
-    public ICommand? SortFieldsCommand { get; private set; }
-    public ICommand? ShowNewFieldDialogCommand { get; private set; }
-    public ICommand? ShowFromExistingFieldDialogCommand { get; private set; }
-    public ICommand? ShowIsoXmlImportDialogCommand { get; private set; }
-    public ICommand? ShowKmlImportDialogCommand { get; private set; }
-    public ICommand? ShowAgShareDownloadDialogCommand { get; private set; }
-    public ICommand? ShowAgShareUploadDialogCommand { get; private set; }
-    public ICommand? ShowAgShareSettingsDialogCommand { get; private set; }
-    public ICommand? ShowBoundaryDialogCommand { get; private set; }
 
     // Field Commands
     public ICommand? CloseFieldCommand { get; private set; }
@@ -4413,17 +4022,13 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public Func<byte[]?>? ScreenshotProvider { get; set; }
 
-    // Boundary Recording Commands
-    public ICommand? ToggleBoundaryPanelCommand { get; private set; }
     public ICommand? StartBoundaryRecordingCommand { get; private set; }
-    public ICommand? PauseBoundaryRecordingCommand { get; private set; }
     public ICommand? StopBoundaryRecordingCommand { get; private set; }
     public ICommand? UndoBoundaryPointCommand { get; private set; }
     public ICommand? ClearBoundaryCommand { get; private set; }
     public ICommand? AddBoundaryPointCommand { get; private set; }
     public ICommand? DeleteBoundaryCommand { get; private set; }
     public ICommand? ImportKmlBoundaryCommand { get; private set; }
-    public ICommand? DrawMapBoundaryCommand { get; private set; }
     public ICommand? BuildFromTracksCommand { get; private set; }
     public ICommand? DriveAroundFieldCommand { get; private set; }
     public ICommand? RecordInnerBoundaryCommand { get; private set; }
@@ -4434,51 +4039,20 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ToggleRecordingCommand { get; private set; }
     public ICommand? ToggleBoundaryLeftRightCommand { get; private set; }
     public ICommand? ToggleBoundaryAntennaToolCommand { get; private set; }
-    public ICommand? ShowBoundaryOffsetDialogCommand { get; private set; }
 
     // Headland commands
     public ICommand? ShowHeadlandBuilderCommand { get; private set; }
     public ICommand? ToggleHeadlandCommand { get; private set; }
     public ICommand? ToggleSectionInHeadlandCommand { get; private set; }
     public ICommand? ResetToolHeadingCommand { get; private set; }
-    public ICommand? BuildHeadlandCommand { get; private set; }
     public ICommand? ClearHeadlandCommand { get; private set; }
-    public ICommand? CloseHeadlandBuilderCommand { get; private set; }
-    public ICommand? SetHeadlandToToolWidthCommand { get; private set; }
-    public ICommand? PreviewHeadlandCommand { get; private set; }
-    public ICommand? IncrementHeadlandDistanceCommand { get; private set; }
-    public ICommand? DecrementHeadlandDistanceCommand { get; private set; }
-    public ICommand? IncrementHeadlandPassesCommand { get; private set; }
-    public ICommand? DecrementHeadlandPassesCommand { get; private set; }
-
-    // Headland Dialog (FormHeadLine) commands
-    public ICommand? ShowHeadlandDialogCommand { get; private set; }
-    public ICommand? CloseHeadlandDialogCommand { get; private set; }
-    public ICommand? ExtendHeadlandACommand { get; private set; }
-    public ICommand? ExtendHeadlandBCommand { get; private set; }
-    public ICommand? ShrinkHeadlandACommand { get; private set; }
-    public ICommand? ShrinkHeadlandBCommand { get; private set; }
-    public ICommand? ResetHeadlandCommand { get; private set; }
-    public ICommand? ClipHeadlandLineCommand { get; private set; }
-    public ICommand? UndoHeadlandCommand { get; private set; }
-    public ICommand? TurnOffHeadlandCommand { get; private set; }
 
     // AB Line Guidance Commands - Bottom Bar (always visible)
     public ICommand? SnapLeftCommand { get; private set; }
     public ICommand? StartPivotRecordingCommand { get; private set; }
     public ICommand? SnapRightCommand { get; private set; }
-    public ICommand? StopGuidanceCommand { get; private set; }
     public ICommand? UTurnCommand { get; private set; }
 
-    // AB Line Guidance Commands - Flyout Menu
-    public ICommand? ShowTracksDialogCommand { get; private set; }
-    public ICommand? ShowQuickABSelectorCommand { get; private set; }
-    public ICommand? ShowDrawABDialogCommand { get; private set; }
-    public ICommand? CloseTracksDialogCommand { get; private set; }
-    public ICommand? CloseQuickABSelectorCommand { get; private set; }
-    public ICommand? CloseDrawABDialogCommand { get; private set; }
-    public ICommand? StartNewABLineCommand { get; private set; }
-    public ICommand? StartNewABCurveCommand { get; private set; }
     public ICommand? StartAPlusLineCommand { get; private set; }
     public ICommand? StartDriveABCommand { get; private set; }
     public ICommand? StartCurveRecordingCommand { get; private set; }
@@ -4506,20 +4080,12 @@ public partial class MainViewModel : ObservableObject
     // Bottom Strip Commands (matching AgOpenGPS panelBottom)
     public ICommand? ChangeMappingColorCommand { get; private set; }
     public ICommand? SnapToPivotCommand { get; private set; }
-    public ICommand? ToggleYouSkipCommand { get; private set; }
     public ICommand? ToggleUTurnSkipRowsCommand { get; private set; }
     public ICommand? CycleUTurnSkipRowsCommand { get; private set; }
 
     // Flags Commands
     public ICommand? PlaceRedFlagCommand { get; private set; }
-    public ICommand? PlaceGreenFlagCommand { get; private set; }
-    public ICommand? PlaceYellowFlagCommand { get; private set; }
-    public ICommand? DeleteAllFlagsCommand { get; private set; }
-    public ICommand? DeleteFlagCommand { get; private set; }
-    public ICommand? PlaceFlagOnClickCommand { get; private set; }
     public ICommand? PlaceFlagHereCommand { get; private set; }
-    public ICommand? ShowFlagListCommand { get; private set; }
-    public ICommand? CloseFlagListCommand { get; private set; }
 
     // Right Navigation Panel Commands
     public ICommand? ToggleContourModeCommand { get; private set; }
@@ -4531,11 +4097,6 @@ public partial class MainViewModel : ObservableObject
     public ICommand? CreateTrackFromBoundaryCommand { get; private set; }
     public ICommand? CreateCurveFromBoundaryCommand { get; private set; }
     public ICommand? CreateTracksFromAllEdgesCommand { get; private set; }
-    public ICommand? CreateALineFromPositionCommand { get; private set; }
-    public ICommand? ShowFieldBuilderCommand { get; private set; }
-    public ICommand? CloseFieldBuilderCommand { get; private set; }
-    public ICommand? IncreaseHeadlandDistanceCommand { get; private set; }
-    public ICommand? DecreaseHeadlandDistanceCommand { get; private set; }
 
     public System.Collections.Generic.IReadOnlyList<Models.Base.Vec3>? CurrentHeadlandLineForPreview => State.Field.HeadlandLine;
 
@@ -4563,23 +4124,11 @@ public partial class MainViewModel : ObservableObject
         set => SetProperty(ref _selectedHeadlandSegment, value);
     }
 
-
-    public ICommand? ShowTramSettingsCommand { get; private set; }
-    public ICommand? CloseTramSettingsCommand { get; private set; }
-    public ICommand? IncreaseTramPassesCommand { get; private set; }
-    public ICommand? DecreaseTramPassesCommand { get; private set; }
-    public ICommand? SetTramModeOffCommand { get; private set; }
-    public ICommand? SetTramModeAllCommand { get; private set; }
-    public ICommand? SetTramModeLinesCommand { get; private set; }
-    public ICommand? SetTramModeOuterCommand { get; private set; }
-
     public int TramPasses => ConfigStore.Tram.Passes;
     public int TramStartPass => ConfigStore.Tram.StartPass;
     public double TramWidth => ConfigStore.Tram.TramWidth;
     public System.Collections.ObjectModel.ObservableCollection<Models.Tram.TramSystem> TramSystems => ConfigStore.Tram.Systems;
-    public string TramToolWidthDisplay => FormatLengthMeters(ConfigStore.ActualToolWidth);
     public string TramWidthDisplay => FormatLengthMeters(ConfigStore.Tram.TramWidth);
-    public string TramTrackWidthDisplay => FormatLengthMeters(ConfigStore.Vehicle.TrackWidth);
     // A host-rendered length string, honoring the authoritative unit choice
     // (AppSettings.IsMetric — same source as the profile previews), not a hardcoded metre.
     private string FormatLengthMeters(double meters) =>
@@ -4587,20 +4136,11 @@ public partial class MainViewModel : ObservableObject
             ? $"{meters:F2} m"
             : $"{UnitConversion.MetersToFeet(meters):F2} ft";
     public string TramLineCountDisplay => $"{_tramLineService.ParallelTramLines.Count}";
-    public ICommand? IncreaseTramStartPassCommand { get; private set; }
-    public ICommand? DecreaseTramStartPassCommand { get; private set; }
-    public ICommand? SwapTramSideCommand { get; private set; }
-    public ICommand? ClearTramLinesCommand { get; private set; }
     public ICommand? ToggleTramLeftManualCommand { get; private set; }
     public ICommand? ToggleTramRightManualCommand { get; private set; }
-    public bool TramLeftManualOn => _tramLineService.IsLeftManualOn;
-    public bool TramRightManualOn => _tramLineService.IsRightManualOn;
     /// <summary>Runtime tram detection byte: bit 0=right wheel, bit 1=left wheel.</summary>
     public byte TramControlByte { get; set; }
-    public double TramTrackWidthValue => ConfigStore.Vehicle.TrackWidth;
     public int TramLineNumber => ConfigStore.Guidance.TramLine;
-    public ICommand? IncreaseTramLineCommand { get; private set; }
-    public ICommand? DecreaseTramLineCommand { get; private set; }
 
     public string TramDisplayLabel => ConfigStore.Tram.DisplayMode switch
     {
@@ -4610,35 +4150,12 @@ public partial class MainViewModel : ObservableObject
         _ => "Off"
     };
 
-    /// <summary>
-    /// Get tram line geometry for canvas preview rendering.
-    /// </summary>
-    public (IReadOnlyList<Models.Base.Vec2> outer, IReadOnlyList<Models.Base.Vec2> inner,
-            IReadOnlyList<IReadOnlyList<Models.Base.Vec2>> parallel,
-            IReadOnlyList<IReadOnlyList<Models.Base.Vec2>> boundaryExtra)? GetTramLineData()
-    {
-        if (!_tramLineService.HasTramLines) return null;
-        return (_tramLineService.OuterBoundaryTrack, _tramLineService.InnerBoundaryTrack,
-                _tramLineService.ParallelTramLines, _tramLineService.BoundaryExtraLines);
-    }
-
-    /// <summary>
-    /// Get the line index range for a named tram system. Returns (-1,0) for boundary systems.
-    /// </summary>
-    public (int start, int count, bool isBoundary) GetTramSystemLineRange(string systemName)
-    {
-        return _tramSystemLineRanges.TryGetValue(systemName, out var range) ? range : (-1, 0, false);
-    }
     public ICommand? ToggleRecordedPathsCommand { get; private set; }
     public ICommand? ToggleContourLockCommand { get; private set; }
     public ICommand? StartRecordedPathCommand { get; private set; }
     public ICommand? StopRecordedPathCommand { get; private set; }
-    public ICommand? StartContourRecordingCommand { get; private set; }
-    public ICommand? StopContourRecordingCommand { get; private set; }
     public ICommand? DeleteContourTrackCommand { get; private set; }
-    public ICommand? ImportTracksCommand { get; private set; }
     public ICommand? ImportTracksFromFieldCommand { get; private set; }
-    public ICommand? CloseImportTracksDialogCommand { get; private set; }
     public ObservableCollection<string> ImportFieldsList { get; } = new();
     public ICommand? ToggleManualModeCommand { get; private set; }
     public ICommand? ToggleSectionMasterCommand { get; private set; }
@@ -4648,12 +4165,6 @@ public partial class MainViewModel : ObservableObject
     public ICommand? ManualYouTurnRightCommand { get; private set; }
     public ICommand? ToggleUTurnDirectionCommand { get; private set; }
     public ICommand? ToggleAutoSteerCommand { get; private set; }
-
-    // Chart Commands
-    public ICommand? ToggleSteerChartPanelCommand { get; private set; }
-    public ICommand? ToggleHeadingChartPanelCommand { get; private set; }
-    public ICommand? ToggleXTEChartPanelCommand { get; private set; }
-
 
     private void CenterMapOnBoundary(Boundary boundary)
     {
@@ -5071,7 +4582,6 @@ public partial class MainViewModel : ObservableObject
     private void PopulateAvailableFields(string fieldsDirectory)
     {
         AvailableFields.Clear();
-        _fieldsSortedAZ = false;
 
         if (!Directory.Exists(fieldsDirectory))
         {
@@ -5412,93 +4922,6 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Adjust headland distance by a delta and rebuild the headland polygon.
-    /// Positive delta extends (widens) the headland, negative shrinks it.
-    /// </summary>
-    private void AdjustHeadlandDistance(double deltaMeters)
-    {
-        if (!HasHeadland)
-        {
-            ReportFailure("No headland to adjust - build one first");
-            return;
-        }
-
-        HeadlandDistance += deltaMeters;
-        BuildHeadlandFromBoundary();
-    }
-
-    /// <summary>
-    /// Build headland from the current field boundary using configured options
-    /// </summary>
-    private void BuildHeadlandFromBoundary()
-    {
-        if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName))
-        {
-            ReportFailure("No field open");
-            return;
-        }
-
-        var fieldsDir = _settingsService.Settings.FieldsDirectory;
-        if (string.IsNullOrEmpty(fieldsDir))
-        {
-            fieldsDir = Path.Combine(
-                AppDataRoot.Documents, "Fields");
-        }
-
-        var fieldPath = Path.Combine(fieldsDir, CurrentFieldName);
-        var boundary = LoadFieldBoundary(fieldPath);
-
-        if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
-        {
-            ReportFailure("No valid boundary to create headland from");
-            return;
-        }
-
-        var options = new Services.Headland.HeadlandBuildOptions
-        {
-            Distance = HeadlandDistance,
-            Passes = HeadlandPasses,
-            JoinType = IsHeadlandCurveMode
-                ? Services.Geometry.OffsetJoinType.Round
-                : Services.Geometry.OffsetJoinType.Miter,
-            IncludeInnerBoundaries = true
-        };
-
-        System.Diagnostics.Debug.WriteLine($"[Headland] Boundary points: {boundary.OuterBoundary.Points.Count}, JoinType: {options.JoinType}");
-
-        var result = _headlandBuilderService.BuildHeadland(boundary, options);
-
-        if (!result.Success)
-        {
-            StatusMessage = result.ErrorMessage ?? "Failed to build headland";
-            return;
-        }
-
-        System.Diagnostics.Debug.WriteLine($"[Headland] Result points: {result.OuterHeadlandLine?.Count ?? 0}");
-
-        // Save undo state before applying
-        _previousHeadlandLine = State.Field.HeadlandLine != null ? new List<Vec3>(State.Field.HeadlandLine) : null;
-        _previousHasHeadland = HasHeadland;
-
-        CurrentHeadlandLine = result.OuterHeadlandLine;
-        HeadlandPreviewLine = null;
-        HasHeadland = true;
-        IsHeadlandOn = true;
-
-        // Update State.Field.HeadlandLine for YouTurn zone detection (same as SetCurrentBoundary does on field load)
-        if (result.OuterHeadlandLine != null && result.OuterHeadlandLine.Count >= 3)
-        {
-            State.Field.HeadlandLine = result.OuterHeadlandLine;
-            State.Field.HeadlandLine = result.OuterHeadlandLine;
-            _mapService.SetHeadlandLine(result.OuterHeadlandLine);
-            _mapService.SetHeadlandVisible(true);
-        }
-
-        StatusMessage = $"Headland built at {HeadlandDistance:F1}m ({result.OuterHeadlandLine?.Count ?? 0} pts from {boundary.OuterBoundary.Points.Count} boundary pts)";
-        OnPropertyChanged(nameof(HeadlandStatusText));
-    }
-
-    /// <summary>
     /// Update the headland preview line on the map
     /// </summary>
     private void UpdateHeadlandPreview()
@@ -5541,206 +4964,6 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Handle a click on the headland map to select a point.
-    /// In curve mode: snaps to headland line
-    /// In line mode: snaps to outer boundary
-    /// </summary>
-    public void HandleHeadlandMapClick(double easting, double northing)
-    {
-        var boundary = CurrentBoundary;
-        if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
-        {
-            _logger.LogDebug($"[Headland] No valid boundary for point selection");
-            return;
-        }
-
-        double nearestX = 0, nearestY = 0;
-        int nearestSegmentIndex = -1;
-        double nearestT = 0;
-        int headlandSegmentIndex = -1;
-        double headlandT = 0;
-
-        if (IsHeadlandCurveMode)
-        {
-            // CURVE MODE: Snap to the headland line
-            var headland = CurrentHeadlandLine ?? ConvertPreviewToVec3(HeadlandPreviewLine);
-            if (headland == null || headland.Count < 3)
-            {
-                StatusMessage = "Build a headland first before selecting points in curve mode";
-                return;
-            }
-
-            // Find nearest point on headland
-            double minDistSq = double.MaxValue;
-            for (int i = 0; i < headland.Count; i++)
-            {
-                var p1 = headland[i];
-                var p2 = headland[(i + 1) % headland.Count];
-
-                double segDx = p2.Easting - p1.Easting;
-                double segDy = p2.Northing - p1.Northing;
-                double segLenSq = segDx * segDx + segDy * segDy;
-
-                double t = 0;
-                if (segLenSq >= 1e-10)
-                {
-                    t = ((easting - p1.Easting) * segDx + (northing - p1.Northing) * segDy) / segLenSq;
-                    t = Math.Clamp(t, 0, 1);
-                }
-
-                double closestX = p1.Easting + t * segDx;
-                double closestY = p1.Northing + t * segDy;
-                double dx = easting - closestX;
-                double dy = northing - closestY;
-                double distSq = dx * dx + dy * dy;
-
-                if (distSq < minDistSq)
-                {
-                    minDistSq = distSq;
-                    headlandSegmentIndex = i;
-                    headlandT = t;
-                    nearestX = closestX;
-                    nearestY = closestY;
-                }
-            }
-
-            // Also set boundary index (same as headland since they correspond)
-            nearestSegmentIndex = headlandSegmentIndex;
-            nearestT = headlandT;
-
-            _logger.LogDebug($"[Headland] Curve mode - Clicked ({easting:F1}, {northing:F1}), nearest headland segment: {headlandSegmentIndex}, t: {headlandT:F2}, pos: ({nearestX:F1}, {nearestY:F1}), dist: {Math.Sqrt(minDistSq):F2}m");
-        }
-        else
-        {
-            // LINE MODE: Snap to outer boundary
-            var points = boundary.OuterBoundary.Points;
-            int count = points.Count;
-
-            double minDistSq = double.MaxValue;
-
-            for (int i = 0; i < count; i++)
-            {
-                var p1 = points[i];
-                var p2 = points[(i + 1) % count];
-
-                double segDx = p2.Easting - p1.Easting;
-                double segDy = p2.Northing - p1.Northing;
-                double segLenSq = segDx * segDx + segDy * segDy;
-
-                double t = 0;
-                if (segLenSq >= 1e-10)
-                {
-                    t = ((easting - p1.Easting) * segDx + (northing - p1.Northing) * segDy) / segLenSq;
-                    t = Math.Clamp(t, 0, 1);
-                }
-
-                double closestX = p1.Easting + t * segDx;
-                double closestY = p1.Northing + t * segDy;
-                double dx = easting - closestX;
-                double dy = northing - closestY;
-                double distSq = dx * dx + dy * dy;
-
-                if (distSq < minDistSq)
-                {
-                    minDistSq = distSq;
-                    nearestSegmentIndex = i;
-                    nearestT = t;
-                    nearestX = closestX;
-                    nearestY = closestY;
-                }
-            }
-
-            _logger.LogDebug($"[Headland] Line mode - Clicked ({easting:F1}, {northing:F1}), nearest boundary segment: {nearestSegmentIndex}, t: {nearestT:F2}, pos: ({nearestX:F1}, {nearestY:F1}), dist: {Math.Sqrt(minDistSq):F2}m");
-        }
-
-        var nearestPosition = new Models.Base.Vec2(nearestX, nearestY);
-
-        // Store the point (first click = point 1, second click = point 2)
-        if (HeadlandPoint1Index < 0)
-        {
-            HeadlandPoint1Index = nearestSegmentIndex;
-            _headlandPoint1T = nearestT;
-            _headlandPoint1Position = nearestPosition;
-            if (IsHeadlandCurveMode)
-            {
-                _headlandCurvePoint1Index = headlandSegmentIndex;
-                _headlandCurvePoint1T = headlandT;
-                InvalidateClipPathCache();
-            }
-            StatusMessage = $"Point 1 selected. Click again to select Point 2.";
-        }
-        else if (HeadlandPoint2Index < 0)
-        {
-            // Check if points are too close (same position)
-            if (_headlandPoint1Position.HasValue)
-            {
-                double dx = nearestX - _headlandPoint1Position.Value.Easting;
-                double dy = nearestY - _headlandPoint1Position.Value.Northing;
-                if (dx * dx + dy * dy < 1.0)  // Less than 1 meter apart
-                {
-                    StatusMessage = "Point 2 must be different from Point 1. Select a different location.";
-                    return;
-                }
-            }
-            HeadlandPoint2Index = nearestSegmentIndex;
-            _headlandPoint2T = nearestT;
-            _headlandPoint2Position = nearestPosition;
-            if (IsHeadlandCurveMode)
-            {
-                _headlandCurvePoint2Index = headlandSegmentIndex;
-                _headlandCurvePoint2T = headlandT;
-                InvalidateClipPathCache();
-            }
-            StatusMessage = $"Point 2 selected. Click Clip to create headland line.";
-        }
-        else
-        {
-            // Reset and start over
-            HeadlandPoint1Index = nearestSegmentIndex;
-            _headlandPoint1T = nearestT;
-            _headlandPoint1Position = nearestPosition;
-            HeadlandPoint2Index = -1;
-            _headlandPoint2T = 0;
-            _headlandPoint2Position = null;
-            if (IsHeadlandCurveMode)
-            {
-                _headlandCurvePoint1Index = headlandSegmentIndex;
-                _headlandCurvePoint1T = headlandT;
-                _headlandCurvePoint2Index = -1;
-                _headlandCurvePoint2T = 0;
-                InvalidateClipPathCache();
-            }
-            StatusMessage = $"Point 1 re-selected. Click again to select Point 2.";
-        }
-
-        // Update markers for visualization
-        UpdateHeadlandSelectedMarkers();
-    }
-
-    /// <summary>
-    /// Update the visual markers for selected headland points
-    /// </summary>
-    private void UpdateHeadlandSelectedMarkers()
-    {
-        var markers = new List<Models.Base.Vec2>();
-
-        if (HeadlandPoint1Index >= 0 && _headlandPoint1Position.HasValue)
-        {
-            markers.Add(_headlandPoint1Position.Value);
-        }
-
-        if (HeadlandPoint2Index >= 0 && _headlandPoint2Position.HasValue)
-        {
-            markers.Add(_headlandPoint2Position.Value);
-        }
-
-        HeadlandSelectedMarkers = markers.Count > 0 ? markers : null;
-
-        // Also notify that HeadlandClipPath may have changed (it's computed from curve mode indices)
-        OnPropertyChanged(nameof(HeadlandClipPath));
-    }
-
-    /// <summary>
     /// Clear the selected headland points
     /// </summary>
     public void ClearHeadlandPointSelection()
@@ -5761,276 +4984,6 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Create a headland line from the selected boundary segment
-    /// </summary>
-    private void CreateHeadlandFromSelectedPoints(Boundary boundary)
-    {
-        if (boundary?.OuterBoundary == null || !boundary.OuterBoundary.IsValid)
-        {
-            ReportFailure("No valid boundary");
-            return;
-        }
-
-        if (_headlandPoint1Position == null || _headlandPoint2Position == null)
-        {
-            ReportFailure("Invalid point selection");
-            return;
-        }
-
-        var points = boundary.OuterBoundary.Points;
-        int count = points.Count;
-
-        // We have segment indices and t values for both points
-        // Now extract the boundary path between them, including the interpolated endpoints
-        int seg1 = HeadlandPoint1Index;
-        double t1 = _headlandPoint1T;
-        int seg2 = HeadlandPoint2Index;
-        double t2 = _headlandPoint2T;
-
-        // Build segment points list - we need to traverse from point1 to point2
-        // Try both directions and take the shorter path
-        var forwardPath = ExtractBoundaryPath(points, seg1, t1, seg2, t2, true);
-        var backwardPath = ExtractBoundaryPath(points, seg1, t1, seg2, t2, false);
-
-        // Calculate path lengths
-        double forwardLen = CalculatePathLength(forwardPath);
-        double backwardLen = CalculatePathLength(backwardPath);
-
-        var segmentPoints = forwardLen <= backwardLen ? forwardPath : backwardPath;
-
-        _logger.LogDebug($"[Headland] Creating headland from {segmentPoints.Count} boundary points (forward: {forwardPath.Count}, backward: {backwardPath.Count}), distance: {HeadlandDistance:F1}m");
-
-        if (segmentPoints.Count < 2)
-        {
-            ReportFailure("Not enough points in segment");
-            return;
-        }
-
-        // Determine the offset direction (inward = toward center of boundary)
-        // Calculate boundary centroid to determine offset direction
-        double centerX = 0, centerY = 0;
-        foreach (var pt in points)
-        {
-            centerX += pt.Easting;
-            centerY += pt.Northing;
-        }
-        centerX /= count;
-        centerY /= count;
-
-        // Check if the midpoint of the segment offset needs to go toward or away from center
-        var midPt = segmentPoints[segmentPoints.Count / 2];
-        double dx = centerX - midPt.Easting;
-        double dy = centerY - midPt.Northing;
-
-        // Calculate perpendicular direction of segment at midpoint
-        int midIdx = segmentPoints.Count / 2;
-        var prevPt = segmentPoints[System.Math.Max(0, midIdx - 1)];
-        var nextPt = segmentPoints[System.Math.Min(segmentPoints.Count - 1, midIdx + 1)];
-        double segDx = nextPt.Easting - prevPt.Easting;
-        double segDy = nextPt.Northing - prevPt.Northing;
-
-        // Perpendicular to segment (90 deg clockwise): (segDy, -segDx)
-        // Dot product with center direction determines offset sign
-        double dotProduct = dx * segDy + dy * (-segDx);
-        double offsetDistance = dotProduct > 0 ? HeadlandDistance : -HeadlandDistance;
-
-        // Get join type
-        var joinType = IsHeadlandCurveMode
-            ? Services.Geometry.OffsetJoinType.Round
-            : Services.Geometry.OffsetJoinType.Miter;
-
-        // Create the offset line - use simple perpendicular offset for each point
-        var headlandPoints = new List<Models.Base.Vec2>();
-        for (int i = 0; i < segmentPoints.Count; i++)
-        {
-            // Get direction at this point
-            Models.Base.Vec2 dir;
-            if (i == 0)
-            {
-                dir = new Models.Base.Vec2(
-                    segmentPoints[1].Easting - segmentPoints[0].Easting,
-                    segmentPoints[1].Northing - segmentPoints[0].Northing);
-            }
-            else if (i == segmentPoints.Count - 1)
-            {
-                dir = new Models.Base.Vec2(
-                    segmentPoints[i].Easting - segmentPoints[i - 1].Easting,
-                    segmentPoints[i].Northing - segmentPoints[i - 1].Northing);
-            }
-            else
-            {
-                dir = new Models.Base.Vec2(
-                    segmentPoints[i + 1].Easting - segmentPoints[i - 1].Easting,
-                    segmentPoints[i + 1].Northing - segmentPoints[i - 1].Northing);
-            }
-
-            // Normalize
-            double len = System.Math.Sqrt(dir.Easting * dir.Easting + dir.Northing * dir.Northing);
-            if (len > 1e-10)
-            {
-                dir = new Models.Base.Vec2(dir.Easting / len, dir.Northing / len);
-            }
-
-            // Perpendicular offset (rotate 90 degrees clockwise for positive offset)
-            double perpX = dir.Northing * offsetDistance;
-            double perpY = -dir.Easting * offsetDistance;
-
-            headlandPoints.Add(new Models.Base.Vec2(
-                segmentPoints[i].Easting + perpX,
-                segmentPoints[i].Northing + perpY));
-        }
-
-        _logger.LogDebug($"[Headland] Created {headlandPoints.Count} headland points");
-
-        // Convert to Vec3 with headings
-        var headlandWithHeadings = new List<Models.Base.Vec3>();
-        for (int i = 0; i < headlandPoints.Count; i++)
-        {
-            // Calculate heading from direction between adjacent points
-            double heading;
-            if (headlandPoints.Count < 2)
-            {
-                heading = 0;
-            }
-            else if (i == 0)
-            {
-                double hdx = headlandPoints[1].Easting - headlandPoints[0].Easting;
-                double hdy = headlandPoints[1].Northing - headlandPoints[0].Northing;
-                heading = System.Math.Atan2(hdx, hdy);
-            }
-            else if (i == headlandPoints.Count - 1)
-            {
-                double hdx = headlandPoints[i].Easting - headlandPoints[i - 1].Easting;
-                double hdy = headlandPoints[i].Northing - headlandPoints[i - 1].Northing;
-                heading = System.Math.Atan2(hdx, hdy);
-            }
-            else
-            {
-                double hdx = headlandPoints[i + 1].Easting - headlandPoints[i - 1].Easting;
-                double hdy = headlandPoints[i + 1].Northing - headlandPoints[i - 1].Northing;
-                heading = System.Math.Atan2(hdx, hdy);
-            }
-            headlandWithHeadings.Add(new Models.Base.Vec3(
-                headlandPoints[i].Easting,
-                headlandPoints[i].Northing,
-                heading));
-        }
-
-        // Set the headland line
-        CurrentHeadlandLine = headlandWithHeadings;
-        HasHeadland = true;
-        IsHeadlandOn = true;
-
-        // Clear selection
-        ClearHeadlandPointSelection();
-
-        StatusMessage = $"Headland created with {headlandWithHeadings.Count} points";
-    }
-
-    /// <summary>
-    /// Extract a path along the boundary between two points (each specified by segment index + t parameter)
-    /// </summary>
-    private List<Models.Base.Vec2> ExtractBoundaryPath(
-        IReadOnlyList<BoundaryPoint> points,
-        int seg1, double t1,
-        int seg2, double t2,
-        bool forward)
-    {
-        var result = new List<Models.Base.Vec2>();
-        int count = points.Count;
-
-        // Helper to interpolate a point on a segment
-        Models.Base.Vec2 Interpolate(int segIdx, double t)
-        {
-            var p1 = points[segIdx];
-            var p2 = points[(segIdx + 1) % count];
-            return new Models.Base.Vec2(
-                p1.Easting + t * (p2.Easting - p1.Easting),
-                p1.Northing + t * (p2.Northing - p1.Northing));
-        }
-
-        // Add the start point (point1)
-        result.Add(Interpolate(seg1, t1));
-
-        if (forward)
-        {
-            // Forward: go from seg1 toward seg2 in increasing index order
-            if (seg1 == seg2)
-            {
-                // Both points on same segment
-                if (t2 > t1)
-                {
-                    // Already have start point, just add end point
-                    result.Add(Interpolate(seg2, t2));
-                }
-                else
-                {
-                    // Need to go all the way around (very rare case)
-                    for (int i = seg1 + 1; i < count; i++)
-                        result.Add(new Models.Base.Vec2(points[i].Easting, points[i].Northing));
-                    for (int i = 0; i <= seg2; i++)
-                        result.Add(new Models.Base.Vec2(points[i].Easting, points[i].Northing));
-                    result.Add(Interpolate(seg2, t2));
-                }
-            }
-            else
-            {
-                // Different segments - traverse forward from seg1 to seg2
-                int current = seg1;
-                while (current != seg2)
-                {
-                    current = (current + 1) % count;
-                    result.Add(new Models.Base.Vec2(points[current].Easting, points[current].Northing));
-                }
-                // Replace last vertex with interpolated endpoint if t2 > 0
-                if (t2 > 0)
-                {
-                    result[result.Count - 1] = Interpolate(seg2, t2);
-                }
-            }
-        }
-        else
-        {
-            // Backward: go from seg1 toward seg2 in decreasing index order
-            if (seg1 == seg2)
-            {
-                // Both points on same segment
-                if (t2 < t1)
-                {
-                    // Already have start point, just add end point
-                    result.Add(Interpolate(seg2, t2));
-                }
-                else
-                {
-                    // Need to go all the way around backward
-                    for (int i = seg1; i >= 0; i--)
-                        result.Add(new Models.Base.Vec2(points[i].Easting, points[i].Northing));
-                    for (int i = count - 1; i > seg2; i--)
-                        result.Add(new Models.Base.Vec2(points[i].Easting, points[i].Northing));
-                    result.Add(Interpolate(seg2, t2));
-                }
-            }
-            else
-            {
-                // Different segments - traverse backward from seg1 to seg2
-                int current = seg1;
-                // First add the start vertex of seg1
-                result.Add(new Models.Base.Vec2(points[current].Easting, points[current].Northing));
-
-                while (current != seg2)
-                {
-                    current = (current - 1 + count) % count;
-                    result.Add(new Models.Base.Vec2(points[current].Easting, points[current].Northing));
-                }
-                // Add the interpolated endpoint
-                result.Add(Interpolate(seg2, t2));
-            }
-        }
-
-        return result;
-    }
-
-    /// <summary>
     /// Calculate heading (in degrees) from point A to point B using Easting/Northing
     /// </summary>
     private double CalculateHeading(Position pointA, Position pointB)
@@ -6041,21 +4994,6 @@ public partial class MainViewModel : ObservableObject
         double headingDegrees = headingRadians * 180.0 / System.Math.PI;
         if (headingDegrees < 0) headingDegrees += 360.0;
         return headingDegrees;
-    }
-
-    /// <summary>
-    /// Calculate the total length of a path
-    /// </summary>
-    private double CalculatePathLength(List<Models.Base.Vec2> path)
-    {
-        double length = 0;
-        for (int i = 1; i < path.Count; i++)
-        {
-            double dx = path[i].Easting - path[i - 1].Easting;
-            double dy = path[i].Northing - path[i - 1].Northing;
-            length += System.Math.Sqrt(dx * dx + dy * dy);
-        }
-        return length;
     }
 
     /// <summary>
@@ -6090,252 +5028,6 @@ public partial class MainViewModel : ObservableObject
             result.Add(new Models.Base.Vec3(preview[i].Easting, preview[i].Northing, heading));
         }
         return result;
-    }
-
-    /// <summary>
-    /// Clip the headland polygon at the line defined by the two selected points.
-    /// The result is an open polyline (not closed polygon).
-    /// </summary>
-    private void ClipHeadlandAtLine(List<Models.Base.Vec3> headland)
-    {
-        if (_headlandPoint1Position == null || _headlandPoint2Position == null)
-        {
-            ReportFailure("No clip line defined");
-            return;
-        }
-
-        var clipStart = _headlandPoint1Position.Value;
-        var clipEnd = _headlandPoint2Position.Value;
-
-        _logger.LogDebug($"[Headland] Clipping at line from ({clipStart.Easting:F1}, {clipStart.Northing:F1}) to ({clipEnd.Easting:F1}, {clipEnd.Northing:F1})");
-
-        // Find where the clip line intersects the headland polygon
-        var intersections = new List<(int segmentIndex, double t, Models.Base.Vec2 point)>();
-
-        for (int i = 0; i < headland.Count; i++)
-        {
-            int nextI = (i + 1) % headland.Count;
-            var p1 = new Models.Base.Vec2(headland[i].Easting, headland[i].Northing);
-            var p2 = new Models.Base.Vec2(headland[nextI].Easting, headland[nextI].Northing);
-
-            // Find intersection of segment (p1, p2) with infinite line through (clipStart, clipEnd)
-            if (LineSegmentIntersectsLine(p1, p2, clipStart, clipEnd, out double t, out var intersectPoint))
-            {
-                intersections.Add((i, t, intersectPoint));
-            }
-        }
-
-        _logger.LogDebug($"[Headland] Found {intersections.Count} intersections with clip line");
-
-        if (intersections.Count < 2)
-        {
-            StatusMessage = "Clip line doesn't cross headland properly";
-            return;
-        }
-
-        // Sort intersections by segment index, then t
-        intersections.Sort((a, b) =>
-        {
-            int cmp = a.segmentIndex.CompareTo(b.segmentIndex);
-            return cmp != 0 ? cmp : a.t.CompareTo(b.t);
-        });
-
-        // Take first two intersections - these define where to cut
-        var cut1 = intersections[0];
-        var cut2 = intersections[1];
-
-        // Build both possible paths (forward and backward around the polygon)
-        var forwardPath = BuildClipPath(headland, cut1, cut2, true);
-        var backwardPath = BuildClipPath(headland, cut1, cut2, false);
-
-        // Choose path based on mode:
-        // - Curve mode (left button): take the LONGER path (follows the curve around)
-        // - Line mode (right button): take the SHORTER path (direct cut)
-        List<Models.Base.Vec3> clippedHeadland;
-        if (IsHeadlandCurveMode)
-        {
-            // Curve mode: take the longer path
-            clippedHeadland = forwardPath.Count >= backwardPath.Count ? forwardPath : backwardPath;
-            _logger.LogDebug($"[Headland] Curve mode: taking longer path ({clippedHeadland.Count} points)");
-        }
-        else
-        {
-            // Line mode: take the shorter path
-            clippedHeadland = forwardPath.Count <= backwardPath.Count ? forwardPath : backwardPath;
-            _logger.LogDebug($"[Headland] Line mode: taking shorter path ({clippedHeadland.Count} points)");
-        }
-
-        // Recalculate headings for the clipped line
-        for (int i = 0; i < clippedHeadland.Count; i++)
-        {
-            double heading;
-            if (clippedHeadland.Count < 2)
-            {
-                heading = 0;
-            }
-            else if (i == 0)
-            {
-                double dx = clippedHeadland[1].Easting - clippedHeadland[0].Easting;
-                double dy = clippedHeadland[1].Northing - clippedHeadland[0].Northing;
-                heading = System.Math.Atan2(dx, dy);
-            }
-            else if (i == clippedHeadland.Count - 1)
-            {
-                double dx = clippedHeadland[i].Easting - clippedHeadland[i - 1].Easting;
-                double dy = clippedHeadland[i].Northing - clippedHeadland[i - 1].Northing;
-                heading = System.Math.Atan2(dx, dy);
-            }
-            else
-            {
-                double dx = clippedHeadland[i + 1].Easting - clippedHeadland[i - 1].Easting;
-                double dy = clippedHeadland[i + 1].Northing - clippedHeadland[i - 1].Northing;
-                heading = System.Math.Atan2(dx, dy);
-            }
-            clippedHeadland[i] = new Models.Base.Vec3(clippedHeadland[i].Easting, clippedHeadland[i].Northing, heading);
-        }
-
-        _logger.LogDebug($"[Headland] Clipped headland has {clippedHeadland.Count} points");
-
-        // Set the clipped headland
-        CurrentHeadlandLine = clippedHeadland;
-        HeadlandPreviewLine = null;
-        HasHeadland = true;
-        IsHeadlandOn = true;
-
-        // Clear selection
-        ClearHeadlandPointSelection();
-
-        StatusMessage = $"Headland clipped with {clippedHeadland.Count} points";
-    }
-
-    /// <summary>
-    /// Check if line segment (p1, p2) intersects the infinite line through (lineA, lineB)
-    /// Returns the t parameter (0-1) along the segment and the intersection point
-    /// </summary>
-    private bool LineSegmentIntersectsLine(
-        Models.Base.Vec2 p1, Models.Base.Vec2 p2,
-        Models.Base.Vec2 lineA, Models.Base.Vec2 lineB,
-        out double t, out Models.Base.Vec2 intersection)
-    {
-        t = 0;
-        intersection = new Models.Base.Vec2(0, 0);
-
-        // Segment direction
-        double dx = p2.Easting - p1.Easting;
-        double dy = p2.Northing - p1.Northing;
-
-        // Line direction
-        double ldx = lineB.Easting - lineA.Easting;
-        double ldy = lineB.Northing - lineA.Northing;
-
-        // Cross product of directions
-        double cross = dx * ldy - dy * ldx;
-
-        if (System.Math.Abs(cross) < 1e-10)
-        {
-            // Parallel lines
-            return false;
-        }
-
-        // Vector from line start to segment start
-        double qpx = p1.Easting - lineA.Easting;
-        double qpy = p1.Northing - lineA.Northing;
-
-        // Calculate t (parameter along segment)
-        t = (qpx * ldy - qpy * ldx) / (-cross);
-
-        // Only accept if intersection is on the segment (0 <= t <= 1)
-        if (t < 0 || t > 1)
-        {
-            return false;
-        }
-
-        // Calculate intersection point
-        intersection = new Models.Base.Vec2(
-            p1.Easting + t * dx,
-            p1.Northing + t * dy);
-
-        return true;
-    }
-
-    /// <summary>
-    /// Build a path along the headland polygon between two cut points.
-    /// </summary>
-    /// <param name="headland">The headland polygon points</param>
-    /// <param name="cut1">First cut point (segment index, t parameter, intersection point)</param>
-    /// <param name="cut2">Second cut point (segment index, t parameter, intersection point)</param>
-    /// <param name="forward">If true, traverse forward from cut1 to cut2; if false, traverse backward</param>
-    /// <returns>List of points forming the path between cut points</returns>
-    private List<Models.Base.Vec3> BuildClipPath(
-        List<Models.Base.Vec3> headland,
-        (int segmentIndex, double t, Models.Base.Vec2 point) cut1,
-        (int segmentIndex, double t, Models.Base.Vec2 point) cut2,
-        bool forward)
-    {
-        var path = new List<Models.Base.Vec3>();
-        int n = headland.Count;
-
-        // Start with cut1 intersection point
-        path.Add(new Models.Base.Vec3(cut1.point.Easting, cut1.point.Northing, 0));
-
-        if (forward)
-        {
-            // Forward: go from cut1 to cut2 in increasing index order
-            // Start at the vertex after cut1's segment
-            int startVertex = (cut1.segmentIndex + 1) % n;
-
-            // End at the vertex at or before cut2's segment
-            // If cut2 is on the segment from vertex i to i+1, we include vertices up to i
-            int endVertex = cut2.segmentIndex;
-
-            // Handle wrap-around
-            int current = startVertex;
-            int iterations = 0;
-            int maxIterations = n + 1; // Safety limit
-
-            while (current != (endVertex + 1) % n && iterations < maxIterations)
-            {
-                path.Add(headland[current]);
-                current = (current + 1) % n;
-                iterations++;
-
-                // If we've gone all the way around, break
-                if (current == startVertex && iterations > 0)
-                    break;
-            }
-        }
-        else
-        {
-            // Backward: go from cut1 to cut2 in decreasing index order
-            // Start at the vertex at cut1's segment (the start of that segment)
-            int startVertex = cut1.segmentIndex;
-
-            // End at the vertex after cut2's segment
-            int endVertex = (cut2.segmentIndex + 1) % n;
-
-            // Handle wrap-around going backward
-            int current = startVertex;
-            int iterations = 0;
-            int maxIterations = n + 1; // Safety limit
-
-            while (current != (endVertex - 1 + n) % n && iterations < maxIterations)
-            {
-                path.Add(headland[current]);
-                current = (current - 1 + n) % n;
-                iterations++;
-
-                // If we've gone all the way around, break
-                if (current == startVertex && iterations > 0)
-                    break;
-            }
-        }
-
-        // End with cut2 intersection point
-        path.Add(new Models.Base.Vec3(cut2.point.Easting, cut2.point.Northing, 0));
-
-        _logger.LogDebug($"[Headland] BuildClipPath(forward={forward}): {path.Count} points, cut1 seg={cut1.segmentIndex}, cut2 seg={cut2.segmentIndex}");
-
-        return path;
     }
 
     /// <summary>
@@ -6417,36 +5109,6 @@ public partial class MainViewModel : ObservableObject
         catch (System.Exception ex)
         {
             _logger.LogDebug("[NUDGE] SaveTracksToFile: FAILED - {ErrorMessage}", ex.Message);
-        }
-    }
-
-    /// <summary>
-    /// Refreshes the NtripProfiles collection from the service
-    /// </summary>
-    private void RefreshNtripProfiles()
-    {
-        NtripProfiles.Clear();
-        foreach (var profile in _ntripProfileService.Profiles)
-        {
-            NtripProfiles.Add(profile);
-        }
-    }
-
-    /// <summary>
-    /// Populates the available fields list for NTRIP profile editing
-    /// </summary>
-    private void PopulateAvailableFieldsForProfile(NtripProfile profile)
-    {
-        AvailableFieldsForProfile.Clear();
-
-        var availableFields = _ntripProfileService.GetAvailableFields();
-        foreach (var fieldName in availableFields)
-        {
-            AvailableFieldsForProfile.Add(new FieldAssociationItem
-            {
-                FieldName = fieldName,
-                IsSelected = profile.AssociatedFields.Contains(fieldName)
-            });
         }
     }
 

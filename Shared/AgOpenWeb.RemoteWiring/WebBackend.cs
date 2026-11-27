@@ -110,12 +110,15 @@ public sealed class WebBackend
         sp.GetRequiredService<IAutoSteerService>().Start(); // Enable zero-copy GPS pipeline
         sp.GetRequiredService<IGpsPipelineService>().Start(); // the background GPS processing pipeline
         sp.GetService<ISteerMachineLoopService>()?.Start(); // the 100 Hz control loop (#313)
+        // Chart data collection from the start, so a chart opened mid-session shows recent
+        // history (rolling buffers of a few hundred points).
+        sp.GetRequiredService<IChartDataService>().Start();
         vm.Start(sp.GetRequiredService<IUdpCommunicationService>().StartAsync());
     }
 
     /// <summary>
     /// The backend's stop, when its web server stops: the reverse of <see cref="StartServices"/>.
-    /// The view model's background loops end first (the module checks), then the control loop
+    /// The view model's background loops end first (the module checks), then chart collection, the control loop
     /// (it waits up to 1 s for its last tick), the GPS pipeline, AutoSteer and the battery
     /// reader. The UDP port is closed when the provider is disposed, as before; the control loop
     /// and the battery reader are disposed then too, a second stop that does nothing.
@@ -123,6 +126,7 @@ public sealed class WebBackend
     public static void StopServices(IServiceProvider sp, MainViewModel vm)
     {
         vm.StopBackgroundLoops();
+        sp.GetRequiredService<IChartDataService>().Stop();
         sp.GetService<ISteerMachineLoopService>()?.Stop();
         sp.GetRequiredService<IGpsPipelineService>().Stop();
         sp.GetRequiredService<IAutoSteerService>().Stop();

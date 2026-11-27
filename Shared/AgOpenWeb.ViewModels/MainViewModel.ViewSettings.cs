@@ -8,7 +8,6 @@ using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Services;
 
-
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AgOpenWeb.ViewModels;
@@ -174,23 +173,6 @@ public partial class MainViewModel
         _ => "?"
     };
 
-    /// <summary>
-    /// Fires OnPropertyChanged for the display-bound properties that
-    /// ConfigurationService loaded directly into <see cref="_displaySettings"/>
-    /// at startup (bypassing the property setters and their automatic
-    /// notification). Called once from each platform's view code-behind
-    /// after MapControl registration so the display panel binding picks up
-    /// the saved values instead of staying on its empty/default state.
-    /// </summary>
-    public void NotifyDisplayLabelsAfterStartup()
-    {
-        OnPropertyChanged(nameof(CameraPitch));
-        OnPropertyChanged(nameof(CameraPitchDisplay));
-        OnPropertyChanged(nameof(Is2DMode));
-        OnPropertyChanged(nameof(CameraMode));
-        OnPropertyChanged(nameof(CameraModeLabel));
-    }
-
     private void ApplyCameraMode()
     {
         // Set camera follow mode directly on map control: 0=NorthUp, 1=HeadingUp, 2=Free, 3=Map
@@ -221,19 +203,6 @@ public partial class MainViewModel
             PersistentState.CameraMode = _cameraMode;
     }
 
-    /// <summary>
-    /// Called when user manually pans the map -- enters Free mode.
-    /// </summary>
-    public void OnUserPan()
-    {
-        if (_cameraMode != CameraMode.Free)
-        {
-            _previousCameraMode = _cameraMode;
-            Console.WriteLine($"[Camera] OnUserPan: {_cameraMode} -> Free (prev={_previousCameraMode})");
-            CameraMode = CameraMode.Free; // Use property setter to trigger ApplyCameraMode
-        }
-    }
-
     #endregion
 
     #region Display Settings Properties
@@ -260,8 +229,6 @@ public partial class MainViewModel
         }
     }
 
-    private double _last3DPitch = -60.0;
-
     public double CameraPitch
     {
         get => _displaySettings.CameraPitch;
@@ -271,9 +238,6 @@ public partial class MainViewModel
             OnPropertyChanged();
             OnPropertyChanged(nameof(Is2DMode));
             OnPropertyChanged(nameof(CameraPitchDisplay));
-            // Remember last 3D pitch for restoring when toggling back from 2D
-            if (value > -89.0)
-                _last3DPitch = value;
         }
     }
 
@@ -447,14 +411,6 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(ModuleStatusKind));
     }
 
-    /// <summary>
-    /// On-map Dev overlay (FPS / Latency / Lat / Lon). Read once at startup
-    /// from a file-flag in the AgOpenWeb Documents folder so the toggle
-    /// works on iPad/Android (where hotkeys aren't available) without
-    /// surfacing in the UI.
-    /// </summary>
-    public bool IsDevOverlayVisible { get; } = Services.DevOverlayMarker.IsEnabled();
-
     private BatteryStatus _batteryStatus;
 
     /// <summary>
@@ -491,12 +447,6 @@ public partial class MainViewModel
         }
     }
 
-    /// <summary>Strip button: flips <see cref="IsFieldStatsOnMapVisible"/>.</summary>
-    public CommunityToolkit.Mvvm.Input.IRelayCommand ToggleFieldStatsOnMapCommand =>
-        _toggleFieldStatsOnMapCommand ??= new CommunityToolkit.Mvvm.Input.RelayCommand(
-            () => IsFieldStatsOnMapVisible = !IsFieldStatsOnMapVisible);
-    private CommunityToolkit.Mvvm.Input.IRelayCommand? _toggleFieldStatsOnMapCommand;
-
     /// <summary>
     /// On-map GPS detail card. Toggled by tapping the strip's Modules
     /// aggregate button (the button still shows the aggregate dot colour).
@@ -515,12 +465,6 @@ public partial class MainViewModel
             }
         }
     }
-
-    /// <summary>Modules button: flips <see cref="IsGpsDetailOverlayVisible"/>.</summary>
-    public CommunityToolkit.Mvvm.Input.IRelayCommand ToggleGpsDetailOverlayCommand =>
-        _toggleGpsDetailOverlayCommand ??= new CommunityToolkit.Mvvm.Input.RelayCommand(
-            () => IsGpsDetailOverlayVisible = !IsGpsDetailOverlayVisible);
-    private CommunityToolkit.Mvvm.Input.IRelayCommand? _toggleGpsDetailOverlayCommand;
 
     #endregion
 }

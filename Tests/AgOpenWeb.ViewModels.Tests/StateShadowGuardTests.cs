@@ -49,7 +49,6 @@ public class StateShadowGuardTests
         ["_headlandPoint2Position"] = "VM-LOCAL: headland editor handle",
         ["_headlandSelectedMarkers"] = "VM-LOCAL: headland editor selection markers",
         ["_headlandPreviewLine"] = "VM-LOCAL: uncommitted headland preview (not the active headland)",
-        ["_previousHeadlandLine"] = "VM-LOCAL: headland undo snapshot",
         ["_lastMirroredDisplayTrack"] = "VM-LOCAL: dedup cache for last track pushed to the map",
         ["_lastMirroredBaseTrack"] = "VM-LOCAL: dedup cache for last track pushed to the map",
         ["_lastMirroredNextTrack"] = "VM-LOCAL: dedup cache for last track pushed to the map",

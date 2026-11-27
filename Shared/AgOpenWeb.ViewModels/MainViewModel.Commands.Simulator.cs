@@ -38,14 +38,6 @@ public partial class MainViewModel
             StatusMessage = "Steer Angle Reset to 0";
         });
 
-        SimulatorForwardCommand = new RelayCommand(() =>
-        {
-            _simulatorService.StepDistance = 0;
-            _simulatorService.IsAcceleratingForward = true;
-            _simulatorService.IsAcceleratingBackward = false;
-            StatusMessage = "Sim: Accelerating Forward";
-        });
-
         SimulatorStopCommand = new RelayCommand(() =>
         {
             _simulatorService.IsAcceleratingForward = false;
@@ -57,14 +49,6 @@ public partial class MainViewModel
             OnPropertyChanged(nameof(SimulatorSpeedKph));
             OnPropertyChanged(nameof(SimulatorSpeedDisplay));
             StatusMessage = "Sim: Stopped";
-        });
-
-        SimulatorReverseCommand = new RelayCommand(() =>
-        {
-            _simulatorService.StepDistance = 0;
-            _simulatorService.IsAcceleratingBackward = true;
-            _simulatorService.IsAcceleratingForward = false;
-            StatusMessage = "Sim: Accelerating Reverse";
         });
 
         SimulatorReverseDirectionCommand = new RelayCommand(() =>
@@ -98,33 +82,6 @@ public partial class MainViewModel
         {
             SimulatorSpeedKph += 0.5;
             StatusMessage = $"Speed: {SimulatorSpeedKph:F1} kph";
-        });
-
-        // Simulator coordinates dialog commands
-        ShowSimCoordsDialogCommand = new RelayCommand(() =>
-        {
-            if (IsSimulatorEnabled)
-            {
-                StatusMessage = "Disable simulator first to change coordinates";
-                return;
-            }
-            var currentPos = GetSimulatorPosition();
-            SimCoordsDialogLatitude = Math.Round((decimal)currentPos.Latitude, 8);
-            SimCoordsDialogLongitude = Math.Round((decimal)currentPos.Longitude, 8);
-            State.UI.ShowDialog(DialogType.SimCoords);
-        });
-
-        CancelSimCoordsDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
-        ConfirmSimCoordsDialogCommand = new RelayCommand(() =>
-        {
-            double lat = (double)(SimCoordsDialogLatitude ?? 0m);
-            double lon = (double)(SimCoordsDialogLongitude ?? 0m);
-            SetSimulatorCoordinates(lat, lon);
-            State.UI.CloseDialog();
         });
     }
 }

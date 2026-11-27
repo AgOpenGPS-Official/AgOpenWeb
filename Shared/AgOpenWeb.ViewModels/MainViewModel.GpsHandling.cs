@@ -24,7 +24,6 @@ public partial class MainViewModel
     private double _speed;
     private int _satelliteCount;
     private string _fixQuality = "No Fix";
-    private int _previousFixQuality;
 
     private double _easting;
     private double _northing;
@@ -82,10 +81,6 @@ public partial class MainViewModel
         _configStore.IsMetric
             ? SpeedKmh
             : SpeedKmh * 0.621371;
-
-    /// <summary>Unit label that pairs with <see cref="SpeedLargeValue"/>.</summary>
-    public string SpeedLargeUnit =>
-        _configStore.IsMetric ? "kph" : "mph";
 
     public int SatelliteCount
     {

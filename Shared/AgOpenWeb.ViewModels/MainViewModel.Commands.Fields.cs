@@ -30,53 +30,6 @@ public partial class MainViewModel
 {
     private void InitializeFieldCommands()
     {
-        // Start Work Session Dialog (#349 M3) — replaces the FieldSelection
-        // dialog conceptually, but the legacy dialog is left wired to its
-        // own button until M5 cleanup so this can revert without breaking
-        // the menu.
-        ShowStartWorkSessionDialogCommand = new RelayCommand(() =>
-        {
-            StartWorkSessionDialogVm = new StartWorkSessionDialogViewModel(
-                _fieldService,
-                _jobService,
-                _settingsService,
-                _appState,
-                close: () => State.UI.CloseDialog(),
-                openField: (path, name) => _ = OpenFieldOnlyAsync(path, name),
-                openFieldStartingNewJob: (path, name, workType, notes, taskName) =>
-                    _ = OpenFieldStartingNewJobAsync(path, name, workType, notes, taskName),
-                openFieldResumingJob: (path, name, taskName) =>
-                    _ = OpenFieldResumingJobAsync(path, name, taskName),
-                confirm: (msg, action) => ShowConfirmationDialog("Delete Job", msg, action),
-                confirmWithOption: (title, msg, checkboxLabel, defaultChecked, action) =>
-                    ShowConfirmationDialog(title, msg, checkboxLabel, defaultChecked, action));
-            StartWorkSessionDialogVm.Refresh();
-            OpenChainDialog(DialogType.StartWorkSession);
-        });
-
-        CancelStartWorkSessionDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
-        // Resume Job cross-field history dialog (#349 M4).
-        ShowResumeJobDialogCommand = new RelayCommand(() =>
-        {
-            ResumeJobDialogVm = new ResumeJobDialogViewModel(
-                _jobService,
-                _settingsService,
-                close: () => State.UI.CloseDialog(),
-                openFieldResumingJob: (path, name, taskName) =>
-                    _ = OpenFieldResumingJobAsync(path, name, taskName));
-            ResumeJobDialogVm.Refresh();
-            OpenChainDialog(DialogType.ResumeJob);
-        });
-
-        CancelResumeJobDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
         // Resume Last Job: one-tap reopen of the most recent job across
         // all fields. Short-circuits the picker when the operator just
         // wants to pick up where they left off.
@@ -98,99 +51,8 @@ public partial class MainViewModel
                 fieldsDir = Path.Combine(
                     AppDataRoot.Documents, "Fields");
             }
-            _fieldSelectionDirectory = fieldsDir;
             PopulateAvailableFields(fieldsDir);
             State.UI.ShowDialog(DialogType.FieldSelection);
-        });
-
-        CancelFieldSelectionDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-            SelectedFieldInfo = null;
-        });
-
-        ConfirmFieldSelectionDialogCommand = new AsyncRelayCommand(async () =>
-        {
-            if (SelectedFieldInfo == null) return;
-
-            var fieldPath = Path.Combine(_fieldSelectionDirectory, SelectedFieldInfo.Name);
-            var fieldName = SelectedFieldInfo.Name;
-
-            // Check if this is a legacy field that will be auto-converted
-            bool isLegacy = File.Exists(Path.Combine(fieldPath, "Field.txt"));
-
-            if (isLegacy)
-            {
-                State.UI.CloseDialog();
-                ShowConfirmationDialog(
-                    "Import Legacy Field",
-                    $"'{fieldName}' uses the legacy AgOpenGPS format. " +
-                    "It will be imported and converted to the new format. " +
-                    "Its AgOpenGPS files in this folder are deleted once imported. Continue?",
-                    () =>
-                    {
-                        SelectedFieldInfo = null;
-                        _ = OpenFieldAsync(fieldPath, fieldName).ContinueWith(_ =>
-                            _dispatcher.Post(() =>
-                                IsFieldOperationsPanelVisible = false));
-                    });
-                return;
-            }
-
-            State.UI.CloseDialog();
-            SelectedFieldInfo = null;
-
-            await OpenFieldAsync(fieldPath, fieldName);
-            IsFieldOperationsPanelVisible = false;
-        });
-
-        DeleteSelectedFieldCommand = new RelayCommand(() =>
-        {
-            if (SelectedFieldInfo == null) return;
-
-            var fieldPath = Path.Combine(_fieldSelectionDirectory, SelectedFieldInfo.Name);
-            try
-            {
-                if (Directory.Exists(fieldPath))
-                {
-                    Directory.Delete(fieldPath, true);
-                    StatusMessage = $"Deleted field: {SelectedFieldInfo.Name}";
-                    PopulateAvailableFields(_fieldSelectionDirectory);
-                    SelectedFieldInfo = null;
-                }
-            }
-            catch (Exception ex)
-            {
-                ReportFailure($"Error deleting field: {ex.Message}");
-            }
-        });
-
-        SortFieldsCommand = new RelayCommand(() =>
-        {
-            _fieldsSortedAZ = !_fieldsSortedAZ;
-            var sorted = _fieldsSortedAZ
-                ? AvailableFields.OrderBy(f => f.Name).ToList()
-                : AvailableFields.OrderByDescending(f => f.Name).ToList();
-            AvailableFields.Clear();
-            foreach (var field in sorted)
-            {
-                AvailableFields.Add(field);
-            }
-        });
-
-        // New Field Dialog
-        ShowNewFieldDialogCommand = new RelayCommand(() =>
-        {
-            NewFieldLatitude = Latitude != 0 ? Latitude : 40.7128;
-            NewFieldLongitude = Longitude != 0 ? Longitude : -74.0060;
-            NewFieldName = string.Empty;
-            OpenChainDialog(DialogType.NewField);
-        });
-
-        CancelNewFieldDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-            NewFieldName = string.Empty;
         });
 
         ConfirmNewFieldDialogCommand = new AsyncRelayCommand(async () =>
@@ -229,40 +91,6 @@ public partial class MainViewModel
             {
                 ReportFailure($"Error creating field: {ex.Message}");
             }
-        });
-
-        // From Existing Field Dialog
-        ShowFromExistingFieldDialogCommand = new RelayCommand(() =>
-        {
-            var fieldsDir = _settingsService.Settings.FieldsDirectory;
-            if (string.IsNullOrWhiteSpace(fieldsDir))
-            {
-                fieldsDir = Path.Combine(
-                    AppDataRoot.Documents, "Fields");
-            }
-            _fieldSelectionDirectory = fieldsDir;
-            PopulateAvailableFields(fieldsDir);
-
-            CopyFlags = true;
-            CopyMapping = true;
-            CopyHeadland = true;
-            CopyLines = true;
-            FromExistingFieldName = string.Empty;
-            FromExistingSelectedField = null;
-
-            if (AvailableFields.Count > 0)
-            {
-                FromExistingSelectedField = AvailableFields[0];
-            }
-
-            OpenChainDialog(DialogType.FromExistingField);
-        });
-
-        CancelFromExistingFieldDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-            FromExistingSelectedField = null;
-            FromExistingFieldName = string.Empty;
         });
 
         ConfirmFromExistingFieldDialogCommand = new AsyncRelayCommand(async () =>
@@ -309,69 +137,6 @@ public partial class MainViewModel
             {
                 ReportFailure($"Error creating field: {ex.Message}");
             }
-        });
-
-        // Field name helper commands
-        AppendVehicleNameCommand = new RelayCommand(() =>
-        {
-            var vehicleName = Vehicle.VehicleTypeDisplayName;
-            if (!string.IsNullOrWhiteSpace(vehicleName))
-            {
-                FromExistingFieldName = (FromExistingFieldName + " " + vehicleName).Trim();
-            }
-        });
-
-        AppendDateCommand = new RelayCommand(() =>
-        {
-            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd", System.Globalization.CultureInfo.InvariantCulture); // becomes a folder name
-            FromExistingFieldName = (FromExistingFieldName + " " + dateStr).Trim();
-        });
-
-        AppendTimeCommand = new RelayCommand(() =>
-        {
-            var timeStr = DateTime.Now.ToString("HH-mm", System.Globalization.CultureInfo.InvariantCulture);
-            FromExistingFieldName = (FromExistingFieldName + " " + timeStr).Trim();
-        });
-
-        BackspaceFieldNameCommand = new RelayCommand(() =>
-        {
-            if (FromExistingFieldName.Length > 0)
-            {
-                FromExistingFieldName = FromExistingFieldName.Substring(0, FromExistingFieldName.Length - 1);
-            }
-        });
-
-        ToggleCopyFlagsCommand = new RelayCommand(() => CopyFlags = !CopyFlags);
-        ToggleCopyMappingCommand = new RelayCommand(() => CopyMapping = !CopyMapping);
-        ToggleCopyHeadlandCommand = new RelayCommand(() => CopyHeadland = !CopyHeadland);
-        ToggleCopyLinesCommand = new RelayCommand(() => CopyLines = !CopyLines);
-
-        // KML Import Dialog
-        ShowKmlImportDialogCommand = new RelayCommand(() =>
-        {
-            _kmlImportToExistingField = false;
-            PopulateAvailableKmlFiles();
-            KmlImportFieldName = string.Empty;
-            KmlBoundaryPointCount = 0;
-            KmlCenterLatitude = 0;
-            KmlCenterLongitude = 0;
-            _kmlBoundaryPoints.Clear();
-            _kmlParsedPolygons.Clear();
-            SelectedKmlFile = null;
-
-            if (AvailableKmlFiles.Count > 0)
-            {
-                SelectedKmlFile = AvailableKmlFiles[0];
-            }
-
-            OpenChainDialog(DialogType.KmlImport);
-        });
-
-        CancelKmlImportDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-            SelectedKmlFile = null;
-            KmlImportFieldName = string.Empty;
         });
 
         ConfirmKmlImportDialogCommand = new AsyncRelayCommand(async () =>
@@ -458,48 +223,6 @@ public partial class MainViewModel
             {
                 ReportFailure($"Error importing KML: {ex.Message}");
             }
-        });
-
-        KmlAppendDateCommand = new RelayCommand(() =>
-        {
-            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd", System.Globalization.CultureInfo.InvariantCulture); // becomes a folder name
-            KmlImportFieldName = (KmlImportFieldName + " " + dateStr).Trim();
-        });
-
-        KmlAppendTimeCommand = new RelayCommand(() =>
-        {
-            var timeStr = DateTime.Now.ToString("HH-mm", System.Globalization.CultureInfo.InvariantCulture);
-            KmlImportFieldName = (KmlImportFieldName + " " + timeStr).Trim();
-        });
-
-        KmlBackspaceFieldNameCommand = new RelayCommand(() =>
-        {
-            if (KmlImportFieldName.Length > 0)
-            {
-                KmlImportFieldName = KmlImportFieldName.Substring(0, KmlImportFieldName.Length - 1);
-            }
-        });
-
-        // ISO-XML Import Dialog
-        ShowIsoXmlImportDialogCommand = new RelayCommand(() =>
-        {
-            PopulateAvailableIsoXmlFiles();
-            IsoXmlImportFieldName = string.Empty;
-            SelectedIsoXmlFile = null;
-
-            if (AvailableIsoXmlFiles.Count > 0)
-            {
-                SelectedIsoXmlFile = AvailableIsoXmlFiles[0];
-            }
-
-            OpenChainDialog(DialogType.IsoXmlImport);
-        });
-
-        CancelIsoXmlImportDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-            SelectedIsoXmlFile = null;
-            IsoXmlImportFieldName = string.Empty;
         });
 
         ConfirmIsoXmlImportDialogCommand = new AsyncRelayCommand(async () =>
@@ -651,26 +374,6 @@ public partial class MainViewModel
             catch (Exception ex)
             {
                 ReportFailure($"Error importing ISO-XML: {ex.Message}");
-            }
-        });
-
-        IsoXmlAppendDateCommand = new RelayCommand(() =>
-        {
-            var dateStr = DateTime.Now.ToString("yyyy-MMM-dd", System.Globalization.CultureInfo.InvariantCulture); // becomes a folder name
-            IsoXmlImportFieldName = (IsoXmlImportFieldName + " " + dateStr).Trim();
-        });
-
-        IsoXmlAppendTimeCommand = new RelayCommand(() =>
-        {
-            var timeStr = DateTime.Now.ToString("HH-mm", System.Globalization.CultureInfo.InvariantCulture);
-            IsoXmlImportFieldName = (IsoXmlImportFieldName + " " + timeStr).Trim();
-        });
-
-        IsoXmlBackspaceFieldNameCommand = new RelayCommand(() =>
-        {
-            if (IsoXmlImportFieldName.Length > 0)
-            {
-                IsoXmlImportFieldName = IsoXmlImportFieldName.Substring(0, IsoXmlImportFieldName.Length - 1);
             }
         });
 

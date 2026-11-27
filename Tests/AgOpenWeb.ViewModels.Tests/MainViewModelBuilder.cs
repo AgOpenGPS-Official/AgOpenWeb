@@ -100,7 +100,6 @@ public class MainViewModelBuilder
             coverageMapService: CoverageMapService,
             sectionControlService: SectionControlService,
             ntripProfileService: NtripProfileService,
-            chartDataService: Substitute.For<IChartDataService>(),
             audioService: AudioService,
             elevationLogService: Substitute.For<IElevationLogService>(),
             jobService: JobService,

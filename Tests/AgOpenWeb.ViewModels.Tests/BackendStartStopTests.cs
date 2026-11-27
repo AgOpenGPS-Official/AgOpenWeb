@@ -12,7 +12,7 @@ namespace AgOpenWeb.ViewModels.Tests;
 
 /// <summary>
 /// The order the backend starts the services in (the one the view model's constructor had: the
-/// battery reader, AutoSteer, the GPS pipeline, the control loop, then the UDP port with the view
+/// battery reader, AutoSteer, the GPS pipeline, the control loop, chart collection, then the UDP port with the view
 /// model's own start), and that it stops them in reverse.
 /// </summary>
 [TestFixture]
@@ -24,13 +24,14 @@ public class BackendStartStopTests
     private readonly IGpsPipelineService _pipeline = Substitute.For<IGpsPipelineService>();
     private readonly ISteerMachineLoopService _controlLoop = Substitute.For<ISteerMachineLoopService>();
     private readonly IUdpCommunicationService _udp = Substitute.For<IUdpCommunicationService>();
+    private readonly IChartDataService _charts = Substitute.For<IChartDataService>();
 
     [SetUp] public void SetUp() => ConfigurationStore.SetInstance(new ConfigurationStore());
     [TearDown] public void TearDown() => ConfigurationStore.SetInstance(new ConfigurationStore());
 
     private IServiceProvider Services() => new ServiceCollection()
         .AddSingleton(_battery).AddSingleton(_autoSteer).AddSingleton(_pipeline)
-        .AddSingleton(_controlLoop).AddSingleton(_udp)
+        .AddSingleton(_controlLoop).AddSingleton(_udp).AddSingleton(_charts)
         .BuildServiceProvider();
 
     [Test]
@@ -43,6 +44,7 @@ public class BackendStartStopTests
             _autoSteer.Start();
             _pipeline.Start();
             _controlLoop.Start();
+            _charts.Start();
             _udp.StartAsync();
         });
     }
@@ -53,6 +55,7 @@ public class BackendStartStopTests
         WebBackend.StopServices(Services(), new MainViewModelBuilder().Build());
         Received.InOrder(() =>
         {
+            _charts.Stop();
             _controlLoop.Stop();
             _pipeline.Stop();
             _autoSteer.Stop();

@@ -89,18 +89,12 @@ public partial class MainViewModel
         }
     }
 
-    /// <summary>Pause-button command bound from the strip.</summary>
-    public IRelayCommand ToggleStatusStripRotationCommand { get; private set; } = null!;
-
     /// <summary>
     /// Called from the MainViewModel constructor after services are wired.
     /// Starts the rotation timer and installs the pause command.
     /// </summary>
     private void InitializeStatusStripRotation()
     {
-        ToggleStatusStripRotationCommand = new RelayCommand(() =>
-            IsStatusStripRotationPaused = !IsStatusStripRotationPaused);
-
         _statusStripRotationTimer = _timerFactory.Create();
         _statusStripRotationTimer.Interval = TimeSpan.FromSeconds(RotationIntervalSeconds);
         _statusStripRotationTimer.Tick += (_, _) => AdvanceStatusStripPage();

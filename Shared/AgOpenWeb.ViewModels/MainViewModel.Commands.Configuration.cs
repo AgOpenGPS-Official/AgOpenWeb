@@ -31,34 +31,6 @@ public partial class MainViewModel
             PushChainDialog(DialogType.ToolConfig);
         });
 
-        // Load Vehicle / Tool picker (#346) — the hub, opened directly from the gear
-        // icon as the root of the config chain. Its "Configure Vehicle" / "Configure
-        // Tool" buttons push the split dialogs onto the chain.
-        ShowLoadVehicleToolDialogCommand = new RelayCommand(() =>
-        {
-            LoadVehicleToolDialogVm = new LoadVehicleToolDialogViewModel(
-                _configurationService,
-                onClose: () => State.UI.CloseDialog(),
-                confirm: (msg, action) => ShowConfirmationDialog("Confirm", msg, action),
-                confirmChoice: (msg, confirmLabel, cancelLabel, action) =>
-                    ShowConfirmationDialog("Profile Damaged", msg, confirmLabel, cancelLabel, action),
-                onConfigureVehicle: () => ShowVehicleConfigDialogCommand!.Execute(null),
-                onConfigureTool: () => ShowToolConfigDialogCommand!.Execute(null));
-            OpenChainDialog(DialogType.LoadVehicleTool);
-        });
-
-        CancelLoadVehicleToolDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
-        // AutoSteer Configuration Panel
-        ShowAutoSteerConfigCommand = new RelayCommand(() =>
-        {
-            EnsureAutoSteerConfigViewModel();
-            AutoSteerConfigViewModel!.IsPanelVisible = true;
-        });
-
         // Smart WAS calibration dialog
         ShowSmartWasCommand = new RelayCommand(() =>
         {
@@ -69,11 +41,6 @@ public partial class MainViewModel
                 _autoSteerService,
                 _dispatcher);
             State.UI.ShowDialog(DialogType.SmartWas);
-        });
-
-        CloseSmartWasDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
         });
     }
 

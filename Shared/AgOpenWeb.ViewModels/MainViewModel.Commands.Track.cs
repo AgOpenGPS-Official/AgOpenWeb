@@ -210,11 +210,6 @@ public partial class MainViewModel
             StatusMessage = "Moved one pass right";
         });
 
-        StopGuidanceCommand = new RelayCommand(() =>
-        {
-            StatusMessage = "Guidance Stopped";
-        });
-
         UTurnCommand = new RelayCommand(() =>
         {
             if (SelectedTrack == null)
@@ -237,117 +232,9 @@ public partial class MainViewModel
             TriggerManualYouTurnLeft();
         });
 
-        // AB Line Guidance Commands - Flyout Menu
-        ShowTracksDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.ShowDialog(DialogType.Tracks);
-        });
-
-        CloseTracksDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
-        // Track management commands
-        DeleteSelectedTrackCommand = new RelayCommand(() =>
-        {
-            if (SelectedTrack != null)
-            {
-                SavedTracks.Remove(SelectedTrack);
-                SelectedTrack = null;
-                SaveTracksToFile();
-                StatusMessage = "Track deleted";
-            }
-        });
-
-        DeleteAllTracksCommand = new RelayCommand(() =>
-        {
-            if (SavedTracks.Count == 0)
-            {
-                ReportFailure("No tracks to delete");
-                return;
-            }
-            ShowConfirmationDialog(
-                "Delete All Tracks",
-                $"Delete all {SavedTracks.Count} tracks? This cannot be undone.",
-                DeleteAllTracksConfirmed);
-        });
-
         SwapABPointsCommand = new RelayCommand(() =>
         {
             if (SelectedTrack != null) SwapTrackAB(SelectedTrack);
-        });
-
-        SelectTrackAsActiveCommand = new RelayCommand(() =>
-        {
-            if (SelectedTrack != null)
-            {
-                if (SelectedTrack.IsActive)
-                {
-                    SelectedTrack = null;
-                    StatusMessage = "Track deactivated";
-                }
-                else
-                {
-                    StatusMessage = $"Activated track: {SelectedTrack.Name}";
-                }
-                State.UI.CloseDialog();
-            }
-        });
-
-        // Quick AB Selector
-        ShowQuickABSelectorCommand = new RelayCommand(() =>
-        {
-            State.UI.ShowDialog(DialogType.QuickABSelector);
-        });
-
-        CloseQuickABSelectorCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
-        ShowDrawABDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.ShowDialog(DialogType.DrawAB);
-        });
-
-        CloseDrawABDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
-        StartNewABLineCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-            CurrentABCreationMode = ABCreationMode.DriveAB;
-            CurrentABPointStep = ABPointStep.SettingPointA;
-            PendingPointA = null;
-            StatusMessage = "Drive-in AB Line: tap to set Point A at current position";
-        });
-
-        StartNewABCurveCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-            CurrentABCreationMode = ABCreationMode.Curve;
-            _recordedCurvePoints.Clear();
-            _lastCurvePoint = null;
-
-            var v0 = State.Vehicle; // the cycle's pivot, as the points that follow (AgOpenGPS ptAa = pivotAxlePos)
-            if (v0.Easting != 0 || v0.Northing != 0)
-            {
-                var headingRadians = v0.Heading * Math.PI / 180.0;
-                var firstPoint = new Vec3(v0.Easting, v0.Northing, headingRadians);
-                _recordedCurvePoints.Add(firstPoint);
-                _lastCurvePoint = firstPoint;
-
-                var displayPoints = _recordedCurvePoints.Select(p => (p.Easting, p.Northing)).ToList();
-                _mapService.SetRecordingPoints(displayPoints);
-            }
-
-            StatusMessage = $"Curve recording started ({_recordedCurvePoints.Count} pts) - drive along path, tap when done";
-            OnPropertyChanged(nameof(IsRecordingCurve));
-            OnPropertyChanged(nameof(RecordedCurvePointCount));
-            OnPropertyChanged(nameof(ABCreationInstructions));
         });
 
         StartAPlusLineCommand = new RelayCommand(() => CreateAPlusLine(null));
@@ -864,14 +751,6 @@ public partial class MainViewModel
             NudgeTrack(xte);
         });
 
-        ToggleYouSkipCommand = new RelayCommand(() =>
-        {
-            IsSkipWorkedMode = !IsSkipWorkedMode;
-            StatusMessage = IsSkipWorkedMode
-                ? "Skip worked tracks: ON — will skip already-worked rows"
-                : "Skip worked tracks: OFF — fixed skip pattern";
-        });
-
         // Cycle Normal → Alternative → Ignore worked tracks, like AgOpenGPS's skip button;
         // the two skip modes skip at least 1 row (#111). Every tap starts from the operator's
         // own row count, as AgOpenGPS resets rowSkipsWidth to the saved setting, so back in
@@ -899,61 +778,8 @@ public partial class MainViewModel
 
         // Flags Commands
         PlaceRedFlagCommand = new RelayCommand(() => PlaceFlag(FlagColor.Red));
-        PlaceGreenFlagCommand = new RelayCommand(() => PlaceFlag(FlagColor.Green));
-        PlaceYellowFlagCommand = new RelayCommand(() => PlaceFlag(FlagColor.Yellow));
 
         PlaceFlagHereCommand = new RelayCommand(() => PlaceFlag(NextAutoColor()));
-
-        DeleteAllFlagsCommand = new RelayCommand(() =>
-        {
-            if (Flags.Count == 0)
-            {
-                ReportFailure("No flags to delete");
-                return;
-            }
-            ShowConfirmationDialog(
-                "Delete All Flags",
-                $"Delete all {Flags.Count} flags? This cannot be undone.",
-                () =>
-                {
-                    int count = Flags.Count;
-                    Flags.Clear();
-                    _nextFlagId = 1;
-                    UpdateFlagsOnMap();
-                    StatusMessage = $"Deleted {count} flags";
-                });
-        });
-
-        DeleteFlagCommand = new RelayCommand<object>(param =>
-        {
-            if (param is Flag flag)
-            {
-                Flags.Remove(flag);
-                UpdateFlagsOnMap();
-                StatusMessage = $"Deleted flag '{flag.Name}'";
-            }
-        });
-
-        ShowFlagListCommand = new RelayCommand(() =>
-        {
-            State.UI.ShowDialog(Models.State.DialogType.FlagList);
-        });
-
-        CloseFlagListCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
-        PlaceFlagOnClickCommand = new RelayCommand(() =>
-        {
-            IsPlaceFlagOnClickMode = !IsPlaceFlagOnClickMode;
-            StatusMessage = IsPlaceFlagOnClickMode
-                ? "Tap on map to place a flag (tap again to cancel)"
-                : "Flag placement cancelled";
-            // Close any open dialog so the map is visible for tapping
-            if (IsPlaceFlagOnClickMode)
-                State.UI.CloseDialog();
-        });
 
         // Section control commands
         ToggleManualModeCommand = new RelayCommand(() =>
@@ -1231,38 +1057,6 @@ public partial class MainViewModel
                     : "Tram lines built from boundary";
         });
 
-        ShowTramSettingsCommand = new RelayCommand(() =>
-        {
-            if (SelectedTrack == null)
-            {
-                ShowErrorDialog("No Track Selected", "Select an AB line or curve track first.");
-                return;
-            }
-            State.UI.ShowDialog(Models.State.DialogType.TramSettings);
-        });
-
-        CloseTramSettingsCommand = new RelayCommand(() => State.UI.CloseDialog());
-
-        IncreaseTramPassesCommand = new RelayCommand(() =>
-        {
-            ConfigStore.Tram.Passes = Math.Min(20, ConfigStore.Tram.Passes + 1);
-            ConfigStore.Guidance.TramPasses = ConfigStore.Tram.Passes;
-            UpdateTramLines(SelectedTrack);
-            OnPropertyChanged(nameof(TramPasses));
-            OnPropertyChanged(nameof(TramWidthDisplay));
-            OnPropertyChanged(nameof(TramLineCountDisplay));
-        });
-
-        DecreaseTramPassesCommand = new RelayCommand(() =>
-        {
-            ConfigStore.Tram.Passes = Math.Max(1, ConfigStore.Tram.Passes - 1);
-            ConfigStore.Guidance.TramPasses = ConfigStore.Tram.Passes;
-            UpdateTramLines(SelectedTrack);
-            OnPropertyChanged(nameof(TramPasses));
-            OnPropertyChanged(nameof(TramWidthDisplay));
-            OnPropertyChanged(nameof(TramLineCountDisplay));
-        });
-
         void SetTramMode(Models.Configuration.TramDisplayMode mode)
         {
             ConfigStore.Tram.DisplayMode = mode;
@@ -1270,73 +1064,14 @@ public partial class MainViewModel
             OnPropertyChanged(nameof(TramDisplayLabel));
         }
 
-        SetTramModeOffCommand = new RelayCommand(() => SetTramMode(Models.Configuration.TramDisplayMode.Off));
-        SetTramModeAllCommand = new RelayCommand(() => SetTramMode(Models.Configuration.TramDisplayMode.All));
-        SetTramModeLinesCommand = new RelayCommand(() => SetTramMode(Models.Configuration.TramDisplayMode.LinesOnly));
-        SetTramModeOuterCommand = new RelayCommand(() => SetTramMode(Models.Configuration.TramDisplayMode.OuterOnly));
-
-        IncreaseTramStartPassCommand = new RelayCommand(() =>
-        {
-            ConfigStore.Tram.StartPass++;
-            UpdateTramLines(SelectedTrack);
-            OnPropertyChanged(nameof(TramStartPass));
-            OnPropertyChanged(nameof(TramLineCountDisplay));
-        });
-
-        DecreaseTramStartPassCommand = new RelayCommand(() =>
-        {
-            ConfigStore.Tram.StartPass = Math.Max(0, ConfigStore.Tram.StartPass - 1);
-            UpdateTramLines(SelectedTrack);
-            OnPropertyChanged(nameof(TramStartPass));
-            OnPropertyChanged(nameof(TramLineCountDisplay));
-        });
-
-        SwapTramSideCommand = new RelayCommand(() =>
-        {
-            ConfigStore.Tram.IsOuterInverted = !ConfigStore.Tram.IsOuterInverted;
-            UpdateTramLines(SelectedTrack);
-            StatusMessage = $"Tram side: {(ConfigStore.Tram.IsOuterInverted ? "Inverted" : "Normal")}";
-        });
-
-        ClearTramLinesCommand = new RelayCommand(() =>
-        {
-            ShowConfirmationDialog("Clear Tram Lines",
-                "Delete all tram lines? This cannot be undone.",
-                () =>
-                {
-                    _tramLineService.Clear();
-                    ConfigStore.Tram.DisplayMode = Models.Configuration.TramDisplayMode.Off;
-                    _mapService.SetTramLines(
-                        _tramLineService.OuterBoundaryTrack,
-                        _tramLineService.InnerBoundaryTrack,
-                        _tramLineService.ParallelTramLines);
-                    OnPropertyChanged(nameof(TramLineCountDisplay));
-                    StatusMessage = "Tram lines cleared";
-                });
-        });
-
-        IncreaseTramLineCommand = new RelayCommand(() =>
-        {
-            ConfigStore.Guidance.TramLine++;
-            OnPropertyChanged(nameof(TramLineNumber));
-        });
-
-        DecreaseTramLineCommand = new RelayCommand(() =>
-        {
-            ConfigStore.Guidance.TramLine = Math.Max(1, ConfigStore.Guidance.TramLine - 1);
-            OnPropertyChanged(nameof(TramLineNumber));
-        });
-
         ToggleTramLeftManualCommand = new RelayCommand(() =>
         {
             _tramLineService.IsLeftManualOn = !_tramLineService.IsLeftManualOn;
-            OnPropertyChanged(nameof(TramLeftManualOn));
         });
 
         ToggleTramRightManualCommand = new RelayCommand(() =>
         {
             _tramLineService.IsRightManualOn = !_tramLineService.IsRightManualOn;
-            OnPropertyChanged(nameof(TramRightManualOn));
         });
 
         CreateTrackFromBoundaryCommand = new RelayCommand(() =>
@@ -1406,57 +1141,6 @@ public partial class MainViewModel
                                 // previous track's live pass/nudge isn't written onto the new one
             SelectedTrack = track;
             StatusMessage = $"Created AB line from longest boundary edge ({maxDist:F0}m)";
-        });
-
-        // A Line: create AB line from current position + heading
-        CreateALineFromPositionCommand = new RelayCommand(() =>
-        {
-            double heading = State.Vehicle.Heading * Math.PI / 180.0;
-            double e = Easting;
-            double n = Northing;
-
-            // Extend 200m in both directions from current position
-            var a = new Models.Base.Vec3(
-                e - Math.Sin(heading) * 200,
-                n - Math.Cos(heading) * 200,
-                heading);
-            var b = new Models.Base.Vec3(
-                e + Math.Sin(heading) * 200,
-                n + Math.Cos(heading) * 200,
-                heading);
-
-            var track = new Models.Track.Track
-            {
-                Name = $"A+ {Math.Round(State.Vehicle.Heading, 1)}\u00B0",
-                Points = new System.Collections.Generic.List<Models.Base.Vec3> { a, b },
-                Type = Models.Track.TrackType.ABLine,
-                IsVisible = true
-            };
-
-            AddSavedTrack(track);
-            SaveTracksToFile(); // persist now, not only on field close (#107) — before selecting, so the
-                                // previous track's live pass/nudge isn't written onto the new one
-            SelectedTrack = track;
-            StatusMessage = $"Created A+ line at {State.Vehicle.Heading:F0}\u00B0";
-        });
-
-        // Field Builder dialog
-        ShowFieldBuilderCommand = new RelayCommand(() =>
-            OpenChainDialog(Models.State.DialogType.FieldBuilder));
-
-        CloseFieldBuilderCommand = new RelayCommand(() =>
-            State.UI.CloseDialog());
-
-        IncreaseHeadlandDistanceCommand = new RelayCommand(() =>
-        {
-            HeadlandDistance = Math.Min(100, HeadlandDistance + 1.0);
-            OnPropertyChanged(nameof(HeadlandDistance));
-        });
-
-        DecreaseHeadlandDistanceCommand = new RelayCommand(() =>
-        {
-            HeadlandDistance = Math.Max(1, HeadlandDistance - 1.0);
-            OnPropertyChanged(nameof(HeadlandDistance));
         });
 
         CreateCurveFromBoundaryCommand = new RelayCommand(() =>

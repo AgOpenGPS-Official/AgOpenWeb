@@ -36,75 +36,6 @@ public partial class MainViewModel
             }
         };
 
-        // Panel toggle commands. Only one left-nav fly-out is open at a time:
-        // each toggle closes the others first, then opens (or closes) its own.
-        ToggleScreenAlertsPanelCommand = new RelayCommand(() =>
-        {
-            bool open = !IsScreenAlertsPanelVisible;
-            CloseAllNavFlyouts();
-            // The panel's display/sounds/buttons sections bind to
-            // ConfigurationViewModel, which is created lazily; mirror the
-            // config-backed dialogs so the bindings resolve on first open.
-            if (open && ConfigurationViewModel == null)
-            {
-                ConfigurationViewModel = new ConfigurationViewModel(_configurationService);
-            }
-            IsScreenAlertsPanelVisible = open;
-        });
-
-        ToggleFileMenuPanelCommand = new RelayCommand(() =>
-        {
-            bool open = !IsFileMenuPanelVisible;
-            CloseAllNavFlyouts();
-            IsFileMenuPanelVisible = open;
-        });
-
-        ToggleToolsPanelCommand = new RelayCommand(() =>
-        {
-            bool open = !IsToolsPanelVisible;
-            CloseAllNavFlyouts();
-            IsToolsPanelVisible = open;
-        });
-
-        ToggleFieldOperationsPanelCommand = new RelayCommand(() =>
-        {
-            bool open = !IsFieldOperationsPanelVisible;
-            CloseAllNavFlyouts();
-            IsFieldOperationsPanelVisible = open;
-        });
-
-        ToggleFieldToolsPanelCommand = new RelayCommand(() =>
-        {
-            bool open = !IsFieldToolsPanelVisible;
-            CloseAllNavFlyouts();
-            IsFieldToolsPanelVisible = open;
-        });
-
-        ToggleNetworkIoPanelCommand = new RelayCommand(() =>
-        {
-            bool open = !IsNetworkIoPanelVisible;
-            CloseAllNavFlyouts();
-            IsNetworkIoPanelVisible = open;
-        });
-
-        // The fly-out close (X) is a pure close, not a toggle: a toggle would
-        // re-open the panel because the bubbling item-close already shut it.
-        CloseAllNavFlyoutsCommand = new RelayCommand(CloseAllNavFlyouts);
-
-        // Back from a Field Tools tool overlay (boundary recording, recorded path,
-        // offset-fix pad): close the overlays and reopen the Field Tools fly-out.
-        // These are bool-visibility panels, not DialogType dialogs, so they use
-        // this dedicated command rather than the dialog back-stack.
-        BackToFieldToolsCommand = new RelayCommand(() =>
-        {
-            IsBoundaryPanelVisible = false;
-            IsRecordedPathPanelVisible = false;
-            State.UI.IsOffsetFixPanelVisible = false;
-            // Route through the chain Back path so Field Tools reopens where the
-            // chain currently is (flagged reopen) rather than snapping home.
-            ReopenFlyout(NavFlyout.FieldTools);
-        });
-
         ToggleAutoTrackCommand = new RelayCommand(() =>
         {
             IsAutoTrackEnabled = !IsAutoTrackEnabled;
@@ -130,75 +61,10 @@ public partial class MainViewModel
             }
         });
 
-        Toggle2D3DCommand = new RelayCommand(() =>
-        {
-            if (Is2DMode)
-            {
-                // Switching to 3D: restore last 3D pitch
-                Is2DMode = false;
-                CameraPitch = _last3DPitch;
-                _mapService.Set3DMode(true);
-            }
-            else
-            {
-                // Switching to 2D: overhead view
-                Is2DMode = true;
-                CameraPitch = -90.0;
-                _mapService.Set3DMode(false);
-            }
-        });
-
         ToggleNorthUpCommand = new RelayCommand(() =>
         {
             IsNorthUp = !IsNorthUp;
             _mapService.SetNorthUp(IsNorthUp);
-        });
-
-        ToggleCameraModeCommand = new RelayCommand(() =>
-        {
-            var oldMode = CameraMode;
-            // Explicit 4-state cycle: H -> N -> M -> C -> H
-            CameraMode = CameraMode switch
-            {
-                Models.CameraMode.HeadingUp => Models.CameraMode.NorthUp,
-                Models.CameraMode.NorthUp => Models.CameraMode.Map,
-                Models.CameraMode.Map => Models.CameraMode.Free,
-                Models.CameraMode.Free => Models.CameraMode.HeadingUp,
-                _ => Models.CameraMode.Map
-            };
-            Console.WriteLine($"[Compass] {oldMode} -> {CameraMode}");
-        });
-
-        // Camera controls - tilt transitions between 2D and 3D automatically
-        // "Tilt Down" = look more toward horizon = more 3D (pitch increases toward -10)
-        // "Tilt Up" = look more overhead = more 2D (pitch decreases toward -90)
-        IncreaseCameraPitchCommand = new RelayCommand(() =>
-        {
-            double newPitch = CameraPitch - 5.0;
-            if (newPitch <= -90.0)
-            {
-                Is2DMode = true;
-                CameraPitch = -90.0;
-                _mapService.Set3DMode(false);
-            }
-            else
-            {
-                CameraPitch = newPitch;
-            }
-        });
-
-        DecreaseCameraPitchCommand = new RelayCommand(() =>
-        {
-            if (Is2DMode)
-            {
-                Is2DMode = false;
-                CameraPitch = -85.0;
-                _mapService.Set3DMode(true);
-            }
-            else
-            {
-                CameraPitch += 5.0;
-            }
         });
 
         // Display resolution: cycle Ultra → High → Medium → Low → Min → Ultra
@@ -224,22 +90,6 @@ public partial class MainViewModel
                 _coverageMapService.RebuildDisplayForResolutionChange(); // shared layer → remote/web coverage feed + save
                 _mapService.RebuildCoverageBitmapForResolutionChange();  // native map-control bitmap
             }
-        });
-
-        // iOS Sheet toggle commands
-        ToggleFileMenuCommand = new RelayCommand(() =>
-        {
-            IsFileMenuVisible = !IsFileMenuVisible;
-        });
-
-        ToggleFieldToolsCommand = new RelayCommand(() =>
-        {
-            IsFieldToolsVisible = !IsFieldToolsVisible;
-        });
-
-        ToggleSettingsCommand = new RelayCommand(() =>
-        {
-            IsSettingsVisible = !IsSettingsVisible;
         });
     }
 

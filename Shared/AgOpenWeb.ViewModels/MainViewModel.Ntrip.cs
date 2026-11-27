@@ -132,11 +132,6 @@ public partial class MainViewModel
         }
     }
 
-    public async Task DisconnectFromNtripAsync()
-    {
-        await _ntripService.DisconnectAsync();
-    }
-
     /// <summary>
     /// The NTRIP on/off box in Network IO (#278). Off drops the connection and ends the
     /// retries; on connects as a start-up or a field open would, with the open field's
