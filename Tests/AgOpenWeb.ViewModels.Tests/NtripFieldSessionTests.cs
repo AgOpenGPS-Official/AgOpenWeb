@@ -66,6 +66,7 @@ public class NtripFieldSessionTests
         ntrip.DisconnectAsync().Returns(_ =>
         {
             var t = _held?.Task ?? Task.CompletedTask;
+            if (_held != null) _heldAsked.TrySetResult();
             _held = null;
             return t;
         });
@@ -77,9 +78,14 @@ public class NtripFieldSessionTests
     }
 
     private TaskCompletionSource? _held;
+    private TaskCompletionSource _heldAsked = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     /// <summary>The next disconnect waits until the returned source is set.</summary>
-    private TaskCompletionSource HoldNextDisconnect() => _held = new TaskCompletionSource();
+    private TaskCompletionSource HoldNextDisconnect()
+    {
+        _heldAsked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        return _held = new TaskCompletionSource();
+    }
 
     private MainViewModel Build()
     {
@@ -118,9 +124,12 @@ public class NtripFieldSessionTests
         await Open(vm, "Session A");
         Assume.That(_connected.Last(), Is.EqualTo("a.example"));
 
-        // Close A: its return to the default caster waits in the disconnect; B is opened.
+        // Close A: its return to the default caster waits in the disconnect, and B is opened
+        // then. (Not before: on the host loop nothing runs between the close and the start of
+        // the return; here, with no loop, the close goes on on another thread.)
         var restoreDisconnect = HoldNextDisconnect();
         var close = ((CommunityToolkit.Mvvm.Input.IAsyncRelayCommand)vm.CloseFieldCommand).ExecuteAsync(null);
+        await _heldAsked.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await Open(vm, "Session B");
         Assume.That(_connected.Last(), Is.EqualTo("b.example"), "B's caster was not connected");
 
