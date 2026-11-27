@@ -8,7 +8,7 @@ field SimulatorRefusedMessage : System.String
 field SmoothCountMax : System.Int32
 method ActivateTrackAt(System.Int32) : System.Void
 method AnswerPrompt(System.Int32, System.Boolean, System.Boolean) : System.Boolean
-method ApplyCapturedBackground(System.String, System.Double, System.Double, System.Double, System.Double, System.Double, System.Double, System.Double, System.Double) : System.Void
+method ApplyCapturedBackground(AgOpenWeb.Models.Field, System.String, System.Double, System.Double, System.Double, System.Double, System.Double, System.Double, System.Double, System.Double) : System.Boolean
 method ApplyGpsCycleResult(AgOpenWeb.Models.State.GpsCycleResult) : System.Void
 method BuildHeadlandFromSegments() : System.Void
 method CapDisplayResolution(System.Double) : System.Void
@@ -166,6 +166,7 @@ property HasBoundary : System.Boolean { get; set; }
 property HasHeadland : System.Boolean { get; set; }
 property HasUnsavedRecordedPath : System.Boolean { get; set; }
 property Heading : System.Double { get; set; }
+property HeadlandDistance : System.Double { get; set; }
 property HeadlandSegments : System.Collections.ObjectModel.ObservableCollection<AgOpenWeb.Models.Headland.HeadlandSegment> { get; }
 property HitchEasting : System.Double { get; set; }
 property HitchNorthing : System.Double { get; set; }

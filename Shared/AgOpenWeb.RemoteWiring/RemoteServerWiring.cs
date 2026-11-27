@@ -66,6 +66,7 @@ public static partial class RemoteServerWiring
                     void CaptureBoundaryImagery(System.Collections.Generic.IReadOnlyList<(double E, double N)> pts)
                     {
                         if (vm.GetBoundaryImageryBounds(pts) is not { } bb) return;
+                        var startedIn = vm.ActiveField; // its result goes to this field only (#969)
                         _ = System.Threading.Tasks.Task.Run(async () =>
                         {
                             var outPath = System.IO.Path.Combine(
@@ -76,10 +77,10 @@ public static partial class RemoteServerWiring
                             dispatcher.Post(() =>
                             {
                                 if (!ok) { server.ShowToast("No aerial imagery: no internet?"); return; }
-                                vm.ApplyCapturedBackground(outPath,
-                                    bb.nwLat, bb.nwLon, bb.seLat, bb.seLon,
-                                    bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY);
-                                server.ShowToast("Aerial imagery saved");
+                                if (vm.ApplyCapturedBackground(startedIn, outPath,
+                                        bb.nwLat, bb.nwLon, bb.seLat, bb.seLon,
+                                        bb.mercMinX, bb.mercMaxX, bb.mercMinY, bb.mercMaxY))
+                                    server.ShowToast("Aerial imagery saved");
                             });
                         });
                     }

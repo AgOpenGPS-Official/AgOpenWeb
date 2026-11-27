@@ -943,13 +943,23 @@ public partial class MainViewModel
     /// <summary>
     /// Apply a host-assembled aerial PNG as the field background (remote/web Draw-on-map).
     /// Reuses SaveBackgroundImage (copies the image into the field, places it in field.geojson, reloads).
+    /// <paramref name="startedIn"/> is the <see cref="ActiveField"/> the capture was started in: the
+    /// capture runs in the background for seconds, and if that field was closed meanwhile (another
+    /// opened, or the same one opened again) its imagery is not saved into what is open now (#969).
+    /// Returns whether it was saved.
     /// </summary>
-    public void ApplyCapturedBackground(string pngPath, double nwLat, double nwLon, double seLat, double seLon,
+    public bool ApplyCapturedBackground(Field? startedIn, string pngPath, double nwLat, double nwLon, double seLat, double seLon,
         double mercMinX, double mercMaxX, double mercMinY, double mercMaxY)
     {
-        if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName) || !File.Exists(pngPath)) return;
+        if (startedIn is null || !ReferenceEquals(ActiveField, startedIn))
+        {
+            _logger.LogInformation($"[Imagery] Not saved: captured for field '{startedIn?.Name}', which is no longer open");
+            return false;
+        }
+        if (!IsFieldOpen || string.IsNullOrEmpty(CurrentFieldName) || !File.Exists(pngPath)) return false;
         var fieldPath = Path.Combine(_settingsService.Settings.FieldsDirectory, CurrentFieldName);
         SaveBackgroundImage(pngPath, fieldPath, nwLat, nwLon, seLat, seLon, mercMinX, mercMaxX, mercMinY, mercMaxY);
         StatusMessage = "Boundary imagery saved";
+        return true;
     }
 }
