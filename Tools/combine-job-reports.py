@@ -21,7 +21,12 @@ import sys
 
 ORDER = ["Safety", "DataLoss", "Bug", "Inconsistency", "Improvement", "Harness"]
 # Some harnesses put the kind after the severity: "**Bug** (app defect) `CODE`" (dump replay).
-ENTRY = re.compile(r"^\d+\. \*\*(?P<sev>[A-Za-z]+)\*\* (?:\([^)]*\) )?`(?P<code>[A-Z0-9-]+)` ×(?P<n>\d+): (?P<text>.*)$")
+# A code may carry what it is about after a space (the Vehicle & Tool sweep's "SETTING-NO-EFFECT
+# tool.lookAheadOn"): anything between the backticks. Read as [A-Z0-9-]+ until 27 Nov 2026, which
+# left every such finding out of the comparison without a word.
+ENTRY = re.compile(r"^\d+\. \*\*(?P<sev>[A-Za-z]+)\*\* (?:\([^)]*\) )?`(?P<code>[A-Z][^`]*)` ×(?P<n>\d+): (?P<text>.*)$")
+# A line that starts like an entry: one ENTRY cannot read is an error, not a finding to skip.
+ENTRY_START = re.compile(r"^\d+\. \*\*")
 # The web client and working day harnesses list them as a table instead: "| Code | Severity | ..."
 # with the text in the last column ("First seen as" or "Finding") and, in the web client's,
 # the scenarios it was seen in ("Scenarios"). Cells escape "|" as "\|".
@@ -38,7 +43,7 @@ def _table_row(header, line):
         return None
     col = dict(zip(header, cells))
     code = col.get("Code", "").strip("`")
-    if not re.fullmatch(r"[A-Z][A-Z0-9-]*", code):  # not the "|---|" line
+    if not re.fullmatch(r"[A-Z][A-Z0-9-]*(?: \S.*)?", code):  # not the "|---|" line
         return None
     seen = col.get("Scenarios", "")
     n = len([s for s in seen.split(",") if s.strip()]) or 1
@@ -70,6 +75,8 @@ def findings(path):
                 out.append(row)
             continue
         m = ENTRY.match(line) if inside else None
+        if inside and not m and ENTRY_START.match(line):
+            sys.exit(f"{path}:{i + 1}: a finding this script cannot read: {line}")
         if m:
             seen = ""
             if i + 1 < len(lines) and lines[i + 1].strip().startswith("Seen in:"):
