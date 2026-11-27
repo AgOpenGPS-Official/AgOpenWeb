@@ -13,6 +13,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Base;
+using AgOpenWeb.Models.Headland;
 using AgOpenWeb.Models.Job;
 using AgOpenWeb.Models.Guidance;
 using AgOpenWeb.Models.Pipeline;
@@ -3846,7 +3847,7 @@ public partial class MainViewModel : ObservableObject
             if (!_clipPathDirty && _cachedClipPath != null)
                 return _cachedClipPath;
 
-            var headland = CurrentHeadlandLine ?? ConvertPreviewToVec3(HeadlandPreviewLine);
+            var headland = CurrentHeadlandLine ?? HeadlandGeometry.ConvertPreviewToVec3(HeadlandPreviewLine);
             if (headland == null || headland.Count < 3)
             {
                 _cachedClipPath = null;
@@ -4107,7 +4108,7 @@ public partial class MainViewModel : ObservableObject
             if (!HasHeadland || State.Field.HeadlandLine == null || State.Field.HeadlandLine.Count < 3)
                 return HeadlandSegments.Count > 0 ? $"{HeadlandSegments.Count} lines (no intersections)" : "No headland lines";
 
-            double area = System.Math.Abs(CalculateSignedArea(State.Field.HeadlandLine)) / 10000.0; // m2 -> hectares
+            double area = System.Math.Abs(HeadlandGeometry.CalculateSignedArea(State.Field.HeadlandLine)) / 10000.0; // m2 -> hectares
             return $"{area:F2} ha ({HeadlandSegments.Count} lines)";
         }
     }
@@ -4994,40 +4995,6 @@ public partial class MainViewModel : ObservableObject
         double headingDegrees = headingRadians * 180.0 / System.Math.PI;
         if (headingDegrees < 0) headingDegrees += 360.0;
         return headingDegrees;
-    }
-
-    /// <summary>
-    /// Convert Vec2 preview line to Vec3 with calculated headings
-    /// </summary>
-    private List<Models.Base.Vec3>? ConvertPreviewToVec3(List<Models.Base.Vec2>? preview)
-    {
-        if (preview == null || preview.Count < 3) return null;
-
-        var result = new List<Models.Base.Vec3>(preview.Count);
-        for (int i = 0; i < preview.Count; i++)
-        {
-            double heading;
-            if (i == 0)
-            {
-                double dx = preview[1].Easting - preview[0].Easting;
-                double dy = preview[1].Northing - preview[0].Northing;
-                heading = System.Math.Atan2(dx, dy);
-            }
-            else if (i == preview.Count - 1)
-            {
-                double dx = preview[i].Easting - preview[i - 1].Easting;
-                double dy = preview[i].Northing - preview[i - 1].Northing;
-                heading = System.Math.Atan2(dx, dy);
-            }
-            else
-            {
-                double dx = preview[i + 1].Easting - preview[i - 1].Easting;
-                double dy = preview[i + 1].Northing - preview[i - 1].Northing;
-                heading = System.Math.Atan2(dx, dy);
-            }
-            result.Add(new Models.Base.Vec3(preview[i].Easting, preview[i].Northing, heading));
-        }
-        return result;
     }
 
     /// <summary>
