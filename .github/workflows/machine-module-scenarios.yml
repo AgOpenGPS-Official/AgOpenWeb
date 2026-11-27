@@ -45,7 +45,7 @@ jobs:
       - name: Anything new since the last night?
         id: fresh
         run: |
-          if [ "${{ inputs.nightly }}" != "true" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "${{ inputs.nightly }}" != "true" ] || [ "${{ vars.NIGHTLY_ALWAYS }}" = "true" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; exit 0; fi  # NIGHTLY_ALWAYS (repo variable): every night, commit or not (Docs/CI.md)
           last=$(git log -1 --format=%ct HEAD)
           age=$(( $(date +%s) - last ))
           if [ "$age" -lt 90000 ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else

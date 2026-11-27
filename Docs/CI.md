@@ -30,5 +30,9 @@ GitHub Actions workflows, split by purpose:
   The slow ones that rarely change (the Vehicle & Tool settings sweep, working day, update, dump replay) run only when a
   commit of the last 25 hours touched what they cover, and every Sunday whatever changed (`.github/scripts/nightly-fresh.sh`,
   the paths in each workflow; add a path there when a harness starts covering more). Each harness's `README.md` says what it covers.
+  With the repository variable `NIGHTLY_ALWAYS` set to `true` (Settings → Secrets and variables → Actions → Variables,
+  or `gh variable set NIGHTLY_ALWAYS --body true`), every harness runs every night whether or not anything changed: for a
+  freeze, when `develop` has no commits and the nightly must keep running on it. Delete it afterwards
+  (`gh variable delete NIGHTLY_ALWAYS`); it needs no commit either way.
 
 To cut a release (about weekly, so each one stays small): bump `sys/version.h` and the three heads' display versions, then push a tag — `git tag v26.7.x && git push origin v26.7.x`. A summary on top of the generated list goes in with `gh release edit`.

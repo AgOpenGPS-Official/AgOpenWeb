@@ -55,6 +55,8 @@ jobs:
 
       - name: Anything new since the last night?
         id: fresh
+        env:
+          NIGHTLY_ALWAYS: ${{ vars.NIGHTLY_ALWAYS }}
         run: |
           # A slow harness: only when what it covers changed, and on Sundays (the script).
           .github/scripts/nightly-fresh.sh "${{ inputs.nightly }}" \
