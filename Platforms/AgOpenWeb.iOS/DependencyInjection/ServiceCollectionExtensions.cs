@@ -19,6 +19,7 @@ using AgOpenWeb.Services.Pipeline;
 using AgOpenWeb.Services.Section;
 using AgOpenWeb.Services.Tram;
 using AgOpenWeb.ViewModels;
+using AgOpenWeb.RemoteWiring;
 using AgOpenWeb.Models;
 using AgOpenWeb.Models.Pipeline;
 using AgOpenWeb.Models.State;
@@ -41,26 +42,10 @@ public static class ServiceCollectionExtensions
             builder.SetMinimumLevel(LogLevel.Debug);
         });
 
-        // Centralized application state (single source of truth)
-        // The backend's state: the statics point to it while it runs, let go when it stops (BackendStateLease).
-        services.AddSingleton<AgOpenWeb.Models.State.BackendStateLease>();
-        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().State);
-        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().Store);
-        services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().Persistent);
+        // The services every head registers the same way (BackendServices, in Shared); what
+        // follows is this platform's own.
+        services.AddBackendServices();
 
-        // "UI-thread" dispatcher + timer abstraction: the VM/pipeline run on a single
-        // HostLoopDispatcher, off the WKWebView's main thread, exactly as on the desktop
-        // daemon/launcher.
-        // See Plans/Completed/CONFIG_STATE_AUDIT.md §11.
-        services.AddSingleton<HostLoopDispatcher>();
-        services.AddSingleton<IUiDispatcher>(sp => sp.GetRequiredService<HostLoopDispatcher>());
-        services.AddSingleton<IUiTimerFactory>(sp => sp.GetRequiredService<HostLoopDispatcher>());
-
-        // Register ViewModels
-        services.AddSingleton<MainViewModel>(); // one per backend: it subscribes to the singletons it shows
-        services.AddTransient<ConfigurationViewModel>();
-
-        // Register Services
         services.AddSingleton<ILocalNetworkInfoProvider, SystemLocalNetworkInfoProvider>();
         // One watcher for network changes; UDP, NTRIP and the bug report outbox subscribe (#385).
         services.AddSingleton<AgOpenWeb.Services.Network.INetworkWatcher>(sp =>
@@ -70,125 +55,17 @@ public static class ServiceCollectionExtensions
             AgOpenWeb.iOS.Services.IOSNetworkEvents.Register(watcher);
             return watcher;
         });
-        services.AddSingleton<IUdpCommunicationService, UdpCommunicationService>();
 
-        // Core services
-        services.AddSingleton<IGpsService, GpsService>();
-        services.AddSingleton<IDisplaySettingsService, DisplaySettingsService>();
-        services.AddSingleton<IFieldStatisticsService, FieldStatisticsService>();
-        services.AddSingleton<IGpsSimulationService, GpsSimulationService>();
-
-        // Other services
-        services.AddSingleton<IFieldService, FieldService>();
-        services.AddSingleton<INtripClientService, NtripClientService>();
-        services.AddSingleton<ISettingsService, SettingsService>();
-        services.AddSingleton<IPersistentStateService, PersistentStateService>();
-
-        // Per-session jobs (#349). Reads FieldsRoot through ISettingsService
-        // so changes to the user's Documents path are picked up live.
-        services.AddSingleton<IJobService>(sp =>
-        {
-            var settings = sp.GetRequiredService<ISettingsService>();
-            return new JobService(() => settings.Settings.FieldsDirectory);
-        });
-
-        // Field file I/O services
-        services.AddSingleton<FieldPlaneFileService>();
-
-        // Boundary recording service
-        services.AddSingleton<IBoundaryRecordingService, BoundaryRecordingService>();
-        services.AddSingleton<IBoundaryBuilderService, BoundaryBuilderService>();
-
-        // Headland builder services
-        services.AddSingleton<IPolygonOffsetService, PolygonOffsetService>();
-        services.AddSingleton<IHeadlandBuilderService, HeadlandBuilderService>();
-        services.AddSingleton<ITurnAreaService, TurnAreaService>();
-
-        // Guidance algorithm services
-        services.AddSingleton<ITrackGuidanceService, TrackGuidanceService>();
-
-        // AutoSteer pipeline service (zero-copy GPS→PGN path)
-        services.AddSingleton<IAutoSteerService, AutoSteerService>();
-
-        // ISOBUS task controller link: PGN 240 heartbeat in, PGN 241 section control out
-        services.AddSingleton<IIsobusTaskControllerService, AgOpenWeb.Services.Isobus.IsobusTaskControllerService>();
         // ISOBUS virtual terminal for the VT card; not registered while it is switched off
         // (FeatureSwitches): no terminal, no gateway browsing, and the cards never show.
         if (AgOpenWeb.Models.FeatureSwitches.VirtualTerminal)
             services.AddSingleton<IVirtualTerminalService, AgOpenWeb.VirtualTerminal.VirtualTerminalService>();
-
-        // Smart WAS calibration (statistical WAS zero analyzer)
-        services.AddSingleton<ISmartWasCalibrationService, SmartWasCalibrationService>();
-
-        // Track copying between fields (transforms via source plane → WGS84 → target plane)
-        services.AddSingleton<ITrackCopierService, TrackCopierService>();
-
-        // Chart data service (collects rolling time-series for diagnostic charts)
-        services.AddSingleton<IChartDataService, ChartDataService>();
-
-        // Audio service (cross-platform sound effects)
-        services.AddSingleton<IAudioService, AgOpenWeb.Services.Audio.WebClientAudioService>();
 
         // Battery service — UIDevice.BatteryLevel / BatteryState via
         // NSNotificationCenter (no polling needed).
         services.AddSingleton<IBatteryService, AgOpenWeb.iOS.Services.IOSBatteryService>();
         // The device for the bug report dump (device_info.txt).
         services.AddSingleton<IDeviceInfoProvider, AgOpenWeb.iOS.Services.IOSDeviceInfoProvider>();
-
-        // Module communication service (work switch, steer switch logic)
-        services.AddSingleton<IModuleCommunicationService, ModuleCommunicationService>();
-
-        // YouTurn services
-        services.AddSingleton<YouTurnCreationService>();
-        services.AddSingleton<YouTurnGuidanceService>();
-        services.AddSingleton<YouTurnPathingService>();
-        services.AddSingleton<YouTurnStateMachine>();
-
-        // Tool position service (for trailing implements)
-        services.AddSingleton<IToolPositionService, ToolPositionService>();
-
-        // Worked area calculation service
-        services.AddSingleton<IWorkedAreaService, WorkedAreaService>();
-
-        // Coverage map service (tracks worked area as triangle strips)
-        services.AddSingleton<ICoverageMapService, CoverageMapService>();
-
-        // Section control service (automatic section on/off based on coverage, boundaries, headlands)
-        services.AddSingleton<ISectionControlService, SectionControlService>();
-
-        // Tram line services (controlled traffic farming)
-        services.AddSingleton<ITramLineOffsetService, TramLineOffsetService>();
-        services.AddSingleton<ITramLineService, TramLineService>();
-
-        // Vehicle profile service
-        services.AddSingleton<IVehicleProfileService, VehicleProfileService>();
-        services.AddSingleton<IToolProfileService, ToolProfileService>();
-
-        // NTRIP profile service
-        services.AddSingleton<INtripProfileService, NtripProfileService>();
-
-        // Configuration service (single source of truth)
-        services.AddSingleton<IConfigurationService, ConfigurationService>();
-
-        // Elevation log service (#120)
-        services.AddSingleton<IElevationLogService, ElevationLogService>();
-
-        // GPS processing pipeline (background-thread orchestration)
-        // Singleton: UI commands and the cycle worker must share one intent instance.
-        services.AddSingleton<IPipelineIntents, PipelineIntents>();
-        // Fusion service holds fix-to-fix state between cycles; singleton required.
-        services.AddSingleton<IGpsHeadingFusionService, GpsHeadingFusionService>();
-        // Position estimator: GPS-anchored snapshot bridge between the GPS
-        // arrival path (10 Hz) and the host control loop (100 Hz). Singleton —
-        // single shared snapshot.
-        services.AddSingleton<IPositionEstimator, PositionEstimator>();
-        // Host control loop (#313): runs at 100 Hz on its own thread, sends
-        // PGN 254 + PGN 239 every tick to match the firmware autosteer cadence.
-        services.AddSingleton<ISteerMachineLoopService>(_ => new SteerMachineLoopService(frequencyHz: 100.0));
-        services.AddSingleton<IGpsPipelineService, GpsPipelineService>();
-
-        // No native map control in the web build — the browser/CanvasKit client renders the map.
-        services.AddSingleton<IMapService, NullMapService>();
 
         return services;
     }
