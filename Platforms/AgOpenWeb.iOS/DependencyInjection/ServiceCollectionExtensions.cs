@@ -57,7 +57,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IUiTimerFactory>(sp => sp.GetRequiredService<HostLoopDispatcher>());
 
         // Register ViewModels
-        services.AddTransient<MainViewModel>();
+        services.AddSingleton<MainViewModel>(); // one per backend: it subscribes to the singletons it shows
         services.AddTransient<ConfigurationViewModel>();
 
         // Register Services
