@@ -27,6 +27,8 @@ env:
   # which dotnet would otherwise pick, and its workload install fails); change both together.
   DOTNET_VERSION: '10.0.401'
   ANDROID_WORKLOAD_VERSION: '10.0.401.1'
+  # The iOS job's workload set: iOS 27.2.10000, which needs Xcode 27.2 (the build-ios job's image).
+  IOS_WORKLOAD_VERSION: '10.0.404'
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
@@ -338,27 +340,28 @@ jobs:
           done
 
   build-ios:
-    runs-on: macos-26
+    # The Xcode 27 image (macos-26 tops out at Xcode 26.6): the iOS workload in workload set
+    # 10.0.404, 27.2.10000, needs Xcode 27.2 or later, as on a Mac kept up to date.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/sharpisoterm-cache
 
-      - name: Select Xcode 26.4.1
-        # The .NET for iOS workload is pinned to 26.4.x via dotnet-ios-rollback.json to match
-        # Xcode_26.4.1.app on macos-26 (the runner's 26.5 beta has no downloaded iOS platform).
-        run: sudo xcode-select -s /Applications/Xcode_26.4.1.app
+      - name: Select Xcode 27.2
+        # The image's default is 27.1; the workload checks the version (ValidateXcodeVersion).
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
 
       - name: Setup .NET
+        # The SDK of the same number as the workload set (global.json's 10.0.401 rolls forward to it).
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          dotnet-version: ${{ env.IOS_WORKLOAD_VERSION }}
 
-      - name: Install iOS workload (pinned to 26.4.x)
+      - name: Install iOS workload (workload set 10.0.404, iOS 27.2.10000)
         run: |
           for i in 1 2 3; do
-            dotnet workload install ios \
-              --from-rollback-file .github/workflows/dotnet-ios-rollback.json \
+            dotnet workload install ios --version "$IOS_WORKLOAD_VERSION" \
               && break
             echo "Attempt $i failed, retrying in 10s..."
             sleep 10

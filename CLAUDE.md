@@ -77,7 +77,7 @@ AgOpenWeb3/
 | Windows | AgOpenWeb.Desktop | Launcher window (WebView2) by default, or Windows Service (headless) |
 | macOS | AgOpenWeb.Desktop | Launcher window (WKWebView) by default |
 | Linux | AgOpenWeb.Desktop | Headless systemd daemon by default; `--launcher` window (WebKitGTK) on real hardware |
-| iOS/iPadOS | AgOpenWeb.iOS | Requires Xcode 26.3+; TestFlight |
+| iOS/iPadOS | AgOpenWeb.iOS | Requires Xcode 27.2+ (iOS workload 27.2, workload set 10.0.404); TestFlight |
 | Android | AgOpenWeb.Android | APK build, sideload install |
 
 ### Desktop modes
@@ -96,7 +96,8 @@ dotnet build Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj
 dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj            # launcher window
 dotnet run --project Platforms/AgOpenWeb.Desktop/AgOpenWeb.Desktop.csproj -- --headless   # daemon; UI at http://localhost:5174
 
-# Build iOS (requires macOS with Xcode 26.3+)
+# Build iOS (requires macOS with Xcode 27.2+ and the iOS workload from workload set 10.0.404:
+#   sudo dotnet workload install ios --version 10.0.404)
 dotnet build Platforms/AgOpenWeb.iOS/AgOpenWeb.iOS.csproj -c Debug -f net10.0-ios -r iossimulator-arm64
 
 # iOS on a device: Release signs for the App Store, so for a directly installable optimized build use
