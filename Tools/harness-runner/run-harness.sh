@@ -50,6 +50,12 @@ if [ -f Tests/ScenarioShared/ReportPath.cs ]; then out_report=/out/; else out_re
 export AGOPENWEB_SCENARIO_REPORT="${AGOPENWEB_SCENARIO_REPORT:-$out_report}"
 export AGOPENWEB_DAY_REPORT="${AGOPENWEB_DAY_REPORT:-$out_report}"
 export NUGET_PACKAGES=/cache/nuget
+# No build process outlives its command: MSBuild's reused worker nodes and the shared compiler server
+# (VBCSCompiler) would inherit the restore and build locks below and hold them until they time out,
+# so every other container's restore waited behind three idle MSBuild nodes (the first round on a
+# fresh AWS volume, 28 Nov 2026: 13 restores queued for 10 minutes on an idle machine). A container
+# builds once, so there is nothing to reuse them for.
+export MSBUILDDISABLENODEREUSE=1 DOTNET_CLI_USE_MSBUILD_SERVER=0 UseSharedCompilation=false
 bkey=$(echo "$(git rev-parse HEAD) $proj ${CONFIG:-Debug}" | sha1sum | cut -c1-16)
 mkdir -p /cache/build /cache/nuget
 (
