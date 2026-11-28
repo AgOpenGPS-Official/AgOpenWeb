@@ -83,9 +83,7 @@ public class YouTurnSkipConfigTests
         Cycle();
 
         // The cycle-owned working state; a sequence is planted as if a turn had built it.
-        var field = typeof(GpsPipelineService).GetField("_youTurn", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.That(field, Is.Not.Null, "Reflection target _youTurn missing");
-        _youTurn = (YouTurnWorkingState)field!.GetValue(_pipeline)!;
+        _youTurn = _pipeline.YouTurnWorking;
         _youTurn.SnakeSequence = new List<int> { 1, 3, 5 };
         _youTurn.SnakeIndex = 1;
     }

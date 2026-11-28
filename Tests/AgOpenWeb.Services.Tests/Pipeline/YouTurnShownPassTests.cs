@@ -98,9 +98,7 @@ public class YouTurnShownPassTests
 
     private YouTurnWorkingState CycleYouTurn()
     {
-        var fld = typeof(GpsPipelineService).GetField("_youTurn", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.That(fld, Is.Not.Null, "Reflection target _youTurn missing — pipeline internals changed");
-        return (YouTurnWorkingState)fld!.GetValue(_pipeline)!;
+        return _pipeline.YouTurnWorking;
     }
 
     // A line going north whose pass 0 is where the tractor stands (E = 0): passes are 6 m apart.

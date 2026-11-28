@@ -17,7 +17,7 @@ autosteer.ackermann
 
 autosteer.acquireFactor
   writes   GuidanceConfig.GoalPointAcquireFactor
-  app      GpsPipelineService.GoalLookAheadFor
+  app      GoalLookAheadDistance.For
   page     SceneProjector.BuildAutoSteer -> AcquireFactor
   page     SceneProjector.ConfigFingerprint
   js       acquireFactor: used by no script; shown in index.html
@@ -130,8 +130,8 @@ autosteer.imuAxisSwap
 
 autosteer.integralGain
   writes   GuidanceConfig.PurePursuitIntegralGain
-  app      GpsPipelineService.CalculateTrackGuidance
-  app      GpsPipelineService.ContourParamsFor
+  app      ContourStep.ContourParamsFor
+  app      GuidanceStep.CalculateTrackGuidance
   app      SteeringGainsStepViewModel.OnEntering
   app      SteeringGainsStepViewModel.ReloadFromStore
   page     SceneProjector.BuildAutoSteer -> IntegralGain
@@ -177,11 +177,11 @@ autosteer.invertWas
 
 autosteer.isStanleyMode
   writes   GuidanceConfig.IsPurePursuit
-  app      GpsPipelineService.CalculateDisplayGuidance  (via GuidanceConfig.IsStanley)
-  app      GpsPipelineService.CalculateTrackGuidance  (via GuidanceConfig.IsStanley)
-  app      GpsPipelineService.CalculateYouTurnGuidance  (via GuidanceConfig.IsStanley)
-  app      GpsPipelineService.ContourParamsFor  (via GuidanceConfig.IsStanley)
-  app      GpsPipelineService.ProcessCycle  (via GuidanceConfig.IsStanley)
+  app      ContourStep.ContourParamsFor  (via GuidanceConfig.IsStanley)
+  app      GuidanceStep.CalculateDisplayGuidance  (via GuidanceConfig.IsStanley)
+  app      GuidanceStep.CalculateTrackGuidance  (via GuidanceConfig.IsStanley)
+  app      GuidanceStep.CalculateYouTurnGuidance  (via GuidanceConfig.IsStanley)
+  app      GuidanceStep.Run  (via GuidanceConfig.IsStanley)
   app      SteeringGainsStepViewModel.OnEntering  (via GuidanceConfig.IsStanley)
   page     SceneProjector.BuildAutoSteer -> IsStanleyMode  (via GuidanceConfig.IsStanley)
   page     SceneProjector.ConfigFingerprint  (via GuidanceConfig.IsStanley)
@@ -232,11 +232,11 @@ autosteer.maxPwm
 autosteer.maxSteerAngle
   writes   VehicleConfig.MaxSteerAngle
   app      AutoSteerConfigViewModel.FreeDriveLimit
-  app      GpsPipelineService.CalculateDisplayGuidance
-  app      GpsPipelineService.CalculateTrackGuidance
-  app      GpsPipelineService.CalculateYouTurnGuidance
-  app      GpsPipelineService.ContourParamsFor
-  app      GpsPipelineService.ProcessCycle
+  app      ContourStep.ContourParamsFor
+  app      GuidanceStep.CalculateDisplayGuidance
+  app      GuidanceStep.CalculateTrackGuidance
+  app      GuidanceStep.CalculateYouTurnGuidance
+  app      GuidanceStep.Run
   app      MaxSteeringAngleStepViewModel.OnEntering
   app      PgnBuilder.BuildVehicleGeometryPgn
   page     SceneProjector.BuildAutoSteer
@@ -246,7 +246,7 @@ autosteer.maxSteerAngle
 
 autosteer.maxSteerSpeed
   writes   AutoSteerConfig.MaxSteerSpeed
-  app      GpsPipelineService.CheckSteerSpeedLimits
+  app      AutoSteerRules.CheckSteerSpeedLimits
   app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
   app      MainViewModel.TramValueRefused  (via VehicleToolLimits.Check)
   app      RemoteServerWiring.ApplyCheckedConfigSet  (via VehicleToolLimits.Check)
@@ -269,7 +269,7 @@ autosteer.minPwm
 
 autosteer.minSteerSpeed
   writes   AutoSteerConfig.MinSteerSpeed
-  app      GpsPipelineService.CheckSteerSpeedLimits
+  app      AutoSteerRules.CheckSteerSpeedLimits
   app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
   app      MainViewModel.TramValueRefused  (via VehicleToolLimits.Check)
   app      PgnBuilder.BuildSteerConfigPgn
@@ -292,7 +292,7 @@ autosteer.motorDriver
 
 autosteer.nextGuidanceTime
   writes   AutoSteerConfig.NextGuidanceTime
-  app      GpsPipelineService.ProcessCycle
+  app      GuidanceStep.Run
   page     SceneProjector.BuildAutoSteer -> NextGuidanceTime
   page     SceneProjector.ConfigFingerprint
   js       nextGuidanceTime: used by no script; shown in index.html
@@ -349,8 +349,8 @@ autosteer.refNudgeDistance
 
 autosteer.sideHillCompensation
   writes   AutoSteerConfig.SideHillCompensation
-  app      GpsPipelineService.CalculateTrackGuidance
-  app      GpsPipelineService.ContourParamsFor
+  app      ContourStep.ContourParamsFor
+  app      GuidanceStep.CalculateTrackGuidance
   app      SteeringGainsStepViewModel.OnEntering
   app      SteeringGainsStepViewModel.ReloadFromStore
   page     SceneProjector.BuildAutoSteer -> SideHillCompensation
@@ -360,7 +360,7 @@ autosteer.sideHillCompensation
 
 autosteer.speedFactor
   writes   GuidanceConfig.GoalPointLookAheadMult
-  app      GpsPipelineService.GoalLookAheadFor
+  app      GoalLookAheadDistance.For
   page     SceneProjector.BuildAutoSteer -> SpeedFactor
   page     SceneProjector.ConfigFingerprint
   js       speedFactor: used by no script; shown in index.html
@@ -368,10 +368,10 @@ autosteer.speedFactor
 
 autosteer.stanleyAggressiveness
   writes   GuidanceConfig.StanleyDistanceErrorGain
-  app      GpsPipelineService.CalculateDisplayGuidance
-  app      GpsPipelineService.CalculateTrackGuidance
-  app      GpsPipelineService.CalculateYouTurnGuidance
-  app      GpsPipelineService.ContourParamsFor
+  app      ContourStep.ContourParamsFor
+  app      GuidanceStep.CalculateDisplayGuidance
+  app      GuidanceStep.CalculateTrackGuidance
+  app      GuidanceStep.CalculateYouTurnGuidance
   app      SteeringGainsStepViewModel.OnEntering
   app      SteeringGainsStepViewModel.ReloadFromStore
   page     SceneProjector.BuildAutoSteer -> StanleyAggressiveness
@@ -382,10 +382,10 @@ autosteer.stanleyAggressiveness
 
 autosteer.stanleyOvershootReduction
   writes   GuidanceConfig.StanleyHeadingErrorGain
-  app      GpsPipelineService.CalculateDisplayGuidance
-  app      GpsPipelineService.CalculateTrackGuidance
-  app      GpsPipelineService.CalculateYouTurnGuidance
-  app      GpsPipelineService.ContourParamsFor
+  app      ContourStep.ContourParamsFor
+  app      GuidanceStep.CalculateDisplayGuidance
+  app      GuidanceStep.CalculateTrackGuidance
+  app      GuidanceStep.CalculateYouTurnGuidance
   page     SceneProjector.BuildAutoSteer -> StanleyOvershootReduction
   page     SceneProjector.ConfigFingerprint
   report   DebugDumpService.BuildConfigSnapshot
@@ -401,7 +401,7 @@ autosteer.steerBarEnabled
 
 autosteer.steerInReverse
   writes   AutoSteerConfig.SteerInReverse
-  app      GpsPipelineService.ProcessCycle
+  app      GpsPipelineService.ApplyAutoSteerRules
   app      SpeedAndSensorsStepViewModel.OnEntering
   page     SceneProjector.BuildAutoSteer -> SteerInReverse
   page     SceneProjector.ConfigFingerprint
@@ -410,7 +410,7 @@ autosteer.steerInReverse
 
 autosteer.steerResponseHold
   writes   GuidanceConfig.GoalPointLookAheadHold
-  app      GpsPipelineService.GoalLookAheadFor
+  app      GoalLookAheadDistance.For
   app      SteeringGainsStepViewModel.OnEntering
   app      SteeringGainsStepViewModel.ReloadFromStore
   page     SceneProjector.BuildAutoSteer -> SteerResponseHold
@@ -438,7 +438,7 @@ autosteer.turnSensorEnabled
 
 autosteer.uTurnCompensation
   writes   GuidanceConfig.UTurnCompensation
-  app      GpsPipelineService.CalculateYouTurnGuidance
+  app      GuidanceStep.CalculateYouTurnGuidance
   page     SceneProjector.BuildAutoSteer
   page     SceneProjector.ConfigFingerprint
   report   DebugDumpService.BuildConfigSnapshot
@@ -542,7 +542,7 @@ conn.rtcmBroadcast
 
 conn.sendCorrectedPosition
   writes   ConnectionConfig.SendCorrectedPosition
-  app      GpsPipelineService.ProcessCycle
+  app      GpsPipelineService.SendPgns
   page     SceneProjector.BuildStatus -> SendCorrectedPosition
   js       sendCorrectedPosition: not decoded by transport.js under this name
   save     ConfigurationService
@@ -575,7 +575,7 @@ display.elevationLogEnabled
 
 display.extraGuidelines
   writes   DisplayConfig.ExtraGuidelines
-  app      GpsPipelineService.ProcessCycle
+  app      GuidanceStep.Run
   page     SceneProjector.BuildDisplay -> ExtraGuidelines
   page     SceneProjector.ConfigFingerprint
   js       extraGuidelines: map-draw.js; shown in index.html
@@ -583,7 +583,7 @@ display.extraGuidelines
 
 display.extraGuidelinesCount
   writes   DisplayConfig.ExtraGuidelinesCount
-  app      GpsPipelineService.ProcessCycle
+  app      GuidanceStep.Run
   page     SceneProjector.BuildDisplay -> ExtraGuidelinesCount
   page     SceneProjector.ConfigFingerprint
   js       extraGuidelinesCount: used by no script; shown in settings-panels.js
@@ -807,7 +807,7 @@ gps.reverseDetection
 
 gps.rtkLostAction
   writes   ConnectionConfig.RtkLostAction
-  app      GpsPipelineService.CheckRtkQualityChange
+  app      AutoSteerRules.CheckRtkQualityChange
   page     SceneProjector.BuildConfig -> RtkLostAction
   page     SceneProjector.ConfigFingerprint
   report   DebugDumpService.BuildConfigSnapshot
@@ -816,7 +816,7 @@ gps.rtkLostAction
 
 gps.rtkLostAlarm
   writes   ConnectionConfig.RtkLostAlarm
-  app      GpsPipelineService.CheckRtkQualityChange
+  app      AutoSteerRules.CheckRtkQualityChange
   page     SceneProjector.BuildConfig -> RtkLostAlarm
   page     SceneProjector.ConfigFingerprint
   report   DebugDumpService.BuildConfigSnapshot
@@ -825,7 +825,7 @@ gps.rtkLostAlarm
 
 machine.hydraulicLiftEnabled
   writes   MachineConfig.HydraulicLiftEnabled
-  app      GpsPipelineService.HydLiftFor
+  app      HeadlandStep.HydLiftFor
   app      ModuleCommunicationService.HydraulicLiftEnabled
   app      PgnBuilder.BuildMachineConfigPgn
   page     SceneProjector.BuildConfig -> HydraulicLiftEnabled
@@ -844,7 +844,7 @@ machine.invertRelay
 
 machine.lookAhead
   writes   MachineConfig.LookAhead
-  app      GpsPipelineService.IsToolInHeadland
+  app      HeadlandStep.IsToolInHeadland
   app      ModuleCommunicationService.LookAhead
   page     SceneProjector.BuildConfig -> LookAhead
   page     SceneProjector.ConfigFingerprint
@@ -935,7 +935,7 @@ roll.isRollInvert
 
 roll.rollFilter
   writes   AhrsConfig.RollFilter
-  app      GpsPipelineService.ProcessCycle
+  app      PoseStep.Locate
   page     SceneProjector.BuildConfig -> RollFilter
   page     SceneProjector.ConfigFingerprint
   js       rollFilter: used by no script; shown in index.html
@@ -981,16 +981,18 @@ tool.defaultSectionWidth
   app      ConfigurationViewModel.CalculatedSectionTotal  (via ToolConfig.GetSectionWidth)
   app      ConfigurationViewModel.CalculatedSectionTotal  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
   app      ConfigurationViewModel.DefaultSectionWidthDisplay
-  app      GpsPipelineService.CalculateTrackGuidance  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.CalculateTrackGuidance  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ContourParamsFor  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ContourParamsFor  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ProcessContour  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ProcessContour  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ProcessCycle  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ProcessCycle  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.UpdateDisplayTrack  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.UpdateDisplayTrack  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      ContourStep.ContourParamsFor  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      ContourStep.ContourParamsFor  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      ContourStep.ProcessContour  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      ContourStep.ProcessContour  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.RunCycle  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.RunCycle  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.CalculateTrackGuidance  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.CalculateTrackGuidance  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.Run  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.Run  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.UpdateDisplayTrack  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.UpdateDisplayTrack  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
   app      JobRig.From  (via ConfigurationStore.NumSections)
   app      JobRig.From  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
   app      JobRig.From  (via ToolConfig.GetSectionWidth)
@@ -1240,16 +1242,18 @@ tool.numSections
   app      AutoSteerService.SendSectionDimensions
   app      ConfigurationViewModel.CalculatedSectionTotal
   app      ConfigurationViewModel.CalculatedSectionTotal  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth)
-  app      GpsPipelineService.CalculateTrackGuidance  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.CalculateTrackGuidance  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ContourParamsFor  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ContourParamsFor  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ProcessContour  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ProcessContour  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ProcessCycle  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ProcessCycle  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.UpdateDisplayTrack  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.UpdateDisplayTrack  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      ContourStep.ContourParamsFor  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      ContourStep.ContourParamsFor  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      ContourStep.ProcessContour  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      ContourStep.ProcessContour  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.RunCycle  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.RunCycle  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.CalculateTrackGuidance  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.CalculateTrackGuidance  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.Run  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.Run  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.UpdateDisplayTrack  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.UpdateDisplayTrack  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
   app      JobRig.From
   app      JobRig.From  (via ConfigurationStore._numSections > ConfigurationStore.ActualToolWidth)
   app      JobRig.From  (via ToolConfig._sectionWidths > ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
@@ -1348,11 +1352,11 @@ tool.numSections
 
 tool.offset
   writes   ToolConfig.Offset
-  app      GpsPipelineService.CalculateTrackGuidance
-  app      GpsPipelineService.ContourParamsFor
-  app      GpsPipelineService.ProcessContour
-  app      GpsPipelineService.ProcessCycle
-  app      GpsPipelineService.UpdateDisplayTrack
+  app      ContourStep.ContourParamsFor
+  app      ContourStep.ProcessContour
+  app      GuidanceStep.CalculateTrackGuidance
+  app      GuidanceStep.Run
+  app      GuidanceStep.UpdateDisplayTrack
   app      JobRig.From
   app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
   app      MainViewModel.RefSideOffset
@@ -1376,11 +1380,11 @@ tool.offset
 
 tool.offsetSide
   writes   ToolConfig.Offset
-  app      GpsPipelineService.CalculateTrackGuidance
-  app      GpsPipelineService.ContourParamsFor
-  app      GpsPipelineService.ProcessContour
-  app      GpsPipelineService.ProcessCycle
-  app      GpsPipelineService.UpdateDisplayTrack
+  app      ContourStep.ContourParamsFor
+  app      ContourStep.ProcessContour
+  app      GuidanceStep.CalculateTrackGuidance
+  app      GuidanceStep.Run
+  app      GuidanceStep.UpdateDisplayTrack
   app      JobRig.From
   app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
   app      MainViewModel.RefSideOffset
@@ -1404,11 +1408,11 @@ tool.offsetSide
 
 tool.overlap
   writes   ToolConfig.Overlap
-  app      GpsPipelineService.CalculateTrackGuidance
-  app      GpsPipelineService.ContourParamsFor
-  app      GpsPipelineService.ProcessContour
-  app      GpsPipelineService.ProcessCycle
-  app      GpsPipelineService.UpdateDisplayTrack
+  app      ContourStep.ContourParamsFor
+  app      ContourStep.ProcessContour
+  app      GuidanceStep.CalculateTrackGuidance
+  app      GuidanceStep.Run
+  app      GuidanceStep.UpdateDisplayTrack
   app      MainViewModel.InitializeTrackCommands
   app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
   app      MainViewModel.PassWidth
@@ -1444,11 +1448,11 @@ tool.overlap
 
 tool.overlapSide
   writes   ToolConfig.Overlap
-  app      GpsPipelineService.CalculateTrackGuidance
-  app      GpsPipelineService.ContourParamsFor
-  app      GpsPipelineService.ProcessContour
-  app      GpsPipelineService.ProcessCycle
-  app      GpsPipelineService.UpdateDisplayTrack
+  app      ContourStep.ContourParamsFor
+  app      ContourStep.ProcessContour
+  app      GuidanceStep.CalculateTrackGuidance
+  app      GuidanceStep.Run
+  app      GuidanceStep.UpdateDisplayTrack
   app      MainViewModel.InitializeTrackCommands
   app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
   app      MainViewModel.PassWidth
@@ -1507,11 +1511,12 @@ tool.sectionColor
 tool.sectionWidth
   writes   ToolConfig._sectionWidths
   app      ConfigurationViewModel.CalculatedSectionTotal  (via ToolConfig.GetSectionWidth)
-  app      GpsPipelineService.CalculateTrackGuidance  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ContourParamsFor  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ProcessContour  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.ProcessCycle  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
-  app      GpsPipelineService.UpdateDisplayTrack  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      ContourStep.ContourParamsFor  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      ContourStep.ProcessContour  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GpsPipelineService.RunCycle  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.CalculateTrackGuidance  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.Run  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
+  app      GuidanceStep.UpdateDisplayTrack  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
   app      JobRig.From  (via ToolConfig.GetSectionWidth > ConfigurationStore.ActualToolWidth)
   app      JobRig.From  (via ToolConfig.GetSectionWidth)
   app      MainViewModel.GetSectionWidths  (via ToolConfig.GetSectionWidth)
@@ -1723,9 +1728,9 @@ tram.width
 
 units
   writes   ConfigurationStore.IsMetric
+  app      AutoSteerRules.FormatSpeed
   app      ConfigurationViewModel.CalculatedTotalWidthText
   app      ConfigurationViewModel.DefaultSectionWidthDisplay
-  app      GpsPipelineService.FormatSpeed
   app      MainViewModel.BoundaryAreaDisplay
   app      MainViewModel.FormatArea
   app      MainViewModel.ManualTurnTooFast
@@ -1742,8 +1747,8 @@ units
 
 uturn.distanceFromBoundary
   writes   GuidanceConfig.UTurnDistanceFromBoundary
-  app      GpsPipelineService.GetOrComputeSyntheticHeadland
-  app      GpsPipelineService.OpeningTurnRoom
+  app      UTurnStep.GetOrComputeSyntheticHeadland
+  app      UTurnStep.OpeningTurnRoom
   app      YouTurnCreationService.BuildCreationInput
   app      YouTurnCreationService.CreateTurnPath
   app      YouTurnCreationService.ImplementClearsHardBoundary
@@ -1770,16 +1775,16 @@ uturn.extension
 
 uturn.radius
   writes   GuidanceConfig.UTurnRadius
-  app      GpsPipelineService.CalculateTrackGuidance
-  app      GpsPipelineService.GuideLines
-  app      GpsPipelineService.OpeningTurnRoom
-  app      GpsPipelineService.ProcessContour
-  app      GpsPipelineService.ProcessCycle
-  app      GpsPipelineService.ToolPass
-  app      GpsPipelineService.UpdateDisplayTrack
+  app      ContourStep.ProcessContour
+  app      GuidanceStep.CalculateTrackGuidance
+  app      GuidanceStep.GuideLines
+  app      GuidanceStep.Run
+  app      GuidanceStep.ToolPass
+  app      GuidanceStep.UpdateDisplayTrack
   app      MainViewModel.LoadDefaultVehicleProfile
   app      MainViewModel.RecalculateDubinsPreview
   app      MainViewModel.StartDrivingRecordedPath
+  app      UTurnStep.OpeningTurnRoom
   app      YouTurnCreationService.BuildCreationInput
   app      YouTurnCreationService.CreateManualArcPath
   app      YouTurnCreationService.SimpleFallback
@@ -1805,7 +1810,7 @@ uturn.smoothing
 
 uturn.style
   writes   GuidanceConfig.UTurnStyle
-  app      GpsPipelineService.CalculateYouTurnGuidance
+  app      GuidanceStep.CalculateYouTurnGuidance
   app      YouTurnCreationService (initializer)
   app      YouTurnCreationService.BuildCreationInput
   app      YouTurnStateMachine.CompleteFromGuidance
@@ -1851,7 +1856,7 @@ vehicle.antennaPivot
   app      AntennaSetupStepViewModel.OnEntering
   app      AntennaSetupStepViewModel.ReloadFromStore
   app      AntennaToPivotTransform.Apply
-  app      GpsPipelineService.ProcessCycle
+  app      GpsPipelineService.SendPgns
   app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
   app      MainViewModel.SteeringGeometry
   app      PgnBuilder.BuildVehicleGeometryPgn
@@ -1979,13 +1984,13 @@ vehicle.type
 vehicle.wheelbase
   writes   VehicleConfig.Wheelbase
   app      AckermannTestStepViewModel.ProcessGpsUpdate
+  app      ContourStep.ContourParamsFor
+  app      ContourStep.ProcessContour
   app      CpdCircleTestStepViewModel.ProcessGpsUpdate
-  app      GpsPipelineService.CalculateDisplayGuidance
-  app      GpsPipelineService.CalculateTrackGuidance
-  app      GpsPipelineService.CalculateYouTurnGuidance
-  app      GpsPipelineService.ContourParamsFor
-  app      GpsPipelineService.ProcessContour
-  app      GpsPipelineService.ProcessCycle
+  app      GuidanceStep.CalculateDisplayGuidance
+  app      GuidanceStep.CalculateTrackGuidance
+  app      GuidanceStep.CalculateYouTurnGuidance
+  app      GuidanceStep.Run
   app      MainViewModel.InitializeTrackCommands  (via VehicleToolLimits.WhyCannotSteer)
   app      MainViewModel.LoadDefaultVehicleProfile
   app      MainViewModel.SteeringGeometry

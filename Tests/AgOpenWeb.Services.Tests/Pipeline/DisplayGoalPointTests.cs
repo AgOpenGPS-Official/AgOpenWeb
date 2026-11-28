@@ -148,11 +148,8 @@ public class DisplayGoalPointTests
 
         for (int i = 0; i < 3; i++) _gpsService.UpdateGpsData(FixAtOrigin());
 
-        var fld = typeof(GpsPipelineService).GetField("_trackGuidanceState",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.That(fld, Is.Not.Null, "Reflection target _trackGuidanceState missing — pipeline internals changed");
         Assert.That(Last.Guidance!.HasGoalPoint, Is.True);
-        Assert.That(fld!.GetValue(_pipeline), Is.Null,
+        Assert.That(_pipeline.Guidance.SteeringMemory, Is.Null,
             "Display-only goal must leave the engaged steering state untouched");
     }
 

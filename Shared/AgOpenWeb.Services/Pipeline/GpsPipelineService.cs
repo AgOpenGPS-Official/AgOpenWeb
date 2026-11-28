@@ -36,47 +36,24 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // Lookahead time (seconds) used for auto-track-select in free-drive mode.
     // Matches AgOpen's setAS_guidanceLookAheadTime default. See #261.
 
-    // Re-anchor the temporary first-fix LocalPlane when the live GPS jumps
-    // farther than this from the existing origin (no field loaded). The
-    // flat-earth approximation gets noisy at very large local-plane offsets
-    // and the camera/render math goes weird, so silently re-anchor.
-    private const double TempOriginReinitDistanceM = 50_000.0;
-
-    // Surface a "GPS far from field" warning when the live GPS reports a
-    // position farther than this from the loaded field's origin. Autosteer
-    // is dropped immediately as a safety measure on the UI thread.
-    private const double FieldOriginWarnDistanceM = 10_000.0;
-
     // ── Dependencies ────────────────────────────────────────────────────
     private readonly IGpsService _gpsService;
     private readonly IToolPositionService _toolPositionService;
-    private readonly ITrackGuidanceService _trackGuidanceService;
     private readonly ISectionControlService _sectionControlService;
     private readonly ICoverageMapService _coverageMapService;
     // The coverage test the U-turn planner reads worked passes from; one delegate, not one per cycle.
     private readonly Func<double, double, bool> _isPointCovered;
     private readonly IAutoSteerService _autoSteerService;
-    private readonly YouTurnGuidanceService _youTurnGuidanceService;
-    private readonly YouTurnStateMachine _youTurnStateMachine;
     private readonly IAudioService _audioService;
     private readonly IPipelineIntents _intents;
-    private readonly IGpsHeadingFusionService _headingFusion;
-    private LocalPlane? _headingPlane; // plane the heading's stored fixes are in
-    private bool _isReverse;           // this cycle's reverse detection (#125)
-    private double _sentenceHeading;   // heading field of this cycle's sentence, before fusion
-    private double _roll;              // filtered roll, degrees (#110)
-    private double _lastCrossTrackError; // last cycle's XTE, for the look-ahead (#110)
-    // Contour (#110): owned by the cycle, guarded by _contourLock (the UI thread
-    // toggles/locks/loads/resets).
-    private readonly ContourGuidance _contour = new();
-    private readonly object _contourLock = new();
-    private bool _contourOn;
-    private Vec2? _lastContourPos; // AgOpenGPS prevContourPos
-    private int _contourLineVersion = -1;           // display track cache
-    private Models.Track.Track? _contourDisplayTrack;
-    private (int strip, int count) _contourRefKey = (-1, 0);
-    private IReadOnlyList<Vec3>? _contourRefShown;
-    private bool _contourLockedShown, _contourHasPending;
+    // Where the fix puts the vehicle: plane, heading, reversing, roll, pivot, with their own state (PoseStep).
+    private readonly PoseStep _poseStep;
+    // The contour (#110): its strips, line and steering, its own state (ContourStep).
+    private readonly ContourStep _contourStep;
+    // Out of bounds, the steering speed limits and the RTK alarm, with their own state (AutoSteerRules).
+    private readonly AutoSteerRules _autoSteerRules;
+    // The tool in the headland, the hydraulic lift and the headland distance, with their own state (HeadlandStep).
+    private readonly HeadlandStep _headlandStep;
     private readonly ILogger<GpsPipelineService> _logger;
     private readonly ConfigurationStore _configStore;
 
@@ -109,20 +86,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private bool _autoSteerEngaged;
     private Models.Track.Track? _activeTrack;
 
-    // Cached offset-display-track. UpdateDisplayTrack used to allocate a fresh
-    // Models.Track.Track every GPS cycle while shifted off pass 0; the
-    // ReferenceEquals gate in MainViewModel.ApplyResults then fired on every
-    // cycle, defeating the VBO-rebuild gate downstream and re-uploading
-    // boundary/track buffers at GPS rate. PERF-05 #403 sub-finding #5.
-    // Cache key: (source track ref, its points list and count, distAway, turn radius). All must
-    // match to reuse: a track whose points were replaced (extend A/B, Ref Nudge) keeps its object.
-    private Models.Track.Track? _cachedOffsetTrack;
-    private Models.Track.Track? _cachedOffsetSourceTrack;
-    private List<Vec3>? _cachedOffsetSourcePoints;
-    private int _cachedOffsetSourceCount;
-    private double _cachedOffsetDistAway;
-    private double _cachedOffsetTurnRadius;
-    private readonly OffsetPassCache _offsetPasses = new();
     // Phase D D3: passNumber / nudgeOffset live on _guidanceWorking as the single
     // source of truth. The separate _passNumber / _nudgeOffset fields used to be
     // pushed here by SetActiveTrack; that path now writes directly to the
@@ -130,9 +93,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // when snap / nudge / set-active-track all become intents).
 
     private bool _youTurnEnabled;
-    // Cycle-thread copy of the toggle from the previous cycle, to clear a turn
-    // only on the on→off edge.
-    private bool _youTurnWasEnabled;
     // One-shot direction override for the next armed automatic turn. The UI
     // toggle pre-flips this while idle; the cycle mirrors it into
     // _youTurn.NextUTurnDirectionLeftOverride and the state machine consumes
@@ -158,64 +118,16 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // sequence and the next turn rebuilds it for the new pattern.
     private bool _snakeResetPending;
 
-    // Synthetic headland for the no-headland-but-has-boundary workflow.
-    // Computed once per (boundary, UTurnRadius, UTurnDistanceFromBoundary)
-    // tuple by insetting the outer boundary so an auto-uturn arc's apex
-    // sits inside the outer boundary. Only consulted by ProcessCycle (worker
-    // thread) so no lock is needed on the cache itself.
-    private readonly PolygonOffsetService _syntheticHeadlandOffset = new();
-    private List<Vec3>? _syntheticHeadlandLine;
-    private Boundary? _syntheticHeadlandSourceBoundary;
-    private double _syntheticHeadlandConfigKey;
-    private double _syntheticHeadlandInsetUsed;
-
-    // One-shot latch so the field-far warning fires once per loaded field.
-    // SetHasActiveField clears it on the false->true transition (new field
-    // opened) so the next field gets a fresh chance to warn.
-    private bool _farFromFieldWarned;
-
-    // ── Pipeline-owned guidance state (only touched on background thread) ─
-    private Models.Track.TrackGuidanceState? _trackGuidanceState;
-    // Previous along-track travel direction; a change forces a global nearest
-    // re-acquire so a stranded local index can recover (#422).
-    private bool _lastHeadingSameWay = true;
-    private double _simulatorSteerAngle;
-
-    // Phase E: cycle-local cache of a LocalPlane auto-created from the first
-    // GPS fix. The cycle uses this for coord conversion in the same tick it
-    // emits it on GpsCycleResult.FirstFixLocalPlane; ApplyGpsCycleResult then
-    // commits it to State.Field.LocalPlane on the UI thread, which pushes it back
-    // here through SetLocalPlane. Once the UI commit catches up (next cycle we see
-    // _committedLocalPlane match _cycleLocalPlane), we drop our reference.
-    private LocalPlane? _cycleLocalPlane;
-
     // ── YouTurn + Guidance working state (Phase C) ──────────────────────
     // POCOs mirroring State.YouTurn and the subset of State.Guidance that
     // the YouTurn state machine reads/writes. Single-writer contract —
     // only mutated on the cycle worker thread, via state-machine Tick /
     // TriggerManual / ClearState. ApplyGpsCycleResult mirrors back to the
     // observable State.* on the UI thread.
-    private readonly YouTurnWorkingState _youTurn = new();
-    private Models.Track.Track? _youTurnTrack; // the track _youTurn was planned on
-    private readonly GuidanceWorkingState _guidanceWorking = new();
-
-    // ── Headland proximity ──────────────────────────────────────────────
-    private readonly HeadlandDetectionService _headlandDetector = new();
-    private readonly PolygonIndexCache _headlandIndex = new(); // the hydraulic lift's test
-    private readonly PolygonIndexCache _turnLineIndex = new(); // the out-of-bounds test's turn area
-
-    // Out of bounds (#494): the pivot outside the field. Kept between cycles: during a U-turn
-    // outside the turn area it holds its last value, as AgOpenGPS's mc.isOutOfBounds does.
-    private bool _isOutOfBounds;
-
-    // ── RTK quality tracking ────────────────────────────────────────────
-    private int _previousFixQuality;
-
-    // ── Curve limit warning throttling ──────────────────────────────────
-    private DateTime _lastCurveLimitWarning = DateTime.MinValue;
-    private double? _lastHeadlandDistance;
-    private bool _lastHeadlandWarning;
-    private int _lastWarnedPathsAway = int.MinValue;
+    // The U-turn: its working state, the turn line and a curve's opening, its own (UTurnStep).
+    private readonly UTurnStep _uTurnStep;
+    // The guidance: its working state, the steering's memory and the lines shown, its own (GuidanceStep).
+    private readonly GuidanceStep _guidance;
 
     // ── Logging throttle ────────────────────────────────────────────────
     private int _cycleCounter;
@@ -240,16 +152,18 @@ public sealed class GpsPipelineService : IGpsPipelineService
     {
         _gpsService = gpsService;
         _toolPositionService = toolPositionService;
-        _trackGuidanceService = trackGuidanceService;
         _sectionControlService = sectionControlService;
         _coverageMapService = coverageMapService;
         _isPointCovered = coverageMapService.IsPointCovered;
         _autoSteerService = autoSteerService;
-        _youTurnGuidanceService = youTurnGuidanceService;
-        _youTurnStateMachine = youTurnStateMachine;
+        _guidance = new GuidanceStep(configStore, trackGuidanceService, youTurnGuidanceService, autoSteerService, logger);
+        _uTurnStep = new UTurnStep(youTurnStateMachine, audioService, configStore, _isPointCovered, logger);
         _audioService = audioService;
+        _contourStep = new ContourStep(configStore, sectionControlService, _isPointCovered, audioService);
+        _autoSteerRules = new AutoSteerRules(configStore, audioService);
+        _headlandStep = new HeadlandStep(configStore, sectionControlService);
         _intents = intents;
-        _headingFusion = headingFusion;
+        _poseStep = new PoseStep(configStore, headingFusion);
         _logger = logger;
         _configStore = configStore;
         _positionEstimator = positionEstimator;
@@ -284,8 +198,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
         lock (_stateLock)
         {
             _autoSteerEngaged = engaged;
-            // Reset guidance state when disengaging so we do global search on next engage
-            if (!engaged) _trackGuidanceState = null;
+            // Reset guidance state when disengaging so we do global search on next engage.
+            // The cycle's own state: the cycle resets it at its next start (TakeHostChanges).
+            if (!engaged) _steeringResetPending = true;
         }
     }
 
@@ -294,11 +209,40 @@ public sealed class GpsPipelineService : IGpsPipelineService
         lock (_stateLock)
         {
             _activeTrack = track;
-            _guidanceWorking.HowManyPathsAway = passNumber;
-            _guidanceWorking.NudgeOffset = nudgeOffset;
-            // Reset guidance state when track changes so we do a global search
-            _trackGuidanceState = null;
-            _lastCrossTrackError = 0; // a new line has no previous XTE for the look-ahead (#110)
+            // The pass, the nudge and the guidance's memory are the cycle's: it takes them at its
+            // next start (TakeHostChanges), so a cycle under way finishes on the track it began.
+            _pendingTrack = (passNumber, nudgeOffset);
+        }
+    }
+
+    // What the host loop changed in the cycle's own state, taken by the next cycle at its start.
+    // Under _stateLock.
+    private (int PassNumber, double NudgeOffset)? _pendingTrack;
+    private bool _steeringResetPending;
+    private bool _fieldOpenedPending;
+
+    /// <summary>
+    /// The host loop's changes to the cycle's own state, applied at the start of a cycle, before
+    /// anything in it reads that state. Applied in the middle of a cycle, they were undone by it
+    /// or mixed with it: a reset of the guidance's memory overwritten by that cycle's guidance,
+    /// a track's pass reported with the previous track. Caller holds _stateLock.
+    /// </summary>
+    private void TakeHostChanges()
+    {
+        if (_pendingTrack is { } t)
+        {
+            _guidance.TrackChosen(t.PassNumber, t.NudgeOffset);
+            _pendingTrack = null;
+        }
+        if (_steeringResetPending)
+        {
+            _guidance.ForgetSteering();
+            _steeringResetPending = false;
+        }
+        if (_fieldOpenedPending)
+        {
+            _poseStep.FieldOpened();
+            _fieldOpenedPending = false;
         }
     }
 
@@ -368,39 +312,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
     public void SetRecordedPathGuidance(IReadOnlyList<Vec3>? approach, IReadOnlyList<Vec3>? route, int routeStartIndex) =>
         Volatile.Write(ref _recordedPath, route is { Count: >= 2 } ? new PathPlanning.RecordedRouteGuide(approach, route, routeStartIndex) : null);
 
-    public void SetContourMode(bool on)
-    {
-        lock (_contourLock)
-        {
-            _contourOn = on;
-            _contour.ClearReference(); // also unlocks
-        }
-    }
-
-    public bool ToggleContourLock()
-    {
-        lock (_contourLock) return _contourOn && _contour.SetLockToLine();
-    }
-
-    public void LoadContours(IEnumerable<List<Vec3>> strips)
-    {
-        lock (_contourLock) { _contour.Load(strips); _lastContourPos = null; }
-    }
-
-    public void ResetContours()
-    {
-        lock (_contourLock) { _contour.Reset(); _lastContourPos = null; }
-    }
-
-    public List<List<Vec3>> TakeContoursToSave()
-    {
-        lock (_contourLock)
-        {
-            var list = new List<List<Vec3>>(_contour.PendingSave);
-            _contour.PendingSave.Clear();
-            return list;
-        }
-    }
+    // The contour's switch, lock and strips, from the host loop (ContourStep).
+    public void SetContourMode(bool on) => _contourStep.SetContourMode(on);
+    public bool ToggleContourLock() => _contourStep.ToggleContourLock();
+    public void LoadContours(IEnumerable<List<Vec3>> strips) => _contourStep.LoadContours(strips);
+    public void ResetContours() => _contourStep.ResetContours();
+    public List<List<Vec3>> TakeContoursToSave() => _contourStep.TakeContoursToSave();
 
     public void SetHasActiveField(bool hasActiveField)
     {
@@ -410,7 +327,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // re-opening (or opening a different) field gets a fresh shot at
             // the warning.
             if (hasActiveField && !_hasActiveField)
-                _farFromFieldWarned = false;
+                _fieldOpenedPending = true; // the latch is the cycle's: reset at its next start
             _hasActiveField = hasActiveField;
         }
     }
@@ -468,7 +385,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // ══════════════════════════════════════════════════════════════════════
 
     public bool IsAutoSteerEngaged { get { lock (_stateLock) return _autoSteerEngaged; } }
-    public double SimulatorSteerAngle => Volatile.Read(ref _simulatorSteerAngle);
+    /// <summary>The U-turn's working state, for tests that set a turn up (UTurnStep).</summary>
+    internal YouTurnWorkingState YouTurnWorking => _uTurnStep.Working;
+    /// <summary>The guidance step, for tests that read its working state or steering memory.</summary>
+    internal GuidanceStep Guidance => _guidance;
+    public double SimulatorSteerAngle => _guidance.SimulatorSteerAngle;
 
     // ══════════════════════════════════════════════════════════════════════
     // GPS event handler
@@ -538,7 +459,59 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // Core cycle — runs on background thread
     // ══════════════════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// One GPS cycle (Plans/MAINVIEWMODEL_REFACTOR_PLAN.md item 8): the steps in their order. Each
+    /// step's state is its own (PoseStep, UTurnStep, AutoSteerRules, ContourStep, GuidanceStep,
+    /// HeadlandStep); what one works out reaches the next as a declared argument or result.
+    /// <list type="number">
+    /// <item>The host loop's changes to the cycle's state (TakeHostChanges), then the intents: a
+    /// lateral move applies to the pass of a track chosen since the last cycle.</item>
+    /// <item>Fix quality: labels the fix, never stops the cycle.</item>
+    /// <item>The inputs, under the state lock: one consistent copy for the cycle.</item>
+    /// <item>The track, the skip pattern, the turn lines (TurnLines), the U-turn's switch, the
+    /// contour switch and a recorded path playing.</item>
+    /// <item>The fix's pose (PoseStep): the plane, the fused heading, reversing, the roll, the
+    /// pivot; reversing told to the guidance, AutoSteer and the sections.</item>
+    /// <item>The pose to the estimator (PublishPose), for the control tick and the render pull.</item>
+    /// <item>The U-turn (UTurnStep), before the guidance: completing a turn moves the pass, and
+    /// steering the old pass for one fix put a spike in the wheels at every turn's exit.</item>
+    /// <item>The tool's position, as the control tick last left it.</item>
+    /// <item>The AutoSteer rules (ApplyAutoSteerRules), before the guidance: a disengage steers
+    /// nothing this fix.</item>
+    /// <item>The contour (ContourStep).</item>
+    /// <item>The guidance (GuidanceStep): the line shown, the steering, free drive. A tool-steer
+    /// step would follow here, on the guidance's results and the tool's position.</item>
+    /// <item>The headland and the lift (HeadlandStep), and the machine state, before the PGNs read it.</item>
+    /// <item>The PGNs (SendPgns).</item>
+    /// <item>The headland distance (HeadlandStep), and the RTK alarm, after the PGNs as before.</item>
+    /// <item>The snapshot: the one way out to the host loop (CycleCompleted).</item>
+    /// </list>
+    /// Debug and test builds fail a cycle entered while another runs (the production path drops
+    /// a fix that arrives while one runs; a test's synchronous mode does not).
+    /// </summary>
     private void ProcessCycle(GpsData data)
+    {
+#if DEBUG
+        if (Interlocked.Exchange(ref _cycleRunning, 1) != 0)
+            throw new InvalidOperationException("A GPS cycle was entered while another was running: the cycle's state has one writer at a time.");
+        try
+        {
+            RunCycle(data);
+        }
+        finally
+        {
+            Volatile.Write(ref _cycleRunning, 0);
+        }
+#else
+        RunCycle(data);
+#endif
+    }
+
+#if DEBUG
+    private int _cycleRunning;
+#endif
+
+    private void RunCycle(GpsData data)
     {
         _cycleCounter++;
 
@@ -552,7 +525,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
         var config = _configStore;
 
-        // Stage 1: Drain intents — see Plans/threading_model.svg cycle worker lane.
+        // The host loop's changes to the cycle's state first: a lateral move drained below
+        // applies to the pass of a track chosen since the last cycle, as when they were written
+        // at once.
+        // ── Step 1: the host loop's changes, then the intents ────────────
+        lock (_stateLock) TakeHostChanges();
+
+        // ── Step 1 (cont.): drain intents — see Plans/threading_model.svg cycle worker lane.
         // Phase C consumes ManualYouTurn + ClearYouTurn here; Phase D extends
         // with Guidance writers (snap in D4, nudge in D5). Clear runs before
         // any state-machine call this cycle so a clear + manual pair resolves
@@ -561,67 +540,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // track computation so this cycle's visuals reflect the new pass.
         var intents = _intents.Drain();
         if (intents.ClearYouTurn)
-            YouTurnStateMachine.ClearState(_youTurn);
-        // #50. A snap mid-turn is IGNORED entirely: applying it would shift the
-        // displayed track (HowManyPathsAway) while the tractor is committed to the
-        // executing arc's already-computed target — so it lands on the OLD pass and
-        // then laterally seeks across to the just-snapped one (operator-confirmed as
-        // the confusing behavior). The arc can't be safely re-planned mid-swing, so
-        // we drop the snap outright; the client also hints "finish the turn first".
-        // The armed-but-not-executing case still re-plans cleanly below (#408).
-        if (intents.GuidanceSnap.HasValue && !_youTurn.IsExecuting)
-        {
-            // Phase D D4. IsHeadingSameWay is the cycle's view of whether the
-            // tractor is aligned with the track direction. Snap "left" from
-            // the driver's perspective means "decrement pass number when
-            // aligned, increment when reversed" — matches AgOpenGPS.
-            int delta = intents.GuidanceSnap.Value
-                ? (_guidanceWorking.IsHeadingSameWay ? -1 : 1)
-                : (_guidanceWorking.IsHeadingSameWay ? 1 : -1);
-            int from = _guidanceWorking.HowManyPathsAway;
-            _guidanceWorking.HowManyPathsAway += delta;
-            // Logged: the line moves a whole pass with no turn, and a tap on the lateral button is
-            // easy to miss. A bug report of the line on the next pass with the tractor standing still
-            // had nothing in its log to show what moved it.
-            _logger.LogInformation("[Guidance] Lateral move {Side}: pass {From} -> {To}",
-                intents.GuidanceSnap.Value ? "left" : "right", PassName(from), PassName(from + delta));
-            // The nudge stays: a lateral move is a pass, not a reset (AgOpenGPS BuildManualYouLateral).
-            _trackGuidanceState = null;
+            _uTurnStep.Clear();
+        _guidance.ApplyIntents(intents, _uTurnStep);
 
-            // #408. If a u-turn is plotted but not yet executing, drop it
-            // so the state machine re-arms for the new pass direction on
-            // the next tick. Without this the tractor enters the already-
-            // armed arc and lands on the *old* NextTrack (the original
-            // exit pass) instead of replanning for the just-snapped pass.
-            // Mirrors the direction-override re-arm in YouTurnStateMachine.
-            YouTurnStateMachine.DiscardPlannedTurn(_youTurn);
-        }
-        else if (intents.GuidanceSnap.HasValue)
-            _logger.LogInformation("[Guidance] Lateral move {Side} ignored: a U-turn is being driven",
-                intents.GuidanceSnap.Value ? "left" : "right");
-        // Phase D D5. Nudge accumulates (multiple clicks between drains sum).
-        // Heading-same-way flips the sign so "left" always means left from the
-        // driver's seat regardless of track direction. Reset wins if both
-        // arrive in the same tick. A planned turn was built for the old line, so it is
-        // dropped and re-planned (AgOpenGPS RebuildAfterNudge, #1173); like a snap (#50),
-        // a turn already being driven is left alone.
-        if (intents.GuidanceNudgeMeters != 0)
-        {
-            double adjusted = _guidanceWorking.IsHeadingSameWay
-                ? intents.GuidanceNudgeMeters
-                : -intents.GuidanceNudgeMeters;
-            _guidanceWorking.NudgeOffset += adjusted;
-            _trackGuidanceState = null;
-            if (!_youTurn.IsExecuting) YouTurnStateMachine.DiscardPlannedTurn(_youTurn);
-        }
-        if (intents.GuidanceResetNudge)
-        {
-            _guidanceWorking.NudgeOffset = 0;
-            _trackGuidanceState = null;
-            if (!_youTurn.IsExecuting) YouTurnStateMachine.DiscardPlannedTurn(_youTurn);
-        }
-
-        // Stage 2: Fix-quality status. The validator labels the fix; it does not
+        // ── Step 2: fix-quality status. The validator labels the fix; it does not
         // abort the cycle. Pre-Phase-B, NmeaParserService ran the same checks and
         // still fired GpsDataUpdated on rejection (with IsValid = false) so the
         // pipeline kept ticking and the UI — including latency display, PGN
@@ -639,7 +561,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             data.IsValid = false;
         }
 
-        // ── Snapshot operational state under lock ────────────────────────
+        // ── Step 3: the inputs, under the state lock ─────────────────────
         bool autoSteerEngaged;
         Models.Track.Track? track;
         int passNumber;
@@ -667,12 +589,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // Stamp which track this cycle's pass number / nudge belong to, so the VM can
             // tell a mirror of the current track's values from a stale one right after a
             // track switch (SaveTracksToFile, #107).
-            _guidanceWorking.ActiveTrack = track;
+            _guidance.Stamp(track);
             // Phase D D3: pass number / nudge offset live on _guidanceWorking as
             // the single source of truth. Still read under lock here because
             // SetActiveTrack (UI-thread) writes them under the same lock.
-            passNumber = _guidanceWorking.HowManyPathsAway;
-            nudgeOffset = _guidanceWorking.NudgeOffset;
+            passNumber = _guidance.PassNumber;
+            nudgeOffset = _guidance.NudgeOffset;
             youTurnEnabled = _youTurnEnabled;
             uTurnSkipRows = _uTurnSkipRows;
             isSkipWorkedMode = _isSkipWorkedMode;
@@ -696,326 +618,48 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _nextUTurnDirectionLeftOverride = null;
         }
 
-        // Another track (or none: the field closed). The turn, the pass it lands on and the snake
-        // order were the old track's; kept, they started a turn mid-field on the new one and
-        // landed on the old pass number. AgOpenGPS resets the U-turn on a track change
-        // (FormBuildTracks: yt.ResetYouTurn).
-        if (!ReferenceEquals(track, _youTurnTrack))
-        {
-            _youTurnTrack = track;
-            _youTurnStateMachine.ForgetTrack(_youTurn);
-        }
+        // ── Step 4: the track, the skip pattern, the turn lines, the switches ──
+        _uTurnStep.OnTrack(track);
 
         if (resetSnake)
         {
-            // Rebuilt by the state machine on the next turn (HandleSnakeCreation).
-            _youTurn.SnakeSequence = null;
-            _youTurn.SnakeIndex = -1;
-            // A planned turn aims at the pass the old skip chose: drop it so the next tick
-            // plans for the new one (AgOpenGPS cboxpRowWidth: ResetCreatedYouTurn unless
-            // triggered, #410). A turn already being driven is left alone.
-            if (!_youTurn.IsExecuting) YouTurnStateMachine.DiscardPlannedTurn(_youTurn);
+            _uTurnStep.ResetSnake();
         }
 
-        // Boundary-follow curve (NoPassOffset): only SUPPRESS the free-drive nearest-pass snap
-        // (below) so it stays where you put it — it starts on the boundary (pass 0, seeded from
-        // NudgeDistance) instead of jumping to the pass nearest a parked tractor. Laterals,
-        // nudges and U-turns still change the pass normally; we don't pin it here.
-        bool noPassOffset = track != null && track.NoPassOffset;
+        TurnLines(track, boundary, headlandOn, ref headlandLine, ref headlandCalculatedWidth,
+            out bool noPassOffset, out List<Vec3>? turnLine, out List<Vec3>? workHeadland);
 
-        // No-headland workflow: substitute the outer-boundary TURN LINE for the
-        // missing headland line — the AgOpen model (CTurn.BuildTurnLines): the
-        // fence offset inward by just UTurnDistanceFromBoundary. This line is the
-        // "in-turn-bounds" polygon the state machine gates arming on and raycasts
-        // distance to; a fence-hugging boundary-follow pass (offset ~half a tool
-        // inside the fence) sits INSIDE it, so it arms via the normal cultivated-
-        // zone path. The turn's actual geometry is anchored on the turn boundary
-        // built inside BuildCreationInput (also offset by UTurnDistanceFromBoundary)
-        // and fitted by MoveTurnInsideTurnLine, so this line does not shape the arc.
-        if (headlandLine == null && boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid)
-        {
-            var synth = GetOrComputeSyntheticHeadland(boundary);
-            if (synth.Line != null && synth.Line.Count >= 3)
-            {
-                headlandLine = synth.Line;
-                headlandCalculatedWidth = synth.Inset;
-            }
-        }
-
-        // The U-turn turns at the turn line, as AgOpenGPS (CYouTurn uses bndList[].turnLine only,
-        // CTurn.BuildTurnLines: the fence moved in by the U-turn distance from boundary): with a
-        // headland too. The headland is for the sections, the hydraulic lift and the drawing; a
-        // pass inside the headland band (a boundary curve's outer passes) turns at the turn line
-        // like any other (#694, Graeme: "if I delete the headland I can make U-turns on the outer
-        // passes"). The operator's headland is kept for the warning that a turn leaves its pass
-        // before the headland line.
-        List<Vec3>? turnLine = headlandLine;
-        if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid)
-        {
-            var tl = GetOrComputeSyntheticHeadland(boundary);
-            if (tl.Line != null && tl.Line.Count >= 3) turnLine = tl.Line;
-        }
-        var workHeadland = headlandOn && _headlandLine != null && _headlandLine.Count >= 3 ? _headlandLine : null;
-
-        // YouTurn working state is cycle-owned — no cross-thread writers.
-        // TriggerManual (manual U-turn) and ClearState (field close / track
-        // deselect) run on the cycle thread via intents drained above.
-        // Mirror the user's YouTurn-enabled toggle into the cycle-owned working
-        // state so the YouTurnSnapshot.IsEnabled flag (and therefore
-        // State.YouTurn.IsEnabled, used by the distance-to-trigger widget's
-        // visibility predicate) tracks the toggle. Without this the snapshot
-        // always reports IsEnabled=false because nothing else writes the
-        // working-state flag, hiding the distance widget on every cycle.
-        _youTurn.IsEnabled = youTurnEnabled;
-
-        // Mirror the UI's direction override (one-shot) into the cycle's
-        // working state. Only overwrite when the UI posted a new value —
-        // otherwise an unconsumed override (set on a prior cycle, not yet
-        // consumed because the tractor isn't in turn-creation range) survives.
-        if (nextUTurnDirectionOverride.HasValue)
-            _youTurn.NextUTurnDirectionLeftOverride = nextUTurnDirectionOverride;
-        bool isYouTurnTriggered = _youTurn.IsTriggered;
-        bool isInYouTurn = _youTurn.IsExecuting;
-        List<Vec3>? youTurnPath = _youTurn.TurnPath;
+        _uTurnStep.Mirror(youTurnEnabled, nextUTurnDirectionOverride);
+        bool isYouTurnTriggered = _uTurnStep.IsTriggered;
+        bool isInYouTurn = _uTurnStep.IsExecuting;
+        List<Vec3>? youTurnPath = _uTurnStep.TurnPath;
         bool contourOn;
-        lock (_contourLock) contourOn = _contourOn;
-        _guidanceWorking.IsContourMode = contourOn;
+        contourOn = _contourStep.IsOn;
+        _guidance.SetContourMode(contourOn);
         var recordedPath = contourOn ? null : Volatile.Read(ref _recordedPath);
 
         var pos = data.CurrentPosition;
         bool hasTrack = track != null && track.Points.Count >= 2;
 
-        // ── (1) Coordinate conversion for real GPS path ─────────────────
-        double posEasting = pos.Easting;
-        double posNorthing = pos.Northing;
+        // ── Step 5: the fix's pose (PoseStep) ────────────────────────────
+        _poseStep.Locate(data, ref pos, committedLocalPlane, hasActiveField, driftE, driftN,
+            out LocalPlane? firstFixLocalPlane, out LocalPlane? replacementLocalPlane, out double replacementDistanceKm,
+            out FarFromFieldWarning? farFromFieldWarning, out LocalPlane? headingPlane, out string? jumpNotice,
+            out double antennaE, out double antennaN,
+            out double driftedEasting, out double driftedNorthing, out double headingRad);
+        _guidance.SetReverse(_poseStep.IsReverse);
+        _autoSteerService.SetReverse(_poseStep.IsReverse); // deadzone is off in reverse (#110)
+        _sectionControlService.IsReversing = _poseStep.IsReverse; // Auto sections off in reverse (#173)
 
-        // Phase E: if a UI-committed LocalPlane already exists (user opened a
-        // field, or we auto-created one on a previous cycle and ApplyGpsCycleResult
-        // has since committed it and pushed it back through SetLocalPlane), drop our
-        // cycle-local cache — the committed instance is now the authoritative one.
-        if (_cycleLocalPlane != null && ReferenceEquals(committedLocalPlane, _cycleLocalPlane))
-            _cycleLocalPlane = null;
+        // ── Step 6: the pose to the estimator ────────────────────────────
+        PublishPose(data, pos, driftedEasting, driftedNorthing, headingRad);
 
-        LocalPlane? firstFixLocalPlane = null;
-        if (Math.Abs(posEasting) < 0.001 && Math.Abs(posNorthing) < 0.001
-            && data.FixQuality > 0)
-        {
-            // Auto-create local plane from first GPS fix if none exists.
-            // Cycle-local cache so we don't cross-thread-write an ObservableObject;
-            // the UI thread commits it via ApplyGpsCycleResult.
-            var localPlane = committedLocalPlane ?? _cycleLocalPlane;
-            if (localPlane == null)
-            {
-                localPlane = new LocalPlane(
-                    new Wgs84(pos.Latitude, pos.Longitude),
-                    new SharedFieldProperties());
-                _cycleLocalPlane = localPlane;
-                firstFixLocalPlane = localPlane; // emit to UI this cycle
-            }
-
-            var geoCoord = localPlane.ConvertWgs84ToGeoCoord(
-                new Wgs84(pos.Latitude, pos.Longitude));
-            posEasting = geoCoord.Easting;
-            posNorthing = geoCoord.Northing;
-        }
-
-        // Origin guard: if the live GPS source has drifted very far from the
-        // current LocalPlane origin, either silently re-anchor (no field) or
-        // surface a warning (field loaded). Skip when only the cycle-local
-        // cache exists — that means we just bootstrapped the plane this tick.
-        LocalPlane? replacementLocalPlane = null;
-        double replacementDistanceKm = 0.0;
-        FarFromFieldWarning? farFromFieldWarning = null;
-        if (committedLocalPlane != null && data.FixQuality > 0)
-        {
-            var converted = committedLocalPlane.ConvertWgs84ToGeoCoord(
-                new Wgs84(pos.Latitude, pos.Longitude));
-            double distFromOrigin = Math.Sqrt(
-                converted.Easting * converted.Easting +
-                converted.Northing * converted.Northing);
-
-            if (!hasActiveField && distFromOrigin > TempOriginReinitDistanceM)
-            {
-                var newPlane = new LocalPlane(
-                    new Wgs84(pos.Latitude, pos.Longitude),
-                    new SharedFieldProperties());
-                _cycleLocalPlane = newPlane;
-                replacementLocalPlane = newPlane;
-                replacementDistanceKm = distFromOrigin / 1000.0;
-                posEasting = 0;
-                posNorthing = 0;
-            }
-            else if (hasActiveField
-                     && distFromOrigin > FieldOriginWarnDistanceM
-                     && !_farFromFieldWarned)
-            {
-                farFromFieldWarning = new FarFromFieldWarning(
-                    distFromOrigin, pos.Latitude, pos.Longitude);
-                _farFromFieldWarned = true;
-            }
-        }
-
-        // Stored fixes are in local-plane metres: when the plane changes (field
-        // opened/closed, re-anchor) the old ones are in another frame (#112).
-        var headingPlane = replacementLocalPlane ?? committedLocalPlane ?? _cycleLocalPlane;
-        if (!ReferenceEquals(headingPlane, _headingPlane))
-        {
-            _headingFusion.Reset();
-            _headingPlane = headingPlane;
-        }
-
-        // Stage 3 (Phase B C2): Heading fusion. Replaces the raw NMEA heading
-        // with the dual-antenna-aware / fix-to-fix / IMU-blended value.
-        // Receives real local easting/northing — see TMP-009 in the parking lot.
-        _sentenceHeading = pos.Heading;
-        double fusedHeading = _headingFusion.FuseHeading(
-            pos.Heading, data.ImuHeading, data.ImuValid,
-            pos.Speed, posEasting, posNorthing, data.HasDualHeading);
-        _headingFusion.UpdateDualHeadingWarning(data.FixQuality);
-        pos = pos with { Heading = fusedHeading };
-        // A sideways position jump (the receiver changed its solution): the heading was kept
-        // across it; say so, since AutoSteer now follows a position that moved.
-        string? jumpNotice = null;
-        if (_headingFusion.JumpCount != _lastJumpCount)
-        {
-            _lastJumpCount = _headingFusion.JumpCount;
-            jumpNotice = string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "GPS position jumped {0:F1} m sideways (the receiver changed its solution): heading kept, AutoSteer follows the new position",
-                _headingFusion.LastJumpM);
-        }
-        // Reverse (#125): guidance, U-turn and hydraulic lift need to know, and the
-        // heading above already faces the way the vehicle points.
-        _isReverse = _headingFusion.IsReverse;
-        _guidanceWorking.IsReverse = _isReverse;
-        _autoSteerService.SetReverse(_isReverse); // deadzone is off in reverse (#110)
-        _sectionControlService.IsReversing = _isReverse; // Auto sections off in reverse (#173)
-
-        // Roll filter (AgOpenGPS ahrs.rollFilter: roll = roll × f + new × (1 − f)). AgOpenGPS
-        // smooths the steer module's IMU roll; AgOpenWeb's roll comes with the GPS
-        // sentence, so it's filtered here (#110). 0 = no filtering (the default).
-        double rollFilter = Math.Clamp(_configStore.Ahrs.RollFilter, 0, 0.99);
-        _roll = _roll * rollFilter + data.ImuRoll * (1 - rollFilter);
-
-        // Antenna in local metres (AgOpenGPS pn.fix): contour Pure Pursuit measures its
-        // distance from the line here (#110).
-        double antennaE = posEasting + driftE, antennaN = posNorthing + driftN;
-
-        // ── (1b) Antenna-to-pivot transform in local coordinates ────────
-        // Single source of truth for the antenna-to-pivot transform. Runs
-        // here on local-plane (E, N) so the math is consistent regardless
-        // of how the GPS data arrived (real NMEA, simulator, replay).
-        AntennaToPivotTransform.Apply(
-            ref posEasting,
-            ref posNorthing,
-            pos.Heading * Math.PI / 180.0,
-            _configStore.Vehicle,
-            _roll);
-
-        // ── (2) Apply drift compensation ────────────────────────────────
-        double driftedEasting = posEasting + driftE;
-        double driftedNorthing = posNorthing + driftN;
-        double headingRad = pos.Heading * Math.PI / 180.0;
-
-        // ── (2b) Publish canonical pose to the position estimator ───────
-        // The estimator is the bridge between GPS arrivals (10 Hz) and
-        // the host control loop (100 Hz). Readers — control loop,
-        // renderer — pull dead-reckoned pose between GPS samples.
-        if (_positionEstimator is not null)
-        {
-            // ImuValid only says the IMU *heading* is usable; a $PAOGI fix leaves it
-            // false (the antenna heading needs no fusion) but still carries the dual roll.
-            bool hasAttitude = data.ImuValid || data.HasDualHeading;
-            // The sentence's yaw rate field is not used: the estimator derives the rate
-            // from the heading change (a zero here asks for that). What the field holds
-            // depends on the firmware, a $PAOGI has no "no IMU" marker for it, and
-            // AgOpenGPS only displays it. A board sending -103.8 deg/s while parked swung
-            // the predicted heading 10 degrees and back at every fix.
-            const double yawRateRadPerSec = 0.0;
-            double rollRad = hasAttitude
-                ? _roll * Math.PI / 180.0
-                : 0.0;
-            long ts = Clock.Current.GetTimestamp();
-            _positionEstimator.UpdateFromGps(new PoseSnapshot(
-                new Vec2(driftedEasting, driftedNorthing),
-                headingRad,
-                pos.Speed,
-                yawRateRadPerSec,
-                rollRad,
-                ts));
-            // Test hook: fire so a synchronous control-loop tick can advance
-            // the section state machine before this cycle's GpsCycleResult
-            // captures section bits. No-op in production (loop runs on its
-            // own thread).
-            PoseEstimatorUpdated?.Invoke(ts);
-        }
-
-        // ── Phase C C4/C6: YouTurn state machine on the cycle worker ───
-        // Two entry points, both running here on the background thread
-        // against the cycle-owned _youTurn / _guidanceWorking POCOs:
-        //   • Manual trigger via intent (C6 — drained above).
-        //   • Auto tick, gated on autosteer + track + youturn-enabled +
-        //     valid headland (matches pre-C4 MVM guards).
-        // Snapshots built later in the cycle; the VM mirrors them back
-        // via ApplyGpsCycleResult on the UI thread.
-        YouTurnEffects? youTurnTickEffects = null;
-        bool hasValidHeadlandLine = turnLine != null && turnLine.Count >= 3;
-        // No U-turns in contour mode (AgOpenGPS DisableYouTurnButtons).
-        bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn && recordedPath == null;
-
-        var tickPosition = pos with { Easting = driftedEasting, Northing = driftedNorthing };
-        // An open curve whose ends face each other turns at the opening between them as at a
-        // headland: the U-turn gets the field with that opening as a virtual boundary (#694).
-        var turnField = hasTickableTrack && hasValidHeadlandLine
-            ? CurveEndTurnField(track!, boundary, turnLine, OpeningTurnRoom())
-            : null;
-        var tickCtx = new YouTurnStateMachine.TickContext(
-            tickPosition,
-            track,
-            turnField?.Boundary ?? boundary,
-            turnField?.HeadlandLine ?? turnLine,
-            uTurnSkipRows,
-            isSkipWorkedMode,
-            headlandCalculatedWidth,
-            headlandDistanceConfig,
-            isAlternateSkipMode,
-            _isPointCovered,
-            workHeadland);
-
-        // Manual trigger — runs even when the auto gate would fail (e.g., YouTurn
-        // toggle off). TriggerManual enforces its own preconditions (autosteer +
-        // track + no turn already in progress) and sets a status message otherwise.
-        if (intents.ManualYouTurn.HasValue && hasTickableTrack)
-        {
-            // IsHeadingSameWay is computed fresh by the state machine each tick;
-            // HowManyPathsAway and NudgeOffset are already authoritative on
-            // _guidanceWorking (D3 — SetActiveTrack writes directly).
-            youTurnTickEffects = _youTurnStateMachine.TriggerManual(
-                intents.ManualYouTurn.Value, autoSteerEngaged,
-                in tickCtx, _guidanceWorking, _youTurn);
-        }
-
-        if (autoSteerEngaged && hasTickableTrack
-            && youTurnEnabled && hasValidHeadlandLine)
-        {
-            _youTurn.YouTurnCounter++;
-
-            var autoEffects = _youTurnStateMachine.Tick(in tickCtx, _guidanceWorking, _youTurn);
-            // If a manual trigger already set effects this cycle, keep those —
-            // state-machine branches make the auto tick a no-op mid-turn anyway.
-            youTurnTickEffects ??= autoEffects;
-        }
-        else if (autoSteerEngaged && hasTickableTrack && _youTurn.IsExecuting)
-        {
-            // A manual turn is executing but the auto tick is gated off (no headland —
-            // manual turns don't need one — or the YouTurn toggle off). Still run the
-            // completion checks, or the turn never completes and the tractor is left
-            // without steering (#163).
-            youTurnTickEffects ??= _youTurnStateMachine.TickExecutingTurn(in tickCtx, _guidanceWorking, _youTurn);
-        }
-
-        // U-turn sounds (#110); the audio service gates them on the U-turn sound setting.
-        if (youTurnTickEffects?.TurnCreationFailedSound == true) _audioService.Play(SoundEffect.UTurnTooClose);
-        if (youTurnTickEffects?.ApproachAlarmSound == true) _audioService.Play(SoundEffect.YouTurnApproach);
+        // ── Step 7: the U-turn (UTurnStep), before the guidance: completing a turn moves the pass ──
+        var youTurnTickEffects = _uTurnStep.Tick(intents.ManualYouTurn, autoSteerEngaged, youTurnEnabled,
+            pos, driftedEasting, driftedNorthing, track, boundary, turnLine, workHeadland,
+            uTurnSkipRows, isSkipWorkedMode, headlandCalculatedWidth, headlandDistanceConfig,
+            isAlternateSkipMode, contourOn, recordedPath, _guidance.Working,
+            out bool hasValidHeadlandLine, out bool hasTickableTrack, out var tickCtx);
 
         // Refresh the locals the downstream guidance branch reads — the tick
         // (or a drained intent above) may have updated them. CompleteTurn
@@ -1027,33 +671,20 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // a hard-side steer for one tick (visible front-wheel spike), which
         // showed up as a leftward coverage curve at U-turn exit (worse at
         // higher speed because lateral excursion scales with velocity).
-        isYouTurnTriggered = _youTurn.IsTriggered;
-        isInYouTurn = _youTurn.IsExecuting;
-        youTurnPath = _youTurn.TurnPath;
-        passNumber = _guidanceWorking.HowManyPathsAway;
-        nudgeOffset = _guidanceWorking.NudgeOffset;
+        isYouTurnTriggered = _uTurnStep.IsTriggered;
+        isInYouTurn = _uTurnStep.IsExecuting;
+        youTurnPath = _uTurnStep.TurnPath;
+        passNumber = _guidance.PassNumber;
+        nudgeOffset = _guidance.NudgeOffset;
 
-        // Switching the YouTurn toggle OFF drops any turn in progress so a stale
-        // arc doesn't linger on the map (the auto tick that would otherwise
-        // advance or reset it is gated on youTurnEnabled). Only on the on→off
-        // edge, like AgOpenGPS btnAutoYouTurn (ResetYouTurn when switched off):
-        // manual turns stay available with the toggle off while autosteer is
-        // engaged (AgOpenGPS draws/accepts them on isBtnAutoSteerOn ||
-        // isYouTurnBtnOn), and a manual turn started then completes through
-        // TickExecutingTurn above. Clearing every cycle while off used to kill
-        // manual turns the moment they were created.
-        if (!youTurnEnabled && _youTurnWasEnabled) _youTurnStateMachine.OnYouTurnSwitchedOff();
-        if (!youTurnEnabled && _youTurnWasEnabled
-            && (_youTurn.IsTriggered || _youTurn.IsExecuting || _youTurn.TurnPath != null))
+        if (_uTurnStep.OnYouTurnSwitch(youTurnEnabled))
         {
-            YouTurnStateMachine.ClearState(_youTurn);
             isYouTurnTriggered = false;
             isInYouTurn = false;
             youTurnPath = null;
         }
-        _youTurnWasEnabled = youTurnEnabled;
 
-        // ── (3) Tool position ───────────────────────────────────────────
+        // ── Step 8: the tool's position ─────────────────────────────────
         // ToolPositionService is updated by ControlLoopService at 100 Hz
         // (ControlTick). The pipeline used to call
         // Update here too, but that created a dual-writer race on Torriem
@@ -1071,373 +702,38 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // Map positions are now sent via GpsCycleResult → ViewModel → MapRenderState.
         // The pipeline does NOT call _mapService directly.
 
-        // ── (5) Out of bounds (#494) ────────────────────────────────────
-        // Leaving the field never switches autosteer off. As AgOpenGPS (Position.designer.cs,
-        // "Youturn"): the boundary shows it and PGN 239 carries geoStop for the machine module.
-        bool autoSteerDisengaged = false;
-        string? disengageReason = null;
-        _isOutOfBounds = OutOfBounds(boundary, turnLine, youTurnEnabled && hasValidHeadlandLine,
-            driftedEasting, driftedNorthing);
+        // ── Step 9: the AutoSteer rules, before the guidance ─────────────
+        ApplyAutoSteerRules(pos, boundary, turnLine, youTurnEnabled, hasValidHeadlandLine, simulatorEnabled,
+            driftedEasting, driftedNorthing, ref autoSteerEngaged, out bool autoSteerDisengaged, out string? disengageReason,
+            ref isYouTurnTriggered, ref isInYouTurn, ref youTurnPath);
 
-        // (5a) A dual heading across the direction of travel: its offset doesn't match how
-        // the antennas are mounted (front to back set up as side by side). Guidance would
-        // steer for a tractor driving across its line, and the tractor leaves the pass.
-        // Also on the simulator, which takes the offset too.
-        if (autoSteerEngaged && _headingFusion.IsDualHeadingOffTravel)
-        {
-            autoSteerEngaged = false;
-            autoSteerDisengaged = true;
-            disengageReason = "AutoSteer disengaged - " + DualHeadingOffTravelText(_headingFusion.DualHeadingOffTravelDeg);
-            lock (_stateLock) _autoSteerEngaged = false;
-        }
-
-        // (5b) Steering speed limits (#106) — like AgOpenGPS, and like it not on the simulator.
-        if (autoSteerEngaged && !simulatorEnabled)
-        {
-            var speedReason = CheckSteerSpeedLimits(pos.Speed * 3.6);
-            if (speedReason != null)
-            {
-                autoSteerEngaged = false;
-                autoSteerDisengaged = true;
-                disengageReason = speedReason;
-                lock (_stateLock) _autoSteerEngaged = false;
-            }
-        }
-        else
-        {
-            _belowMinSteerSpeedSinceMs = null;
-        }
-
-        // (5c) Reverse (#125), like AgOpenGPS: with Steer in reverse off, steering
-        // stops while reversing but AutoSteer stays engaged; it also stops while a
-        // single antenna with no IMU can't yet tell a direction change. PGN 254
-        // status goes to 0 for those cycles.
-        bool steerPaused = autoSteerEngaged
-            && ((_isReverse && !_configStore.AutoSteer.SteerInReverse) || _headingFusion.IsChangingDirection);
-        _autoSteerService.SetSteerPaused(steerPaused);
-
-        // U-turn lifecycle is bound to autosteer: when autosteer is not
-        // engaged (user toggled off, boundary kickout, far-from-field guard,
-        // or any other disengage path), the rendered turn path must clear so
-        // the operator doesn't see a stale arc on the map. The state machine
-        // tick is also gated on autoSteerEngaged, so without this clear the
-        // working state would freeze with IsTriggered/IsExecuting=true and
-        // the snapshot would keep emitting the old TurnPath every cycle —
-        // ApplyGpsCycleResult would then keep pushing it back to the map.
-        // Re-engaging autosteer rebuilds the turn from scratch via the auto
-        // tick or a manual trigger.
-        if (!autoSteerEngaged
-            && (_youTurn.IsTriggered || _youTurn.IsExecuting || _youTurn.TurnPath != null))
-        {
-            YouTurnStateMachine.ClearState(_youTurn);
-            isYouTurnTriggered = false;
-            isInYouTurn = false;
-            youTurnPath = null;
-        }
-
-        // ── (5d) Contour (#110, AgOpenGPS AddContourPoints + DistanceFromContourLine) ─
+        // ── Step 10: the contour (#110, AgOpenGPS AddContourPoints + DistanceFromContourLine) ─
         ContourSteer? contourSteer = null;
         Models.Track.Track? contourDisplay = null;
         if (hasActiveField || contourOn)
-            contourSteer = ProcessContour(contourOn, hasActiveField, driftedEasting, driftedNorthing,
-                headingRad, antennaE, antennaN, pos.Speed * 3.6, autoSteerEngaged, out contourDisplay);
+            contourSteer = _contourStep.ProcessContour(contourOn, hasActiveField, driftedEasting, driftedNorthing,
+                headingRad, antennaE, antennaN, pos.Speed * 3.6, autoSteerEngaged, _poseStep.IsReverse, _poseStep.Roll, out contourDisplay);
 
-        // ── (6) Guidance calculation ────────────────────────────────────
-        double steerAngle = 0;
-        double crossTrackError = 0;
-        double goalE = 0, goalN = 0;
-        bool hasGuidance = false;
-        bool hasGoal = false;
-        bool youTurnCompleted = false;
-        string? statusMessage = null;
-        Models.Track.Track? displayTrack = null;
-        Models.Track.Track? baseTrack = null;
-        IReadOnlyList<IReadOnlyList<Vec3>>? guideLines = null;
-        (double Width, double Shift, bool Extend, int Count)? guideArgs = null;
-        IReadOnlyList<Vec3>? toolPass = null;
-        (double Width, bool Extend)? toolPassArgs = null;
-        int? shownLandingPass = null; // the pass a U-turn being driven lands on, while it is the one shown
+        // ── Step 11: the guidance (GuidanceStep): the line shown, the steering, free drive ──
+        bool engagedBeforeGuidance = autoSteerEngaged;
+        _guidance.Run(pos, track, hasTrack, noPassOffset, driftedEasting, driftedNorthing, headingRad,
+            _poseStep.IsReverse, _poseStep.Roll, _cycleCounter,
+            ref passNumber, nudgeOffset,
+            contourOn, contourSteer, contourDisplay, recordedPath,
+            ref autoSteerEngaged, ref autoSteerDisengaged, ref disengageReason, youTurnEnabled,
+            isYouTurnTriggered, isInYouTurn, youTurnPath,
+            _uTurnStep, in tickCtx, ref youTurnTickEffects,
+            out double steerAngle, out double crossTrackError, out double goalE, out double goalN,
+            out bool hasGuidance, out bool hasGoal, out bool youTurnCompleted, out string? statusMessage,
+            out Models.Track.Track? displayTrack, out Models.Track.Track? baseTrack,
+            out IReadOnlyList<IReadOnlyList<Vec3>>? guideLines, out IReadOnlyList<Vec3>? toolPass, out int? shownLandingPass,
+            out int diagPathAnchorA, out int diagPathAnchorB, out int diagTurnPathCount, out bool diagAntiTangentGuardFired);
+        // The guidance switched AutoSteer off (past the end of an open curve or a recorded path):
+        // the host loop's flag too, as the rules above do. Only then: written again otherwise, an
+        // engage on the host loop since the rules' write would be lost.
+        if (engagedBeforeGuidance && !autoSteerEngaged) lock (_stateLock) _autoSteerEngaged = false;
 
-        // Always compute the display track when we have a track (for map visualization)
-        if (hasTrack)
-        {
-            var config2 = _configStore;
-            // Which way along the track we drive decides which side of the pass the tractor
-            // steers with a tool offset (#446), so it is known before any line is placed. Held
-            // through a U-turn: the turn was planned for the old direction, and the next cycle
-            // after it completes takes the new one.
-            if (!isInYouTurn)
-                _guidanceWorking.IsHeadingSameWay = IsHeadingSameWayOn(track!, driftedEasting, driftedNorthing, headingRad);
-            double toolShift = Models.Track.PassGeometry.ToolShift(config2.Tool.Offset, _guidanceWorking.IsHeadingSameWay);
-            double widthMinusOverlap = config2.ActualToolWidth - config2.Tool.Overlap;
-            // While a U-turn is driven, the pass shown is the one it lands on, as AgOpenGPS, which
-            // moves to the next pass when the turn starts (CYouTurn.YouTurnTrigger): the line, the
-            // tool's band, the guidelines and the pass label. The pass worked (HowManyPathsAway)
-            // moves on when the turn completes, so a turn backed out of keeps its pass (#588).
-            // The landing pass is driven the other way: its tool shift has the other sign (#446).
-            int shownPass = passNumber;
-            double shownShift = toolShift;
-            if (isInYouTurn && TurnTargetPass() is { } landing)
-            {
-                shownPass = landing;
-                shownShift = -toolShift;
-                shownLandingPass = landing;
-            }
-            double distAway = Models.Track.PassGeometry.Offset(track, shownPass, widthMinusOverlap, nudgeOffset, shownShift);
-
-            // Curve tracks: extend the displayed (magenta) line straight to the U-turn so
-            // there's no visible gap between the guidance line and the turn (the line the
-            // tractor follows, CalculateTrackGuidance, is extended the same way). No-op for
-            // closed loops.
-            bool extendDisp = track!.Points.Count > 2 && !track.IsClosed;
-
-            if (Math.Abs(distAway) < 0.01)
-            {
-                if (extendDisp)
-                {
-                    // Pass 0: extended curve IS the reference line — leave baseTrack null so
-                    // it isn't drawn twice at the same position.
-                    displayTrack = new Models.Track.Track
-                    {
-                        Name = $"{track.Name} (path {shownPass})",
-                        Points = CurveProcessing.ExtendCurveEnds(track.Points),
-                        Type = track.Type, IsVisible = true, IsActive = true, IsClosed = track.IsClosed
-                    };
-                }
-                else
-                {
-                    displayTrack = track;
-                }
-            }
-            else
-            {
-                // A pass the offset removed altogether has no points: nothing is drawn (#694).
-                var pass = _offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius);
-                var offsetPoints = extendDisp ? CurveProcessing.ExtendPass(pass) : new List<Vec3>(pass.Points);
-                displayTrack = new Models.Track.Track
-                {
-                    Name = $"{track.Name} (path {shownPass})",
-                    Points = offsetPoints,
-                    Type = track.Type,
-                    IsVisible = true,
-                    IsActive = true
-                };
-                baseTrack = track;
-            }
-
-            toolPassArgs = (widthMinusOverlap, extendDisp);
-            toolPass = ToolPass(track, shownPass, widthMinusOverlap, nudgeOffset, extendDisp);
-
-            if (config2.Display.ExtraGuidelines)
-            {
-                guideArgs = (widthMinusOverlap, toolShift, extendDisp, config2.Display.ExtraGuidelinesCount);
-                guideLines = GuideLines(track, shownPass, widthMinusOverlap, nudgeOffset, toolShift, extendDisp,
-                    config2.Display.ExtraGuidelinesCount, TurnTargetPass());
-            }
-        }
-
-        int diagPathAnchorA = 0;
-        int diagPathAnchorB = 0;
-        int diagTurnPathCount = 0;
-        bool diagAntiTangentGuardFired = false;
-
-        if (contourOn)
-        {
-            // Contour replaces the track: its line is the one shown and followed.
-            displayTrack = contourDisplay;
-            baseTrack = null;
-            if (contourSteer is { } cs)
-            {
-                crossTrackError = cs.CrossTrackError;
-                goalE = cs.GoalPoint.Easting;
-                goalN = cs.GoalPoint.Northing;
-                hasGoal = !_configStore.Guidance.IsStanley;
-                if (autoSteerEngaged)
-                {
-                    steerAngle = cs.SteerAngle;
-                    hasGuidance = true;
-                    Volatile.Write(ref _simulatorSteerAngle, steerAngle);
-                    _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
-                }
-            }
-        }
-        else if (recordedPath != null)
-        {
-            // A recorded route playing replaces the track, as contour does: AutoSteer steers
-            // along it (AgOpenGPS steers the module along it; here the operator engages AutoSteer).
-            var cfgRp = _configStore.Vehicle;
-            if (recordedPath.Follow(driftedEasting, driftedNorthing, headingRad, cfgRp.Wheelbase, cfgRp.MaxSteerAngle) is { } rp)
-            {
-                crossTrackError = rp.CrossTrackError;
-                goalE = rp.GoalE;
-                goalN = rp.GoalN;
-                hasGoal = !_configStore.Guidance.IsStanley;
-                if (autoSteerEngaged)
-                {
-                    steerAngle = rp.SteerAngleDegrees;
-                    hasGuidance = true;
-                    Volatile.Write(ref _simulatorSteerAngle, steerAngle);
-                    _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
-                }
-            }
-            else if (autoSteerEngaged)
-            {
-                // The end of the route: nothing left ahead to steer to. AutoSteer off with the
-                // reason, as past the end of an open curve (AgOpenGPS stops playback there).
-                autoSteerEngaged = false;
-                autoSteerDisengaged = true;
-                disengageReason = RecordedPathEndReason;
-                lock (_stateLock) _autoSteerEngaged = false;
-                _autoSteerService.UpdateGuidanceResults(0, NoLineDistance);
-            }
-        }
-        else if (autoSteerEngaged && hasTrack)
-        {
-            if (isYouTurnTriggered && youTurnPath != null && youTurnPath.Count > 0)
-            {
-                // YouTurn guidance — steer along turn path
-                // Use drifted local coordinates (not pos which has raw E=0,N=0)
-                var ytPos = pos with { Easting = driftedEasting, Northing = driftedNorthing };
-                var ytResult = CalculateYouTurnGuidance(ytPos, youTurnPath);
-                if (ytResult != null)
-                {
-                    steerAngle = ytResult.Value.steerAngle;
-                    crossTrackError = ytResult.Value.xte;
-                    goalE = ytResult.Value.goalE;
-                    goalN = ytResult.Value.goalN;
-                    youTurnCompleted = ytResult.Value.turnComplete;
-                    hasGuidance = !youTurnCompleted;
-                    if (youTurnCompleted && _youTurn.IsExecuting)
-                    {
-                        // Guidance ran off the end of the path before the state machine's
-                        // own checks fired. Complete the turn here (AgOpenGPS does the same
-                        // from its U-turn guidance) so the next cycle follows the new pass
-                        // instead of sitting in a turn with no steering (#163).
-                        var completion = _youTurnStateMachine.CompleteFromGuidance(in tickCtx, _guidanceWorking, _youTurn);
-                        if (youTurnTickEffects == null) youTurnTickEffects = completion;
-                        else youTurnTickEffects.TurnCompleted |= completion.TurnCompleted;
-                    }
-                    diagPathAnchorA = ytResult.Value.pointA;
-                    diagPathAnchorB = ytResult.Value.pointB;
-                    diagTurnPathCount = ytResult.Value.pathPointCount;
-                    diagAntiTangentGuardFired = ytResult.Value.antiTangentGuardFired;
-                }
-            }
-            else
-            {
-                // Normal track guidance
-                var guidanceResult = CalculateTrackGuidance(
-                    pos, track!, passNumber, nudgeOffset, driftedEasting, driftedNorthing, headingRad,
-                    isYouTurnTriggered);
-                if (guidanceResult is { hasLine: false } noLine)
-                {
-                    // No pass where the tractor is (#694): steer straight and tell the module
-                    // there is no line (PGN 254's no-line distance), as AgOpenGPS does.
-                    statusMessage = noLine.statusMessage;
-                    _autoSteerService.UpdateGuidanceResults(0, NoLineDistance);
-                }
-                else if (guidanceResult is { atEnd: true } && !(youTurnEnabled && youTurnPath is { Count: > 0 }))
-                {
-                    // Past the end of an open curve, and no U-turn there to take over: AutoSteer
-                    // off, as AgOpenGPS ("Guidance Stopped" / "Past end of curve"), rather than
-                    // steering on into what the line leaves out (#694).
-                    autoSteerEngaged = false;
-                    autoSteerDisengaged = true;
-                    disengageReason = PastEndOfCurveReason;
-                    lock (_stateLock) _autoSteerEngaged = false;
-                    _autoSteerService.UpdateGuidanceResults(0, NoLineDistance);
-                }
-                else if (guidanceResult != null)
-                {
-                    steerAngle = guidanceResult.Value.steerAngle;
-                    crossTrackError = guidanceResult.Value.xte;
-                    goalE = guidanceResult.Value.goalE;
-                    goalN = guidanceResult.Value.goalN;
-                    hasGuidance = true;
-                    statusMessage = guidanceResult.Value.statusMessage;
-                }
-            }
-
-            if (hasGuidance)
-            {
-                Volatile.Write(ref _simulatorSteerAngle, steerAngle);
-                _autoSteerService.UpdateGuidanceResults(steerAngle, crossTrackError);
-                _lastCrossTrackError = crossTrackError;
-            }
-            // Stanley has no look-ahead target, so no goal marker (#99).
-            hasGoal = hasGuidance && !_configStore.Guidance.IsStanley;
-        }
-        if (!contourOn && !autoSteerEngaged && hasTrack && !noPassOffset)
-        {
-            // Display-only: auto-detect nearest pass and update visualization.
-            // Phase D D3: write the detected pass directly into the cycle's
-            // working state. Previously this was emitted as
-            // GpsCycleResult.NearestPassNumber and the UI thread wrote it back
-            // through SyncGuidanceStateToPipeline — two writers fighting each
-            // other and causing a per-cycle oscillation (see commit 57920e0).
-            // One writer now — the cycle.
-            //
-            // #261: match AgOpen — project a *lookahead* point (pivot + heading * lookDist)
-            // onto the reference line instead of the raw pivot. Produces the "track jumps
-            // ahead of the tractor" behavior operators expect in free-drive.
-            double lookDist = Math.Max(
-                _configStore.ActualToolWidth * 0.5,
-                pos.Speed * _configStore.AutoSteer.NextGuidanceTime); // AgOpenGPS guidanceLookAheadTime (#110)
-            double hRad = pos.Heading * Math.PI / 180.0;
-            double lookE = driftedEasting + Math.Sin(hRad) * lookDist;
-            double lookN = driftedNorthing + Math.Cos(hRad) * lookDist;
-            var (nearestPass, nearestDisplayTrack, displayXte, onReference) = UpdateDisplayTrack(
-                pos, track!, passNumber, nudgeOffset,
-                driftedEasting, driftedNorthing,
-                lookE, lookN);
-            // The light bar shows the distance to the line in free-drive too, as AgOpenGPS
-            // does (it computes the line's distance whether or not AutoSteer is on).
-            crossTrackError = displayXte;
-            if (nearestDisplayTrack != null)
-            {
-                displayTrack = nearestDisplayTrack;
-                // Explicitly clear baseTrack when returning to pass 0 — otherwise a
-                // stale baseTrack set by the earlier block (when incoming passNumber
-                // was non-zero) stays pointing at the reference track, and the UI
-                // renders baseTrack + displayTrack at the same position (overlap).
-                baseTrack = onReference ? null : track;
-                // The guidelines go either side of the pass shown.
-                if (guideArgs is { } ga)
-                    guideLines = GuideLines(track!, nearestPass, ga.Width, nudgeOffset, ga.Shift, ga.Extend, ga.Count, TurnTargetPass());
-                if (toolPassArgs is { } ta)
-                    toolPass = ToolPass(track!, nearestPass, ta.Width, nudgeOffset, ta.Extend);
-
-                // #95: show where Pure Pursuit would aim if engaged now, so the operator
-                // can see the target (field vs. ditch) before engaging. The steer angle it
-                // would command feeds the steer bar, as AgOpenGPS computes it whether or not
-                // AutoSteer is on (#479); nothing steers from it here.
-                var display = CalculateDisplayGuidance(
-                    pos, nearestDisplayTrack, driftedEasting, driftedNorthing, headingRad);
-                if (display is { } dg)
-                {
-                    steerAngle = dg.SteerAngle;
-                    if (dg.Goal is { } goal)
-                    {
-                        goalE = goal.Easting;
-                        goalN = goal.Northing;
-                        hasGoal = true;
-                    }
-                }
-            }
-            _guidanceWorking.HowManyPathsAway = nearestPass;
-            passNumber = nearestPass;
-        }
-
-        // Phase D D2: write cycle-local guidance outputs into _guidanceWorking
-        // so BuildGuidanceSnapshot can read them uniformly. D3 will make the
-        // working state the authoritative source (today the flat GpsCycleResult
-        // fields are still populated from locals and consumed by ApplyResults).
-        _guidanceWorking.SteerAngle = steerAngle;
-        _guidanceWorking.CrossTrackError = crossTrackError;
-        _guidanceWorking.GoalPoint = new Vec2(goalE, goalN);
-        _guidanceWorking.HasGoalPoint = hasGoal;
-
-        // ── (7) Section control + coverage painting ─────────────────────
+        // ── Step 12: the sections, the headland and the lift, the machine state ──
         // SectionControlService.Update is now driven by the host control
         // loop at 100 Hz (#313 commit 5c) for sub-frame edge accuracy.
         // The pipeline only reads the latest section states here for its
@@ -1445,7 +741,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var sectionStates = _sectionControlService.SectionStates;
         int numSections = _sectionControlService.NumSections;
 
-        // ── (8b) Hydraulic lift state (PGN 239 input) ───────────────────
+        // Hydraulic lift state (PGN 239 input).
         // Phase B completion: this used to live on the UI-thread legacy
         // path (MainViewModel.UpdateToolPositionProperties). Moved here so
         // SetMachineState's three fields (section bits, U-turn state,
@@ -1453,74 +749,24 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // build in (9) reads them. Between cycles the control loop keeps the
         // section bits current itself (SetSectionBits, #311).
         // The tool in the headland raises the lift and, as in AgOpenGPS, turns the tram lights off.
-        bool toolInHeadland = IsToolInHeadland(toolPos, toolHeading, pos.Speed, headlandLine, headlandOn);
-        byte hydLiftState = HydLiftFor(toolInHeadland, pos.Speed, headlandLine, boundary, headlandOn);
+        bool toolInHeadland = _headlandStep.IsToolInHeadland(toolPos, toolHeading, pos.Speed, headlandLine, headlandOn);
+        byte hydLiftState = _headlandStep.HydLiftFor(toolInHeadland, pos.Speed, headlandLine, boundary, headlandOn, _poseStep.IsReverse);
         _autoSteerService.SetMachineState(
             _sectionControlService.GetSectionBits64(),
             isInYouTurn,
             hydLiftState,
-            _isOutOfBounds,
+            _autoSteerRules.IsOutOfBounds,
             toolInHeadland);
 
-        // ── (9) AutoSteer pipeline (PGN/latency) ────────────────────────
-        _autoSteerService.ProcessSimulatedPosition(
-            pos.Latitude, pos.Longitude, pos.Altitude,
-            pos.Heading, pos.Speed, data.FixQuality,
-            data.SatellitesInUse, data.Hdop,
-            driftedEasting, driftedNorthing);
+        // ── Step 13: the PGNs ────────────────────────────────────────────
+        SendPgns(data, pos, headingPlane, driftedEasting, driftedNorthing, headingRad, hasActiveField);
 
-        // ── (9b) PGN 100 corrected position, PGN 214 GPS data ───────────
-        // AgOpenGPS sends pn.fix: the antenna with antenna offset, roll and drift applied
-        // but not moved back to the pivot. Undo the fore/aft step of the transform above.
-        // PGN 214 is the fix as it came in, which AgIO sends after parsing each sentence;
-        // GPS_Out takes speed, heading and fix quality from it (#364). AgIO only has real
-        // receivers; it goes out for the simulator too, so GPS_Out works in sim.
-        // Both off unless ticked on the Network IO card. PGN 214 also goes to an ISOBUS task
-        // controller while one is heard, ticked or not: it tells the implements the fix
-        // quality from it (DDI 514), and without it says plain GPS whatever the receiver has.
-        _autoSteerService.SendGpsData(data, toLoopback: _configStore.Connections.SendCorrectedPosition);
-        if (_configStore.Connections.SendCorrectedPosition && headingPlane != null && data.FixQuality > 0)
-        {
-            double fixE = driftedEasting + Math.Sin(headingRad) * _configStore.Vehicle.AntennaPivot;
-            double fixN = driftedNorthing + Math.Cos(headingRad) * _configStore.Vehicle.AntennaPivot;
-            var fix = headingPlane.ConvertGeoCoordToWgs84(new GeoCoord(fixN, fixE));
-            _autoSteerService.SendCorrectedPosition(fix.Latitude, fix.Longitude, pos.Heading);
-        }
+        // ── Step 14: the headland distance, then the RTK alarm ───────────
+        _headlandStep.Proximity(headlandLine, _toolPositionService.ToolPivotPosition, headlandOn,
+            out double? headlandDist, out bool headlandWarning);
 
-        // ── (9c) Loopback copies of PGN 254, 239, 229 ───────────────────
-        // AgOpenGPS sends every module PGN to AgIO's loopback port, where rate controllers
-        // read speed and section states; once per fix, 239 and 229 only with a field open.
-        _autoSteerService.SendLoopbackPgns(hasActiveField);
-
-        // ── (10) Headland proximity ─────────────────────────────────────
-        double? headlandDist = null;
-        bool headlandWarning = false;
-        ComputeHeadlandProximity(headlandLine, _toolPositionService.ToolPivotPosition, headlandOn,
-            out headlandDist, out headlandWarning);
-
-        // Hold last valid distance so the HUD doesn't disappear in gaps
-        // (e.g., between crossing the headland line and entering the U-turn arc).
-        // Only with the headland on: off, there is no distance (AgOpenGPS draws none), and the
-        // held one stayed on the screen, frozen while the tractor drove on, until the headland
-        // was turned on again (a tester's box stood at 173 m for 55 s, Tapada da Casa).
-        if (headlandDist != null)
-        {
-            _lastHeadlandDistance = headlandDist;
-            _lastHeadlandWarning = headlandWarning;
-        }
-        else if (headlandOn && _lastHeadlandDistance != null && headlandLine != null)
-        {
-            headlandDist = _lastHeadlandDistance;
-            headlandWarning = _lastHeadlandWarning;
-        }
-        else
-        {
-            _lastHeadlandDistance = null;
-            _lastHeadlandWarning = false;
-        }
-
-        // ── (11) RTK quality sounds ─────────────────────────────────────
-        if (CheckRtkQualityChange(data.FixQuality) && autoSteerEngaged)
+        // RTK quality sounds.
+        if (_autoSteerRules.CheckRtkQualityChange(data.FixQuality) && autoSteerEngaged)
         {
             // "Alarm stops AutoSteer" (#106) — same path as the boundary kickout.
             autoSteerEngaged = false;
@@ -1529,7 +775,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             lock (_stateLock) _autoSteerEngaged = false;
         }
 
-        // ── (12) Build section state arrays for result ──────────────────
+        // ── Step 15: the snapshot. The section arrays first ──────────────
         bool[]? secStatesArr = null;
         int[]? secColorCodes = null;
         if (numSections > 0)
@@ -1543,7 +789,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
         }
 
-        // ── (13) Build immutable result ─────────────────────────────────
+        // The immutable result: the one way out to the host loop.
         var result = new GpsCycleResult
         {
             // GPS position
@@ -1554,19 +800,19 @@ public sealed class GpsPipelineService : IGpsPipelineService
             Northing = driftedNorthing,
             Heading = pos.Heading,
             Speed = pos.Speed,
-            RollDegrees = _roll,
+            RollDegrees = _poseStep.Roll,
             SatelliteCount = data.SatellitesInUse,
             Hdop = data.Hdop,
             DifferentialAge = data.DifferentialAge,
             FixQuality = data.FixQuality,
             GpsValid = data.IsValid,
             SentenceType = data.SentenceType,
-            SentenceHeading = _sentenceHeading,
+            SentenceHeading = _poseStep.SentenceHeading,
             ImuValid = data.ImuValid,
-            IsReverse = _isReverse,
-            IsDualHeadingMissing = _headingFusion.IsDualHeadingMissing,
-            IsDualHeadingOffTravel = _headingFusion.IsDualHeadingOffTravel,
-            DualHeadingOffTravelDeg = _headingFusion.DualHeadingOffTravelDeg,
+            IsReverse = _poseStep.IsReverse,
+            IsDualHeadingMissing = _poseStep.IsDualHeadingMissing,
+            IsDualHeadingOffTravel = _poseStep.IsDualHeadingOffTravel,
+            DualHeadingOffTravelDeg = _poseStep.DualHeadingOffTravelDeg,
 
             // Tool position
             ToolEasting = toolPos.Easting,
@@ -1581,10 +827,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
             IsAutoSteerEngaged = autoSteerEngaged,
             AutoSteerDisengagedThisCycle = autoSteerDisengaged,
             HydLiftState = hydLiftState,
-            IsOutOfBounds = _isOutOfBounds,
-            ContourRef = _contourRefShown,
-            IsContourLocked = _contourLockedShown,
-            HasContoursToSave = _contourHasPending,
+            IsOutOfBounds = _autoSteerRules.IsOutOfBounds,
+            ContourRef = _contourStep.RefShown,
+            IsContourLocked = _contourStep.LockedShown,
+            HasContoursToSave = _contourStep.HasPending,
             DisengageReason = disengageReason,
 
             // Per-cycle snapshots for UI-thread mirror via ApplyGpsCycleResult.
@@ -1593,12 +839,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // Guidance snapshot emits every cycle — Phase D D3 made the cycle
             // the sole writer of _guidanceWorking.HowManyPathsAway, so the
             // snapshot can no longer fight an opposing UI-thread writer.
-            YouTurn = BuildYouTurnSnapshot(
-                _youTurn,
+            YouTurn = _uTurnStep.Snapshot(
                 justCompleted: youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false)),
-            Guidance = BuildGuidanceSnapshot(
-                WithLineLabel(_guidanceWorking, shownLandingPass), displayTrack, baseTrack, hasGuidance,
-                diagPathAnchorA, diagPathAnchorB, diagTurnPathCount, diagAntiTangentGuardFired) with { GuideLines = guideLines, ToolPass = toolPass },
+            Guidance = _guidance.Snapshot(shownLandingPass, displayTrack, baseTrack, hasGuidance,
+                diagPathAnchorA, diagPathAnchorB, diagTurnPathCount, diagAntiTangentGuardFired, guideLines, toolPass),
 
             // Sections
             SectionStates = secStatesArr,
@@ -1609,8 +853,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
             HeadlandProximityWarning = headlandWarning,
 
             // Contour: a stretch ahead that can't be driven as a lap
-            ContourAhead = (byte)_contourAhead.What,
-            ContourAheadM = _contourAhead.AtM,
+            ContourAhead = (byte)_contourStep.Ahead.What,
+            ContourAheadM = _contourStep.Ahead.AtM,
 
             // Phase E: first-fix LocalPlane auto-create — non-null only on
             // the single cycle where the cycle bootstrapped the plane.
@@ -1654,1020 +898,230 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
     }
 
+    /// <summary>
+    /// Step 4, the lines the cycle turns and works at: the operator's headland (or, with none,
+    /// the turn line in its place), the turn line the U-turn turns at, and the headland the
+    /// sections work to; and a boundary-follow curve's fixed pass.
+    /// </summary>
+    private void TurnLines(Models.Track.Track? track, Boundary? boundary, bool headlandOn,
+        ref List<Vec3>? headlandLine, ref double headlandCalculatedWidth,
+        out bool noPassOffset, out List<Vec3>? turnLine, out List<Vec3>? workHeadland)
+    {
+        // Boundary-follow curve (NoPassOffset): only SUPPRESS the free-drive nearest-pass snap
+        // (below) so it stays where you put it — it starts on the boundary (pass 0, seeded from
+        // NudgeDistance) instead of jumping to the pass nearest a parked tractor. Laterals,
+        // nudges and U-turns still change the pass normally; we don't pin it here.
+        noPassOffset = track != null && track.NoPassOffset;
+
+        // No-headland workflow: substitute the outer-boundary TURN LINE for the
+        // missing headland line — the AgOpen model (CTurn.BuildTurnLines): the
+        // fence offset inward by just UTurnDistanceFromBoundary. This line is the
+        // "in-turn-bounds" polygon the state machine gates arming on and raycasts
+        // distance to; a fence-hugging boundary-follow pass (offset ~half a tool
+        // inside the fence) sits INSIDE it, so it arms via the normal cultivated-
+        // zone path. The turn's actual geometry is anchored on the turn boundary
+        // built inside BuildCreationInput (also offset by UTurnDistanceFromBoundary)
+        // and fitted by MoveTurnInsideTurnLine, so this line does not shape the arc.
+        if (headlandLine == null && boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid)
+        {
+            var synth = _uTurnStep.GetOrComputeSyntheticHeadland(boundary);
+            if (synth.Line != null && synth.Line.Count >= 3)
+            {
+                headlandLine = synth.Line;
+                headlandCalculatedWidth = synth.Inset;
+            }
+        }
+
+        // The U-turn turns at the turn line, as AgOpenGPS (CYouTurn uses bndList[].turnLine only,
+        // CTurn.BuildTurnLines: the fence moved in by the U-turn distance from boundary): with a
+        // headland too. The headland is for the sections, the hydraulic lift and the drawing; a
+        // pass inside the headland band (a boundary curve's outer passes) turns at the turn line
+        // like any other (#694, Graeme: "if I delete the headland I can make U-turns on the outer
+        // passes"). The operator's headland is kept for the warning that a turn leaves its pass
+        // before the headland line.
+        turnLine = headlandLine;
+        if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid)
+        {
+            var tl = _uTurnStep.GetOrComputeSyntheticHeadland(boundary);
+            if (tl.Line != null && tl.Line.Count >= 3) turnLine = tl.Line;
+        }
+        workHeadland = headlandOn && _headlandLine != null && _headlandLine.Count >= 3 ? _headlandLine : null;
+
+    }
+
+    /// <summary>Step 6, this fix's pose to the estimator the control tick and the render pull read.</summary>
+    private void PublishPose(GpsData data, Position pos, double driftedEasting, double driftedNorthing, double headingRad)
+    {
+        // ── (2b) Publish canonical pose to the position estimator ───────
+        // The estimator is the bridge between GPS arrivals (10 Hz) and
+        // the host control loop (100 Hz). Readers — control loop,
+        // renderer — pull dead-reckoned pose between GPS samples.
+        if (_positionEstimator is not null)
+        {
+            // ImuValid only says the IMU *heading* is usable; a $PAOGI fix leaves it
+            // false (the antenna heading needs no fusion) but still carries the dual roll.
+            bool hasAttitude = data.ImuValid || data.HasDualHeading;
+            // The sentence's yaw rate field is not used: the estimator derives the rate
+            // from the heading change (a zero here asks for that). What the field holds
+            // depends on the firmware, a $PAOGI has no "no IMU" marker for it, and
+            // AgOpenGPS only displays it. A board sending -103.8 deg/s while parked swung
+            // the predicted heading 10 degrees and back at every fix.
+            const double yawRateRadPerSec = 0.0;
+            double rollRad = hasAttitude
+                ? _poseStep.Roll * Math.PI / 180.0
+                : 0.0;
+            long ts = Clock.Current.GetTimestamp();
+            _positionEstimator.UpdateFromGps(new PoseSnapshot(
+                new Vec2(driftedEasting, driftedNorthing),
+                headingRad,
+                pos.Speed,
+                yawRateRadPerSec,
+                rollRad,
+                ts));
+            // Test hook: fire so a synchronous control-loop tick can advance
+            // the section state machine before this cycle's GpsCycleResult
+            // captures section bits. No-op in production (loop runs on its
+            // own thread).
+            PoseEstimatorUpdated?.Invoke(ts);
+        }
+
+    }
+
+    /// <summary>
+    /// Step 9, the rules that switch AutoSteer off or pause the steering, and the turn dropped
+    /// when AutoSteer is off. Before the guidance, so a disengage steers nothing this fix; each
+    /// writes the host loop's flag under the state lock.
+    /// </summary>
+    private void ApplyAutoSteerRules(Position pos, Boundary? boundary, List<Vec3>? turnLine, bool youTurnEnabled,
+        bool hasValidHeadlandLine, bool simulatorEnabled, double driftedEasting, double driftedNorthing,
+        ref bool autoSteerEngaged, out bool autoSteerDisengaged, out string? disengageReason,
+        ref bool isYouTurnTriggered, ref bool isInYouTurn, ref List<Vec3>? youTurnPath)
+    {
+        // ── (5) Out of bounds (#494) ────────────────────────────────────
+        // Leaving the field never switches autosteer off. As AgOpenGPS (Position.designer.cs,
+        // "Youturn"): the boundary shows it and PGN 239 carries geoStop for the machine module.
+        autoSteerDisengaged = false;
+        disengageReason = null;
+        _autoSteerRules.UpdateOutOfBounds(boundary, turnLine, youTurnEnabled && hasValidHeadlandLine,
+            _uTurnStep.IsTriggered || _uTurnStep.IsExecuting,
+            driftedEasting, driftedNorthing);
+
+        // (5a) A dual heading across the direction of travel: its offset doesn't match how
+        // the antennas are mounted (front to back set up as side by side). Guidance would
+        // steer for a tractor driving across its line, and the tractor leaves the pass.
+        // Also on the simulator, which takes the offset too.
+        if (autoSteerEngaged && _poseStep.IsDualHeadingOffTravel)
+        {
+            autoSteerEngaged = false;
+            autoSteerDisengaged = true;
+            disengageReason = "AutoSteer disengaged - " + DualHeadingOffTravelText(_poseStep.DualHeadingOffTravelDeg);
+            lock (_stateLock) _autoSteerEngaged = false;
+        }
+
+        // (5b) Steering speed limits (#106) — like AgOpenGPS, and like it not on the simulator.
+        if (autoSteerEngaged && !simulatorEnabled)
+        {
+            var speedReason = _autoSteerRules.CheckSteerSpeedLimits(pos.Speed * 3.6);
+            if (speedReason != null)
+            {
+                autoSteerEngaged = false;
+                autoSteerDisengaged = true;
+                disengageReason = speedReason;
+                lock (_stateLock) _autoSteerEngaged = false;
+            }
+        }
+        else
+        {
+            _autoSteerRules.NotSteering();
+        }
+
+        // (5c) Reverse (#125), like AgOpenGPS: with Steer in reverse off, steering
+        // stops while reversing but AutoSteer stays engaged; it also stops while a
+        // single antenna with no IMU can't yet tell a direction change. PGN 254
+        // status goes to 0 for those cycles.
+        bool steerPaused = autoSteerEngaged
+            && ((_poseStep.IsReverse && !_configStore.AutoSteer.SteerInReverse) || _poseStep.IsChangingDirection);
+        _autoSteerService.SetSteerPaused(steerPaused);
+
+        // U-turn lifecycle is bound to autosteer: when autosteer is not
+        // engaged (user toggled off, boundary kickout, far-from-field guard,
+        // or any other disengage path), the rendered turn path must clear so
+        // the operator doesn't see a stale arc on the map. The state machine
+        // tick is also gated on autoSteerEngaged, so without this clear the
+        // working state would freeze with IsTriggered/IsExecuting=true and
+        // the snapshot would keep emitting the old TurnPath every cycle —
+        // ApplyGpsCycleResult would then keep pushing it back to the map.
+        // Re-engaging autosteer rebuilds the turn from scratch via the auto
+        // tick or a manual trigger.
+        if (!autoSteerEngaged
+            && _uTurnStep.HasTurn)
+        {
+            _uTurnStep.Clear();
+            isYouTurnTriggered = false;
+            isInYouTurn = false;
+            youTurnPath = null;
+        }
+
+    }
+
+    /// <summary>Step 13, the fix's PGNs: AutoSteer's (254), the GPS data (214), the corrected position (100) and the loopback copies.</summary>
+    private void SendPgns(GpsData data, Position pos, LocalPlane? headingPlane,
+        double driftedEasting, double driftedNorthing, double headingRad, bool hasActiveField)
+    {
+        // ── (9) AutoSteer pipeline (PGN/latency) ────────────────────────
+        _autoSteerService.ProcessSimulatedPosition(
+            pos.Latitude, pos.Longitude, pos.Altitude,
+            pos.Heading, pos.Speed, data.FixQuality,
+            data.SatellitesInUse, data.Hdop,
+            driftedEasting, driftedNorthing);
+
+        // ── (9b) PGN 100 corrected position, PGN 214 GPS data ───────────
+        // AgOpenGPS sends pn.fix: the antenna with antenna offset, roll and drift applied
+        // but not moved back to the pivot. Undo the fore/aft step of the transform above.
+        // PGN 214 is the fix as it came in, which AgIO sends after parsing each sentence;
+        // GPS_Out takes speed, heading and fix quality from it (#364). AgIO only has real
+        // receivers; it goes out for the simulator too, so GPS_Out works in sim.
+        // Both off unless ticked on the Network IO card. PGN 214 also goes to an ISOBUS task
+        // controller while one is heard, ticked or not: it tells the implements the fix
+        // quality from it (DDI 514), and without it says plain GPS whatever the receiver has.
+        _autoSteerService.SendGpsData(data, toLoopback: _configStore.Connections.SendCorrectedPosition);
+        if (_configStore.Connections.SendCorrectedPosition && headingPlane != null && data.FixQuality > 0)
+        {
+            double fixE = driftedEasting + Math.Sin(headingRad) * _configStore.Vehicle.AntennaPivot;
+            double fixN = driftedNorthing + Math.Cos(headingRad) * _configStore.Vehicle.AntennaPivot;
+            var fix = headingPlane.ConvertGeoCoordToWgs84(new GeoCoord(fixN, fixE));
+            _autoSteerService.SendCorrectedPosition(fix.Latitude, fix.Longitude, pos.Heading);
+        }
+
+        // ── (9c) Loopback copies of PGN 254, 239, 229 ───────────────────
+        // AgOpenGPS sends every module PGN to AgIO's loopback port, where rate controllers
+        // read speed and section states; once per fix, 239 and 229 only with a field open.
+        _autoSteerService.SendLoopbackPgns(hasActiveField);
+
+    }
+
     // PERF-05 #3: GPS pipeline accumulators. Gated by DiagFlags.PerfGpsPipeline.
     private long _perfGpsCycleTicks;
     private long _perfGpsCycleAllocs;
     private int _perfGpsCycleCount;
     private DateTime _perfGpsWindowStart = DateTime.UtcNow;
 
-    private static YouTurnSnapshot BuildYouTurnSnapshot(YouTurnWorkingState src, bool justCompleted) => new()
-    {
-        IsEnabled = src.IsEnabled,
-        IsTriggered = src.IsTriggered,
-        IsExecuting = src.IsExecuting,
-        TurnPath = src.TurnPath,
-        PathIndex = src.PathIndex,
-        ArcStart = src.ArcStart,
-        IsTurnLeft = src.IsTurnLeft,
-        LastTurnWasLeft = src.LastTurnWasLeft,
-        DistanceToHeadland = src.DistanceToHeadland,
-        DistanceToTrigger = src.DistanceToTrigger,
-        NextTrack = src.NextTrack,
-        LastCompletionPosition = src.LastCompletionPosition,
-        HasCompletedFirstTurn = src.HasCompletedFirstTurn,
-        YouTurnCounter = src.YouTurnCounter,
-        WasHeadingSameWayAtTurnStart = src.WasHeadingSameWayAtTurnStart,
-        NextTrackTurnOffset = src.NextTrackTurnOffset,
-        ReturnPassTargetPath = src.ReturnPassTargetPath,
-        SnakeSequence = src.SnakeSequence,
-        SnakeIndex = src.SnakeIndex,
-        AltSign = src.AltSign,
-        AltBaseWidth = src.AltBaseWidth,
-        AltWidth = src.AltWidth,
-        AltTurnSkips = src.AltTurnSkips,
-        AltPrevBig = src.AltPrevBig,
-        CurrentZone = src.CurrentZone,
-        NextUTurnDirectionLeftOverride = src.NextUTurnDirectionLeftOverride,
-        JustCompleted = justCompleted,
-    };
-
-    // The pass label, as AgOpenGPS's DrawTrackInfo: an arrow for the way you drive (up = A→B, its
-    // font's '{'; down = B→A, its '}') and the pass counted from the reference line, which is the
-    // edge between passes: pass 0 is 1R, pass −1 is 1L. The map adds the nudge in its own units.
-    // The label names the pass shown: during a U-turn the pass it lands on, driven the other way.
-    private static GuidanceWorkingState WithLineLabel(GuidanceWorkingState g, int? landingPass = null)
-    {
-        int pass = landingPass ?? g.HowManyPathsAway;
-        bool sameWay = landingPass.HasValue ? !g.IsHeadingSameWay : g.IsHeadingSameWay;
-        g.CurrentLineLabel = (sameWay ? "↑" : "↓") + PassName(pass);
-        return g;
-    }
-
-    /// <summary>The pass as its label names it: pass 0 is 1R, pass −1 is 1L.</summary>
-    private static string PassName(int pass) => pass >= 0 ? $"{pass + 1}R" : $"{-pass}L";
-
-    private static GuidanceSnapshot BuildGuidanceSnapshot(
-        GuidanceWorkingState src,
-        Models.Track.Track? displayTrack,
-        Models.Track.Track? baseTrack,
-        bool hasGuidance,
-        int pathAnchorA,
-        int pathAnchorB,
-        int turnPathPointCount,
-        bool antiTangentGuardFired) => new()
-    {
-        // GuidanceState-mirrored fields (all populated from the cycle's
-        // working state — Phase D D2 writes them there at end-of-branch).
-        ActiveTrack = src.ActiveTrack,
-        IsGuidanceActive = src.IsGuidanceActive,
-        CrossTrackError = src.CrossTrackError,
-        HeadingError = src.HeadingError,
-        SteerAngle = src.SteerAngle,
-        SteerAngleRaw = src.SteerAngleRaw,
-        DistanceOffRaw = src.DistanceOffRaw,
-        PpIntegral = src.PpIntegral,
-        PpPivotDistanceError = src.PpPivotDistanceError,
-        PpPivotDistanceErrorLast = src.PpPivotDistanceErrorLast,
-        PpCounter = src.PpCounter,
-        GoalPoint = src.GoalPoint,
-        HasGoalPoint = src.HasGoalPoint,
-        RadiusPoint = src.RadiusPoint,
-        PurePursuitRadius = src.PurePursuitRadius,
-        IsHeadingSameWay = src.IsHeadingSameWay,
-        IsReverse = src.IsReverse,
-        HowManyPathsAway = src.HowManyPathsAway,
-        NudgeOffset = src.NudgeOffset,
-        CurrentLineLabel = src.CurrentLineLabel,
-        IsContourMode = src.IsContourMode,
-
-        // Cycle-only fields (not mirrored on GuidanceState) — passed in
-        // from ProcessCycle's local computations.
-        HasGuidance = hasGuidance,
-        DisplayTrack = displayTrack,
-        BaseTrack = baseTrack,
-        PathAnchorA = pathAnchorA,
-        PathAnchorB = pathAnchorB,
-        TurnPathPointCount = turnPathPointCount,
-        AntiTangentGuardFired = antiTangentGuardFired,
-    };
-
-    // ══════════════════════════════════════════════════════════════════════
-    // Guidance helpers (run on background thread, no Avalonia types)
-    // ══════════════════════════════════════════════════════════════════════
-
-    // The cross-track error that tells the steer module there is no line (TrackGuidanceService's,
-    // AgOpenGPS's 32000; PgnBuilder sends it as such).
-    private const double NoLineDistance = 32000;
-
-    // How deep a strip past A and B the U-turn has in a curve's opening (CurveEndOpening): room for
-    // the turn itself, twice its radius, and the distance from boundary it keeps from that virtual
-    // fence; not the headland's width, since the turn is made at the turn line whatever the headland
-    // (with none, the strip was the 4 m U-turn distance and no turn fitted there).
-    private double OpeningTurnRoom()
-    {
-        var g = _configStore.Guidance;
-        return 2 * g.UTurnRadius + Math.Max(0, g.UTurnDistanceFromBoundary);
-    }
-
-    // The U-turn's field for a curve whose ends face each other, kept until the track, its
-    // points, the boundary, the headland or its width change (CurveEndOpening, #694).
-    private (Models.Track.Track? Track, List<Vec3>? Points, int Count, Boundary? Boundary, List<Vec3>? Headland, double Width) _turnFieldKey;
-    private CurveEndOpening.TurnField? _turnField;
-
-    private CurveEndOpening.TurnField? CurveEndTurnField(Models.Track.Track track, Boundary? boundary,
-        List<Vec3>? headlandLine, double headlandWidth)
-    {
-        var key = (track, track.Points, track.Points.Count, boundary, headlandLine, headlandWidth);
-        if (!ReferenceEquals(key.track, _turnFieldKey.Track) || !ReferenceEquals(key.Points, _turnFieldKey.Points)
-            || key.Count != _turnFieldKey.Count || !ReferenceEquals(boundary, _turnFieldKey.Boundary)
-            || !ReferenceEquals(headlandLine, _turnFieldKey.Headland) || headlandWidth != _turnFieldKey.Width)
-        {
-            _turnFieldKey = key;
-            _turnField = track.Points.Count > 2 && !track.IsClosed && !track.IsPivot
-                ? CurveEndOpening.Build(track.Points, boundary, headlandLine, headlandWidth)
-                : null;
-        }
-        return _turnField;
-    }
-
     /// <summary>Why AutoSteer went off at the end of an open curve (AgOpenGPS gsGuidanceStopped, gsPastEndOfCurve).</summary>
     public const string PastEndOfCurveReason = "AutoSteer disengaged - past end of curve";
     public const string RecordedPathEndReason = "AutoSteer disengaged - end of the recorded path";
 
-    private (double steerAngle, double xte, double goalE, double goalN, string? statusMessage, bool hasLine, bool atEnd)?
-        CalculateTrackGuidance(
-            Position currentPosition, Models.Track.Track track, int passNumber, double nudgeOffset,
-            double driftedEasting, double driftedNorthing, double headingRad,
-            bool isYouTurnTriggered)
-    {
-        var config = _configStore;
-
-        double speedKmh = currentPosition.Speed * 3.6;
-        double lookAhead = GoalLookAhead(speedKmh);
-
-        // Steer axle position
-        double steerE = driftedEasting + Math.Sin(headingRad) * config.Vehicle.Wheelbase;
-        double steerN = driftedNorthing + Math.Cos(headingRad) * config.Vehicle.Wheelbase;
-
-        // Calculate parallel offset: the line that puts the tool on the pass (#446)
-        bool isHeadingSameWay = _guidanceWorking.IsHeadingSameWay;
-        double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        double distAway = Models.Track.PassGeometry.Offset(track, passNumber, widthMinusOverlap, nudgeOffset,
-            Models.Track.PassGeometry.ToolShift(config.Tool.Offset, isHeadingSameWay));
-
-        if (_cycleCounter % 50 == 0)
-        {
-            Console.WriteLine($"[Guidance] pass={passNumber} distAway={distAway:F1} pivot=({driftedEasting:F1},{driftedNorthing:F1}) h={headingRad*180/Math.PI:F1}");
-        }
-
-        Models.Track.Track currentTrack;
-        string? statusMessage = null;
-
-        // Curve tracks are extended along their (smoothed) end tangents so the STEERING
-        // line is the SAME extended curve the U-turn is built from. Otherwise the offset
-        // guidance line stops at the recorded curve's end and the tractor approaches at the
-        // curve's local heading, while the U-turn entry leg sits on the straight tangent
-        // extension — a heading step at the algorithm handoff (the entry "hunt"). Extending
-        // the steering line lets the tractor commit to the extension direction during the
-        // (smooth) approach instead. No-op for closed loops.
-        bool extendCurve = track.Points.Count > 2 && !track.IsClosed;
-
-        if (Math.Abs(distAway) < 0.01)
-        {
-            currentTrack = extendCurve
-                ? new Models.Track.Track
-                {
-                    Name = $"{track.Name} (path {passNumber})",
-                    Points = CurveProcessing.ExtendCurveEnds(track.Points),
-                    Type = track.Type, IsVisible = true, IsActive = true, IsClosed = track.IsClosed
-                }
-                : track;
-        }
-        else
-        {
-            var cached = _offsetPasses.Get(track, distAway, _configStore.Guidance.UTurnRadius);
-            double percentRemoved = cached.PercentRemoved;
-            var offsetPoints = extendCurve ? CurveProcessing.ExtendPass(cached) : new List<Vec3>(cached.Points);
-
-            // Warn on tight curves
-            if (percentRemoved > 10 && passNumber != _lastWarnedPathsAway)
-            {
-                if ((DateTime.Now - _lastCurveLimitWarning).TotalSeconds > 10)
-                {
-                    _lastCurveLimitWarning = DateTime.Now;
-                    _lastWarnedPathsAway = passNumber;
-
-                    double minRadius = CurveProcessing.CalculateMinRadiusOfCurvature(track.Points);
-                    int maxPasses = CurveProcessing.CalculateMaxInwardPasses(track.Points, widthMinusOverlap);
-                    statusMessage = $"Curve too tight! {percentRemoved:F0}% removed. Max ~{maxPasses} inward passes (min radius: {minRadius:F1}m)";
-                }
-            }
-
-            currentTrack = new Models.Track.Track
-            {
-                Name = $"{track.Name} (path {passNumber})",
-                Points = offsetPoints,
-                Type = track.Type,
-                IsVisible = true,
-                IsActive = true,
-                // Preserve closed-loop flag so guidance wraps at the seam rather
-                // than treating an offset boundary loop as an open polyline (#422).
-                IsClosed = track.IsClosed
-            };
-
-            // No pass here: the offset removed all of it (#694). Nothing to steer to, as in
-            // AgOpenGPS, whose empty pass sends the module its no-line distance (32000).
-            if (offsetPoints.Count < 2)
-                return (0, 0, 0, 0, statusMessage, false, false);
-        }
-
-        if (_cycleCounter % 50 == 0 && currentTrack.Points.Count >= 2)
-        {
-            var p0 = currentTrack.Points[0];
-            var pN = currentTrack.Points[^1];
-            Console.WriteLine($"[Guidance] track: ({p0.Easting:F1},{p0.Northing:F1})->({pN.Easting:F1},{pN.Northing:F1})");
-        }
-
-
-        // Build guidance input
-        var input = new Models.Track.TrackGuidanceInput
-        {
-            Track = currentTrack,
-            PivotPosition = new Vec3(driftedEasting, driftedNorthing, headingRad),
-            SteerPosition = new Vec3(steerE, steerN, headingRad),
-            UseStanley = config.Guidance.IsStanley,
-            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
-            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
-            StanleyIntegralGain = config.Guidance.StanleyIntegralGainAB,
-            IsHeadingSameWay = isHeadingSameWay,
-            Wheelbase = config.Vehicle.Wheelbase,
-            MaxSteerAngle = config.Vehicle.MaxSteerAngle,
-            GoalPointDistance = lookAhead,
-            // Side-hill compensation (AgOpenGPS gyd.sideHillCompFactor): steer += roll × −factor.
-            SideHillCompFactor = config.AutoSteer.SideHillCompensation,
-            PurePursuitIntegralGain = config.Guidance.PurePursuitIntegralGain,
-            FixHeading = headingRad,
-            AvgSpeed = speedKmh,
-            IsReverse = _isReverse,
-            IsAutoSteerOn = true,
-            IsYouTurnTriggered = isYouTurnTriggered,
-            ImuRoll = _roll, // 0 with no roll source → no side-hill term (#110)
-            PreviousState = _trackGuidanceState,
-            // Re-acquire the nearest segment globally on engage AND whenever the
-            // travel direction along the track flips — otherwise a stranded local
-            // index can't recover and the vehicle keeps steering off the wrong
-            // part of the loop (#422). Steady-state stays local.
-            FindGlobalNearest = _trackGuidanceState == null || isHeadingSameWay != _lastHeadingSameWay,
-            CurrentLocationIndex = _trackGuidanceState?.CurrentLocationIndex ?? 0
-        };
-        _lastHeadingSameWay = isHeadingSameWay;
-
-        var output = _trackGuidanceService.CalculateGuidance(input);
-
-        // Store state for next iteration
-        _trackGuidanceState = output.State;
-        if (_trackGuidanceState != null)
-            _trackGuidanceState.CurrentLocationIndex = output.CurrentLocationIndex;
-
-        return (output.SteerAngle, output.CrossTrackError, output.GoalPoint.Easting, output.GoalPoint.Northing,
-                statusMessage, true, output.IsAtEndOfTrack);
-    }
-
-    /// <summary>
-    /// Contour for one cycle (#110), like AgOpenGPS: record the pivot (+ tool offset) as a
-    /// strip while any section paints, each time it has moved a third of a width (or 1 m);
-    /// with the contour button on, rebuild the guidance line and compute steering against
-    /// it (also when not engaged, for the XTE display). Returns null with no usable line.
-    /// </summary>
-    private ContourSteer? ProcessContour(bool contourOn, bool hasActiveField,
-        double pivotE, double pivotN, double headingRad, double antennaE, double antennaN,
-        double speedKmh, bool autoSteerEngaged, out Models.Track.Track? displayTrack)
-    {
-        var config = _configStore;
-        var pivot = new Vec3(pivotE, pivotN, headingRad);
-        ContourSteer? steer = null;
-        lock (_contourLock)
-        {
-            _contour.FollowAutoSteer(autoSteerEngaged); // before the rebuild: lock the current line
-            if (hasActiveField)
-            {
-                double contourWidth = (config.ActualToolWidth - config.Tool.Overlap) / 3.0;
-                double moved = _lastContourPos is { } lp
-                    ? Math.Sqrt((pivotE - lp.Easting) * (pivotE - lp.Easting) + (pivotN - lp.Northing) * (pivotN - lp.Northing))
-                    : double.MaxValue;
-                if (moved > Math.Min(contourWidth, 1.0))
-                {
-                    bool painting = false;
-                    var states = _sectionControlService.SectionStates;
-                    for (int i = 0; i < states.Count && !painting; i++) painting = states[i].IsMappingOn;
-                    _contour.Record(painting, pivot, config.Tool.Offset);
-
-                    var p = ContourParamsFor(speedKmh);
-                    if (contourOn)
-                        _contour.BuildContourGuidanceLine(pivot, headingRad, p,
-                            Clock.Current.GetTimestamp() / (double)Clock.Current.Frequency, autoSteerEngaged);
-                    _lastContourPos = new Vec2(pivotE, pivotN);
-                }
-            }
-
-            if (contourOn)
-            {
-                var p = ContourParamsFor(speedKmh);
-                double wb = config.Vehicle.Wheelbase;
-                var steerPos = new Vec3(pivotE + Math.Sin(headingRad) * wb, pivotN + Math.Cos(headingRad) * wb, headingRad);
-                steer = _contour.DistanceFromContourLine(pivot, steerPos, new Vec2(antennaE, antennaN), headingRad,
-                    p, speedKmh, _isReverse, autoSteerEngaged, _roll);
-            }
-
-            // Display: the line as a track (rebuilt only when it changes) and the reference strip.
-            if (_contour.LineVersion != _contourLineVersion)
-            {
-                _contourLineVersion = _contour.LineVersion;
-                _contourDisplayTrack = _contour.Line.Count >= 2
-                    ? new Models.Track.Track
-                    {
-                        Name = "Contour", Points = new List<Vec3>(_contour.Line),
-                        Type = Models.Track.TrackType.Contour, IsVisible = true, IsActive = true,
-                    }
-                    : null;
-            }
-            displayTrack = contourOn ? _contourDisplayTrack : null;
-
-            int sn = contourOn && _contour.Line.Count >= 2 ? _contour.StripNum : -1;
-            var key = (sn, sn >= 0 ? _contour.Strips[sn].Count : 0);
-            if (key != _contourRefKey)
-            {
-                _contourRefKey = key;
-                _contourRefShown = sn >= 0 ? new List<Vec3>(_contour.Strips[sn]) : null;
-            }
-            _contourLockedShown = contourOn && _contour.IsLocked;
-            _contourHasPending = _contour.PendingSave.Count > 0;
-
-            // Look along the line ahead for a stretch that can't be driven as a lap, early enough
-            // for the operator to take over; the alarm sounds once as it appears.
-            // Checked again when the line changes or the tractor has moved a metre.
-            if (!contourOn || _contour.Line.Count < 3)
-            {
-                _contourAhead = (ContourAhead.Clear, 0);
-                _contourAheadVersion = -1;
-            }
-            else if (_contour.LineVersion != _contourAheadVersion
-                || Math.Abs(pivotE - _contourAheadPos.Easting) + Math.Abs(pivotN - _contourAheadPos.Northing) > 1)
-            {
-                _contourAheadVersion = _contour.LineVersion;
-                _contourAheadPos = new Vec2(pivotE, pivotN);
-                var ahead = ContourAheadCheck.Check(_contour.Line, _contourAheadPos, headingRad,
-                    ContourAheadCheck.Reach(speedKmh), _isPointCovered, config.Guidance.UTurnRadius);
-                if (ahead.What != ContourAhead.Clear && _contourAhead.What != ahead.What && autoSteerEngaged)
-                    _audioService.Play(SoundEffect.BoundaryAlarm);
-                _contourAhead = ahead;
-            }
-        }
-        return steer;
-    }
-
-    /// <summary>What the contour line ahead holds (<see cref="ContourAheadCheck"/>), and how far ahead.</summary>
-    private (ContourAhead What, double AtM) _contourAhead;
-    private int _contourAheadVersion = -1;
-    private Vec2 _contourAheadPos;
-
-    private ContourParams ContourParamsFor(double speedKmh)
-    {
-        var c = _configStore;
-        return new ContourParams(
-            c.ActualToolWidth, c.Tool.Overlap, c.Tool.Offset,
-            c.Guidance.IsStanley, c.Guidance.StanleyHeadingErrorGain, c.Guidance.StanleyDistanceErrorGain,
-            c.Vehicle.Wheelbase, c.Vehicle.MaxSteerAngle, c.Guidance.PurePursuitIntegralGain,
-            c.AutoSteer.SideHillCompensation, GoalLookAheadFor(speedKmh, _contour.LastCrossTrackError));
-    }
-
-    /// <summary>
-    /// Pure Pursuit look-ahead distance (m), AgOpenGPS CVehicle.UpdateGoalPointDistance:
-    /// speed × 0.05 × mult × H + H, where H is the hold look-ahead on the line
-    /// (|XTE| ≤ 0.1 m), hold × acquire factor off it (≥ 0.4 m), blended in between;
-    /// at least the min look-ahead (AgOpenGPS 2 m). XTE is last cycle's (#110).
-    /// </summary>
-    private double GoalLookAhead(double speedKmh) => GoalLookAheadFor(speedKmh, _lastCrossTrackError);
-
-    private double GoalLookAheadFor(double speedKmh, double lastXte)
-    {
-        var g = _configStore.Guidance;
-        double hold = g.GoalPointLookAheadHold;
-        double acquire = hold * g.GoalPointAcquireFactor;
-        double xte = Math.Abs(lastXte);
-        double h = xte <= 0.1 ? hold
-                 : xte >= 0.4 ? acquire
-                 : acquire + (1 - (xte - 0.1) / 0.3) * (hold - acquire);
-        double d = Math.Abs(speedKmh) * 0.05 * g.GoalPointLookAheadMult * h + h;
-        return Math.Max(g.MinLookAheadDistance, d);
-    }
-
-    /// <summary>
-    /// Display-only guidance for free-drive: the steer angle the steering would command if
-    /// engaged right now (the steer bar, #479) and the Pure Pursuit goal point it would chase
-    /// (#95), on the pass the display line shows. Stateless — no PreviousState and a fresh
-    /// global nearest search — so the integrals and the nearest-segment memory the engaged
-    /// path keeps in _trackGuidanceState are untouched. Returns null when the track is
-    /// degenerate; Goal is null under Stanley, which has no look-ahead target (#99).
-    /// </summary>
-    private (double SteerAngle, Vec2? Goal)? CalculateDisplayGuidance(
-        Position pos, Models.Track.Track displayTrack,
-        double pivotEasting, double pivotNorthing, double headingRad)
-    {
-        var config = _configStore;
-        bool stanley = config.Guidance.IsStanley;
-        double speedKmh = pos.Speed * 3.6;
-        var output = _trackGuidanceService.CalculateGuidance(new Models.Track.TrackGuidanceInput
-        {
-            Track = displayTrack,
-            PivotPosition = new Vec3(pivotEasting, pivotNorthing, headingRad),
-            SteerPosition = new Vec3(
-                pivotEasting + Math.Sin(headingRad) * config.Vehicle.Wheelbase,
-                pivotNorthing + Math.Cos(headingRad) * config.Vehicle.Wheelbase,
-                headingRad),
-            UseStanley = stanley,
-            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
-            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
-            Wheelbase = config.Vehicle.Wheelbase,
-            MaxSteerAngle = config.Vehicle.MaxSteerAngle,
-            GoalPointDistance = GoalLookAhead(speedKmh),
-            FixHeading = headingRad,
-            AvgSpeed = speedKmh,
-            IsAutoSteerOn = false,
-            ImuRoll = 88888,
-            PreviousState = null,
-            FindGlobalNearest = true,
-        });
-        // CalculateGuidance flags an unusable track/segment with a 32000 m distance.
-        if (output.DistanceFromLinePivot >= 32000) return null;
-        return (output.SteerAngle, stanley ? null : output.GoalPoint);
-    }
-
-    /// <summary>
-    /// Display-only track update: finds nearest pass and updates map, without steering.
-    /// Returns the detected nearest pass number, the offset display track and the pivot's
-    /// cross-track error to it (m, the engaged guidance's sign) for the light bar.
-    /// </summary>
-    // The track's points are part of the key: a reference nudge or a smoothing gives the same track a new list.
-    private (Models.Track.Track Track, List<Vec3> Points, int Pass, double Width, double Nudge, bool Extend, double Radius) _toolPassKey;
-    private IReadOnlyList<Vec3>? _toolPass;
-
-    /// <summary>
-    /// Where the tool runs on the pass shown: the pass's centre, without the tool shift the
-    /// tractor's line has (PassGeometry). The map draws the tool's width along it, as AgOpenGPS's
-    /// shadow on the current AB line shows where the tool will land; on a curve it follows the
-    /// pass, its corners rounded as the tractor will drive them. The same list until the pass
-    /// changes.
-    /// </summary>
-    private IReadOnlyList<Vec3> ToolPass(Models.Track.Track track, int pass, double widthMinusOverlap, double nudge, bool extend)
-    {
-        double radius = _configStore.Guidance.UTurnRadius;
-        var key = (track, track.Points, pass, widthMinusOverlap, nudge, extend, radius);
-        if (_toolPass != null && _toolPassKey.Equals(key)) return _toolPass;
-        double dist = Models.Track.PassGeometry.Offset(track, pass, widthMinusOverlap, nudge);
-        IReadOnlyList<Vec3> line;
-        if (track.Points.Count == 2)
-        {
-            var a = track.Points[0];
-            var b = track.Points[1];
-            double right = Math.Atan2(b.Easting - a.Easting, b.Northing - a.Northing) + Math.PI / 2;
-            double de = Math.Sin(right) * dist, dn = Math.Cos(right) * dist;
-            line = new List<Vec3> { new(a.Easting + de, a.Northing + dn, a.Heading), new(b.Easting + de, b.Northing + dn, b.Heading) };
-        }
-        else
-        {
-            var made = Math.Abs(dist) < 0.01 ? CurveProcessing.ReferencePass(track.Points, track.IsClosed) : _offsetPasses.Get(track, dist, radius);
-            line = extend ? CurveProcessing.ExtendPass(made) : made.Points;
-        }
-        _toolPassKey = key;
-        return _toolPass = line;
-    }
-
-    /// <summary>The pass a planned or driven U-turn lands on, if one is planned.</summary>
-    private int? TurnTargetPass() =>
-        _youTurn.TurnPath is { Count: > 0 } ? _youTurn.ReturnPassTargetPath ?? _youTurn.PlannedNextPath : null;
-
-    private (Models.Track.Track Track, List<Vec3> Points, int Pass, double Width, double Nudge, double Shift, bool Extend, int Count, int? Target) _guideKey;
-    private IReadOnlyList<IReadOnlyList<Vec3>>? _guideLines;
-
-    /// <summary>
-    /// The extra guidelines of a track: <paramref name="count"/> passes each side of
-    /// <paramref name="pass"/>, offset from the reference with the collision test like the pass
-    /// itself, so they round off at corners instead of pinching into spikes or folding over on a
-    /// tight bend (#450). Adjacent passes are driven the other way, so the tool offset moves to
-    /// the other side on every other one, as in AgOpenGPS (CABCurve.BuildCurveGuidelines). The
-    /// same list is returned until the pass or the setting changes. With skip rows the pass a
-    /// turn lands on can be driven either way, so while a turn is planned the alternation starts
-    /// from its <paramref name="turnTarget"/>, driven the other way: the turn ends on a line (#591).
-    /// A water pivot has none: AgOpenGPS builds side guidelines only for tracks that aren't a
-    /// pivot (CABCurve.BuildCurveCurrentList), and rings round the centre were drawn (#590).
-    /// </summary>
-    private IReadOnlyList<IReadOnlyList<Vec3>> GuideLines(Models.Track.Track track, int pass, double widthMinusOverlap,
-        double nudge, double toolShift, bool extend, int count, int? turnTarget)
-    {
-        if (track.IsPivot) return Array.Empty<IReadOnlyList<Vec3>>();
-        var key = (track, track.Points, pass, widthMinusOverlap, nudge, toolShift, extend, count, turnTarget);
-        if (_guideLines != null && _guideKey.Equals(key)) return _guideLines;
-
-        var lines = new List<IReadOnlyList<Vec3>>(2 * count);
-        for (int k = 1; k <= count; k++)
-            foreach (int side in new[] { -1, 1 })
-            {
-                int q = pass + side * k;
-                double shift = Models.Track.PassGeometry.IsDrivenOtherWay(q, pass, turnTarget) ? -toolShift : toolShift;
-                double dist = Models.Track.PassGeometry.Offset(track, q, widthMinusOverlap, nudge, shift);
-                if (track.Points.Count == 2)
-                {
-                    // An AB line: A and B moved sideways; the map draws it across the field.
-                    var a = track.Points[0];
-                    var b = track.Points[1];
-                    double right = Math.Atan2(b.Easting - a.Easting, b.Northing - a.Northing) + Math.PI / 2;
-                    double de = Math.Sin(right) * dist, dn = Math.Cos(right) * dist;
-                    lines.Add(new List<Vec3> { new(a.Easting + de, a.Northing + dn, a.Heading), new(b.Easting + de, b.Northing + dn, b.Heading) });
-                    continue;
-                }
-                var made = Math.Abs(dist) < 0.01 ? CurveProcessing.ReferencePass(track.Points, track.IsClosed) : _offsetPasses.Get(track, dist, _configStore.Guidance.UTurnRadius);
-                if (made.Points.Count < 2) continue; // no pass there (#694)
-                lines.Add(extend ? CurveProcessing.ExtendPass(made) : made.Points);
-            }
-        _guideKey = key;
-        return _guideLines = lines;
-    }
-
-    private const double PassPickIntervalSeconds = 0.66;
-    private Models.Track.Track? _passPickTrack;
-    private long _lastPassPick;
-
-    private (int nearestPass, Models.Track.Track? displayTrack, double xte, bool onReference) UpdateDisplayTrack(
-        Position pos, Models.Track.Track track, int passNumber, double nudgeOffset,
-        double pivotEasting, double pivotNorthing,
-        double sampleEasting, double sampleNorthing)
-    {
-        var config = _configStore;
-        double widthMinusOverlap = config.ActualToolWidth - config.Tool.Overlap;
-        if (widthMinusOverlap < 0.1) widthMinusOverlap = 1.0;
-
-        // Nearest-pass selection uses the *lookahead* sample (hysteresis: line jumps
-        // ahead of the tractor in free-drive). XTE display uses the *pivot* (actual
-        // cross-track error from the tractor position). See #261.
-        double sampleDist = CalculatePerpendicularDistance(track, sampleEasting, sampleNorthing);
-
-        // Match AgOpen CABLine.BuildCurrentABLineList — subtract the accumulated nudge (and
-        // the half width between the reference line and pass 0) before rounding to the
-        // nearest pass. Without the nudge, nudging the line perpendicular can cause the
-        // auto-select to fight the nudge each cycle.
-        // With a tool offset the pass is the one nearest the tool, and the line shown is the one
-        // the tractor steers to put the tool on it (#446).
-        double toolShift = Models.Track.PassGeometry.ToolShift(config.Tool.Offset, _guidanceWorking.IsHeadingSameWay);
-        int nearestPass = Models.Track.PassGeometry.Nearest(track, sampleDist, widthMinusOverlap, nudgeOffset, toolShift);
-        // The pass is picked again at most every 0.66 s, as AgOpenGPS (CABLine / CABCurve
-        // BuildCurrentLine): between picks the line stays put, so it doesn't flick between two
-        // passes when the tractor is halfway. A new track is picked at once.
-        long now = Clock.Current.GetTimestamp();
-        if (!ReferenceEquals(track, _passPickTrack) || Clock.Current.ElapsedSeconds(_lastPassPick, now) >= PassPickIntervalSeconds)
-        {
-            _passPickTrack = track;
-            _lastPassPick = now;
-        }
-        else nearestPass = passNumber;
-        double distAway = Models.Track.PassGeometry.Offset(track, nearestPass, widthMinusOverlap, nudgeOffset, toolShift);
-
-        // An open curve's pass is extended straight past A and B like the line the tractor steers,
-        // the guidelines and the line shown while guiding, whether AutoSteer is engaged or not (#492).
-        bool extend = track.Points.Count > 2 && !track.IsClosed;
-        bool onReference = Math.Abs(distAway) < 0.01;
-        double turnRadius = _configStore.Guidance.UTurnRadius;
-
-        Models.Track.Track resultTrack;
-        if (onReference && !extend)
-        {
-            // On the base track — show reference directly
-            resultTrack = track;
-        }
-        else if (ReferenceEquals(_cachedOffsetSourceTrack, track)
-                 && ReferenceEquals(_cachedOffsetSourcePoints, track.Points)
-                 && _cachedOffsetSourceCount == track.Points.Count
-                 && _cachedOffsetDistAway == distAway
-                 && _cachedOffsetTurnRadius == turnRadius
-                 && _cachedOffsetTrack != null)
-        {
-            // Inputs unchanged — reuse last offset track so the downstream
-            // ReferenceEquals gate in ApplyResults can actually skip rebuild.
-            resultTrack = _cachedOffsetTrack;
-        }
-        else
-        {
-            // The extended reference is the line itself: the caller leaves baseTrack out so it
-            // isn't drawn twice at the same position.
-            // A pass the offset removed altogether has no points: nothing is drawn (#694).
-            var pass = onReference ? CurveProcessing.ReferencePass(track.Points, track.IsClosed) : _offsetPasses.Get(track, distAway, turnRadius);
-            var offsetPoints = extend ? CurveProcessing.ExtendPass(pass) : new List<Vec3>(pass.Points);
-            resultTrack = new Models.Track.Track
-            {
-                Name = $"{track.Name} (pass {nearestPass})",
-                Points = offsetPoints,
-                Type = track.Type,
-                IsVisible = true,
-                IsActive = true
-            };
-            _cachedOffsetSourceTrack = track;
-            _cachedOffsetSourcePoints = track.Points;
-            _cachedOffsetSourceCount = track.Points.Count;
-            _cachedOffsetDistAway = distAway;
-            _cachedOffsetTurnRadius = turnRadius;
-            _cachedOffsetTrack = resultTrack;
-        }
-
-        // Update XTE display — actual pivot distance to the selected pass line.
-        double pivotPerp = CalculatePerpendicularDistance(track, pivotEasting, pivotNorthing);
-        double xte = pivotPerp - distAway;
-        if (!_guidanceWorking.IsHeadingSameWay) xte = -xte; // set for this cycle before any line (#172, #446)
-
-        _autoSteerService.UpdateGuidanceResults(0, xte);
-        return (nearestPass, resultTrack, xte, onReference);
-    }
-
-    /// <summary>
-    /// Calculate YouTurn path-following guidance. Returns null if no path.
-    /// Tuple includes diagnostic fields (anchor indices, anti-tangent guard
-    /// firings) that surface on the GuidanceSnapshot so the debug recorder
-    /// can correlate steering anomalies with the path-anchor advancement
-    /// pattern.
-    /// </summary>
-    private (double steerAngle, double xte, double goalE, double goalN, bool turnComplete,
-             int pointA, int pointB, int pathPointCount, bool antiTangentGuardFired)?
-        CalculateYouTurnGuidance(Position currentPosition, List<Vec3> turnPath)
-    {
-        if (turnPath.Count == 0) return null;
-
-        var config = _configStore;
-        double headingRad = currentPosition.Heading * Math.PI / 180.0;
-        double speedKmh = currentPosition.Speed * 3.6;
-
-        // Use the SAME speed-scaled look-ahead as track guidance (CalculateTrackGuidance).
-        // A fixed hold value here is smaller than the track follower's dynamic look-ahead
-        // while moving, so the goal point jumped CLOSER at the track→turn handoff — a sudden
-        // sharper steer that made the tractor hunt for ~½ s on entry (exit was gentler
-        // because the goal jumped farther). Matching them makes the handoff seamless.
-        double lookAhead = GoalLookAhead(speedKmh); // same as track guidance (AgOpenGPS UpdateGoalPointDistance)
-
-        var input = new YouTurnGuidanceInput
-        {
-            TurnPath = turnPath,
-            PivotPosition = new Vec3(currentPosition.Easting, currentPosition.Northing, headingRad),
-            // Front (steer) axle — Stanley measures its error there; Pure Pursuit ignores it.
-            SteerPosition = new Vec3(
-                currentPosition.Easting + Math.Sin(headingRad) * config.Vehicle.Wheelbase,
-                currentPosition.Northing + Math.Cos(headingRad) * config.Vehicle.Wheelbase,
-                headingRad),
-            Wheelbase = config.Vehicle.Wheelbase,
-            MaxSteerAngle = config.Vehicle.MaxSteerAngle,
-            UseStanley = config.Guidance.IsStanley,
-            StanleyHeadingErrorGain = config.Guidance.StanleyHeadingErrorGain,
-            StanleyDistanceErrorGain = config.Guidance.StanleyDistanceErrorGain,
-            GoalPointDistance = lookAhead,
-            UTurnCompensation = config.Guidance.UTurnCompensation,
-            FixHeading = headingRad,
-            AvgSpeed = speedKmh,
-            IsReverse = _isReverse,
-            UTurnStyle = config.Guidance.UTurnStyle
-        };
-
-        var output = _youTurnGuidanceService.CalculateGuidance(input);
-
-        if (output.IsTurnComplete)
-            return (0, 0, 0, 0, true, 0, 0, 0, false);
-
-        return (output.SteerAngle, output.DistanceFromCurrentLine,
-            output.GoalPoint.Easting, output.GoalPoint.Northing, false,
-            output.PointA, output.PointB, turnPath.Count, output.AntiTangentGuardFired);
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    // Geometry helpers (pure math, no UI)
-    // ══════════════════════════════════════════════════════════════════════
-
-    /// <summary>Driving along the track's own direction (A→B) where the tractor is? An AB line by
-    /// its A→B heading, a curve by its nearest segment.</summary>
-    private static bool IsHeadingSameWayOn(Models.Track.Track track, double easting, double northing, double headingRad)
-    {
-        var pts = track.Points;
-        if (pts.Count < 2) return true;
-        double trackHeading = pts.Count == 2
-            ? Math.Atan2(pts[1].Easting - pts[0].Easting, pts[1].Northing - pts[0].Northing)
-            : FindNearestSegmentHeading(pts, easting, northing);
-        double diff = headingRad - trackHeading;
-        while (diff > Math.PI) diff -= 2 * Math.PI;
-        while (diff < -Math.PI) diff += 2 * Math.PI;
-        return Math.Abs(diff) < Math.PI / 2;
-    }
-
-    private static double FindNearestSegmentHeading(List<Vec3> points, double easting, double northing)
-    {
-        if (points.Count < 2) return 0;
-        if (points.Count == 2) return points[0].Heading;
-
-        double minDist = double.MaxValue;
-        int nearestIdx = 0;
-
-        for (int i = 0; i < points.Count - 1; i++)
-        {
-            var p1 = points[i];
-            var p2 = points[i + 1];
-
-            double segDx = p2.Easting - p1.Easting;
-            double segDy = p2.Northing - p1.Northing;
-            double segLenSq = segDx * segDx + segDy * segDy;
-
-            double dist;
-            if (segLenSq < 0.0001)
-            {
-                dist = Math.Sqrt((easting - p1.Easting) * (easting - p1.Easting) +
-                                 (northing - p1.Northing) * (northing - p1.Northing));
-            }
-            else
-            {
-                double t = Math.Clamp(
-                    ((easting - p1.Easting) * segDx + (northing - p1.Northing) * segDy) / segLenSq,
-                    0, 1);
-                double projE = p1.Easting + t * segDx;
-                double projN = p1.Northing + t * segDy;
-                dist = Math.Sqrt((easting - projE) * (easting - projE) +
-                                 (northing - projN) * (northing - projN));
-            }
-
-            if (dist < minDist)
-            {
-                minDist = dist;
-                nearestIdx = i;
-            }
-        }
-
-        return points[nearestIdx].Heading;
-    }
-
-    private static double CalculatePerpendicularDistance(Models.Track.Track track, double easting, double northing)
-    {
-        if (track.Points.Count == 2)
-        {
-            var a = track.Points[0];
-            var b = track.Points[1];
-            double dx = b.Easting - a.Easting;
-            double dy = b.Northing - a.Northing;
-            double len = Math.Sqrt(dx * dx + dy * dy);
-            if (len < 0.01) return 0;
-            return ((easting - a.Easting) * dy - (northing - a.Northing) * dx) / len;
-        }
-        else
-        {
-            double minDist = double.MaxValue;
-            double signedDist = 0;
-            for (int i = 0; i < track.Points.Count - 1; i++)
-            {
-                var a = track.Points[i];
-                var b = track.Points[i + 1];
-                double dx = b.Easting - a.Easting;
-                double dy = b.Northing - a.Northing;
-                double segLen = Math.Sqrt(dx * dx + dy * dy);
-                if (segLen < 0.01) continue;
-                double t = Math.Clamp(
-                    ((easting - a.Easting) * dx + (northing - a.Northing) * dy) / (segLen * segLen),
-                    0, 1);
-                double projE = a.Easting + t * dx;
-                double projN = a.Northing + t * dy;
-                double dist = Math.Sqrt((easting - projE) * (easting - projE) + (northing - projN) * (northing - projN));
-                if (dist < minDist)
-                {
-                    minDist = dist;
-                    signedDist = ((easting - a.Easting) * dy - (northing - a.Northing) * dx) / segLen;
-                }
-            }
-            return signedDist;
-        }
-    }
-
-    // Returns the synthetic headland line (inset of the outer boundary) plus
-    // the inset distance, recomputing only when the boundary reference or the
-    // relevant config values change. Called only from the cycle worker thread.
-    private (List<Vec3>? Line, double Inset) GetOrComputeSyntheticHeadland(Boundary boundary)
-    {
-        var guidanceConfig = _configStore.Guidance;
-        // AgOpen CTurn.BuildTurnLines: turn line = fence inset by uturnDistanceFromBoundary
-        // ONLY (no turn-radius inset). A deeper inset would push a fence-hugging boundary
-        // pass outside the "in-turn-bounds" polygon and it would never arm; the turn radius
-        // is accounted for by MoveTurnInsideTurnLine fitting the arc, not by pre-insetting
-        // this line.
-        double inset = guidanceConfig.UTurnDistanceFromBoundary;
-        double configKey = inset;
-
-        if (ReferenceEquals(boundary, _syntheticHeadlandSourceBoundary)
-            && Math.Abs(configKey - _syntheticHeadlandConfigKey) < 1e-9)
-        {
-            return (_syntheticHeadlandLine, _syntheticHeadlandInsetUsed);
-        }
-
-        var outerPoints = boundary.OuterBoundary!.Points
-            .Select(p => new Vec2(p.Easting, p.Northing))
-            .ToList();
-        var inwardOffset = _syntheticHeadlandOffset.CreateInwardOffset(outerPoints, inset);
-        _syntheticHeadlandLine = (inwardOffset != null && inwardOffset.Count >= 3)
-            ? _syntheticHeadlandOffset.CalculatePointHeadings(inwardOffset)
-            : null;
-        _syntheticHeadlandSourceBoundary = boundary;
-        _syntheticHeadlandConfigKey = configKey;
-        _syntheticHeadlandInsetUsed = inset;
-        _logger.LogDebug("[YouTurn] Synthesized turn line (no user headland): inset={I:F1}m (uturnDistanceFromBoundary), pts={P}",
-            inset, _syntheticHeadlandLine?.Count ?? 0);
-        return (_syntheticHeadlandLine, _syntheticHeadlandInsetUsed);
-    }
-
-    private void ComputeHeadlandProximity(
-        List<Vec3>? headlandLine, Vec3 toolPivot, bool headlandOn,
-        out double? distance, out bool warning)
-    {
-        distance = null;
-        warning = false;
-
-        if (headlandLine == null || headlandLine.Count < 3)
-            return;
-
-        var input = new Models.Headland.HeadlandDetectionInput
-        {
-            // The headland distance HUD follows the headland toggle (AgOpenGPS, #106).
-            IsHeadlandOn = headlandOn,
-            VehiclePosition = toolPivot,
-            Boundaries = new List<Models.Headland.BoundaryData>
-            {
-                // The cycle's own copy (SetHeadlandLine), not copied again: only read.
-                new Models.Headland.BoundaryData { HeadlandLine = headlandLine }
-            }
-        };
-
-        var output = _headlandDetector.DetectHeadland(input);
-        distance = output.HeadlandDistance;
-        warning = output.ShouldTriggerWarning;
-    }
-
-    /// <summary>
-    /// Is the pivot out of bounds (#494)? AgOpenGPS mc.isOutOfBounds (CFence.IsPointInsideFenceArea):
-    /// outside the outer boundary or inside any inner one, drive-through or not (an inner boundary
-    /// is an obstacle: a creek, a wet hole, a pylon); no boundary, never. With automatic U-turns on,
-    /// inside the turn area (the turn line: the fence moved in by the U-turn distance) is in bounds, and outside it the test is made only
-    /// when no turn is under way: a turn reaching past the turn line keeps the last answer.
-    /// Inside an inner boundary is out of bounds whatever U-turns are doing (#611): AgOpenGPS
-    /// counts it as turn area with U-turns on (IsPointInsideTurnArea != -1), so a tractor in a
-    /// ditch sent no geoStop there; an inner boundary is never driven through.
-    /// </summary>
-    private bool OutOfBounds(Boundary? boundary, List<Vec3>? turnLine, bool youTurnArea,
-        double easting, double northing)
-    {
-        if (boundary?.OuterBoundary is not { IsValid: true }) return false;
-        foreach (var inner in boundary.InnerBoundaries)
-            if (inner.IsPointInside(easting, northing)) return true;
-        if (youTurnArea)
-        {
-            if (_turnLineIndex.Contains(turnLine!, easting, northing)) return false;
-            if (_youTurn.IsTriggered || _youTurn.IsExecuting) return _isOutOfBounds;
-        }
-        return !boundary.OuterBoundary.IsPointInside(easting, northing);
-    }
-
-    /// <summary>
-    /// Is the tool in the headland, as AgOpenGPS decides it for the lift and the tram lights
-    /// (OpenGL.Designer.cs, CHead / HeadlandDetectionService): both outer corners of the tool
-    /// out of the work area (inside the headland line), and no work area in the band ahead of
-    /// the tool out to the lift look-ahead (speed × Machine look-ahead time, at most 20 m).
-    /// Outside the boundary counts as headland. So the tool is "in" only once all of it has
-    /// crossed the line, and "out" as soon as work area comes within the look-ahead: the
-    /// implement goes up late enough to finish the pass and comes down early enough to start
-    /// the next. False with the headland off or no headland line.
-    /// </summary>
-    private bool IsToolInHeadland(Vec3 toolPosition, double toolHeading, double speed,
-        List<Vec3>? headlandLine, bool headlandOn)
-    {
-        if (!headlandOn || headlandLine == null || headlandLine.Count < 3) return false;
-        int n = _sectionControlService.NumSections;
-        if (n <= 0) return false;
-
-        var (left, _) = _sectionControlService.GetSectionWorldPosition(0, toolPosition, toolHeading);
-        var (_, right) = _sectionControlService.GetSectionWorldPosition(n - 1, toolPosition, toolHeading);
-        if (InWorkArea(left) || InWorkArea(right)) return false;
-
-        // The look-ahead band: AgOpenGPS scans every pixel across the tool out to the look-ahead
-        // at each edge (the edges' own speeds; the tool's speed here). Three columns, four steps.
-        double ahead = Math.Min(Math.Abs(speed) * Math.Max(0, _configStore.Machine.LookAhead), 20.0);
-        double se = Math.Sin(toolHeading), ce = Math.Cos(toolHeading);
-        var centre = new Vec2((left.Easting + right.Easting) / 2, (left.Northing + right.Northing) / 2);
-        if (InWorkArea(centre)) return false;
-        if (ahead > 0)
-        {
-            for (int step = 1; step <= 4; step++)
-            {
-                double d = ahead * step / 4;
-                if (InWorkArea(new Vec2(left.Easting + se * d, left.Northing + ce * d)) ||
-                    InWorkArea(new Vec2(centre.Easting + se * d, centre.Northing + ce * d)) ||
-                    InWorkArea(new Vec2(right.Easting + se * d, right.Northing + ce * d)))
-                    return false;
-            }
-        }
-        return true;
-
-        bool InWorkArea(Vec2 p) => _headlandIndex.Contains(headlandLine, p.Easting, p.Northing);
-    }
-
-    /// <summary>
-    /// PGN 239's hydraulic-lift byte, AgOpenGPS CHead.SetHydPosition: 2 (raise) with the tool in
-    /// the headland, 1 (lower) out of it; 0 with the lift or the headland off. Slow (under
-    /// 0.2 km/h) or in reverse it holds the last value: a 0 there would cancel a raise or lower
-    /// the machine module is still timing (Machine_UDP_v5 stops both on anything but 1 or 2).
-    /// </summary>
-    private byte HydLiftFor(bool toolInHeadland, double speed, List<Vec3>? headlandLine, Boundary? boundary, bool headlandOn)
-    {
-        if (!_configStore.Machine.HydraulicLiftEnabled || !headlandOn ||
-            headlandLine == null || headlandLine.Count < 3 || boundary == null || !boundary.IsValid)
-            return _lastHydLift = 0;
-        if (Math.Abs(speed) * 3.6 <= 0.2 || _isReverse) return _lastHydLift;
-        return _lastHydLift = toolInHeadland ? (byte)2 : (byte)1;
-    }
-
-    private byte _lastHydLift;
-
-    /// <summary>The lift byte for a tool at this pose (the headland test and the lift together).</summary>
+    /// <summary>The lift byte for a tool at this pose (HeadlandStep), reversing as the cycle last saw it.</summary>
     private byte ComputeHydLiftState(Vec3 toolPosition, double toolHeading, double speed, List<Vec3>? headlandLine,
         Boundary? boundary, bool headlandOn)
-        => HydLiftFor(IsToolInHeadland(toolPosition, toolHeading, speed, headlandLine, headlandOn),
-            speed, headlandLine, boundary, headlandOn);
+        => _headlandStep.ComputeHydLiftState(toolPosition, toolHeading, speed, headlandLine, boundary, headlandOn, _poseStep.IsReverse);
 
-    // Monotonic ms clock; tests substitute it to step past the below-min-speed grace period.
-    internal Func<long> NowMs { get; set; } = () => Environment.TickCount64;
-    private long? _belowMinSteerSpeedSinceMs;
-    private int _lastJumpCount; // the fusion's JumpCount already told
-    private const long BelowMinSteerSpeedGraceMs = 8000; // AgOpenGPS: 80 frames at 10 Hz
-
+    // Monotonic ms clock of the steering speed limits; tests substitute it (AutoSteerRules.NowMs).
+    internal Func<long> NowMs { get => _autoSteerRules.NowMs; set => _autoSteerRules.NowMs = value; }
     /// <summary>Why AutoSteer won't steer with a dual heading that runs across the direction of
     /// travel (<see cref="IGpsHeadingFusionService.IsDualHeadingOffTravel"/>), for the toast.</summary>
     public static string DualHeadingOffTravelText(double offDeg) =>
         string.Format(System.Globalization.CultureInfo.InvariantCulture,
             "the dual antenna heading is {0:F0}° off the direction of travel: check its Heading offset (GPS tab)",
             double.IsFinite(offDeg) ? offDeg : 90);
-
-    /// <summary>
-    /// AgOpenGPS steering speed limits: above Max steer speed disengages at once; below Min
-    /// steer speed for ~8 s disengages (so you can engage from a standstill and pull away).
-    /// A limit of 0 is off. Returns the disengage reason, or null. The panel settings used to
-    /// be read by nothing (#106).
-    /// </summary>
-    private string? CheckSteerSpeedLimits(double speedKmh)
-    {
-        var a = _configStore.AutoSteer;
-        if (a.MaxSteerSpeed > 0 && speedKmh > a.MaxSteerSpeed)
-        {
-            _belowMinSteerSpeedSinceMs = null;
-            return $"AutoSteer disengaged - above maximum steering speed ({FormatSpeed(a.MaxSteerSpeed)})";
-        }
-        if (a.MinSteerSpeed > 0 && speedKmh < a.MinSteerSpeed)
-        {
-            long now = NowMs();
-            _belowMinSteerSpeedSinceMs ??= now;
-            if (now - _belowMinSteerSpeedSinceMs.Value >= BelowMinSteerSpeedGraceMs)
-            {
-                _belowMinSteerSpeedSinceMs = null;
-                return $"AutoSteer disengaged - below minimum steering speed ({FormatSpeed(a.MinSteerSpeed)})";
-            }
-            return null;
-        }
-        _belowMinSteerSpeedSinceMs = null;
-        return null;
-    }
-
-    private string FormatSpeed(double kmh) =>
-        _configStore.IsMetric ? $"{kmh:0.#} kph" : $"{kmh * 0.621371:0.#} mph";
-
-    /// <summary>
-    /// RTK fix alarm, as AgOpenGPS (isRTK_AlarmOn / isRTK_KillAutosteer): only when the
-    /// "RTK lost alarm" setting is on; "lost" means leaving RTK fixed (quality 4) — float
-    /// counts as lost. Returns true on the lost edge when "Alarm stops AutoSteer" is set, so
-    /// the caller disengages. Both settings used to be ignored (#106): the sound played
-    /// regardless and autosteer never stopped.
-    /// </summary>
-    private bool CheckRtkQualityChange(int fixQuality)
-    {
-        if (fixQuality == _previousFixQuality) return false;
-        bool wasRtk = _previousFixQuality == 4;
-        bool isRtk = fixQuality == 4;
-        _previousFixQuality = fixQuality;
-
-        var con = _configStore.Connections;
-        if (!con.RtkLostAlarm) return false;
-
-        if (wasRtk && !isRtk)
-        {
-            _audioService.Play(SoundEffect.RtkLost);
-            return con.RtkLostAction != 0; // web toggle "Alarm stops AutoSteer" (1 = pause AutoSteer)
-        }
-        if (!wasRtk && isRtk)
-            _audioService.Play(SoundEffect.RtkRecovered);
-        return false;
-    }
 
 }

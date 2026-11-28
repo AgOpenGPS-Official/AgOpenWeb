@@ -205,12 +205,8 @@ public class SteeringAlgorithmSelectionTests
 
     private double LookAhead(double speedKmh, double lastXte)
     {
-        var f = typeof(GpsPipelineService).GetField("_lastCrossTrackError",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-        f.SetValue(_pipeline, lastXte);
-        var m = typeof(GpsPipelineService).GetMethod("GoalLookAhead",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-        return (double)m.Invoke(_pipeline, new object[] { speedKmh })!;
+        _pipeline.Guidance.LastCrossTrackError = lastXte;
+        return _pipeline.Guidance.GoalLookAhead(speedKmh);
     }
 
     [Test]
