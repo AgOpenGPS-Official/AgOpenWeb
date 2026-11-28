@@ -122,7 +122,7 @@ public class YouTurnSnapshotFreshnessTests
     /// CycleCompleted and the post-tick value of these private POCOs.
     /// </summary>
     private YouTurnWorkingState PrivateYouTurn() => _pipeline.YouTurnWorking;
-    private GuidanceWorkingState PrivateGuidance() => GetPrivate<GuidanceWorkingState>("_guidanceWorking");
+    private GuidanceWorkingState PrivateGuidance() => _pipeline.Guidance.Working;
 
     private T GetPrivate<T>(string name)
     {

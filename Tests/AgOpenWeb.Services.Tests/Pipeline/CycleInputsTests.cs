@@ -112,9 +112,7 @@ public class CycleInputsTests
     private static Models.Track.Track NorthLine(string name, double easting) =>
         Models.Track.Track.FromABLine(name, new Vec3(easting, -100, 0), new Vec3(easting, 100, 0));
 
-    private object? SteeringMemory() =>
-        typeof(GpsPipelineService).GetField("_trackGuidanceState", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .GetValue(_pipeline);
+    private object? SteeringMemory() => _pipeline.Guidance.SteeringMemory;
 
     [Test]
     public void AutoSteer_switched_off_during_a_cycle_still_clears_the_steering_memory()
