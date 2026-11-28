@@ -147,6 +147,18 @@ public class CycleInputsTests
         Assert.That(memoryAtB, Is.Null, "B's first cycle steered from A's nearest point and integral");
     }
 
+#if DEBUG
+    [Test]
+    public void A_cycle_entered_while_another_runs_does_not_run()
+    {
+        _midCycle = Fix; // a second fix fed from inside the first cycle (synchronous mode)
+        Fix();
+
+        Assert.That(_results, Has.Count.EqualTo(1),
+            "the cycle's state has one writer at a time; the nested cycle is refused (debug and test builds)");
+    }
+#endif
+
     [Test]
     public void A_cycle_reports_its_own_track_with_its_own_pass()
     {
