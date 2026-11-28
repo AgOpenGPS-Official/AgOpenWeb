@@ -60,7 +60,10 @@ sg_id() {
     --query 'SecurityGroups[0].GroupId' --output text | sed 's/^None$//'
 }
 
-# The instance's first boot: the volume mounted at /data as Docker's data root, Docker from Ubuntu,
+# The instance's first boot: the volume mounted at /data, holding Docker's data root and containerd's
+# store (Ubuntu 24.04's Docker keeps images and containers in containerd's store, /var/lib/containerd,
+# not in the data root: left on the 20 GB system disk it filled it and the first round waited for
+# disk, 28 Nov 2026), Docker from Ubuntu,
 # SSH open to the many connections a round makes at once (each docker command over the context is
 # one), and the shutdown that ends it whatever happens on this side.
 user_data() { # volume id
@@ -73,7 +76,11 @@ dev=/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_$serial
 for i in \$(seq 1 300); do [ -e \$dev ] && break; sleep 2; done
 blkid \$dev || mkfs.ext4 -q -L aowdata \$dev
 mkdir -p /data && mount \$dev /data
+# A volume laid out before containerd's store was on it has Docker records of images whose data was
+# on a system disk long gone (a build then fails: "content digest ... not found"): start it afresh.
+[ -e /data/.layout-2 ] || { rm -rf /data/docker /data/containerd; touch /data/.layout-2; }
 mkdir -p /etc/docker && echo '{"data-root": "/data/docker"}' > /etc/docker/daemon.json
+mkdir -p /data/containerd && ln -sfn /data/containerd /var/lib/containerd
 apt-get update -q && apt-get install -y -q docker.io
 usermod -aG docker ubuntu
 printf 'MaxStartups 200:30:400\nMaxSessions 200\n' > /etc/ssh/sshd_config.d/aow-harness.conf
@@ -193,6 +200,9 @@ EOF
     [ "$i" -lt 90 ] || { echo "!! the instance was not ready after 15 minutes"; exit 1; }
     sleep 10
   done
+  # Images and containers must be on the volume, not the system disk (see user_data).
+  store=$(ssh "${ssh_opts[@]}" "ubuntu@$ip" 'findmnt -n -o TARGET -T "$(readlink -f /var/lib/containerd)"')
+  [ "$store" = /data ] || { echo "!! containerd's store is on $store, not the volume: run spot-round.sh setup again"; exit 1; }
   docker context rm -f "$ctx" >/dev/null 2>&1 || true
   docker context create "$ctx" --docker "host=ssh://ubuntu@$ip" >/dev/null
   ncpu=$(docker --context "$ctx" info --format '{{.NCPU}}')
