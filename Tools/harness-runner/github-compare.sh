@@ -14,11 +14,21 @@
 # findings new, gone and in both (Tools/compare-reports.py). Two base nights show the noise: a
 # finding new against one and not the other is the spread, not the fix. The runs use the nightly's
 # settings (pace 8 on two cores), so they compare with the nightly and not with the harness host.
+# WORKFLOWS (space-separated, the workflow's name without -scenarios.yml: vehicle-tool working-day)
+# limits both to those: run-round.sh sends its GitHub part this way.
 set -uo pipefail
-[ $# -ge 2 ] || { sed -n 5,15p "$0"; exit 2; }
+[ $# -ge 2 ] || { sed -n 5,17p "$0"; exit 2; }
 cmd=$1; branch=$2
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"
-workflows=$(cd "$repo/.github/workflows" && ls *-scenarios.yml)
+if [ -n "${WORKFLOWS:-}" ]; then
+  workflows=""
+  for k in $WORKFLOWS; do
+    [ -f "$repo/.github/workflows/$k-scenarios.yml" ] || { echo "!! no workflow $k-scenarios.yml"; exit 2; }
+    workflows="$workflows $k-scenarios.yml"
+  done
+else
+  workflows=$(cd "$repo/.github/workflows" && ls *-scenarios.yml)
+fi
 
 if [ "$cmd" = start ]; then
   for w in $workflows; do gh workflow run "$w" --ref "$branch" && echo "started $w on $branch"; done
