@@ -66,7 +66,7 @@ public class VehicleState : ObservableObject
     }
 
     // Render tool/hitch — dead-reckoned to "now" at the render-pull rate
-    // (MainViewModel.OnRenderPullTick), for SMOOTH map drawing. Distinct from the
+    // (RenderPose.OnRenderPullTick), for SMOOTH map drawing. Distinct from the
     // control-loop ToolPositionService snapshot (stable, anchored to the control
     // timestamp; used for section/guidance). The native map renders these; the web
     // map projector reads them too so the implement glides instead of stepping at the
@@ -78,7 +78,7 @@ public class VehicleState : ObservableObject
     public double RenderHitchNorthing { get; set; }
     public bool RenderToolReady { get; set; }
 
-    // Render VEHICLE pose — dead-reckoned to "now" by OnRenderPullTick (same source as the
+    // Render VEHICLE pose — dead-reckoned to "now" by RenderPose.OnRenderPullTick (same source as the
     // native map). The raw Easting/Northing/Heading lag (GPS-anchored), so sending those in
     // the web Tick made the client's dead-reckoning snap back each tick (staccato). Heading
     // is RADIANS here (estimator convention), unlike Heading above (degrees). RenderPoseValid

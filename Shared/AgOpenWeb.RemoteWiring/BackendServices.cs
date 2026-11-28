@@ -164,6 +164,8 @@ public static class BackendServices
         services.AddSingleton<ISteerMachineLoopService>(_ => new SteerMachineLoopService(frequencyHz: 100.0));
         // The work of each control tick (WebBackend.WireCrossServices joins it to the loop).
         services.AddSingleton<ControlTick>();
+        // The map's pose between fixes, on the host loop (started by WebBackend.StartServices).
+        services.AddSingleton<RenderPose>();
         services.AddSingleton<IGpsPipelineService, GpsPipelineService>();
 
         // No native map control in the web build — the browser/CanvasKit client renders the map.

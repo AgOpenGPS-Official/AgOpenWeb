@@ -13,7 +13,7 @@ namespace AgOpenWeb.ViewModels.Tests;
 
 /// <summary>
 /// The map draws a trailed or TBT implement where the sections and the coverage work. The map's
-/// implement comes from the 30 Hz render pull (<c>MainViewModel.OnRenderPullTick</c>), which
+/// implement comes from the 30 Hz render pull (<c>RenderPose.OnRenderPullTick</c>), which
 /// placed it on its own: it still subtracted the pivot distance after the tool position started
 /// adding it (AgOpenGPS's sign), so a tool set "Behind" its wheels was drawn ahead of them, and
 /// "Ahead" behind (a Hungarian user, 2026-11-07: "I have to pick Ahead and that makes it behind").

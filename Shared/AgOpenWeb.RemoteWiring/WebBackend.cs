@@ -113,6 +113,7 @@ public sealed class WebBackend
         // Chart data collection from the start, so a chart opened mid-session shows recent
         // history (rolling buffers of a few hundred points).
         sp.GetRequiredService<IChartDataService>().Start();
+        sp.GetRequiredService<RenderPose>().Start(); // the map's pose between fixes, as the view model's start began
         vm.Start(sp.GetRequiredService<IUdpCommunicationService>().StartAsync());
     }
 

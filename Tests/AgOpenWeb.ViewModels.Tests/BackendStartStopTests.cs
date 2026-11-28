@@ -25,13 +25,23 @@ public class BackendStartStopTests
     private readonly ISteerMachineLoopService _controlLoop = Substitute.For<ISteerMachineLoopService>();
     private readonly IUdpCommunicationService _udp = Substitute.For<IUdpCommunicationService>();
     private readonly IChartDataService _charts = Substitute.For<IChartDataService>();
+    private readonly IUiTimer _renderTimer = Substitute.For<IUiTimer>();
+
+    private RenderPose RenderPose()
+    {
+        var timers = Substitute.For<IUiTimerFactory>();
+        timers.Create().Returns(_renderTimer);
+        return new RenderPose(Substitute.For<IToolPositionService>(), Substitute.For<IMapService>(),
+            new AgOpenWeb.Models.State.ApplicationState(), ConfigurationStore.Instance,
+            Substitute.For<IUiDispatcher>(), timers, Substitute.For<IPositionEstimator>());
+    }
 
     [SetUp] public void SetUp() => ConfigurationStore.SetInstance(new ConfigurationStore());
     [TearDown] public void TearDown() => ConfigurationStore.SetInstance(new ConfigurationStore());
 
     private IServiceProvider Services() => new ServiceCollection()
         .AddSingleton(_battery).AddSingleton(_autoSteer).AddSingleton(_pipeline)
-        .AddSingleton(_controlLoop).AddSingleton(_udp).AddSingleton(_charts)
+        .AddSingleton(_controlLoop).AddSingleton(_udp).AddSingleton(_charts).AddSingleton(RenderPose())
         .BuildServiceProvider();
 
     [Test]
@@ -45,6 +55,7 @@ public class BackendStartStopTests
             _pipeline.Start();
             _controlLoop.Start();
             _charts.Start();
+            _renderTimer.Start(); // the map's pose pull, which the view model's start began with
             _udp.StartAsync();
         });
     }

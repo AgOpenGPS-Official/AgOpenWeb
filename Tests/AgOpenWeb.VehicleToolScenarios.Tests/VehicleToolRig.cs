@@ -298,6 +298,7 @@ public sealed class VehicleToolRig : IAsyncDisposable
         services.AddSingleton<IPositionEstimator, PositionEstimator>();
         services.AddSingleton<ISteerMachineLoopService>(_ => new SteerMachineLoopService(frequencyHz: 100.0));
         services.AddSingleton<AgOpenWeb.Services.Pipeline.ControlTick>();
+        services.AddSingleton<AgOpenWeb.ViewModels.RenderPose>();
         services.AddSingleton<IGpsPipelineService, GpsPipelineService>();
         services.AddSingleton<IMapService, NullMapService>();
     }
