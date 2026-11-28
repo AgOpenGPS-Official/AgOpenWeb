@@ -234,7 +234,6 @@ thread" stand-in, `IUiDispatcher`), coordinates services, and is driven only thr
 | `MainViewModel.Commands.Track.cs` | Track/AB line commands |
 | `MainViewModel.Commands.Boundary.cs` | Boundary, headland, AgShare commands |
 | `MainViewModel.Commands.Fields.cs` | Field open/close/create, jobs |
-| `MainViewModel.Commands.Ntrip.cs` | NTRIP profile management |
 | `MainViewModel.Commands.Navigation.cs` | View settings, camera, day/night |
 | `MainViewModel.Commands.Hotkeys.cs` | Hotkey configuration and dispatch |
 | `MainViewModel.Commands.Settings.cs` | App directories, language, reset settings |

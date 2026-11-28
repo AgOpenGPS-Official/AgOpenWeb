@@ -281,7 +281,6 @@ public partial class MainViewModel
         // pre-turn CurrentLocationIndex.
         if (result.YouTurn is { JustCompleted: true })
         {
-            _trackGuidanceState = null;
             SyncGuidanceStateToPipeline();
         }
 

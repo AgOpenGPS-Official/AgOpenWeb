@@ -16,12 +16,6 @@ namespace AgOpenWeb.ViewModels;
 /// </summary>
 public partial class MainViewModel
 {
-    /// <summary>Broadcast PGN 202 and ask every module to report its IP/subnet.</summary>
-    public ICommand? ScanModulesCommand { get; private set; }
-
-    /// <summary>Confirm, then broadcast PGN 201 to set the /24 on all modules.</summary>
-    public ICommand? SendSubnetCommand { get; private set; }
-
     // Set true once settings finish loading, so the persistent module-present
     // checkboxes save on user change but not during the initial load.
     private bool _configReady;
@@ -33,19 +27,6 @@ public partial class MainViewModel
     /// subscription in the constructor.
     /// </summary>
     public ConnectionConfig ConnectionConfig => ConfigStore.Connections;
-
-    /// <summary>
-    /// The host's own IPv4 addresses (one per up NIC), newline-separated, so the
-    /// operator can see which subnet the host is on and match the modules to it.
-    /// </summary>
-    public string HostIpAddressesText
-    {
-        get
-        {
-            var ips = _udpService.GetLocalIpAddresses();
-            return ips.Count == 0 ? "—" : string.Join("\n", ips);
-        }
-    }
 
     private int _subnetOctet1 = 192;
     public int SubnetOctet1
@@ -72,27 +53,6 @@ public partial class MainViewModel
 
     private void InitializeNetworkIoCommands()
     {
-        ScanModulesCommand = new RelayCommand(() =>
-        {
-            _udpService.ScanModules();
-            OnPropertyChanged(nameof(HostIpAddressesText));
-            StatusMessage = "Scanning network for modules…";
-        });
-
-        SendSubnetCommand = new RelayCommand(() =>
-        {
-            int o1 = SubnetOctet1, o2 = SubnetOctet2, o3 = SubnetOctet3;
-            ShowConfirmationDialog(
-                "Change Module Subnet",
-                $"Set ALL connected modules to subnet {o1}.{o2}.{o3}.x and restart them?\n\n" +
-                "This changes every module at once (there is no per-module setting).",
-                () =>
-                {
-                    _udpService.SetModuleSubnet((byte)o1, (byte)o2, (byte)o3);
-                    StatusMessage = $"Sent subnet {o1}.{o2}.{o3}.x to all modules";
-                });
-        });
-
         // When a scan reply reveals the modules' current /24, reflect it in the
         // entry fields so the operator edits from the live value (AgIO behaviour).
         State.Connections.PropertyChanged += (_, e) =>

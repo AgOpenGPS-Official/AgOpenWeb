@@ -116,7 +116,7 @@ public sealed class WebClientRig : IAsyncDisposable
         sp.GetRequiredService<IPersistentStateService>().Load();
         WebBackend.WireCrossServices(sp);
         MainViewModel vm = null!;
-        await hostLoop.InvokeAsync(() => vm = sp.GetRequiredService<MainViewModel>());
+        await hostLoop.InvokeAsync(() => vm = WebBackend.CreateViewModel(sp));
 
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
         // As WebBackend.StartAsync: browsers arriving and leaving, and why (a deadman says when
@@ -203,7 +203,7 @@ public sealed class WebClientRig : IAsyncDisposable
         services.AddSingleton<ApplicationState>();
         services.AddSingleton(_ => AgOpenWeb.Models.Configuration.ConfigurationStore.Instance);
         services.AddSingleton(_ => PersistentAppState.Instance);
-        services.AddTransient<MainViewModel>();
+        services.AddSingleton<MainViewModel>(); // one per backend: it subscribes to the singletons it shows
         services.AddTransient<ConfigurationViewModel>();
         services.AddSingleton<ILocalNetworkInfoProvider, NoNetworkInterfaces>();
         services.AddSingleton<AgOpenWeb.Services.Network.INetworkWatcher, AgOpenWeb.Services.Network.NetworkWatcher>();

@@ -8,7 +8,6 @@ using AgOpenWeb.Models.Configuration;
 using AgOpenWeb.Models.State;
 using AgOpenWeb.Services;
 
-
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AgOpenWeb.ViewModels;
@@ -28,9 +27,6 @@ public partial class MainViewModel
     private bool _isFieldToolsPanelVisible;
     private bool _isNetworkIoPanelVisible;
     private bool _isSimulatorPanelVisible;
-    private bool _isSteerChartPanelVisible;
-    private bool _isHeadingChartPanelVisible;
-    private bool _isXTEChartPanelVisible;
 
     #endregion
 
@@ -85,23 +81,8 @@ public partial class MainViewModel
         set => SetProperty(ref _isSimulatorPanelVisible, value);
     }
 
-    public bool IsSteerChartPanelVisible
-    {
-        get => _isSteerChartPanelVisible;
-        set => SetProperty(ref _isSteerChartPanelVisible, value);
-    }
 
-    public bool IsHeadingChartPanelVisible
-    {
-        get => _isHeadingChartPanelVisible;
-        set => SetProperty(ref _isHeadingChartPanelVisible, value);
-    }
 
-    public bool IsXTEChartPanelVisible
-    {
-        get => _isXTEChartPanelVisible;
-        set => SetProperty(ref _isXTEChartPanelVisible, value);
-    }
 
     /// <summary>
     /// Close every left-nav fly-out menu. Used to enforce "one menu open at a
@@ -159,37 +140,11 @@ public partial class MainViewModel
             SetProperty(ref _cameraMode, value);
             if (old != value)
             {
-                OnPropertyChanged(nameof(CameraModeLabel));
                 ApplyCameraMode();
             }
         }
     }
 
-    public string CameraModeLabel => _cameraMode switch
-    {
-        CameraMode.NorthUp => "N",
-        CameraMode.HeadingUp => "H",
-        CameraMode.Map => "M",
-        CameraMode.Free => "C",  // "Center" -- tap to recenter on vehicle
-        _ => "?"
-    };
-
-    /// <summary>
-    /// Fires OnPropertyChanged for the display-bound properties that
-    /// ConfigurationService loaded directly into <see cref="_displaySettings"/>
-    /// at startup (bypassing the property setters and their automatic
-    /// notification). Called once from each platform's view code-behind
-    /// after MapControl registration so the display panel binding picks up
-    /// the saved values instead of staying on its empty/default state.
-    /// </summary>
-    public void NotifyDisplayLabelsAfterStartup()
-    {
-        OnPropertyChanged(nameof(CameraPitch));
-        OnPropertyChanged(nameof(CameraPitchDisplay));
-        OnPropertyChanged(nameof(Is2DMode));
-        OnPropertyChanged(nameof(CameraMode));
-        OnPropertyChanged(nameof(CameraModeLabel));
-    }
 
     private void ApplyCameraMode()
     {
@@ -221,19 +176,6 @@ public partial class MainViewModel
             PersistentState.CameraMode = _cameraMode;
     }
 
-    /// <summary>
-    /// Called when user manually pans the map -- enters Free mode.
-    /// </summary>
-    public void OnUserPan()
-    {
-        if (_cameraMode != CameraMode.Free)
-        {
-            _previousCameraMode = _cameraMode;
-            Console.WriteLine($"[Camera] OnUserPan: {_cameraMode} -> Free (prev={_previousCameraMode})");
-            CameraMode = CameraMode.Free; // Use property setter to trigger ApplyCameraMode
-        }
-    }
-
     #endregion
 
     #region Display Settings Properties
@@ -260,8 +202,6 @@ public partial class MainViewModel
         }
     }
 
-    private double _last3DPitch = -60.0;
-
     public double CameraPitch
     {
         get => _displaySettings.CameraPitch;
@@ -270,25 +210,9 @@ public partial class MainViewModel
             _displaySettings.CameraPitch = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(Is2DMode));
-            OnPropertyChanged(nameof(CameraPitchDisplay));
-            // Remember last 3D pitch for restoring when toggling back from 2D
-            if (value > -89.0)
-                _last3DPitch = value;
         }
     }
 
-    public string CameraPitchDisplay
-    {
-        get
-        {
-            double pitch = _displaySettings.CameraPitch;
-            if (pitch <= -89.0) return "2D (overhead)";
-            // Convert: -90 = overhead, -10 = nearly horizontal
-            // Show as tilt angle: 0 = overhead, 80 = horizontal
-            double tilt = 90.0 + pitch;
-            return $"Tilt: {tilt:F0} deg";
-        }
-    }
 
     public bool Is2DMode
     {
@@ -447,14 +371,6 @@ public partial class MainViewModel
         OnPropertyChanged(nameof(ModuleStatusKind));
     }
 
-    /// <summary>
-    /// On-map Dev overlay (FPS / Latency / Lat / Lon). Read once at startup
-    /// from a file-flag in the AgOpenWeb Documents folder so the toggle
-    /// works on iPad/Android (where hotkeys aren't available) without
-    /// surfacing in the UI.
-    /// </summary>
-    public bool IsDevOverlayVisible { get; } = Services.DevOverlayMarker.IsEnabled();
-
     private BatteryStatus _batteryStatus;
 
     /// <summary>
@@ -472,55 +388,7 @@ public partial class MainViewModel
     /// <summary>True when the platform exposed a real reading. The icon hides when this is false.</summary>
     public bool IsBatteryAvailable => _batteryStatus.IsAvailable;
 
-    /// <summary>
-    /// On-map field-stats detail card. Replaces the old auto-show-when-active
-    /// top-right strip; toggled from the strip button. Persists via
-    /// <see cref="DisplayConfig.FieldStatsOnMapVisible"/>.
-    /// </summary>
-    public bool IsFieldStatsOnMapVisible
-    {
-        get => _configStore.Display.FieldStatsOnMapVisible;
-        set
-        {
-            if (_configStore.Display.FieldStatsOnMapVisible != value)
-            {
-                _configStore.Display.FieldStatsOnMapVisible = value;
-                OnPropertyChanged();
-                _settingsService.Save();
-            }
-        }
-    }
 
-    /// <summary>Strip button: flips <see cref="IsFieldStatsOnMapVisible"/>.</summary>
-    public CommunityToolkit.Mvvm.Input.IRelayCommand ToggleFieldStatsOnMapCommand =>
-        _toggleFieldStatsOnMapCommand ??= new CommunityToolkit.Mvvm.Input.RelayCommand(
-            () => IsFieldStatsOnMapVisible = !IsFieldStatsOnMapVisible);
-    private CommunityToolkit.Mvvm.Input.IRelayCommand? _toggleFieldStatsOnMapCommand;
-
-    /// <summary>
-    /// On-map GPS detail card. Toggled by tapping the strip's Modules
-    /// aggregate button (the button still shows the aggregate dot colour).
-    /// Shares the on-map slot with the Field-Stats card.
-    /// </summary>
-    public bool IsGpsDetailOverlayVisible
-    {
-        get => _configStore.Display.GpsDetailOverlayVisible;
-        set
-        {
-            if (_configStore.Display.GpsDetailOverlayVisible != value)
-            {
-                _configStore.Display.GpsDetailOverlayVisible = value;
-                OnPropertyChanged();
-                _settingsService.Save();
-            }
-        }
-    }
-
-    /// <summary>Modules button: flips <see cref="IsGpsDetailOverlayVisible"/>.</summary>
-    public CommunityToolkit.Mvvm.Input.IRelayCommand ToggleGpsDetailOverlayCommand =>
-        _toggleGpsDetailOverlayCommand ??= new CommunityToolkit.Mvvm.Input.RelayCommand(
-            () => IsGpsDetailOverlayVisible = !IsGpsDetailOverlayVisible);
-    private CommunityToolkit.Mvvm.Input.IRelayCommand? _toggleGpsDetailOverlayCommand;
 
     #endregion
 }

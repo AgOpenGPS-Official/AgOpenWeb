@@ -124,44 +124,6 @@ public partial class MainViewModel
             _lastRecPathPoint = null;
         });
 
-        ImportTracksCommand = new RelayCommand(() =>
-        {
-            var activeField = _fieldService.ActiveField;
-            if (activeField == null || string.IsNullOrEmpty(activeField.DirectoryPath))
-            {
-                ReportFailure("Open a field first before importing tracks");
-                return;
-            }
-
-            // Populate available fields for import
-            ImportFieldsList.Clear();
-            var fieldsDir = FieldsRootDirectory;
-            if (string.IsNullOrEmpty(fieldsDir) || !Directory.Exists(fieldsDir))
-            {
-                ReportFailure("No fields directory found");
-                return;
-            }
-
-            foreach (var dir in Directory.GetDirectories(fieldsDir))
-            {
-                var fieldName = Path.GetFileName(dir);
-                // Skip the current active field
-                if (dir == activeField.DirectoryPath)
-                    continue;
-                // Only include fields that have tracks
-                if (_fieldService.PeekTracks(dir).Count > 0)
-                    ImportFieldsList.Add(fieldName);
-            }
-
-            if (ImportFieldsList.Count == 0)
-            {
-                ReportFailure("No other fields with tracks found");
-                return;
-            }
-
-            OpenChainDialog(DialogType.ImportTracks);
-        });
-
         ImportTracksFromFieldCommand = new RelayCommand<string>(fieldName =>
         {
             if (string.IsNullOrEmpty(fieldName))
@@ -213,11 +175,6 @@ public partial class MainViewModel
             }
         });
 
-        CloseImportTracksDialogCommand = new RelayCommand(() =>
-        {
-            State.UI.CloseDialog();
-        });
-
         DeleteContourTrackCommand = new RelayCommand(() =>
         {
             if (SelectedTrack == null)
@@ -226,62 +183,6 @@ public partial class MainViewModel
                 return;
             }
             DeleteTrack(SelectedTrack);
-        });
-
-        StartContourRecordingCommand = new RelayCommand(() =>
-        {
-            if (!IsContourModeOn)
-            {
-                StatusMessage = "Enable contour mode first";
-                return;
-            }
-
-            _contourRecordingPoints.Clear();
-            _lastContourPoint = null;
-            IsRecordingContour = true;
-
-            // Capture first point at current GPS position
-            if (Easting != 0 || Northing != 0)
-            {
-                var headingRadians = Heading * Math.PI / 180.0;
-                var firstPoint = new Vec3(Easting, Northing, headingRadians);
-                _contourRecordingPoints.Add(firstPoint);
-                _lastContourPoint = firstPoint;
-            }
-
-            StatusMessage = $"Contour recording started ({_contourRecordingPoints.Count} pts)";
-        });
-
-        StopContourRecordingCommand = new RelayCommand(() =>
-        {
-            if (!IsRecordingContour)
-                return;
-
-            IsRecordingContour = false;
-
-            if (_contourRecordingPoints.Count < 3)
-            {
-                ReportFailure($"Need at least 3 points for contour (have {_contourRecordingPoints.Count})");
-                _contourRecordingPoints.Clear();
-                _lastContourPoint = null;
-                return;
-            }
-
-            // Create contour track from recorded points
-            var contourTrack = Track.FromContour(
-                $"Contour {DateTime.Now:HH:mm:ss}",
-                new List<Vec3>(_contourRecordingPoints));
-
-            ContourStrips.Add(contourTrack);
-            AddSavedTrack(contourTrack);
-            SaveTracksToFile();
-            UpdateContourStripsOnMap();
-
-            StatusMessage = $"Contour saved with {_contourRecordingPoints.Count} points";
-            _logger.LogDebug("[Contour] Created contour strip with {Count} points", _contourRecordingPoints.Count);
-
-            _contourRecordingPoints.Clear();
-            _lastContourPoint = null;
         });
     }
 

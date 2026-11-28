@@ -38,8 +38,8 @@ public partial class MainViewModel
 
         if (!IsHeadlandOffsetANumber(offset)) return;
 
-        int idx1 = FindNearestBoundaryVertex(boundary.Points, e1, n1);
-        int idx2 = FindNearestBoundaryVertex(boundary.Points, e2, n2);
+        int idx1 = HeadlandGeometry.FindNearestBoundaryVertex(boundary.Points, e1, n1);
+        int idx2 = HeadlandGeometry.FindNearestBoundaryVertex(boundary.Points, e2, n2);
         if (idx1 < 0 || idx2 < 0 || idx1 == idx2)
         {
             StatusMessage = "Pick two distinct boundary points";
@@ -49,7 +49,7 @@ public partial class MainViewModel
         List<Vec3> bndPoints;
         if (isCurve)
         {
-            bndPoints = ExtractBoundaryRing(boundary.Points, idx1, idx2);
+            bndPoints = HeadlandGeometry.ExtractBoundaryRing(boundary.Points, idx1, idx2);
             if (bndPoints.Count < 2) { StatusMessage = "Could not build curve"; return; }
         }
         else
@@ -71,7 +71,7 @@ public partial class MainViewModel
         // is the Stage-4 editor). Use the boundary's bounding-box diagonal so the overshoot
         // reaches across any field. A single line still can't close a loop on its own; you
         // add one per edge until they enclose an area, exactly like native.
-        double ext = BoundaryBboxDiagonal(boundary.Points);
+        double ext = HeadlandGeometry.BoundaryBboxDiagonal(boundary.Points);
 
         var segment = new HeadlandSegment
         {
@@ -87,7 +87,7 @@ public partial class MainViewModel
         };
 
         ComputeSegmentOffset(segment);
-        HeadlandSegments.Add(segment);
+        _sessionData.Headland.Add(segment);
         SelectedHeadlandSegment = segment;
         BuildHeadlandFromSegments();
     }
@@ -135,7 +135,7 @@ public partial class MainViewModel
 
         ComputeSegmentOffset(segment);
         if (!WholeBoundaryOffsetFits(segment)) return;
-        HeadlandSegments.Add(segment);
+        _sessionData.Headland.Add(segment);
         SelectedHeadlandSegment = segment;
         BuildHeadlandFromSegments();
     }
@@ -219,7 +219,7 @@ public partial class MainViewModel
         if (index < 0 || index >= HeadlandSegments.Count) return;
         var seg = HeadlandSegments[index];
         if (SelectedHeadlandSegment == seg) SelectedHeadlandSegment = null;
-        HeadlandSegments.Remove(seg);
+        _sessionData.Headland.Remove(seg);
         if (HeadlandSegments.Count == 0) ClearHeadland();
         else BuildHeadlandFromSegments();
     }
@@ -229,7 +229,7 @@ public partial class MainViewModel
     {
         if (HeadlandSegments.Count == 0 && !HasHeadland) return;
         SelectedHeadlandSegment = null;
-        HeadlandSegments.Clear();
+        _sessionData.Headland.Clear();
         ClearHeadland();
     }
 
@@ -286,67 +286,4 @@ public partial class MainViewModel
 
     // --- Boundary geometry helpers (mirror CanvasDrawSession; the host owns the math) ---
 
-    /// <summary>Diagonal of the boundary's bounding box — a safe "extend past the field"
-    /// length so drawn headland lines overshoot far enough to cross their neighbours.</summary>
-    private static double BoundaryBboxDiagonal(
-        System.Collections.Generic.IReadOnlyList<AgOpenWeb.Models.BoundaryPoint> pts)
-    {
-        double minE = double.MaxValue, maxE = double.MinValue, minN = double.MaxValue, maxN = double.MinValue;
-        foreach (var p in pts)
-        {
-            if (p.Easting < minE) minE = p.Easting;
-            if (p.Easting > maxE) maxE = p.Easting;
-            if (p.Northing < minN) minN = p.Northing;
-            if (p.Northing > maxN) maxN = p.Northing;
-        }
-        double w = maxE - minE, h = maxN - minN;
-        double diag = System.Math.Sqrt(w * w + h * h);
-        return diag > 1 ? diag : 50.0;
-    }
-
-    private static int FindNearestBoundaryVertex(
-        System.Collections.Generic.IReadOnlyList<AgOpenWeb.Models.BoundaryPoint> pts, double e, double n)
-    {
-        double minDist = double.MaxValue;
-        int bestIdx = -1;
-        for (int i = 0; i < pts.Count; i++)
-        {
-            double dx = pts[i].Easting - e;
-            double dy = pts[i].Northing - n;
-            double d = dx * dx + dy * dy;
-            if (d < minDist) { minDist = d; bestIdx = i; }
-        }
-        return bestIdx;
-    }
-
-    /// <summary>Boundary points along the shorter arc between two vertex indices.</summary>
-    private static List<Vec3> ExtractBoundaryRing(
-        System.Collections.Generic.IReadOnlyList<AgOpenWeb.Models.BoundaryPoint> pts, int idx1, int idx2)
-    {
-        int count = pts.Count;
-
-        var forward = new List<Vec3>();
-        int i = idx1;
-        while (true)
-        {
-            var p = pts[i];
-            forward.Add(new Vec3(p.Easting, p.Northing, p.Heading));
-            if (i == idx2) break;
-            i = (i + 1) % count;
-            if (forward.Count > count + 1) break;
-        }
-
-        var reverse = new List<Vec3>();
-        i = idx1;
-        while (true)
-        {
-            var p = pts[i];
-            reverse.Add(new Vec3(p.Easting, p.Northing, p.Heading));
-            if (i == idx2) break;
-            i = (i - 1 + count) % count;
-            if (reverse.Count > count + 1) break;
-        }
-
-        return forward.Count <= reverse.Count ? forward : reverse;
-    }
 }

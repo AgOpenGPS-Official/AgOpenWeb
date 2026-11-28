@@ -77,13 +77,13 @@ public partial class MainViewModel
         var boundary = State.Field.CurrentBoundary?.OuterBoundary;
         if (boundary?.Points == null || boundary.Points.Count < 3) return;
 
-        int idx1 = FindNearestBoundaryVertex(boundary.Points, e1, n1);
-        int idx2 = FindNearestBoundaryVertex(boundary.Points, e2, n2);
+        int idx1 = HeadlandGeometry.FindNearestBoundaryVertex(boundary.Points, e1, n1);
+        int idx2 = HeadlandGeometry.FindNearestBoundaryVertex(boundary.Points, e2, n2);
         if (idx1 < 0 || idx2 < 0 || idx1 == idx2) return;
 
         if (seg.Type == HeadlandSegmentType.Curve)
         {
-            var ring = ExtractBoundaryRing(boundary.Points, idx1, idx2);
+            var ring = HeadlandGeometry.ExtractBoundaryRing(boundary.Points, idx1, idx2);
             if (ring.Count < 2) return;
             seg.BoundaryPoints = ring;
         }

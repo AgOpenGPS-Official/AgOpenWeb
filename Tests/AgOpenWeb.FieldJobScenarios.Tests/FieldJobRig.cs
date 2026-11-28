@@ -128,7 +128,7 @@ public sealed class FieldJobRig : IAsyncDisposable
         configService.LoadAppSettings();
         sp.GetRequiredService<IPersistentStateService>().Load();
         WebBackend.WireCrossServices(sp);
-        var vm = await OnLoop(hostLoop, () => sp.GetRequiredService<MainViewModel>());
+        var vm = await OnLoop(hostLoop, () => WebBackend.CreateViewModel(sp));
 
         // FreePort hands back a port the OS had free a moment ago; something can take it before
         // the server binds it ("Address already in use", seen 2026-11-08): try a fresh one.
@@ -247,7 +247,7 @@ public sealed class FieldJobRig : IAsyncDisposable
         services.AddSingleton<ApplicationState>();
         services.AddSingleton(_ => AgOpenWeb.Models.Configuration.ConfigurationStore.Instance);
         services.AddSingleton(_ => PersistentAppState.Instance);
-        services.AddTransient<MainViewModel>();
+        services.AddSingleton<MainViewModel>(); // one per backend: it subscribes to the singletons it shows
         services.AddTransient<ConfigurationViewModel>();
         // Loopback only: with the machine's real interfaces the UDP service broadcasts steer and
         // machine settings to the LAN, where a real module saves them to its EEPROM.

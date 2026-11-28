@@ -123,7 +123,7 @@ public sealed class ReplayRig : IAsyncDisposable
         configService.LoadAppSettings();
         sp.GetRequiredService<IPersistentStateService>().Load();
         WebBackend.WireCrossServices(sp);
-        var vm = await OnLoop(hostLoop, () => sp.GetRequiredService<MainViewModel>());
+        var vm = await OnLoop(hostLoop, () => WebBackend.CreateViewModel(sp));
 
         // FreePort hands back a port the OS had free a moment ago; something can take it before
         // the server binds it ("Address already in use"): try a fresh one (as the field job rig).
@@ -244,7 +244,7 @@ public sealed class ReplayRig : IAsyncDisposable
         services.AddSingleton<ApplicationState>();
         services.AddSingleton(_ => AgOpenWeb.Models.Configuration.ConfigurationStore.Instance);
         services.AddSingleton(_ => PersistentAppState.Instance);
-        services.AddTransient<MainViewModel>();
+        services.AddSingleton<MainViewModel>(); // one per backend: it subscribes to the singletons it shows
         services.AddTransient<ConfigurationViewModel>();
         services.AddSingleton<ILocalNetworkInfoProvider, NoNetworkInterfaces>();
         services.AddSingleton<AgOpenWeb.Services.Network.INetworkWatcher, AgOpenWeb.Services.Network.NetworkWatcher>();

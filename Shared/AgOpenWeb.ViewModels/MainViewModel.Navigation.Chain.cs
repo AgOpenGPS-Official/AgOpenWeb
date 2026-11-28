@@ -34,10 +34,6 @@ public partial class MainViewModel
         NetworkIo,
     }
 
-    // Which fly-out the current chain was launched from, so Back can reopen it
-    // once the dialog back-stack is exhausted.
-    private NavFlyout _chainOriginFlyout = NavFlyout.None;
-
     // The fly-out most recently closed by CloseAllNavFlyouts. Menu fly-outs close
     // themselves on item-click (CloseOnItemClick) BEFORE the item's command runs,
     // so by the time OpenChainDialog reads CurrentFlyout() the fly-out is already
@@ -45,42 +41,6 @@ public partial class MainViewModel
     // to None) by OpenChainDialog so it can't go stale across unrelated opens.
     private NavFlyout _lastClosedFlyout = NavFlyout.None;
 
-    // True only while a fly-out is being reopened by Back (not a fresh nav-button
-    // open). The left-nav reads this to reopen the fly-out at the chain's current
-    // location (where panels were dragged) instead of snapping it home — so backing
-    // out to a sibling keeps the chain where you left it rather than chasing it
-    // back to the top-left.
-    private bool _flyoutReopenFromBack;
-    public bool IsFlyoutReopenFromBack => _flyoutReopenFromBack;
-
-    private void InitializeChainNavigationCommands()
-    {
-        NavBackCommand = new RelayCommand(NavigateBack);
-        NavCloseChainCommand = new RelayCommand(CloseChain);
-
-        // Back from a confirmation that was launched by a fly-out item (e.g. Field
-        // Tools → Delete Applied Area): dismiss the confirmation without running its
-        // action and reopen the originating fly-out. Only shown when the confirmation
-        // has no parent dialog to fall back to (see IsConfirmationBackVisible).
-        BackFromConfirmationCommand = new RelayCommand(() =>
-        {
-            _confirmationDialogCallback = null;
-            _confirmationDialogCheckboxCallback = null;
-            _previousDialogBeforeConfirmation = DialogType.None;
-            var flyout = _lastClosedFlyout;
-            State.UI.CloseDialog();
-            ReopenFlyout(flyout);
-            _lastClosedFlyout = NavFlyout.None;
-        });
-    }
-
-    /// <summary>
-    /// True when the active confirmation was raised directly from a left-nav
-    /// fly-out item (no parent dialog) so a Back button can return to that fly-out.
-    /// </summary>
-    public bool IsConfirmationBackVisible =>
-        _previousDialogBeforeConfirmation == DialogType.None
-        && _lastClosedFlyout != NavFlyout.None;
 
     /// <summary>
     /// Open the FIRST dialog of a chain from the currently-open fly-out. Records
@@ -94,7 +54,6 @@ public partial class MainViewModel
         var origin = CurrentFlyout();
         if (origin == NavFlyout.None)
             origin = _lastClosedFlyout;
-        _chainOriginFlyout = origin;
         _lastClosedFlyout = NavFlyout.None;
         State.UI.PushDialog(dialog);
     }
@@ -106,26 +65,11 @@ public partial class MainViewModel
     private void PushChainDialog(DialogType dialog) => State.UI.PushDialog(dialog);
 
     /// <summary>
-    /// Back: close the current panel and reopen the previous one. Pops to the
-    /// parent dialog if there is one; otherwise reopens the originating fly-out.
-    /// </summary>
-    private void NavigateBack()
-    {
-        if (!State.UI.GoBack())
-        {
-            // Stack exhausted — we were at the first dialog; reopen its fly-out.
-            ReopenFlyout(_chainOriginFlyout);
-            _chainOriginFlyout = NavFlyout.None;
-        }
-    }
-
-    /// <summary>
     /// Close: dismiss the whole chain back to the map (no fly-out reopened).
     /// </summary>
     private void CloseChain()
     {
         State.UI.CloseDialog();
-        _chainOriginFlyout = NavFlyout.None;
     }
 
     /// <summary>Identify which left-nav fly-out is currently open (if any).</summary>
@@ -138,35 +82,5 @@ public partial class MainViewModel
         if (IsFieldToolsPanelVisible) return NavFlyout.FieldTools;
         if (IsNetworkIoPanelVisible) return NavFlyout.NetworkIo;
         return NavFlyout.None;
-    }
-
-    /// <summary>Reopen a specific left-nav fly-out (all others stay closed).</summary>
-    private void ReopenFlyout(NavFlyout flyout)
-    {
-        // Flag the reopen as a Back so the left-nav places the fly-out at the
-        // chain's current location rather than resetting it to home.
-        _flyoutReopenFromBack = true;
-        try
-        {
-            ReopenFlyoutCore(flyout);
-        }
-        finally
-        {
-            _flyoutReopenFromBack = false;
-        }
-    }
-
-    private void ReopenFlyoutCore(NavFlyout flyout)
-    {
-        switch (flyout)
-        {
-            case NavFlyout.ScreenAlerts: IsScreenAlertsPanelVisible = true; break;
-            case NavFlyout.FileMenu: IsFileMenuPanelVisible = true; break;
-            case NavFlyout.Tools: IsToolsPanelVisible = true; break;
-            case NavFlyout.FieldOperations: IsFieldOperationsPanelVisible = true; break;
-            case NavFlyout.FieldTools: IsFieldToolsPanelVisible = true; break;
-            case NavFlyout.NetworkIo: IsNetworkIoPanelVisible = true; break;
-            // NavFlyout.None: nothing to reopen (chain was opened programmatically).
-        }
     }
 }

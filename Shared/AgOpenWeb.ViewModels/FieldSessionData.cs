@@ -1,0 +1,29 @@
+// AgOpenWeb
+// Copyright (C) 2024-2026 AgOpenWeb Contributors
+// SPDX-License-Identifier: Apache-2.0
+
+using System.Collections.ObjectModel;
+using AgOpenWeb.Models.Track;
+using AgOpenWeb.Services;
+using AgOpenWeb.Services.Interfaces;
+
+namespace AgOpenWeb.ViewModels;
+
+/// <summary>
+/// What a field session owns (Plans/MAINVIEWMODEL_REFACTOR_PLAN.md, item 6, stage 2): made when a
+/// session starts (a field opened, or closed: no field is a session too) and dropped when the next
+/// one starts, so nothing of one field outlives it by a reset forgotten on close. Each domain's
+/// data moves in with its own commit. Owned by the host loop, as the view model is.
+/// </summary>
+internal sealed class FieldSessionData(IUiDispatcher host)
+{
+    /// <summary>The field's marker flags: the list and its numbering.</summary>
+    public FieldFlags Flags { get; } = new(host);
+
+    /// <summary>The field's headland segments, the lines the headland is built from.</summary>
+    public Services.Headland.FieldHeadland Headland { get; } = new(host);
+
+    /// <summary>The field's tracks (AB lines and curves), mirrored into <c>State.Field.Tracks</c>
+    /// for the page and the guidance by the view model.</summary>
+    public ObservableCollection<Track> Tracks { get; } = new();
+}

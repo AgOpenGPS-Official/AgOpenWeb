@@ -125,7 +125,7 @@ public sealed class SteerWizardRig : IAsyncDisposable
         sp.GetRequiredService<IPersistentStateService>().Load();
         WebBackend.WireCrossServices(sp);
         MainViewModel vm = null!;
-        await hostLoop.InvokeAsync(() => vm = sp.GetRequiredService<MainViewModel>());
+        await hostLoop.InvokeAsync(() => vm = WebBackend.CreateViewModel(sp));
 
         var server = new RemoteServerHost();
         await server.StartAsync(
@@ -185,7 +185,7 @@ public sealed class SteerWizardRig : IAsyncDisposable
         services.AddSingleton<ApplicationState>();
         services.AddSingleton(_ => ConfigurationStore.Instance);
         services.AddSingleton(_ => PersistentAppState.Instance);
-        services.AddTransient<MainViewModel>();
+        services.AddSingleton<MainViewModel>(); // one per backend: it subscribes to the singletons it shows
         services.AddTransient<ConfigurationViewModel>();
         // Loopback only: with the machine's real interfaces the UDP service broadcasts steer and
         // machine settings to the LAN, where a real module saves them to its EEPROM.

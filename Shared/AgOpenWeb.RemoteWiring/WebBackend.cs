@@ -53,9 +53,8 @@ public sealed class WebBackend
 
         WireCrossServices(sp);
 
-        // Construct the single MainViewModel (starts the control loop + render-pull /
-        // status timers on the host loop).
-        var vm = sp.GetRequiredService<MainViewModel>();
+        // Construct the single MainViewModel (it subscribes), then start the services.
+        var vm = CreateViewModel(sp);
 
         // Start the embedded browser server, then wire its command handler + projectors.
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
@@ -88,12 +87,70 @@ public sealed class WebBackend
         return new WebBackend { Server = server, ViewModel = vm };
     }
 
+    /// <summary>
+    /// Build the view model, then start the services and the view model, in this order: what
+    /// the view model listens to is subscribed before a service sends its first event. The
+    /// order of the starts is the one the view model's constructor had. Called by
+    /// <see cref="StartAsync"/> and by the harness rigs, on the thread that builds the view
+    /// model; after <see cref="WireCrossServices"/>.
+    /// </summary>
+    public static MainViewModel CreateViewModel(IServiceProvider sp)
+    {
+        var vm = sp.GetRequiredService<MainViewModel>();
+        StartServices(sp, vm);
+        return vm;
+    }
+
+    /// <summary>The services' starts, in the order the view model's constructor had them, then
+    /// the view model's own (<see cref="MainViewModel.Start"/>), which waits for the UDP port.
+    /// Stopped in reverse by <see cref="StopServices"/>.</summary>
+    public static void StartServices(IServiceProvider sp, MainViewModel vm)
+    {
+        sp.GetRequiredService<IBatteryService>().Start();
+        sp.GetRequiredService<IAutoSteerService>().Start(); // Enable zero-copy GPS pipeline
+        sp.GetRequiredService<IGpsPipelineService>().Start(); // the background GPS processing pipeline
+        sp.GetService<ISteerMachineLoopService>()?.Start(); // the 100 Hz control loop (#313)
+        // Chart data collection from the start, so a chart opened mid-session shows recent
+        // history (rolling buffers of a few hundred points).
+        sp.GetRequiredService<IChartDataService>().Start();
+        vm.Start(sp.GetRequiredService<IUdpCommunicationService>().StartAsync());
+    }
+
+    /// <summary>
+    /// The backend's stop, when its web server stops: the reverse of <see cref="StartServices"/>.
+    /// The view model's background loops end first (the module checks), then chart collection, the control loop
+    /// (it waits up to 1 s for its last tick), the GPS pipeline, AutoSteer and the battery
+    /// reader. The UDP port is closed when the provider is disposed, as before; the control loop
+    /// and the battery reader are disposed then too, a second stop that does nothing.
+    /// </summary>
+    public static void StopServices(IServiceProvider sp, MainViewModel vm)
+    {
+        vm.StopBackgroundLoops();
+        sp.GetRequiredService<IChartDataService>().Stop();
+        sp.GetService<ISteerMachineLoopService>()?.Stop();
+        sp.GetRequiredService<IGpsPipelineService>().Stop();
+        sp.GetRequiredService<IAutoSteerService>().Stop();
+        sp.GetRequiredService<IBatteryService>().Stop();
+    }
+
     /// <summary>Wire cross-referencing services after the container is built: the
-    /// AutoSteerService into UdpCommunicationService for the zero-copy GPS→steering path.
-    /// Replaces the per-platform <c>WireUpServices()</c> DI extensions.</summary>
+    /// AutoSteerService into UdpCommunicationService for the zero-copy GPS→steering path, the
+    /// services AutoSteer reads, and the control loop's rate into section control.
+    /// Replaces the per-platform <c>WireUpServices()</c> DI extensions; services are joined
+    /// here, where they are built, not by casts in the view model.</summary>
     public static void WireCrossServices(IServiceProvider sp)
     {
         var udp = sp.GetRequiredService<IUdpCommunicationService>() as UdpCommunicationService;
         udp?.SetAutoSteerService(sp.GetRequiredService<IAutoSteerService>());
+        (sp.GetRequiredService<IAutoSteerService>() as Services.AutoSteer.AutoSteerService)?.SetTramLineService(sp.GetRequiredService<ITramLineService>());
+        (sp.GetRequiredService<IAutoSteerService>() as Services.AutoSteer.AutoSteerService)?.SetToolPositionService(sp.GetRequiredService<IToolPositionService>());
+        (sp.GetRequiredService<IAutoSteerService>() as Services.AutoSteer.AutoSteerService)?.SetSmartWasService(sp.GetRequiredService<ISmartWasCalibrationService>());
+        if (sp.GetService<ISteerMachineLoopService>() is { } controlLoop)
+        {
+            // TickHz is on the concrete SectionControlService, not the
+            // interface (it's an internal-tuning concern, not a contract).
+            if (sp.GetRequiredService<ISectionControlService>() is Services.Section.SectionControlService scsConcrete)
+                scsConcrete.TickHz = controlLoop.FrequencyHz;
+        }
     }
 }

@@ -136,7 +136,7 @@ public sealed class DayRig : IAsyncDisposable
         // provider, the VM or the server would keep the whole backend alive after its
         // shut-down through whatever holds the closure, and the after-exit census would blame
         // the app for the harness.
-        var vm = await OnLoop(hostLoop, Resolve<MainViewModel>(sp));
+        var vm = await OnLoop(hostLoop, () => WebBackend.CreateViewModel(sp));
 
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
         await server.StartAsync(
@@ -275,7 +275,7 @@ public sealed class DayRig : IAsyncDisposable
         services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().State);
         services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().Store);
         services.AddSingleton(sp => sp.GetRequiredService<AgOpenWeb.Models.State.BackendStateLease>().Persistent);
-        services.AddTransient<MainViewModel>();
+        services.AddSingleton<MainViewModel>(); // one per backend: it subscribes to the singletons it shows
         services.AddTransient<ConfigurationViewModel>();
         // Loopback only: with the machine's real interfaces the UDP service broadcasts steer and
         // machine settings to the LAN, where a real module saves them to its EEPROM.

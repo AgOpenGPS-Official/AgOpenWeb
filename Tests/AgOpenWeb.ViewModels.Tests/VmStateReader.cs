@@ -27,16 +27,24 @@ internal static class VmStateReader
     public static Dictionary<string, string> Read(MainViewModel vm)
     {
         var all = new Dictionary<string, string>(StringComparer.Ordinal);
-        Walk(vm, "vm", 0, all, new Dictionary<object, string>(ReferenceEqualityComparer.Instance));
+        Walk(vm, "vm", 0, all, new Dictionary<object, string>(ReferenceEqualityComparer.Instance), throughServices: false);
         foreach (var k in WallClock) all.Remove(k);
         return all;
     }
+
+    /// <summary>
+    /// A service's public state as <c>path = value</c>, under <paramref name="path"/>: read as a
+    /// view model is, and the service's own types (a section's state) read through too, not only
+    /// the models. For the busy-field test, which reads what the services keep as well as the VM.
+    /// </summary>
+    public static void ReadService(object service, string path, Dictionary<string, string> into) =>
+        Walk(service, path, 0, into, new Dictionary<object, string>(ReferenceEqualityComparer.Instance), throughServices: true);
 
     /// <summary>The paths whose value differs, or that are in one reading only.</summary>
     public static IEnumerable<string> Differences(Dictionary<string, string> a, Dictionary<string, string> b) =>
         a.Keys.Union(b.Keys).Where(k => !a.TryGetValue(k, out var x) || !b.TryGetValue(k, out var y) || x != y);
 
-    private static void Walk(object obj, string path, int depth, Dictionary<string, string> into, Dictionary<object, string> seen)
+    private static void Walk(object obj, string path, int depth, Dictionary<string, string> into, Dictionary<object, string> seen, bool throughServices)
     {
         // An object reached again is the same one as before: say where, so a field kept alive
         // under another name still shows.
@@ -50,11 +58,11 @@ internal static class VmStateReader
             object? v;
             try { v = p.GetValue(obj); }
             catch { continue; }
-            Value(v, path + "." + p.Name, depth, into, seen);
+            Value(v, path + "." + p.Name, depth, into, seen, throughServices);
         }
     }
 
-    private static void Value(object? v, string at, int depth, Dictionary<string, string> into, Dictionary<object, string> seen)
+    private static void Value(object? v, string at, int depth, Dictionary<string, string> into, Dictionary<object, string> seen, bool throughServices)
     {
         if (v == null) { into[at] = "null"; return; }
         if (IsValue(v.GetType())) { into[at] = Show(v); return; }
@@ -64,13 +72,16 @@ internal static class VmStateReader
             into[at] = $"count {items.Count} #{Hash(items.Select(i => i == null ? "null" : IsValue(i.GetType()) ? Show(i) : i.GetType().Name))}";
             if (depth < MaxDepth)
                 for (int i = 0; i < Math.Min(items.Count, ItemsRead); i++)
-                    if (items[i] is { } item && !IsValue(item.GetType()) && IsModel(item))
-                        Walk(item, $"{at}[{i}]", depth + 1, into, seen);
+                    if (items[i] is { } item && !IsValue(item.GetType()) && ReadThrough(item, throughServices))
+                        Walk(item, $"{at}[{i}]", depth + 1, into, seen, throughServices);
             return;
         }
-        if (depth < MaxDepth && IsModel(v)) Walk(v, at, depth + 1, into, seen);
+        if (depth < MaxDepth && ReadThrough(v, throughServices)) Walk(v, at, depth + 1, into, seen, throughServices);
         else into[at] = v.GetType().Name;
     }
+
+    private static bool ReadThrough(object v, bool throughServices) =>
+        IsModel(v) || (throughServices && (v.GetType().Namespace ?? "").StartsWith("AgOpenWeb.Services", StringComparison.Ordinal));
 
     private static bool IsModel(object v) => (v.GetType().Namespace ?? "").StartsWith("AgOpenWeb.Models", StringComparison.Ordinal);
 

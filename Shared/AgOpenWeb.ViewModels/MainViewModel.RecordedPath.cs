@@ -31,14 +31,11 @@ public partial class MainViewModel
     public ICommand? PlayRecordedPathCommand { get; private set; }
     public ICommand? StopPlaybackCommand { get; private set; }
     public ICommand? CycleResumeModeCommand { get; private set; }
-    public ICommand? ToggleRecordedPathPanelCommand { get; private set; }
     public ICommand? ReverseRecordedPathCommand { get; private set; }
     public ICommand? PickRecordedPathCommand { get; private set; }
     public ICommand? DeleteRecordedPathCommand { get; private set; }
     public ICommand? TurnOffRecordedPathCommand { get; private set; }
     public ICommand? ShowRecordedPathDialogCommand { get; private set; }
-    public ICommand? CloseRecordedPathDialogCommand { get; private set; }
-    public ICommand? SetRecordedPathTabCommand { get; private set; }
     public ICommand? SaveNamedRecordedPathCommand { get; private set; }
 
     private bool _isRecordedPathPanelVisible;
@@ -55,20 +52,6 @@ public partial class MainViewModel
         set => SetProperty(ref _resumeModeLabel, value);
     }
 
-    // Dialog tab state: 0 = Record, 1 = Playback
-    private int _recordedPathTabIndex;
-    public int RecordedPathTabIndex
-    {
-        get => _recordedPathTabIndex;
-        set
-        {
-            SetProperty(ref _recordedPathTabIndex, value);
-            OnPropertyChanged(nameof(IsRecordTabActive));
-            OnPropertyChanged(nameof(IsPlaybackTabActive));
-        }
-    }
-    public bool IsRecordTabActive => RecordedPathTabIndex == 0;
-    public bool IsPlaybackTabActive => RecordedPathTabIndex == 1;
 
     // Name for saving recorded path
     private string _recordedPathName = "";
@@ -147,28 +130,10 @@ public partial class MainViewModel
                 LoadRecPathForPlayback();
         };
 
-        ToggleRecordedPathPanelCommand = new RelayCommand(() =>
-        {
-            IsRecordedPathPanelVisible = !IsRecordedPathPanelVisible;
-            if (IsRecordedPathPanelVisible)
-                LoadRecPathForPlayback();
-        });
-
         ShowRecordedPathDialogCommand = new RelayCommand(() =>
         {
             IsRecordedPathPanelVisible = true;
             LoadRecPathForPlayback();
-        });
-
-        CloseRecordedPathDialogCommand = new RelayCommand(() =>
-        {
-            IsRecordedPathPanelVisible = false;
-        });
-
-        SetRecordedPathTabCommand = new RelayCommand<string>(tab =>
-        {
-            if (int.TryParse(tab, out int idx))
-                RecordedPathTabIndex = idx;
         });
 
         SaveNamedRecordedPathCommand = new RelayCommand(() =>

@@ -34,7 +34,8 @@ rc="$here/runner-compare.sh"
 # Vehicle & Tool in pieces: whole it is about 2.5 hours (the settings sweep 1 h 45 of it, one group
 # after another), the longest harness by far. The operators run apart, and the sweep in the shards
 # of sweep-shards.txt (the longest about 40 minutes), checked against both sides' sweep tables
-# first: a table that changed could leave a row in no shard.
+# first: a table that changed could leave a row in no shard. Only the scenario test, as the
+# workflow runs it: the project's hot-path budget test in every part ran ten times, on a busy host.
 V=Tests/AgOpenWeb.VehicleToolScenarios.Tests
 tables=()
 for ref in "$fix" "$base"; do
@@ -47,9 +48,9 @@ SWEEP=$(python3 "$here/sweep-shards.py" only)
 # The longest start first (the working day, about 40 minutes, cannot be split), so they are not left
 # waiting for threads behind the short ones; the short ones fill the threads that are left.
 cmp WorkingDay "$rc" "$fix" "$base" Tests/AgOpenWeb.WorkingDayScenarios.Tests
-cmp vt-sweep    AGOPENWEB_SCENARIO_OPERATOR=sweep    AGOPENWEB_SCENARIO_ONLY="$SWEEP" "$rc" "$fix" "$base" $V
-cmp vt-careful  AGOPENWEB_SCENARIO_OPERATOR=careful  "$rc" "$fix" "$base" $V
-cmp vt-careless AGOPENWEB_SCENARIO_OPERATOR=careless "$rc" "$fix" "$base" $V
+cmp vt-sweep    AGOPENWEB_SCENARIO_OPERATOR=sweep    AGOPENWEB_SCENARIO_ONLY="$SWEEP" "$rc" "$fix" "$base" $V --filter FullyQualifiedName~VehicleToolScenarioTests
+cmp vt-careful  AGOPENWEB_SCENARIO_OPERATOR=careful  "$rc" "$fix" "$base" $V --filter FullyQualifiedName~VehicleToolScenarioTests
+cmp vt-careless AGOPENWEB_SCENARIO_OPERATOR=careless "$rc" "$fix" "$base" $V --filter FullyQualifiedName~VehicleToolScenarioTests
 cmp WebClient "$rc" "$fix" "$base" Tests/AgOpenWeb.WebClientScenarios.Tests
 cmp jobs-careful  AGOPENWEB_SCENARIO_OPERATOR=careful  AGOPENWEB_SCENARIO_ONLY="$(codes J CarefulOperator.cs)" "$rc" "$fix" "$base" $J --filter FullyQualifiedName~FieldJobScenarioTests
 cmp jobs-careless AGOPENWEB_SCENARIO_OPERATOR=careless AGOPENWEB_SCENARIO_ONLY="$(codes C CarelessOperator.cs)" "$rc" "$fix" "$base" $J --filter FullyQualifiedName~FieldJobScenarioTests

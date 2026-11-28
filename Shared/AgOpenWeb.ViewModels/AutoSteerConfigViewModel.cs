@@ -28,8 +28,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     private readonly IConfigurationService _configService;
     private readonly IUdpCommunicationService? _udpService;
     private readonly IAutoSteerService? _autoSteerService;
-    private readonly Action? _launchWizard;
-    private readonly Action? _openSmartWas;
 
     // Debounce timer for auto-sending slider changes
     private readonly System.Timers.Timer _sliderDebounceTimer;
@@ -56,8 +54,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         _configService = configService;
         _udpService = udpService;
         _autoSteerService = autoSteerService;
-        _launchWizard = launchWizard;
-        _openSmartWas = openSmartWas;
 
         // Set up debounce timer for slider changes
         _sliderDebounceTimer = new System.Timers.Timer(SliderDebounceDelayMs);
@@ -148,52 +144,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
 
     #region Panel Visibility & Mode
 
-    private bool _isPanelVisible;
-    public bool IsPanelVisible
-    {
-        get => _isPanelVisible;
-        set
-        {
-            if (SetProperty(ref _isPanelVisible, value))
-            {
-                if (value)
-                {
-                    SubscribeToUdpEvents();
-                }
-                else
-                {
-                    UnsubscribeFromUdpEvents();
-                    // Disable free drive when panel closes (safety)
-                    StopFreeDrive();
-                }
-            }
-        }
-    }
-
-    private bool _isFullMode;
-    public bool IsFullMode
-    {
-        get => _isFullMode;
-        set => SetProperty(ref _isFullMode, value);
-    }
-
-    private int _selectedTabIndex;
-    public int SelectedTabIndex
-    {
-        get => _selectedTabIndex;
-        set => SetProperty(ref _selectedTabIndex, value);
-    }
-
-    private int _selectedRightTabIndex;
-    public int SelectedRightTabIndex
-    {
-        get => _selectedRightTabIndex;
-        set => SetProperty(ref _selectedRightTabIndex, value);
-    }
-
-    public ICommand ToggleFullModeCommand { get; private set; } = null!;
-    public ICommand ClosePanelCommand { get; private set; } = null!;
-
     #endregion
 
     #region Numeric Input Dialog
@@ -203,20 +153,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     {
         get => _isNumericInputVisible;
         set => SetProperty(ref _isNumericInputVisible, value);
-    }
-
-    private string _numericInputTitle = string.Empty;
-    public string NumericInputTitle
-    {
-        get => _numericInputTitle;
-        set => SetProperty(ref _numericInputTitle, value);
-    }
-
-    private string _numericInputUnit = string.Empty;
-    public string NumericInputUnit
-    {
-        get => _numericInputUnit;
-        set => SetProperty(ref _numericInputUnit, value);
     }
 
     private string _numericInputDisplayText = string.Empty;
@@ -239,32 +175,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     public ICommand NumericInputBackspaceCommand { get; private set; } = null!;
     public ICommand NumericInputClearCommand { get; private set; } = null!;
     public ICommand NumericInputNegateCommand { get; private set; } = null!;
-
-    private void ShowNumericInput(
-        string title,
-        double currentValue,
-        Action<double> onConfirm,
-        string unit = "",
-        bool integerOnly = false,
-        bool allowNegative = true,
-        double min = double.MinValue,
-        double max = double.MaxValue)
-    {
-        NumericInputTitle = title;
-        NumericInputUnit = unit;
-        _numericInputIntegerOnly = integerOnly;
-        _numericInputAllowNegative = allowNegative;
-        _numericInputMin = min;
-        _numericInputMax = max;
-        _numericInputCallback = onConfirm;
-        _isFirstDigitEntry = true;
-
-        NumericInputDisplayText = integerOnly
-            ? ((int)currentValue).ToString(System.Globalization.CultureInfo.InvariantCulture)
-            : currentValue.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-
-        IsNumericInputVisible = true;
-    }
 
     private void InitializeNumericInputCommands()
     {
@@ -349,9 +259,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
             else if (NumericInputDisplayText != "0")
                 NumericInputDisplayText = "-" + NumericInputDisplayText;
         });
-
-        ToggleFullModeCommand = new RelayCommand(() => IsFullMode = !IsFullMode);
-        ClosePanelCommand = new RelayCommand(() => IsPanelVisible = false);
     }
 
     #endregion
@@ -360,9 +267,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     #region Tab 2: Steering Sensor
 
     public ICommand ZeroWasCommand { get; private set; } = null!;
-    public ICommand EditCountsPerDegreeCommand { get; private set; } = null!;
-    public ICommand EditAckermannCommand { get; private set; } = null!;
-    public ICommand EditMaxSteerAngleCommand { get; private set; } = null!;
 
     private void InitializeTab2Commands()
     {
@@ -381,282 +285,63 @@ public partial class AutoSteerConfigViewModel : ObservableObject
             // Send updated settings to module immediately
             SendSteerSettingsPgn();
         });
-
-        EditCountsPerDegreeCommand = new RelayCommand(() =>
-            ShowNumericInput("Counts Per Degree", AutoSteer.CountsPerDegree,
-                v => AutoSteer.CountsPerDegree = v,
-                "", integerOnly: true, allowNegative: false, min: 1, max: 255));
-
-        EditAckermannCommand = new RelayCommand(() =>
-            ShowNumericInput("Ackermann", AutoSteer.Ackermann,
-                v => AutoSteer.Ackermann = (int)v,
-                "", integerOnly: true, allowNegative: false, min: 0, max: 200));
-
-        EditMaxSteerAngleCommand = new RelayCommand(() =>
-            ShowNumericInput("Max Steer Angle", Config.Vehicle.MaxSteerAngle,
-                v => Config.Vehicle.MaxSteerAngle = v,
-                "°", integerOnly: true, allowNegative: false, min: 10, max: 90));
     }
 
     #endregion
 
     #region Tab 3: Deadzone / Timing
 
-    public ICommand EditDeadzoneHeadingCommand { get; private set; } = null!;
-    public ICommand EditDeadzoneDelayCommand { get; private set; } = null!;
-    public ICommand EditAcquireFactorCommand { get; private set; } = null!;
-
     private void InitializeTab3Commands()
     {
-        EditDeadzoneHeadingCommand = new RelayCommand(() =>
-            ShowNumericInput("Deadzone Heading", AutoSteer.DeadzoneHeading,
-                v => AutoSteer.DeadzoneHeading = v,
-                "°", integerOnly: false, allowNegative: false, min: 0.0, max: 5.0));
-
-        EditDeadzoneDelayCommand = new RelayCommand(() =>
-            ShowNumericInput("On-Delay", AutoSteer.DeadzoneDelay,
-                v => AutoSteer.DeadzoneDelay = (int)v,
-                "", integerOnly: true, allowNegative: false, min: 0, max: 50));
-
-        EditAcquireFactorCommand = new RelayCommand(() =>
-            ShowNumericInput("Acquire Factor", AutoSteer.AcquireFactor,
-                v => AutoSteer.AcquireFactor = v,
-                "", integerOnly: false, allowNegative: false, min: 0.5, max: 1.0));
     }
 
     #endregion
 
     #region Tab 4: Gain / PWM
 
-    public ICommand EditProportionalGainCommand { get; private set; } = null!;
-    public ICommand EditMaxPwmCommand { get; private set; } = null!;
-    public ICommand EditMinPwmCommand { get; private set; } = null!;
-
     private void InitializeTab4Commands()
     {
-        EditProportionalGainCommand = new RelayCommand(() =>
-            ShowNumericInput("Proportional Gain", AutoSteer.ProportionalGain,
-                v => AutoSteer.ProportionalGain = (int)v,
-                "", integerOnly: true, allowNegative: false, min: 1, max: 200));
-
-        EditMaxPwmCommand = new RelayCommand(() =>
-            ShowNumericInput("Max PWM", AutoSteer.MaxPwm,
-                v => AutoSteer.MaxPwm = (int)v,
-                "", integerOnly: true, allowNegative: false, min: 50, max: 255));
-
-        EditMinPwmCommand = new RelayCommand(() =>
-            ShowNumericInput("Min PWM", AutoSteer.MinPwm,
-                v => AutoSteer.MinPwm = (int)v,
-                "", integerOnly: true, allowNegative: false, min: 1, max: 200));
     }
 
     #endregion
 
     #region Tab 5: Turn Sensors
 
-    public ICommand ToggleTurnSensorCommand { get; private set; } = null!;
-    public ICommand TogglePressureSensorCommand { get; private set; } = null!;
-    public ICommand ToggleCurrentSensorCommand { get; private set; } = null!;
-
     private void InitializeTab5Commands()
     {
-        ToggleTurnSensorCommand = new RelayCommand(() =>
-        {
-            AutoSteer.TurnSensorEnabled = !AutoSteer.TurnSensorEnabled;
-            Config.MarkChanged();
-        });
-
-        TogglePressureSensorCommand = new RelayCommand(() =>
-        {
-            AutoSteer.PressureSensorEnabled = !AutoSteer.PressureSensorEnabled;
-            Config.MarkChanged();
-        });
-
-        ToggleCurrentSensorCommand = new RelayCommand(() =>
-        {
-            AutoSteer.CurrentSensorEnabled = !AutoSteer.CurrentSensorEnabled;
-            Config.MarkChanged();
-        });
     }
 
     #endregion
 
     #region Tab 6: Hardware Config
 
-    public ICommand ToggleDanfossCommand { get; private set; } = null!;
-    public ICommand ToggleInvertWasCommand { get; private set; } = null!;
-    public ICommand ToggleInvertMotorCommand { get; private set; } = null!;
-    public ICommand ToggleInvertRelaysCommand { get; private set; } = null!;
-    public ICommand SetMotorDriverCommand { get; private set; } = null!;
-    public ICommand SetAdConverterCommand { get; private set; } = null!;
-    public ICommand SetImuAxisCommand { get; private set; } = null!;
-    public ICommand SetExternalEnableCommand { get; private set; } = null!;
-
     private void InitializeTab6Commands()
     {
-        ToggleDanfossCommand = new RelayCommand(() =>
-        {
-            AutoSteer.DanfossEnabled = !AutoSteer.DanfossEnabled;
-            Config.MarkChanged();
-        });
-
-        ToggleInvertWasCommand = new RelayCommand(() =>
-        {
-            AutoSteer.SetInvertWasKeepingCentre(!AutoSteer.InvertWas);
-            Config.MarkChanged();
-        });
-
-        ToggleInvertMotorCommand = new RelayCommand(() =>
-        {
-            AutoSteer.InvertMotor = !AutoSteer.InvertMotor;
-            Config.MarkChanged();
-        });
-
-        ToggleInvertRelaysCommand = new RelayCommand(() =>
-        {
-            AutoSteer.InvertRelays = !AutoSteer.InvertRelays;
-            Config.MarkChanged();
-        });
-
-        SetMotorDriverCommand = new RelayCommand<int>(v =>
-        {
-            AutoSteer.MotorDriver = v;
-            Config.MarkChanged();
-        });
-
-        SetAdConverterCommand = new RelayCommand<int>(v =>
-        {
-            AutoSteer.AdConverter = v;
-            Config.MarkChanged();
-        });
-
-        SetImuAxisCommand = new RelayCommand<int>(v =>
-        {
-            AutoSteer.ImuAxisSwap = v;
-            Config.MarkChanged();
-        });
-
-        SetExternalEnableCommand = new RelayCommand<int>(v =>
-        {
-            AutoSteer.ExternalEnable = v;
-            Config.MarkChanged();
-        });
     }
 
     #endregion
 
     #region Tab 7: Algorithm Settings
 
-    public ICommand EditSideHillCompensationCommand { get; private set; } = null!;
-    public ICommand ToggleSteerInReverseCommand { get; private set; } = null!;
-
     private void InitializeTab7Commands()
     {
-        EditSideHillCompensationCommand = new RelayCommand(() =>
-            ShowNumericInput("Side Hill Compensation", AutoSteer.SideHillCompensation,
-                v => AutoSteer.SideHillCompensation = v,
-                "", integerOnly: false, allowNegative: false, min: 0.0, max: 1.0));
-
-        ToggleSteerInReverseCommand = new RelayCommand(() =>
-        {
-            AutoSteer.SteerInReverse = !AutoSteer.SteerInReverse;
-            Config.MarkChanged();
-        });
     }
 
     #endregion
 
     #region Tab 8: Speed Limits
 
-    public ICommand ToggleManualTurnsCommand { get; private set; } = null!;
-    public ICommand EditManualTurnsSpeedCommand { get; private set; } = null!;
-    public ICommand EditMinSteerSpeedCommand { get; private set; } = null!;
-    public ICommand EditMaxSteerSpeedCommand { get; private set; } = null!;
-
     private void InitializeTab8Commands()
     {
-        ToggleManualTurnsCommand = new RelayCommand(() =>
-        {
-            AutoSteer.ManualTurnsEnabled = !AutoSteer.ManualTurnsEnabled;
-            Config.MarkChanged();
-        });
-
-        EditManualTurnsSpeedCommand = new RelayCommand(() =>
-            ShowNumericInput("Manual Turns Speed", AutoSteer.ManualTurnsSpeed,
-                v => AutoSteer.ManualTurnsSpeed = v,
-                "kph", integerOnly: false, allowNegative: false, min: 0, max: 30));
-
-        EditMinSteerSpeedCommand = new RelayCommand(() =>
-            ShowNumericInput("Min Steer Speed", AutoSteer.MinSteerSpeed,
-                v => AutoSteer.MinSteerSpeed = v,
-                "kph", integerOnly: false, allowNegative: false, min: 0, max: 10));
-
-        EditMaxSteerSpeedCommand = new RelayCommand(() =>
-            ShowNumericInput("Max Steer Speed", AutoSteer.MaxSteerSpeed,
-                v => AutoSteer.MaxSteerSpeed = v,
-                "kph", integerOnly: false, allowNegative: false, min: 5, max: 50));
     }
 
     #endregion
 
     #region Tab 9: Display Settings
 
-    public ICommand EditLineWidthCommand { get; private set; } = null!;
-    public ICommand EditNudgeDistanceCommand { get; private set; } = null!;
-    public ICommand EditNextGuidanceTimeCommand { get; private set; } = null!;
-    public ICommand EditCmPerPixelCommand { get; private set; } = null!;
-    public ICommand ToggleLightbarCommand { get; private set; } = null!;
-    public ICommand ToggleSteerBarCommand { get; private set; } = null!;
-    public ICommand ToggleGuidanceBarCommand { get; private set; } = null!;
-
-    /// <summary>Whether any bar mode (lightbar or steerbar) is enabled.</summary>
-    public bool IsBarEnabled => AutoSteer.LightbarEnabled || AutoSteer.SteerBarEnabled;
 
     private void InitializeTab9Commands()
     {
-        EditLineWidthCommand = new RelayCommand(() =>
-            ShowNumericInput("Line Width", AutoSteer.LineWidth,
-                v => AutoSteer.LineWidth = (int)v,
-                "px", integerOnly: true, allowNegative: false, min: 1, max: 10));
-
-        EditNudgeDistanceCommand = new RelayCommand(() =>
-            ShowNumericInput("Nudge Distance", AutoSteer.NudgeDistance,
-                v => AutoSteer.NudgeDistance = (int)v,
-                "cm", integerOnly: true, allowNegative: false, min: 1, max: 100));
-
-        EditNextGuidanceTimeCommand = new RelayCommand(() =>
-            ShowNumericInput("Next Guidance Line", AutoSteer.NextGuidanceTime,
-                v => AutoSteer.NextGuidanceTime = v,
-                "sec", integerOnly: false, allowNegative: false, min: 0.5, max: 5.0));
-
-        EditCmPerPixelCommand = new RelayCommand(() =>
-            ShowNumericInput("Cm Per Pixel", AutoSteer.CmPerPixel,
-                v => AutoSteer.CmPerPixel = (int)v,
-                "", integerOnly: true, allowNegative: false, min: 1, max: 20));
-
-        // AgOpenGPS: the guidance bar's On/Off (isLightbarOn) and its style, light bar or
-        // steer bar (isLightBarNotSteerBar), are separate settings (#479).
-        ToggleLightbarCommand = new RelayCommand(() =>
-        {
-            AutoSteer.LightbarEnabled = !AutoSteer.LightbarEnabled;
-            Config.MarkChanged();
-            OnPropertyChanged(nameof(IsBarEnabled));
-        });
-
-        ToggleSteerBarCommand = new RelayCommand(() =>
-        {
-            AutoSteer.SteerBarEnabled = !AutoSteer.SteerBarEnabled;
-            Config.MarkChanged();
-            OnPropertyChanged(nameof(IsBarEnabled));
-        });
-
-        ToggleGuidanceBarCommand = new RelayCommand(() =>
-        {
-            // Master on/off for the top bar (AgOpen isLightbarOn). Mode is unchanged.
-            AutoSteer.GuidanceBarOn = !AutoSteer.GuidanceBarOn;
-            Config.MarkChanged();
-            OnPropertyChanged(nameof(IsBarEnabled));
-        });
     }
 
     #endregion
@@ -694,32 +379,11 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         set => SetProperty(ref _actualSteerAngle, value);
     }
 
-    private double _steerError;
-    public double SteerError
-    {
-        get => _steerError;
-        set => SetProperty(ref _steerError, value);
-    }
-
     private double _setSteerAngle;
     public double SetSteerAngle
     {
         get => _setSteerAngle;
         set => SetProperty(ref _setSteerAngle, value);
-    }
-
-    private double _actualPressurePercent;
-    public double ActualPressurePercent
-    {
-        get => _actualPressurePercent;
-        set => SetProperty(ref _actualPressurePercent, value);
-    }
-
-    private double _actualCurrentPercent;
-    public double ActualCurrentPercent
-    {
-        get => _actualCurrentPercent;
-        set => SetProperty(ref _actualCurrentPercent, value);
     }
 
     // Switch status from module (PGN 253)
@@ -751,13 +415,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
         set => SetProperty(ref _vwasFusionActive, value);
     }
 
-    private int _testSteerOffset;
-    public int TestSteerOffset
-    {
-        get => _testSteerOffset;
-        set => SetProperty(ref _testSteerOffset, value);
-    }
-
     /// <summary>Free Drive off and the wheels back to centre in the panel (the panel closed,
     /// or the browser that held control is gone).</summary>
     public void StopFreeDrive()
@@ -772,9 +429,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     public ICommand SteerLeftCommand { get; private set; } = null!;
     public ICommand SteerRightCommand { get; private set; } = null!;
     public ICommand SteerCenterCommand { get; private set; } = null!;
-    public ICommand SteerOffset5Command { get; private set; } = null!;
-    public ICommand EditSteerOffsetCommand { get; private set; } = null!;
-    public ICommand EditTurnSensorCountsCommand { get; private set; } = null!;
 
     private void InitializeTestModeCommands()
     {
@@ -820,29 +474,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
             _autoSteerService?.SetFreeDriveAngle(0);
             if (IsFreeDriveMode) SetSteerAngle = 0;
         });
-
-        SteerOffset5Command = new RelayCommand(() =>
-        {
-            FreeDriveSteerAngle = FreeDriveSteerAngle == 0 ? 5 : 0;
-            _autoSteerService?.SetFreeDriveAngle(FreeDriveSteerAngle);
-            if (IsFreeDriveMode) SetSteerAngle = FreeDriveSteerAngle;
-        });
-
-        EditSteerOffsetCommand = new RelayCommand(() =>
-        {
-            ShowNumericInput("Steer Offset", TestSteerOffset, value =>
-            {
-                TestSteerOffset = (int)Math.Clamp(value, -50, 50);
-            });
-        });
-
-        EditTurnSensorCountsCommand = new RelayCommand(() =>
-        {
-            ShowNumericInput("Turn Sensor Counts", AutoSteer.TurnSensorCounts, value =>
-            {
-                AutoSteer.TurnSensorCounts = (int)Math.Clamp(value, 0, 255);
-            });
-        });
     }
 
     #endregion
@@ -850,19 +481,8 @@ public partial class AutoSteerConfigViewModel : ObservableObject
     #region Action Commands
 
     public ICommand SendAndSaveCommand { get; private set; } = null!;
-    public ICommand ResetToDefaultsCommand { get; private set; } = null!;
-    public ICommand WizardCommand { get; private set; } = null!;
-    public ICommand OpenSmartWasCommand { get; private set; } = null!;
-
-    private bool _isResetConfirmVisible;
-    public bool IsResetConfirmVisible
-    {
-        get => _isResetConfirmVisible;
-        set => SetProperty(ref _isResetConfirmVisible, value);
-    }
 
     public ICommand ConfirmResetCommand { get; private set; } = null!;
-    public ICommand CancelResetCommand { get; private set; } = null!;
 
     private void InitializeActionCommands()
     {
@@ -881,12 +501,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
             HasUnsavedRightSideChanges = false;
         });
 
-        ResetToDefaultsCommand = new RelayCommand(() =>
-        {
-            // Show confirmation before reset
-            IsResetConfirmVisible = true;
-        });
-
         ConfirmResetCommand = new RelayCommand(() =>
         {
             // Reset all settings to defaults
@@ -898,26 +512,6 @@ public partial class AutoSteerConfigViewModel : ObservableObject
             SendSteerSettingsPgn();
             SendSteerConfigPgn();
 
-            IsResetConfirmVisible = false;
-        });
-
-        CancelResetCommand = new RelayCommand(() =>
-        {
-            IsResetConfirmVisible = false;
-        });
-
-        WizardCommand = new RelayCommand(() =>
-        {
-            // Close the config panel before launching the wizard
-            IsPanelVisible = false;
-            _launchWizard?.Invoke();
-        });
-
-        OpenSmartWasCommand = new RelayCommand(() =>
-        {
-            // Smart WAS dialog floats on top — keep AutoSteer config panel open
-            // so the operator can compare live readouts side-by-side.
-            _openSmartWas?.Invoke();
         });
     }
 
@@ -943,111 +537,13 @@ public partial class AutoSteerConfigViewModel : ObservableObject
 
     #region Status Display (Updated from hardware feedback)
 
-    /// <summary>
-    /// Update status display from incoming PGN 253 data
-    /// </summary>
-    public void UpdateFromSteerData(double actualAngle, double setAngle, int pwm)
-    {
-        ActualSteerAngle = actualAngle;
-        SetSteerAngle = setAngle;
-        PwmDisplay = pwm;
-        SteerError = Math.Abs(actualAngle - setAngle);
-    }
-
     #endregion
 
     #region UDP Event Subscription
 
-    private bool _isSubscribed;
-
-    // Display throttling: update at ~10Hz instead of 50Hz
-    private const int DisplayUpdateIntervalMs = 100;
-    private DateTime _lastDisplayUpdate = DateTime.MinValue;
-
     // Smoothing: exponential moving average for angle display
     private double _smoothedActualAngle;
-    private const double SmoothingFactor = 0.3; // Lower = smoother, higher = more responsive
 
-    private void SubscribeToUdpEvents()
-    {
-        if (_isSubscribed || _udpService == null) return;
-
-        _udpService.DataReceived += OnUdpDataReceived;
-        _isSubscribed = true;
-        _smoothedActualAngle = 0;
-        _lastDisplayUpdate = DateTime.MinValue;
-    }
-
-    private void UnsubscribeFromUdpEvents()
-    {
-        if (!_isSubscribed || _udpService == null) return;
-
-        _udpService.DataReceived -= OnUdpDataReceived;
-        _isSubscribed = false;
-    }
-
-    private void OnUdpDataReceived(object? sender, UdpDataReceivedEventArgs e)
-    {
-        // Handle PGN 250 (Sensor Data from module - pressure/current)
-        // Note: Kickout logic is handled by AutoSteerService; we just update display here
-        if (e.PGN == PgnNumbers.SENSOR_DATA)
-        {
-            if (PgnBuilder.TryParseSensorData(e.Data, out var sensorData))
-            {
-                // Map sensor value (0-255) to percentage (0-100)
-                double percent = sensorData.SensorValue / 255.0 * 100.0;
-
-                // Update display for the enabled sensor type
-                if (AutoSteer.PressureSensorEnabled)
-                    ActualPressurePercent = Math.Round(percent, 1);
-                else if (AutoSteer.CurrentSensorEnabled)
-                    ActualCurrentPercent = Math.Round(percent, 1);
-            }
-            return;
-        }
-
-        // Handle PGN 253 (Steer Data from module)
-        if (e.PGN != PgnNumbers.AUTOSTEER_DATA) return;
-
-        // Parse the incoming steer data
-        if (!PgnBuilder.TryParseSteerData(e.Data, out var steerData))
-            return;
-
-        // Apply exponential moving average smoothing to angle
-        _smoothedActualAngle = (_smoothedActualAngle * (1 - SmoothingFactor)) +
-                              (steerData.ActualSteerAngle * SmoothingFactor);
-
-        // Throttle display updates to ~10Hz
-        var now = DateTime.UtcNow;
-        if ((now - _lastDisplayUpdate).TotalMilliseconds < DisplayUpdateIntervalMs)
-            return;
-
-        _lastDisplayUpdate = now;
-
-        // Update display properties with smoothed values
-        ActualSteerAngle = Math.Round(_smoothedActualAngle, 1);
-
-        // Calculate steer error
-        double error = SetSteerAngle - _smoothedActualAngle;
-        SteerError = Math.Round(Math.Abs(error), 1);
-
-        // Calculate PWM based on error and proportional gain
-        // This is the PWM AgOpenWeb would send to the motor
-        double pwmRaw = error * AutoSteer.ProportionalGain;
-        int pwmClamped = (int)Math.Clamp(Math.Abs(pwmRaw), 0, AutoSteer.MaxPwm);
-
-        // Apply minimum PWM threshold (deadband)
-        if (pwmClamped < AutoSteer.MinPwm)
-            pwmClamped = 0;
-
-        PwmDisplay = pwmClamped;
-
-        // Update switch status from module
-        WorkSwitchActive = steerData.WorkSwitchActive;
-        SteerSwitchActive = steerData.SteerSwitchActive;
-        RemoteButtonPressed = steerData.RemoteButtonPressed;
-        VwasFusionActive = steerData.VwasFusionActive;
-    }
 
     #endregion
 }
