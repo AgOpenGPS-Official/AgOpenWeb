@@ -14,7 +14,7 @@ namespace AgOpenWeb.Services;
 /// map control to drive (the browser is the only renderer). Everything the
 /// browser needs is read from <see cref="AgOpenWeb.Models.State.ApplicationState"/>
 /// by the RemoteServer projectors — in particular the dead-reckoned render pose,
-/// which <c>MainViewModel.OnRenderPullTick</c> writes to ApplicationState directly
+/// which <c>RenderPose.OnRenderPullTick</c> writes to ApplicationState directly
 /// (in addition to calling SetAllPositions here, which we discard). So sinking the
 /// map pushes to nothing is correct and loses no state the web UI consumes.
 ///

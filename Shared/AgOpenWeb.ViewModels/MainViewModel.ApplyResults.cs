@@ -25,6 +25,7 @@ public partial class MainViewModel
     /// </summary>
     public void ApplyGpsCycleResult(GpsCycleResult result)
     {
+        AssertHostLoop();
         // PERF-05 Phase 2a. Cycle = one ApplyGpsCycleResult invocation on
         // the UI thread (one per GpsCycleCompleted dispatch from the
         // background pipeline). Captures everything from GpsDataRecorder
@@ -357,7 +358,7 @@ public partial class MainViewModel
         if (result.YouTurnNotice != null)
             ReportFailure(result.YouTurnNotice);
 
-        // Map vehicle/tool/hitch positions are pushed by OnRenderPullTick at
+        // Map vehicle/tool/hitch positions are pushed by RenderPose.OnRenderPullTick at
         // 30 Hz (vehicle dead-reckoned to "now" from the estimator, tool/hitch
         // from the live ToolPositionService snapshot updated at 100 Hz by the
         // control loop). The pipeline result captures stale values at

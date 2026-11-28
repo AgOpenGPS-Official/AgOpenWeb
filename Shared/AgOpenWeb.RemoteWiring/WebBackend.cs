@@ -53,8 +53,9 @@ public sealed class WebBackend
 
         WireCrossServices(sp);
 
-        // Construct the single MainViewModel (it subscribes), then start the services.
-        var vm = CreateViewModel(sp);
+        // Construct the single MainViewModel (it subscribes), then start the services: on the
+        // host loop, where the view model's state lives.
+        var vm = await CreateViewModelOnHostLoopAsync(sp).ConfigureAwait(false);
 
         // Start the embedded browser server, then wire its command handler + projectors.
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
@@ -88,11 +89,27 @@ public sealed class WebBackend
     }
 
     /// <summary>
+    /// <see cref="CreateViewModel"/> on the host loop (<see cref="IUiDispatcher"/>), from whatever
+    /// thread starts the backend. The view model's start begins its module status loop (the
+    /// hello, the module and GPS checks, the module-lost and GPS-lost alarms, every 100 ms), which
+    /// continues wherever its awaits resume: on the host loop only if it was started there. The
+    /// heads start the backend on their start-up thread (iOS from the thread pool), so the loop
+    /// ran on the thread pool beside the host loop, writing the view model's state from there.
+    /// The harness rigs already built it on the host loop.
+    /// </summary>
+    public static async Task<MainViewModel> CreateViewModelOnHostLoopAsync(IServiceProvider sp)
+    {
+        MainViewModel vm = null!;
+        await sp.GetRequiredService<IUiDispatcher>().InvokeAsync(() => vm = CreateViewModel(sp)).ConfigureAwait(false);
+        return vm;
+    }
+
+    /// <summary>
     /// Build the view model, then start the services and the view model, in this order: what
     /// the view model listens to is subscribed before a service sends its first event. The
-    /// order of the starts is the one the view model's constructor had. Called by
-    /// <see cref="StartAsync"/> and by the harness rigs, on the thread that builds the view
-    /// model; after <see cref="WireCrossServices"/>.
+    /// order of the starts is the one the view model's constructor had. Called on the host loop,
+    /// by <see cref="StartAsync"/> (through <see cref="CreateViewModelOnHostLoopAsync"/>) and by
+    /// the harness rigs; after <see cref="WireCrossServices"/>.
     /// </summary>
     public static MainViewModel CreateViewModel(IServiceProvider sp)
     {
@@ -113,6 +130,7 @@ public sealed class WebBackend
         // Chart data collection from the start, so a chart opened mid-session shows recent
         // history (rolling buffers of a few hundred points).
         sp.GetRequiredService<IChartDataService>().Start();
+        sp.GetRequiredService<RenderPose>().Start(); // the map's pose between fixes, as the view model's start began
         vm.Start(sp.GetRequiredService<IUdpCommunicationService>().StartAsync());
     }
 
@@ -135,7 +153,8 @@ public sealed class WebBackend
 
     /// <summary>Wire cross-referencing services after the container is built: the
     /// AutoSteerService into UdpCommunicationService for the zero-copy GPS→steering path, the
-    /// services AutoSteer reads, and the control loop's rate into section control.
+    /// services AutoSteer reads, the control tick's work into the control loop and the loop's rate
+    /// into section control.
     /// Replaces the per-platform <c>WireUpServices()</c> DI extensions; services are joined
     /// here, where they are built, not by casts in the view model.</summary>
     public static void WireCrossServices(IServiceProvider sp)
@@ -147,6 +166,9 @@ public sealed class WebBackend
         (sp.GetRequiredService<IAutoSteerService>() as Services.AutoSteer.AutoSteerService)?.SetSmartWasService(sp.GetRequiredService<ISmartWasCalibrationService>());
         if (sp.GetService<ISteerMachineLoopService>() is { } controlLoop)
         {
+            // The control tick's work (ControlTick), joined before the loop starts, as the view
+            // model's handler was in its constructor.
+            controlLoop.Ticked += sp.GetRequiredService<Services.Pipeline.ControlTick>().Run;
             // TickHz is on the concrete SectionControlService, not the
             // interface (it's an internal-tuning concern, not a contract).
             if (sp.GetRequiredService<ISectionControlService>() is Services.Section.SectionControlService scsConcrete)

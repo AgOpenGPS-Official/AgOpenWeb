@@ -29,7 +29,7 @@ public enum Skip { Normal, SkipWorked, Alternate }
 
 /// <summary>
 /// A large field driven through the real GPS cycle (<see cref="GpsPipelineService"/>) and the
-/// 100 Hz control tick (tool position + section control, as MainViewModel.OnControlLoopTicked),
+/// 100 Hz control tick (tool position + section control, as ControlTick),
 /// recording the <see cref="WorkCounters"/> each one costs (one control tick sampled per fix). 300 × 500 m, a boundary point
 /// every metre, the headland 24 m in (also a point a metre) or none, a 12 m tool in 6 sections, auto
 /// U-turn and auto sections on. The tractor drives north up one pass, from mid-field to the

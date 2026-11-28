@@ -69,6 +69,12 @@ public class MainViewModelBuilder
     {
         var battery = new NullBatteryService();
         var dispatcher = new AgOpenWeb.Services.Threading.InlineUiDispatcher();
+        var timers = new RecordingTimerFactory(Timers);
+        var appState = new ApplicationState();
+        // Made before the view model, so its timer is the first 30 Hz timer in Timers, as the
+        // view model's own was.
+        var renderPose = new AgOpenWeb.ViewModels.RenderPose(ToolPositionService, MapService, appState,
+            ConfigurationStore.Instance, dispatcher, timers, PositionEstimator);
         var vm = new MainViewModel(
             udpService: UdpService,
             gpsService: GpsService,
@@ -108,19 +114,19 @@ public class MainViewModelBuilder
             gpsPipelineService: GpsPipelineService,
             intents: Intents,
             logger: Logger,
-            appState: new ApplicationState(),
+            appState: appState,
             configStore: ConfigurationStore.Instance,
             persistentStateService: Substitute.For<IPersistentStateService>(),
             batteryService: battery,
             uiDispatcher: dispatcher,
-            uiTimerFactory: new RecordingTimerFactory(Timers),
-            positionEstimator: PositionEstimator);
+            uiTimerFactory: timers);
 
         // The starts, as WebBackend.StartServices makes them after building the view model (no
         // control loop here).
         battery.Start();
         AutoSteerService.Start();
         GpsPipelineService.Start();
+        renderPose.Start();
         vm.Start(UdpService.StartAsync());
         return vm;
     }

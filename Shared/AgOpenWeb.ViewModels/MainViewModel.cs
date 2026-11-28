@@ -69,16 +69,13 @@ public partial class MainViewModel : ObservableObject
     private bool _hasTramSystemsEverUsed;
     private readonly Dictionary<string, (int start, int count, bool isBoundary)> _tramSystemLineRanges = new();
     private readonly IGpsPipelineService _gpsPipelineService;
-    private readonly ISteerMachineLoopService? _controlLoop;
     private readonly IIsobusTaskControllerService? _isobus;
-    private readonly IPositionEstimator? _positionEstimator;
     private readonly IPipelineIntents _intents;
     private readonly ILogger<MainViewModel> _logger;
     private readonly ApplicationState _appState;
     private readonly ConfigurationStore _configStore;
     private readonly IUiTimerFactory _timerFactory;
     private readonly IUiTimer _simulatorTimer;
-    private IUiTimer? _renderPullTimer;
     // PERF-05 Phase 2c #2: unified 5 Hz status-display tick, decoupled from
     // every data source (GPS 10 Hz, control loop 100 Hz, AutoSteer 100 Hz).
     // Drives every MainViewModel property bound to the top status bar.
@@ -196,8 +193,6 @@ public partial class MainViewModel : ObservableObject
         IBatteryService batteryService,
         IUiDispatcher uiDispatcher,
         IUiTimerFactory uiTimerFactory,
-        ISteerMachineLoopService? controlLoop = null,
-        IPositionEstimator? positionEstimator = null,
         IIsobusTaskControllerService? isobus = null)
     {
         _isobus = isobus;
@@ -337,8 +332,6 @@ public partial class MainViewModel : ObservableObject
             RaiseStatusStripChanged();
         };
         _gpsPipelineService = gpsPipelineService;
-        _controlLoop = controlLoop;
-        _positionEstimator = positionEstimator;
         _intents = intents;
         _appState = appState;
 
@@ -374,38 +367,6 @@ public partial class MainViewModel : ObservableObject
 
         // The background GPS processing pipeline (started by the backend)
         _gpsPipelineService.CycleCompleted += OnGpsCycleCompleted;
-
-        // Host control loop (#313): runs at 100 Hz on its own thread.
-        // Each tick: read interpolated pose from estimator, update tool
-        // position + section state machine, send PGN 254 + PGN 239. This
-        // gives sub-frame section edge accuracy (~0.05 m at 25 km/h vs
-        // ~0.7 m on the prior 10 Hz path) and matches the firmware
-        // autosteer cadence so PGNs land fresh every firmware tick.
-        // Optional in test builds.
-        if (_controlLoop is not null)
-        {
-            _controlLoop.Ticked += OnControlLoopTicked;
-        }
-
-        // Renderer-pull timer (#313 commit 6): when a position estimator is
-        // wired, push the latest dead-reckoned vehicle pose to the map at
-        // ~30 Hz so the chevron moves smoothly between GPS samples instead
-        // of stepping at the GPS rate (10 Hz). Pulled state, not pushed —
-        // the estimator's pose at any tick reflects the latest GPS snapshot
-        // dead-reckoned forward to that tick's timestamp.
-        if (_positionEstimator is not null)
-        {
-            // Render-pull rate. Each tick clones 5 arrays, allocates an ~80-field
-            // MapRenderState, and pushes it to the Avalonia composition thread —
-            // which on iOS Metal stays saturated at 30 Hz on weaker hardware
-            // (e.g. iPad Pro 2nd gen drops to 24 FPS during paint). Drop to
-            // ~20 Hz on mobile to give the composition thread headroom; desktop
-            // keeps 30 Hz for smoother vehicle interpolation.
-            int intervalMs = (OperatingSystem.IsIOS() || OperatingSystem.IsAndroid()) ? 50 : 33;
-            _renderPullTimer = _timerFactory.Create();
-            _renderPullTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
-            _renderPullTimer.Tick += OnRenderPullTick;
-        }
 
         // PERF-05 Phase 2c #2. Unified 5 Hz status-display tick — the single
         // cadence for every top-status-bar bound MainViewModel property,
@@ -546,6 +507,7 @@ public partial class MainViewModel : ObservableObject
         // user-driven and should persist (see the ConfigStore.Connections
         // subscription above).
         _configReady = true;
+        _constructed = true;
     }
 
     /// <summary>
@@ -558,7 +520,6 @@ public partial class MainViewModel : ObservableObject
     public void Start(Task udpStarted)
     {
         _batteryStatus = _batteryService.CurrentStatus;
-        _renderPullTimer?.Start();
         _statusTickTimer.Start();
 
         // Initialize clock and auto day/night timer
@@ -582,161 +543,6 @@ public partial class MainViewModel : ObservableObject
             }, UiDispatcherPriority.Background);
         }
     }
-
-    /// <summary>
-    /// Host control loop tick handler (#313). Runs at 100 Hz on the loop's
-    /// own thread. Reads the latest GPS-anchored pose from the estimator,
-    /// updates tool position + section state machine, hands the section bits
-    /// to the sender, then sends PGN 254 +
-    /// PGN 239 so the firmware autosteer task — which also runs at 100 Hz
-    /// — sees fresh data every cycle.
-    /// </summary>
-    private void OnControlLoopTicked(long timestampTicks)
-    {
-        // Only run the section/tool pipeline once a GPS sample exists; before
-        // then the estimator returns default(InterpolatedPose) which would
-        // pin tool position at (0,0). Autosteer PGN sends are still useful
-        // before the first GPS sample (firmware needs to see SOMETHING to
-        // know we're alive), so they don't gate.
-        if (_positionEstimator?.GetLatestSnapshot() is not null)
-        {
-            var p = _positionEstimator.GetPose(timestampTicks);
-            _toolPositionService.Update(
-                new Vec3(p.Position.Easting, p.Position.Northing, p.Heading),
-                p.Heading);
-            _sectionControlService.Update(
-                _toolPositionService.ToolPosition,
-                _toolPositionService.ToolHeading,
-                p.Heading,
-                p.SpeedMps);
-        }
-        // Hand this tick's section bits to the sender (#311). The GPS cycle writes them
-        // too, but only once per fix; an edge decided here, or a section button tapped
-        // between fixes, must not wait for the next one.
-        _autoSteerService.SetSectionBits(_sectionControlService.GetSectionBits64());
-        _autoSteerService.SendPgnsForControlTick();
-    }
-
-    /// <summary>
-    /// 30 Hz UI-thread pull (#313 commit 6) of the dead-reckoned vehicle
-    /// pose so the map chevron interpolates smoothly between GPS samples
-    /// instead of stepping at the GPS rate. The estimator returns a pose
-    /// dead-reckoned to "now" from the latest GPS snapshot using yaw rate
-    /// and velocity, so position advances ~7 cm per 30 Hz frame at 25 km/h
-    /// instead of a 28 cm jump every 100 ms.
-    ///
-    /// Tool/hitch are computed entirely from the current dead-reckoned
-    /// vehicle pose (for hitch) and the Torriem-stable tool heading from
-    /// the snapshot (for tool). Earlier attempts that translated the
-    /// snapshot tool by a dead-reckoned hitch delta still mixed two
-    /// estimator state bases when a GPS sample arrived between the last
-    /// control-loop tick and the render tick — the snapshot hitch used
-    /// the pre-arrival prediction while the new hitch used the post-
-    /// arrival prediction, leaking a small snap into the implement at
-    /// each sample. Computing both hitch and tool from the same single
-    /// estimator pose eliminates that.
-    /// </summary>
-    private void OnRenderPullTick(object? sender, EventArgs e)
-    {
-        if (_positionEstimator?.GetLatestSnapshot() is null)
-            return;
-
-        // PERF-05 #2: state-mirror cycle = one OnRenderPullTick after the
-        // early-return. Captures GetPose + SetAllPositions + SendStateToHandler.
-        bool sm = AgOpenWeb.Models.Diagnostics.DiagFlags.PerfStateMirror;
-        long smT0 = sm ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
-        long smA0 = sm ? GC.GetAllocatedBytesForCurrentThread() : 0;
-
-        // Capture the instant this pose is dead-reckoned to, so the web Tick can stamp the
-        // pose with ITS compute time (consistent value↔timestamp) rather than the later
-        // broadcast time — see VehicleState.RenderPoseMs.
-        long renderTs = Clock.Current.GetTimestamp();
-        var p = _positionEstimator.GetPose(renderTs);
-
-        var tool = ConfigStore.Tool;
-        // The point the tool hangs on, as the tool position has it (RigGeometry).
-        var hitch = AgOpenWeb.Models.Tool.RigGeometry.AlongTractor(new Vec3(p.Position.Easting, p.Position.Northing, p.Heading), p.Heading,
-            AgOpenWeb.Models.Tool.RigGeometry.AttachX(ConfigStore.Vehicle, tool));
-        double hitchE = hitch.Easting, hitchN = hitch.Northing;
-
-        double toolE, toolN, toolHeading;
-        if (AgOpenWeb.Models.Tool.RigGeometry.IsRigid(AgOpenWeb.Models.Tool.RigGeometry.Mount(tool)))
-        {
-            // Fixed tool follows the vehicle exactly — no Torriem state.
-            toolHeading = p.Heading;
-            toolE = hitchE;
-            toolN = hitchN;
-        }
-        else
-        {
-            // Trailing / TBT — use the Torriem-tracked headings from the
-            // snapshot (stable across ticks) and project the tool back from
-            // the freshly-computed hitch (through the TBT tank) along them,
-            // with the tool position's own geometry: the pivot distance's
-            // sign as AgOpenGPS's, so "Behind" is drawn behind the wheels.
-            toolHeading = _toolPositionService.ToolHeading;
-            (toolE, toolN) = AgOpenWeb.Models.Tool.RigGeometry.TrailedToolCentre(
-                hitchE, hitchN, _toolPositionService.TankPosition.Heading, toolHeading, tool);
-        }
-
-        // No lateral offset: the section spans the map draws from this point carry it,
-        // as in ToolPositionService (#446).
-
-        _mapService.SetAllPositions(
-            p.Position.Easting, p.Position.Northing, p.Heading,
-            toolE, toolN, toolHeading,
-            ConfigStore.ActualToolWidth, hitchE, hitchN,
-            _toolPositionService.IsToolPositionReady);
-
-        // Mirror the dead-reckoned tool/hitch into ApplicationState so the web map
-        // projector renders the SAME smooth implement the native map does (the
-        // control-loop ToolPositionService snapshot the Tick used to read steps at the
-        // GPS rate — freeze-then-jump on the web while the tractor glides).
-        var vs = State.Vehicle;
-        vs.RenderToolEasting = toolE;
-        vs.RenderToolNorthing = toolN;
-        vs.RenderToolHeading = toolHeading;
-        vs.RenderHitchEasting = hitchE;
-        vs.RenderHitchNorthing = hitchN;
-        vs.RenderToolReady = _toolPositionService.IsToolPositionReady;
-        // Dead-reckoned vehicle pose (same as the native map) for the web Tick.
-        vs.RenderEasting = p.Position.Easting;
-        vs.RenderNorthing = p.Position.Northing;
-        vs.RenderHeadingRad = p.Heading;
-        vs.RenderSpeed = p.SpeedMps;
-        vs.RenderPoseValid = true;
-        // Stopwatch-basis ms of this pose's compute instant (matches the web HostMs basis).
-        vs.RenderPoseMs = renderTs * 1000.0 / Clock.Current.Frequency;
-
-        if (sm)
-        {
-            _smCycleTicks += System.Diagnostics.Stopwatch.GetTimestamp() - smT0;
-            _smCycleAllocs += GC.GetAllocatedBytesForCurrentThread() - smA0;
-            _smCycleCount++;
-            var elapsed = (DateTime.UtcNow - _smWindowStart).TotalSeconds;
-            if (elapsed >= 1.0 && _smCycleCount > 0)
-            {
-                double ticksPerUs = System.Diagnostics.Stopwatch.Frequency / 1_000_000.0;
-                Console.WriteLine(
-                    $"[StateMirror-PERF] cycles={_smCycleCount}"
-                    + $" us/cycle={(_smCycleTicks / ticksPerUs / _smCycleCount):F1}"
-                    + $" alloc/cycle={(_smCycleAllocs / _smCycleCount)}B"
-                    + $" total_us={(long)(_smCycleTicks / ticksPerUs)}"
-                    + $" total_alloc={_smCycleAllocs}B"
-                    + $" window={elapsed:F2}s");
-                _smCycleTicks = 0;
-                _smCycleAllocs = 0;
-                _smCycleCount = 0;
-                _smWindowStart = DateTime.UtcNow;
-            }
-        }
-    }
-
-    // PERF-05 #2: state-mirror accumulators. Gated by DiagFlags.PerfStateMirror.
-    private long _smCycleTicks;
-    private long _smCycleAllocs;
-    private int _smCycleCount;
-    private DateTime _smWindowStart = DateTime.UtcNow;
 
     private void RestoreSettings()
     {
@@ -1304,6 +1110,7 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void UpdateModuleSwitches()
     {
+        AssertHostLoop();
         UpdateModuleSteeringState();
         var tool = ConfigStore.Tool;
         var mc = _moduleCommunicationService;
@@ -1341,6 +1148,7 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     internal void UpdateModuleSteeringState()
     {
+        AssertHostLoop();
         bool held = _isSimulatorEnabled && !_isSimulatorDrivingSteering;
         bool connected = State.Connections.IsAutoSteerDataOk && !held;
         bool notSteering = IsAutoSteerEngaged && connected && _autoSteerService.LastSteerData.SteerSwitchActive;

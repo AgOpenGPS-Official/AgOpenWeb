@@ -90,9 +90,9 @@ public partial class MainViewModel
 
     private void OnAutoSteerStateUpdated(object? sender, VehicleStateSnapshot state)
     {
-        // AutoSteer fires StateUpdated at the unified control-loop rate
-        // (100 Hz, decoupled from GPS — see Plans/Completed/
-        // UNIFIED_CONTROL_LOOP_PLAN.md). Latency display can't sit on this
+        // AutoSteer fires StateUpdated on the module receive thread, at the GPS rate and on a
+        // PGN 253 switch change (MainViewModel.Threads.cs; it was 100 Hz when this was written,
+        // Plans/Completed/UNIFIED_CONTROL_LOOP_PLAN.md). Latency display can't sit on this
         // path — at 100 Hz the PropertyChanged → TextLayout cascade for
         // the status-bar "Lat: 0.00ms" readout was 5.9% main-thread CPU
         // (Phase 2b trace). We cache the latest value here and let
@@ -110,6 +110,7 @@ public partial class MainViewModel
 
     private void ApplyTramState(byte tramState)
     {
+        AssertHostLoop();
         TramControlByte = tramState;
         _mapService.SetTramControlByte(tramState);
         // The web tram lights: the detected bits, plus the manual overrides (#451).

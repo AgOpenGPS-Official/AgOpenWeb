@@ -300,6 +300,8 @@ public sealed class ReplayRig : IAsyncDisposable
         // time whatever the harness's pace.
         services.AddSingleton<ManualSteerMachineLoop>(_ => new ManualSteerMachineLoop(frequencyHz: 100.0));
         services.AddSingleton<ISteerMachineLoopService>(sp => sp.GetRequiredService<ManualSteerMachineLoop>());
+        services.AddSingleton<AgOpenWeb.Services.Pipeline.ControlTick>();
+        services.AddSingleton<AgOpenWeb.ViewModels.RenderPose>();
         services.AddSingleton<IGpsPipelineService, GpsPipelineService>();
         services.AddSingleton<IMapService, NullMapService>();
     }
