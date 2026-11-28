@@ -138,19 +138,8 @@ public class LookAheadSlitTests
             _testClock = new AgOpenWeb.Models.Timing.TestClock();
             AgOpenWeb.Models.Timing.Clock.Set(_testClock);
         }
-        _controlLoop.Ticked += ts =>
-        {
-            if (_estimator.GetLatestSnapshot() is null) return;
-            var pose = _estimator.GetPose(ts);
-            _toolPosition.Update(
-                new Vec3(pose.Position.Easting, pose.Position.Northing, pose.Heading),
-                pose.Heading);
-            _sectionControl.Update(
-                _toolPosition.ToolPosition,
-                _toolPosition.ToolHeading,
-                pose.Heading,
-                pose.SpeedMps);
-        };
+        // The production tick (ControlTick), not a copy of it.
+        _controlLoop.Ticked += new ControlTick(_toolPosition, _sectionControl, _autoSteer, _estimator).Run;
         _controlLoop.Start();
 
         // Tick the loop synchronously inside ProcessCycle, right after the
