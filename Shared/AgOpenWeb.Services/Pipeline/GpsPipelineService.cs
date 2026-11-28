@@ -284,8 +284,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
         lock (_stateLock)
         {
             _autoSteerEngaged = engaged;
-            // Reset guidance state when disengaging so we do global search on next engage
-            if (!engaged) _trackGuidanceState = null;
+            // Reset guidance state when disengaging so we do global search on next engage.
+            // The cycle's own state: the cycle resets it at its next start (TakeHostChanges).
+            if (!engaged) _steeringResetPending = true;
         }
     }
 
@@ -294,11 +295,44 @@ public sealed class GpsPipelineService : IGpsPipelineService
         lock (_stateLock)
         {
             _activeTrack = track;
-            _guidanceWorking.HowManyPathsAway = passNumber;
-            _guidanceWorking.NudgeOffset = nudgeOffset;
+            // The pass, the nudge and the guidance's memory are the cycle's: it takes them at its
+            // next start (TakeHostChanges), so a cycle under way finishes on the track it began.
+            _pendingTrack = (passNumber, nudgeOffset);
+        }
+    }
+
+    // What the host loop changed in the cycle's own state, taken by the next cycle at its start.
+    // Under _stateLock.
+    private (int PassNumber, double NudgeOffset)? _pendingTrack;
+    private bool _steeringResetPending;
+    private bool _fieldOpenedPending;
+
+    /// <summary>
+    /// The host loop's changes to the cycle's own state, applied at the start of a cycle, before
+    /// anything in it reads that state. Applied in the middle of a cycle, they were undone by it
+    /// or mixed with it: a reset of the guidance's memory overwritten by that cycle's guidance,
+    /// a track's pass reported with the previous track. Caller holds _stateLock.
+    /// </summary>
+    private void TakeHostChanges()
+    {
+        if (_pendingTrack is { } t)
+        {
+            _guidanceWorking.HowManyPathsAway = t.PassNumber;
+            _guidanceWorking.NudgeOffset = t.NudgeOffset;
             // Reset guidance state when track changes so we do a global search
             _trackGuidanceState = null;
             _lastCrossTrackError = 0; // a new line has no previous XTE for the look-ahead (#110)
+            _pendingTrack = null;
+        }
+        if (_steeringResetPending)
+        {
+            _trackGuidanceState = null;
+            _steeringResetPending = false;
+        }
+        if (_fieldOpenedPending)
+        {
+            _farFromFieldWarned = false;
+            _fieldOpenedPending = false;
         }
     }
 
@@ -410,7 +444,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // re-opening (or opening a different) field gets a fresh shot at
             // the warning.
             if (hasActiveField && !_hasActiveField)
-                _farFromFieldWarned = false;
+                _fieldOpenedPending = true; // the latch is the cycle's: reset at its next start
             _hasActiveField = hasActiveField;
         }
     }
@@ -551,6 +585,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
         long perfA0 = perfGps ? GC.GetAllocatedBytesForCurrentThread() : 0;
 
         var config = _configStore;
+
+        // The host loop's changes to the cycle's state first: a lateral move drained below
+        // applies to the pass of a track chosen since the last cycle, as when they were written
+        // at once.
+        lock (_stateLock) TakeHostChanges();
 
         // Stage 1: Drain intents — see Plans/threading_model.svg cycle worker lane.
         // Phase C consumes ManualYouTurn + ClearYouTurn here; Phase D extends
