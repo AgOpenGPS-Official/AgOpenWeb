@@ -6,7 +6,7 @@
     <RuntimeIdentifier>iossimulator-arm64</RuntimeIdentifier>
     <Nullable>enable</Nullable>
     <LangVersion>14</LangVersion>
-    <SupportedOSPlatformVersion>14.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion>15.0</SupportedOSPlatformVersion>
     <MtouchLink>None</MtouchLink>
     <ApplicationId>com.agopenweb.ios</ApplicationId>
     <ApplicationTitle>AgOpenWeb</ApplicationTitle>

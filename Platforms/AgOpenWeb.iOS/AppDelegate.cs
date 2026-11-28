@@ -16,6 +16,8 @@ namespace AgOpenWeb.iOS;
 /// backend (<see cref="AgOpenWeb.RemoteWiring.WebBackend"/>) in-process and fills the screen
 /// with a <c>WKWebView</c> pointed at the local web UI (<see cref="LauncherViewController"/>).
 /// There is no native UI. The host also binds 0.0.0.0, so other devices on the LAN can connect.
+/// The window is the scene's (<see cref="SceneDelegate"/>): apps built with the iOS 27 SDK must use
+/// the scene lifecycle.
 /// </summary>
 [Register("AppDelegate")]
 public class AppDelegate : UIApplicationDelegate
@@ -24,27 +26,17 @@ public class AppDelegate : UIApplicationDelegate
     /// or terminated. Set by <see cref="LauncherViewController"/> before the backend starts.</summary>
     public static IServiceProvider? Services { get; internal set; }
 
-    public override UIWindow? Window { get; set; }
-
-    public override bool FinishedLaunching(UIApplication application, NSDictionary? launchOptions)
-    {
-        Window = new UIWindow(UIScreen.MainScreen.Bounds)
-        {
-            RootViewController = new LauncherViewController(),
-        };
-        Window.MakeKeyAndVisible();
-        return true;
-    }
+    public override bool FinishedLaunching(UIApplication application, NSDictionary? launchOptions) => true;
 
     // Landscape only: a guidance screen is used sideways in the cab.
     public override UIInterfaceOrientationMask GetSupportedInterfaceOrientations(UIApplication application, UIWindow? forWindow)
         => UIInterfaceOrientationMask.Landscape;
 
-    public override void DidEnterBackground(UIApplication application) => SaveAppState();
-
+    // Going to the background is the scene's event (SceneDelegate.DidEnterBackground); termination
+    // is still the app's.
     public override void WillTerminate(UIApplication application) => SaveAppState();
 
-    private static void SaveAppState()
+    internal static void SaveAppState()
     {
         try
         {
