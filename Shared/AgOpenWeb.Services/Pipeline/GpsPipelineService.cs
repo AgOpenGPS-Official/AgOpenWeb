@@ -46,7 +46,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly Func<double, double, bool> _isPointCovered;
     private readonly IAutoSteerService _autoSteerService;
     private readonly YouTurnGuidanceService _youTurnGuidanceService;
-    private readonly YouTurnStateMachine _youTurnStateMachine;
     private readonly IAudioService _audioService;
     private readonly IPipelineIntents _intents;
     // Where the fix puts the vehicle: plane, heading, reversing, roll, pivot, with their own state (PoseStep).
@@ -111,9 +110,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // when snap / nudge / set-active-track all become intents).
 
     private bool _youTurnEnabled;
-    // Cycle-thread copy of the toggle from the previous cycle, to clear a turn
-    // only on the on→off edge.
-    private bool _youTurnWasEnabled;
     // One-shot direction override for the next armed automatic turn. The UI
     // toggle pre-flips this while idle; the cycle mirrors it into
     // _youTurn.NextUTurnDirectionLeftOverride and the state machine consumes
@@ -139,17 +135,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // sequence and the next turn rebuilds it for the new pattern.
     private bool _snakeResetPending;
 
-    // Synthetic headland for the no-headland-but-has-boundary workflow.
-    // Computed once per (boundary, UTurnRadius, UTurnDistanceFromBoundary)
-    // tuple by insetting the outer boundary so an auto-uturn arc's apex
-    // sits inside the outer boundary. Only consulted by ProcessCycle (worker
-    // thread) so no lock is needed on the cache itself.
-    private readonly PolygonOffsetService _syntheticHeadlandOffset = new();
-    private List<Vec3>? _syntheticHeadlandLine;
-    private Boundary? _syntheticHeadlandSourceBoundary;
-    private double _syntheticHeadlandConfigKey;
-    private double _syntheticHeadlandInsetUsed;
-
     // ── Pipeline-owned guidance state (only touched on background thread) ─
     private Models.Track.TrackGuidanceState? _trackGuidanceState;
     // Previous along-track travel direction; a change forces a global nearest
@@ -163,8 +148,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // only mutated on the cycle worker thread, via state-machine Tick /
     // TriggerManual / ClearState. ApplyGpsCycleResult mirrors back to the
     // observable State.* on the UI thread.
-    private readonly YouTurnWorkingState _youTurn = new();
-    private Models.Track.Track? _youTurnTrack; // the track _youTurn was planned on
+    // The U-turn: its working state, the turn line and a curve's opening, its own (UTurnStep).
+    private readonly UTurnStep _uTurnStep;
     private readonly GuidanceWorkingState _guidanceWorking = new();
 
     // ── Curve limit warning throttling ──────────────────────────────────
@@ -200,7 +185,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _isPointCovered = coverageMapService.IsPointCovered;
         _autoSteerService = autoSteerService;
         _youTurnGuidanceService = youTurnGuidanceService;
-        _youTurnStateMachine = youTurnStateMachine;
+        _uTurnStep = new UTurnStep(youTurnStateMachine, audioService, configStore, _isPointCovered, logger);
         _audioService = audioService;
         _contourStep = new ContourStep(configStore, sectionControlService, _isPointCovered, audioService);
         _autoSteerRules = new AutoSteerRules(configStore, audioService);
@@ -432,6 +417,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // ══════════════════════════════════════════════════════════════════════
 
     public bool IsAutoSteerEngaged { get { lock (_stateLock) return _autoSteerEngaged; } }
+    /// <summary>The U-turn's working state, for tests that set a turn up (UTurnStep).</summary>
+    internal YouTurnWorkingState YouTurnWorking => _uTurnStep.Working;
     public double SimulatorSteerAngle => Volatile.Read(ref _simulatorSteerAngle);
 
     // ══════════════════════════════════════════════════════════════════════
@@ -530,7 +517,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // track computation so this cycle's visuals reflect the new pass.
         var intents = _intents.Drain();
         if (intents.ClearYouTurn)
-            YouTurnStateMachine.ClearState(_youTurn);
+            _uTurnStep.Clear();
         // #50. A snap mid-turn is IGNORED entirely: applying it would shift the
         // displayed track (HowManyPathsAway) while the tractor is committed to the
         // executing arc's already-computed target — so it lands on the OLD pass and
@@ -538,7 +525,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // the confusing behavior). The arc can't be safely re-planned mid-swing, so
         // we drop the snap outright; the client also hints "finish the turn first".
         // The armed-but-not-executing case still re-plans cleanly below (#408).
-        if (intents.GuidanceSnap.HasValue && !_youTurn.IsExecuting)
+        if (intents.GuidanceSnap.HasValue && !_uTurnStep.IsExecuting)
         {
             // Phase D D4. IsHeadingSameWay is the cycle's view of whether the
             // tractor is aligned with the track direction. Snap "left" from
@@ -563,7 +550,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // armed arc and lands on the *old* NextTrack (the original
             // exit pass) instead of replanning for the just-snapped pass.
             // Mirrors the direction-override re-arm in YouTurnStateMachine.
-            YouTurnStateMachine.DiscardPlannedTurn(_youTurn);
+            _uTurnStep.DiscardPlanned();
         }
         else if (intents.GuidanceSnap.HasValue)
             _logger.LogInformation("[Guidance] Lateral move {Side} ignored: a U-turn is being driven",
@@ -581,13 +568,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 : -intents.GuidanceNudgeMeters;
             _guidanceWorking.NudgeOffset += adjusted;
             _trackGuidanceState = null;
-            if (!_youTurn.IsExecuting) YouTurnStateMachine.DiscardPlannedTurn(_youTurn);
+            if (!_uTurnStep.IsExecuting) _uTurnStep.DiscardPlanned();
         }
         if (intents.GuidanceResetNudge)
         {
             _guidanceWorking.NudgeOffset = 0;
             _trackGuidanceState = null;
-            if (!_youTurn.IsExecuting) YouTurnStateMachine.DiscardPlannedTurn(_youTurn);
+            if (!_uTurnStep.IsExecuting) _uTurnStep.DiscardPlanned();
         }
 
         // Stage 2: Fix-quality status. The validator labels the fix; it does not
@@ -665,25 +652,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
             _nextUTurnDirectionLeftOverride = null;
         }
 
-        // Another track (or none: the field closed). The turn, the pass it lands on and the snake
-        // order were the old track's; kept, they started a turn mid-field on the new one and
-        // landed on the old pass number. AgOpenGPS resets the U-turn on a track change
-        // (FormBuildTracks: yt.ResetYouTurn).
-        if (!ReferenceEquals(track, _youTurnTrack))
-        {
-            _youTurnTrack = track;
-            _youTurnStateMachine.ForgetTrack(_youTurn);
-        }
+        _uTurnStep.OnTrack(track);
 
         if (resetSnake)
         {
-            // Rebuilt by the state machine on the next turn (HandleSnakeCreation).
-            _youTurn.SnakeSequence = null;
-            _youTurn.SnakeIndex = -1;
-            // A planned turn aims at the pass the old skip chose: drop it so the next tick
-            // plans for the new one (AgOpenGPS cboxpRowWidth: ResetCreatedYouTurn unless
-            // triggered, #410). A turn already being driven is left alone.
-            if (!_youTurn.IsExecuting) YouTurnStateMachine.DiscardPlannedTurn(_youTurn);
+            _uTurnStep.ResetSnake();
         }
 
         // Boundary-follow curve (NoPassOffset): only SUPPRESS the free-drive nearest-pass snap
@@ -703,7 +676,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // and fitted by MoveTurnInsideTurnLine, so this line does not shape the arc.
         if (headlandLine == null && boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid)
         {
-            var synth = GetOrComputeSyntheticHeadland(boundary);
+            var synth = _uTurnStep.GetOrComputeSyntheticHeadland(boundary);
             if (synth.Line != null && synth.Line.Count >= 3)
             {
                 headlandLine = synth.Line;
@@ -721,31 +694,15 @@ public sealed class GpsPipelineService : IGpsPipelineService
         List<Vec3>? turnLine = headlandLine;
         if (boundary?.OuterBoundary != null && boundary.OuterBoundary.IsValid)
         {
-            var tl = GetOrComputeSyntheticHeadland(boundary);
+            var tl = _uTurnStep.GetOrComputeSyntheticHeadland(boundary);
             if (tl.Line != null && tl.Line.Count >= 3) turnLine = tl.Line;
         }
         var workHeadland = headlandOn && _headlandLine != null && _headlandLine.Count >= 3 ? _headlandLine : null;
 
-        // YouTurn working state is cycle-owned — no cross-thread writers.
-        // TriggerManual (manual U-turn) and ClearState (field close / track
-        // deselect) run on the cycle thread via intents drained above.
-        // Mirror the user's YouTurn-enabled toggle into the cycle-owned working
-        // state so the YouTurnSnapshot.IsEnabled flag (and therefore
-        // State.YouTurn.IsEnabled, used by the distance-to-trigger widget's
-        // visibility predicate) tracks the toggle. Without this the snapshot
-        // always reports IsEnabled=false because nothing else writes the
-        // working-state flag, hiding the distance widget on every cycle.
-        _youTurn.IsEnabled = youTurnEnabled;
-
-        // Mirror the UI's direction override (one-shot) into the cycle's
-        // working state. Only overwrite when the UI posted a new value —
-        // otherwise an unconsumed override (set on a prior cycle, not yet
-        // consumed because the tractor isn't in turn-creation range) survives.
-        if (nextUTurnDirectionOverride.HasValue)
-            _youTurn.NextUTurnDirectionLeftOverride = nextUTurnDirectionOverride;
-        bool isYouTurnTriggered = _youTurn.IsTriggered;
-        bool isInYouTurn = _youTurn.IsExecuting;
-        List<Vec3>? youTurnPath = _youTurn.TurnPath;
+        _uTurnStep.Mirror(youTurnEnabled, nextUTurnDirectionOverride);
+        bool isYouTurnTriggered = _uTurnStep.IsTriggered;
+        bool isInYouTurn = _uTurnStep.IsExecuting;
+        List<Vec3>? youTurnPath = _uTurnStep.TurnPath;
         bool contourOn;
         contourOn = _contourStep.IsOn;
         _guidanceWorking.IsContourMode = contourOn;
@@ -796,73 +753,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
             PoseEstimatorUpdated?.Invoke(ts);
         }
 
-        // ── Phase C C4/C6: YouTurn state machine on the cycle worker ───
-        // Two entry points, both running here on the background thread
-        // against the cycle-owned _youTurn / _guidanceWorking POCOs:
-        //   • Manual trigger via intent (C6 — drained above).
-        //   • Auto tick, gated on autosteer + track + youturn-enabled +
-        //     valid headland (matches pre-C4 MVM guards).
-        // Snapshots built later in the cycle; the VM mirrors them back
-        // via ApplyGpsCycleResult on the UI thread.
-        YouTurnEffects? youTurnTickEffects = null;
-        bool hasValidHeadlandLine = turnLine != null && turnLine.Count >= 3;
-        // No U-turns in contour mode (AgOpenGPS DisableYouTurnButtons).
-        bool hasTickableTrack = track != null && track.Points.Count >= 2 && !contourOn && recordedPath == null;
-
-        var tickPosition = pos with { Easting = driftedEasting, Northing = driftedNorthing };
-        // An open curve whose ends face each other turns at the opening between them as at a
-        // headland: the U-turn gets the field with that opening as a virtual boundary (#694).
-        var turnField = hasTickableTrack && hasValidHeadlandLine
-            ? CurveEndTurnField(track!, boundary, turnLine, OpeningTurnRoom())
-            : null;
-        var tickCtx = new YouTurnStateMachine.TickContext(
-            tickPosition,
-            track,
-            turnField?.Boundary ?? boundary,
-            turnField?.HeadlandLine ?? turnLine,
-            uTurnSkipRows,
-            isSkipWorkedMode,
-            headlandCalculatedWidth,
-            headlandDistanceConfig,
-            isAlternateSkipMode,
-            _isPointCovered,
-            workHeadland);
-
-        // Manual trigger — runs even when the auto gate would fail (e.g., YouTurn
-        // toggle off). TriggerManual enforces its own preconditions (autosteer +
-        // track + no turn already in progress) and sets a status message otherwise.
-        if (intents.ManualYouTurn.HasValue && hasTickableTrack)
-        {
-            // IsHeadingSameWay is computed fresh by the state machine each tick;
-            // HowManyPathsAway and NudgeOffset are already authoritative on
-            // _guidanceWorking (D3 — SetActiveTrack writes directly).
-            youTurnTickEffects = _youTurnStateMachine.TriggerManual(
-                intents.ManualYouTurn.Value, autoSteerEngaged,
-                in tickCtx, _guidanceWorking, _youTurn);
-        }
-
-        if (autoSteerEngaged && hasTickableTrack
-            && youTurnEnabled && hasValidHeadlandLine)
-        {
-            _youTurn.YouTurnCounter++;
-
-            var autoEffects = _youTurnStateMachine.Tick(in tickCtx, _guidanceWorking, _youTurn);
-            // If a manual trigger already set effects this cycle, keep those —
-            // state-machine branches make the auto tick a no-op mid-turn anyway.
-            youTurnTickEffects ??= autoEffects;
-        }
-        else if (autoSteerEngaged && hasTickableTrack && _youTurn.IsExecuting)
-        {
-            // A manual turn is executing but the auto tick is gated off (no headland —
-            // manual turns don't need one — or the YouTurn toggle off). Still run the
-            // completion checks, or the turn never completes and the tractor is left
-            // without steering (#163).
-            youTurnTickEffects ??= _youTurnStateMachine.TickExecutingTurn(in tickCtx, _guidanceWorking, _youTurn);
-        }
-
-        // U-turn sounds (#110); the audio service gates them on the U-turn sound setting.
-        if (youTurnTickEffects?.TurnCreationFailedSound == true) _audioService.Play(SoundEffect.UTurnTooClose);
-        if (youTurnTickEffects?.ApproachAlarmSound == true) _audioService.Play(SoundEffect.YouTurnApproach);
+        // ── The U-turn (UTurnStep): before the guidance, as completing a turn moves the pass ──
+        var youTurnTickEffects = _uTurnStep.Tick(intents.ManualYouTurn, autoSteerEngaged, youTurnEnabled,
+            pos, driftedEasting, driftedNorthing, track, boundary, turnLine, workHeadland,
+            uTurnSkipRows, isSkipWorkedMode, headlandCalculatedWidth, headlandDistanceConfig,
+            isAlternateSkipMode, contourOn, recordedPath, _guidanceWorking,
+            out bool hasValidHeadlandLine, out bool hasTickableTrack, out var tickCtx);
 
         // Refresh the locals the downstream guidance branch reads — the tick
         // (or a drained intent above) may have updated them. CompleteTurn
@@ -874,31 +770,18 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // a hard-side steer for one tick (visible front-wheel spike), which
         // showed up as a leftward coverage curve at U-turn exit (worse at
         // higher speed because lateral excursion scales with velocity).
-        isYouTurnTriggered = _youTurn.IsTriggered;
-        isInYouTurn = _youTurn.IsExecuting;
-        youTurnPath = _youTurn.TurnPath;
+        isYouTurnTriggered = _uTurnStep.IsTriggered;
+        isInYouTurn = _uTurnStep.IsExecuting;
+        youTurnPath = _uTurnStep.TurnPath;
         passNumber = _guidanceWorking.HowManyPathsAway;
         nudgeOffset = _guidanceWorking.NudgeOffset;
 
-        // Switching the YouTurn toggle OFF drops any turn in progress so a stale
-        // arc doesn't linger on the map (the auto tick that would otherwise
-        // advance or reset it is gated on youTurnEnabled). Only on the on→off
-        // edge, like AgOpenGPS btnAutoYouTurn (ResetYouTurn when switched off):
-        // manual turns stay available with the toggle off while autosteer is
-        // engaged (AgOpenGPS draws/accepts them on isBtnAutoSteerOn ||
-        // isYouTurnBtnOn), and a manual turn started then completes through
-        // TickExecutingTurn above. Clearing every cycle while off used to kill
-        // manual turns the moment they were created.
-        if (!youTurnEnabled && _youTurnWasEnabled) _youTurnStateMachine.OnYouTurnSwitchedOff();
-        if (!youTurnEnabled && _youTurnWasEnabled
-            && (_youTurn.IsTriggered || _youTurn.IsExecuting || _youTurn.TurnPath != null))
+        if (_uTurnStep.OnYouTurnSwitch(youTurnEnabled))
         {
-            YouTurnStateMachine.ClearState(_youTurn);
             isYouTurnTriggered = false;
             isInYouTurn = false;
             youTurnPath = null;
         }
-        _youTurnWasEnabled = youTurnEnabled;
 
         // ── (3) Tool position ───────────────────────────────────────────
         // ToolPositionService is updated by ControlLoopService at 100 Hz
@@ -924,7 +807,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         bool autoSteerDisengaged = false;
         string? disengageReason = null;
         _autoSteerRules.UpdateOutOfBounds(boundary, turnLine, youTurnEnabled && hasValidHeadlandLine,
-            _youTurn.IsTriggered || _youTurn.IsExecuting,
+            _uTurnStep.IsTriggered || _uTurnStep.IsExecuting,
             driftedEasting, driftedNorthing);
 
         // (5a) A dual heading across the direction of travel: its offset doesn't match how
@@ -975,9 +858,9 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // Re-engaging autosteer rebuilds the turn from scratch via the auto
         // tick or a manual trigger.
         if (!autoSteerEngaged
-            && (_youTurn.IsTriggered || _youTurn.IsExecuting || _youTurn.TurnPath != null))
+            && _uTurnStep.HasTurn)
         {
-            YouTurnStateMachine.ClearState(_youTurn);
+            _uTurnStep.Clear();
             isYouTurnTriggered = false;
             isInYouTurn = false;
             youTurnPath = null;
@@ -1025,7 +908,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // The landing pass is driven the other way: its tool shift has the other sign (#446).
             int shownPass = passNumber;
             double shownShift = toolShift;
-            if (isInYouTurn && TurnTargetPass() is { } landing)
+            if (isInYouTurn && _uTurnStep.TurnTargetPass() is { } landing)
             {
                 shownPass = landing;
                 shownShift = -toolShift;
@@ -1080,7 +963,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             {
                 guideArgs = (widthMinusOverlap, toolShift, extendDisp, config2.Display.ExtraGuidelinesCount);
                 guideLines = GuideLines(track, shownPass, widthMinusOverlap, nudgeOffset, toolShift, extendDisp,
-                    config2.Display.ExtraGuidelinesCount, TurnTargetPass());
+                    config2.Display.ExtraGuidelinesCount, _uTurnStep.TurnTargetPass());
             }
         }
 
@@ -1155,13 +1038,13 @@ public sealed class GpsPipelineService : IGpsPipelineService
                     goalN = ytResult.Value.goalN;
                     youTurnCompleted = ytResult.Value.turnComplete;
                     hasGuidance = !youTurnCompleted;
-                    if (youTurnCompleted && _youTurn.IsExecuting)
+                    if (youTurnCompleted && _uTurnStep.IsExecuting)
                     {
                         // Guidance ran off the end of the path before the state machine's
                         // own checks fired. Complete the turn here (AgOpenGPS does the same
                         // from its U-turn guidance) so the next cycle follows the new pass
                         // instead of sitting in a turn with no steering (#163).
-                        var completion = _youTurnStateMachine.CompleteFromGuidance(in tickCtx, _guidanceWorking, _youTurn);
+                        var completion = _uTurnStep.CompleteFromGuidance(in tickCtx, _guidanceWorking);
                         if (youTurnTickEffects == null) youTurnTickEffects = completion;
                         else youTurnTickEffects.TurnCompleted |= completion.TurnCompleted;
                     }
@@ -1251,7 +1134,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
                 baseTrack = onReference ? null : track;
                 // The guidelines go either side of the pass shown.
                 if (guideArgs is { } ga)
-                    guideLines = GuideLines(track!, nearestPass, ga.Width, nudgeOffset, ga.Shift, ga.Extend, ga.Count, TurnTargetPass());
+                    guideLines = GuideLines(track!, nearestPass, ga.Width, nudgeOffset, ga.Shift, ga.Extend, ga.Count, _uTurnStep.TurnTargetPass());
                 if (toolPassArgs is { } ta)
                     toolPass = ToolPass(track!, nearestPass, ta.Width, nudgeOffset, ta.Extend);
 
@@ -1418,8 +1301,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // Guidance snapshot emits every cycle — Phase D D3 made the cycle
             // the sole writer of _guidanceWorking.HowManyPathsAway, so the
             // snapshot can no longer fight an opposing UI-thread writer.
-            YouTurn = BuildYouTurnSnapshot(
-                _youTurn,
+            YouTurn = _uTurnStep.Snapshot(
                 justCompleted: youTurnCompleted || (youTurnTickEffects?.TurnCompleted ?? false)),
             Guidance = BuildGuidanceSnapshot(
                 WithLineLabel(_guidanceWorking, shownLandingPass), displayTrack, baseTrack, hasGuidance,
@@ -1484,37 +1366,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private long _perfGpsCycleAllocs;
     private int _perfGpsCycleCount;
     private DateTime _perfGpsWindowStart = DateTime.UtcNow;
-
-    private static YouTurnSnapshot BuildYouTurnSnapshot(YouTurnWorkingState src, bool justCompleted) => new()
-    {
-        IsEnabled = src.IsEnabled,
-        IsTriggered = src.IsTriggered,
-        IsExecuting = src.IsExecuting,
-        TurnPath = src.TurnPath,
-        PathIndex = src.PathIndex,
-        ArcStart = src.ArcStart,
-        IsTurnLeft = src.IsTurnLeft,
-        LastTurnWasLeft = src.LastTurnWasLeft,
-        DistanceToHeadland = src.DistanceToHeadland,
-        DistanceToTrigger = src.DistanceToTrigger,
-        NextTrack = src.NextTrack,
-        LastCompletionPosition = src.LastCompletionPosition,
-        HasCompletedFirstTurn = src.HasCompletedFirstTurn,
-        YouTurnCounter = src.YouTurnCounter,
-        WasHeadingSameWayAtTurnStart = src.WasHeadingSameWayAtTurnStart,
-        NextTrackTurnOffset = src.NextTrackTurnOffset,
-        ReturnPassTargetPath = src.ReturnPassTargetPath,
-        SnakeSequence = src.SnakeSequence,
-        SnakeIndex = src.SnakeIndex,
-        AltSign = src.AltSign,
-        AltBaseWidth = src.AltBaseWidth,
-        AltWidth = src.AltWidth,
-        AltTurnSkips = src.AltTurnSkips,
-        AltPrevBig = src.AltPrevBig,
-        CurrentZone = src.CurrentZone,
-        NextUTurnDirectionLeftOverride = src.NextUTurnDirectionLeftOverride,
-        JustCompleted = justCompleted,
-    };
 
     // The pass label, as AgOpenGPS's DrawTrackInfo: an arrow for the way you drive (up = A→B, its
     // font's '{'; down = B→A, its '}') and the pass counted from the reference line, which is the
@@ -1583,37 +1434,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // The cross-track error that tells the steer module there is no line (TrackGuidanceService's,
     // AgOpenGPS's 32000; PgnBuilder sends it as such).
     private const double NoLineDistance = 32000;
-
-    // How deep a strip past A and B the U-turn has in a curve's opening (CurveEndOpening): room for
-    // the turn itself, twice its radius, and the distance from boundary it keeps from that virtual
-    // fence; not the headland's width, since the turn is made at the turn line whatever the headland
-    // (with none, the strip was the 4 m U-turn distance and no turn fitted there).
-    private double OpeningTurnRoom()
-    {
-        var g = _configStore.Guidance;
-        return 2 * g.UTurnRadius + Math.Max(0, g.UTurnDistanceFromBoundary);
-    }
-
-    // The U-turn's field for a curve whose ends face each other, kept until the track, its
-    // points, the boundary, the headland or its width change (CurveEndOpening, #694).
-    private (Models.Track.Track? Track, List<Vec3>? Points, int Count, Boundary? Boundary, List<Vec3>? Headland, double Width) _turnFieldKey;
-    private CurveEndOpening.TurnField? _turnField;
-
-    private CurveEndOpening.TurnField? CurveEndTurnField(Models.Track.Track track, Boundary? boundary,
-        List<Vec3>? headlandLine, double headlandWidth)
-    {
-        var key = (track, track.Points, track.Points.Count, boundary, headlandLine, headlandWidth);
-        if (!ReferenceEquals(key.track, _turnFieldKey.Track) || !ReferenceEquals(key.Points, _turnFieldKey.Points)
-            || key.Count != _turnFieldKey.Count || !ReferenceEquals(boundary, _turnFieldKey.Boundary)
-            || !ReferenceEquals(headlandLine, _turnFieldKey.Headland) || headlandWidth != _turnFieldKey.Width)
-        {
-            _turnFieldKey = key;
-            _turnField = track.Points.Count > 2 && !track.IsClosed && !track.IsPivot
-                ? CurveEndOpening.Build(track.Points, boundary, headlandLine, headlandWidth)
-                : null;
-        }
-        return _turnField;
-    }
 
     /// <summary>Why AutoSteer went off at the end of an open curve (AgOpenGPS gsGuidanceStopped, gsPastEndOfCurve).</summary>
     public const string PastEndOfCurveReason = "AutoSteer disengaged - past end of curve";
@@ -1846,10 +1666,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _toolPassKey = key;
         return _toolPass = line;
     }
-
-    /// <summary>The pass a planned or driven U-turn lands on, if one is planned.</summary>
-    private int? TurnTargetPass() =>
-        _youTurn.TurnPath is { Count: > 0 } ? _youTurn.ReturnPassTargetPath ?? _youTurn.PlannedNextPath : null;
 
     private (Models.Track.Track Track, List<Vec3> Points, int Pass, double Width, double Nudge, double Shift, bool Extend, int Count, int? Target) _guideKey;
     private IReadOnlyList<IReadOnlyList<Vec3>>? _guideLines;
@@ -2148,41 +1964,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
             }
             return signedDist;
         }
-    }
-
-    // Returns the synthetic headland line (inset of the outer boundary) plus
-    // the inset distance, recomputing only when the boundary reference or the
-    // relevant config values change. Called only from the cycle worker thread.
-    private (List<Vec3>? Line, double Inset) GetOrComputeSyntheticHeadland(Boundary boundary)
-    {
-        var guidanceConfig = _configStore.Guidance;
-        // AgOpen CTurn.BuildTurnLines: turn line = fence inset by uturnDistanceFromBoundary
-        // ONLY (no turn-radius inset). A deeper inset would push a fence-hugging boundary
-        // pass outside the "in-turn-bounds" polygon and it would never arm; the turn radius
-        // is accounted for by MoveTurnInsideTurnLine fitting the arc, not by pre-insetting
-        // this line.
-        double inset = guidanceConfig.UTurnDistanceFromBoundary;
-        double configKey = inset;
-
-        if (ReferenceEquals(boundary, _syntheticHeadlandSourceBoundary)
-            && Math.Abs(configKey - _syntheticHeadlandConfigKey) < 1e-9)
-        {
-            return (_syntheticHeadlandLine, _syntheticHeadlandInsetUsed);
-        }
-
-        var outerPoints = boundary.OuterBoundary!.Points
-            .Select(p => new Vec2(p.Easting, p.Northing))
-            .ToList();
-        var inwardOffset = _syntheticHeadlandOffset.CreateInwardOffset(outerPoints, inset);
-        _syntheticHeadlandLine = (inwardOffset != null && inwardOffset.Count >= 3)
-            ? _syntheticHeadlandOffset.CalculatePointHeadings(inwardOffset)
-            : null;
-        _syntheticHeadlandSourceBoundary = boundary;
-        _syntheticHeadlandConfigKey = configKey;
-        _syntheticHeadlandInsetUsed = inset;
-        _logger.LogDebug("[YouTurn] Synthesized turn line (no user headland): inset={I:F1}m (uturnDistanceFromBoundary), pts={P}",
-            inset, _syntheticHeadlandLine?.Count ?? 0);
-        return (_syntheticHeadlandLine, _syntheticHeadlandInsetUsed);
     }
 
 

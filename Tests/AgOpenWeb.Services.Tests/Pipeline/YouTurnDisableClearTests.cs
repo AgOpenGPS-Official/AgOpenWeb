@@ -110,10 +110,7 @@ public class YouTurnDisableClearTests
     /// </summary>
     private YouTurnWorkingState GetCycleYouTurn()
     {
-        var fld = typeof(GpsPipelineService).GetField("_youTurn",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.That(fld, Is.Not.Null, "Reflection target _youTurn missing — pipeline internals changed");
-        return (YouTurnWorkingState)fld!.GetValue(_pipeline)!;
+        return _pipeline.YouTurnWorking;
     }
 
     private static GpsData ValidFix() => new()

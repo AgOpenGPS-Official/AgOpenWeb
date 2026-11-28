@@ -121,7 +121,7 @@ public class YouTurnSnapshotFreshnessTests
     /// freshness contract is between the snapshot the cycle emitted on
     /// CycleCompleted and the post-tick value of these private POCOs.
     /// </summary>
-    private YouTurnWorkingState PrivateYouTurn() => GetPrivate<YouTurnWorkingState>("_youTurn");
+    private YouTurnWorkingState PrivateYouTurn() => _pipeline.YouTurnWorking;
     private GuidanceWorkingState PrivateGuidance() => GetPrivate<GuidanceWorkingState>("_guidanceWorking");
 
     private T GetPrivate<T>(string name)
