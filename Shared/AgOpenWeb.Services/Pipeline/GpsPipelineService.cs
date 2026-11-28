@@ -1055,7 +1055,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
 
         // ── (3) Tool position ───────────────────────────────────────────
         // ToolPositionService is updated by ControlLoopService at 100 Hz
-        // (MainViewModel.OnControlLoopTicked). The pipeline used to call
+        // (ControlTick). The pipeline used to call
         // Update here too, but that created a dual-writer race on Torriem
         // state — pipeline fed GPS-anchored pose at 10 Hz while the control
         // loop fed dead-reckoned pose at 100 Hz, causing the trailing-tool

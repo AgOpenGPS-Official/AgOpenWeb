@@ -135,7 +135,8 @@ public sealed class WebBackend
 
     /// <summary>Wire cross-referencing services after the container is built: the
     /// AutoSteerService into UdpCommunicationService for the zero-copy GPS→steering path, the
-    /// services AutoSteer reads, and the control loop's rate into section control.
+    /// services AutoSteer reads, the control tick's work into the control loop and the loop's rate
+    /// into section control.
     /// Replaces the per-platform <c>WireUpServices()</c> DI extensions; services are joined
     /// here, where they are built, not by casts in the view model.</summary>
     public static void WireCrossServices(IServiceProvider sp)
@@ -147,6 +148,9 @@ public sealed class WebBackend
         (sp.GetRequiredService<IAutoSteerService>() as Services.AutoSteer.AutoSteerService)?.SetSmartWasService(sp.GetRequiredService<ISmartWasCalibrationService>());
         if (sp.GetService<ISteerMachineLoopService>() is { } controlLoop)
         {
+            // The control tick's work (ControlTick), joined before the loop starts, as the view
+            // model's handler was in its constructor.
+            controlLoop.Ticked += sp.GetRequiredService<Services.Pipeline.ControlTick>().Run;
             // TickHz is on the concrete SectionControlService, not the
             // interface (it's an internal-tuning concern, not a contract).
             if (sp.GetRequiredService<ISectionControlService>() is Services.Section.SectionControlService scsConcrete)

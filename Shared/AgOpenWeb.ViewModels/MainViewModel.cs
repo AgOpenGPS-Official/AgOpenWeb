@@ -69,7 +69,6 @@ public partial class MainViewModel : ObservableObject
     private bool _hasTramSystemsEverUsed;
     private readonly Dictionary<string, (int start, int count, bool isBoundary)> _tramSystemLineRanges = new();
     private readonly IGpsPipelineService _gpsPipelineService;
-    private readonly ISteerMachineLoopService? _controlLoop;
     private readonly IIsobusTaskControllerService? _isobus;
     private readonly IPositionEstimator? _positionEstimator;
     private readonly IPipelineIntents _intents;
@@ -196,7 +195,6 @@ public partial class MainViewModel : ObservableObject
         IBatteryService batteryService,
         IUiDispatcher uiDispatcher,
         IUiTimerFactory uiTimerFactory,
-        ISteerMachineLoopService? controlLoop = null,
         IPositionEstimator? positionEstimator = null,
         IIsobusTaskControllerService? isobus = null)
     {
@@ -337,7 +335,6 @@ public partial class MainViewModel : ObservableObject
             RaiseStatusStripChanged();
         };
         _gpsPipelineService = gpsPipelineService;
-        _controlLoop = controlLoop;
         _positionEstimator = positionEstimator;
         _intents = intents;
         _appState = appState;
@@ -374,18 +371,6 @@ public partial class MainViewModel : ObservableObject
 
         // The background GPS processing pipeline (started by the backend)
         _gpsPipelineService.CycleCompleted += OnGpsCycleCompleted;
-
-        // Host control loop (#313): runs at 100 Hz on its own thread.
-        // Each tick: read interpolated pose from estimator, update tool
-        // position + section state machine, send PGN 254 + PGN 239. This
-        // gives sub-frame section edge accuracy (~0.05 m at 25 km/h vs
-        // ~0.7 m on the prior 10 Hz path) and matches the firmware
-        // autosteer cadence so PGNs land fresh every firmware tick.
-        // Optional in test builds.
-        if (_controlLoop is not null)
-        {
-            _controlLoop.Ticked += OnControlLoopTicked;
-        }
 
         // Renderer-pull timer (#313 commit 6): when a position estimator is
         // wired, push the latest dead-reckoned vehicle pose to the map at
@@ -581,40 +566,6 @@ public partial class MainViewModel : ObservableObject
                 }
             }, UiDispatcherPriority.Background);
         }
-    }
-
-    /// <summary>
-    /// Host control loop tick handler (#313). Runs at 100 Hz on the loop's
-    /// own thread. Reads the latest GPS-anchored pose from the estimator,
-    /// updates tool position + section state machine, hands the section bits
-    /// to the sender, then sends PGN 254 +
-    /// PGN 239 so the firmware autosteer task — which also runs at 100 Hz
-    /// — sees fresh data every cycle.
-    /// </summary>
-    private void OnControlLoopTicked(long timestampTicks)
-    {
-        // Only run the section/tool pipeline once a GPS sample exists; before
-        // then the estimator returns default(InterpolatedPose) which would
-        // pin tool position at (0,0). Autosteer PGN sends are still useful
-        // before the first GPS sample (firmware needs to see SOMETHING to
-        // know we're alive), so they don't gate.
-        if (_positionEstimator?.GetLatestSnapshot() is not null)
-        {
-            var p = _positionEstimator.GetPose(timestampTicks);
-            _toolPositionService.Update(
-                new Vec3(p.Position.Easting, p.Position.Northing, p.Heading),
-                p.Heading);
-            _sectionControlService.Update(
-                _toolPositionService.ToolPosition,
-                _toolPositionService.ToolHeading,
-                p.Heading,
-                p.SpeedMps);
-        }
-        // Hand this tick's section bits to the sender (#311). The GPS cycle writes them
-        // too, but only once per fix; an edge decided here, or a section button tapped
-        // between fixes, must not wait for the next one.
-        _autoSteerService.SetSectionBits(_sectionControlService.GetSectionBits64());
-        _autoSteerService.SendPgnsForControlTick();
     }
 
     /// <summary>

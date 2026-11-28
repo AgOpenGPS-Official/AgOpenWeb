@@ -255,6 +255,7 @@ public sealed class WebClientRig : IAsyncDisposable
         services.AddSingleton<IGpsHeadingFusionService, GpsHeadingFusionService>();
         services.AddSingleton<IPositionEstimator, PositionEstimator>();
         services.AddSingleton<ISteerMachineLoopService>(_ => new SteerMachineLoopService(frequencyHz: 100.0));
+        services.AddSingleton<AgOpenWeb.Services.Pipeline.ControlTick>();
         services.AddSingleton<IGpsPipelineService, GpsPipelineService>();
         services.AddSingleton<IMapService, NullMapService>();
     }

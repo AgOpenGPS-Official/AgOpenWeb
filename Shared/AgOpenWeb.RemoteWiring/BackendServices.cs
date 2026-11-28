@@ -162,6 +162,8 @@ public static class BackendServices
         // Host control loop (#313): runs at 100 Hz on its own thread, sends
         // PGN 254 + PGN 239 every tick to match the firmware autosteer cadence.
         services.AddSingleton<ISteerMachineLoopService>(_ => new SteerMachineLoopService(frequencyHz: 100.0));
+        // The work of each control tick (WebBackend.WireCrossServices joins it to the loop).
+        services.AddSingleton<ControlTick>();
         services.AddSingleton<IGpsPipelineService, GpsPipelineService>();
 
         // No native map control in the web build — the browser/CanvasKit client renders the map.

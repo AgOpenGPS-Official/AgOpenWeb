@@ -75,9 +75,9 @@ public class CodePathContinuityTests
     [Test]
     public void ControlTick_HandsSectionBitsToTheSender_BeforeItSends()
     {
-        var src = File.ReadAllText(Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.ViewModels", "MainViewModel.cs"));
-        int start = src.IndexOf("void OnControlLoopTicked(", StringComparison.Ordinal);
-        Assert.That(start, Is.GreaterThan(0), "MainViewModel.OnControlLoopTicked not found; update this test");
+        var src = File.ReadAllText(Path.Combine(RepoRoot(), "Shared", "AgOpenWeb.Services", "Pipeline", "ControlTick.cs"));
+        int start = src.IndexOf("void RunTick(", StringComparison.Ordinal);
+        Assert.That(start, Is.GreaterThan(0), "ControlTick.RunTick not found; update this test");
         var body = src.Substring(start, src.IndexOf("\n    }", start, StringComparison.Ordinal) - start);
         int set = body.IndexOf("_autoSteerService.SetSectionBits(", StringComparison.Ordinal);
         int send = body.IndexOf("_autoSteerService.SendPgnsForControlTick(", StringComparison.Ordinal);
