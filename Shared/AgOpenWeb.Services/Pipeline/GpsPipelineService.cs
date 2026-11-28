@@ -36,17 +36,6 @@ public sealed class GpsPipelineService : IGpsPipelineService
     // Lookahead time (seconds) used for auto-track-select in free-drive mode.
     // Matches AgOpen's setAS_guidanceLookAheadTime default. See #261.
 
-    // Re-anchor the temporary first-fix LocalPlane when the live GPS jumps
-    // farther than this from the existing origin (no field loaded). The
-    // flat-earth approximation gets noisy at very large local-plane offsets
-    // and the camera/render math goes weird, so silently re-anchor.
-    private const double TempOriginReinitDistanceM = 50_000.0;
-
-    // Surface a "GPS far from field" warning when the live GPS reports a
-    // position farther than this from the loaded field's origin. Autosteer
-    // is dropped immediately as a safety measure on the UI thread.
-    private const double FieldOriginWarnDistanceM = 10_000.0;
-
     // ── Dependencies ────────────────────────────────────────────────────
     private readonly IGpsService _gpsService;
     private readonly IToolPositionService _toolPositionService;
@@ -60,11 +49,8 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private readonly YouTurnStateMachine _youTurnStateMachine;
     private readonly IAudioService _audioService;
     private readonly IPipelineIntents _intents;
-    private readonly IGpsHeadingFusionService _headingFusion;
-    private LocalPlane? _headingPlane; // plane the heading's stored fixes are in
-    private bool _isReverse;           // this cycle's reverse detection (#125)
-    private double _sentenceHeading;   // heading field of this cycle's sentence, before fusion
-    private double _roll;              // filtered roll, degrees (#110)
+    // Where the fix puts the vehicle: plane, heading, reversing, roll, pivot, with their own state (PoseStep).
+    private readonly PoseStep _poseStep;
     private double _lastCrossTrackError; // last cycle's XTE, for the look-ahead (#110)
     // The contour (#110): its strips, line and steering, its own state (ContourStep).
     private readonly ContourStep _contourStep;
@@ -164,25 +150,12 @@ public sealed class GpsPipelineService : IGpsPipelineService
     private double _syntheticHeadlandConfigKey;
     private double _syntheticHeadlandInsetUsed;
 
-    // One-shot latch so the field-far warning fires once per loaded field.
-    // SetHasActiveField clears it on the false->true transition (new field
-    // opened) so the next field gets a fresh chance to warn.
-    private bool _farFromFieldWarned;
-
     // ── Pipeline-owned guidance state (only touched on background thread) ─
     private Models.Track.TrackGuidanceState? _trackGuidanceState;
     // Previous along-track travel direction; a change forces a global nearest
     // re-acquire so a stranded local index can recover (#422).
     private bool _lastHeadingSameWay = true;
     private double _simulatorSteerAngle;
-
-    // Phase E: cycle-local cache of a LocalPlane auto-created from the first
-    // GPS fix. The cycle uses this for coord conversion in the same tick it
-    // emits it on GpsCycleResult.FirstFixLocalPlane; ApplyGpsCycleResult then
-    // commits it to State.Field.LocalPlane on the UI thread, which pushes it back
-    // here through SetLocalPlane. Once the UI commit catches up (next cycle we see
-    // _committedLocalPlane match _cycleLocalPlane), we drop our reference.
-    private LocalPlane? _cycleLocalPlane;
 
     // ── YouTurn + Guidance working state (Phase C) ──────────────────────
     // POCOs mirroring State.YouTurn and the subset of State.Guidance that
@@ -233,7 +206,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         _autoSteerRules = new AutoSteerRules(configStore, audioService);
         _headlandStep = new HeadlandStep(configStore, sectionControlService);
         _intents = intents;
-        _headingFusion = headingFusion;
+        _poseStep = new PoseStep(configStore, headingFusion);
         _logger = logger;
         _configStore = configStore;
         _positionEstimator = positionEstimator;
@@ -315,7 +288,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         }
         if (_fieldOpenedPending)
         {
-            _farFromFieldWarned = false;
+            _poseStep.FieldOpened();
             _fieldOpenedPending = false;
         }
     }
@@ -781,136 +754,14 @@ public sealed class GpsPipelineService : IGpsPipelineService
         var pos = data.CurrentPosition;
         bool hasTrack = track != null && track.Points.Count >= 2;
 
-        // ── (1) Coordinate conversion for real GPS path ─────────────────
-        double posEasting = pos.Easting;
-        double posNorthing = pos.Northing;
-
-        // Phase E: if a UI-committed LocalPlane already exists (user opened a
-        // field, or we auto-created one on a previous cycle and ApplyGpsCycleResult
-        // has since committed it and pushed it back through SetLocalPlane), drop our
-        // cycle-local cache — the committed instance is now the authoritative one.
-        if (_cycleLocalPlane != null && ReferenceEquals(committedLocalPlane, _cycleLocalPlane))
-            _cycleLocalPlane = null;
-
-        LocalPlane? firstFixLocalPlane = null;
-        if (Math.Abs(posEasting) < 0.001 && Math.Abs(posNorthing) < 0.001
-            && data.FixQuality > 0)
-        {
-            // Auto-create local plane from first GPS fix if none exists.
-            // Cycle-local cache so we don't cross-thread-write an ObservableObject;
-            // the UI thread commits it via ApplyGpsCycleResult.
-            var localPlane = committedLocalPlane ?? _cycleLocalPlane;
-            if (localPlane == null)
-            {
-                localPlane = new LocalPlane(
-                    new Wgs84(pos.Latitude, pos.Longitude),
-                    new SharedFieldProperties());
-                _cycleLocalPlane = localPlane;
-                firstFixLocalPlane = localPlane; // emit to UI this cycle
-            }
-
-            var geoCoord = localPlane.ConvertWgs84ToGeoCoord(
-                new Wgs84(pos.Latitude, pos.Longitude));
-            posEasting = geoCoord.Easting;
-            posNorthing = geoCoord.Northing;
-        }
-
-        // Origin guard: if the live GPS source has drifted very far from the
-        // current LocalPlane origin, either silently re-anchor (no field) or
-        // surface a warning (field loaded). Skip when only the cycle-local
-        // cache exists — that means we just bootstrapped the plane this tick.
-        LocalPlane? replacementLocalPlane = null;
-        double replacementDistanceKm = 0.0;
-        FarFromFieldWarning? farFromFieldWarning = null;
-        if (committedLocalPlane != null && data.FixQuality > 0)
-        {
-            var converted = committedLocalPlane.ConvertWgs84ToGeoCoord(
-                new Wgs84(pos.Latitude, pos.Longitude));
-            double distFromOrigin = Math.Sqrt(
-                converted.Easting * converted.Easting +
-                converted.Northing * converted.Northing);
-
-            if (!hasActiveField && distFromOrigin > TempOriginReinitDistanceM)
-            {
-                var newPlane = new LocalPlane(
-                    new Wgs84(pos.Latitude, pos.Longitude),
-                    new SharedFieldProperties());
-                _cycleLocalPlane = newPlane;
-                replacementLocalPlane = newPlane;
-                replacementDistanceKm = distFromOrigin / 1000.0;
-                posEasting = 0;
-                posNorthing = 0;
-            }
-            else if (hasActiveField
-                     && distFromOrigin > FieldOriginWarnDistanceM
-                     && !_farFromFieldWarned)
-            {
-                farFromFieldWarning = new FarFromFieldWarning(
-                    distFromOrigin, pos.Latitude, pos.Longitude);
-                _farFromFieldWarned = true;
-            }
-        }
-
-        // Stored fixes are in local-plane metres: when the plane changes (field
-        // opened/closed, re-anchor) the old ones are in another frame (#112).
-        var headingPlane = replacementLocalPlane ?? committedLocalPlane ?? _cycleLocalPlane;
-        if (!ReferenceEquals(headingPlane, _headingPlane))
-        {
-            _headingFusion.Reset();
-            _headingPlane = headingPlane;
-        }
-
-        // Stage 3 (Phase B C2): Heading fusion. Replaces the raw NMEA heading
-        // with the dual-antenna-aware / fix-to-fix / IMU-blended value.
-        // Receives real local easting/northing — see TMP-009 in the parking lot.
-        _sentenceHeading = pos.Heading;
-        double fusedHeading = _headingFusion.FuseHeading(
-            pos.Heading, data.ImuHeading, data.ImuValid,
-            pos.Speed, posEasting, posNorthing, data.HasDualHeading);
-        _headingFusion.UpdateDualHeadingWarning(data.FixQuality);
-        pos = pos with { Heading = fusedHeading };
-        // A sideways position jump (the receiver changed its solution): the heading was kept
-        // across it; say so, since AutoSteer now follows a position that moved.
-        string? jumpNotice = null;
-        if (_headingFusion.JumpCount != _lastJumpCount)
-        {
-            _lastJumpCount = _headingFusion.JumpCount;
-            jumpNotice = string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "GPS position jumped {0:F1} m sideways (the receiver changed its solution): heading kept, AutoSteer follows the new position",
-                _headingFusion.LastJumpM);
-        }
-        // Reverse (#125): guidance, U-turn and hydraulic lift need to know, and the
-        // heading above already faces the way the vehicle points.
-        _isReverse = _headingFusion.IsReverse;
-        _guidanceWorking.IsReverse = _isReverse;
-        _autoSteerService.SetReverse(_isReverse); // deadzone is off in reverse (#110)
-        _sectionControlService.IsReversing = _isReverse; // Auto sections off in reverse (#173)
-
-        // Roll filter (AgOpenGPS ahrs.rollFilter: roll = roll × f + new × (1 − f)). AgOpenGPS
-        // smooths the steer module's IMU roll; AgOpenWeb's roll comes with the GPS
-        // sentence, so it's filtered here (#110). 0 = no filtering (the default).
-        double rollFilter = Math.Clamp(_configStore.Ahrs.RollFilter, 0, 0.99);
-        _roll = _roll * rollFilter + data.ImuRoll * (1 - rollFilter);
-
-        // Antenna in local metres (AgOpenGPS pn.fix): contour Pure Pursuit measures its
-        // distance from the line here (#110).
-        double antennaE = posEasting + driftE, antennaN = posNorthing + driftN;
-
-        // ── (1b) Antenna-to-pivot transform in local coordinates ────────
-        // Single source of truth for the antenna-to-pivot transform. Runs
-        // here on local-plane (E, N) so the math is consistent regardless
-        // of how the GPS data arrived (real NMEA, simulator, replay).
-        AntennaToPivotTransform.Apply(
-            ref posEasting,
-            ref posNorthing,
-            pos.Heading * Math.PI / 180.0,
-            _configStore.Vehicle,
-            _roll);
-
-        // ── (2) Apply drift compensation ────────────────────────────────
-        double driftedEasting = posEasting + driftE;
-        double driftedNorthing = posNorthing + driftN;
-        double headingRad = pos.Heading * Math.PI / 180.0;
+        _poseStep.Locate(data, ref pos, committedLocalPlane, hasActiveField, driftE, driftN,
+            out LocalPlane? firstFixLocalPlane, out LocalPlane? replacementLocalPlane, out double replacementDistanceKm,
+            out FarFromFieldWarning? farFromFieldWarning, out LocalPlane? headingPlane, out string? jumpNotice,
+            out double antennaE, out double antennaN,
+            out double driftedEasting, out double driftedNorthing, out double headingRad);
+        _guidanceWorking.IsReverse = _poseStep.IsReverse;
+        _autoSteerService.SetReverse(_poseStep.IsReverse); // deadzone is off in reverse (#110)
+        _sectionControlService.IsReversing = _poseStep.IsReverse; // Auto sections off in reverse (#173)
 
         // ── (2b) Publish canonical pose to the position estimator ───────
         // The estimator is the bridge between GPS arrivals (10 Hz) and
@@ -928,7 +779,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             // the predicted heading 10 degrees and back at every fix.
             const double yawRateRadPerSec = 0.0;
             double rollRad = hasAttitude
-                ? _roll * Math.PI / 180.0
+                ? _poseStep.Roll * Math.PI / 180.0
                 : 0.0;
             long ts = Clock.Current.GetTimestamp();
             _positionEstimator.UpdateFromGps(new PoseSnapshot(
@@ -1080,11 +931,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // the antennas are mounted (front to back set up as side by side). Guidance would
         // steer for a tractor driving across its line, and the tractor leaves the pass.
         // Also on the simulator, which takes the offset too.
-        if (autoSteerEngaged && _headingFusion.IsDualHeadingOffTravel)
+        if (autoSteerEngaged && _poseStep.IsDualHeadingOffTravel)
         {
             autoSteerEngaged = false;
             autoSteerDisengaged = true;
-            disengageReason = "AutoSteer disengaged - " + DualHeadingOffTravelText(_headingFusion.DualHeadingOffTravelDeg);
+            disengageReason = "AutoSteer disengaged - " + DualHeadingOffTravelText(_poseStep.DualHeadingOffTravelDeg);
             lock (_stateLock) _autoSteerEngaged = false;
         }
 
@@ -1110,7 +961,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // single antenna with no IMU can't yet tell a direction change. PGN 254
         // status goes to 0 for those cycles.
         bool steerPaused = autoSteerEngaged
-            && ((_isReverse && !_configStore.AutoSteer.SteerInReverse) || _headingFusion.IsChangingDirection);
+            && ((_poseStep.IsReverse && !_configStore.AutoSteer.SteerInReverse) || _poseStep.IsChangingDirection);
         _autoSteerService.SetSteerPaused(steerPaused);
 
         // U-turn lifecycle is bound to autosteer: when autosteer is not
@@ -1137,7 +988,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         Models.Track.Track? contourDisplay = null;
         if (hasActiveField || contourOn)
             contourSteer = _contourStep.ProcessContour(contourOn, hasActiveField, driftedEasting, driftedNorthing,
-                headingRad, antennaE, antennaN, pos.Speed * 3.6, autoSteerEngaged, _isReverse, _roll, out contourDisplay);
+                headingRad, antennaE, antennaN, pos.Speed * 3.6, autoSteerEngaged, _poseStep.IsReverse, _poseStep.Roll, out contourDisplay);
 
         // ── (6) Guidance calculation ────────────────────────────────────
         double steerAngle = 0;
@@ -1451,7 +1302,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
         // section bits current itself (SetSectionBits, #311).
         // The tool in the headland raises the lift and, as in AgOpenGPS, turns the tram lights off.
         bool toolInHeadland = _headlandStep.IsToolInHeadland(toolPos, toolHeading, pos.Speed, headlandLine, headlandOn);
-        byte hydLiftState = _headlandStep.HydLiftFor(toolInHeadland, pos.Speed, headlandLine, boundary, headlandOn, _isReverse);
+        byte hydLiftState = _headlandStep.HydLiftFor(toolInHeadland, pos.Speed, headlandLine, boundary, headlandOn, _poseStep.IsReverse);
         _autoSteerService.SetMachineState(
             _sectionControlService.GetSectionBits64(),
             isInYouTurn,
@@ -1528,19 +1379,19 @@ public sealed class GpsPipelineService : IGpsPipelineService
             Northing = driftedNorthing,
             Heading = pos.Heading,
             Speed = pos.Speed,
-            RollDegrees = _roll,
+            RollDegrees = _poseStep.Roll,
             SatelliteCount = data.SatellitesInUse,
             Hdop = data.Hdop,
             DifferentialAge = data.DifferentialAge,
             FixQuality = data.FixQuality,
             GpsValid = data.IsValid,
             SentenceType = data.SentenceType,
-            SentenceHeading = _sentenceHeading,
+            SentenceHeading = _poseStep.SentenceHeading,
             ImuValid = data.ImuValid,
-            IsReverse = _isReverse,
-            IsDualHeadingMissing = _headingFusion.IsDualHeadingMissing,
-            IsDualHeadingOffTravel = _headingFusion.IsDualHeadingOffTravel,
-            DualHeadingOffTravelDeg = _headingFusion.DualHeadingOffTravelDeg,
+            IsReverse = _poseStep.IsReverse,
+            IsDualHeadingMissing = _poseStep.IsDualHeadingMissing,
+            IsDualHeadingOffTravel = _poseStep.IsDualHeadingOffTravel,
+            DualHeadingOffTravelDeg = _poseStep.DualHeadingOffTravelDeg,
 
             // Tool position
             ToolEasting = toolPos.Easting,
@@ -1882,10 +1733,10 @@ public sealed class GpsPipelineService : IGpsPipelineService
             PurePursuitIntegralGain = config.Guidance.PurePursuitIntegralGain,
             FixHeading = headingRad,
             AvgSpeed = speedKmh,
-            IsReverse = _isReverse,
+            IsReverse = _poseStep.IsReverse,
             IsAutoSteerOn = true,
             IsYouTurnTriggered = isYouTurnTriggered,
-            ImuRoll = _roll, // 0 with no roll source → no side-hill term (#110)
+            ImuRoll = _poseStep.Roll, // 0 with no roll source → no side-hill term (#110)
             PreviousState = _trackGuidanceState,
             // Re-acquire the nearest segment globally on engage AND whenever the
             // travel direction along the track flips — otherwise a stranded local
@@ -2182,7 +2033,7 @@ public sealed class GpsPipelineService : IGpsPipelineService
             UTurnCompensation = config.Guidance.UTurnCompensation,
             FixHeading = headingRad,
             AvgSpeed = speedKmh,
-            IsReverse = _isReverse,
+            IsReverse = _poseStep.IsReverse,
             UTurnStyle = config.Guidance.UTurnStyle
         };
 
@@ -2334,12 +2185,11 @@ public sealed class GpsPipelineService : IGpsPipelineService
         return (_syntheticHeadlandLine, _syntheticHeadlandInsetUsed);
     }
 
-    private int _lastJumpCount; // the fusion's JumpCount already told
 
     /// <summary>The lift byte for a tool at this pose (HeadlandStep), reversing as the cycle last saw it.</summary>
     private byte ComputeHydLiftState(Vec3 toolPosition, double toolHeading, double speed, List<Vec3>? headlandLine,
         Boundary? boundary, bool headlandOn)
-        => _headlandStep.ComputeHydLiftState(toolPosition, toolHeading, speed, headlandLine, boundary, headlandOn, _isReverse);
+        => _headlandStep.ComputeHydLiftState(toolPosition, toolHeading, speed, headlandLine, boundary, headlandOn, _poseStep.IsReverse);
 
     // Monotonic ms clock of the steering speed limits; tests substitute it (AutoSteerRules.NowMs).
     internal Func<long> NowMs { get => _autoSteerRules.NowMs; set => _autoSteerRules.NowMs = value; }
