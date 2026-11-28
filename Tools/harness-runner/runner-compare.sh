@@ -168,22 +168,27 @@ take_lock() {
     sleep 2
   done
 }
-# Runs start in the order they began to wait, across every comparison on this machine: a ticket each
-# in the queue folder, and only the oldest may start when there is room. Without it a whole harness
-# (4 threads) waited behind the job harness's shards (2 each), which took every pair of threads as it
-# came free: round 5's web client waited 50 minutes on 28 Nov 2026 and the round took 70 minutes
-# instead of 40. A ticket whose comparison is gone (killed) is removed by the next one to look.
+# The run that has waited longest, across every comparison on this machine, has its threads kept for
+# it: a ticket each in the queue folder (when it began to wait, its comparison, its threads), and a
+# run that is not the oldest starts only if it leaves room for the oldest. Without it a whole harness
+# (4 threads) waited behind the job harness's shards (2 each), which took every pair of threads as
+# it came free (round 5's web client waited 50 minutes, 28 Nov 2026). Only the oldest is waited for,
+# so the shards fill what is left: strictly first-come (only the oldest may start) left threads
+# idle behind a 4-thread run and sent every shard, and every base result from the cache, to the
+# back of the queue after each start (the final round's job harness, 9 jobs of 59 in 55 minutes).
+# A ticket whose comparison is gone (killed) is removed by the next one to look.
 queue=${TMPDIR:-/tmp}/aow-runner-queue
 mkdir -p "$queue"
 ticket=""
-head_of_queue() {
-  local t p
+kept_for_oldest() { # threads to leave free for the oldest waiting run: 0 when it is this one
+  local t p oldest
   for t in "$queue"/*; do
     [ -e "$t" ] || continue
     p=$(basename "$t" | cut -d- -f2)
     kill -0 "$((10#$p))" 2>/dev/null || rm -f "$t"
   done
-  [ "$(ls "$queue" | sort | head -1)" = "$(basename "$ticket")" ]
+  oldest=$(ls "$queue" | sort | head -1)
+  if [ -z "$oldest" ] || [ "$oldest" = "$(basename "$ticket")" ]; then echo 0; else echo "$oldest" | cut -d- -f3; fi
 }
 free_kb() { dk run --rm --entrypoint df aow-harness:latest -Pk / 2>/dev/null | awk 'NR==2 {print $4}'; }
 
@@ -191,20 +196,19 @@ runs=()
 for code in "${shards[@]}"; do runs+=("fix/$code" "base/$code"); done
 for item in "${runs[@]}"; do
   waited=0
-  ticket="$queue/$(date +%s)-$(printf %07d $$)-$name-${item%/*}.${item#*/}"
+  ticket="$queue/$(date +%s)-$(printf %07d $$)-$cpus-$name-${item%/*}.${item#*/}"
   touch "$ticket"
   while :; do
     reap
     take_lock
     used=$(used_cpus); mine=$(ls "$running" | wc -l | tr -d ' ')
-    if ! head_of_queue; then
-      [ $waited = 3 ] || { echo "-- $item waits its turn: runs that began to wait earlier start first"; waited=3; }
-    elif [ $(( used + cpus )) -le "$budget" ] && { [ "$max" = 0 ] || [ "$mine" -lt "$max" ]; }; then
+    keep=$(kept_for_oldest)
+    if [ $(( used + cpus + keep )) -le "$budget" ] && { [ "$max" = 0 ] || [ "$mine" -lt "$max" ]; }; then
       free=$(free_kb); free=${free:-0}
       [ "$free" -ge "$min_free_kb" ] && break
       [ $waited = 2 ] || { echo "-- the host has $(( free / 1024 / 1024 )) GB free, under ${MIN_FREE_GB:-10}; $item waits"; waited=2; }
     else
-      [ $waited = 1 ] || { echo "-- the host's harness containers hold $used of $budget threads; $item ($cpus) waits"; waited=1; }
+      [ $waited = 1 ] || { echo "-- the host's harness containers hold $used of $budget threads ($keep kept for a run waiting longer); $item ($cpus) waits"; waited=1; }
     fi
     release_lock
     sleep 15

@@ -79,10 +79,12 @@ comparison: `runner-compare.sh` starts a container when the `--cpus` of all the 
 there plus its own fit in `CPU_BUDGET` (default the host's 12 on the 6-core Mac mini), checked under
 a lock on the machine the comparisons are started from, so several comparisons run at once and the
 host stays full (`CPUS` changes a container's share, `MAX_RUNS` caps one comparison's containers);
-a run started by hand needs `--cpus 4` too and counts against the budget. Runs start in the order
-they began to wait, across every comparison (a ticket each in `$TMPDIR/aow-runner-queue`): without
-it a whole harness waiting for 4 threads was passed by the shards, which took each pair of threads as
-it came free (round 5's web client waited 50 minutes, 28 Nov 2026).
+a run started by hand needs `--cpus 4` too and counts against the budget. The run that has waited
+longest, across every comparison (a ticket each in `$TMPDIR/aow-runner-queue`), has its threads kept
+for it, and the others start only in what is left: without it a whole harness waiting for 4 threads
+was passed by the shards, which took each pair of threads as it came free (round 5's web client
+waited 50 minutes, 28 Nov 2026); strictly first-come instead left threads idle and the job harness
+crawling (the final round's first try).
 
 They share the disk as well: a container keeps its clone and build (about 0.8 GB, a web client one
 2.8 GB) until it is removed. `runner-compare.sh` copies each one's `/out` and removes it as soon as
