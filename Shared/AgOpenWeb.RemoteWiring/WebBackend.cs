@@ -53,8 +53,9 @@ public sealed class WebBackend
 
         WireCrossServices(sp);
 
-        // Construct the single MainViewModel (it subscribes), then start the services.
-        var vm = CreateViewModel(sp);
+        // Construct the single MainViewModel (it subscribes), then start the services: on the
+        // host loop, where the view model's state lives.
+        var vm = await CreateViewModelOnHostLoopAsync(sp).ConfigureAwait(false);
 
         // Start the embedded browser server, then wire its command handler + projectors.
         var server = new AgOpenWeb.RemoteServer.RemoteServerHost();
@@ -88,11 +89,27 @@ public sealed class WebBackend
     }
 
     /// <summary>
+    /// <see cref="CreateViewModel"/> on the host loop (<see cref="IUiDispatcher"/>), from whatever
+    /// thread starts the backend. The view model's start begins its module status loop (the
+    /// hello, the module and GPS checks, the module-lost and GPS-lost alarms, every 100 ms), which
+    /// continues wherever its awaits resume: on the host loop only if it was started there. The
+    /// heads start the backend on their start-up thread (iOS from the thread pool), so the loop
+    /// ran on the thread pool beside the host loop, writing the view model's state from there.
+    /// The harness rigs already built it on the host loop.
+    /// </summary>
+    public static async Task<MainViewModel> CreateViewModelOnHostLoopAsync(IServiceProvider sp)
+    {
+        MainViewModel vm = null!;
+        await sp.GetRequiredService<IUiDispatcher>().InvokeAsync(() => vm = CreateViewModel(sp)).ConfigureAwait(false);
+        return vm;
+    }
+
+    /// <summary>
     /// Build the view model, then start the services and the view model, in this order: what
     /// the view model listens to is subscribed before a service sends its first event. The
-    /// order of the starts is the one the view model's constructor had. Called by
-    /// <see cref="StartAsync"/> and by the harness rigs, on the thread that builds the view
-    /// model; after <see cref="WireCrossServices"/>.
+    /// order of the starts is the one the view model's constructor had. Called on the host loop,
+    /// by <see cref="StartAsync"/> (through <see cref="CreateViewModelOnHostLoopAsync"/>) and by
+    /// the harness rigs; after <see cref="WireCrossServices"/>.
     /// </summary>
     public static MainViewModel CreateViewModel(IServiceProvider sp)
     {

@@ -41,21 +41,19 @@ namespace AgOpenWeb.ViewModels;
 /// runs after the cycle's result is applied.</para>
 ///
 /// <para><b>On the host loop only</b> once built (checked in debug and test builds,
-/// <see cref="AssertHostLoop"/>; the constructor runs on the thread that builds the backend):
+/// <see cref="AssertHostLoop"/>; not the constructor, before anything can reach the view model):
 /// <c>ApplyGpsCycleResult</c>, <c>HandleGpsUiUpdates</c>, <c>ApplyTramState</c>,
 /// <c>ApplyRemoteSwitches</c>, <c>UpdateSectionStates</c>, <c>UpdateModuleSwitches</c>,
 /// <c>UpdateModuleSteeringState</c>, and the pushes into the cycle and section control
 /// (<c>SyncGuidanceStateToPipeline</c>, <c>SyncFieldContextToSectionControl</c>,
 /// <c>SyncYouTurnConfigToPipeline</c>): setters that copy the values across, the one way in.</para>
 ///
-/// <para><b>Found, not changed in the move:</b> the module status loop (<c>StartHelloTimerAsync</c>,
-/// every 100 ms: the hello, the module and GPS checks, <c>State.Connections</c>, the module-lost and
-/// GPS-lost alarms, data quality, the status line) is started by <see cref="Start"/> on the thread
-/// that built the backend, and continues wherever its awaits resume. The harness rigs build the
-/// view model on the host loop, so there it runs on the host loop; the heads build it on their
-/// start-up thread (<c>WebBackend.StartAsync</c> from <c>BackendHost</c>, the Android and iOS
-/// hosts), so there it runs on the thread pool, alongside the host loop (seen on the Desktop head:
-/// pool threads 1, 12 and 13).</para>
+/// <para><b>The module status loop</b> (<c>StartHelloTimerAsync</c>, every 100 ms: the hello,
+/// the module and GPS checks, <c>State.Connections</c>, the module-lost and GPS-lost alarms, data
+/// quality, the status line) runs where <see cref="Start"/> ran, as its awaits resume there: the
+/// host loop, where the backend builds and starts the view model
+/// (<c>WebBackend.CreateViewModelOnHostLoopAsync</c>). The heads started it on their start-up
+/// thread, and it ran on the thread pool beside the host loop.</para>
 /// </summary>
 public partial class MainViewModel
 {
@@ -70,9 +68,10 @@ public partial class MainViewModel
     [Conditional("DEBUG")]
     private void AssertHostLoop([CallerMemberName] string what = "")
     {
-        // The constructor runs on the thread that builds the backend (WebBackend.StartAsync, a
-        // head's start-up), before anything else can reach the view model; its first pushes
-        // (SyncFieldContextToSectionControl, the YouTurn config) are not a crossing.
+        // The constructor may run on a thread that builds the view model before handing it to
+        // the host loop (the unit tests' container); nothing else can reach the view model then,
+        // so its first pushes (SyncFieldContextToSectionControl, the YouTurn config) are not a
+        // crossing.
         if (!_constructed) return;
         if (!_dispatcher.CheckAccess())
             throw new InvalidOperationException($"{what} runs on the host loop: it writes the view model's state, which is the host loop's.");
