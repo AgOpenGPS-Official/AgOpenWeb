@@ -144,6 +144,7 @@ public partial class MainViewModel
     /// </summary>
     private void HandleGpsUiUpdates(AgOpenWeb.Models.GpsData data)
     {
+        AssertHostLoop();
         // State.Vehicle is now written exclusively by ApplyGpsCycleResult
         // (Phase B completion — Rule 2: only one State writer per domain).
 
@@ -390,6 +391,7 @@ public partial class MainViewModel
     /// </summary>
     private void SyncGuidanceStateToPipeline()
     {
+        AssertHostLoop();
         var track = SelectedTrack;
         // Use pending initial values if the SelectedTrack setter just seeded
         // them; otherwise re-push the current State.Guidance (which the cycle
@@ -417,19 +419,25 @@ public partial class MainViewModel
     /// the pipeline sync and whenever one of them changes, so the control loop never reads
     /// the UI-bound State.Field mirror.
     /// </summary>
-    private void SyncFieldContextToSectionControl() =>
+    private void SyncFieldContextToSectionControl()
+    {
+        AssertHostLoop();
         _sectionControlService.SetFieldContext(new AgOpenWeb.Models.Sections.SectionFieldContext(
             CurrentBoundary, State.Field.HeadlandLine, State.Field.HasActiveField, _isHeadlandOn));
+    }
 
     /// <summary>
     /// The skip count and skip mode, pushed to the cycle as they change. They used to reach it
     /// only with the next full sync (a turn completing, a track change), so the first turn
     /// after changing the skip count still used the old one (#272).
     /// </summary>
-    private void SyncYouTurnConfigToPipeline() =>
+    private void SyncYouTurnConfigToPipeline()
+    {
+        AssertHostLoop();
         _gpsPipelineService?.SetYouTurnConfig(
             UTurnSkipRows, IsSkipWorkedMode, HeadlandCalculatedWidth, HeadlandDistance,
             isAlternateSkipMode: UTurnSkipMode == 1);
+    }
 
     #endregion
 

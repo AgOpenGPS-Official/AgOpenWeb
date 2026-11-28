@@ -25,6 +25,7 @@ public partial class MainViewModel
     /// </summary>
     public void ApplyGpsCycleResult(GpsCycleResult result)
     {
+        AssertHostLoop();
         // PERF-05 Phase 2a. Cycle = one ApplyGpsCycleResult invocation on
         // the UI thread (one per GpsCycleCompleted dispatch from the
         // background pipeline). Captures everything from GpsDataRecorder

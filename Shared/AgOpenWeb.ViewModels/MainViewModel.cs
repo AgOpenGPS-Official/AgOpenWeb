@@ -507,6 +507,7 @@ public partial class MainViewModel : ObservableObject
         // user-driven and should persist (see the ConfigStore.Connections
         // subscription above).
         _configReady = true;
+        _constructed = true;
     }
 
     /// <summary>
@@ -1109,6 +1110,7 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private void UpdateModuleSwitches()
     {
+        AssertHostLoop();
         UpdateModuleSteeringState();
         var tool = ConfigStore.Tool;
         var mc = _moduleCommunicationService;
@@ -1146,6 +1148,7 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     internal void UpdateModuleSteeringState()
     {
+        AssertHostLoop();
         bool held = _isSimulatorEnabled && !_isSimulatorDrivingSteering;
         bool connected = State.Connections.IsAutoSteerDataOk && !held;
         bool notSteering = IsAutoSteerEngaged && connected && _autoSteerService.LastSteerData.SteerSwitchActive;

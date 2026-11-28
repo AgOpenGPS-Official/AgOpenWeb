@@ -190,6 +190,7 @@ public partial class MainViewModel
     /// </summary>
     internal void ApplyRemoteSwitches(byte[] switches)
     {
+        AssertHostLoop();
         if (!IsFieldOpen) return;
 
         var sections = _sectionControlService.SectionStates;
@@ -250,6 +251,7 @@ public partial class MainViewModel
     /// </summary>
     private void UpdateSectionStates()
     {
+        AssertHostLoop();
         RefreshSectionButtonColors();
 
         if (NumSections > 0)
