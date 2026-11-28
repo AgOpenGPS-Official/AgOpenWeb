@@ -44,16 +44,32 @@ harnesses on a development machine, where the app and other runs share its ports
     the shard's ONLY, the name its container and folder (`sweep-type=tool.type`; a selector may hold
     `|` and `.`, a container name cannot).
 - **A whole round** (every harness, a fix against its base): `run-round.sh <fix> <base> [out]`
-  starts all the comparisons at once, the longest first, the job harness in the nightly's groups and
-  one container a job, and prints a line per comparison at the end. Vehicle & Tool, 2.5 hours in one
+  runs each harness once, in one of two places, so a round takes about 40 minutes. GitHub takes
+  Vehicle & Tool, the working day, GPS/NTRIP and Update (`GITHUB_PART`), dispatched on the pushed
+  branch at the fix and compared with their nightly runs (`BASE_SHAS`, default the base commit;
+  `GITHUB_BASES` gives one workflow a base of its own). The host takes the rest, all the comparisons
+  at once, the job harness in the nightly's groups and one container a job, the base side from its
+  cache when it has run before. The host is six cores: the fix side of the whole round needs about
+  90 minutes of it packed perfectly (round 4 took 2 h 18 on it alone), and GitHub runs its part on
+  runners of its own. A line per comparison is printed at the end. `GITHUB_PART=` runs everything on
+  the host.
+- **A round on AWS spot** (`spot-round.sh`): the same round on one 64-core spot instance, started for
+  the round and terminated when it ends, fix and base on the same machine and nothing on GitHub.
+  `spot-round.sh setup` once (a key pair, a security group, a launch template, and an EBS volume
+  holding Docker's data: the image, the base results and the build caches, kept between rounds),
+  then `spot-round.sh run <fix> <base> [out]`; `status` and `down` show and end an instance. SSH is
+  opened to this machine's address only, the instance shuts itself down after `SPOT_MAX_HOURS`
+  (default 4) whatever happens, and a spot instance taken back mid-round leaves its containers
+  marked `!!`: run the round again. About a dollar a round; still as long as its longest piece,
+  the working day (about 40 minutes at its pace). The AWS permissions it needs are in its header. Vehicle & Tool, 2.5 hours in one
   piece, runs as its two operators and its settings sweep in the shards of `sweep-shards.txt`
   (selected by the harness's own rule, so the base commit's harness runs them too; the longest about
   40 minutes). `sweep-shards.py check` stops the round when the shards do not split both sides'
   sweep tables, every row in one shard; the Vehicle & Tool workflow runs the same shards as its
-  matrix. A round then takes about as long as the working day (about 40 minutes, one piece). GitHub's runners can take the same round at the
-  same time: `github-compare.sh start <branch>` dispatches the eleven workflows on the branch, and
-  `github-compare.sh compare <branch>` compares their reports with the nightly runs on develop
-  (`BASE_SHAS` names the base commits). Both exit 1 on anything new, gone or marked `!!`.
+  matrix. `github-compare.sh start <branch>` dispatches the eleven workflows on the branch (or those
+  `WORKFLOWS` names), and `github-compare.sh compare <branch>` compares their reports with the
+  nightly runs on develop (`BASE_SHAS` names the base commits). Both exit 1 on anything new, gone or
+  marked `!!`.
 
 Each container has its own network, so runs side by side don't share UDP 9999/8888. They do share
 the CPU, and a starved run misses its watchdogs and reports it (a false `AUTOSTEER-DROPPED`,
@@ -63,7 +79,10 @@ comparison: `runner-compare.sh` starts a container when the `--cpus` of all the 
 there plus its own fit in `CPU_BUDGET` (default the host's 12 on the 6-core Mac mini), checked under
 a lock on the machine the comparisons are started from, so several comparisons run at once and the
 host stays full (`CPUS` changes a container's share, `MAX_RUNS` caps one comparison's containers);
-a run started by hand needs `--cpus 4` too and counts against the budget.
+a run started by hand needs `--cpus 4` too and counts against the budget. Runs start in the order
+they began to wait, across every comparison (a ticket each in `$TMPDIR/aow-runner-queue`): without
+it a whole harness waiting for 4 threads was passed by the shards, which took each pair of threads as
+it came free (round 5's web client waited 50 minutes, 28 Nov 2026).
 
 They share the disk as well: a container keeps its clone and build (about 0.8 GB, a web client one
 2.8 GB) until it is removed. `runner-compare.sh` copies each one's `/out` and removes it as soon as
